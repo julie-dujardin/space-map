@@ -1,0 +1,22 @@
+{
+  "sbdb": {
+    "downloaded_at": "2026-03-08T19:36:53.884865+00:00",
+    "source_url": "https://ssd-api.jpl.nasa.gov/sbdb_query.api",
+    "record_count": 10
+  },
+  "horizons": {
+    "downloaded_at": "2026-03-08T19:42:51.244885+00:00",
+    "source_url": "https://ssd.jpl.nasa.gov/api/horizons.api",
+    "epoch_jd": "2451545.0",
+    "record_count": 10
+  },
+  "probes": {
+    "downloaded_at": "2026-03-08T19:44:02.268507+00:00",
+    "source_url": "https://ssd.jpl.nasa.gov/api/horizons.api",
+    "trajectory_start": "1960-Jan-01",
+    "trajectory_stop": "today",
+    "trajectory_step": "1 mo",
+    "record_count": 0,
+    "errors": 10
+  }
+}

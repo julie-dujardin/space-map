@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Download data",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/data/download.py",
+      "python": "${workspaceFolder}/data/.venv/bin/python",
+      "cwd": "${workspaceFolder}/data",
+      "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "sources",
+      "type": "pickString",
+      "description": "Which source(s) to download",
+      "options": ["all", "celestrak", "sbdb", "horizons", "probes"],
+      "default": "all"
+    },
+    {
+      "id": "limit",
+      "type": "promptString",
+      "description": "Max records/bodies per source",
+      "default": "10"
+    }
+  ]
+}

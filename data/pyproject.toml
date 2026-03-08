@@ -1,0 +1,15 @@
+[project]
+name = "space-map-data"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx",
+    "tqdm",
+]
+
+[dependency-groups]
+dev = [
+    "ipython>=9.10.0",
+    "ruff>=0.15.5",
+    "ty>=0.0.21",
+]
