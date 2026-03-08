@@ -6,6 +6,7 @@ Usage:
   uv run download.py --sources celestrak sbdb # specific sources
   uv run download.py --limit 100              # max records/bodies per source
   uv run download.py --sources horizons --limit 5  # quick test
+  uv run download.py --sources probes --limit 10  # first 10 spacecraft trajectories
 """
 
 import argparse
@@ -14,18 +15,19 @@ from pathlib import Path
 
 import httpx
 
-from downloaders import celestrak, horizons, sbdb
+from downloaders import celestrak, horizons, probes, sbdb
 
 BASE_DIR = Path(__file__).parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
 DOWNLOAD_DIR.mkdir(exist_ok=True)
-METADATA_FILE = BASE_DIR / "metadata.json"
+METADATA_FILE = DOWNLOAD_DIR / "metadata.json"
 USER_AGENT = "space-map/0.1 (github personal project)"
 
 SOURCES = {
     "celestrak": (celestrak.download, DOWNLOAD_DIR / "celes-trak"),
-    "sbdb":      (sbdb.download,      DOWNLOAD_DIR / "sbdb"),
-    "horizons":  (horizons.download,  DOWNLOAD_DIR / "horizons"),
+    "sbdb": (sbdb.download, DOWNLOAD_DIR / "sbdb"),
+    "horizons": (horizons.download, DOWNLOAD_DIR / "horizons"),
+    "probes": (probes.download, DOWNLOAD_DIR / "probes"),
 }
 
 
@@ -41,15 +43,25 @@ def update_metadata(results: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download space-map data")
     parser.add_argument(
-        "--sources", nargs="+", choices=[*SOURCES.keys(), "all"], default=["all"],
-        metavar="SOURCE", help=f"Sources to download: {', '.join(SOURCES)}, all (default: all)",
+        "--sources",
+        nargs="+",
+        choices=[*SOURCES.keys(), "all"],
+        default=["all"],
+        metavar="SOURCE",
+        help=f"Sources to download: {', '.join(SOURCES)}, all (default: all)",
     )
     parser.add_argument(
-        "--limit", type=int, default=50_000,
-        metavar="N", help="Max records/bodies per source (default: 50000)",
+        "--limit",
+        type=int,
+        default=50_000,
+        metavar="N",
+        help="Max records/bodies per source (default: 50000)",
     )
     parser.add_argument(
-        "--no-limit", dest="limit", action="store_const", const=None,
+        "--no-limit",
+        dest="limit",
+        action="store_const",
+        const=None,
         help="Remove the row limit and download everything",
     )
     args = parser.parse_args()

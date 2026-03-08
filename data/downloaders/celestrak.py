@@ -17,7 +17,10 @@ def download(client: httpx.Client, out_dir: Path, limit: int | None = None) -> d
     response = client.get(url)
 
     if response.status_code in (403, 404):
-        print(f"CelesTrak: HTTP {response.status_code} — stopping (do not retry)", file=sys.stderr)
+        print(
+            f"CelesTrak: HTTP {response.status_code} — stopping (do not retry)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     response.raise_for_status()
@@ -36,7 +39,9 @@ def download(client: httpx.Client, out_dir: Path, limit: int | None = None) -> d
             writer.writerows(data)
         record_count = len(data)
 
-    print(f"CelesTrak: saved {record_count:,} records → {out_file.relative_to(out_dir)}")
+    print(
+        f"CelesTrak: saved {record_count:,} records → {out_file.relative_to(out_dir)}"
+    )
     return {
         "downloaded_at": datetime.now(timezone.utc).isoformat(),
         "source_url": url,

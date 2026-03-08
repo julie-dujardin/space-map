@@ -41,7 +41,9 @@ def download(client: httpx.Client, out_dir: Path, limit: int | None = None) -> d
 
             params = {
                 "fields": ",".join(all_fields),
-                "limit": min(PAGE_SIZE, remaining) if remaining is not None else PAGE_SIZE,
+                "limit": min(PAGE_SIZE, remaining)
+                if remaining is not None
+                else PAGE_SIZE,
                 "limit-from": offset,
                 "full-prec": "true",
             }

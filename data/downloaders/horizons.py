@@ -19,7 +19,7 @@ _BASE_PARAMS = {
     "OBJ_DATA": "NO",
     "MAKE_EPHEM": "YES",
     "EPHEM_TYPE": "ELEMENTS",
-    "CENTER": "500@10",   # heliocentric (Sun-centered)
+    "CENTER": "500@10",  # heliocentric (Sun-centered)
     "TLIST": EPOCH,
     "CSV_FORMAT": "YES",
     "OUT_UNITS": "AU-D",
@@ -30,12 +30,15 @@ _BASE_PARAMS = {
 
 def fetch_body_list(client: httpx.Client) -> list[tuple[str, str]]:
     """Return (name, naif_id) for all natural solar system bodies in Horizons."""
-    response = client.get(URL, params={
-        "format": "json",
-        "COMMAND": "'MB'",
-        "OBJ_DATA": "YES",
-        "MAKE_EPHEM": "NO",
-    })
+    response = client.get(
+        URL,
+        params={
+            "format": "json",
+            "COMMAND": "'MB'",
+            "OBJ_DATA": "YES",
+            "MAKE_EPHEM": "NO",
+        },
+    )
     response.raise_for_status()
     text = response.json()["result"]
 
@@ -45,7 +48,7 @@ def fetch_body_list(client: httpx.Client) -> list[tuple[str, str]]:
         if not m:
             continue
         naif_id, name = m.group(1), m.group(2).strip()
-        if int(naif_id) < 100:          # skip barycenters (0–9) and Sun (10)
+        if int(naif_id) < 100:  # skip barycenters (0–9) and Sun (10)
             continue
         if any(frag in name for frag in _SKIP_NAME_FRAGMENTS):
             continue
@@ -96,7 +99,9 @@ def download(client: httpx.Client, out_dir: Path, limit: int | None = None) -> d
         row = _parse_elements(response.json()["result"], name, naif_id)
 
         if fieldnames is None:
-            fieldnames = ["name", "naif_id"] + [k for k in row if k not in ("name", "naif_id")]
+            fieldnames = ["name", "naif_id"] + [
+                k for k in row if k not in ("name", "naif_id")
+            ]
 
         rows.append(row)
         time.sleep(0.5)
