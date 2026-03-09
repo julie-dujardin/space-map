@@ -9,6 +9,19 @@
       "python": "${workspaceFolder}/data/.venv/bin/python",
       "cwd": "${workspaceFolder}/data",
       "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
+    },
+    {
+      "name": "Frontend (Chrome)",
+      "type": "chrome",
+      "runtimeExecutable": "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "sourceMapPathOverrides": {
+        "webpack:///./src/*": "${webRoot}/*",
+        "webpack:///src/*": "${webRoot}/*"
+      },
+      "preLaunchTask": "frontend-dev"
     }
   ],
   "inputs": [

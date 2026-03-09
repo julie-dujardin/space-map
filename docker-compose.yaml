@@ -6,3 +6,17 @@ services:
     volumes:
       - ./data/downloads:/usr/share/nginx/html:ro
       - ./infrastructure/dev/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - DATA_SERVER_URL=http://data-server
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/static:/app/static
+    depends_on:
+      - data-server

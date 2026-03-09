@@ -27,3 +27,24 @@ repos:
         language: system
         pass_filenames: false
         files: ^data/
+
+      - id: lint-frontend
+        name: lint (frontend)
+        entry: bash -c 'cd frontend && pnpm lint'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: format-frontend
+        name: format check (frontend)
+        entry: bash -c 'cd frontend && pnpm format'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+
+      - id: build-frontend
+        name: build (frontend)
+        entry: bash -c 'cd frontend && pnpm build'
+        language: system
+        pass_filenames: false
+        files: ^frontend/
