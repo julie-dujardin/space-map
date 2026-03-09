@@ -1,7 +1,5 @@
-import csv
 import logging
 import sys
-from io import StringIO
 
 from . import Downloader
 
