@@ -1,4 +1,5 @@
 import csv
+import json
 import logging
 import re
 import time
@@ -21,13 +22,24 @@ _BASE_PARAMS = {
     "OBJ_DATA": "NO",
     "MAKE_EPHEM": "YES",
     "EPHEM_TYPE": "ELEMENTS",
-    "CENTER": "500@10",
     "TLIST": EPOCH,
     "CSV_FORMAT": "YES",
     "OUT_UNITS": "AU-D",
     "REF_PLANE": "ECLIPTIC",
     "REF_SYSTEM": "J2000",
 }
+
+
+def _center_for_body(naif_id: int) -> tuple[str, int | None]:
+    """Return (CENTER param, parent_naif_id) for a body.
+
+    Planets (x99) and bodies < 1000 with id ending in 99 → heliocentric (Sun).
+    Moons (x01-x98) → centered on their parent planet (x99).
+    """
+    if naif_id >= 100 and naif_id % 100 != 99:
+        parent_id = (naif_id // 100) * 100 + 99
+        return f"500@{parent_id}", parent_id
+    return "500@10", None
 
 
 class HorizonsDownloader(Downloader):
@@ -85,9 +97,19 @@ class HorizonsDownloader(Downloader):
     def download(self, limit: int | None = None) -> dict:
         out_file = self.out_dir / "bodies.csv"
 
+        body_list_file = self.out_dir / "body_list.json"
+
         logger.info("Fetching body list...")
         bodies = self._fetch_body_list()
         logger.info("%d natural bodies found", len(bodies))
+
+        with body_list_file.open("w") as f:
+            json.dump(
+                [{"name": name, "naif_id": int(nid)} for name, nid in bodies],
+                f,
+                indent=2,
+            )
+        logger.info("Saved body list -> %s", body_list_file.relative_to(self.out_dir))
 
         if limit is not None:
             bodies = bodies[:limit]
@@ -99,15 +121,31 @@ class HorizonsDownloader(Downloader):
         for name, naif_id in tqdm(
             bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
+            center, parent_id = _center_for_body(int(naif_id))
             response = self.client.get(
-                URL, params={**_BASE_PARAMS, "COMMAND": f"'{naif_id}'"}
+                URL,
+                params={
+                    **_BASE_PARAMS,
+                    "CENTER": center,
+                    "COMMAND": f"'{naif_id}'",
+                },
             )
             response.raise_for_status()
-            row = self._parse_elements(response.json()["result"], name, naif_id)
+            payload = response.json()
+
+            if "error" in payload:
+                logger.warning("%s (%s): %s", name, naif_id, payload["error"])
+                continue
+
+            row = self._parse_elements(payload["result"], name, naif_id)
+            row["center"] = center
+            row["parent_naif_id"] = str(parent_id) if parent_id else ""
 
             if fieldnames is None:
-                fieldnames = ["name", "naif_id"] + [
-                    k for k in row if k not in ("name", "naif_id")
+                fieldnames = ["name", "naif_id", "center", "parent_naif_id"] + [
+                    k
+                    for k in row
+                    if k not in ("name", "naif_id", "center", "parent_naif_id")
                 ]
 
             rows.append(row)

@@ -26,19 +26,9 @@ class CelesTrakDownloader(Downloader):
 
         response.raise_for_status()
 
-        if limit is None:
-            out_file.write_bytes(response.content)
-            record_count = response.text.count("\n") - 1
-        else:
-            reader = csv.reader(StringIO(response.text))
-            rows = list(reader)
-            header, data = rows[0], rows[1:]
-            data = data[:limit]
-            with out_file.open("w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(header)
-                writer.writerows(data)
-            record_count = len(data)
+        # Limit is ignored, celestrak always return everything.
+        out_file.write_bytes(response.content)
+        record_count = response.text.count("\n") - 1
 
         logger.info(
             "Saved %s records -> %s",
