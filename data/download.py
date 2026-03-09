@@ -6,7 +6,6 @@ Usage:
   uv run download.py --sources celestrak sbdb # specific sources
   uv run download.py --limit 100              # max records/bodies per source
   uv run download.py --sources horizons --limit 5  # quick test
-  uv run download.py --sources probes --limit 10  # first 10 spacecraft trajectories
 """
 
 import argparse
@@ -15,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from downloaders import celestrak, horizons, probes, sbdb
+from downloaders import celestrak, horizons, sbdb
 
 BASE_DIR = Path(__file__).parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
@@ -27,7 +26,6 @@ SOURCES = {
     "celestrak": (celestrak.download, DOWNLOAD_DIR / "celes-trak"),
     "sbdb": (sbdb.download, DOWNLOAD_DIR / "sbdb"),
     "horizons": (horizons.download, DOWNLOAD_DIR / "horizons"),
-    "probes": (probes.download, DOWNLOAD_DIR / "probes"),
 }
 
 
