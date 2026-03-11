@@ -14,7 +14,6 @@ from . import Downloader
 logger = logging.getLogger(__name__)
 
 URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
-
 _BASE_PARAMS = {
     "format": "json",
     "OBJ_DATA": "NO",
@@ -25,6 +24,7 @@ _BASE_PARAMS = {
     "REF_PLANE": "ECLIPTIC",
     "REF_SYSTEM": "J2000",
 }
+DROP_PREFIX = ("(primary body)", "(spacecraft)")
 
 
 class BodyType(StrEnum):
@@ -37,11 +37,21 @@ class BodyType(StrEnum):
     COMET = "comet"
     SPACECRAFT = "spacecraft"
     LAGRANGE_POINT = "lagrange_point"
+    DEBRIS = "debris"
 
 
 def _date_to_jd(d: date) -> str:
     """Convert a date to a Julian Date string."""
     return f"{d.toordinal() + 1721424.5:.1f}"
+
+
+# IAU-recognized dwarf planets by asteroid catalog number
+_DWARF_PLANET_CATALOG_NUMBERS: set[int] = {
+    1,  # Ceres
+    136108,  # Haumea
+    136199,  # Eris
+    136472,  # Makemake
+}
 
 
 def _classify_body(
@@ -89,18 +99,29 @@ def _classify_body(
     if 1_000_000 <= naif_id < 2_000_000:
         return BodyType.COMET, 0
     if 2_000_000 <= naif_id < 10_000_000:
+        catalog_num = naif_id - 2_000_000
+        if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
+            return BodyType.DWARF_PLANET, 0
         return BodyType.ASTEROID, 0
     if naif_id >= 100_000_000:
         # Binary system members: satellite (1xx) or primary (9xx)
         barycenter_id = naif_id % 100_000_000
         if naif_id >= 900_000_000:
-            # Primary body — classify as asteroid (could be dwarf planet,
-            # but we can't distinguish from NAIF ID alone)
+            # Primary body in binary system
+            catalog_num = barycenter_id - 20_000_000
+            if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
+                return BodyType.DWARF_PLANET, barycenter_id
             return BodyType.ASTEROID, barycenter_id
         # Satellite
         return BodyType.MOON, barycenter_id
     if "spacecraft" in name.lower():
         return BodyType.SPACECRAFT, 0
+    if 990_000 <= naif_id < 1_000_000:
+        # WT1190F
+        return BodyType.DEBRIS, 0
+    if 20_000_000 <= naif_id < 100_000_000:
+        # 20152830: no idea
+        return BodyType.ASTEROID, 0
     raise ValueError(
         f"Could not classify body with NAIF ID {naif_id} and name '{name}'"
     )
@@ -177,36 +198,18 @@ class HorizonsDownloader(Downloader):
             if not id_str or not id_str.lstrip("-").isdigit():
                 continue
             naif_id = int(id_str)
-            name = line[name_sl].strip().removeprefix("(primary body)").strip()
+            name = line[name_sl].strip()
             designation = line[designation_sl].strip() or None
             extra = line[extra_start:].strip() or None
             body_type, parent_id = _classify_body(naif_id, name, designation, extra)
+
+            for prefix in DROP_PREFIX:
+                name = name.removeprefix(prefix).strip()
             bodies.append(
                 MajorBody(name, naif_id, parent_id, body_type, designation, extra)
             )
 
         return bodies
-
-    @staticmethod
-    def _parse_elements(result_text: str, name: str, naif_id: str) -> dict:
-        """Extract one row of osculating elements from a Horizons text response."""
-        header_match = re.search(r"^\s*(JDTDB,.+)$", result_text, re.MULTILINE)
-        data_match = re.search(r"\$\$SOE\n(.*?)\$\$EOE", result_text, re.DOTALL)
-
-        if not header_match or not data_match:
-            raise ValueError(f"Unexpected Horizons response for {name} ({naif_id})")
-
-        cols = [c.strip() for c in header_match.group(1).split(",") if c.strip()]
-        data_lines = [line for line in data_match.group(1).splitlines() if line.strip()]
-
-        if not data_lines:
-            raise ValueError(f"No element data for {name} ({naif_id})")
-
-        vals = [v.strip() for v in data_lines[0].split(",")]
-        row = dict(zip(cols, vals))
-        row["name"] = name
-        row["naif_id"] = naif_id
-        return row
 
     def get_bodies(self, limit: int | None = None) -> tuple[list[MajorBody], int]:
         logger.info("Fetching body list...")
@@ -237,6 +240,27 @@ class HorizonsDownloader(Downloader):
             logger.info("Limiting to %d bodies", limit)
             return available_bodies[:limit], total_available
         return available_bodies, total_available
+
+    @staticmethod
+    def _parse_elements(result_text: str, name: str, naif_id: str) -> dict:
+        """Extract one row of osculating elements from a Horizons text response."""
+        header_match = re.search(r"^\s*(JDTDB,.+)$", result_text, re.MULTILINE)
+        data_match = re.search(r"\$\$SOE\n(.*?)\$\$EOE", result_text, re.DOTALL)
+
+        if not header_match or not data_match:
+            raise ValueError(f"Unexpected Horizons response for {name} ({naif_id})")
+
+        cols = [c.strip() for c in header_match.group(1).split(",") if c.strip()]
+        data_lines = [line for line in data_match.group(1).splitlines() if line.strip()]
+
+        if not data_lines:
+            raise ValueError(f"No element data for {name} ({naif_id})")
+
+        vals = [v.strip() for v in data_lines[0].split(",")]
+        row = dict(zip(cols, vals))
+        row["name"] = name
+        row["naif_id"] = naif_id
+        return row
 
     def download(
         self, limit: int | None = None, epoch: date | None = None, **kwargs: object
