@@ -3,6 +3,7 @@
 import logging
 import logging.config
 import tomllib
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -30,6 +31,7 @@ def download_sources(
     limit: int | None = 50_000,
     *,
     force: bool = False,
+    epoch: date | None = None,
 ) -> None:
     """Download data from the given sources (default: all)."""
     DOWNLOAD_DIR.mkdir(exist_ok=True)
@@ -46,7 +48,7 @@ def download_sources(
             if not force and downloader.is_complete(limit):
                 logger.info("Skipping %s (already complete)", name)
                 continue
-            downloader.download(limit=limit)
+            downloader.download(limit=limit, epoch=epoch)
 
 
 def cli() -> None:

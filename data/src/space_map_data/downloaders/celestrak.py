@@ -11,7 +11,7 @@ URL = "https://celestrak.org/NORAD/elements/gp.php"
 class CelesTrakDownloader(Downloader):
     name = "celestrak"
 
-    def download(self, limit: int | None = None) -> None:
+    def download(self, limit: int | None = None, **kwargs: object) -> None:
         out_file = self.out_dir / "gp-active.csv"
         url = f"{URL}?GROUP=active&FORMAT=csv"
 

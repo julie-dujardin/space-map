@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from datetime import date
 
 from tqdm import tqdm
 
@@ -12,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
 
-# J2000 — standard reference epoch for solar system elements
-EPOCH = "2451545.0"
-
 _SKIP_NAME_FRAGMENTS = ("Barycenter", "L1", "L2", "L3", "L4", "L5", "Lagrange")
 
 _BASE_PARAMS = {
@@ -22,12 +20,16 @@ _BASE_PARAMS = {
     "OBJ_DATA": "NO",
     "MAKE_EPHEM": "YES",
     "EPHEM_TYPE": "ELEMENTS",
-    "TLIST": EPOCH,
     "CSV_FORMAT": "YES",
     "OUT_UNITS": "AU-D",
     "REF_PLANE": "ECLIPTIC",
     "REF_SYSTEM": "J2000",
 }
+
+
+def _date_to_jd(d: date) -> str:
+    """Convert a date to a Julian Date string."""
+    return f"{d.toordinal() + 1721424.5:.1f}"
 
 
 def _center_for_body(naif_id: int) -> tuple[str, int | None]:
@@ -93,7 +95,7 @@ class HorizonsDownloader(Downloader):
         row["name"] = name
         row["naif_id"] = naif_id
         return row
-    
+
     def get_bodies(self, limit: int | None = None) -> tuple[list[tuple[str, str]], int]:
         logger.info("Fetching body list...")
         available_bodies = self._fetch_body_list()
@@ -114,7 +116,12 @@ class HorizonsDownloader(Downloader):
             return available_bodies[:limit], total_available
         return available_bodies, total_available
 
-    def download(self, limit: int | None = None) -> None:
+    def download(self, limit: int | None = None, epoch: date | None = None, **kwargs: object) -> None:
+        if epoch is None:
+            epoch = date.today()
+        epoch_jd = _date_to_jd(epoch)
+        logger.info("Using epoch %s (JD %s)", epoch.isoformat(), epoch_jd)
+
         out_file = self.out_dir / "bodies.csv"
 
         available_bodies, total_available = self.get_bodies(limit=limit)
@@ -129,6 +136,7 @@ class HorizonsDownloader(Downloader):
                 URL,
                 params={
                     **_BASE_PARAMS,
+                    "TLIST": epoch_jd,
                     "CENTER": center,
                     "COMMAND": f"'{naif_id}'",
                 },
@@ -164,5 +172,5 @@ class HorizonsDownloader(Downloader):
             "Saved %d bodies -> %s", len(rows), out_file.relative_to(self.out_dir)
         )
         self._save_metadata(
-            URL, len(rows), complete=len(rows) == total_available, epoch_jd=EPOCH
+            URL, len(rows), complete=len(rows) == total_available, epoch=epoch.isoformat(), epoch_jd=epoch_jd
         )

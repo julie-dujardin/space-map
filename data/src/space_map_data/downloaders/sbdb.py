@@ -22,7 +22,7 @@ class SBDBDownloader(Downloader):
         categories = response.json()["info"]["field"]
         return [f["name"] for cat in categories.values() for f in cat["list"]]
 
-    def download(self, limit: int | None = None) -> None:
+    def download(self, limit: int | None = None, **kwargs: object) -> None:
         out_file = self.out_dir / "small-bodies.csv"
         total_written = 0
         total_available = None

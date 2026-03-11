@@ -20,7 +20,7 @@ class Downloader(ABC):
         out_dir.mkdir(exist_ok=True)
 
     @abstractmethod
-    def download(self, limit: int | None = None) -> None: ...
+    def download(self, limit: int | None = None, **kwargs: object) -> None: ...
 
     @property
     def metadata_file(self) -> Path:
