@@ -7,6 +7,13 @@ dependencies = [
     "tqdm",
 ]
 
+[project.scripts]
+space-map-data = "space_map_data.download:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = [
     "ipython>=9.10.0",

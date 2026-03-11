@@ -8,14 +8,14 @@ from pathlib import Path
 
 import httpx
 
-from downloaders.celestrak import CelesTrakDownloader
-from downloaders.horizons import HorizonsDownloader
-from downloaders.sbdb import SBDBDownloader
+from .downloaders.celestrak import CelesTrakDownloader
+from .downloaders.horizons import HorizonsDownloader
+from .downloaders.sbdb import SBDBDownloader
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).parent
-DOWNLOAD_DIR = BASE_DIR / "downloads"
+DATA_DIR = Path(__file__).resolve().parents[2]
+DOWNLOAD_DIR = DATA_DIR / "downloads"
 METADATA_FILE = DOWNLOAD_DIR / "metadata.json"
 USER_AGENT = "space-map/0.1 (github personal project)"
 
@@ -90,7 +90,7 @@ def cli() -> None:
     )
     args = parser.parse_args()
 
-    with open(BASE_DIR / "logging.toml", "rb") as f:
+    with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
     sources = None if "all" in args.sources else args.sources

@@ -5,7 +5,7 @@
       "name": "Download data",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/data/download.py",
+      "module": "space_map_data",
       "python": "${workspaceFolder}/data/.venv/bin/python",
       "cwd": "${workspaceFolder}/data",
       "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
