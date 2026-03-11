@@ -36,7 +36,7 @@ def _center_for_body(naif_id: int) -> tuple[str, int | None]:
     Planets (x99) and bodies < 1000 with id ending in 99 → heliocentric (Sun).
     Moons (x01-x98) → centered on their parent planet (x99).
     """
-    if naif_id >= 100 and naif_id % 100 != 99:
+    if naif_id >= 100 and naif_id < 1000 and naif_id % 100 != 99:
         parent_id = (naif_id // 100) * 100 + 99
         return f"500@{parent_id}", parent_id
     return "500@10", None
@@ -93,17 +93,14 @@ class HorizonsDownloader(Downloader):
         row["name"] = name
         row["naif_id"] = naif_id
         return row
-
-    def download(self, limit: int | None = None) -> None:
-        out_file = self.out_dir / "bodies.csv"
-
-        body_list_file = self.out_dir / "body_list.json"
-
+    
+    def get_bodies(self, limit: int | None = None) -> tuple[list[tuple[str, str]], int]:
         logger.info("Fetching body list...")
         available_bodies = self._fetch_body_list()
         total_available = len(available_bodies)
         logger.info("%d natural bodies found", total_available)
 
+        body_list_file = self.out_dir / "body_list.json"
         with body_list_file.open("w") as f:
             json.dump(
                 [{"name": name, "naif_id": int(nid)} for name, nid in available_bodies],
@@ -113,11 +110,14 @@ class HorizonsDownloader(Downloader):
         logger.info("Saved body list -> %s", body_list_file.relative_to(self.out_dir))
 
         if limit is not None and limit < total_available:
-            available_bodies = available_bodies[:limit]
             logger.info("Limiting to %d bodies", limit)
-        else:
-            limit = None  # downloading everything available
+            return available_bodies[:limit], total_available
+        return available_bodies, total_available
 
+    def download(self, limit: int | None = None) -> None:
+        out_file = self.out_dir / "bodies.csv"
+
+        available_bodies, total_available = self.get_bodies(limit=limit)
         rows = []
         fieldnames: list[str] | None = None
 
