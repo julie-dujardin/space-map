@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 
@@ -35,19 +36,7 @@ class BodyType(StrEnum):
     ASTEROID = "asteroid"
     COMET = "comet"
     SPACECRAFT = "spacecraft"
-
-
-# Sort priority for output ordering (barycenters first)
-_TYPE_SORT_ORDER = {
-    BodyType.BARYCENTER: 0,
-    BodyType.STAR: 1,
-    BodyType.PLANET: 2,
-    BodyType.DWARF_PLANET: 3,
-    BodyType.MOON: 4,
-    BodyType.ASTEROID: 5,
-    BodyType.COMET: 6,
-    BodyType.SPACECRAFT: 7,
-}
+    LAGRANGE_POINT = "lagrange_point"
 
 
 def _date_to_jd(d: date) -> str:
@@ -55,71 +44,147 @@ def _date_to_jd(d: date) -> str:
     return f"{d.toordinal() + 1721424.5:.1f}"
 
 
-def _classify_body(naif_id: int, name: str) -> BodyType:
-    """Classify a body by its NAIF ID and name."""
-    if 1 <= naif_id <= 9:
-        return BodyType.BARYCENTER
-    if naif_id == 10:
-        return BodyType.STAR
-    if 100 <= naif_id <= 999:
-        if naif_id % 100 == 99:
-            return BodyType.DWARF_PLANET if naif_id == 999 else BodyType.PLANET
-        return BodyType.MOON
-    if "barycenter" in name.lower():
-        return BodyType.BARYCENTER
-    if 90_000_000 <= naif_id < 99_000_000:
-        return BodyType.COMET
-    if naif_id >= 99_000_000:
-        return BodyType.SPACECRAFT
-    return BodyType.ASTEROID
+def _classify_body(
+    naif_id: int, name: str, designation: str | None, extra: str | None
+) -> tuple[BodyType, int]:
+    """Classify a body by its NAIF ID and name.
 
+    Returns (body_type, parent_naif_id) where parent is the NAIF ID of the
+    body this object orbits (0 = SSB).
 
-def _center_for_body(naif_id: int) -> tuple[str, int]:
-    """Return (CENTER param, parent_naif_id) for a body.
-
-    Everything is ultimately relative to the Solar System Barycenter (SSB).
-    Bodies within a planetary system (100–999) are relative to their planet barycenter.
+    NAIF ID ranges (https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/naif_ids.html):
+        negative        spacecraft
+        0               SSB (excluded)
+        1–9             planetary system barycenters
+        10              Sun
+        100–999         planets (P99) and moons (PNN), parent = barycenter P
+        10000–99999     extended moon IDs (PXNNN), parent = barycenter P
+        1000000–        comets (1M + periodic number)
+        2000000–        asteroids (2M + catalog number)
+        20000000–       asteroid system barycenters (20M + catalog number)
+        100000000–      satellite in binary system (1 + barycenter ID)
+        900000000–      primary in binary system (9 + barycenter ID)
     """
+    if naif_id < 0:
+        return BodyType.SPACECRAFT, 0
+    if 1 <= naif_id <= 9 or "barycenter" in name.lower():
+        # Planetary & asteroid system barycenters
+        return BodyType.BARYCENTER, 0
+    if naif_id == 10:
+        # The Sun
+        return BodyType.STAR, 0
     if 100 <= naif_id <= 999:
-        planet_bc = naif_id // 100
-        return f"500@{planet_bc}", planet_bc
-    return "500@0", 0
+        # Planets (P99) and moons (PNN), parent = planet barycenter P
+        barycenter = naif_id // 100
+        if naif_id % 100 == 99:  # Planet
+            if naif_id == 999:  # rip pluto
+                return BodyType.DWARF_PLANET, barycenter
+            return BodyType.PLANET, barycenter
+        return BodyType.MOON, barycenter
+    if 10_000 <= naif_id < 100_000:
+        # Extended moon IDs: PXNNN (e.g. 65088 = 2004S17)
+        return BodyType.MOON, naif_id // 10_000
+    if extra and "lagrange" in extra.lower():
+        return BodyType.LAGRANGE_POINT, 0
+    if 1_000_000 <= naif_id < 2_000_000:
+        return BodyType.COMET, 0
+    if 2_000_000 <= naif_id < 10_000_000:
+        return BodyType.ASTEROID, 0
+    if naif_id >= 100_000_000:
+        # Binary system members: satellite (1xx) or primary (9xx)
+        barycenter_id = naif_id % 100_000_000
+        if naif_id >= 900_000_000:
+            # Primary body — classify as asteroid (could be dwarf planet,
+            # but we can't distinguish from NAIF ID alone)
+            return BodyType.ASTEROID, barycenter_id
+        # Satellite
+        return BodyType.MOON, barycenter_id
+    if "spacecraft" in name.lower():
+        return BodyType.SPACECRAFT, 0
+    raise ValueError(
+        f"Could not classify body with NAIF ID {naif_id} and name '{name}'"
+    )
+
+
+@dataclass
+class MajorBody:
+    name: str
+    naif_id: int
+    parent_naif_id: int
+    type: BodyType
+    designation: str | None = None
+    extra: str | None = None
 
 
 class HorizonsDownloader(Downloader):
     name = "horizons"
 
-    def _fetch_body_list(self) -> list[tuple[str, str]]:
-        """Return (name, naif_id) for all major bodies, sorted by type then ID."""
-        response = self.client.get(
-            URL,
-            params={
-                "format": "json",
-                "COMMAND": "'MB'",
-                "OBJ_DATA": "YES",
-                "MAKE_EPHEM": "NO",
-            },
-        )
-        response.raise_for_status()
-        text = response.json()["result"]
-
-        bodies = []
-        for line in text.splitlines():
-            m = re.match(r"^\s*(-?\d+)\s{2,}(\S.*?)(?:\s{3,}.*)?$", line)
-            if not m:
-                continue
-            naif_id_str, name = m.group(1), m.group(2).strip()
-            naif_id = int(naif_id_str)
-            if naif_id <= 0:
-                continue  # skip SSB (origin) and negative alternate IDs
-            bodies.append((name, naif_id_str))
-
-        bodies.sort(
-            key=lambda b: (
-                _TYPE_SORT_ORDER.get(_classify_body(int(b[1]), b[0]), 99),
-                int(b[1]),
+    def _fetch_horizons_bodies(self) -> str:
+        """Fetch the list of major bodies from Horizons, using a cached file if available."""
+        cache_file = self.out_dir / "major_bodies.txt"
+        if cache_file.exists():
+            logger.info("Using cached body list from %s", cache_file.name)
+            text = cache_file.read_text()
+        else:
+            response = self.client.get(
+                URL,
+                params={
+                    "format": "json",
+                    "COMMAND": "'MB'",
+                    "OBJ_DATA": "YES",
+                    "MAKE_EPHEM": "NO",
+                },
             )
-        )
+            response.raise_for_status()
+            text = response.json()["result"]
+            cache_file.write_text(text)
+            logger.info("Cached body list -> %s", cache_file.name)
+        return text
+
+    def _fetch_body_list(self) -> list[MajorBody]:
+        """Return all major bodies, sorted by type then NAIF ID.
+
+        Center/parent relationships are computed after sorting so that
+        barycenters are registered before their children are processed.
+        """
+        text = self._fetch_horizons_bodies()
+
+        # Find column boundaries from the dashed header line
+        #   ID#      Name                               Designation  IAU/aliases/other
+        #   -------  ---------------------------------- -----------  -------------------
+        # the lines can extend beyond the limit:
+        #   -125544  International Space Station (spacec1998-067A    ISS
+        lines = text.splitlines()
+        cols: list[int] = []
+        for i, line in enumerate(lines):
+            if re.match(r"^\s*-{4,}\s", line):
+                for m in re.finditer(r"-+", line):
+                    cols.append(m.start())
+                lines = lines[i + 1 :]
+                break
+
+        if len(cols) < 4:
+            raise ValueError("Could not find column header in Horizons body list")
+
+        id_sl = slice(0, cols[1] - 1)
+        name_sl = slice(cols[1], cols[2] - 1)
+        designation_sl = slice(cols[2], cols[3] - 1)
+        extra_start = cols[3]
+
+        bodies: list[MajorBody] = []
+        for line in lines:
+            id_str = line[id_sl].strip()
+            if not id_str or not id_str.lstrip("-").isdigit():
+                continue
+            naif_id = int(id_str)
+            name = line[name_sl].strip().removeprefix("(primary body)").strip()
+            designation = line[designation_sl].strip() or None
+            extra = line[extra_start:].strip() or None
+            body_type, parent_id = _classify_body(naif_id, name, designation, extra)
+            bodies.append(
+                MajorBody(name, naif_id, parent_id, body_type, designation, extra)
+            )
+
         return bodies
 
     @staticmethod
@@ -143,16 +208,26 @@ class HorizonsDownloader(Downloader):
         row["naif_id"] = naif_id
         return row
 
-    def get_bodies(self, limit: int | None = None) -> tuple[list[tuple[str, str]], int]:
+    def get_bodies(self, limit: int | None = None) -> tuple[list[MajorBody], int]:
         logger.info("Fetching body list...")
         available_bodies = self._fetch_body_list()
         total_available = len(available_bodies)
-        logger.info("%d natural bodies found", total_available)
+        logger.info("%d major bodies found", total_available)
 
         body_list_file = self.out_dir / "body_list.json"
         with body_list_file.open("w") as f:
             json.dump(
-                [{"name": name, "naif_id": int(nid)} for name, nid in available_bodies],
+                [
+                    {
+                        "name": b.name,
+                        "naif_id": b.naif_id,
+                        "parent_naif_id": b.parent_naif_id,
+                        "type": b.type,
+                        "designation": b.designation,
+                        "extra": b.extra,
+                    }
+                    for b in available_bodies
+                ],
                 f,
                 indent=2,
             )
@@ -177,35 +252,40 @@ class HorizonsDownloader(Downloader):
         rows = []
         fieldnames: list[str] | None = None
 
-        meta_fields = ("name", "naif_id", "type", "center", "parent_naif_id")
+        meta_fields = (
+            "name",
+            "naif_id",
+            "type",
+            "center",
+            "parent_naif_id",
+            "designation",
+            "extra",
+        )
 
-        for name, naif_id in tqdm(
+        for body in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            nid = int(naif_id)
-            body_type = _classify_body(nid, name)
-            center, parent_id = _center_for_body(nid)
-
             response = self.client.get(
                 URL,
                 params={
                     **_BASE_PARAMS,
                     "TLIST": epoch_jd,
-                    "CENTER": center,
-                    "COMMAND": f"'{naif_id}'",
+                    "CENTER": f"500@{body.parent_naif_id}",
+                    "COMMAND": f"'{body.naif_id}'",
                 },
             )
             response.raise_for_status()
             payload = response.json()
 
             if "error" in payload:
-                logger.warning("%s (%s): %s", name, naif_id, payload["error"])
+                logger.warning("%s (%s): %s", body.name, body.naif_id, payload["error"])
                 continue
 
-            row = self._parse_elements(payload["result"], name, naif_id)
-            row["type"] = body_type
-            row["center"] = center
-            row["parent_naif_id"] = str(parent_id)
+            row = self._parse_elements(payload["result"], body.name, str(body.naif_id))
+            row["type"] = body.type
+            row["parent_naif_id"] = str(body.parent_naif_id)
+            row["designation"] = body.designation
+            row["extra"] = body.extra
 
             if fieldnames is None:
                 fieldnames = [*meta_fields, *(k for k in row if k not in meta_fields)]

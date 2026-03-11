@@ -21,6 +21,10 @@
 				fetchSatellites()
 			]);
 
+			console.log(
+				`Loaded: ${horizons.length} horizons bodies, ${sbdb.length} small bodies, ${sats.length} satellites`
+			);
+
 			// First pass: compute positions for planets (heliocentric, no parent)
 			const planets = horizons.filter((b) => b.parentNaifId === null && b.a > 0);
 			const planetPositions = new SvelteMap<number, [number, number, number]>();
