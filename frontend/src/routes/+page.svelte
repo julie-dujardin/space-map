@@ -3,7 +3,13 @@
 	import Scene from '../components/Scene.svelte';
 	import { fetchHorizons, fetchSmallBodies, fetchSatellites } from '$lib/csv';
 	import { orbitalElementsToPosition } from '$lib/kepler';
-	import type { HorizonsBody, SmallBody, Satellite, PositionedBody } from '$lib/types';
+	import {
+		BodyType,
+		type HorizonsBody,
+		type SmallBody,
+		type Satellite,
+		type PositionedBody
+	} from '$lib/types';
 	import { SvelteMap } from 'svelte/reactivity';
 
 	let bodies = $state<PositionedBody<HorizonsBody>[]>([]);
@@ -25,45 +31,57 @@
 				`Loaded: ${horizons.length} horizons bodies, ${sbdb.length} small bodies, ${sats.length} satellites`
 			);
 
-			// First pass: compute positions for planets (heliocentric, no parent)
-			const planets = horizons.filter((b) => b.parentNaifId === null && b.a > 0);
-			const planetPositions = new SvelteMap<number, [number, number, number]>();
+			// Position all bodies — parents always appear before children in the list
+			const positions = new SvelteMap<number, [number, number, number]>();
+			positions.set(0, [0, 0, 0]); // Solar System Barycenter
+
+			function getParentPos(parentNaifId: number): [number, number, number] {
+				const pos = positions.get(parentNaifId);
+				if (!pos) throw new Error(`Parent ${parentNaifId} not found`);
+				return pos;
+			}
+
+			const barycenters = new SvelteMap<number, HorizonsBody>();
 			const positioned: PositionedBody<HorizonsBody>[] = [];
-
-			for (const p of planets) {
-				const pos = orbitalElementsToPosition(p);
-				planetPositions.set(p.naifId, pos);
-				positioned.push({ data: p, position: pos });
-			}
-
-			// Second pass: moons — offset from parent planet position
-			const moons = horizons.filter((b) => b.parentNaifId !== null && b.a > 0);
-			for (const m of moons) {
-				const parentPos = planetPositions.get(m.parentNaifId!);
-				if (!parentPos) {
-					console.warn(`Parent body with NAIF ID ${m.parentNaifId} not found for moon ${m.name}`);
-					continue;
+			for (const b of horizons) {
+				const parentPos = getParentPos(b.parentNaifId);
+				const offset: [number, number, number] = b.a > 0 ? orbitalElementsToPosition(b) : [0, 0, 0];
+				const pos: [number, number, number] = [
+					parentPos[0] + offset[0],
+					parentPos[1] + offset[1],
+					parentPos[2] + offset[2]
+				];
+				positions.set(b.naifId, pos);
+				if (b.type === BodyType.BARYCENTER) {
+					barycenters.set(b.naifId, b);
+				} else {
+					positioned.push({
+						data: b,
+						position: pos,
+						orbitElements: barycenters.get(b.parentNaifId) ?? (b.a > 0 ? b : undefined)
+					});
 				}
-				const offset = orbitalElementsToPosition(m);
-				positioned.push({
-					data: m,
-					position: [parentPos[0] + offset[0], parentPos[1] + offset[1], parentPos[2] + offset[2]]
-				});
 			}
-
 			bodies = positioned;
 
+			// Small bodies are heliocentric — offset from Sun position
+			const sunPos = getParentPos(10);
 			smallBodiesList = sbdb
 				.filter((b) => b.e < 1 && b.a > 0)
-				.map((b) => ({
-					data: b,
-					position: orbitalElementsToPosition(b)
-				}));
+				.map((b) => {
+					const offset = orbitalElementsToPosition(b);
+					return {
+						data: b,
+						position: [sunPos[0] + offset[0], sunPos[1] + offset[1], sunPos[2] + offset[2]] as [
+							number,
+							number,
+							number
+						]
+					};
+				});
 
 			satellites = sats;
-
-			// Find Earth's position for satellite marker
-			earthPosition = planetPositions.get(399) ?? [0, 0, 0];
+			earthPosition = getParentPos(399);
 
 			loading = false;
 		} catch (e) {
@@ -78,9 +96,9 @@
 </svelte:head>
 
 {#if loading}
-	<div class="flex items-center justify-center h-screen bg-black text-white">Loading data...</div>
+	<div class="flex items-center justify-center h-screen bg-bg text-text">Loading data...</div>
 {:else if error}
-	<div class="flex items-center justify-center h-screen bg-black text-red-400">Error: {error}</div>
+	<div class="flex items-center justify-center h-screen bg-bg text-text-error">Error: {error}</div>
 {:else}
 	<div class="w-full h-screen">
 		<Scene {bodies} smallBodies={smallBodiesList} {satellites} {earthPosition} />

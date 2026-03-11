@@ -1,0 +1,56 @@
+<script lang="ts">
+	import { T, useTask } from '@threlte/core';
+	import { OrbitControls, interactivity } from '@threlte/extras';
+	import { Vector3 } from 'three';
+	import type { OrbitControls as OrbitControlsType } from 'three/addons/controls/OrbitControls.js';
+	import Body from './Body.svelte';
+	import SmallBodies from './SmallBodies.svelte';
+	import {
+		type HorizonsBody,
+		type SmallBody,
+		type Satellite,
+		type PositionedBody
+	} from '$lib/types';
+
+	interface Props {
+		bodies: PositionedBody<HorizonsBody>[];
+		smallBodies: PositionedBody<SmallBody>[];
+		satellites: Satellite[];
+		earthPosition: [number, number, number];
+	}
+
+	let { bodies, smallBodies }: Props = $props();
+
+	interactivity();
+
+	let controlsRef = $state<OrbitControlsType>();
+	let focusTarget = $state<[number, number, number]>([0, 0, 0]);
+
+	const targetVec = new Vector3();
+
+	useTask(() => {
+		if (!controlsRef) return;
+		targetVec.set(...focusTarget);
+		if (controlsRef.target.distanceToSquared(targetVec) > 0.0001) {
+			controlsRef.target.lerp(targetVec, 0.08);
+			controlsRef.update();
+		}
+	});
+
+	function handleFocus(body: PositionedBody<HorizonsBody>) {
+		console.log('Focus:', body.data.name ?? body.data.designation, body.data.naifId);
+		focusTarget = body.position;
+	}
+</script>
+
+<T.PerspectiveCamera makeDefault position={[0, 30, 30]} fov={60} near={0.0001} far={100000}>
+	<OrbitControls bind:ref={controlsRef} enableDamping />
+</T.PerspectiveCamera>
+
+<T.AmbientLight intensity={0.4} />
+
+{#each bodies as body (body.data.naifId)}
+	<Body {body} onFocus={handleFocus} />
+{/each}
+
+<SmallBodies bodies={smallBodies} />

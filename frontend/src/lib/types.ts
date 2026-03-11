@@ -7,18 +7,20 @@ export interface OrbitalElements {
 	ma: number; // mean anomaly (degrees)
 }
 
-export type BodyType =
-	| 'barycenter'
-	| 'star'
-	| 'planet'
-	| 'dwarf_planet'
-	| 'moon'
-	| 'asteroid'
-	| 'comet'
-	| 'spacecraft';
+export enum BodyType {
+	BARYCENTER = 'barycenter',
+	STAR = 'star',
+	PLANET = 'planet',
+	DWARF_PLANET = 'dwarf_planet',
+	MOON = 'moon',
+	ASTEROID = 'asteroid',
+	COMET = 'comet',
+	SPACECRAFT = 'spacecraft'
+}
 
 export interface HorizonsBody extends OrbitalElements {
-	name: string;
+	name: string | null;
+	designation: string | null;
 	naifId: number;
 	type: BodyType;
 	parentNaifId: number; // NAIF ID of parent (0 = SSB, 1-9 = planet barycenter)
@@ -42,4 +44,6 @@ export interface Satellite {
 export interface PositionedBody<T> {
 	data: T;
 	position: [number, number, number];
+	/** Orbital elements to use for drawing the orbit (may differ from data's own elements, e.g. barycenter elements for planets) */
+	orbitElements?: OrbitalElements;
 }

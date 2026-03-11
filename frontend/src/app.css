@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 
+@theme {
+	--color-bg: #ffffff;
+	--color-text: #1a1a1a;
+	--color-text-error: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-bg: #000000;
+		--color-text: #ffffff;
+		--color-text-error: #f87171;
+	}
+}
+
 html,
 body {
 	margin: 0;

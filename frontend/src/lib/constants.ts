@@ -1,7 +1,16 @@
 /** 1 AU = this many Three.js units */
 export const AU_SCALE = 10;
 
+/** 1 AU in km */
+const AU_KM = 149_597_870.7;
+
+/** Convert km to scene units */
+export function kmToScene(km: number): number {
+	return (km / AU_KM) * AU_SCALE;
+}
+
 export const PLANET_COLORS: Record<string, string> = {
+	Sun: '#ffdd44',
 	Mercury: '#b5b5b5',
 	Venus: '#e8cda0',
 	Earth: '#4da6ff',
@@ -16,20 +25,23 @@ export const PLANET_COLORS: Record<string, string> = {
 	Pluto: '#deb887'
 };
 
-export const PLANET_RADII: Record<string, number> = {
-	Mercury: 0.12,
-	Venus: 0.22,
-	Earth: 0.22,
-	Moon: 0.06,
-	Mars: 0.18,
-	Phobos: 0.04,
-	Deimos: 0.04,
-	Jupiter: 0.4,
-	Saturn: 0.35,
-	Uranus: 0.3,
-	Neptune: 0.3,
-	Pluto: 0.1
+/** Real mean volumetric radii in km */
+export const BODY_RADII_KM: Record<string, number> = {
+	Sun: 696_340,
+	Mercury: 2_439.7,
+	Venus: 6_051.8,
+	Earth: 6_371,
+	Moon: 1_737.4,
+	Mars: 3_389.5,
+	Phobos: 11.267,
+	Deimos: 6.2,
+	Jupiter: 69_911,
+	Saturn: 58_232,
+	Uranus: 25_362,
+	Neptune: 24_622,
+	Pluto: 1_188.3
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';
-export const DEFAULT_BODY_RADIUS = 0.1;
+/** Default radius for unknown bodies, in km */
+export const DEFAULT_BODY_RADIUS_KM = 100;

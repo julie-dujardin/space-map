@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import type { HorizonsBody, SmallBody, Satellite } from './types';
+import { type HorizonsBody, type SmallBody, type Satellite, BodyType } from './types';
 
 async function fetchCSV<T extends Record<string, unknown>>(path: string): Promise<T[]> {
 	const res = await fetch(path);
@@ -11,9 +11,11 @@ async function fetchCSV<T extends Record<string, unknown>>(path: string): Promis
 export async function fetchHorizons(): Promise<HorizonsBody[]> {
 	const rows = await fetchCSV<Record<string, unknown>>('/data/horizons/bodies.csv');
 	return rows.map((r) => ({
-		name: String(r['name']),
+		name: r['name'] ? String(r['name']) : null,
+		designation: r['designation'] ? String(r['designation']) : null,
 		naifId: Number(r['naif_id']),
-		parentNaifId: r['parent_naif_id'] ? Number(r['parent_naif_id']) : null,
+		type: String(r['type']) as BodyType,
+		parentNaifId: Number(r['parent_naif_id'] ?? 0),
 		a: Number(r['A']),
 		e: Number(r['EC']),
 		i: Number(r['IN']),
