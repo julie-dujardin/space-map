@@ -24,7 +24,7 @@ _BASE_PARAMS = {
     "REF_PLANE": "ECLIPTIC",
     "REF_SYSTEM": "J2000",
 }
-DROP_PREFIX = ("(primary body)", "(spacecraft)")
+DROP_PREFIX = ("(primary body)", "(spacecraft)", "(Spacecraft)", "(system barycenter)")
 
 
 class BodyType(StrEnum):
@@ -203,8 +203,11 @@ class HorizonsDownloader(Downloader):
             extra = line[extra_start:].strip() or None
             body_type, parent_id = _classify_body(naif_id, name, designation, extra)
 
-            for prefix in DROP_PREFIX:
-                name = name.removeprefix(prefix).strip()
+            for suffix in DROP_PREFIX:
+                name = name.removesuffix(suffix).strip()
+            # Drop unterminated parenthesis from column overflow
+            # e.g. "Hubble Space Telescope (spacecraft" -> "Hubble Space Telescope"
+            name = re.sub(r"\s*\([^)]*$", "", name)
             bodies.append(
                 MajorBody(name, naif_id, parent_id, body_type, designation, extra)
             )
