@@ -287,8 +287,6 @@ class HorizonsDownloader(Downloader):
         out_file = self.out_dir / "bodies.csv"
 
         available_bodies, total_available = self.get_bodies(limit=limit)
-        rows = []
-        fieldnames: list[str] | None = None
 
         meta_fields = (
             "name",
@@ -300,10 +298,28 @@ class HorizonsDownloader(Downloader):
             "extra",
         )
 
+        # Load already-downloaded bodies from a previous (possibly partial) run
+        existing: dict[str, dict] = {}
+        fieldnames: list[str] | None = None
+        if out_file.exists():
+            with out_file.open(newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = list(reader.fieldnames) if reader.fieldnames else None
+                for row in reader:
+                    existing[row["naif_id"]] = row
+            if existing:
+                logger.info("Loaded %d already-downloaded bodies", len(existing))
+
+        new_rows: dict[str, dict] = {}
+        skipped = 0
+
         for body in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            if body.type == BodyType.LAGRANGE_POINT:
+            if body.type == BodyType.LAGRANGE_POINT or body.naif_id == 0:
+                continue
+            if str(body.naif_id) in existing:
+                skipped += 1
                 continue
             response = self.client.get(
                 URL,
@@ -330,8 +346,19 @@ class HorizonsDownloader(Downloader):
             if fieldnames is None:
                 fieldnames = [*meta_fields, *(k for k in row if k not in meta_fields)]
 
-            rows.append(row)
+            new_rows[str(body.naif_id)] = row
             time.sleep(0.5)
+
+        if skipped:
+            logger.info("Skipped %d already-downloaded bodies", skipped)
+
+        # Merge existing + new, ordered by the body list
+        all_data = existing | new_rows
+        rows = [
+            all_data[str(b.naif_id)]
+            for b in available_bodies
+            if str(b.naif_id) in all_data
+        ]
 
         if fieldnames and rows:
             with out_file.open("w", newline="") as f:
