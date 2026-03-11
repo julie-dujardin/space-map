@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from datetime import date
+from enum import StrEnum
 
 from tqdm import tqdm
 
@@ -12,8 +13,6 @@ from . import Downloader
 logger = logging.getLogger(__name__)
 
 URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
-
-_SKIP_NAME_FRAGMENTS = ("Barycenter", "L1", "L2", "L3", "L4", "L5", "Lagrange")
 
 _BASE_PARAMS = {
     "format": "json",
@@ -27,28 +26,71 @@ _BASE_PARAMS = {
 }
 
 
+class BodyType(StrEnum):
+    BARYCENTER = "barycenter"
+    STAR = "star"
+    PLANET = "planet"
+    DWARF_PLANET = "dwarf_planet"
+    MOON = "moon"
+    ASTEROID = "asteroid"
+    COMET = "comet"
+    SPACECRAFT = "spacecraft"
+
+
+# Sort priority for output ordering (barycenters first)
+_TYPE_SORT_ORDER = {
+    BodyType.BARYCENTER: 0,
+    BodyType.STAR: 1,
+    BodyType.PLANET: 2,
+    BodyType.DWARF_PLANET: 3,
+    BodyType.MOON: 4,
+    BodyType.ASTEROID: 5,
+    BodyType.COMET: 6,
+    BodyType.SPACECRAFT: 7,
+}
+
+
 def _date_to_jd(d: date) -> str:
     """Convert a date to a Julian Date string."""
     return f"{d.toordinal() + 1721424.5:.1f}"
 
 
-def _center_for_body(naif_id: int) -> tuple[str, int | None]:
+def _classify_body(naif_id: int, name: str) -> BodyType:
+    """Classify a body by its NAIF ID and name."""
+    if 1 <= naif_id <= 9:
+        return BodyType.BARYCENTER
+    if naif_id == 10:
+        return BodyType.STAR
+    if 100 <= naif_id <= 999:
+        if naif_id % 100 == 99:
+            return BodyType.DWARF_PLANET if naif_id == 999 else BodyType.PLANET
+        return BodyType.MOON
+    if "barycenter" in name.lower():
+        return BodyType.BARYCENTER
+    if 90_000_000 <= naif_id < 99_000_000:
+        return BodyType.COMET
+    if naif_id >= 99_000_000:
+        return BodyType.SPACECRAFT
+    return BodyType.ASTEROID
+
+
+def _center_for_body(naif_id: int) -> tuple[str, int]:
     """Return (CENTER param, parent_naif_id) for a body.
 
-    Planets (x99) and bodies < 1000 with id ending in 99 → heliocentric (Sun).
-    Moons (x01-x98) → centered on their parent planet (x99).
+    Everything is ultimately relative to the Solar System Barycenter (SSB).
+    Bodies within a planetary system (100–999) are relative to their planet barycenter.
     """
-    if naif_id >= 100 and naif_id < 1000 and naif_id % 100 != 99:
-        parent_id = (naif_id // 100) * 100 + 99
-        return f"500@{parent_id}", parent_id
-    return "500@10", None
+    if 100 <= naif_id <= 999:
+        planet_bc = naif_id // 100
+        return f"500@{planet_bc}", planet_bc
+    return "500@0", 0
 
 
 class HorizonsDownloader(Downloader):
     name = "horizons"
 
     def _fetch_body_list(self) -> list[tuple[str, str]]:
-        """Return (name, naif_id) for all natural solar system bodies."""
+        """Return (name, naif_id) for all major bodies, sorted by type then ID."""
         response = self.client.get(
             URL,
             params={
@@ -66,13 +108,18 @@ class HorizonsDownloader(Downloader):
             m = re.match(r"^\s*(-?\d+)\s{2,}(\S.*?)(?:\s{3,}.*)?$", line)
             if not m:
                 continue
-            naif_id, name = m.group(1), m.group(2).strip()
-            if int(naif_id) < 100:
-                continue
-            if any(frag in name for frag in _SKIP_NAME_FRAGMENTS):
-                continue
-            bodies.append((name, naif_id))
+            naif_id_str, name = m.group(1), m.group(2).strip()
+            naif_id = int(naif_id_str)
+            if naif_id <= 0:
+                continue  # skip SSB (origin) and negative alternate IDs
+            bodies.append((name, naif_id_str))
 
+        bodies.sort(
+            key=lambda b: (
+                _TYPE_SORT_ORDER.get(_classify_body(int(b[1]), b[0]), 99),
+                int(b[1]),
+            )
+        )
         return bodies
 
     @staticmethod
@@ -116,7 +163,9 @@ class HorizonsDownloader(Downloader):
             return available_bodies[:limit], total_available
         return available_bodies, total_available
 
-    def download(self, limit: int | None = None, epoch: date | None = None, **kwargs: object) -> None:
+    def download(
+        self, limit: int | None = None, epoch: date | None = None, **kwargs: object
+    ) -> None:
         if epoch is None:
             epoch = date.today()
         epoch_jd = _date_to_jd(epoch)
@@ -128,10 +177,15 @@ class HorizonsDownloader(Downloader):
         rows = []
         fieldnames: list[str] | None = None
 
+        meta_fields = ("name", "naif_id", "type", "center", "parent_naif_id")
+
         for name, naif_id in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            center, parent_id = _center_for_body(int(naif_id))
+            nid = int(naif_id)
+            body_type = _classify_body(nid, name)
+            center, parent_id = _center_for_body(nid)
+
             response = self.client.get(
                 URL,
                 params={
@@ -149,15 +203,12 @@ class HorizonsDownloader(Downloader):
                 continue
 
             row = self._parse_elements(payload["result"], name, naif_id)
+            row["type"] = body_type
             row["center"] = center
-            row["parent_naif_id"] = str(parent_id) if parent_id else ""
+            row["parent_naif_id"] = str(parent_id)
 
             if fieldnames is None:
-                fieldnames = ["name", "naif_id", "center", "parent_naif_id"] + [
-                    k
-                    for k in row
-                    if k not in ("name", "naif_id", "center", "parent_naif_id")
-                ]
+                fieldnames = [*meta_fields, *(k for k in row if k not in meta_fields)]
 
             rows.append(row)
             time.sleep(0.5)
@@ -172,5 +223,9 @@ class HorizonsDownloader(Downloader):
             "Saved %d bodies -> %s", len(rows), out_file.relative_to(self.out_dir)
         )
         self._save_metadata(
-            URL, len(rows), complete=len(rows) == total_available, epoch=epoch.isoformat(), epoch_jd=epoch_jd
+            URL,
+            len(rows),
+            complete=len(rows) == total_available,
+            epoch=epoch.isoformat(),
+            epoch_jd=epoch_jd,
         )

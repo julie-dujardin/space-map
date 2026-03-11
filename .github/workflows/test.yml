@@ -35,3 +35,5 @@ jobs:
         run: cd frontend && pnpm install --frozen-lockfile
 
       - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --stage manual

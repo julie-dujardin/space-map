@@ -7,10 +7,21 @@ export interface OrbitalElements {
 	ma: number; // mean anomaly (degrees)
 }
 
+export type BodyType =
+	| 'barycenter'
+	| 'star'
+	| 'planet'
+	| 'dwarf_planet'
+	| 'moon'
+	| 'asteroid'
+	| 'comet'
+	| 'spacecraft';
+
 export interface HorizonsBody extends OrbitalElements {
 	name: string;
 	naifId: number;
-	parentNaifId: number | null; // null = heliocentric, number = parent-relative (moon)
+	type: BodyType;
+	parentNaifId: number; // NAIF ID of parent (0 = SSB, 1-9 = planet barycenter)
 }
 
 export interface SmallBody extends OrbitalElements {
