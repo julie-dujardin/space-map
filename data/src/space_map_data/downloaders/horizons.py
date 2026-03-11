@@ -303,6 +303,8 @@ class HorizonsDownloader(Downloader):
         for body in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
+            if body.type == BodyType.LAGRANGE_POINT:
+                continue
             response = self.client.get(
                 URL,
                 params={
