@@ -77,25 +77,33 @@ def _classify_body(
     """
     if naif_id < 0:
         return BodyType.SPACECRAFT, 0
+
     if 1 <= naif_id <= 9 or "barycenter" in name.lower():
         # Planetary & asteroid system barycenters
         return BodyType.BARYCENTER, 0
+
     if naif_id == 10:
         # The Sun
         return BodyType.STAR, 0
+
     if 100 <= naif_id <= 999:
         # Planets (P99) and moons (PNN), parent = planet barycenter P
         barycenter = naif_id // 100
         if naif_id % 100 == 99:  # Planet
             if naif_id == 999:  # rip pluto
                 return BodyType.DWARF_PLANET, barycenter
+            if naif_id < 300:
+                # mercury, venus: no moons, barycenter = planet, target cystem barycenter instead
+                return BodyType.PLANET, 0
             return BodyType.PLANET, barycenter
         return BodyType.MOON, barycenter
     if 10_000 <= naif_id < 100_000:
         # Extended moon IDs: PXNNN (e.g. 65088 = 2004S17)
         return BodyType.MOON, naif_id // 10_000
+
     if extra and "lagrange" in extra.lower():
         return BodyType.LAGRANGE_POINT, 0
+
     if 1_000_000 <= naif_id < 2_000_000:
         return BodyType.COMET, 0
     if 2_000_000 <= naif_id < 10_000_000:
@@ -114,14 +122,17 @@ def _classify_body(
             return BodyType.ASTEROID, barycenter_id
         # Satellite
         return BodyType.MOON, barycenter_id
+
     if "spacecraft" in name.lower():
         return BodyType.SPACECRAFT, 0
     if 990_000 <= naif_id < 1_000_000:
         # WT1190F
         return BodyType.DEBRIS, 0
+
     if 20_000_000 <= naif_id < 100_000_000:
-        # 20152830: no idea
+        # 20152830...: no idea
         return BodyType.ASTEROID, 0
+
     raise ValueError(
         f"Could not classify body with NAIF ID {naif_id} and name '{name}'"
     )
