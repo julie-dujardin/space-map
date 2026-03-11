@@ -1,6 +1,5 @@
 """Space-map data downloader"""
 
-import json
 import logging
 import logging.config
 import tomllib
@@ -8,6 +7,7 @@ from pathlib import Path
 
 import httpx
 
+from .downloaders import Downloader
 from .downloaders.celestrak import CelesTrakDownloader
 from .downloaders.horizons import HorizonsDownloader
 from .downloaders.sbdb import SBDBDownloader
@@ -16,33 +16,22 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).resolve().parents[2]
 DOWNLOAD_DIR = DATA_DIR / "downloads"
-METADATA_FILE = DOWNLOAD_DIR / "metadata.json"
 USER_AGENT = "space-map/0.1 (github personal project)"
 
-SOURCES = {
+SOURCES: dict[str, tuple[type[Downloader], Path]] = {
     "celestrak": (CelesTrakDownloader, DOWNLOAD_DIR / "celes-trak"),
     "sbdb": (SBDBDownloader, DOWNLOAD_DIR / "sbdb"),
     "horizons": (HorizonsDownloader, DOWNLOAD_DIR / "horizons"),
 }
 
 
-def update_metadata(results: dict) -> None:
-    existing = {}
-    if METADATA_FILE.exists():
-        existing = json.loads(METADATA_FILE.read_text())
-    existing.update(results)
-    METADATA_FILE.write_text(json.dumps(existing, indent=2))
-    logger.info("Metadata written -> metadata.json")
-
-
 def download_sources(
     sources: list[str] | None = None,
     limit: int | None = 50_000,
-) -> dict:
-    """Download data from the given sources (default: all).
-
-    Returns a dict of {source_name: metadata} for each downloaded source.
-    """
+    *,
+    force: bool = False,
+) -> None:
+    """Download data from the given sources (default: all)."""
     DOWNLOAD_DIR.mkdir(exist_ok=True)
     selected = list(SOURCES.keys()) if sources is None else sources
 
@@ -51,15 +40,13 @@ def download_sources(
         follow_redirects=True,
         timeout=60.0,
     ) as client:
-        results = {}
         for name in selected:
             cls, out_dir = SOURCES[name]
             downloader = cls(client, out_dir)
-            results[name] = downloader.download(limit=limit)
-
-        update_metadata(results)
-
-    return results
+            if not force and downloader.is_complete(limit):
+                logger.info("Skipping %s (already complete)", name)
+                continue
+            downloader.download(limit=limit)
 
 
 def cli() -> None:
@@ -88,13 +75,18 @@ def cli() -> None:
         const=None,
         help="Remove the row limit and download everything",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even if data is already complete",
+    )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
     sources = None if "all" in args.sources else args.sources
-    download_sources(sources=sources, limit=args.limit)
+    download_sources(sources=sources, limit=args.limit, force=args.force)
     logger.info("Done.")
 
 

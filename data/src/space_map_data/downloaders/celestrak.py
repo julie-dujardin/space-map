@@ -11,7 +11,7 @@ URL = "https://celestrak.org/NORAD/elements/gp.php"
 class CelesTrakDownloader(Downloader):
     name = "celestrak"
 
-    def download(self, limit: int | None = None) -> dict:
+    def download(self, limit: int | None = None) -> None:
         out_file = self.out_dir / "gp-active.csv"
         url = f"{URL}?GROUP=active&FORMAT=csv"
 
@@ -24,7 +24,7 @@ class CelesTrakDownloader(Downloader):
 
         response.raise_for_status()
 
-        # Limit is ignored, celestrak always return everything.
+        # Limit is ignored, celestrak always returns everything.
         out_file.write_bytes(response.content)
         record_count = response.text.count("\n") - 1
 
@@ -33,4 +33,4 @@ class CelesTrakDownloader(Downloader):
             f"{record_count:,}",
             out_file.relative_to(self.out_dir),
         )
-        return self._metadata(url, record_count)
+        self._save_metadata(url, record_count, complete=True)

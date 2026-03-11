@@ -94,32 +94,35 @@ class HorizonsDownloader(Downloader):
         row["naif_id"] = naif_id
         return row
 
-    def download(self, limit: int | None = None) -> dict:
+    def download(self, limit: int | None = None) -> None:
         out_file = self.out_dir / "bodies.csv"
 
         body_list_file = self.out_dir / "body_list.json"
 
         logger.info("Fetching body list...")
-        bodies = self._fetch_body_list()
-        logger.info("%d natural bodies found", len(bodies))
+        available_bodies = self._fetch_body_list()
+        total_available = len(available_bodies)
+        logger.info("%d natural bodies found", total_available)
 
         with body_list_file.open("w") as f:
             json.dump(
-                [{"name": name, "naif_id": int(nid)} for name, nid in bodies],
+                [{"name": name, "naif_id": int(nid)} for name, nid in available_bodies],
                 f,
                 indent=2,
             )
         logger.info("Saved body list -> %s", body_list_file.relative_to(self.out_dir))
 
-        if limit is not None:
-            bodies = bodies[:limit]
+        if limit is not None and limit < total_available:
+            available_bodies = available_bodies[:limit]
             logger.info("Limiting to %d bodies", limit)
+        else:
+            limit = None  # downloading everything available
 
         rows = []
         fieldnames: list[str] | None = None
 
         for name, naif_id in tqdm(
-            bodies, desc="Horizons", unit="body", dynamic_ncols=True
+            available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
             center, parent_id = _center_for_body(int(naif_id))
             response = self.client.get(
@@ -160,4 +163,6 @@ class HorizonsDownloader(Downloader):
         logger.info(
             "Saved %d bodies -> %s", len(rows), out_file.relative_to(self.out_dir)
         )
-        return self._metadata(URL, len(rows), epoch_jd=EPOCH)
+        self._save_metadata(
+            URL, len(rows), complete=len(rows) == total_available, epoch_jd=EPOCH
+        )
