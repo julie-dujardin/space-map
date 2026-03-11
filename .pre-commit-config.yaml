@@ -11,18 +11,19 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.12
+    rev: v0.15.5
     hooks:
-      - id: ruff
-        args: [--fix]
+      - id: ruff-check
         files: ^data/
+        name: ruff check (data)
       - id: ruff-format
         files: ^data/
+        name: ruff format (data)
 
   - repo: local
     hooks:
       - id: ty
-        name: ty check
+        name: ty check (data)
         entry: bash -c 'cd data && uv run ty check .'
         language: system
         pass_filenames: false
