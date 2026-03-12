@@ -20,18 +20,16 @@
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
+		// Start all fetches immediately (network in parallel)
+		const horizonsPromise = fetchHorizons();
+		const smallBodiesPromise = fetchSmallBodies();
+		const satellitesPromise = fetchSatellites();
+
 		try {
-			const [horizons, sbdb, sats] = await Promise.all([
-				fetchHorizons(),
-				fetchSmallBodies(),
-				fetchSatellites()
-			]);
+			// Phase 1: await and process horizons (critical path)
+			const horizons = await horizonsPromise;
+			console.log(`Loaded: ${horizons.length} horizons bodies`);
 
-			console.log(
-				`Loaded: ${horizons.length} horizons bodies, ${sbdb.length} small bodies, ${sats.length} satellites`
-			);
-
-			// Position all bodies — parents always appear before children in the list
 			const positions = new SvelteMap<number, [number, number, number]>();
 			positions.set(0, [0, 0, 0]); // Solar System Barycenter
 
@@ -55,35 +53,51 @@
 				if (b.type === BodyType.BARYCENTER) {
 					barycenters.set(b.naifId, b);
 				} else {
+					const isMoon = b.type === BodyType.MOON;
 					positioned.push({
 						data: b,
 						position: pos,
-						orbitElements: barycenters.get(b.parentNaifId) ?? (b.a > 0 ? b : undefined)
+						orbitElements: isMoon
+							? b.a > 0
+								? b
+								: undefined
+							: (barycenters.get(b.parentNaifId) ?? (b.a > 0 ? b : undefined)),
+						orbitCenter: isMoon ? parentPos : undefined
 					});
 				}
 			}
 			bodies = positioned;
-
-			// Small bodies are heliocentric — offset from Sun position
-			const sunPos = getParentPos(10);
-			smallBodiesList = sbdb
-				.filter((b) => b.e < 1 && b.a > 0)
-				.map((b) => {
-					const offset = orbitalElementsToPosition(b);
-					return {
-						data: b,
-						position: [sunPos[0] + offset[0], sunPos[1] + offset[1], sunPos[2] + offset[2]] as [
-							number,
-							number,
-							number
-						]
-					};
-				});
-
-			satellites = sats;
 			earthPosition = getParentPos(399);
+			loading = false; // Scene renders now
 
-			loading = false;
+			// Phase 2: secondary data (non-blocking)
+			const sunPos = getParentPos(10);
+
+			smallBodiesPromise
+				.then((sbdb) => {
+					console.log(`Loaded: ${sbdb.length} small bodies`);
+					smallBodiesList = sbdb
+						.filter((b) => b.e < 1 && b.a > 0)
+						.map((b) => {
+							const offset = orbitalElementsToPosition(b);
+							return {
+								data: b,
+								position: [sunPos[0] + offset[0], sunPos[1] + offset[1], sunPos[2] + offset[2]] as [
+									number,
+									number,
+									number
+								]
+							};
+						});
+				})
+				.catch((e) => console.warn('Failed to load small bodies:', e));
+
+			satellitesPromise
+				.then((sats) => {
+					console.log(`Loaded: ${sats.length} satellites`);
+					satellites = sats;
+				})
+				.catch((e) => console.warn('Failed to load satellites:', e));
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			loading = false;

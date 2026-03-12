@@ -24,7 +24,9 @@
 	interactivity();
 
 	let controlsRef = $state<OrbitControlsType>();
-	let focusTarget = $state<[number, number, number]>([0, 0, 0]);
+
+	const sunBody = bodies.find((b) => b.data.naifId === 10);
+	let focusTarget = $state<[number, number, number]>(sunBody?.position ?? [0, 0, 0]);
 
 	const targetVec = new Vector3();
 
@@ -53,4 +55,6 @@
 	<Body {body} onFocus={handleFocus} />
 {/each}
 
-<SmallBodies bodies={smallBodies} />
+{#if smallBodies.length > 0}
+	<SmallBodies bodies={smallBodies} />
+{/if}

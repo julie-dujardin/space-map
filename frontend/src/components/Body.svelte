@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
-	import { HTML } from '@threlte/extras';
 	import { BodyType, type HorizonsBody, type PositionedBody } from '$lib/types';
 	import {
 		PLANET_COLORS,
@@ -23,6 +22,7 @@
 	const color = PLANET_COLORS[name] ?? DEFAULT_BODY_COLOR;
 	const radius = kmToScene(BODY_RADII_KM[name] ?? DEFAULT_BODY_RADIUS_KM);
 	const isStar = body.data.type === BodyType.STAR;
+	const drawHalo = [BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(body.data.type);
 </script>
 
 <T.Group position={body.position}>
@@ -39,22 +39,11 @@
 		{/if}
 	</T.Mesh>
 
-	{#if [BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(body.data.type)}
-		<Halo {color} onclick={() => onFocus?.(body)} />
-	{/if}
-
-	{#if [BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(body.data.type)}
-		<HTML center pointerEvents="none" position.y={0}>
-			<span
-				class="text-white text-xs whitespace-nowrap select-none"
-				style="text-shadow: 0 0 4px black"
-			>
-				{body.data.name ?? body.data.designation}
-			</span>
-		</HTML>
+	{#if drawHalo}
+		<Halo {color} {name} onclick={() => onFocus?.(body)} />
 	{/if}
 </T.Group>
 
-{#if body.orbitElements && [BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(body.data.type)}
-	<OrbitLine elements={body.orbitElements} {color} />
+{#if body.orbitElements && drawHalo}
+	<OrbitLine elements={body.orbitElements} {color} center={body.orbitCenter} />
 {/if}

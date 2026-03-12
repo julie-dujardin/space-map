@@ -46,4 +46,6 @@ export interface PositionedBody<T> {
 	position: [number, number, number];
 	/** Orbital elements to use for drawing the orbit (may differ from data's own elements, e.g. barycenter elements for planets) */
 	orbitElements?: OrbitalElements;
+	/** World-space center of the orbit (parent position). Defaults to origin. */
+	orbitCenter?: [number, number, number];
 }
