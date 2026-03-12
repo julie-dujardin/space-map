@@ -7,6 +7,7 @@ const dataTarget = process.env.DATA_SERVER_URL ?? 'http://localhost:8080';
 export default defineConfig({
 	plugins: [sveltekit(), tailwindcss()],
 	server: {
+		host: '0.0.0.0',
 		proxy: {
 			'/data': {
 				target: dataTarget,
