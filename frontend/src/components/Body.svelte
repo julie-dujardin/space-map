@@ -31,13 +31,13 @@
 	const majorBody =
 		isHorizons &&
 		[BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(horizonsData!.type);
-	const drawHalo = majorBody || isSpacecraft;
+	const drawHalo = majorBody;
 	const haloVariant: 'major' | 'minor' | 'spacecraft' = majorBody
 		? 'major'
 		: isSpacecraft
 			? 'spacecraft'
 			: 'minor';
-	const drawTrail = majorBody;
+	const drawTrail = majorBody && horizonsData?.type !== BodyType.STAR;
 </script>
 
 <T.Group position={body.position}>

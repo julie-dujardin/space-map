@@ -46,7 +46,11 @@
 			const positioned: PositionedBody<HorizonsBody>[] = [];
 			for (const b of horizons) {
 				const parentPos = getParentPos(b.parentNaifId);
-				const offset: [number, number, number] = b.a > 0 ? orbitalElementsToPosition(b) : [0, 0, 0];
+				if (b.a <= 0) {
+					// Skip invalid orbits (some probes with no elements like voyagers)
+					continue;
+				}
+				const offset: [number, number, number] = orbitalElementsToPosition(b);
 				const pos: [number, number, number] = [
 					parentPos[0] + offset[0],
 					parentPos[1] + offset[1],
