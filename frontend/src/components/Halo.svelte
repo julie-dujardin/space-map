@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { T } from '@threlte/core';
-	import { CanvasTexture } from 'three';
+	import { T, useTask } from '@threlte/core';
+	import { CanvasTexture, type Sprite } from 'three';
 
 	interface Props {
 		color: string;
@@ -14,12 +14,13 @@
 		col: string,
 		label: string
 	): { texture: CanvasTexture; aspect: number; centerX: number } {
-		const ringSize = 128;
+		const ringSize = 96;
+		const labelFont = 'bold 36px sans-serif';
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d')!;
 
 		// Measure label to determine canvas width
-		ctx.font = 'bold 36px sans-serif';
+		ctx.font = labelFont;
 		const textWidth = ctx.measureText(label).width;
 		const width = ringSize + 16 + textWidth + 16;
 		const height = ringSize;
@@ -44,7 +45,7 @@
 		ctx.stroke();
 
 		// Label text
-		ctx.font = 'bold 36px sans-serif';
+		ctx.font = labelFont;
 		ctx.fillStyle = 'white';
 		ctx.shadowColor = 'black';
 		ctx.shadowBlur = 6;
@@ -58,11 +59,43 @@
 	}
 
 	const { texture, aspect, centerX } = createHaloTexture(color, name);
-	const spriteHeight = 0.03;
-	const spriteWidth = spriteHeight * aspect;
+	const baseHeight = 0.03;
+	const hoverScale = 1.15;
 	const center: [number, number] = [centerX, 0.5];
+
+	let spriteRef = $state<Sprite>();
+	let hovered = false;
+	let currentScale = 1;
+
+	useTask(() => {
+		if (!spriteRef) return;
+		const target = hovered ? hoverScale : 1;
+		if (Math.abs(target - currentScale) > 0.001) {
+			currentScale += (target - currentScale) * 0.15;
+		} else {
+			currentScale = target;
+		}
+		spriteRef.scale.set(baseHeight * aspect * currentScale, baseHeight * currentScale, 1);
+	});
+
+	function onpointerenter() {
+		hovered = true;
+		document.body.style.cursor = 'pointer';
+	}
+
+	function onpointerleave() {
+		hovered = false;
+		document.body.style.cursor = '';
+	}
 </script>
 
-<T.Sprite scale={[spriteWidth, spriteHeight, 1]} {center} {onclick}>
+<T.Sprite
+	bind:ref={spriteRef}
+	scale={[baseHeight * aspect, baseHeight, 1]}
+	{center}
+	{onclick}
+	{onpointerenter}
+	{onpointerleave}
+>
 	<T.SpriteMaterial map={texture} transparent sizeAttenuation={false} depthTest={false} />
 </T.Sprite>
