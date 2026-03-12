@@ -87,7 +87,8 @@
 			);
 			urlSync.sync({
 				bodyName: focusedBodyName,
-				date: 'now',
+				date: initialView.date,
+				isNow: initialView.isNow,
 				latitude,
 				longitude,
 				zoom: distance
@@ -104,7 +105,7 @@
 	// Handle browser back/forward
 	$effect(() => {
 		const onPopState = () => {
-			const parsed = parseUrl(window.location.pathname + window.location.search);
+			const parsed = parseUrl();
 			if (!parsed) return;
 			const body = bodies.find(
 				(b) => (b.data.name ?? '').toLowerCase() === parsed.bodyName.toLowerCase()

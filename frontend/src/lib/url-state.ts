@@ -6,7 +6,8 @@ const RAD = PI / 180;
 
 export interface MapViewState {
 	bodyName: string;
-	date: string;
+	date: Date;
+	isNow: boolean;
 	latitude: number;
 	longitude: number;
 	zoom: number;
@@ -14,7 +15,8 @@ export interface MapViewState {
 
 export const DEFAULT_VIEW: MapViewState = {
 	bodyName: 'Sun',
-	date: 'now',
+	date: new Date(),
+	isNow: true,
 	latitude: 45,
 	longitude: 0,
 	zoom: 42.43
@@ -31,22 +33,26 @@ export function parseUrl(): MapViewState | null {
 	if (!at) return defaults;
 
 	const parts = at.split(',');
-	const date = parts[0] || 'now';
-	if (parts.length < 4) return { ...defaults, date };
+	const isNow = !parts[0] || parts[0] === 'now';
+	const parsed = isNow ? new Date() : new Date(parts[0]);
+	const date = isNaN(parsed.getTime()) ? new Date() : parsed;
+	if (parts.length < 4) return { ...defaults, date, isNow };
 
 	const latitude = Number(parts[1]);
 	const longitude = Number(parts[2]);
 	const zoom = Number(parts[3]);
 
-	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom)) return { ...defaults, date };
+	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom))
+		return { ...defaults, date, isNow };
 
-	return { bodyName, date, latitude, longitude, zoom };
+	return { bodyName, date, isNow, latitude, longitude, zoom };
 }
 
 /** Produce `/b/<body>?at=<date>,<lat>,<lon>,<zoom>` */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
-	const at = `${state.date},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
+	const dateStr = state.isNow ? 'now' : state.date.toISOString();
+	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
 	return `/b/${encodeURIComponent(state.bodyName)}?at=${at}`;
 }
 

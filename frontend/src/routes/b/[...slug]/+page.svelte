@@ -50,7 +50,7 @@
 					// Skip invalid orbits (some probes with no elements like voyagers)
 					continue;
 				}
-				const offset: [number, number, number] = orbitalElementsToPosition(b);
+				const offset: [number, number, number] = orbitalElementsToPosition(b, initialView.date);
 				const pos: [number, number, number] = [
 					parentPos[0] + offset[0],
 					parentPos[1] + offset[1],
@@ -86,7 +86,7 @@
 					smallBodiesList = sbdb
 						.filter((b) => b.e < 1 && b.a > 0)
 						.map((b) => {
-							const offset = orbitalElementsToPosition(b);
+							const offset = orbitalElementsToPosition(b, initialView.date);
 							return {
 								data: b,
 								position: [sunPos[0] + offset[0], sunPos[1] + offset[1], sunPos[2] + offset[2]] as [
