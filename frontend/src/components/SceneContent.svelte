@@ -35,12 +35,14 @@
 		targetVec.set(...focusTarget);
 		if (controlsRef.target.distanceToSquared(targetVec) > 0.0001) {
 			controlsRef.target.lerp(targetVec, 0.08);
-			controlsRef.update();
+		} else {
+			controlsRef.target.copy(targetVec);
 		}
+		controlsRef.update();
 	});
 
 	function handleFocus(body: PositionedBody<HorizonsBody>) {
-		console.log('Focus:', body.data.name ?? body.data.designation, body.data.naifId);
+		console.log('Focus:', body.data.name ?? body.data.designation, body.data.naifId, body.position);
 		focusTarget = body.position;
 	}
 </script>
