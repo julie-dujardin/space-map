@@ -4,7 +4,9 @@ export interface OrbitalElements {
 	i: number; // inclination (degrees)
 	om: number; // longitude of ascending node (degrees)
 	w: number; // argument of perihelion (degrees)
-	ma: number; // mean anomaly (degrees)
+	ma: number; // mean anomaly at epoch (degrees)
+	n: number; // mean motion (degrees/day)
+	epoch: number; // epoch (Julian Date)
 }
 
 export enum BodyType {

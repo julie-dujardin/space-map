@@ -21,7 +21,9 @@ export async function fetchHorizons(): Promise<HorizonsBody[]> {
 		i: Number(r['IN']),
 		om: Number(r['OM']),
 		w: Number(r['W']),
-		ma: Number(r['MA'])
+		ma: Number(r['MA']),
+		n: Number(r['N']),
+		epoch: Number(r['JDTDB'])
 	}));
 }
 
@@ -35,7 +37,9 @@ export async function fetchSmallBodies(): Promise<SmallBody[]> {
 		i: Number(r['i']),
 		om: Number(r['om']),
 		w: Number(r['w']),
-		ma: Number(r['ma'])
+		ma: Number(r['ma']),
+		n: Number(r['n']),
+		epoch: Number(r['epoch'])
 	}));
 }
 

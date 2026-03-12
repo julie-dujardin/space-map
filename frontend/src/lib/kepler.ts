@@ -23,10 +23,16 @@ export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 5
  * Input: elements with angles in degrees, semi-major axis in AU.
  * Output: scaled Three.js coordinates where ecliptic plane = XZ plane, Y = up (north ecliptic pole).
  */
-export function orbitalElementsToPosition(el: OrbitalElements): [number, number, number] {
-	const { a, e, i, om, w, ma } = el;
+export function orbitalElementsToPosition(
+	el: OrbitalElements,
+	date: Date = new Date()
+): [number, number, number] {
+	const { a, e, i, om, w, ma, n, epoch } = el;
 
-	const M = ma * DEG2RAD;
+	// Propagate mean anomaly from epoch to requested date
+	const dateJD = date.getTime() / 86400000 + 2440587.5;
+	const dt = dateJD - epoch; // days since epoch
+	const M = (ma + n * dt) * DEG2RAD;
 	const E = solveKepler(M, e);
 
 	// True anomaly
@@ -71,7 +77,8 @@ export function orbitalElementsToEllipse(
 	const points: [number, number, number][] = [];
 	for (let j = 0; j <= numPoints; j++) {
 		const ma = (j / numPoints) * 360;
-		points.push(orbitalElementsToPosition({ ...el, ma }));
+		// Use n=0 so orbitalElementsToPosition doesn't propagate the swept ma
+		points.push(orbitalElementsToPosition({ ...el, ma, n: 0 }));
 	}
 	return points;
 }
@@ -103,7 +110,9 @@ export function satelliteToOffset(sat: {
 		i: sat.inclination,
 		om: sat.raan,
 		w: sat.argOfPericenter,
-		ma: sat.meanAnomaly
+		ma: sat.meanAnomaly,
+		n: 0,
+		epoch: 0
 	};
 
 	return orbitalElementsToPosition(elements);

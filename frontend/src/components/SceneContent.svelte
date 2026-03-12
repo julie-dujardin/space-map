@@ -4,13 +4,13 @@
 	import { Vector3 } from 'three';
 	import type { OrbitControls as OrbitControlsType } from 'three/addons/controls/OrbitControls.js';
 	import Body from './Body.svelte';
-	import SmallBodies from './SmallBodies.svelte';
 	import {
 		type HorizonsBody,
 		type SmallBody,
 		type Satellite,
 		type PositionedBody
 	} from '$lib/types';
+	import SmallBodies from './SmallBodies.svelte';
 
 	interface Props {
 		bodies: PositionedBody<HorizonsBody>[];
@@ -41,8 +41,7 @@
 		controlsRef.update();
 	});
 
-	function handleFocus(body: PositionedBody<HorizonsBody>) {
-		console.log('Focus:', body.data.name ?? body.data.designation, body.data.naifId, body.position);
+	function handleFocus(body: PositionedBody<HorizonsBody | SmallBody>) {
 		focusTarget = body.position;
 	}
 </script>
