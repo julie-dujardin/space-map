@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Scene from '../components/Scene.svelte';
+	import Scene from '../../components/Scene.svelte';
 	import { fetchHorizons, fetchSmallBodies, fetchSatellites } from '$lib/csv';
 	import { orbitalElementsToPosition } from '$lib/kepler';
 	import {
@@ -10,6 +10,7 @@
 		type Satellite,
 		type PositionedBody
 	} from '$lib/types';
+	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
 	import { SvelteMap } from 'svelte/reactivity';
 
 	let bodies = $state<PositionedBody<HorizonsBody>[]>([]);
@@ -18,6 +19,8 @@
 	let earthPosition = $state<[number, number, number]>([0, 0, 0]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	const initialView: MapViewState = parseUrl(window.location.pathname) ?? DEFAULT_VIEW;
 
 	onMount(async () => {
 		// Start all fetches immediately (network in parallel)
@@ -115,6 +118,6 @@
 	<div class="flex items-center justify-center h-screen bg-bg text-text-error">Error: {error}</div>
 {:else}
 	<div class="w-full h-screen">
-		<Scene {bodies} smallBodies={smallBodiesList} {satellites} {earthPosition} />
+		<Scene {bodies} smallBodies={smallBodiesList} {satellites} {earthPosition} {initialView} />
 	</div>
 {/if}
