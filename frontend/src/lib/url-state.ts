@@ -1,3 +1,5 @@
+import { page } from '$app/state';
+
 const { PI, sin, cos, asin, atan2, sqrt } = Math;
 const DEG = 180 / PI;
 const RAD = PI / 180;
@@ -18,32 +20,34 @@ export const DEFAULT_VIEW: MapViewState = {
 	zoom: 42.43
 };
 
-/** Parse `/<body>@<date>,<lat>,<lon>,<zoom>` → MapViewState, or null for `/` */
-export function parseUrl(pathname: string): MapViewState | null {
-	const raw = decodeURIComponent(pathname.replace(/^\//, ''));
-	if (!raw) return null;
+/** Parse current page state → MapViewState, or null */
+export function parseUrl(): MapViewState | null {
+	const bodyName = page.params.slug;
+	if (!bodyName) return null;
 
-	const atIdx = raw.indexOf('@');
-	if (atIdx < 1) return null;
+	const defaults = { ...DEFAULT_VIEW, bodyName };
 
-	const bodyName = raw.slice(0, atIdx);
-	const parts = raw.slice(atIdx + 1).split(',');
-	if (parts.length < 4) return null;
+	const at = page.url.searchParams.get('at');
+	if (!at) return defaults;
 
-	const [date, latStr, lonStr, zoomStr] = parts;
-	const latitude = Number(latStr);
-	const longitude = Number(lonStr);
-	const zoom = Number(zoomStr);
+	const parts = at.split(',');
+	const date = parts[0] || 'now';
+	if (parts.length < 4) return { ...defaults, date };
 
-	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom)) return null;
+	const latitude = Number(parts[1]);
+	const longitude = Number(parts[2]);
+	const zoom = Number(parts[3]);
+
+	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom)) return { ...defaults, date };
 
 	return { bodyName, date, latitude, longitude, zoom };
 }
 
-/** Produce `/<body>@<date>,<lat>,<lon>,<zoom>` */
+/** Produce `/b/<body>?at=<date>,<lat>,<lon>,<zoom>` */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
-	return `/${encodeURIComponent(state.bodyName)}@${state.date},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
+	const at = `${state.date},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
+	return `/b/${encodeURIComponent(state.bodyName)}?at=${at}`;
 }
 
 /** Camera-relative-to-target → spherical (degrees, Y-up) */
@@ -84,7 +88,7 @@ export function createUrlSync(intervalMs = 500) {
 	let pending: ReturnType<typeof setTimeout> | undefined;
 	function write(state: MapViewState) {
 		const url = serializeUrl(state);
-		if (url !== window.location.pathname) {
+		if (url !== window.location.pathname + window.location.search) {
 			history.replaceState(null, '', url);
 		}
 		lastUpdate = Date.now();

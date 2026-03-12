@@ -104,7 +104,7 @@
 	// Handle browser back/forward
 	$effect(() => {
 		const onPopState = () => {
-			const parsed = parseUrl(window.location.pathname);
+			const parsed = parseUrl(window.location.pathname + window.location.search);
 			if (!parsed) return;
 			const body = bodies.find(
 				(b) => (b.data.name ?? '').toLowerCase() === parsed.bodyName.toLowerCase()

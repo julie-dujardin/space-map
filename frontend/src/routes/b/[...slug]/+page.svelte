@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Scene from '../../components/Scene.svelte';
+	import Scene from '../../../components/Scene.svelte';
 	import { fetchHorizons, fetchSmallBodies, fetchSatellites } from '$lib/csv';
 	import { orbitalElementsToPosition } from '$lib/kepler';
 	import {
@@ -20,7 +20,7 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	const initialView: MapViewState = parseUrl(window.location.pathname) ?? DEFAULT_VIEW;
+	const initialView: MapViewState = parseUrl() ?? DEFAULT_VIEW;
 
 	onMount(async () => {
 		// Start all fetches immediately (network in parallel)
