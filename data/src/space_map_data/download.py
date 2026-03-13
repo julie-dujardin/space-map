@@ -66,16 +66,9 @@ def cli() -> None:
     parser.add_argument(
         "--limit",
         type=int,
-        default=50_000,
+        default=None,
         metavar="N",
         help="Max records/bodies per source (default: 50000)",
-    )
-    parser.add_argument(
-        "--no-limit",
-        dest="limit",
-        action="store_const",
-        const=None,
-        help="Remove the row limit and download everything",
     )
     parser.add_argument(
         "--force",
