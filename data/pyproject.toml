@@ -4,11 +4,13 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "httpx",
+    "sqlalchemy>=2.0",
     "tqdm",
 ]
 
 [project.scripts]
 space-map-data = "space_map_data.download:cli"
+space-map-aggregate = "space_map_data.aggregate:cli"
 
 [build-system]
 requires = ["hatchling"]

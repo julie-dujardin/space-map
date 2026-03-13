@@ -10,8 +10,8 @@ from . import Downloader
 logger = logging.getLogger(__name__)
 
 URL = "https://ssd-api.jpl.nasa.gov/sbdb_query.api"
-PAGE_SIZE = 500
-CHUNK_SIZE = 500_000
+PAGE_SIZE = 5000
+CHUNK_SIZE = 100_000
 
 
 class SBDBDownloader(Downloader):

@@ -11,6 +11,15 @@
       "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
     },
     {
+      "name": "Aggregate data",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "space_map_data.aggregate",
+      "python": "${workspaceFolder}/data/.venv/bin/python",
+      "cwd": "${workspaceFolder}/data",
+      "args": ["--limit", "${input:limit}"]
+    },
+    {
       "name": "Frontend (Chrome)",
       "type": "chrome",
       "runtimeExecutable": "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
