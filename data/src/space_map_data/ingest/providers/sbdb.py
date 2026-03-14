@@ -19,6 +19,8 @@ from space_map_data.ingest.convert import bool_or_none, float_or_none, int_or_no
 
 logger = logging.getLogger(__name__)
 
+SUB_CHUNK = 10_000
+
 # All SBDB CSV column names, in the order they appear in the ORM model.
 _SBDB_COLUMNS = [
     "spkid",
@@ -224,15 +226,17 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
     return d
 
 
-def _parse_chunk(chunk_path: Path, limit: int | None = None) -> list[dict]:
-    """Parse a single CSV chunk into a list of prepared row dicts.
+def _parse_chunk(
+    chunk_path: Path, *, skip_rows: int = 0, max_rows: int | None = None
+) -> list[dict]:
+    """Parse a slice of a CSV chunk into a list of prepared row dicts.
 
     Each dict contains:
       - sbdb: dict of SBDB mirror columns
-      - body_type: str
+      - object_type: ObjectType
       - spkid: int | None
       - naif_id: int | None (converted from spkid for cross-matching)
-      - body: dict of Object columns (for new bodies only)
+      - object: dict of Object columns (for new bodies only)
     """
     rows = []
     expected_cols = {*_SBDB_COLUMNS, "class"}
@@ -246,7 +250,12 @@ def _parse_chunk(chunk_path: Path, limit: int | None = None) -> list[dict]:
                 f"Column mismatch in {chunk_path.name}: "
                 f"missing={missing or '{}'}, extra={extra or '{}'}"
             )
-        for row in reader:
+        for idx, row in enumerate(reader):
+            if idx < skip_rows:
+                continue
+            if max_rows is not None and len(rows) >= max_rows:
+                break
+
             spkid = int_or_none(row["spkid"])
             object_type = _object_type(row)
 
@@ -284,10 +293,19 @@ def _parse_chunk(chunk_path: Path, limit: int | None = None) -> list[dict]:
                 }
             )
 
-            if limit and len(rows) >= limit:
-                break
-
     return rows
+
+
+def _parse_chunk_star(args: tuple) -> list[dict]:
+    """Unpack args for multiprocessing imap_unordered."""
+    path, skip, max_rows = args
+    return _parse_chunk(path, skip_rows=skip, max_rows=max_rows)
+
+
+def _count_csv_rows(path: Path) -> int:
+    """Count data rows in a CSV file (excludes header)."""
+    with open(path) as f:
+        return sum(1 for _ in f) - 1
 
 
 class SBDBIngestor:
@@ -300,13 +318,9 @@ class SBDBIngestor:
         self.limit = limit
         self.sbdb_dir = download_dir / "sbdb"
 
-        # Populated by each phase
         self.naif_to_object: dict[int, int] = {}
-        self.all_rows: list[dict] = []
-        self.new_bodies: list[dict] = []
-        self.new_sbdb: list[dict] = []
-        self.matched_updates: list[tuple[int, int | None]] = []
-        self.matched_sbdb: list[dict] = []
+        self.total_rows = 0
+        self.total_matched = 0
 
     def _find_chunks(self) -> list[Path]:
         chunk_pattern = re.compile(r"small-bodies_\d+_\d+\.csv$")
@@ -330,32 +344,19 @@ class SBDBIngestor:
             assert body.horizons_naif_id is not None
             self.naif_to_object[body.horizons_naif_id] = body.id
 
-    def _parse_chunks(self, chunks: list[Path]) -> None:
-        logger.info(
-            "Parsing %d SBDB chunks across %d workers",
-            len(chunks),
-            multiprocessing.cpu_count(),
-        )
+    def _split_rows(
+        self, rows: list[dict]
+    ) -> tuple[
+        tuple[list[dict], list[tuple[int, int | None]]],
+        tuple[list[dict], list[dict]],
+    ]:
+        """Split rows into (matched_sbdb, matched_updates) and (new_bodies, new_sbdb)."""
+        matched_sbdb: list[dict] = []
+        matched_updates: list[tuple[int, int | None]] = []
+        new_bodies: list[dict] = []
+        new_sbdb: list[dict] = []
 
-        if self.limit:
-            per_chunk = max(1, self.limit // len(chunks))
-            args = [(c, per_chunk) for c in chunks]
-        else:
-            args = [(c, None) for c in chunks]
-
-        with multiprocessing.Pool() as pool:
-            chunk_results = pool.starmap(_parse_chunk, args)
-
-        for chunk_rows in chunk_results:
-            self.all_rows.extend(chunk_rows)
-            if self.limit and len(self.all_rows) >= self.limit:
-                self.all_rows = self.all_rows[: self.limit]
-                break
-
-        logger.info("Parsed %d SBDB rows, inserting into database", len(self.all_rows))
-
-    def _split_matched(self) -> None:
-        for row in self.all_rows:
+        for row in rows:
             naif_id = row["naif_id"]
             object_id = (
                 self.naif_to_object.get(naif_id) if naif_id is not None else None
@@ -364,40 +365,39 @@ class SBDBIngestor:
             if object_id is not None:
                 sbdb = row["sbdb"]
                 sbdb["object_id"] = object_id
-                self.matched_sbdb.append(sbdb)
-                self.matched_updates.append((object_id, row["spkid"]))
+                matched_sbdb.append(sbdb)
+                matched_updates.append((object_id, row["spkid"]))
             else:
-                self.new_bodies.append(row["object"])
-                self.new_sbdb.append(row["sbdb"])
+                new_bodies.append(row["object"])
+                new_sbdb.append(row["sbdb"])
 
-    def _insert_new(self) -> None:
-        if not self.new_bodies:
+        return (matched_sbdb, matched_updates), (new_bodies, new_sbdb)
+
+    def _insert_new(self, new_bodies: list[dict], new_sbdb: list[dict]) -> None:
+        if not new_bodies:
             return
-        for i in range(0, len(self.new_bodies), self.BATCH):
-            batch = self.new_bodies[i : i + self.BATCH]
+        for i in range(0, len(new_bodies), self.BATCH):
+            batch = new_bodies[i : i + self.BATCH]
             result = self.session.execute(insert(Object).returning(Object.id), batch)
             new_ids = [r[0] for r in result]
-            sbdb_batch = self.new_sbdb[i : i + self.BATCH]
+            sbdb_batch = new_sbdb[i : i + self.BATCH]
             for sbdb, body_id in zip(sbdb_batch, new_ids):
                 sbdb["object_id"] = body_id
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
-            logger.info(
-                "  inserted %d / %d new bodies",
-                min(i + self.BATCH, len(self.new_bodies)),
-                len(self.new_bodies),
-            )
 
-    def _insert_matched(self) -> None:
-        if self.matched_sbdb:
-            for i in range(0, len(self.matched_sbdb), self.BATCH):
-                self.session.execute(
-                    insert(SBDBRow), self.matched_sbdb[i : i + self.BATCH]
-                )
+    def _insert_matched(
+        self,
+        matched_sbdb: list[dict],
+        matched_updates: list[tuple[int, int | None]],
+    ) -> None:
+        if matched_sbdb:
+            for i in range(0, len(matched_sbdb), self.BATCH):
+                self.session.execute(insert(SBDBRow), matched_sbdb[i : i + self.BATCH])
                 self.session.commit()
 
-        if self.matched_updates:
-            for body_id, spkid in self.matched_updates:
+        if matched_updates:
+            for body_id, spkid in matched_updates:
                 vals: dict = {"sbdb_spkid": spkid}
                 self.session.execute(
                     update(Object).where(Object.id == body_id).values(**vals)
@@ -410,16 +410,39 @@ class SBDBIngestor:
             return
 
         self._load_naif_lookup()
-        self._parse_chunks(chunks)
-        self._split_matched()
-        self._insert_new()
-        self._insert_matched()
 
-        matched = len(self.matched_updates)
+        # Build sub-chunk work items: (file, skip_rows, max_rows)
+        work_items: list[tuple[Path, int, int]] = []
+        for chunk_path in chunks:
+            n_rows = _count_csv_rows(chunk_path)
+            for offset in range(0, n_rows, SUB_CHUNK):
+                work_items.append((chunk_path, offset, SUB_CHUNK))
+
+        logger.info(
+            "Processing %d sub-chunks (%d files) across %d workers",
+            len(work_items),
+            len(chunks),
+            multiprocessing.cpu_count(),
+        )
+
+        with multiprocessing.Pool() as pool:
+            for rows in pool.imap_unordered(_parse_chunk_star, work_items):
+                (matched_sbdb, matched_updates), (new_bodies, new_sbdb) = (
+                    self._split_rows(rows)
+                )
+                self._insert_new(new_bodies, new_sbdb)
+                self._insert_matched(matched_sbdb, matched_updates)
+
+                self.total_rows += len(rows)
+                self.total_matched += len(matched_updates)
+
+                if self.limit and self.total_rows >= self.limit:
+                    break
+
         logger.info(
             "Ingested %d SBDB bodies (%d cross-matched with Horizons)",
-            len(self.all_rows),
-            matched,
+            self.total_rows,
+            self.total_matched,
         )
 
 
