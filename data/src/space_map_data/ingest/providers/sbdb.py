@@ -6,7 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from sqlalchemy import and_, case, delete, insert, update
+from sqlalchemy import and_, case, delete, insert, or_, update
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 from tqdm import tqdm
@@ -338,15 +338,22 @@ class SBDBIngestor:
         """Merge SBDB-created Objects with existing Horizons Objects via NAIF ID.
 
         SBDB spkid → Horizons naif_id mapping:
-          numbered asteroids:  spkid = 20_000_000 + n,  naif_id = 2_000_000 + n
-          comets:              spkid = 1_000_000 + n,   naif_id = 1_000_000 + n  (same)
+          numbered asteroids        spkid = 20_000_000 + n, naif_id = 2_000_000 + n
+          comets                    spkid = 1_000_000 + n,  naif_id = 1_000_000 + n  (same)
+          binary system primaries   spkid = 20_000_000 + n, naif_id = 920_000_000 + n  (NAIF ID = spkid -> barycenter)
+          pluto (special case)      spkid = 20_134_340,     naif_id = 999
         """
         dup = aliased(Object)
         existing = aliased(Object)
+        # Regular asteroid mapping: spkid 20_000_000+n → naif_id 2_000_000+n
+        # Pluto is a special case: spkid 20134340, naif_id 999
         naif_from_spkid = case(
+            (dup.sbdb_spkid == 20_134_340, 999),
             (dup.sbdb_spkid >= 20_000_000, dup.sbdb_spkid - 18_000_000),
             else_=dup.sbdb_spkid,
         )
+        # Binary primary mapping: spkid 20_000_000+n → naif_id 920_000_000+n
+        naif_binary_primary = dup.sbdb_spkid + 900_000_000
 
         # Find (dup_id, existing_id, sbdb_spkid) for SBDB objects matching Horizons
         pairs = (
@@ -356,7 +363,10 @@ class SBDBIngestor:
                 existing,
                 and_(
                     existing.horizons_naif_id.isnot(None),
-                    existing.horizons_naif_id == naif_from_spkid,
+                    or_(
+                        existing.horizons_naif_id == naif_from_spkid,
+                        existing.horizons_naif_id == naif_binary_primary,
+                    ),
                 ),
             )
             .filter(dup.orbital_source == OrbitalSource.sbdb.value)
