@@ -1,7 +1,6 @@
 """CSV value conversion helpers."""
 
 import math
-from datetime import datetime
 
 GM_EARTH = 398600.4418  # km^3/s^2
 
@@ -32,14 +31,6 @@ def int_or_none(val: str) -> int | None:
     if not val or not val.strip():
         return None
     return int(val)
-
-
-def iso_to_jd(iso: str) -> float | None:
-    """Convert ISO 8601 datetime string to Julian Date."""
-    if not iso or not iso.strip():
-        return None
-    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    return dt.timestamp() / 86400.0 + 2440587.5
 
 
 def mean_motion_to_a_km(mean_motion_rev_per_day: float) -> float:

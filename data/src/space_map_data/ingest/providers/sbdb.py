@@ -211,18 +211,15 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
     """Extract SBDB mirror columns as a typed dict (class → class_)."""
     d: dict = {}
     for col in _SBDB_COLUMNS:
-        raw = row.get(col, "")
-        try:
-            if col in _FLOAT_COLS:
-                d[col] = float_or_none(raw)
-            elif col in _INT_COLS:
-                d[col] = int_or_none(raw)
-            elif col in _BOOL_COLS:
-                d[col] = bool_or_none(raw)
-            else:
-                d[col] = raw
-        except Exception as e:
-            print(e)
+        raw = row[col]
+        if col in _FLOAT_COLS:
+            d[col] = float_or_none(raw)
+        elif col in _INT_COLS:
+            d[col] = int_or_none(raw)
+        elif col in _BOOL_COLS:
+            d[col] = bool_or_none(raw)
+        else:
+            d[col] = raw
     d["class_"] = row.get("class", "")
     return d
 
@@ -238,8 +235,18 @@ def _parse_chunk(chunk_path: Path, limit: int | None = None) -> list[dict]:
       - body: dict of Object columns (for new bodies only)
     """
     rows = []
+    expected_cols = {*_SBDB_COLUMNS, "class"}
     with open(chunk_path, newline="") as f:
-        for row in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        actual_cols = set(reader.fieldnames or [])
+        missing = expected_cols - actual_cols
+        extra = actual_cols - expected_cols
+        if missing or extra:
+            raise ValueError(
+                f"Column mismatch in {chunk_path.name}: "
+                f"missing={missing or '{}'}, extra={extra or '{}'}"
+            )
+        for row in reader:
             spkid = int_or_none(row["spkid"])
             object_type = _object_type(row)
 
