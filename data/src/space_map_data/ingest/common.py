@@ -1,4 +1,4 @@
-"""Aggregate downloaded CSV sources into a unified SQLite database."""
+"""Ingest downloaded CSV sources into a unified SQLite database."""
 
 import logging
 from pathlib import Path
@@ -6,8 +6,8 @@ from pathlib import Path
 from sqlalchemy import create_engine, func, text, update
 from sqlalchemy.orm import Session
 
-from ..models import Base, Object, SBDB
-from . import celestrak, horizons, sbdb
+from space_map_data.models import Base, Object, SBDB
+from space_map_data.ingest.providers import celestrak, horizons, sbdb
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def _post_process(session: Session) -> None:
     logger.info("Total: %d objects", total)
 
 
-def aggregate(
+def ingest(
     db_path: Path,
     download_dir: Path,
     *,
@@ -81,35 +81,3 @@ def aggregate(
 
     engine.dispose()
     logger.info("Database ready: %s", db_path)
-
-
-def cli() -> None:
-    import argparse
-    import logging.config
-    import tomllib
-
-    parser = argparse.ArgumentParser(description="Aggregate space-map data into SQLite")
-    parser.add_argument(
-        "--db",
-        type=Path,
-        default=DOWNLOAD_DIR / "space-map.db",
-        metavar="PATH",
-        help=f"Output database path (default: {DOWNLOAD_DIR / 'space-map.db'})",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Max records per source (for quick testing)",
-    )
-    args = parser.parse_args()
-
-    with open(DATA_DIR / "logging.toml", "rb") as f:
-        logging.config.dictConfig(tomllib.load(f))
-
-    aggregate(args.db, DOWNLOAD_DIR, limit=args.limit)
-
-
-if __name__ == "__main__":
-    cli()

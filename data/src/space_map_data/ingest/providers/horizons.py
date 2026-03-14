@@ -6,8 +6,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from ..models import Object, Frame, Horizons as HorizonsRow, OrbitalSource
-from .convert import float_or_none, int_or_none
+from space_map_data.models import Object, Frame, Horizons as HorizonsRow, OrbitalSource
+from space_map_data.ingest.convert import float_or_none, int_or_none
 
 logger = logging.getLogger(__name__)
 
