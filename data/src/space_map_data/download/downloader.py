@@ -1,3 +1,5 @@
+"""Shared downloader infrastructure."""
+
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -7,6 +9,9 @@ from pathlib import Path
 import httpx
 
 logger = logging.getLogger(__name__)
+
+DATA_DIR = Path(__file__).resolve().parents[3]
+DOWNLOAD_DIR = DATA_DIR / "downloads"
 
 
 class Downloader(ABC):

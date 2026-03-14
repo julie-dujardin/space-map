@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from . import Downloader
+from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
 

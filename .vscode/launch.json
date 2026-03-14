@@ -5,7 +5,7 @@
       "name": "Download data",
       "type": "debugpy",
       "request": "launch",
-      "module": "space_map_data",
+      "module": "space_map_data.download",
       "python": "${workspaceFolder}/data/.venv/bin/python",
       "cwd": "${workspaceFolder}/data",
       "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
@@ -14,7 +14,7 @@
       "name": "Aggregate data",
       "type": "debugpy",
       "request": "launch",
-      "module": "space_map_data.aggregate",
+      "module": "space_map_data.ingest",
       "python": "${workspaceFolder}/data/.venv/bin/python",
       "cwd": "${workspaceFolder}/data",
       "args": ["--limit", "${input:limit}"]

@@ -6,8 +6,19 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from ..models import Object, ObjectType, CelesTrak as CelesTrakRow, Frame, OrbitalSource
-from .convert import iso_to_jd, mean_motion_to_a_km, float_or_none, int_or_none
+from space_map_data.models import (
+    Object,
+    ObjectType,
+    CelesTrak as CelesTrakRow,
+    Frame,
+    OrbitalSource,
+)
+from space_map_data.ingest.convert import (
+    iso_to_jd,
+    mean_motion_to_a_km,
+    float_or_none,
+    int_or_none,
+)
 
 logger = logging.getLogger(__name__)
 
