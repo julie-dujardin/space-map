@@ -10,6 +10,7 @@ from sqlalchemy import insert, update
 from sqlalchemy.orm import Session
 
 from space_map_data.models import (
+    DWARF_PLANETS,
     Object,
     ObjectType,
     OrbitalSource,
@@ -139,6 +140,10 @@ SBDB_CLASS_MAP: dict[str, ObjectType] = {
 def _object_type(row: dict[str, str]) -> ObjectType:
     cls = row.get("class", "").strip()
     prefix = row.get("prefix", "").strip()
+    name = row.get("name", "").strip()
+
+    if name.lower() in DWARF_PLANETS:
+        return ObjectType.dwarf_planet
 
     if cls in SBDB_CLASS_MAP:
         mapped = SBDB_CLASS_MAP[cls]

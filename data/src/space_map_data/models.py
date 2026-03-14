@@ -7,6 +7,22 @@ from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
+# IAU-recognized dwarf planets
+# TODO: get from wikidata, P31
+DWARF_PLANETS = {
+    "ceres",
+    "orcus",
+    "pluto",
+    "salacia",
+    "haumea",
+    "quaoar",
+    "makemake",
+    "gonggong",
+    "eris",
+    "sedna",
+}
+
+
 class ObjectType(StrEnum):
     barycenter = "barycenter"
     lagrange_point = "lagrange_point"
