@@ -8,11 +8,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class ObjectType(StrEnum):
+    barycenter = "barycenter"
+    lagrange_point = "lagrange_point"
     star = "star"
     planet = "planet"
     dwarf_planet = "dwarf_planet"
     moon = "moon"
-    barycenter = "barycenter"
     asteroid = "asteroid"
     asteroid_inner = "asteroid_inner"
     asteroid_main_belt = "asteroid_main_belt"
@@ -21,9 +22,14 @@ class ObjectType(StrEnum):
     asteroid_tno = "asteroid_tno"
     comet = "comet"
     spacecraft = "spacecraft"
-    satellite = "satellite"
-    lagrange_point = "lagrange_point"
+    # TODO: Spacecraft types:
+    # exploration: probe, lander, rover
+    # satellites: telescope, telecom, navigation, reconnaissance, weather, military, science
+    # manned: station, crewed, cargo
     debris = "debris"
+    # TODO: debris types:
+    # rocket_body, fragmentation
+    undocumented = "undocumented"  # Data is available but provider doesn't specify what it refers to
 
 
 class Frame(StrEnum):

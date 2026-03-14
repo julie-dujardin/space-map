@@ -5,8 +5,9 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date
-from enum import StrEnum
 
+from space_map_data.models import ObjectType
+from space_map_data.utils.convert import date_to_julian
 from tqdm import tqdm
 
 from space_map_data.download.downloader import Downloader
@@ -27,24 +28,6 @@ _BASE_PARAMS = {
 DROP_PREFIX = ("(primary body)", "(spacecraft)", "(Spacecraft)", "(system barycenter)")
 
 
-class BodyType(StrEnum):
-    BARYCENTER = "barycenter"
-    STAR = "star"
-    PLANET = "planet"
-    DWARF_PLANET = "dwarf_planet"
-    MOON = "moon"
-    ASTEROID = "asteroid"
-    COMET = "comet"
-    SPACECRAFT = "spacecraft"
-    LAGRANGE_POINT = "lagrange_point"
-    DEBRIS = "debris"
-
-
-def _date_to_jd(d: date) -> str:
-    """Convert a date to a Julian Date string."""
-    return f"{d.toordinal() + 1721424.5:.1f}"
-
-
 # IAU-recognized dwarf planets by asteroid catalog number
 _DWARF_PLANET_CATALOG_NUMBERS: set[int] = {
     1,  # Ceres
@@ -54,9 +37,11 @@ _DWARF_PLANET_CATALOG_NUMBERS: set[int] = {
 }
 
 
-def _classify_body(
-    naif_id: int, name: str, designation: str | None, extra: str | None
-) -> tuple[BodyType, int]:
+# To retrieve the orbital elements, we need to determnine the barycenter, which requires some classification
+# So we do this step here, not in ingest.
+def _classify_object(
+    naif_id: int, name: str, extra: str | None
+) -> tuple[ObjectType, int]:
     """Classify a body by its NAIF ID and name.
 
     Returns (body_type, parent_naif_id) where parent is the NAIF ID of the
@@ -76,41 +61,41 @@ def _classify_body(
         900000000–      primary in binary system (9 + barycenter ID)
     """
     if naif_id < 0:
-        return BodyType.SPACECRAFT, 0
+        return ObjectType.spacecraft, 0
 
     if 1 <= naif_id <= 9 or "barycenter" in name.lower():
         # Planetary & asteroid system barycenters
-        return BodyType.BARYCENTER, 0
+        return ObjectType.barycenter, 0
 
     if naif_id == 10:
         # The Sun
-        return BodyType.STAR, 0
+        return ObjectType.star, 0
 
     if 100 <= naif_id <= 999:
         # Planets (P99) and moons (PNN), parent = planet barycenter P
         barycenter = naif_id // 100
         if naif_id % 100 == 99:  # Planet
             if naif_id == 999:  # rip pluto
-                return BodyType.DWARF_PLANET, barycenter
+                return ObjectType.dwarf_planet, barycenter
             if naif_id < 300:
                 # mercury, venus: no moons, barycenter = planet, target cystem barycenter instead
-                return BodyType.PLANET, 0
-            return BodyType.PLANET, barycenter
-        return BodyType.MOON, barycenter
+                return ObjectType.planet, 0
+            return ObjectType.planet, barycenter
+        return ObjectType.moon, barycenter
     if 10_000 <= naif_id < 100_000:
         # Extended moon IDs: PXNNN (e.g. 65088 = 2004S17)
-        return BodyType.MOON, naif_id // 10_000
+        return ObjectType.moon, naif_id // 10_000
 
     if extra and "lagrange" in extra.lower():
-        return BodyType.LAGRANGE_POINT, 0
+        return ObjectType.lagrange_point, 0
 
     if 1_000_000 <= naif_id < 2_000_000:
-        return BodyType.COMET, 0
+        return ObjectType.comet, 0
     if 2_000_000 <= naif_id < 10_000_000:
         catalog_num = naif_id - 2_000_000
         if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
-            return BodyType.DWARF_PLANET, 0
-        return BodyType.ASTEROID, 0
+            return ObjectType.dwarf_planet, 0
+        return ObjectType.asteroid, 0
     if naif_id >= 100_000_000:
         # Binary system members: satellite (1xx) or primary (9xx)
         barycenter_id = naif_id % 100_000_000
@@ -118,20 +103,20 @@ def _classify_body(
             # Primary body in binary system
             catalog_num = barycenter_id - 20_000_000
             if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
-                return BodyType.DWARF_PLANET, barycenter_id
-            return BodyType.ASTEROID, barycenter_id
+                return ObjectType.dwarf_planet, barycenter_id
+            return ObjectType.asteroid, barycenter_id
         # Satellite
-        return BodyType.MOON, barycenter_id
+        return ObjectType.moon, barycenter_id
 
     if "spacecraft" in name.lower():
-        return BodyType.SPACECRAFT, 0
+        return ObjectType.spacecraft, 0
     if 990_000 <= naif_id < 1_000_000:
         # WT1190F
-        return BodyType.DEBRIS, 0
+        return ObjectType.debris, 0
 
     if 20_000_000 <= naif_id < 100_000_000:
         # 20152830...: no idea
-        return BodyType.ASTEROID, 0
+        return ObjectType.undocumented, 0
 
     raise ValueError(
         f"Could not classify body with NAIF ID {naif_id} and name '{name}'"
@@ -143,7 +128,7 @@ class MajorBody:
     name: str
     naif_id: int
     parent_naif_id: int
-    type: BodyType
+    object_type: ObjectType
     designation: str | None = None
     extra: str | None = None
 
@@ -212,7 +197,7 @@ class HorizonsDownloader(Downloader):
             name = line[name_sl].strip()
             designation = line[designation_sl].strip() or None
             extra = line[extra_start:].strip() or None
-            body_type, parent_id = _classify_body(naif_id, name, designation, extra)
+            body_type, parent_id = _classify_object(naif_id, name, extra)
 
             for suffix in DROP_PREFIX:
                 name = name.removesuffix(suffix).strip()
@@ -239,7 +224,7 @@ class HorizonsDownloader(Downloader):
                         "name": b.name,
                         "naif_id": b.naif_id,
                         "parent_naif_id": b.parent_naif_id,
-                        "type": b.type,
+                        "type": b.object_type,
                         "designation": b.designation,
                         "extra": b.extra,
                     }
@@ -281,7 +266,7 @@ class HorizonsDownloader(Downloader):
     ) -> None:
         if epoch is None:
             epoch = date.today()
-        epoch_jd = _date_to_jd(epoch)
+        epoch_jd = f"{date_to_julian(epoch):.1f}"
         logger.info("Using epoch %s (JD %s)", epoch.isoformat(), epoch_jd)
 
         out_file = self.out_dir / "bodies.csv"
@@ -316,7 +301,7 @@ class HorizonsDownloader(Downloader):
         for body in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            if body.type == BodyType.LAGRANGE_POINT or body.naif_id == 0:
+            if body.object_type == ObjectType.lagrange_point or body.naif_id == 0:
                 continue
             if str(body.naif_id) in existing:
                 skipped += 1
@@ -338,7 +323,7 @@ class HorizonsDownloader(Downloader):
                 continue
 
             row = self._parse_elements(payload["result"], body.name, str(body.naif_id))
-            row["type"] = body.type
+            row["type"] = body.object_type
             row["parent_naif_id"] = str(body.parent_naif_id)
             row["designation"] = body.designation
             row["extra"] = body.extra

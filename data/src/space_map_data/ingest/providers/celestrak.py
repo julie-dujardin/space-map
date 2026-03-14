@@ -4,6 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
+from space_map_data.utils.convert import date_to_julian
 from sqlalchemy.orm import Session
 
 from space_map_data.models import (
@@ -14,7 +15,6 @@ from space_map_data.models import (
     OrbitalSource,
 )
 from space_map_data.ingest.convert import (
-    iso_to_jd,
     mean_motion_to_a_km,
     float_or_none,
     int_or_none,
@@ -37,9 +37,9 @@ def ingest(session: Session, download_dir: Path, *, limit: int | None = None) ->
 
             object = Object(
                 name=row["OBJECT_NAME"].strip(),
-                object_type=ObjectType.satellite,
+                object_type=ObjectType.spacecraft,
                 celestrak_norad_cat_id=int_or_none(row["NORAD_CAT_ID"]),
-                epoch_jd=iso_to_jd(row["EPOCH"]),
+                epoch_jd=date_to_julian(row["EPOCH"]),
                 a=a_km,
                 e=float_or_none(row["ECCENTRICITY"]),
                 i=float_or_none(row["INCLINATION"]),
