@@ -16,6 +16,7 @@ repos:
       - id: ruff-check
         files: ^data/
         name: ruff check (data)
+        args: [ --fix ]
       - id: ruff-format
         files: ^data/
         name: ruff format (data)
