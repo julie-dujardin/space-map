@@ -9,8 +9,8 @@ dependencies = [
 ]
 
 [project.scripts]
-space-map-data = "space_map_data.download:cli"
-space-map-aggregate = "space_map_data.aggregate:cli"
+space-map-download = "space_map_data.download.__main__:cli"
+space-map-ingest = "space_map_data.ingest.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]
