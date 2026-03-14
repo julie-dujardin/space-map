@@ -6,8 +6,10 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from sqlalchemy import insert, update
+from sqlalchemy import and_, case, delete, insert, update
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
+from tqdm import tqdm
 
 from space_map_data.models import (
     DWARF_PLANETS,
@@ -234,15 +236,7 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
 def _parse_chunk(
     chunk_path: Path, *, skip_rows: int = 0, max_rows: int | None = None
 ) -> list[dict]:
-    """Parse a slice of a CSV chunk into a list of prepared row dicts.
-
-    Each dict contains:
-      - sbdb: dict of SBDB mirror columns
-      - object_type: ObjectType
-      - spkid: int | None
-      - naif_id: int | None (converted from spkid for cross-matching)
-      - object: dict of Object columns (for new bodies only)
-    """
+    """Parse a slice of a CSV chunk into a list of (object_dict, sbdb_dict) pairs."""
     rows = []
     expected_cols = {*_SBDB_COLUMNS, "class"}
     with open(chunk_path, newline="") as f:
@@ -263,23 +257,12 @@ def _parse_chunk(
 
             spkid = int_or_none(row["spkid"])
             object_type = _object_type(row)
-
-            naif_id: int | None = None
-            if spkid is not None:
-                if spkid >= 20_000_000:
-                    naif_id = spkid - 18_000_000
-                else:
-                    naif_id = spkid
-
             diameter = float_or_none(row.get("diameter", ""))
             radius_km = diameter / 2.0 if diameter else None
 
             rows.append(
                 {
                     "sbdb": _sbdb_dict(row),
-                    "object_type": object_type,
-                    "spkid": spkid,
-                    "naif_id": naif_id,
                     "object": {
                         "name": row.get("name", "").strip() or None,
                         "object_type": object_type,
@@ -322,10 +305,7 @@ class SBDBIngestor:
         self.session = session
         self.limit = limit
         self.sbdb_dir = download_dir / "sbdb"
-
-        self.naif_to_object: dict[int, int] = {}
         self.total_rows = 0
-        self.total_matched = 0
 
     def _find_chunks(self) -> list[Path]:
         chunk_pattern = re.compile(r"small-bodies_\d+_\d+\.csv$")
@@ -336,85 +316,82 @@ class SBDBIngestor:
             logger.warning("No SBDB chunk CSVs found in %s, skipping", self.sbdb_dir)
         return chunks
 
-    def _load_naif_lookup(self) -> None:
-        """Build horizons_naif_id → body_id for cross-matching.
-
-        SBDB spkid scheme differs from Horizons naif_id:
-          numbered asteroids:  spkid = 20_000_000 + n,  naif_id = 2_000_000 + n
-          comets:              spkid = 1_000_000 + n,   naif_id = 1_000_000 + n  (same)
-        """
-        for body in self.session.query(Object.id, Object.horizons_naif_id).filter(
-            Object.horizons_naif_id.isnot(None)
-        ):
-            assert body.horizons_naif_id is not None
-            self.naif_to_object[body.horizons_naif_id] = body.id
-
-    def _split_rows(
-        self, rows: list[dict]
-    ) -> tuple[
-        tuple[list[dict], list[tuple[int, int | None]]],
-        tuple[list[dict], list[dict]],
-    ]:
-        """Split rows into (matched_sbdb, matched_updates) and (new_bodies, new_sbdb)."""
-        matched_sbdb: list[dict] = []
-        matched_updates: list[tuple[int, int | None]] = []
-        new_bodies: list[dict] = []
-        new_sbdb: list[dict] = []
-
-        for row in rows:
-            naif_id = row["naif_id"]
-            object_id = (
-                self.naif_to_object.get(naif_id) if naif_id is not None else None
-            )
-
-            if object_id is not None:
-                sbdb = row["sbdb"]
-                sbdb["object_id"] = object_id
-                matched_sbdb.append(sbdb)
-                matched_updates.append((object_id, row["spkid"]))
-            else:
-                new_bodies.append(row["object"])
-                new_sbdb.append(row["sbdb"])
-
-        return (matched_sbdb, matched_updates), (new_bodies, new_sbdb)
-
-    def _insert_new(self, new_bodies: list[dict], new_sbdb: list[dict]) -> None:
-        if not new_bodies:
+    def _insert(self, rows: list[dict]) -> None:
+        """Insert Object + SBDB row pairs in batches."""
+        if not rows:
             return
-        for i in range(0, len(new_bodies), self.BATCH):
-            batch = new_bodies[i : i + self.BATCH]
-            result = self.session.execute(insert(Object).returning(Object.id), batch)
+        objects = [r["object"] for r in rows]
+        sbdb_rows = [r["sbdb"] for r in rows]
+        for i in range(0, len(objects), self.BATCH):
+            obj_batch = objects[i : i + self.BATCH]
+            result = self.session.execute(
+                insert(Object).returning(Object.id), obj_batch
+            )
             new_ids = [r[0] for r in result]
-            sbdb_batch = new_sbdb[i : i + self.BATCH]
+            sbdb_batch = sbdb_rows[i : i + self.BATCH]
             for sbdb, body_id in zip(sbdb_batch, new_ids):
                 sbdb["object_id"] = body_id
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
 
-    def _insert_matched(
-        self,
-        matched_sbdb: list[dict],
-        matched_updates: list[tuple[int, int | None]],
-    ) -> None:
-        if matched_sbdb:
-            for i in range(0, len(matched_sbdb), self.BATCH):
-                self.session.execute(insert(SBDBRow), matched_sbdb[i : i + self.BATCH])
-                self.session.commit()
+    def _reconcile(self) -> None:
+        """Merge SBDB-created Objects with existing Horizons Objects via NAIF ID.
 
-        if matched_updates:
-            for body_id, spkid in matched_updates:
-                vals: dict = {"sbdb_spkid": spkid}
-                self.session.execute(
-                    update(Object).where(Object.id == body_id).values(**vals)
-                )
-            self.session.commit()
+        SBDB spkid → Horizons naif_id mapping:
+          numbered asteroids:  spkid = 20_000_000 + n,  naif_id = 2_000_000 + n
+          comets:              spkid = 1_000_000 + n,   naif_id = 1_000_000 + n  (same)
+        """
+        dup = aliased(Object)
+        existing = aliased(Object)
+        naif_from_spkid = case(
+            (dup.sbdb_spkid >= 20_000_000, dup.sbdb_spkid - 18_000_000),
+            else_=dup.sbdb_spkid,
+        )
+
+        # Find (dup_id, existing_id, sbdb_spkid) for SBDB objects matching Horizons
+        pairs = (
+            self.session.query(dup.id, existing.id, dup.sbdb_spkid)
+            .select_from(dup)
+            .join(
+                existing,
+                and_(
+                    existing.horizons_naif_id.isnot(None),
+                    existing.horizons_naif_id == naif_from_spkid,
+                ),
+            )
+            .filter(dup.orbital_source == OrbitalSource.sbdb.value)
+            .all()
+        )
+
+        if not pairs:
+            logger.info("No SBDB/Horizons matches to reconcile")
+            return
+
+        # Repoint SBDB rows to the existing Horizons objects
+        for dup_id, existing_id, _ in pairs:
+            self.session.execute(
+                update(SBDBRow)
+                .where(SBDBRow.object_id == dup_id)
+                .values(object_id=existing_id)
+            )
+
+        # Delete duplicate SBDB-created Object rows (frees unique sbdb_spkid)
+        dup_ids = [p[0] for p in pairs]
+        self.session.execute(delete(Object).where(Object.id.in_(dup_ids)))
+
+        # Set sbdb_spkid on the kept Horizons objects
+        for _, existing_id, spkid in pairs:
+            self.session.execute(
+                update(Object).where(Object.id == existing_id).values(sbdb_spkid=spkid)
+            )
+
+        self.session.commit()
+        logger.info("Reconciled %d SBDB bodies with Horizons", len(pairs))
 
     def run(self) -> None:
         chunks = self._find_chunks()
         if not chunks:
             return
-
-        self._load_naif_lookup()
 
         # Build sub-chunk work items: (file, skip_rows, max_rows)
         work_items: list[tuple[Path, int, int]] = []
@@ -431,24 +408,17 @@ class SBDBIngestor:
         )
 
         with multiprocessing.Pool() as pool:
-            for rows in pool.imap_unordered(_parse_chunk_star, work_items):
-                (matched_sbdb, matched_updates), (new_bodies, new_sbdb) = (
-                    self._split_rows(rows)
-                )
-                self._insert_new(new_bodies, new_sbdb)
-                self._insert_matched(matched_sbdb, matched_updates)
-
+            results = pool.imap_unordered(_parse_chunk_star, work_items)
+            for rows in tqdm(results, total=len(work_items), desc="SBDB ingest"):
+                self._insert(rows)
                 self.total_rows += len(rows)
-                self.total_matched += len(matched_updates)
 
                 if self.limit and self.total_rows >= self.limit:
                     break
 
-        logger.info(
-            "Ingested %d SBDB bodies (%d cross-matched with Horizons)",
-            self.total_rows,
-            self.total_matched,
-        )
+        self._reconcile()
+
+        logger.info("Ingested %d SBDB bodies", self.total_rows)
 
 
 def ingest(session: Session, download_dir: Path, *, limit: int | None = None) -> None:
