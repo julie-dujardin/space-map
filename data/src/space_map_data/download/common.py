@@ -10,6 +10,8 @@ from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader
+from space_map_data.download.providers.wikidata import WikidataDownloader
+from space_map_data.download.providers.wikipedia import WikipediaDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,8 @@ SOURCES: dict[str, tuple[type[Downloader], str]] = {
     "celestrak": (CelesTrakDownloader, "celes-trak"),
     "sbdb": (SBDBDownloader, "sbdb"),
     "horizons": (HorizonsDownloader, "horizons"),
+    "wikidata": (WikidataDownloader, "wikidata"),
+    "wikipedia": (WikipediaDownloader, "wikipedia"),
 }
 
 
