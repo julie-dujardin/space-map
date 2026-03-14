@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 
-from space_map_data.models import ObjectType
+from space_map_data.models import ObjectType, DWARF_PLANETS
 from space_map_data.utils.convert import date_to_julian
 from tqdm import tqdm
 
@@ -28,19 +28,10 @@ _BASE_PARAMS = {
 DROP_PREFIX = ("(primary body)", "(spacecraft)", "(Spacecraft)", "(system barycenter)")
 
 
-# IAU-recognized dwarf planets by asteroid catalog number
-_DWARF_PLANET_CATALOG_NUMBERS: set[int] = {
-    1,  # Ceres
-    136108,  # Haumea
-    136199,  # Eris
-    136472,  # Makemake
-}
-
-
 # To retrieve the orbital elements, we need to determnine the barycenter, which requires some classification
 # So we do this step here, not in ingest.
 def _classify_object(
-    naif_id: int, name: str, extra: str | None
+    naif_id: int, name: str, name_pretty: str, extra: str | None
 ) -> tuple[ObjectType, int]:
     """Classify a body by its NAIF ID and name.
 
@@ -92,8 +83,7 @@ def _classify_object(
     if 1_000_000 <= naif_id < 2_000_000:
         return ObjectType.comet, 0
     if 2_000_000 <= naif_id < 10_000_000:
-        catalog_num = naif_id - 2_000_000
-        if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
+        if name_pretty.lower() in DWARF_PLANETS:
             return ObjectType.dwarf_planet, 0
         return ObjectType.asteroid, 0
     if naif_id >= 100_000_000:
@@ -101,8 +91,7 @@ def _classify_object(
         barycenter_id = naif_id % 100_000_000
         if naif_id >= 900_000_000:
             # Primary body in binary system
-            catalog_num = barycenter_id - 20_000_000
-            if catalog_num in _DWARF_PLANET_CATALOG_NUMBERS:
+            if name_pretty.lower() in DWARF_PLANETS:
                 return ObjectType.dwarf_planet, barycenter_id
             return ObjectType.asteroid, barycenter_id
         # Satellite
@@ -197,15 +186,19 @@ class HorizonsDownloader(Downloader):
             name = line[name_sl].strip()
             designation = line[designation_sl].strip() or None
             extra = line[extra_start:].strip() or None
-            body_type, parent_id = _classify_object(naif_id, name, extra)
 
+            name_pretty = name
             for suffix in DROP_PREFIX:
-                name = name.removesuffix(suffix).strip()
+                name_pretty = name_pretty.removesuffix(suffix).strip()
+            body_type, parent_id = _classify_object(naif_id, name, name_pretty, extra)
+
             # Drop unterminated parenthesis from column overflow
             # e.g. "Hubble Space Telescope (spacecraft" -> "Hubble Space Telescope"
-            name = re.sub(r"\s*\([^)]*$", "", name)
+            name_pretty = re.sub(r"\s*\([^)]*$", "", name_pretty)
             bodies.append(
-                MajorBody(name, naif_id, parent_id, body_type, designation, extra)
+                MajorBody(
+                    name_pretty, naif_id, parent_id, body_type, designation, extra
+                )
             )
 
         return bodies
