@@ -47,7 +47,7 @@ def _classify_object(
         10000–99999     extended moon IDs (PXNNN), parent = barycenter P
         1000000–        comets (1M + periodic number)
         2000000–        asteroids (2M + catalog number)
-        20000000–       asteroid system barycenters (20M + catalog number)
+        20000000–       asteroid system barycenters OR asteroids (20M + catalog number)
         100000000–      satellite in binary system (1 + barycenter ID)
         900000000–      primary in binary system (9 + barycenter ID)
     """
@@ -148,11 +148,7 @@ class HorizonsDownloader(Downloader):
         return text
 
     def _fetch_body_list(self) -> list[MajorBody]:
-        """Return all major bodies, sorted by type then NAIF ID.
-
-        Center/parent relationships are computed after sorting so that
-        barycenters are registered before their children are processed.
-        """
+        """Return all major bodies"""
         text = self._fetch_horizons_bodies()
 
         # Find column boundaries from the dashed header line
