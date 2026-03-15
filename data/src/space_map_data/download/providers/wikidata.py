@@ -21,6 +21,7 @@ API_URL = "https://www.wikidata.org/w/api.php"
 
 SPARQL_BATCH_SIZE = 1000
 ENTITY_BATCH_SIZE = 50
+AFTER_RQUEST_DELAY_SECONDS = 2  # pls don't ban me
 
 # Satellite constellations to exclude (individual constellation members
 # don't have meaningful Wikidata entries).
@@ -60,17 +61,9 @@ class WikidataDownloader(Downloader):
             raise FileNotFoundError(
                 f"Database not found at {db_path} — run ingest first"
             )
+        self.engine = create_engine(f"sqlite:///{db_path}")
 
-        self._engine = create_engine(f"sqlite:///{db_path}")
-        try:
-            id_map = self._resolve_all()
-        finally:
-            self._engine.dispose()
-
-        # Save mapping for future ingest step
-        map_file = self.out_dir / "id_map.json"
-        map_file.write_text(json.dumps(id_map, indent=2))
-        logger.info("ID mapping saved -> id_map.json")
+        id_map = self._load_or_resolve_id_map()
 
         # Collect all unique QIDs and fetch entities into entities/ subdir
         all_qids = sorted({qid for group in id_map.values() for qid in group.values()})
@@ -82,6 +75,22 @@ class WikidataDownloader(Downloader):
             API_URL, len(all_qids), complete=limit is None or len(all_qids) <= limit
         )
 
+    def _load_or_resolve_id_map(self) -> dict[str, dict[str, str]]:
+        """Load cached id_map.json if it exists, otherwise resolve and save."""
+        map_file = self.out_dir / "id_map.json"
+        if map_file.exists():
+            logger.info("Loading cached ID mapping from id_map.json")
+            return json.loads(map_file.read_text())
+
+        try:
+            id_map = self._resolve_all()
+        finally:
+            self.engine.dispose()
+
+        map_file.write_text(json.dumps(id_map, indent=2))
+        logger.info("ID mapping saved -> id_map.json")
+        return id_map
+
     def _resolve_all(self) -> dict[str, dict[str, str]]:
         """Resolve all ID groups against Wikidata, querying DB in batches."""
         id_map: dict[str, dict[str, str]] = {}
@@ -91,12 +100,12 @@ class WikidataDownloader(Downloader):
             mapping: dict[str, str] = {}
             total = 0
 
-            with Session(self._engine) as session:
+            with Session(self.engine) as session:
                 count = query_method(session, count_only=True)
 
             desc = f"SPARQL {prop} ({label})"
             with tqdm(total=count, desc=desc, unit="id") as pbar:
-                with Session(self._engine) as session:
+                with Session(self.engine) as session:
                     for batch in query_method(session):
                         total += len(batch)
                         resolved = self._sparql_resolve(prop, batch)
@@ -212,7 +221,7 @@ class WikidataDownloader(Downloader):
                 time.sleep(wait)
                 continue
             response.raise_for_status()
-            time.sleep(1)  # polite rate limiting
+            time.sleep(AFTER_RQUEST_DELAY_SECONDS)
             return response.json()["results"]["bindings"]
 
         raise RuntimeError("SPARQL rate limited after retries")
@@ -262,4 +271,4 @@ class WikidataDownloader(Downloader):
                 out_file = entities_dir / f"{qid}.json"
                 out_file.write_text(json.dumps(entity, ensure_ascii=False, indent=2))
 
-            time.sleep(0.5)
+            time.sleep(AFTER_RQUEST_DELAY_SECONDS)
