@@ -278,7 +278,7 @@ class SBDB(Base):
     epoch_mjd: Mapped[float | None] = mapped_column(
         default=None
     )  # epoch of osculation [MJD, TDB]
-    epoch_cal: Mapped[datetime.datetime | None] = mapped_column(
+    epoch_cal: Mapped[str | None] = mapped_column(
         default=None
     )  # epoch of osculation [calendar, TDB]
     equinox: Mapped[str | None] = mapped_column(
@@ -302,7 +302,7 @@ class SBDB(Base):
     tp: Mapped[float | None] = mapped_column(
         default=None
     )  # time of perihelion passage [JD, TDB]
-    tp_cal: Mapped[datetime.datetime | None] = mapped_column(
+    tp_cal: Mapped[str | None] = mapped_column(
         default=None
     )  # time of perihelion passage [calendar, TDB]
     per: Mapped[float | None] = mapped_column(
@@ -356,9 +356,9 @@ class SBDB(Base):
     first_obs: Mapped[str | None] = mapped_column(
         default=None
     )  # date of first observation used in fit [UT] — YYYY-MM-DD or YYYY if partial
-    last_obs: Mapped[datetime.date | None] = mapped_column(
+    last_obs: Mapped[str | None] = mapped_column(
         default=None
-    )  # date of last observation used in fit [UT]
+    )  # date of last observation used in fit [UT] — YYYY-MM-DD or YYYY if partial
     n_obs_used: Mapped[int | None] = mapped_column(
         default=None
     )  # total observations used in fit

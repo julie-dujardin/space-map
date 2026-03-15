@@ -38,12 +38,24 @@ def int_or_none(val: str) -> int | None:
 
 
 def normalize_partial_date(val: str) -> str | None:
-    """Normalize a possibly-partial date: 'YYYY-MM-DD' stays as-is, 'YYYY-??-??' becomes 'YYYY'."""
+    """Normalize a possibly-partial date: 'YYYY-MM-DD' stays as-is, 'YYYY-??-??' becomes 'YYYY'. Handle BCE dates."""
     if not val or not val.strip():
         return None
     val = val.strip()
+
+    # Handle BCE dates
+    if val.startswith("-"):
+        bce = True
+        val = val[1:]
+    else:
+        bce = False
+
+    # Handle years
     if "?" in val:
-        return val.split("-")[0]
+        val = val.split("-")[0]
+
+    if bce:
+        val = "-" + val
     return val
 
 
