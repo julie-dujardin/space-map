@@ -11,7 +11,7 @@
       "args": ["--sources", "${input:sources}", "--limit", "${input:limit}"]
     },
     {
-      "name": "Aggregate data",
+      "name": "Ingest data",
       "type": "debugpy",
       "request": "launch",
       "module": "space_map_data.ingest",
