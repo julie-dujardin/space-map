@@ -189,4 +189,4 @@ class WikipediaDownloader(Downloader):
                 continue
 
             out_file = out_dir / f"{qid}.json"
-            out_file.write_text(json.dumps(page, ensure_ascii=False))
+            out_file.write_text(json.dumps(page, ensure_ascii=False, indent=2))
