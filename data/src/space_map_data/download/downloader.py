@@ -10,9 +10,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parents[3]
-DOWNLOAD_DIR = DATA_DIR / "downloads"
-
 
 class Downloader(ABC):
     """Base class for all data source downloaders."""

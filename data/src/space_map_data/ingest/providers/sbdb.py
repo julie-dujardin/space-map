@@ -11,7 +11,7 @@ from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from space_map_data.models import (
+from space_map_data.models.body import (
     DWARF_PLANETS,
     Object,
     ObjectType,

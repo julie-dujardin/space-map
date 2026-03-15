@@ -8,7 +8,12 @@ from sqlalchemy import insert
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from space_map_data.models import Object, Frame, Horizons as HorizonsRow, OrbitalSource
+from space_map_data.models.body import (
+    Object,
+    Frame,
+    Horizons as HorizonsRow,
+    OrbitalSource,
+)
 from space_map_data.ingest.convert import float_or_none, int_or_none
 
 logger = logging.getLogger(__name__)
