@@ -6,12 +6,11 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 from tqdm import tqdm
 
 from space_map_data.download.downloader import Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.db import get_session
 from space_map_data.models.body import Object, SBDB
 
 logger = logging.getLogger(__name__)
@@ -56,13 +55,7 @@ class WikidataDownloader(Downloader):
     name = "wikidata"
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        db_path = DOWNLOAD_DIR / "space-map.db"
-        if not db_path.exists():
-            raise FileNotFoundError(
-                f"Database not found at {db_path} — run ingest first"
-            )
-        self.engine = create_engine(f"sqlite:///{db_path}")
-
+        self.session = get_session()
         id_map = self._load_or_resolve_id_map()
 
         # Collect all unique QIDs and fetch entities into entities/ subdir
@@ -82,10 +75,7 @@ class WikidataDownloader(Downloader):
             logger.info("Loading cached ID mapping from id_map.json")
             return json.loads(map_file.read_text())
 
-        try:
-            id_map = self._resolve_all()
-        finally:
-            self.engine.dispose()
+        id_map = self._resolve_all()
 
         map_file.write_text(json.dumps(id_map, indent=2))
         logger.info("ID mapping saved -> id_map.json")
@@ -100,17 +90,15 @@ class WikidataDownloader(Downloader):
             mapping: dict[str, str] = {}
             total = 0
 
-            with Session(self.engine) as session:
-                count = query_method(session, count_only=True)
+            count = query_method(count_only=True)
 
             desc = f"SPARQL {prop} ({label})"
             with tqdm(total=count, desc=desc, unit="id") as pbar:
-                with Session(self.engine) as session:
-                    for batch in query_method(session):
-                        total += len(batch)
-                        resolved = self._sparql_resolve(prop, batch)
-                        mapping.update(resolved)
-                        pbar.update(len(batch))
+                for batch in query_method():
+                    total += len(batch)
+                    resolved = self._sparql_resolve(prop, batch)
+                    mapping.update(resolved)
+                    pbar.update(len(batch))
 
             id_map[prop] = mapping
             logger.info("  %s: %d / %d resolved", prop, len(mapping), total)
@@ -119,21 +107,20 @@ class WikidataDownloader(Downloader):
 
     # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
 
-    def _query_naif_ids(
-        self, session: Session, *, count_only: bool = False
-    ) -> int | Iterator[list[str]]:
+    def _query_naif_ids(self, *, count_only: bool = False) -> int | Iterator[list[str]]:
         """NAIF IDs for natural bodies → P2956."""
         stmt = select(Object.horizons_naif_id).where(
             Object.horizons_naif_id.is_not(None)
         )
         if count_only:
             return (
-                session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
             )
-        return self._batched_scalars(session, stmt, str)
+        return self._batched_scalars(stmt, str)
 
     def _query_small_body_spkids(
-        self, session: Session, *, count_only: bool = False
+        self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """SPK-IDs for named small bodies → P716."""
         stmt = select(SBDB.spkid).where(
@@ -141,12 +128,13 @@ class WikidataDownloader(Downloader):
         )
         if count_only:
             return (
-                session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
             )
-        return self._batched_scalars(session, stmt, str)
+        return self._batched_scalars(stmt, str)
 
     def _query_norad_ids(
-        self, session: Session, *, count_only: bool = False
+        self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """NORAD catalog numbers for non-constellation satellites → P377."""
         stmt = select(Object.celestrak_norad_cat_id, Object.name).where(
@@ -155,12 +143,13 @@ class WikidataDownloader(Downloader):
         if count_only:
             # Approximate — includes constellations, but close enough for progress
             return (
-                session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
             )
 
         def _generate() -> Iterator[list[str]]:
             batch: list[str] = []
-            for norad_id, name in session.execute(stmt):
+            for norad_id, name in self.session.execute(stmt):
                 if name and any(
                     name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
                 ):
@@ -174,12 +163,10 @@ class WikidataDownloader(Downloader):
 
         return _generate()
 
-    def _batched_scalars(
-        self, session: Session, stmt, convert=None
-    ) -> Iterator[list[str]]:
+    def _batched_scalars(self, stmt, convert=None) -> Iterator[list[str]]:
         """Yield batches of scalar results from a query."""
         batch: list[str] = []
-        for value in session.scalars(stmt):
+        for value in self.session.scalars(stmt):
             batch.append(convert(value) if convert else value)
             if len(batch) >= SPARQL_BATCH_SIZE:
                 yield batch

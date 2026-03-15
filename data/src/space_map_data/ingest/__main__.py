@@ -6,6 +6,7 @@ import logging.config
 import tomllib
 
 from space_map_data.utils.paths import DATA_DIR, DOWNLOAD_DIR
+from space_map_data.utils.db import session_scope
 from space_map_data.ingest.common import ingest
 
 
@@ -23,7 +24,8 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
-    ingest(DOWNLOAD_DIR, limit=args.limit)
+    with session_scope(create_db=True):
+        ingest(DOWNLOAD_DIR, limit=args.limit)
 
 
 if __name__ == "__main__":

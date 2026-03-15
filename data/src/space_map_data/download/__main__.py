@@ -6,6 +6,7 @@ import logging.config
 import tomllib
 
 from space_map_data.download.common import SOURCES, download
+from space_map_data.utils.db import session_scope
 from space_map_data.utils.paths import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ def cli():
         logging.config.dictConfig(tomllib.load(f))
 
     sources = None if "all" in args.sources else args.sources
-    download(sources=sources, limit=args.limit, force=args.force)
+    with session_scope():
+        download(sources=sources, limit=args.limit, force=args.force)
     logger.info("Done.")
 
 

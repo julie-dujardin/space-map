@@ -5,7 +5,6 @@ import logging
 from pathlib import Path
 
 from sqlalchemy import insert
-from sqlalchemy.orm import Session
 from tqdm import tqdm
 
 from space_map_data.models.body import (
@@ -21,6 +20,7 @@ from space_map_data.ingest.convert import (
     int_or_none,
 )
 from space_map_data.utils.convert import date_to_julian
+from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,8 @@ logger = logging.getLogger(__name__)
 class CelesTrakIngestor:
     BATCH = 10_000
 
-    def __init__(
-        self, session: Session, download_dir: Path, *, limit: int | None = None
-    ):
-        self.session = session
+    def __init__(self, download_dir: Path, *, limit: int | None = None):
+        self.session = get_session()
         self.limit = limit
         self.csv_path = download_dir / "celes-trak" / "gp-active.csv"
         self.total_rows = 0
@@ -120,5 +118,5 @@ def _count_csv_rows(path: Path) -> int:
         return sum(1 for _ in f) - 1
 
 
-def ingest(session: Session, download_dir: Path, *, limit: int | None = None) -> None:
-    CelesTrakIngestor(session, download_dir, limit=limit).run()
+def ingest(download_dir: Path, *, limit: int | None = None) -> None:
+    CelesTrakIngestor(download_dir, limit=limit).run()

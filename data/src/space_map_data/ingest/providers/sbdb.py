@@ -8,7 +8,6 @@ from pathlib import Path
 
 from sqlalchemy import and_, case, delete, insert, or_, update
 from sqlalchemy.orm import aliased
-from sqlalchemy.orm import Session
 from tqdm import tqdm
 
 from space_map_data.models.body import (
@@ -24,6 +23,7 @@ from space_map_data.ingest.convert import (
     int_or_none,
     normalize_partial_date,
 )
+from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -308,10 +308,8 @@ def _count_csv_rows(path: Path) -> int:
 class SBDBIngestor:
     BATCH = 50_000
 
-    def __init__(
-        self, session: Session, download_dir: Path, *, limit: int | None = None
-    ):
-        self.session = session
+    def __init__(self, download_dir: Path, *, limit: int | None = None):
+        self.session = get_session()
         self.limit = limit
         self.sbdb_dir = download_dir / "sbdb"
         self.total_rows = 0
@@ -440,5 +438,5 @@ class SBDBIngestor:
         logger.info("Ingested %d SBDB bodies", self.total_rows)
 
 
-def ingest(session: Session, download_dir: Path, *, limit: int | None = None) -> None:
-    SBDBIngestor(session, download_dir, limit=limit).run()
+def ingest(download_dir: Path, *, limit: int | None = None) -> None:
+    SBDBIngestor(download_dir, limit=limit).run()

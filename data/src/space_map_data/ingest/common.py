@@ -1,20 +1,20 @@
 """Ingest downloaded CSV sources into a unified SQLite database."""
 
 import logging
-import shutil
 from pathlib import Path
 
-from sqlalchemy import create_engine, func, text, update
-from sqlalchemy.orm import Session
+from sqlalchemy import func, update
 
-from space_map_data.models.body import Base, Object, SBDB
+from space_map_data.models.body import Object, SBDB
 from space_map_data.ingest.providers import celestrak, horizons, sbdb
+from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
 
-def _post_process(session: Session) -> None:
+def _post_process() -> None:
     """Fill in missing names from SBDB source data and log summary."""
+    session = get_session()
     # Objects ingested from SBDB with no IAU name — use full_name or pdes
     sbdb_name = (
         session.query(
@@ -58,28 +58,9 @@ def ingest(
     limit: int | None = None,
 ) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
-    db_path = download_dir / "db"
-    logger.info("Building database at %s", db_path)
+    horizons.ingest(download_dir, limit=limit)
+    sbdb.ingest(download_dir, limit=limit)
+    celestrak.ingest(download_dir, limit=limit)
+    _post_process()
 
-    if db_path.exists():
-        shutil.rmtree(db_path)
-    db_path.mkdir(parents=True, exist_ok=True)
-
-    db_file = db_path / "space-map.db"
-    engine = create_engine(f"sqlite:///{db_file}", echo=False)
-
-    with engine.connect() as conn:
-        conn.execute(text("PRAGMA journal_mode=WAL"))
-        conn.execute(text("PRAGMA synchronous=NORMAL"))
-        conn.commit()
-
-    Base.metadata.create_all(engine)
-
-    with Session(engine) as session:
-        horizons.ingest(session, download_dir, limit=limit)
-        sbdb.ingest(session, download_dir, limit=limit)
-        celestrak.ingest(session, download_dir, limit=limit)
-        _post_process(session)
-
-    engine.dispose()
-    logger.info("Database ready: %s", db_file)
+    logger.info("Database ready.")
