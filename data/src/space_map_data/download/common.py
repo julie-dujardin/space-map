@@ -1,11 +1,13 @@
 """Download orchestration — source registry and main download loop."""
 
 import logging
+import tomllib
 from datetime import date
+from typing import Any
 
 import httpx
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
@@ -15,7 +17,6 @@ from space_map_data.download.providers.wikipedia import WikipediaDownloader
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "space-map/0.1 (github personal project)"
 
 SOURCES: dict[str, tuple[type[Downloader], str]] = {
     "celestrak": (CelesTrakDownloader, "celes-trak"),
@@ -24,6 +25,14 @@ SOURCES: dict[str, tuple[type[Downloader], str]] = {
     "wikidata": (WikidataDownloader, "wikidata"),
     "wikipedia": (WikipediaDownloader, "wikipedia"),
 }
+
+
+def load_config() -> dict[str, Any]:
+    """Load download configuration from config.toml."""
+    if not CONFIG_FILE.exists():
+        raise FileNotFoundError(f"Config file not found at {CONFIG_FILE}")
+    with CONFIG_FILE.open("rb") as f:
+        return tomllib.load(f)
 
 
 def download(
@@ -37,8 +46,11 @@ def download(
     DOWNLOAD_DIR.mkdir(exist_ok=True)
     selected = list(SOURCES.keys()) if sources is None else sources
 
+    config = load_config()
+    user_agent = config["download"]["user_agent"]
+
     with httpx.Client(
-        headers={"User-Agent": USER_AGENT},
+        headers={"User-Agent": user_agent},
         follow_redirects=True,
         timeout=60.0,
     ) as client:

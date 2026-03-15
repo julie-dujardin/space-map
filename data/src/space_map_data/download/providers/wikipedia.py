@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
+from httpx import Response
 from tqdm import tqdm
 
 from space_map_data.download.downloader import Downloader
@@ -13,6 +14,8 @@ from space_map_data.download.downloader import Downloader
 logger = logging.getLogger(__name__)
 
 LANGUAGES = ("en", "fr", "ja", "zh", "ar", "ru")
+
+AFTER_RQUEST_DELAY_SECONDS = 1
 
 
 class WikipediaDownloader(Downloader):
@@ -66,6 +69,18 @@ class WikipediaDownloader(Downloader):
         )
         return tasks
 
+    def _get_page(self, url: str) -> Response:
+        """Fetch a Wikipedia page, with retry on 429 Too Many Requests."""
+        while True:
+            response = self.client.get(url, timeout=30.0)
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("retry-after", 60))
+                logger.warning("Wikipedia 429 — sleeping %ds", retry_after)
+                time.sleep(retry_after)
+            else:
+                return response
+
     def _fetch_summaries(
         self, tasks: list[tuple[str, str, str]], *, limit: int | None
     ) -> None:
@@ -93,18 +108,13 @@ class WikipediaDownloader(Downloader):
             url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(title, safe='')}"
 
             try:
-                response = self.client.get(url, timeout=30.0)
+                response = self._get_page(url)
             except Exception:
                 logger.warning("Failed to fetch %s/%s (%s)", lang, qid, title)
                 continue
 
             if response.status_code == 404:
                 logger.debug("No article: %s/%s (%s)", lang, qid, title)
-                continue
-
-            if response.status_code == 429:
-                logger.warning("Wikipedia 429 — sleeping 5s")
-                time.sleep(5)
                 continue
 
             response.raise_for_status()
@@ -114,4 +124,4 @@ class WikipediaDownloader(Downloader):
             out_file = out_dir / f"{qid}.json"
             out_file.write_bytes(response.content)
 
-            time.sleep(0.05)
+            time.sleep(AFTER_RQUEST_DELAY_SECONDS)

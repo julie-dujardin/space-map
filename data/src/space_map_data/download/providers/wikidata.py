@@ -22,8 +22,8 @@ SPARQL_BATCH_SIZE = 1000
 ENTITY_BATCH_SIZE = 50
 AFTER_RQUEST_DELAY_SECONDS = 2  # pls don't ban me
 
-# Satellite constellations to exclude (individual constellation members
-# don't have meaningful Wikidata entries).
+# Satellite constellations to exclude
+# individual constellation members don't have meaningful Wikidata entries.
 CONSTELLATION_PREFIXES = (
     "STARLINK",
     "ONEWEB",
