@@ -18,7 +18,14 @@ from space_map_data.models.body import (
     OrbitalSource,
     SBDB as SBDBRow,
 )
-from space_map_data.ingest.convert import bool_or_none, float_or_none, int_or_none
+from space_map_data.ingest.convert import (
+    bool_or_none,
+    date_or_none,
+    datetime_or_none,
+    float_or_none,
+    int_or_none,
+    normalize_partial_date,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +221,9 @@ _FLOAT_COLS = {
 }
 _INT_COLS = {"sats", "data_arc", "n_obs_used", "n_del_obs_used", "n_dop_obs_used"}
 _BOOL_COLS = {"neo", "pha", "two_body"}
+_PARTIAL_DATE_COLS = {"first_obs"}  # input can be YYYY-MM-DD or YYYY-??-??
+_DATE_COLS = {"last_obs"}  # input is always YYYY-MM-DD
+_DATETIME_COLS = {"epoch_cal", "tp_cal"}
 
 
 def _sbdb_dict(row: dict[str, str]) -> dict:
@@ -227,8 +237,14 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
             d[col] = int_or_none(raw)
         elif col in _BOOL_COLS:
             d[col] = bool_or_none(raw)
+        elif col in _PARTIAL_DATE_COLS:
+            d[col] = normalize_partial_date(raw)
+        elif col in _DATE_COLS:
+            d[col] = date_or_none(raw)
+        elif col in _DATETIME_COLS:
+            d[col] = datetime_or_none(raw)
         else:
-            d[col] = raw
+            d[col] = raw or None  # treat empty strings as None
     d["class_"] = row.get("class", "")
     return d
 

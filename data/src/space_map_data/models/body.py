@@ -49,8 +49,10 @@ class ObjectType(StrEnum):
 
 
 class Frame(StrEnum):
-    heliocentric = "heliocentric"
-    geocentric = "geocentric"
+    geocentric = "geocentric"  # Orbits the earth (data provided by celestrak)
+    heliocentric = (
+        "heliocentric"  # Orbits another body (data provided by horizons or SBDB)
+    )
 
 
 class OrbitalSource(StrEnum):
@@ -276,7 +278,7 @@ class SBDB(Base):
     epoch_mjd: Mapped[float | None] = mapped_column(
         default=None
     )  # epoch of osculation [MJD, TDB]
-    epoch_cal: Mapped[str | None] = mapped_column(
+    epoch_cal: Mapped[datetime.datetime | None] = mapped_column(
         default=None
     )  # epoch of osculation [calendar, TDB]
     equinox: Mapped[str | None] = mapped_column(
@@ -300,7 +302,7 @@ class SBDB(Base):
     tp: Mapped[float | None] = mapped_column(
         default=None
     )  # time of perihelion passage [JD, TDB]
-    tp_cal: Mapped[str | None] = mapped_column(
+    tp_cal: Mapped[datetime.datetime | None] = mapped_column(
         default=None
     )  # time of perihelion passage [calendar, TDB]
     per: Mapped[float | None] = mapped_column(
@@ -353,8 +355,8 @@ class SBDB(Base):
     data_arc: Mapped[int | None] = mapped_column(default=None)  # data-arc span [d]
     first_obs: Mapped[str | None] = mapped_column(
         default=None
-    )  # date of first observation used in fit [UT]
-    last_obs: Mapped[str | None] = mapped_column(
+    )  # date of first observation used in fit [UT] — YYYY-MM-DD or YYYY if partial
+    last_obs: Mapped[datetime.date | None] = mapped_column(
         default=None
     )  # date of last observation used in fit [UT]
     n_obs_used: Mapped[int | None] = mapped_column(

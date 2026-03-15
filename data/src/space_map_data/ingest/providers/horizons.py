@@ -32,7 +32,6 @@ class HorizonsIngestor:
 
     def _parse_row(self, row: dict) -> dict:
         parent = int_or_none(row["parent_naif_id"])
-        frame = Frame.heliocentric if parent == 0 else Frame.geocentric
 
         obj = dict(
             name=row["name"].strip() or None,
@@ -46,7 +45,7 @@ class HorizonsIngestor:
             w=float_or_none(row["W"]),
             ma=float_or_none(row["MA"]),
             n=float_or_none(row["N"]),
-            frame=frame,
+            frame=Frame.heliocentric,
             parent_naif_id=parent,
             orbital_source=OrbitalSource.horizons,
         )

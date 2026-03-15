@@ -1,5 +1,9 @@
-"""CSV value conversion helpers."""
+"""CSV value conversion helpers.
 
+Raise errors for invalid values, and convert empty/whitespace-only strings to None.
+"""
+
+import datetime
 import math
 
 GM_EARTH = 398600.4418  # km^3/s^2
@@ -31,6 +35,39 @@ def int_or_none(val: str) -> int | None:
     if not val or not val.strip():
         return None
     return int(val)
+
+
+def normalize_partial_date(val: str) -> str | None:
+    """Normalize a possibly-partial date: 'YYYY-MM-DD' stays as-is, 'YYYY-??-??' becomes 'YYYY'."""
+    if not val or not val.strip():
+        return None
+    val = val.strip()
+    if "?" in val:
+        return val.split("-")[0]
+    return val
+
+
+def date_or_none(val: str) -> datetime.date | None:
+    """Convert 'YYYY-MM-DD' to date."""
+    if not val or not val.strip():
+        return None
+    return datetime.date.fromisoformat(val.strip())
+
+
+def datetime_or_none(val: str) -> datetime.datetime | None:
+    """Convert 'YYYY-MM-DD.DDDDDDD' (fractional day) to datetime (epoch_cal/tp_cal)."""
+    if not val or not val.strip():
+        return None
+    val = val.strip()
+    date_str, _, frac_str = val.partition(".")
+    d = datetime.date.fromisoformat(date_str)
+    if frac_str:
+        frac_day = float("0." + frac_str)
+        seconds = frac_day * 86400
+        td = datetime.timedelta(seconds=seconds)
+    else:
+        td = datetime.timedelta()
+    return datetime.datetime(d.year, d.month, d.day) + td
 
 
 def mean_motion_to_a_km(mean_motion_rev_per_day: float) -> float:
