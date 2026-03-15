@@ -104,8 +104,8 @@ def _classify_object(
         return ObjectType.debris, 0
 
     if 20_000_000 <= naif_id < 100_000_000:
-        # 20152830...: no idea
-        return ObjectType.undocumented, 0
+        # 20152830...: asteroids
+        return ObjectType.asteroid, 0
 
     raise ValueError(
         f"Could not classify body with NAIF ID {naif_id} and name '{name}'"
