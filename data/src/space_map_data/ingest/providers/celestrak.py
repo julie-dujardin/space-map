@@ -8,7 +8,7 @@ from sqlalchemy import insert
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from space_map_data.models import (
+from space_map_data.models.body import (
     Object,
     ObjectType,
     CelesTrak as CelesTrakRow,

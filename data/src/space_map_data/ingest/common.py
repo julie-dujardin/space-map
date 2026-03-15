@@ -6,13 +6,10 @@ from pathlib import Path
 from sqlalchemy import create_engine, func, text, update
 from sqlalchemy.orm import Session
 
-from space_map_data.models import Base, Object, SBDB
+from space_map_data.models.body import Base, Object, SBDB
 from space_map_data.ingest.providers import celestrak, horizons, sbdb
 
 logger = logging.getLogger(__name__)
-
-DATA_DIR = Path(__file__).resolve().parents[3]
-DOWNLOAD_DIR = DATA_DIR / "downloads"
 
 
 def _post_process(session: Session) -> None:

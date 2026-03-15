@@ -6,7 +6,7 @@ import logging.config
 import tomllib
 
 from space_map_data.download.common import SOURCES, download
-from space_map_data.download.downloader import DATA_DIR
+from space_map_data.utils.paths import DATA_DIR
 
 logger = logging.getLogger(__name__)
 

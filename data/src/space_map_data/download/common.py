@@ -5,7 +5,8 @@ from datetime import date
 
 import httpx
 
-from space_map_data.download.downloader import DOWNLOAD_DIR, Downloader
+from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader

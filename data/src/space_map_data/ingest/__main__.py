@@ -6,7 +6,8 @@ import logging.config
 import tomllib
 from pathlib import Path
 
-from space_map_data.ingest.common import DATA_DIR, DOWNLOAD_DIR, ingest
+from space_map_data.utils.paths import DATA_DIR, DOWNLOAD_DIR
+from space_map_data.ingest.common import ingest
 
 
 def cli():
