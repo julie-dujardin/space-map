@@ -1,6 +1,7 @@
 """Ingest downloaded CSV sources into a unified SQLite database."""
 
 import logging
+import shutil
 from pathlib import Path
 
 from sqlalchemy import create_engine, func, text, update
@@ -52,16 +53,20 @@ def _post_process(session: Session) -> None:
 
 
 def ingest(
-    db_path: Path,
     download_dir: Path,
     *,
     limit: int | None = None,
 ) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
+    db_path = download_dir / "db"
     logger.info("Building database at %s", db_path)
-    db_path.unlink(missing_ok=True)
 
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+    if db_path.exists():
+        shutil.rmtree(db_path)
+    db_path.mkdir(parents=True, exist_ok=True)
+
+    db_file = db_path / "space-map.db"
+    engine = create_engine(f"sqlite:///{db_file}", echo=False)
 
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
@@ -77,4 +82,4 @@ def ingest(
         _post_process(session)
 
     engine.dispose()
-    logger.info("Database ready: %s", db_path)
+    logger.info("Database ready: %s", db_file)
