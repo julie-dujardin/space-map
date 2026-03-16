@@ -6,8 +6,8 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from sqlalchemy import and_, case, delete, insert, or_, update
-from sqlalchemy.orm import aliased
+from space_map_data.constants.providers import ID_TYPES
+from sqlalchemy import insert
 from tqdm import tqdm
 
 from space_map_data.models.body import (
@@ -22,12 +22,13 @@ from space_map_data.ingest.convert import (
     float_or_none,
     int_or_none,
     normalize_partial_date,
+    string_or_none,
 )
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
-SUB_CHUNK = 10_000
+SUB_CHUNK_SIZE = 10_000
 
 # All SBDB CSV column names, in the order they appear in the ORM model.
 _SBDB_COLUMNS = [
@@ -145,11 +146,11 @@ SBDB_CLASS_MAP: dict[str, ObjectType] = {
 
 
 def _object_type(row: dict[str, str]) -> ObjectType:
-    cls = row.get("class", "").strip()
-    prefix = row.get("prefix", "").strip()
-    name = row.get("name", "").strip()
+    cls = string_or_none(row["class"])
+    prefix = string_or_none(row["prefix"])
+    name = string_or_none(row["name"])
 
-    if name.lower() in DWARF_PLANETS:
+    if name and name.lower() in DWARF_PLANETS:
         return ObjectType.dwarf_planet
 
     if cls in SBDB_CLASS_MAP:
@@ -237,7 +238,7 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
         elif col in _PARTIAL_DATE_COLS:
             d[col] = normalize_partial_date(raw)
         else:
-            d[col] = raw or None  # treat empty strings as None
+            d[col] = string_or_none(raw)
     d["class_"] = row.get("class", "")
     return d
 
@@ -273,9 +274,11 @@ def _parse_chunk(
                 {
                     "sbdb": _sbdb_dict(row),
                     "object": {
-                        "name": row.get("name", "").strip() or None,
+                        "id": f"{ID_TYPES.SPKID}-{spkid}" if spkid else None,
+                        "name": string_or_none(row["name"]),
                         "object_type": object_type,
                         "sbdb_spkid": spkid,
+                        "sbdb_mcp_designation": string_or_none(row["full_name"]),
                         "epoch_jd": float_or_none(row["epoch"]),
                         "a": float_or_none(row["a"]),
                         "e": float_or_none(row["e"]),
@@ -341,70 +344,6 @@ class SBDBIngestor:
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
 
-    def _reconcile(self) -> None:
-        """Merge SBDB-created Objects with existing Horizons Objects via NAIF ID.
-
-        SBDB spkid → Horizons naif_id mapping:
-          numbered asteroids        spkid = 20_000_000 + n, naif_id = 2_000_000 + n
-          comets                    spkid = 1_000_000 + n,  naif_id = 1_000_000 + n  (same)
-          binary system primaries   spkid = 20_000_000 + n, naif_id = 920_000_000 + n  (NAIF ID = spkid -> barycenter)
-          pluto (special case)      spkid = 20_134_340,     naif_id = 999
-        """
-        dup = aliased(Object)
-        existing = aliased(Object)
-        # Regular asteroid mapping: spkid 20_000_000+n → naif_id 2_000_000+n
-        # Pluto is a special case: spkid 20134340, naif_id 999
-        naif_from_spkid = case(
-            (dup.sbdb_spkid == 20_134_340, 999),
-            (dup.sbdb_spkid >= 20_000_000, dup.sbdb_spkid - 18_000_000),
-            else_=dup.sbdb_spkid,
-        )
-        # Binary primary mapping: spkid 20_000_000+n → naif_id 920_000_000+n
-        naif_binary_primary = dup.sbdb_spkid + 900_000_000
-
-        # Find (dup_id, existing_id, sbdb_spkid) for SBDB objects matching Horizons
-        pairs = (
-            self.session.query(dup.id, existing.id, dup.sbdb_spkid)
-            .select_from(dup)
-            .join(
-                existing,
-                and_(
-                    existing.horizons_naif_id.isnot(None),
-                    or_(
-                        existing.horizons_naif_id == naif_from_spkid,
-                        existing.horizons_naif_id == naif_binary_primary,
-                    ),
-                ),
-            )
-            .filter(dup.orbital_source == OrbitalSource.sbdb.value)
-            .all()
-        )
-
-        if not pairs:
-            logger.info("No SBDB/Horizons matches to reconcile")
-            return
-
-        # Repoint SBDB rows to the existing Horizons objects
-        for dup_id, existing_id, _ in pairs:
-            self.session.execute(
-                update(SBDBRow)
-                .where(SBDBRow.object_id == dup_id)
-                .values(object_id=existing_id)
-            )
-
-        # Delete duplicate SBDB-created Object rows (frees unique sbdb_spkid)
-        dup_ids = [p[0] for p in pairs]
-        self.session.execute(delete(Object).where(Object.id.in_(dup_ids)))
-
-        # Set sbdb_spkid on the kept Horizons objects
-        for _, existing_id, spkid in pairs:
-            self.session.execute(
-                update(Object).where(Object.id == existing_id).values(sbdb_spkid=spkid)
-            )
-
-        self.session.commit()
-        logger.info("Reconciled %d SBDB bodies with Horizons", len(pairs))
-
     def run(self) -> None:
         chunks = self._find_chunks()
         if not chunks:
@@ -414,8 +353,8 @@ class SBDBIngestor:
         work_items: list[tuple[Path, int, int]] = []
         for chunk_path in chunks:
             n_rows = _count_csv_rows(chunk_path)
-            for offset in range(0, n_rows, SUB_CHUNK):
-                work_items.append((chunk_path, offset, SUB_CHUNK))
+            for offset in range(0, n_rows, SUB_CHUNK_SIZE):
+                work_items.append((chunk_path, offset, SUB_CHUNK_SIZE))
 
         logger.info(
             "Processing %d sub-chunks (%d files) across %d workers",
@@ -432,8 +371,6 @@ class SBDBIngestor:
 
                 if self.limit and self.total_rows >= self.limit:
                     break
-
-        self._reconcile()
 
         logger.info("Ingested %d SBDB bodies", self.total_rows)
 

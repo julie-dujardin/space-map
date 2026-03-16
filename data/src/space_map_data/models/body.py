@@ -68,12 +68,17 @@ class Base(DeclarativeBase):
 class Object(Base):
     __tablename__ = "objects"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(
+        primary_key=True
+    )  # <authoritative_source>:<authoritative_id> (e.g. sbdb:2000433, horizons:399, wikidata:Q2)
     name: Mapped[str | None] = mapped_column(
         default=None
     )  # best available name (IAU name, designation, or object name)
     object_type: Mapped[ObjectType] = mapped_column(String)  # ObjectType enum value
 
+    provisional_designation: Mapped[str | None] = mapped_column(
+        unique=True, default=None
+    )
     # Cross-reference IDs (nullable — an object won't have IDs in all sources)
     wikidata_qid: Mapped[str | None] = mapped_column(
         unique=True, default=None
@@ -84,9 +89,15 @@ class Object(Base):
     sbdb_spkid: Mapped[int | None] = mapped_column(
         unique=True, default=None
     )  # JPL SBDB primary SPK-ID
+    sbdb_mcp_designation: Mapped[str | None] = mapped_column(
+        unique=True, default=None
+    )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
     celestrak_norad_cat_id: Mapped[int | None] = mapped_column(
         unique=True, default=None
-    )  # NORAD catalog number
+    )  # NORAD catalog number, from CelesTrak
+    celestrak_cospar_id: Mapped[str | None] = mapped_column(
+        unique=True, default=None
+    )  # COSPAR international designator (YYYY-NNNP), from CelesTrak
 
     # Keplerian elements (osculating, from best available source)
     epoch_jd: Mapped[float | None] = mapped_column(
@@ -144,10 +155,18 @@ class Horizons(Base):
 
     __tablename__ = "horizons"
 
-    object_id: Mapped[int] = mapped_column(ForeignKey("objects.id"), primary_key=True)
+    naif_id: Mapped[int | None] = mapped_column(
+        default=None, primary_key=True
+    )  # NAIF integer ID
+    object_id: Mapped[str | None] = mapped_column(ForeignKey("objects.id"))
 
+    computed_spk_id: Mapped[str | None] = mapped_column(
+        default=None
+    )  # See HorizonsIngestor.get_spk_id()
+    cospar_id: Mapped[str | None] = mapped_column(
+        default=None
+    )  # See HorizonsIngestor.get_cospar_id()
     name: Mapped[str | None] = mapped_column(default=None)  # object name
-    naif_id: Mapped[int | None] = mapped_column(default=None)  # NAIF/SPK integer ID
     type: Mapped[str | None] = mapped_column(
         default=None
     )  # object type (star, planet, moon, ...)
@@ -196,10 +215,12 @@ class SBDB(Base):
 
     __tablename__ = "sbdb"
 
-    object_id: Mapped[int] = mapped_column(ForeignKey("objects.id"), primary_key=True)
+    spkid: Mapped[str | None] = mapped_column(
+        default=None, primary_key=True
+    )  # object primary SPK-ID
+    object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"))
 
     # Object fields
-    spkid: Mapped[str | None] = mapped_column(default=None)  # object primary SPK-ID
     full_name: Mapped[str | None] = mapped_column(
         default=None
     )  # object full name/designation
@@ -408,12 +429,13 @@ class CelesTrak(Base):
 
     __tablename__ = "celestrak"
 
-    object_id: Mapped[int] = mapped_column(ForeignKey("objects.id"), primary_key=True)
+    NORAD_CAT_ID: Mapped[int] = mapped_column(primary_key=True)  # NORAD catalog number
+    object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), unique=True)
 
     OBJECT_NAME: Mapped[str | None] = mapped_column(default=None)  # satellite name
     TRAK_OBJECT_ID: Mapped[str | None] = mapped_column(
         default=None
-    )  # international designator (YYYY-NNNP)
+    )  # international designator / COSPAR ID (YYYY-NNNP)
     EPOCH: Mapped[str | None] = mapped_column(
         default=None
     )  # element set epoch [ISO 8601 UTC]
@@ -437,9 +459,6 @@ class CelesTrak(Base):
     CLASSIFICATION_TYPE: Mapped[str | None] = mapped_column(
         default=None
     )  # classification (U=unclassified, C=classified, S=secret)
-    NORAD_CAT_ID: Mapped[int | None] = mapped_column(
-        default=None
-    )  # NORAD catalog number
     ELEMENT_SET_NO: Mapped[int | None] = mapped_column(
         default=None
     )  # element set number

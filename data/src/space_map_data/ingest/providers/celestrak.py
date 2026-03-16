@@ -4,6 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
+from space_map_data.constants.providers import ID_TYPES
 from sqlalchemy import insert
 from tqdm import tqdm
 
@@ -18,6 +19,7 @@ from space_map_data.ingest.convert import (
     mean_motion_to_a_km,
     float_or_none,
     int_or_none,
+    string_or_none,
 )
 from space_map_data.utils.convert import date_to_julian
 from space_map_data.utils.db import get_session
@@ -39,9 +41,11 @@ class CelesTrakIngestor:
         a_km = mean_motion_to_a_km(mean_motion) if mean_motion else None
 
         obj = dict(
-            name=row["OBJECT_NAME"].strip(),
+            id=f"{ID_TYPES.NORAD_SATCAT}-{row['NORAD_CAT_ID']}",
+            name=string_or_none(row["OBJECT_NAME"]),
             object_type=ObjectType.spacecraft,
             celestrak_norad_cat_id=int_or_none(row["NORAD_CAT_ID"]),
+            celestrak_cospar_id=string_or_none(row["OBJECT_ID"]),
             epoch_jd=date_to_julian(row["EPOCH"]),
             a=a_km,
             e=float_or_none(row["ECCENTRICITY"]),
@@ -65,7 +69,7 @@ class CelesTrakIngestor:
             ARG_OF_PERICENTER=float_or_none(row["ARG_OF_PERICENTER"]),
             MEAN_ANOMALY=float_or_none(row["MEAN_ANOMALY"]),
             EPHEMERIS_TYPE=int_or_none(row["EPHEMERIS_TYPE"]),
-            CLASSIFICATION_TYPE=row.get("CLASSIFICATION_TYPE", ""),
+            CLASSIFICATION_TYPE=string_or_none(row["CLASSIFICATION_TYPE"]),
             NORAD_CAT_ID=int_or_none(row["NORAD_CAT_ID"]),
             ELEMENT_SET_NO=int_or_none(row["ELEMENT_SET_NO"]),
             REV_AT_EPOCH=int_or_none(row["REV_AT_EPOCH"]),
