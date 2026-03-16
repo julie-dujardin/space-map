@@ -50,10 +50,15 @@ class ObjectType(StrEnum):
     undocumented = "undocumented"  # Data is available but provider doesn't specify what it refers to
 
 
-class Frame(StrEnum):
-    geocentric = "geocentric"  # Orbits the earth (data provided by celestrak)
-    heliocentric = (
-        "heliocentric"  # Orbits another body (data provided by horizons or SBDB)
+class ElementsScale(StrEnum):
+    """Refers to the orbital element units.
+
+    planet scale has smaller units.
+    """
+
+    planet = "planet"  # Orbits a planet (data provided by celestrak)
+    system = (
+        "system"  # Orbits the sun or another body (data provided by horizons or SBDB)
     )
 
 
@@ -107,7 +112,7 @@ class Object(Base):
     )  # epoch of osculation [Julian Date, TDB]
     a: Mapped[float | None] = mapped_column(
         default=None
-    )  # semi-major axis [AU heliocentric, km geocentric]
+    )  # semi-major axis [AU scale=system, km scale=planet]
     e: Mapped[float | None] = mapped_column(default=None)  # eccentricity
     i: Mapped[float | None] = mapped_column(default=None)  # inclination [deg]
     om: Mapped[float | None] = mapped_column(
@@ -119,12 +124,12 @@ class Object(Base):
     ma: Mapped[float | None] = mapped_column(default=None)  # mean anomaly [deg]
     n: Mapped[float | None] = mapped_column(
         default=None
-    )  # mean motion [deg/d heliocentric, rev/d geocentric]
+    )  # mean motion [deg/d scale=system, rev/d scale=planet]
 
-    # Frame
-    frame: Mapped[Frame] = mapped_column(
-        String, default=Frame.heliocentric
-    )  # reference frame
+    # scale
+    scale: Mapped[ElementsScale] = mapped_column(
+        String, default=ElementsScale.system
+    )  # element scale
     parent_naif_id: Mapped[int | None] = mapped_column(
         default=None
     )  # NAIF ID of central body (0=SSB, 399=Earth)

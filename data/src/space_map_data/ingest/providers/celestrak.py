@@ -12,7 +12,7 @@ from space_map_data.models.object import (
     Object,
     ObjectType,
     CelesTrak as CelesTrakRow,
-    Frame,
+    ElementsScale,
     OrbitalSource,
 )
 from space_map_data.ingest.convert import (
@@ -55,7 +55,7 @@ class CelesTrakIngestor:
             w=float_or_none(row["ARG_OF_PERICENTER"]),
             ma=float_or_none(row["MEAN_ANOMALY"]),
             n=mean_motion,
-            frame=Frame.geocentric,
+            scale=ElementsScale.planet,
             parent_naif_id=399,
             orbital_source=OrbitalSource.celestrak,
         )

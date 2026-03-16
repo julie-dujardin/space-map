@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from space_map_data.models.object import (
     Object,
-    Frame,
+    ElementsScale,
     Horizons as HorizonsRow,
     ObjectType,
     OrbitalSource,
@@ -90,7 +90,7 @@ class HorizonsIngestor:
                 w=float_or_none(row["W"]),
                 ma=float_or_none(row["MA"]),
                 n=float_or_none(row["N"]),
-                frame=Frame.heliocentric,
+                scale=ElementsScale.system,
                 parent_naif_id=int_or_none(row["parent_naif_id"]),
                 orbital_source=OrbitalSource.horizons,
             )
@@ -168,7 +168,7 @@ class HorizonsIngestor:
                         w=hz.W,
                         ma=hz.MA,
                         n=hz.N,
-                        frame=Frame.heliocentric,
+                        scale=ElementsScale.system,
                         parent_naif_id=hz.parent_naif_id,
                         orbital_source=OrbitalSource.horizons,
                     )
