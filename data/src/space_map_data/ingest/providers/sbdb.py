@@ -6,8 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from sqlalchemy import and_, case, delete, insert, or_, update
-from sqlalchemy.orm import aliased
+from sqlalchemy import insert
 from tqdm import tqdm
 
 from space_map_data.models.body import (
@@ -341,70 +340,6 @@ class SBDBIngestor:
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
 
-    def _reconcile(self) -> None:
-        """Merge SBDB-created Objects with existing Horizons Objects via NAIF ID.
-
-        SBDB spkid → Horizons naif_id mapping:
-          numbered asteroids        spkid = 20_000_000 + n, naif_id = 2_000_000 + n
-          comets                    spkid = 1_000_000 + n,  naif_id = 1_000_000 + n  (same)
-          binary system primaries   spkid = 20_000_000 + n, naif_id = 920_000_000 + n  (NAIF ID = spkid -> barycenter)
-          pluto (special case)      spkid = 20_134_340,     naif_id = 999
-        """
-        dup = aliased(Object)
-        existing = aliased(Object)
-        # Regular asteroid mapping: spkid 20_000_000+n → naif_id 2_000_000+n
-        # Pluto is a special case: spkid 20134340, naif_id 999
-        naif_from_spkid = case(
-            (dup.sbdb_spkid == 20_134_340, 999),
-            (dup.sbdb_spkid >= 20_000_000, dup.sbdb_spkid - 18_000_000),
-            else_=dup.sbdb_spkid,
-        )
-        # Binary primary mapping: spkid 20_000_000+n → naif_id 920_000_000+n
-        naif_binary_primary = dup.sbdb_spkid + 900_000_000
-
-        # Find (dup_id, existing_id, sbdb_spkid) for SBDB objects matching Horizons
-        pairs = (
-            self.session.query(dup.id, existing.id, dup.sbdb_spkid)
-            .select_from(dup)
-            .join(
-                existing,
-                and_(
-                    existing.horizons_naif_id.isnot(None),
-                    or_(
-                        existing.horizons_naif_id == naif_from_spkid,
-                        existing.horizons_naif_id == naif_binary_primary,
-                    ),
-                ),
-            )
-            .filter(dup.orbital_source == OrbitalSource.sbdb.value)
-            .all()
-        )
-
-        if not pairs:
-            logger.info("No SBDB/Horizons matches to reconcile")
-            return
-
-        # Repoint SBDB rows to the existing Horizons objects
-        for dup_id, existing_id, _ in pairs:
-            self.session.execute(
-                update(SBDBRow)
-                .where(SBDBRow.object_id == dup_id)
-                .values(object_id=existing_id)
-            )
-
-        # Delete duplicate SBDB-created Object rows (frees unique sbdb_spkid)
-        dup_ids = [p[0] for p in pairs]
-        self.session.execute(delete(Object).where(Object.id.in_(dup_ids)))
-
-        # Set sbdb_spkid on the kept Horizons objects
-        for _, existing_id, spkid in pairs:
-            self.session.execute(
-                update(Object).where(Object.id == existing_id).values(sbdb_spkid=spkid)
-            )
-
-        self.session.commit()
-        logger.info("Reconciled %d SBDB bodies with Horizons", len(pairs))
-
     def run(self) -> None:
         chunks = self._find_chunks()
         if not chunks:
@@ -432,8 +367,6 @@ class SBDBIngestor:
 
                 if self.limit and self.total_rows >= self.limit:
                     break
-
-        self._reconcile()
 
         logger.info("Ingested %d SBDB bodies", self.total_rows)
 

@@ -8,10 +8,7 @@ from sqlalchemy import insert
 from tqdm import tqdm
 
 from space_map_data.models.body import (
-    Object,
-    Frame,
     Horizons as HorizonsRow,
-    OrbitalSource,
 )
 from space_map_data.ingest.convert import float_or_none, int_or_none
 from space_map_data.utils.db import get_session
@@ -29,25 +26,7 @@ class HorizonsIngestor:
         self.total_rows = 0
 
     def _parse_row(self, row: dict) -> dict:
-        parent = int_or_none(row["parent_naif_id"])
-
-        obj = dict(
-            name=row["name"].strip() or None,
-            object_type=row["type"].strip(),
-            horizons_naif_id=int_or_none(row["naif_id"]),
-            epoch_jd=float_or_none(row["JDTDB"]),
-            a=float_or_none(row["A"]),
-            e=float_or_none(row["EC"]),
-            i=float_or_none(row["IN"]),
-            om=float_or_none(row["OM"]),
-            w=float_or_none(row["W"]),
-            ma=float_or_none(row["MA"]),
-            n=float_or_none(row["N"]),
-            frame=Frame.heliocentric,
-            parent_naif_id=parent,
-            orbital_source=OrbitalSource.horizons,
-        )
-        hz = dict(
+        return dict(
             name=row["name"],
             naif_id=int_or_none(row["naif_id"]),
             type=row["type"],
@@ -70,18 +49,11 @@ class HorizonsIngestor:
             AD=float_or_none(row["AD"]),
             PR=float_or_none(row["PR"]),
         )
-        return {"object": obj, "horizons": hz}
 
     def _insert(self, rows: list[dict]) -> None:
         if not rows:
             return
-        objects = [r["object"] for r in rows]
-        hz_rows = [r["horizons"] for r in rows]
-        result = self.session.execute(insert(Object).returning(Object.id), objects)
-        new_ids = [r[0] for r in result]
-        for hz, obj_id in zip(hz_rows, new_ids):
-            hz["object_id"] = obj_id
-        self.session.execute(insert(HorizonsRow), hz_rows)
+        self.session.execute(insert(HorizonsRow), rows)
         self.session.commit()
 
     def run(self) -> None:
