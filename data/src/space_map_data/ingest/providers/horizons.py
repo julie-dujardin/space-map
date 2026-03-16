@@ -4,16 +4,30 @@ import csv
 import logging
 from pathlib import Path
 
+from space_map_data.constants.providers import ID_TYPES
 from sqlalchemy import insert
 from tqdm import tqdm
 
 from space_map_data.models.body import (
+    Object,
+    Frame,
     Horizons as HorizonsRow,
+    ObjectType,
+    OrbitalSource,
 )
-from space_map_data.ingest.convert import float_or_none, int_or_none
+from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
+
+
+AUTHORITATIVE_ON = (
+    ObjectType.barycenter,
+    ObjectType.lagrange_point,
+    ObjectType.star,
+    ObjectType.planet,
+    ObjectType.moon,
+)
 
 
 class HorizonsIngestor:
@@ -25,17 +39,73 @@ class HorizonsIngestor:
         self.csv_path = download_dir / "horizons" / "bodies.csv"
         self.total_rows = 0
 
+    def get_spk_id(self, row: dict) -> int | None:
+        """Return the SPK ID for a row, if it has one"""
+        naif_id = int_or_none(row["naif_id"])
+        if not naif_id:
+            raise ValueError(f"Missing NAIF ID for: {row}")
+        if row["naif_id"] == 999:
+            # Pluto
+            return 20134340
+        if row["type"] in AUTHORITATIVE_ON:
+            # Authoritative types won't have SPKIDs
+            return None
+        if 2_000_000 <= naif_id <= 2_999_999:
+            # Asteroid in the 2m range => 20m range
+            return naif_id + 18_000_000
+        if 900_000_000 <= naif_id <= 999_999_999:
+            # binary asteroid primaries
+            return naif_id - 900_000_000
+        if row["type"] == ObjectType.comet:
+            # Comets: SPK ID and NAIF ID are the same
+            return naif_id
+        return None
+
+    def get_cospar_id(self, row: dict) -> str | None:
+        """Return the COSPAR ID for a row, if it has one"""
+        if row["type"] == ObjectType.spacecraft:
+            return row["designation"]
+        return None
+
     def _parse_row(self, row: dict) -> dict:
-        return dict(
-            name=row["name"],
+        rows = {}
+        spk_id = self.get_spk_id(row)
+        cospar_id = self.get_cospar_id(row)
+        if row["type"].strip() in AUTHORITATIVE_ON:
+            object_pk = f"{ID_TYPES.NAIF}-{row['naif_id']}"
+            rows["object"] = dict(
+                id=object_pk,
+                name=string_or_none(row["name"]) or string_or_none(row["designation"]),
+                object_type=string_or_none(row["type"]),
+                horizons_naif_id=int_or_none(row["naif_id"]),
+                provisional_designation=string_or_none(row["designation"]),
+                epoch_jd=float_or_none(row["JDTDB"]),
+                a=float_or_none(row["A"]),
+                e=float_or_none(row["EC"]),
+                i=float_or_none(row["IN"]),
+                om=float_or_none(row["OM"]),
+                w=float_or_none(row["W"]),
+                ma=float_or_none(row["MA"]),
+                n=float_or_none(row["N"]),
+                frame=Frame.heliocentric,
+                parent_naif_id=int_or_none(row["parent_naif_id"]),
+                orbital_source=OrbitalSource.horizons,
+            )
+        else:
+            object_pk = spk_id
+        rows["horizons"] = dict(
+            object_id=object_pk,
+            computed_spk_id=spk_id,
+            cospar_id=cospar_id,
+            name=string_or_none(row["name"]),
             naif_id=int_or_none(row["naif_id"]),
-            type=row["type"],
-            center=row["center"],
+            type=string_or_none(row["type"]),
+            center=string_or_none(row["center"]),
             parent_naif_id=int_or_none(row["parent_naif_id"]),
-            designation=row.get("designation", ""),
-            extra=row.get("extra", ""),
+            designation=string_or_none(row["designation"]),
+            extra=string_or_none(row["extra"]),
             JDTDB=float_or_none(row["JDTDB"]),
-            calendar_date_tdb=row.get("Calendar Date (TDB)", ""),
+            calendar_date_tdb=string_or_none(row["Calendar Date (TDB)"]),
             EC=float_or_none(row["EC"]),
             QR=float_or_none(row["QR"]),
             IN_=float_or_none(row["IN"]),
@@ -49,11 +119,15 @@ class HorizonsIngestor:
             AD=float_or_none(row["AD"]),
             PR=float_or_none(row["PR"]),
         )
+        return rows
 
     def _insert(self, rows: list[dict]) -> None:
         if not rows:
             return
-        self.session.execute(insert(HorizonsRow), rows)
+        objects = [r["object"] for r in rows if "object" in r]
+        hz_rows = [r["horizons"] for r in rows]
+        self.session.execute(insert(Object), objects)
+        self.session.execute(insert(HorizonsRow), hz_rows)
         self.session.commit()
 
     def run(self) -> None:

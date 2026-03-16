@@ -6,6 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
+from space_map_data.constants.providers import ID_TYPES
 from sqlalchemy import insert
 from tqdm import tqdm
 
@@ -21,12 +22,13 @@ from space_map_data.ingest.convert import (
     float_or_none,
     int_or_none,
     normalize_partial_date,
+    string_or_none,
 )
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
-SUB_CHUNK = 10_000
+SUB_CHUNK_SIZE = 10_000
 
 # All SBDB CSV column names, in the order they appear in the ORM model.
 _SBDB_COLUMNS = [
@@ -144,11 +146,11 @@ SBDB_CLASS_MAP: dict[str, ObjectType] = {
 
 
 def _object_type(row: dict[str, str]) -> ObjectType:
-    cls = row.get("class", "").strip()
-    prefix = row.get("prefix", "").strip()
-    name = row.get("name", "").strip()
+    cls = string_or_none(row["class"])
+    prefix = string_or_none(row["prefix"])
+    name = string_or_none(row["name"])
 
-    if name.lower() in DWARF_PLANETS:
+    if name and name.lower() in DWARF_PLANETS:
         return ObjectType.dwarf_planet
 
     if cls in SBDB_CLASS_MAP:
@@ -236,7 +238,7 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
         elif col in _PARTIAL_DATE_COLS:
             d[col] = normalize_partial_date(raw)
         else:
-            d[col] = raw or None  # treat empty strings as None
+            d[col] = string_or_none(raw)
     d["class_"] = row.get("class", "")
     return d
 
@@ -272,9 +274,11 @@ def _parse_chunk(
                 {
                     "sbdb": _sbdb_dict(row),
                     "object": {
-                        "name": row.get("name", "").strip() or None,
+                        "id": f"{ID_TYPES.SPKID}-{spkid}" if spkid else None,
+                        "name": string_or_none(row["name"]),
                         "object_type": object_type,
                         "sbdb_spkid": spkid,
+                        "sbdb_mcp_designation": string_or_none(row["full_name"]),
                         "epoch_jd": float_or_none(row["epoch"]),
                         "a": float_or_none(row["a"]),
                         "e": float_or_none(row["e"]),
@@ -349,8 +353,8 @@ class SBDBIngestor:
         work_items: list[tuple[Path, int, int]] = []
         for chunk_path in chunks:
             n_rows = _count_csv_rows(chunk_path)
-            for offset in range(0, n_rows, SUB_CHUNK):
-                work_items.append((chunk_path, offset, SUB_CHUNK))
+            for offset in range(0, n_rows, SUB_CHUNK_SIZE):
+                work_items.append((chunk_path, offset, SUB_CHUNK_SIZE))
 
         logger.info(
             "Processing %d sub-chunks (%d files) across %d workers",

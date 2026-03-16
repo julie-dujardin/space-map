@@ -58,9 +58,9 @@ def ingest(
     limit: int | None = None,
 ) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
-    horizons.ingest(download_dir, limit=limit)
     sbdb.ingest(download_dir, limit=limit)
     celestrak.ingest(download_dir, limit=limit)
+    horizons.ingest(download_dir, limit=limit)
     _post_process()
 
     logger.info("Database ready.")

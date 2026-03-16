@@ -9,6 +9,13 @@ import math
 GM_EARTH = 398600.4418  # km^3/s^2
 
 
+def string_or_none(val: str | None) -> str | None:
+    """Convert empty or whitespace-only strings to None."""
+    if not val or not val.strip():
+        return None
+    return val.strip()
+
+
 def float_or_none(val: str) -> float | None:
     if not val or not val.strip():
         return None
