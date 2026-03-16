@@ -79,26 +79,26 @@ class Object(Base):
     object_type: Mapped[ObjectType] = mapped_column(String)  # ObjectType enum value
 
     provisional_designation: Mapped[str | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )
     # Cross-reference IDs (nullable — an object won't have IDs in all sources)
     wikidata_qid: Mapped[str | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # Wikidata entity ID (e.g. Q2)
     horizons_naif_id: Mapped[int | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # JPL Horizons NAIF/SPK ID
     sbdb_spkid: Mapped[int | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # JPL SBDB primary SPK-ID
     sbdb_mcp_designation: Mapped[str | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
     celestrak_norad_cat_id: Mapped[int | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # NORAD catalog number, from CelesTrak
     celestrak_cospar_id: Mapped[str | None] = mapped_column(
-        unique=True, default=None
+        unique=True, default=None, index=True
     )  # COSPAR international designator (YYYY-NNNP), from CelesTrak
 
     # Keplerian elements (osculating, from best available source)

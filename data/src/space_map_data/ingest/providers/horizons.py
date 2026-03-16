@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from tqdm import tqdm
 
 from space_map_data.models.object import (
@@ -135,7 +135,10 @@ class HorizonsIngestor:
 
     def match_spacecraft_to_bodies(self):
         """Match Horizons spacecraft rows to existing Objects (via NORAD/COSPAR),
-        or create new Object entries for unmatched probes."""
+        or create new Object entries for unmatched probes.
+
+        Updates Horizons data only
+        """
         spacecraft = self.session.execute(
             select(HorizonsRow, Object)
             .outerjoin(Object, Object.celestrak_cospar_id == HorizonsRow.cospar_id)
@@ -181,6 +184,44 @@ class HorizonsIngestor:
             len(new_objects),
         )
 
+    def insert_missing_data(self):
+        """Insert Horizons data into data owned by other providers"""
+        # horizons -> sbdb match
+        self.session.execute(
+            update(Object)
+            .where(Object.horizons_naif_id.is_(None))
+            .where(
+                select(HorizonsRow.naif_id)
+                .where(HorizonsRow.computed_spk_id == Object.sbdb_spkid)
+                .correlate(Object)
+                .exists()
+            )
+            .values(
+                horizons_naif_id=select(HorizonsRow.naif_id)
+                .where(HorizonsRow.computed_spk_id == Object.sbdb_spkid)
+                .correlate(Object)
+                .scalar_subquery()
+            )
+        )
+        # Horizons -> celestrak
+        self.session.execute(
+            update(Object)
+            .where(Object.horizons_naif_id.is_(None))
+            .where(
+                select(HorizonsRow.naif_id)
+                .where(HorizonsRow.cospar_id == Object.celestrak_cospar_id)
+                .correlate(Object)
+                .exists()
+            )
+            .values(
+                horizons_naif_id=select(HorizonsRow.naif_id)
+                .where(HorizonsRow.cospar_id == Object.celestrak_cospar_id)
+                .correlate(Object)
+                .scalar_subquery()
+            )
+        )
+        self.session.commit()
+
     def run(self) -> None:
         if not self.csv_path.exists():
             logger.warning("Horizons CSV not found at %s, skipping", self.csv_path)
@@ -207,6 +248,7 @@ class HorizonsIngestor:
         logger.info("Ingested %d Horizons bodies", self.total_rows)
 
         self.match_spacecraft_to_bodies()
+        self.insert_missing_data()
 
 
 def _count_csv_rows(path: Path) -> int:

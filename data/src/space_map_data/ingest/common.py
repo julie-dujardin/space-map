@@ -13,10 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def _post_process() -> None:
-    """Fill in missing names from SBDB source data and log summary."""
+    """Log a summary of ingested data."""
     session = get_session()
 
-    # Summary
     counts = (
         session.query(Object.object_type, func.count())
         .group_by(Object.object_type)
