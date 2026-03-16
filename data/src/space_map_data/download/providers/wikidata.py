@@ -374,9 +374,11 @@ class WikidataDownloader(Downloader):
                 timeout=120.0,
             )
             if response.status_code == 429:
-                wait = 2 ** (attempt + 1)
-                logger.warning("SPARQL 429 — retrying in %ds", wait)
-                time.sleep(wait)
+                retry_after = int(
+                    response.headers.get("retry-after", 2 ** (attempt + 1))
+                )
+                logger.warning("SPARQL 429 — retrying in %ds", retry_after)
+                time.sleep(retry_after)
                 continue
             response.raise_for_status()
             time.sleep(AFTER_RQUEST_DELAY_SECONDS)
