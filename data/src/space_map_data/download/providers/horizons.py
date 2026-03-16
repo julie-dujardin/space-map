@@ -10,6 +10,7 @@ from space_map_data.models.body import ObjectType, DWARF_PLANETS
 from space_map_data.utils.convert import date_to_julian
 from tqdm import tqdm
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
@@ -123,7 +124,7 @@ class MajorBody:
 
 
 class HorizonsDownloader(Downloader):
-    name = "horizons"
+    name = PROVIDERS.HORIZONS
 
     def _fetch_horizons_bodies(self) -> str:
         """Fetch the list of major bodies from Horizons, using a cached file if available."""

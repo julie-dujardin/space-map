@@ -1,6 +1,7 @@
 import logging
 import sys
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
@@ -9,7 +10,7 @@ URL = "https://celestrak.org/NORAD/elements/gp.php"
 
 
 class CelesTrakDownloader(Downloader):
-    name = "celestrak"
+    name = PROVIDERS.CELESTRAK
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         out_file = self.out_dir / "gp-active.csv"

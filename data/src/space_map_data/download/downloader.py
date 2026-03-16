@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +17,10 @@ class Downloader(ABC):
 
     name: str
 
-    def __init__(self, client: httpx.Client, out_dir: Path) -> None:
+    def __init__(self, client: httpx.Client) -> None:
         self.client = client
-        self.out_dir = out_dir
-        out_dir.mkdir(exist_ok=True)
+        self.out_dir = DOWNLOAD_DIR / self.name
+        self.out_dir.mkdir(exist_ok=True)
 
     @abstractmethod
     def download(self, limit: int | None = None, **kwargs: object) -> None: ...

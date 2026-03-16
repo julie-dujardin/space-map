@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Iterator
 
 from httpx import Response
+from space_map_data.utils.paths import DOWNLOAD_DIR
 from tqdm import tqdm
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
@@ -31,10 +33,10 @@ def _batched(
 
 
 class WikipediaDownloader(Downloader):
-    name = "wikipedia"
+    name = PROVIDERS.WIKIPEDIA
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_dir = self.out_dir.parent / "wikidata" / "entities"
+        wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "entities"
         if not wikidata_dir.exists():
             raise FileNotFoundError(
                 f"Wikidata entities not found at {wikidata_dir} "

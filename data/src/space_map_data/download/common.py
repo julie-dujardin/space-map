@@ -3,7 +3,7 @@
 import logging
 import tomllib
 from datetime import date
-from typing import Any
+from typing import Any, Type
 
 import httpx
 
@@ -18,13 +18,14 @@ from space_map_data.download.providers.wikipedia import WikipediaDownloader
 logger = logging.getLogger(__name__)
 
 
-SOURCES: dict[str, tuple[type[Downloader], str]] = {
-    "celestrak": (CelesTrakDownloader, "celes-trak"),
-    "sbdb": (SBDBDownloader, "sbdb"),
-    "horizons": (HorizonsDownloader, "horizons"),
-    "wikidata": (WikidataDownloader, "wikidata"),
-    "wikipedia": (WikipediaDownloader, "wikipedia"),
-}
+PROVIDERS_CLASSES = [
+    CelesTrakDownloader,
+    SBDBDownloader,
+    HorizonsDownloader,
+    WikidataDownloader,
+    WikipediaDownloader,
+]
+SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
 
 def load_config() -> dict[str, Any]:
@@ -55,9 +56,8 @@ def download(
         timeout=60.0,
     ) as client:
         for name in selected:
-            cls, subdir = SOURCES[name]
-            out_dir = DOWNLOAD_DIR / subdir
-            downloader = cls(client, out_dir)
+            cls = SOURCES[name]
+            downloader = cls(client)
             if not force and downloader.is_complete(limit):
                 logger.info("Skipping %s (already complete)", name)
                 continue

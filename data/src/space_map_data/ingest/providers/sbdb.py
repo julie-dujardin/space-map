@@ -6,7 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from sqlalchemy import insert
 from tqdm import tqdm
 
@@ -314,7 +314,7 @@ class SBDBIngestor:
     def __init__(self, download_dir: Path, *, limit: int | None = None):
         self.session = get_session()
         self.limit = limit
-        self.sbdb_dir = download_dir / "sbdb"
+        self.sbdb_dir = download_dir / PROVIDERS.SBDB
         self.total_rows = 0
 
     def _find_chunks(self) -> list[Path]:

@@ -5,6 +5,7 @@ import time
 
 from tqdm import tqdm
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ CHUNK_SIZE = 100_000
 
 
 class SBDBDownloader(Downloader):
-    name = "sbdb"
+    name = PROVIDERS.SBDB
 
     @property
     def _fields_file(self):

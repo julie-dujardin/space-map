@@ -6,6 +6,8 @@ from enum import StrEnum
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from space_map_data.constants.providers import PROVIDERS
+
 
 # IAU-recognized dwarf planets
 # TODO: get from wikidata, P31
@@ -56,9 +58,9 @@ class Frame(StrEnum):
 
 
 class OrbitalSource(StrEnum):
-    horizons = "horizons"
-    sbdb = "sbdb"
-    celestrak = "celestrak"
+    horizons = PROVIDERS.HORIZONS
+    sbdb = PROVIDERS.SBDB
+    celestrak = PROVIDERS.CELESTRAK
 
 
 class Base(DeclarativeBase):

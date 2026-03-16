@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from tqdm import tqdm
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.db import get_session
 from space_map_data.models.body import Object, SBDB
@@ -52,7 +53,7 @@ SOURCES = (
 
 
 class WikidataDownloader(Downloader):
-    name = "wikidata"
+    name = PROVIDERS.WIKIDATA
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         self.session = get_session()
