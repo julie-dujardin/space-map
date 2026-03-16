@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from tqdm import tqdm
 
 from space_map_data.models.body import (
@@ -130,6 +130,48 @@ class HorizonsIngestor:
         self.session.execute(insert(HorizonsRow), hz_rows)
         self.session.commit()
 
+    def match_spacecraft_to_bodies(self):
+        """Match Horizons spacecraft rows to existing Objects (via NORAD/COSPAR),
+        or create new Object entries for unmatched probes."""
+        spacecraft = self.session.execute(
+            select(HorizonsRow, Object)
+            .outerjoin(Object, Object.celestrak_cospar_id == HorizonsRow.cospar_id)
+            .where(HorizonsRow.type == ObjectType.spacecraft)
+        ).all()
+
+        new_objects = []
+        for hz, obj in spacecraft:
+            if obj is not None:
+                # Existing object found via COSPAR — point horizons row at it
+                hz.object_id = obj.id
+            elif hz.cospar_id:
+                # No match — create a new Object for this probe
+                object_id = f"{ID_TYPES.COSPAR}:{hz.cospar_id}"
+                new_objects.append(
+                    Object(
+                        id=object_id,
+                        name=hz.name,
+                        object_type=ObjectType.spacecraft,
+                        horizons_naif_id=hz.naif_id,
+                        celestrak_cospar_id=hz.cospar_id,
+                    )
+                )
+                hz.object_id = object_id
+            elif "simulation" in hz.name:
+                # TODO: handle simulation objects?
+                continue
+            else:
+                raise ValueError(f"Object {hz.name} [{hz.naif_id}] was not matched")
+
+        self.session.add_all(new_objects)
+        self.session.commit()
+        logger.info(
+            "Matched %d spacecraft: %d existing, %d new",
+            len(spacecraft),
+            len(spacecraft) - len(new_objects),
+            len(new_objects),
+        )
+
     def run(self) -> None:
         if not self.csv_path.exists():
             logger.warning("Horizons CSV not found at %s, skipping", self.csv_path)
@@ -154,6 +196,8 @@ class HorizonsIngestor:
 
         self._insert(batch)
         logger.info("Ingested %d Horizons bodies", self.total_rows)
+
+        self.match_spacecraft_to_bodies()
 
 
 def _count_csv_rows(path: Path) -> int:
