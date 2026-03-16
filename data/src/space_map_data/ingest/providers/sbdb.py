@@ -270,11 +270,12 @@ def _parse_chunk(
             diameter = float_or_none(row.get("diameter", ""))
             radius_km = diameter / 2.0 if diameter else None
 
+            object_id = f"{ID_TYPES.SPKID}-{spkid}"
             rows.append(
                 {
-                    "sbdb": _sbdb_dict(row),
+                    "sbdb": {**_sbdb_dict(row), "object_id": object_id},
                     "object": {
-                        "id": f"{ID_TYPES.SPKID}-{spkid}" if spkid else None,
+                        "id": object_id,
                         "name": string_or_none(row["name"]),
                         "object_type": object_type,
                         "sbdb_spkid": spkid,
@@ -334,13 +335,8 @@ class SBDBIngestor:
         sbdb_rows = [r["sbdb"] for r in rows]
         for i in range(0, len(objects), self.BATCH):
             obj_batch = objects[i : i + self.BATCH]
-            result = self.session.execute(
-                insert(Object).returning(Object.id), obj_batch
-            )
-            new_ids = [r[0] for r in result]
+            self.session.execute(insert(Object), obj_batch)
             sbdb_batch = sbdb_rows[i : i + self.BATCH]
-            for sbdb, body_id in zip(sbdb_batch, new_ids):
-                sbdb["object_id"] = body_id
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
 

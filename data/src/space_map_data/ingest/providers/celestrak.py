@@ -40,8 +40,9 @@ class CelesTrakIngestor:
         mean_motion = float_or_none(row["MEAN_MOTION"])
         a_km = mean_motion_to_a_km(mean_motion) if mean_motion else None
 
+        object_id = f"{ID_TYPES.NORAD_SATCAT}-{row['NORAD_CAT_ID']}"
         obj = dict(
-            id=f"{ID_TYPES.NORAD_SATCAT}-{row['NORAD_CAT_ID']}",
+            id=object_id,
             name=string_or_none(row["OBJECT_NAME"]),
             object_type=ObjectType.spacecraft,
             celestrak_norad_cat_id=int_or_none(row["NORAD_CAT_ID"]),
@@ -59,6 +60,7 @@ class CelesTrakIngestor:
             orbital_source=OrbitalSource.celestrak,
         )
         ct = dict(
+            object_id=object_id,
             OBJECT_NAME=row["OBJECT_NAME"],
             TRAK_OBJECT_ID=row["OBJECT_ID"],
             EPOCH=row["EPOCH"],
@@ -83,11 +85,8 @@ class CelesTrakIngestor:
         if not rows:
             return
         objects = [r["object"] for r in rows]
+        self.session.execute(insert(Object), objects)
         ct_rows = [r["celestrak"] for r in rows]
-        result = self.session.execute(insert(Object).returning(Object.id), objects)
-        new_ids = [r[0] for r in result]
-        for ct, obj_id in zip(ct_rows, new_ids):
-            ct["object_id"] = obj_id
         self.session.execute(insert(CelesTrakRow), ct_rows)
         self.session.commit()
 
