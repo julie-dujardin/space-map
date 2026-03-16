@@ -77,7 +77,14 @@ class WikidataDownloader(Downloader):
         id_map = self._load_or_resolve_id_map()
 
         # Collect all unique QIDs and fetch entities into entities/ subdir
-        all_qids = sorted({qid for group in id_map.values() for qid in group.values()})
+        all_qids = sorted(
+            {
+                qid
+                for group in id_map.values()
+                for qids in group.values()
+                for qid in qids
+            }
+        )
         entities_dir = self.out_dir / "entities"
         entities_dir.mkdir(exist_ok=True)
         self._fetch_entities(all_qids, entities_dir, limit=limit)
@@ -86,7 +93,7 @@ class WikidataDownloader(Downloader):
             API_URL, len(all_qids), complete=limit is None or len(all_qids) <= limit
         )
 
-    def _load_or_resolve_id_map(self) -> dict[str, dict[str, str]]:
+    def _load_or_resolve_id_map(self) -> dict[str, dict[str, list[str]]]:
         """Load cached id_map.json, resolve any missing sources, and save."""
         map_file = self.out_dir / "id_map.json"
         id_map = json.loads(map_file.read_text()) if map_file.exists() else {}
@@ -97,14 +104,14 @@ class WikidataDownloader(Downloader):
         logger.info("ID mapping saved -> id_map.json")
         return id_map
 
-    def _resolve_all(self, id_map: dict[str, dict[str, str]]) -> None:
-        """Resolve missing ID groups against Wikidata. Returns True if id_map was updated."""
+    def _resolve_all(self, id_map: dict[str, dict[str, list[str]]]) -> None:
+        """Resolve missing ID groups against Wikidata, mutating id_map in-place."""
         for id_type, query_method_name, label in SOURCES:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
             if pid in id_map:
                 continue
             query_method = getattr(self, query_method_name)
-            mapping: dict[str, str] = {}
+            mapping: dict[str, list[str]] = {}
             total = 0
 
             count = query_method(count_only=True)
@@ -114,7 +121,8 @@ class WikidataDownloader(Downloader):
                 for batch in query_method():
                     total += len(batch)
                     resolved = self._sparql_resolve(pid, batch)
-                    mapping.update(resolved)
+                    for key, qids in resolved.items():
+                        mapping.setdefault(key, []).extend(qids)
                     pbar.update(len(batch))
 
             id_map[pid] = mapping
@@ -122,7 +130,12 @@ class WikidataDownloader(Downloader):
 
         # Name-based search for objects not resolved by ID
         if "name" not in id_map:
-            resolved_qids = {qid for group in id_map.values() for qid in group.values()}
+            resolved_qids = {
+                qid
+                for group in id_map.values()
+                for qids in group.values()
+                for qid in qids
+            }
             name_mapping = self._resolve_by_name(resolved_qids)
             if name_mapping:
                 id_map["name"] = name_mapping
@@ -278,8 +291,12 @@ class WikidataDownloader(Downloader):
 
     # -- SPARQL --
 
-    def _sparql_resolve(self, prop: str, ids: list[str]) -> dict[str, str]:
-        """SPARQL query to resolve a batch of IDs to QIDs."""
+    def _sparql_resolve(self, prop: str, ids: list[str]) -> dict[str, list[str]]:
+        """SPARQL query to resolve a batch of IDs to QIDs.
+
+        Returns a dict mapping each ID to a list of QIDs (one ID may match
+        multiple Wikidata entities).
+        """
         values = " ".join(f'"{v}"' for v in ids)
         query = (
             f"SELECT ?item ?id WHERE {{\n"
@@ -288,30 +305,36 @@ class WikidataDownloader(Downloader):
             f"}}"
         )
         results = self._sparql_query(query)
-        mapping: dict[str, str] = {}
+        mapping: dict[str, list[str]] = {}
         for row in results:
             qid = row["item"]["value"].rsplit("/", 1)[-1]
-            mapping[row["id"]["value"]] = qid
+            key = row["id"]["value"]
+            mapping.setdefault(key, []).append(qid)
+        for key, qids in mapping.items():
+            if len(qids) > 1:
+                logger.warning(
+                    "  %s %s → multiple entities: %s", prop, key, ", ".join(qids)
+                )
         return mapping
 
-    def _resolve_by_name(self, already_resolved_qids: set[str]) -> dict[str, str]:
+    def _resolve_by_name(self, already_resolved_qids: set[str]) -> dict[str, list[str]]:
         """Search Wikidata by object name for entities not found by ID."""
-        mapping: dict[str, str] = {}
+        mapping: dict[str, list[str]] = {}
         total = 0
 
         for batch in self._query_names():
             total += len(batch)
             resolved = self._sparql_resolve_by_name(batch)
-            # Skip names that resolved to already-known QIDs
-            for name, qid in resolved.items():
-                if qid not in already_resolved_qids:
-                    mapping[name] = qid
+            for name, qids in resolved.items():
+                new_qids = [q for q in qids if q not in already_resolved_qids]
+                if new_qids:
+                    mapping[name] = new_qids
         logger.info(
             "  name: %d / %d resolved (excluding duplicates)", len(mapping), total
         )
         return mapping
 
-    def _sparql_resolve_by_name(self, names: list[str]) -> dict[str, str]:
+    def _sparql_resolve_by_name(self, names: list[str]) -> dict[str, list[str]]:
         """SPARQL query to resolve names to QIDs via label matching.
 
         Filters to entities that have at least one known astronomical property.
@@ -328,10 +351,16 @@ class WikidataDownloader(Downloader):
             f"}}"
         )
         results = self._sparql_query(query)
-        mapping: dict[str, str] = {}
+        mapping: dict[str, list[str]] = {}
         for row in results:
             qid = row["item"]["value"].rsplit("/", 1)[-1]
-            mapping[row["name"]["value"]] = qid
+            key = row["name"]["value"]
+            mapping.setdefault(key, []).append(qid)
+        for key, qids in mapping.items():
+            if len(qids) > 1:
+                logger.warning(
+                    "  name '%s' → multiple entities: %s", key, ", ".join(qids)
+                )
         return mapping
 
     def _sparql_query(self, query: str) -> list[dict]:
