@@ -276,10 +276,11 @@ def _parse_chunk(
                     "sbdb": {**_sbdb_dict(row), "object_id": object_id},
                     "object": {
                         "id": object_id,
-                        "name": string_or_none(row["name"]),
+                        "name": string_or_none(row["name"])
+                        or string_or_none(row["full_name"]),
                         "object_type": object_type,
                         "sbdb_spkid": spkid,
-                        "sbdb_mcp_designation": string_or_none(row["full_name"]),
+                        "sbdb_mcp_designation": string_or_none(row["pdes"]),
                         "epoch_jd": float_or_none(row["epoch"]),
                         "a": float_or_none(row["a"]),
                         "e": float_or_none(row["e"]),
