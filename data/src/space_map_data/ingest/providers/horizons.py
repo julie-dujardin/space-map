@@ -144,9 +144,9 @@ class HorizonsIngestor:
             if obj is not None:
                 # Existing object found via COSPAR — point horizons row at it
                 hz.object_id = obj.id
-            elif hz.cospar_id:
+            else:
                 # No match — create a new Object for this probe
-                object_id = f"{ID_TYPES.COSPAR}:{hz.cospar_id}"
+                object_id = f"{ID_TYPES.NAIF}:{hz.naif_id}"
                 new_objects.append(
                     Object(
                         id=object_id,
@@ -157,11 +157,6 @@ class HorizonsIngestor:
                     )
                 )
                 hz.object_id = object_id
-            elif "simulation" in hz.name:
-                # TODO: handle simulation objects?
-                continue
-            else:
-                raise ValueError(f"Object {hz.name} [{hz.naif_id}] was not matched")
 
         self.session.add_all(new_objects)
         self.session.commit()
