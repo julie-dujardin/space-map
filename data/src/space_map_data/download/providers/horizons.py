@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import date
 
-from space_map_data.models.body import ObjectType, DWARF_PLANETS
+from space_map_data.models.object import ObjectType, DWARF_PLANETS
 from space_map_data.utils.convert import date_to_julian
 from tqdm import tqdm
 

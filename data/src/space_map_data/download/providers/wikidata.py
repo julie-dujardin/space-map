@@ -12,7 +12,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.db import get_session
-from space_map_data.models.body import Object, SBDB
+from space_map_data.models.object import Object, SBDB
 
 logger = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from space_map_data.models.body import Base
+from space_map_data.models.object import Base
 from space_map_data.utils.paths import DB_DIR, DB_FILE
 
 _session: Session | None = None

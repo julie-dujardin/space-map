@@ -8,7 +8,7 @@ from space_map_data.constants.providers import ID_TYPES
 from sqlalchemy import insert
 from tqdm import tqdm
 
-from space_map_data.models.body import (
+from space_map_data.models.object import (
     Object,
     ObjectType,
     CelesTrak as CelesTrakRow,
