@@ -44,7 +44,7 @@ class HorizonsIngestor:
         naif_id = int_or_none(row["naif_id"])
         if not naif_id:
             raise ValueError(f"Missing NAIF ID for: {row}")
-        if row["naif_id"] == 999:
+        if naif_id == 999:
             # Pluto
             return 20134340
         if row["type"] in AUTHORITATIVE_ON:

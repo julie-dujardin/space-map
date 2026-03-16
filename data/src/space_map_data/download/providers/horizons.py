@@ -82,7 +82,7 @@ def _classify_object(
 
     if 1_000_000 <= naif_id < 2_000_000:
         return ObjectType.comet, 0
-    if 2_000_000 <= naif_id < 10_000_000:
+    if 2_000_000 <= naif_id <= 2_999_999:
         if name_pretty.lower() in DWARF_PLANETS:
             return ObjectType.dwarf_planet, 0
         return ObjectType.asteroid, 0
@@ -97,7 +97,7 @@ def _classify_object(
         # Satellite
         return ObjectType.moon, barycenter_id
 
-    if "spacecraft" in name.lower():
+    if "spacecraft" in name.lower() or 9_000_000 <= naif_id <= 9_999_999:
         return ObjectType.spacecraft, 0
     if 990_000 <= naif_id < 1_000_000:
         # WT1190F
