@@ -4,7 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from sqlalchemy import insert
 from tqdm import tqdm
 
@@ -33,7 +33,7 @@ class CelesTrakIngestor:
     def __init__(self, download_dir: Path, *, limit: int | None = None):
         self.session = get_session()
         self.limit = limit
-        self.csv_path = download_dir / "celes-trak" / "gp-active.csv"
+        self.csv_path = download_dir / PROVIDERS.CELESTRAK / "gp-active.csv"
         self.total_rows = 0
 
     def _parse_row(self, row: dict) -> dict:
