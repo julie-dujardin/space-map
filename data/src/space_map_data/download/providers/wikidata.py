@@ -87,24 +87,22 @@ class WikidataDownloader(Downloader):
         )
 
     def _load_or_resolve_id_map(self) -> dict[str, dict[str, str]]:
-        """Load cached id_map.json if it exists, otherwise resolve and save."""
+        """Load cached id_map.json, resolve any missing sources, and save."""
         map_file = self.out_dir / "id_map.json"
-        if map_file.exists():
-            logger.info("Loading cached ID mapping from id_map.json")
-            return json.loads(map_file.read_text())
+        id_map = json.loads(map_file.read_text()) if map_file.exists() else {}
 
-        id_map = self._resolve_all()
+        self._resolve_all(id_map)
 
         map_file.write_text(json.dumps(id_map, indent=2))
         logger.info("ID mapping saved -> id_map.json")
         return id_map
 
-    def _resolve_all(self) -> dict[str, dict[str, str]]:
-        """Resolve all ID groups against Wikidata, querying DB in batches."""
-        id_map: dict[str, dict[str, str]] = {}
-
+    def _resolve_all(self, id_map: dict[str, dict[str, str]]) -> None:
+        """Resolve missing ID groups against Wikidata. Returns True if id_map was updated."""
         for id_type, query_method_name, label in SOURCES:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
+            if pid in id_map:
+                continue
             query_method = getattr(self, query_method_name)
             mapping: dict[str, str] = {}
             total = 0
@@ -123,13 +121,12 @@ class WikidataDownloader(Downloader):
             logger.info("  %s: %d / %d resolved", pid, len(mapping), total)
 
         # Name-based search for objects not resolved by ID
-        resolved_qids = {qid for group in id_map.values() for qid in group.values()}
-        name_mapping = self._resolve_by_name(resolved_qids)
-        if name_mapping:
-            id_map["name"] = name_mapping
-            logger.info("  name: %d resolved", len(name_mapping))
-
-        return id_map
+        if "name" not in id_map:
+            resolved_qids = {qid for group in id_map.values() for qid in group.values()}
+            name_mapping = self._resolve_by_name(resolved_qids)
+            if name_mapping:
+                id_map["name"] = name_mapping
+                logger.info("  name: %d resolved", len(name_mapping))
 
     # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
 
