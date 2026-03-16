@@ -9,7 +9,11 @@ from pathlib import Path
 from sqlalchemy import func, select
 from tqdm import tqdm
 
-from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.providers import (
+    ID_TYPE_TO_WIKIDATA_PID,
+    ID_TYPES,
+    PROVIDERS,
+)
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.db import get_session
 from space_map_data.models.object import Object, SBDB
@@ -44,12 +48,25 @@ CONSTELLATION_PREFIXES = (
     "TIANMU-1",
 )
 
-# Each source maps to: (wikidata_property, db_query_func_name, label)
+# Each source maps to: (id_type, db_query_func_name, label)
 SOURCES = (
-    ("P2956", "_query_naif_ids", "Natural bodies"),
-    ("P716", "_query_small_body_spkids", "Named small bodies"),
-    ("P377", "_query_norad_ids", "Satellites"),
+    (ID_TYPES.NAIF, "_query_naif_ids", "Natural bodies (NAIF)"),
+    (ID_TYPES.SPKID, "_query_small_body_spkids", "Small bodies (SPK-ID)"),
+    (
+        ID_TYPES.MPC_DESIGNATION,
+        "_query_mpc_designations",
+        "Small bodies (MPC designation)",
+    ),
+    (ID_TYPES.NORAD_SATCAT, "_query_norad_ids", "Satellites (NORAD)"),
+    (ID_TYPES.COSPAR, "_query_cospar_ids", "Satellites (COSPAR)"),
+    (
+        ID_TYPES.PROVISIONAL_DESIGNATION,
+        "_query_provisional_designations",
+        "Provisional designations",
+    ),
 )
+
+NAME_BATCH_SIZE = 200
 
 
 class WikidataDownloader(Downloader):
@@ -86,23 +103,31 @@ class WikidataDownloader(Downloader):
         """Resolve all ID groups against Wikidata, querying DB in batches."""
         id_map: dict[str, dict[str, str]] = {}
 
-        for prop, query_method_name, label in SOURCES:
+        for id_type, query_method_name, label in SOURCES:
+            pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
             query_method = getattr(self, query_method_name)
             mapping: dict[str, str] = {}
             total = 0
 
             count = query_method(count_only=True)
 
-            desc = f"SPARQL {prop} ({label})"
+            desc = f"SPARQL {pid} ({label})"
             with tqdm(total=count, desc=desc, unit="id") as pbar:
                 for batch in query_method():
                     total += len(batch)
-                    resolved = self._sparql_resolve(prop, batch)
+                    resolved = self._sparql_resolve(pid, batch)
                     mapping.update(resolved)
                     pbar.update(len(batch))
 
-            id_map[prop] = mapping
-            logger.info("  %s: %d / %d resolved", prop, len(mapping), total)
+            id_map[pid] = mapping
+            logger.info("  %s: %d / %d resolved", pid, len(mapping), total)
+
+        # Name-based search for objects not resolved by ID
+        resolved_qids = {qid for group in id_map.values() for qid in group.values()}
+        name_mapping = self._resolve_by_name(resolved_qids)
+        if name_mapping:
+            id_map["name"] = name_mapping
+            logger.info("  name: %d resolved", len(name_mapping))
 
         return id_map
 
@@ -164,6 +189,85 @@ class WikidataDownloader(Downloader):
 
         return _generate()
 
+    def _query_mpc_designations(
+        self, *, count_only: bool = False
+    ) -> int | Iterator[list[str]]:
+        """MPC designations for small bodies → P5736."""
+        stmt = select(Object.sbdb_mcp_designation).where(
+            Object.sbdb_mcp_designation.is_not(None)
+        )
+        if count_only:
+            return (
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
+            )
+        return self._batched_scalars(stmt, str)
+
+    def _query_cospar_ids(
+        self, *, count_only: bool = False
+    ) -> int | Iterator[list[str]]:
+        """COSPAR IDs for non-constellation satellites → P247."""
+        stmt = select(Object.celestrak_cospar_id, Object.name).where(
+            Object.celestrak_cospar_id.is_not(None)
+        )
+        if count_only:
+            return (
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
+            )
+
+        def _generate() -> Iterator[list[str]]:
+            batch: list[str] = []
+            for cospar_id, name in self.session.execute(stmt):
+                if name and any(
+                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
+                ):
+                    continue
+                batch.append(str(cospar_id))
+                if len(batch) >= SPARQL_BATCH_SIZE:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+        return _generate()
+
+    def _query_provisional_designations(
+        self, *, count_only: bool = False
+    ) -> int | Iterator[list[str]]:
+        """Provisional designations → P490."""
+        stmt = select(Object.provisional_designation).where(
+            Object.provisional_designation.is_not(None)
+        )
+        if count_only:
+            return (
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
+            )
+        return self._batched_scalars(stmt, str)
+
+    def _query_names(self) -> Iterator[list[str]]:
+        """Object names for label-based Wikidata search."""
+        stmt = select(Object.name).where(
+            Object.name.is_not(None),
+            Object.name != "",
+        )
+
+        def _generate() -> Iterator[list[str]]:
+            batch: list[str] = []
+            for name in self.session.scalars(stmt):
+                assert name is not None
+                if any(name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES):
+                    continue
+                batch.append(name)
+                if len(batch) >= NAME_BATCH_SIZE:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+        return _generate()
+
     def _batched_scalars(self, stmt, convert=None) -> Iterator[list[str]]:
         """Yield batches of scalar results from a query."""
         batch: list[str] = []
@@ -191,6 +295,46 @@ class WikidataDownloader(Downloader):
         for row in results:
             qid = row["item"]["value"].rsplit("/", 1)[-1]
             mapping[row["id"]["value"]] = qid
+        return mapping
+
+    def _resolve_by_name(self, already_resolved_qids: set[str]) -> dict[str, str]:
+        """Search Wikidata by object name for entities not found by ID."""
+        mapping: dict[str, str] = {}
+        total = 0
+
+        for batch in self._query_names():
+            total += len(batch)
+            resolved = self._sparql_resolve_by_name(batch)
+            # Skip names that resolved to already-known QIDs
+            for name, qid in resolved.items():
+                if qid not in already_resolved_qids:
+                    mapping[name] = qid
+        logger.info(
+            "  name: %d / %d resolved (excluding duplicates)", len(mapping), total
+        )
+        return mapping
+
+    def _sparql_resolve_by_name(self, names: list[str]) -> dict[str, str]:
+        """SPARQL query to resolve names to QIDs via label matching.
+
+        Filters to entities that have at least one known astronomical property.
+        """
+        values = " ".join(f'"{n}"@en' for n in names)
+        pid_filters = " UNION ".join(
+            f"{{ ?item wdt:{pid} [] }}" for pid in ID_TYPE_TO_WIKIDATA_PID.values()
+        )
+        query = (
+            f"SELECT ?item ?name WHERE {{\n"
+            f"  VALUES ?name {{ {values} }}\n"
+            f"  ?item rdfs:label ?name .\n"
+            f"  {{ {pid_filters} }}\n"
+            f"}}"
+        )
+        results = self._sparql_query(query)
+        mapping: dict[str, str] = {}
+        for row in results:
+            qid = row["item"]["value"].rsplit("/", 1)[-1]
+            mapping[row["name"]["value"]] = qid
         return mapping
 
     def _sparql_query(self, query: str) -> list[dict]:
