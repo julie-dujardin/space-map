@@ -157,6 +157,17 @@ class HorizonsIngestor:
                         object_type=ObjectType.spacecraft,
                         horizons_naif_id=hz.naif_id,
                         celestrak_cospar_id=hz.cospar_id,
+                        epoch_jd=hz.JDTDB,
+                        a=hz.A,
+                        e=hz.EC,
+                        i=hz.IN_,
+                        om=hz.OM,
+                        w=hz.W,
+                        ma=hz.MA,
+                        n=hz.N,
+                        frame=Frame.heliocentric,
+                        parent_naif_id=hz.parent_naif_id,
+                        orbital_source=OrbitalSource.horizons,
                     )
                 )
                 hz.object_id = object_id
