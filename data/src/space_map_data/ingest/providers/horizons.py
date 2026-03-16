@@ -53,6 +53,9 @@ class HorizonsIngestor:
         if 2_000_000 <= naif_id <= 2_999_999:
             # Asteroid in the 2m range => 20m range
             return naif_id + 18_000_000
+        if 20_000_000 <= naif_id <= 29_999_999:
+            # Asteroid in the 20m range => return as is
+            return naif_id
         if 900_000_000 <= naif_id <= 999_999_999:
             # binary asteroid primaries
             return naif_id - 900_000_000
@@ -64,7 +67,7 @@ class HorizonsIngestor:
     def get_cospar_id(self, row: dict) -> str | None:
         """Return the COSPAR ID for a row, if it has one"""
         if row["type"] == ObjectType.spacecraft:
-            return row["designation"]
+            return string_or_none(row["designation"])
         return None
 
     def _parse_row(self, row: dict) -> dict:
