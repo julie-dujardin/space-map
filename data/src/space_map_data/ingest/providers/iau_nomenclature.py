@@ -125,17 +125,26 @@ class IAUNomenclatureIngestor:
         self._insert(batch)
 
     def _match_to_objects(self) -> int:
-        matched = self.session.execute(
-            update(Feature)
-            .where(Feature.object_id.is_(None))
-            .values(
-                object_id=self.session.query(Object.id)
-                .where(func.lower(Object.name) == func.lower(Feature.target))
-                .limit(1)
-                .correlate(Feature)
-                .scalar_subquery()
+        # Build a lookup from the ~50 distinct targets instead of a
+        # correlated subquery over 1.5M objects.
+        targets = [
+            t for (t,) in self.session.query(Feature.target).distinct().all()
+        ]
+        matched = 0
+        for target in targets:
+            obj = (
+                self.session.query(Object.id)
+                .where(func.lower(Object.name) == target)
+                .first()
             )
-        ).rowcount  # type: ignore[union-attr]
+            if obj is None:
+                continue
+            matched += self.session.execute(
+                update(Feature)
+                .where(Feature.target == target)
+                .where(Feature.object_id.is_(None))
+                .values(object_id=obj.id)
+            ).rowcount  # type: ignore[union-attr]
         self.session.commit()
         return matched
 
