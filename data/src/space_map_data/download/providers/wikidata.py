@@ -95,38 +95,30 @@ class WikidataDownloader(Downloader):
 
     def _load_or_resolve_id_map(self) -> dict[str, dict[str, list[str]]]:
         """Load cached id_map.json, resolve any missing sources, and save."""
-        map_file = self.out_dir / "id_map.json"
-        id_map = json.loads(map_file.read_text()) if map_file.exists() else {}
+        self._map_file = self.out_dir / "id_map.json"
+        id_map = (
+            json.loads(self._map_file.read_text()) if self._map_file.exists() else {}
+        )
 
         self._resolve_all(id_map)
 
-        map_file.write_text(json.dumps(id_map, indent=2))
-        logger.info("ID mapping saved -> id_map.json")
         return id_map
 
+    def _save_id_map(self, id_map: dict[str, dict[str, list[str]]]) -> None:
+        """Persist id_map.json to disk."""
+        self._map_file.write_text(json.dumps(id_map, indent=2))
+
     def _resolve_all(self, id_map: dict[str, dict[str, list[str]]]) -> None:
-        """Resolve missing ID groups against Wikidata, mutating id_map in-place."""
+        """Resolve missing ID groups against Wikidata, mutating id_map in-place.
+
+        Saves progress after each batch so resolution can resume on failure.
+        Partial progress is stored under a "{pid}__partial" key with metadata.
+        """
         for id_type, query_method_name, label in SOURCES:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
             if pid in id_map:
                 continue
-            query_method = getattr(self, query_method_name)
-            mapping: dict[str, list[str]] = {}
-            total = 0
-
-            count = query_method(count_only=True)
-
-            desc = f"SPARQL {pid} ({label})"
-            with tqdm(total=count, desc=desc, unit="id") as pbar:
-                for batch in query_method():
-                    total += len(batch)
-                    resolved = self._sparql_resolve(pid, batch)
-                    for key, qids in resolved.items():
-                        mapping.setdefault(key, []).extend(qids)
-                    pbar.update(len(batch))
-
-            id_map[pid] = mapping
-            logger.info("  %s: %d / %d resolved", pid, len(mapping), total)
+            self._resolve_source(id_map, pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
         if "name" not in id_map:
@@ -139,7 +131,68 @@ class WikidataDownloader(Downloader):
             name_mapping = self._resolve_by_name(resolved_qids)
             if name_mapping:
                 id_map["name"] = name_mapping
+                self._save_id_map(id_map)
                 logger.info("  name: %d resolved", len(name_mapping))
+
+    def _load_partial_progress(self, pid: str) -> tuple[dict[str, list[str]], int]:
+        """Load partial progress for a source from _partial.json."""
+        partial_file = self.out_dir / "_partial.json"
+        if partial_file.exists():
+            partial = json.loads(partial_file.read_text())
+            if partial.get("pid") == pid:
+                logger.info("Resuming %s from batch %d", pid, partial["batches_done"])
+                return partial["mapping"], partial["batches_done"]
+        return {}, 0
+
+    def _save_partial_progress(
+        self, pid: str, mapping: dict[str, list[str]], batches_done: int
+    ) -> None:
+        """Save partial progress for a source to _partial.json."""
+        partial_file = self.out_dir / "_partial.json"
+        partial_file.write_text(
+            json.dumps({"pid": pid, "batches_done": batches_done, "mapping": mapping})
+        )
+
+    def _clear_partial_progress(self) -> None:
+        """Remove partial progress file."""
+        partial_file = self.out_dir / "_partial.json"
+        partial_file.unlink(missing_ok=True)
+
+    def _resolve_source(
+        self,
+        id_map: dict[str, dict[str, list[str]]],
+        pid: str,
+        query_method_name: str,
+        label: str,
+    ) -> None:
+        """Resolve a single source, resuming from partial progress if available."""
+        query_method = getattr(self, query_method_name)
+        mapping, batches_done = self._load_partial_progress(pid)
+
+        total = 0
+        count = query_method(count_only=True)
+        desc = f"SPARQL {pid} ({label})"
+
+        with tqdm(total=count, desc=desc, unit="id") as pbar:
+            for batch_idx, batch in enumerate(query_method()):
+                total += len(batch)
+                if batch_idx < batches_done:
+                    pbar.update(len(batch))
+                    continue
+
+                resolved = self._sparql_resolve(pid, batch)
+                for key, qids in resolved.items():
+                    mapping.setdefault(key, []).extend(qids)
+                pbar.update(len(batch))
+
+                # Save partial progress after each batch
+                self._save_partial_progress(pid, mapping, batch_idx + 1)
+
+        # Promote partial → complete
+        self._clear_partial_progress()
+        id_map[pid] = mapping
+        self._save_id_map(id_map)
+        logger.info("  %s: %d / %d resolved", pid, len(mapping), total)
 
     # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
 
@@ -365,7 +418,7 @@ class WikidataDownloader(Downloader):
 
     def _sparql_query(self, query: str) -> list[dict]:
         """Execute a SPARQL query with rate limiting and retry on 429."""
-        max_retries = 10    
+        max_retries = 10
         for attempt in range(max_retries + 1):
             response = self.client.post(
                 SPARQL_URL,
