@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from tqdm import tqdm
 
 from space_map_data.export.elements import write_elements
 from space_map_data.export.format import VERSION
@@ -83,14 +84,21 @@ def export(session: Session, out_dir: Path, *, limit_asteroids: int = 10_000) ->
 
     logger.info("Exporting %d objects", len(selected))
 
+    steps = tqdm(total=4, desc="Exporting", unit="step")
+
     write_elements(selected, out_dir)
-    logger.info("Wrote elements.bin")
+    steps.set_postfix_str("elements.bin")
+    steps.update()
 
     write_labels(selected, out_dir)
+    steps.set_postfix_str("labels")
+    steps.update()
 
     # Write id_map.json (eid → object.id for debugging)
     id_map = {str(i): obj.id for i, obj in enumerate(selected)}
     (out_dir / "id_map.json").write_text(json.dumps(id_map, indent=2))
+    steps.set_postfix_str("id_map.json")
+    steps.update()
 
     # Write metadata.json
     metadata = {
@@ -100,5 +108,8 @@ def export(session: Session, out_dir: Path, *, limit_asteroids: int = 10_000) ->
         "asteroid_limit": limit_asteroids,
     }
     (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+    steps.set_postfix_str("metadata.json")
+    steps.update()
+    steps.close()
 
     logger.info("Export complete: %d objects to %s", len(selected), out_dir)
