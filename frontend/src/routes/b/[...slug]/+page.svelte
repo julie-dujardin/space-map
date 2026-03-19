@@ -45,7 +45,7 @@
 
 	onMount(async () => {
 		try {
-			const [cols, labels] = await Promise.all([fetchElements(), fetchLabels('en')]);
+			const [cols, labels] = await Promise.all([fetchElements(), fetchLabels()]);
 
 			console.log(`Loaded: ${cols.rowCount} objects`);
 
