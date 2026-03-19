@@ -11,7 +11,9 @@ from space_map_data.utils.paths import DATA_DIR, EXPORT_DIR
 
 
 def cli():
-    parser = argparse.ArgumentParser(description="Export space-map data to static files")
+    parser = argparse.ArgumentParser(
+        description="Export space-map data to static files"
+    )
     parser.add_argument(
         "--limit-asteroids",
         type=int,

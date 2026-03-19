@@ -37,14 +37,20 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
         _write_int32(
             f,
             n,
-            [o.horizons_naif_id if o.horizons_naif_id is not None else MISSING_INT32 for o in objects],
+            [
+                o.horizons_naif_id if o.horizons_naif_id is not None else MISSING_INT32
+                for o in objects
+            ],
         )
 
         # Column 3: parent_naif_id (int32) — NAIF ID of parent body
         _write_int32(
             f,
             n,
-            [o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32 for o in objects],
+            [
+                o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
+                for o in objects
+            ],
         )
 
         # Column 4: scale (uint8)
@@ -60,7 +66,12 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
             _write_float64(
                 f,
                 n,
-                [getattr(o, attr) if getattr(o, attr) is not None else MISSING_FLOAT64 for o in objects],
+                [
+                    getattr(o, attr)
+                    if getattr(o, attr) is not None
+                    else MISSING_FLOAT64
+                    for o in objects
+                ],
             )
 
 
