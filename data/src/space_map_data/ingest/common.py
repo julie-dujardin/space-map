@@ -6,7 +6,13 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import celestrak, horizons, sbdb, wikidata
+from space_map_data.ingest.providers import (
+    celestrak,
+    horizons,
+    iau_nomenclature,
+    sbdb,
+    wikidata,
+)
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -42,6 +48,8 @@ def ingest(
     horizons.ingest(download_dir, limit=limit)
     # Add new data to existing objects
     wikidata.ingest(download_dir, limit=limit)
+    # Surface features (independent of objects table)
+    iau_nomenclature.ingest(download_dir, limit=limit)
 
     _post_process()
 
