@@ -3,6 +3,7 @@ name = "space-map-data"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
+    "beautifulsoup4>=4.14.3",
     "httpx",
     "sqlalchemy>=2.0",
     "tqdm",

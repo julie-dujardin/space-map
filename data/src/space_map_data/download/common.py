@@ -14,6 +14,7 @@ from space_map_data.download.providers.horizons import HorizonsDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
+from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ PROVIDERS_CLASSES = [
     HorizonsDownloader,
     WikidataDownloader,
     WikipediaDownloader,
+    IAUNomenclatureDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 

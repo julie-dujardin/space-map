@@ -7,6 +7,7 @@ class PROVIDERS(StrEnum):
     SBDB = "sbdb"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
+    IAU_NOMENCLATURE = "iau_nomenclature"
 
 
 class ID_TYPES(StrEnum):
@@ -16,6 +17,7 @@ class ID_TYPES(StrEnum):
     NORAD_SATCAT = "norad_satcat"
     COSPAR = "cospar"
     PROVISIONAL_DESIGNATION = "provisional_designation"
+    IAU_FEATURE_ID = "iau_feature_id"
 
 
 ID_TYPE_TO_WIKIDATA_PID = {
@@ -25,4 +27,5 @@ ID_TYPE_TO_WIKIDATA_PID = {
     ID_TYPES.NORAD_SATCAT: "P377",
     ID_TYPES.COSPAR: "P247",
     ID_TYPES.PROVISIONAL_DESIGNATION: "P490",
+    ID_TYPES.IAU_FEATURE_ID: "P2824",
 }
