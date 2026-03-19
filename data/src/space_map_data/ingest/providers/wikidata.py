@@ -9,6 +9,7 @@ from sqlalchemy import update
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,9 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     session = get_session()
     total = 0
 
-    for pid, id_to_qid in id_map.items():
+    for pid, id_to_qid in tqdm(
+        id_map.items(), total=len(id_map.items()), desc="Wikidata ingest"
+    ):
         count = _ingest_pid(session, pid, id_to_qid, limit=limit)
         logger.info("Wikidata %s: updated %d objects", pid, count)
         total += count

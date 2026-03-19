@@ -35,12 +35,14 @@ def ingest(
     limit: int | None = None,
 ) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
+    # Create objects
     sbdb.ingest(download_dir, limit=limit)
     celestrak.ingest(download_dir, limit=limit)
-
+    # Create objects & add new data into existing ones
     horizons.ingest(download_dir, limit=limit)
-
+    # Add new data to existing objects
     wikidata.ingest(download_dir, limit=limit)
+
     _post_process()
 
     logger.info("Database ready.")
