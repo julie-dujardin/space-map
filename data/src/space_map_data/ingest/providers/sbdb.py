@@ -291,6 +291,7 @@ def _parse_chunk(
                         "n": float_or_none(row["n"]),
                         "radius_km": radius_km,
                         "orbital_source": OrbitalSource.sbdb.value,
+                        "parent_naif_id": 0,
                     },
                 }
             )
