@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import celestrak, horizons, sbdb
+from space_map_data.ingest.providers import celestrak, horizons, sbdb, wikidata
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,10 @@ def ingest(
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
     sbdb.ingest(download_dir, limit=limit)
     celestrak.ingest(download_dir, limit=limit)
+
     horizons.ingest(download_dir, limit=limit)
+
+    wikidata.ingest(download_dir, limit=limit)
     _post_process()
 
     logger.info("Database ready.")
