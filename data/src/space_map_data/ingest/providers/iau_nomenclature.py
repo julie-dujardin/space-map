@@ -127,9 +127,7 @@ class IAUNomenclatureIngestor:
     def _match_to_objects(self) -> int:
         # Build a lookup from the ~50 distinct targets instead of a
         # correlated subquery over 1.5M objects.
-        targets = [
-            t for (t,) in self.session.query(Feature.target).distinct().all()
-        ]
+        targets = [t for (t,) in self.session.query(Feature.target).distinct().all()]
         matched = 0
         for target in targets:
             obj = (
