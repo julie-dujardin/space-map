@@ -365,7 +365,7 @@ class WikidataDownloader(Downloader):
 
     def _sparql_query(self, query: str) -> list[dict]:
         """Execute a SPARQL query with rate limiting and retry on 429."""
-        max_retries = 3
+        max_retries = 10    
         for attempt in range(max_retries + 1):
             response = self.client.post(
                 SPARQL_URL,
@@ -374,9 +374,11 @@ class WikidataDownloader(Downloader):
                 timeout=120.0,
             )
             if response.status_code == 429:
-                retry_after = int(
-                    response.headers.get("retry-after", 2 ** (attempt + 1))
-                )
+                retry_after_header = response.headers.get("retry-after")
+                if retry_after_header:
+                    retry_after = int(retry_after_header)
+                else:
+                    retry_after = 2 ** (attempt + 1)
                 logger.warning("SPARQL 429 — retrying in %ds", retry_after)
                 time.sleep(retry_after)
                 continue
