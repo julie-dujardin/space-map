@@ -6,3 +6,6 @@ CONFIG_FILE = DATA_DIR / "config.toml"
 DOWNLOAD_DIR = DATA_DIR.parent.parent / "space-map-downloads"
 DB_DIR = DOWNLOAD_DIR / "db"
 DB_FILE = DB_DIR / "space-map.db"
+
+PROJECT_ROOT = DATA_DIR.parent
+EXPORT_DIR = PROJECT_ROOT / "export"

@@ -1,0 +1,37 @@
+"""Binary format constants for the elements.bin export."""
+
+import struct
+
+from space_map_data.models.object import ObjectType, ElementsScale
+
+MAGIC = b"SMAP"
+VERSION = 1
+HEADER_SIZE = 16  # must be 8-byte aligned
+
+# ObjectType → uint8 ordinal (must match frontend format.ts)
+OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {t: i for i, t in enumerate(ObjectType)}
+
+# ElementsScale → uint8 ordinal
+SCALE_ORDINAL: dict[ElementsScale, int] = {s: i for i, s in enumerate(ElementsScale)}
+
+# Sentinel values for missing data
+MISSING_INT32 = -1
+MISSING_UINT8 = 255
+MISSING_FLOAT64 = float("nan")
+
+
+def pack_header(row_count: int) -> bytes:
+    """Pack the 16-byte file header."""
+    return struct.pack(
+        "<4sHHII",
+        MAGIC,
+        VERSION,
+        0,  # reserved
+        row_count,
+        0,  # reserved
+    )
+
+
+def align8(size: int) -> int:
+    """Round up to next multiple of 8."""
+    return (size + 7) & ~7
