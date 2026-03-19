@@ -1,3 +1,5 @@
+import { type ObjectType } from './format';
+
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
 	e: number; // eccentricity
@@ -9,42 +11,18 @@ export interface OrbitalElements {
 	epoch: number; // epoch (Julian Date)
 }
 
-export enum BodyType {
-	BARYCENTER = 'barycenter',
-	STAR = 'star',
-	PLANET = 'planet',
-	DWARF_PLANET = 'dwarf_planet',
-	MOON = 'moon',
-	ASTEROID = 'asteroid',
-	COMET = 'comet',
-	SPACECRAFT = 'spacecraft'
-}
-
-export interface HorizonsBody extends OrbitalElements {
+/** Unified body data from the binary export. */
+export interface BodyData extends OrbitalElements {
+	eid: number;
 	name: string | null;
-	designation: string | null;
-	naifId: number;
-	type: BodyType;
-	parentNaifId: number; // NAIF ID of parent (0 = SSB, 1-9 = planet barycenter)
+	objectType: ObjectType;
+	naifId: number; // NAIF ID (-1 if not a Horizons body)
+	parentNaifId: number; // NAIF ID of parent (0 = SSB, 399 = Earth, etc.)
+	radiusKm: number;
 }
 
-export interface SmallBody extends OrbitalElements {
-	fullName: string;
-	name: string | null;
-}
-
-export interface Satellite {
-	objectName: string;
-	meanMotion: number; // rev/day
-	eccentricity: number;
-	inclination: number; // degrees
-	raan: number; // degrees
-	argOfPericenter: number; // degrees
-	meanAnomaly: number; // degrees
-}
-
-export interface PositionedBody<T> {
-	data: T;
+export interface PositionedBody {
+	data: BodyData;
 	position: [number, number, number];
 	/** Orbital elements to use for drawing the orbit (may differ from data's own elements, e.g. barycenter elements for planets) */
 	orbitElements?: OrbitalElements;

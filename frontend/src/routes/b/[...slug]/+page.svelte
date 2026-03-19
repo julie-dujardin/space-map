@@ -1,110 +1,115 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Scene from '../../../components/Scene.svelte';
-	import { fetchHorizons, fetchSmallBodies, fetchSatellites } from '$lib/csv';
+	import { fetchElements, type ElementColumns } from '$lib/elements';
+	import { fetchLabels } from '$lib/labels';
 	import { orbitalElementsToPosition } from '$lib/kepler';
-	import {
-		BodyType,
-		type HorizonsBody,
-		type SmallBody,
-		type Satellite,
-		type PositionedBody
-	} from '$lib/types';
+	import { ObjectType, Scale, isMajorBody } from '$lib/format';
+	import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types';
 	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
-	import { SvelteMap } from 'svelte/reactivity';
 
-	let bodies = $state<PositionedBody<HorizonsBody>[]>([]);
-	let smallBodiesList = $state<PositionedBody<SmallBody>[]>([]);
-	let satellites = $state<Satellite[]>([]);
-	let earthPosition = $state<[number, number, number]>([0, 0, 0]);
+	const KM_PER_AU = 149_597_870.7;
+
+	let majorBodies = $state<PositionedBody[]>([]);
+	let minorBodies = $state<PositionedBody[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
 	const initialView: MapViewState = parseUrl() ?? DEFAULT_VIEW;
 
+	function columnarToBody(
+		cols: ElementColumns,
+		idx: number,
+		labels: Map<number, string>
+	): BodyData {
+		const isPlanetScale = cols.scale[idx] === Scale.PLANET;
+
+		return {
+			eid: cols.eid[idx],
+			name: labels.get(cols.eid[idx]) ?? null,
+			objectType: cols.objectType[idx] as ObjectType,
+			naifId: cols.naifId[idx],
+			parentNaifId: cols.parentNaifId[idx],
+			radiusKm: cols.radiusKm[idx],
+			// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
+			a: isPlanetScale ? cols.a[idx] / KM_PER_AU : cols.a[idx],
+			e: cols.e[idx],
+			i: cols.i[idx],
+			om: cols.om[idx],
+			w: cols.w[idx],
+			ma: cols.ma[idx],
+			n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
+			epoch: cols.epochJd[idx]
+		};
+	}
+
 	onMount(async () => {
-		// Start all fetches immediately (network in parallel)
-		const horizonsPromise = fetchHorizons();
-		const smallBodiesPromise = fetchSmallBodies();
-		const satellitesPromise = fetchSatellites();
-
 		try {
-			// Phase 1: await and process horizons (critical path)
-			const horizons = await horizonsPromise;
-			console.log(`Loaded: ${horizons.length} horizons bodies`);
+			const [cols, labels] = await Promise.all([fetchElements(), fetchLabels('en')]);
 
-			const positions = new SvelteMap<number, [number, number, number]>();
+			console.log(`Loaded: ${cols.rowCount} objects`);
+
+			// Track positions by NAIF ID for parent lookups (not reactive — local computation only)
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			const positions = new Map<number, [number, number, number]>();
 			positions.set(0, [0, 0, 0]); // Solar System Barycenter
 
-			function getParentPos(parentNaifId: number): [number, number, number] {
-				const pos = positions.get(parentNaifId);
-				if (!pos) throw new Error(`Parent ${parentNaifId} not found`);
-				return pos;
-			}
+			// Store barycenter orbital elements for planet orbit drawing
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			const barycenters = new Map<number, OrbitalElements>();
 
-			const barycenters = new SvelteMap<number, HorizonsBody>();
-			const positioned: PositionedBody<HorizonsBody>[] = [];
-			for (const b of horizons) {
-				const parentPos = getParentPos(b.parentNaifId);
-				if (b.a <= 0) {
-					// Skip invalid orbits (some probes with no elements like voyagers)
-					continue;
-				}
-				const offset: [number, number, number] = orbitalElementsToPosition(b, initialView.date);
+			const major: PositionedBody[] = [];
+			const minor: PositionedBody[] = [];
+
+			for (let idx = 0; idx < cols.rowCount; idx++) {
+				const a = cols.a[idx];
+				const e = cols.e[idx];
+				if (!(a > 0) || e >= 1) continue; // skip invalid orbits
+
+				const parentNaifId = cols.parentNaifId[idx];
+				const parentPos = positions.get(parentNaifId) ?? positions.get(0)!;
+
+				const body = columnarToBody(cols, idx, labels);
+				const offset = orbitalElementsToPosition(body, initialView.date);
 				const pos: [number, number, number] = [
 					parentPos[0] + offset[0],
 					parentPos[1] + offset[1],
 					parentPos[2] + offset[2]
 				];
-				positions.set(b.naifId, pos);
-				if (b.type === BodyType.BARYCENTER) {
-					barycenters.set(b.naifId, b);
-				} else {
-					const isMoon = b.type === BodyType.MOON;
-					positioned.push({
-						data: b,
+
+				// Store position by NAIF ID for child lookups
+				const naifId = cols.naifId[idx];
+				if (naifId !== -1) {
+					positions.set(naifId, pos);
+				}
+
+				const objType = cols.objectType[idx] as ObjectType;
+
+				if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+					// Barycenters: store elements for planet orbit drawing, don't render
+					barycenters.set(naifId, body);
+					continue;
+				}
+
+				if (isMajorBody(objType)) {
+					const isMoon = objType === ObjectType.MOON;
+					major.push({
+						data: body,
 						position: pos,
-						orbitElements: isMoon
-							? b.a > 0
-								? b
-								: undefined
-							: (barycenters.get(b.parentNaifId) ?? (b.a > 0 ? b : undefined)),
+						orbitElements: isMoon ? body : (barycenters.get(parentNaifId) ?? body),
 						orbitCenter: isMoon ? parentPos : undefined
+					});
+				} else {
+					minor.push({
+						data: body,
+						position: pos
 					});
 				}
 			}
-			bodies = positioned;
-			earthPosition = getParentPos(399);
-			loading = false; // Scene renders now
 
-			// Phase 2: secondary data (non-blocking)
-			const sunPos = getParentPos(10);
-
-			smallBodiesPromise
-				.then((sbdb) => {
-					console.log(`Loaded: ${sbdb.length} small bodies`);
-					smallBodiesList = sbdb
-						.filter((b) => b.e < 1 && b.a > 0)
-						.map((b) => {
-							const offset = orbitalElementsToPosition(b, initialView.date);
-							return {
-								data: b,
-								position: [sunPos[0] + offset[0], sunPos[1] + offset[1], sunPos[2] + offset[2]] as [
-									number,
-									number,
-									number
-								]
-							};
-						});
-				})
-				.catch((e) => console.warn('Failed to load small bodies:', e));
-
-			satellitesPromise
-				.then((sats) => {
-					console.log(`Loaded: ${sats.length} satellites`);
-					satellites = sats;
-				})
-				.catch((e) => console.warn('Failed to load satellites:', e));
+			majorBodies = major;
+			minorBodies = minor;
+			loading = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			loading = false;
@@ -122,6 +127,6 @@
 	<div class="flex items-center justify-center h-screen bg-bg text-text-error">Error: {error}</div>
 {:else}
 	<div class="w-full h-screen">
-		<Scene {bodies} smallBodies={smallBodiesList} {satellites} {earthPosition} {initialView} />
+		<Scene {majorBodies} {minorBodies} {initialView} />
 	</div>
 {/if}

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
 	import { BufferGeometry, CanvasTexture, Float32BufferAttribute, PointsMaterial } from 'three';
-	import type { SmallBody, PositionedBody } from '$lib/types';
+	import type { PositionedBody } from '$lib/types';
 
 	interface Props {
-		bodies: PositionedBody<SmallBody>[];
+		bodies: PositionedBody[];
 	}
 
 	let { bodies }: Props = $props();

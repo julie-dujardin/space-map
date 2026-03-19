@@ -13,9 +13,6 @@ importers:
       '@threlte/extras':
         specifier: ^9.8.1
         version: 9.8.1(@types/three@0.183.1)(svelte@5.53.8)(three@0.183.2)
-      papaparse:
-        specifier: ^5.5.3
-        version: 5.5.3
       three:
         specifier: ^0.183.2
         version: 0.183.2
@@ -35,9 +32,6 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.2.1
         version: 4.2.1(vite@7.3.1(@types/node@25.4.0)(jiti@2.6.1)(lightningcss@1.31.1))
-      '@types/papaparse':
-        specifier: ^5.5.2
-        version: 5.5.2
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
@@ -923,12 +917,6 @@ packages:
         integrity: sha512-9wLpoeWuBlcbBpOY3XmzSTG3oscB6xjBEEtn+pYXTfhyXhIxC5FsBer2KTopBlvKEiW9l13po9fq+SJY/5lkhw==
       }
 
-  '@types/papaparse@5.5.2':
-    resolution:
-      {
-        integrity: sha512-gFnFp/JMzLHCwRf7tQHrNnfhN4eYBVYYI897CGX4MY1tzY9l2aLkVyx2IlKZ/SAqDbB3I1AOZW5gTMGGsqWliA==
-      }
-
   '@types/stats.js@0.17.4':
     resolution:
       {
@@ -1766,12 +1754,6 @@ packages:
       }
     engines: { node: '>=10' }
 
-  papaparse@5.5.3:
-    resolution:
-      {
-        integrity: sha512-5QvjGxYVjxO59MGU2lHVYpRWBBtKHnlIAcSe1uNFCkkptUh63NFRj0FJQm7nR67puEruUci/ZkjmEFrjCAyP4A==
-      }
-
   path-exists@4.0.0:
     resolution:
       {
@@ -2598,10 +2580,7 @@ snapshots:
   '@types/node@25.4.0':
     dependencies:
       undici-types: 7.18.2
-
-  '@types/papaparse@5.5.2':
-    dependencies:
-      '@types/node': 25.4.0
+    optional: true
 
   '@types/stats.js@0.17.4': {}
 
@@ -3101,8 +3080,6 @@ snapshots:
     dependencies:
       p-limit: 3.1.0
 
-  papaparse@5.5.3: {}
-
   path-exists@4.0.0: {}
 
   path-key@3.1.1: {}
@@ -3317,7 +3294,8 @@ snapshots:
 
   typescript@5.9.3: {}
 
-  undici-types@7.18.2: {}
+  undici-types@7.18.2:
+    optional: true
 
   uri-js@4.4.1:
     dependencies:
