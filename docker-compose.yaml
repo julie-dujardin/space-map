@@ -4,7 +4,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./data/downloads:/usr/share/nginx/html:ro
+      - ./export:/usr/share/nginx/html:ro
       - ./infrastructure/dev/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   frontend:

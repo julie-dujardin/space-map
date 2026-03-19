@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
-	import { BodyType, type HorizonsBody, type SmallBody, type PositionedBody } from '$lib/types';
+	import { ObjectType } from '$lib/format';
+	import type { PositionedBody } from '$lib/types';
 	import {
 		PLANET_COLORS,
 		BODY_RADII_KM,
@@ -12,32 +13,31 @@
 	import Halo from './Halo.svelte';
 
 	interface Props {
-		body: PositionedBody<HorizonsBody> | PositionedBody<SmallBody>;
-		onFocus?: (body: PositionedBody<HorizonsBody> | PositionedBody<SmallBody>) => void;
+		body: PositionedBody;
+		onFocus?: (body: PositionedBody) => void;
 	}
 
 	let { body, onFocus }: Props = $props();
 
-	const isHorizons = 'naifId' in body.data;
-	const horizonsData = isHorizons ? (body.data as HorizonsBody) : undefined;
-
-	const name = isHorizons
-		? (horizonsData!.name ?? horizonsData!.designation ?? '')
-		: ((body.data as SmallBody).name ?? (body.data as SmallBody).fullName);
+	const name = body.data.name ?? '';
+	const objType = body.data.objectType;
 	const color = PLANET_COLORS[name] ?? DEFAULT_BODY_COLOR;
-	const radius = kmToScene(BODY_RADII_KM[name] ?? DEFAULT_BODY_RADIUS_KM);
-	const isStar = horizonsData?.type === BodyType.STAR;
-	const isSpacecraft = horizonsData?.type === BodyType.SPACECRAFT;
+	const rawRadiusKm =
+		BODY_RADII_KM[name] ??
+		(Number.isFinite(body.data.radiusKm) ? body.data.radiusKm : DEFAULT_BODY_RADIUS_KM);
+	const radius = kmToScene(rawRadiusKm);
+	const isStar = objType === ObjectType.STAR;
 	const majorBody =
-		isHorizons &&
-		[BodyType.PLANET, BodyType.DWARF_PLANET, BodyType.STAR].includes(horizonsData!.type);
+		objType === ObjectType.PLANET ||
+		objType === ObjectType.DWARF_PLANET ||
+		objType === ObjectType.STAR;
 	const drawHalo = majorBody;
 	const haloVariant: 'major' | 'minor' | 'spacecraft' = majorBody
 		? 'major'
-		: isSpacecraft
+		: objType === ObjectType.SPACECRAFT
 			? 'spacecraft'
 			: 'minor';
-	const drawTrail = majorBody && horizonsData?.type !== BodyType.STAR;
+	const drawTrail = majorBody && !isStar;
 </script>
 
 <T.Group position={body.position}>

@@ -4,12 +4,7 @@
 	import { Vector3 } from 'three';
 	import type { OrbitControls as OrbitControlsType } from 'three/addons/controls/OrbitControls.js';
 	import Body from './Body.svelte';
-	import {
-		type HorizonsBody,
-		type SmallBody,
-		type Satellite,
-		type PositionedBody
-	} from '$lib/types';
+	import type { PositionedBody } from '$lib/types';
 	import {
 		type MapViewState,
 		cartesianToSpherical,
@@ -20,24 +15,22 @@
 	import SmallBodies from './SmallBodies.svelte';
 
 	interface Props {
-		bodies: PositionedBody<HorizonsBody>[];
-		smallBodies: PositionedBody<SmallBody>[];
-		satellites: Satellite[];
-		earthPosition: [number, number, number];
+		majorBodies: PositionedBody[];
+		minorBodies: PositionedBody[];
 		initialView: MapViewState;
 	}
 
-	let { bodies, smallBodies, initialView }: Props = $props();
+	let { majorBodies, minorBodies, initialView }: Props = $props();
 
 	interactivity();
 
 	let controlsRef = $state<OrbitControlsType>();
 
 	// Resolve initial focus body from URL (fall back to Sun)
-	const matchedBody = bodies.find(
+	const matchedBody = majorBodies.find(
 		(b) => (b.data.name ?? '').toLowerCase() === initialView.bodyName.toLowerCase()
 	);
-	const sunBody = bodies.find((b) => b.data.naifId === 10);
+	const sunBody = majorBodies.find((b) => b.data.naifId === 10);
 	const initialFocusPos: [number, number, number] = matchedBody?.position ??
 		sunBody?.position ?? [0, 0, 0];
 
@@ -96,7 +89,7 @@
 		}
 	});
 
-	function handleFocus(body: PositionedBody<HorizonsBody | SmallBody>) {
+	function handleFocus(body: PositionedBody) {
 		urlSync.cancel(); // Cancel pending sync with old body name
 		focusTarget = body.position;
 		focusedBodyName = body.data.name ?? 'Unknown';
@@ -107,7 +100,7 @@
 		const onPopState = () => {
 			const parsed = parseUrl();
 			if (!parsed) return;
-			const body = bodies.find(
+			const body = majorBodies.find(
 				(b) => (b.data.name ?? '').toLowerCase() === parsed.bodyName.toLowerCase()
 			);
 			if (body) {
@@ -136,10 +129,10 @@
 
 <T.AmbientLight intensity={0.4} />
 
-{#each bodies as body (body.data.naifId)}
+{#each majorBodies as body (body.data.eid)}
 	<Body {body} onFocus={handleFocus} />
 {/each}
 
-{#if smallBodies.length > 0}
-	<SmallBodies bodies={smallBodies} />
+{#if minorBodies.length > 0}
+	<SmallBodies bodies={minorBodies} />
 {/if}
