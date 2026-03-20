@@ -16,6 +16,8 @@ class WikidataEntity(TypedDict):
     labels: dict[str, str]  # lang → name
     descriptions: dict[str, str]  # lang → short description
     aliases: dict[str, list[str]]  # lang → alternative names
+    claims: dict  # raw claims from entity JSON
+    sitelinks: dict[str, str]  # lang → Wikipedia article title
 
 
 def load_wikidata_entities() -> dict[str, WikidataEntity]:
@@ -36,12 +38,16 @@ def load_wikidata_entities() -> dict[str, WikidataEntity]:
         labels = _extract_lang_values(entity.get("labels", {}))
         descriptions = _extract_lang_values(entity.get("descriptions", {}))
         aliases = _extract_lang_aliases(entity.get("aliases", {}))
+        claims = entity.get("claims", {})
+        sitelinks = _extract_sitelinks(entity.get("sitelinks", {}))
 
-        if labels or descriptions or aliases:
+        if labels or descriptions or aliases or claims:
             result[qid] = WikidataEntity(
                 labels=labels,
                 descriptions=descriptions,
                 aliases=aliases,
+                claims=claims,
+                sitelinks=sitelinks,
             )
 
     logger.info("Loaded %d Wikidata entities", len(result))
@@ -71,6 +77,17 @@ def _extract_lang_aliases(data: object) -> dict[str, list[str]]:
             ]
             if values:
                 result[lang_code] = values
+    return result
+
+
+def _extract_sitelinks(data: dict) -> dict[str, str]:
+    """Extract {lang: article_title} from Wikidata sitelinks."""
+    result: dict[str, str] = {}
+    for site_key, link in data.items():
+        if site_key.endswith("wiki") and isinstance(link, dict) and "title" in link:
+            lang = site_key[: -len("wiki")]
+            if lang:  # skip "commonswiki" etc. where lang would be "commons"
+                result[lang] = link["title"]
     return result
 
 
