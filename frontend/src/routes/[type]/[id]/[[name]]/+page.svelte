@@ -80,7 +80,7 @@
 				const objType = cols.objectType[idx] as ObjectType;
 
 				// Store position by ID for child lookups (body-type objects use NAIF IDs)
-				if (id !== -1 && isMajorBody(objType)) {
+				if (isMajorBody(objType)) {
 					positions.set(id, pos);
 				}
 
