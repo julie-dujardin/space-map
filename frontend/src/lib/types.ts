@@ -13,11 +13,10 @@ export interface OrbitalElements {
 
 /** Unified body data from the binary export. */
 export interface BodyData extends OrbitalElements {
-	eid: number;
+	id: number; // type-specific ID (NAIF ID for bodies/probes, SPK ID for small bodies, NORAD cat ID for satellites)
 	name: string | null;
 	objectType: ObjectType;
-	naifId: number; // NAIF ID (-1 if not a Horizons body)
-	parentNaifId: number; // NAIF ID of parent (0 = SSB, 399 = Earth, etc.)
+	parentId: number; // NAIF ID of parent (0 = SSB, 399 = Earth, etc.)
 	radiusKm: number;
 }
 

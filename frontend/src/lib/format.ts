@@ -58,3 +58,11 @@ export function isMajorBody(type: ObjectType): boolean {
 		type === ObjectType.MOON
 	);
 }
+
+/** Map ObjectType to URL type prefix. */
+export function urlType(type: ObjectType): string {
+	if (type === ObjectType.SPACECRAFT) return 'probe';
+	if (type === ObjectType.DEBRIS) return 'sat';
+	if (isAsteroid(type) || type === ObjectType.COMET) return 'sb';
+	return 'body';
+}

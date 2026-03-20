@@ -1,5 +1,5 @@
 /**
- * Fetch per-language element labels (eid → localized name).
+ * Fetch per-language element labels (array index → localized name).
  */
 
 const SUPPORTED_LANGUAGES = ['en', 'fr', 'ja', 'zh', 'ar', 'ru'];

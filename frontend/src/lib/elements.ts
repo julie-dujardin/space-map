@@ -6,10 +6,9 @@
 import { MAGIC, VERSION, HEADER_SIZE } from './format';
 
 export interface ElementColumns {
-	eid: Int32Array;
+	id: Int32Array;
 	objectType: Uint8Array;
-	naifId: Int32Array;
-	parentNaifId: Int32Array;
+	parentId: Int32Array;
 	scale: Uint8Array;
 	epochJd: Float64Array;
 	a: Float64Array;
@@ -51,20 +50,16 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 
 	let offset = HEADER_SIZE;
 
-	// Column 0: eid (int32)
-	const eid = new Int32Array(buffer, offset, rowCount);
+	// Column 0: id (int32) — type-specific ID
+	const id = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
 
 	// Column 1: object_type (uint8)
 	const objectType = new Uint8Array(buffer, offset, rowCount);
 	offset += align8(rowCount);
 
-	// Column 2: naif_id (int32)
-	const naifId = new Int32Array(buffer, offset, rowCount);
-	offset += align8(rowCount * 4);
-
-	// Column 3: parent_naif_id (int32)
-	const parentNaifId = new Int32Array(buffer, offset, rowCount);
+	// Column 2: parent_id (int32)
+	const parentId = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
 
 	// Column 4: scale (uint8)
@@ -99,10 +94,9 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	const radiusKm = new Float64Array(buffer, offset, rowCount);
 
 	return {
-		eid,
+		id,
 		objectType,
-		naifId,
-		parentNaifId,
+		parentId,
 		scale,
 		epochJd,
 		a,

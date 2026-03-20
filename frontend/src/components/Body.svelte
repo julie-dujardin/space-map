@@ -3,7 +3,7 @@
 	import { ObjectType } from '$lib/format';
 	import type { PositionedBody } from '$lib/types';
 	import {
-		PLANET_COLORS,
+		BODY_COLORS,
 		BODY_RADII_KM,
 		DEFAULT_BODY_COLOR,
 		DEFAULT_BODY_RADIUS_KM,
@@ -19,11 +19,12 @@
 
 	let { body, onFocus }: Props = $props();
 
+	const id = body.data.id;
 	const name = body.data.name ?? '';
 	const objType = body.data.objectType;
-	const color = PLANET_COLORS[name] ?? DEFAULT_BODY_COLOR;
+	const color = BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
 	const rawRadiusKm =
-		BODY_RADII_KM[name] ??
+		BODY_RADII_KM[id] ??
 		(Number.isFinite(body.data.radiusKm) ? body.data.radiusKm : DEFAULT_BODY_RADIUS_KM);
 	const radius = kmToScene(rawRadiusKm);
 	const isStar = objType === ObjectType.STAR;
