@@ -1,22 +1,23 @@
-"""Export orchestrator: query DB, assign eids, write all output files."""
+"""Export orchestrator: query DB, write all output files."""
 
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from tqdm import tqdm
 
 from space_map_data.export.elements import write_elements
 from space_map_data.export.format import VERSION
-from space_map_data.export.labels import write_labels
+from space_map_data.export.labels import load_wikidata_entities, write_labels
+from space_map_data.export.objects import write_objects
 from space_map_data.models.object import Object, ObjectType
+from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
-# Sort priority: lower = earlier eid
+# Sort priority: lower = earlier id
 _TYPE_PRIORITY: dict[ObjectType, int] = {
     ObjectType.star: 0,
     ObjectType.barycenter: 1,
@@ -46,20 +47,23 @@ _ASTEROID_TYPES = {
 }
 
 
-def export(session: Session, out_dir: Path, *, limit_asteroids: int = 10_000) -> None:
+def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     """Run the full export pipeline."""
+    out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     asteroid_type_values = [t.value for t in _ASTEROID_TYPES]
 
     others = (
         session.query(Object)
+        .options(joinedload(Object.sbdb))
         .filter(Object.object_type.notin_(asteroid_type_values))
         .all()
     )
 
     asteroids = (
         session.query(Object)
+        .options(joinedload(Object.sbdb))
         .filter(Object.object_type.in_(asteroid_type_values))
         .order_by(func.random())
         .limit(limit_asteroids)
@@ -84,17 +88,23 @@ def export(session: Session, out_dir: Path, *, limit_asteroids: int = 10_000) ->
 
     logger.info("Exporting %d objects", len(selected))
 
-    steps = tqdm(total=4, desc="Exporting", unit="step")
+    wikidata_entities = load_wikidata_entities()
+
+    steps = tqdm(total=5, desc="Exporting", unit="step")
 
     write_elements(selected, out_dir)
     steps.set_postfix_str("elements.bin")
     steps.update()
 
-    write_labels(selected, out_dir)
+    write_labels(selected, out_dir, wikidata_entities)
     steps.set_postfix_str("labels")
     steps.update()
 
-    # Write id_map.json (eid → object.id for debugging)
+    write_objects(selected, out_dir, wikidata_entities)
+    steps.set_postfix_str("objects")
+    steps.update()
+
+    # Write id_map.json (id → object.id for debugging)
     id_map = {str(i): obj.id for i, obj in enumerate(selected)}
     (out_dir / "id_map.json").write_text(json.dumps(id_map, indent=2))
     steps.set_postfix_str("id_map.json")
