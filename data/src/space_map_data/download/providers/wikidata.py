@@ -16,6 +16,7 @@ from space_map_data.constants.providers import (
 )
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.db import get_session
+from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ SOURCES = (
         "_query_provisional_designations",
         "Provisional designations",
     ),
+    (ID_TYPES.IAU_FEATURE_ID, "_query_iau_feature_ids", "IAU features"),
 )
 
 NAME_BATCH_SIZE = 200
@@ -302,6 +304,18 @@ class WikidataDownloader(Downloader):
         stmt = select(Object.provisional_designation).where(
             Object.provisional_designation.is_not(None)
         )
+        if count_only:
+            return (
+                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+                or 0
+            )
+        return self._batched_scalars(stmt, str)
+
+    def _query_iau_feature_ids(
+        self, *, count_only: bool = False
+    ) -> int | Iterator[list[str]]:
+        """IAU planetary feature IDs → P2824."""
+        stmt = select(Feature.feature_id).where(Feature.feature_id.is_not(None))
         if count_only:
             return (
                 self.session.scalar(select(func.count()).select_from(stmt.subquery()))
