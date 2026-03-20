@@ -25,11 +25,10 @@
 		const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 
 		return {
-			eid: cols.eid[idx],
-			name: labels.get(cols.eid[idx]) ?? null,
+			id: cols.id[idx],
+			name: labels.get(idx) ?? null,
 			objectType: cols.objectType[idx] as ObjectType,
-			naifId: cols.naifId[idx],
-			parentNaifId: cols.parentNaifId[idx],
+			parentId: cols.parentId[idx],
 			radiusKm: cols.radiusKm[idx],
 			// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
 			a: isPlanetScale ? cols.a[idx] / KM_PER_AU : cols.a[idx],
@@ -66,8 +65,8 @@
 				const e = cols.e[idx];
 				if (!(a > 0) || e >= 1) continue; // skip invalid orbits
 
-				const parentNaifId = cols.parentNaifId[idx];
-				const parentPos = positions.get(parentNaifId) ?? positions.get(0)!;
+				const parentId = cols.parentId[idx];
+				const parentPos = positions.get(parentId) ?? positions.get(0)!;
 
 				const body = columnarToBody(cols, idx, labels);
 				const offset = orbitalElementsToPosition(body, initialView.date);
@@ -77,17 +76,18 @@
 					parentPos[2] + offset[2]
 				];
 
-				// Store position by NAIF ID for child lookups
-				const naifId = cols.naifId[idx];
-				if (naifId !== -1) {
-					positions.set(naifId, pos);
-				}
-
+				const id = cols.id[idx];
 				const objType = cols.objectType[idx] as ObjectType;
+
+				// Store position by ID for child lookups (body-type objects use NAIF IDs)
+				if (id !== -1 && isMajorBody(objType)) {
+					positions.set(id, pos);
+				}
 
 				if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 					// Barycenters: store elements for planet orbit drawing, don't render
-					barycenters.set(naifId, body);
+					barycenters.set(id, body);
+					positions.set(id, pos);
 					continue;
 				}
 
@@ -96,7 +96,7 @@
 					major.push({
 						data: body,
 						position: pos,
-						orbitElements: isMoon ? body : (barycenters.get(parentNaifId) ?? body),
+						orbitElements: isMoon ? body : (barycenters.get(parentId) ?? body),
 						orbitCenter: isMoon ? parentPos : undefined
 					});
 				} else {

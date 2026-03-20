@@ -30,7 +30,7 @@
 	const matchedBody = majorBodies.find(
 		(b) => (b.data.name ?? '').toLowerCase() === initialView.bodyName.toLowerCase()
 	);
-	const sunBody = majorBodies.find((b) => b.data.naifId === 10);
+	const sunBody = majorBodies.find((b) => b.data.id === 10);
 	const initialFocusPos: [number, number, number] = matchedBody?.position ??
 		sunBody?.position ?? [0, 0, 0];
 
@@ -129,7 +129,7 @@
 
 <T.AmbientLight intensity={0.4} />
 
-{#each majorBodies as body (body.data.eid)}
+{#each majorBodies as body (body.data.id)}
 	<Body {body} onFocus={handleFocus} />
 {/each}
 

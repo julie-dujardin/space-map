@@ -1,5 +1,6 @@
 """Write the elements.bin binary file."""
 
+import re
 import struct
 from pathlib import Path
 
@@ -15,16 +16,24 @@ from space_map_data.export.format import (
 from space_map_data.models.object import Object
 
 
+def _parse_numeric_id(obj: Object) -> int:
+    """Extract the numeric ID from Object.id (e.g. 'naif-399' → 399, 'spkid-2000433' → 2000433)."""
+    match = re.search(r"[-:](-?\d+)$", obj.id)
+    if match:
+        return int(match.group(1))
+    return MISSING_INT32
+
+
 def write_elements(objects: list[Object], out_dir: Path) -> None:
-    """Write elements.bin from a list of Objects (already sorted by eid)."""
+    """Write elements.bin from a list of Objects (already sorted)."""
     n = len(objects)
     out_file = out_dir / "elements.bin"
 
     with open(out_file, "wb") as f:
         f.write(pack_header(n))
 
-        # Column 0: eid (int32) — sequential index
-        _write_int32(f, n, [i for i in range(n)])
+        # Column 0: id (int32) — type-specific ID from Object.id
+        _write_int32(f, n, [_parse_numeric_id(o) for o in objects])
 
         # Column 1: object_type (uint8)
         _write_uint8(
@@ -33,17 +42,7 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
             [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
         )
 
-        # Column 2: naif_id (int32) — object's own NAIF ID (for parent lookups)
-        _write_int32(
-            f,
-            n,
-            [
-                o.horizons_naif_id if o.horizons_naif_id is not None else MISSING_INT32
-                for o in objects
-            ],
-        )
-
-        # Column 3: parent_naif_id (int32) — NAIF ID of parent body
+        # Column 2: parent_id (int32) — NAIF ID of parent body
         _write_int32(
             f,
             n,
