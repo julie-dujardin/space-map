@@ -12,6 +12,7 @@
 		createUrlSync,
 		parseUrl
 	} from '$lib/url-state';
+	import { urlType } from '$lib/format';
 	import SmallBodies from './SmallBodies.svelte';
 
 	interface Props {
@@ -27,15 +28,17 @@
 	let controlsRef = $state<OrbitControlsType>();
 
 	// Resolve initial focus body from URL (fall back to Sun)
-	const matchedBody = majorBodies.find(
-		(b) => (b.data.name ?? '').toLowerCase() === initialView.bodyName.toLowerCase()
+	const allBodies = [...majorBodies, ...minorBodies];
+	const matchedBody = allBodies.find(
+		(b) => urlType(b.data.objectType) === initialView.type && b.data.id === initialView.id
 	);
 	const sunBody = majorBodies.find((b) => b.data.id === 10);
 	const initialFocusPos: [number, number, number] = matchedBody?.position ??
 		sunBody?.position ?? [0, 0, 0];
+	const initialFocusBody = matchedBody ?? sunBody;
 
 	let focusTarget = $state<[number, number, number]>(initialFocusPos);
-	let focusedBodyName = $state<string>(matchedBody?.data.name ?? sunBody?.data.name ?? 'Sun');
+	let focusedBody = $state<PositionedBody | undefined>(initialFocusBody);
 
 	// Compute initial camera position from URL spherical coords
 	const initialCameraPos = sphericalToCartesian(
@@ -72,14 +75,16 @@
 		controlsRef.update();
 
 		// Only sync URL when not animating
-		if (!animating) {
+		if (!animating && focusedBody) {
 			const cam = controlsRef.object;
 			const { latitude, longitude, distance } = cartesianToSpherical(
 				[cam.position.x, cam.position.y, cam.position.z],
 				[controlsRef.target.x, controlsRef.target.y, controlsRef.target.z]
 			);
 			urlSync.sync({
-				bodyName: focusedBodyName,
+				type: urlType(focusedBody.data.objectType),
+				id: focusedBody.data.id,
+				name: focusedBody.data.name ?? '',
 				date: initialView.date,
 				isNow: initialView.isNow,
 				latitude,
@@ -90,9 +95,9 @@
 	});
 
 	function handleFocus(body: PositionedBody) {
-		urlSync.cancel(); // Cancel pending sync with old body name
+		urlSync.cancel();
 		focusTarget = body.position;
-		focusedBodyName = body.data.name ?? 'Unknown';
+		focusedBody = body;
 	}
 
 	// Handle browser back/forward
@@ -100,12 +105,12 @@
 		const onPopState = () => {
 			const parsed = parseUrl();
 			if (!parsed) return;
-			const body = majorBodies.find(
-				(b) => (b.data.name ?? '').toLowerCase() === parsed.bodyName.toLowerCase()
+			const body = allBodies.find(
+				(b) => urlType(b.data.objectType) === parsed.type && b.data.id === parsed.id
 			);
 			if (body) {
 				focusTarget = body.position;
-				focusedBodyName = parsed.bodyName;
+				focusedBody = body;
 			}
 			if (controlsRef) {
 				const target = body?.position ?? focusTarget;

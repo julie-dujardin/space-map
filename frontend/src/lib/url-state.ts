@@ -5,7 +5,9 @@ const DEG = 180 / PI;
 const RAD = PI / 180;
 
 export interface MapViewState {
-	bodyName: string;
+	type: string;
+	id: number;
+	name: string;
 	date: Date;
 	isNow: boolean;
 	latitude: number;
@@ -14,7 +16,9 @@ export interface MapViewState {
 }
 
 export const DEFAULT_VIEW: MapViewState = {
-	bodyName: 'Sun',
+	type: 'body',
+	id: 10,
+	name: 'Sun',
 	date: new Date(),
 	isNow: true,
 	latitude: 45,
@@ -24,10 +28,15 @@ export const DEFAULT_VIEW: MapViewState = {
 
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
-	const bodyName = page.params.slug;
-	if (!bodyName) return null;
+	const type = page.params.type;
+	const idStr = page.params.id;
+	if (!type || !idStr) return null;
 
-	const defaults = { ...DEFAULT_VIEW, bodyName };
+	const id = Number(idStr);
+	if (!Number.isFinite(id)) return null;
+
+	const name = page.params.name ?? '';
+	const defaults = { ...DEFAULT_VIEW, type, id, name };
 
 	const at = page.url.searchParams.get('at');
 	if (!at) return defaults;
@@ -45,15 +54,16 @@ export function parseUrl(): MapViewState | null {
 	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom))
 		return { ...defaults, date, isNow };
 
-	return { bodyName, date, isNow, latitude, longitude, zoom };
+	return { type, id, name, date, isNow, latitude, longitude, zoom };
 }
 
-/** Produce `/b/<body>?at=<date>,<lat>,<lon>,<zoom>` */
+/** Produce `/<type>/<id>/<name>?at=<date>,<lat>,<lon>,<zoom>` */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
-	return `/b/${encodeURIComponent(state.bodyName)}?at=${at}`;
+	const slug = state.name ? `/${encodeURIComponent(state.name)}` : '';
+	return `/${state.type}/${state.id}${slug}?at=${at}`;
 }
 
 /** Camera-relative-to-target → spherical (degrees, Y-up) */

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Scene from '../../../components/Scene.svelte';
+	import Scene from '../../../../components/Scene.svelte';
 	import { fetchElements, type ElementColumns } from '$lib/elements';
 	import { fetchLabels } from '$lib/labels';
 	import { orbitalElementsToPosition } from '$lib/kepler';
