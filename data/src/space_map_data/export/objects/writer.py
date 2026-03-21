@@ -119,8 +119,6 @@ def _build_global(
 
     # Physical properties
     physical = _pick_attrs(obj, _PHYSICAL_FIELDS)
-    if obj.discovery_date is not None:
-        physical["discovery_date"] = str(obj.discovery_date)
     if physical:
         data["physical"] = physical
 
@@ -138,7 +136,9 @@ def _build_global(
             if claim.key in extracted:
                 val = extracted[claim.key]
                 if isinstance(val, dict) and "unit" in val:
-                    val = resolve_unit(val, wikidata_entities)
+                    resolved = resolve_unit(val["unit"], wikidata_entities)
+                    if resolved:
+                        val = {**val, "unit": resolved}
                 wikidata_section[claim.key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section

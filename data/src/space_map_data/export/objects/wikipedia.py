@@ -25,7 +25,8 @@ def load_wikipedia_summaries() -> dict[str, dict[str, dict]]:
             qid = f.stem
             try:
                 page = json.loads(f.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.error("Failed to load %s: %s", f, exc)
                 continue
             summary = _extract_wikipedia(page)
             if summary:

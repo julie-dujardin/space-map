@@ -52,7 +52,7 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
             ],
         )
 
-        # Column 4: scale (uint8)
+        # Column 3: scale (uint8)
         _write_uint8(
             f,
             n,

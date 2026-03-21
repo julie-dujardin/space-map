@@ -32,7 +32,8 @@ def load_wikidata_entities() -> dict[str, WikidataEntity]:
         qid = entity_file.stem
         try:
             entity = json.loads(entity_file.read_text())
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load %s: %s", entity_file, exc)
             continue
 
         labels = _extract_lang_values(entity.get("labels", {}))

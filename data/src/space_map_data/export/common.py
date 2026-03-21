@@ -90,7 +90,7 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
 
     wikidata_entities = load_wikidata_entities()
 
-    steps = tqdm(total=5, desc="Exporting", unit="step")
+    steps = tqdm(total=4, desc="Exporting", unit="step")
 
     write_elements(selected, out_dir)
     steps.set_postfix_str("elements.bin")

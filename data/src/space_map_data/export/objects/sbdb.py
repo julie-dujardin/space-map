@@ -31,6 +31,7 @@ _SBDB_FIELDS = (
     "K1",
     "K2",
     "PC",
+    "first_obs",
 )
 
 

@@ -1,10 +1,13 @@
 """Wikidata claim extraction and entity-reference resolution."""
 
+import logging
 import re
 from typing import Literal, NamedTuple
 from urllib.parse import quote
 
 from space_map_data.export.labels import WikidataEntity
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalClaim(NamedTuple):
@@ -102,16 +105,17 @@ def resolve_entity_ref(
 
 
 def resolve_unit(
-    val: dict,
+    unit_qid: str,
     wikidata_entities: dict[str, WikidataEntity],
-) -> dict:
-    """Resolve a quantity value's unit QID to a normalized label."""
-    unit_wd = wikidata_entities.get(val["unit"])
+) -> str | None:
+    """Resolve a unit QID to a normalized English label, or None if not found."""
+    unit_wd = wikidata_entities.get(unit_qid)
     if unit_wd:
         label = unit_wd["labels"].get("en")
         if label:
-            return {**val, "unit": label.lower().replace(" ", "_")}
-    return val
+            return label.lower().replace(" ", "_")
+    logger.warning("could not resolve unit %s", unit_qid)
+    return None
 
 
 # -- Claim value extractors --
