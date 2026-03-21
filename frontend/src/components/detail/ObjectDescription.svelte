@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+
 	interface Props {
 		extract?: string;
 	}
@@ -25,7 +27,7 @@
 				class="text-xs text-muted-foreground hover:text-foreground self-start"
 				onclick={() => (expanded = !expanded)}
 			>
-				{expanded ? 'Show less' : 'Read more'}
+				{expanded ? m.show_less() : m.read_more()}
 			</button>
 		{/if}
 	</div>
