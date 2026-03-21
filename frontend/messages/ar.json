@@ -344,5 +344,13 @@
 	"unit_apple": "تفاح",
 	"unit_symbol_apple": "apple",
 	"unit_nautical_mile": "ميل بحري",
-	"unit_symbol_nautical_mile": "ميل بحري"
+	"unit_symbol_nautical_mile": "ميل بحري",
+	"type_asteroid": "كويكب",
+	"type_barycenter": "مركز ثقل",
+	"type_comet": "مذنب",
+	"type_dwarf_planet": "كوكب قزم",
+	"type_moon": "قمر",
+	"type_planet": "كوكب",
+	"type_spacecraft": "مركبة فضائية",
+	"type_star": "نجم"
 }

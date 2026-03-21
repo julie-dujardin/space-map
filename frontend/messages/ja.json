@@ -344,5 +344,13 @@
 	"unit_apple": "リンゴ",
 	"unit_symbol_apple": "apple",
 	"unit_nautical_mile": "海里",
-	"unit_symbol_nautical_mile": "nmi"
+	"unit_symbol_nautical_mile": "nmi",
+	"type_asteroid": "小惑星",
+	"type_barycenter": "重心",
+	"type_comet": "彗星",
+	"type_dwarf_planet": "準惑星",
+	"type_moon": "衛星",
+	"type_planet": "惑星",
+	"type_spacecraft": "宇宙機",
+	"type_star": "恒星"
 }

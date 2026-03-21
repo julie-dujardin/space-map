@@ -344,5 +344,13 @@
 	"unit_apple": "яблоко",
 	"unit_symbol_apple": "apple",
 	"unit_nautical_mile": "морская миля",
-	"unit_symbol_nautical_mile": "nmi"
+	"unit_symbol_nautical_mile": "nmi",
+	"type_asteroid": "астероид",
+	"type_barycenter": "барицентр",
+	"type_comet": "комета",
+	"type_dwarf_planet": "карликовая планета",
+	"type_moon": "спутник",
+	"type_planet": "планета",
+	"type_spacecraft": "космический аппарат",
+	"type_star": "звезда"
 }

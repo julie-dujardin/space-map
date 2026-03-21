@@ -344,5 +344,13 @@
 	"unit_apple": "pomme",
 	"unit_symbol_apple": "apple",
 	"unit_nautical_mile": "mille nautique",
-	"unit_symbol_nautical_mile": "nmi"
+	"unit_symbol_nautical_mile": "nmi",
+	"type_asteroid": "astéroïde",
+	"type_barycenter": "barycentre",
+	"type_comet": "comète",
+	"type_dwarf_planet": "planète naine",
+	"type_moon": "lune",
+	"type_planet": "planète",
+	"type_spacecraft": "engin spatial",
+	"type_star": "étoile"
 }
