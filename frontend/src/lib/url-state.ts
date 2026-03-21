@@ -105,7 +105,9 @@ export function createUrlSync(intervalMs = 500) {
 	function write(state: MapViewState) {
 		const url = serializeUrl(state);
 		if (url !== window.location.pathname + window.location.search) {
-			history.replaceState(null, '', url);
+			// Intentional: using history.replaceState directly for high-frequency camera sync
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			history.replaceState(history.state, '', url);
 		}
 		lastUpdate = Date.now();
 	}

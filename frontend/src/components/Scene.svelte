@@ -9,11 +9,12 @@
 		majorBodies: PositionedBody[];
 		minorBodies: PositionedBody[];
 		initialView: MapViewState;
+		onFocusChange?: (body: PositionedBody | undefined) => void;
 	}
 
-	let { majorBodies, minorBodies, initialView }: Props = $props();
+	let { majorBodies, minorBodies, initialView, onFocusChange }: Props = $props();
 </script>
 
 <Canvas createRenderer={(canvas) => new WebGLRenderer({ canvas, logarithmicDepthBuffer: true })}>
-	<SceneContent {majorBodies} {minorBodies} {initialView} />
+	<SceneContent {majorBodies} {minorBodies} {initialView} {onFocusChange} />
 </Canvas>

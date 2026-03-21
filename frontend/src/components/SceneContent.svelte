@@ -19,9 +19,10 @@
 		majorBodies: PositionedBody[];
 		minorBodies: PositionedBody[];
 		initialView: MapViewState;
+		onFocusChange?: (body: PositionedBody | undefined) => void;
 	}
 
-	let { majorBodies, minorBodies, initialView }: Props = $props();
+	let { majorBodies, minorBodies, initialView, onFocusChange }: Props = $props();
 
 	interactivity();
 
@@ -98,6 +99,7 @@
 		urlSync.cancel();
 		focusTarget = body.position;
 		focusedBody = body;
+		onFocusChange?.(body);
 	}
 
 	// Handle browser back/forward
