@@ -7,11 +7,13 @@
 	import { ObjectType, Scale, isMajorBody } from '$lib/format';
 	import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types';
 	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
+	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 
 	const KM_PER_AU = 149_597_870.7;
 
 	let majorBodies = $state<PositionedBody[]>([]);
 	let minorBodies = $state<PositionedBody[]>([]);
+	let selectedBody = $state<PositionedBody | undefined>();
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -20,12 +22,14 @@
 	function columnarToBody(
 		cols: ElementColumns,
 		idx: number,
-		labels: Map<number, string>
+		labels: Map<number, string>,
+		idMap: Record<string, string>
 	): BodyData {
 		const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 
 		return {
 			id: cols.id[idx],
+			fileId: idMap[idx] ?? null,
 			name: labels.get(idx) ?? null,
 			objectType: cols.objectType[idx] as ObjectType,
 			parentId: cols.parentId[idx],
@@ -44,7 +48,11 @@
 
 	onMount(async () => {
 		try {
-			const [cols, labels] = await Promise.all([fetchElements(), fetchLabels()]);
+			const [cols, labels, idMap] = await Promise.all([
+				fetchElements(),
+				fetchLabels(),
+				fetch('/data/v1/id_map.json').then((r) => r.json() as Promise<Record<string, string>>)
+			]);
 
 			console.log(`Loaded: ${cols.rowCount} objects`);
 
@@ -68,7 +76,7 @@
 				const parentId = cols.parentId[idx];
 				const parentPos = positions.get(parentId) ?? positions.get(0)!;
 
-				const body = columnarToBody(cols, idx, labels);
+				const body = columnarToBody(cols, idx, labels, idMap);
 				const offset = orbitalElementsToPosition(body, initialView.date);
 				const pos: [number, number, number] = [
 					parentPos[0] + offset[0],
@@ -126,7 +134,15 @@
 {:else if error}
 	<div class="flex items-center justify-center h-screen bg-bg text-text-error">Error: {error}</div>
 {:else}
-	<div class="w-full h-screen">
-		<Scene {majorBodies} {minorBodies} {initialView} />
+	<div class="relative w-full h-screen">
+		<Scene
+			{majorBodies}
+			{minorBodies}
+			{initialView}
+			onFocusChange={(body) => (selectedBody = body)}
+		/>
+		{#if selectedBody?.data.fileId}
+			<ObjectDrawer body={selectedBody} onClose={() => (selectedBody = undefined)} />
+		{/if}
 	</div>
 {/if}

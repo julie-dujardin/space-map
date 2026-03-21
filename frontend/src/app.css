@@ -210,11 +210,3 @@ body {
 		display: none;
 	}
 }
-
-html,
-body {
-	margin: 0;
-	overflow: hidden;
-	width: 100%;
-	height: 100%;
-}
