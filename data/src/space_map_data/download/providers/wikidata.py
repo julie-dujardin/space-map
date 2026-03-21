@@ -467,7 +467,18 @@ class WikidataDownloader(Downloader):
     # -- Referenced entities --
 
     # Properties whose values are entity references we want to download
-    _REFERENCED_PROPERTIES = ("P61", "P138")  # discoverer, named after
+    _REFERENCED_PROPERTIES = (
+        "P61",  # discoverer
+        "P138",  # named after
+        "P65",  # site of discovery
+        "P196",  # minor planet group
+        "P720",  # spectral type
+        "P744",  # asteroid family
+        "P137",  # operator (spacecraft)
+        "P176",  # manufacturer (spacecraft)
+        "P375",  # launch vehicle (spacecraft)
+        "P1427",  # launch site (spacecraft)
+    )
 
     def _collect_referenced_qids(self, entities_dir: Path) -> set[str]:
         """Scan downloaded entities for QID references in claims we care about."""
