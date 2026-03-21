@@ -11,6 +11,7 @@ from tqdm import tqdm
 from space_map_data.export.elements import write_elements, write_labels
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
+from space_map_data.export.units import write_unit_labels
 from space_map_data.export.wikidata import load_wikidata_entities
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import EXPORT_DIR
@@ -52,7 +53,7 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    steps = tqdm(total=7, desc="Exporting", unit="step")
+    steps = tqdm(total=8, desc="Exporting", unit="step")
 
     asteroid_type_values = [t.value for t in _ASTEROID_TYPES]
 
@@ -106,6 +107,10 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
 
     write_objects(selected, out_dir, wikidata_entities)
     steps.set_postfix_str("objects")
+    steps.update()
+
+    write_unit_labels(out_dir, wikidata_entities)
+    steps.set_postfix_str("unit_labels")
     steps.update()
 
     # Write id_map.json (id → object.id for debugging)
