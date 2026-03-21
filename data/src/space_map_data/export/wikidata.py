@@ -38,27 +38,29 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
 
 def load_wikidata_entities() -> dict[str, WikidataEntity]:
     """Load Wikidata entities into {qid: WikidataEntity} dict."""
-    entities_dir = DOWNLOAD_DIR / "wikidata" / "entities"
-    if not entities_dir.exists():
+    wikidata_dir = DOWNLOAD_DIR / "wikidata"
+    entity_dirs = [wikidata_dir / d for d in ("entities", "referenced", "units")]
+    if not any(d.exists() for d in entity_dirs):
         logger.info("No wikidata entities found, labels will use object names only")
         return {}
 
     result: dict[str, WikidataEntity] = {}
-    for qid, entity in load_json_dir(entities_dir):
-        labels = _extract_lang_values(entity.get("labels", {}))
-        descriptions = _extract_lang_values(entity.get("descriptions", {}))
-        aliases = _extract_lang_aliases(entity.get("aliases", {}))
-        claims = entity.get("claims", {})
-        sitelinks = _extract_sitelinks(entity.get("sitelinks", {}))
+    for entity_dir in entity_dirs:
+        for qid, entity in load_json_dir(entity_dir):
+            labels = _extract_lang_values(entity.get("labels", {}))
+            descriptions = _extract_lang_values(entity.get("descriptions", {}))
+            aliases = _extract_lang_aliases(entity.get("aliases", {}))
+            claims = entity.get("claims", {})
+            sitelinks = _extract_sitelinks(entity.get("sitelinks", {}))
 
-        if labels or descriptions or aliases or claims:
-            result[qid] = WikidataEntity(
-                labels=labels,
-                descriptions=descriptions,
-                aliases=aliases,
-                claims=claims,
-                sitelinks=sitelinks,
-            )
+            if labels or descriptions or aliases or claims:
+                result[qid] = WikidataEntity(
+                    labels=labels,
+                    descriptions=descriptions,
+                    aliases=aliases,
+                    claims=claims,
+                    sitelinks=sitelinks,
+                )
 
     logger.info("Loaded %d Wikidata entities", len(result))
     return result
