@@ -67,7 +67,10 @@ class WikidataDownloader(Downloader):
             self._fetch_entities(sorted(referenced_qids), entities_dir, limit=limit)
 
         self._save_metadata(
-            API_URL, len(all_qids), complete=limit is None or len(all_qids) <= limit
+            API_URL,
+            len(all_qids),
+            complete=limit is None or len(all_qids) <= limit,
+            ids_complete=resolver.ids_complete(),
         )
 
     # -- Referenced entities --
@@ -86,6 +89,14 @@ class WikidataDownloader(Downloader):
                     dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
                     if isinstance(dv, dict) and "id" in dv:
                         referenced.add(dv["id"])
+            # Unit QIDs from quantity values
+            for prop_stmts in claims.values():
+                for stmt in prop_stmts:
+                    dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+                    if isinstance(dv, dict) and "unit" in dv:
+                        unit = dv["unit"]
+                        if isinstance(unit, str) and "wikidata.org/entity/Q" in unit:
+                            referenced.add(unit.rsplit("/", 1)[-1])
         # Subtract those already on disk
         on_disk = {f.stem for f in entities_dir.glob("Q*.json")}
         return referenced - on_disk
