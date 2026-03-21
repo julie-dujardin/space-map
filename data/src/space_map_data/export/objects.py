@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Literal, NamedTuple
 from urllib.parse import quote
 
 from space_map_data.download.providers.wikipedia import LANGUAGES
@@ -12,6 +13,71 @@ from space_map_data.models.object import SBDB, Object
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
+
+
+class GlobalClaim(NamedTuple):
+    key: str
+    pid: str
+    kind: Literal["time", "quantity", "image", "url"]
+
+
+_GLOBAL_CLAIMS = (
+    GlobalClaim("discovery_date", "P575", "time"),
+    GlobalClaim("launch_date", "P619", "time"),
+    GlobalClaim("image", "P18", "image"),
+    GlobalClaim("mass", "P2067", "quantity"),
+    GlobalClaim("radius", "P2120", "quantity"),
+    GlobalClaim("density", "P2054", "quantity"),
+    GlobalClaim("surface_gravity", "P7015", "quantity"),
+    GlobalClaim("absolute_magnitude", "P1457", "quantity"),
+    GlobalClaim("apparent_magnitude", "P1215", "quantity"),
+    GlobalClaim("temperature", "P2076", "quantity"),
+    GlobalClaim("min_temperature", "P7422", "quantity"),
+    GlobalClaim("max_temperature", "P6591", "quantity"),
+    GlobalClaim("website", "P856", "url"),
+)
+
+
+class EntityRefClaim(NamedTuple):
+    key: str
+    output: str
+    pid: str
+
+
+_ENTITY_REF_CLAIMS = (
+    EntityRefClaim("named_after_qid", "named_after", "P138"),
+    EntityRefClaim("discovery_site_qid", "discovery_site", "P65"),
+    EntityRefClaim("minor_planet_group_qid", "minor_planet_group", "P196"),
+    EntityRefClaim("spectral_type_qid", "spectral_type", "P720"),
+    EntityRefClaim("asteroid_family_qid", "asteroid_family", "P744"),
+    EntityRefClaim("operator_qid", "operator", "P137"),
+    EntityRefClaim("manufacturer_qid", "manufacturer", "P176"),
+    EntityRefClaim("launch_vehicle_qid", "launch_vehicle", "P375"),
+    EntityRefClaim("launch_site_qid", "launch_site", "P1427"),
+)
+
+_CROSS_REF_FIELDS = (
+    "wikidata_qid",
+    "horizons_naif_id",
+    "sbdb_spkid",
+    "sbdb_mcp_designation",
+    "celestrak_norad_cat_id",
+    "celestrak_cospar_id",
+)
+
+_ORBIT_FIELDS = ("epoch_jd", "a", "e", "i", "om", "w", "ma", "n")
+
+_PHYSICAL_FIELDS = ("mass_kg", "radius_km")
+
+
+def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
+    """Extract non-None attributes from an object into a dict."""
+    data: dict = {}
+    for attr in attrs:
+        val = getattr(obj, attr)
+        if val is not None:
+            data[attr] = val
+    return data
 
 
 def write_objects(
@@ -35,7 +101,7 @@ def write_objects(
         extracted = _extract_claims(wd["claims"]) if wd else {}
 
         # Global (non-localized)
-        global_data = _build_global(obj, wd, extracted, wikidata_entities)
+        global_data = _build_global(obj, extracted, wikidata_entities)
         (global_dir / f"{obj.id}.json").write_text(
             json.dumps(global_data, ensure_ascii=False, separators=(",", ":"))
         )
@@ -67,39 +133,25 @@ def _extract_claims(claims: dict) -> dict:
 
     # --- Non-localized (global) ---
 
-    # Time properties
-    for key, prop in (("discovery_date", "P575"), ("launch_date", "P619")):
-        if v := _first_time(claims, prop):
-            result[key] = v
-
-    # Quantity properties
-    for key, prop in (
-        ("mass", "P2067"),
-        ("radius", "P2120"),
-        ("density", "P2054"),
-        ("surface_gravity", "P7015"),
-        ("absolute_magnitude", "P1457"),
-        ("apparent_magnitude", "P1215"),
-        ("temperature", "P2076"),
-        ("min_temperature", "P7422"),
-        ("max_temperature", "P6591"),
-    ):
-        if v := _first_quantity(claims, prop):
-            result[key] = v
-
-    # Image (Commons filename → URL)
-    for stmt in claims.get("P18", []):
-        filename = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-        if isinstance(filename, str) and filename:
-            result["image"] = _commons_url(filename)
-            break
-
-    # Website URL
-    for stmt in claims.get("P856", []):
-        url = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-        if isinstance(url, str) and url:
-            result["website"] = url
-            break
+    for claim in _GLOBAL_CLAIMS:
+        if claim.kind == "time":
+            if v := _first_time(claims, claim.pid):
+                result[claim.key] = v
+        elif claim.kind == "quantity":
+            if v := _first_quantity(claims, claim.pid):
+                result[claim.key] = v
+        elif claim.kind == "image":
+            for stmt in claims.get(claim.pid, []):
+                filename = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+                if isinstance(filename, str) and filename:
+                    result[claim.key] = _commons_url(filename)
+                    break
+        elif claim.kind == "url":
+            for stmt in claims.get(claim.pid, []):
+                url = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+                if isinstance(url, str) and url:
+                    result[claim.key] = url
+                    break
 
     # --- Entity references (localized, resolved at build time) ---
 
@@ -110,19 +162,9 @@ def _extract_claims(claims: dict) -> dict:
             result[key] = qids
 
     # Single-value entity refs
-    for key, prop in (
-        ("named_after_qid", "P138"),
-        ("discovery_site_qid", "P65"),
-        ("minor_planet_group_qid", "P196"),
-        ("spectral_type_qid", "P720"),
-        ("asteroid_family_qid", "P744"),
-        ("operator_qid", "P137"),
-        ("manufacturer_qid", "P176"),
-        ("launch_vehicle_qid", "P375"),
-        ("launch_site_qid", "P1427"),
-    ):
-        if qid := _first_entity_qid(claims, prop):
-            result[key] = qid
+    for claim in _ENTITY_REF_CLAIMS:
+        if qid := _first_entity_qid(claims, claim.pid):
+            result[claim.key] = qid
 
     return result
 
@@ -217,7 +259,6 @@ def _resolve_entity_ref(
 
 def _build_global(
     obj: Object,
-    wd: WikidataEntity | None,
     extracted: dict,
     wikidata_entities: dict[str, WikidataEntity],
 ) -> dict:
@@ -232,43 +273,12 @@ def _build_global(
         data["provisional_designation"] = obj.provisional_designation
 
     # Cross-references
-    cross_refs: dict = {}
-    if wd:
-        # wikidata_qid is implicitly known since wd exists, but include for convenience
-        pass
-    if obj.wikidata_qid is not None:
-        cross_refs["wikidata_qid"] = obj.wikidata_qid
-    if obj.horizons_naif_id is not None:
-        cross_refs["horizons_naif_id"] = obj.horizons_naif_id
-    if obj.sbdb_spkid is not None:
-        cross_refs["sbdb_spkid"] = obj.sbdb_spkid
-    if obj.sbdb_mcp_designation is not None:
-        cross_refs["sbdb_mcp_designation"] = obj.sbdb_mcp_designation
-    if obj.celestrak_norad_cat_id is not None:
-        cross_refs["celestrak_norad_cat_id"] = obj.celestrak_norad_cat_id
-    if obj.celestrak_cospar_id is not None:
-        cross_refs["celestrak_cospar_id"] = obj.celestrak_cospar_id
+    cross_refs = _pick_attrs(obj, _CROSS_REF_FIELDS)
     if cross_refs:
         data["cross_refs"] = cross_refs
 
     # Orbital elements
-    orbit: dict = {}
-    if obj.epoch_jd is not None:
-        orbit["epoch_jd"] = obj.epoch_jd
-    if obj.a is not None:
-        orbit["a"] = obj.a
-    if obj.e is not None:
-        orbit["e"] = obj.e
-    if obj.i is not None:
-        orbit["i"] = obj.i
-    if obj.om is not None:
-        orbit["om"] = obj.om
-    if obj.w is not None:
-        orbit["w"] = obj.w
-    if obj.ma is not None:
-        orbit["ma"] = obj.ma
-    if obj.n is not None:
-        orbit["n"] = obj.n
+    orbit = _pick_attrs(obj, _ORBIT_FIELDS)
     if orbit:
         orbit["scale"] = obj.scale
         if obj.parent_naif_id is not None:
@@ -278,11 +288,7 @@ def _build_global(
         data["orbit"] = orbit
 
     # Physical properties
-    physical: dict = {}
-    if obj.mass_kg is not None:
-        physical["mass_kg"] = obj.mass_kg
-    if obj.radius_km is not None:
-        physical["radius_km"] = obj.radius_km
+    physical = _pick_attrs(obj, _PHYSICAL_FIELDS)
     if obj.discovery_date is not None:
         physical["discovery_date"] = str(obj.discovery_date)
     if physical:
@@ -298,111 +304,61 @@ def _build_global(
     # Wikidata claims (non-localized)
     if extracted:
         wikidata_section: dict = {}
-        _GLOBAL_CLAIM_KEYS = (
-            "discovery_date",
-            "launch_date",
-            "image",
-            "mass",
-            "radius",
-            "density",
-            "surface_gravity",
-            "absolute_magnitude",
-            "apparent_magnitude",
-            "temperature",
-            "min_temperature",
-            "max_temperature",
-            "website",
-        )
-        for key in _GLOBAL_CLAIM_KEYS:
-            if key in extracted:
-                val = extracted[key]
+        for claim in _GLOBAL_CLAIMS:
+            if claim.key in extracted:
+                val = extracted[claim.key]
                 if isinstance(val, dict) and "unit" in val:
                     unit_wd = wikidata_entities.get(val["unit"])
                     if unit_wd:
                         label = unit_wd["labels"].get("en")
                         if label:
                             val = {**val, "unit": label.lower().replace(" ", "_")}
-                wikidata_section[key] = val
+                wikidata_section[claim.key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section
 
     return data
 
 
+_SBDB_FIELDS = (
+    "neo",
+    "pha",
+    "class_",
+    "sats",
+    "diameter",
+    "extent",
+    "albedo",
+    "rot_per",
+    "GM",
+    "H",
+    "G",
+    "spec_B",
+    "spec_T",
+    "BV",
+    "UB",
+    "IR",
+    "moid",
+    "moid_jup",
+    "t_jup",
+    "per_y",
+    "q",
+    "ad",
+    "prefix",
+    "M1",
+    "M2",
+    "K1",
+    "K2",
+    "PC",
+)
+
+
 def _build_sbdb(sbdb: SBDB) -> dict:
     """Build the SBDB extras dict, omitting None values."""
     data: dict = {}
-
-    # Classification
-    if sbdb.neo is not None:
-        data["neo"] = sbdb.neo
-    if sbdb.pha is not None:
-        data["pha"] = sbdb.pha
-    if sbdb.class_ is not None:
-        data["class"] = sbdb.class_
-    if sbdb.sats is not None:
-        data["sats"] = sbdb.sats
-
-    # Physical
-    if sbdb.diameter is not None:
-        data["diameter"] = sbdb.diameter
-    if sbdb.extent is not None:
-        data["extent"] = sbdb.extent
-    if sbdb.albedo is not None:
-        data["albedo"] = sbdb.albedo
-    if sbdb.rot_per is not None:
-        data["rot_per"] = sbdb.rot_per
-    if sbdb.GM is not None:
-        data["GM"] = sbdb.GM
-
-    # Magnitude
-    if sbdb.H is not None:
-        data["H"] = sbdb.H
-    if sbdb.G is not None:
-        data["G"] = sbdb.G
-
-    # Spectral
-    if sbdb.spec_B is not None:
-        data["spec_B"] = sbdb.spec_B
-    if sbdb.spec_T is not None:
-        data["spec_T"] = sbdb.spec_T
-
-    # Colors
-    if sbdb.BV is not None:
-        data["BV"] = sbdb.BV
-    if sbdb.UB is not None:
-        data["UB"] = sbdb.UB
-    if sbdb.IR is not None:
-        data["IR"] = sbdb.IR
-
-    # Orbit-derived
-    if sbdb.moid is not None:
-        data["moid"] = sbdb.moid
-    if sbdb.moid_jup is not None:
-        data["moid_jup"] = sbdb.moid_jup
-    if sbdb.t_jup is not None:
-        data["t_jup"] = sbdb.t_jup
-    if sbdb.per_y is not None:
-        data["per_y"] = sbdb.per_y
-    if sbdb.q is not None:
-        data["q"] = sbdb.q
-    if sbdb.ad is not None:
-        data["ad"] = sbdb.ad
-
-    # Comet-specific
-    if sbdb.prefix is not None:
-        data["prefix"] = sbdb.prefix
-    if sbdb.M1 is not None:
-        data["M1"] = sbdb.M1
-    if sbdb.M2 is not None:
-        data["M2"] = sbdb.M2
-    if sbdb.K1 is not None:
-        data["K1"] = sbdb.K1
-    if sbdb.K2 is not None:
-        data["K2"] = sbdb.K2
-    if sbdb.PC is not None:
-        data["PC"] = sbdb.PC
-
+    for attr in _SBDB_FIELDS:
+        val = getattr(sbdb, attr)
+        if val is not None:
+            data[attr.rstrip("_")] = val
     return data
 
 
@@ -441,22 +397,11 @@ def _build_localized(
                 data["discoverers"] = discoverers
 
         # Single-value entity refs
-        _ENTITY_REF_KEYS = (
-            ("named_after_qid", "named_after"),
-            ("discovery_site_qid", "discovery_site"),
-            ("minor_planet_group_qid", "minor_planet_group"),
-            ("spectral_type_qid", "spectral_type"),
-            ("asteroid_family_qid", "asteroid_family"),
-            ("operator_qid", "operator"),
-            ("manufacturer_qid", "manufacturer"),
-            ("launch_vehicle_qid", "launch_vehicle"),
-            ("launch_site_qid", "launch_site"),
-        )
-        for claim_key, output_key in _ENTITY_REF_KEYS:
-            if claim_key in extracted:
-                ref = _resolve_entity_ref(extracted[claim_key], lang, wikidata_entities)
+        for claim in _ENTITY_REF_CLAIMS:
+            if claim.key in extracted:
+                ref = _resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
                 if ref:
-                    data[output_key] = ref
+                    data[claim.output] = ref
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary
