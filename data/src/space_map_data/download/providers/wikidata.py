@@ -110,10 +110,29 @@ class WikidataDownloader(Downloader):
         """Load cached ID CSVs, resolve any missing sources, and return full map."""
         self._ids_dir = self.out_dir / "ids"
         self._ids_dir.mkdir(exist_ok=True)
+        self._ids_complete = self._load_ids_complete()
 
         self._resolve_all()
 
         return self._load_all_ids()
+
+    def _load_ids_complete(self) -> dict[str, bool]:
+        """Load per-source completion flags from metadata."""
+        if not self.metadata_file.exists():
+            return {}
+        meta = json.loads(self.metadata_file.read_text())
+        return meta.get("ids_complete", {})
+
+    def _mark_ids_complete(self, key: str) -> None:
+        """Mark a source as fully resolved in metadata."""
+        self._ids_complete[key] = True
+        meta = (
+            json.loads(self.metadata_file.read_text())
+            if self.metadata_file.exists()
+            else {}
+        )
+        meta["ids_complete"] = self._ids_complete
+        self.metadata_file.write_text(json.dumps(meta, indent=2))
 
     # -- CSV helpers --
 
@@ -160,21 +179,24 @@ class WikidataDownloader(Downloader):
     # -- Resolution --
 
     def _resolve_all(self) -> None:
-        """Resolve missing ID groups against Wikidata, saving per-batch.
+        """Resolve ID groups against Wikidata, saving per-batch.
 
-        Always runs each source — _resolve_source skips already-resolved terms,
-        so partial CSVs from interrupted runs are resumed automatically.
+        Skips sources already marked complete in metadata.
+        Partial CSVs from interrupted runs are resumed automatically.
         """
         for id_type, query_method_name, label in SOURCES:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
+            if self._ids_complete.get(pid):
+                continue
             self._resolve_source(pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
-        resolved_qids = set()
-        for csv_path in self._ids_dir.glob("*.csv"):
-            for qids in self._read_ids_csv(csv_path.stem).values():
-                resolved_qids.update(qids)
-        self._resolve_by_name(resolved_qids)
+        if not self._ids_complete.get("name"):
+            resolved_qids = set()
+            for csv_path in self._ids_dir.glob("*.csv"):
+                for qids in self._read_ids_csv(csv_path.stem).values():
+                    resolved_qids.update(qids)
+            self._resolve_by_name(resolved_qids)
 
     def _resolve_source(
         self,
@@ -208,6 +230,7 @@ class WikidataDownloader(Downloader):
                 self._append_ids_csv(pid, resolved)
                 already_resolved.update(resolved.keys())
 
+        self._mark_ids_complete(pid)
         logger.info("  %s: %d / %d resolved", pid, len(already_resolved), total)
 
     # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
@@ -425,6 +448,7 @@ class WikidataDownloader(Downloader):
                 self._append_ids_csv("name", batch_mapping)
                 mapping.update(batch_mapping)
                 already_resolved_names.update(batch_mapping.keys())
+        self._mark_ids_complete("name")
         logger.info(
             "  name: %d / %d resolved (excluding duplicates)", len(mapping), total
         )
