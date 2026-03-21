@@ -1,5 +1,7 @@
 """Download Wikidata entities for objects in the space-map database."""
 
+import csv
+import io
 import json
 import logging
 import time
@@ -105,105 +107,108 @@ class WikidataDownloader(Downloader):
         )
 
     def _load_or_resolve_id_map(self) -> dict[str, dict[str, list[str]]]:
-        """Load cached id_map.json, resolve any missing sources, and save."""
-        self._map_file = self.out_dir / "id_map.json"
-        id_map = (
-            json.loads(self._map_file.read_text()) if self._map_file.exists() else {}
-        )
+        """Load cached ID CSVs, resolve any missing sources, and return full map."""
+        self._ids_dir = self.out_dir / "ids"
+        self._ids_dir.mkdir(exist_ok=True)
 
-        self._resolve_all(id_map)
+        self._resolve_all()
 
+        return self._load_all_ids()
+
+    # -- CSV helpers --
+
+    def _ids_csv_path(self, key: str) -> Path:
+        """Path to the CSV file for a property or 'name'."""
+        return self._ids_dir / f"{key}.csv"
+
+    def _read_ids_csv(self, key: str) -> dict[str, list[str]]:
+        """Read a property CSV back into a {search_term: [qids]} mapping."""
+        csv_path = self._ids_csv_path(key)
+        if not csv_path.exists():
+            return {}
+        mapping: dict[str, list[str]] = {}
+        for row in csv.reader(io.StringIO(csv_path.read_text())):
+            if not row:
+                continue
+            search_term = row[0]
+            qids = row[1].split() if len(row) > 1 and row[1] else []
+            mapping[search_term] = qids
+        return mapping
+
+    def _append_ids_csv(self, key: str, mapping: dict[str, list[str]]) -> None:
+        """Append resolved rows to a property CSV."""
+        if not mapping:
+            return
+        csv_path = self._ids_csv_path(key)
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        for search_term, qids in mapping.items():
+            writer.writerow([search_term, " ".join(qids)])
+        with open(csv_path, "a") as f:
+            f.write(buf.getvalue())
+
+    def _load_all_ids(self) -> dict[str, dict[str, list[str]]]:
+        """Read all CSV files from ids/ into the full id_map structure."""
+        id_map: dict[str, dict[str, list[str]]] = {}
+        for csv_path in self._ids_dir.glob("*.csv"):
+            key = csv_path.stem
+            mapping = self._read_ids_csv(key)
+            if mapping:
+                id_map[key] = mapping
         return id_map
 
-    def _save_id_map(self, id_map: dict[str, dict[str, list[str]]]) -> None:
-        """Persist id_map.json to disk."""
-        self._map_file.write_text(json.dumps(id_map, indent=2))
+    # -- Resolution --
 
-    def _resolve_all(self, id_map: dict[str, dict[str, list[str]]]) -> None:
-        """Resolve missing ID groups against Wikidata, mutating id_map in-place.
+    def _resolve_all(self) -> None:
+        """Resolve missing ID groups against Wikidata, saving per-batch.
 
-        Saves progress after each batch so resolution can resume on failure.
-        Partial progress is stored under a "{pid}__partial" key with metadata.
+        Always runs each source — _resolve_source skips already-resolved terms,
+        so partial CSVs from interrupted runs are resumed automatically.
         """
         for id_type, query_method_name, label in SOURCES:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
-            if pid in id_map:
-                continue
-            self._resolve_source(id_map, pid, query_method_name, label)
+            self._resolve_source(pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
-        if "name" not in id_map:
-            resolved_qids = {
-                qid
-                for group in id_map.values()
-                for qids in group.values()
-                for qid in qids
-            }
-            name_mapping = self._resolve_by_name(resolved_qids)
-            if name_mapping:
-                id_map["name"] = name_mapping
-                self._save_id_map(id_map)
-                logger.info("  name: %d resolved", len(name_mapping))
-
-    def _load_partial_progress(self, pid: str) -> tuple[dict[str, list[str]], int]:
-        """Load partial progress for a source from _partial.json."""
-        partial_file = self.out_dir / "_partial.json"
-        if partial_file.exists():
-            partial = json.loads(partial_file.read_text())
-            if partial.get("pid") == pid:
-                logger.info("Resuming %s from batch %d", pid, partial["batches_done"])
-                return partial["mapping"], partial["batches_done"]
-        return {}, 0
-
-    def _save_partial_progress(
-        self, pid: str, mapping: dict[str, list[str]], batches_done: int
-    ) -> None:
-        """Save partial progress for a source to _partial.json."""
-        partial_file = self.out_dir / "_partial.json"
-        partial_file.write_text(
-            json.dumps({"pid": pid, "batches_done": batches_done, "mapping": mapping})
-        )
-
-    def _clear_partial_progress(self) -> None:
-        """Remove partial progress file."""
-        partial_file = self.out_dir / "_partial.json"
-        partial_file.unlink(missing_ok=True)
+        resolved_qids = set()
+        for csv_path in self._ids_dir.glob("*.csv"):
+            for qids in self._read_ids_csv(csv_path.stem).values():
+                resolved_qids.update(qids)
+        self._resolve_by_name(resolved_qids)
 
     def _resolve_source(
         self,
-        id_map: dict[str, dict[str, list[str]]],
         pid: str,
         query_method_name: str,
         label: str,
     ) -> None:
-        """Resolve a single source, resuming from partial progress if available."""
+        """Resolve a single source, appending to CSV after each batch."""
         query_method = getattr(self, query_method_name)
-        mapping, batches_done = self._load_partial_progress(pid)
+
+        # Load already-resolved search terms for resumability
+        already_resolved = set(self._read_ids_csv(pid).keys())
+        if already_resolved:
+            logger.info(
+                "Resuming %s — %d terms already resolved", pid, len(already_resolved)
+            )
 
         total = 0
         count = query_method(count_only=True)
         desc = f"SPARQL {pid} ({label})"
 
         with tqdm(total=count, desc=desc, unit="id") as pbar:
-            for batch_idx, batch in enumerate(query_method()):
+            for batch in query_method():
                 total += len(batch)
-                if batch_idx < batches_done:
-                    pbar.update(len(batch))
+                to_resolve = [id_ for id_ in batch if id_ not in already_resolved]
+                pbar.update(len(batch))
+                if not to_resolve:
                     continue
 
-                resolved = self._sparql_resolve(pid, batch)
-                for key, qids in resolved.items():
-                    mapping.setdefault(key, []).extend(qids)
-                pbar.update(len(batch))
+                resolved = self._sparql_resolve(pid, to_resolve)
+                self._append_ids_csv(pid, resolved)
+                already_resolved.update(resolved.keys())
 
-                # Save partial progress after each batch
-                self._save_partial_progress(pid, mapping, batch_idx + 1)
-
-        # Promote partial → complete
-        self._clear_partial_progress()
-        id_map[pid] = mapping
-        self._save_id_map(id_map)
-        logger.info("  %s: %d / %d resolved", pid, len(mapping), total)
+        logger.info("  %s: %d / %d resolved", pid, len(already_resolved), total)
 
     # -- DB query generators (yield batches of SPARQL_BATCH_SIZE) --
 
@@ -395,16 +400,31 @@ class WikidataDownloader(Downloader):
 
     def _resolve_by_name(self, already_resolved_qids: set[str]) -> dict[str, list[str]]:
         """Search Wikidata by object name for entities not found by ID."""
+        already_resolved_names = set(self._read_ids_csv("name").keys())
+        if already_resolved_names:
+            logger.info(
+                "Resuming name search — %d names already resolved",
+                len(already_resolved_names),
+            )
+
         mapping: dict[str, list[str]] = {}
         total = 0
 
         for batch in self._query_names():
             total += len(batch)
-            resolved = self._sparql_resolve_by_name(batch)
+            to_resolve = [n for n in batch if n not in already_resolved_names]
+            if not to_resolve:
+                continue
+            resolved = self._sparql_resolve_by_name(to_resolve)
+            batch_mapping: dict[str, list[str]] = {}
             for name, qids in resolved.items():
                 new_qids = [q for q in qids if q not in already_resolved_qids]
                 if new_qids:
-                    mapping[name] = new_qids
+                    batch_mapping[name] = new_qids
+            if batch_mapping:
+                self._append_ids_csv("name", batch_mapping)
+                mapping.update(batch_mapping)
+                already_resolved_names.update(batch_mapping.keys())
         logger.info(
             "  name: %d / %d resolved (excluding duplicates)", len(mapping), total
         )
