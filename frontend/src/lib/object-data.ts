@@ -1,4 +1,4 @@
-import { preferredLanguage } from './labels';
+import { getLocale } from '$lib/paraglide/runtime.js';
 
 // --- Global object data (non-localized) ---
 
@@ -136,7 +136,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
 export async function fetchObjectDetail(
 	fileId: string,
-	lang = preferredLanguage()
+	lang = getLocale()
 ): Promise<ObjectDetailData> {
 	const key = `${fileId}:${lang}`;
 	const cached = cache.get(key);

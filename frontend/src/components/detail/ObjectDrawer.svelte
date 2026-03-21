@@ -10,6 +10,7 @@
 	import ObjectProperties from './ObjectProperties.svelte';
 	import ObjectDiscovery from './ObjectDiscovery.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		body: PositionedBody;
@@ -162,11 +163,11 @@
 			{#if !isExpanded}
 				<div class="flex w-full items-center justify-between">
 					<span class="text-sm font-semibold truncate">
-						{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? 'Loading...'}
+						{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
 					</span>
 					<Button variant="ghost" size="icon-sm" onclick={onClose}>
 						<XIcon />
-						<span class="sr-only">Close</span>
+						<span class="sr-only">{m.close()}</span>
 					</Button>
 				</div>
 			{/if}
@@ -183,7 +184,7 @@
 				<div class="flex justify-end -mt-1 mb-1">
 					<Button variant="ghost" size="icon-sm" onclick={onClose}>
 						<XIcon />
-						<span class="sr-only">Close</span>
+						<span class="sr-only">{m.close()}</span>
 					</Button>
 				</div>
 				{#if loading}
@@ -218,7 +219,7 @@
 		<div class="flex justify-end p-2">
 			<Button variant="ghost" size="icon-sm" onclick={onClose}>
 				<XIcon />
-				<span class="sr-only">Close</span>
+				<span class="sr-only">{m.close()}</span>
 			</Button>
 		</div>
 

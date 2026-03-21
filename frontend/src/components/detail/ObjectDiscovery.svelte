@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData, EntityRef } from '$lib/object-data';
 
 	interface Props {
@@ -62,28 +63,30 @@
 {#if hasContent}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">
-			{global?.type === 'spacecraft' ? 'Mission' : 'Discovery'}
+			{global?.type === 'spacecraft' ? m.mission() : m.discovery()}
 		</h3>
 		<Separator />
 
 		{#if isNeo || isPha}
 			<div class="flex gap-1.5 mb-1">
-				{#if isNeo}<Badge variant="outline">NEO</Badge>{/if}
-				{#if isPha}<Badge variant="destructive">PHA</Badge>{/if}
+				{#if isNeo}<Badge variant="outline">{m.neo()}</Badge>{/if}
+				{#if isPha}<Badge variant="destructive">{m.pha()}</Badge>{/if}
 			</div>
 		{/if}
 
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#if discoveryDate}
-				<dt class="text-muted-foreground">First observed</dt>
+				<dt class="text-muted-foreground">{m.first_observed()}</dt>
 				<dd class="text-right">{discoveryDate}</dd>
 			{/if}
 			{#if launchDate}
-				<dt class="text-muted-foreground">Launch date</dt>
+				<dt class="text-muted-foreground">{m.launch_date()}</dt>
 				<dd class="text-right">{launchDate}</dd>
 			{/if}
 			{#if discoverers && discoverers.length > 0}
-				<dt class="text-muted-foreground">Discoverer{discoverers.length > 1 ? 's' : ''}</dt>
+				<dt class="text-muted-foreground">
+					{discoverers.length > 1 ? m.discoverers() : m.discoverer()}
+				</dt>
 				<dd class="text-right text-muted-foreground">
 					{#each discoverers as d, i (d.name)}
 						{#if i > 0},
@@ -92,43 +95,43 @@
 				</dd>
 			{/if}
 			{#if discoverySite}
-				<dt class="text-muted-foreground">Discovery site</dt>
+				<dt class="text-muted-foreground">{m.discovery_site()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(discoverySite)}</dd>
 			{/if}
 			{#if namedAfter}
-				<dt class="text-muted-foreground">Named after</dt>
+				<dt class="text-muted-foreground">{m.named_after()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(namedAfter)}</dd>
 			{/if}
 			{#if orbitClass}
-				<dt class="text-muted-foreground">Orbit class</dt>
+				<dt class="text-muted-foreground">{m.orbit_class()}</dt>
 				<dd class="text-right">{orbitClass}</dd>
 			{/if}
 			{#if minorPlanetGroup}
-				<dt class="text-muted-foreground">Group</dt>
+				<dt class="text-muted-foreground">{m.group()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(minorPlanetGroup)}</dd>
 			{/if}
 			{#if asteroidFamily}
-				<dt class="text-muted-foreground">Family</dt>
+				<dt class="text-muted-foreground">{m.family()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(asteroidFamily)}</dd>
 			{/if}
 			{#if sats != null && sats > 0}
-				<dt class="text-muted-foreground">Known satellites</dt>
+				<dt class="text-muted-foreground">{m.known_satellites()}</dt>
 				<dd class="text-right">{sats}</dd>
 			{/if}
 			{#if operator}
-				<dt class="text-muted-foreground">Operator</dt>
+				<dt class="text-muted-foreground">{m.operator()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(operator)}</dd>
 			{/if}
 			{#if manufacturer}
-				<dt class="text-muted-foreground">Manufacturer</dt>
+				<dt class="text-muted-foreground">{m.manufacturer()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(manufacturer)}</dd>
 			{/if}
 			{#if launchVehicle}
-				<dt class="text-muted-foreground">Launch vehicle</dt>
+				<dt class="text-muted-foreground">{m.launch_vehicle()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(launchVehicle)}</dd>
 			{/if}
 			{#if launchSite}
-				<dt class="text-muted-foreground">Launch site</dt>
+				<dt class="text-muted-foreground">{m.launch_site()}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(launchSite)}</dd>
 			{/if}
 		</dl>

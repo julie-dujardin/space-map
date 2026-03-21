@@ -8,6 +8,7 @@
 	import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types';
 	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
+	import * as m from '$lib/paraglide/messages.js';
 
 	const KM_PER_AU = 149_597_870.7;
 
@@ -126,13 +127,15 @@
 </script>
 
 <svelte:head>
-	<title>Space Map</title>
+	<title>{m.page_title()}</title>
 </svelte:head>
 
 {#if loading}
-	<div class="flex items-center justify-center h-screen bg-bg text-text">Loading data...</div>
+	<div class="flex items-center justify-center h-screen bg-bg text-text">{m.loading_data()}</div>
 {:else if error}
-	<div class="flex items-center justify-center h-screen bg-bg text-text-error">Error: {error}</div>
+	<div class="flex items-center justify-center h-screen bg-bg text-text-error">
+		{m.error_prefix({ error })}
+	</div>
 {:else}
 	<div class="relative w-full h-screen">
 		<Scene

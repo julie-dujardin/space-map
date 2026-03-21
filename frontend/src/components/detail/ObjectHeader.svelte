@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/object-data';
 
 	interface Props {
@@ -10,9 +11,9 @@
 
 	let { global, localized, fallbackName }: Props = $props();
 
-	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? 'Unknown');
+	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let image = $derived(localized?.wikipedia?.thumbnail ?? global?.wikidata?.image);
-	let type = $derived(global?.type ?? 'object');
+	let type = $derived(global?.type ?? m.object());
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
 </script>
@@ -29,6 +30,6 @@
 		<p class="text-sm text-muted-foreground">{description}</p>
 	{/if}
 	{#if aliases && aliases.length > 0}
-		<p class="text-xs text-muted-foreground">Also known as: {aliases.join(', ')}</p>
+		<p class="text-xs text-muted-foreground">{m.also_known_as({ aliases: aliases.join(', ') })}</p>
 	{/if}
 </div>
