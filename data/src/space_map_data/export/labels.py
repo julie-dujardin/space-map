@@ -32,7 +32,8 @@ def load_wikidata_entities() -> dict[str, WikidataEntity]:
         qid = entity_file.stem
         try:
             entity = json.loads(entity_file.read_text())
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load %s: %s", entity_file, exc)
             continue
 
         labels = _extract_lang_values(entity.get("labels", {}))
@@ -65,18 +66,15 @@ def _extract_lang_values(data: dict) -> dict[str, str]:
     return result
 
 
-def _extract_lang_aliases(data: object) -> dict[str, list[str]]:
+def _extract_lang_aliases(
+    data: dict[str, list[dict[str, str]]],
+) -> dict[str, list[str]]:
     """Extract {lang: [alias, ...]} from Wikidata aliases format."""
-    if not isinstance(data, dict):
-        return {}
     result: dict[str, list[str]] = {}
     for lang_code, alias_list in data.items():
-        if isinstance(alias_list, list):
-            values = [
-                a["value"] for a in alias_list if isinstance(a, dict) and "value" in a
-            ]
-            if values:
-                result[lang_code] = values
+        values = [a["value"] for a in alias_list if "value" in a]
+        if values:
+            result[lang_code] = values
     return result
 
 

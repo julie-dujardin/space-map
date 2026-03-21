@@ -86,6 +86,10 @@ class WikidataIdResolver:
         self.metadata_file = metadata_file
         self._ids_complete = self._load_ids_complete()
 
+    def ids_complete(self) -> dict[str, bool]:
+        """Per-source completion flags."""
+        return dict(self._ids_complete)
+
     # -- Public API --
 
     def resolve_all(self) -> dict[str, dict[str, list[str]]]:
