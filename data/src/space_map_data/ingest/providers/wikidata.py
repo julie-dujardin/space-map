@@ -17,6 +17,7 @@ from sqlalchemy import update
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def _insert_unambiguous(
     updated = 0
     pending = 0
 
-    for obj_id, qids in obj_to_qids.items():
+    for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):  # noqa: F821
         if limit is not None and updated >= limit:
             break
         if len(qids) != 1:
