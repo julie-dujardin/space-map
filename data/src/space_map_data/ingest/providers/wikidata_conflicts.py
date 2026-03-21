@@ -9,6 +9,7 @@ from sqlalchemy import update
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     if limit is not None:
         rows = rows[:limit]
 
-    for row in rows:
+    for row in tqdm(rows, desc="Wikidata IDs resolution"):
         if not row or len(row) < 2:
             continue
         object_id, qid = row[0].strip(), row[1].strip()
