@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalObjectData } from '$lib/object-data';
 
 	interface Props {
@@ -20,8 +21,12 @@
 		return fn ? fn() : unit.replace(/_/g, ' ');
 	}
 
+	function formatNumber(n: number): string {
+		return n.toLocaleString(getLocale());
+	}
+
 	function formatQuantity(q: { value: number; unit: string }): string {
-		return `${q.value.toLocaleString()} ${formatUnit(q.unit)}`;
+		return `${formatNumber(q.value)} ${formatUnit(q.unit)}`;
 	}
 
 	let physicalProps = $derived.by(() => {
@@ -34,14 +39,14 @@
 		else if (phys?.mass_kg)
 			props.push({
 				label: m.mass(),
-				value: `${phys.mass_kg.toLocaleString()} ${formatUnit('kilogram')}`
+				value: `${formatNumber(phys.mass_kg)} ${formatUnit('kilogram')}`
 			});
 
 		if (wd?.radius) props.push({ label: m.radius(), value: formatQuantity(wd.radius) });
 		else if (phys?.radius_km)
 			props.push({
 				label: m.radius(),
-				value: `${phys.radius_km.toLocaleString()} ${formatUnit('kilometre')}`
+				value: `${formatNumber(phys.radius_km)} ${formatUnit('kilometre')}`
 			});
 		else if (sbdb?.diameter)
 			props.push({ label: m.diameter(), value: `${sbdb.diameter} ${formatUnit('kilometre')}` });
