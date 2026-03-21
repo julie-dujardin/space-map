@@ -91,6 +91,15 @@ class WikidataDownloader(Downloader):
         entities_dir.mkdir(exist_ok=True)
         self._fetch_entities(all_qids, entities_dir, limit=limit)
 
+        # Second pass: fetch entities referenced by claims (discoverers, named-after)
+        referenced_qids = self._collect_referenced_qids(entities_dir)
+        if referenced_qids:
+            logger.info(
+                "Fetching %d referenced entities (discoverers, named-after)",
+                len(referenced_qids),
+            )
+            self._fetch_entities(sorted(referenced_qids), entities_dir, limit=limit)
+
         self._save_metadata(
             API_URL, len(all_qids), complete=limit is None or len(all_qids) <= limit
         )
@@ -454,6 +463,29 @@ class WikidataDownloader(Downloader):
             return response.json()["results"]["bindings"]
 
         raise RuntimeError("SPARQL rate limited after retries")
+
+    # -- Referenced entities --
+
+    # Properties whose values are entity references we want to download
+    _REFERENCED_PROPERTIES = ("P61", "P138")  # discoverer, named after
+
+    def _collect_referenced_qids(self, entities_dir: Path) -> set[str]:
+        """Scan downloaded entities for QID references in claims we care about."""
+        referenced: set[str] = set()
+        for entity_file in entities_dir.glob("Q*.json"):
+            try:
+                entity = json.loads(entity_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            claims = entity.get("claims", {})
+            for prop in self._REFERENCED_PROPERTIES:
+                for stmt in claims.get(prop, []):
+                    dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+                    if isinstance(dv, dict) and "id" in dv:
+                        referenced.add(dv["id"])
+        # Subtract those already on disk
+        on_disk = {f.stem for f in entities_dir.glob("Q*.json")}
+        return referenced - on_disk
 
     # -- Entity fetching --
 
