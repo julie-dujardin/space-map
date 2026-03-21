@@ -88,9 +88,9 @@ class Object(Base):
     )
     # Cross-reference IDs (nullable — an object won't have IDs in all sources)
     wikidata_qid: Mapped[str | None] = mapped_column(
-        unique=False,
+        unique=False,  # Some pages match multiple objects (comets: Q4178666, Q25402132, Q872242)
         default=None,
-        index=True,  # Some objects match multiple pages. TODO: investigate
+        index=True,
     )  # Wikidata entity ID (e.g. Q2)
     horizons_naif_id: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True

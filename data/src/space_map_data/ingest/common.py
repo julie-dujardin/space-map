@@ -12,6 +12,7 @@ from space_map_data.ingest.providers import (
     iau_nomenclature,
     sbdb,
     wikidata,
+    wikidata_conflicts,
 )
 from space_map_data.utils.db import get_session
 
@@ -48,6 +49,7 @@ def ingest(
     horizons.ingest(download_dir, limit=limit)
     # Add new data to existing objects
     wikidata.ingest(download_dir, limit=limit)
+    wikidata_conflicts.ingest(download_dir, limit=limit)
     # Surface features (independent of objects table)
     iau_nomenclature.ingest(download_dir, limit=limit)
 
