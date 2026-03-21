@@ -67,6 +67,8 @@
 	"wikipedia": "Wikipedia",
 	"wikidata_label": "Wikidata ({qid})",
 	"jpl_sbdb": "JPL Small-Body Database",
+	"jpl_horizons": "JPL Horizons",
+	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
 	"unit_1.0": "1.0",
 	"unit_symbol_1.0": "1.0",
 	"unit_metres_per_second_squared": "metres per second squared",

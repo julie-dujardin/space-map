@@ -16,11 +16,15 @@
 	let sbdbDesignation = $derived(
 		global?.cross_refs?.sbdb_mcp_designation ?? global?.cross_refs?.sbdb_spkid
 	);
+	let horizonsNaifId = $derived(global?.cross_refs?.horizons_naif_id);
+	let noradCatId = $derived(global?.cross_refs?.celestrak_norad_cat_id);
 	let designation = $derived(
 		global?.provisional_designation ?? global?.cross_refs?.sbdb_mcp_designation
 	);
 
-	let hasLinks = $derived(wikipediaUrl || wikidataQid || website || sbdbDesignation);
+	let hasLinks = $derived(
+		wikipediaUrl || wikidataQid || website || sbdbDesignation || horizonsNaifId || noradCatId
+	);
 </script>
 
 {#if hasLinks || designation}
@@ -56,6 +60,23 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground text-muted-foreground">{m.jpl_sbdb()}</a
+				>
+			{/if}
+			{#if horizonsNaifId}
+				<a
+					href="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='{horizonsNaifId}'"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground text-muted-foreground">{m.jpl_horizons()}</a
+				>
+			{/if}
+			{#if noradCatId}
+				<a
+					href="https://www.n2yo.com/satellite/?s={noradCatId}"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground text-muted-foreground"
+					>{m.n2yo_satellite_tracker({ id: String(noradCatId) })}</a
 				>
 			{/if}
 			{#if website}

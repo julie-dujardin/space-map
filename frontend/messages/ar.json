@@ -59,6 +59,8 @@
 	"wikipedia": "ويكيبيديا",
 	"wikidata_label": "ويكي بيانات ({qid})",
 	"jpl_sbdb": "قاعدة بيانات الأجرام الصغيرة JPL",
+	"jpl_horizons": "JPL Horizons",
+	"n2yo_satellite_tracker": "N2YO متتبع الأقمار الصناعية ({id})",
 	"unit_1.0": "1.0",
 	"unit_symbol_1.0": "1.0",
 	"unit_metres_per_second_squared": "متر في الثانية المربعة",
