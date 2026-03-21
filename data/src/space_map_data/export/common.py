@@ -52,6 +52,8 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    steps = tqdm(total=7, desc="Exporting", unit="step")
+
     asteroid_type_values = [t.value for t in _ASTEROID_TYPES]
 
     others = (
@@ -87,10 +89,12 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     )
 
     logger.info("Exporting %d objects", len(selected))
+    steps.set_postfix_str("db_pull")
+    steps.update()
 
     wikidata_entities = load_wikidata_entities()
-
-    steps = tqdm(total=4, desc="Exporting", unit="step")
+    steps.set_postfix_str("wikipedia")
+    steps.update()
 
     write_elements(selected, out_dir)
     steps.set_postfix_str("elements.bin")
