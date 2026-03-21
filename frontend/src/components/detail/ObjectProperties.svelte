@@ -14,9 +14,14 @@
 		value: string;
 	}
 
+	function formatUnit(unit: string): string {
+		const symbolKey = `unit_${unit}`;
+		const fn = (m as unknown as Record<string, (() => string) | undefined>)[symbolKey];
+		return fn ? fn() : unit.replace(/_/g, ' ');
+	}
+
 	function formatQuantity(q: { value: number; unit: string }): string {
-		const unit = q.unit.replace(/_/g, ' ');
-		return `${q.value.toLocaleString()} ${unit}`;
+		return `${q.value.toLocaleString()} ${formatUnit(q.unit)}`;
 	}
 
 	let physicalProps = $derived.by(() => {
@@ -27,19 +32,27 @@
 
 		if (wd?.mass) props.push({ label: m.mass(), value: formatQuantity(wd.mass) });
 		else if (phys?.mass_kg)
-			props.push({ label: m.mass(), value: `${phys.mass_kg.toLocaleString()} kg` });
+			props.push({
+				label: m.mass(),
+				value: `${phys.mass_kg.toLocaleString()} ${formatUnit('kilogram')}`
+			});
 
 		if (wd?.radius) props.push({ label: m.radius(), value: formatQuantity(wd.radius) });
 		else if (phys?.radius_km)
-			props.push({ label: m.radius(), value: `${phys.radius_km.toLocaleString()} km` });
-		else if (sbdb?.diameter) props.push({ label: m.diameter(), value: `${sbdb.diameter} km` });
+			props.push({
+				label: m.radius(),
+				value: `${phys.radius_km.toLocaleString()} ${formatUnit('kilometre')}`
+			});
+		else if (sbdb?.diameter)
+			props.push({ label: m.diameter(), value: `${sbdb.diameter} ${formatUnit('kilometre')}` });
 
 		if (sbdb?.extent) props.push({ label: m.extent(), value: sbdb.extent });
 		if (wd?.density) props.push({ label: m.density(), value: formatQuantity(wd.density) });
 		if (wd?.surface_gravity)
 			props.push({ label: m.surface_gravity(), value: formatQuantity(wd.surface_gravity) });
 		if (sbdb?.albedo) props.push({ label: m.albedo(), value: sbdb.albedo.toFixed(3) });
-		if (sbdb?.rot_per) props.push({ label: m.rotation_period(), value: `${sbdb.rot_per} h` });
+		if (sbdb?.rot_per)
+			props.push({ label: m.rotation_period(), value: `${sbdb.rot_per} ${formatUnit('hour')}` });
 
 		if (wd?.temperature)
 			props.push({ label: m.temperature(), value: formatQuantity(wd.temperature) });
@@ -72,15 +85,37 @@
 		const sbdb = global?.sbdb;
 
 		if (sbdb?.per_y)
-			props.push({ label: m.orbital_period(), value: `${sbdb.per_y.toFixed(2)} years` });
-		if (orbit?.a) props.push({ label: m.semi_major_axis(), value: `${orbit.a.toPrecision(6)} AU` });
+			props.push({
+				label: m.orbital_period(),
+				value: `${sbdb.per_y.toFixed(2)} ${formatUnit('year')}`
+			});
+		if (orbit?.a)
+			props.push({
+				label: m.semi_major_axis(),
+				value: `${orbit.a.toPrecision(6)} ${formatUnit('astronomical_unit')}`
+			});
 		if (orbit?.e != null) props.push({ label: m.eccentricity(), value: orbit.e.toFixed(6) });
 		if (orbit?.i != null) props.push({ label: m.inclination(), value: `${orbit.i.toFixed(4)}°` });
-		if (sbdb?.q) props.push({ label: m.perihelion(), value: `${sbdb.q.toFixed(4)} AU` });
-		if (sbdb?.ad) props.push({ label: m.aphelion(), value: `${sbdb.ad.toFixed(4)} AU` });
-		if (sbdb?.moid) props.push({ label: m.earth_moid(), value: `${sbdb.moid.toFixed(6)} AU` });
+		if (sbdb?.q)
+			props.push({
+				label: m.perihelion(),
+				value: `${sbdb.q.toFixed(4)} ${formatUnit('astronomical_unit')}`
+			});
+		if (sbdb?.ad)
+			props.push({
+				label: m.aphelion(),
+				value: `${sbdb.ad.toFixed(4)} ${formatUnit('astronomical_unit')}`
+			});
+		if (sbdb?.moid)
+			props.push({
+				label: m.earth_moid(),
+				value: `${sbdb.moid.toFixed(6)} ${formatUnit('astronomical_unit')}`
+			});
 		if (sbdb?.moid_jup)
-			props.push({ label: m.jupiter_moid(), value: `${sbdb.moid_jup.toFixed(6)} AU` });
+			props.push({
+				label: m.jupiter_moid(),
+				value: `${sbdb.moid_jup.toFixed(6)} ${formatUnit('astronomical_unit')}`
+			});
 		if (sbdb?.t_jup) props.push({ label: m.tisserand_jupiter(), value: sbdb.t_jup.toFixed(3) });
 
 		return props;
