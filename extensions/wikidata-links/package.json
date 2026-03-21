@@ -1,0 +1,22 @@
+{
+  "name": "wikidata-links",
+  "displayName": "Wikidata Links",
+  "description": "Ctrl+click Wikidata Q-IDs and P-IDs to open them in the browser",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {},
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
+  }
+}
