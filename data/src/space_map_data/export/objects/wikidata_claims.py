@@ -5,7 +5,7 @@ import re
 from typing import Literal, NamedTuple
 from urllib.parse import quote
 
-from space_map_data.export.labels import WikidataEntity
+from space_map_data.export.elements import WikidataEntity
 
 logger = logging.getLogger(__name__)
 

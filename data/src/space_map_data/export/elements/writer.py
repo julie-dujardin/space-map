@@ -4,7 +4,7 @@ import re
 import struct
 from pathlib import Path
 
-from space_map_data.export.format import (
+from space_map_data.export.elements.format import (
     MISSING_FLOAT64,
     MISSING_INT32,
     MISSING_UINT8,
