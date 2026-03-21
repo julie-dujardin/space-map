@@ -106,7 +106,7 @@ export function createUrlSync(intervalMs = 500) {
 		const url = serializeUrl(state);
 		if (url !== window.location.pathname + window.location.search) {
 			// Intentional: using history.replaceState directly for high-frequency camera sync
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
+
 			history.replaceState(history.state, '', url);
 		}
 		lastUpdate = Date.now();

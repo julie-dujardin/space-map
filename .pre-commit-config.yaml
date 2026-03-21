@@ -32,7 +32,7 @@ repos:
 
       - id: lint-frontend
         name: lint (frontend)
-        entry: bash -c 'cd frontend && pnpm lint'
+        entry: bash -c 'cd frontend && pnpm lint --fix'
         language: system
         pass_filenames: false
         files: ^frontend/
