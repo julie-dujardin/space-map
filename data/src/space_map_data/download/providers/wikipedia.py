@@ -35,14 +35,14 @@ class WikipediaDownloader(Downloader):
     name = PROVIDERS.WIKIPEDIA
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "entities"
-        if not wikidata_dir.exists():
+        wikidata_entities_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "entities"
+        if not wikidata_entities_dir.exists():
             raise FileNotFoundError(
-                f"Wikidata entities not found at {wikidata_dir} "
+                f"Wikidata entities not found at {wikidata_entities_dir} "
                 "— download wikidata first"
             )
 
-        tasks_by_lang = self._collect_tasks(wikidata_dir)
+        tasks_by_lang = self._collect_tasks(wikidata_entities_dir)
         if not tasks_by_lang:
             logger.info("No summaries to fetch")
             return
