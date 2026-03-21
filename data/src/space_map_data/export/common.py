@@ -8,10 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from tqdm import tqdm
 
-from space_map_data.export.elements import write_elements
-from space_map_data.export.format import VERSION
-from space_map_data.export.labels import load_wikidata_entities, write_labels
+from space_map_data.export.elements import write_elements, write_labels
+from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
+from space_map_data.export.wikidata import load_wikidata_entities
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -52,6 +52,8 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    steps = tqdm(total=7, desc="Exporting", unit="step")
+
     asteroid_type_values = [t.value for t in _ASTEROID_TYPES]
 
     others = (
@@ -87,10 +89,12 @@ def export(session: Session, *, limit_asteroids: int = 10_000) -> None:
     )
 
     logger.info("Exporting %d objects", len(selected))
+    steps.set_postfix_str("db_pull")
+    steps.update()
 
     wikidata_entities = load_wikidata_entities()
-
-    steps = tqdm(total=4, desc="Exporting", unit="step")
+    steps.set_postfix_str("wikipedia")
+    steps.update()
 
     write_elements(selected, out_dir)
     steps.set_postfix_str("elements.bin")

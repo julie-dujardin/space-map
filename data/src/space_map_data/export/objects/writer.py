@@ -4,8 +4,8 @@ import json
 import logging
 from pathlib import Path
 
-from space_map_data.download.providers.wikipedia import LANGUAGES
-from space_map_data.export.labels import WikidataEntity, resolve_name
+from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.wikidata import WikidataEntity, resolve_name
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,

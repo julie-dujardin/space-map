@@ -29,3 +29,4 @@ ID_TYPE_TO_WIKIDATA_PID = {
     ID_TYPES.PROVISIONAL_DESIGNATION: "P490",
     ID_TYPES.IAU_FEATURE_ID: "P2824",
 }
+LANGUAGES = ("en", "fr", "ja", "zh", "ar", "ru")

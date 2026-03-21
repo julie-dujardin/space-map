@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterator
 
 from httpx import Response
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.paths import DOWNLOAD_DIR
 from tqdm import tqdm
 
@@ -16,8 +17,6 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 logger = logging.getLogger(__name__)
-
-LANGUAGES = ("en", "fr", "ja", "zh", "ar", "ru")
 
 AFTER_REQUEST_DELAY_SECONDS = 1
 BATCH_SIZE = 20

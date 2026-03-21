@@ -1,11 +1,11 @@
-"""Write element_labels/<lang>.json files and load Wikidata entities."""
+"""Wikidata entity loading, types, and name resolution."""
 
 import json
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
 
-from space_map_data.download.providers.wikipedia import LANGUAGES
 from space_map_data.models.object import Object
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
@@ -20,6 +20,22 @@ class WikidataEntity(TypedDict):
     sitelinks: dict[str, str]  # lang → Wikipedia article title
 
 
+def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str, dict]]:
+    """Yield (stem, parsed_json) for each JSON file matching *glob* in *directory*.
+
+    Skips files that fail to parse and logs an error for each.
+    """
+    if not directory.exists():
+        return
+    for path in directory.glob(glob):
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load %s: %s", path, exc)
+            continue
+        yield path.stem, data
+
+
 def load_wikidata_entities() -> dict[str, WikidataEntity]:
     """Load Wikidata entities into {qid: WikidataEntity} dict."""
     entities_dir = DOWNLOAD_DIR / "wikidata" / "entities"
@@ -28,14 +44,7 @@ def load_wikidata_entities() -> dict[str, WikidataEntity]:
         return {}
 
     result: dict[str, WikidataEntity] = {}
-    for entity_file in entities_dir.glob("Q*.json"):
-        qid = entity_file.stem
-        try:
-            entity = json.loads(entity_file.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.error("Failed to load %s: %s", entity_file, exc)
-            continue
-
+    for qid, entity in load_json_dir(entities_dir):
         labels = _extract_lang_values(entity.get("labels", {}))
         descriptions = _extract_lang_values(entity.get("descriptions", {}))
         aliases = _extract_lang_aliases(entity.get("aliases", {}))
@@ -53,6 +62,22 @@ def load_wikidata_entities() -> dict[str, WikidataEntity]:
 
     logger.info("Loaded %d Wikidata entities", len(result))
     return result
+
+
+def resolve_name(
+    obj: Object,
+    lang: str,
+    wikidata_entities: dict[str, WikidataEntity],
+) -> str | None:
+    """Resolve the best available name for an object in a given language."""
+    if obj.wikidata_qid and obj.wikidata_qid in wikidata_entities:
+        labels = wikidata_entities[obj.wikidata_qid]["labels"]
+        if lang in labels:
+            return labels[lang]
+        if "en" in labels:
+            return labels["en"]
+
+    return obj.name
 
 
 def _extract_lang_values(data: dict) -> dict[str, str]:
@@ -87,44 +112,3 @@ def _extract_sitelinks(data: dict) -> dict[str, str]:
             if lang:  # skip "commonswiki" etc. where lang would be "commons"
                 result[lang] = link["title"]
     return result
-
-
-def write_labels(
-    objects: list[Object],
-    out_dir: Path,
-    wikidata_entities: dict[str, WikidataEntity],
-) -> None:
-    """Write per-language label JSON files.
-
-    Each file maps eid (string) → localized name.
-    Fallback chain: Wikidata label (target lang) → Wikidata label (en) → object.name.
-    """
-    labels_dir = out_dir / "element_labels"
-    labels_dir.mkdir(parents=True, exist_ok=True)
-
-    for lang in LANGUAGES:
-        labels: dict[str, str] = {}
-        for eid, obj in enumerate(objects):
-            name = resolve_name(obj, lang, wikidata_entities)
-            if name:
-                labels[str(eid)] = name
-
-        out_file = labels_dir / f"{lang}.json"
-        out_file.write_text(json.dumps(labels, ensure_ascii=False))
-        logger.info("Wrote %d labels to %s", len(labels), out_file.name)
-
-
-def resolve_name(
-    obj: Object,
-    lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
-) -> str | None:
-    """Resolve the best available name for an object in a given language."""
-    if obj.wikidata_qid and obj.wikidata_qid in wikidata_entities:
-        labels = wikidata_entities[obj.wikidata_qid]["labels"]
-        if lang in labels:
-            return labels[lang]
-        if "en" in labels:
-            return labels["en"]
-
-    return obj.name
