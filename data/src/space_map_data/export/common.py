@@ -8,13 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from tqdm import tqdm
 
-from space_map_data.export.elements import (
-    load_wikidata_entities,
-    write_elements,
-    write_labels,
-)
+from space_map_data.export.elements import write_elements, write_labels
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
+from space_map_data.export.wikidata import load_wikidata_entities
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.paths import EXPORT_DIR
 

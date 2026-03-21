@@ -1,9 +1,9 @@
 """Load and extract Wikipedia summaries for export."""
 
-import json
 import logging
 
-from space_map_data.download.providers.wikipedia import LANGUAGES
+from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.wikidata import load_json_dir
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
@@ -19,15 +19,7 @@ def load_wikipedia_summaries() -> dict[str, dict[str, dict]]:
     result: dict[str, dict[str, dict]] = {}
     for lang in LANGUAGES:
         lang_dir = wiki_dir / lang
-        if not lang_dir.exists():
-            continue
-        for f in lang_dir.glob("Q*.json"):
-            qid = f.stem
-            try:
-                page = json.loads(f.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.error("Failed to load %s: %s", f, exc)
-                continue
+        for qid, page in load_json_dir(lang_dir):
             summary = _extract_wikipedia(page)
             if summary:
                 result.setdefault(qid, {})[lang] = summary
