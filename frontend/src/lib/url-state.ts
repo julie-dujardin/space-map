@@ -30,10 +30,16 @@ export const DEFAULT_VIEW: MapViewState = {
 export function parseUrl(): MapViewState | null {
 	const type = page.params.type;
 	const idStr = page.params.id;
-	if (!type || !idStr) return null;
+	if (!type || !idStr) {
+		console.warn(`parseUrl: missing route params (type=${type}, id=${idStr})`);
+		return null;
+	}
 
 	const id = Number(idStr);
-	if (!Number.isFinite(id)) return null;
+	if (!Number.isFinite(id)) {
+		console.warn(`parseUrl: non-numeric id param: ${idStr}`);
+		return null;
+	}
 
 	const name = page.params.name ?? '';
 	const defaults = { ...DEFAULT_VIEW, type, id, name };

@@ -52,7 +52,10 @@
 			const [cols, labels, idMap] = await Promise.all([
 				fetchElements(),
 				fetchLabels(),
-				fetch('/data/v1/id_map.json').then((r) => r.json() as Promise<Record<string, string>>)
+				fetch('/data/v1/id_map.json').then((r) => {
+					if (!r.ok) throw new Error(`id_map.json: ${r.status} ${r.statusText}`);
+					return r.json() as Promise<Record<string, string>>;
+				})
 			]);
 
 			console.log(`Loaded: ${cols.rowCount} objects`);

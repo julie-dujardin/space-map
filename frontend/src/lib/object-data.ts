@@ -128,9 +128,15 @@ const cache = new Map<string, ObjectDetailData>();
 async function fetchJson<T>(url: string): Promise<T | null> {
 	try {
 		const res = await fetch(url);
-		if (!res.ok) return null;
+		if (!res.ok) {
+			if (res.status !== 404) {
+				console.warn(`fetchJson: ${url} returned ${res.status} ${res.statusText}`);
+			}
+			return null;
+		}
 		return (await res.json()) as T;
-	} catch {
+	} catch (err) {
+		console.warn(`fetchJson: failed to fetch ${url}:`, err);
 		return null;
 	}
 }

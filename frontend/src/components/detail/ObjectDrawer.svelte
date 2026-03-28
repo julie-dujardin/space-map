@@ -52,12 +52,19 @@
 		if (!fileId) return;
 		loading = true;
 		data = null;
-		fetchObjectDetail(fileId).then((result) => {
-			if (body.data.fileId === fileId) {
-				data = result;
-				loading = false;
-			}
-		});
+		fetchObjectDetail(fileId)
+			.then((result) => {
+				if (body.data.fileId === fileId) {
+					data = result;
+					loading = false;
+				}
+			})
+			.catch((err) => {
+				console.warn(`ObjectDrawer: failed to load detail for ${fileId}:`, err);
+				if (body.data.fileId === fileId) {
+					loading = false;
+				}
+			});
 	});
 
 	function onDragStart(e: PointerEvent) {
