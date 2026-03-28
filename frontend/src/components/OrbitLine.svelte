@@ -1,12 +1,6 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
-	import {
-		BufferGeometry,
-		Color,
-		Float32BufferAttribute,
-		LineBasicMaterial,
-		ShaderMaterial
-	} from 'three';
+	import { BufferGeometry, Color, Float32BufferAttribute, ShaderMaterial } from 'three';
 	import type { OrbitalElements } from '$lib/types';
 	import { orbitalElementsToEllipse } from '$lib/kepler';
 
@@ -23,50 +17,15 @@
 	const NUM_POINTS = 512;
 	const allPoints = orbitalElementsToEllipse(elements, NUM_POINTS);
 
-	function buildFullOrbit() {
-		const geometry = new BufferGeometry();
-		geometry.setAttribute(
-			'position',
-			new Float32BufferAttribute(new Float32Array(allPoints.flat()), 3)
-		);
-		const material = new LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
-		return { geometry, material, isLoop: true };
-	}
+	// Current mean anomaly (degrees, 0-360)
+	const dateJD = Date.now() / 86400000 + 2440587.5;
+	const dt = dateJD - elements.epoch;
+	const currentMa = (((elements.ma + elements.n * dt) % 360) + 360) % 360;
+	const currentIdx = (currentMa / 360) * NUM_POINTS;
 
-	function buildTrail() {
-		// Current mean anomaly (degrees, 0-360)
-		const dateJD = Date.now() / 86400000 + 2440587.5;
-		const dt = dateJD - elements.epoch;
-		const currentMa = (((elements.ma + elements.n * dt) % 360) + 360) % 360;
-
-		// Index in the ellipse array corresponding to current position
-		const currentIdx = (currentMa / 360) * NUM_POINTS;
-		const trailLen = Math.round(trailFraction! * NUM_POINTS);
-
-		// Extract trail points ending at current position, wrapping around
-		const trailPoints: [number, number, number][] = [];
-		for (let k = 0; k < trailLen; k++) {
-			const idx = Math.round(
-				(((currentIdx - trailLen + 1 + k) % NUM_POINTS) + NUM_POINTS) % NUM_POINTS
-			);
-			trailPoints.push(allPoints[idx]);
-		}
-
-		const geometry = new BufferGeometry();
-		geometry.setAttribute(
-			'position',
-			new Float32BufferAttribute(new Float32Array(trailPoints.flat()), 3)
-		);
-
-		// Alpha gradient: 0 at tail, 0.6z at head
-		const alphas = new Float32Array(trailLen);
-		for (let k = 0; k < trailLen; k++) {
-			alphas[k] = (k / (trailLen - 1)) * 0.6;
-		}
-		geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
-
+	function buildAlphaShader() {
 		const c = new Color(color);
-		const material = new ShaderMaterial({
+		return new ShaderMaterial({
 			transparent: true,
 			uniforms: { uColor: { value: c } },
 			vertexShader: `
@@ -85,15 +44,55 @@
 				}
 			`
 		});
-
-		return { geometry, material, isLoop: false };
 	}
 
-	const { geometry, material, isLoop } = trailFraction ? buildTrail() : buildFullOrbit();
+	function buildOrbit() {
+		// For partial trails, extract a subset; for full orbits, use all points
+		let points: [number, number, number][];
+		let alphas: Float32Array;
+
+		if (trailFraction) {
+			const trailLen = Math.round(trailFraction * NUM_POINTS);
+			points = [];
+			for (let k = 0; k < trailLen; k++) {
+				const idx = Math.round(
+					(((currentIdx - trailLen + 1 + k) % NUM_POINTS) + NUM_POINTS) % NUM_POINTS
+				);
+				points.push(allPoints[idx]);
+			}
+			// Alpha gradient: 0 at tail, 0.6 at head
+			alphas = new Float32Array(trailLen);
+			for (let k = 0; k < trailLen; k++) {
+				alphas[k] = (k / (trailLen - 1)) * 0.6;
+			}
+		} else {
+			// Full orbit reordered: start just ahead of the planet, end at the planet.
+			// T.Line doesn't connect last→first, so the gap creates a hard alpha cut.
+			const MAX_ALPHA = 0.9;
+			const MIN_ALPHA = MAX_ALPHA * (1 / 3);
+			const startIdx = Math.ceil(currentIdx) % NUM_POINTS;
+			points = [];
+			for (let k = 0; k <= NUM_POINTS; k++) {
+				points.push(allPoints[(startIdx + k) % NUM_POINTS]);
+			}
+			// Linear gradient: MIN at start (just ahead of planet) → MAX at end (planet)
+			alphas = new Float32Array(NUM_POINTS + 1);
+			for (let k = 0; k <= NUM_POINTS; k++) {
+				alphas[k] = MIN_ALPHA + (k / NUM_POINTS) * (MAX_ALPHA - MIN_ALPHA);
+			}
+		}
+
+		const geometry = new BufferGeometry();
+		geometry.setAttribute(
+			'position',
+			new Float32BufferAttribute(new Float32Array(points.flat()), 3)
+		);
+		geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
+
+		return { geometry, material: buildAlphaShader() };
+	}
+
+	const { geometry, material } = buildOrbit();
 </script>
 
-{#if isLoop}
-	<T.LineLoop {geometry} {material} position={center ?? [0, 0, 0]} />
-{:else}
-	<T.Line {geometry} {material} position={center ?? [0, 0, 0]} />
-{/if}
+<T.Line {geometry} {material} position={center ?? [0, 0, 0]} />
