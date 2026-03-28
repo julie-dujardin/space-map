@@ -72,7 +72,26 @@
 			for (let idx = 0; idx < cols.rowCount; idx++) {
 				const a = cols.a[idx];
 				const e = cols.e[idx];
-				if (!(a > 0) || e >= 1) continue; // skip invalid orbits
+				const objType = cols.objectType[idx] as ObjectType;
+
+				if (!(a > 0) || e >= 1) {
+					if (
+						isMajorBody(objType) ||
+						objType === ObjectType.BARYCENTER ||
+						objType === ObjectType.LAGRANGE_POINT
+					) {
+						// Major bodies with near-zero orbits (e.g. planets at their barycenter) are
+						// still valid — they sit at the parent position with zero offset.
+						console.debug(
+							`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=${a} e=${e}, keeping as major body`
+						);
+					} else {
+						console.debug(
+							`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): invalid orbit a=${a} e=${e}`
+						);
+						continue;
+					}
+				}
 
 				const parentId = cols.parentId[idx];
 				const parentPos = positions.get(parentId) ?? positions.get(0)!;
@@ -86,7 +105,6 @@
 				];
 
 				const id = cols.id[idx];
-				const objType = cols.objectType[idx] as ObjectType;
 
 				// Store position by ID for child lookups (body-type objects use NAIF IDs)
 				if (isMajorBody(objType)) {
