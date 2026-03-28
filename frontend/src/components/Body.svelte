@@ -61,5 +61,10 @@
 </T.Group>
 
 {#if body.orbitElements && drawTrail}
-	<OrbitLine elements={body.orbitElements} {color} center={body.orbitCenter} />
+	<OrbitLine
+		elements={body.orbitElements}
+		{color}
+		center={body.orbitCenter}
+		trailFraction={objType === ObjectType.DWARF_PLANET ? 1 / 3 : undefined}
+	/>
 {/if}
