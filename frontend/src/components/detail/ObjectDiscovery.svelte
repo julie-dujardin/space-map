@@ -90,10 +90,9 @@
 				<dt class="text-muted-foreground">
 					{discoverers.length > 1 ? m.discoverers() : m.discoverer()}
 				</dt>
-				<dd class="text-right text-muted-foreground">
-					{#each discoverers as d, i (d.name)}
-						{#if i > 0},
-						{/if}{@render entityLink(d)}
+				<dd class="text-right text-muted-foreground flex flex-wrap justify-end gap-x-1">
+					{#each discoverers as d (d.name)}
+						<span class="whitespace-nowrap">{@render entityLink(d)}</span>
 					{/each}
 				</dd>
 			{/if}
