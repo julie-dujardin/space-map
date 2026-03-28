@@ -175,7 +175,7 @@ def _build_localized(
                 if claim.multiple:
                     ref = [
                         r
-                        for qid in extracted["discoverer_qids"]
+                        for qid in extracted[claim.key]
                         if (r := resolve_entity_ref(qid, lang, wikidata_entities))
                     ]
                 else:
