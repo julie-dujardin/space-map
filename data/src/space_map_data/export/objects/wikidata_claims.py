@@ -49,7 +49,7 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("manufacturer", "P176"),
     EntityRefClaim("launch_vehicle", "P375"),
     EntityRefClaim("launch_site", "P1427"),
-    EntityRefClaim("discoverer", "P61", True),
+    EntityRefClaim("discoverers", "P61", True),
 )
 
 
