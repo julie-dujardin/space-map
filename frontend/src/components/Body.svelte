@@ -14,10 +14,11 @@
 
 	interface Props {
 		body: PositionedBody;
+		date: Date;
 		onFocus?: (body: PositionedBody) => void;
 	}
 
-	let { body, onFocus }: Props = $props();
+	let { body, date, onFocus }: Props = $props();
 
 	const id = body.data.id;
 	const name = body.data.name ?? '';
@@ -64,6 +65,7 @@
 	<OrbitLine
 		elements={body.orbitElements}
 		{color}
+		{date}
 		center={body.orbitCenter}
 		trailFraction={objType === ObjectType.DWARF_PLANET ? 1 / 3 : undefined}
 	/>

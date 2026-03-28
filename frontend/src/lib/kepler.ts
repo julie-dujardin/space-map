@@ -3,6 +3,11 @@ import { AU_SCALE } from './constants';
 
 const DEG2RAD = Math.PI / 180;
 
+/** Convert a JS Date to Julian Date. */
+export function dateToJD(date: Date): number {
+	return date.getTime() / 86400000 + 2440587.5;
+}
+
 /**
  * Solve Kepler's equation M = E - e*sin(E) for eccentric anomaly E.
  * Uses Newton-Raphson iteration.
@@ -30,8 +35,7 @@ export function orbitalElementsToPosition(
 	const { a, e, i, om, w, ma, n, epoch } = el;
 
 	// Propagate mean anomaly from epoch to requested date
-	const dateJD = date.getTime() / 86400000 + 2440587.5;
-	const dt = dateJD - epoch; // days since epoch
+	const dt = dateToJD(date) - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
 	const E = solveKepler(M, e);
 

@@ -2,7 +2,7 @@
 	import { T } from '@threlte/core';
 	import { BufferGeometry, Color, Float32BufferAttribute, ShaderMaterial } from 'three';
 	import type { OrbitalElements } from '$lib/types';
-	import { orbitalElementsToEllipse } from '$lib/kepler';
+	import { orbitalElementsToEllipse, dateToJD } from '$lib/kepler';
 
 	interface Props {
 		elements: OrbitalElements;
@@ -10,16 +10,16 @@
 		center?: [number, number, number];
 		/** Fraction of the orbit to draw as a trailing arc (0–1). Undefined = full orbit. */
 		trailFraction?: number;
+		date: Date;
 	}
 
-	let { elements, color = '#444444', center, trailFraction }: Props = $props();
+	let { elements, color = '#444444', center, trailFraction, date }: Props = $props();
 
 	const NUM_POINTS = 512;
 	const allPoints = orbitalElementsToEllipse(elements, NUM_POINTS);
 
 	// Current mean anomaly (degrees, 0-360)
-	const dateJD = Date.now() / 86400000 + 2440587.5;
-	const dt = dateJD - elements.epoch;
+	const dt = dateToJD(date) - elements.epoch;
 	const currentMa = (((elements.ma + elements.n * dt) % 360) + 360) % 360;
 	const currentIdx = (currentMa / 360) * NUM_POINTS;
 

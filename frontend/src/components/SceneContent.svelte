@@ -137,7 +137,7 @@
 <T.AmbientLight intensity={0.4} />
 
 {#each majorBodies as body (body.data.id)}
-	<Body {body} onFocus={handleFocus} />
+	<Body {body} date={initialView.date} onFocus={handleFocus} />
 {/each}
 
 {#if minorBodies.length > 0}
