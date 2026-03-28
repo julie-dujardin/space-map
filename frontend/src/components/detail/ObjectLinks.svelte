@@ -43,13 +43,21 @@
 					class="underline hover:text-foreground text-muted-foreground">{m.wikipedia()}</a
 				>
 			{/if}
-			{#if wikidataQid}
+			{#if website}
 				<a
-					href="https://www.wikidata.org/wiki/{wikidataQid}"
+					href={website}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground text-muted-foreground">{website}</a
+				>
+			{/if}
+			{#if horizonsNaifId}
+				<a
+					href="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='{horizonsNaifId}'"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground text-muted-foreground"
-					>{m.wikidata_label({ qid: wikidataQid })}</a
+					>{m.jpl_horizons({ id: String(horizonsNaifId) })}</a
 				>
 			{/if}
 			{#if sbdbDesignation}
@@ -59,15 +67,8 @@
 					)}"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{m.jpl_sbdb()}</a
-				>
-			{/if}
-			{#if horizonsNaifId}
-				<a
-					href="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='{horizonsNaifId}'"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{m.jpl_horizons()}</a
+					class="underline hover:text-foreground text-muted-foreground"
+					>{m.jpl_sbdb({ id: String(sbdbDesignation) })}</a
 				>
 			{/if}
 			{#if noradCatId}
@@ -79,12 +80,13 @@
 					>{m.n2yo_satellite_tracker({ id: String(noradCatId) })}</a
 				>
 			{/if}
-			{#if website}
+			{#if wikidataQid}
 				<a
-					href={website}
+					href="https://www.wikidata.org/wiki/{wikidataQid}"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{website}</a
+					class="underline hover:text-foreground text-muted-foreground"
+					>{m.wikidata_label({ qid: wikidataQid })}</a
 				>
 			{/if}
 		</div>
