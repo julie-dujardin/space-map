@@ -23,7 +23,6 @@
 		<img src={image} alt={name} class="w-full max-h-48 object-cover rounded-md" />
 	{/if}
 	<div class="flex items-start gap-2">
-		<h2 class="text-lg font-semibold leading-tight">{name}</h2>
 		<Badge variant="secondary" class="shrink-0 text-xs">{type}</Badge>
 	</div>
 	{#if description}

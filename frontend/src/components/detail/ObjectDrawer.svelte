@@ -167,17 +167,15 @@
 			onpointercancel={onDragEnd}
 		>
 			<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
-			{#if !isExpanded}
-				<div class="flex w-full items-center justify-between">
-					<span class="text-sm font-semibold truncate">
-						{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
-					</span>
-					<Button variant="ghost" size="icon-sm" onclick={onClose}>
-						<XIcon />
-						<span class="sr-only">{m.close()}</span>
-					</Button>
-				</div>
-			{/if}
+			<div class="flex w-full items-center justify-between">
+				<span class="text-sm font-semibold truncate">
+					{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
+				</span>
+				<Button variant="ghost" size="icon-sm" onclick={onClose}>
+					<XIcon />
+					<span class="sr-only">{m.close()}</span>
+				</Button>
+			</div>
 		</div>
 
 		{#if isExpanded}
@@ -188,12 +186,6 @@
 				ontouchmove={canScroll ? onContentTouchMove : undefined}
 				ontouchend={canScroll ? onContentTouchEnd : undefined}
 			>
-				<div class="flex justify-end -mt-1 mb-1">
-					<Button variant="ghost" size="icon-sm" onclick={onClose}>
-						<XIcon />
-						<span class="sr-only">{m.close()}</span>
-					</Button>
-				</div>
 				{#if loading}
 					<div class="flex flex-col gap-4 p-1">
 						<Skeleton class="w-full h-36 rounded-md" />
@@ -223,7 +215,10 @@
 	<aside
 		class="fixed top-0 left-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-r bg-background shadow-lg"
 	>
-		<div class="flex justify-end p-2">
+		<div class="flex items-center justify-between p-2 px-4">
+			<span class="text-sm font-semibold truncate">
+				{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
+			</span>
 			<Button variant="ghost" size="icon-sm" onclick={onClose}>
 				<XIcon />
 				<span class="sr-only">{m.close()}</span>
