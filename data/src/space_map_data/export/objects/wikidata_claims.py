@@ -120,10 +120,17 @@ def resolve_unit(
 # -- Claim value extractors --
 
 
-def _first_string(claims: dict, prop: str) -> str | None:
-    """Extract the first string value from a claim."""
+def _claim_values(claims: dict, prop: str):
+    """Yield raw ``datavalue.value`` entries for a given property."""
     for stmt in claims.get(prop, []):
         val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+        if val is not None:
+            yield val
+
+
+def _first_string(claims: dict, prop: str) -> str | None:
+    """Extract the first string value from a claim."""
+    for val in _claim_values(claims, prop):
         if isinstance(val, str) and val:
             return val
     return None
@@ -131,8 +138,7 @@ def _first_string(claims: dict, prop: str) -> str | None:
 
 def _first_time(claims: dict, prop: str) -> str | None:
     """Extract the first time value from a claim as an ISO date string."""
-    for stmt in claims.get(prop, []):
-        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+    for val in _claim_values(claims, prop):
         if isinstance(val, dict) and "time" in val:
             return val["time"]
     return None
@@ -143,8 +149,7 @@ def _first_quantity(claims: dict, prop: str) -> dict | float | None:
 
     Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
     """
-    for stmt in claims.get(prop, []):
-        dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+    for dv in _claim_values(claims, prop):
         if not isinstance(dv, dict) or "amount" not in dv:
             continue
         try:
@@ -161,21 +166,19 @@ def _first_quantity(claims: dict, prop: str) -> dict | float | None:
 
 def _first_entity_qid(claims: dict, prop: str) -> str | None:
     """Extract the first entity QID from a claim."""
-    for stmt in claims.get(prop, []):
-        dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-        if isinstance(dv, dict) and "id" in dv:
-            return dv["id"]
+    for val in _claim_values(claims, prop):
+        if isinstance(val, dict) and "id" in val:
+            return val["id"]
     return None
 
 
 def _all_entity_qids(claims: dict, prop: str) -> list[str]:
     """Extract all entity QIDs from a claim."""
-    qids = []
-    for stmt in claims.get(prop, []):
-        dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-        if isinstance(dv, dict) and "id" in dv:
-            qids.append(dv["id"])
-    return qids
+    return [
+        val["id"]
+        for val in _claim_values(claims, prop)
+        if isinstance(val, dict) and "id" in val
+    ]
 
 
 def _commons_url(filename: str) -> str:
