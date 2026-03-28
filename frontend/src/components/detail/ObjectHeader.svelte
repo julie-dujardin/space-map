@@ -13,13 +13,7 @@
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let image = $derived(localized?.wikipedia?.thumbnail ?? global?.wikidata?.image);
-	let type = $derived.by(() => {
-		const raw = global?.type;
-		if (!raw) return m.object();
-		const key = `type_${raw.startsWith('asteroid') ? 'asteroid' : raw}`;
-		const fn = (m as unknown as Record<string, (() => string) | undefined>)[key];
-		return fn ? fn() : raw.replace(/_/g, ' ');
-	});
+	let type = $derived(localized?.instance_of?.name ?? m.object());
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
 </script>

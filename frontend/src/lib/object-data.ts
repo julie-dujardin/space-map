@@ -96,6 +96,7 @@ export interface LocalizedObjectData {
 	name?: string;
 	description?: string;
 	aliases?: string[];
+	instance_of?: EntityRef;
 	discoverers?: EntityRef[];
 	named_after?: EntityRef;
 	discovery_site?: EntityRef;
