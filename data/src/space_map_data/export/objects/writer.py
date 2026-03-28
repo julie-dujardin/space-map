@@ -170,22 +170,21 @@ def _build_localized(
             data["aliases"] = aliases
 
     if extracted:
-        # Multi-value: discoverers
-        if "discoverer_qids" in extracted:
-            discoverers = [
-                ref
-                for qid in extracted["discoverer_qids"]
-                if (ref := resolve_entity_ref(qid, lang, wikidata_entities))
-            ]
-            if discoverers:
-                data["discoverers"] = discoverers
-
-        # Single-value entity refs
         for claim in ENTITY_REF_CLAIMS:
             if claim.key in extracted:
-                ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
+                if claim.multiple:
+                    ref = [
+                        r
+                        for qid in extracted["discoverer_qids"]
+                        if (r := resolve_entity_ref(qid, lang, wikidata_entities))
+                    ]
+                else:
+                    ref = resolve_entity_ref(
+                        extracted[claim.key], lang, wikidata_entities
+                    )
+
                 if ref:
-                    data[claim.output] = ref
+                    data[claim.key] = ref
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary

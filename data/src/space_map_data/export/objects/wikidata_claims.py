@@ -1,7 +1,6 @@
 """Wikidata claim extraction and entity-reference resolution."""
 
 import logging
-import re
 from typing import Literal, NamedTuple
 from urllib.parse import quote
 
@@ -35,20 +34,22 @@ GLOBAL_CLAIMS = (
 
 class EntityRefClaim(NamedTuple):
     key: str
-    output: str
     pid: str
+    multiple: bool = False
 
 
 ENTITY_REF_CLAIMS = (
-    EntityRefClaim("named_after_qid", "named_after", "P138"),
-    EntityRefClaim("discovery_site_qid", "discovery_site", "P65"),
-    EntityRefClaim("minor_planet_group_qid", "minor_planet_group", "P196"),
-    EntityRefClaim("spectral_type_qid", "spectral_type", "P720"),
-    EntityRefClaim("asteroid_family_qid", "asteroid_family", "P744"),
-    EntityRefClaim("operator_qid", "operator", "P137"),
-    EntityRefClaim("manufacturer_qid", "manufacturer", "P176"),
-    EntityRefClaim("launch_vehicle_qid", "launch_vehicle", "P375"),
-    EntityRefClaim("launch_site_qid", "launch_site", "P1427"),
+    EntityRefClaim("instance_of", "P31"),
+    EntityRefClaim("named_after", "P138"),
+    EntityRefClaim("discovery_site", "P65"),
+    EntityRefClaim("minor_planet_group", "P196"),
+    EntityRefClaim("spectral_type", "P720"),
+    EntityRefClaim("asteroid_family", "P744"),
+    EntityRefClaim("operator", "P137"),
+    EntityRefClaim("manufacturer", "P176"),
+    EntityRefClaim("launch_vehicle", "P375"),
+    EntityRefClaim("launch_site", "P1427"),
+    EntityRefClaim("discoverer", "P61", True),
 )
 
 
@@ -69,16 +70,14 @@ def extract_claims(claims: dict) -> dict:
         if v := _EXTRACTORS[claim.kind](claims, claim.pid):
             result[claim.key] = v
 
-    # Multi-value entity refs
-    for key, prop in (("discoverer_qids", "P61"),):
-        qids = _all_entity_qids(claims, prop)
-        if qids:
-            result[key] = qids
-
-    # Single-value entity refs
     for claim in ENTITY_REF_CLAIMS:
-        if qid := _first_entity_qid(claims, claim.pid):
-            result[claim.key] = qid
+        if claim.multiple:
+            qids = _all_entity_qids(claims, claim.pid)
+            if qids:
+                result[claim.key] = qids
+        else:
+            if qid := _first_entity_qid(claims, claim.pid):
+                result[claim.key] = qid
 
     return result
 
@@ -133,9 +132,9 @@ def _first_string(claims: dict, prop: str) -> str | None:
 def _first_time(claims: dict, prop: str) -> str | None:
     """Extract the first time value from a claim as an ISO date string."""
     for stmt in claims.get(prop, []):
-        tv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-        if isinstance(tv, dict) and "time" in tv:
-            return _parse_wikidata_time(tv["time"])
+        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+        if isinstance(val, dict) and "time" in val:
+            return val["time"]
     return None
 
 
@@ -177,17 +176,6 @@ def _all_entity_qids(claims: dict, prop: str) -> list[str]:
         if isinstance(dv, dict) and "id" in dv:
             qids.append(dv["id"])
     return qids
-
-
-def _parse_wikidata_time(time_str: str) -> str | None:
-    """Parse Wikidata time format '+1769-08-08T00:00:00Z' → '1769-08-08'."""
-    m = re.match(r"[+-]?(\d{4,})-(\d{2})-(\d{2})", time_str)
-    if not m:
-        return None
-    year, month, day = m.group(1), m.group(2), m.group(3)
-    if month == "00" or day == "00":
-        return year if month == "00" else f"{year}-{month}"
-    return f"{year}-{month}-{day}"
 
 
 def _commons_url(filename: str) -> str:
