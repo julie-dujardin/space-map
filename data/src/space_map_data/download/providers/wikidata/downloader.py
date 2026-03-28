@@ -21,6 +21,7 @@ AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
 
 # Properties whose values are entity references we want to download
 _REFERENCED_PROPERTIES = (
+    "P31",  # instance of (planet, dwarf...)
     "P61",  # discoverer
     "P138",  # named after
     "P65",  # site of discovery
@@ -55,7 +56,7 @@ class WikidataDownloader(Downloader):
         )
         entities_dir = self.out_dir / "entities"
         entities_dir.mkdir(exist_ok=True)
-        self._fetch_entities(all_qids, entities_dir, limit=limit)
+        self._fetch_entities(all_qids, entities_dir, limit=limit, fetch_desc="bodies")
 
         # Second pass: fetch referenced entities and units
         referenced_dir = self.out_dir / "referenced"
@@ -71,10 +72,17 @@ class WikidataDownloader(Downloader):
                 "Fetching %d referenced entities (discoverers, named-after)",
                 len(referenced_qids),
             )
-            self._fetch_entities(sorted(referenced_qids), referenced_dir, limit=None)
+            self._fetch_entities(
+                sorted(referenced_qids),
+                referenced_dir,
+                limit=None,
+                fetch_desc="referenced",
+            )
         if unit_qids:
             logger.info("Fetching %d unit entities", len(unit_qids))
-            self._fetch_entities(sorted(unit_qids), units_dir, limit=None)
+            self._fetch_entities(
+                sorted(unit_qids), units_dir, limit=None, fetch_desc="units"
+            )
 
         self._save_metadata(
             API_URL,
@@ -121,7 +129,12 @@ class WikidataDownloader(Downloader):
     # -- Entity fetching --
 
     def _fetch_entities(
-        self, qids: list[str], entities_dir: Path, *, limit: int | None
+        self,
+        qids: list[str],
+        entities_dir: Path,
+        *,
+        limit: int | None,
+        fetch_desc: str = "wbgetentities",
     ) -> None:
         """Fetch full entity data via wbgetentities, saving one JSON per entity."""
         to_fetch = [qid for qid in qids if not (entities_dir / f"{qid}.json").exists()]
@@ -142,7 +155,7 @@ class WikidataDownloader(Downloader):
             to_fetch[i : i + ENTITY_BATCH_SIZE]
             for i in range(0, len(to_fetch), ENTITY_BATCH_SIZE)
         ]
-        for batch in tqdm(batches, desc="wbgetentities", unit="batch"):
+        for batch in tqdm(batches, desc=fetch_desc, unit="batch"):
             response = self.client.get(
                 API_URL,
                 params={
