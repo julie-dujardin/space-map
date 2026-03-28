@@ -11,7 +11,10 @@
 
 	let { global, localized }: Props = $props();
 
-	let discoveryDate = $derived(global?.sbdb?.first_obs ?? global?.wikidata?.discovery_date);
+	// Discovery date: wikipedia records the discovery date, sbdb the first observation
+	// different for ceres: 1801 (discovery) vs 1995 (first observation by hubble telescope)
+	// Wikipedia seems to have the more relevant data here
+	let discoveryDate = $derived(global?.wikidata?.discovery_date ?? global?.sbdb?.first_obs);
 	let launchDate = $derived(global?.wikidata?.launch_date);
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
