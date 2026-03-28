@@ -20,8 +20,10 @@
 </script>
 
 {#if extract}
-	<div class="flex flex-col gap-1">
-		<p class="text-sm leading-relaxed whitespace-pre-line">{displayText}</p>
+	<div class="flex flex-col gap-2">
+		{#each displayText.split('\n') as paragraph, i (i)}
+			<p class="text-sm leading-relaxed">{paragraph}</p>
+		{/each}
 		{#if needsTruncation}
 			<button
 				class="text-xs text-muted-foreground hover:text-foreground self-start"
