@@ -19,15 +19,16 @@ def cli():
         type=int,
         default=10_000,
         metavar="N",
-        help="Max asteroids to include (default: 10000)",
+        help="Max unnamed asteroids in zoom 3 (0 = no limit, default: 10000)",
     )
     args = parser.parse_args()
 
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
+    limit = args.limit_asteroids if args.limit_asteroids > 0 else None
     with session_scope() as session:
-        export(session, limit_asteroids=args.limit_asteroids)
+        export(session, limit_asteroids=limit)
 
 
 if __name__ == "__main__":
