@@ -7,6 +7,7 @@ from pathlib import Path
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.wikidata import WikidataEntity, resolve_name
 from space_map_data.export.objects.sbdb import build_sbdb
+from space_map_data.export.quantities import MASS_UNIT_KG, mass_quantity_from_kg
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -132,6 +133,10 @@ def _build_global(
                     resolved = resolve_unit(val["unit"], wikidata_entities)
                     if resolved:
                         val = {**val, "unit": resolved}
+                        if claim.key == "mass" and resolved in MASS_UNIT_KG:
+                            val = mass_quantity_from_kg(
+                                float(val["value"]) * MASS_UNIT_KG[resolved]
+                            )
                 wikidata_section[claim.key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section

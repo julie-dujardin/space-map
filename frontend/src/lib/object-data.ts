@@ -47,6 +47,7 @@ export interface GlobalObjectData {
 		albedo?: number;
 		rot_per?: number;
 		GM?: number;
+		mass?: QuantityWithUnit;
 		H?: number;
 		G?: number;
 		spec_B?: string;

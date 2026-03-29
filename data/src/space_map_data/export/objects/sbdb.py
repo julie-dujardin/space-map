@@ -1,6 +1,11 @@
 """SBDB (Small-Body Database) export helpers."""
 
+from space_map_data.export.quantities import mass_quantity_from_kg
 from space_map_data.models.object import SBDB
+
+# Gravitational constant in km³ kg⁻¹ s⁻²
+_G_KM3_PER_KG_S2 = 6.67430e-20
+
 
 _SBDB_FIELDS = (
     "neo",
@@ -42,4 +47,6 @@ def build_sbdb(sbdb: SBDB) -> dict:
         val = getattr(sbdb, attr)
         if val is not None:
             data[attr.rstrip("_")] = val
+    if sbdb.GM is not None:
+        data["mass"] = mass_quantity_from_kg(sbdb.GM / _G_KM3_PER_KG_S2)
     return data

@@ -20,6 +20,14 @@
       "args": ["--limit", "${input:limit}"]
     },
     {
+      "name": "Export data",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "space_map_data.export",
+      "python": "${workspaceFolder}/data/.venv/bin/python",
+      "cwd": "${workspaceFolder}/data"
+    },
+    {
       "name": "Frontend (Chrome)",
       "type": "chrome",
       "runtimeExecutable": "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
