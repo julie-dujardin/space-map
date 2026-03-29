@@ -148,7 +148,11 @@
 </script>
 
 <svelte:head>
-	<title>{m.page_title()}</title>
+	<title
+		>{selectedBody?.data.name
+			? `${selectedBody.data.name} - ${m.page_title()}`
+			: m.page_title()}</title
+	>
 </svelte:head>
 
 {#if loading}
