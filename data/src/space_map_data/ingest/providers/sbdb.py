@@ -28,6 +28,9 @@ from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
+# Gravitational constant in km³ kg⁻¹ s⁻²
+_G_KM3_PER_KG_S2 = 6.67430e-20
+
 SUB_CHUNK_SIZE = 10_000
 
 # All SBDB CSV column names, in the order they appear in the ORM model.
@@ -239,6 +242,10 @@ def _sbdb_dict(row: dict[str, str]) -> dict:
         raw = row[col]
         if col in _FLOAT_COLS:
             d[col] = float_or_none(raw)
+
+            # compute mass from GM
+            if col == "GM" and d[col]:
+                d["mass_kg"] = d[col] / _G_KM3_PER_KG_S2
         elif col in _INT_COLS:
             d[col] = int_or_none(raw)
         elif col in _BOOL_COLS:
@@ -283,6 +290,7 @@ def _parse_chunk(
             pdes = string_or_none(row["pdes"])
             if pdes == prov:
                 pdes = None
+
             rows.append(
                 {
                     "sbdb": {

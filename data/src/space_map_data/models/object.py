@@ -296,6 +296,7 @@ class SBDB(Base):
     diameter_sigma: Mapped[str | None] = mapped_column(
         default=None
     )  # 1-σ uncertainty in diameter [km]
+    mass_kg: Mapped[int | None] = mapped_column(default=None)  # Object mass
 
     # Orbital elements
     orbit_id: Mapped[str | None] = mapped_column(default=None)  # orbit solution ID
