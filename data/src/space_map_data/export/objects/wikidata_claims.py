@@ -39,7 +39,7 @@ class EntityRefClaim(NamedTuple):
 
 
 ENTITY_REF_CLAIMS = (
-    EntityRefClaim("instance_of", "P31"),
+    EntityRefClaim("instance_of", "P31", multiple=True),
     EntityRefClaim("named_after", "P138"),
     EntityRefClaim("discovery_site", "P65"),
     EntityRefClaim("minor_planet_group", "P196"),
@@ -49,7 +49,7 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("manufacturer", "P176"),
     EntityRefClaim("launch_vehicle", "P375"),
     EntityRefClaim("launch_site", "P1427"),
-    EntityRefClaim("discoverers", "P61", True),
+    EntityRefClaim("discoverers", "P61", multiple=True),
 )
 
 
@@ -121,8 +121,10 @@ def resolve_unit(
 
 
 def _claim_values(claims: dict, prop: str):
-    """Yield raw ``datavalue.value`` entries for a given property."""
+    """Yield raw ``datavalue.value`` entries for a given property, skipping deprecated statements."""
     for stmt in claims.get(prop, []):
+        if stmt.get("rank") == "deprecated":
+            continue
         val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
         if val is not None:
             yield val

@@ -13,7 +13,7 @@
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let image = $derived(localized?.wikipedia?.thumbnail ?? global?.wikidata?.image);
-	let type = $derived(localized?.instance_of?.name ?? m.object());
+	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
 </script>
@@ -22,8 +22,14 @@
 	{#if image}
 		<img src={image} alt={name} class="w-full max-h-48 object-cover rounded-md" />
 	{/if}
-	<div class="flex items-start gap-2">
-		<Badge variant="secondary" class="shrink-0 text-xs">{type}</Badge>
+	<div class="flex flex-wrap items-start gap-2">
+		{#if types}
+			{#each types as t, i (i)}
+				<Badge variant="secondary" class="shrink-0 text-xs">{t.name}</Badge>
+			{/each}
+		{:else}
+			<Badge variant="secondary" class="shrink-0 text-xs">{m.object()}</Badge>
+		{/if}
 	</div>
 	{#if description}
 		<p class="text-sm text-muted-foreground">{description}</p>
