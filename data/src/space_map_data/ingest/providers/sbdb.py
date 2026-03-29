@@ -224,6 +224,14 @@ _PARTIAL_DATE_COLS = {"first_obs", "last_obs"}  # input can be YYYY-MM-DD or YYY
 # "epoch_cal", "tp_cal": could parse to datetime but BCE dates (C/-146 P1: -146-06-28.0000000) cause issues, string is fine
 
 
+def _provisional_designation(full_name: str | None) -> str | None:
+    """Extract the provisional designation from the parenthesised part of full_name."""
+    if not full_name:
+        return None
+    m = re.search(r"\(([^)]+)\)", full_name)
+    return m.group(1) if m else None
+
+
 def _sbdb_dict(row: dict[str, str]) -> dict:
     """Extract SBDB mirror columns as a typed dict (class → class_)."""
     d: dict = {}
@@ -271,16 +279,27 @@ def _parse_chunk(
             radius_km = diameter / 2.0 if diameter else None
 
             object_id = f"{ID_TYPES.SPKID}-{spkid}"
+            name = string_or_none(row["name"])
+            prov = _provisional_designation(row["full_name"])
+            if prov == name:
+                prov = None
+            pdes = string_or_none(row["pdes"])
+            if pdes == prov:
+                pdes = None
             rows.append(
                 {
-                    "sbdb": {**_sbdb_dict(row), "object_id": object_id},
+                    "sbdb": {
+                        **_sbdb_dict(row),
+                        "object_id": object_id,
+                        "provisional_designation": prov,
+                    },
                     "object": {
                         "id": object_id,
-                        "name": string_or_none(row["name"])
-                        or string_or_none(row["full_name"]),
+                        "name": name,
                         "object_type": object_type,
+                        "provisional_designation": prov,
                         "sbdb_spkid": spkid,
-                        "sbdb_mcp_designation": string_or_none(row["pdes"]),
+                        "sbdb_mcp_designation": pdes,
                         "epoch_jd": float_or_none(row["epoch"]),
                         "a": float_or_none(row["a"]),
                         "e": float_or_none(row["e"]),

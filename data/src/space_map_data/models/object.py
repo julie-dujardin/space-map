@@ -84,7 +84,9 @@ class Object(Base):
     object_type: Mapped[ObjectType] = mapped_column(String)  # ObjectType enum value
 
     provisional_designation: Mapped[str | None] = mapped_column(
-        unique=True, default=None, index=True
+        unique=False,
+        default=None,
+        index=True,  # Can't be unique due to comets
     )
     # Cross-reference IDs (nullable — an object won't have IDs in all sources)
     wikidata_qid: Mapped[str | None] = mapped_column(
@@ -235,6 +237,9 @@ class SBDB(Base):
     )  # object full name/designation
     pdes: Mapped[str | None] = mapped_column(default=None)  # object primary designation
     name: Mapped[str | None] = mapped_column(default=None)  # object IAU name
+    provisional_designation: Mapped[str | None] = mapped_column(
+        default=None
+    )  # extracted from full_name parentheses
     prefix: Mapped[str | None] = mapped_column(default=None)  # comet designation prefix
     neo: Mapped[bool | None] = mapped_column(
         default=None
