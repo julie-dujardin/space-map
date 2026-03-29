@@ -36,6 +36,7 @@
 		const phys = global?.physical;
 
 		if (wd?.mass) props.push({ label: m.mass(), value: formatQuantity(wd.mass) });
+		else if (sbdb?.mass) props.push({ label: m.mass(), value: formatQuantity(sbdb.mass) });
 		else if (phys?.mass_kg)
 			props.push({
 				label: m.mass(),

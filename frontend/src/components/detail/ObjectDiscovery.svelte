@@ -3,6 +3,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData, EntityRef } from '$lib/object-data';
+	import { formatWikidataDate } from '$lib/utils';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -80,11 +81,11 @@
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#if discoveryDate}
 				<dt class="text-muted-foreground">{m.first_observed()}</dt>
-				<dd class="text-right">{discoveryDate}</dd>
+				<dd class="text-right">{formatWikidataDate(discoveryDate)}</dd>
 			{/if}
 			{#if launchDate}
 				<dt class="text-muted-foreground">{m.launch_date()}</dt>
-				<dd class="text-right">{launchDate}</dd>
+				<dd class="text-right">{formatWikidataDate(launchDate)}</dd>
 			{/if}
 			{#if discoverers && discoverers.length > 0}
 				<dt class="text-muted-foreground">
