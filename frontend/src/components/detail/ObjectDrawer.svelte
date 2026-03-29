@@ -24,13 +24,16 @@
 	let isMobile = $state(false);
 
 	// Mobile bottom sheet snap points (% of dynamic viewport height)
-	const SNAP_COLLAPSED = 12;
-	const SNAP_HALF = 50;
-	const SNAP_FULL = 95;
-	let sheetHeight = $state(SNAP_COLLAPSED);
-	let dragging = $state(false);
+	const SNAPS = [12, 50, 95];
+	let sheetHeight = $state(SNAPS[0]);
+	let isDragging = $state(false);
 	let dragStartY = 0;
 	let dragStartHeight = 0;
+
+	// Overscroll-to-collapse when fullscreen
+	let contentEl = $state<HTMLDivElement>();
+	let overscrolling = $state(false);
+	let overscrollStartY = 0;
 
 	$effect(() => {
 		const mq = window.matchMedia('(max-width: 768px)');
@@ -40,11 +43,9 @@
 		return () => mq.removeEventListener('change', handler);
 	});
 
-	// Reset to collapsed when body changes on mobile
 	$effect(() => {
-		const _track = body.data.fileId;
-		void _track;
-		if (isMobile) sheetHeight = SNAP_COLLAPSED;
+		void body.data.fileId;
+		if (isMobile) sheetHeight = SNAPS[0];
 	});
 
 	$effect(() => {
@@ -61,116 +62,133 @@
 			})
 			.catch((err) => {
 				console.warn(`ObjectDrawer: failed to load detail for ${fileId}:`, err);
-				if (body.data.fileId === fileId) {
-					loading = false;
-				}
+				if (body.data.fileId === fileId) loading = false;
 			});
 	});
 
+	function snapToNearest() {
+		sheetHeight = SNAPS.reduce((a, b) =>
+			Math.abs(a - sheetHeight) <= Math.abs(b - sheetHeight) ? a : b
+		);
+	}
+
+	// Drag: handle always; whole sheet when not fullscreen
 	function onDragStart(e: PointerEvent) {
-		dragging = true;
+		isDragging = true;
 		dragStartY = e.clientY;
 		dragStartHeight = sheetHeight;
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
+	function onHandlePointerDown(e: PointerEvent) {
+		e.stopPropagation(); // prevent aside from also starting drag
+		onDragStart(e);
+	}
+
+	function onAsidePointerDown(e: PointerEvent) {
+		if (isFullscreen) return;
+		onDragStart(e);
+	}
+
 	function onDragMove(e: PointerEvent) {
-		if (!dragging) return;
-		const dy = dragStartY - e.clientY;
-		const dvh = (dy / window.innerHeight) * 100;
-		sheetHeight = Math.max(SNAP_COLLAPSED, Math.min(SNAP_FULL, dragStartHeight + dvh));
+		if (!isDragging) return;
+		const dy = ((dragStartY - e.clientY) / window.innerHeight) * 100;
+		sheetHeight = Math.max(SNAPS[0], Math.min(SNAPS[SNAPS.length - 1], dragStartHeight + dy));
 	}
 
-	function snapTo(height: number, direction: number) {
-		const snaps = [SNAP_COLLAPSED, SNAP_HALF, SNAP_FULL];
-		// Find the two nearest snap points (below and above)
-		let below = snaps[0];
-		let above = snaps[snaps.length - 1];
-		for (const s of snaps) {
-			if (s <= height) below = s;
-			if (s >= height && above === snaps[snaps.length - 1]) above = s;
-		}
-		if (below === above) return below;
-		// Snap in the direction of movement; if ambiguous, pick nearest
-		if (direction > 0) return above;
-		if (direction < 0) return below;
-		return height - below < above - height ? below : above;
+	function onDragUp() {
+		if (!isDragging) return;
+		isDragging = false;
+		snapToNearest();
 	}
 
-	function onDragEnd() {
-		if (!dragging) return;
-		const direction = sheetHeight - dragStartHeight; // positive = dragged up
-		dragging = false;
-		sheetHeight = snapTo(sheetHeight, direction);
+	// Overscroll-to-collapse: needs non-passive listener to call preventDefault
+	function nonPassiveTouchMove(node: HTMLElement, handler: (e: TouchEvent) => void) {
+		node.addEventListener('touchmove', handler, { passive: false });
+		return { destroy: () => node.removeEventListener('touchmove', handler) };
 	}
-
-	// When fully expanded and scrolled to top, pulling down should collapse the sheet
-	let contentEl: HTMLDivElement | undefined = $state();
-	let pullDownActive = $state(false);
-	let pullDownStartY = 0;
 
 	function onContentTouchStart(e: TouchEvent) {
-		if (contentEl && contentEl.scrollTop <= 0) {
-			pullDownStartY = e.touches[0].clientY;
-			pullDownActive = false;
-		}
+		overscrollStartY = e.touches[0].clientY;
+		overscrolling = false;
 	}
 
 	function onContentTouchMove(e: TouchEvent) {
-		if (!contentEl) return;
-		// If already scrolled into content, let native scroll handle it
-		if (contentEl.scrollTop > 0 && !pullDownActive) {
-			return;
-		}
-		const dy = e.touches[0].clientY - pullDownStartY;
-		if (dy > 0) {
-			// Pulling down from top — take over
+		if (!contentEl || (!isFullscreen && !overscrolling)) return;
+		const dy = e.touches[0].clientY - overscrollStartY;
+		if ((contentEl.scrollTop <= 0 && dy > 0) || overscrolling) {
 			e.preventDefault();
-			pullDownActive = true;
+			overscrolling = true;
 			const dvh = (dy / window.innerHeight) * 100;
-			sheetHeight = Math.max(SNAP_COLLAPSED, Math.min(SNAP_FULL, SNAP_FULL - dvh));
+			sheetHeight = Math.max(SNAPS[0], SNAPS[SNAPS.length - 1] - dvh);
 		}
 	}
 
 	function onContentTouchEnd() {
-		if (pullDownActive) {
-			pullDownActive = false;
-			sheetHeight = snapTo(sheetHeight, -1); // always pulling down
+		if (overscrolling) {
+			overscrolling = false;
+			snapToNearest();
 		}
 	}
 
-	let isExpanded = $derived(sheetHeight > SNAP_COLLAPSED + 5);
-	let canScroll = $derived(sheetHeight >= SNAP_FULL - 5);
+	let isExpanded = $derived(sheetHeight > SNAPS[0] + 5);
+	let isFullscreen = $derived(sheetHeight >= SNAPS[SNAPS.length - 1] - 5);
+
+	let displayName = $derived(
+		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
+	);
 </script>
+
+{#snippet drawerContent()}
+	{#if loading}
+		<div class="flex flex-col gap-4 p-1">
+			<Skeleton class="w-full h-36 rounded-md" />
+			<Skeleton class="w-3/4 h-6" />
+			<Skeleton class="w-1/2 h-4" />
+			<Skeleton class="w-full h-20" />
+			<Skeleton class="w-full h-32" />
+		</div>
+	{:else}
+		<div class="flex flex-col gap-5 p-1">
+			<ObjectHeader
+				global={data?.global ?? null}
+				localized={data?.localized ?? null}
+				fallbackName={body.data.name}
+			/>
+			<ObjectDescription extract={data?.localized?.wikipedia?.extract} />
+			<ObjectProperties global={data?.global ?? null} />
+			<ObjectDiscovery global={data?.global ?? null} localized={data?.localized ?? null} />
+			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
+		</div>
+	{/if}
+{/snippet}
 
 {#if isMobile}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<aside
-		class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-xl border-t bg-background shadow-lg {canScroll
-			? ''
-			: 'cursor-grab touch-none'}"
-		style="height: {sheetHeight}dvh; transition: {dragging || pullDownActive
+		class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-xl border-t bg-background shadow-lg {!isFullscreen
+			? 'cursor-grab touch-none'
+			: ''}"
+		style="height: {sheetHeight}dvh; transition: {isDragging || overscrolling
 			? 'none'
 			: 'height 0.3s ease'};"
-		onpointerdown={canScroll ? undefined : onDragStart}
-		onpointermove={canScroll ? undefined : onDragMove}
-		onpointerup={canScroll ? undefined : onDragEnd}
-		onpointercancel={canScroll ? undefined : onDragEnd}
+		onpointerdown={onAsidePointerDown}
+		onpointermove={onDragMove}
+		onpointerup={onDragUp}
+		onpointercancel={onDragUp}
 	>
-		<!-- Drag handle -->
+		<!-- Drag handle (always draggable) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="flex flex-col items-center gap-2 px-4 pt-3 pb-2 cursor-grab touch-none"
-			onpointerdown={onDragStart}
+			onpointerdown={onHandlePointerDown}
 			onpointermove={onDragMove}
-			onpointerup={onDragEnd}
-			onpointercancel={onDragEnd}
+			onpointerup={onDragUp}
+			onpointercancel={onDragUp}
 		>
 			<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
 			<div class="flex w-full items-center justify-between">
-				<span class="text-sm font-semibold truncate">
-					{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
-				</span>
+				<span class="text-sm font-semibold truncate">{displayName}</span>
 				<Button variant="ghost" size="icon-sm" onclick={onClose}>
 					<XIcon />
 					<span class="sr-only">{m.close()}</span>
@@ -181,32 +199,12 @@
 		{#if isExpanded}
 			<div
 				bind:this={contentEl}
-				class="flex-1 px-4 pb-4 {canScroll ? 'overflow-y-auto' : 'overflow-hidden'}"
-				ontouchstart={canScroll ? onContentTouchStart : undefined}
-				ontouchmove={canScroll ? onContentTouchMove : undefined}
-				ontouchend={canScroll ? onContentTouchEnd : undefined}
+				class="flex-1 px-4 pb-4 {isFullscreen ? 'overflow-y-auto' : 'overflow-hidden'}"
+				ontouchstart={onContentTouchStart}
+				ontouchend={onContentTouchEnd}
+				use:nonPassiveTouchMove={onContentTouchMove}
 			>
-				{#if loading}
-					<div class="flex flex-col gap-4 p-1">
-						<Skeleton class="w-full h-36 rounded-md" />
-						<Skeleton class="w-3/4 h-6" />
-						<Skeleton class="w-1/2 h-4" />
-						<Skeleton class="w-full h-20" />
-						<Skeleton class="w-full h-32" />
-					</div>
-				{:else}
-					<div class="flex flex-col gap-5 p-1">
-						<ObjectHeader
-							global={data?.global ?? null}
-							localized={data?.localized ?? null}
-							fallbackName={body.data.name}
-						/>
-						<ObjectDescription extract={data?.localized?.wikipedia?.extract} />
-						<ObjectProperties global={data?.global ?? null} />
-						<ObjectDiscovery global={data?.global ?? null} localized={data?.localized ?? null} />
-						<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
-					</div>
-				{/if}
+				{@render drawerContent()}
 			</div>
 		{/if}
 	</aside>
@@ -216,9 +214,7 @@
 		class="fixed top-0 left-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-r bg-background shadow-lg"
 	>
 		<div class="flex items-center justify-between p-2 px-4">
-			<span class="text-sm font-semibold truncate">
-				{data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()}
-			</span>
+			<span class="text-sm font-semibold truncate">{displayName}</span>
 			<Button variant="ghost" size="icon-sm" onclick={onClose}>
 				<XIcon />
 				<span class="sr-only">{m.close()}</span>
@@ -227,27 +223,7 @@
 
 		<ScrollArea class="flex-1 min-h-0">
 			<div class="px-4 pb-4 -mt-2">
-				{#if loading}
-					<div class="flex flex-col gap-4 p-1">
-						<Skeleton class="w-full h-36 rounded-md" />
-						<Skeleton class="w-3/4 h-6" />
-						<Skeleton class="w-1/2 h-4" />
-						<Skeleton class="w-full h-20" />
-						<Skeleton class="w-full h-32" />
-					</div>
-				{:else}
-					<div class="flex flex-col gap-5 p-1">
-						<ObjectHeader
-							global={data?.global ?? null}
-							localized={data?.localized ?? null}
-							fallbackName={body.data.name}
-						/>
-						<ObjectDescription extract={data?.localized?.wikipedia?.extract} />
-						<ObjectProperties global={data?.global ?? null} />
-						<ObjectDiscovery global={data?.global ?? null} localized={data?.localized ?? null} />
-						<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
-					</div>
-				{/if}
+				{@render drawerContent()}
 			</div>
 		</ScrollArea>
 	</aside>
