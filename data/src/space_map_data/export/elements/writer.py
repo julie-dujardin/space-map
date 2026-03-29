@@ -59,8 +59,8 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
             [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
         )
 
-        # Columns 4–12: float64 columns
-        float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n", "radius_km"]
+        # Columns 4–11: float64 orbital element columns
+        float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
         for attr in float_attrs:
             _write_float64(
                 f,
@@ -72,6 +72,14 @@ def write_elements(objects: list[Object], out_dir: Path) -> None:
                     for o in objects
                 ],
             )
+
+        # Column 12: radius_km — derived from SBDB diameter at export time
+        def _radius_km(o: Object) -> float:
+            if o.sbdb is not None and o.sbdb.diameter is not None:
+                return o.sbdb.diameter / 2.0
+            return MISSING_FLOAT64
+
+        _write_float64(f, n, [_radius_km(o) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

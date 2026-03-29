@@ -275,9 +275,6 @@ def _parse_chunk(
 
             spkid = int_or_none(row["spkid"])
             object_type = _object_type(row)
-            diameter = float_or_none(row.get("diameter", ""))
-            radius_km = diameter / 2.0 if diameter else None
-
             object_id = f"{ID_TYPES.SPKID}-{spkid}"
             name = string_or_none(row["name"])
             prov = _provisional_designation(row["full_name"])
@@ -308,7 +305,6 @@ def _parse_chunk(
                         "w": float_or_none(row["w"]),
                         "ma": float_or_none(row["ma"]),
                         "n": float_or_none(row["n"]),
-                        "radius_km": radius_km,
                         "orbital_source": OrbitalSource.sbdb.value,
                         "parent_naif_id": 0,
                     },

@@ -1,6 +1,5 @@
 """SQLAlchemy ORM models for the space-map unified database."""
 
-import datetime
 from enum import StrEnum
 
 from sqlalchemy import ForeignKey, Index, String
@@ -137,13 +136,6 @@ class Object(Base):
     parent_naif_id: Mapped[int | None] = mapped_column(
         default=None
     )  # NAIF ID of central body (0=SSB, 399=Earth)
-
-    # Physical
-    mass_kg: Mapped[float | None] = mapped_column(default=None)  # mass [kg]
-    radius_km: Mapped[float | None] = mapped_column(default=None)  # mean radius [km]
-    discovery_date: Mapped[datetime.date | None] = mapped_column(
-        default=None
-    )  # discovery date
 
     orbital_source: Mapped[OrbitalSource | None] = mapped_column(
         default=None

@@ -30,8 +30,6 @@ _CROSS_REF_FIELDS = (
 
 _ORBIT_FIELDS = ("epoch_jd", "a", "e", "i", "om", "w", "ma", "n")
 
-_PHYSICAL_FIELDS = ("mass_kg", "radius_km")
-
 
 def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
     """Extract non-None attributes from an object into a dict."""
@@ -116,11 +114,6 @@ def _build_global(
         if obj.orbital_source is not None:
             orbit["source"] = obj.orbital_source
         data["orbit"] = orbit
-
-    # Physical properties
-    physical = _pick_attrs(obj, _PHYSICAL_FIELDS)
-    if physical:
-        data["physical"] = physical
 
     # SBDB extras
     sbdb = obj.sbdb
