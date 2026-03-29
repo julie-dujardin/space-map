@@ -24,11 +24,16 @@
 	let isMobile = $state(false);
 
 	// Mobile bottom sheet snap points (% of dynamic viewport height)
-	const SNAPS = [12, 50, 95];
+	const SNAPS = [12, 30, 95];
 	let sheetHeight = $state(SNAPS[0]);
 	let isDragging = $state(false);
 	let dragStartY = 0;
 	let dragStartHeight = 0;
+
+	// Velocity tracking (dvh/ms, positive = sheet moving up)
+	let velocity = 0;
+	let lastMoveY = 0;
+	let lastMoveTime = 0;
 
 	// Overscroll-to-collapse when fullscreen
 	let contentEl = $state<HTMLDivElement>();
@@ -66,10 +71,27 @@
 			});
 	});
 
-	function snapToNearest() {
-		sheetHeight = SNAPS.reduce((a, b) =>
-			Math.abs(a - sheetHeight) <= Math.abs(b - sheetHeight) ? a : b
-		);
+	// Fast flick skips the middle snap; slow drag uses nearest
+	const VELOCITY_THRESHOLD = 0.2; // dvh/ms
+
+	function snap() {
+		if (velocity > VELOCITY_THRESHOLD) sheetHeight = SNAPS[SNAPS.length - 1];
+		else if (velocity < -VELOCITY_THRESHOLD) sheetHeight = SNAPS[0];
+		else
+			sheetHeight = SNAPS.reduce((a, b) =>
+				Math.abs(a - sheetHeight) <= Math.abs(b - sheetHeight) ? a : b
+			);
+	}
+
+	function trackVelocity(clientY: number, sign: 1 | -1) {
+		const now = performance.now();
+		const dt = now - lastMoveTime;
+		if (dt > 0 && dt < 100) {
+			// sign: +1 when upward pointer drag, -1 when downward touch overscroll
+			velocity = (((sign * (lastMoveY - clientY)) / window.innerHeight) * 100) / dt;
+		}
+		lastMoveY = clientY;
+		lastMoveTime = now;
 	}
 
 	// Drag: handle always; whole sheet when not fullscreen
@@ -77,6 +99,9 @@
 		isDragging = true;
 		dragStartY = e.clientY;
 		dragStartHeight = sheetHeight;
+		velocity = 0;
+		lastMoveY = e.clientY;
+		lastMoveTime = performance.now();
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
@@ -92,6 +117,7 @@
 
 	function onDragMove(e: PointerEvent) {
 		if (!isDragging) return;
+		trackVelocity(e.clientY, 1);
 		const dy = ((dragStartY - e.clientY) / window.innerHeight) * 100;
 		sheetHeight = Math.max(SNAPS[0], Math.min(SNAPS[SNAPS.length - 1], dragStartHeight + dy));
 	}
@@ -99,7 +125,7 @@
 	function onDragUp() {
 		if (!isDragging) return;
 		isDragging = false;
-		snapToNearest();
+		snap();
 	}
 
 	// Overscroll-to-collapse: needs non-passive listener to call preventDefault
@@ -108,9 +134,14 @@
 		return { destroy: () => node.removeEventListener('touchmove', handler) };
 	}
 
+	let overscrollPeakVelocity = 0;
+
 	function onContentTouchStart(e: TouchEvent) {
 		overscrollStartY = e.touches[0].clientY;
 		overscrolling = false;
+		overscrollPeakVelocity = 0;
+		lastMoveY = e.touches[0].clientY;
+		lastMoveTime = performance.now();
 	}
 
 	function onContentTouchMove(e: TouchEvent) {
@@ -119,6 +150,15 @@
 		if ((contentEl.scrollTop <= 0 && dy > 0) || overscrolling) {
 			e.preventDefault();
 			overscrolling = true;
+			// Track peak velocity (finger moving down = collapsing = negative sign)
+			const now = performance.now();
+			const dt = now - lastMoveTime;
+			if (dt > 0 && dt < 100) {
+				const v = (((e.touches[0].clientY - lastMoveY) / window.innerHeight) * 100) / dt;
+				if (v > overscrollPeakVelocity) overscrollPeakVelocity = v;
+			}
+			lastMoveY = e.touches[0].clientY;
+			lastMoveTime = now;
 			const dvh = (dy / window.innerHeight) * 100;
 			sheetHeight = Math.max(SNAPS[0], SNAPS[SNAPS.length - 1] - dvh);
 		}
@@ -127,7 +167,8 @@
 	function onContentTouchEnd() {
 		if (overscrolling) {
 			overscrolling = false;
-			snapToNearest();
+			if (overscrollPeakVelocity > VELOCITY_THRESHOLD) sheetHeight = SNAPS[0];
+			else snap();
 		}
 	}
 
