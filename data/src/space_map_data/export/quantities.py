@@ -2,13 +2,11 @@
 
 import math
 
-# Unit ladder for mass: (resolved_unit_name, factor_in_kg), largest first.
-# Names match Wikidata English labels lowercased with spaces→underscores,
-# consistent with how resolve_unit() normalises them.
+# Unit ladder for mass: (resolved_unit_name, factor_in_kg), largest first
 _MASS_UNITS: tuple[tuple[str, float], ...] = (
     ("solar_mass", 1.988416e30),
     ("jupiter_mass", 1.89813e27),
-    ("earth_mass", 5.9722e24),
+    # ("earth_mass", 5.9722e24),
     ("ronnagram", 1e24),
     ("yottagram", 1e21),
     ("zettagram", 1e18),
@@ -36,6 +34,6 @@ def mass_quantity_from_kg(mass_kg: float) -> dict:
     """Convert a mass in kg to a human-readable {value, unit} dict."""
     for unit_name, unit_kg in _MASS_UNITS:
         value = mass_kg / unit_kg
-        if value >= 1:
+        if value > 1.1:
             return {"value": _round_sigfigs(value, 4), "unit": unit_name}
     return {"value": _round_sigfigs(mass_kg, 4), "unit": "kilogram"}
