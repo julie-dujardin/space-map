@@ -34,7 +34,7 @@ _SBDB_FIELDS = (
     "K2",
     "PC",
     "first_obs",
-    "mass",
+    "mass_kg",
 )
 
 
