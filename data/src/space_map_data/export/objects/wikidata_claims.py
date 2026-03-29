@@ -9,6 +9,18 @@ from space_map_data.export.wikidata import WikidataEntity
 logger = logging.getLogger(__name__)
 
 
+_INSTANCE_OF_IGNORED = {
+    # superior/inferior planet: wether the planet orbits closer or further away from the sun
+    "Q3901935",
+    "Q844911",
+    # list articles
+    "Q2517610",
+    # no shit
+    "Q6999",  # "astronomical object"
+    "Q2221906",  # "geographic location"
+}
+
+
 class GlobalClaim(NamedTuple):
     key: str
     pid: str
@@ -36,10 +48,13 @@ class EntityRefClaim(NamedTuple):
     key: str
     pid: str
     multiple: bool = False
+    exclude_set: set[str] | None = None
 
 
 ENTITY_REF_CLAIMS = (
-    EntityRefClaim("instance_of", "P31", multiple=True),
+    EntityRefClaim(
+        "instance_of", "P31", multiple=True, exclude_set=_INSTANCE_OF_IGNORED
+    ),
     EntityRefClaim("named_after", "P138"),
     EntityRefClaim("discovery_site", "P65"),
     EntityRefClaim("minor_planet_group", "P196"),
@@ -72,7 +87,11 @@ def extract_claims(claims: dict) -> dict:
 
     for claim in ENTITY_REF_CLAIMS:
         if claim.multiple:
-            qids = _all_entity_qids(claims, claim.pid)
+            qids = [
+                q
+                for q in _all_entity_qids(claims, claim.pid)
+                if not claim.exclude_set or q not in claim.exclude_set
+            ]
             if qids:
                 result[claim.key] = qids
         else:
