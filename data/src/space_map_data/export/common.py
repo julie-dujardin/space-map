@@ -9,6 +9,7 @@ from pathlib import Path
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
+from tqdm import tqdm
 
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
@@ -152,24 +153,19 @@ def export(session: Session, *, limit_asteroids: int | None = 10_000) -> None:
     object_counts: dict[tuple[str, int], int] = {}
     total_bytes: dict[tuple[str, int], int] = {}
 
-    for (context_id, zoom), objs in sorted(buckets.items()):
-        parts = [objs[i : i + CHUNK_SIZE] for i in range(0, len(objs), CHUNK_SIZE)]
-        for part_idx, part_objs in enumerate(parts):
-            nbytes = write_chunk(
-                part_objs, out_dir, context_id, zoom, part_idx, wikidata_entities
-            )
-            total_bytes[(context_id, zoom)] = (
-                total_bytes.get((context_id, zoom), 0) + nbytes
-            )
-        chunk_structure.setdefault(context_id, {})[zoom] = len(parts)
-        object_counts[(context_id, zoom)] = len(objs)
-        logger.info(
-            "Wrote %s/zoom%d: %d objects in %d part(s)",
-            context_id,
-            zoom,
-            len(objs),
-            len(parts),
-        )
+    with tqdm(total=len(non_zoom3), unit="obj", desc="non-zoom-3") as progress:
+        for (context_id, zoom), objs in sorted(buckets.items()):
+            parts = [objs[i : i + CHUNK_SIZE] for i in range(0, len(objs), CHUNK_SIZE)]
+            for part_idx, part_objs in enumerate(parts):
+                nbytes = write_chunk(
+                    part_objs, out_dir, context_id, zoom, part_idx, wikidata_entities
+                )
+                total_bytes[(context_id, zoom)] = (
+                    total_bytes.get((context_id, zoom), 0) + nbytes
+                )
+                progress.update(len(part_objs))
+            chunk_structure.setdefault(context_id, {})[zoom] = len(parts)
+            object_counts[(context_id, zoom)] = len(objs)
 
     write_objects(non_zoom3, out_dir, wikidata_entities, wiki_summaries)
 
@@ -177,13 +173,14 @@ def export(session: Session, *, limit_asteroids: int | None = 10_000) -> None:
     zoom3_part_count = 0
     zoom3_total = 0
     zoom3_bytes = 0
-    for part_idx, batch in enumerate(_iter_zoom3_batches(session, limit_asteroids)):
-        nbytes = write_chunk(batch, out_dir, "sun", 3, part_idx, wikidata_entities)
-        write_objects(batch, out_dir, wikidata_entities, wiki_summaries)
-        zoom3_part_count += 1
-        zoom3_total += len(batch)
-        zoom3_bytes += nbytes
-        logger.info("Wrote sun/zoom3 part %d (%d objects)", part_idx, len(batch))
+    with tqdm(total=limit_asteroids, unit="obj", desc="zoom3") as progress:
+        for part_idx, batch in enumerate(_iter_zoom3_batches(session, limit_asteroids)):
+            nbytes = write_chunk(batch, out_dir, "sun", 3, part_idx, wikidata_entities)
+            write_objects(batch, out_dir, wikidata_entities, wiki_summaries)
+            zoom3_part_count += 1
+            zoom3_total += len(batch)
+            zoom3_bytes += nbytes
+            progress.update(len(batch))
 
     if zoom3_part_count:
         chunk_structure.setdefault("sun", {})[3] = zoom3_part_count
