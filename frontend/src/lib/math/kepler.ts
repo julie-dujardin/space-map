@@ -1,5 +1,5 @@
-import type { OrbitalElements } from './types';
-import { AU_SCALE } from './constants';
+import type { OrbitalElements } from '$lib/types/objects';
+import { AU_SCALE } from './units';
 
 const DEG2RAD = Math.PI / 180;
 

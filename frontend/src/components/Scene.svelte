@@ -2,7 +2,7 @@
 	import { Canvas } from '@threlte/core';
 	import { WebGLRenderer } from 'three';
 	import SceneContent from './SceneContent.svelte';
-	import type { PositionedBody } from '$lib/types';
+	import type { PositionedBody } from '$lib/types/objects';
 	import type { MapViewState } from '$lib/url-state';
 
 	interface Props {

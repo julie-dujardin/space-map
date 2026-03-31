@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
 	import { BufferGeometry, Color, Float32BufferAttribute, ShaderMaterial } from 'three';
-	import type { OrbitalElements } from '$lib/types';
-	import { orbitalElementsToEllipse } from '$lib/kepler';
+	import type { OrbitalElements } from '$lib/types/objects';
+	import { orbitalElementsToEllipse } from '$lib/math/kepler';
 
 	interface Props {
 		elements: OrbitalElements;

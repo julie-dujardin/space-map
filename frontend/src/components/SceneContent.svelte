@@ -4,7 +4,7 @@
 	import { Vector3 } from 'three';
 	import type { OrbitControls as OrbitControlsType } from 'three/addons/controls/OrbitControls.js';
 	import Body from './Body.svelte';
-	import type { PositionedBody } from '$lib/types';
+	import type { PositionedBody } from '$lib/types/objects';
 	import {
 		type MapViewState,
 		cartesianToSpherical,

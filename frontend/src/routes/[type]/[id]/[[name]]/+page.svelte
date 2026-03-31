@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Scene from '../../../../components/Scene.svelte';
-	import { loadChunk } from '$lib/fetch/elements/chunk';
-	import { type PositionedBody } from '$lib/types';
+	import { ChunkLoader } from '$lib/fetch/elements/chunk';
+	import { type PositionedBody } from '$lib/types/objects';
 	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -17,17 +17,19 @@
 
 	onMount(async () => {
 		try {
-			const major_chunks = await Promise.all([
-				loadChunk('sun', 0, 0, initialView.date),
-				loadChunk('sun', 1, 0, initialView.date)
-			]);
+			const loader = new ChunkLoader();
+			majorBodies = majorBodies.concat(await loader.process('sun', 0, 0, initialView.date));
+
+			majorBodies = majorBodies.concat(await loader.process('sun', 1, 0, initialView.date));
+
 			const minor_chunks = await Promise.all([
-				loadChunk('sun', 2, 0, initialView.date),
-				loadChunk('sun', 3, 0, initialView.date)
+				loader.process('sun', 2, 0, initialView.date),
+				loader.process('sun', 3, 0, initialView.date),
+				loader.process('earth', 0, 0, initialView.date)
 			]);
 
-			majorBodies = major_chunks.reduce((accumulator, value) => accumulator.concat(value), []);
-			minorBodies = minor_chunks.reduce((accumulator, value) => accumulator.concat(value), []);
+			minorBodies = minor_chunks.flat();
+
 			loading = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);

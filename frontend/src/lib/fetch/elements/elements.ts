@@ -3,9 +3,7 @@
  * Creates zero-copy typed array views over the fetched ArrayBuffer.
  */
 
-import { MAGIC, VERSION, HEADER_SIZE } from '../../format';
-
-const BASE_ELEMENT_PATH = '/data/v1/elements';
+import { MAGIC, VERSION, HEADER_SIZE, BASE_ELEMENT_PATH } from '$lib/fetch/elements/constants';
 
 export interface ElementColumns {
 	id: Int32Array;
