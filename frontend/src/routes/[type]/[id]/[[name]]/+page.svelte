@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import Scene from '../../../../components/Scene.svelte';
 	import { ChunkLoader } from '$lib/fetch/elements/chunk';
-	import { type PositionedBody } from '$lib/types';
+	import { type PositionedBody } from '$lib/types/objects';
 	import { parseUrl, DEFAULT_VIEW, type MapViewState } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import * as m from '$lib/paraglide/messages.js';

@@ -3,9 +3,7 @@
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
-
-const BASE_ID_PATH = '/data/v1/elements';
-const BASE_LABEL_PATH = '/data/v1/element_labels';
+import { BASE_ELEMENT_PATH, BASE_LABEL_PATH } from '$lib/fetch/elements/constants';
 
 export async function fetchIds(
 	context: string,
@@ -14,7 +12,7 @@ export async function fetchIds(
 ): Promise<Map<number, string>> {
 	const lang = getLocale();
 
-	const res = await fetch(`${BASE_ID_PATH}/${context}/${zoom}/${part}.txt`);
+	const res = await fetch(`${BASE_ELEMENT_PATH}/${context}/${zoom}/${part}.txt`);
 	if (!res.ok) throw new Error(`Failed to fetch labels for ${lang}: ${res.status}`);
 	const data = (await res.text()).split('\n');
 	return new Map(data.map((id, index) => [index, id]));

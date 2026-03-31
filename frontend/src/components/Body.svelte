@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
-	import { ObjectType } from '$lib/format';
-	import type { PositionedBody } from '$lib/types';
+	import { ObjectType } from '$lib/types/objects';
+	import type { PositionedBody } from '$lib/types/objects';
 	import {
 		BODY_COLORS,
 		BODY_RADII_KM,
 		DEFAULT_BODY_COLOR,
-		DEFAULT_BODY_RADIUS_KM,
-		kmToScene
+		DEFAULT_BODY_RADIUS_KM
 	} from '$lib/constants';
+	import { kmToScene } from '$lib/math/units';
 	import OrbitLine from './OrbitLine.svelte';
 	import Halo from './Halo.svelte';
 

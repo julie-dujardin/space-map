@@ -1,8 +1,10 @@
 import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
-import { orbitalElementsToPosition } from '$lib/kepler';
+import { orbitalElementsToPosition } from '$lib/math/kepler';
 import { fetchElements, type ElementColumns } from '$lib/fetch/elements/elements';
-import { ObjectType, Scale, isMajorBody } from '$lib/format';
-import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types';
+import { isMajorBody } from '$lib/types/objects';
+import { ObjectType } from '$lib/types/objects';
+import { Scale } from './constants';
+import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 
 const KM_PER_AU = 149_597_870.7;
 
