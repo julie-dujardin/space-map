@@ -173,6 +173,15 @@ def export(session: Session, *, limit_asteroids: int | None = 10_000) -> None:
     zoom3_part_count = 0
     zoom3_total = 0
     zoom3_bytes = 0
+    limit_asteroids = min(
+        session.query(Object)
+        .filter(
+            Object.object_type.in_(asteroid_type_values),
+            Object.name.is_(None),
+        )
+        .count(),
+        limit_asteroids or 0,
+    )
     with tqdm(total=limit_asteroids, unit="obj", desc="zoom3") as progress:
         for part_idx, batch in enumerate(_iter_zoom3_batches(session, limit_asteroids)):
             nbytes = write_chunk(batch, out_dir, "sun", 3, part_idx, wikidata_entities)
