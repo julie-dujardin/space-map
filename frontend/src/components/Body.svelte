@@ -31,7 +31,8 @@
 	const majorBody =
 		objType === ObjectType.PLANET ||
 		objType === ObjectType.DWARF_PLANET ||
-		objType === ObjectType.STAR;
+		objType === ObjectType.STAR ||
+		(objType === ObjectType.MOON && !/^\d+$/.test(name[0]));
 	const drawHalo = majorBody;
 	const haloVariant: 'major' | 'minor' | 'spacecraft' = majorBody
 		? 'major'
@@ -66,6 +67,8 @@
 		{color}
 		bodyPosition={body.position}
 		center={body.orbitCenter}
-		trailFraction={objType === ObjectType.DWARF_PLANET ? 1 / 3 : undefined}
+		trailFraction={objType === ObjectType.DWARF_PLANET || objType === ObjectType.MOON
+			? 1 / 3
+			: undefined}
 	/>
 {/if}

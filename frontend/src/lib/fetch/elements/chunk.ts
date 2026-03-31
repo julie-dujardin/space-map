@@ -33,94 +33,104 @@ function columnarToBody(
 	};
 }
 
-export async function loadChunk(
-	context: string,
-	zoom: number,
-	part: number,
-	date: Date
-): Promise<PositionedBody[]> {
-	const [cols, labels, idMap] = await Promise.all([
-		fetchElements(context, zoom, part),
-		fetchLabels(context, zoom, part),
-		fetchIds(context, zoom, part)
-	]);
-
-	console.log(`Loaded: ${cols.rowCount} objects`);
-
-	// Track positions by NAIF ID for parent lookups (not reactive — local computation only)
-
-	const positions = new Map<number, [number, number, number]>();
-	positions.set(0, [0, 0, 0]); // Solar System Barycenter
-
+export class ChunkLoader {
+	// Track positions by ID for parent lookups (not reactive — local computation only)
+	positions = new Map<number, [number, number, number]>();
 	// Store barycenter orbital elements for planet orbit drawing
+	barycenters = new Map<number, OrbitalElements>();
 
-	const barycenters = new Map<number, OrbitalElements>();
+	constructor() {
+		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
+	}
 
-	const bodies: PositionedBody[] = [];
+	async process(
+		context: string,
+		zoom: number,
+		part: number,
+		date: Date
+	): Promise<PositionedBody[]> {
+		const writePositions = this.barycenters.size === 0;
+		const bodies: PositionedBody[] = [];
 
-	for (let idx = 0; idx < cols.rowCount; idx++) {
-		const a = cols.a[idx];
-		const e = cols.e[idx];
-		const objType = cols.objectType[idx] as ObjectType;
+		const [cols, labels, idMap] = await Promise.all([
+			fetchElements(context, zoom, part),
+			fetchLabels(context, zoom, part),
+			fetchIds(context, zoom, part)
+		]);
 
-		if (!(a > 0) || e >= 1) {
-			if (
-				isMajorBody(objType) ||
-				objType === ObjectType.BARYCENTER ||
-				objType === ObjectType.LAGRANGE_POINT
-			) {
-				// Major bodies with near-zero orbits (e.g. planets at their barycenter) are
-				// still valid — they sit at the parent position with zero offset.
-				console.debug(
-					`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=${a} e=${e}, keeping as major body`
-				);
-			} else {
-				console.debug(
-					`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): invalid orbit a=${a} e=${e}`
-				);
+		console.log(`Loaded: ${cols.rowCount} objects`);
+
+		for (let idx = 0; idx < cols.rowCount; idx++) {
+			const a = cols.a[idx];
+			const e = cols.e[idx];
+			const objType = cols.objectType[idx] as ObjectType;
+
+			if (!(a > 0) || e >= 1) {
+				if (
+					isMajorBody(objType) ||
+					objType === ObjectType.BARYCENTER ||
+					objType === ObjectType.LAGRANGE_POINT
+				) {
+					// Major bodies with near-zero orbits (e.g. planets at their barycenter) are
+					// still valid — they sit at the parent position with zero offset.
+					console.debug(
+						`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=${a} e=${e}, keeping as major body`
+					);
+				} else {
+					console.debug(
+						`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): invalid orbit a=${a} e=${e}`
+					);
+					continue;
+				}
+			}
+
+			const parentId = cols.parentId[idx];
+			if (!this.positions.has(parentId)) {
+				console.warn(`Parent position not found for parentId=${parentId}, falling back to origin`);
+			}
+			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
+
+			const body = columnarToBody(cols, idx, labels, idMap);
+			const offset = orbitalElementsToPosition(body, date);
+			const pos: [number, number, number] = [
+				parentPos[0] + offset[0],
+				parentPos[1] + offset[1],
+				parentPos[2] + offset[2]
+			];
+
+			const id = cols.id[idx];
+
+			if (writePositions) {
+				// Store position by ID for child lookups
+				if (isMajorBody(objType)) {
+					this.positions.set(id, pos);
+				}
+
+				if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+					// Barycenters: store elements for planet orbit drawing, don't render
+					this.barycenters.set(id, body);
+					this.positions.set(id, pos);
+					continue;
+				}
+			} else if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				continue;
 			}
+
+			if (isMajorBody(objType)) {
+				const isMoon = objType === ObjectType.MOON;
+				bodies.push({
+					data: body,
+					position: pos,
+					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
+					orbitCenter: isMoon ? parentPos : undefined
+				});
+			} else {
+				bodies.push({
+					data: body,
+					position: pos
+				});
+			}
 		}
-
-		const parentId = cols.parentId[idx];
-		const parentPos = positions.get(parentId) ?? positions.get(0)!;
-
-		const body = columnarToBody(cols, idx, labels, idMap);
-		const offset = orbitalElementsToPosition(body, date);
-		const pos: [number, number, number] = [
-			parentPos[0] + offset[0],
-			parentPos[1] + offset[1],
-			parentPos[2] + offset[2]
-		];
-
-		const id = cols.id[idx];
-
-		// Store position by ID for child lookups (body-type objects use NAIF IDs)
-		if (isMajorBody(objType)) {
-			positions.set(id, pos);
-		}
-
-		if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
-			// Barycenters: store elements for planet orbit drawing, don't render
-			barycenters.set(id, body);
-			positions.set(id, pos);
-			continue;
-		}
-
-		if (isMajorBody(objType)) {
-			const isMoon = objType === ObjectType.MOON;
-			bodies.push({
-				data: body,
-				position: pos,
-				orbitElements: isMoon ? body : (barycenters.get(parentId) ?? body),
-				orbitCenter: isMoon ? parentPos : undefined
-			});
-		} else {
-			bodies.push({
-				data: body,
-				position: pos
-			});
-		}
+		return bodies;
 	}
-	return bodies;
 }
