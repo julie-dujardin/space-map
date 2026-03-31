@@ -2,12 +2,12 @@
 
 import json
 import logging
-import random as _random
 import shutil
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
@@ -21,7 +21,6 @@ from space_map_data.utils.paths import EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
-_ZOOM3_SHUFFLE_SEED = 42
 _EARTH_NAIF_ID = 399
 
 _EARTH_CONTEXT_TYPES = {ObjectType.spacecraft, ObjectType.debris}
@@ -63,24 +62,28 @@ def _assign_chunk(obj: Object) -> tuple[str, int]:
     return ("sun", 3)
 
 
-def _iter_zoom3_batches(session: Session, ids: list[str]) -> Iterator[list[Object]]:
-    """Yield CHUNK_SIZE-object batches for zoom 3, querying the DB in slices."""
+def _iter_zoom3_batches(session: Session, limit: int | None) -> Iterator[list[Object]]:
+    """Yield CHUNK_SIZE-object batches for zoom 3 in random order, streamed from DB."""
     asteroid_type_values = [t.value for t in _ASTEROID_TYPES]
-    for start in range(0, len(ids), CHUNK_SIZE):
-        batch_ids = ids[start : start + CHUNK_SIZE]
-        objects = (
-            session.query(Object)
-            .options(joinedload(Object.sbdb))
-            .filter(
-                Object.id.in_(batch_ids),
-                Object.object_type.in_(asteroid_type_values),
-            )
-            .all()
+    q = (
+        session.query(Object)
+        .options(joinedload(Object.sbdb))
+        .filter(
+            Object.object_type.in_(asteroid_type_values),
+            Object.name.is_(None),
         )
-        # Re-order to match the shuffled ID order (DB doesn't preserve IN() order)
-        id_index = {oid: i for i, oid in enumerate(batch_ids)}
-        objects.sort(key=lambda o: id_index[o.id])
-        yield objects
+        .order_by(func.random())
+    )
+    if limit is not None:
+        q = q.limit(limit)
+    batch: list[Object] = []
+    for obj in q.yield_per(CHUNK_SIZE):
+        batch.append(obj)
+        if len(batch) == CHUNK_SIZE:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def _build_metadata(
@@ -170,26 +173,11 @@ def export(session: Session, *, limit_asteroids: int | None = 10_000) -> None:
 
     write_objects(non_zoom3, out_dir, wikidata_entities, wiki_summaries)
 
-    # --- Zoom 3: unnamed asteroids, two-pass streaming ---
-    # Pass 1: fetch IDs only, shuffle with fixed seed
-    zoom3_id_query = session.query(Object.id).filter(
-        Object.object_type.in_(asteroid_type_values),
-        Object.name.is_(None),
-    )
-    if limit_asteroids is not None:
-        zoom3_id_query = zoom3_id_query.limit(limit_asteroids)
-
-    unnamed_ids = [row[0] for row in zoom3_id_query.all()]
-    logger.info("Loaded %d unnamed asteroid IDs for zoom 3", len(unnamed_ids))
-
-    rng = _random.Random(_ZOOM3_SHUFFLE_SEED)
-    rng.shuffle(unnamed_ids)
-
-    # Pass 2: stream in batches, write each part
+    # --- Zoom 3: unnamed asteroids, streamed from DB in random order ---
     zoom3_part_count = 0
     zoom3_total = 0
     zoom3_bytes = 0
-    for part_idx, batch in enumerate(_iter_zoom3_batches(session, unnamed_ids)):
+    for part_idx, batch in enumerate(_iter_zoom3_batches(session, limit_asteroids)):
         nbytes = write_chunk(batch, out_dir, "sun", 3, part_idx, wikidata_entities)
         write_objects(batch, out_dir, wikidata_entities, wiki_summaries)
         zoom3_part_count += 1

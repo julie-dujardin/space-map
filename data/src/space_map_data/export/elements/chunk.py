@@ -8,7 +8,7 @@ from space_map_data.export.elements.writer import write_elements
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object
 
-CHUNK_SIZE = 50_000
+CHUNK_SIZE = 10_000
 
 
 def write_chunk(
