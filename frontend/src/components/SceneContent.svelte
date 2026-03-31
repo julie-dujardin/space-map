@@ -36,6 +36,7 @@
 	const sunBody = majorBodies.find((b) => b.data.id === 10);
 	const initialFocusPos: [number, number, number] = matchedBody?.position ??
 		sunBody?.position ?? [0, 0, 0];
+	onFocusChange?.(matchedBody);
 	const initialFocusBody = matchedBody ?? sunBody;
 
 	let focusTarget = $state<[number, number, number]>(initialFocusPos);
