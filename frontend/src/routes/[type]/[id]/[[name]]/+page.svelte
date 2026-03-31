@@ -22,11 +22,28 @@
 
 			majorBodies = majorBodies.concat(await loader.process('sun', 1, 0, initialView.date));
 
-			const minor_chunks = await Promise.all([
-				loader.process('sun', 2, 0, initialView.date),
-				loader.process('sun', 3, 0, initialView.date),
-				loader.process('earth', 0, 0, initialView.date)
-			]);
+			const metaRes = await fetch('/data/v1/metadata.json');
+			if (!metaRes.ok) throw new Error(`Failed to fetch metadata: ${metaRes.status}`);
+			const metadata = await metaRes.json();
+
+			const minorChunkArgs: { context: string; zoom: number; part: number }[] = [];
+			for (const [context, ctxData] of Object.entries(metadata.contexts) as [
+				string,
+				{ zooms: Record<string, { parts: number }> }
+			][]) {
+				for (const [zoomStr, zoomData] of Object.entries(ctxData.zooms)) {
+					if (context != 'sun' || Number(zoomStr) >= 2)
+						for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
+							minorChunkArgs.push({ context, zoom: Number(zoomStr), part });
+						}
+				}
+			}
+
+			const minor_chunks = await Promise.all(
+				minorChunkArgs.map(({ context, zoom, part }) =>
+					loader.process(context, zoom, part, initialView.date)
+				)
+			);
 
 			minorBodies = minor_chunks.flat();
 
