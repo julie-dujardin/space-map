@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import type { GlobalObjectData, LocalizedObjectData } from '$lib/object-data';
+	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 
 	interface Props {
 		global: GlobalObjectData | null;

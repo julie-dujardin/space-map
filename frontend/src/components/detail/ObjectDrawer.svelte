@@ -4,7 +4,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { PositionedBody } from '$lib/types';
-	import { fetchObjectDetail, type ObjectDetailData } from '$lib/object-data';
+	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
 	import ObjectProperties from './ObjectProperties.svelte';

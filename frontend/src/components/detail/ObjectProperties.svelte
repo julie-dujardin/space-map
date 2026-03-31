@@ -2,7 +2,7 @@
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import type { GlobalObjectData } from '$lib/object-data';
+	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
 	interface Props {
 		global: GlobalObjectData | null;
