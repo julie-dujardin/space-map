@@ -3,7 +3,9 @@
  * Creates zero-copy typed array views over the fetched ArrayBuffer.
  */
 
-import { MAGIC, VERSION, HEADER_SIZE } from './format';
+import { MAGIC, VERSION, HEADER_SIZE } from '../../format';
+
+const BASE_ELEMENT_PATH = '/data/v1/elements';
 
 export interface ElementColumns {
 	id: Int32Array;
@@ -27,8 +29,12 @@ function align8(n: number): number {
 	return (n + 7) & ~7;
 }
 
-export async function fetchElements(url = '/data/v1/elements.bin'): Promise<ElementColumns> {
-	const res = await fetch(url);
+export async function fetchElements(
+	context: string,
+	zoom: number,
+	part: number
+): Promise<ElementColumns> {
+	const res = await fetch(`${BASE_ELEMENT_PATH}/${context}/${zoom}/${part}.bin`);
 	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 	const buffer = await res.arrayBuffer();
 	return parseElements(buffer);
