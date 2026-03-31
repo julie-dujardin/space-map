@@ -15,7 +15,6 @@ from space_map_data.export.objects.wikidata_claims import (
     resolve_entity_ref,
     resolve_unit,
 )
-from space_map_data.export.objects.wikipedia import load_wikipedia_summaries
 from space_map_data.models.object import Object
 
 logger = logging.getLogger(__name__)
@@ -46,6 +45,7 @@ def write_objects(
     objects: list[Object],
     out_dir: Path,
     wikidata_entities: dict[str, WikidataEntity],
+    wiki_summaries: dict,
 ) -> None:
     """Write per-object JSON files (global + per-language)."""
     global_dir = out_dir / "objects" / "__global__"
@@ -55,8 +55,6 @@ def write_objects(
         d = out_dir / "objects" / lang
         d.mkdir(parents=True, exist_ok=True)
         lang_dirs[lang] = d
-
-    wiki_summaries = load_wikipedia_summaries()
 
     for obj in objects:
         wd = wikidata_entities.get(obj.wikidata_qid or "")

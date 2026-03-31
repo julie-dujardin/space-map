@@ -24,10 +24,9 @@ def _parse_numeric_id(obj: Object) -> int:
     return MISSING_INT32
 
 
-def write_elements(objects: list[Object], out_dir: Path) -> None:
-    """Write elements.bin from a list of Objects (already sorted)."""
+def write_elements(objects: list[Object], out_file: Path) -> None:
+    """Write a binary elements file from a list of Objects (already sorted)."""
     n = len(objects)
-    out_file = out_dir / "elements.bin"
 
     with open(out_file, "wb") as f:
         f.write(pack_header(n))
