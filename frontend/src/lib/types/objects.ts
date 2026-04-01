@@ -15,7 +15,7 @@ export interface BodyData extends OrbitalElements {
 	fileId: string | null; // key into /data/v1/objects/ JSON files (e.g. "naif-399", "spkid-20000001")
 	name: string | null;
 	objectType: ObjectType;
-	parentId: number; // NAIF ID of parent (0 = SSB, 399 = Earth, etc.)
+	parentId: number; // ID of parent (0 = SSB, 399 = Earth, etc.)
 	radiusKm: number;
 }
 
