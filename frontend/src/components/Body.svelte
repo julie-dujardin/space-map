@@ -31,8 +31,7 @@
 	const majorBody =
 		objType === ObjectType.PLANET ||
 		objType === ObjectType.DWARF_PLANET ||
-		objType === ObjectType.STAR ||
-		(objType === ObjectType.MOON && !/^\d+$/.test(name[0]));
+		objType === ObjectType.STAR;
 	const drawHalo = majorBody;
 	const haloVariant: 'major' | 'minor' | 'spacecraft' = majorBody
 		? 'major'
