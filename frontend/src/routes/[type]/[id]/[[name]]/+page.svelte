@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, setContext } from 'svelte';
 	import Scene from '../../../../components/Scene.svelte';
-	import { ContextManager } from '$lib/context-manager.svelte';
+	import { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { type PositionedBody } from '$lib/types/objects';
 	import { parseUrl, DEFAULT_VIEW } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';

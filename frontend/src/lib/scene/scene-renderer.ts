@@ -33,7 +33,7 @@ import { kmToScene } from '$lib/math/units';
 import { orbitalElementsToEllipse } from '$lib/math/kepler';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
+import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
