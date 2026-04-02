@@ -1,7 +1,7 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
-import { AU_SCALE } from './math/units';
+import { AU_SCALE } from '../math/units';
 
 /*
  * Visibility options:

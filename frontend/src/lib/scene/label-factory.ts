@@ -1,5 +1,6 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isMajorBody, type PositionedBody } from '$lib/types/objects';
+import './label.css';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'none';
 
@@ -29,64 +30,31 @@ export function createLabel(
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
-	const indicatorSize = variant === 'major' ? 32 : 20;
-
 	// Root: sized to the indicator only, no transition (CSS2DRenderer writes transform here)
 	const el = document.createElement('div');
-	el.style.cssText = [
-		`width:${indicatorSize}px`,
-		`height:${indicatorSize}px`,
-		'position:relative',
-		'pointer-events:auto',
-		'cursor:pointer',
-		'user-select:none'
-	].join(';');
+	el.className = `scene-label scene-label--${variant}`;
 
 	// halo: visual ring/hexagon, transition lives here not on root
 	const halo = document.createElement('div');
-	halo.style.cssText = ['width:100%', 'height:100%', 'transition:transform 0.1s'].join(';');
-
+	halo.className = `scene-label__halo scene-label__halo--${variant}`;
+	// color-derived styles stay inline
 	if (variant === 'major') {
-		halo.style.borderRadius = '50%';
 		halo.style.border = `2px solid ${color}`;
 		halo.style.background = `${color}22`;
 	} else {
-		halo.style.clipPath = 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)';
 		halo.style.background = `${color}22`;
 		halo.style.outline = `2px solid ${color}`;
 	}
-
 	el.appendChild(halo);
 
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) {
 		const span = document.createElement('span');
+		span.className = `scene-label__name scene-label__name--${variant}`;
 		span.textContent = name;
-		span.style.cssText = [
-			'padding-left:8px',
-			'position:absolute',
-			`left:${indicatorSize}px`,
-			'top:50%',
-			'transform:translateY(-50%)',
-			'white-space:nowrap',
-			'pointer-events:auto',
-			'cursor:pointer',
-			'color:white',
-			`font-size:${variant === 'major' ? 14 : 10}px`,
-			variant === 'major' ? 'font-weight:bold' : '',
-			'text-shadow:0 0 4px #000,0 0 4px #000'
-		].join(';');
 		span.addEventListener('click', (e) => {
 			e.stopPropagation();
 			onClick();
-		});
-		span.addEventListener('mouseenter', () => {
-			halo.style.transform = 'scale(1.15)';
-			document.body.style.cursor = 'pointer';
-		});
-		span.addEventListener('mouseleave', () => {
-			halo.style.transform = '';
-			document.body.style.cursor = '';
 		});
 		el.appendChild(span);
 	}

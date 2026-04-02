@@ -1,10 +1,6 @@
 import {
 	AmbientLight,
-	BufferGeometry,
 	CanvasTexture,
-	Color,
-	Float32BufferAttribute,
-	Line,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
@@ -14,12 +10,12 @@ import {
 	PointsMaterial,
 	Raycaster,
 	Scene,
-	ShaderMaterial,
 	SphereGeometry,
 	Vector2,
 	Vector3,
 	WebGLRenderer,
-	Group
+	Group,
+	Line
 } from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -30,16 +26,17 @@ import {
 	DEFAULT_BODY_RADIUS_KM
 } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
-import { orbitalElementsToEllipse } from '$lib/math/kepler';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
+import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
+import { makeCircleTexture, makeOrbitLine, makePointCloud } from './scene-builders';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // For focused objects:
 // Body/halo size ratio at which the label should be hidden
 const HIDE_LABEL_BODY_HALO_FACTOR = 20;
+const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
 
 // --- Types ---
 
@@ -56,129 +53,6 @@ interface BodyObjects {
 interface Callbacks {
 	onFocusChange(body: PositionedBody | undefined): void;
 	onFrame(latitude: number, longitude: number, zoom: number): void;
-}
-
-// --- Helpers ---
-
-function makeCircleTexture(): CanvasTexture {
-	const size = 32;
-	const canvas = document.createElement('canvas');
-	canvas.width = size;
-	canvas.height = size;
-	const ctx = canvas.getContext('2d')!;
-	ctx.beginPath();
-	ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-	ctx.fillStyle = '#aaaaaa';
-	ctx.globalAlpha = 0.3;
-	ctx.fill();
-	return new CanvasTexture(canvas);
-}
-
-const NUM_ORBIT_POINTS = 512;
-
-function makeOrbitLine(body: PositionedBody, color: string): Line {
-	const { orbitElements, orbitCenter, data } = body;
-	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
-
-	const ellipse = orbitalElementsToEllipse(orbitElements, NUM_ORBIT_POINTS);
-
-	// Body position in orbit-local coordinates
-	const cx = orbitCenter?.[0] ?? 0;
-	const cy = orbitCenter?.[1] ?? 0;
-	const cz = orbitCenter?.[2] ?? 0;
-	const bodyLocal: [number, number, number] = [
-		body.position[0] - cx,
-		body.position[1] - cy,
-		body.position[2] - cz
-	];
-
-	// Find trail start point (behind the body in orbital direction)
-	let nearest = 0;
-	let best = Infinity;
-	for (let j = 0; j < NUM_ORBIT_POINTS; j++) {
-		const d =
-			(ellipse[j][0] - bodyLocal[0]) ** 2 +
-			(ellipse[j][1] - bodyLocal[1]) ** 2 +
-			(ellipse[j][2] - bodyLocal[2]) ** 2;
-		if (d < best) {
-			best = d;
-			nearest = j;
-		}
-	}
-	const prev = (nearest - 1 + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS;
-	const next = (nearest + 1) % NUM_ORBIT_POINTS;
-	const distPrev =
-		(ellipse[prev][0] - bodyLocal[0]) ** 2 +
-		(ellipse[prev][1] - bodyLocal[1]) ** 2 +
-		(ellipse[prev][2] - bodyLocal[2]) ** 2;
-	const distNext =
-		(ellipse[next][0] - bodyLocal[0]) ** 2 +
-		(ellipse[next][1] - bodyLocal[1]) ** 2 +
-		(ellipse[next][2] - bodyLocal[2]) ** 2;
-	const trailStart = distPrev < distNext ? prev : nearest;
-
-	const useTrail =
-		data.objectType === ObjectType.DWARF_PLANET || data.objectType === ObjectType.MOON;
-	const trailFraction = useTrail ? 1 / 3 : undefined;
-	const trailLen = trailFraction ? Math.round(trailFraction * NUM_ORBIT_POINTS) : NUM_ORBIT_POINTS;
-	const closeLoop = !trailFraction;
-
-	const points: [number, number, number][] = [bodyLocal];
-	for (let k = 0; k < trailLen - 1; k++) {
-		points.push(
-			ellipse[(((trailStart - k) % NUM_ORBIT_POINTS) + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS]
-		);
-	}
-	if (closeLoop) points.push(bodyLocal);
-
-	const maxAlpha = trailFraction ? 0.6 : 0.9;
-	const minAlpha = trailFraction ? 0 : maxAlpha / 3;
-	const alphas = new Float32Array(points.length);
-	for (let k = 0; k < points.length; k++) {
-		alphas[k] = maxAlpha - (k / (points.length - 1)) * (maxAlpha - minAlpha);
-	}
-
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(points.flat()), 3));
-	geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
-
-	const material = new ShaderMaterial({
-		transparent: true,
-		uniforms: { uColor: { value: new Color(color) } },
-		vertexShader: `
-			attribute float alpha;
-			varying float vAlpha;
-			void main() {
-				vAlpha = alpha;
-				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-			}
-		`,
-		fragmentShader: `
-			uniform vec3 uColor;
-			varying float vAlpha;
-			void main() {
-				gl_FragColor = vec4(uColor, vAlpha);
-			}
-		`
-	});
-
-	const line = new Line(geometry, material);
-	line.position.set(cx, cy, cz);
-	return line;
-}
-
-function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture): Points {
-	const positions = new Float32Array(bodies.flatMap((b) => b.position));
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-	const material = new PointsMaterial({
-		map: texture,
-		transparent: true,
-		size: 4,
-		sizeAttenuation: false,
-		depthTest: false
-	});
-	return new Points(geometry, material);
 }
 
 // --- SceneRenderer ---
@@ -280,7 +154,11 @@ export class SceneRenderer {
 
 	private buildScene(): void {
 		const circleTexture = makeCircleTexture();
+		this.buildMajorBodies();
+		this.buildPointClouds(circleTexture);
+	}
 
+	private buildMajorBodies(): void {
 		for (const body of this.ctx.majorBodies) {
 			const id = body.data.id;
 			const color = BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
@@ -354,14 +232,16 @@ export class SceneRenderer {
 				radiusScene: radius
 			});
 		}
+	}
 
+	private buildPointClouds(circleTexture: CanvasTexture): void {
 		// Asteroid point cloud
 		if (this.ctx.asteroidBodies.length > 0) {
 			this.asteroidPoints = makePointCloud(this.ctx.asteroidBodies, circleTexture);
 			this.scene.add(this.asteroidPoints);
 		}
 
-		// Spacecraft point clouds
+		// Spacecraft point clouds (one per parent body)
 		for (const [groupParentId, bodies] of this.ctx.spacecraftByParent.entries()) {
 			const points = makePointCloud(bodies, circleTexture);
 			this.spacecraftPoints.set(groupParentId, points);
@@ -419,62 +299,45 @@ export class SceneRenderer {
 		// Visibility updates
 		const fovRad = (this.camera.fov * Math.PI) / 180;
 		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
-		const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
 
-		for (const {
-			body,
-			group,
-			label,
-			labelHalo,
-			orbitLine,
-			radiusScene
-		} of this.bodyObjects.values()) {
+		for (const bo of this.bodyObjects.values()) {
+			const { body, group, orbitLine } = bo;
+
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
-				if (label) {
-					let show = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
-					let hideHaloRing = false;
-					let screenR = 0;
-					if (!show && vis === VISIBILITY.CLOSE) {
-						this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
-						const dist = this.camera.position.distanceTo(this._tmpV3);
-						screenR = (radiusScene / dist) * projScale;
-						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
-						hideHaloRing = screenR >= HALO_RADIUS_PX;
-					}
-					label.visible = show;
-					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
-					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
-				}
+				this._tmpV3.set(...body.position);
+				const dist = this.camera.position.distanceTo(this._tmpV3);
+				this.applyLabelDisplay(
+					bo,
+					vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED,
+					vis === VISIBILITY.CLOSE,
+					dist,
+					projScale
+				);
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 			} else if (body.data.objectType === ObjectType.STAR) {
 				group.visible = true;
-				if (label) label.visible = true;
+				if (bo.label) bo.label.visible = true;
 			} else {
-				this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
-				const distToBody = this.camera.position.distanceTo(this._tmpV3);
-				const vis = this.ctx.getPlanetVisibility(body, distToBody);
+				this._tmpV3.set(...body.position);
+				const dist = this.camera.position.distanceTo(this._tmpV3);
+				const vis = this.ctx.getPlanetVisibility(body, dist);
 				const full = this.ctx.hasFullRendering(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
-				if (label) {
-					let show = vis === VISIBILITY.FULL && full;
-					let hideHaloRing = false;
-					let screenR = 0;
-					if (!show && full && vis === VISIBILITY.CLOSE) {
-						screenR = (radiusScene / distToBody) * projScale;
-						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
-						hideHaloRing = screenR >= HALO_RADIUS_PX;
-					}
-					label.visible = show;
-					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
-					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
-				}
+				this.applyLabelDisplay(
+					bo,
+					vis === VISIBILITY.FULL && full,
+					full && vis === VISIBILITY.CLOSE,
+					dist,
+					projScale
+				);
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 			}
 		}
+
 		for (const [gid, pts] of this.spacecraftPoints) {
 			pts.visible = this.ctx.isSpacecraftGroupVisible(gid);
 		}
@@ -491,6 +354,34 @@ export class SceneRenderer {
 		this.renderer.render(this.scene, this.camera);
 		this.labelRenderer.render(this.scene, this.camera);
 	};
+
+	/**
+	 * Applies label visibility for a body, handling the close-in case where the
+	 * rendered sphere is large enough to replace the halo indicator.
+	 */
+	private applyLabelDisplay(
+		bo: BodyObjects,
+		show: boolean,
+		isClose: boolean,
+		distToBody: number,
+		projScale: number
+	): void {
+		const { label, labelHalo, radiusScene } = bo;
+		if (!label) return;
+
+		let hideHaloRing = false;
+		let screenR = 0;
+
+		if (!show && isClose) {
+			screenR = (radiusScene / distToBody) * projScale;
+			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+			hideHaloRing = screenR >= HALO_RADIUS_PX;
+		}
+
+		label.visible = show;
+		if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+		label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+	}
 
 	private cullOverlappingLabels(): void {
 		const w = this.renderer.domElement.clientWidth;
@@ -514,7 +405,7 @@ export class SceneRenderer {
 		const accepted: { x: number; y: number }[] = [];
 		for (const { body, label } of this.bodyObjects.values()) {
 			if (body.data.objectType !== ObjectType.STAR || !label?.visible) continue;
-			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			this._tmpV3.set(...body.position);
 			this._tmpV3.project(this.camera);
 			if (this._tmpV3.z <= 1)
 				accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
@@ -525,7 +416,7 @@ export class SceneRenderer {
 
 		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
 			if (body.data.objectType === ObjectType.STAR || !label?.visible) continue;
-			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			this._tmpV3.set(...body.position);
 			const dist = this.camera.position.distanceTo(this._tmpV3);
 			this._tmpV3.project(this.camera);
 			if (this._tmpV3.z > 1) continue;
@@ -545,25 +436,6 @@ export class SceneRenderer {
 			else planetCandidates.push(candidate);
 		}
 
-		// Helper: apply or restore dimming
-		const dim = (labelHalo: HTMLElement | null, nameSpan: HTMLElement | null) => {
-			if (labelHalo) {
-				labelHalo.style.transform = 'scale(0.3)';
-			}
-			if (nameSpan) nameSpan.style.display = 'none';
-		};
-		const restore = (
-			labelHalo: HTMLElement | null,
-			nameSpan: HTMLElement | null,
-			isHovered: boolean
-		) => {
-			if (labelHalo) {
-				if (!isHovered) labelHalo.style.transform = '';
-				labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
-			}
-			if (nameSpan) nameSpan.style.display = '';
-		};
-
 		// Planets: closest wins over farther ones
 		planetCandidates.sort((a, b) => a.dist - b.dist);
 		for (const { body, label, labelHalo, screenX, screenY } of planetCandidates) {
@@ -576,9 +448,9 @@ export class SceneRenderer {
 				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
-				restore(labelHalo, nameSpan, isHovered);
+				this.restoreLabel(labelHalo, nameSpan, isHovered);
 			} else {
-				dim(labelHalo, nameSpan);
+				this.dimLabel(labelHalo, nameSpan);
 			}
 		}
 
@@ -593,7 +465,7 @@ export class SceneRenderer {
 			const forceShow = isFocused || isHovered;
 			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 			if (isCapped && !forceShow) {
-				dim(labelHalo, nameSpan);
+				this.dimLabel(labelHalo, nameSpan);
 				continue;
 			}
 			const overlaps =
@@ -601,11 +473,28 @@ export class SceneRenderer {
 				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
-				restore(labelHalo, nameSpan, isHovered);
+				this.restoreLabel(labelHalo, nameSpan, isHovered);
 			} else {
-				dim(labelHalo, nameSpan);
+				this.dimLabel(labelHalo, nameSpan);
 			}
 		}
+	}
+
+	private dimLabel(labelHalo: HTMLElement | null, nameSpan: HTMLElement | null): void {
+		if (labelHalo) labelHalo.style.transform = 'scale(0.3)';
+		if (nameSpan) nameSpan.style.display = 'none';
+	}
+
+	private restoreLabel(
+		labelHalo: HTMLElement | null,
+		nameSpan: HTMLElement | null,
+		isHovered: boolean
+	): void {
+		if (labelHalo) {
+			if (!isHovered) labelHalo.style.transform = '';
+			labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
+		}
+		if (nameSpan) nameSpan.style.display = '';
 	}
 
 	// --- Interaction ---
