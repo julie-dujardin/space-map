@@ -1,0 +1,51 @@
+/* Scene body labels (CSS2DObject) — created by label-factory.ts */
+
+.scene-label {
+	position: relative;
+	pointer-events: auto;
+	cursor: pointer;
+	user-select: none;
+}
+.scene-label--major {
+	width: 32px;
+	height: 32px;
+}
+.scene-label--spacecraft {
+	width: 20px;
+	height: 20px;
+}
+
+.scene-label__halo {
+	width: 100%;
+	height: 100%;
+	transition: transform 0.1s;
+}
+.scene-label__halo--major {
+	border-radius: 50%;
+}
+.scene-label__halo--spacecraft {
+	clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.scene-label__name {
+	padding-left: 8px;
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	white-space: nowrap;
+	pointer-events: auto;
+	cursor: pointer;
+	color: white;
+	text-shadow:
+		0 0 4px #000,
+		0 0 4px #000;
+}
+.scene-label__name--major {
+	left: 32px;
+	font-size: 14px;
+	font-weight: bold;
+}
+.scene-label__name--spacecraft {
+	left: 20px;
+	font-size: 10px;
+}
