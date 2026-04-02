@@ -44,6 +44,7 @@ interface BodyObjects {
 	group: Group;
 	mesh: Mesh;
 	label: CSS2DObject | null;
+	labelHalo: HTMLElement | null;
 	orbitLine: Line | null;
 }
 
@@ -334,7 +335,11 @@ export class SceneRenderer {
 			}
 
 			this.scene.add(group);
-			this.bodyObjects.set(id, { body, group, mesh, label, orbitLine });
+			const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
+			if (labelHalo && body.data.objectType === ObjectType.MOON) {
+				labelHalo.dataset.origBorder = labelHalo.style.border;
+			}
+			this.bodyObjects.set(id, { body, group, mesh, label, labelHalo, orbitLine });
 		}
 
 		// Asteroid point cloud
@@ -434,7 +439,13 @@ export class SceneRenderer {
 		const w = this.renderer.domElement.clientWidth;
 		const h = this.renderer.domElement.clientHeight;
 
-		const candidates: { label: CSS2DObject; screenX: number; screenY: number; dist: number }[] = [];
+		type Candidate = {
+			labelHalo: HTMLElement | null;
+			screenX: number;
+			screenY: number;
+			dist: number;
+		};
+		const candidates: Candidate[] = [];
 
 		// Estimated label bounding box in CSS pixels
 		const LW = 90;
@@ -450,7 +461,7 @@ export class SceneRenderer {
 			accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
 		}
 
-		for (const { body, label } of this.bodyObjects.values()) {
+		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
 			if (body.data.objectType !== ObjectType.MOON || !label?.visible) continue;
 
 			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
@@ -460,7 +471,7 @@ export class SceneRenderer {
 			if (this._tmpV3.z > 1) continue; // behind camera
 
 			candidates.push({
-				label,
+				labelHalo,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
 				dist
@@ -469,14 +480,24 @@ export class SceneRenderer {
 
 		candidates.sort((a, b) => a.dist - b.dist);
 
-		for (const { label, screenX, screenY } of candidates) {
+		for (const { labelHalo, screenX, screenY } of candidates) {
 			const overlaps = accepted.some(
 				({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
 			);
+			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
+				if (labelHalo) {
+					labelHalo.style.transform = '';
+					labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
+				}
+				if (nameSpan) nameSpan.style.display = '';
 			} else {
-				label.visible = false;
+				// Keep the CSS2DObject alive (visible) but show a tiny borderless halo only
+				if (labelHalo) {
+					labelHalo.style.transform = 'scale(0.3)';
+				}
+				if (nameSpan) nameSpan.style.display = 'none';
 			}
 		}
 	}
