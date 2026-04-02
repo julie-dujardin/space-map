@@ -33,7 +33,7 @@ import { kmToScene } from '$lib/math/units';
 import { orbitalElementsToEllipse } from '$lib/math/kepler';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import type { ContextManager } from '$lib/context-manager.svelte';
+import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
@@ -192,6 +192,7 @@ export class SceneRenderer {
 	private bodyObjects = new Map<number, BodyObjects>();
 	private asteroidPoints: Points | null = null;
 	private spacecraftPoints = new Map<number, Points>();
+	private moonPoints = new Map<number, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 
@@ -347,6 +348,23 @@ export class SceneRenderer {
 			this.spacecraftPoints.set(groupParentId, points);
 			this.scene.add(points);
 		}
+
+		// Moon point clouds (one per parent body, initially hidden)
+		const moonsByParent = new Map<number, PositionedBody[]>();
+		for (const body of this.ctx.majorBodies) {
+			if (body.data.objectType === ObjectType.MOON) {
+				const list = moonsByParent.get(body.data.parentId) ?? [];
+				list.push(body);
+				moonsByParent.set(body.data.parentId, list);
+			}
+		}
+		for (const [parentId, moons] of moonsByParent) {
+			const pts = makePointCloud(moons, circleTexture);
+			(pts.material as PointsMaterial).depthTest = true;
+			pts.visible = false;
+			this.moonPoints.set(parentId, pts);
+			this.scene.add(pts);
+		}
 	}
 
 	// --- RAF loop ---
@@ -381,14 +399,24 @@ export class SceneRenderer {
 
 		// Visibility updates
 		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
-			const visible = this.ctx.isMajorBodyVisible(body);
-			const full = this.ctx.hasFullRendering(body);
-			group.visible = visible;
-			if (label) label.visible = visible && full;
-			if (orbitLine) orbitLine.visible = visible && full;
+			if (body.data.objectType === ObjectType.MOON) {
+				const isFull = this.ctx.getMoonVisibility(body) === VISIBILITY.FULL;
+				group.visible = isFull;
+				if (label) label.visible = isFull;
+				if (orbitLine) orbitLine.visible = isFull;
+			} else {
+				const visible = this.ctx.isMajorBodyVisible(body);
+				const full = this.ctx.hasFullRendering(body);
+				group.visible = visible;
+				if (label) label.visible = visible && full;
+				if (orbitLine) orbitLine.visible = visible && full;
+			}
 		}
 		for (const [gid, pts] of this.spacecraftPoints) {
 			pts.visible = this.ctx.isSpacecraftGroupVisible(gid);
+		}
+		for (const [parentId, pts] of this.moonPoints) {
+			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
 		if (!isAnimating) {
