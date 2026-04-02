@@ -16,10 +16,10 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
  * Root element (el): fixed indicator size, no transition — CSS2DRenderer writes
  * its `transform` every frame to position it in screen space.
  *
- * Indicator child: holds the visual ring/hexagon + transition for hover scale,
+ * halo: holds the visual ring/hexagon + transition for hover scale,
  * so it never fights with CSS2DRenderer's positioning transform.
  *
- * Name text: absolutely positioned to the right of the indicator.
+ * Name text: absolutely positioned to the right of the halo.
  */
 export function createLabel(
 	color: string,
@@ -42,29 +42,30 @@ export function createLabel(
 		'user-select:none'
 	].join(';');
 
-	// Indicator child: visual ring/hexagon, transition lives here not on root
-	const indicator = document.createElement('div');
-	indicator.style.cssText = ['width:100%', 'height:100%', 'transition:transform 0.1s'].join(';');
+	// halo: visual ring/hexagon, transition lives here not on root
+	const halo = document.createElement('div');
+	halo.style.cssText = ['width:100%', 'height:100%', 'transition:transform 0.1s'].join(';');
 
 	if (variant === 'major') {
-		indicator.style.borderRadius = '50%';
-		indicator.style.border = `2px solid ${color}`;
-		indicator.style.background = `${color}22`;
+		halo.style.borderRadius = '50%';
+		halo.style.border = `2px solid ${color}`;
+		halo.style.background = `${color}22`;
 	} else {
-		indicator.style.clipPath = 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)';
-		indicator.style.background = `${color}22`;
-		indicator.style.outline = `1px solid ${color}`;
+		halo.style.clipPath = 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)';
+		halo.style.background = `${color}22`;
+		halo.style.outline = `2px solid ${color}`;
 	}
 
-	el.appendChild(indicator);
+	el.appendChild(halo);
 
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) {
 		const span = document.createElement('span');
 		span.textContent = name;
 		span.style.cssText = [
+			'padding-left:8px',
 			'position:absolute',
-			`left:${indicatorSize + 8}px`,
+			`left:${indicatorSize}px`,
 			'top:50%',
 			'transform:translateY(-50%)',
 			'white-space:nowrap',
@@ -80,11 +81,11 @@ export function createLabel(
 			onClick();
 		});
 		span.addEventListener('mouseenter', () => {
-			indicator.style.transform = 'scale(1.15)';
+			halo.style.transform = 'scale(1.15)';
 			document.body.style.cursor = 'pointer';
 		});
 		span.addEventListener('mouseleave', () => {
-			indicator.style.transform = '';
+			halo.style.transform = '';
 			document.body.style.cursor = '';
 		});
 		el.appendChild(span);
@@ -95,11 +96,11 @@ export function createLabel(
 		onClick();
 	});
 	el.addEventListener('mouseenter', () => {
-		indicator.style.transform = 'scale(1.15)';
+		halo.style.transform = 'scale(1.15)';
 		document.body.style.cursor = 'pointer';
 	});
 	el.addEventListener('mouseleave', () => {
-		indicator.style.transform = '';
+		halo.style.transform = '';
 		document.body.style.cursor = '';
 	});
 
