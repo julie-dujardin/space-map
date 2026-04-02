@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _post_process() -> None:
-    """Log a summary of ingested data."""
+    """Finalise DB after ingest: log summary."""
     session = get_session()
 
     counts = (
