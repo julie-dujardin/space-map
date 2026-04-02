@@ -33,7 +33,7 @@ import { kmToScene } from '$lib/math/units';
 import { orbitalElementsToEllipse } from '$lib/math/kepler';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import type { ContextManager } from '$lib/context-manager.svelte';
+import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
@@ -44,6 +44,7 @@ interface BodyObjects {
 	group: Group;
 	mesh: Mesh;
 	label: CSS2DObject | null;
+	labelHalo: HTMLElement | null;
 	orbitLine: Line | null;
 }
 
@@ -192,11 +193,13 @@ export class SceneRenderer {
 	private bodyObjects = new Map<number, BodyObjects>();
 	private asteroidPoints: Points | null = null;
 	private spacecraftPoints = new Map<number, Points>();
+	private moonPoints = new Map<number, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 
 	private focusedBody: PositionedBody | undefined;
 	private focusTarget = new Vector3();
+	private readonly _tmpV3 = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
 
@@ -332,7 +335,11 @@ export class SceneRenderer {
 			}
 
 			this.scene.add(group);
-			this.bodyObjects.set(id, { body, group, mesh, label, orbitLine });
+			const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
+			if (labelHalo && body.data.objectType === ObjectType.MOON) {
+				labelHalo.dataset.origBorder = labelHalo.style.border;
+			}
+			this.bodyObjects.set(id, { body, group, mesh, label, labelHalo, orbitLine });
 		}
 
 		// Asteroid point cloud
@@ -346,6 +353,23 @@ export class SceneRenderer {
 			const points = makePointCloud(bodies, circleTexture);
 			this.spacecraftPoints.set(groupParentId, points);
 			this.scene.add(points);
+		}
+
+		// Moon point clouds (one per parent body, initially hidden)
+		const moonsByParent = new Map<number, PositionedBody[]>();
+		for (const body of this.ctx.majorBodies) {
+			if (body.data.objectType === ObjectType.MOON) {
+				const list = moonsByParent.get(body.data.parentId) ?? [];
+				list.push(body);
+				moonsByParent.set(body.data.parentId, list);
+			}
+		}
+		for (const [parentId, moons] of moonsByParent) {
+			const pts = makePointCloud(moons, circleTexture);
+			(pts.material as PointsMaterial).depthTest = true;
+			pts.visible = false;
+			this.moonPoints.set(parentId, pts);
+			this.scene.add(pts);
 		}
 	}
 
@@ -381,15 +405,28 @@ export class SceneRenderer {
 
 		// Visibility updates
 		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
-			const visible = this.ctx.isMajorBodyVisible(body);
-			const full = this.ctx.hasFullRendering(body);
-			group.visible = visible;
-			if (label) label.visible = visible && full;
-			if (orbitLine) orbitLine.visible = visible && full;
+			if (body.data.objectType === ObjectType.MOON) {
+				const vis = this.ctx.getMoonVisibility(body);
+				group.visible =
+					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				if (label) label.visible = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
+			} else {
+				const visible = this.ctx.isMajorBodyVisible(body);
+				const full = this.ctx.hasFullRendering(body);
+				group.visible = visible;
+				if (label) label.visible = visible && full;
+				if (orbitLine) orbitLine.visible = visible && full;
+			}
 		}
 		for (const [gid, pts] of this.spacecraftPoints) {
 			pts.visible = this.ctx.isSpacecraftGroupVisible(gid);
 		}
+		for (const [parentId, pts] of this.moonPoints) {
+			pts.visible = this.ctx.isMoonGroupVisible(parentId);
+		}
+
+		this.cullOverlappingMoonLabels();
 
 		if (!isAnimating) {
 			this.callbacks.onFrame(latitude, longitude, distance);
@@ -398,6 +435,99 @@ export class SceneRenderer {
 		this.renderer.render(this.scene, this.camera);
 		this.labelRenderer.render(this.scene, this.camera);
 	};
+
+	private cullOverlappingMoonLabels(): void {
+		const w = this.renderer.domElement.clientWidth;
+		const h = this.renderer.domElement.clientHeight;
+
+		type Candidate = {
+			body: PositionedBody;
+			label: CSS2DObject;
+			labelHalo: HTMLElement | null;
+			isCapped: boolean;
+			screenX: number;
+			screenY: number;
+			dist: number;
+		};
+		const candidates: Candidate[] = [];
+
+		// Estimated label bounding box in CSS pixels
+		const LW = 90;
+		const LH = 22;
+
+		// Planet labels always win — seed accepted list with their positions
+		const accepted: { x: number; y: number }[] = [];
+		for (const { body, label } of this.bodyObjects.values()) {
+			if (body.data.objectType === ObjectType.MOON || !label?.visible) continue;
+			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			this._tmpV3.project(this.camera);
+			if (this._tmpV3.z > 1) continue;
+			accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
+		}
+
+		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
+			if (body.data.objectType !== ObjectType.MOON || !label?.visible) continue;
+
+			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			const dist = this.camera.position.distanceTo(this._tmpV3);
+			this._tmpV3.project(this.camera);
+
+			if (this._tmpV3.z > 1) continue; // behind camera
+
+			candidates.push({
+				body,
+				label,
+				labelHalo,
+				isCapped: this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED,
+				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
+				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
+				dist
+			});
+		}
+
+		// FULL moons sorted by distance first, CAPPED moons after (they never block FULL ones)
+		candidates.sort((a, b) => {
+			if (a.isCapped !== b.isCapped) return a.isCapped ? 1 : -1;
+			return a.dist - b.dist;
+		});
+
+		for (const { body, label, labelHalo, isCapped, screenX, screenY } of candidates) {
+			const isFocused = body.data.id === this.focusedBody?.data.id;
+			const isHovered = label.element.matches(':hover');
+			const forceShow = isFocused || isHovered;
+			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
+
+			if (isCapped && !forceShow) {
+				// Dimmed, never blocks space for FULL moons
+				if (labelHalo) {
+					labelHalo.style.transform = 'scale(0.3)';
+					labelHalo.style.border = 'none';
+				}
+				if (nameSpan) nameSpan.style.display = 'none';
+				continue;
+			}
+
+			const overlaps =
+				!forceShow &&
+				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
+
+			if (!overlaps) {
+				accepted.push({ x: screenX, y: screenY });
+				if (labelHalo) {
+					// Don't reset transform when hovered — the hover handler owns it
+					if (!isHovered) labelHalo.style.transform = '';
+					labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
+				}
+				if (nameSpan) nameSpan.style.display = '';
+			} else {
+				if (labelHalo) {
+					labelHalo.style.transform = 'scale(0.3)';
+					labelHalo.style.border = 'none';
+				}
+				if (nameSpan) nameSpan.style.display = 'none';
+			}
+		}
+	}
 
 	// --- Interaction ---
 

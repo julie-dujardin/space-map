@@ -1,13 +1,45 @@
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { AU_SCALE } from './math/units';
 
-/** Three.js units: 1 AU = 10 units. At this distance, reveal the focused system. */
-export const ZOOM_THRESHOLD = 10;
+/*
+ * Visibility options:
+ * CLOSE: too close to show everything, revert to point cloud.
+ * FULL: show halos and trails.
+ * CAPPED: In range for FULL but rejected by the crowding cap — show minimized halo only.
+ * FAR: point cloud.
+ * HIDE: hide entirely.
+ */
+export enum VISIBILITY {
+	CLOSE = 1,
+	FULL = 2,
+	CAPPED = 3,
+	FAR = 4,
+	HIDE = 5
+}
+/*
+ * Distance ratio thresholds for visibility levels.
+ * Ratio is (camera distance to focused body / moon semi-major axis), both in AU.
+ */
+export const DISTANCE_RATIO_THRESHOLDS = {
+	[VISIBILITY.CLOSE]: 0.3,
+	[VISIBILITY.FULL]: 20,
+	[VISIBILITY.FAR]: 100,
+	[VISIBILITY.HIDE]: Infinity
+};
+
+/** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
+export const MAX_FULL_MOONS = 30;
+
+/** Below this distance, hide other systems (halos, orbits, spacecraft). */
+export const ZOOM_THRESHOLD_AU = 0.3;
 
 export class ContextManager {
 	private readonly childrenByParent = new SvelteMap<number, PositionedBody[]>();
 	private readonly bodiesById = new SvelteMap<number, PositionedBody>();
+	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
+	private readonly moonMaxAByParent = new SvelteMap<number, number>();
 
 	// --- Reactive loading state ($state safe: only mutated during async load, never in useTask) ---
 	loading = $state(true);
@@ -17,9 +49,15 @@ export class ContextManager {
 	spacecraftByParent = $state(new SvelteMap<number, PositionedBody[]>());
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
-	focusedBodyId: number | null = null;
+	focusedBodyId: number = 10; // default to sun (not set by this class)
 	isZoomedIn: boolean = false;
+	/** Always set from focused body — drives moon visibility regardless of zoom. */
+	focusedSystemId: number | null = null;
+	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: number | null = null;
+	private cameraDistThreeJS = 0;
+	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
+	private fullMoonIds = new SvelteSet<number>();
 
 	get allBodies(): PositionedBody[] {
 		return [...this.bodiesById.values()];
@@ -88,46 +126,86 @@ export class ContextManager {
 			const list = this.childrenByParent.get(b.data.parentId) ?? [];
 			list.push(b);
 			this.childrenByParent.set(b.data.parentId, list);
+			if (b.data.objectType === ObjectType.MOON) {
+				const prev = this.moonMaxAByParent.get(b.data.parentId) ?? 0;
+				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
+			}
 		}
 	}
 
-	/** Call from useTask every frame. Only updates when crossing the threshold. */
+	/** Call from useTask every frame. */
 	updateCamera(dist: number): void {
-		const zoomed = dist <= ZOOM_THRESHOLD;
+		this.cameraDistThreeJS = dist;
+		const zoomed = dist <= ZOOM_THRESHOLD_AU * AU_SCALE;
 		if (zoomed !== this.isZoomedIn) {
 			this.isZoomedIn = zoomed;
-			this.recomputeActiveSystem();
+			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 		}
+		this.recomputeFullMoons();
 	}
 
 	setFocused(body: PositionedBody): void {
 		if (body.data.id !== this.focusedBodyId) {
 			this.focusedBodyId = body.data.id;
-			this.recomputeActiveSystem();
+			// System ID is either the parent (for moons or planet that orbit a barycenter), or the body's own ID (for venus, ceres...)
+			this.focusedSystemId =
+				body.data.objectType === ObjectType.STAR ? null : body.data.parentId || body.data.id;
+			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
+			this.recomputeFullMoons();
 		}
 	}
 
-	private recomputeActiveSystem(): void {
-		if (!this.isZoomedIn || this.focusedBodyId === null) {
-			this.activeSystemId = null;
-			return;
-		}
-		const body = this.bodiesById.get(this.focusedBodyId);
-		this.activeSystemId =
-			!body || body.data.objectType === ObjectType.STAR ? null : body.data.parentId;
+	/** Ratio-based visibility for a moon. Gated on the focused system (no zoom threshold). */
+	getMoonVisibility(moon: PositionedBody): VISIBILITY {
+		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
+		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
+		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL])
+			return this.fullMoonIds.has(moon.data.id) ? VISIBILITY.FULL : VISIBILITY.CAPPED;
+		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
+		return VISIBILITY.HIDE;
 	}
 
-	/** Moons are hidden until zoomed into their system. All other major bodies always visible. */
+	/**
+	 * Recomputes which moons qualify for FULL visibility, capped at MAX_FULL_MOONS.
+	 * Among moons that pass the ratio threshold, only the closest to their parent (smallest a) win.
+	 * Called every frame from updateCamera and on focus change from setFocused.
+	 */
+	private recomputeFullMoons(): void {
+		this.fullMoonIds.clear();
+		const sysId = this.focusedSystemId;
+		if (!sysId) return;
+		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
+		const fullThreshold = DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL];
+		(this.childrenByParent.get(sysId) ?? [])
+			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= fullThreshold)
+			.sort((a, b) => a.data.a - b.data.a)
+			.slice(0, MAX_FULL_MOONS)
+			.forEach((m) => this.fullMoonIds.add(m.data.id));
+	}
+
+	/**
+	 * Whether to show the point-cloud for a moon group (by parent ID).
+	 * Gated on the focused system and ratio to outermost moon (no zoom threshold).
+	 */
+	isMoonGroupVisible(parentId: number): boolean {
+		if (!this.isInFocusedSystem(parentId)) return false;
+		const maxA = this.moonMaxAByParent.get(parentId);
+		if (!maxA) return false;
+		const ratio = this.cameraDistThreeJS / AU_SCALE / maxA;
+		return ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR];
+	}
+
+	/** All major bodies are always visible; moons are handled separately via getMoonVisibility. */
 	isMajorBodyVisible(body: PositionedBody): boolean {
-		if (body.data.objectType !== ObjectType.MOON) return true;
-		return this.isInActiveSystem(body.data.parentId);
+		return body.data.objectType !== ObjectType.MOON;
 	}
 
 	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in. */
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
-		return this.isInActiveSystem(body.data.parentId);
+		return this.isInActiveSystem(body.data.parentId || body.data.id);
 	}
 
 	/**
@@ -145,12 +223,19 @@ export class ContextManager {
 		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === groupParentId);
 	}
 
+	isInActiveSystem(parentId: number): boolean {
+		return this.isInSystem(parentId, this.activeSystemId);
+	}
+
+	private isInFocusedSystem(parentId: number): boolean {
+		return this.isInSystem(parentId, this.focusedSystemId);
+	}
+
 	/**
-	 * True if the given parentId belongs to the active system.
+	 * True if the given parentId belongs to a system.
 	 * Handles two levels: parentId === barycenter, or parentId is a direct child of the barycenter.
 	 */
-	private isInActiveSystem(parentId: number): boolean {
-		const sysId = this.activeSystemId;
+	private isInSystem(parentId: number, sysId: number | null): boolean {
 		if (!sysId) return false;
 		if (parentId === sysId) return true;
 		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === parentId);
