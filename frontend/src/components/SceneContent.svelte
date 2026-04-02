@@ -3,8 +3,9 @@
 	import { OrbitControls, interactivity } from '@threlte/extras';
 	import { Vector3 } from 'three';
 	import type { OrbitControls as OrbitControlsType } from 'three/addons/controls/OrbitControls.js';
+	import { getContext } from 'svelte';
 	import Body from './Body.svelte';
-	import type { PositionedBody } from '$lib/types/objects';
+	import { type PositionedBody } from '$lib/types/objects';
 	import {
 		type MapViewState,
 		cartesianToSpherical,
@@ -14,30 +15,34 @@
 	} from '$lib/url-state';
 	import { urlType } from '$lib/format';
 	import SmallBodies from './SmallBodies.svelte';
+	import type { ContextManager } from '$lib/context-manager.svelte';
 
 	interface Props {
-		majorBodies: PositionedBody[];
-		minorBodies: PositionedBody[];
 		initialView: MapViewState;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
 	}
 
-	let { majorBodies, minorBodies, initialView, onFocusChange }: Props = $props();
+	let { initialView, onFocusChange }: Props = $props();
 
 	interactivity();
+
+	const ctx = getContext<ContextManager>('ctx');
 
 	let controlsRef = $state<OrbitControlsType>();
 
 	// Resolve initial focus body from URL (fall back to Sun)
-	const allBodies = [...majorBodies, ...minorBodies];
+	const allBodies = ctx.allBodies;
 	const matchedBody = allBodies.find(
 		(b) => urlType(b.data.objectType) === initialView.type && b.data.id === initialView.id
 	);
-	const sunBody = majorBodies.find((b) => b.data.id === 10);
+	const sunBody = ctx.majorBodies.find((b) => b.data.id === 10);
 	const initialFocusPos: [number, number, number] = matchedBody?.position ??
 		sunBody?.position ?? [0, 0, 0];
 	onFocusChange?.(matchedBody);
 	const initialFocusBody = matchedBody ?? sunBody;
+
+	if (initialFocusBody) ctx.setFocused(initialFocusBody);
+	ctx.updateCamera(initialView.zoom);
 
 	let focusTarget = $state<[number, number, number]>(initialFocusPos);
 	let focusedBody = $state<PositionedBody | undefined>(initialFocusBody);
@@ -76,23 +81,27 @@
 		}
 		controlsRef.update();
 
-		// Only sync URL when not animating
-		if (!animating && focusedBody) {
+		// Compute distance every frame (including during animation) for visibility decisions
+		if (focusedBody) {
 			const cam = controlsRef.object;
 			const { latitude, longitude, distance } = cartesianToSpherical(
 				[cam.position.x, cam.position.y, cam.position.z],
 				[controlsRef.target.x, controlsRef.target.y, controlsRef.target.z]
 			);
-			urlSync.sync({
-				type: urlType(focusedBody.data.objectType),
-				id: focusedBody.data.id,
-				name: focusedBody.data.name ?? '',
-				date: initialView.date,
-				isNow: initialView.isNow,
-				latitude,
-				longitude,
-				zoom: distance
-			});
+			ctx.updateCamera(distance);
+
+			if (!animating) {
+				urlSync.sync({
+					type: urlType(focusedBody.data.objectType),
+					id: focusedBody.data.id,
+					name: focusedBody.data.name ?? '',
+					date: initialView.date,
+					isNow: initialView.isNow,
+					latitude,
+					longitude,
+					zoom: distance
+				});
+			}
 		}
 	});
 
@@ -100,6 +109,7 @@
 		urlSync.cancel();
 		focusTarget = body.position;
 		focusedBody = body;
+		ctx.setFocused(body);
 		onFocusChange?.(body);
 	}
 
@@ -108,12 +118,13 @@
 		const onPopState = () => {
 			const parsed = parseUrl();
 			if (!parsed) return;
-			const body = allBodies.find(
+			const body = ctx.allBodies.find(
 				(b) => urlType(b.data.objectType) === parsed.type && b.data.id === parsed.id
 			);
 			if (body) {
 				focusTarget = body.position;
 				focusedBody = body;
+				ctx.setFocused(body);
 			}
 			if (controlsRef) {
 				const target = body?.position ?? focusTarget;
@@ -137,10 +148,14 @@
 
 <T.AmbientLight intensity={0.4} />
 
-{#each majorBodies as body (body.data.id)}
+{#each ctx.majorBodies as body (body.data.id)}
 	<Body {body} onFocus={handleFocus} />
 {/each}
 
-{#if minorBodies.length > 0}
-	<SmallBodies bodies={minorBodies} />
+{#if ctx.asteroidBodies.length > 0}
+	<SmallBodies bodies={ctx.asteroidBodies} />
 {/if}
+
+{#each [...ctx.spacecraftByParent.entries()] as [groupParentId, bodies] (groupParentId)}
+	<SmallBodies {bodies} {groupParentId} />
+{/each}

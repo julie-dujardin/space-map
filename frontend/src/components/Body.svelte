@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { T } from '@threlte/core';
-	import { ObjectType } from '$lib/types/objects';
-	import type { PositionedBody } from '$lib/types/objects';
+	import { T, useTask } from '@threlte/core';
+	import { getContext } from 'svelte';
+	import { Group } from 'three';
+	import { ObjectType, isMajorBody, type PositionedBody } from '$lib/types/objects';
 	import {
 		BODY_COLORS,
 		BODY_RADII_KM,
@@ -11,6 +12,7 @@
 	import { kmToScene } from '$lib/math/units';
 	import OrbitLine from './OrbitLine.svelte';
 	import Halo from './Halo.svelte';
+	import type { ContextManager } from '$lib/context-manager.svelte';
 
 	interface Props {
 		body: PositionedBody;
@@ -18,6 +20,8 @@
 	}
 
 	let { body, onFocus }: Props = $props();
+
+	const ctx = getContext<ContextManager>('ctx');
 
 	const id = body.data.id;
 	const name = body.data.name ?? '';
@@ -28,20 +32,26 @@
 		(Number.isFinite(body.data.radiusKm) ? body.data.radiusKm : DEFAULT_BODY_RADIUS_KM);
 	const radius = kmToScene(rawRadiusKm);
 	const isStar = objType === ObjectType.STAR;
-	const majorBody =
-		objType === ObjectType.PLANET ||
-		objType === ObjectType.DWARF_PLANET ||
-		objType === ObjectType.STAR;
-	const drawHalo = majorBody;
-	const haloVariant: 'major' | 'minor' | 'spacecraft' = majorBody
+	const haloVariant: 'major' | 'minor' | 'spacecraft' = isMajorBody(objType)
 		? 'major'
 		: objType === ObjectType.SPACECRAFT
 			? 'spacecraft'
 			: 'minor';
-	const drawTrail = majorBody && !isStar;
+
+	let bodyGroupRef = $state<Group | undefined>();
+	let haloWrapRef = $state<Group | undefined>();
+	let orbitWrapRef = $state<Group | undefined>();
+
+	useTask(() => {
+		const bodyVisible = ctx.isMajorBodyVisible(body);
+		const full = ctx.hasFullRendering(body);
+		if (bodyGroupRef) bodyGroupRef.visible = bodyVisible;
+		if (haloWrapRef) haloWrapRef.visible = full;
+		if (orbitWrapRef) orbitWrapRef.visible = full;
+	});
 </script>
 
-<T.Group position={body.position}>
+<T.Group position={body.position} bind:ref={bodyGroupRef}>
 	{#if isStar}
 		<T.PointLight intensity={2} />
 	{/if}
@@ -55,19 +65,21 @@
 		{/if}
 	</T.Mesh>
 
-	{#if drawHalo}
+	<T.Group bind:ref={haloWrapRef}>
 		<Halo {color} {name} variant={haloVariant} onclick={() => onFocus?.(body)} />
-	{/if}
+	</T.Group>
 </T.Group>
 
-{#if body.orbitElements && drawTrail}
-	<OrbitLine
-		elements={body.orbitElements}
-		{color}
-		bodyPosition={body.position}
-		center={body.orbitCenter}
-		trailFraction={objType === ObjectType.DWARF_PLANET || objType === ObjectType.MOON
-			? 1 / 3
-			: undefined}
-	/>
+{#if body.orbitElements && !isStar}
+	<T.Group bind:ref={orbitWrapRef}>
+		<OrbitLine
+			elements={body.orbitElements}
+			{color}
+			bodyPosition={body.position}
+			center={body.orbitCenter}
+			trailFraction={objType === ObjectType.DWARF_PLANET || objType === ObjectType.MOON
+				? 1 / 3
+				: undefined}
+		/>
+	</T.Group>
 {/if}
