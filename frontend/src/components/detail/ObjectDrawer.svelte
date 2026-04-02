@@ -197,7 +197,7 @@
 				fallbackName={body.data.name}
 			/>
 			<ObjectDescription extract={data?.localized?.wikipedia?.extract} />
-			<ObjectProperties global={data?.global ?? null} />
+			<ObjectProperties global={data?.global ?? null} orbitElements={body.orbitElements} />
 			<ObjectDiscovery global={data?.global ?? null} localized={data?.localized ?? null} />
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>

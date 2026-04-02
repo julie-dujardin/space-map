@@ -3,12 +3,14 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import type { OrbitalElements } from '$lib/types/objects';
 
 	interface Props {
 		global: GlobalObjectData | null;
+		orbitElements?: OrbitalElements;
 	}
 
-	let { global }: Props = $props();
+	let { global, orbitElements }: Props = $props();
 
 	interface Property {
 		label: string;
@@ -87,7 +89,7 @@
 
 	let orbitalProps = $derived.by(() => {
 		const props: Property[] = [];
-		const orbit = global?.orbit;
+		const orbit = orbitElements ?? global?.orbit;
 		const sbdb = global?.sbdb;
 
 		if (sbdb?.per_y)
