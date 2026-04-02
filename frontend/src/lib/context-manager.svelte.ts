@@ -147,7 +147,9 @@ export class ContextManager {
 	setFocused(body: PositionedBody): void {
 		if (body.data.id !== this.focusedBodyId) {
 			this.focusedBodyId = body.data.id;
-			this.focusedSystemId = body.data.objectType === ObjectType.STAR ? null : body.data.parentId;
+			// System ID is either the parent (for moons or planet that orbit a barycenter), or the body's own ID (for venus, ceres...)
+			this.focusedSystemId =
+				body.data.objectType === ObjectType.STAR ? null : body.data.parentId || body.data.id;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 			this.recomputeFullMoons();
 		}
@@ -203,7 +205,7 @@ export class ContextManager {
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
-		return this.isInActiveSystem(body.data.parentId);
+		return this.isInActiveSystem(body.data.parentId || body.data.id);
 	}
 
 	/**
