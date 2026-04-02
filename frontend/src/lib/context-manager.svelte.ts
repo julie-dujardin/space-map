@@ -7,13 +7,13 @@ import { AU_SCALE } from './math/units';
  * Visibility options:
  * CLOSE: too close to show everything, revert to point cloud.
  * FULL: show halos and trails.
+ * CAPPED: In range for FULL but rejected by the crowding cap — show minimized halo only.
  * FAR: point cloud.
  * HIDE: hide entirely.
  */
 export enum VISIBILITY {
 	CLOSE = 1,
 	FULL = 2,
-	/** In range for FULL but rejected by the crowding cap — show minimized halo only. */
 	CAPPED = 3,
 	FAR = 4,
 	HIDE = 5

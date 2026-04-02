@@ -407,9 +407,9 @@ export class SceneRenderer {
 		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
-				const show = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
-				group.visible = show;
-				if (label) label.visible = show;
+				group.visible =
+					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				if (label) label.visible = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 			} else {
 				const visible = this.ctx.isMajorBodyVisible(body);
