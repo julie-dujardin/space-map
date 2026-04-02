@@ -419,7 +419,8 @@ export class SceneRenderer {
 				const distToBody = this.camera.position.distanceTo(this._tmpV3);
 				const vis = this.ctx.getPlanetVisibility(body, distToBody);
 				const full = this.ctx.hasFullRendering(body);
-				group.visible = vis !== VISIBILITY.HIDE;
+				group.visible =
+					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
 				if (label) label.visible = vis === VISIBILITY.FULL && full;
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 			}
@@ -498,7 +499,6 @@ export class SceneRenderer {
 		const dim = (labelHalo: HTMLElement | null, nameSpan: HTMLElement | null) => {
 			if (labelHalo) {
 				labelHalo.style.transform = 'scale(0.3)';
-				labelHalo.style.border = 'none';
 			}
 			if (nameSpan) nameSpan.style.display = 'none';
 		};

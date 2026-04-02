@@ -29,7 +29,7 @@ export const PLANETARY_DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.HIDE]: Infinity
 };
 export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
-	[VISIBILITY.CLOSE]: 1,
+	[VISIBILITY.CLOSE]: 0.01,
 	[VISIBILITY.FULL]: 20,
 	[VISIBILITY.FAR]: 100,
 	[VISIBILITY.HIDE]: Infinity
@@ -221,18 +221,14 @@ export class ContextManager {
 			const parent = this.bodiesById.get(body.data.parentId);
 			if (parent) {
 				if (parent.data.a) refA = parent.data.a;
-			} else {
-				// Barycenter not loaded — derive orbital radius from world position
-				const sun = this.bodiesById.get(10);
-				const sp = sun?.position ?? [0, 0, 0];
-				const bp = body.position;
-				const dx = bp[0] - sp[0],
-					dy = bp[1] - sp[1],
-					dz = bp[2] - sp[2];
-				refA = Math.sqrt(dx * dx + dy * dy + dz * dz) / AU_SCALE;
 			}
 		}
-		if (!refA) return VISIBILITY.FULL;
+		if (!refA) {
+			console.log(
+				`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
+			);
+			return VISIBILITY.FULL;
+		}
 		const ratio = camDistThreeJS / AU_SCALE / refA;
 		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
 		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL]) return VISIBILITY.FULL;
