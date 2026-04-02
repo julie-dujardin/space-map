@@ -80,14 +80,6 @@ export function createLabel(
 			e.stopPropagation();
 			onClick();
 		});
-		span.addEventListener('mouseenter', () => {
-			halo.style.transform = 'scale(1.15)';
-			document.body.style.cursor = 'pointer';
-		});
-		span.addEventListener('mouseleave', () => {
-			halo.style.transform = '';
-			document.body.style.cursor = '';
-		});
 		el.appendChild(span);
 	}
 
