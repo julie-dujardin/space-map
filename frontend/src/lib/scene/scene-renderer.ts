@@ -440,6 +440,8 @@ export class SceneRenderer {
 		const h = this.renderer.domElement.clientHeight;
 
 		type Candidate = {
+			body: PositionedBody;
+			label: CSS2DObject;
 			labelHalo: HTMLElement | null;
 			screenX: number;
 			screenY: number;
@@ -471,6 +473,8 @@ export class SceneRenderer {
 			if (this._tmpV3.z > 1) continue; // behind camera
 
 			candidates.push({
+				body,
+				label,
 				labelHalo,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
@@ -480,22 +484,30 @@ export class SceneRenderer {
 
 		candidates.sort((a, b) => a.dist - b.dist);
 
-		for (const { labelHalo, screenX, screenY } of candidates) {
-			const overlaps = accepted.some(
-				({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
-			);
+		for (const { body, label, labelHalo, screenX, screenY } of candidates) {
+			const isFocused = body.data.id === this.focusedBody?.data.id;
+			const isHovered = label.element.matches(':hover');
+			const forceShow = isFocused || isHovered;
+
+			const overlaps =
+				!forceShow &&
+				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
+
 			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
+
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
 				if (labelHalo) {
-					labelHalo.style.transform = '';
+					// Don't reset transform when hovered — the hover handler owns it
+					if (!isHovered) labelHalo.style.transform = '';
 					labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
 				}
 				if (nameSpan) nameSpan.style.display = '';
 			} else {
-				// Keep the CSS2DObject alive (visible) but show a tiny borderless halo only
+				// Keep visible but show a tiny borderless halo only
 				if (labelHalo) {
 					labelHalo.style.transform = 'scale(0.3)';
+					labelHalo.style.border = 'none';
 				}
 				if (nameSpan) nameSpan.style.display = 'none';
 			}
