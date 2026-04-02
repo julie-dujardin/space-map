@@ -102,20 +102,17 @@ export class ChunkLoader {
 
 			const id = cols.id[idx];
 
-			if (writePositions) {
-				// Store position by ID for child lookups
-				if (isMajorBody(objType)) {
-					this.positions.set(id, pos);
-				}
-
-				if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
-					// Barycenters: store elements for planet orbit drawing, don't render
+			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+				if (writePositions) {
 					this.barycenters.set(id, body);
 					this.positions.set(id, pos);
-					continue;
 				}
-			} else if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+				bodies.push({ data: body, position: pos });
 				continue;
+			}
+
+			if (writePositions && isMajorBody(objType)) {
+				this.positions.set(id, pos);
 			}
 
 			if (isMajorBody(objType)) {

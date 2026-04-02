@@ -22,8 +22,14 @@ export enum VISIBILITY {
  * Distance ratio thresholds for visibility levels.
  * Ratio is (camera distance to focused body / moon semi-major axis), both in AU.
  */
-export const DISTANCE_RATIO_THRESHOLDS = {
+export const PLANETARY_DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.CLOSE]: 0.3,
+	[VISIBILITY.FULL]: 20,
+	[VISIBILITY.FAR]: 100,
+	[VISIBILITY.HIDE]: Infinity
+};
+export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
+	[VISIBILITY.CLOSE]: 0.01,
 	[VISIBILITY.FULL]: 20,
 	[VISIBILITY.FAR]: 100,
 	[VISIBILITY.HIDE]: Infinity
@@ -110,7 +116,11 @@ export class ContextManager {
 				}
 			}
 
-			this.majorBodies = major;
+			this.majorBodies = major.filter(
+				(b) =>
+					b.data.objectType !== ObjectType.BARYCENTER &&
+					b.data.objectType !== ObjectType.LAGRANGE_POINT
+			);
 			this.asteroidBodies = asteroids;
 			this.spacecraftByParent = spacecraft;
 			this.loading = false;
@@ -159,10 +169,10 @@ export class ContextManager {
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
-		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL])
+		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL])
 			return this.fullMoonIds.has(moon.data.id) ? VISIBILITY.FULL : VISIBILITY.CAPPED;
-		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
+		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
 	}
 
@@ -176,7 +186,7 @@ export class ContextManager {
 		const sysId = this.focusedSystemId;
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
-		const fullThreshold = DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL];
+		const fullThreshold = PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL];
 		(this.childrenByParent.get(sysId) ?? [])
 			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= fullThreshold)
 			.sort((a, b) => a.data.a - b.data.a)
@@ -193,12 +203,37 @@ export class ContextManager {
 		const maxA = this.moonMaxAByParent.get(parentId);
 		if (!maxA) return false;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / maxA;
-		return ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR];
+		return ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR];
 	}
 
-	/** All major bodies are always visible; moons are handled separately via getMoonVisibility. */
-	isMajorBodyVisible(body: PositionedBody): boolean {
-		return body.data.objectType !== ObjectType.MOON;
+	/**
+	 * Distance-ratio based visibility for non-moon, non-star bodies (planets, dwarf planets…).
+	 * Ratio is (camera distance to the body / body semi-major axis), both in AU.
+	 * Falls back to FULL when no orbital data is available.
+	 */
+	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
+		// Determine the effective solar-orbit semi-major axis for the ratio:
+		// - Body orbits SSB directly (parentId=0): use body.data.a
+		// - Body orbits a barycenter with a>0 (e.g. EMB at ~1 AU): use barycenter's a
+		// - Body orbits a barycenter with a=0 (e.g. Mars bary): fall back to body.data.a
+		let refA = body.data.a;
+		if (body.data.parentId) {
+			const parent = this.bodiesById.get(body.data.parentId);
+			if (parent) {
+				if (parent.data.a) refA = parent.data.a;
+			}
+		}
+		if (!refA) {
+			console.log(
+				`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
+			);
+			return VISIBILITY.FULL;
+		}
+		const ratio = camDistThreeJS / AU_SCALE / refA;
+		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL]) return VISIBILITY.FULL;
+		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
+		return VISIBILITY.HIDE;
 	}
 
 	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in. */

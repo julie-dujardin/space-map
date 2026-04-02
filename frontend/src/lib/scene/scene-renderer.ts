@@ -37,6 +37,10 @@ import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
+// For focused objects:
+// Body/halo size ratio at which the label should be hidden
+const HIDE_LABEL_BODY_HALO_FACTOR = 20;
+
 // --- Types ---
 
 interface BodyObjects {
@@ -46,6 +50,7 @@ interface BodyObjects {
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
 	orbitLine: Line | null;
+	radiusScene: number;
 }
 
 interface Callbacks {
@@ -336,10 +341,18 @@ export class SceneRenderer {
 
 			this.scene.add(group);
 			const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
-			if (labelHalo && body.data.objectType === ObjectType.MOON) {
+			if (labelHalo) {
 				labelHalo.dataset.origBorder = labelHalo.style.border;
 			}
-			this.bodyObjects.set(id, { body, group, mesh, label, labelHalo, orbitLine });
+			this.bodyObjects.set(id, {
+				body,
+				group,
+				mesh,
+				label,
+				labelHalo,
+				orbitLine,
+				radiusScene: radius
+			});
 		}
 
 		// Asteroid point cloud
@@ -404,19 +417,62 @@ export class SceneRenderer {
 		this.ctx.updateCamera(distance);
 
 		// Visibility updates
-		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
+		const fovRad = (this.camera.fov * Math.PI) / 180;
+		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
+		const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
+
+		for (const {
+			body,
+			group,
+			label,
+			labelHalo,
+			orbitLine,
+			radiusScene
+		} of this.bodyObjects.values()) {
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
-				if (label) label.visible = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				if (label) {
+					let show = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+					let hideHaloRing = false;
+					let screenR = 0;
+					if (!show && vis === VISIBILITY.CLOSE) {
+						this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+						const dist = this.camera.position.distanceTo(this._tmpV3);
+						screenR = (radiusScene / dist) * projScale;
+						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+						hideHaloRing = screenR >= HALO_RADIUS_PX;
+					}
+					label.visible = show;
+					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+				}
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
+			} else if (body.data.objectType === ObjectType.STAR) {
+				group.visible = true;
+				if (label) label.visible = true;
 			} else {
-				const visible = this.ctx.isMajorBodyVisible(body);
+				this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+				const distToBody = this.camera.position.distanceTo(this._tmpV3);
+				const vis = this.ctx.getPlanetVisibility(body, distToBody);
 				const full = this.ctx.hasFullRendering(body);
-				group.visible = visible;
-				if (label) label.visible = visible && full;
-				if (orbitLine) orbitLine.visible = visible && full;
+				group.visible =
+					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
+				if (label) {
+					let show = vis === VISIBILITY.FULL && full;
+					let hideHaloRing = false;
+					let screenR = 0;
+					if (!show && full && vis === VISIBILITY.CLOSE) {
+						screenR = (radiusScene / distToBody) * projScale;
+						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+						hideHaloRing = screenR >= HALO_RADIUS_PX;
+					}
+					label.visible = show;
+					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+				}
+				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 			}
 		}
 		for (const [gid, pts] of this.spacecraftPoints) {
@@ -426,7 +482,7 @@ export class SceneRenderer {
 			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
-		this.cullOverlappingMoonLabels();
+		this.cullOverlappingLabels();
 
 		if (!isAnimating) {
 			this.callbacks.onFrame(latitude, longitude, distance);
@@ -436,9 +492,13 @@ export class SceneRenderer {
 		this.labelRenderer.render(this.scene, this.camera);
 	};
 
-	private cullOverlappingMoonLabels(): void {
+	private cullOverlappingLabels(): void {
 		const w = this.renderer.domElement.clientWidth;
 		const h = this.renderer.domElement.clientHeight;
+
+		// Estimated label bounding box in CSS pixels
+		const LW = 90;
+		const LH = 22;
 
 		type Candidate = {
 			body: PositionedBody;
@@ -449,82 +509,101 @@ export class SceneRenderer {
 			screenY: number;
 			dist: number;
 		};
-		const candidates: Candidate[] = [];
 
-		// Estimated label bounding box in CSS pixels
-		const LW = 90;
-		const LH = 22;
-
-		// Planet labels always win — seed accepted list with their positions
+		// Sun always wins — seed accepted with its screen position
 		const accepted: { x: number; y: number }[] = [];
 		for (const { body, label } of this.bodyObjects.values()) {
-			if (body.data.objectType === ObjectType.MOON || !label?.visible) continue;
+			if (body.data.objectType !== ObjectType.STAR || !label?.visible) continue;
 			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
 			this._tmpV3.project(this.camera);
-			if (this._tmpV3.z > 1) continue;
-			accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
+			if (this._tmpV3.z <= 1)
+				accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
 		}
 
-		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
-			if (body.data.objectType !== ObjectType.MOON || !label?.visible) continue;
+		const planetCandidates: Candidate[] = [];
+		const moonCandidates: Candidate[] = [];
 
+		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
+			if (body.data.objectType === ObjectType.STAR || !label?.visible) continue;
 			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
 			const dist = this.camera.position.distanceTo(this._tmpV3);
 			this._tmpV3.project(this.camera);
-
-			if (this._tmpV3.z > 1) continue; // behind camera
-
-			candidates.push({
+			if (this._tmpV3.z > 1) continue;
+			const candidate: Candidate = {
 				body,
 				label,
 				labelHalo,
-				isCapped: this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED,
+				isCapped:
+					body.data.objectType === ObjectType.MOON
+						? this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED
+						: false,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
 				dist
-			});
+			};
+			if (body.data.objectType === ObjectType.MOON) moonCandidates.push(candidate);
+			else planetCandidates.push(candidate);
 		}
 
-		// FULL moons sorted by distance first, CAPPED moons after (they never block FULL ones)
-		candidates.sort((a, b) => {
-			if (a.isCapped !== b.isCapped) return a.isCapped ? 1 : -1;
-			return a.dist - b.dist;
-		});
+		// Helper: apply or restore dimming
+		const dim = (labelHalo: HTMLElement | null, nameSpan: HTMLElement | null) => {
+			if (labelHalo) {
+				labelHalo.style.transform = 'scale(0.3)';
+			}
+			if (nameSpan) nameSpan.style.display = 'none';
+		};
+		const restore = (
+			labelHalo: HTMLElement | null,
+			nameSpan: HTMLElement | null,
+			isHovered: boolean
+		) => {
+			if (labelHalo) {
+				if (!isHovered) labelHalo.style.transform = '';
+				labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
+			}
+			if (nameSpan) nameSpan.style.display = '';
+		};
 
-		for (const { body, label, labelHalo, isCapped, screenX, screenY } of candidates) {
+		// Planets: closest wins over farther ones
+		planetCandidates.sort((a, b) => a.dist - b.dist);
+		for (const { body, label, labelHalo, screenX, screenY } of planetCandidates) {
 			const isFocused = body.data.id === this.focusedBody?.data.id;
 			const isHovered = label.element.matches(':hover');
 			const forceShow = isFocused || isHovered;
 			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
-
-			if (isCapped && !forceShow) {
-				// Dimmed, never blocks space for FULL moons
-				if (labelHalo) {
-					labelHalo.style.transform = 'scale(0.3)';
-					labelHalo.style.border = 'none';
-				}
-				if (nameSpan) nameSpan.style.display = 'none';
-				continue;
-			}
-
 			const overlaps =
 				!forceShow &&
 				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
-
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
-				if (labelHalo) {
-					// Don't reset transform when hovered — the hover handler owns it
-					if (!isHovered) labelHalo.style.transform = '';
-					labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
-				}
-				if (nameSpan) nameSpan.style.display = '';
+				restore(labelHalo, nameSpan, isHovered);
 			} else {
-				if (labelHalo) {
-					labelHalo.style.transform = 'scale(0.3)';
-					labelHalo.style.border = 'none';
-				}
-				if (nameSpan) nameSpan.style.display = 'none';
+				dim(labelHalo, nameSpan);
+			}
+		}
+
+		// Moons: FULL by distance first, CAPPED after (never block FULL ones)
+		moonCandidates.sort((a, b) => {
+			if (a.isCapped !== b.isCapped) return a.isCapped ? 1 : -1;
+			return a.dist - b.dist;
+		});
+		for (const { body, label, labelHalo, isCapped, screenX, screenY } of moonCandidates) {
+			const isFocused = body.data.id === this.focusedBody?.data.id;
+			const isHovered = label.element.matches(':hover');
+			const forceShow = isFocused || isHovered;
+			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
+			if (isCapped && !forceShow) {
+				dim(labelHalo, nameSpan);
+				continue;
+			}
+			const overlaps =
+				!forceShow &&
+				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
+			if (!overlaps) {
+				accepted.push({ x: screenX, y: screenY });
+				restore(labelHalo, nameSpan, isHovered);
+			} else {
+				dim(labelHalo, nameSpan);
 			}
 		}
 	}
