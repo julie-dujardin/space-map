@@ -1,4 +1,4 @@
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_SCALE } from './math/units';
@@ -13,8 +13,10 @@ import { AU_SCALE } from './math/units';
 export enum VISIBILITY {
 	CLOSE = 1,
 	FULL = 2,
-	FAR = 3,
-	HIDE = 4
+	/** In range for FULL but rejected by the crowding cap — show minimized halo only. */
+	CAPPED = 3,
+	FAR = 4,
+	HIDE = 5
 }
 /*
  * Distance ratio thresholds for visibility levels.
@@ -26,6 +28,9 @@ export const DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.FAR]: 100,
 	[VISIBILITY.HIDE]: Infinity
 };
+
+/** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
+export const MAX_FULL_MOONS = 30;
 
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.3;
@@ -51,6 +56,8 @@ export class ContextManager {
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: number | null = null;
 	private cameraDistThreeJS = 0;
+	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
+	private fullMoonIds = new SvelteSet<number>();
 
 	get allBodies(): PositionedBody[] {
 		return [...this.bodiesById.values()];
@@ -134,6 +141,7 @@ export class ContextManager {
 			this.isZoomedIn = zoomed;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 		}
+		this.recomputeFullMoons();
 	}
 
 	setFocused(body: PositionedBody): void {
@@ -141,6 +149,7 @@ export class ContextManager {
 			this.focusedBodyId = body.data.id;
 			this.focusedSystemId = body.data.objectType === ObjectType.STAR ? null : body.data.parentId;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
+			this.recomputeFullMoons();
 		}
 	}
 
@@ -149,9 +158,28 @@ export class ContextManager {
 		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
 		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL]) return VISIBILITY.FULL;
+		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL])
+			return this.fullMoonIds.has(moon.data.id) ? VISIBILITY.FULL : VISIBILITY.CAPPED;
 		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
+	}
+
+	/**
+	 * Recomputes which moons qualify for FULL visibility, capped at MAX_FULL_MOONS.
+	 * Among moons that pass the ratio threshold, only the closest to their parent (smallest a) win.
+	 * Called every frame from updateCamera and on focus change from setFocused.
+	 */
+	private recomputeFullMoons(): void {
+		this.fullMoonIds.clear();
+		const sysId = this.focusedSystemId;
+		if (!sysId) return;
+		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
+		const fullThreshold = DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL];
+		(this.childrenByParent.get(sysId) ?? [])
+			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= fullThreshold)
+			.sort((a, b) => a.data.a - b.data.a)
+			.slice(0, MAX_FULL_MOONS)
+			.forEach((m) => this.fullMoonIds.add(m.data.id));
 	}
 
 	/**

@@ -406,10 +406,11 @@ export class SceneRenderer {
 		// Visibility updates
 		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
 			if (body.data.objectType === ObjectType.MOON) {
-				const isFull = this.ctx.getMoonVisibility(body) === VISIBILITY.FULL;
-				group.visible = isFull;
-				if (label) label.visible = isFull;
-				if (orbitLine) orbitLine.visible = isFull;
+				const vis = this.ctx.getMoonVisibility(body);
+				const show = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				group.visible = show;
+				if (label) label.visible = show;
+				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 			} else {
 				const visible = this.ctx.isMajorBodyVisible(body);
 				const full = this.ctx.hasFullRendering(body);
@@ -443,6 +444,7 @@ export class SceneRenderer {
 			body: PositionedBody;
 			label: CSS2DObject;
 			labelHalo: HTMLElement | null;
+			isCapped: boolean;
 			screenX: number;
 			screenY: number;
 			dist: number;
@@ -476,24 +478,38 @@ export class SceneRenderer {
 				body,
 				label,
 				labelHalo,
+				isCapped: this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
 				dist
 			});
 		}
 
-		candidates.sort((a, b) => a.dist - b.dist);
+		// FULL moons sorted by distance first, CAPPED moons after (they never block FULL ones)
+		candidates.sort((a, b) => {
+			if (a.isCapped !== b.isCapped) return a.isCapped ? 1 : -1;
+			return a.dist - b.dist;
+		});
 
-		for (const { body, label, labelHalo, screenX, screenY } of candidates) {
+		for (const { body, label, labelHalo, isCapped, screenX, screenY } of candidates) {
 			const isFocused = body.data.id === this.focusedBody?.data.id;
 			const isHovered = label.element.matches(':hover');
 			const forceShow = isFocused || isHovered;
+			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
+
+			if (isCapped && !forceShow) {
+				// Dimmed, never blocks space for FULL moons
+				if (labelHalo) {
+					labelHalo.style.transform = 'scale(0.3)';
+					labelHalo.style.border = 'none';
+				}
+				if (nameSpan) nameSpan.style.display = 'none';
+				continue;
+			}
 
 			const overlaps =
 				!forceShow &&
 				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
-
-			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
@@ -504,7 +520,6 @@ export class SceneRenderer {
 				}
 				if (nameSpan) nameSpan.style.display = '';
 			} else {
-				// Keep visible but show a tiny borderless halo only
 				if (labelHalo) {
 					labelHalo.style.transform = 'scale(0.3)';
 					labelHalo.style.border = 'none';
