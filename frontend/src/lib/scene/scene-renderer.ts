@@ -37,6 +37,10 @@ import { VISIBILITY, type ContextManager } from '$lib/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label-factory';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
+// For focused objects:
+// Body/halo size ratio at which the label should be hidden
+const HIDE_LABEL_BODY_HALO_FACTOR = 20;
+
 // --- Types ---
 
 interface BodyObjects {
@@ -46,6 +50,7 @@ interface BodyObjects {
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
 	orbitLine: Line | null;
+	radiusScene: number;
 }
 
 interface Callbacks {
@@ -339,7 +344,15 @@ export class SceneRenderer {
 			if (labelHalo) {
 				labelHalo.dataset.origBorder = labelHalo.style.border;
 			}
-			this.bodyObjects.set(id, { body, group, mesh, label, labelHalo, orbitLine });
+			this.bodyObjects.set(id, {
+				body,
+				group,
+				mesh,
+				label,
+				labelHalo,
+				orbitLine,
+				radiusScene: radius
+			});
 		}
 
 		// Asteroid point cloud
@@ -404,12 +417,37 @@ export class SceneRenderer {
 		this.ctx.updateCamera(distance);
 
 		// Visibility updates
-		for (const { body, group, label, orbitLine } of this.bodyObjects.values()) {
+		const fovRad = (this.camera.fov * Math.PI) / 180;
+		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
+		const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
+
+		for (const {
+			body,
+			group,
+			label,
+			labelHalo,
+			orbitLine,
+			radiusScene
+		} of this.bodyObjects.values()) {
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
-				if (label) label.visible = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+				if (label) {
+					let show = vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
+					let hideHaloRing = false;
+					let screenR = 0;
+					if (!show && vis === VISIBILITY.CLOSE) {
+						this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+						const dist = this.camera.position.distanceTo(this._tmpV3);
+						screenR = (radiusScene / dist) * projScale;
+						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+						hideHaloRing = screenR >= HALO_RADIUS_PX;
+					}
+					label.visible = show;
+					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+				}
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 			} else if (body.data.objectType === ObjectType.STAR) {
 				group.visible = true;
@@ -421,7 +459,19 @@ export class SceneRenderer {
 				const full = this.ctx.hasFullRendering(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
-				if (label) label.visible = vis === VISIBILITY.FULL && full;
+				if (label) {
+					let show = vis === VISIBILITY.FULL && full;
+					let hideHaloRing = false;
+					let screenR = 0;
+					if (!show && full && vis === VISIBILITY.CLOSE) {
+						screenR = (radiusScene / distToBody) * projScale;
+						show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+						hideHaloRing = screenR >= HALO_RADIUS_PX;
+					}
+					label.visible = show;
+					if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+					label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+				}
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 			}
 		}
