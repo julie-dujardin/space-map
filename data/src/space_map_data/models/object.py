@@ -374,9 +374,7 @@ class SBDB(Base):
     )  # sidereal orbital period [d]
 
     # Orbit metadata
-    class_: Mapped[str | None] = mapped_column(
-        "class", default=None
-    )  # orbit classification
+    class_: Mapped[str] = mapped_column("class")  # orbit classification
     producer: Mapped[str | None] = mapped_column(
         default=None
     )  # person/institution who computed the orbit
