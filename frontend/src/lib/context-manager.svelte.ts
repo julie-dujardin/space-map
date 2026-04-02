@@ -1,6 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { AU_SCALE } from './math/units';
 
 /*
  * Visibility options:
@@ -26,8 +27,8 @@ export const DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.HIDE]: Infinity
 };
 
-/** Three.js units: 0.5 AU. Below this distance, hide other systems (halos, orbits, spacecraft). */
-export const ZOOM_THRESHOLD = 5;
+/** Below this distance, hide other systems (halos, orbits, spacecraft). */
+export const ZOOM_THRESHOLD_AU = 0.3;
 
 export class ContextManager {
 	private readonly childrenByParent = new SvelteMap<number, PositionedBody[]>();
@@ -128,7 +129,7 @@ export class ContextManager {
 	/** Call from useTask every frame. */
 	updateCamera(dist: number): void {
 		this.cameraDistThreeJS = dist;
-		const zoomed = dist <= ZOOM_THRESHOLD;
+		const zoomed = dist <= ZOOM_THRESHOLD_AU * AU_SCALE;
 		if (zoomed !== this.isZoomedIn) {
 			this.isZoomedIn = zoomed;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
@@ -146,7 +147,7 @@ export class ContextManager {
 	/** Ratio-based visibility for a moon. Gated on the focused system (no zoom threshold). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
-		const ratio = this.cameraDistThreeJS / 10 / moon.data.a; // Three.js units → AU
+		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
 		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
 		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL]) return VISIBILITY.FULL;
 		if (ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
@@ -161,7 +162,7 @@ export class ContextManager {
 		if (!this.isInFocusedSystem(parentId)) return false;
 		const maxA = this.moonMaxAByParent.get(parentId);
 		if (!maxA) return false;
-		const ratio = this.cameraDistThreeJS / 10 / maxA;
+		const ratio = this.cameraDistThreeJS / AU_SCALE / maxA;
 		return ratio <= DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR];
 	}
 

@@ -198,6 +198,7 @@ export class SceneRenderer {
 
 	private focusedBody: PositionedBody | undefined;
 	private focusTarget = new Vector3();
+	private readonly _tmpV3 = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
 
@@ -419,6 +420,8 @@ export class SceneRenderer {
 			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
+		this.cullOverlappingMoonLabels();
+
 		if (!isAnimating) {
 			this.callbacks.onFrame(latitude, longitude, distance);
 		}
@@ -426,6 +429,57 @@ export class SceneRenderer {
 		this.renderer.render(this.scene, this.camera);
 		this.labelRenderer.render(this.scene, this.camera);
 	};
+
+	private cullOverlappingMoonLabels(): void {
+		const w = this.renderer.domElement.clientWidth;
+		const h = this.renderer.domElement.clientHeight;
+
+		const candidates: { label: CSS2DObject; screenX: number; screenY: number; dist: number }[] = [];
+
+		// Estimated label bounding box in CSS pixels
+		const LW = 90;
+		const LH = 22;
+
+		// Planet labels always win — seed accepted list with their positions
+		const accepted: { x: number; y: number }[] = [];
+		for (const { body, label } of this.bodyObjects.values()) {
+			if (body.data.objectType === ObjectType.MOON || !label?.visible) continue;
+			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			this._tmpV3.project(this.camera);
+			if (this._tmpV3.z > 1) continue;
+			accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
+		}
+
+		for (const { body, label } of this.bodyObjects.values()) {
+			if (body.data.objectType !== ObjectType.MOON || !label?.visible) continue;
+
+			this._tmpV3.set(body.position[0], body.position[1], body.position[2]);
+			const dist = this.camera.position.distanceTo(this._tmpV3);
+			this._tmpV3.project(this.camera);
+
+			if (this._tmpV3.z > 1) continue; // behind camera
+
+			candidates.push({
+				label,
+				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
+				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
+				dist
+			});
+		}
+
+		candidates.sort((a, b) => a.dist - b.dist);
+
+		for (const { label, screenX, screenY } of candidates) {
+			const overlaps = accepted.some(
+				({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
+			);
+			if (!overlaps) {
+				accepted.push({ x: screenX, y: screenY });
+			} else {
+				label.visible = false;
+			}
+		}
+	}
 
 	// --- Interaction ---
 
