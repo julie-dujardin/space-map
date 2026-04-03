@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from space_map_data.export.wikidata import WikidataEntity, resolve_name
+from space_map_data.export.wikidata import WikidataEntityCache, resolve_name
 from space_map_data.models.object import Object
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ def write_labels(
     objects: list[Object],
     out_file: Path,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> None:
     """Write a single label JSON file for one language and chunk.
 

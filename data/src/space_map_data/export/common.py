@@ -19,7 +19,7 @@ from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 
 from space_map_data.export.units import write_unit_labels
-from space_map_data.export.wikidata import load_wikidata_entities
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -79,7 +79,7 @@ def _write_parts(
     out_dir: Path,
     zone: str,
     zoom: int,
-    wikidata_entities: dict,
+    wikidata_entities: WikidataEntityCache,
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -100,7 +100,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _remove_old_outputs(out_dir)
 
-    wikidata_entities = load_wikidata_entities()
+    wikidata_entities = WikidataEntityCache()
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)

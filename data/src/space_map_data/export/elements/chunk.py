@@ -5,7 +5,7 @@ from pathlib import Path
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import write_elements
-from space_map_data.export.wikidata import WikidataEntity
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object
 
 CHUNK_SIZE = 10_000
@@ -17,7 +17,7 @@ def write_chunk(
     zone: str,
     zoom: int,
     part: int,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> int:
     """Write elements binary, label files, and id list for one chunk.
 

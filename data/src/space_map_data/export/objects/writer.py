@@ -5,7 +5,11 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.wikidata import WikidataEntity, resolve_name
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    resolve_name,
+)
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
@@ -48,7 +52,7 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
 def write_objects(
     objects: list[Object],
     out_dir: Path,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> None:
     """Write per-object JSON files (global + per-language)."""
     global_dir = out_dir / "objects" / "__global__"
@@ -60,7 +64,7 @@ def write_objects(
         lang_dirs[lang] = d
 
     for obj in objects:
-        wd = wikidata_entities.get(obj.wikidata_qid or "")
+        wd = wikidata_entities.get_entity(obj.wikidata_qid)
         extracted = extract_claims(wd["claims"]) if wd else {}
 
         # Global (non-localized)
@@ -91,7 +95,7 @@ def write_objects(
 def _build_global(
     obj: Object,
     extracted: dict,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -149,7 +153,7 @@ def _build_global(
 def _build_localized(
     obj: Object,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
     wd: WikidataEntity | None,
     extracted: dict,
     wiki_summary: WikipediaSummary | None,
