@@ -1,4 +1,4 @@
-"""Write one (context, zoom, part) chunk: binary elements + labels + id list."""
+"""Write one (zone, zoom, part) chunk: binary elements + labels + id list."""
 
 from pathlib import Path
 
@@ -14,7 +14,7 @@ CHUNK_SIZE = 10_000
 def write_chunk(
     objects: list[Object],
     out_dir: Path,
-    context_id: str,
+    zone: str,
     zoom: int,
     part: int,
     wikidata_entities: dict[str, WikidataEntity],
@@ -23,19 +23,19 @@ def write_chunk(
 
     Returns the size of the elements binary file in bytes.
     """
-    elements_path = out_dir / "elements" / context_id / str(zoom) / f"{part}.bin"
+    elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin"
     elements_path.parent.mkdir(parents=True, exist_ok=True)
     write_elements(objects, elements_path)
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:
         labels_path = (
-            out_dir / "element_labels" / lang / context_id / str(zoom) / f"{part}.txt"
+            out_dir / "element_labels" / lang / zone / str(zoom) / f"{part}.txt"
         )
         labels_path.parent.mkdir(parents=True, exist_ok=True)
         write_labels(objects, labels_path, lang, wikidata_entities)
 
-    ids_path = out_dir / "elements" / context_id / str(zoom) / f"{part}.txt"
+    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.txt"
     ids_path.write_text("\n".join(obj.id for obj in objects))
 
     return elements_bytes
