@@ -73,30 +73,30 @@ export class ContextManager {
 		try {
 			const loader = new ChunkLoader();
 			const major: PositionedBody[] = [];
-			major.push(...(await loader.process('sun', 0, 0, date)));
-			major.push(...(await loader.process('sun', 1, 0, date)));
+			major.push(...(await loader.process('major', 0, 0, date)));
+			major.push(...(await loader.process('moons', 0, 0, date)));
 
 			const metaRes = await fetch('/data/v1/metadata.json');
 			if (!metaRes.ok) throw new Error(`Failed to fetch metadata: ${metaRes.status}`);
 			const metadata = await metaRes.json();
 
-			const minorChunkArgs: { context: string; zoom: number; part: number }[] = [];
-			for (const [context, ctxData] of Object.entries(metadata.contexts) as [
+			const minorChunkArgs: { zone: string; zoom: number; part: number }[] = [];
+			for (const [zone, zoneData] of Object.entries(metadata.zones) as [
 				string,
 				{ zooms: Record<string, { parts: number }> }
 			][]) {
-				for (const [zoomStr, zoomData] of Object.entries(ctxData.zooms) as [
+				for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms) as [
 					string,
 					{ parts: number }
 				][]) {
-					if (context !== 'sun' || Number(zoomStr) >= 2)
+					if (zone !== 'major' && zone !== 'moons')
 						for (let part = 0; part < Math.min(zoomData.parts, 20); part++)
-							minorChunkArgs.push({ context, zoom: Number(zoomStr), part });
+							minorChunkArgs.push({ zone, zoom: Number(zoomStr), part });
 				}
 			}
 			const minors = (
 				await Promise.all(
-					minorChunkArgs.map(({ context, zoom, part }) => loader.process(context, zoom, part, date))
+					minorChunkArgs.map(({ zone, zoom, part }) => loader.process(zone, zoom, part, date))
 				)
 			).flat();
 
@@ -125,8 +125,8 @@ export class ContextManager {
 			this.spacecraftByParent = spacecraft;
 			this.loading = false;
 		} catch (e) {
-			this.error = e instanceof Error ? e.message : String(e);
 			this.loading = false;
+			throw e;
 		}
 	}
 
