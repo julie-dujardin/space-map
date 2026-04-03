@@ -80,8 +80,8 @@ def _write_parts(
     zone: str,
     zoom: int,
     wikidata_entities: WikidataEntityCache,
-) -> tuple[int, int]:
-    """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
+) -> tuple[int, int, int]:
+    """Split objects into CHUNK_SIZE parts and write. Returns (count, num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     total_bytes = 0
     for part_idx in range(num_parts):
@@ -93,7 +93,33 @@ def _write_parts(
         }
         total_bytes += write_chunk(chunk, out_dir, zone, zoom, part_idx, chunk_entities)
         write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
-    return num_parts, total_bytes
+    return len(objects), num_parts, total_bytes
+
+
+def _query_and_write_sbdb(
+    engine: Engine,
+    cls: str,
+    named: bool,
+    out_dir: Path,
+    wikidata_entities: WikidataEntityCache,
+    limit: int,
+) -> tuple[int, int, int]:
+    """Query one SBDB (class, named) combo in its own session and write it."""
+    zoom = 0 if named else 1
+    name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
+    with Session(engine) as session:
+        objects = (
+            session.query(Object)
+            .options(joinedload(Object.sbdb))
+            .join(Object.sbdb)
+            .filter(SBDB.class_ == cls, name_filter)
+            .order_by(Object.random_int)
+            .limit(limit)
+            .all()
+        )
+    if not objects:
+        return 0, 0, 0
+    return _write_parts(objects, out_dir, cls, zoom, wikidata_entities)
 
 
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
@@ -111,9 +137,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     futures: dict = {}
 
-    with Session(engine) as session:
-        with ThreadPoolExecutor() as executor:
-            # Non-SBDB zones
+    with ThreadPoolExecutor() as executor:
+        with Session(engine) as session:
+            # Non-SBDB zones: query here, objects in memory before session closes
             non_sbdb = [
                 (
                     "major",
@@ -157,38 +183,33 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 f = executor.submit(
                     _write_parts, objects, out_dir, zone, 0, wikidata_entities
                 )
-                futures[f] = (zone, 0, len(objects))
+                futures[f] = (zone, 0)
 
-            # SBDB: one query per (class, zoom)
+            # SBDB: fetch combo list, then each task queries its own session in parallel
             named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
             sbdb_combos = (
                 session.query(SBDB.class_, named_col)
                 .group_by(SBDB.class_, named_col)
                 .all()
             )
-            for cls, named in sbdb_combos:
-                zoom = 0 if named else 1
-                name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
-                objects = (
-                    session.query(Object)
-                    .options(joinedload(Object.sbdb))
-                    .join(Object.sbdb)
-                    .filter(SBDB.class_ == cls, name_filter)
-                    .order_by(Object.random_int)
-                    .limit(limit_per_zone)
-                    .all()
-                )
-                if not objects:
-                    continue
-                f = executor.submit(
-                    _write_parts, objects, out_dir, cls, zoom, wikidata_entities
-                )
-                futures[f] = (cls, zoom, len(objects))
-            # executor joins here — session still open so ORM objects remain valid
+
+        for cls, named in sbdb_combos:
+            f = executor.submit(
+                _query_and_write_sbdb,
+                engine,
+                cls,
+                bool(named),
+                out_dir,
+                wikidata_entities,
+                limit_per_zone,
+            )
+            futures[f] = (cls, 0 if named else 1)
 
     for f in as_completed(futures):
-        zone, zoom, count = futures[f]
-        num_parts, nbytes = f.result()
+        zone, zoom = futures[f]
+        count, num_parts, nbytes = f.result()
+        if not count:
+            continue
         object_counts[(zone, zoom)] += count
         total_bytes_map[(zone, zoom)] += nbytes
         zone_structure[zone][zoom] = num_parts

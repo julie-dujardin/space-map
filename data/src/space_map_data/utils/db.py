@@ -19,6 +19,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from space_map_data.models.object import Base
 import space_map_data.models.feature  # noqa: F401 — register Feature on Base
@@ -28,7 +29,7 @@ _session: Session | None = None
 
 
 def _make_engine(db_path: Path) -> Engine:
-    engine = create_engine(f"sqlite:///{db_path}", echo=False)
+    engine = create_engine(f"sqlite:///{db_path}", echo=False, poolclass=NullPool)
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
         conn.execute(text("PRAGMA synchronous=NORMAL"))
