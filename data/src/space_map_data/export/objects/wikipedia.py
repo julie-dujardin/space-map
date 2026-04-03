@@ -1,47 +1,53 @@
 """Load and extract Wikipedia summaries for export."""
 
+import json
 import logging
+from dataclasses import dataclass
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.wikidata import load_json_dir
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
 
-def load_wikipedia_summaries() -> dict[str, dict[str, dict]]:
-    """Load Wikipedia summaries into {qid: {lang: summary_dict}}."""
+@dataclass
+class WikipediaSummary:
+    extract: str | None = None
+    description: str | None = None
+    thumbnail: str | None = None
+    image: str | None = None
+    url: str | None = None
+
+    def to_dict(self) -> dict:
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+def load_wikipedia_summaries_for_qid(qid: str) -> dict[str, WikipediaSummary]:
+    """Load Wikipedia summaries for a single QID. Returns {lang: WikipediaSummary}."""
     wiki_dir = DOWNLOAD_DIR / "wikipedia"
-    if not wiki_dir.exists():
-        logger.info("No Wikipedia summaries found")
-        return {}
-
-    result: dict[str, dict[str, dict]] = {}
+    result: dict[str, WikipediaSummary] = {}
     for lang in LANGUAGES:
-        lang_dir = wiki_dir / lang
-        for qid, page in load_json_dir(lang_dir):
-            summary = _extract_wikipedia(page)
-            if summary:
-                result.setdefault(qid, {})[lang] = summary
-
-    total = sum(len(langs) for langs in result.values())
-    logger.info("Loaded %d Wikipedia summaries for %d entities", total, len(result))
+        path = wiki_dir / lang / f"{qid}.json"
+        if not path.exists():
+            continue
+        page = json.loads(path.read_text())
+        summary = _extract_wikipedia(page)
+        if summary:
+            result[lang] = summary
     return result
 
 
-def _extract_wikipedia(page: dict) -> dict | None:
+def _extract_wikipedia(page: dict) -> WikipediaSummary | None:
     """Extract display-relevant fields from a Wikipedia API response."""
     if page.get("missing"):
         return None
-    data: dict = {}
-    if extract := page.get("extract"):
-        data["extract"] = extract
-    if desc := page.get("description"):
-        data["description"] = desc
-    if thumb := page.get("thumbnail", {}).get("source"):
-        data["thumbnail"] = thumb
-    if original := page.get("original", {}).get("source"):
-        data["image"] = original
-    if url := page.get("fullurl"):
-        data["url"] = url
-    return data or None
+    summary = WikipediaSummary(
+        extract=page.get("extract") or None,
+        description=page.get("description") or None,
+        thumbnail=(page.get("thumbnail") or {}).get("source"),
+        image=(page.get("original") or {}).get("source"),
+        url=page.get("fullurl") or None,
+    )
+    if not summary.to_dict():
+        return None
+    return summary

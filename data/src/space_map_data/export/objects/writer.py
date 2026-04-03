@@ -6,6 +6,10 @@ from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.wikidata import WikidataEntity, resolve_name
+from space_map_data.export.objects.wikipedia import (
+    WikipediaSummary,
+    load_wikipedia_summaries_for_qid,
+)
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.quantities import MASS_UNIT_KG, mass_quantity_from_kg
 from space_map_data.export.objects.wikidata_claims import (
@@ -45,7 +49,6 @@ def write_objects(
     objects: list[Object],
     out_dir: Path,
     wikidata_entities: dict[str, WikidataEntity],
-    wiki_summaries: dict,
 ) -> None:
     """Write per-object JSON files (global + per-language)."""
     global_dir = out_dir / "objects" / "__global__"
@@ -68,8 +71,9 @@ def write_objects(
 
         # Per-language (localized)
         qid = obj.wikidata_qid
+        wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
         for lang in LANGUAGES:
-            wiki = wiki_summaries.get(qid, {}).get(lang) if qid else None
+            wiki = wiki_summaries.get(lang)
             lang_data = _build_localized(
                 obj, lang, wikidata_entities, wd, extracted, wiki
             )
@@ -148,7 +152,7 @@ def _build_localized(
     wikidata_entities: dict[str, WikidataEntity],
     wd: WikidataEntity | None,
     extracted: dict,
-    wiki_summary: dict | None,
+    wiki_summary: WikipediaSummary | None,
 ) -> dict:
     """Build the per-language JSON dict for an object."""
     data: dict = {}
@@ -183,6 +187,6 @@ def _build_localized(
                     data[claim.key] = ref
 
     if wiki_summary:
-        data["wikipedia"] = wiki_summary
+        data["wikipedia"] = wiki_summary.to_dict()
 
     return data

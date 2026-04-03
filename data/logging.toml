@@ -10,5 +10,5 @@ formatter = "default"
 stream = "ext://sys.stderr"
 
 [root]
-level = "WARNING"
+level = "INFO"
 handlers = ["console"]

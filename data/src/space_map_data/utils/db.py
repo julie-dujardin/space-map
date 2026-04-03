@@ -37,6 +37,16 @@ def _make_engine(db_path: Path) -> Engine:
 
 
 @contextmanager
+def engine_scope() -> Generator[Engine]:
+    """Yield a bare Engine for use cases that need their own sessions (e.g. threaded export)."""
+    engine = _make_engine(DB_FILE)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@contextmanager
 def session_scope(create_db: bool = False) -> Generator[Session]:
     """Open a managed DB session, accessible globally via `get_session()`.
 
