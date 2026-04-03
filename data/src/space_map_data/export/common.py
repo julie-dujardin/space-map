@@ -17,7 +17,7 @@ from tqdm import tqdm
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
-from space_map_data.export.objects.wikipedia import load_wikipedia_summaries
+
 from space_map_data.export.units import write_unit_labels
 from space_map_data.export.wikidata import load_wikidata_entities
 from space_map_data.models.object import Object, ObjectType, SBDB
@@ -80,7 +80,6 @@ def _write_parts(
     zone: str,
     zoom: int,
     wikidata_entities: dict,
-    wiki_summaries: dict,
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -90,7 +89,7 @@ def _write_parts(
         total_bytes += write_chunk(
             chunk, out_dir, zone, zoom, part_idx, wikidata_entities
         )
-        write_objects(chunk, out_dir, wikidata_entities, wiki_summaries)
+        write_objects(chunk, out_dir, wikidata_entities)
     return num_parts, total_bytes
 
 
@@ -102,7 +101,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     _remove_old_outputs(out_dir)
 
     wikidata_entities = load_wikidata_entities()
-    wiki_summaries = load_wikipedia_summaries()
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -152,7 +150,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 # Barycenters must come first so parents resolve before children.
                 objects.sort(key=lambda o: o.object_type != ObjectType.barycenter)
             num_parts, nbytes = _write_parts(
-                objects, out_dir, zone, 0, wikidata_entities, wiki_summaries
+                objects, out_dir, zone, 0, wikidata_entities
             )
             object_counts[(zone, 0)] += len(objects)
             total_bytes_map[(zone, 0)] += nbytes
@@ -180,7 +178,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             if not objects:
                 continue
             num_parts, nbytes = _write_parts(
-                objects, out_dir, cls, zoom, wikidata_entities, wiki_summaries
+                objects, out_dir, cls, zoom, wikidata_entities
             )
             object_counts[(cls, zoom)] += len(objects)
             total_bytes_map[(cls, zoom)] += nbytes
