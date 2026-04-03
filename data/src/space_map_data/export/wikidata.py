@@ -116,6 +116,7 @@ def resolve_name(
         if lang in labels:
             return labels[lang]
         if "en" in labels:
+            # TODO: save an export of where/how many fallbacks to english were done
             return labels["en"]
 
     return obj.name

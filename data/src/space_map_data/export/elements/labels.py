@@ -21,12 +21,22 @@ def write_labels(
     """
     labels = []
     for obj in objects:
+        # Name: prefer localized name, else english name (handled by resolve_name), else provider name or primary designation or provisional designation
+        # In practice, this covers everything.
         name = (
-            resolve_name(obj, lang, chunk_entities.get(obj.wikidata_qid))
-            if obj.wikidata_qid
-            else None
+            (
+                resolve_name(obj, lang, chunk_entities.get(obj.wikidata_qid))
+                if obj.wikidata_qid
+                else None
+            )
+            or obj.name
+            or obj.sbdb_mcp_designation
+            or obj.provisional_designation
         )
-        labels.append(name or "")
+        if not name:
+            logger.warning("No name found for object %s (id=%s)", obj, obj.id)
+            name = ""
+        labels.append(name)
 
     out_file.write_text("\n".join(labels))
     named = sum(1 for label in labels if label)

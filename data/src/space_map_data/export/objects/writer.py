@@ -105,6 +105,8 @@ def _build_global(
     }
     if obj.name is not None:
         data["name"] = obj.name
+    if obj.sbdb_mcp_designation is not None:
+        data["sbdb_primary_designation"] = obj.sbdb_mcp_designation
     if obj.provisional_designation is not None:
         data["provisional_designation"] = obj.provisional_designation
 
@@ -124,7 +126,7 @@ def _build_global(
         data["orbit"] = orbit
 
     # SBDB extras
-    sbdb = obj.sbdb
+    sbdb = obj.sbdb if obj.sbdb_spkid is not None else None
     if sbdb is not None:
         sbdb_data = build_sbdb(sbdb)
         if sbdb_data:
