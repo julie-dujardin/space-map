@@ -53,6 +53,7 @@ def write_objects(
     objects: list[Object],
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
+    chunk_entities: dict[str, WikidataEntity | None],
 ) -> None:
     """Write per-object JSON files (global + per-language)."""
     global_dir = out_dir / "objects" / "__global__"
@@ -64,7 +65,7 @@ def write_objects(
         lang_dirs[lang] = d
 
     for obj in objects:
-        wd = wikidata_entities.get_entity(obj.wikidata_qid)
+        wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
         extracted = extract_claims(wd["claims"]) if wd else {}
 
         # Global (non-localized)
@@ -161,7 +162,7 @@ def _build_localized(
     """Build the per-language JSON dict for an object."""
     data: dict = {}
 
-    name = resolve_name(obj, lang, wikidata_entities)
+    name = resolve_name(obj, lang, wd)
     if name is not None:
         data["name"] = name
 

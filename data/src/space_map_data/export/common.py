@@ -86,10 +86,13 @@ def _write_parts(
     total_bytes = 0
     for part_idx in range(num_parts):
         chunk = objects[part_idx * CHUNK_SIZE : (part_idx + 1) * CHUNK_SIZE]
-        total_bytes += write_chunk(
-            chunk, out_dir, zone, zoom, part_idx, wikidata_entities
-        )
-        write_objects(chunk, out_dir, wikidata_entities)
+        chunk_entities = {
+            qid: wikidata_entities.get_entity(qid)
+            for obj in chunk
+            if (qid := obj.wikidata_qid)
+        }
+        total_bytes += write_chunk(chunk, out_dir, zone, zoom, part_idx, chunk_entities)
+        write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
     return num_parts, total_bytes
 
 

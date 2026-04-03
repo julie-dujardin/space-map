@@ -108,10 +108,9 @@ def _parse_entity(entity: dict) -> WikidataEntity | None:
 def resolve_name(
     obj: Object,
     lang: str,
-    wikidata_entities: WikidataEntityCache,
+    wd: WikidataEntity | None,
 ) -> str | None:
     """Resolve the best available name for an object in a given language."""
-    wd = wikidata_entities.get_entity(obj.wikidata_qid)
     if wd:
         labels = wd["labels"]
         if lang in labels:
