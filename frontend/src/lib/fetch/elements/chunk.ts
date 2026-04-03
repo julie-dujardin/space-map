@@ -45,19 +45,14 @@ export class ChunkLoader {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
 	}
 
-	async process(
-		context: string,
-		zoom: number,
-		part: number,
-		date: Date
-	): Promise<PositionedBody[]> {
+	async process(zone: string, zoom: number, part: number, date: Date): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 
 		const [cols, labels, idMap] = await Promise.all([
-			fetchElements(context, zoom, part),
-			fetchLabels(context, zoom, part),
-			fetchIds(context, zoom, part)
+			fetchElements(zone, zoom, part),
+			fetchLabels(zone, zoom, part),
+			fetchIds(zone, zoom, part)
 		]);
 
 		console.log(`Loaded: ${cols.rowCount} objects`);

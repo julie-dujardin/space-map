@@ -66,8 +66,8 @@
 				}
 			})
 			.catch((err) => {
-				console.warn(`ObjectDrawer: failed to load detail for ${fileId}:`, err);
-				if (body.data.fileId === fileId) loading = false;
+				loading = false;
+				throw err;
 			});
 	});
 

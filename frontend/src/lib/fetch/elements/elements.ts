@@ -28,11 +28,11 @@ function align8(n: number): number {
 }
 
 export async function fetchElements(
-	context: string,
+	zone: string,
 	zoom: number,
 	part: number
 ): Promise<ElementColumns> {
-	const res = await fetch(`${BASE_ELEMENT_PATH}/${context}/${zoom}/${part}.bin`);
+	const res = await fetch(`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin`);
 	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 	const buffer = await res.arrayBuffer();
 	return parseElements(buffer);

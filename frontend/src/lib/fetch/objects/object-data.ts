@@ -127,19 +127,12 @@ export interface ObjectDetailData {
 const cache = new Map<string, ObjectDetailData>();
 
 async function fetchJson<T>(url: string): Promise<T | null> {
-	try {
-		const res = await fetch(url);
-		if (!res.ok) {
-			if (res.status !== 404) {
-				console.warn(`fetchJson: ${url} returned ${res.status} ${res.statusText}`);
-			}
-			return null;
-		}
-		return (await res.json()) as T;
-	} catch (err) {
-		console.warn(`fetchJson: failed to fetch ${url}:`, err);
-		return null;
+	const res = await fetch(url);
+	if (!res.ok) {
+		if (res.status === 404) return null;
+		throw new Error(`fetchJson: ${url} returned ${res.status} ${res.statusText}`);
 	}
+	return (await res.json()) as T;
 }
 
 export async function fetchObjectDetail(
