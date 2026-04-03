@@ -36,47 +36,87 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
         yield path.stem, data
 
 
-def load_wikidata_entities() -> dict[str, WikidataEntity]:
-    """Load Wikidata entities into {qid: WikidataEntity} dict."""
-    wikidata_dir = DOWNLOAD_DIR / "wikidata"
-    entity_dirs = [wikidata_dir / d for d in ("entities", "referenced", "units")]
-    if not any(d.exists() for d in entity_dirs):
-        logger.info("No wikidata entities found, labels will use object names only")
-        return {}
+class WikidataEntityCache:
+    """On-demand Wikidata entity loader.
 
-    result: dict[str, WikidataEntity] = {}
-    for entity_dir in entity_dirs:
-        for qid, entity in load_json_dir(entity_dir):
-            labels = _extract_lang_values(entity.get("labels", {}))
-            descriptions = _extract_lang_values(entity.get("descriptions", {}))
-            aliases = _extract_lang_aliases(entity.get("aliases", {}))
-            claims = entity.get("claims", {})
-            sitelinks = _extract_sitelinks(entity.get("sitelinks", {}))
+    Units are preloaded eagerly (143 files). Entities and referenced entries
+    are read from disk on each access.
+    """
 
-            if labels or descriptions or aliases or claims:
-                result[qid] = WikidataEntity(
-                    labels=labels,
-                    descriptions=descriptions,
-                    aliases=aliases,
-                    claims=claims,
-                    sitelinks=sitelinks,
-                )
+    def __init__(self) -> None:
+        wikidata_dir = DOWNLOAD_DIR / "wikidata"
+        self._entities_dir = wikidata_dir / "entities"
+        self._referenced_dir = wikidata_dir / "referenced"
+        self._units: dict[str, WikidataEntity] = {}
 
-    logger.info("Loaded %d Wikidata entities", len(result))
-    return result
+        if not any(
+            d.exists()
+            for d in (self._entities_dir, self._referenced_dir, wikidata_dir / "units")
+        ):
+            logger.info("No wikidata entities found, labels will use object names only")
+            return
+
+        for qid, entity in load_json_dir(wikidata_dir / "units"):
+            parsed = _parse_entity(entity)
+            if parsed:
+                self._units[qid] = parsed
+        logger.info("Preloaded %d unit entities", len(self._units))
+
+    def get_entity(self, qid: str | None) -> WikidataEntity | None:
+        """Look up an object's own Wikidata entity (from entities/)."""
+        if not qid:
+            return None
+        return self._load(qid, self._entities_dir)
+
+    def get_referenced(self, qid: str | None) -> WikidataEntity | None:
+        """Look up a referenced entity from claims (from referenced/ or units)."""
+        if not qid:
+            return None
+        if qid in self._units:
+            return self._units[qid]
+        return self._load(qid, self._referenced_dir)
+
+    def _load(self, qid: str, directory: Path) -> WikidataEntity | None:
+        path = directory / f"{qid}.json"
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to load %s: %s", path, exc)
+            return None
+        return _parse_entity(raw)
+
+
+def _parse_entity(entity: dict) -> WikidataEntity | None:
+    labels = _extract_lang_values(entity.get("labels", {}))
+    descriptions = _extract_lang_values(entity.get("descriptions", {}))
+    aliases = _extract_lang_aliases(entity.get("aliases", {}))
+    claims = entity.get("claims", {})
+    sitelinks = _extract_sitelinks(entity.get("sitelinks", {}))
+    if not (labels or descriptions or aliases or claims):
+        return None
+    return WikidataEntity(
+        labels=labels,
+        descriptions=descriptions,
+        aliases=aliases,
+        claims=claims,
+        sitelinks=sitelinks,
+    )
 
 
 def resolve_name(
     obj: Object,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wd: WikidataEntity | None,
 ) -> str | None:
     """Resolve the best available name for an object in a given language."""
-    if obj.wikidata_qid and obj.wikidata_qid in wikidata_entities:
-        labels = wikidata_entities[obj.wikidata_qid]["labels"]
+    if wd:
+        labels = wd["labels"]
         if lang in labels:
             return labels[lang]
         if "en" in labels:
+            # TODO: save an export of where/how many fallbacks to english were done
             return labels["en"]
 
     return obj.name

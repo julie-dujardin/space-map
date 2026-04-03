@@ -13,7 +13,7 @@ def write_labels(
     objects: list[Object],
     out_file: Path,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    chunk_entities: dict[str, WikidataEntity | None],
 ) -> None:
     """Write a single label JSON file for one language and chunk.
 
@@ -21,8 +21,22 @@ def write_labels(
     """
     labels = []
     for obj in objects:
-        name = resolve_name(obj, lang, wikidata_entities)
-        labels.append(name or "")
+        # Name: prefer localized name, else english name (handled by resolve_name), else provider name or primary designation or provisional designation
+        # In practice, this covers everything.
+        name = (
+            (
+                resolve_name(obj, lang, chunk_entities.get(obj.wikidata_qid))
+                if obj.wikidata_qid
+                else None
+            )
+            or obj.name
+            or obj.sbdb_mcp_designation
+            or obj.provisional_designation
+        )
+        if not name:
+            logger.warning("No name found for object %s (id=%s)", obj, obj.id)
+            name = ""
+        labels.append(name)
 
     out_file.write_text("\n".join(labels))
     named = sum(1 for label in labels if label)

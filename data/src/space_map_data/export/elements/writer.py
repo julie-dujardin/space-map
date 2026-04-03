@@ -74,7 +74,11 @@ def write_elements(objects: list[Object], out_file: Path) -> None:
 
         # Column 12: radius_km — derived from SBDB diameter at export time
         def _radius_km(o: Object) -> float:
-            if o.sbdb is not None and o.sbdb.diameter is not None:
+            if (
+                o.sbdb_spkid is not None
+                and o.sbdb is not None
+                and o.sbdb.diameter is not None
+            ):
                 return o.sbdb.diameter / 2.0
             return MISSING_FLOAT64
 

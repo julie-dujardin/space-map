@@ -17,7 +17,7 @@ def write_chunk(
     zone: str,
     zoom: int,
     part: int,
-    wikidata_entities: dict[str, WikidataEntity],
+    chunk_entities: dict[str, WikidataEntity | None],
 ) -> int:
     """Write elements binary, label files, and id list for one chunk.
 
@@ -33,7 +33,7 @@ def write_chunk(
             out_dir / "element_labels" / lang / zone / str(zoom) / f"{part}.txt"
         )
         labels_path.parent.mkdir(parents=True, exist_ok=True)
-        write_labels(objects, labels_path, lang, wikidata_entities)
+        write_labels(objects, labels_path, lang, chunk_entities)
 
     ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.txt"
     ids_path.write_text("\n".join(obj.id for obj in objects))

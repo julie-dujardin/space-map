@@ -6,7 +6,7 @@ from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.wikidata_claims import resolve_unit
-from space_map_data.export.wikidata import WikidataEntity
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _extract_symbol(entity: WikidataEntity, lang: str) -> str | None:
 
 def write_unit_labels(
     out_dir: Path,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> None:
     """Write per-language unit label JSON files.
 
@@ -55,7 +55,7 @@ def write_unit_labels(
     # Build {normalized_english_key: (qid, entity)} mapping
     units: dict[str, tuple[str, WikidataEntity]] = {}
     for qid in sorted(qids):
-        entity = wikidata_entities.get(qid)
+        entity = wikidata_entities.get_referenced(qid)
         if not entity:
             continue
         key = resolve_unit(qid, wikidata_entities)

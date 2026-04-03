@@ -6,20 +6,20 @@ import math
 import shutil
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import case
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
-from tqdm import tqdm
 
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 
 from space_map_data.export.units import write_unit_labels
-from space_map_data.export.wikidata import load_wikidata_entities
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -79,17 +79,20 @@ def _write_parts(
     out_dir: Path,
     zone: str,
     zoom: int,
-    wikidata_entities: dict,
+    wikidata_entities: WikidataEntityCache,
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     total_bytes = 0
     for part_idx in range(num_parts):
         chunk = objects[part_idx * CHUNK_SIZE : (part_idx + 1) * CHUNK_SIZE]
-        total_bytes += write_chunk(
-            chunk, out_dir, zone, zoom, part_idx, wikidata_entities
-        )
-        write_objects(chunk, out_dir, wikidata_entities)
+        chunk_entities = {
+            qid: wikidata_entities.get_entity(qid)
+            for obj in chunk
+            if (qid := obj.wikidata_qid)
+        }
+        total_bytes += write_chunk(chunk, out_dir, zone, zoom, part_idx, chunk_entities)
+        write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
     return num_parts, total_bytes
 
 
@@ -100,96 +103,96 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _remove_old_outputs(out_dir)
 
-    wikidata_entities = load_wikidata_entities()
+    wikidata_entities = WikidataEntityCache()
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
     total_bytes_map: defaultdict[tuple[str, int], int] = defaultdict(int)
 
-    with Session(engine) as session:
-        # Non-SBDB zones
-        non_sbdb: list[tuple[str, object]] = [
-            (
-                "major",
-                session.query(Object).filter(
-                    Object.sbdb_spkid.is_(None),
-                    Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
-                ),
-            ),
-            (
-                "moons",
-                session.query(Object).filter(
-                    Object.sbdb_spkid.is_(None),
-                    Object.object_type == ObjectType.moon.value,
-                ),
-            ),
-            (
-                "earth",
-                session.query(Object).filter(
-                    Object.sbdb_spkid.is_(None),
-                    Object.object_type.in_(_EARTH_TYPE_VALUES),
-                    Object.parent_naif_id == _EARTH_NAIF_ID,
-                ),
-            ),
-            (
-                "spacecraft",
-                session.query(Object).filter(
-                    Object.sbdb_spkid.is_(None),
-                    Object.object_type.in_(_EARTH_TYPE_VALUES),
-                    Object.parent_naif_id != _EARTH_NAIF_ID,
-                ),
-            ),
-        ]
-        logger.info("Exporting non-SBDB zones...")
-        for zone, q in tqdm(non_sbdb, desc="non-SBDB", unit="zone"):
-            objects = q.order_by(Object.random_int).limit(limit_per_zone).all()
-            if not objects:
-                logger.info("  %s: empty, skipping", zone)
-                continue
-            if zone == "major":
-                # Barycenters must come first so parents resolve before children.
-                objects.sort(key=lambda o: o.object_type != ObjectType.barycenter)
-            num_parts, nbytes = _write_parts(
-                objects, out_dir, zone, 0, wikidata_entities
-            )
-            object_counts[(zone, 0)] += len(objects)
-            total_bytes_map[(zone, 0)] += nbytes
-            zone_structure[zone][0] = num_parts
-            logger.info("  %s: %d objects, %d parts", zone, len(objects), num_parts)
+    futures: dict = {}
 
-        # SBDB: one query per (class, zoom)
-        named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
-        sbdb_combos = (
-            session.query(SBDB.class_, named_col).group_by(SBDB.class_, named_col).all()
-        )
-        logger.info("Exporting %d SBDB (class, zoom) combinations...", len(sbdb_combos))
-        for cls, named in tqdm(sbdb_combos, desc="SBDB classes", unit="class"):
-            zoom = 0 if named else 1
-            name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
-            objects = (
-                session.query(Object)
-                .options(joinedload(Object.sbdb))
-                .join(Object.sbdb)
-                .filter(SBDB.class_ == cls, name_filter)
-                .order_by(Object.random_int)
-                .limit(limit_per_zone)
+    with Session(engine) as session:
+        with ThreadPoolExecutor() as executor:
+            # Non-SBDB zones
+            non_sbdb = [
+                (
+                    "major",
+                    session.query(Object).filter(
+                        Object.sbdb_spkid.is_(None),
+                        Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
+                    ),
+                ),
+                (
+                    "moons",
+                    session.query(Object).filter(
+                        Object.sbdb_spkid.is_(None),
+                        Object.object_type == ObjectType.moon.value,
+                    ),
+                ),
+                (
+                    "earth",
+                    session.query(Object).filter(
+                        Object.sbdb_spkid.is_(None),
+                        Object.object_type.in_(_EARTH_TYPE_VALUES),
+                        Object.parent_naif_id == _EARTH_NAIF_ID,
+                    ),
+                ),
+                (
+                    "spacecraft",
+                    session.query(Object).filter(
+                        Object.sbdb_spkid.is_(None),
+                        Object.object_type.in_(_EARTH_TYPE_VALUES),
+                        Object.parent_naif_id != _EARTH_NAIF_ID,
+                    ),
+                ),
+            ]
+            for zone, q in non_sbdb:
+                objects = q.order_by(Object.random_int).limit(limit_per_zone).all()
+                if not objects:
+                    logger.info("  %s: empty, skipping", zone)
+                    continue
+                if zone == "major":
+                    # Barycenters must come first so parents resolve before children.
+                    objects.sort(key=lambda o: o.object_type != ObjectType.barycenter)
+                f = executor.submit(
+                    _write_parts, objects, out_dir, zone, 0, wikidata_entities
+                )
+                futures[f] = (zone, 0, len(objects))
+
+            # SBDB: one query per (class, zoom)
+            named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
+            sbdb_combos = (
+                session.query(SBDB.class_, named_col)
+                .group_by(SBDB.class_, named_col)
                 .all()
             )
-            if not objects:
-                continue
-            num_parts, nbytes = _write_parts(
-                objects, out_dir, cls, zoom, wikidata_entities
-            )
-            object_counts[(cls, zoom)] += len(objects)
-            total_bytes_map[(cls, zoom)] += nbytes
-            zone_structure[cls][zoom] = num_parts
-            logger.info(
-                "  SBDB %s zoom=%d: %d objects, %d parts",
-                cls,
-                zoom,
-                len(objects),
-                num_parts,
-            )
+            for cls, named in sbdb_combos:
+                zoom = 0 if named else 1
+                name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
+                objects = (
+                    session.query(Object)
+                    .options(joinedload(Object.sbdb))
+                    .join(Object.sbdb)
+                    .filter(SBDB.class_ == cls, name_filter)
+                    .order_by(Object.random_int)
+                    .limit(limit_per_zone)
+                    .all()
+                )
+                if not objects:
+                    continue
+                f = executor.submit(
+                    _write_parts, objects, out_dir, cls, zoom, wikidata_entities
+                )
+                futures[f] = (cls, zoom, len(objects))
+            # executor joins here — session still open so ORM objects remain valid
+
+    for f in as_completed(futures):
+        zone, zoom, count = futures[f]
+        num_parts, nbytes = f.result()
+        object_counts[(zone, zoom)] += count
+        total_bytes_map[(zone, zoom)] += nbytes
+        zone_structure[zone][zoom] = num_parts
+        logger.info("  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts)
 
     # --- Other outputs ---
     write_unit_labels(out_dir, wikidata_entities)

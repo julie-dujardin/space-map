@@ -5,7 +5,11 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.wikidata import WikidataEntity, resolve_name
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    resolve_name,
+)
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
@@ -48,7 +52,8 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
 def write_objects(
     objects: list[Object],
     out_dir: Path,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
+    chunk_entities: dict[str, WikidataEntity | None],
 ) -> None:
     """Write per-object JSON files (global + per-language)."""
     global_dir = out_dir / "objects" / "__global__"
@@ -60,7 +65,7 @@ def write_objects(
         lang_dirs[lang] = d
 
     for obj in objects:
-        wd = wikidata_entities.get(obj.wikidata_qid or "")
+        wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
         extracted = extract_claims(wd["claims"]) if wd else {}
 
         # Global (non-localized)
@@ -91,7 +96,7 @@ def write_objects(
 def _build_global(
     obj: Object,
     extracted: dict,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -100,6 +105,8 @@ def _build_global(
     }
     if obj.name is not None:
         data["name"] = obj.name
+    if obj.sbdb_mcp_designation is not None:
+        data["sbdb_primary_designation"] = obj.sbdb_mcp_designation
     if obj.provisional_designation is not None:
         data["provisional_designation"] = obj.provisional_designation
 
@@ -119,7 +126,7 @@ def _build_global(
         data["orbit"] = orbit
 
     # SBDB extras
-    sbdb = obj.sbdb
+    sbdb = obj.sbdb if obj.sbdb_spkid is not None else None
     if sbdb is not None:
         sbdb_data = build_sbdb(sbdb)
         if sbdb_data:
@@ -149,7 +156,7 @@ def _build_global(
 def _build_localized(
     obj: Object,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
     wd: WikidataEntity | None,
     extracted: dict,
     wiki_summary: WikipediaSummary | None,
@@ -157,7 +164,7 @@ def _build_localized(
     """Build the per-language JSON dict for an object."""
     data: dict = {}
 
-    name = resolve_name(obj, lang, wikidata_entities)
+    name = resolve_name(obj, lang, wd)
     if name is not None:
         data["name"] = name
 

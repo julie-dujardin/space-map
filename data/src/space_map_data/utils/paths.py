@@ -3,9 +3,11 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[3]
 CONFIG_FILE = DATA_DIR / "config.toml"
-DOWNLOAD_DIR = DATA_DIR.parent.parent / "space-map-downloads"
+
+PROJECT_ROOT = DATA_DIR.parent
+
+DOWNLOAD_DIR = PROJECT_ROOT.parent / "space-map-downloads"
 DB_DIR = DOWNLOAD_DIR / "db"
 DB_FILE = DB_DIR / "space-map.db"
 
-PROJECT_ROOT = DATA_DIR.parent
-EXPORT_DIR = PROJECT_ROOT / "export"
+EXPORT_DIR = PROJECT_ROOT.parent / "space-map-export"

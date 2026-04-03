@@ -4,7 +4,7 @@ import logging
 from typing import Literal, NamedTuple
 from urllib.parse import quote
 
-from space_map_data.export.wikidata import WikidataEntity
+from space_map_data.export.wikidata import WikidataEntityCache
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +104,10 @@ def extract_claims(claims: dict) -> dict:
 def resolve_entity_ref(
     qid: str,
     lang: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> dict | None:
     """Resolve a QID to {name, wikipedia?} using downloaded entity data."""
-    wd = wikidata_entities.get(qid)
+    wd = wikidata_entities.get_referenced(qid)
     if not wd:
         return None
     name = wd["labels"].get(lang) or wd["labels"].get("en")
@@ -124,10 +124,10 @@ def resolve_entity_ref(
 
 def resolve_unit(
     unit_qid: str,
-    wikidata_entities: dict[str, WikidataEntity],
+    wikidata_entities: WikidataEntityCache,
 ) -> str | None:
     """Resolve a unit QID to a normalized English label, or None if not found."""
-    unit_wd = wikidata_entities.get(unit_qid)
+    unit_wd = wikidata_entities.get_referenced(unit_qid)
     if unit_wd:
         label = unit_wd["labels"].get("en")
         if label:
