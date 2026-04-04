@@ -13,7 +13,7 @@ from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader
-from space_map_data.download.providers.textures import RAW_DIR, TextureProcessor
+from space_map_data.download.providers.textures import TextureProcessor
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
 
@@ -41,12 +41,6 @@ def load_config() -> dict[str, Any]:
         return tomllib.load(f)
 
 
-def _process_textures(force: bool) -> None:
-    processor = TextureProcessor()
-    for tif in sorted(RAW_DIR.glob("*.tif")):
-        processor.process(tif, force=force)
-
-
 def download(
     sources: list[str] | None = None,
     limit: int | None = 50_000,
@@ -60,7 +54,7 @@ def download(
 
     if "textures" in selected:
         selected = [s for s in selected if s != "textures"]
-        _process_textures(force=force)
+        TextureProcessor().process_all(force=force)
 
     config = load_config()
     user_agent = config["download"]["user_agent"]

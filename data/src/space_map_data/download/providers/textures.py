@@ -164,6 +164,27 @@ class TextureProcessor:
 
         return exports, warnings
 
+    def process_all(self, force: bool = False) -> None:
+        """Process all textures listed in download-metadata.yaml.
+
+        Warns about any .tif files in RAW_DIR not referenced by the metadata.
+        """
+        known_files = {entry["file"] for entry in self._raw_meta}
+
+        for entry in self._raw_meta:
+            if entry.get("skip"):
+                continue
+            src = RAW_DIR / entry["file"]
+            if not src.exists():
+                log.warning("listed in metadata but not found: %s", entry["file"])
+                continue
+            self.process(src, force=force)
+
+        image_exts = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+        for f in sorted(RAW_DIR.iterdir()):
+            if f.suffix.lower() in image_exts and f.name not in known_files:
+                log.warning("untracked file not in download-metadata.yaml: %s", f.name)
+
     def process(self, src: Path | str, force: bool = False) -> Path:
         """Process a raw texture into WebP exports.
 

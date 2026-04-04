@@ -46,7 +46,7 @@
       "id": "sources",
       "type": "pickString",
       "description": "Which source(s) to download",
-      "options": ["all", "celestrak", "sbdb", "horizons", "wikidata", "wikipedia"],
+      "options": ["all", "celestrak", "sbdb", "horizons", "wikidata", "wikipedia", "textures"],
       "default": "all"
     },
     {
