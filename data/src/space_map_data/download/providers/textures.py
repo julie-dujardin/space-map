@@ -36,13 +36,12 @@ SIZE_TARGETS = [
 _NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
 
 
-def _open_image(path: Path) -> Image.Image:
-    """Open any image as an RGB PIL Image.
+def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
+    """Peicewise sRGB EOTF — linear toe + power curve."""
+    return np.where(x <= 0.0031308, 12.92 * x, 1.055 * np.power(x, 1 / 2.4) - 0.055)
 
-    Handles float32 TIFFs (e.g. GeoTIFF mosaics) that Pillow cannot read
-    directly by loading via tifffile, masking NoData pixels, and normalising
-    the valid reflectance range to uint8.
-    """
+
+def _open_image(path: Path) -> Image.Image:
     try:
         return Image.open(path)
     except Exception:
@@ -52,21 +51,23 @@ def _open_image(path: Path) -> Image.Image:
     if arr.dtype.kind != "f":
         raise ValueError(f"tifffile loaded {path.name} as {arr.dtype}, expected float")
 
-    nodata_mask = arr < _NODATA_THRESHOLD  # True where invalid
-    arr = np.clip(arr, 0.0, None)  # reflectance can't be negative
+    nodata_mask = arr < _NODATA_THRESHOLD
+    arr = np.clip(arr, 0.0, None)
     arr[nodata_mask] = 0.0
+    arr = arr.astype(np.float32)
 
-    # Normalise to the max valid value so the full uint8 range is used
-    valid_max = arr[~nodata_mask].max() if (~nodata_mask).any() else 1.0
-    arr = np.clip(arr / valid_max * 255.0, 0, 255).astype(np.uint8)
+    # Joint stretch: single (lo, hi) across all channels preserves color ratios
+    valid_mask = ~nodata_mask.any(axis=-1)  # pixels valid in ALL channels
+    valid_px = arr[valid_mask]  # shape (N, 3)
+    lo = np.percentile(valid_px, 2) if valid_px.size else 0.0
+    hi = np.percentile(valid_px, 98) if valid_px.size else 1.0
+    arr = np.clip((arr - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
 
-    img = Image.fromarray(arr, mode="RGB")
-    log.debug(
-        "loaded float32 TIFF %s as RGB uint8 (nodata pixels: %d)",
-        path.name,
-        nodata_mask.any(axis=-1).sum(),
-    )
-    return img
+    # sRGB transfer function (not a simple gamma power)
+    arr = _linear_to_srgb(arr)
+
+    arr = (arr * 255.0).astype(np.uint8)
+    return Image.fromarray(arr, mode="RGB")
 
 
 def _webp_kwargs(lossless: bool) -> dict:
