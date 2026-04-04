@@ -4,6 +4,8 @@ import math
 from datetime import UTC, datetime
 from pathlib import Path
 
+import numpy as np
+import tifffile
 import yaml
 from PIL import Image
 
@@ -25,10 +27,46 @@ EXPORT_SIZES = [2048, 8192]
 
 # File size targets per tier (upper-bound lookup: applies to exports <= the key)
 SIZE_TARGETS = [
-    (2048, 300 * 1024),           # small tier: 300 KiB
-    (8192, 2 * 1024 * 1024),      # medium tier: 2 MiB
+    (2048, 300 * 1024),  # small tier: 300 KiB
+    (8192, 2 * 1024 * 1024),  # medium tier: 2 MiB
     (WEBP_MAX, 6 * 1024 * 1024),  # high tier: 6 MiB
 ]
+
+
+_NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
+
+
+def _open_image(path: Path) -> Image.Image:
+    """Open any image as an RGB PIL Image.
+
+    Handles float32 TIFFs (e.g. GeoTIFF mosaics) that Pillow cannot read
+    directly by loading via tifffile, masking NoData pixels, and normalising
+    the valid reflectance range to uint8.
+    """
+    try:
+        return Image.open(path)
+    except Exception:
+        pass
+
+    arr = tifffile.imread(str(path))
+    if arr.dtype.kind != "f":
+        raise ValueError(f"tifffile loaded {path.name} as {arr.dtype}, expected float")
+
+    nodata_mask = arr < _NODATA_THRESHOLD  # True where invalid
+    arr = np.clip(arr, 0.0, None)  # reflectance can't be negative
+    arr[nodata_mask] = 0.0
+
+    # Normalise to the max valid value so the full uint8 range is used
+    valid_max = arr[~nodata_mask].max() if (~nodata_mask).any() else 1.0
+    arr = np.clip(arr / valid_max * 255.0, 0, 255).astype(np.uint8)
+
+    img = Image.fromarray(arr, mode="RGB")
+    log.debug(
+        "loaded float32 TIFF %s as RGB uint8 (nodata pixels: %d)",
+        path.name,
+        nodata_mask.any(axis=-1).sum(),
+    )
+    return img
 
 
 def _webp_kwargs(lossless: bool) -> dict:
@@ -51,7 +89,9 @@ def _resize(img: Image.Image, max_dim: int) -> Image.Image:
 def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
     img.save(path, "webp", **_webp_kwargs(lossless))
     size = path.stat().st_size
-    log.debug("saved %s (%dx%d, %.1f KiB)", path.name, img.width, img.height, size / 1024)
+    log.debug(
+        "saved %s (%dx%d, %.1f KiB)", path.name, img.width, img.height, size / 1024
+    )
     return {
         "file": path.name,
         "width": img.width,
@@ -63,24 +103,36 @@ def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
 
 class TextureProcessor:
     def __init__(self) -> None:
-        self._raw_meta: list[dict] | None = None
+        self._raw_meta: list[dict] = yaml.safe_load(
+            (RAW_DIR / "download-metadata.yaml").read_text()
+        )["bodies"]
 
-    def _load_entry(self, filename: str) -> dict:
-        if self._raw_meta is None:
-            self._raw_meta = yaml.safe_load((RAW_DIR / "download-metadata.yaml").read_text())["bodies"] or []
+    def _load_entry(self, filename: str, warnings: list[str]) -> dict | None:
         entry = next((b for b in self._raw_meta if b["file"] == filename), None)
         if entry is None:
-            raise ValueError(f"{filename} not found in download-metadata.yaml")
+            msg = f"{filename} not found in download-metadata.yaml"
+            log.warning(msg)
+            warnings.append(msg)
+            return None
+        if entry.get("skip"):
+            log.debug("skipping %s (marked skip in download-metadata.yaml)", filename)
+            return None
         return entry
 
-    def _export_small(self, img: Image.Image, prefix: str, out_dir: Path) -> tuple[list[dict], list[str]]:
+    def _export_small(
+        self, img: Image.Image, prefix: str, out_dir: Path
+    ) -> tuple[list[dict], list[str]]:
         exports = []
         for lossless in (False, True):
             suffix = "lossless" if lossless else "q80"
-            exports.append(_save_webp(img, out_dir / f"{prefix}_{suffix}.webp", lossless))
+            exports.append(
+                _save_webp(img, out_dir / f"{prefix}_{suffix}.webp", lossless)
+            )
         return exports, []
 
-    def _export_large(self, img: Image.Image, prefix: str, out_dir: Path) -> tuple[list[dict], list[str]]:
+    def _export_large(
+        self, img: Image.Image, prefix: str, out_dir: Path
+    ) -> tuple[list[dict], list[str]]:
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
         sizes = [s for s in EXPORT_SIZES if s < capped]
@@ -102,7 +154,11 @@ class TextureProcessor:
 
         # If the largest export is under 300 KiB, also save lossless at that size
         if exports[-1]["size_bytes"] < 300 * 1024:
-            rec = _save_webp(_resize(img, sizes[-1]), out_dir / f"{prefix}_{sizes[-1]}_lossless.webp", lossless=True)
+            rec = _save_webp(
+                _resize(img, sizes[-1]),
+                out_dir / f"{prefix}_{sizes[-1]}_lossless.webp",
+                lossless=True,
+            )
             exports.append(rec)
 
         return exports, warnings
@@ -115,21 +171,25 @@ class TextureProcessor:
         Returns the output directory.
         """
         src = Path(src)
-        entry = self._load_entry(src.name)
+        warnings: list[str] = []
+        entry = self._load_entry(src.name, warnings)
+        if entry is None:
+            return PROCESSED_DIR
 
         body = entry["body"]
-        map_type = entry["type"]
         out_dir = PROCESSED_DIR / body
 
         if not force and (out_dir / "metadata.json").exists():
-            log.debug("skipping %s (already processed, use force=True to reprocess)", src.name)
+            log.debug(
+                "skipping %s (already processed, use force=True to reprocess)", src.name
+            )
             return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        img = Image.open(src)
+        img = _open_image(src)
         w, h = img.size
-        prefix = f"{body}_{map_type}"
+        prefix = f"{body}"
 
         if max(w, h) < SMALL_DIM:
             exports, warnings = self._export_small(img, prefix, out_dir)
@@ -138,8 +198,9 @@ class TextureProcessor:
 
         metadata = {
             "body": body,
-            "source": entry.get("source"),
-            "type": map_type,
+            "source": entry["source"],
+            "description": entry.get("description"),
+            "type": entry["type"],
             "source_file": src.name,
             "source_dimensions": [w, h],
             "processed_at": datetime.now(UTC).isoformat(),
@@ -148,7 +209,12 @@ class TextureProcessor:
         }
 
         (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
-        log.info("processed %s → %d exports, %d warnings", src.name, len(exports), len(warnings))
+        log.info(
+            "processed %s → %d exports, %d warnings",
+            src.name,
+            len(exports),
+            len(warnings),
+        )
 
         return out_dir
 
@@ -156,7 +222,9 @@ class TextureProcessor:
 # --- Low-level helpers (kept for ad-hoc use) ---
 
 
-def to_webp_tiled(src: Path | str, lossless: bool = False, max_size: int = WEBP_MAX) -> list[Path]:
+def to_webp_tiled(
+    src: Path | str, lossless: bool = False, max_size: int = WEBP_MAX
+) -> list[Path]:
     """Split image into uniform tiles and save each as WebP.
 
     Returns the list of saved paths (single item if no tiling needed).
@@ -164,7 +232,7 @@ def to_webp_tiled(src: Path | str, lossless: bool = False, max_size: int = WEBP_
     src = Path(src)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    img = Image.open(src)
+    img = _open_image(src)
     w, h = img.size
 
     cols = math.ceil(w / max_size)
@@ -177,7 +245,11 @@ def to_webp_tiled(src: Path | str, lossless: bool = False, max_size: int = WEBP_
         for col in range(cols):
             x0, y0 = col * tile_w, row * tile_h
             tile = img.crop((x0, y0, min(x0 + tile_w, w), min(y0 + tile_h, h)))
-            name = f"{src.stem}.webp" if rows == cols == 1 else f"{src.stem}_r{row}_c{col}.webp"
+            name = (
+                f"{src.stem}.webp"
+                if rows == cols == 1
+                else f"{src.stem}_r{row}_c{col}.webp"
+            )
             out = PROCESSED_DIR / name
             tile.save(out, "webp", **_webp_kwargs(lossless))
             saved.append(out)
@@ -186,7 +258,9 @@ def to_webp_tiled(src: Path | str, lossless: bool = False, max_size: int = WEBP_
     return saved
 
 
-def to_webp_resized(src: Path | str, lossless: bool = False, max_size: int = WEBP_MAX) -> Path:
+def to_webp_resized(
+    src: Path | str, lossless: bool = False, max_size: int = WEBP_MAX
+) -> Path:
     """Downscale image to fit within WebP limits if needed and save as WebP.
 
     Returns the saved path.
@@ -194,13 +268,20 @@ def to_webp_resized(src: Path | str, lossless: bool = False, max_size: int = WEB
     src = Path(src)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    img = Image.open(src)
+    img = _open_image(src)
     w, h = img.size
 
     if w > max_size or h > max_size:
         scale = max_size / max(w, h)
         img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
-        log.warning("%s exceeded WebP limit (%dx%d), resized to %dx%d", src.name, w, h, img.width, img.height)
+        log.warning(
+            "%s exceeded WebP limit (%dx%d), resized to %dx%d",
+            src.name,
+            w,
+            h,
+            img.width,
+            img.height,
+        )
 
     out = PROCESSED_DIR / f"{src.stem}.webp"
     img.save(out, "webp", **_webp_kwargs(lossless))
