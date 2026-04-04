@@ -108,7 +108,7 @@ export class SceneRenderer {
 
 		// Scene + lights
 		this.scene = new Scene();
-		this.scene.add(new AmbientLight(0xffffff, 0.4));
+		this.scene.add(new AmbientLight(0xffffff, 0.05));
 
 		// Camera
 		const aspect = canvas.clientWidth / canvas.clientHeight;
@@ -177,7 +177,7 @@ export class SceneRenderer {
 			group.position.set(...body.position);
 
 			if (isStar) {
-				group.add(new PointLight(0xffffff, 2));
+				group.add(new PointLight(0xffffff, 3, 0, 0));
 			}
 
 			const segments = isStar ? 32 : 64;
