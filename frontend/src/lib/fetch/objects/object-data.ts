@@ -11,6 +11,7 @@ export interface GlobalObjectData {
 	id: string;
 	type: string;
 	name?: string;
+	map_texture_available?: boolean;
 	provisional_designation?: string;
 	cross_refs?: {
 		wikidata_qid?: string;

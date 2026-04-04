@@ -11,6 +11,8 @@ import {
 	Raycaster,
 	Scene,
 	SphereGeometry,
+	Texture,
+	TextureLoader,
 	Vector2,
 	Vector3,
 	WebGLRenderer,
@@ -32,6 +34,7 @@ import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svel
 import { createLabel, getLabelVariant } from './label-factory';
 import { makeCircleTexture, makeOrbitLine, makePointCloud } from './scene-builders';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 
 // For focused objects:
 // Body/halo size ratio at which the label should be hidden
@@ -81,6 +84,7 @@ export class SceneRenderer {
 	private readonly _tmpV3 = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
+	private readonly textureLoader = new TextureLoader();
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -186,6 +190,10 @@ export class SceneRenderer {
 			this.clickables.push(mesh);
 			this.meshToBody.set(mesh, body);
 
+			if (body.data.objectType === ObjectType.PLANET && body.data.fileId) {
+				this.loadBodyTexture(body.data.fileId, material as MeshStandardMaterial);
+			}
+
 			// CSS2D label
 			const variant = getLabelVariant(body);
 			const label = createLabel(color, body.data.name ?? '', variant, () => this.handleFocus(body));
@@ -232,6 +240,17 @@ export class SceneRenderer {
 				radiusScene: radius
 			});
 		}
+	}
+
+	private async loadBodyTexture(fileId: string, material: MeshStandardMaterial): Promise<void> {
+		const detail = await fetchObjectDetail(fileId);
+		if (!detail.global?.map_texture_available) return;
+		const texture = await new Promise<Texture>((resolve, reject) => {
+			this.textureLoader.load(`/data/v1/textures/${fileId}/low.webp`, resolve, undefined, reject);
+		});
+		material.map = texture;
+		material.color.set(0xffffff);
+		material.needsUpdate = true;
 	}
 
 	private buildPointClouds(circleTexture: CanvasTexture): void {
