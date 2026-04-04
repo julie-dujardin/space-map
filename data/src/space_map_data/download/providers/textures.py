@@ -21,12 +21,6 @@ RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 
-# Images below this dimension get lossless + lossy only (no multi-size exports)
-SMALL_DIM = 2048
-
-# Power-of-2 export sizes for large images
-EXPORT_SIZES = [2048, 8192]
-
 # File size targets per tier (upper-bound lookup: applies to exports <= the key)
 SIZE_TARGETS = [
     (2048, 300 * 1024),  # small tier: 300 KiB
@@ -104,7 +98,8 @@ def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
     }
 
 
-_TIERS = ["low", "medium", "high"]
+# Tier assigned by export size: 2048→low, 8192→medium, larger→high
+_SIZE_TO_TIER = {2048: "low", 8192: "medium"}
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 
@@ -122,27 +117,26 @@ class TextureProcessor:
         )
         session.commit()
 
-    def _export_small(self, img: Image.Image, out_dir: Path) -> dict[str, dict]:
-        """Export a small image as a single 'high' tier (lossy + lossless variant)."""
-        rec = _save_webp(img, out_dir / "high.webp", lossless=False)
-        # Also save lossless if the lossy output is small enough
-        if rec["size_bytes"] < 300 * 1024:
-            _save_webp(img, out_dir / "high_lossless.webp", lossless=True)
-        return {"high": rec}
-
-    def _export_large(
+    def _export(
         self, img: Image.Image, object_id: str, out_dir: Path
     ) -> tuple[dict[str, dict], list[str]]:
+        """Export image at all applicable sizes with fixed tier names.
+
+        Always produces low and high; medium is included when the source is large enough.
+        If no high was produced by lossy exports (image too small), promotes the largest
+        export to high as a lossless copy when it is under 300 KiB.
+        """
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
-        sizes = [s for s in EXPORT_SIZES if s < capped]
+        # Sizes to export: all EXPORT_SIZES that fit below the cap, plus the cap itself
+        sizes = [s for s in _SIZE_TO_TIER.keys() if s < capped]
         sizes.append(capped)
 
-        tiers = _TIERS[-len(sizes) :]
         exports: dict[str, dict] = {}
         warnings: list[str] = []
 
-        for tier, size in zip(tiers, sizes):
+        for size in sizes:
+            tier = _SIZE_TO_TIER.get(size, "high")
             resized = _resize(img, size)
             rec = _save_webp(resized, out_dir / f"{tier}.webp", lossless=False)
             exports[tier] = rec
@@ -153,11 +147,16 @@ class TextureProcessor:
                 log.warning(msg)
                 warnings.append(msg)
 
-        # If the high-tier export is tiny, also save a lossless copy
-        if exports["high"]["size_bytes"] < 300 * 1024:
-            _save_webp(
-                _resize(img, sizes[-1]), out_dir / "high_lossless.webp", lossless=True
-            )
+        # If no high was produced (source ≤ 8192), promote the largest export to high
+        # as a lossless copy — but only if it's small enough to be worth it
+        if "high" not in exports:
+            largest_rec = exports[max(exports, key=lambda t: exports[t]["width"])]
+            if largest_rec["size_bytes"] < 300 * 1024:
+                exports["high"] = _save_webp(
+                    _resize(img, largest_rec["width"]),
+                    out_dir / "high.webp",
+                    lossless=True,
+                )
 
         return exports, warnings
 
@@ -229,10 +228,7 @@ class TextureProcessor:
         w, h = img.size
         warnings: list[str] = []
 
-        if max(w, h) < SMALL_DIM:
-            exports = self._export_small(img, out_dir)
-        else:
-            exports, warnings = self._export_large(img, object_id, out_dir)
+        exports, warnings = self._export(img, object_id, out_dir)
 
         self._global_warnings.extend(warnings)
         self._mark_texture_available(object_id)
