@@ -144,6 +144,8 @@ class Object(Base):
         default=None
     )  # which source provided the orbital elements
 
+    map_texture_available: Mapped[bool] = mapped_column(default=False)
+
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
     sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")

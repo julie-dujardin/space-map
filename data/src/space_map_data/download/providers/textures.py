@@ -9,14 +9,16 @@ import tifffile
 import yaml
 from PIL import Image
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.models.object import Object
+from space_map_data.utils.db import get_session
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 Image.MAX_IMAGE_PIXELS = None
 
 log = logging.getLogger(__name__)
 
 RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
-PROCESSED_DIR = DOWNLOAD_DIR / "textures" / "processed"
+PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 
 # Images below this dimension get lossless + lossy only (no multi-size exports)
@@ -102,73 +104,80 @@ def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
     }
 
 
+_TIERS = ["low", "medium", "high"]
+_IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+
+
 class TextureProcessor:
     def __init__(self) -> None:
         self._raw_meta: list[dict] = yaml.safe_load(
             (RAW_DIR / "download-metadata.yaml").read_text()
         )["bodies"]
+        self._global_warnings: list[str] = []
 
-    def _load_entry(self, filename: str, warnings: list[str]) -> dict | None:
-        entry = next((b for b in self._raw_meta if b["file"] == filename), None)
-        if entry is None:
-            msg = f"{filename} not found in download-metadata.yaml"
-            log.warning(msg)
-            warnings.append(msg)
-            return None
-        if entry.get("skip"):
-            log.debug("skipping %s (marked skip in download-metadata.yaml)", filename)
-            return None
-        return entry
-
-    def _export_small(
-        self, img: Image.Image, prefix: str, out_dir: Path
-    ) -> tuple[list[dict], list[str]]:
-        exports = []
-        for lossless in (False, True):
-            suffix = "lossless" if lossless else "q80"
-            exports.append(
-                _save_webp(img, out_dir / f"{prefix}_{suffix}.webp", lossless)
+    def _lookup_object_id(self, body_name: str) -> str:
+        """Look up the Object.id for a body name (case-insensitive). Raises on no match."""
+        session = get_session()
+        obj = session.query(Object).filter(Object.name.ilike(body_name)).first()
+        if obj is None:
+            raise ValueError(
+                f"No object found in DB matching name {body_name!r} (case-insensitive)"
             )
-        return exports, []
+        return obj.id
+
+    def _mark_texture_available(self, object_id: str) -> None:
+        session = get_session()
+        session.query(Object).filter(Object.id == object_id).update(
+            {Object.map_texture_available: True}
+        )
+        session.commit()
+
+    def _export_small(self, img: Image.Image, out_dir: Path) -> dict[str, dict]:
+        """Export a small image as a single 'high' tier (lossy + lossless variant)."""
+        rec = _save_webp(img, out_dir / "high.webp", lossless=False)
+        # Also save lossless if the lossy output is small enough
+        if rec["size_bytes"] < 300 * 1024:
+            _save_webp(img, out_dir / "high_lossless.webp", lossless=True)
+        return {"high": rec}
 
     def _export_large(
-        self, img: Image.Image, prefix: str, out_dir: Path
-    ) -> tuple[list[dict], list[str]]:
+        self, img: Image.Image, object_id: str, out_dir: Path
+    ) -> tuple[dict[str, dict], list[str]]:
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
         sizes = [s for s in EXPORT_SIZES if s < capped]
         sizes.append(capped)
 
-        exports = []
-        warnings = []
+        tiers = _TIERS[-len(sizes) :]
+        exports: dict[str, dict] = {}
+        warnings: list[str] = []
 
-        for size in sizes:
+        for tier, size in zip(tiers, sizes):
             resized = _resize(img, size)
-            rec = _save_webp(resized, out_dir / f"{prefix}_{size}.webp", lossless=False)
-            exports.append(rec)
+            rec = _save_webp(resized, out_dir / f"{tier}.webp", lossless=False)
+            exports[tier] = rec
 
             target = _size_target(size)
             if target and rec["size_bytes"] > target:
-                msg = f"{rec['file']}: {rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
+                msg = f"{object_id}/{tier}.webp: {rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
                 log.warning(msg)
                 warnings.append(msg)
 
-        # If the largest export is under 300 KiB, also save lossless at that size
-        if exports[-1]["size_bytes"] < 300 * 1024:
-            rec = _save_webp(
-                _resize(img, sizes[-1]),
-                out_dir / f"{prefix}_{sizes[-1]}_lossless.webp",
-                lossless=True,
+        # If the high-tier export is tiny, also save a lossless copy
+        if exports["high"]["size_bytes"] < 300 * 1024:
+            _save_webp(
+                _resize(img, sizes[-1]), out_dir / "high_lossless.webp", lossless=True
             )
-            exports.append(rec)
 
         return exports, warnings
 
     def process_all(self, force: bool = False) -> None:
         """Process all textures listed in download-metadata.yaml.
 
-        Warns about any .tif files in RAW_DIR not referenced by the metadata.
+        Warns about any image files in RAW_DIR not referenced by the metadata.
+        Writes a global warnings file to the textures download directory.
         """
+        self._global_warnings = []
         known_files = {entry["file"] for entry in self._raw_meta}
 
         for entry in self._raw_meta:
@@ -176,30 +185,47 @@ class TextureProcessor:
                 continue
             src = RAW_DIR / entry["file"]
             if not src.exists():
-                log.warning("listed in metadata but not found: %s", entry["file"])
+                msg = f"listed in metadata but not found: {entry['file']}"
+                log.warning(msg)
+                self._global_warnings.append(msg)
                 continue
             self.process(src, force=force)
 
-        image_exts = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
         for f in sorted(RAW_DIR.iterdir()):
-            if f.suffix.lower() in image_exts and f.name not in known_files:
-                log.warning("untracked file not in download-metadata.yaml: %s", f.name)
+            if f.suffix.lower() in _IMAGE_EXTS and f.name not in known_files:
+                msg = f"untracked file not in download-metadata.yaml: {f.name}"
+                log.warning(msg)
+                self._global_warnings.append(msg)
+
+        warnings_file = RAW_DIR.parent / "warnings.json"
+        warnings_file.write_text(json.dumps(self._global_warnings, indent=2))
+        if self._global_warnings:
+            log.warning(
+                "%d global texture warning(s) — see %s",
+                len(self._global_warnings),
+                warnings_file,
+            )
 
     def process(self, src: Path | str, force: bool = False) -> Path:
         """Process a raw texture into WebP exports.
 
         Reads body info from raw/download-metadata.yaml.
-        Exports are written to processed/<body>/ alongside a metadata.json.
+        Exports are written to PROCESSED_DIR/<object_id>/ alongside a metadata.json.
         Returns the output directory.
         """
         src = Path(src)
-        warnings: list[str] = []
-        entry = self._load_entry(src.name, warnings)
+        entry = next((b for b in self._raw_meta if b["file"] == src.name), None)
         if entry is None:
+            msg = f"{src.name} not found in download-metadata.yaml"
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            return PROCESSED_DIR
+        if entry.get("skip"):
+            log.debug("skipping %s (marked skip in download-metadata.yaml)", src.name)
             return PROCESSED_DIR
 
-        body = entry["body"]
-        out_dir = PROCESSED_DIR / body
+        object_id = self._lookup_object_id(entry["body"])
+        out_dir = PROCESSED_DIR / object_id
 
         if not force and (out_dir / "metadata.json").exists():
             log.debug(
@@ -211,15 +237,18 @@ class TextureProcessor:
 
         img = _open_image(src)
         w, h = img.size
-        prefix = f"{body}"
+        warnings: list[str] = []
 
         if max(w, h) < SMALL_DIM:
-            exports, warnings = self._export_small(img, prefix, out_dir)
+            exports = self._export_small(img, out_dir)
         else:
-            exports, warnings = self._export_large(img, prefix, out_dir)
+            exports, warnings = self._export_large(img, object_id, out_dir)
+
+        self._global_warnings.extend(warnings)
+        self._mark_texture_available(object_id)
 
         metadata = {
-            "body": body,
+            "id": object_id,
             "source": entry["source"],
             "description": entry.get("description"),
             "type": entry["type"],
@@ -227,16 +256,10 @@ class TextureProcessor:
             "source_dimensions": [w, h],
             "processed_at": datetime.now(UTC).isoformat(),
             "exports": exports,
-            "warnings": warnings,
         }
 
         (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
-        log.info(
-            "processed %s → %d exports, %d warnings",
-            src.name,
-            len(exports),
-            len(warnings),
-        )
+        log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
 
         return out_dir
 

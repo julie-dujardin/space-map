@@ -99,6 +99,8 @@ def _build_global(
         "id": obj.id,
         "type": obj.object_type,
     }
+    if obj.map_texture_available:
+        data["map_texture_available"] = True
     if obj.name is not None:
         data["name"] = obj.name
     if obj.sbdb_mcp_designation is not None:
