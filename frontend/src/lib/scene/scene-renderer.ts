@@ -82,6 +82,7 @@ export class SceneRenderer {
 	private focusedBody: PositionedBody | undefined;
 	private focusTarget = new Vector3();
 	private readonly _tmpV3 = new Vector3();
+	private readonly _tmpV3b = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
 	private readonly textureLoader = new TextureLoader();
@@ -179,7 +180,7 @@ export class SceneRenderer {
 				group.add(new PointLight(0xffffff, 2));
 			}
 
-			const segments = isStar ? 32 : 16;
+			const segments = isStar ? 32 : 64;
 			const geometry = new SphereGeometry(radius, segments, segments);
 			const material = isStar
 				? new MeshBasicMaterial({ color })
@@ -364,6 +365,18 @@ export class SceneRenderer {
 			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
+		// Hide labels of bodies occluded by a planet sphere
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.label?.visible) continue;
+			if (bo.body.data.objectType === ObjectType.STAR) continue;
+			const [bx, by, bz] = bo.body.position;
+			this._tmpV3.set(bx, by, bz);
+			const dist = this.camera.position.distanceTo(this._tmpV3);
+			if (this.isOccludedByPlanet(bx, by, bz, dist, bo.body.data.id)) {
+				bo.label.visible = false;
+			}
+		}
+
 		this.cullOverlappingLabels();
 
 		if (!isAnimating) {
@@ -400,6 +413,38 @@ export class SceneRenderer {
 		label.visible = show;
 		if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
 		label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+	}
+
+	/**
+	 * Returns true if the point (bx,by,bz) at distance bodyDist from the camera
+	 * lies within the angular cone of any planet sphere (i.e. is occluded by it).
+	 * selfId is excluded so a planet doesn't occlude its own label.
+	 */
+	private isOccludedByPlanet(
+		bx: number,
+		by: number,
+		bz: number,
+		bodyDist: number,
+		selfId: number
+	): boolean {
+		const cam = this.camera.position;
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.body.data.objectType !== ObjectType.PLANET) continue;
+			if (bo.body.data.id === selfId) continue;
+			this._tmpV3.set(...bo.body.position);
+			const planetDist = cam.distanceTo(this._tmpV3);
+			if (planetDist >= bodyDist) continue; // planet is behind the body
+			// Direction camera → body
+			this._tmpV3b.set(bx, by, bz).sub(cam).normalize();
+			// Direction camera → planet centre (reuse _tmpV3)
+			this._tmpV3.sub(cam).normalize();
+			const cosAngle = this._tmpV3b.dot(this._tmpV3);
+			if (cosAngle <= 0) continue;
+			const sinOcclude = bo.radiusScene / planetDist;
+			if (sinOcclude >= 1) continue;
+			if (cosAngle >= Math.sqrt(1 - sinOcclude * sinOcclude)) return true;
+		}
+		return false;
 	}
 
 	private cullOverlappingLabels(): void {
