@@ -11,10 +11,11 @@ from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
+from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader
+from space_map_data.download.providers.textures import RAW_DIR, TextureProcessor
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
-from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ PROVIDERS_CLASSES = [
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
+ALL_SOURCES = [*SOURCES, "textures"]
+
 
 def load_config() -> dict[str, Any]:
     """Load download configuration from config.toml."""
@@ -36,6 +39,12 @@ def load_config() -> dict[str, Any]:
         raise FileNotFoundError(f"Config file not found at {CONFIG_FILE}")
     with CONFIG_FILE.open("rb") as f:
         return tomllib.load(f)
+
+
+def _process_textures(force: bool) -> None:
+    processor = TextureProcessor()
+    for tif in sorted(RAW_DIR.glob("*.tif")):
+        processor.process(tif, force=force)
 
 
 def download(
@@ -47,7 +56,11 @@ def download(
 ) -> None:
     """Download data from the given sources (default: all)."""
     DOWNLOAD_DIR.mkdir(exist_ok=True)
-    selected = list(SOURCES.keys()) if sources is None else sources
+    selected = list(ALL_SOURCES) if sources is None else sources
+
+    if "textures" in selected:
+        selected = [s for s in selected if s != "textures"]
+        _process_textures(force=force)
 
     config = load_config()
     user_agent = config["download"]["user_agent"]

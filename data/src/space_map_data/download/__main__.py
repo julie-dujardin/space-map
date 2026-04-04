@@ -5,7 +5,7 @@ import logging
 import logging.config
 import tomllib
 
-from space_map_data.download.common import SOURCES, download
+from space_map_data.download.common import ALL_SOURCES, download
 from space_map_data.utils.db import session_scope
 from space_map_data.utils.paths import DATA_DIR
 
@@ -17,10 +17,10 @@ def cli():
     parser.add_argument(
         "--sources",
         nargs="+",
-        choices=[*SOURCES.keys(), "all"],
+        choices=[*ALL_SOURCES, "all"],
         default=["all"],
         metavar="SOURCE",
-        help=f"Sources to download: {', '.join(SOURCES)}, all (default: all)",
+        help=f"Sources to download: {', '.join(ALL_SOURCES)}, all (default: all)",
     )
     parser.add_argument(
         "--limit",
