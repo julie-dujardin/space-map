@@ -1,6 +1,6 @@
 """Load and extract Wikipedia summaries for export."""
 
-import json
+import orjson
 import logging
 from dataclasses import dataclass
 
@@ -30,7 +30,7 @@ def load_wikipedia_summaries_for_qid(qid: str) -> dict[str, WikipediaSummary]:
         path = wiki_dir / lang / f"{qid}.json"
         if not path.exists():
             continue
-        page = json.loads(path.read_text())
+        page = orjson.loads(path.read_bytes())
         summary = _extract_wikipedia(page)
         if summary:
             result[lang] = summary

@@ -1,6 +1,6 @@
 """Wikidata entity loading, types, and name resolution."""
 
-import json
+import orjson
 import logging
 from collections.abc import Iterator
 from pathlib import Path
@@ -29,8 +29,8 @@ def load_json_dir(directory: Path, glob: str = "Q*.json") -> Iterator[tuple[str,
         return
     for path in directory.glob(glob):
         try:
-            data = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
+            data = orjson.loads(path.read_bytes())
+        except (orjson.JSONDecodeError, OSError) as exc:
             logger.error("Failed to load %s: %s", path, exc)
             continue
         yield path.stem, data
@@ -81,8 +81,8 @@ class WikidataEntityCache:
         if not path.exists():
             return None
         try:
-            raw = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
+            raw = orjson.loads(path.read_bytes())
+        except (orjson.JSONDecodeError, OSError) as exc:
             logger.error("Failed to load %s: %s", path, exc)
             return None
         return _parse_entity(raw)

@@ -1,6 +1,6 @@
 """Write per-object JSON files: objects/__global__/<id>.json and objects/<lang>/<id>.json."""
 
-import json
+import orjson
 import logging
 from pathlib import Path
 
@@ -70,9 +70,7 @@ def write_objects(
 
         # Global (non-localized)
         global_data = _build_global(obj, extracted, wikidata_entities)
-        (global_dir / f"{obj.id}.json").write_text(
-            json.dumps(global_data, ensure_ascii=False, separators=(",", ":"))
-        )
+        (global_dir / f"{obj.id}.json").write_bytes(orjson.dumps(global_data))
 
         # Per-language (localized)
         qid = obj.wikidata_qid
@@ -82,9 +80,7 @@ def write_objects(
             lang_data = _build_localized(
                 obj, lang, wikidata_entities, wd, extracted, wiki
             )
-            (lang_dirs[lang] / f"{obj.id}.json").write_text(
-                json.dumps(lang_data, ensure_ascii=False, separators=(",", ":"))
-            )
+            (lang_dirs[lang] / f"{obj.id}.json").write_bytes(orjson.dumps(lang_data))
 
     logger.info(
         "Wrote object files for %d objects (%d languages + global)",

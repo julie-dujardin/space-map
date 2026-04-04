@@ -1,6 +1,6 @@
 """Export orchestrator: query DB, write chunked output files."""
 
-import json
+import orjson
 import logging
 import math
 import shutil
@@ -198,7 +198,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     write_unit_labels(out_dir, wikidata_entities)
 
     metadata = _build_metadata(zone_structure, object_counts, total_bytes_map)
-    (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+    (out_dir / "metadata.json").write_bytes(
+        orjson.dumps(metadata, option=orjson.OPT_INDENT_2)
+    )
 
     total = sum(object_counts.values())
     elapsed = time.monotonic() - t0

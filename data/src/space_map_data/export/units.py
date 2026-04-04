@@ -1,6 +1,6 @@
 """Write localization/units/<lang>.json files with localized unit labels and symbols."""
 
-import json
+import orjson
 import logging
 from pathlib import Path
 
@@ -85,5 +85,5 @@ def write_unit_labels(
                 labels[f"unit_symbol_{key}"] = entity["labels"].get("en", label)
 
         out_file = labels_dir / f"{lang}.json"
-        out_file.write_text(json.dumps(labels, ensure_ascii=False, indent=2))
+        out_file.write_bytes(orjson.dumps(labels, option=orjson.OPT_INDENT_2))
         logger.info("Wrote %d unit entries to %s", len(labels), out_file.name)
