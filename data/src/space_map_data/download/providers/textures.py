@@ -115,16 +115,6 @@ class TextureProcessor:
         )["bodies"]
         self._global_warnings: list[str] = []
 
-    def _lookup_object_id(self, body_name: str) -> str:
-        """Look up the Object.id for a body name (case-insensitive). Raises on no match."""
-        session = get_session()
-        obj = session.query(Object).filter(Object.name.ilike(body_name)).first()
-        if obj is None:
-            raise ValueError(
-                f"No object found in DB matching name {body_name!r} (case-insensitive)"
-            )
-        return obj.id
-
     def _mark_texture_available(self, object_id: str) -> None:
         session = get_session()
         session.query(Object).filter(Object.id == object_id).update(
@@ -224,7 +214,7 @@ class TextureProcessor:
             log.debug("skipping %s (marked skip in download-metadata.yaml)", src.name)
             return PROCESSED_DIR
 
-        object_id = self._lookup_object_id(entry["body"])
+        object_id = entry["body"]
         out_dir = PROCESSED_DIR / object_id
 
         if not force and (out_dir / "metadata.json").exists():
