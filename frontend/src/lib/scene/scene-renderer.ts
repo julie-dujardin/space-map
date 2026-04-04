@@ -112,7 +112,7 @@ export class SceneRenderer {
 
 		// Camera
 		const aspect = canvas.clientWidth / canvas.clientHeight;
-		this.camera = new PerspectiveCamera(60, aspect, 0.0001, 100000);
+		this.camera = new PerspectiveCamera(60, aspect, 0.000001, 100000);
 
 		// Set initial camera position from URL state
 		const sunBody = ctx.majorBodies.find((b) => b.data.id === 10);
@@ -191,7 +191,7 @@ export class SceneRenderer {
 			this.clickables.push(mesh);
 			this.meshToBody.set(mesh, body);
 
-			if (body.data.objectType === ObjectType.PLANET && body.data.fileId) {
+			if (body.data.fileId) {
 				this.loadBodyTexture(body.data.fileId, material as MeshStandardMaterial);
 			}
 
