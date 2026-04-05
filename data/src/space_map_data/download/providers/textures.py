@@ -22,11 +22,11 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
-# File size targets per tier (upper-bound lookup: applies to exports <= the key)
+# Upper-bound lookup: (max_dim, tier_name, size_target)
 SIZE_TARGETS = [
-    (2048, 300 * 1024),  # small tier: 300 KiB
-    (8192, 2 * 1024 * 1024),  # medium tier: 2 MiB
-    (WEBP_MAX, 6 * 1024 * 1024),  # high tier: 6 MiB
+    (2048, "low", 300 * 1024),
+    (8192, "medium", 2 * 1024 * 1024),
+    (WEBP_MAX, "high", 6 * 1024 * 1024),
 ]
 
 
@@ -42,7 +42,9 @@ def _open_image(path: Path) -> Image.Image:
     try:
         return Image.open(path)
     except Exception:
-        pass
+        log.debug(
+            "PIL could not open %s, falling back to tifffile", path.name, exc_info=True
+        )
 
     arr = tifffile.imread(str(path))
     if arr.dtype.kind != "f":
@@ -54,13 +56,12 @@ def _open_image(path: Path) -> Image.Image:
     arr = arr.astype(np.float32)
 
     # Joint stretch: single (lo, hi) across all channels preserves color ratios
-    valid_mask = ~nodata_mask.any(axis=-1)  # pixels valid in ALL channels
-    valid_px = arr[valid_mask]  # shape (N, 3)
+    valid_mask = ~nodata_mask.any(axis=-1)
+    valid_px = arr[valid_mask]
     lo = np.percentile(valid_px, 2) if valid_px.size else 0.0
     hi = np.percentile(valid_px, 98) if valid_px.size else 1.0
     arr = np.clip((arr - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
 
-    # sRGB transfer function (not a simple gamma power)
     arr = _linear_to_srgb(arr)
 
     arr = (arr * 255.0).astype(np.uint8)
@@ -71,8 +72,15 @@ def _webp_kwargs(lossless: bool) -> dict:
     return {"lossless": True, "method": 6} if lossless else {"quality": 80}
 
 
+def _tier_for_size(size: int) -> str:
+    for dim, tier, _ in SIZE_TARGETS:
+        if size <= dim:
+            return tier
+    return "high"
+
+
 def _size_target(export_dim: int) -> int | None:
-    for dim, target in SIZE_TARGETS:
+    for dim, _, target in SIZE_TARGETS:
         if export_dim <= dim:
             return target
     return None
@@ -99,14 +107,6 @@ def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
     }
 
 
-def _tier_for_size(size: int) -> str:
-    if size <= 2048:
-        return "low"
-    if size <= 8192:
-        return "medium"
-    return "high"
-
-
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 
@@ -127,12 +127,7 @@ class TextureProcessor:
     def _export(
         self, img: Image.Image, object_id: str, out_dir: Path
     ) -> tuple[dict[str, dict], list[str]]:
-        """Export image at all applicable sizes with fixed tier names.
-
-        Always produces low and high; medium is included when the source is large enough.
-        If no high was produced by lossy exports (image too small), promotes the largest
-        export to high as a lossless copy when it is under 300 KiB.
-        """
+        """Export image at applicable sizes; promotes largest to lossless high if source is below the high tier."""
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
         # Sizes to export: all EXPORT_SIZES that fit below the cap, plus the cap itself
@@ -233,7 +228,6 @@ class TextureProcessor:
 
         img = _open_image(src)
         w, h = img.size
-        warnings: list[str] = []
 
         exports, warnings = self._export(img, object_id, out_dir)
 
@@ -255,9 +249,6 @@ class TextureProcessor:
         log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
 
         return out_dir
-
-
-# --- Low-level helpers (kept for ad-hoc use) ---
 
 
 def to_webp_tiled(
@@ -310,8 +301,7 @@ def to_webp_resized(
     w, h = img.size
 
     if w > max_size or h > max_size:
-        scale = max_size / max(w, h)
-        img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+        img = _resize(img, max_size)
         log.warning(
             "%s exceeded WebP limit (%dx%d), resized to %dx%d",
             src.name,
