@@ -23,7 +23,6 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
 	BODY_COLORS,
-	BODY_RADII_KM,
 	DEFAULT_BODY_COLOR,
 	DEFAULT_BODY_RADIUS_KM
 } from '$lib/constants';
@@ -431,10 +430,12 @@ export class SceneRenderer {
 
 		if (!show && isClose) {
 			screenR = (radiusScene / distToBody) * projScale;
-			// Only treat as "close" if the body is actually visible on screen (not a distant
-			// body that merely entered the close ratio band, e.g. outer moons when zoomed
-			// into their parent planet).
-			if (screenR >= 1) {
+			// For bodies that entered CLOSE state because the camera is near their parent
+			// (e.g. outer moons when zoomed into Saturn), screenR is near-zero even though
+			// the body is physically far. Skip the close logic unless we're actually zoomed
+			// into this specific body (isFocused) or it's large enough on screen (screenR >= 1).
+			const isFocused = bo.body.data.id === this.focusedBody?.data.id;
+			if (isFocused || screenR >= 1) {
 				show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
 				hideHaloRing = screenR >= HALO_RADIUS_PX;
 				if (bo.orbitLine) bo.orbitLine.visible = !hideHaloRing;
