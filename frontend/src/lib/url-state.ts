@@ -1,4 +1,5 @@
 import { page } from '$app/state';
+import { urlTypeToIdPrefix } from './format';
 
 const { PI, sin, cos, asin, atan2, sqrt } = Math;
 const DEG = 180 / PI;
@@ -6,7 +7,7 @@ const RAD = PI / 180;
 
 export interface MapViewState {
 	type: string;
-	id: number;
+	id: string; // prefixed, e.g. "naif-10", "spkid-20134340"
 	name: string;
 	date: Date;
 	isNow: boolean;
@@ -17,7 +18,7 @@ export interface MapViewState {
 
 export const DEFAULT_VIEW: MapViewState = {
 	type: 'body',
-	id: 10,
+	id: 'naif-10',
 	name: 'Sun',
 	date: new Date(),
 	isNow: true,
@@ -35,11 +36,12 @@ export function parseUrl(): MapViewState | null {
 		return null;
 	}
 
-	const id = Number(idStr);
-	if (!Number.isFinite(id)) {
+	const numericId = Number(idStr);
+	if (!Number.isFinite(numericId)) {
 		console.warn(`parseUrl: non-numeric id param: ${idStr}`);
 		return null;
 	}
+	const id = `${urlTypeToIdPrefix(type)}-${numericId}`;
 
 	const name = page.params.name ?? '';
 	const defaults = { ...DEFAULT_VIEW, type, id, name };
@@ -69,7 +71,8 @@ export function serializeUrl(state: MapViewState): string {
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
 	const slug = state.name ? `/${encodeURIComponent(state.name)}` : '';
-	return `/${state.type}/${state.id}${slug}?at=${at}`;
+	const numericId = state.id.slice(state.id.lastIndexOf('-') + 1);
+	return `/${state.type}/${numericId}${slug}?at=${at}`;
 }
 
 /** Camera-relative-to-target → spherical (degrees, Y-up) */

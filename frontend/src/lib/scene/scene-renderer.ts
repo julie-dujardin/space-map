@@ -82,10 +82,10 @@ export class SceneRenderer {
 	private ctx: ContextManager;
 	private callbacks: Callbacks;
 
-	private bodyObjects = new Map<number, BodyObjects>();
+	private bodyObjects = new Map<string, BodyObjects>();
 	private asteroidPoints: Points | null = null;
-	private spacecraftPoints = new Map<number, Points>();
-	private moonPoints = new Map<number, Points>();
+	private spacecraftPoints = new Map<string, Points>();
+	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 
@@ -128,7 +128,7 @@ export class SceneRenderer {
 		this.camera = new PerspectiveCamera(60, aspect, 0.000001, 100000);
 
 		// Set initial camera position from URL state
-		const sunBody = ctx.majorBodies.find((b) => b.data.id === 10);
+		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
 		const allBodies = ctx.allBodies;
 		const matchedBody = allBodies.find((b) => b.data.id === initialView.id);
 		const focusBody = matchedBody ?? sunBody;
@@ -204,9 +204,7 @@ export class SceneRenderer {
 			this.clickables.push(mesh);
 			this.meshToBody.set(mesh, body);
 
-			if (body.data.fileId) {
-				this.loadBodyTexture(body.data.fileId, material as MeshStandardMaterial);
-			}
+			this.loadBodyTexture(body.data.id, material as MeshStandardMaterial);
 
 			// CSS2D label
 			const variant = getLabelVariant(body);
@@ -292,7 +290,7 @@ export class SceneRenderer {
 		}
 
 		// Moon point clouds (one per parent body, initially hidden)
-		const moonsByParent = new Map<number, PositionedBody[]>();
+		const moonsByParent = new Map<string, PositionedBody[]>();
 		for (const body of this.ctx.majorBodies) {
 			if (body.data.objectType === ObjectType.MOON) {
 				const list = moonsByParent.get(body.data.parentId) ?? [];

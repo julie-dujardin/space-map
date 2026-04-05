@@ -17,11 +17,10 @@ function columnarToBody(
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 
 	return {
-		id: cols.id[idx],
-		fileId: idMap.get(idx) ?? null,
+		id: idMap.get(idx)!,
 		name: labels.get(idx) ?? null,
 		objectType: cols.objectType[idx] as ObjectType,
-		parentId: cols.parentId[idx],
+		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
 		// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
 		a: isPlanetScale ? cols.a[idx] / KM_PER_AU : cols.a[idx],

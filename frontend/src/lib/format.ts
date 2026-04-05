@@ -1,9 +1,13 @@
-import { isAsteroid, ObjectType } from './types/objects';
+/** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
+export function urlTypeToIdPrefix(urlType: string): string {
+	if (urlType === 'sb') return 'spkid';
+	if (urlType === 'sat') return 'norad_satcat';
+	return 'naif'; // body, probe
+}
 
-/** Map ObjectType to URL type prefix. */
-export function urlType(type: ObjectType): string {
-	if (type === ObjectType.SPACECRAFT) return 'probe'; // TODO
-	if (type === ObjectType.DEBRIS) return 'sat'; // TODO
-	if (isAsteroid(type) || type === ObjectType.COMET) return 'sb';
-	return 'body';
+/** Derive URL type segment from a prefixed body ID. Use this for URL generation — it's always consistent with the ID. */
+export function urlTypeFromId(id: string): string {
+	if (id.startsWith('spkid-')) return 'sb';
+	if (id.startsWith('norad_satcat-')) return 'sat';
+	return 'body'; // naif-
 }

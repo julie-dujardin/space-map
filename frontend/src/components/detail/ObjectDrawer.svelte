@@ -49,18 +49,17 @@
 	});
 
 	$effect(() => {
-		void body.data.fileId;
+		void body.data.id;
 		if (isMobile) sheetHeight = SNAPS[0];
 	});
 
 	$effect(() => {
-		const fileId = body.data.fileId;
-		if (!fileId) return;
+		const id = body.data.id;
 		loading = true;
 		data = null;
-		fetchObjectDetail(fileId)
+		fetchObjectDetail(id)
 			.then((result) => {
-				if (body.data.fileId === fileId) {
+				if (body.data.id === id) {
 					data = result;
 					loading = false;
 				}
