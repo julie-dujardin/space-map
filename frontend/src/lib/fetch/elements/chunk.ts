@@ -112,7 +112,10 @@ export class ChunkLoader {
 
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
-					this.barycenters.set(id, body);
+					// if parent is SSB, don't use it
+					if (body.a > 0 && body.e < 1) {
+						this.barycenters.set(id, body);
+					}
 					this.positions.set(id, pos);
 				}
 				bodies.push({ data: body, position: pos });
