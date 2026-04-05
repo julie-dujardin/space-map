@@ -231,11 +231,15 @@ export class SceneRenderer {
 					},
 					{ passive: false }
 				);
-				// Forward all pointerdown events so OrbitControls sees every finger for pinch-zoom.
+				// Forward touch pointerdown events so OrbitControls sees every finger for pinch-zoom.
 				// Both fingers must reach the canvas — in crowded areas both may land on labels.
-				// Single-tap still works: the label's own click handler fires independently on pointerup.
+				// Mouse events are NOT forwarded: setPointerCapture would steal the pointerup from
+				// the label and prevent its click from firing. Touch-taps are fine because the
+				// browser synthesizes click from touch location regardless of pointer capture.
 				label.element.addEventListener('pointerdown', (e: PointerEvent) => {
-					this.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', e));
+					if (e.pointerType === 'touch') {
+						this.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', e));
+					}
 				});
 				group.add(label);
 			}
