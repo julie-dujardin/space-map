@@ -84,6 +84,7 @@ export class SceneRenderer {
 	private callbacks: Callbacks;
 
 	private bodyObjects = new Map<string, BodyObjects>();
+	private circleTexture: CanvasTexture | null = null;
 	private asteroidPoints: Points | null = null;
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
@@ -173,9 +174,38 @@ export class SceneRenderer {
 	// --- Scene construction ---
 
 	private buildScene(): void {
-		const circleTexture = makeCircleTexture();
+		this.circleTexture = makeCircleTexture();
 		this.buildMajorBodies();
-		this.buildPointClouds(circleTexture);
+		this.buildPointClouds(this.circleTexture);
+	}
+
+	rebuildMinorPointClouds(): void {
+		if (!this.circleTexture) return;
+
+		// Dispose and remove existing asteroid cloud
+		if (this.asteroidPoints) {
+			this.scene.remove(this.asteroidPoints);
+			this.asteroidPoints.geometry.dispose();
+			this.asteroidPoints = null;
+		}
+
+		// Dispose and remove existing spacecraft clouds
+		for (const pts of this.spacecraftPoints.values()) {
+			this.scene.remove(pts);
+			pts.geometry.dispose();
+		}
+		this.spacecraftPoints.clear();
+
+		// Rebuild from current ctx state
+		if (this.ctx.asteroidBodies.length > 0) {
+			this.asteroidPoints = makePointCloud(this.ctx.asteroidBodies, this.circleTexture);
+			this.scene.add(this.asteroidPoints);
+		}
+		for (const [groupParentId, bodies] of this.ctx.spacecraftByParent.entries()) {
+			const points = makePointCloud(bodies, this.circleTexture);
+			this.spacecraftPoints.set(groupParentId, points);
+			this.scene.add(points);
+		}
 	}
 
 	private buildMajorBodies(): void {

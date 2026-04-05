@@ -79,10 +79,21 @@ export class ContextManager {
 	async load(date: Date): Promise<void> {
 		try {
 			const loader = new ChunkLoader();
+
+			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
 			major.push(...(await loader.process('major', 0, 0, date)));
 			major.push(...(await loader.process('moons', 0, 0, date)));
 
+			this.addBodies(major);
+			this.majorBodies = major.filter(
+				(b) =>
+					b.data.objectType !== ObjectType.BARYCENTER &&
+					b.data.objectType !== ObjectType.LAGRANGE_POINT
+			);
+			this.loading = false;
+
+			// Phase 2: minors — load in background, flush to reactive state periodically
 			const metaRes = await fetch('/data/v1/metadata.json');
 			if (!metaRes.ok) throw new Error(`Failed to fetch metadata: ${metaRes.status}`);
 			const metadata = await metaRes.json();
@@ -101,36 +112,37 @@ export class ContextManager {
 							minorChunkArgs.push({ zone, zoom: Number(zoomStr), part });
 				}
 			}
-			const minors = (
+
+			const pendingAsteroids: PositionedBody[] = [];
+			const pendingSpacecraft = new SvelteMap<string, PositionedBody[]>();
+
+			const flush = () => {
+				this.asteroidBodies = [...pendingAsteroids];
+				this.spacecraftByParent = new SvelteMap(pendingSpacecraft);
+			};
+			const intervalId = setInterval(flush, 500);
+
+			try {
 				await Promise.all(
-					minorChunkArgs.map(({ zone, zoom, part }) => loader.process(zone, zoom, part, date))
-				)
-			).flat();
-
-			this.addBodies(major);
-			this.addBodies(minors);
-
-			// Split minors into asteroids vs spacecraft groups
-			const asteroids: PositionedBody[] = [];
-			const spacecraft = new SvelteMap<string, PositionedBody[]>();
-			for (const b of minors) {
-				if (b.data.objectType === ObjectType.SPACECRAFT) {
-					const list = spacecraft.get(b.data.parentId) ?? [];
-					list.push(b);
-					spacecraft.set(b.data.parentId, list);
-				} else {
-					asteroids.push(b);
-				}
+					minorChunkArgs.map(({ zone, zoom, part }) =>
+						loader.process(zone, zoom, part, date).then((chunk) => {
+							this.addBodies(chunk);
+							for (const b of chunk) {
+								if (b.data.objectType === ObjectType.SPACECRAFT) {
+									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
+									list.push(b);
+									pendingSpacecraft.set(b.data.parentId, list);
+								} else {
+									pendingAsteroids.push(b);
+								}
+							}
+						})
+					)
+				);
+			} finally {
+				clearInterval(intervalId);
+				flush();
 			}
-
-			this.majorBodies = major.filter(
-				(b) =>
-					b.data.objectType !== ObjectType.BARYCENTER &&
-					b.data.objectType !== ObjectType.LAGRANGE_POINT
-			);
-			this.asteroidBodies = asteroids;
-			this.spacecraftByParent = spacecraft;
-			this.loading = false;
 		} catch (e) {
 			this.loading = false;
 			throw e;

@@ -64,6 +64,11 @@
 		};
 	});
 
+	$effect(() => {
+		void ctx.asteroidBodies.length; // reactive dependency — re-runs on each flush
+		renderer?.rebuildMinorPointClouds();
+	});
+
 	onDestroy(() => {
 		urlSync.cancel();
 		renderer?.dispose();
