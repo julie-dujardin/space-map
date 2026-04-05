@@ -3,8 +3,9 @@ import { orbitalElementsToPosition } from '$lib/math/kepler';
 import { fetchElements, type ElementColumns } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { Scale } from './constants';
+import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './constants';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
+import { getLocale } from '$lib/paraglide/runtime.js';
 
 const KM_PER_AU = 149_597_870.7;
 
@@ -35,6 +36,17 @@ function columnarToBody(
 }
 
 export class ChunkLoader {
+	/**
+	 * Fire-and-forget fetch of the three files for a zone/zoom/part, so the browser
+	 * caches them before the caller needs to process them.
+	 */
+	static prefetch(zone: string, zoom: number, part: number): void {
+		const lang = getLocale();
+		fetch(elementsBinUrl(zone, zoom, part));
+		fetch(elementLabelsUrl(lang, zone, zoom, part));
+		fetch(elementIdsUrl(zone, zoom, part));
+	}
+
 	// Track positions by ID for parent lookups (not reactive — local computation only)
 	positions = new Map<number, [number, number, number]>();
 	// Store barycenter orbital elements for planet orbit drawing

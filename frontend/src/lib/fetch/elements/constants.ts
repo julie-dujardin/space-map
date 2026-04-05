@@ -10,6 +10,13 @@ export const HEADER_SIZE = 16;
 export const BASE_ELEMENT_PATH = '/data/v1/elements';
 export const BASE_LABEL_PATH = '/data/v1/element_labels';
 
+export const elementsBinUrl = (zone: string, zoom: number, part: number): string =>
+	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin`;
+export const elementIdsUrl = (zone: string, zoom: number, part: number): string =>
+	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.txt`;
+export const elementLabelsUrl = (lang: string, zone: string, zoom: number, part: number): string =>
+	`${BASE_LABEL_PATH}/${lang}/${zone}/${zoom}/${part}.txt`;
+
 /** Sentinel values for missing data in the binary format. */
 export const MISSING_INT32 = -1;
 export const MISSING_UINT8 = 255;

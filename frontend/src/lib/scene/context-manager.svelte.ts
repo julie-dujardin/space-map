@@ -61,6 +61,7 @@ export class ContextManager {
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
 	isZoomedIn: boolean = false;
+	private lastRecomputeDist = -1;
 	/** Always set from focused body — drives moon visibility regardless of zoom. */
 	focusedSystemId: string | null = null;
 	/** Set only when zoomed in — drives hiding of other systems. */
@@ -80,6 +81,36 @@ export class ContextManager {
 		try {
 			const loader = new ChunkLoader();
 
+			// Kick off moons + metadata fetches immediately, in parallel with major processing.
+			// Once metadata arrives, fire all chunk prefetches so they're cached before Phase 2 starts.
+			ChunkLoader.prefetch('moons', 0, 0);
+			const minorChunkArgsPromise = fetch('/data/v1/metadata.json')
+				.then((r) => {
+					if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
+					return r.json();
+				})
+				.then(
+					(metadata: { zones: Record<string, { zooms: Record<string, { parts: number }> }> }) => {
+						const args: { zone: string; zoom: number; part: number }[] = [];
+						for (const [zone, zoneData] of Object.entries(metadata.zones) as [
+							string,
+							{ zooms: Record<string, { parts: number }> }
+						][]) {
+							for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms) as [
+								string,
+								{ parts: number }
+							][]) {
+								if (zone !== 'major' && zone !== 'moons')
+									for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
+										args.push({ zone, zoom: Number(zoomStr), part });
+										ChunkLoader.prefetch(zone, Number(zoomStr), part);
+									}
+							}
+						}
+						return args;
+					}
+				);
+
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
 			major.push(...(await loader.process('major', 0, 0, date)));
@@ -94,24 +125,8 @@ export class ContextManager {
 			this.loading = false;
 
 			// Phase 2: minors — load in background, flush to reactive state periodically
-			const metaRes = await fetch('/data/v1/metadata.json');
-			if (!metaRes.ok) throw new Error(`Failed to fetch metadata: ${metaRes.status}`);
-			const metadata = await metaRes.json();
-
-			const minorChunkArgs: { zone: string; zoom: number; part: number }[] = [];
-			for (const [zone, zoneData] of Object.entries(metadata.zones) as [
-				string,
-				{ zooms: Record<string, { parts: number }> }
-			][]) {
-				for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms) as [
-					string,
-					{ parts: number }
-				][]) {
-					if (zone !== 'major' && zone !== 'moons')
-						for (let part = 0; part < Math.min(zoomData.parts, 20); part++)
-							minorChunkArgs.push({ zone, zoom: Number(zoomStr), part });
-				}
-			}
+			// minorChunkArgsPromise has been running in parallel; files are likely cached already
+			const minorChunkArgs = await minorChunkArgsPromise;
 
 			const pendingAsteroids: PositionedBody[] = [];
 			const pendingSpacecraft = new SvelteMap<string, PositionedBody[]>();
@@ -185,7 +200,11 @@ export class ContextManager {
 			this.isZoomedIn = zoomed;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 		}
-		this.recomputeFullMoons();
+		// Only recompute when distance changes by more than 0.5% — avoids a filter+sort every frame
+		if (Math.abs(dist - this.lastRecomputeDist) > this.lastRecomputeDist * 0.005 + 0.001) {
+			this.lastRecomputeDist = dist;
+			this.recomputeFullMoons();
+		}
 	}
 
 	setFocused(body: PositionedBody): void {
@@ -199,6 +218,7 @@ export class ContextManager {
 						? body.data.parentId
 						: body.data.id;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
+			this.lastRecomputeDist = -1; // force recompute on next updateCamera
 			this.recomputeFullMoons();
 		}
 	}

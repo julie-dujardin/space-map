@@ -3,7 +3,7 @@
  * Creates zero-copy typed array views over the fetched ArrayBuffer.
  */
 
-import { MAGIC, VERSION, HEADER_SIZE, BASE_ELEMENT_PATH } from '$lib/fetch/elements/constants';
+import { MAGIC, VERSION, HEADER_SIZE, elementsBinUrl } from '$lib/fetch/elements/constants';
 
 export interface ElementColumns {
 	id: Int32Array;
@@ -32,7 +32,7 @@ export async function fetchElements(
 	zoom: number,
 	part: number
 ): Promise<ElementColumns> {
-	const res = await fetch(`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin`);
+	const res = await fetch(elementsBinUrl(zone, zoom, part));
 	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 	const buffer = await res.arrayBuffer();
 	return parseElements(buffer);
