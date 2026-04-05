@@ -41,6 +41,21 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 const HIDE_LABEL_BODY_HALO_FACTOR = 20;
 const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
 
+function typePriority(type: ObjectType): number {
+	switch (type) {
+		case ObjectType.STAR:
+			return 0;
+		case ObjectType.PLANET:
+			return 1;
+		case ObjectType.DWARF_PLANET:
+			return 2;
+		case ObjectType.MOON:
+			return 3;
+		default:
+			return 4; // asteroid subtypes, comet, etc.
+	}
+}
+
 // --- Types ---
 
 interface BodyObjects {
@@ -460,31 +475,23 @@ export class SceneRenderer {
 			label: CSS2DObject;
 			labelHalo: HTMLElement | null;
 			isCapped: boolean;
+			isSelected: boolean;
 			screenX: number;
 			screenY: number;
 			dist: number;
 		};
 
-		// Sun always wins — seed accepted with its screen position
-		const accepted: { x: number; y: number }[] = [];
-		for (const { body, label } of this.bodyObjects.values()) {
-			if (body.data.objectType !== ObjectType.STAR || !label?.visible) continue;
-			this._tmpV3.set(...body.position);
-			this._tmpV3.project(this.camera);
-			if (this._tmpV3.z <= 1)
-				accepted.push({ x: (this._tmpV3.x * 0.5 + 0.5) * w, y: (-this._tmpV3.y * 0.5 + 0.5) * h });
-		}
-
-		const planetCandidates: Candidate[] = [];
-		const moonCandidates: Candidate[] = [];
+		const candidates: Candidate[] = [];
 
 		for (const { body, label, labelHalo } of this.bodyObjects.values()) {
-			if (body.data.objectType === ObjectType.STAR || !label?.visible) continue;
+			if (!label?.visible) continue;
 			this._tmpV3.set(...body.position);
 			const dist = this.camera.position.distanceTo(this._tmpV3);
 			this._tmpV3.project(this.camera);
 			if (this._tmpV3.z > 1) continue;
-			const candidate: Candidate = {
+			const isFocused = body.data.id === this.focusedBody?.data.id;
+			const isHovered = label.element.matches(':hover');
+			candidates.push({
 				body,
 				label,
 				labelHalo,
@@ -492,52 +499,35 @@ export class SceneRenderer {
 					body.data.objectType === ObjectType.MOON
 						? this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED
 						: false,
+				isSelected: isFocused || isHovered,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
 				dist
-			};
-			if (body.data.objectType === ObjectType.MOON) moonCandidates.push(candidate);
-			else planetCandidates.push(candidate);
+			});
 		}
 
-		// Planets: closest wins over farther ones
-		planetCandidates.sort((a, b) => a.dist - b.dist);
-		for (const { body, label, labelHalo, screenX, screenY } of planetCandidates) {
-			const isFocused = body.data.id === this.focusedBody?.data.id;
-			const isHovered = label.element.matches(':hover');
-			const forceShow = isFocused || isHovered;
-			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
-			const overlaps =
-				!forceShow &&
-				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
-			if (!overlaps) {
-				accepted.push({ x: screenX, y: screenY });
-				this.restoreLabel(labelHalo, nameSpan, isHovered);
-			} else {
-				this.dimLabel(labelHalo, nameSpan);
-			}
-		}
-
-		// Moons: FULL by distance first, CAPPED after (never block FULL ones)
-		moonCandidates.sort((a, b) => {
-			if (a.isCapped !== b.isCapped) return a.isCapped ? 1 : -1;
+		// Sort: selected first, then by type priority, then closer first
+		candidates.sort((a, b) => {
+			if (a.isSelected !== b.isSelected) return a.isSelected ? -1 : 1;
+			const pa = typePriority(a.body.data.objectType);
+			const pb = typePriority(b.body.data.objectType);
+			if (pa !== pb) return pa - pb;
 			return a.dist - b.dist;
 		});
-		for (const { body, label, labelHalo, isCapped, screenX, screenY } of moonCandidates) {
-			const isFocused = body.data.id === this.focusedBody?.data.id;
-			const isHovered = label.element.matches(':hover');
-			const forceShow = isFocused || isHovered;
+
+		const accepted: { x: number; y: number }[] = [];
+		for (const { label, labelHalo, isCapped, isSelected, screenX, screenY } of candidates) {
 			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
-			if (isCapped && !forceShow) {
+			if (isCapped && !isSelected) {
 				this.dimLabel(labelHalo, nameSpan);
 				continue;
 			}
-			const overlaps =
-				!forceShow &&
-				accepted.some(({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH);
+			const overlaps = accepted.some(
+				({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
+			);
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
-				this.restoreLabel(labelHalo, nameSpan, isHovered);
+				this.restoreLabel(labelHalo, nameSpan, label.element.matches(':hover'));
 			} else {
 				this.dimLabel(labelHalo, nameSpan);
 			}
