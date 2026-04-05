@@ -40,6 +40,7 @@
 				focusedBody = body;
 				onFocusChange?.(body);
 			},
+			onDragStart: syncUrl,
 			onDragEnd: syncUrl
 		});
 

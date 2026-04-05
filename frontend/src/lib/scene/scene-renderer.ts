@@ -103,7 +103,7 @@ export class SceneRenderer {
 	private readonly _tmpV3b = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
-	private pendingDragEnd = false;
+	private pendingUrlWrite = false;
 	private readonly textureLoader = new TextureLoader();
 
 	constructor(
@@ -377,8 +377,8 @@ export class SceneRenderer {
 			this.controls.target.copy(this.focusTarget);
 		}
 		const controlsSettled = !this.controls.update();
-		if (this.pendingDragEnd && controlsSettled) {
-			this.pendingDragEnd = false;
+		if (this.pendingUrlWrite && controlsSettled) {
+			this.pendingUrlWrite = false;
 			const { latitude, longitude, distance } = this.getCameraState();
 			this.callbacks.onDragEnd?.(latitude, longitude, distance);
 		}
@@ -653,10 +653,9 @@ export class SceneRenderer {
 
 	// --- Interaction ---
 
-	private getCameraState() {
+	private getCameraState(target = this.controls.target) {
 		const cam = this.camera.position;
-		const tgt = this.controls.target;
-		return cartesianToSpherical([cam.x, cam.y, cam.z], [tgt.x, tgt.y, tgt.z]);
+		return cartesianToSpherical([cam.x, cam.y, cam.z], [target.x, target.y, target.z]);
 	}
 
 	private onControlsStart = (): void => {
@@ -665,7 +664,7 @@ export class SceneRenderer {
 	};
 
 	private onControlsEnd = (): void => {
-		this.pendingDragEnd = true;
+		this.pendingUrlWrite = true;
 	};
 
 	private onPointerDown = (e: PointerEvent): void => {
@@ -696,6 +695,8 @@ export class SceneRenderer {
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
+		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
+		this.callbacks.onDragStart?.(latitude, longitude, distance);
 		this.maybeLoadTexture(body);
 	}
 
