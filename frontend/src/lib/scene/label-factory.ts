@@ -26,7 +26,8 @@ export function createLabel(
 	color: string,
 	name: string,
 	variant: LabelVariant,
-	onClick: () => void
+	onClick: () => void,
+	isLarge = false
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
@@ -50,7 +51,7 @@ export function createLabel(
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) {
 		const span = document.createElement('span');
-		span.className = `scene-label__name scene-label__name--${variant}`;
+		span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
 		span.textContent = name;
 		span.addEventListener('click', (e) => {
 			e.stopPropagation();

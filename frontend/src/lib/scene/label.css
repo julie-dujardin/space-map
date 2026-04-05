@@ -50,3 +50,6 @@
 	left: 20px;
 	font-size: 10px;
 }
+.scene-label__name--large {
+	font-size: 16px;
+}

@@ -98,7 +98,8 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 		transparent: true,
 		uniforms: {
 			uColor: { value: new Color(color) },
-			uCenterOffset: { value: new Vector3() }
+			uCenterOffset: { value: new Vector3() },
+			uAlphaMultiplier: { value: 1.0 }
 		},
 		vertexShader: `
 			uniform vec3 uCenterOffset;
@@ -112,9 +113,10 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 		`,
 		fragmentShader: `
 			uniform vec3 uColor;
+			uniform float uAlphaMultiplier;
 			varying float vAlpha;
 			void main() {
-				gl_FragColor = vec4(uColor, vAlpha);
+				gl_FragColor = vec4(uColor, clamp(vAlpha * uAlphaMultiplier, 0.0, 1.0));
 			}
 		`
 	});

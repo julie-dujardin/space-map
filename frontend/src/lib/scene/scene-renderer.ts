@@ -210,7 +210,14 @@ export class SceneRenderer {
 
 			// CSS2D label
 			const variant = getLabelVariant(body);
-			const label = createLabel(color, body.data.name ?? '', variant, () => this.handleFocus(body));
+			const isLarge = isStar || body.data.objectType === ObjectType.PLANET;
+			const label = createLabel(
+				color,
+				body.data.name ?? '',
+				variant,
+				() => this.handleFocus(body),
+				isLarge
+			);
 			if (label) {
 				// Forward wheel events so OrbitControls zoom still works when hovering a label
 				label.element.addEventListener(
@@ -413,15 +420,20 @@ export class SceneRenderer {
 		}
 
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
+		// Also update alpha multiplier for hover/focus highlight
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			if (!line?.visible) continue;
 			const oc = line.userData.orbitCenter as Vector3;
-			(line.material as ShaderMaterial).uniforms.uCenterOffset.value.set(
+			const mat = line.material as ShaderMaterial;
+			mat.uniforms.uCenterOffset.value.set(
 				oc.x - this.camera.position.x,
 				oc.y - this.camera.position.y,
 				oc.z - this.camera.position.z
 			);
+			const isFocused = bo.body.data.id === this.focusedBody?.data.id;
+			const isHovered = bo.label?.element.matches(':hover') ?? false;
+			mat.uniforms.uAlphaMultiplier.value = isFocused ? 2 : isHovered ? 1.75 : 1.0;
 		}
 
 		this.renderer.render(this.scene, this.camera);
@@ -509,6 +521,7 @@ export class SceneRenderer {
 			label: CSS2DObject;
 			labelHalo: HTMLElement | null;
 			isCapped: boolean;
+			isFocused: boolean;
 			isSelected: boolean;
 			screenX: number;
 			screenY: number;
@@ -533,6 +546,7 @@ export class SceneRenderer {
 					body.data.objectType === ObjectType.MOON
 						? this.ctx.getMoonVisibility(body) === VISIBILITY.CAPPED
 						: false,
+				isFocused,
 				isSelected: isFocused || isHovered,
 				screenX: (this._tmpV3.x * 0.5 + 0.5) * w,
 				screenY: (-this._tmpV3.y * 0.5 + 0.5) * h,
@@ -550,7 +564,15 @@ export class SceneRenderer {
 		});
 
 		const accepted: { x: number; y: number }[] = [];
-		for (const { label, labelHalo, isCapped, isSelected, screenX, screenY } of candidates) {
+		for (const {
+			label,
+			labelHalo,
+			isCapped,
+			isFocused,
+			isSelected,
+			screenX,
+			screenY
+		} of candidates) {
 			const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 			if (isCapped && !isSelected) {
 				this.dimLabel(labelHalo, nameSpan);
@@ -561,7 +583,7 @@ export class SceneRenderer {
 			);
 			if (!overlaps) {
 				accepted.push({ x: screenX, y: screenY });
-				this.restoreLabel(labelHalo, nameSpan, label.element.matches(':hover'));
+				this.restoreLabel(labelHalo, nameSpan, label.element.matches(':hover'), isFocused);
 			} else {
 				this.dimLabel(labelHalo, nameSpan);
 			}
@@ -570,19 +592,26 @@ export class SceneRenderer {
 
 	private dimLabel(labelHalo: HTMLElement | null, nameSpan: HTMLElement | null): void {
 		if (labelHalo) labelHalo.style.transform = 'scale(0.3)';
-		if (nameSpan) nameSpan.style.display = 'none';
+		if (nameSpan) {
+			nameSpan.style.display = 'none';
+			nameSpan.style.fontSize = '';
+		}
 	}
 
 	private restoreLabel(
 		labelHalo: HTMLElement | null,
 		nameSpan: HTMLElement | null,
-		isHovered: boolean
+		isHovered: boolean,
+		isFocused: boolean
 	): void {
 		if (labelHalo) {
 			if (!isHovered) labelHalo.style.transform = '';
 			labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
 		}
-		if (nameSpan) nameSpan.style.display = '';
+		if (nameSpan) {
+			nameSpan.style.display = '';
+			nameSpan.style.fontSize = isFocused ? '18px' : '';
+		}
 	}
 
 	// --- Interaction ---
