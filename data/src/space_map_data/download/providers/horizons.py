@@ -27,6 +27,7 @@ _BASE_PARAMS = {
     "REF_SYSTEM": "J2000",
 }
 DROP_PREFIX = ("(primary body)", "(spacecraft)", "(Spacecraft)", "(system barycenter)")
+_ELEMENT_FIELDS = ("EC", "QR", "IN", "OM", "W", "Tp", "N", "MA", "TA", "A", "AD", "PR")
 
 
 # To retrieve the orbital elements, we need to determnine the barycenter, which requires some classification
@@ -55,7 +56,7 @@ def _classify_object(
     if naif_id < 0:
         return ObjectType.spacecraft, 0
 
-    if 1 <= naif_id <= 9 or "barycenter" in name.lower():
+    if 0 <= naif_id <= 9 or "barycenter" in name.lower():
         # Planetary & asteroid system barycenters
         return ObjectType.barycenter, 0
 
@@ -291,7 +292,30 @@ class HorizonsDownloader(Downloader):
         for body in tqdm(
             available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            if body.object_type == ObjectType.lagrange_point or body.naif_id == 0:
+            if body.object_type == ObjectType.lagrange_point:
+                continue
+            if body.naif_id == 0:
+                # SSB is the coordinate origin — synthesize a zero-filled row, no API call needed
+                row = {
+                    "name": body.name,
+                    "naif_id": "0",
+                    "type": str(body.object_type),
+                    "center": "",
+                    "parent_naif_id": "0",
+                    "designation": body.designation or "",
+                    "extra": body.extra or "",
+                    "JDTDB": epoch_jd,
+                    "Calendar Date (TDB)": epoch.isoformat(),
+                    **{k: "0" for k in _ELEMENT_FIELDS},
+                }
+                if fieldnames is None:
+                    fieldnames = [
+                        *meta_fields,
+                        "JDTDB",
+                        "Calendar Date (TDB)",
+                        *_ELEMENT_FIELDS,
+                    ]
+                new_rows["0"] = row
                 continue
             if str(body.naif_id) in existing:
                 skipped += 1
