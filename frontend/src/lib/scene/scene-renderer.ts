@@ -1,6 +1,7 @@
 import {
 	AmbientLight,
 	CanvasTexture,
+	Float32BufferAttribute,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
@@ -186,29 +187,36 @@ export class SceneRenderer {
 	rebuildMinorPointClouds(): void {
 		if (!this.circleTexture) return;
 
-		// Dispose and remove existing asteroid cloud
-		if (this.asteroidPoints) {
-			this.scene.remove(this.asteroidPoints);
-			this.asteroidPoints.geometry.dispose();
-			this.asteroidPoints = null;
-		}
-
-		// Dispose and remove existing spacecraft clouds
-		for (const pts of this.spacecraftPoints.values()) {
-			this.scene.remove(pts);
-			pts.geometry.dispose();
-		}
-		this.spacecraftPoints.clear();
-
-		// Rebuild from current ctx state
+		// Asteroid cloud — reuse existing Points, just replace the position attribute
 		if (this.ctx.asteroidBodies.length > 0) {
-			this.asteroidPoints = makePointCloud(this.ctx.asteroidBodies, this.circleTexture);
-			this.scene.add(this.asteroidPoints);
+			const positions = new Float32BufferAttribute(
+				new Float32Array(this.ctx.asteroidBodies.flatMap((b) => b.position)),
+				3
+			);
+			if (this.asteroidPoints) {
+				this.asteroidPoints.geometry.setAttribute('position', positions);
+			} else {
+				this.asteroidPoints = makePointCloud(this.ctx.asteroidBodies, this.circleTexture);
+				this.scene.add(this.asteroidPoints);
+			}
 		}
+
+		// Spacecraft clouds — update existing groups, create new ones
 		for (const [groupParentId, bodies] of this.ctx.spacecraftByParent.entries()) {
-			const points = makePointCloud(bodies, this.circleTexture);
-			this.spacecraftPoints.set(groupParentId, points);
-			this.scene.add(points);
+			const existing = this.spacecraftPoints.get(groupParentId);
+			if (existing) {
+				existing.geometry.setAttribute(
+					'position',
+					new Float32BufferAttribute(
+						new Float32Array(bodies.flatMap((b) => b.position)),
+						3
+					)
+				);
+			} else {
+				const points = makePointCloud(bodies, this.circleTexture);
+				this.spacecraftPoints.set(groupParentId, points);
+				this.scene.add(points);
+			}
 		}
 	}
 
