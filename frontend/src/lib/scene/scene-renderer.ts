@@ -118,6 +118,7 @@ export class SceneRenderer {
 		// CSS2D label renderer
 		this.labelRenderer = new CSS2DRenderer({ element: labelContainer });
 		this.labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
+		ctx.updateViewport(canvas.clientHeight);
 
 		// Scene + lights
 		this.scene = new Scene();
@@ -613,6 +614,7 @@ export class SceneRenderer {
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();
+		this.ctx.updateViewport(height);
 	}
 
 	dispose(): void {

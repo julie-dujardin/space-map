@@ -21,7 +21,11 @@ export enum VISIBILITY {
 /*
  * Distance ratio thresholds for visibility levels.
  * Ratio is (camera distance to focused body / moon semi-major axis), both in AU.
+ * These were tuned for a 27" 1440p monitor; FULL and FAR are scaled at runtime by screenScaleFactor.
  */
+/** Viewport height (CSS px) the distance-ratio thresholds were tuned for. */
+const REFERENCE_VIEWPORT_HEIGHT = 1440;
+
 export const PLANETARY_DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.CLOSE]: 0.3,
 	[VISIBILITY.FULL]: 20,
@@ -62,6 +66,9 @@ export class ContextManager {
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	private cameraDistThreeJS = 0;
+	// Cached scaled thresholds — recomputed in updateViewport() on canvas resize.
+	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
+	private scaledSystem = SYSTEM_DISTANCE_RATIO_THRESHOLDS;
 	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
 	private fullMoonIds = new SvelteSet<string>();
 
@@ -143,6 +150,18 @@ export class ContextManager {
 		}
 	}
 
+	/**
+	 * Call from resize() in SceneRenderer whenever the canvas dimensions change.
+	 * Recomputes scaled thresholds (FULL and FAR scale linearly; CLOSE is geometric and unchanged).
+	 */
+	updateViewport(height: number): void {
+		const sf = height / REFERENCE_VIEWPORT_HEIGHT;
+		const scale = (base: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS) =>
+			({ ...base, [VISIBILITY.FULL]: base[VISIBILITY.FULL] * sf, [VISIBILITY.FAR]: base[VISIBILITY.FAR] * sf });
+		this.scaledPlanetary = scale(PLANETARY_DISTANCE_RATIO_THRESHOLDS);
+		this.scaledSystem = scale(SYSTEM_DISTANCE_RATIO_THRESHOLDS);
+	}
+
 	/** Call from useTask every frame. */
 	updateCamera(dist: number): void {
 		this.cameraDistThreeJS = dist;
@@ -173,10 +192,10 @@ export class ContextManager {
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
-		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL])
+		if (ratio <= this.scaledPlanetary[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+		if (ratio <= this.scaledPlanetary[VISIBILITY.FULL])
 			return this.fullMoonIds.has(moon.data.id) ? VISIBILITY.FULL : VISIBILITY.CAPPED;
-		if (ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
+		if (ratio <= this.scaledPlanetary[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
 	}
 
@@ -190,9 +209,8 @@ export class ContextManager {
 		const sysId = this.focusedSystemId;
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
-		const fullThreshold = PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL];
 		(this.childrenByParent.get(sysId) ?? [])
-			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= fullThreshold)
+			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= this.scaledPlanetary[VISIBILITY.FULL])
 			.sort((a, b) => a.data.a - b.data.a)
 			.slice(0, MAX_FULL_MOONS)
 			.forEach((m) => this.fullMoonIds.add(m.data.id));
@@ -207,7 +225,7 @@ export class ContextManager {
 		const maxA = this.moonMaxAByParent.get(parentId);
 		if (!maxA) return false;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / maxA;
-		return ratio <= PLANETARY_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR];
+		return ratio <= this.scaledPlanetary[VISIBILITY.FAR];
 	}
 
 	/**
@@ -234,9 +252,9 @@ export class ContextManager {
 			return VISIBILITY.FULL;
 		}
 		const ratio = camDistThreeJS / AU_SCALE / refA;
-		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FULL]) return VISIBILITY.FULL;
-		if (ratio <= SYSTEM_DISTANCE_RATIO_THRESHOLDS[VISIBILITY.FAR]) return VISIBILITY.FAR;
+		if (ratio <= this.scaledSystem[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+		if (ratio <= this.scaledSystem[VISIBILITY.FULL]) return VISIBILITY.FULL;
+		if (ratio <= this.scaledSystem[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
 	}
 
