@@ -421,9 +421,14 @@ export class SceneRenderer {
 
 		if (!show && isClose) {
 			screenR = (radiusScene / distToBody) * projScale;
-			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
-			hideHaloRing = screenR >= HALO_RADIUS_PX;
-			if (bo.orbitLine) bo.orbitLine.visible = !hideHaloRing;
+			// Only treat as "close" if the body is actually visible on screen (not a distant
+			// body that merely entered the close ratio band, e.g. outer moons when zoomed
+			// into their parent planet).
+			if (screenR >= 1) {
+				show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
+				hideHaloRing = screenR >= HALO_RADIUS_PX;
+				if (bo.orbitLine) bo.orbitLine.visible = !hideHaloRing;
+			}
 		}
 
 		label.visible = show;
