@@ -11,11 +11,10 @@ export interface OrbitalElements {
 
 /** Unified body data from the binary export. */
 export interface BodyData extends OrbitalElements {
-	id: number; // type-specific ID (NAIF ID for bodies/probes, SPK ID for small bodies, NORAD cat ID for satellites)
-	fileId: string | null; // key into /data/v1/objects/ JSON files (e.g. "naif-399", "spkid-20000001")
+	id: string; // prefixed ID, e.g. "naif-499", "spkid-20134340" — matches backend Object.id and /data/v1/objects/ filenames
 	name: string | null;
 	objectType: ObjectType;
-	parentId: number; // ID of parent (0 = SSB, 399 = Earth, etc.)
+	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	radiusKm: number;
 }
 

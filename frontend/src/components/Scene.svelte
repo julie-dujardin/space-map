@@ -4,7 +4,7 @@
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { type MapViewState, sphericalToCartesian, createUrlSync, parseUrl } from '$lib/url-state';
-	import { urlType } from '$lib/format';
+	import { urlTypeFromId } from '$lib/format';
 
 	interface Props {
 		initialView: MapViewState;
@@ -31,7 +31,7 @@
 			onFrame(latitude, longitude, zoom) {
 				if (!focusedBody) return;
 				urlSync.sync({
-					type: urlType(focusedBody.data.objectType),
+					type: urlTypeFromId(focusedBody.data.id),
 					id: focusedBody.data.id,
 					name: focusedBody.data.name ?? '',
 					date: initialView.date,
@@ -51,9 +51,7 @@
 		const onPopState = () => {
 			const parsed = parseUrl();
 			if (!parsed) return;
-			const body = ctx.allBodies.find(
-				(b) => urlType(b.data.objectType) === parsed.type && b.data.id === parsed.id
-			);
+			const body = ctx.allBodies.find((b) => b.data.id === parsed.id);
 			const target = body?.position ?? renderer?.getFocusedBody()?.position ?? [0, 0, 0];
 			const camPos = sphericalToCartesian(target, parsed.latitude, parsed.longitude, parsed.zoom);
 			if (body) renderer?.setFocusTarget(body, camPos);

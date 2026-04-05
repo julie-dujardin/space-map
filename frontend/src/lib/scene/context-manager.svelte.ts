@@ -42,28 +42,28 @@ export const MAX_FULL_MOONS = 30;
 export const ZOOM_THRESHOLD_AU = 0.3;
 
 export class ContextManager {
-	private readonly childrenByParent = new SvelteMap<number, PositionedBody[]>();
-	private readonly bodiesById = new SvelteMap<number, PositionedBody>();
+	private readonly childrenByParent = new SvelteMap<string, PositionedBody[]>();
+	private readonly bodiesById = new SvelteMap<string, PositionedBody>();
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
-	private readonly moonMaxAByParent = new SvelteMap<number, number>();
+	private readonly moonMaxAByParent = new SvelteMap<string, number>();
 
 	// --- Reactive loading state ($state safe: only mutated during async load, never in useTask) ---
 	loading = $state(true);
 	error = $state<string | null>(null);
 	majorBodies = $state<PositionedBody[]>([]);
 	asteroidBodies = $state<PositionedBody[]>([]);
-	spacecraftByParent = $state(new SvelteMap<number, PositionedBody[]>());
+	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
-	focusedBodyId: number = 10; // default to sun (not set by this class)
+	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
 	isZoomedIn: boolean = false;
 	/** Always set from focused body — drives moon visibility regardless of zoom. */
-	focusedSystemId: number | null = null;
+	focusedSystemId: string | null = null;
 	/** Set only when zoomed in — drives hiding of other systems. */
-	activeSystemId: number | null = null;
+	activeSystemId: string | null = null;
 	private cameraDistThreeJS = 0;
 	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
-	private fullMoonIds = new SvelteSet<number>();
+	private fullMoonIds = new SvelteSet<string>();
 
 	get allBodies(): PositionedBody[] {
 		return [...this.bodiesById.values()];
@@ -105,7 +105,7 @@ export class ContextManager {
 
 			// Split minors into asteroids vs spacecraft groups
 			const asteroids: PositionedBody[] = [];
-			const spacecraft = new SvelteMap<number, PositionedBody[]>();
+			const spacecraft = new SvelteMap<string, PositionedBody[]>();
 			for (const b of minors) {
 				if (b.data.objectType === ObjectType.SPACECRAFT) {
 					const list = spacecraft.get(b.data.parentId) ?? [];
@@ -159,7 +159,11 @@ export class ContextManager {
 			this.focusedBodyId = body.data.id;
 			// System ID is either the parent (for moons or planet that orbit a barycenter), or the body's own ID (for venus, ceres...)
 			this.focusedSystemId =
-				body.data.objectType === ObjectType.STAR ? null : body.data.parentId || body.data.id;
+				body.data.objectType === ObjectType.STAR
+					? null
+					: body.data.parentId !== 'naif-0'
+						? body.data.parentId
+						: body.data.id;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 			this.recomputeFullMoons();
 		}
@@ -198,7 +202,7 @@ export class ContextManager {
 	 * Whether to show the point-cloud for a moon group (by parent ID).
 	 * Gated on the focused system and ratio to outermost moon (no zoom threshold).
 	 */
-	isMoonGroupVisible(parentId: number): boolean {
+	isMoonGroupVisible(parentId: string): boolean {
 		if (!this.isInFocusedSystem(parentId)) return false;
 		const maxA = this.moonMaxAByParent.get(parentId);
 		if (!maxA) return false;
@@ -217,7 +221,7 @@ export class ContextManager {
 		// - Body orbits a barycenter with a>0 (e.g. EMB at ~1 AU): use barycenter's a
 		// - Body orbits a barycenter with a=0 (e.g. Mars bary): fall back to body.data.a
 		let refA = body.data.a;
-		if (body.data.parentId) {
+		if (body.data.parentId !== 'naif-0') {
 			const parent = this.bodiesById.get(body.data.parentId);
 			if (parent) {
 				if (parent.data.a) refA = parent.data.a;
@@ -240,7 +244,9 @@ export class ContextManager {
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
-		return this.isInActiveSystem(body.data.parentId || body.data.id);
+		return this.isInActiveSystem(
+			body.data.parentId !== 'naif-0' ? body.data.parentId : body.data.id
+		);
 	}
 
 	/**
@@ -248,8 +254,8 @@ export class ContextManager {
 	 * Sun-level groups (parentId=0 or parent is STAR) are always visible.
 	 * Planet-orbiting groups are only visible when in the active system.
 	 */
-	isSpacecraftGroupVisible(groupParentId: number): boolean {
-		if (groupParentId === 0) return true;
+	isSpacecraftGroupVisible(groupParentId: string): boolean {
+		if (groupParentId === 'naif-0') return true;
 		const parent = this.bodiesById.get(groupParentId);
 		if (parent?.data.objectType === ObjectType.STAR) return true;
 		const sysId = this.activeSystemId;
@@ -258,11 +264,11 @@ export class ContextManager {
 		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === groupParentId);
 	}
 
-	isInActiveSystem(parentId: number): boolean {
+	isInActiveSystem(parentId: string): boolean {
 		return this.isInSystem(parentId, this.activeSystemId);
 	}
 
-	private isInFocusedSystem(parentId: number): boolean {
+	private isInFocusedSystem(parentId: string): boolean {
 		return this.isInSystem(parentId, this.focusedSystemId);
 	}
 
@@ -270,7 +276,7 @@ export class ContextManager {
 	 * True if the given parentId belongs to a system.
 	 * Handles two levels: parentId === barycenter, or parentId is a direct child of the barycenter.
 	 */
-	private isInSystem(parentId: number, sysId: number | null): boolean {
+	private isInSystem(parentId: string, sysId: string | null): boolean {
 		if (!sysId) return false;
 		if (parentId === sysId) return true;
 		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === parentId);

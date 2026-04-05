@@ -33,7 +33,7 @@
 {:else}
 	<div class="relative w-full h-screen">
 		<Scene {initialView} onFocusChange={(body) => (selectedBody = body)} />
-		{#if selectedBody?.data.fileId}
+		{#if selectedBody?.data.id}
 			<ObjectDrawer body={selectedBody} onClose={() => (selectedBody = undefined)} />
 		{/if}
 	</div>
