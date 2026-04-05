@@ -3,7 +3,7 @@
 	import { SceneRenderer } from '$lib/scene/scene-renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
-	import { type MapViewState, sphericalToCartesian, createUrlSync, parseUrl } from '$lib/url-state';
+	import { type MapViewState, sphericalToCartesian, writeUrlState, parseUrl } from '$lib/url-state';
 	import { urlTypeFromId } from '$lib/format';
 
 	interface Props {
@@ -20,7 +20,19 @@
 	let renderer: SceneRenderer | undefined;
 	let focusedBody = $state<PositionedBody | undefined>();
 
-	const urlSync = createUrlSync(300);
+	function syncUrl(latitude: number, longitude: number, zoom: number) {
+		if (!focusedBody) return;
+		writeUrlState({
+			type: urlTypeFromId(focusedBody.data.id),
+			id: focusedBody.data.id,
+			name: focusedBody.data.name ?? '',
+			date: initialView.date,
+			isNow: initialView.isNow,
+			latitude,
+			longitude,
+			zoom
+		});
+	}
 
 	onMount(() => {
 		renderer = new SceneRenderer(canvas, labelContainer, ctx, initialView, {
@@ -28,19 +40,7 @@
 				focusedBody = body;
 				onFocusChange?.(body);
 			},
-			onFrame(latitude, longitude, zoom) {
-				if (!focusedBody) return;
-				urlSync.sync({
-					type: urlTypeFromId(focusedBody.data.id),
-					id: focusedBody.data.id,
-					name: focusedBody.data.name ?? '',
-					date: initialView.date,
-					isNow: initialView.isNow,
-					latitude,
-					longitude,
-					zoom
-				});
-			}
+			onDragEnd: syncUrl
 		});
 
 		const ro = new ResizeObserver(() => {
@@ -70,7 +70,6 @@
 	});
 
 	onDestroy(() => {
-		urlSync.cancel();
 		renderer?.dispose();
 	});
 </script>

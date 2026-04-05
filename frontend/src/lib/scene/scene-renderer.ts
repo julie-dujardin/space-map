@@ -67,7 +67,8 @@ interface BodyObjects {
 
 interface Callbacks {
 	onFocusChange(body: PositionedBody | undefined): void;
-	onFrame(latitude: number, longitude: number, zoom: number): void;
+	onDragStart?(latitude: number, longitude: number, zoom: number): void;
+	onDragEnd?(latitude: number, longitude: number, zoom: number): void;
 }
 
 // --- SceneRenderer ---
@@ -155,6 +156,8 @@ export class SceneRenderer {
 		this.controls.enableDamping = true;
 		this.controls.target.set(...focusPos);
 		this.controls.update();
+		this.controls.addEventListener('start', this.onControlsStart);
+		this.controls.addEventListener('end', this.onControlsEnd);
 
 		// Sync context initial state
 		if (focusBody) ctx.setFocused(focusBody);
@@ -207,10 +210,7 @@ export class SceneRenderer {
 			if (existing) {
 				existing.geometry.setAttribute(
 					'position',
-					new Float32BufferAttribute(
-						new Float32Array(bodies.flatMap((b) => b.position)),
-						3
-					)
+					new Float32BufferAttribute(new Float32Array(bodies.flatMap((b) => b.position)), 3)
 				);
 			} else {
 				const points = makePointCloud(bodies, this.circleTexture);
@@ -377,13 +377,8 @@ export class SceneRenderer {
 		}
 		this.controls.update();
 
-		// Camera state → visibility decisions + URL sync
-		const cam = this.camera.position;
-		const tgt = this.controls.target;
-		const { latitude, longitude, distance } = cartesianToSpherical(
-			[cam.x, cam.y, cam.z],
-			[tgt.x, tgt.y, tgt.z]
-		);
+		// Camera state → visibility decisions
+		const { distance } = this.getCameraState();
 		this.ctx.updateCamera(distance);
 
 		// Visibility updates
@@ -454,10 +449,6 @@ export class SceneRenderer {
 		}
 
 		this.cullOverlappingLabels();
-
-		if (!isAnimating) {
-			this.callbacks.onFrame(latitude, longitude, distance);
-		}
 
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
 		// Also update alpha multiplier for hover/focus highlight
@@ -656,6 +647,22 @@ export class SceneRenderer {
 
 	// --- Interaction ---
 
+	private getCameraState() {
+		const cam = this.camera.position;
+		const tgt = this.controls.target;
+		return cartesianToSpherical([cam.x, cam.y, cam.z], [tgt.x, tgt.y, tgt.z]);
+	}
+
+	private onControlsStart = (): void => {
+		const { latitude, longitude, distance } = this.getCameraState();
+		this.callbacks.onDragStart?.(latitude, longitude, distance);
+	};
+
+	private onControlsEnd = (): void => {
+		const { latitude, longitude, distance } = this.getCameraState();
+		this.callbacks.onDragEnd?.(latitude, longitude, distance);
+	};
+
 	private onPointerDown = (e: PointerEvent): void => {
 		const canvas = this.renderer.domElement;
 		const rect = canvas.getBoundingClientRect();
@@ -713,6 +720,8 @@ export class SceneRenderer {
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
 		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
+		this.controls.removeEventListener('start', this.onControlsStart);
+		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.renderer.dispose();
 	}
