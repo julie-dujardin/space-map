@@ -6,7 +6,8 @@ import {
 	Line,
 	Points,
 	PointsMaterial,
-	ShaderMaterial
+	ShaderMaterial,
+	Vector3
 } from 'three';
 import { orbitalElementsToEllipse } from '$lib/math/kepler';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -95,13 +96,18 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 
 	const material = new ShaderMaterial({
 		transparent: true,
-		uniforms: { uColor: { value: new Color(color) } },
+		uniforms: {
+			uColor: { value: new Color(color) },
+			uCenterOffset: { value: new Vector3() }
+		},
 		vertexShader: `
+			uniform vec3 uCenterOffset;
 			attribute float alpha;
 			varying float vAlpha;
 			void main() {
 				vAlpha = alpha;
-				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+				vec3 relPos = position + uCenterOffset;
+				gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * relPos, 1.0);
 			}
 		`,
 		fragmentShader: `
@@ -114,7 +120,7 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	});
 
 	const line = new Line(geometry, material);
-	line.position.set(cx, cy, cz);
+	line.userData.orbitCenter = new Vector3(cx, cy, cz);
 	return line;
 }
 

@@ -10,6 +10,7 @@ import {
 	PointsMaterial,
 	Raycaster,
 	Scene,
+	ShaderMaterial,
 	SphereGeometry,
 	Texture,
 	TextureLoader,
@@ -409,6 +410,18 @@ export class SceneRenderer {
 
 		if (!isAnimating) {
 			this.callbacks.onFrame(latitude, longitude, distance);
+		}
+
+		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
+		for (const bo of this.bodyObjects.values()) {
+			const line = bo.orbitLine;
+			if (!line?.visible) continue;
+			const oc = line.userData.orbitCenter as Vector3;
+			(line.material as ShaderMaterial).uniforms.uCenterOffset.value.set(
+				oc.x - this.camera.position.x,
+				oc.y - this.camera.position.y,
+				oc.z - this.camera.position.z
+			);
 		}
 
 		this.renderer.render(this.scene, this.camera);
