@@ -220,6 +220,38 @@ class HorizonsIngestor:
                 .scalar_subquery()
             )
         )
+
+        # Overwrite SBDB orbital elements with Horizons data for dwarf planets
+        def _hz_scalar(col):
+            return (
+                select(col)
+                .where(HorizonsRow.computed_spk_id == Object.sbdb_spkid)
+                .correlate(Object)
+                .scalar_subquery()
+            )
+
+        self.session.execute(
+            update(Object)
+            .where(Object.object_type == ObjectType.dwarf_planet)
+            .where(
+                select(HorizonsRow.naif_id)
+                .where(HorizonsRow.computed_spk_id == Object.sbdb_spkid)
+                .correlate(Object)
+                .exists()
+            )
+            .values(
+                epoch_jd=_hz_scalar(HorizonsRow.JDTDB),
+                a=_hz_scalar(HorizonsRow.A),
+                e=_hz_scalar(HorizonsRow.EC),
+                i=_hz_scalar(HorizonsRow.IN_),
+                om=_hz_scalar(HorizonsRow.OM),
+                w=_hz_scalar(HorizonsRow.W),
+                ma=_hz_scalar(HorizonsRow.MA),
+                n=_hz_scalar(HorizonsRow.N),
+                parent_naif_id=_hz_scalar(HorizonsRow.parent_naif_id),
+                orbital_source=OrbitalSource.horizons,
+            )
+        )
         self.session.commit()
 
     def _clear(self) -> None:
