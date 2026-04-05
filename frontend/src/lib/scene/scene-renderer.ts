@@ -86,6 +86,7 @@ export class SceneRenderer {
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture: CanvasTexture | null = null;
 	private asteroidPoints: Points | null = null;
+	private textureLoaded = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
@@ -164,6 +165,9 @@ export class SceneRenderer {
 		// Build all scene objects
 		this.buildScene();
 
+		// Load texture for initial focus (bodyObjects is now populated)
+		if (focusBody) this.maybeLoadTexture(focusBody);
+
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
 
@@ -235,8 +239,6 @@ export class SceneRenderer {
 
 			this.clickables.push(mesh);
 			this.meshToBody.set(mesh, body);
-
-			this.loadBodyTexture(body.data.id, material as MeshStandardMaterial);
 
 			// CSS2D label
 			const variant = getLabelVariant(body);
@@ -516,7 +518,7 @@ export class SceneRenderer {
 		by: number,
 		bz: number,
 		bodyDist: number,
-		selfId: number
+		selfId: string
 	): boolean {
 		const cam = this.camera.position;
 		for (const bo of this.bodyObjects.values()) {
@@ -661,11 +663,20 @@ export class SceneRenderer {
 		}
 	};
 
+	private maybeLoadTexture(body: PositionedBody): void {
+		const id = body.data.id;
+		if (this.textureLoaded.has(id)) return;
+		this.textureLoaded.add(id);
+		const bo = this.bodyObjects.get(id);
+		if (bo) this.loadBodyTexture(id, bo.mesh.material as MeshStandardMaterial);
+	}
+
 	private handleFocus(body: PositionedBody): void {
 		this.focusedBody = body;
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
+		this.maybeLoadTexture(body);
 	}
 
 	// --- Public API ---
@@ -675,6 +686,7 @@ export class SceneRenderer {
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
+		this.maybeLoadTexture(body);
 		if (camPos) this.camera.position.set(...camPos);
 	}
 
