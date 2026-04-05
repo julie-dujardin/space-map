@@ -110,6 +110,6 @@ export function sphericalToCartesian(
 export function writeUrlState(state: MapViewState): void {
 	const url = serializeUrl(state);
 	if (url !== window.location.pathname + window.location.search) {
-		history.replaceState(history.state, '', url);
+		history.replaceState(history.state, '', url); // intentional: bypass SvelteKit router for camera position sync
 	}
 }

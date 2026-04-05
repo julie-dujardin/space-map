@@ -103,6 +103,7 @@ export class SceneRenderer {
 	private readonly _tmpV3b = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
+	private pendingDragEnd = false;
 	private readonly textureLoader = new TextureLoader();
 
 	constructor(
@@ -375,7 +376,12 @@ export class SceneRenderer {
 		} else {
 			this.controls.target.copy(this.focusTarget);
 		}
-		this.controls.update();
+		const controlsSettled = !this.controls.update();
+		if (this.pendingDragEnd && controlsSettled) {
+			this.pendingDragEnd = false;
+			const { latitude, longitude, distance } = this.getCameraState();
+			this.callbacks.onDragEnd?.(latitude, longitude, distance);
+		}
 
 		// Camera state → visibility decisions
 		const { distance } = this.getCameraState();
@@ -659,8 +665,7 @@ export class SceneRenderer {
 	};
 
 	private onControlsEnd = (): void => {
-		const { latitude, longitude, distance } = this.getCameraState();
-		this.callbacks.onDragEnd?.(latitude, longitude, distance);
+		this.pendingDragEnd = true;
 	};
 
 	private onPointerDown = (e: PointerEvent): void => {
