@@ -12,7 +12,7 @@ export const BODY_COLORS: Record<number, string> = {
 	699: '#e8d8a0', // Saturn
 	799: '#87ceeb', // Uranus
 	899: '#3f54ba', // Neptune
-	20134340: '#deb887' // Pluto
+	20134340: '#ab908a' // Pluto
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';
