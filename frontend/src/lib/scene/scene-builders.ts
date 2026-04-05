@@ -120,6 +120,7 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	});
 
 	const line = new Line(geometry, material);
+	line.frustumCulled = false; // geometry is orbit-local; shader repositions it via uCenterOffset
 	line.userData.orbitCenter = new Vector3(cx, cy, cz);
 	return line;
 }
