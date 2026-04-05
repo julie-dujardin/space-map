@@ -3,7 +3,7 @@ import { orbitalElementsToPosition } from '$lib/math/kepler';
 import { fetchElements, type ElementColumns } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { Scale, BASE_ELEMENT_PATH, BASE_LABEL_PATH } from './constants';
+import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './constants';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { getLocale } from '$lib/paraglide/runtime.js';
 
@@ -42,9 +42,9 @@ export class ChunkLoader {
 	 */
 	static prefetch(zone: string, zoom: number, part: number): void {
 		const lang = getLocale();
-		fetch(`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin`);
-		fetch(`${BASE_LABEL_PATH}/${lang}/${zone}/${zoom}/${part}.txt`);
-		fetch(`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.txt`);
+		fetch(elementsBinUrl(zone, zoom, part));
+		fetch(elementLabelsUrl(lang, zone, zoom, part));
+		fetch(elementIdsUrl(zone, zoom, part));
 	}
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
