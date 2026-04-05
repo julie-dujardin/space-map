@@ -7,7 +7,7 @@ import { AU_SCALE } from '../math/units';
  * Visibility options:
  * CLOSE: too close to show everything, revert to point cloud.
  * FULL: show halos and trails.
- * CAPPED: In range for FULL but rejected by the crowding cap — show minimized halo only.
+ * CAPPED: In range for FULL but rejected by the crowding cap — point cloud by default, minimized halo when hideCappedMoonLabels=true.
  * FAR: point cloud.
  * HIDE: hide entirely.
  */
@@ -24,7 +24,7 @@ export enum VISIBILITY {
  * These were tuned for a 27" 1440p monitor; FULL and FAR are scaled at runtime by screenScaleFactor.
  */
 /** Viewport height (CSS px) the distance-ratio thresholds were tuned for. */
-const REFERENCE_VIEWPORT_HEIGHT = 1440;
+const REFERENCE_VIEWPORT_HEIGHT = 1503;
 
 export const PLANETARY_DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.CLOSE]: 0.3,
@@ -156,8 +156,11 @@ export class ContextManager {
 	 */
 	updateViewport(height: number): void {
 		const sf = height / REFERENCE_VIEWPORT_HEIGHT;
-		const scale = (base: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS) =>
-			({ ...base, [VISIBILITY.FULL]: base[VISIBILITY.FULL] * sf, [VISIBILITY.FAR]: base[VISIBILITY.FAR] * sf });
+		const scale = (base: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS) => ({
+			...base,
+			[VISIBILITY.FULL]: base[VISIBILITY.FULL] * sf,
+			[VISIBILITY.FAR]: base[VISIBILITY.FAR] * sf
+		});
 		this.scaledPlanetary = scale(PLANETARY_DISTANCE_RATIO_THRESHOLDS);
 		this.scaledSystem = scale(SYSTEM_DISTANCE_RATIO_THRESHOLDS);
 	}
@@ -210,7 +213,11 @@ export class ContextManager {
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
 		(this.childrenByParent.get(sysId) ?? [])
-			.filter((b) => b.data.objectType === ObjectType.MOON && camDistAU / b.data.a <= this.scaledPlanetary[VISIBILITY.FULL])
+			.filter(
+				(b) =>
+					b.data.objectType === ObjectType.MOON &&
+					camDistAU / b.data.a <= this.scaledPlanetary[VISIBILITY.FULL]
+			)
 			.sort((a, b) => a.data.a - b.data.a)
 			.slice(0, MAX_FULL_MOONS)
 			.forEach((m) => this.fullMoonIds.add(m.data.id));

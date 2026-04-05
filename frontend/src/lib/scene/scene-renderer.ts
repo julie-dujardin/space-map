@@ -347,19 +347,20 @@ export class SceneRenderer {
 
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
-				// When hideCappedMoonLabels is on, CAPPED moons are demoted to the parent's
-				// point cloud; otherwise they render individually with dimmed labels.
+				// By default (hideCappedMoonLabels=false), CAPPED moons are demoted to the
+				// parent's point cloud. When hideCappedMoonLabels=true, they render individually
+				// with dimmed labels instead.
 				const capped = vis === VISIBILITY.CAPPED;
 				group.visible =
 					vis === VISIBILITY.CLOSE ||
 					vis === VISIBILITY.FULL ||
-					(capped && !this.hideCappedMoonLabels);
+					(capped && this.hideCappedMoonLabels);
 				this._tmpV3.set(...body.position);
 				const dist = this.camera.position.distanceTo(this._tmpV3);
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 				this.applyLabelDisplay(
 					bo,
-					vis === VISIBILITY.FULL || (capped && !this.hideCappedMoonLabels),
+					vis === VISIBILITY.FULL || (capped && this.hideCappedMoonLabels),
 					vis === VISIBILITY.CLOSE,
 					dist,
 					projScale
