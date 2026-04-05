@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, getContext } from 'svelte';
-	import { SceneRenderer } from '$lib/scene/scene-renderer';
+	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { type MapViewState, sphericalToCartesian, writeUrlState, parseUrl } from '$lib/url-state';
