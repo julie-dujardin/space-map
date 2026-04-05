@@ -109,7 +109,7 @@ class Object(Base):
         index=True,
     )  # Deterministic integer for export partitioning (hash of PK); range: [-(sys.maxsize+1), sys.maxsize], typically [-2^63, 2^63-1] on 64-bit
     sbdb_mcp_designation: Mapped[str | None] = mapped_column(
-        unique=True, default=None, index=True
+        unique=False, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
     celestrak_norad_cat_id: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True

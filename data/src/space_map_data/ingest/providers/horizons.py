@@ -42,7 +42,7 @@ class HorizonsIngestor:
     def get_spk_id(self, row: dict) -> int | None:
         """Return the SPK ID for a row, if it has one"""
         naif_id = int_or_none(row["naif_id"])
-        if not naif_id:
+        if naif_id is None:
             raise ValueError(f"Missing NAIF ID for: {row}")
         if naif_id == 999:
             # Pluto
