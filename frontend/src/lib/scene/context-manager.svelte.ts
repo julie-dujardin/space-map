@@ -40,7 +40,7 @@ export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
 };
 
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
-export const MAX_FULL_MOONS = 30;
+export const MAX_FULL_MOONS = 25;
 
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.3;
@@ -155,7 +155,7 @@ export class ContextManager {
 	 * Recomputes scaled thresholds (FULL and FAR scale linearly; CLOSE is geometric and unchanged).
 	 */
 	updateViewport(height: number): void {
-		const sf = height / REFERENCE_VIEWPORT_HEIGHT;
+		const sf = (height / REFERENCE_VIEWPORT_HEIGHT) ** 1.5;
 		const scale = (base: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS) => ({
 			...base,
 			[VISIBILITY.FULL]: base[VISIBILITY.FULL] * sf,
