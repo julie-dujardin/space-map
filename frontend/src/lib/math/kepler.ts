@@ -1,5 +1,5 @@
 import type { OrbitalElements } from '$lib/types/objects';
-import { AU_SCALE } from './units';
+import { AU_KM, AU_SCALE } from './units';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -111,10 +111,8 @@ export function satelliteToOffset(sat: {
 	const n = (sat.meanMotion * 2 * Math.PI) / 86400; // rad/s
 	const a = Math.cbrt(GM_EARTH / (n * n)); // km
 
-	const KM_PER_AU = 149597870.7;
-
 	const elements: OrbitalElements = {
-		a: a / KM_PER_AU,
+		a: a / AU_KM,
 		e: sat.eccentricity,
 		i: sat.inclination,
 		om: sat.raan,

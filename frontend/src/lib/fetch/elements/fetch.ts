@@ -5,28 +5,20 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { elementIdsUrl, elementLabelsUrl } from '$lib/fetch/elements/constants';
 
-export async function fetchIds(
-	zone: string,
-	zoom: number,
-	part: number
-): Promise<Map<number, string>> {
-	const lang = getLocale();
-
-	const res = await fetch(elementIdsUrl(zone, zoom, part));
-	if (!res.ok) throw new Error(`Failed to fetch labels for ${lang}: ${res.status}`);
-	const data = (await res.text()).split('\n');
-	return new Map(data.map((id, index) => [index, id]));
+async function fetchTextMap(url: string): Promise<Map<number, string>> {
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+	return new Map((await res.text()).split('\n').map((v, i) => [i, v]));
 }
 
-export async function fetchLabels(
+export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<number, string>> {
+	return fetchTextMap(elementIdsUrl(zone, zoom, part));
+}
+
+export function fetchLabels(
 	zone: string,
 	zoom: number,
 	part: number
 ): Promise<Map<number, string>> {
-	const lang = getLocale();
-
-	const res = await fetch(elementLabelsUrl(lang, zone, zoom, part));
-	if (!res.ok) throw new Error(`Failed to fetch labels for ${lang}: ${res.status}`);
-	const data = (await res.text()).split('\n');
-	return new Map(data.map((id, index) => [index, id]));
+	return fetchTextMap(elementLabelsUrl(getLocale(), zone, zoom, part));
 }

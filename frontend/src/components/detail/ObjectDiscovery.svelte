@@ -7,7 +7,7 @@
 		LocalizedObjectData,
 		EntityRef
 	} from '$lib/fetch/objects/object-data';
-	import { formatWikidataDate } from '$lib/utils';
+	import { formatWikidataDate } from '$lib/format';
 
 	interface Props {
 		global: GlobalObjectData | null;

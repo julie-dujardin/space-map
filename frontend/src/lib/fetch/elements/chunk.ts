@@ -6,8 +6,7 @@ import { ObjectType } from '$lib/types/objects';
 import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './constants';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { getLocale } from '$lib/paraglide/runtime.js';
-
-const KM_PER_AU = 149_597_870.7;
+import { AU_KM } from '$lib/math/units';
 
 function columnarToBody(
 	cols: ElementColumns,
@@ -24,7 +23,7 @@ function columnarToBody(
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
 		// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
-		a: isPlanetScale ? cols.a[idx] / KM_PER_AU : cols.a[idx],
+		a: isPlanetScale ? cols.a[idx] / AU_KM : cols.a[idx],
 		e: cols.e[idx],
 		i: cols.i[idx],
 		om: cols.om[idx],
