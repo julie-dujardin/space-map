@@ -1,6 +1,7 @@
 import {
 	AmbientLight,
 	CanvasTexture,
+	Float32BufferAttribute,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
@@ -66,7 +67,7 @@ interface BodyObjects {
 
 interface Callbacks {
 	onFocusChange(body: PositionedBody | undefined): void;
-	onFrame(latitude: number, longitude: number, zoom: number): void;
+	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
 }
 
 // --- SceneRenderer ---
@@ -84,7 +85,9 @@ export class SceneRenderer {
 	private callbacks: Callbacks;
 
 	private bodyObjects = new Map<string, BodyObjects>();
+	private circleTexture: CanvasTexture | null = null;
 	private asteroidPoints: Points | null = null;
+	private textureLoaded = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
@@ -99,6 +102,7 @@ export class SceneRenderer {
 	private readonly _tmpV3b = new Vector3();
 	private rafId = 0;
 	private firstFrame = true;
+	private pendingUrlWrite = false;
 	private readonly textureLoader = new TextureLoader();
 
 	constructor(
@@ -152,6 +156,7 @@ export class SceneRenderer {
 		this.controls.enableDamping = true;
 		this.controls.target.set(...focusPos);
 		this.controls.update();
+		this.controls.addEventListener('end', this.onControlsEnd);
 
 		// Sync context initial state
 		if (focusBody) ctx.setFocused(focusBody);
@@ -163,6 +168,9 @@ export class SceneRenderer {
 		// Build all scene objects
 		this.buildScene();
 
+		// Load texture for initial focus (bodyObjects is now populated)
+		if (focusBody) this.maybeLoadTexture(focusBody);
+
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
 
@@ -173,9 +181,42 @@ export class SceneRenderer {
 	// --- Scene construction ---
 
 	private buildScene(): void {
-		const circleTexture = makeCircleTexture();
+		this.circleTexture = makeCircleTexture();
 		this.buildMajorBodies();
-		this.buildPointClouds(circleTexture);
+		this.buildPointClouds(this.circleTexture);
+	}
+
+	rebuildMinorPointClouds(): void {
+		if (!this.circleTexture) return;
+
+		// Asteroid cloud — reuse existing Points, just replace the position attribute
+		if (this.ctx.asteroidBodies.length > 0) {
+			const positions = new Float32BufferAttribute(
+				new Float32Array(this.ctx.asteroidBodies.flatMap((b) => b.position)),
+				3
+			);
+			if (this.asteroidPoints) {
+				this.asteroidPoints.geometry.setAttribute('position', positions);
+			} else {
+				this.asteroidPoints = makePointCloud(this.ctx.asteroidBodies, this.circleTexture);
+				this.scene.add(this.asteroidPoints);
+			}
+		}
+
+		// Spacecraft clouds — update existing groups, create new ones
+		for (const [groupParentId, bodies] of this.ctx.spacecraftByParent.entries()) {
+			const existing = this.spacecraftPoints.get(groupParentId);
+			if (existing) {
+				existing.geometry.setAttribute(
+					'position',
+					new Float32BufferAttribute(new Float32Array(bodies.flatMap((b) => b.position)), 3)
+				);
+			} else {
+				const points = makePointCloud(bodies, this.circleTexture);
+				this.spacecraftPoints.set(groupParentId, points);
+				this.scene.add(points);
+			}
+		}
 	}
 
 	private buildMajorBodies(): void {
@@ -205,8 +246,6 @@ export class SceneRenderer {
 
 			this.clickables.push(mesh);
 			this.meshToBody.set(mesh, body);
-
-			this.loadBodyTexture(body.data.id, material as MeshStandardMaterial);
 
 			// CSS2D label
 			const variant = getLabelVariant(body);
@@ -335,15 +374,15 @@ export class SceneRenderer {
 		} else {
 			this.controls.target.copy(this.focusTarget);
 		}
-		this.controls.update();
+		const controlsSettled = !this.controls.update();
+		if (this.pendingUrlWrite && controlsSettled) {
+			this.pendingUrlWrite = false;
+			const { latitude, longitude, distance } = this.getCameraState();
+			this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+		}
 
-		// Camera state → visibility decisions + URL sync
-		const cam = this.camera.position;
-		const tgt = this.controls.target;
-		const { latitude, longitude, distance } = cartesianToSpherical(
-			[cam.x, cam.y, cam.z],
-			[tgt.x, tgt.y, tgt.z]
-		);
+		// Camera state → visibility decisions
+		const { distance } = this.getCameraState();
 		this.ctx.updateCamera(distance);
 
 		// Visibility updates
@@ -415,10 +454,6 @@ export class SceneRenderer {
 
 		this.cullOverlappingLabels();
 
-		if (!isAnimating) {
-			this.callbacks.onFrame(latitude, longitude, distance);
-		}
-
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
 		// Also update alpha multiplier for hover/focus highlight
 		for (const bo of this.bodyObjects.values()) {
@@ -486,7 +521,7 @@ export class SceneRenderer {
 		by: number,
 		bz: number,
 		bodyDist: number,
-		selfId: number
+		selfId: string
 	): boolean {
 		const cam = this.camera.position;
 		for (const bo of this.bodyObjects.values()) {
@@ -616,6 +651,15 @@ export class SceneRenderer {
 
 	// --- Interaction ---
 
+	private getCameraState(target = this.controls.target) {
+		const cam = this.camera.position;
+		return cartesianToSpherical([cam.x, cam.y, cam.z], [target.x, target.y, target.z]);
+	}
+
+	private onControlsEnd = (): void => {
+		this.pendingUrlWrite = true;
+	};
+
 	private onPointerDown = (e: PointerEvent): void => {
 		const canvas = this.renderer.domElement;
 		const rect = canvas.getBoundingClientRect();
@@ -631,11 +675,22 @@ export class SceneRenderer {
 		}
 	};
 
+	private maybeLoadTexture(body: PositionedBody): void {
+		const id = body.data.id;
+		if (this.textureLoaded.has(id)) return;
+		this.textureLoaded.add(id);
+		const bo = this.bodyObjects.get(id);
+		if (bo) this.loadBodyTexture(id, bo.mesh.material as MeshStandardMaterial);
+	}
+
 	private handleFocus(body: PositionedBody): void {
 		this.focusedBody = body;
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
+		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
+		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+		this.maybeLoadTexture(body);
 	}
 
 	// --- Public API ---
@@ -645,6 +700,7 @@ export class SceneRenderer {
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
+		this.maybeLoadTexture(body);
 		if (camPos) this.camera.position.set(...camPos);
 	}
 
@@ -663,6 +719,7 @@ export class SceneRenderer {
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
 		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
+		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.renderer.dispose();
 	}

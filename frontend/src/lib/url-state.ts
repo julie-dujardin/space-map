@@ -107,32 +107,9 @@ export function sphericalToCartesian(
 	];
 }
 
-/** Returns a throttled sync + cancel pair (safe to call every frame) */
-export function createUrlSync(intervalMs = 500) {
-	let lastUpdate = 0;
-	let pending: ReturnType<typeof setTimeout> | undefined;
-	function write(state: MapViewState) {
-		const url = serializeUrl(state);
-		if (url !== window.location.pathname + window.location.search) {
-			// Intentional: using history.replaceState directly for high-frequency camera sync
-
-			history.replaceState(history.state, '', url);
-		}
-		lastUpdate = Date.now();
+export function writeUrlState(state: MapViewState): void {
+	const url = serializeUrl(state);
+	if (url !== window.location.pathname + window.location.search) {
+		history.replaceState(history.state, '', url); // intentional: bypass SvelteKit router for camera position sync
 	}
-	return {
-		sync(state: MapViewState) {
-			clearTimeout(pending);
-			const elapsed = Date.now() - lastUpdate;
-			if (elapsed >= intervalMs) {
-				write(state);
-			} else {
-				// Trailing update so final state is always written
-				pending = setTimeout(() => write(state), intervalMs - elapsed);
-			}
-		},
-		cancel() {
-			clearTimeout(pending);
-		}
-	};
 }
