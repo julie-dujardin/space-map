@@ -13,7 +13,6 @@ from space_map_data.download.providers.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.horizons import HorizonsDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.sbdb import SBDBDownloader
-from space_map_data.download.providers.textures import TextureProcessor
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
 
@@ -30,7 +29,7 @@ PROVIDERS_CLASSES = [
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
-ALL_SOURCES = [*SOURCES, "textures"]
+ALL_SOURCES = list(SOURCES)
 
 
 def load_config() -> dict[str, Any]:
@@ -51,10 +50,6 @@ def download(
     """Download data from the given sources (default: all)."""
     DOWNLOAD_DIR.mkdir(exist_ok=True)
     selected = list(ALL_SOURCES) if sources is None else sources
-
-    if "textures" in selected:
-        selected = [s for s in selected if s != "textures"]
-        TextureProcessor().process_all(force=force)
 
     config = load_config()
     user_agent = config["download"]["user_agent"]

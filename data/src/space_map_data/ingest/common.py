@@ -19,10 +19,23 @@ from space_map_data.utils.db import get_session
 logger = logging.getLogger(__name__)
 
 
-def _post_process() -> None:
-    """Finalise DB after ingest: log summary."""
-    session = get_session()
+def ingest_bodies(download_dir: Path, *, limit: int | None = None) -> None:
+    """Ingest orbital bodies: SBDB, CelesTrak, Horizons, Wikidata."""
+    sbdb.ingest(download_dir, limit=limit)
+    celestrak.ingest(download_dir, limit=limit)
+    horizons.ingest(download_dir, limit=limit)
+    wikidata.ingest(download_dir, limit=limit)
+    wikidata_conflicts.ingest(download_dir, limit=limit)
 
+
+def ingest_features(download_dir: Path, *, limit: int | None = None) -> None:
+    """Ingest surface features (IAU nomenclature)."""
+    iau_nomenclature.ingest(download_dir, limit=limit)
+
+
+def log_db_summary() -> None:
+    """Log object counts by type."""
+    session = get_session()
     counts = (
         session.query(Object.object_type, func.count())
         .group_by(Object.object_type)
@@ -31,28 +44,13 @@ def _post_process() -> None:
     )
     for object_type, cnt in counts:
         logger.info("  %-20s %d", object_type, cnt)
-
     total = session.query(func.count(Object.id)).scalar()
     logger.info("Total: %d objects", total)
 
 
-def ingest(
-    download_dir: Path,
-    *,
-    limit: int | None = None,
-) -> None:
+def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
-    # Create objects
-    sbdb.ingest(download_dir, limit=limit)
-    celestrak.ingest(download_dir, limit=limit)
-    # Create objects & add new data into existing ones
-    horizons.ingest(download_dir, limit=limit)
-    # Add new data to existing objects
-    wikidata.ingest(download_dir, limit=limit)
-    wikidata_conflicts.ingest(download_dir, limit=limit)
-    # Surface features (independent of objects table)
-    iau_nomenclature.ingest(download_dir, limit=limit)
-
-    _post_process()
-
+    ingest_bodies(download_dir, limit=limit)
+    ingest_features(download_dir, limit=limit)
+    log_db_summary()
     logger.info("Database ready.")
