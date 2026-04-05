@@ -117,10 +117,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             non_sbdb = [
                 (
                     "major",
-                    session.query(Object).filter(
-                        Object.sbdb_spkid.is_(None),
-                        Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
-                    ),
+                    session.query(Object)
+                    .options(joinedload(Object.sbdb))
+                    .filter(Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES)),
                 ),
                 (
                     "moons",
@@ -173,7 +172,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     session.query(Object)
                     .options(joinedload(Object.sbdb))
                     .join(Object.sbdb)
-                    .filter(SBDB.class_ == cls, name_filter)
+                    .filter(
+                        SBDB.class_ == cls,
+                        name_filter,
+                        Object.object_type.not_in(_SUN_MAJOR_TYPE_VALUES),
+                    )
                     .order_by(Object.random_int)
                     .limit(limit_per_zone)
                     .all()
