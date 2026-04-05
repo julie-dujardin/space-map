@@ -181,9 +181,9 @@ export class SceneRenderer {
 		for (const body of this.ctx.majorBodies) {
 			const id = body.data.id;
 			const color = BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
-			const rawRadiusKm =
-				BODY_RADII_KM[id] ??
-				(Number.isFinite(body.data.radiusKm) ? body.data.radiusKm : DEFAULT_BODY_RADIUS_KM);
+			const rawRadiusKm = Number.isFinite(body.data.radiusKm)
+				? body.data.radiusKm
+				: DEFAULT_BODY_RADIUS_KM;
 			const radius = kmToScene(rawRadiusKm);
 			const isStar = body.data.objectType === ObjectType.STAR;
 

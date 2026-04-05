@@ -5,6 +5,7 @@ from pathlib import Path
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import write_elements
+from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object
 
@@ -25,7 +26,13 @@ def write_chunk(
     """
     elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin"
     elements_path.parent.mkdir(parents=True, exist_ok=True)
-    write_elements(objects, elements_path)
+    radius_km_overrides: dict[str, float] = {}
+    for obj in objects:
+        if obj.wikidata_qid and (wd := chunk_entities.get(obj.wikidata_qid)):
+            r = radius_km_from_claims(wd["claims"])
+            if r is not None:
+                radius_km_overrides[obj.id] = r
+    write_elements(objects, elements_path, radius_km_overrides or None)
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:

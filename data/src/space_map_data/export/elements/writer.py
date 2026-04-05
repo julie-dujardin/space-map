@@ -24,7 +24,11 @@ def _parse_numeric_id(obj: Object) -> int:
     return MISSING_INT32
 
 
-def write_elements(objects: list[Object], out_file: Path) -> None:
+def write_elements(
+    objects: list[Object],
+    out_file: Path,
+    radius_km_overrides: dict[str, float] | None = None,
+) -> None:
     """Write a binary elements file from a list of Objects (already sorted)."""
     n = len(objects)
 
@@ -72,7 +76,7 @@ def write_elements(objects: list[Object], out_file: Path) -> None:
                 ],
             )
 
-        # Column 12: radius_km — derived from SBDB diameter at export time
+        # Column 12: radius_km — from SBDB diameter, or wikidata overrides
         def _radius_km(o: Object) -> float:
             if (
                 o.sbdb_spkid is not None
@@ -80,6 +84,8 @@ def write_elements(objects: list[Object], out_file: Path) -> None:
                 and o.sbdb.diameter is not None
             ):
                 return o.sbdb.diameter / 2.0
+            if radius_km_overrides and (r := radius_km_overrides.get(o.id)):
+                return r
             return MISSING_FLOAT64
 
         _write_float64(f, n, [_radius_km(o) for o in objects])

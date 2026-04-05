@@ -205,3 +205,26 @@ def _all_entity_qids(claims: dict, prop: str) -> list[str]:
 def _commons_url(filename: str) -> str:
     """Convert a Wikimedia Commons filename to a thumbnail URL."""
     return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}?width=300"
+
+
+# Wikidata unit QID → factor to convert to km
+_RADIUS_UNIT_TO_KM: dict[str, float] = {
+    "Q828224": 1.0,  # kilometre
+    "Q11573": 0.001,  # metre
+}
+
+
+def radius_km_from_claims(claims: dict) -> float | None:
+    """Extract the mean radius in km from raw Wikidata claims (P2120), or None."""
+    qty = _first_quantity(claims, "P2120")
+    if qty is None:
+        return None
+    if isinstance(qty, (int, float)):
+        # Dimensionless — assume km (rare but possible)
+        return float(qty)
+    unit_qid = qty.get("unit")
+    factor = _RADIUS_UNIT_TO_KM.get(unit_qid) if unit_qid else None
+    if factor is None:
+        logger.warning("radius_km_from_claims: unknown unit QID %s, skipping", unit_qid)
+        return None
+    return float(qty["value"]) * factor
