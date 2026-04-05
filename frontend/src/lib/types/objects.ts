@@ -16,6 +16,8 @@ export interface BodyData extends OrbitalElements {
 	objectType: ObjectType;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	radiusKm: number;
+	/** 0 = no object file, 1 = localized file exists, 2 = only English fallback file exists */
+	objectFileFlag: number;
 }
 
 export interface PositionedBody {

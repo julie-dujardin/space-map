@@ -12,6 +12,7 @@ function columnarToBody(
 	cols: ElementColumns,
 	idx: number,
 	labels: Map<number, string>,
+	flags: Map<number, number>,
 	idMap: Map<number, string>
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
@@ -19,6 +20,7 @@ function columnarToBody(
 	return {
 		id: idMap.get(idx)!,
 		name: labels.get(idx) ?? null,
+		objectFileFlag: flags.get(idx) ?? 0,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
@@ -59,11 +61,12 @@ export class ChunkLoader {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 
-		const [cols, labels, idMap] = await Promise.all([
+		const [cols, labelData, idMap] = await Promise.all([
 			fetchElements(zone, zoom, part),
 			fetchLabels(zone, zoom, part),
 			fetchIds(zone, zoom, part)
 		]);
+		const { labels, flags } = labelData;
 
 		console.log(`Loaded: ${cols.rowCount} objects`);
 
@@ -97,7 +100,7 @@ export class ChunkLoader {
 			}
 			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
 
-			const body = columnarToBody(cols, idx, labels, idMap);
+			const body = columnarToBody(cols, idx, labels, flags, idMap);
 			const offset = orbitalElementsToPosition(body, date);
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
@@ -109,7 +112,10 @@ export class ChunkLoader {
 
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
-					this.barycenters.set(id, body);
+					// if parent is SSB, don't use it
+					if (body.a > 0 && body.e < 1) {
+						this.barycenters.set(id, body);
+					}
 					this.positions.set(id, pos);
 				}
 				bodies.push({ data: body, position: pos });

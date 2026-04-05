@@ -39,7 +39,7 @@ def int_or_none(val: str) -> int | None:
 
     Raise an error otherwise.
     """
-    if not val or not val.strip():
+    if val.strip() == "":
         return None
     return int(val)
 

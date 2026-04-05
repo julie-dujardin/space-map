@@ -138,15 +138,25 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
 export async function fetchObjectDetail(
 	fileId: string,
+	objectFileFlag = 1,
 	lang = getLocale()
 ): Promise<ObjectDetailData> {
-	const key = `${fileId}:${lang}`;
+	const key = `${fileId}:${lang}:${objectFileFlag}`;
 	const cached = cache.get(key);
 	if (cached) return cached;
 
+	let localizedPromise: Promise<LocalizedObjectData | null>;
+	if (objectFileFlag === 0) {
+		localizedPromise = Promise.resolve(null);
+	} else if (objectFileFlag === 2) {
+		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/en/${fileId}.json`);
+	} else {
+		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/${lang}/${fileId}.json`);
+	}
+
 	const [global, localized] = await Promise.all([
 		fetchJson<GlobalObjectData>(`/data/v1/objects/__global__/${fileId}.json`),
-		fetchJson<LocalizedObjectData>(`/data/v1/objects/${lang}/${fileId}.json`)
+		localizedPromise
 	]);
 
 	const result: ObjectDetailData = { global, localized };

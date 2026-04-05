@@ -110,15 +110,13 @@ def resolve_entity_ref(
     wd = wikidata_entities.get_referenced(qid)
     if not wd:
         return None
-    name = wd["labels"].get(lang) or wd["labels"].get("en")
+    name = wd["labels"].get(lang)
     if not name:
         return None
     result: dict = {"name": name}
     title = wd["sitelinks"].get(lang)
     if title:
         result["wikipedia"] = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
-    elif en_title := wd["sitelinks"].get("en"):
-        result["wikipedia"] = f"https://en.wikipedia.org/wiki/{quote(en_title)}"
     return result
 
 
