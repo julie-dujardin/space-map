@@ -184,6 +184,20 @@ export class SceneRenderer {
 		this.circleTexture = makeCircleTexture();
 		this.buildMajorBodies();
 		this.buildPointClouds(this.circleTexture);
+		// Defer orbit line geometry (100K+ Kepler solves) to after first paint
+		requestIdleCallback(() => this.buildOrbitLines(), { timeout: 2000 });
+	}
+
+	private buildOrbitLines(): void {
+		for (const [, bo] of this.bodyObjects) {
+			if (bo.orbitLine !== null) continue;
+			const { body } = bo;
+			if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
+			const color = BODY_COLORS[body.data.id] ?? DEFAULT_BODY_COLOR;
+			const line = makeOrbitLine(body, color);
+			this.scene.add(line);
+			bo.orbitLine = line;
+		}
 	}
 
 	rebuildMinorPointClouds(): void {
@@ -191,10 +205,14 @@ export class SceneRenderer {
 
 		// Asteroid cloud — reuse existing Points, just replace the position attribute
 		if (this.ctx.asteroidBodies.length > 0) {
-			const positions = new Float32BufferAttribute(
-				new Float32Array(this.ctx.asteroidBodies.flatMap((b) => b.position)),
-				3
-			);
+			const bodies = this.ctx.asteroidBodies;
+			const posArr = new Float32Array(bodies.length * 3);
+			for (let i = 0; i < bodies.length; i++) {
+				posArr[i * 3] = bodies[i].position[0];
+				posArr[i * 3 + 1] = bodies[i].position[1];
+				posArr[i * 3 + 2] = bodies[i].position[2];
+			}
+			const positions = new Float32BufferAttribute(posArr, 3);
 			if (this.asteroidPoints) {
 				this.asteroidPoints.geometry.setAttribute('position', positions);
 			} else {
@@ -207,10 +225,13 @@ export class SceneRenderer {
 		for (const [groupParentId, bodies] of this.ctx.spacecraftByParent.entries()) {
 			const existing = this.spacecraftPoints.get(groupParentId);
 			if (existing) {
-				existing.geometry.setAttribute(
-					'position',
-					new Float32BufferAttribute(new Float32Array(bodies.flatMap((b) => b.position)), 3)
-				);
+				const posArr = new Float32Array(bodies.length * 3);
+				for (let i = 0; i < bodies.length; i++) {
+					posArr[i * 3] = bodies[i].position[0];
+					posArr[i * 3 + 1] = bodies[i].position[1];
+					posArr[i * 3 + 2] = bodies[i].position[2];
+				}
+				existing.geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 			} else {
 				const points = makePointCloud(bodies, this.circleTexture);
 				this.spacecraftPoints.set(groupParentId, points);
@@ -288,12 +309,8 @@ export class SceneRenderer {
 				group.add(label);
 			}
 
-			// Orbit line
-			let orbitLine: Line | null = null;
-			if (body.orbitElements && !isStar) {
-				orbitLine = makeOrbitLine(body, color);
-				this.scene.add(orbitLine);
-			}
+			// Orbit line — built later in buildOrbitLines() to defer 100K+ Kepler solves
+			const orbitLine: Line | null = null;
 
 			this.scene.add(group);
 			const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;

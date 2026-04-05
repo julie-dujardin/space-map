@@ -128,7 +128,12 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 }
 
 export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture): Points {
-	const positions = new Float32Array(bodies.flatMap((b) => b.position));
+	const positions = new Float32Array(bodies.length * 3);
+	for (let i = 0; i < bodies.length; i++) {
+		positions[i * 3] = bodies[i].position[0];
+		positions[i * 3 + 1] = bodies[i].position[1];
+		positions[i * 3 + 2] = bodies[i].position[2];
+	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
 	const material = new PointsMaterial({
