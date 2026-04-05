@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from sqlalchemy import ForeignKey, Index, String, text
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from space_map_data.constants.providers import PROVIDERS
@@ -100,8 +100,9 @@ class Object(Base):
         unique=True, default=None, index=True
     )  # JPL SBDB primary SPK-ID
     random_int: Mapped[int] = mapped_column(
-        server_default=text("abs(random())"), index=True
-    )  # Random integer for export partitioning
+        default=lambda ctx: hash(ctx.get_current_parameters()["id"]),
+        index=True,
+    )  # Deterministic integer for export partitioning (hash of PK); range: [-(sys.maxsize+1), sys.maxsize], typically [-2^63, 2^63-1] on 64-bit
     sbdb_mcp_designation: Mapped[str | None] = mapped_column(
         unique=True, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
