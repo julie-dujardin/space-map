@@ -80,8 +80,13 @@ export function orbitalElementsToEllipse(
 ): [number, number, number][] {
 	const points: [number, number, number][] = [];
 	for (let j = 0; j <= numPoints; j++) {
-		const ma = (j / numPoints) * 360;
-		// Use n=0 so orbitalElementsToPosition doesn't propagate the swept ma
+		// Sample uniformly in eccentric anomaly E for near-uniform arc spacing.
+		// Mean anomaly sampling (M = j/n * 360) produces wildly unequal spacing for
+		// high-eccentricity orbits: points cluster near aphelion and are sparse near
+		// perihelion. E-uniform sampling keeps spacing roughly constant everywhere.
+		const E = (j / numPoints) * 2 * Math.PI; // eccentric anomaly in radians
+		// Kepler's equation: M = E - e*sin(E)
+		const ma = (E - el.e * Math.sin(E)) * (180 / Math.PI);
 		points.push(orbitalElementsToPosition({ ...el, ma, n: 0 }));
 	}
 	return points;
