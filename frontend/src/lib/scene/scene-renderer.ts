@@ -344,6 +344,7 @@ export class SceneRenderer {
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED;
 				this._tmpV3.set(...body.position);
 				const dist = this.camera.position.distanceTo(this._tmpV3);
+				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 				this.applyLabelDisplay(
 					bo,
 					vis === VISIBILITY.FULL || vis === VISIBILITY.CAPPED,
@@ -351,7 +352,6 @@ export class SceneRenderer {
 					dist,
 					projScale
 				);
-				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
 			} else if (body.data.objectType === ObjectType.STAR) {
 				group.visible = true;
 				if (bo.label) bo.label.visible = true;
@@ -362,6 +362,7 @@ export class SceneRenderer {
 				const full = this.ctx.hasFullRendering(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
+				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 				this.applyLabelDisplay(
 					bo,
 					vis === VISIBILITY.FULL && full,
@@ -369,7 +370,6 @@ export class SceneRenderer {
 					dist,
 					projScale
 				);
-				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
 			}
 		}
 
@@ -423,6 +423,7 @@ export class SceneRenderer {
 			screenR = (radiusScene / distToBody) * projScale;
 			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
 			hideHaloRing = screenR >= HALO_RADIUS_PX;
+			if (bo.orbitLine) bo.orbitLine.visible = !hideHaloRing;
 		}
 
 		label.visible = show;
