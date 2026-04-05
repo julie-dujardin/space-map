@@ -231,6 +231,12 @@ export class SceneRenderer {
 					},
 					{ passive: false }
 				);
+				// Forward all pointerdown events so OrbitControls sees every finger for pinch-zoom.
+				// Both fingers must reach the canvas — in crowded areas both may land on labels.
+				// Single-tap still works: the label's own click handler fires independently on pointerup.
+				label.element.addEventListener('pointerdown', (e: PointerEvent) => {
+					this.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', e));
+				});
 				group.add(label);
 			}
 

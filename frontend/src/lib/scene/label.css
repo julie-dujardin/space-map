@@ -5,6 +5,7 @@
 	pointer-events: auto;
 	cursor: pointer;
 	user-select: none;
+	touch-action: none; /* prevent browser pinch-zoom; 2nd-finger pointerdown forwarded to canvas */
 }
 .scene-label--major {
 	width: 32px;
