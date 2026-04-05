@@ -8,7 +8,6 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
-    resolve_name,
 )
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
@@ -54,8 +53,14 @@ def write_objects(
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
     chunk_entities: dict[str, WikidataEntity | None],
-) -> None:
-    """Write per-object JSON files (global + per-language)."""
+) -> dict[str, dict[str, int]]:
+    """Write per-object JSON files (global + per-language).
+
+    Returns {obj_id: {lang: flag}} where flag is:
+      0 = no file written
+      1 = localized file written for this lang
+      2 = no localized file, but English file exists (frontend should fetch en/)
+    """
     global_dir = out_dir / "objects" / "__global__"
     global_dir.mkdir(parents=True, exist_ok=True)
     lang_dirs: dict[str, Path] = {}
@@ -64,29 +69,50 @@ def write_objects(
         d.mkdir(parents=True, exist_ok=True)
         lang_dirs[lang] = d
 
+    all_flags: dict[str, dict[str, int]] = {}
+
     for obj in objects:
         wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
         extracted = extract_claims(wd["claims"]) if wd else {}
 
-        # Global (non-localized)
+        # Global (non-localized, always written)
         global_data = _build_global(obj, extracted, wikidata_entities)
         (global_dir / f"{obj.id}.json").write_bytes(orjson.dumps(global_data))
 
-        # Per-language (localized)
+        # Per-language (localized) — English first so flag=2 can be determined
         qid = obj.wikidata_qid
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
+
+        en_data = _build_localized(
+            obj, "en", wikidata_entities, wd, extracted, wiki_summaries.get("en")
+        )
+        if en_data:
+            (lang_dirs["en"] / f"{obj.id}.json").write_bytes(orjson.dumps(en_data))
+
+        obj_flags: dict[str, int] = {"en": 1 if en_data else 0}
+
         for lang in LANGUAGES:
-            wiki = wiki_summaries.get(lang)
+            if lang == "en":
+                continue
             lang_data = _build_localized(
-                obj, lang, wikidata_entities, wd, extracted, wiki
+                obj, lang, wikidata_entities, wd, extracted, wiki_summaries.get(lang)
             )
-            (lang_dirs[lang] / f"{obj.id}.json").write_bytes(orjson.dumps(lang_data))
+            if lang_data:
+                (lang_dirs[lang] / f"{obj.id}.json").write_bytes(
+                    orjson.dumps(lang_data)
+                )
+                obj_flags[lang] = 1
+            else:
+                obj_flags[lang] = 2 if en_data else 0
+
+        all_flags[obj.id] = obj_flags
 
     logger.info(
         "Wrote object files for %d objects (%d languages + global)",
         len(objects),
         len(LANGUAGES),
     )
+    return all_flags
 
 
 def _build_global(
@@ -162,12 +188,11 @@ def _build_localized(
     """Build the per-language JSON dict for an object."""
     data: dict = {}
 
-    name = resolve_name(obj, lang, wd)
-    if name is not None:
-        data["name"] = name
+    if wd and lang in wd["labels"]:
+        data["name"] = wd["labels"][lang]
 
     if wd:
-        desc = wd["descriptions"].get(lang) or wd["descriptions"].get("en")
+        desc = wd["descriptions"].get(lang)
         if desc:
             data["description"] = desc
         aliases = wd["aliases"].get(lang)

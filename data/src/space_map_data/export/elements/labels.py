@@ -9,20 +9,26 @@ from space_map_data.models.object import Object
 logger = logging.getLogger(__name__)
 
 
+_US = "\x1f"  # ASCII Unit Separator — delimiter between flag and name
+
+
 def write_labels(
     objects: list[Object],
     out_file: Path,
     lang: str,
     chunk_entities: dict[str, WikidataEntity | None],
+    flags: dict[str, int],
 ) -> None:
-    """Write a single label JSON file for one language and chunk.
+    """Write a single label file for one language and chunk.
 
-    Fallback chain: Wikidata label (target lang) → Wikidata label (en) → object.name.
+    Format: one "{flag}{US}{name}" line per object, where US is ASCII Unit Separator (0x1F).
+    Flag values: 0 = no object file, 1 = localized file, 2 = English fallback file.
+
+    Name fallback chain (for map display): Wikidata label (target lang) → Wikidata label (en) → object.name.
     """
-    labels = []
+    lines = []
     for obj in objects:
-        # Name: prefer localized name, else english name (handled by resolve_name), else provider name or primary designation or provisional designation
-        # In practice, this covers everything.
+        # Name: full fallback chain so the map always shows something
         name = (
             (
                 resolve_name(obj, lang, chunk_entities.get(obj.wikidata_qid))
@@ -32,12 +38,13 @@ def write_labels(
             or obj.name
             or obj.sbdb_mcp_designation
             or obj.provisional_designation
+            or ""
         )
         if not name:
             logger.warning("No name found for object %s (id=%s)", obj, obj.id)
-            name = ""
-        labels.append(name)
+        flag = flags.get(obj.id, 0)
+        lines.append(f"{flag}{_US}{name}")
 
-    out_file.write_text("\n".join(labels))
-    named = sum(1 for label in labels if label)
-    logger.info("Wrote %d/%d labels to %s", named, len(labels), out_file)
+    out_file.write_text("\n".join(lines))
+    named = sum(1 for line in lines if line.split(_US, 1)[1])
+    logger.info("Wrote %d/%d labels to %s", named, len(lines), out_file)

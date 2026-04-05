@@ -68,7 +68,7 @@ def _build_metadata(
 
 def _remove_old_outputs(out_dir: Path) -> None:
     """Remove all chunk output directories before a fresh export."""
-    for d in ("elements", "element_labels"):
+    for d in ("elements", "element_labels", "objects"):
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
@@ -91,8 +91,11 @@ def _write_parts(
             for obj in chunk
             if (qid := obj.wikidata_qid)
         }
-        total_bytes += write_chunk(chunk, out_dir, zone, zoom, part_idx, chunk_entities)
-        write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
+        # write_objects must come first — its return value feeds write_chunk
+        object_flags = write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
+        total_bytes += write_chunk(
+            chunk, out_dir, zone, zoom, part_idx, chunk_entities, object_flags
+        )
     return num_parts, total_bytes
 
 
@@ -183,10 +186,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 )
                 if not objects:
                     continue
+                zone = cls.value if hasattr(cls, "value") else cls
                 f = executor.submit(
-                    _write_parts, objects, out_dir, cls, zoom, wikidata_entities
+                    _write_parts, objects, out_dir, zone, zoom, wikidata_entities
                 )
-                futures[f] = (cls, zoom, len(objects))
+                futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
 
     for f in as_completed(futures):

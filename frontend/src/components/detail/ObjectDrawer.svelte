@@ -57,7 +57,7 @@
 		const id = body.data.id;
 		loading = true;
 		data = null;
-		fetchObjectDetail(id)
+		fetchObjectDetail(id, body.data.objectFileFlag)
 			.then((result) => {
 				if (body.data.id === id) {
 					data = result;
