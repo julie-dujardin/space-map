@@ -21,11 +21,7 @@ import {
 } from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import {
-	BODY_COLORS,
-	DEFAULT_BODY_COLOR,
-	DEFAULT_BODY_RADIUS_KM
-} from '$lib/constants';
+import { BODY_COLORS, DEFAULT_BODY_COLOR, DEFAULT_BODY_RADIUS_KM } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
