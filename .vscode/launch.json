@@ -17,7 +17,7 @@
       "module": "space_map_data.ingest",
       "python": "${workspaceFolder}/data/.venv/bin/python",
       "cwd": "${workspaceFolder}/data",
-      "args": ["--limit", "${input:limit}"]
+      "args": ["--targets", "${input:ingest_targets}", "--limit", "${input:limit}"]
     },
     {
       "name": "Export data",
@@ -46,7 +46,14 @@
       "id": "sources",
       "type": "pickString",
       "description": "Which source(s) to download",
-      "options": ["all", "celestrak", "sbdb", "horizons", "wikidata", "wikipedia", "textures"],
+      "options": ["all", "celestrak", "sbdb", "horizons", "wikidata", "wikipedia"],
+      "default": "all"
+    },
+    {
+      "id": "ingest_targets",
+      "type": "pickString",
+      "description": "Which target(s) to ingest",
+      "options": ["all", "bodies", "features", "textures"],
       "default": "all"
     },
     {

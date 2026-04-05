@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from sqlalchemy import func, insert, update
+from sqlalchemy import delete, func, insert, update
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
@@ -153,6 +153,8 @@ class IAUNomenclatureIngestor:
             )
             return
 
+        self.session.execute(delete(Feature))
+        self.session.commit()
         self._insert_features()
         matched = self._match_to_objects()
         logger.info(

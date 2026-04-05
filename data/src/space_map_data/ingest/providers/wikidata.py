@@ -199,6 +199,8 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
         return
 
     session = get_session()
+    session.execute(update(Object).values(wikidata_qid=None))
+    session.commit()
 
     obj_to_qids, qid_to_objs = _build_mappings(session, ids_dir)
     logger.info(

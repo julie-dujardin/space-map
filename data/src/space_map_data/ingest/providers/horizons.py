@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, insert, select, update
 from tqdm import tqdm
 
 from space_map_data.models.object import (
@@ -222,10 +222,19 @@ class HorizonsIngestor:
         )
         self.session.commit()
 
+    def _clear(self) -> None:
+        self.session.execute(delete(HorizonsRow))
+        self.session.execute(
+            delete(Object).where(Object.orbital_source == OrbitalSource.horizons)
+        )
+        self.session.execute(update(Object).values(horizons_naif_id=None))
+        self.session.commit()
+
     def run(self) -> None:
         if not self.csv_path.exists():
             logger.warning("Horizons CSV not found at %s, skipping", self.csv_path)
             return
+        self._clear()
 
         total = _count_csv_rows(self.csv_path)
         if self.limit:

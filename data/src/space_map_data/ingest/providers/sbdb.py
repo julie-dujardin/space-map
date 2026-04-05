@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from sqlalchemy import insert
+from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.models.object import (
@@ -365,10 +365,18 @@ class SBDBIngestor:
             self.session.execute(insert(SBDBRow), sbdb_batch)
             self.session.commit()
 
+    def _clear(self) -> None:
+        self.session.execute(delete(SBDBRow))
+        self.session.execute(
+            delete(Object).where(Object.orbital_source == OrbitalSource.sbdb)
+        )
+        self.session.commit()
+
     def run(self) -> None:
         chunks = self._find_chunks()
         if not chunks:
             return
+        self._clear()
 
         # Build sub-chunk work items: (file, skip_rows, max_rows)
         work_items: list[tuple[Path, int, int]] = []

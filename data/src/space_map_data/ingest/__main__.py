@@ -49,9 +49,7 @@ def cli():
             ingest_features(DOWNLOAD_DIR, limit=args.limit)
         if "bodies" in selected or "features" in selected:
             log_db_summary()
-
-    if "textures" in selected:
-        with session_scope():
+        if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
 
 

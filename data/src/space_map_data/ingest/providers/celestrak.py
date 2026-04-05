@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from sqlalchemy import insert
+from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.models.object import (
@@ -90,10 +90,18 @@ class CelesTrakIngestor:
         self.session.execute(insert(CelesTrakRow), ct_rows)
         self.session.commit()
 
+    def _clear(self) -> None:
+        self.session.execute(delete(CelesTrakRow))
+        self.session.execute(
+            delete(Object).where(Object.orbital_source == OrbitalSource.celestrak)
+        )
+        self.session.commit()
+
     def run(self) -> None:
         if not self.csv_path.exists():
             logger.warning("CelesTrak CSV not found at %s, skipping", self.csv_path)
             return
+        self._clear()
 
         total = _count_csv_rows(self.csv_path)
         if self.limit:

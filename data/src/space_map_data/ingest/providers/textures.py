@@ -117,6 +117,11 @@ class TextureProcessor:
         )["bodies"]
         self._global_warnings: list[str] = []
 
+    def _reset_texture_available(self) -> None:
+        session = get_session()
+        session.query(Object).update({Object.map_texture_available: False})
+        session.commit()
+
     def _mark_texture_available(self, object_id: str) -> None:
         session = get_session()
         session.query(Object).filter(Object.id == object_id).update(
@@ -169,6 +174,7 @@ class TextureProcessor:
         Writes a global warnings file to the textures download directory.
         """
         self._global_warnings = []
+        self._reset_texture_available()
         known_files = {entry["file"] for entry in self._raw_meta}
 
         for entry in self._raw_meta:
@@ -222,6 +228,7 @@ class TextureProcessor:
             log.debug(
                 "skipping %s (already processed, use force=True to reprocess)", src.name
             )
+            self._mark_texture_available(object_id)
             return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)

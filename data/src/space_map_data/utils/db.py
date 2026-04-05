@@ -11,7 +11,6 @@ Usage anywhere else::
     session = get_session()
 """
 
-import shutil
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -57,8 +56,6 @@ def session_scope(create_db: bool = False) -> Generator[Session]:
     global _session
 
     if create_db:
-        if DB_DIR.exists():
-            shutil.rmtree(DB_DIR)
         DB_DIR.mkdir(parents=True, exist_ok=True)
     elif not DB_FILE.exists():
         raise FileNotFoundError(f"Database not found at {DB_FILE} — run ingest first")
