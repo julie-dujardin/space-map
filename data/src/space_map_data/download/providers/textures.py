@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 WEBP_MAX = 16383  # WebP hard limit per dimension
+EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
 # File size targets per tier (upper-bound lookup: applies to exports <= the key)
 SIZE_TARGETS = [
@@ -98,8 +99,14 @@ def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
     }
 
 
-# Tier assigned by export size: 2048→low, 8192→medium, larger→high
-_SIZE_TO_TIER = {2048: "low", 8192: "medium"}
+def _tier_for_size(size: int) -> str:
+    if size <= 2048:
+        return "low"
+    if size <= 8192:
+        return "medium"
+    return "high"
+
+
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 
@@ -129,14 +136,14 @@ class TextureProcessor:
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
         # Sizes to export: all EXPORT_SIZES that fit below the cap, plus the cap itself
-        sizes = [s for s in _SIZE_TO_TIER.keys() if s < capped]
+        sizes = [s for s in EXPORT_SIZES if s < capped]
         sizes.append(capped)
 
         exports: dict[str, dict] = {}
         warnings: list[str] = []
 
         for size in sizes:
-            tier = _SIZE_TO_TIER.get(size, "high")
+            tier = _tier_for_size(size)
             resized = _resize(img, size)
             rec = _save_webp(resized, out_dir / f"{tier}.webp", lossless=False)
             exports[tier] = rec
