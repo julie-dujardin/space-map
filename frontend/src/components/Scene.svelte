@@ -40,8 +40,7 @@
 				focusedBody = body;
 				onFocusChange?.(body);
 			},
-			onDragStart: syncUrl,
-			onDragEnd: syncUrl
+			onCameraPosition: syncUrl
 		});
 
 		const ro = new ResizeObserver(() => {

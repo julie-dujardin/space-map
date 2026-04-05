@@ -67,8 +67,7 @@ interface BodyObjects {
 
 interface Callbacks {
 	onFocusChange(body: PositionedBody | undefined): void;
-	onDragStart?(latitude: number, longitude: number, zoom: number): void;
-	onDragEnd?(latitude: number, longitude: number, zoom: number): void;
+	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
 }
 
 // --- SceneRenderer ---
@@ -157,7 +156,6 @@ export class SceneRenderer {
 		this.controls.enableDamping = true;
 		this.controls.target.set(...focusPos);
 		this.controls.update();
-		this.controls.addEventListener('start', this.onControlsStart);
 		this.controls.addEventListener('end', this.onControlsEnd);
 
 		// Sync context initial state
@@ -380,7 +378,7 @@ export class SceneRenderer {
 		if (this.pendingUrlWrite && controlsSettled) {
 			this.pendingUrlWrite = false;
 			const { latitude, longitude, distance } = this.getCameraState();
-			this.callbacks.onDragEnd?.(latitude, longitude, distance);
+			this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 		}
 
 		// Camera state → visibility decisions
@@ -658,11 +656,6 @@ export class SceneRenderer {
 		return cartesianToSpherical([cam.x, cam.y, cam.z], [target.x, target.y, target.z]);
 	}
 
-	private onControlsStart = (): void => {
-		const { latitude, longitude, distance } = this.getCameraState();
-		this.callbacks.onDragStart?.(latitude, longitude, distance);
-	};
-
 	private onControlsEnd = (): void => {
 		this.pendingUrlWrite = true;
 	};
@@ -696,7 +689,7 @@ export class SceneRenderer {
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
-		this.callbacks.onDragStart?.(latitude, longitude, distance);
+		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 		this.maybeLoadTexture(body);
 	}
 
@@ -726,7 +719,6 @@ export class SceneRenderer {
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
 		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
-		this.controls.removeEventListener('start', this.onControlsStart);
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.renderer.dispose();
