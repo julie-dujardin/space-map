@@ -88,7 +88,7 @@ def _extract_global(
         claim.needs_unit,
     )
     if kind == "time":
-        return _all_times(claims, pid) if multiple else _first_time(claims, pid)
+        return _all_times(claims, pid) if multiple else _single_time(claims, pid)
     if kind == "quantity":
         return _single_quantity(claims, pid, needs_unit=needs_unit, qid=qid)
     if kind == "image":
@@ -139,7 +139,7 @@ def extract_claims(claims: dict, qid: str) -> dict:
             if qids:
                 result[claim.key] = qids
         else:
-            if ref_qid := _first_entity_qid(claims, claim.pid):
+            if ref_qid := _single_entity_qid(claims, claim.pid):
                 result[claim.key] = ref_qid
 
     return result
@@ -288,7 +288,7 @@ def _all_times(claims: dict, prop: str) -> list[str]:
     return [t for p, t in entries if p == max_prec]
 
 
-def _first_time(claims: dict, prop: str) -> str | None:
+def _single_time(claims: dict, prop: str) -> str | None:
     """Extract the single time value from a claim as an ISO date string."""
     vals = list(dict.fromkeys(_all_times(claims, prop)))
     if len(vals) > 1:
@@ -397,7 +397,7 @@ def _single_quantity(
     )
 
 
-def _first_entity_qid(claims: dict, prop: str) -> str | None:
+def _single_entity_qid(claims: dict, prop: str) -> str | None:
     """Extract the single entity QID from a claim."""
     vals = list(
         dict.fromkeys(
