@@ -8,7 +8,11 @@ export function ucfirst(s: string): string {
 export function formatUnit(unit: string, short?: boolean): string {
 	const symbolKey = short ? `unit_symbol_${unit}` : `unit_name_${unit}`;
 	const fn = (m as unknown as Record<string, (() => string) | undefined>)[symbolKey];
-	return fn ? fn() : unit.replace(/_/g, ' ');
+	if (!fn) {
+		console.warn(`Missing unit label: ${symbolKey}`);
+		return unit.replace(/_/g, ' ');
+	}
+	return fn();
 }
 
 export function formatNumber(n: number): string {

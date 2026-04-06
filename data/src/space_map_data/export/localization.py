@@ -18,6 +18,13 @@ _GENERATED_PREFIXES = ("unit_name_", "unit_symbol_", "property_name_")
 
 _UNIT_SYMBOL_PID = "P5061"
 
+# Units whose labels must always be exported regardless of whether they appear
+# in used_units (they bypass the normal UnitConverter path).
+_ALWAYS_INCLUDE_UNITS: set[str] = {
+    "degree_fahrenheit",
+    "astronomical_unit",
+}
+
 
 def _unit_qids() -> set[str]:
     """Return QIDs present in the units/ download directory."""
@@ -60,7 +67,7 @@ def _collect_unit_labels(
         if not entity:
             continue
         key = resolve_unit(qid, wikidata_entities)
-        if key and key in used_units:
+        if key and (key in used_units or key in _ALWAYS_INCLUDE_UNITS):
             units[key] = (qid, entity)
 
     if not units:

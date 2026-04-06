@@ -74,6 +74,8 @@ ENTITY_REF_CLAIMS = (
 
 PID_TO_KEY: dict[str, str] = {
     c.pid: c.key for c in (*GLOBAL_CLAIMS, *ENTITY_REF_CLAIMS)
+} | {
+    "P2076": "temperature",  # routed via P1480, not a regular GlobalClaim
 }
 
 
