@@ -125,5 +125,6 @@
 	"unit_symbol_tonne": "t",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg"
+	"unit_symbol_zettagram": "Zg",
+	"my_location": "Ma position"
 }

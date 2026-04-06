@@ -5,6 +5,7 @@
 	import { type PositionedBody } from '$lib/types/objects';
 	import { parseUrl, DEFAULT_VIEW } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
+	import MyLocation from '../../../../components/MyLocation.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const ctx = new ContextManager();
@@ -12,6 +13,7 @@
 
 	const initialView = parseUrl() ?? DEFAULT_VIEW;
 	let selectedBody = $state<PositionedBody | undefined>();
+	let scene = $state<Scene>();
 
 	onMount(() => ctx.load(initialView.date, initialView.id));
 </script>
@@ -32,9 +34,12 @@
 	</div>
 {:else}
 	<div class="relative w-full h-screen">
-		<Scene {initialView} onFocusChange={(body) => (selectedBody = body)} />
+		<Scene bind:this={scene} {initialView} onFocusChange={(body) => (selectedBody = body)} />
 		{#if selectedBody?.data.id}
 			<ObjectDrawer body={selectedBody} onClose={() => (selectedBody = undefined)} />
 		{/if}
+		<div class="absolute bottom-4 right-4 z-10">
+			<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom)} />
+		</div>
 	</div>
 {/if}

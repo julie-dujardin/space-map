@@ -58,7 +58,11 @@ export class SceneRenderer {
 	private readonly _tmpV3 = new Vector3();
 	private focusOrigin = new Vector3();
 	private focusStartTime = 0;
+	private camOrigin: Vector3 | null = null;
+	private camTarget: Vector3 | null = null;
 	private static readonly FOCUS_DURATION_MS = 350;
+	private static readonly FLY_DURATION_MS = 1200;
+	private focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
 	private rafId = 0;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
@@ -195,15 +199,23 @@ export class SceneRenderer {
 			this.controls.update();
 		}
 
-		// Animate controls target with smoothstep over fixed duration
+		// Animate controls target (and optionally camera position) with smoothstep over fixed duration
 		const elapsed = performance.now() - this.focusStartTime;
-		const t = Math.min(elapsed / SceneRenderer.FOCUS_DURATION_MS, 1);
+		const t = Math.min(elapsed / this.focusDurationMs, 1);
 		const isAnimating = t < 1;
 		if (isAnimating) {
 			const s = t * t * (3 - 2 * t); // smoothstep
 			this.controls.target.copy(this.focusOrigin).lerp(this.focusTarget, s);
+			if (this.camOrigin && this.camTarget) {
+				this.camera.position.copy(this.camOrigin).lerp(this.camTarget, s);
+			}
 		} else {
 			this.controls.target.copy(this.focusTarget);
+			if (this.camTarget) {
+				this.camera.position.copy(this.camTarget);
+				this.camOrigin = null;
+				this.camTarget = null;
+			}
 		}
 		const controlsSettled = !this.controls.update();
 		if (this.pendingUrlWrite && controlsSettled) {
@@ -375,6 +387,29 @@ export class SceneRenderer {
 
 	// --- Public API ---
 
+	focusOnBody(id: string, zoom?: number): void {
+		const body = this.ctx.allBodies.find((b) => b.data.id === id);
+		if (!body) return;
+		if (zoom !== undefined) {
+			// Place camera at `zoom` distance, arriving from the current camera direction
+			const dir = this._tmpV3
+				.set(...body.position)
+				.sub(this.camera.position)
+				.normalize()
+				.negate();
+			const camPos: [number, number, number] = [
+				body.position[0] + dir.x * zoom,
+				body.position[1] + dir.y * zoom,
+				body.position[2] + dir.z * zoom
+			];
+			this.setFocusTarget(body, camPos);
+		} else {
+			this.setFocusTarget(body);
+		}
+		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
+		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+	}
+
 	setFocusTarget(body: PositionedBody, camPos?: [number, number, number]): void {
 		this.focusOrigin.copy(this.controls.target);
 		this.focusStartTime = performance.now();
@@ -383,7 +418,15 @@ export class SceneRenderer {
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
-		if (camPos) this.camera.position.set(...camPos);
+		if (camPos) {
+			this.camOrigin = this.camera.position.clone();
+			this.camTarget = new Vector3(...camPos);
+			this.focusDurationMs = SceneRenderer.FLY_DURATION_MS;
+		} else {
+			this.camOrigin = null;
+			this.camTarget = null;
+			this.focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
+		}
 	}
 
 	getFocusedBody(): PositionedBody | undefined {
