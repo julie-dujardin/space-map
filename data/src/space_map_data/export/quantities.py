@@ -7,7 +7,6 @@ claims on preloaded unit entities, replacing hardcoded conversion tables.
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
@@ -190,13 +189,9 @@ class UnitConverter:
 # ---------------------------------------------------------------------------
 
 
-def _round_sigfigs(x: float, sig: int) -> float:
-    """Round x to sig significant figures."""
-    if x == 0:
-        return 0.0
-    magnitude = math.floor(math.log10(abs(x)))
-    factor = 10 ** (sig - 1 - magnitude)
-    return round(x * factor) / factor
+def _strip_trailing_zeros(x: float) -> float:
+    """Drop unnecessary trailing zeros from *x*."""
+    return float(f"{x:g}")
 
 
 def _best_unit(value_in_base: float, ladder: list[UnitEntry]) -> dict:
@@ -204,15 +199,15 @@ def _best_unit(value_in_base: float, ladder: list[UnitEntry]) -> dict:
     for entry in ladder:
         value = value_in_base / entry.factor
         if value > 1.1:
-            return {"value": _round_sigfigs(value, 4), "unit": entry.label}
+            return {"value": _strip_trailing_zeros(value), "unit": entry.label}
     # Fallback: use the smallest unit in the ladder
     if ladder:
         last = ladder[-1]
         return {
-            "value": _round_sigfigs(value_in_base / last.factor, 4),
+            "value": _strip_trailing_zeros(value_in_base / last.factor),
             "unit": last.label,
         }
-    return {"value": _round_sigfigs(value_in_base, 4), "unit": "unknown"}
+    return {"value": _strip_trailing_zeros(value_in_base), "unit": "unknown"}
 
 
 def _entity_qids(claims: dict, prop: str) -> set[str]:
