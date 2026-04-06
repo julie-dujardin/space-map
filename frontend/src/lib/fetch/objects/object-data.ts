@@ -133,7 +133,8 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 		if (res.status === 404) return null;
 		throw new Error(`fetchJson: ${url} returned ${res.status} ${res.statusText}`);
 	}
-	return (await res.json()) as T;
+	const ds = new DecompressionStream('gzip');
+	return new Response(res.body!.pipeThrough(ds)).json() as Promise<T>;
 }
 
 export async function fetchObjectDetail(
@@ -149,13 +150,13 @@ export async function fetchObjectDetail(
 	if (objectFileFlag === 0) {
 		localizedPromise = Promise.resolve(null);
 	} else if (objectFileFlag === 2) {
-		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/en/${fileId}.json`);
+		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/en/${fileId}.json.gz`);
 	} else {
-		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/${lang}/${fileId}.json`);
+		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/${lang}/${fileId}.json.gz`);
 	}
 
 	const [global, localized] = await Promise.all([
-		fetchJson<GlobalObjectData>(`/data/v1/objects/__global__/${fileId}.json`),
+		fetchJson<GlobalObjectData>(`/data/v1/objects/__global__/${fileId}.json.gz`),
 		localizedPromise
 	]);
 
