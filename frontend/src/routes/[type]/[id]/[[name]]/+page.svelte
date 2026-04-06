@@ -14,6 +14,7 @@
 	const initialView = parseUrl() ?? DEFAULT_VIEW;
 	let selectedBody = $state<PositionedBody | undefined>();
 	let scene = $state<Scene>();
+	let drawerHeightDvh = $state(0);
 
 	onMount(() => ctx.load(initialView.date, initialView.id));
 </script>
@@ -36,10 +37,21 @@
 	<div class="relative w-full h-screen">
 		<Scene bind:this={scene} {initialView} onFocusChange={(body) => (selectedBody = body)} />
 		{#if selectedBody?.data.id}
-			<ObjectDrawer body={selectedBody} onClose={() => (selectedBody = undefined)} />
+			<ObjectDrawer
+				body={selectedBody}
+				onClose={() => {
+					selectedBody = undefined;
+					drawerHeightDvh = 0;
+				}}
+				onSheetResize={(h) => (drawerHeightDvh = h)}
+			/>
 		{/if}
-		<div class="absolute bottom-4 right-4 z-10">
-			<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom)} />
+		<div
+			class="fixed right-4 z-10 transition-[bottom,opacity] duration-300 ease-in-out
+				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+			style="bottom: calc({drawerHeightDvh}dvh + 1rem);"
+		>
+			<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom) ?? 0} />
 		</div>
 	</div>
 {/if}

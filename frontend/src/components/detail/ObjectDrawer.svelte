@@ -15,9 +15,10 @@
 	interface Props {
 		body: PositionedBody;
 		onClose: () => void;
+		onSheetResize?: (heightDvh: number) => void;
 	}
 
-	let { body, onClose }: Props = $props();
+	let { body, onClose, onSheetResize }: Props = $props();
 
 	let data = $state<ObjectDetailData | null>(null);
 	let loading = $state(true);
@@ -170,6 +171,10 @@
 			else snap();
 		}
 	}
+
+	$effect(() => {
+		if (isMobile) onSheetResize?.(sheetHeight);
+	});
 
 	let isExpanded = $derived(sheetHeight > SNAPS[0] + 5);
 	let isFullscreen = $derived(sheetHeight >= SNAPS[SNAPS.length - 1] - 5);

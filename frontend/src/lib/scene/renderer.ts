@@ -3,6 +3,7 @@ import {
 	Mesh,
 	PerspectiveCamera,
 	Points,
+	Quaternion,
 	Raycaster,
 	Scene,
 	ShaderMaterial,
@@ -60,8 +61,10 @@ export class SceneRenderer {
 	private focusStartTime = 0;
 	private camOrigin: Vector3 | null = null;
 	private camTarget: Vector3 | null = null;
+	private flyQ0: Quaternion | null = null;
+	private flyQ1: Quaternion | null = null;
 	private static readonly FOCUS_DURATION_MS = 350;
-	private static readonly FLY_DURATION_MS = 1200;
+	private static readonly FLY_DURATION_MS = 1600;
 	private focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
 	private rafId = 0;
 	private firstFrame = true;
@@ -203,21 +206,32 @@ export class SceneRenderer {
 		const elapsed = performance.now() - this.focusStartTime;
 		const t = Math.min(elapsed / this.focusDurationMs, 1);
 		const isAnimating = t < 1;
-		if (isAnimating) {
+		const isFlying = !!(this.camOrigin && this.camTarget && this.flyQ0 && this.flyQ1);
+		let controlsSettled: boolean;
+		if (isAnimating && isFlying) {
 			const s = t * t * (3 - 2 * t); // smoothstep
+			// Slerp camera orientation for uniform angular velocity
+			this.camera.quaternion.slerpQuaternions(this.flyQ0!, this.flyQ1!, s);
+			// Camera position eases in so rotation is visible first
+			const sCam = t * t * t; // cubic ease-in
+			this.camera.position.copy(this.camOrigin!).lerp(this.camTarget!, sCam);
+			// Skip controls.update() — we're driving the camera directly
+			controlsSettled = false;
+		} else if (isAnimating) {
+			const s = t * t * (3 - 2 * t);
 			this.controls.target.copy(this.focusOrigin).lerp(this.focusTarget, s);
-			if (this.camOrigin && this.camTarget) {
-				this.camera.position.copy(this.camOrigin).lerp(this.camTarget, s);
-			}
+			controlsSettled = !this.controls.update();
 		} else {
 			this.controls.target.copy(this.focusTarget);
 			if (this.camTarget) {
 				this.camera.position.copy(this.camTarget);
 				this.camOrigin = null;
 				this.camTarget = null;
+				this.flyQ0 = null;
+				this.flyQ1 = null;
 			}
+			controlsSettled = !this.controls.update();
 		}
-		const controlsSettled = !this.controls.update();
 		if (this.pendingUrlWrite && controlsSettled) {
 			this.pendingUrlWrite = false;
 			const { latitude, longitude, distance } = this.getCameraState();
@@ -374,22 +388,16 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
-		this.focusOrigin.copy(this.controls.target);
-		this.focusStartTime = performance.now();
-		this.focusedBody = body;
-		this.focusTarget.set(...body.position);
-		this.ctx.setFocused(body);
-		this.callbacks.onFocusChange(body);
+		this.setFocusTarget(body);
 		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
-		this.maybeLoadTexture(body);
 	}
 
 	// --- Public API ---
 
-	focusOnBody(id: string, zoom?: number): void {
+	focusOnBody(id: string, zoom?: number): number {
 		const body = this.ctx.allBodies.find((b) => b.data.id === id);
-		if (!body) return;
+		if (!body) return 0;
 		if (zoom !== undefined) {
 			// Place camera at `zoom` distance, arriving from the current camera direction
 			const dir = this._tmpV3
@@ -408,6 +416,7 @@ export class SceneRenderer {
 		}
 		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+		return this.focusDurationMs;
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: [number, number, number]): void {
@@ -422,9 +431,19 @@ export class SceneRenderer {
 			this.camOrigin = this.camera.position.clone();
 			this.camTarget = new Vector3(...camPos);
 			this.focusDurationMs = SceneRenderer.FLY_DURATION_MS;
+			// Capture start orientation, compute end orientation for slerp
+			this.flyQ0 = this.camera.quaternion.clone();
+			const savedPos = this.camera.position.clone();
+			this.camera.position.set(...camPos);
+			this.camera.lookAt(this.focusTarget);
+			this.flyQ1 = this.camera.quaternion.clone();
+			this.camera.position.copy(savedPos);
+			this.camera.quaternion.copy(this.flyQ0);
 		} else {
 			this.camOrigin = null;
 			this.camTarget = null;
+			this.flyQ0 = null;
+			this.flyQ1 = null;
 			this.focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
 		}
 	}

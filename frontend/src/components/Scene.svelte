@@ -25,8 +25,8 @@
 	let renderer: SceneRenderer | undefined;
 	let focusedBody = $state<PositionedBody | undefined>();
 
-	export function focusOnBody(id: string, zoom?: number): void {
-		renderer?.focusOnBody(id, zoom);
+	export function focusOnBody(id: string, zoom?: number): number {
+		return renderer?.focusOnBody(id, zoom) ?? 0;
 	}
 
 	function syncUrl(latitude: number, longitude: number, zoom: number) {
