@@ -18,6 +18,7 @@ class ID_TYPES(StrEnum):
     COSPAR = "cospar"
     PROVISIONAL_DESIGNATION = "provisional_designation"
     IAU_FEATURE_ID = "iau_feature_id"
+    NAME = "name"
 
 
 ID_TYPE_TO_WIKIDATA_PID = {

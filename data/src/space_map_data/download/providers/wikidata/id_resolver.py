@@ -92,29 +92,50 @@ class WikidataIdResolver:
 
     # -- Public API --
 
-    def resolve_all(self) -> dict[str, dict[str, list[str]]]:
-        """Resolve all ID sources and return the full id_map.
+    def resolve(self, id_types: list[ID_TYPES] | None = None) -> set[str]:
+        """Resolve ID sources and return all unique QIDs.
+
+        Args:
+            id_types: Which ID types to resolve. ``None`` means all
+                (including name-based fallback). Include ``ID_TYPES.NAME``
+                to enable the name-based search.
 
         Skips sources already marked complete in metadata.
         Partial CSVs from interrupted runs are resumed automatically.
         """
         self.ids_dir.mkdir(exist_ok=True)
 
-        for id_type, query_method_name, label in SOURCES:
+        resolve_by_name = id_types is None or ID_TYPES.NAME in id_types
+
+        sources = SOURCES
+        if id_types is not None:
+            allowed = set(id_types)
+            sources = tuple(s for s in SOURCES if s[0] in allowed)
+
+        for id_type, query_method_name, label in sources:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
             if self._ids_complete.get(pid):
                 continue
             self._resolve_source(pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
-        if not self._ids_complete.get("name"):
+        if resolve_by_name and not self._ids_complete.get("name"):
             resolved_qids = set()
             for csv_path in self.ids_dir.glob("*.csv"):
                 for qids in self._read_ids_csv(csv_path.stem).values():
                     resolved_qids.update(qids)
             self._resolve_by_name(resolved_qids)
 
-        return self._load_all_ids()
+        # Collect unique QIDs from the resolved sources
+        all_qids: set[str] = set()
+        for id_type, _, _ in sources:
+            pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
+            for qids in self._read_ids_csv(pid).values():
+                all_qids.update(qids)
+        if resolve_by_name:
+            for qids in self._read_ids_csv("name").values():
+                all_qids.update(qids)
+        return all_qids
 
     # -- CSV helpers --
 

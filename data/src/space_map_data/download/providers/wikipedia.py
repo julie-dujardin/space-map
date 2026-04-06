@@ -35,10 +35,10 @@ class WikipediaDownloader(Downloader):
     name = PROVIDERS.WIKIPEDIA
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_entities_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "entities"
+        wikidata_entities_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects"
         if not wikidata_entities_dir.exists():
             raise FileNotFoundError(
-                f"Wikidata entities not found at {wikidata_entities_dir} "
+                f"Wikidata objects not found at {wikidata_entities_dir} "
                 "— download wikidata first"
             )
 

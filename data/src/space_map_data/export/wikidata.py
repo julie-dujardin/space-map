@@ -45,7 +45,7 @@ class WikidataEntityCache:
 
     def __init__(self) -> None:
         wikidata_dir = DOWNLOAD_DIR / "wikidata"
-        self._entities_dir = wikidata_dir / "entities"
+        self._entities_dir = wikidata_dir / "objects"
         self._referenced_dir = wikidata_dir / "referenced"
         self._units: dict[str, WikidataEntity] = {}
 

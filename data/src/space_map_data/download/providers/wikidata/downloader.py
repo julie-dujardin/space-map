@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
@@ -39,25 +39,37 @@ _REFERENCED_PROPERTIES = (
 class WikidataDownloader(Downloader):
     name = PROVIDERS.WIKIDATA
 
+    _OBJECT_ID_TYPES = [
+        ID_TYPES.NAIF,
+        ID_TYPES.SPKID,
+        ID_TYPES.MPC_DESIGNATION,
+        ID_TYPES.NORAD_SATCAT,
+        ID_TYPES.COSPAR,
+        ID_TYPES.PROVISIONAL_DESIGNATION,
+        ID_TYPES.NAME,
+    ]
+
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         session = get_session()
         ids_dir = self.out_dir / "ids"
 
         resolver = WikidataIdResolver(self.client, session, ids_dir, self.metadata_file)
-        id_map = resolver.resolve_all()
 
-        # Collect all unique QIDs and fetch root entities
-        all_qids = sorted(
-            {
-                qid
-                for group in id_map.values()
-                for qids in group.values()
-                for qid in qids
-            }
+        # Resolve and fetch objects (all sources except IAU features)
+        object_qids = sorted(resolver.resolve(self._OBJECT_ID_TYPES))
+        objects_dir = self.out_dir / "objects"
+        objects_dir.mkdir(exist_ok=True)
+        self._fetch_entities(object_qids, objects_dir, limit=limit, fetch_desc="objects")
+
+        # Resolve and fetch IAU nomenclature features separately
+        nomenclature_qids = sorted(
+            resolver.resolve([ID_TYPES.IAU_FEATURE_ID])
         )
-        entities_dir = self.out_dir / "entities"
-        entities_dir.mkdir(exist_ok=True)
-        self._fetch_entities(all_qids, entities_dir, limit=limit, fetch_desc="bodies")
+        nomenclature_dir = self.out_dir / "nomenclature"
+        nomenclature_dir.mkdir(exist_ok=True)
+        self._fetch_entities(
+            nomenclature_qids, nomenclature_dir, limit=limit, fetch_desc="nomenclature"
+        )
 
         # Fetch orbit class entities into their own directory
         orbit_class_qids = sorted(
@@ -74,9 +86,10 @@ class WikidataDownloader(Downloader):
         referenced_dir.mkdir(exist_ok=True)
         units_dir = self.out_dir / "units"
         units_dir.mkdir(exist_ok=True)
-        all_dirs = [entities_dir, referenced_dir, units_dir]
+        primary_dirs = [objects_dir, nomenclature_dir]
+        all_dirs = [*primary_dirs, referenced_dir, units_dir]
         referenced_qids, unit_qids = self._collect_secondary_qids(
-            entities_dir, all_dirs
+            primary_dirs, all_dirs
         )
         if referenced_qids:
             logger.info(
@@ -95,10 +108,11 @@ class WikidataDownloader(Downloader):
                 sorted(unit_qids), units_dir, limit=None, fetch_desc="units"
             )
 
+        all_count = len(object_qids) + len(nomenclature_qids)
         self._save_metadata(
             API_URL,
-            len(all_qids),
-            complete=limit is None or len(all_qids) <= limit,
+            all_count,
+            complete=limit is None or all_count <= limit,
             ids_complete=resolver.ids_complete(),
         )
 
@@ -110,12 +124,12 @@ class WikidataDownloader(Downloader):
         return {f.stem for d in dirs for f in d.glob("Q*.json")}
 
     def _collect_secondary_qids(
-        self, entities_dir: Path, all_dirs: list[Path]
+        self, primary_dirs: list[Path], all_dirs: list[Path]
     ) -> tuple[set[str], set[str]]:
         """Scan downloaded entities and return (referenced_qids, unit_qids)."""
         referenced: set[str] = set()
         units: set[str] = set()
-        for entity_file in entities_dir.glob("Q*.json"):
+        for entity_file in (f for d in primary_dirs for f in d.glob("Q*.json")):
             try:
                 entity = json.loads(entity_file.read_text())
             except (json.JSONDecodeError, OSError) as exc:
