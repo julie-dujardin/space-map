@@ -1,0 +1,230 @@
+# Export Format (v1)
+
+All files are served under `/data/v1/` and are gzip-compressed unless noted.
+
+## Directory structure
+
+```
+v1/
+  metadata.json                                  (not gzipped)
+  elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
+  elements/{zone}/{zoom}/{part}.txt.gz           object IDs (text)
+  element_labels/{lang}/{zone}/{zoom}/{part}.txt.gz
+  objects/__global__/{id}.json.gz                global object details
+  objects/{lang}/{id}.json.gz                    localized object details
+  textures/{id}/low.webp
+```
+
+## metadata.json
+
+Entry point. Lists all available chunks so the consumer knows what to fetch.
+
+```json
+{
+  "version": 1,
+  "exported_at": "2025-01-01T00:00:00+00:00",
+  "zones": {
+    "major": {
+      "zooms": {
+        "0": { "parts": 1, "object_count": 42, "avg_part_bytes": 12345 }
+      }
+    }
+  }
+}
+```
+
+## Zones and zoom levels
+
+**Non-SBDB zones** (always zoom 0):
+- `major` — Sun, planets, dwarf planets, barycenters, Lagrange points
+- `moons` — natural satellites
+- `earth` — spacecraft/debris orbiting Earth
+- `spacecraft` — spacecraft/debris orbiting other bodies
+
+**SBDB zones** — named after [orbit class](../data/src/space_map_data/models/object/sbdb.py) (e.g. `APO`, `MBA`, `TJN`):
+- Zoom 0 = named objects
+- Zoom 1 = unnamed objects
+
+Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
+
+## Binary elements file
+
+Columnar binary format with zero-copy typed array support.
+
+### Header (16 bytes)
+
+| Offset | Type   | Field     |
+|--------|--------|-----------|
+| 0      | char[4]| Magic `SMAP` |
+| 4      | uint16 | Version (1) |
+| 6      | uint16 | Reserved  |
+| 8      | uint32 | Row count |
+| 12     | uint32 | Reserved  |
+
+### Columns (in order)
+
+Each sub-byte-width column is padded to 8-byte alignment. Float64 columns are naturally aligned.
+
+| # | Name        | Type    | Missing | Notes |
+|---|-------------|---------|---------|-------|
+| 0 | id          | int32   | -1      | Numeric part of the object ID |
+| 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
+| 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
+| 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
+| 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
+| 5 | a           | float64 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale |
+| 6 | e           | float64 | NaN     | Eccentricity |
+| 7 | i           | float64 | NaN     | Inclination (deg) |
+| 8 | om          | float64 | NaN     | Longitude of ascending node (deg) |
+| 9 | w           | float64 | NaN     | Argument of perihelion (deg) |
+| 10| ma          | float64 | NaN     | Mean anomaly (deg) |
+| 11| n           | float64 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
+| 12| radius_km   | float64 | NaN     | Physical radius (km) |
+
+Coordinate frame: ecliptic J2000.
+
+### ObjectType ordinals
+
+```
+0  barycenter       4  dwarf_planet    8  asteroid_main_belt   12  comet
+1  lagrange_point   5  moon            9  asteroid_trojan      13  spacecraft
+2  star             6  asteroid       10  asteroid_centaur      14  debris
+3  planet           7  asteroid_inner 11  asteroid_tno          15  undocumented
+```
+
+### Scale and unit conversions
+
+The `scale` flag determines how to interpret `a` and `n`:
+
+| scale | a unit | n unit  | Context |
+|-------|--------|---------|---------|
+| 0 (planet) | km | rev/day | Earth-orbiting satellites |
+| 1 (system) | AU | deg/day | Heliocentric objects, moons |
+
+The frontend normalizes everything to AU and deg/day before computing positions.
+
+## Object IDs file (`.txt.gz`)
+
+Newline-delimited text, one ID per line, same order as the binary file. Format: `{source}-{numeric_id}`, e.g. `naif-399`, `spkid-2000433`, `norad_satcat-25544`.
+
+## Element labels file (`.txt.gz`)
+
+One line per object, same order as the binary file. Each line:
+
+```
+{flag}\x1f{name}
+```
+
+- `\x1f` = ASCII Unit Separator
+- Flag `0` = no object detail file exists
+- Flag `1` = localized detail file exists at `objects/{lang}/{id}.json.gz`
+- Flag `2` = only English fallback at `objects/en/{id}.json.gz`
+
+## Object detail files
+
+### Global (`objects/__global__/{id}.json.gz`)
+
+Written for every exported object. Contains cross-references, orbit source data, SBDB physical parameters, and Wikidata quantities.
+
+```typescript
+interface GlobalObjectData {
+  id: string;
+  type: string;                       // ObjectType name
+  name?: string;
+  map_texture_available?: boolean;    // only present if true
+  provisional_designation?: string;
+  cross_refs?: {
+    wikidata_qid?: string;
+    horizons_naif_id?: number;
+    sbdb_spkid?: number;
+    sbdb_mcp_designation?: string;
+    celestrak_norad_cat_id?: number;
+    celestrak_cospar_id?: string;
+  };
+  orbit?: {
+    epoch_jd: number; a: number; e: number; i: number;
+    om: number; w: number; ma: number; n: number;
+    scale: "planet" | "system";
+    parent_naif_id: number;
+    source: "horizons" | "sbdb" | "celestrak";
+  };
+  sbdb?: {
+    neo?: boolean;   pha?: boolean;   class?: string;
+    sats?: number;   diameter?: number;  // km
+    extent?: string; albedo?: number; rot_per?: number;  // hours
+    GM?: number;     // km^3/s^2
+    mass?: { value: number; unit: string };
+    H?: number; G?: number;
+    spec_B?: string; spec_T?: string;
+    BV?: number; UB?: number; IR?: number;
+    moid?: number;   // AU, Earth MOID
+    moid_jup?: number; t_jup?: number;
+    per_y?: number;  // orbital period, years
+    q?: number; ad?: number;  // AU
+    prefix?: string; // comet prefix
+    M1?: number; M2?: number; K1?: number; K2?: number; PC?: number;
+    first_obs?: string;
+  };
+  wikidata?: {
+    discovery_date?: string;  // ISO 8601
+    launch_date?: string;
+    image?: string;           // URL
+    mass?: QuantityWithUnit;
+    radius?: QuantityWithUnit;
+    density?: QuantityWithUnit;
+    surface_gravity?: QuantityWithUnit;
+    absolute_magnitude?: number;
+    apparent_magnitude?: number;
+    temperature?: QuantityWithUnit;
+    min_temperature?: QuantityWithUnit;
+    max_temperature?: QuantityWithUnit;
+    website?: string;
+  };
+}
+
+// Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
+interface QuantityWithUnit { value: number; unit: string; }
+```
+
+### Localized (`objects/{lang}/{id}.json.gz`)
+
+Only written when Wikidata/Wikipedia data exists for the language. Entity references link to Wikipedia where available.
+
+```typescript
+interface LocalizedObjectData {
+  name?: string;
+  description?: string;
+  aliases?: string[];
+  instance_of?: EntityRef[];
+  discoverers?: EntityRef[];
+  named_after?: EntityRef;
+  discovery_site?: EntityRef;
+  minor_planet_group?: EntityRef;
+  spectral_type?: EntityRef;
+  asteroid_family?: EntityRef;
+  operator?: EntityRef;
+  manufacturer?: EntityRef;
+  launch_vehicle?: EntityRef;
+  launch_site?: EntityRef;
+  wikipedia?: {
+    extract?: string;
+    description?: string;
+    thumbnail?: string;  // URL
+    image?: string;      // URL
+    url?: string;        // URL
+  };
+}
+
+interface EntityRef { name: string; wikipedia?: string; }
+```
+
+## Consuming the data
+
+1. Fetch `metadata.json` to discover available chunks
+2. For each (zone, zoom, part), fetch the three element files in parallel:
+   - `.bin.gz` — parse with the binary format above
+   - `.txt.gz` (IDs) — split by newline, index matches binary row order
+   - `element_labels/{lang}/...txt.gz` — split by newline, parse flag + name
+3. Combine by array index to get full body records
+4. Compute 3D positions from orbital elements using Kepler's equation at your target date
+5. Object detail files are fetched on demand using the ID and the label flag
