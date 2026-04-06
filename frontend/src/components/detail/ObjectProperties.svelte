@@ -18,13 +18,17 @@
 	}
 
 	function formatUnit(unit: string): string {
-		const symbolKey = `unit_${unit}`;
+		const symbolKey = `unit_name_${unit}`;
 		const fn = (m as unknown as Record<string, (() => string) | undefined>)[symbolKey];
 		return fn ? fn() : unit.replace(/_/g, ' ');
 	}
 
 	function formatNumber(n: number): string {
 		return n.toLocaleString(getLocale());
+	}
+
+	function ucfirst(s: string): string {
+		return s.charAt(0).toUpperCase() + s.slice(1);
 	}
 
 	function formatQuantity(q: { value: number; unit: string }): string {
@@ -36,35 +40,56 @@
 		const wd = global?.wikidata;
 		const sbdb = global?.sbdb;
 
-		if (wd?.mass) props.push({ label: m.mass(), value: formatQuantity(wd.mass) });
-		else if (sbdb?.mass) props.push({ label: m.mass(), value: formatQuantity(sbdb.mass) });
+		if (wd?.mass) props.push({ label: m.property_name_mass(), value: formatQuantity(wd.mass) });
+		else if (sbdb?.mass)
+			props.push({ label: m.property_name_mass(), value: formatQuantity(sbdb.mass) });
 
-		if (wd?.radius) props.push({ label: m.radius(), value: formatQuantity(wd.radius) });
+		if (wd?.radius)
+			props.push({ label: m.property_name_radius(), value: formatQuantity(wd.radius) });
 		else if (sbdb?.diameter)
 			props.push({ label: m.diameter(), value: `${sbdb.diameter} ${formatUnit('kilometre')}` });
 
 		if (sbdb?.extent) props.push({ label: m.extent(), value: sbdb.extent });
-		if (wd?.density) props.push({ label: m.density(), value: formatQuantity(wd.density) });
+		if (wd?.density)
+			props.push({ label: m.property_name_density(), value: formatQuantity(wd.density) });
 		if (wd?.surface_gravity)
-			props.push({ label: m.surface_gravity(), value: formatQuantity(wd.surface_gravity) });
+			props.push({
+				label: m.property_name_surface_gravity(),
+				value: formatQuantity(wd.surface_gravity)
+			});
 		if (sbdb?.albedo) props.push({ label: m.albedo(), value: sbdb.albedo.toFixed(3) });
 		if (sbdb?.rot_per)
 			props.push({ label: m.rotation_period(), value: `${sbdb.rot_per} ${formatUnit('hour')}` });
 
 		if (wd?.temperature)
-			props.push({ label: m.temperature(), value: formatQuantity(wd.temperature) });
+			props.push({
+				label: m.property_name_temperature(),
+				value: formatQuantity(wd.temperature)
+			});
 		if (wd?.min_temperature)
-			props.push({ label: m.min_temperature(), value: formatQuantity(wd.min_temperature) });
+			props.push({
+				label: m.property_name_min_temperature(),
+				value: formatQuantity(wd.min_temperature)
+			});
 		if (wd?.max_temperature)
-			props.push({ label: m.max_temperature(), value: formatQuantity(wd.max_temperature) });
+			props.push({
+				label: m.property_name_max_temperature(),
+				value: formatQuantity(wd.max_temperature)
+			});
 
 		if (wd?.absolute_magnitude != null)
-			props.push({ label: m.absolute_magnitude(), value: wd.absolute_magnitude.toString() });
+			props.push({
+				label: m.property_name_absolute_magnitude(),
+				value: wd.absolute_magnitude.toString()
+			});
 		else if (sbdb?.H != null)
 			props.push({ label: m.absolute_magnitude_h(), value: sbdb.H.toString() });
 
 		if (wd?.apparent_magnitude != null)
-			props.push({ label: m.apparent_magnitude(), value: wd.apparent_magnitude.toString() });
+			props.push({
+				label: m.property_name_apparent_magnitude(),
+				value: wd.apparent_magnitude.toString()
+			});
 
 		if (sbdb?.spec_B) props.push({ label: m.spectral_type_smassii(), value: sbdb.spec_B });
 		if (sbdb?.spec_T) props.push({ label: m.spectral_type_tholen(), value: sbdb.spec_T });
@@ -121,7 +146,7 @@
 		<Separator />
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#each physicalProps as prop (prop.label)}
-				<dt class="text-muted-foreground">{prop.label}</dt>
+				<dt class="text-muted-foreground">{ucfirst(prop.label)}</dt>
 				<dd class="text-right">{prop.value}</dd>
 			{/each}
 		</dl>
@@ -134,7 +159,7 @@
 		<Separator />
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#each orbitalProps as prop (prop.label)}
-				<dt class="text-muted-foreground">{prop.label}</dt>
+				<dt class="text-muted-foreground">{ucfirst(prop.label)}</dt>
 				<dd class="text-right">{prop.value}</dd>
 			{/each}
 		</dl>

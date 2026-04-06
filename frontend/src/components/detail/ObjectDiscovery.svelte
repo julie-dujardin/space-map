@@ -9,6 +9,10 @@
 	} from '$lib/fetch/objects/object-data';
 	import { formatWikidataDate } from '$lib/format';
 
+	function ucfirst(s: string): string {
+		return s.charAt(0).toUpperCase() + s.slice(1);
+	}
+
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
@@ -84,16 +88,16 @@
 
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#if discoveryDate}
-				<dt class="text-muted-foreground">{m.first_observed()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.first_observed())}</dt>
 				<dd class="text-right">{formatWikidataDate(discoveryDate)}</dd>
 			{/if}
 			{#if launchDate}
-				<dt class="text-muted-foreground">{m.launch_date()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.launch_date())}</dt>
 				<dd class="text-right">{formatWikidataDate(launchDate)}</dd>
 			{/if}
 			{#if discoverers && discoverers.length > 0}
 				<dt class="text-muted-foreground">
-					{discoverers.length > 1 ? m.discoverers() : m.discoverer()}
+					{ucfirst(discoverers.length > 1 ? m.discoverers() : m.discoverer())}
 				</dt>
 				<dd class="text-right text-muted-foreground flex flex-wrap justify-end gap-x-1">
 					{#each discoverers as d (d.name)}
@@ -102,43 +106,43 @@
 				</dd>
 			{/if}
 			{#if discoverySite}
-				<dt class="text-muted-foreground">{m.discovery_site()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.discovery_site())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(discoverySite)}</dd>
 			{/if}
 			{#if namedAfter}
-				<dt class="text-muted-foreground">{m.named_after()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.property_name_named_after())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(namedAfter)}</dd>
 			{/if}
 			{#if orbitClass}
-				<dt class="text-muted-foreground">{m.orbit_class()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.orbit_class())}</dt>
 				<dd class="text-right">{orbitClass}</dd>
 			{/if}
 			{#if minorPlanetGroup}
-				<dt class="text-muted-foreground">{m.group()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.property_name_minor_planet_group())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(minorPlanetGroup)}</dd>
 			{/if}
 			{#if asteroidFamily}
-				<dt class="text-muted-foreground">{m.family()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.property_name_asteroid_family())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(asteroidFamily)}</dd>
 			{/if}
 			{#if sats != null && sats > 0}
-				<dt class="text-muted-foreground">{m.known_satellites()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.known_satellites())}</dt>
 				<dd class="text-right">{sats}</dd>
 			{/if}
 			{#if operator}
-				<dt class="text-muted-foreground">{m.operator()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.property_name_operator())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(operator)}</dd>
 			{/if}
 			{#if manufacturer}
-				<dt class="text-muted-foreground">{m.manufacturer()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.property_name_manufacturer())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(manufacturer)}</dd>
 			{/if}
 			{#if launchVehicle}
-				<dt class="text-muted-foreground">{m.launch_vehicle()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.launch_vehicle())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(launchVehicle)}</dd>
 			{/if}
 			{#if launchSite}
-				<dt class="text-muted-foreground">{m.launch_site()}</dt>
+				<dt class="text-muted-foreground">{ucfirst(m.launch_site())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(launchSite)}</dd>
 			{/if}
 		</dl>

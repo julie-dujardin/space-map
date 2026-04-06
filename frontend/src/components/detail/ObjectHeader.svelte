@@ -16,6 +16,10 @@
 	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
+
+	function ucfirst(s: string): string {
+		return s.charAt(0).toUpperCase() + s.slice(1);
+	}
 </script>
 
 <div class="flex flex-col gap-3">
@@ -25,14 +29,14 @@
 	<div class="flex flex-wrap items-start gap-2">
 		{#if types}
 			{#each types as t, i (i)}
-				<Badge variant="secondary" class="shrink-0 text-xs">{t.name}</Badge>
+				<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(t.name)}</Badge>
 			{/each}
 		{:else}
-			<Badge variant="secondary" class="shrink-0 text-xs">{m.object()}</Badge>
+			<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(m.object())}</Badge>
 		{/if}
 	</div>
 	{#if description}
-		<p class="text-sm text-muted-foreground">{description}</p>
+		<p class="text-sm text-muted-foreground">{ucfirst(description)}</p>
 	{/if}
 	{#if aliases && aliases.length > 0}
 		<p class="text-xs text-muted-foreground">{m.also_known_as({ aliases: aliases.join(', ') })}</p>
