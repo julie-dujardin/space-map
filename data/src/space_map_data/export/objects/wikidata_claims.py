@@ -11,14 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 _INSTANCE_OF_IGNORED = {
-    # superior/inferior planet: wether the planet orbits closer or further away from the sun
-    "Q3901935",
-    "Q844911",
-    # list articles
-    "Q2517610",
-    # no shit
-    "Q6999",  # "astronomical object"
-    "Q2221906",  # "geographic location"
+    "Q3901935",  # superior planet (orbits further from the Sun)
+    "Q844911",  # inferior planet (orbits closer to the Sun)
+    "Q2517610",  # list article
+    "Q6999",  # astronomical object (too generic)
+    "Q2221906",  # geographic location (too generic)
 }
 
 
@@ -80,33 +77,41 @@ PID_TO_KEY: dict[str, str] = {
 }
 
 
-def extract_claims(claims: dict, qid: str | None = None) -> dict:
+def _extract_global(
+    claims: dict, claim: GlobalClaim, qid: str
+) -> list | dict | float | str | None:
+    """Dispatch a single GlobalClaim to the appropriate extractor."""
+    kind, pid, multiple, needs_unit = (
+        claim.kind,
+        claim.pid,
+        claim.multiple,
+        claim.needs_unit,
+    )
+    if kind == "time":
+        return _all_times(claims, pid) if multiple else _first_time(claims, pid)
+    if kind == "quantity":
+        return _single_quantity(claims, pid, needs_unit=needs_unit, qid=qid)
+    if kind == "image":
+        return [_commons_url(s) for s in _all_strings(claims, pid)]
+    if kind == "url":
+        return _all_strings(claims, pid)
+    return None
+
+
+def extract_claims(claims: dict, qid: str) -> dict:
     """Extract target properties from raw Wikidata claims.
 
     Returns a flat dict with parsed values (not the raw claim structure).
     """
     result: dict = {}
 
-    _SINGLE = {
-        "time": lambda c, p, **_: _first_time(c, p),
-        "quantity": lambda c, p, **kw: _single_quantity(c, p, qid=qid, **kw),
-    }
-    _MULTI = {
-        "time": lambda c, p, **_: _all_times(c, p),
-        "image": lambda c, p, **_: [_commons_url(s) for s in _all_strings(c, p)],
-        "url": lambda c, p, **_: _all_strings(c, p),
-    }
     for claim in GLOBAL_CLAIMS:
-        if claim.multiple:
-            if v := _MULTI[claim.kind](claims, claim.pid, needs_unit=claim.needs_unit):
-                result[claim.key] = v
-        else:
-            if v := _SINGLE[claim.kind](claims, claim.pid, needs_unit=claim.needs_unit):
-                result[claim.key] = v
+        v = _extract_global(claims, claim, qid)
+        if v:
+            result[claim.key] = v
 
-    # P2076 (temperature): route via P1480 (nature of statement) qualifier.
-    # Unqualified → temperature, Q10585806 → min, Q10578722 → max.
-    # Dedicated P7422/P6591 from the loop above take priority (setdefault).
+    # P2076 (temperature): route by P1480 qualifier (min/max/average).
+    # P7422/P6591 from the loop above take priority via setdefault.
     _P1480_ROUTE = {
         _QID_MINIMUM: "min_temperature",
         _QID_MAXIMUM: "max_temperature",
@@ -134,8 +139,8 @@ def extract_claims(claims: dict, qid: str | None = None) -> dict:
             if qids:
                 result[claim.key] = qids
         else:
-            if qid := _first_entity_qid(claims, claim.pid):
-                result[claim.key] = qid
+            if ref_qid := _first_entity_qid(claims, claim.pid):
+                result[claim.key] = ref_qid
 
     return result
 
@@ -185,15 +190,28 @@ _QID_MEAN = "Q2796622"
 # P1013 (criterion used) qualifier: preferred values per property, tried in order.
 _PREFERRED_CRITERIA: dict[str, list[str]] = {
     "P2067": [
-        "Q29933828",
-        "Q2333272",
-        "Q854248",
-    ],  # mass: prefer "service entry", then "launch mass", then "takeoff"
+        "Q29933828",  # service entry
+        "Q2333272",  # launch mass
+        "Q854248",  # takeoff
+    ],
 }
 _TRUSTED_PROVIDERS = [
     "Q4026990",  # JPL SBDB
     "Q6952408",  # NASA Facts
 ]
+
+# Disambiguation overrides for specific (QID, property) pairs with multiple values.
+_PICK_FIRST: set[tuple[str, str]] = {
+    ("Q18325885", "P1215"),  # 486958 Arrokoth apparent magnitude
+    ("Q16081", "P2120"),  # Proteus radius (209 vs 210 km)
+}
+_AVERAGE: set[tuple[str, str]] = {
+    ("Q135193382", "P2120"),  # 3I/ATLAS radius (min/max)
+    ("Q319", "P1215"),  # Jupiter apparent magnitude (min/max)
+}
+_DISCARD: set[tuple[str, str]] = {
+    ("Q147561", "P7015"),  # 2101 Adonis surface gravity (uncorrelated values)
+}
 
 
 def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
@@ -254,15 +272,6 @@ def _all_strings(claims: dict, prop: str) -> list[str]:
     return [val for val in _claim_values(claims, prop) if isinstance(val, str) and val]
 
 
-def _first_string(claims: dict, prop: str) -> str | None:
-    """Extract the single string value from a claim."""
-    vals = list(dict.fromkeys(_all_strings(claims, prop)))
-    if len(vals) > 1:
-        key = PID_TO_KEY.get(prop, prop)
-        raise MultipleClaimValues(f"Multiple string values for {key}: {vals}")
-    return vals[0] if vals else None
-
-
 def _all_times(claims: dict, prop: str) -> list[str]:
     """Extract all time values, dropping less precise duplicates.
 
@@ -307,8 +316,8 @@ def _single_quantity(
     claims: dict,
     prop: str,
     *,
-    needs_unit: bool = True,
-    qid: str | None = None,
+    needs_unit: bool,
+    qid: str,
 ) -> dict | float | None:
     """Extract the single quantity value from a claim.
 
@@ -370,24 +379,6 @@ def _single_quantity(
     if len(nasa) == 1:
         return nasa[0][1]
 
-    # Special cases: pick first, average min/max, or discard
-    _PICK_FIRST = {
-        (
-            "Q18325885",
-            "P1215",
-        ),  # 486958 Arrokoth - apparent magnitude: either value is fine
-        ("Q16081", "P2120"),  # Proteus - radius: 209 vs 210 km
-    }
-    _AVERAGE = {
-        ("Q135193382", "P2120"),  # 3I/ATLAS - radius: min/max
-        ("Q319", "P1215"),  # Jupiter - apparent magnitude: min/max
-    }
-    _DISCARD = {
-        (
-            "Q147561",
-            "P7015",
-        ),  # 2101 Adonis - surface gravity: two values uncorelated to the claimed source
-    }
     if (qid, prop) in _PICK_FIRST:
         return pairs[0][1]
     if (qid, prop) in _AVERAGE:
@@ -435,9 +426,9 @@ def _commons_url(filename: str) -> str:
     return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}?width=300"
 
 
-def radius_km_from_claims(claims: dict, units: UnitConverter) -> float | None:
+def radius_km_from_claims(claims: dict, units: UnitConverter, qid: str) -> float | None:
     """Extract the mean radius in km from raw Wikidata claims (P2120), or None."""
-    qty = _single_quantity(claims, "P2120")
+    qty = _single_quantity(claims, "P2120", needs_unit=True, qid=qid)
     if qty is None:
         return None
     if isinstance(qty, (int, float)):

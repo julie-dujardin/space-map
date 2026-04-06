@@ -1,6 +1,7 @@
 """Write one (zone, zoom, part) chunk: binary elements + labels + id list."""
 
 import gzip
+import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
@@ -10,6 +11,8 @@ from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 10_000
 
@@ -34,7 +37,16 @@ def write_chunk(
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
         if obj.wikidata_qid and (wd := chunk_entities.get(obj.wikidata_qid)):
-            r = radius_km_from_claims(wd["claims"], units)
+            try:
+                r = radius_km_from_claims(wd["claims"], units, qid=obj.wikidata_qid)
+            except Exception as exc:
+                logger.error(
+                    "Error extracting radius for %s (%s): %s",
+                    obj.id,
+                    obj.wikidata_qid,
+                    exc,
+                )
+                r = None
             if r is not None:
                 radius_km_overrides[obj.id] = r
     write_elements(objects, elements_path, radius_km_overrides or None)

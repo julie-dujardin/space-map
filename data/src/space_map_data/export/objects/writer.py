@@ -76,7 +76,11 @@ def write_objects(
     for obj in objects:
         wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
         try:
-            extracted = extract_claims(wd["claims"], qid=obj.wikidata_qid) if wd else {}
+            extracted = (
+                extract_claims(wd["claims"], qid=obj.wikidata_qid)
+                if obj.wikidata_qid and wd
+                else {}
+            )
         except Exception as exc:
             logger.error(
                 "Error extracting claims for %s (%s): %s", obj.id, obj.wikidata_qid, exc
