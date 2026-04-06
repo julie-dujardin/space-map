@@ -56,6 +56,9 @@ export class SceneRenderer {
 	private focusedBody: PositionedBody | undefined;
 	private focusTarget = new Vector3();
 	private readonly _tmpV3 = new Vector3();
+	private focusOrigin = new Vector3();
+	private focusStartTime = 0;
+	private static readonly FOCUS_DURATION_MS = 350;
 	private rafId = 0;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
@@ -98,6 +101,8 @@ export class SceneRenderer {
 
 		this.focusedBody = focusBody;
 		this.focusTarget.set(...focusPos);
+		this.focusOrigin.set(...focusPos);
+		this.focusStartTime = -SceneRenderer.FOCUS_DURATION_MS; // already settled
 
 		const camPos = sphericalToCartesian(
 			focusPos,
@@ -176,10 +181,13 @@ export class SceneRenderer {
 			this.controls.update();
 		}
 
-		// Lerp controls target
-		const isAnimating = this.controls.target.distanceToSquared(this.focusTarget) > 0.0001;
+		// Animate controls target with smoothstep over fixed duration
+		const elapsed = performance.now() - this.focusStartTime;
+		const t = Math.min(elapsed / SceneRenderer.FOCUS_DURATION_MS, 1);
+		const isAnimating = t < 1;
 		if (isAnimating) {
-			this.controls.target.lerp(this.focusTarget, 0.08);
+			const s = t * t * (3 - 2 * t); // smoothstep
+			this.controls.target.copy(this.focusOrigin).lerp(this.focusTarget, s);
 		} else {
 			this.controls.target.copy(this.focusTarget);
 		}
@@ -344,6 +352,8 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
+		this.focusOrigin.copy(this.controls.target);
+		this.focusStartTime = performance.now();
 		this.focusedBody = body;
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
@@ -356,6 +366,8 @@ export class SceneRenderer {
 	// --- Public API ---
 
 	setFocusTarget(body: PositionedBody, camPos?: [number, number, number]): void {
+		this.focusOrigin.copy(this.controls.target);
+		this.focusStartTime = performance.now();
 		this.focusedBody = body;
 		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
