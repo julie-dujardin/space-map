@@ -12,10 +12,7 @@ from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
-from space_map_data.export.objects.wikidata_claims import (
-    ALL_PROPERTY_PIDS,
-    ENTITY_REF_PIDS,
-)
+from space_map_data.export.objects.wikidata_claims import ENTITY_REF_CLAIMS, PID_TO_KEY
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -97,7 +94,7 @@ class WikidataDownloader(Downloader):
         # Fetch property entities (P-IDs) for label localization
         properties_dir = self.out_dir / "properties"
         properties_dir.mkdir(exist_ok=True)
-        property_pids = ALL_PROPERTY_PIDS - {
+        property_pids = PID_TO_KEY.keys() - {
             f.stem for f in properties_dir.glob("P*.json")
         }
         if property_pids:
@@ -134,7 +131,7 @@ class WikidataDownloader(Downloader):
                 logger.warning("Failed to read %s: %s", entity_file, exc)
                 continue
             claims = entity.get("claims", {})
-            for prop in ENTITY_REF_PIDS:
+            for prop in (c.pid for c in ENTITY_REF_CLAIMS):
                 for stmt in claims.get(prop, []):
                     dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
                     if isinstance(dv, dict) and "id" in dv:
@@ -165,7 +162,7 @@ class WikidataDownloader(Downloader):
             to_fetch = to_fetch[:limit]
 
         if not to_fetch:
-            logger.info("All entities already downloaded")
+            logger.info("All %s already downloaded", fetch_desc)
             return
 
         logger.info(

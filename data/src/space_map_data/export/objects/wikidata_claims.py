@@ -42,6 +42,7 @@ GLOBAL_CLAIMS = (
     GlobalClaim("min_temperature", "P7422", "quantity"),
     GlobalClaim("max_temperature", "P6591", "quantity"),
     GlobalClaim("website", "P856", "url"),
+    GlobalClaim("population", "P1082", "quantity"),
 )
 
 
@@ -68,9 +69,9 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("discoverers", "P61", multiple=True),
 )
 
-# All property IDs we care about — used by the downloader and property label export
-ENTITY_REF_PIDS = frozenset(c.pid for c in ENTITY_REF_CLAIMS)
-ALL_PROPERTY_PIDS = frozenset(c.pid for c in GLOBAL_CLAIMS) | ENTITY_REF_PIDS
+PID_TO_KEY: dict[str, str] = {
+    c.pid: c.key for c in (*GLOBAL_CLAIMS, *ENTITY_REF_CLAIMS)
+}
 
 
 def extract_claims(claims: dict) -> dict:

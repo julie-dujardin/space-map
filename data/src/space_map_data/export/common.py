@@ -18,7 +18,7 @@ from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.units import write_unit_labels
+from space_map_data.export.localization import write_messages
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
 from space_map_data.utils.paths import EXPORT_DIR
@@ -229,7 +229,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         logger.info("  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts)
 
     # --- Other outputs ---
-    write_unit_labels(out_dir, wikidata_entities)
+    write_messages(wikidata_entities, units.used_units)
 
     metadata = _build_metadata(zone_structure, object_counts, total_bytes_map)
     (out_dir / "metadata.json").write_bytes(

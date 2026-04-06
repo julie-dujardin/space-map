@@ -48,6 +48,7 @@ class WikidataEntityCache:
         self._entities_dir = wikidata_dir / "objects"
         self._referenced_dir = wikidata_dir / "referenced"
         self._units: dict[str, WikidataEntity] = {}
+        self._properties: dict[str, WikidataEntity] = {}
 
         if not any(
             d.exists()
@@ -62,9 +63,19 @@ class WikidataEntityCache:
                 self._units[qid] = parsed
         logger.info("Preloaded %d unit entities", len(self._units))
 
+        for pid, entity in load_json_dir(wikidata_dir / "properties", glob="P*.json"):
+            parsed = _parse_entity(entity)
+            if parsed:
+                self._properties[pid] = parsed
+        logger.info("Preloaded %d property entities", len(self._properties))
+
     def unit_items(self) -> dict[str, WikidataEntity]:
         """Return all preloaded unit entities as {qid: entity}."""
         return self._units
+
+    def property_items(self) -> dict[str, WikidataEntity]:
+        """Return all preloaded property entities as {pid: entity}."""
+        return self._properties
 
     def get_entity(self, qid: str | None) -> WikidataEntity | None:
         """Look up an object's own Wikidata entity (from entities/)."""
@@ -87,8 +98,7 @@ class WikidataEntityCache:
         try:
             raw = orjson.loads(path.read_bytes())
         except (orjson.JSONDecodeError, OSError) as exc:
-            logger.error("Failed to load %s: %s", path, exc)
-            return None
+            raise ValueError(f"Failed to load {path}") from exc
         return _parse_entity(raw)
 
 

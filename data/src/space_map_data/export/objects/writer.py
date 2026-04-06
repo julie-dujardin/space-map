@@ -174,6 +174,7 @@ def _build_global(
                     else:
                         resolved = resolve_unit(val["unit"], wikidata_entities)
                         if resolved:
+                            units.used_units.add(resolved)
                             val = {**val, "unit": resolved}
                 wikidata_section[claim.key] = val
         if wikidata_section:

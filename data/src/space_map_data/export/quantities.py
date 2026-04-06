@@ -141,6 +141,7 @@ class UnitConverter:
 
         self._ladders = ladders
         self._qid_index = qid_index
+        self.used_units: set[str] = set()
 
         logger.info(
             "Built unit ladders: %s",
@@ -182,9 +183,11 @@ class UnitConverter:
         for entry in ladder:
             value = value_in_base / entry.factor
             if value > 1.1:
+                self.used_units.add(entry.label)
                 return {"value": strip(value), "unit": entry.label}
         # Fallback: use the smallest unit in the ladder
         last = ladder[-1]
+        self.used_units.add(last.label)
         return {
             "value": strip(value_in_base / last.factor),
             "unit": last.label,
