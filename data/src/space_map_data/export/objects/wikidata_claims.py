@@ -68,6 +68,10 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("discoverers", "P61", multiple=True),
 )
 
+# All property IDs we care about — used by the downloader and property label export
+ENTITY_REF_PIDS = frozenset(c.pid for c in ENTITY_REF_CLAIMS)
+ALL_PROPERTY_PIDS = frozenset(c.pid for c in GLOBAL_CLAIMS) | ENTITY_REF_PIDS
+
 
 def extract_claims(claims: dict) -> dict:
     """Extract target properties from raw Wikidata claims.

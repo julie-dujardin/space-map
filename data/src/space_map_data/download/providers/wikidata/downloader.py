@@ -12,6 +12,10 @@ from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
+from space_map_data.export.objects.wikidata_claims import (
+    ALL_PROPERTY_PIDS,
+    ENTITY_REF_PIDS,
+)
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -20,21 +24,6 @@ API_URL = "https://www.wikidata.org/w/api.php"
 
 ENTITY_BATCH_SIZE = 50
 AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
-
-# Properties whose values are entity references we want to download
-_REFERENCED_PROPERTIES = (
-    "P31",  # instance of (planet, dwarf...)
-    "P61",  # discoverer
-    "P138",  # named after
-    "P65",  # site of discovery
-    "P196",  # minor planet group
-    "P720",  # spectral type
-    "P744",  # asteroid family
-    "P137",  # operator (spacecraft)
-    "P176",  # manufacturer (spacecraft)
-    "P375",  # launch vehicle (spacecraft)
-    "P1427",  # launch site (spacecraft)
-)
 
 
 class WikidataDownloader(Downloader):
@@ -105,6 +94,18 @@ class WikidataDownloader(Downloader):
             logger.info("Fetching %d unit entities", len(unit_qids))
             self._fetch_entities(unit_qids, units_dir, limit=None, fetch_desc="units")
 
+        # Fetch property entities (P-IDs) for label localization
+        properties_dir = self.out_dir / "properties"
+        properties_dir.mkdir(exist_ok=True)
+        property_pids = ALL_PROPERTY_PIDS - {
+            f.stem for f in properties_dir.glob("P*.json")
+        }
+        if property_pids:
+            logger.info("Fetching %d property entities", len(property_pids))
+            self._fetch_entities(
+                property_pids, properties_dir, limit=None, fetch_desc="properties"
+            )
+
         all_count = len(object_qids) + len(nomenclature_qids)
         self._save_metadata(
             API_URL,
@@ -133,7 +134,7 @@ class WikidataDownloader(Downloader):
                 logger.warning("Failed to read %s: %s", entity_file, exc)
                 continue
             claims = entity.get("claims", {})
-            for prop in _REFERENCED_PROPERTIES:
+            for prop in ENTITY_REF_PIDS:
                 for stmt in claims.get(prop, []):
                     dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
                     if isinstance(dv, dict) and "id" in dv:
@@ -168,8 +169,9 @@ class WikidataDownloader(Downloader):
             return
 
         logger.info(
-            "Fetching %s entities (%s already on disk)",
+            "Fetching %s %s (%s already on disk)",
             f"{len(to_fetch):,}",
+            fetch_desc,
             f"{len(qids) - len(to_fetch):,}",
         )
 
