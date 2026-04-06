@@ -86,12 +86,17 @@ def write_objects(
         qid = obj.wikidata_qid
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
 
-        en_data = None
+        en_available = None
         obj_flags: dict[str, int] = {}
 
         for lang in LANGUAGES:
+            wiki_summary = wiki_summaries.get(lang)
+            if not wiki_summary:
+                # No wikipedia page → no localized file; mark english availability for frontend fallback
+                obj_flags[lang] = 2 if en_available else 0
+                continue
             lang_data = _build_localized(
-                obj, lang, wikidata_entities, wd, extracted, wiki_summaries.get(lang)
+                obj, lang, wikidata_entities, wd, extracted, wiki_summary
             )
             if lang_data:
                 (lang_dirs[lang] / f"{obj.id}.json.gz").write_bytes(
@@ -99,9 +104,9 @@ def write_objects(
                 )
                 obj_flags[lang] = 1
                 if lang == "en":
-                    en_data = lang_data
+                    en_available = True
             else:
-                obj_flags[lang] = 2 if en_data else 0
+                obj_flags[lang] = 2 if en_available else 0
 
         all_flags[obj.id] = obj_flags
 
