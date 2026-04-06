@@ -101,7 +101,7 @@ The `scale` flag determines how to interpret `a` and `n`:
 | 0 (planet) | km | rev/day | Earth-orbiting satellites |
 | 1 (system) | AU | deg/day | Heliocentric objects, moons |
 
-The frontend normalizes everything to AU and deg/day before computing positions.
+To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`, `n_degday = n * 360`.
 
 ## Object IDs file (`.txt.gz`)
 
@@ -216,6 +216,40 @@ interface LocalizedObjectData {
 }
 
 interface EntityRef { name: string; wikipedia?: string; }
+```
+
+## Textures
+
+Generated during ingest (not export) and written directly to the export directory. An object's `map_texture_available` flag in its global JSON signals whether a texture exists.
+
+**Path:** `textures/{id}/{tier}.webp`
+
+| Tier   | Max dimension | Size target | Quality   | Condition |
+|--------|---------------|-------------|-----------|-----------|
+| low    | 2048 px       | 300 KiB     | lossy 80                             | always generated |
+| medium | 8192 px       | 2 MiB       | lossy 80                             | source > 2048 px |
+| high   | 16383 px      | 6 MiB       | lossy 80 or lossless if small enough | source > 8192 px |
+
+16,383 px is the WebP hard limit per dimension.
+
+The size is a target, not a hard limit. Some textures go over it.
+
+### Texture metadata (`textures/{id}/metadata.json`)
+
+```json
+{
+  "id": "naif-499",
+  "source": "https://example.com/mars.tif",
+  "description": "Mars surface map",
+  "type": "map",
+  "source_file": "mars_color.tif",
+  "source_dimensions": [8192, 4096],
+  "processed_at": "2025-01-01T00:00:00+00:00",
+  "exports": {
+    "low":    { "file": "low.webp",    "width": 2048, "height": 1024, "size_bytes": 290000, "lossless": false },
+    "medium": { "file": "medium.webp", "width": 8192, "height": 4096, "size_bytes": 1800000, "lossless": false }
+  }
+}
 ```
 
 ## Consuming the data
