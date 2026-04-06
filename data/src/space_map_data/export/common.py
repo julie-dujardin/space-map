@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
-
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.units import write_unit_labels
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
@@ -80,6 +80,7 @@ def _write_parts(
     zone: str,
     zoom: int,
     wikidata_entities: WikidataEntityCache,
+    units: UnitConverter,
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -92,9 +93,22 @@ def _write_parts(
             if (qid := obj.wikidata_qid)
         }
         # write_objects must come first — its return value feeds write_chunk
-        object_flags = write_objects(chunk, out_dir, wikidata_entities, chunk_entities)
+        object_flags = write_objects(
+            chunk,
+            out_dir,
+            wikidata_entities,
+            chunk_entities,
+            units,
+        )
         total_bytes += write_chunk(
-            chunk, out_dir, zone, zoom, part_idx, chunk_entities, object_flags
+            chunk,
+            out_dir,
+            zone,
+            zoom,
+            part_idx,
+            chunk_entities,
+            object_flags,
+            units,
         )
     return num_parts, total_bytes
 
@@ -107,6 +121,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     _remove_old_outputs(out_dir)
 
     wikidata_entities = WikidataEntityCache()
+    units = UnitConverter(wikidata_entities)
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -157,7 +172,13 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     # Barycenters must come first so parents resolve before children.
                     objects.sort(key=lambda o: o.object_type != ObjectType.barycenter)
                 f = executor.submit(
-                    _write_parts, objects, out_dir, zone, 0, wikidata_entities
+                    _write_parts,
+                    objects,
+                    out_dir,
+                    zone,
+                    0,
+                    wikidata_entities,
+                    units,
                 )
                 futures[f] = (zone, 0, len(objects))
 
@@ -188,7 +209,13 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     continue
                 zone = cls.value if hasattr(cls, "value") else cls
                 f = executor.submit(
-                    _write_parts, objects, out_dir, zone, zoom, wikidata_entities
+                    _write_parts,
+                    objects,
+                    out_dir,
+                    zone,
+                    zoom,
+                    wikidata_entities,
+                    units,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid

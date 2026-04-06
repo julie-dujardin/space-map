@@ -4,6 +4,7 @@ import logging
 from typing import Literal, NamedTuple
 from urllib.parse import quote
 
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 
 logger = logging.getLogger(__name__)
@@ -205,14 +206,7 @@ def _commons_url(filename: str) -> str:
     return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}?width=300"
 
 
-# Wikidata unit QID → factor to convert to km
-_RADIUS_UNIT_TO_KM: dict[str, float] = {
-    "Q828224": 1.0,  # kilometre
-    "Q11573": 0.001,  # metre
-}
-
-
-def radius_km_from_claims(claims: dict) -> float | None:
+def radius_km_from_claims(claims: dict, units: UnitConverter) -> float | None:
     """Extract the mean radius in km from raw Wikidata claims (P2120), or None."""
     qty = _first_quantity(claims, "P2120")
     if qty is None:
@@ -221,8 +215,12 @@ def radius_km_from_claims(claims: dict) -> float | None:
         # Dimensionless — assume km (rare but possible)
         return float(qty)
     unit_qid = qty.get("unit")
-    factor = _RADIUS_UNIT_TO_KM.get(unit_qid) if unit_qid else None
-    if factor is None:
+    if not unit_qid:
+        return None
+    metres = units.convert_to_base(
+        float(qty["value"]), unit_qid, expected_type="length"
+    )
+    if metres is None:
         logger.warning("radius_km_from_claims: unknown unit QID %s, skipping", unit_qid)
         return None
-    return float(qty["value"]) * factor
+    return metres / 1000.0
