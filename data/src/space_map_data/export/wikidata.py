@@ -62,6 +62,10 @@ class WikidataEntityCache:
                 self._units[qid] = parsed
         logger.info("Preloaded %d unit entities", len(self._units))
 
+    def unit_items(self) -> dict[str, WikidataEntity]:
+        """Return all preloaded unit entities as {qid: entity}."""
+        return self._units
+
     def get_entity(self, qid: str | None) -> WikidataEntity | None:
         """Look up an object's own Wikidata entity (from entities/)."""
         if not qid:

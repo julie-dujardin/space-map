@@ -15,7 +15,7 @@ from space_map_data.export.objects.wikipedia import (
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.objects.sbdb import build_sbdb
-from space_map_data.export.quantities import MASS_UNIT_KG, mass_quantity_from_kg
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -54,6 +54,7 @@ def write_objects(
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
     chunk_entities: dict[str, WikidataEntity | None],
+    units: UnitConverter,
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -77,7 +78,7 @@ def write_objects(
         extracted = extract_claims(wd["claims"]) if wd else {}
 
         # Global (non-localized, always written)
-        global_data = _build_global(obj, extracted, wikidata_entities)
+        global_data = _build_global(obj, extracted, wikidata_entities, units)
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
         )
@@ -122,6 +123,7 @@ def _build_global(
     obj: Object,
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
+    units: UnitConverter,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -155,7 +157,7 @@ def _build_global(
     # SBDB extras
     sbdb = obj.sbdb if obj.sbdb_spkid is not None else None
     if sbdb is not None:
-        sbdb_data = build_sbdb(sbdb)
+        sbdb_data = build_sbdb(sbdb, units)
         if sbdb_data:
             data["sbdb"] = sbdb_data
 
@@ -166,13 +168,13 @@ def _build_global(
             if claim.key in extracted:
                 val = extracted[claim.key]
                 if isinstance(val, dict) and "unit" in val:
-                    resolved = resolve_unit(val["unit"], wikidata_entities)
-                    if resolved:
-                        val = {**val, "unit": resolved}
-                        if claim.key == "mass" and resolved in MASS_UNIT_KG:
-                            val = mass_quantity_from_kg(
-                                float(val["value"]) * MASS_UNIT_KG[resolved]
-                            )
+                    converted = units.convert(float(val["value"]), val["unit"])
+                    if converted is not None:
+                        val = converted
+                    else:
+                        resolved = resolve_unit(val["unit"], wikidata_entities)
+                        if resolved:
+                            val = {**val, "unit": resolved}
                 wikidata_section[claim.key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section

@@ -43,7 +43,7 @@ export class SceneRenderer {
 
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture = makeCircleTexture();
-	private asteroidPoints: Points | null = null;
+	private asteroidPoints = new Map<string, Points>();
 	private textureLoaded = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
@@ -160,7 +160,7 @@ export class SceneRenderer {
 	}
 
 	rebuildMinorPointClouds(): void {
-		this.asteroidPoints = rebuildMinorPointClouds(
+		rebuildMinorPointClouds(
 			this.ctx,
 			this.circleTexture,
 			this.asteroidPoints,
@@ -253,6 +253,9 @@ export class SceneRenderer {
 			}
 		}
 
+		for (const [zone, pts] of this.asteroidPoints) {
+			pts.visible = this.ctx.isAsteroidGroupVisible(zone);
+		}
 		for (const [gid, pts] of this.spacecraftPoints) {
 			pts.visible = this.ctx.isSpacecraftGroupVisible(gid);
 		}

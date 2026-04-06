@@ -135,18 +135,21 @@ export function buildPointClouds(
 	scene: Scene,
 	circleTexture: CanvasTexture
 ): {
-	asteroidPoints: Points | null;
+	asteroidPoints: Map<string, Points>;
 	spacecraftPoints: Map<string, Points>;
 	moonPoints: Map<string, Points>;
 } {
-	let asteroidPoints: Points | null = null;
+	const asteroidPoints = new Map<string, Points>();
 	const spacecraftPoints = new Map<string, Points>();
 	const moonPoints = new Map<string, Points>();
 
-	// Asteroid point cloud
-	if (ctx.asteroidBodies.length > 0) {
-		asteroidPoints = makePointCloud(ctx.asteroidBodies, circleTexture);
-		scene.add(asteroidPoints);
+	// Asteroid point clouds (one per zone)
+	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
+		if (bodies.length > 0) {
+			const pts = makePointCloud(bodies, circleTexture);
+			asteroidPoints.set(zone, pts);
+			scene.add(pts);
+		}
 	}
 
 	// Spacecraft point clouds (one per parent body)
@@ -178,30 +181,30 @@ export function buildPointClouds(
 
 /**
  * Rebuilds the asteroid and spacecraft point clouds from updated context data.
- * Returns the (possibly newly created) asteroidPoints object.
  */
 export function rebuildMinorPointClouds(
 	ctx: ContextManager,
 	circleTexture: CanvasTexture,
-	asteroidPoints: Points | null,
+	asteroidPoints: Map<string, Points>,
 	spacecraftPoints: Map<string, Points>,
 	scene: Scene
-): Points | null {
-	// Asteroid cloud — reuse existing Points, just replace the position attribute
-	if (ctx.asteroidBodies.length > 0) {
-		const bodies = ctx.asteroidBodies;
+): void {
+	// Asteroid clouds — per zone, reuse existing Points or create new ones
+	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
+		if (bodies.length === 0) continue;
 		const posArr = new Float32Array(bodies.length * 3);
 		for (let i = 0; i < bodies.length; i++) {
 			posArr[i * 3] = bodies[i].position[0];
 			posArr[i * 3 + 1] = bodies[i].position[1];
 			posArr[i * 3 + 2] = bodies[i].position[2];
 		}
-		const positions = new Float32BufferAttribute(posArr, 3);
-		if (asteroidPoints) {
-			asteroidPoints.geometry.setAttribute('position', positions);
+		const existing = asteroidPoints.get(zone);
+		if (existing) {
+			existing.geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 		} else {
-			asteroidPoints = makePointCloud(ctx.asteroidBodies, circleTexture);
-			scene.add(asteroidPoints);
+			const pts = makePointCloud(bodies, circleTexture);
+			asteroidPoints.set(zone, pts);
+			scene.add(pts);
 		}
 	}
 
@@ -222,8 +225,6 @@ export function rebuildMinorPointClouds(
 			scene.add(points);
 		}
 	}
-
-	return asteroidPoints;
 }
 
 export async function loadBodyTexture(

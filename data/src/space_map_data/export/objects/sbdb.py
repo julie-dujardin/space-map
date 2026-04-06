@@ -1,6 +1,6 @@
 """SBDB (Small-Body Database) export helpers."""
 
-from space_map_data.export.quantities import mass_quantity_from_kg
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.models.object import SBDB
 
 
@@ -38,7 +38,7 @@ _SBDB_FIELDS = (
 )
 
 
-def build_sbdb(sbdb: SBDB) -> dict:
+def build_sbdb(sbdb: SBDB, units: UnitConverter) -> dict:
     """Build the SBDB extras dict, omitting None values."""
     data: dict = {}
     for attr in _SBDB_FIELDS:
@@ -46,5 +46,7 @@ def build_sbdb(sbdb: SBDB) -> dict:
         if val is not None:
             data[attr.rstrip("_")] = val
     if sbdb.mass_kg is not None:
-        data["mass"] = mass_quantity_from_kg(sbdb.mass_kg)
+        converted = units.best_unit(sbdb.mass_kg, "mass")
+        if converted is not None:
+            data["mass"] = converted
     return data
