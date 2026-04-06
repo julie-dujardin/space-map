@@ -207,7 +207,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 )
                 if not objects:
                     continue
-                zone = cls.value if hasattr(cls, "value") else cls
+                zone = cls.name
                 f = executor.submit(
                     _write_parts,
                     objects,
