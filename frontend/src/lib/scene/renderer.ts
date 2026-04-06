@@ -209,6 +209,11 @@ export class SceneRenderer {
 
 		for (const bo of this.bodyObjects.values()) {
 			const { body, group, orbitLine } = bo;
+			this._tmpV3.set(...body.position);
+			const dist = this.camera.position.distanceTo(this._tmpV3);
+
+			let showLabel: boolean;
+			let isClose: boolean;
 
 			if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
@@ -220,37 +225,25 @@ export class SceneRenderer {
 					vis === VISIBILITY.CLOSE ||
 					vis === VISIBILITY.FULL ||
 					(capped && this.hideCappedMoonLabels);
-				this._tmpV3.set(...body.position);
-				const dist = this.camera.position.distanceTo(this._tmpV3);
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
-				applyLabelDisplay(
-					bo,
-					vis === VISIBILITY.FULL || (capped && this.hideCappedMoonLabels),
-					vis === VISIBILITY.CLOSE,
-					dist,
-					projScale,
-					focusedBodyId
-				);
+				showLabel = vis === VISIBILITY.FULL || (capped && this.hideCappedMoonLabels);
+				isClose = vis === VISIBILITY.CLOSE;
 			} else if (body.data.objectType === ObjectType.STAR) {
 				group.visible = true;
-				if (bo.label) bo.label.visible = true;
+				const screenR = (bo.radiusScene / dist) * projScale;
+				isClose = screenR >= 1;
+				showLabel = !isClose;
 			} else {
-				this._tmpV3.set(...body.position);
-				const dist = this.camera.position.distanceTo(this._tmpV3);
 				const vis = this.ctx.getPlanetVisibility(body, dist);
 				const full = this.ctx.hasFullRendering(body);
 				group.visible =
 					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
 				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
-				applyLabelDisplay(
-					bo,
-					vis === VISIBILITY.FULL && full,
-					full && vis === VISIBILITY.CLOSE,
-					dist,
-					projScale,
-					focusedBodyId
-				);
+				showLabel = vis === VISIBILITY.FULL && full;
+				isClose = full && vis === VISIBILITY.CLOSE;
 			}
+
+			applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
 		}
 
 		for (const [zone, pts] of this.asteroidPoints) {
