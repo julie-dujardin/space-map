@@ -4,6 +4,7 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
+	import { convertTemperature } from '$lib/math/units';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -24,7 +25,11 @@
 	}
 
 	function formatNumber(n: number): string {
-		return n.toLocaleString(getLocale());
+		if (!Number.isFinite(n)) return String(n);
+		const intDigits = Math.floor(Math.abs(n)) === 0 ? 0 : Math.floor(Math.log10(Math.abs(n))) + 1;
+		const fracDigits = Math.max(0, 3 - intDigits);
+		const rounded = fracDigits === 0 ? Math.round(n) : parseFloat(n.toFixed(fracDigits));
+		return rounded.toLocaleString(getLocale());
 	}
 
 	function ucfirst(s: string): string {
@@ -35,52 +40,8 @@
 		return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
 	}
 
-	type TemperatureUnit = 'kelvin' | 'degree_celsius' | 'degree_fahrenheit';
-	const PREFERRED_TEMPERATURE_UNIT: TemperatureUnit = 'degree_celsius';
-
-	function toKelvin(value: number, from: TemperatureUnit): number {
-		switch (from) {
-			case 'kelvin':
-				return value;
-			case 'degree_celsius':
-				return value + 273.15;
-			case 'degree_fahrenheit':
-				return (value - 32) * (5 / 9) + 273.15;
-		}
-	}
-
-	function fromKelvin(kelvin: number, to: TemperatureUnit): number {
-		switch (to) {
-			case 'kelvin':
-				return kelvin;
-			case 'degree_celsius':
-				return kelvin - 273.15;
-			case 'degree_fahrenheit':
-				return (kelvin - 273.15) * (9 / 5) + 32;
-		}
-	}
-
-	function significantDigits(n: number): number {
-		if (n === 0) return 1;
-		const s = Math.abs(n).toExponential();
-		const mantissa = s.slice(0, s.indexOf('e'));
-		return mantissa.replace('.', '').replace(/^0+/, '').length;
-	}
-
-	function toSignificantDigits(n: number, digits: number): number {
-		if (n === 0) return 0;
-		const magnitude = Math.floor(Math.log10(Math.abs(n)));
-		const factor = Math.pow(10, digits - 1 - magnitude);
-		return Math.round(n * factor) / factor;
-	}
-
 	function formatTemperature(q: { value: number; unit: string }): string {
-		const target = PREFERRED_TEMPERATURE_UNIT;
-		const source = q.unit as TemperatureUnit;
-		if (source === target) return formatQuantity(q, true);
-		const converted = fromKelvin(toKelvin(q.value, source), target);
-		const rounded = toSignificantDigits(converted, significantDigits(q.value));
-		return formatQuantity({ value: rounded, unit: target }, true);
+		return formatQuantity(convertTemperature(q), true);
 	}
 
 	let physicalProps = $derived.by(() => {
