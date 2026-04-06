@@ -1,8 +1,8 @@
 """Export orchestrator: query DB, write chunked output files."""
 
-import orjson
 import logging
 import math
+import orjson
 import shutil
 import time
 from collections import defaultdict
@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
+from space_map_data.models.object.sbdb import CometPrefix
 from sqlalchemy import case
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
@@ -200,6 +201,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         SBDB.class_ == cls,
                         name_filter,
                         Object.object_type.not_in(_SUN_MAJOR_TYPE_VALUES),
+                        SBDB.prefix.is_distinct_from(
+                            CometPrefix.D
+                        ),  # TODO: handle defunct comets - figure out last display date
                     )
                     .order_by(Object.random_int)
                     .limit(limit_per_zone)
