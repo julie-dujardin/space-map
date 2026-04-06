@@ -9,7 +9,7 @@ import {
 	ShaderMaterial,
 	Vector3
 } from 'three';
-import { orbitalElementsToEllipse } from '$lib/math/kepler';
+import { orbitalElementsToCurve } from '$lib/math/kepler';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 
 export const NUM_ORBIT_POINTS = 512;
@@ -32,7 +32,8 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	const { orbitElements, orbitCenter, data } = body;
 	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
 
-	const ellipse = orbitalElementsToEllipse(orbitElements, NUM_ORBIT_POINTS);
+	const isHyperbolic = orbitElements.e >= 1;
+	const curve = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
 
 	// Body position in orbit-local coordinates
 	const cx = orbitCenter?.[0] ?? 0;
@@ -44,52 +45,71 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 		body.position[2] - cz
 	];
 
-	// Find trail start point (behind the body in orbital direction)
-	let nearest = 0;
-	let best = Infinity;
-	for (let j = 0; j < NUM_ORBIT_POINTS; j++) {
-		const d =
-			(ellipse[j][0] - bodyLocal[0]) ** 2 +
-			(ellipse[j][1] - bodyLocal[1]) ** 2 +
-			(ellipse[j][2] - bodyLocal[2]) ** 2;
-		if (d < best) {
-			best = d;
-			nearest = j;
+	let points: [number, number, number][];
+	let closeLoop: boolean;
+
+	if (isHyperbolic) {
+		// Hyperbolic: render the full open curve as-is, no trail logic
+		points = curve;
+		closeLoop = false;
+	} else {
+		// Elliptical: find nearest point on curve and build trail from body position
+		let nearest = 0;
+		let best = Infinity;
+		for (let j = 0; j < NUM_ORBIT_POINTS; j++) {
+			const d =
+				(curve[j][0] - bodyLocal[0]) ** 2 +
+				(curve[j][1] - bodyLocal[1]) ** 2 +
+				(curve[j][2] - bodyLocal[2]) ** 2;
+			if (d < best) {
+				best = d;
+				nearest = j;
+			}
 		}
+		const prev = (nearest - 1 + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS;
+		const next = (nearest + 1) % NUM_ORBIT_POINTS;
+		const distPrev =
+			(curve[prev][0] - bodyLocal[0]) ** 2 +
+			(curve[prev][1] - bodyLocal[1]) ** 2 +
+			(curve[prev][2] - bodyLocal[2]) ** 2;
+		const distNext =
+			(curve[next][0] - bodyLocal[0]) ** 2 +
+			(curve[next][1] - bodyLocal[1]) ** 2 +
+			(curve[next][2] - bodyLocal[2]) ** 2;
+		const trailStart = distPrev < distNext ? prev : nearest;
+
+		const useTrail =
+			data.objectType === ObjectType.DWARF_PLANET ||
+			data.objectType === ObjectType.MOON ||
+			isAsteroid(data.objectType);
+		const trailFraction = useTrail ? 1 / 3 : undefined;
+		const trailLen = trailFraction
+			? Math.round(trailFraction * NUM_ORBIT_POINTS)
+			: NUM_ORBIT_POINTS;
+		closeLoop = !trailFraction;
+
+		points = [bodyLocal];
+		for (let k = 0; k < trailLen - 1; k++) {
+			points.push(
+				curve[(((trailStart - k) % NUM_ORBIT_POINTS) + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS]
+			);
+		}
+		if (closeLoop) points.push(bodyLocal);
 	}
-	const prev = (nearest - 1 + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS;
-	const next = (nearest + 1) % NUM_ORBIT_POINTS;
-	const distPrev =
-		(ellipse[prev][0] - bodyLocal[0]) ** 2 +
-		(ellipse[prev][1] - bodyLocal[1]) ** 2 +
-		(ellipse[prev][2] - bodyLocal[2]) ** 2;
-	const distNext =
-		(ellipse[next][0] - bodyLocal[0]) ** 2 +
-		(ellipse[next][1] - bodyLocal[1]) ** 2 +
-		(ellipse[next][2] - bodyLocal[2]) ** 2;
-	const trailStart = distPrev < distNext ? prev : nearest;
 
-	const useTrail =
-		data.objectType === ObjectType.DWARF_PLANET ||
-		data.objectType === ObjectType.MOON ||
-		isAsteroid(data.objectType);
-	const trailFraction = useTrail ? 1 / 3 : undefined;
-	const trailLen = trailFraction ? Math.round(trailFraction * NUM_ORBIT_POINTS) : NUM_ORBIT_POINTS;
-	const closeLoop = !trailFraction;
-
-	const points: [number, number, number][] = [bodyLocal];
-	for (let k = 0; k < trailLen - 1; k++) {
-		points.push(
-			ellipse[(((trailStart - k) % NUM_ORBIT_POINTS) + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS]
-		);
-	}
-	if (closeLoop) points.push(bodyLocal);
-
-	const maxAlpha = trailFraction ? 0.6 : 0.9;
-	const minAlpha = trailFraction ? 0 : maxAlpha / 3;
 	const alphas = new Float32Array(points.length);
-	for (let k = 0; k < points.length; k++) {
-		alphas[k] = maxAlpha - (k / (points.length - 1)) * (maxAlpha - minAlpha);
+	if (isHyperbolic) {
+		// Fade from full at center (perihelion) to 0 at both ends
+		const mid = (points.length - 1) / 2;
+		for (let k = 0; k < points.length; k++) {
+			alphas[k] = 0.7 * (1 - Math.abs(k - mid) / mid);
+		}
+	} else {
+		const maxAlpha = closeLoop ? 0.9 : 0.6;
+		const minAlpha = closeLoop ? maxAlpha / 3 : 0;
+		for (let k = 0; k < points.length; k++) {
+			alphas[k] = maxAlpha - (k / (points.length - 1)) * (maxAlpha - minAlpha);
+		}
 	}
 
 	const geometry = new BufferGeometry();

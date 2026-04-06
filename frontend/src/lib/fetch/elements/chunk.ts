@@ -72,23 +72,21 @@ export class ChunkLoader {
 
 		for (let idx = 0; idx < cols.rowCount; idx++) {
 			const a = cols.a[idx];
-			const e = cols.e[idx];
 			const objType = cols.objectType[idx] as ObjectType;
 
-			if (!(a > 0) || e >= 1) {
+			// Skip truly degenerate orbits (a=0), but allow hyperbolic (a<0, e>=1)
+			if (a === 0) {
 				if (
 					isMajorBody(objType) ||
 					objType === ObjectType.BARYCENTER ||
 					objType === ObjectType.LAGRANGE_POINT
 				) {
-					// Major bodies with near-zero orbits (e.g. planets at their barycenter) are
-					// still valid — they sit at the parent position with zero offset.
 					console.debug(
-						`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=${a} e=${e}, keeping as major body`
+						`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=0, keeping at parent position`
 					);
 				} else {
 					console.debug(
-						`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): invalid orbit a=${a} e=${e}`
+						`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): degenerate orbit a=0`
 					);
 					continue;
 				}
@@ -101,7 +99,8 @@ export class ChunkLoader {
 			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
 
 			const body = columnarToBody(cols, idx, labels, flags, idMap);
-			const offset = orbitalElementsToPosition(body, date);
+			const offset =
+				a === 0 ? ([0, 0, 0] as [number, number, number]) : orbitalElementsToPosition(body, date);
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
 				parentPos[1] + offset[1],
