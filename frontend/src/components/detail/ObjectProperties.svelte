@@ -17,8 +17,8 @@
 		value: string;
 	}
 
-	function formatUnit(unit: string): string {
-		const symbolKey = `unit_name_${unit}`;
+	function formatUnit(unit: string, short?: boolean): string {
+		const symbolKey = short ? `unit_symbol_${unit}` : `unit_name_${unit}`;
 		const fn = (m as unknown as Record<string, (() => string) | undefined>)[symbolKey];
 		return fn ? fn() : unit.replace(/_/g, ' ');
 	}
@@ -31,8 +31,56 @@
 		return s.charAt(0).toUpperCase() + s.slice(1);
 	}
 
-	function formatQuantity(q: { value: number; unit: string }): string {
-		return `${formatNumber(q.value)} ${formatUnit(q.unit)}`;
+	function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
+		return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
+	}
+
+	type TemperatureUnit = 'kelvin' | 'degree_celsius' | 'degree_fahrenheit';
+	const PREFERRED_TEMPERATURE_UNIT: TemperatureUnit = 'degree_celsius';
+
+	function toKelvin(value: number, from: TemperatureUnit): number {
+		switch (from) {
+			case 'kelvin':
+				return value;
+			case 'degree_celsius':
+				return value + 273.15;
+			case 'degree_fahrenheit':
+				return (value - 32) * (5 / 9) + 273.15;
+		}
+	}
+
+	function fromKelvin(kelvin: number, to: TemperatureUnit): number {
+		switch (to) {
+			case 'kelvin':
+				return kelvin;
+			case 'degree_celsius':
+				return kelvin - 273.15;
+			case 'degree_fahrenheit':
+				return (kelvin - 273.15) * (9 / 5) + 32;
+		}
+	}
+
+	function significantDigits(n: number): number {
+		if (n === 0) return 1;
+		const s = Math.abs(n).toExponential();
+		const mantissa = s.slice(0, s.indexOf('e'));
+		return mantissa.replace('.', '').replace(/^0+/, '').length;
+	}
+
+	function toSignificantDigits(n: number, digits: number): number {
+		if (n === 0) return 0;
+		const magnitude = Math.floor(Math.log10(Math.abs(n)));
+		const factor = Math.pow(10, digits - 1 - magnitude);
+		return Math.round(n * factor) / factor;
+	}
+
+	function formatTemperature(q: { value: number; unit: string }): string {
+		const target = PREFERRED_TEMPERATURE_UNIT;
+		const source = q.unit as TemperatureUnit;
+		if (source === target) return formatQuantity(q, true);
+		const converted = fromKelvin(toKelvin(q.value, source), target);
+		const rounded = toSignificantDigits(converted, significantDigits(q.value));
+		return formatQuantity({ value: rounded, unit: target }, true);
 	}
 
 	let physicalProps = $derived.by(() => {
@@ -64,17 +112,17 @@
 		if (wd?.temperature)
 			props.push({
 				label: m.property_name_temperature(),
-				value: formatQuantity(wd.temperature)
+				value: formatTemperature(wd.temperature)
 			});
 		if (wd?.min_temperature)
 			props.push({
 				label: m.property_name_min_temperature(),
-				value: formatQuantity(wd.min_temperature)
+				value: formatTemperature(wd.min_temperature)
 			});
 		if (wd?.max_temperature)
 			props.push({
 				label: m.property_name_max_temperature(),
-				value: formatQuantity(wd.max_temperature)
+				value: formatTemperature(wd.max_temperature)
 			});
 
 		if (wd?.absolute_magnitude != null)
