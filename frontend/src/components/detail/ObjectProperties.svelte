@@ -35,22 +35,11 @@
 		const props: Property[] = [];
 		const wd = global?.wikidata;
 		const sbdb = global?.sbdb;
-		const phys = global?.physical;
 
 		if (wd?.mass) props.push({ label: m.mass(), value: formatQuantity(wd.mass) });
 		else if (sbdb?.mass) props.push({ label: m.mass(), value: formatQuantity(sbdb.mass) });
-		else if (phys?.mass_kg)
-			props.push({
-				label: m.mass(),
-				value: `${formatNumber(phys.mass_kg)} ${formatUnit('kilogram')}`
-			});
 
 		if (wd?.radius) props.push({ label: m.radius(), value: formatQuantity(wd.radius) });
-		else if (phys?.radius_km)
-			props.push({
-				label: m.radius(),
-				value: `${formatNumber(phys.radius_km)} ${formatUnit('kilometre')}`
-			});
 		else if (sbdb?.diameter)
 			props.push({ label: m.diameter(), value: `${sbdb.diameter} ${formatUnit('kilometre')}` });
 
@@ -69,17 +58,13 @@
 		if (wd?.max_temperature)
 			props.push({ label: m.max_temperature(), value: formatQuantity(wd.max_temperature) });
 
-		const absMag = wd?.absolute_magnitude;
-		if (typeof absMag === 'number')
-			props.push({ label: m.absolute_magnitude(), value: absMag.toString() });
-		else if (absMag) props.push({ label: m.absolute_magnitude(), value: formatQuantity(absMag) });
+		if (wd?.absolute_magnitude != null)
+			props.push({ label: m.absolute_magnitude(), value: wd.absolute_magnitude.toString() });
 		else if (sbdb?.H != null)
 			props.push({ label: m.absolute_magnitude_h(), value: sbdb.H.toString() });
 
-		const appMag = wd?.apparent_magnitude;
-		if (typeof appMag === 'number')
-			props.push({ label: m.apparent_magnitude(), value: appMag.toString() });
-		else if (appMag) props.push({ label: m.apparent_magnitude(), value: formatQuantity(appMag) });
+		if (wd?.apparent_magnitude != null)
+			props.push({ label: m.apparent_magnitude(), value: wd.apparent_magnitude.toString() });
 
 		if (sbdb?.spec_B) props.push({ label: m.spectral_type_smassii(), value: sbdb.spec_B });
 		if (sbdb?.spec_T) props.push({ label: m.spectral_type_tholen(), value: sbdb.spec_T });

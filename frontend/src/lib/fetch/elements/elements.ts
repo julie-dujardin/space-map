@@ -67,7 +67,7 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	const parentId = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
 
-	// Column 4: scale (uint8)
+	// Column 3: scale (uint8)
 	const scale = new Uint8Array(buffer, offset, rowCount);
 	offset += align8(rowCount);
 

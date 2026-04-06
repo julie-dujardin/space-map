@@ -34,10 +34,6 @@ export interface GlobalObjectData {
 		parent_naif_id: number;
 		source: string;
 	};
-	physical?: {
-		mass_kg?: number;
-		radius_km?: number;
-	};
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;
@@ -78,8 +74,8 @@ export interface GlobalObjectData {
 		radius?: QuantityWithUnit;
 		density?: QuantityWithUnit;
 		surface_gravity?: QuantityWithUnit;
-		absolute_magnitude?: number | QuantityWithUnit;
-		apparent_magnitude?: number | QuantityWithUnit;
+		absolute_magnitude?: number;
+		apparent_magnitude?: number;
 		temperature?: QuantityWithUnit;
 		min_temperature?: QuantityWithUnit;
 		max_temperature?: QuantityWithUnit;
