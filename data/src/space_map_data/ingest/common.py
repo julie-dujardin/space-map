@@ -6,21 +6,19 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import (
-    celestrak,
-    horizons,
-    iau_nomenclature,
-    sbdb,
-    wikidata,
-    wikidata_conflicts,
-    wikidata_features,
+from space_map_data.ingest.providers import iau_nomenclature
+from space_map_data.ingest.providers.objects import celestrak, horizons, sbdb
+from space_map_data.ingest.providers.wikidata import (
+    nomenclature,
+    objects,
+    objects_conflicts,
 )
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
 
-def ingest_bodies(download_dir: Path, *, limit: int | None = None) -> None:
+def ingest_objects(download_dir: Path, *, limit: int | None = None) -> None:
     """Ingest orbital bodies: SBDB, CelesTrak, Horizons."""
     sbdb.ingest(download_dir, limit=limit)
     celestrak.ingest(download_dir, limit=limit)
@@ -34,9 +32,9 @@ def ingest_features(download_dir: Path, *, limit: int | None = None) -> None:
 
 def ingest_wikidata(download_dir: Path, *, limit: int | None = None) -> None:
     """Ingest Wikidata QIDs for objects and features."""
-    wikidata.ingest(download_dir, limit=limit)
-    wikidata_conflicts.ingest(download_dir, limit=limit)
-    wikidata_features.ingest(download_dir, limit=limit)
+    objects.ingest(download_dir, limit=limit)
+    objects_conflicts.ingest(download_dir, limit=limit)
+    nomenclature.ingest(download_dir, limit=limit)
 
 
 def log_db_summary() -> None:
@@ -56,7 +54,7 @@ def log_db_summary() -> None:
 
 def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
-    ingest_bodies(download_dir, limit=limit)
+    ingest_objects(download_dir, limit=limit)
     ingest_features(download_dir, limit=limit)
     ingest_wikidata(download_dir, limit=limit)
     log_db_summary()
