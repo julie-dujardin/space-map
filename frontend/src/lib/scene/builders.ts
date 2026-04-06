@@ -141,7 +141,8 @@ export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture)
 		transparent: true,
 		size: 4,
 		sizeAttenuation: false,
-		depthTest: true
+		depthTest: true,
+		depthWrite: false
 	});
 	return new Points(geometry, material);
 }
