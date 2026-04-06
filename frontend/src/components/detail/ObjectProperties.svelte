@@ -60,6 +60,12 @@
 				value: formatTemperature(wd.max_temperature)
 			});
 
+		if (wd?.population)
+			props.push({
+				label: m.property_name_population(),
+				value: formatNumber(wd.population)
+			});
+
 		if (wd?.absolute_magnitude != null)
 			props.push({
 				label: m.property_name_absolute_magnitude(),

@@ -79,6 +79,7 @@ export interface GlobalObjectData {
 		temperature?: QuantityWithUnit;
 		min_temperature?: QuantityWithUnit;
 		max_temperature?: QuantityWithUnit;
+		population?: number;
 		website?: string;
 	};
 }
