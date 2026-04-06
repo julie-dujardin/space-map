@@ -47,6 +47,6 @@ def build_sbdb(sbdb: SBDB, units: UnitConverter) -> dict:
             data[attr.rstrip("_")] = val
     if sbdb.mass_kg is not None:
         converted = units.best_unit(sbdb.mass_kg, "mass")
-        if converted:
+        if converted is not None:
             data["mass"] = converted
     return data

@@ -96,7 +96,7 @@ class UnitConverter:
         for qid, entity in cache.unit_items().items():
             claims = entity["claims"]
 
-            p31_ids = _entity_qids(claims, "P31")
+            p31_ids = self._p31_qids(claims)
             qty_types = {
                 _QUANTITY_TYPE_QIDS[t] for t in p31_ids if t in _QUANTITY_TYPE_QIDS
             }
@@ -109,7 +109,7 @@ class UnitConverter:
             if not in_accepted and qid not in _ASTRONOMICAL_ALLOWLIST:
                 continue
 
-            conv = _extract_p2370(claims)
+            conv = self._extract_p2370(claims)
             if conv is None:
                 continue
             factor, base_qid = conv
@@ -156,10 +156,7 @@ class UnitConverter:
         if info is None:
             return None
         qty_type, factor = info
-        ladder = self._ladders.get(qty_type)
-        if not ladder:
-            return None
-        return _best_unit(value * factor, ladder)
+        return self.best_unit(value * factor, qty_type)
 
     def convert_to_base(
         self,
@@ -181,62 +178,51 @@ class UnitConverter:
         ladder = self._ladders.get(qty_type)
         if not ladder:
             return None
-        return _best_unit(value_in_base, ladder)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _strip_trailing_zeros(x: float) -> float:
-    """Drop unnecessary trailing zeros from *x*."""
-    return float(f"{x:g}")
-
-
-def _best_unit(value_in_base: float, ladder: list[UnitEntry]) -> dict:
-    """Pick the best human-readable unit from a ladder for *value_in_base*."""
-    for entry in ladder:
-        value = value_in_base / entry.factor
-        if value > 1.1:
-            return {"value": _strip_trailing_zeros(value), "unit": entry.label}
-    # Fallback: use the smallest unit in the ladder
-    if ladder:
+        strip = self._strip_trailing_zeros
+        for entry in ladder:
+            value = value_in_base / entry.factor
+            if value > 1.1:
+                return {"value": strip(value), "unit": entry.label}
+        # Fallback: use the smallest unit in the ladder
         last = ladder[-1]
         return {
-            "value": _strip_trailing_zeros(value_in_base / last.factor),
+            "value": strip(value_in_base / last.factor),
             "unit": last.label,
         }
-    return {"value": _strip_trailing_zeros(value_in_base), "unit": "unknown"}
 
+    @staticmethod
+    def _strip_trailing_zeros(x: float) -> float:
+        """Drop unnecessary trailing zeros from *x*."""
+        return float(f"{x:g}")
 
-def _entity_qids(claims: dict, prop: str) -> set[str]:
-    """Extract all entity QIDs from a claim property."""
-    result: set[str] = set()
-    for stmt in claims.get(prop, []):
-        if stmt.get("rank") == "deprecated":
-            continue
-        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-        if isinstance(val, dict) and "id" in val:
-            result.add(val["id"])
-    return result
+    @staticmethod
+    def _p31_qids(claims: dict) -> set[str]:
+        """Extract all entity QIDs from P31 (instance of) claims."""
+        result: set[str] = set()
+        for stmt in claims.get("P31", []):
+            if stmt.get("rank") == "deprecated":
+                continue
+            val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if isinstance(val, dict) and "id" in val:
+                result.add(val["id"])
+        return result
 
-
-def _extract_p2370(claims: dict) -> tuple[float, str] | None:
-    """Extract P2370 conversion factor as (amount_float, base_unit_qid)."""
-    for stmt in claims.get("P2370", []):
-        if stmt.get("rank") == "deprecated":
-            continue
-        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-        if not isinstance(val, dict) or "amount" not in val:
-            continue
-        try:
-            amount = float(val["amount"])
-        except (ValueError, TypeError):
-            continue
-        unit_uri = val.get("unit", "1")
-        if unit_uri == "1":
-            continue
-        base_qid = unit_uri.rsplit("/", 1)[-1] if "/" in unit_uri else unit_uri
-        return amount, base_qid
-    return None
+    @staticmethod
+    def _extract_p2370(claims: dict) -> tuple[float, str] | None:
+        """Extract P2370 conversion factor as (amount_float, base_unit_qid)."""
+        for stmt in claims.get("P2370", []):
+            if stmt.get("rank") == "deprecated":
+                continue
+            val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if not isinstance(val, dict) or "amount" not in val:
+                continue
+            try:
+                amount = float(val["amount"])
+            except (ValueError, TypeError):
+                continue
+            unit_uri = val.get("unit", "1")
+            if unit_uri == "1":
+                continue
+            base_qid = unit_uri.rsplit("/", 1)[-1] if "/" in unit_uri else unit_uri
+            return amount, base_qid
+        return None

@@ -169,7 +169,7 @@ def _build_global(
                 val = extracted[claim.key]
                 if isinstance(val, dict) and "unit" in val:
                     converted = units.convert(float(val["value"]), val["unit"])
-                    if converted:
+                    if converted is not None:
                         val = converted
                     else:
                         resolved = resolve_unit(val["unit"], wikidata_entities)
