@@ -224,8 +224,8 @@ Generated during ingest (not export) and written directly to the export director
 
 **Path:** `textures/{id}/{tier}.webp`
 
-| Tier   | Max dimension | Size target | Quality   | Condition |
-|--------|---------------|-------------|-----------|-----------|
+| Tier   | Max dimension | Size target | Quality                              | Condition        |
+|--------|---------------|-------------|--------------------------------------|------------------|
 | low    | 2048 px       | 300 KiB     | lossy 80                             | always generated |
 | medium | 8192 px       | 2 MiB       | lossy 80                             | source > 2048 px |
 | high   | 16383 px      | 6 MiB       | lossy 80 or lossless if small enough | source > 8192 px |
