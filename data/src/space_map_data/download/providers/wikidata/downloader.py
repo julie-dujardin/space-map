@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from collections.abc import Collection
 from pathlib import Path
 
 from tqdm import tqdm
@@ -56,15 +57,15 @@ class WikidataDownloader(Downloader):
         resolver = WikidataIdResolver(self.client, session, ids_dir, self.metadata_file)
 
         # Resolve and fetch objects (all sources except IAU features)
-        object_qids = sorted(resolver.resolve(self._OBJECT_ID_TYPES))
+        object_qids = resolver.resolve(self._OBJECT_ID_TYPES)
         objects_dir = self.out_dir / "objects"
         objects_dir.mkdir(exist_ok=True)
-        self._fetch_entities(object_qids, objects_dir, limit=limit, fetch_desc="objects")
+        self._fetch_entities(
+            object_qids, objects_dir, limit=limit, fetch_desc="objects"
+        )
 
         # Resolve and fetch IAU nomenclature features separately
-        nomenclature_qids = sorted(
-            resolver.resolve([ID_TYPES.IAU_FEATURE_ID])
-        )
+        nomenclature_qids = resolver.resolve([ID_TYPES.IAU_FEATURE_ID])
         nomenclature_dir = self.out_dir / "nomenclature"
         nomenclature_dir.mkdir(exist_ok=True)
         self._fetch_entities(
@@ -72,9 +73,7 @@ class WikidataDownloader(Downloader):
         )
 
         # Fetch orbit class entities into their own directory
-        orbit_class_qids = sorted(
-            {qid for qid in ORBIT_CLASS_QIDS.values() if qid is not None}
-        )
+        orbit_class_qids = {qid for qid in ORBIT_CLASS_QIDS.values() if qid is not None}
         orbit_classes_dir = self.out_dir / "orbit_classes"
         orbit_classes_dir.mkdir(exist_ok=True)
         self._fetch_entities(
@@ -97,16 +96,14 @@ class WikidataDownloader(Downloader):
                 len(referenced_qids),
             )
             self._fetch_entities(
-                sorted(referenced_qids),
+                referenced_qids,
                 referenced_dir,
                 limit=None,
                 fetch_desc="referenced",
             )
         if unit_qids:
             logger.info("Fetching %d unit entities", len(unit_qids))
-            self._fetch_entities(
-                sorted(unit_qids), units_dir, limit=None, fetch_desc="units"
-            )
+            self._fetch_entities(unit_qids, units_dir, limit=None, fetch_desc="units")
 
         all_count = len(object_qids) + len(nomenclature_qids)
         self._save_metadata(
@@ -155,7 +152,7 @@ class WikidataDownloader(Downloader):
 
     def _fetch_entities(
         self,
-        qids: list[str],
+        qids: Collection[str],
         entities_dir: Path,
         *,
         limit: int | None,
