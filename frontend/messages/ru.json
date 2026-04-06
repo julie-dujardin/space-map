@@ -88,6 +88,7 @@
 	"unit_name_earth_mass": "масса Земли",
 	"unit_name_exagram": "эксаграмм",
 	"unit_name_gram_per_cubic_centimetre": "грамм на кубический сантиметр",
+	"unit_name_hour": "час",
 	"unit_name_jupiter_mass": "масса Юпитера",
 	"unit_name_jupiter_radius": "радиус Юпитера",
 	"unit_name_kelvin": "кельвин",
@@ -99,6 +100,7 @@
 	"unit_name_ronnagram": "роннаграмм",
 	"unit_name_teragram": "тераграмм",
 	"unit_name_tonne": "тонна",
+	"unit_name_year": "год",
 	"unit_name_yottagram": "йоттаграмм",
 	"unit_name_zettagram": "зеттаграмм",
 	"unit_symbol_astronomical_unit": "а.е.",
@@ -109,6 +111,7 @@
 	"unit_symbol_earth_mass": "M🜨",
 	"unit_symbol_exagram": "Эг",
 	"unit_symbol_gram_per_cubic_centimetre": "г/см³",
+	"unit_symbol_hour": "ч",
 	"unit_symbol_jupiter_mass": "M<sub>J</sub>",
 	"unit_symbol_jupiter_radius": "R<sub>J</sub>",
 	"unit_symbol_kelvin": "К",
@@ -120,6 +123,7 @@
 	"unit_symbol_ronnagram": "Rg",
 	"unit_symbol_teragram": "Тг",
 	"unit_symbol_tonne": "т",
+	"unit_symbol_year": "год",
 	"unit_symbol_yottagram": "Yg",
 	"unit_symbol_zettagram": "Zg"
 }

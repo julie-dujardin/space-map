@@ -22,7 +22,9 @@ _UNIT_SYMBOL_PID = "P5061"
 # in used_units (they bypass the normal UnitConverter path).
 _ALWAYS_INCLUDE_UNITS: set[str] = {
     "degree_fahrenheit",
-    "astronomical_unit",
+    "astronomical_unit",  # system scale orbital elements
+    "hour",  # sbdb rot_per - rotation period
+    "year",  # sbdb per_y - orbital period
 }
 
 

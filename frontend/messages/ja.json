@@ -88,6 +88,7 @@
 	"unit_name_earth_mass": "地球質量",
 	"unit_name_exagram": "エクサグラム",
 	"unit_name_gram_per_cubic_centimetre": "グラム毎立方センチメートル",
+	"unit_name_hour": "時間",
 	"unit_name_jupiter_mass": "木星質量",
 	"unit_name_jupiter_radius": "木星半径",
 	"unit_name_kelvin": "ケルビン",
@@ -99,6 +100,7 @@
 	"unit_name_ronnagram": "ロナグラム",
 	"unit_name_teragram": "テラグラム",
 	"unit_name_tonne": "トン",
+	"unit_name_year": "年",
 	"unit_name_yottagram": "ヨタグラム",
 	"unit_name_zettagram": "ゼタグラム",
 	"unit_symbol_astronomical_unit": "AU",
@@ -109,6 +111,7 @@
 	"unit_symbol_earth_mass": "M🜨",
 	"unit_symbol_exagram": "Eg",
 	"unit_symbol_gram_per_cubic_centimetre": "g/cm³",
+	"unit_symbol_hour": "h",
 	"unit_symbol_jupiter_mass": "M_J",
 	"unit_symbol_jupiter_radius": "R_J",
 	"unit_symbol_kelvin": "K",
@@ -120,6 +123,7 @@
 	"unit_symbol_ronnagram": "Rg",
 	"unit_symbol_teragram": "Tg",
 	"unit_symbol_tonne": "t",
+	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
 	"unit_symbol_zettagram": "Zg"
 }
