@@ -96,17 +96,31 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	}
 	if (closeLoop) points.push(bodyLocal);
 
-	const alphas = new Float32Array(points.length);
+	// Filter out any points with NaN/Infinity coordinates (degenerate orbital elements)
+	const validPoints = points.filter((p) => p.every(Number.isFinite));
+	if (validPoints.length < 2) {
+		const geometry = new BufferGeometry();
+		geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
+		const material = new ShaderMaterial({ transparent: true });
+		const line = new Line(geometry, material);
+		line.visible = false;
+		return line;
+	}
+
+	const alphas = new Float32Array(validPoints.length);
 	{
 		const maxAlpha = closeLoop ? 0.9 : 0.6;
 		const minAlpha = closeLoop ? maxAlpha / 3 : 0;
-		for (let k = 0; k < points.length; k++) {
-			alphas[k] = maxAlpha - (k / (points.length - 1)) * (maxAlpha - minAlpha);
+		for (let k = 0; k < validPoints.length; k++) {
+			alphas[k] = maxAlpha - (k / (validPoints.length - 1)) * (maxAlpha - minAlpha);
 		}
 	}
 
 	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(points.flat()), 3));
+	geometry.setAttribute(
+		'position',
+		new Float32BufferAttribute(new Float32Array(validPoints.flat()), 3)
+	);
 	geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
 
 	const material = new ShaderMaterial({
@@ -142,12 +156,28 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	return line;
 }
 
+const F32_MAX = 3.4028235e38;
+
 export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture): Points {
-	const positions = new Float32Array(bodies.length * 3);
-	for (let i = 0; i < bodies.length; i++) {
-		positions[i * 3] = bodies[i].position[0];
-		positions[i * 3 + 1] = bodies[i].position[1];
-		positions[i * 3 + 2] = bodies[i].position[2];
+	const valid = bodies.filter((b) => {
+		const [x, y, z] = b.position;
+		if (
+			isFinite(x) &&
+			Math.abs(x) <= F32_MAX &&
+			isFinite(y) &&
+			Math.abs(y) <= F32_MAX &&
+			isFinite(z) &&
+			Math.abs(z) <= F32_MAX
+		)
+			return true;
+		// console.warn(`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`, b.position);
+		return false;
+	});
+	const positions = new Float32Array(valid.length * 3);
+	for (let i = 0; i < valid.length; i++) {
+		positions[i * 3] = valid[i].position[0];
+		positions[i * 3 + 1] = valid[i].position[1];
+		positions[i * 3 + 2] = valid[i].position[2];
 	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));

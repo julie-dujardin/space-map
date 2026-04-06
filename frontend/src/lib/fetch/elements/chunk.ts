@@ -89,6 +89,11 @@ export class ChunkLoader {
 			const body = columnarToBody(cols, idx, labels, flags, idMap);
 			const offset =
 				a === 0 ? ([0, 0, 0] as [number, number, number]) : orbitalElementsToPosition(body, date);
+			if (!offset) {
+				// TODO: fix orbit calculation
+				// console.warn(`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`);
+				continue;
+			}
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
 				parentPos[1] + offset[1],

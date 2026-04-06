@@ -91,6 +91,10 @@ async function createPlaceholderBody(
 
 	const parentPos = loader.positions.get(orbit.parent_naif_id) ?? [0, 0, 0];
 	const offset = orbitalElementsToPosition(data, date);
+	if (!offset) {
+		console.warn(`Failed to compute position for ${targetId} (e=${data.e})`);
+		return null;
+	}
 	const position: [number, number, number] = [
 		parentPos[0] + offset[0],
 		parentPos[1] + offset[1],
