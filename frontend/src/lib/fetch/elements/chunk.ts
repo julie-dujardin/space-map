@@ -74,22 +74,10 @@ export class ChunkLoader {
 			const a = cols.a[idx];
 			const objType = cols.objectType[idx] as ObjectType;
 
-			// Skip truly degenerate orbits (a=0), but allow hyperbolic (a<0, e>=1)
-			if (a === 0) {
-				if (
-					isMajorBody(objType) ||
-					objType === ObjectType.BARYCENTER ||
-					objType === ObjectType.LAGRANGE_POINT
-				) {
-					console.debug(
-						`Body idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}) has a=0, keeping at parent position`
-					);
-				} else {
-					console.debug(
-						`Skipping idx=${idx} id=${cols.id[idx]} (${ObjectType[objType]}): degenerate orbit a=0`
-					);
-					continue;
-				}
+			// Barycenters/Lagrange points with a=0 are structural (parent lookup tree);
+			// all other bodies with a=0 are degenerate and should be skipped.
+			if (a === 0 && objType !== ObjectType.BARYCENTER && objType !== ObjectType.LAGRANGE_POINT) {
+				continue;
 			}
 
 			const parentId = cols.parentId[idx];
