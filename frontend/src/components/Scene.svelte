@@ -3,8 +3,13 @@
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
-	import { type MapViewState, sphericalToCartesian, writeUrlState, parseUrl } from '$lib/url-state';
-	import { urlTypeFromId } from '$lib/format';
+	import {
+		type MapViewState,
+		sphericalToCartesian,
+		writeUrlState,
+		parseUrl,
+		urlTypeFromId
+	} from '$lib/url-state';
 
 	interface Props {
 		initialView: MapViewState;

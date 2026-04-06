@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
-	import { convertTemperature } from '$lib/math/units';
+	import { formatNumber, formatUnit, formatQuantity, ucfirst } from '$lib/format/quantities';
+	import { formatTemperature } from '$lib/format/temperature';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -16,32 +16,6 @@
 	interface Property {
 		label: string;
 		value: string;
-	}
-
-	function formatUnit(unit: string, short?: boolean): string {
-		const symbolKey = short ? `unit_symbol_${unit}` : `unit_name_${unit}`;
-		const fn = (m as unknown as Record<string, (() => string) | undefined>)[symbolKey];
-		return fn ? fn() : unit.replace(/_/g, ' ');
-	}
-
-	function formatNumber(n: number): string {
-		if (!Number.isFinite(n)) return String(n);
-		const intDigits = Math.floor(Math.abs(n)) === 0 ? 0 : Math.floor(Math.log10(Math.abs(n))) + 1;
-		const fracDigits = Math.max(0, 3 - intDigits);
-		const rounded = fracDigits === 0 ? Math.round(n) : parseFloat(n.toFixed(fracDigits));
-		return rounded.toLocaleString(getLocale());
-	}
-
-	function ucfirst(s: string): string {
-		return s.charAt(0).toUpperCase() + s.slice(1);
-	}
-
-	function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
-		return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
-	}
-
-	function formatTemperature(q: { value: number; unit: string }): string {
-		return formatQuantity(convertTemperature(q), true);
 	}
 
 	let physicalProps = $derived.by(() => {
@@ -66,7 +40,7 @@
 				label: m.property_name_surface_gravity(),
 				value: formatQuantity(wd.surface_gravity)
 			});
-		if (sbdb?.albedo) props.push({ label: m.albedo(), value: sbdb.albedo.toFixed(3) });
+		if (sbdb?.albedo) props.push({ label: m.albedo(), value: formatNumber(sbdb.albedo) });
 		if (sbdb?.rot_per)
 			props.push({ label: m.rotation_period(), value: `${sbdb.rot_per} ${formatUnit('hour')}` });
 
@@ -89,15 +63,15 @@
 		if (wd?.absolute_magnitude != null)
 			props.push({
 				label: m.property_name_absolute_magnitude(),
-				value: wd.absolute_magnitude.toString()
+				value: formatNumber(wd.absolute_magnitude)
 			});
 		else if (sbdb?.H != null)
-			props.push({ label: m.absolute_magnitude_h(), value: sbdb.H.toString() });
+			props.push({ label: m.absolute_magnitude_h(), value: formatNumber(sbdb.H) });
 
 		if (wd?.apparent_magnitude != null)
 			props.push({
 				label: m.property_name_apparent_magnitude(),
-				value: wd.apparent_magnitude.toString()
+				value: formatNumber(wd.apparent_magnitude)
 			});
 
 		if (sbdb?.spec_B) props.push({ label: m.spectral_type_smassii(), value: sbdb.spec_B });
@@ -114,36 +88,37 @@
 		if (sbdb?.per_y)
 			props.push({
 				label: m.orbital_period(),
-				value: `${sbdb.per_y.toFixed(2)} ${formatUnit('year')}`
+				value: `${formatNumber(sbdb.per_y)} ${formatUnit('year')}`
 			});
 		if (orbit?.a)
 			props.push({
 				label: m.semi_major_axis(),
-				value: `${orbit.a.toPrecision(6)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(orbit.a)} ${formatUnit('astronomical_unit')}`
 			});
-		if (orbit?.e != null) props.push({ label: m.eccentricity(), value: orbit.e.toFixed(6) });
-		if (orbit?.i != null) props.push({ label: m.inclination(), value: `${orbit.i.toFixed(4)}°` });
+		if (orbit?.e != null) props.push({ label: m.eccentricity(), value: formatNumber(orbit.e) });
+		if (orbit?.i != null)
+			props.push({ label: m.inclination(), value: `${formatNumber(orbit.i)}°` });
 		if (sbdb?.q)
 			props.push({
 				label: m.perihelion(),
-				value: `${sbdb.q.toFixed(4)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(sbdb.q)} ${formatUnit('astronomical_unit')}`
 			});
 		if (sbdb?.ad)
 			props.push({
 				label: m.aphelion(),
-				value: `${sbdb.ad.toFixed(4)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(sbdb.ad)} ${formatUnit('astronomical_unit')}`
 			});
 		if (sbdb?.moid)
 			props.push({
 				label: m.earth_moid(),
-				value: `${sbdb.moid.toFixed(6)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(sbdb.moid)} ${formatUnit('astronomical_unit')}`
 			});
 		if (sbdb?.moid_jup)
 			props.push({
 				label: m.jupiter_moid(),
-				value: `${sbdb.moid_jup.toFixed(6)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(sbdb.moid_jup)} ${formatUnit('astronomical_unit')}`
 			});
-		if (sbdb?.t_jup) props.push({ label: m.tisserand_jupiter(), value: sbdb.t_jup.toFixed(3) });
+		if (sbdb?.t_jup) props.push({ label: m.tisserand_jupiter(), value: formatNumber(sbdb.t_jup) });
 
 		return props;
 	});

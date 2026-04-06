@@ -7,11 +7,8 @@
 		LocalizedObjectData,
 		EntityRef
 	} from '$lib/fetch/objects/object-data';
-	import { formatWikidataDate } from '$lib/format';
-
-	function ucfirst(s: string): string {
-		return s.charAt(0).toUpperCase() + s.slice(1);
-	}
+	import { formatWikidataDate } from '$lib/format/date';
+	import { ucfirst } from '$lib/format/quantities';
 
 	interface Props {
 		global: GlobalObjectData | null;
