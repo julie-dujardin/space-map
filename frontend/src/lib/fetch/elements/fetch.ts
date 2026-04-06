@@ -14,10 +14,15 @@ export interface LabelData {
 	flags: Map<number, number>;
 }
 
-async function fetchTextMap(url: string): Promise<Map<number, string>> {
+async function fetchGzText(url: string): Promise<string> {
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-	return new Map((await res.text()).split('\n').map((v, i) => [i, v]));
+	const ds = new DecompressionStream('gzip');
+	return new Response(res.body!.pipeThrough(ds)).text();
+}
+
+async function fetchTextMap(url: string): Promise<Map<number, string>> {
+	return new Map((await fetchGzText(url)).split('\n').map((v, i) => [i, v]));
 }
 
 export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<number, string>> {
@@ -26,11 +31,9 @@ export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<
 
 export async function fetchLabels(zone: string, zoom: number, part: number): Promise<LabelData> {
 	const url = elementLabelsUrl(getLocale(), zone, zoom, part);
-	const res = await fetch(url);
-	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const labels = new Map<number, string>();
 	const flags = new Map<number, number>();
-	const lines = (await res.text()).split('\n');
+	const lines = (await fetchGzText(url)).split('\n');
 	for (let i = 0; i < lines.length; i++) {
 		const sepIdx = lines[i].indexOf(US);
 		if (sepIdx === -1) {
