@@ -51,8 +51,30 @@ export enum ObjectType {
 	DEBRIS = 14,
 	UNDOCUMENTED = 15
 }
-/** Returns true for any asteroid subtype. */
+/**
+ * Semi-major axis range (AU) for each SBDB orbit-class zone.
+ * Used to gate asteroid point-cloud visibility based on camera distance.
+ * Groups not defined by semi-major axis (comets, parabolic/hyperbolic, unclassified) are omitted
+ * and treated as always-visible.
+ */
+export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
+	// Near-Earth — ranges from perihelion/aphelion constraints
+	IEO: { minA: 0, maxA: 0.983 }, // Q < 0.983 → a ≤ Q
+	ATE: { minA: 0.5, maxA: 1.0 }, // a < 1.0
+	APO: { minA: 1.0, maxA: 3.2 }, // a > 1.0; practical upper bound
+	AMO: { minA: 1.0, maxA: 3.2 }, // q > 1.017 → a > ~1.0; practical upper bound
+	MCA: { minA: 1.3, maxA: 3.2 }, // a < 3.2; q > 1.3
+	// Main belt — direct a ranges
+	IMB: { minA: 1.666, maxA: 2.0 },
+	MBA: { minA: 2.0, maxA: 3.2 },
+	OMB: { minA: 3.2, maxA: 4.6 },
+	// Outer solar system — direct a ranges
+	TJN: { minA: 4.6, maxA: 5.5 },
+	CEN: { minA: 5.5, maxA: 30.1 },
+	TNO: { minA: 30.1, maxA: Infinity }
+};
 
+/** Returns true for any asteroid subtype. */
 export function isAsteroid(type: ObjectType): boolean {
 	return type >= ObjectType.ASTEROID && type <= ObjectType.ASTEROID_TNO;
 }

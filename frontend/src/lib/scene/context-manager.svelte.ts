@@ -1,5 +1,5 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_SCALE } from '../math/units';
 
@@ -55,7 +55,7 @@ export class ContextManager {
 	loading = $state(true);
 	error = $state<string | null>(null);
 	majorBodies = $state<PositionedBody[]>([]);
-	asteroidBodies = $state<PositionedBody[]>([]);
+	asteroidBodiesByZone = $state(new SvelteMap<string, PositionedBody[]>());
 	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
@@ -128,11 +128,11 @@ export class ContextManager {
 			// minorChunkArgsPromise has been running in parallel; files are likely cached already
 			const minorChunkArgs = await minorChunkArgsPromise;
 
-			const pendingAsteroids: PositionedBody[] = [];
+			const pendingAsteroids = new SvelteMap<string, PositionedBody[]>();
 			const pendingSpacecraft = new SvelteMap<string, PositionedBody[]>();
 
 			const flush = () => {
-				this.asteroidBodies = [...pendingAsteroids];
+				this.asteroidBodiesByZone = new SvelteMap(pendingAsteroids);
 				this.spacecraftByParent = new SvelteMap(pendingSpacecraft);
 			};
 			const intervalId = setInterval(flush, 500);
@@ -148,7 +148,9 @@ export class ContextManager {
 									list.push(b);
 									pendingSpacecraft.set(b.data.parentId, list);
 								} else {
-									pendingAsteroids.push(b);
+									const list = pendingAsteroids.get(zone) ?? [];
+									list.push(b);
+									pendingAsteroids.set(zone, list);
 								}
 							}
 						})
@@ -319,6 +321,20 @@ export class ContextManager {
 		if (!sysId) return false;
 		if (groupParentId === sysId) return true;
 		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === groupParentId);
+	}
+
+	/**
+	 * Whether an asteroid zone's point-cloud should be visible.
+	 * Compares camera distance (AU) to the zone's semi-major axis range.
+	 * Zones without a defined range (comets, parabolic, unclassified) are always visible.
+	 */
+	isAsteroidGroupVisible(zone: string): boolean {
+		const range = ZONE_A_RANGE[zone];
+		if (!range) return true;
+		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
+		const ratio = camDistAU / range.maxA;
+		// reduce clutter by lowering threshold a bit
+		return ratio <= this.scaledSystem[VISIBILITY.FAR] / 3;
 	}
 
 	isInActiveSystem(parentId: string): boolean {
