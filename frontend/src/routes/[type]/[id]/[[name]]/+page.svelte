@@ -47,9 +47,9 @@
 			/>
 		{/if}
 		<div
-			class="fixed right-4 z-10 transition-[bottom,opacity] duration-300 ease-in-out
+			class="fixed right-4 z-10 transition-opacity duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-			style="bottom: calc({drawerHeightDvh}dvh + 1rem);"
+			style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
 		>
 			<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom) ?? 0} />
 		</div>
