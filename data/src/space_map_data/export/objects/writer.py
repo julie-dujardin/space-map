@@ -75,7 +75,11 @@ def write_objects(
 
     for obj in objects:
         wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
-        extracted = extract_claims(wd["claims"]) if wd else {}
+        try:
+            extracted = extract_claims(wd["claims"]) if wd else {}
+        except Exception as exc:
+            logger.error("Error extracting claims for %s (%s): %s", obj.id, obj.wikidata_qid, exc)
+            extracted = {}
 
         # Global (non-localized, always written)
         global_data = _build_global(obj, extracted, wikidata_entities, units)

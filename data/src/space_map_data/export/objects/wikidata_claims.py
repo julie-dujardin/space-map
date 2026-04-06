@@ -22,6 +22,10 @@ _INSTANCE_OF_IGNORED = {
 }
 
 
+class MultipleClaimValues(ValueError):
+    """Raised when a single-value claim has multiple non-deprecated values."""
+
+
 class GlobalClaim(NamedTuple):
     key: str
     pid: str
@@ -143,58 +147,128 @@ def resolve_unit(
 # -- Claim value extractors --
 
 
+_JPL_SBDB_QID = "Q4026990"
+
+
+def _active_stmts(claims: dict, prop: str) -> list[dict]:
+    """Return non-deprecated statements for *prop*, preferring ``preferred`` rank."""
+    stmts = [s for s in claims.get(prop, []) if s.get("rank") != "deprecated"]
+    preferred = [s for s in stmts if s.get("rank") == "preferred"]
+    return preferred if preferred else stmts
+
+
+def _stmt_value(stmt: dict):
+    """Extract ``mainsnak.datavalue.value`` from a statement, or None."""
+    return stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+
+
+def _is_sourced_to(stmt: dict, qid: str) -> bool:
+    """Check whether a statement cites *qid* via P248 (stated in)."""
+    for ref in stmt.get("references", []):
+        for snak in ref.get("snaks", {}).get("P248", []):
+            val = snak.get("datavalue", {}).get("value", {})
+            if isinstance(val, dict) and val.get("id") == qid:
+                return True
+    return False
+
+
 def _claim_values(claims: dict, prop: str):
-    """Yield raw ``datavalue.value`` entries for a given property, skipping deprecated statements."""
-    for stmt in claims.get(prop, []):
-        if stmt.get("rank") == "deprecated":
-            continue
-        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+    """Yield raw ``datavalue.value`` entries for a given property.
+
+    Skips deprecated statements.  If any statement has rank ``preferred``,
+    only those are yielded.
+    """
+    for stmt in _active_stmts(claims, prop):
+        val = _stmt_value(stmt)
         if val is not None:
             yield val
 
 
 def _first_string(claims: dict, prop: str) -> str | None:
-    """Extract the first string value from a claim."""
-    for val in _claim_values(claims, prop):
-        if isinstance(val, str) and val:
-            return val
-    return None
+    """Extract the single string value from a claim."""
+    vals = [val for val in _claim_values(claims, prop) if isinstance(val, str) and val]
+    if len(vals) > 1:
+        key = PID_TO_KEY.get(prop, prop)
+        raise MultipleClaimValues(f"Multiple string values for {key}: {vals}")
+    return vals[0] if vals else None
 
 
 def _first_time(claims: dict, prop: str) -> str | None:
-    """Extract the first time value from a claim as an ISO date string."""
-    for val in _claim_values(claims, prop):
-        if isinstance(val, dict) and "time" in val:
-            return val["time"]
-    return None
+    """Extract the single time value from a claim as an ISO date string."""
+    vals = [
+        val["time"]
+        for val in _claim_values(claims, prop)
+        if isinstance(val, dict) and "time" in val
+    ]
+    if len(vals) > 1:
+        key = PID_TO_KEY.get(prop, prop)
+        raise MultipleClaimValues(f"Multiple time values for {key}: {vals}")
+    return vals[0] if vals else None
+
+
+def _parse_quantity(dv: dict) -> dict | float | None:
+    """Parse a raw quantity datavalue into a float or {value, unit} dict."""
+    if not isinstance(dv, dict) or "amount" not in dv:
+        return None
+    try:
+        value = float(dv["amount"])
+    except (ValueError, TypeError):
+        return None
+    unit = dv.get("unit", "1")
+    if unit == "1":
+        return value
+    unit_qid = unit.rsplit("/", 1)[-1] if "/" in unit else unit
+    return {"value": value, "unit": unit_qid}
+
+
+def _qty_numeric(q: dict | float) -> float:
+    """Extract the numeric value from a parsed quantity."""
+    return q if isinstance(q, (int, float)) else q["value"]
 
 
 def _first_quantity(claims: dict, prop: str) -> dict | float | None:
-    """Extract the first quantity value from a claim.
+    """Extract the single quantity value from a claim.
 
     Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
+    When multiple values remain and all are within 10% of each other, the one
+    sourced to JPL SBDB (Q4026990) is preferred.
     """
-    for dv in _claim_values(claims, prop):
-        if not isinstance(dv, dict) or "amount" not in dv:
+    stmts = _active_stmts(claims, prop)
+    pairs: list[tuple[dict, dict | float]] = []
+    for stmt in stmts:
+        dv = _stmt_value(stmt)
+        if dv is None:
             continue
-        try:
-            value = float(dv["amount"])
-        except (ValueError, TypeError):
-            continue
-        unit = dv.get("unit", "1")
-        if unit == "1":
-            return value
-        unit_qid = unit.rsplit("/", 1)[-1] if "/" in unit else unit
-        return {"value": value, "unit": unit_qid}
-    return None
+        parsed = _parse_quantity(dv)
+        if parsed is not None:
+            pairs.append((stmt, parsed))
+
+    if len(pairs) <= 1:
+        return pairs[0][1] if pairs else None
+
+    # Try to disambiguate: if all values are within 10%, prefer JPL SBDB source
+    nums = [_qty_numeric(p) for _, p in pairs]
+    lo, hi = min(nums), max(nums)
+    if lo > 0 and (hi - lo) / hi <= 0.1:
+        sbdb = [(s, p) for s, p in pairs if _is_sourced_to(s, _JPL_SBDB_QID)]
+        if len(sbdb) == 1:
+            return sbdb[0][1]
+
+    key = PID_TO_KEY.get(prop, prop)
+    raise MultipleClaimValues(f"Multiple quantity values for {key}: {[p for _, p in pairs]}")
 
 
 def _first_entity_qid(claims: dict, prop: str) -> str | None:
-    """Extract the first entity QID from a claim."""
-    for val in _claim_values(claims, prop):
-        if isinstance(val, dict) and "id" in val:
-            return val["id"]
-    return None
+    """Extract the single entity QID from a claim."""
+    vals = [
+        val["id"]
+        for val in _claim_values(claims, prop)
+        if isinstance(val, dict) and "id" in val
+    ]
+    if len(vals) > 1:
+        key = PID_TO_KEY.get(prop, prop)
+        raise MultipleClaimValues(f"Multiple entity values for {key}: {vals}")
+    return vals[0] if vals else None
 
 
 def _all_entity_qids(claims: dict, prop: str) -> list[str]:
