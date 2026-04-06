@@ -129,6 +129,20 @@ export class SceneRenderer {
 		// Build all scene objects
 		this.buildScene();
 
+		// If focused body has no visual objects (e.g. placeholder from global file), build them
+		if (focusBody && !this.bodyObjects.has(focusBody.data.id)) {
+			buildMajorBodies(
+				[focusBody],
+				this.scene,
+				this.clickables,
+				this.meshToBody,
+				this.bodyObjects,
+				canvas,
+				(body) => this.handleFocus(body)
+			);
+			buildOrbitLines(this.bodyObjects, this.scene);
+		}
+
 		// Load texture for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
 

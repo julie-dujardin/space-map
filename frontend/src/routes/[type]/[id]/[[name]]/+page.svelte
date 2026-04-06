@@ -13,7 +13,7 @@
 	const initialView = parseUrl() ?? DEFAULT_VIEW;
 	let selectedBody = $state<PositionedBody | undefined>();
 
-	onMount(() => ctx.load(initialView.date));
+	onMount(() => ctx.load(initialView.date, initialView.id));
 </script>
 
 <svelte:head>

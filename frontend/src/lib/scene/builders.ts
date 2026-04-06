@@ -10,7 +10,7 @@ import {
 	Vector3
 } from 'three';
 import { orbitalElementsToEllipse } from '$lib/math/kepler';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 
 export const NUM_ORBIT_POINTS = 512;
 
@@ -70,7 +70,9 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	const trailStart = distPrev < distNext ? prev : nearest;
 
 	const useTrail =
-		data.objectType === ObjectType.DWARF_PLANET || data.objectType === ObjectType.MOON;
+		data.objectType === ObjectType.DWARF_PLANET ||
+		data.objectType === ObjectType.MOON ||
+		isAsteroid(data.objectType);
 	const trailFraction = useTrail ? 1 / 3 : undefined;
 	const trailLen = trailFraction ? Math.round(trailFraction * NUM_ORBIT_POINTS) : NUM_ORBIT_POINTS;
 	const closeLoop = !trailFraction;

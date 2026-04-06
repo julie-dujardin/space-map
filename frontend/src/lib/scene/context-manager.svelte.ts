@@ -1,7 +1,9 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
-import { AU_SCALE } from '../math/units';
+import { AU_KM, AU_SCALE } from '../math/units';
+import { orbitalElementsToPosition } from '$lib/math/kepler';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 
 /*
  * Visibility options:
@@ -42,6 +44,62 @@ export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 25;
 
+/** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
+function parseObjectType(typeStr: string): ObjectType {
+	const key = typeStr.toUpperCase() as keyof typeof ObjectType;
+	return ObjectType[key] ?? ObjectType.UNDOCUMENTED;
+}
+
+/**
+ * Create a placeholder PositionedBody from the __global__ object file.
+ * Returns null if the object doesn't exist or has no orbit data.
+ */
+async function createPlaceholderBody(
+	targetId: string,
+	date: Date,
+	loader: ChunkLoader
+): Promise<PositionedBody | null> {
+	let detail: Awaited<ReturnType<typeof fetchObjectDetail>>;
+	try {
+		detail = await fetchObjectDetail(targetId);
+	} catch {
+		console.warn(`Failed to fetch global data for ${targetId}`);
+		return null;
+	}
+	const global = detail.global;
+	if (!global?.orbit) return null;
+
+	const orbit = global.orbit;
+	const isPlanetScale = orbit.scale === 'planet';
+
+	const data: BodyData = {
+		id: targetId,
+		name: global.name ?? null,
+		objectType: parseObjectType(global.type),
+		parentId: `naif-${orbit.parent_naif_id}`,
+		radiusKm: (global.sbdb?.diameter ?? 0) / 2,
+		objectFileFlag: 1,
+		a: isPlanetScale ? orbit.a / AU_KM : orbit.a,
+		e: orbit.e,
+		i: orbit.i,
+		om: orbit.om,
+		w: orbit.w,
+		ma: orbit.ma,
+		n: isPlanetScale ? orbit.n * 360 : orbit.n,
+		epoch: orbit.epoch_jd
+	};
+
+	const parentPos = loader.positions.get(orbit.parent_naif_id) ?? [0, 0, 0];
+	const offset = orbitalElementsToPosition(data, date);
+	const position: [number, number, number] = [
+		parentPos[0] + offset[0],
+		parentPos[1] + offset[1],
+		parentPos[2] + offset[2]
+	];
+
+	return { data, position, orbitElements: data, orbitCenter: parentPos };
+}
+
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.3;
 
@@ -77,7 +135,7 @@ export class ContextManager {
 		return [...this.bodiesById.values()];
 	}
 
-	async load(date: Date): Promise<void> {
+	async load(date: Date, targetId?: string): Promise<void> {
 		try {
 			const loader = new ChunkLoader();
 
@@ -117,6 +175,14 @@ export class ContextManager {
 			major.push(...(await loader.process('moons', 0, 0, date)));
 
 			this.addBodies(major);
+
+			// If the target body wasn't in majors/moons, resolve it from the global object file
+			// so the renderer can focus on it immediately without waiting for its element chunk.
+			if (targetId && !this.bodiesById.has(targetId)) {
+				const placeholder = await createPlaceholderBody(targetId, date, loader);
+				if (placeholder) this.addBodies([placeholder]);
+			}
+
 			this.majorBodies = major.filter(
 				(b) =>
 					b.data.objectType !== ObjectType.BARYCENTER &&

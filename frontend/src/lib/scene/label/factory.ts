@@ -1,12 +1,13 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { ObjectType, isMajorBody, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
 import './label.css';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'none';
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {
 	const t = body.data.objectType;
-	if (isMajorBody(t) || t === ObjectType.STAR) return 'major';
+	if (isMajorBody(t) || t === ObjectType.STAR || isAsteroid(t) || t === ObjectType.COMET)
+		return 'major';
 	if (t === ObjectType.SPACECRAFT) return 'spacecraft';
 	return 'none';
 }
