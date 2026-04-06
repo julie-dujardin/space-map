@@ -15,6 +15,9 @@ class Feature(Base):
     object_id: Mapped[str | None] = mapped_column(
         ForeignKey("objects.id"), default=None, index=True
     )  # parent body in objects table
+    wikidata_qid: Mapped[str | None] = mapped_column(
+        default=None, index=True
+    )  # Wikidata entity QID
     name: Mapped[str] = mapped_column()  # feature name
     unicode_name: Mapped[str | None] = mapped_column(
         default=None

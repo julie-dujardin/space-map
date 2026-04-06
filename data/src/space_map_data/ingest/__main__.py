@@ -7,10 +7,15 @@ import tomllib
 
 from space_map_data.utils.paths import DATA_DIR, DOWNLOAD_DIR
 from space_map_data.utils.db import session_scope
-from space_map_data.ingest.common import ingest_bodies, ingest_features, log_db_summary
+from space_map_data.ingest.common import (
+    ingest_bodies,
+    ingest_features,
+    ingest_wikidata,
+    log_db_summary,
+)
 from space_map_data.ingest.providers.textures import TextureProcessor
 
-ALL_TARGETS = ["bodies", "features", "textures"]
+ALL_TARGETS = ["bodies", "features", "wikidata", "textures"]
 
 
 def cli():
@@ -47,7 +52,9 @@ def cli():
             ingest_bodies(DOWNLOAD_DIR, limit=args.limit)
         if "features" in selected:
             ingest_features(DOWNLOAD_DIR, limit=args.limit)
-        if "bodies" in selected or "features" in selected:
+        if "wikidata" in selected:
+            ingest_wikidata(DOWNLOAD_DIR, limit=args.limit)
+        if "bodies" in selected or "features" in selected or "wikidata" in selected:
             log_db_summary()
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)

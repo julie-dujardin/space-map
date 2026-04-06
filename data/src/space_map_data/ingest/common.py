@@ -13,6 +13,7 @@ from space_map_data.ingest.providers import (
     sbdb,
     wikidata,
     wikidata_conflicts,
+    wikidata_features,
 )
 from space_map_data.utils.db import get_session
 
@@ -20,17 +21,22 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_bodies(download_dir: Path, *, limit: int | None = None) -> None:
-    """Ingest orbital bodies: SBDB, CelesTrak, Horizons, Wikidata."""
+    """Ingest orbital bodies: SBDB, CelesTrak, Horizons."""
     sbdb.ingest(download_dir, limit=limit)
     celestrak.ingest(download_dir, limit=limit)
     horizons.ingest(download_dir, limit=limit)
-    wikidata.ingest(download_dir, limit=limit)
-    wikidata_conflicts.ingest(download_dir, limit=limit)
 
 
 def ingest_features(download_dir: Path, *, limit: int | None = None) -> None:
     """Ingest surface features (IAU nomenclature)."""
     iau_nomenclature.ingest(download_dir, limit=limit)
+
+
+def ingest_wikidata(download_dir: Path, *, limit: int | None = None) -> None:
+    """Ingest Wikidata QIDs for objects and features."""
+    wikidata.ingest(download_dir, limit=limit)
+    wikidata_conflicts.ingest(download_dir, limit=limit)
+    wikidata_features.ingest(download_dir, limit=limit)
 
 
 def log_db_summary() -> None:
@@ -52,5 +58,6 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
     ingest_bodies(download_dir, limit=limit)
     ingest_features(download_dir, limit=limit)
+    ingest_wikidata(download_dir, limit=limit)
     log_db_summary()
     logger.info("Database ready.")
