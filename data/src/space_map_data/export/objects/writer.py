@@ -1,5 +1,6 @@
-"""Write per-object JSON files: objects/__global__/<id>.json and objects/<lang>/<id>.json."""
+"""Write per-object JSON files: objects/__global__/<id>.json.gz and objects/<lang>/<id>.json.gz."""
 
+import gzip
 import orjson
 import logging
 from pathlib import Path
@@ -77,33 +78,35 @@ def write_objects(
 
         # Global (non-localized, always written)
         global_data = _build_global(obj, extracted, wikidata_entities)
-        (global_dir / f"{obj.id}.json").write_bytes(orjson.dumps(global_data))
+        (global_dir / f"{obj.id}.json.gz").write_bytes(
+            gzip.compress(orjson.dumps(global_data))
+        )
 
         # Per-language (localized) — English first so flag=2 can be determined
         qid = obj.wikidata_qid
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
 
-        en_data = _build_localized(
-            obj, "en", wikidata_entities, wd, extracted, wiki_summaries.get("en")
-        )
-        if en_data:
-            (lang_dirs["en"] / f"{obj.id}.json").write_bytes(orjson.dumps(en_data))
-
-        obj_flags: dict[str, int] = {"en": 1 if en_data else 0}
+        en_available = None
+        obj_flags: dict[str, int] = {}
 
         for lang in LANGUAGES:
-            if lang == "en":
+            wiki_summary = wiki_summaries.get(lang)
+            if not wiki_summary:
+                # No wikipedia page → no localized file; mark english availability for frontend fallback
+                obj_flags[lang] = 2 if en_available else 0
                 continue
             lang_data = _build_localized(
-                obj, lang, wikidata_entities, wd, extracted, wiki_summaries.get(lang)
+                obj, lang, wikidata_entities, wd, extracted, wiki_summary
             )
             if lang_data:
-                (lang_dirs[lang] / f"{obj.id}.json").write_bytes(
-                    orjson.dumps(lang_data)
+                (lang_dirs[lang] / f"{obj.id}.json.gz").write_bytes(
+                    gzip.compress(orjson.dumps(lang_data))
                 )
                 obj_flags[lang] = 1
+                if lang == "en":
+                    en_available = True
             else:
-                obj_flags[lang] = 2 if en_data else 0
+                obj_flags[lang] = 2 if en_available else 0
 
         all_flags[obj.id] = obj_flags
 

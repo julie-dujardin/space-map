@@ -1,5 +1,7 @@
-"""Write the elements.bin binary file."""
+"""Write the elements.bin.gz binary file (gzip-compressed)."""
 
+import gzip
+import io
 import re
 import struct
 from pathlib import Path
@@ -31,64 +33,64 @@ def write_elements(
 ) -> None:
     """Write a binary elements file from a list of Objects (already sorted)."""
     n = len(objects)
+    buf = io.BytesIO()
 
-    with open(out_file, "wb") as f:
-        f.write(pack_header(n))
+    buf.write(pack_header(n))
 
-        # Column 0: id (int32) — type-specific ID from Object.id
-        _write_int32(f, n, [_parse_numeric_id(o) for o in objects])
+    # Column 0: id (int32) — type-specific ID from Object.id
+    _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
 
-        # Column 1: object_type (uint8)
-        _write_uint8(
-            f,
-            n,
-            [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
-        )
+    # Column 1: object_type (uint8)
+    _write_uint8(
+        buf,
+        n,
+        [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
+    )
 
-        # Column 2: parent_id (int32) — NAIF ID of parent body
-        _write_int32(
-            f,
+    # Column 2: parent_id (int32) — NAIF ID of parent body
+    _write_int32(
+        buf,
+        n,
+        [
+            o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
+            for o in objects
+        ],
+    )
+
+    # Column 3: scale (uint8)
+    _write_uint8(
+        buf,
+        n,
+        [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
+    )
+
+    # Columns 4–11: float64 orbital element columns
+    float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
+    for attr in float_attrs:
+        _write_float64(
+            buf,
             n,
             [
-                o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
+                getattr(o, attr) if getattr(o, attr) is not None else MISSING_FLOAT64
                 for o in objects
             ],
         )
 
-        # Column 3: scale (uint8)
-        _write_uint8(
-            f,
-            n,
-            [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
-        )
+    # Column 12: radius_km — from SBDB diameter, or wikidata overrides
+    def _radius_km(o: Object) -> float:
+        if (
+            o.sbdb_spkid is not None
+            and o.sbdb is not None
+            and o.sbdb.diameter is not None
+        ):
+            return o.sbdb.diameter / 2.0
+        if radius_km_overrides and (r := radius_km_overrides.get(o.id)):
+            return r
+        return MISSING_FLOAT64
 
-        # Columns 4–11: float64 orbital element columns
-        float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
-        for attr in float_attrs:
-            _write_float64(
-                f,
-                n,
-                [
-                    getattr(o, attr)
-                    if getattr(o, attr) is not None
-                    else MISSING_FLOAT64
-                    for o in objects
-                ],
-            )
+    _write_float64(buf, n, [_radius_km(o) for o in objects])
 
-        # Column 12: radius_km — from SBDB diameter, or wikidata overrides
-        def _radius_km(o: Object) -> float:
-            if (
-                o.sbdb_spkid is not None
-                and o.sbdb is not None
-                and o.sbdb.diameter is not None
-            ):
-                return o.sbdb.diameter / 2.0
-            if radius_km_overrides and (r := radius_km_overrides.get(o.id)):
-                return r
-            return MISSING_FLOAT64
-
-        _write_float64(f, n, [_radius_km(o) for o in objects])
+    out_file.write_bytes(gzip.compress(buf.getvalue()))
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

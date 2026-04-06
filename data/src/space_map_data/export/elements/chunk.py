@@ -1,5 +1,6 @@
 """Write one (zone, zoom, part) chunk: binary elements + labels + id list."""
 
+import gzip
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
@@ -26,7 +27,7 @@ def write_chunk(
     object_flags: {obj_id: {lang: 0|1|2}} as returned by write_objects().
     Returns the size of the elements binary file in bytes.
     """
-    elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin"
+    elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin.gz"
     elements_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
@@ -39,7 +40,7 @@ def write_chunk(
 
     for lang in LANGUAGES:
         labels_path = (
-            out_dir / "element_labels" / lang / zone / str(zoom) / f"{part}.txt"
+            out_dir / "element_labels" / lang / zone / str(zoom) / f"{part}.txt.gz"
         )
         labels_path.parent.mkdir(parents=True, exist_ok=True)
         lang_flags = {
@@ -47,7 +48,7 @@ def write_chunk(
         }
         write_labels(objects, labels_path, lang, chunk_entities, lang_flags)
 
-    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.txt"
-    ids_path.write_text("\n".join(obj.id for obj in objects))
+    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.txt.gz"
+    ids_path.write_bytes(gzip.compress("\n".join(obj.id for obj in objects).encode()))
 
     return elements_bytes

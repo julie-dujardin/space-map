@@ -1,5 +1,6 @@
-"""Write element_labels/<lang>.json files."""
+"""Write element_labels/<lang>.txt.gz files (gzip-compressed)."""
 
+import gzip
 import logging
 from pathlib import Path
 
@@ -45,6 +46,6 @@ def write_labels(
         flag = flags.get(obj.id, 0)
         lines.append(f"{flag}{_US}{name}")
 
-    out_file.write_text("\n".join(lines))
+    out_file.write_bytes(gzip.compress("\n".join(lines).encode()))
     named = sum(1 for line in lines if line.split(_US, 1)[1])
     logger.info("Wrote %d/%d labels to %s", named, len(lines), out_file)

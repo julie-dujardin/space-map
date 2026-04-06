@@ -34,7 +34,8 @@ export async function fetchElements(
 ): Promise<ElementColumns> {
 	const res = await fetch(elementsBinUrl(zone, zoom, part));
 	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
-	const buffer = await res.arrayBuffer();
+	const ds = new DecompressionStream('gzip');
+	const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
 	return parseElements(buffer);
 }
 
