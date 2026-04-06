@@ -53,13 +53,13 @@
       "id": "ingest_targets",
       "type": "pickString",
       "description": "Which target(s) to ingest",
-      "options": ["all", "bodies", "features", "textures"],
+      "options": ["all", "objects", "features", "wikidata", "textures"],
       "default": "all"
     },
     {
       "id": "limit",
       "type": "promptString",
-      "description": "Max records/bodies per source",
+      "description": "Max records/objects per source",
       "default": "10"
     }
   ]
