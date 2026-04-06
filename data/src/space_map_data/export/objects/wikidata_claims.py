@@ -80,7 +80,7 @@ PID_TO_KEY: dict[str, str] = {
 }
 
 
-def extract_claims(claims: dict) -> dict:
+def extract_claims(claims: dict, qid: str | None = None) -> dict:
     """Extract target properties from raw Wikidata claims.
 
     Returns a flat dict with parsed values (not the raw claim structure).
@@ -89,7 +89,7 @@ def extract_claims(claims: dict) -> dict:
 
     _SINGLE = {
         "time": lambda c, p, **_: _first_time(c, p),
-        "quantity": _first_quantity,
+        "quantity": lambda c, p, **kw: _single_quantity(c, p, qid=qid, **kw),
     }
     _MULTI = {
         "time": lambda c, p, **_: _all_times(c, p),
@@ -303,11 +303,12 @@ def _parse_quantity(dv: dict) -> dict | float | None:
     return {"value": value, "unit": unit_qid}
 
 
-def _first_quantity(
+def _single_quantity(
     claims: dict,
     prop: str,
     *,
     needs_unit: bool = True,
+    qid: str | None = None,
 ) -> dict | float | None:
     """Extract the single quantity value from a claim.
 
@@ -346,11 +347,11 @@ def _first_quantity(
             return mean[0][1]
 
     # Prefer by qualifier value (checked across P1013, P518, P3831)
-    for qid in _PREFERRED_CRITERIA.get(prop, []):
+    for crit_qid in _PREFERRED_CRITERIA.get(prop, []):
         matched = [
             (s, p)
             for s, p in pairs
-            if qid
+            if crit_qid
             in (
                 _qualifier_qid(s, "P1013"),
                 _qualifier_qid(s, "P518"),
@@ -361,13 +362,43 @@ def _first_quantity(
             return matched[0][1]
 
     # Prefer a trusted source (P248) or nasa.gov reference URL (P854)
-    for qid in _TRUSTED_PROVIDERS:
-        sourced = [(s, p) for s, p in pairs if _is_sourced_to(s, qid)]
+    for src_qid in _TRUSTED_PROVIDERS:
+        sourced = [(s, p) for s, p in pairs if _is_sourced_to(s, src_qid)]
         if len(sourced) == 1:
             return sourced[0][1]
     nasa = [(s, p) for s, p in pairs if _has_nasa_ref_url(s)]
     if len(nasa) == 1:
         return nasa[0][1]
+
+    # Special cases: pick first, average min/max, or discard
+    _PICK_FIRST = {
+        (
+            "Q18325885",
+            "P1215",
+        ),  # 486958 Arrokoth - apparent magnitude: either value is fine
+        ("Q16081", "P2120"),  # Proteus - radius: 209 vs 210 km
+    }
+    _AVERAGE = {
+        ("Q135193382", "P2120"),  # 3I/ATLAS - radius: min/max
+        ("Q319", "P1215"),  # Jupiter - apparent magnitude: min/max
+    }
+    _DISCARD = {
+        (
+            "Q147561",
+            "P7015",
+        ),  # 2101 Adonis - surface gravity: two values uncorelated to the claimed source
+    }
+    if (qid, prop) in _PICK_FIRST:
+        return pairs[0][1]
+    if (qid, prop) in _AVERAGE:
+        vals = [p["value"] if isinstance(p, dict) else p for _, p in pairs]
+        mean = sum(vals) / len(vals)
+        template = pairs[0][1]
+        if isinstance(template, dict):
+            return {**template, "value": mean}
+        return mean
+    if (qid, prop) in _DISCARD:
+        return None
 
     key = PID_TO_KEY.get(prop, prop)
     raise MultipleClaimValues(
@@ -406,7 +437,7 @@ def _commons_url(filename: str) -> str:
 
 def radius_km_from_claims(claims: dict, units: UnitConverter) -> float | None:
     """Extract the mean radius in km from raw Wikidata claims (P2120), or None."""
-    qty = _first_quantity(claims, "P2120")
+    qty = _single_quantity(claims, "P2120")
     if qty is None:
         return None
     if isinstance(qty, (int, float)):
