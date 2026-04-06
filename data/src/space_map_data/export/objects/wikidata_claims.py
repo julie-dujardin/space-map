@@ -31,6 +31,7 @@ class GlobalClaim(NamedTuple):
     pid: str
     kind: Literal["time", "quantity", "image", "url"]
     multiple: bool = False
+    needs_unit: bool = True
 
 
 GLOBAL_CLAIMS = (
@@ -41,13 +42,13 @@ GLOBAL_CLAIMS = (
     GlobalClaim("radius", "P2120", "quantity"),
     GlobalClaim("density", "P2054", "quantity"),
     GlobalClaim("surface_gravity", "P7015", "quantity"),
-    GlobalClaim("absolute_magnitude", "P1457", "quantity"),
-    GlobalClaim("apparent_magnitude", "P1215", "quantity"),
+    GlobalClaim("absolute_magnitude", "P1457", "quantity", needs_unit=False),
+    GlobalClaim("apparent_magnitude", "P1215", "quantity", needs_unit=False),
     # temperature (P2076) is handled separately — see P1480 routing below.
     GlobalClaim("min_temperature", "P7422", "quantity"),
     GlobalClaim("max_temperature", "P6591", "quantity"),
     GlobalClaim("website", "P856", "url", multiple=True),
-    GlobalClaim("population", "P1082", "quantity"),
+    GlobalClaim("population", "P1082", "quantity", needs_unit=False),
 )
 
 
@@ -87,20 +88,20 @@ def extract_claims(claims: dict) -> dict:
     result: dict = {}
 
     _SINGLE = {
-        "time": _first_time,
+        "time": lambda c, p, **_: _first_time(c, p),
         "quantity": _first_quantity,
     }
     _MULTI = {
-        "time": _all_times,
-        "image": lambda c, p: [_commons_url(s) for s in _all_strings(c, p)],
-        "url": _all_strings,
+        "time": lambda c, p, **_: _all_times(c, p),
+        "image": lambda c, p, **_: [_commons_url(s) for s in _all_strings(c, p)],
+        "url": lambda c, p, **_: _all_strings(c, p),
     }
     for claim in GLOBAL_CLAIMS:
         if claim.multiple:
-            if v := _MULTI[claim.kind](claims, claim.pid):
+            if v := _MULTI[claim.kind](claims, claim.pid, needs_unit=claim.needs_unit):
                 result[claim.key] = v
         else:
-            if v := _SINGLE[claim.kind](claims, claim.pid):
+            if v := _SINGLE[claim.kind](claims, claim.pid, needs_unit=claim.needs_unit):
                 result[claim.key] = v
 
     # P2076 (temperature): route via P1480 (nature of statement) qualifier.
@@ -181,12 +182,13 @@ _QID_MAXIMUM = "Q10578722"
 _QID_AVERAGE = "Q202785"
 _QID_MEAN = "Q2796622"
 
-# P518 (applies to part) QID for volumetric mean radius
-_QID_VOLUMETRIC_MEAN_RADIUS = "Q28809093"
-
-# Trusted sources per property — when multiple close values exist, prefer these.
-_TRUSTED_SOURCES: dict[str, list[str]] = {
-    "P2067": ["Q29933828"],  # mass: prefer "service entry"
+# P1013 (criterion used) qualifier: preferred values per property, tried in order.
+_PREFERRED_CRITERIA: dict[str, list[str]] = {
+    "P2067": [
+        "Q29933828",
+        "Q2333272",
+        "Q854248",
+    ],  # mass: prefer "service entry", then "launch mass", then "takeoff"
 }
 _TRUSTED_PROVIDERS = [
     "Q4026990",  # JPL SBDB
@@ -225,6 +227,16 @@ def _is_sourced_to(stmt: dict, qid: str) -> bool:
     return False
 
 
+def _has_nasa_ref_url(stmt: dict) -> bool:
+    """Check whether a statement has a P854 (reference URL) on a nasa.gov domain."""
+    for ref in stmt.get("references", []):
+        for snak in ref.get("snaks", {}).get("P854", []):
+            url = snak.get("datavalue", {}).get("value", "")
+            if isinstance(url, str) and ".nasa.gov" in url:
+                return True
+    return False
+
+
 def _claim_values(claims: dict, prop: str):
     """Yield raw ``datavalue.value`` entries for a given property.
 
@@ -244,7 +256,7 @@ def _all_strings(claims: dict, prop: str) -> list[str]:
 
 def _first_string(claims: dict, prop: str) -> str | None:
     """Extract the single string value from a claim."""
-    vals = _all_strings(claims, prop)
+    vals = list(dict.fromkeys(_all_strings(claims, prop)))
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
         raise MultipleClaimValues(f"Multiple string values for {key}: {vals}")
@@ -269,7 +281,7 @@ def _all_times(claims: dict, prop: str) -> list[str]:
 
 def _first_time(claims: dict, prop: str) -> str | None:
     """Extract the single time value from a claim as an ISO date string."""
-    vals = _all_times(claims, prop)
+    vals = list(dict.fromkeys(_all_times(claims, prop)))
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
         raise MultipleClaimValues(f"Multiple time values for {key}: {vals}")
@@ -291,17 +303,16 @@ def _parse_quantity(dv: dict) -> dict | float | None:
     return {"value": value, "unit": unit_qid}
 
 
-def _qty_numeric(q: dict | float) -> float:
-    """Extract the numeric value from a parsed quantity."""
-    return q if isinstance(q, (int, float)) else q["value"]
-
-
-def _first_quantity(claims: dict, prop: str) -> dict | float | None:
+def _first_quantity(
+    claims: dict,
+    prop: str,
+    *,
+    needs_unit: bool = True,
+) -> dict | float | None:
     """Extract the single quantity value from a claim.
 
     Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
-    When multiple values remain and all are within 10% of each other, the one
-    sourced to JPL SBDB (Q4026990) is preferred.
+    Entries lacking units are ignored when *needs_unit* is True.
     """
     stmts = _active_stmts(claims, prop)
     pairs: list[tuple[dict, dict | float]] = []
@@ -310,31 +321,53 @@ def _first_quantity(claims: dict, prop: str) -> dict | float | None:
         if dv is None:
             continue
         parsed = _parse_quantity(dv)
-        if parsed is not None:
-            pairs.append((stmt, parsed))
+        if parsed is None:
+            continue
+        if needs_unit and isinstance(parsed, (int, float)):
+            continue
+        pairs.append((stmt, parsed))
 
     if len(pairs) <= 1:
         return pairs[0][1] if pairs else None
 
-    # Radius: prefer the volumetric mean radius (P518 = Q28809093)
+    # Deduplicate identical values
+    unique = list({repr(p): (s, p) for s, p in pairs}.values())
+    if len(unique) == 1:
+        return unique[0][1]
+
+    # Radius: prefer the mean/average value (P518 qualifier)
     if prop == "P2120":
         mean = [
             (s, p)
             for s, p in pairs
-            if _qualifier_qid(s, "P518")
-            in (_QID_VOLUMETRIC_MEAN_RADIUS, _QID_AVERAGE, _QID_MEAN)
+            if _qualifier_qid(s, "P518") in (_QID_AVERAGE, _QID_MEAN)
         ]
         if len(mean) == 1:
             return mean[0][1]
 
-    # Try to disambiguate: if all values are within 10%, prefer a trusted source
-    nums = [_qty_numeric(p) for _, p in pairs]
-    lo, hi = min(nums), max(nums)
-    if lo > 0 and (hi - lo) / hi <= 0.1:
-        for qid in _TRUSTED_SOURCES.get(prop, _TRUSTED_PROVIDERS):
-            sourced = [(s, p) for s, p in pairs if _is_sourced_to(s, qid)]
-            if len(sourced) == 1:
-                return sourced[0][1]
+    # Prefer by qualifier value (checked across P1013, P518, P3831)
+    for qid in _PREFERRED_CRITERIA.get(prop, []):
+        matched = [
+            (s, p)
+            for s, p in pairs
+            if qid
+            in (
+                _qualifier_qid(s, "P1013"),
+                _qualifier_qid(s, "P518"),
+                _qualifier_qid(s, "P3831"),
+            )
+        ]
+        if len(matched) == 1:
+            return matched[0][1]
+
+    # Prefer a trusted source (P248) or nasa.gov reference URL (P854)
+    for qid in _TRUSTED_PROVIDERS:
+        sourced = [(s, p) for s, p in pairs if _is_sourced_to(s, qid)]
+        if len(sourced) == 1:
+            return sourced[0][1]
+    nasa = [(s, p) for s, p in pairs if _has_nasa_ref_url(s)]
+    if len(nasa) == 1:
+        return nasa[0][1]
 
     key = PID_TO_KEY.get(prop, prop)
     raise MultipleClaimValues(
@@ -344,11 +377,13 @@ def _first_quantity(claims: dict, prop: str) -> dict | float | None:
 
 def _first_entity_qid(claims: dict, prop: str) -> str | None:
     """Extract the single entity QID from a claim."""
-    vals = [
-        val["id"]
-        for val in _claim_values(claims, prop)
-        if isinstance(val, dict) and "id" in val
-    ]
+    vals = list(
+        dict.fromkeys(
+            val["id"]
+            for val in _claim_values(claims, prop)
+            if isinstance(val, dict) and "id" in val
+        )
+    )
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
         raise MultipleClaimValues(f"Multiple entity values for {key}: {vals}")
