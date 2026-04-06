@@ -71,7 +71,7 @@ class CometPrefix(StrEnum):
     D = "Defunct"  # Defunct comet — no longer exists or disappeared (e.g. D/1993 F2 Shoemaker-Levy 9)
     X = "Uncertain"  # Uncertain comet — no meaningful orbit computable; typically historical
     A = "Asteroid"  # Minor planet with cometary designation — asteroidal object or near-parabolic/hyperbolic without cometary activity
-    I = "Interstellar"  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
+    I = "Interstellar"  # noqa:E741  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
 
 
 class SBDB(Base):
