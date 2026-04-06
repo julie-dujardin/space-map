@@ -67,9 +67,9 @@ export interface GlobalObjectData {
 		first_obs?: string;
 	};
 	wikidata?: {
-		discovery_date?: string;
+		discovery_date?: string[];
 		launch_date?: string;
-		image?: string;
+		image?: string[];
 		mass?: QuantityWithUnit;
 		radius?: QuantityWithUnit;
 		density?: QuantityWithUnit;
@@ -80,7 +80,7 @@ export interface GlobalObjectData {
 		min_temperature?: QuantityWithUnit;
 		max_temperature?: QuantityWithUnit;
 		population?: number;
-		website?: string;
+		website?: string[];
 	};
 }
 
@@ -97,15 +97,15 @@ export interface LocalizedObjectData {
 	aliases?: string[];
 	instance_of?: EntityRef[];
 	discoverers?: EntityRef[];
-	named_after?: EntityRef;
-	discovery_site?: EntityRef;
-	minor_planet_group?: EntityRef;
-	spectral_type?: EntityRef;
+	named_after?: EntityRef[];
+	discovery_site?: EntityRef[];
+	minor_planet_group?: EntityRef[];
+	spectral_type?: EntityRef[];
 	asteroid_family?: EntityRef;
-	operator?: EntityRef;
-	manufacturer?: EntityRef;
+	operator?: EntityRef[];
+	manufacturer?: EntityRef[];
 	launch_vehicle?: EntityRef;
-	launch_site?: EntityRef;
+	launch_site?: EntityRef[];
 	wikipedia?: {
 		extract?: string;
 		description?: string;

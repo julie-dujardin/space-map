@@ -12,7 +12,7 @@
 
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
-	let website = $derived(global?.wikidata?.website);
+	let website = $derived(global?.wikidata?.website?.[0]);
 	let sbdbDesignation = $derived(
 		global?.cross_refs?.sbdb_mcp_designation ?? global?.cross_refs?.sbdb_spkid
 	);

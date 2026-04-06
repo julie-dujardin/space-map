@@ -20,7 +20,7 @@
 	// Discovery date: wikipedia records the discovery date, sbdb the first observation
 	// different for ceres: 1801 (discovery) vs 1995 (first observation by hubble telescope)
 	// Wikipedia seems to have the more relevant data here
-	let discoveryDate = $derived(global?.wikidata?.discovery_date ?? global?.sbdb?.first_obs);
+	let discoveryDate = $derived(global?.wikidata?.discovery_date?.[0] ?? global?.sbdb?.first_obs);
 	let launchDate = $derived(global?.wikidata?.launch_date);
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
@@ -69,6 +69,14 @@
 	{/if}
 {/snippet}
 
+{#snippet entityLinks(entities: EntityRef[])}
+	<span class="flex flex-wrap justify-end gap-x-1">
+		{#each entities as e (e.name)}
+			<span class="whitespace-nowrap">{@render entityLink(e)}</span>
+		{/each}
+	</span>
+{/snippet}
+
 {#if hasContent}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">
@@ -102,21 +110,21 @@
 					{/each}
 				</dd>
 			{/if}
-			{#if discoverySite}
+			{#if discoverySite && discoverySite.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.discovery_site())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(discoverySite)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(discoverySite)}</dd>
 			{/if}
-			{#if namedAfter}
+			{#if namedAfter && namedAfter.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_named_after())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(namedAfter)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(namedAfter)}</dd>
 			{/if}
 			{#if orbitClass}
 				<dt class="text-muted-foreground">{ucfirst(m.orbit_class())}</dt>
 				<dd class="text-right">{orbitClass}</dd>
 			{/if}
-			{#if minorPlanetGroup}
+			{#if minorPlanetGroup && minorPlanetGroup.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_minor_planet_group())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(minorPlanetGroup)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(minorPlanetGroup)}</dd>
 			{/if}
 			{#if asteroidFamily}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_asteroid_family())}</dt>
@@ -126,21 +134,21 @@
 				<dt class="text-muted-foreground">{ucfirst(m.known_satellites())}</dt>
 				<dd class="text-right">{sats}</dd>
 			{/if}
-			{#if operator}
+			{#if operator && operator.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_operator())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(operator)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(operator)}</dd>
 			{/if}
-			{#if manufacturer}
+			{#if manufacturer && manufacturer.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_manufacturer())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(manufacturer)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(manufacturer)}</dd>
 			{/if}
 			{#if launchVehicle}
 				<dt class="text-muted-foreground">{ucfirst(m.launch_vehicle())}</dt>
 				<dd class="text-right text-muted-foreground">{@render entityLink(launchVehicle)}</dd>
 			{/if}
-			{#if launchSite}
+			{#if launchSite && launchSite.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.launch_site())}</dt>
-				<dd class="text-right text-muted-foreground">{@render entityLink(launchSite)}</dd>
+				<dd class="text-right text-muted-foreground">{@render entityLinks(launchSite)}</dd>
 			{/if}
 		</dl>
 	</div>

@@ -12,7 +12,7 @@
 	let { global, localized, fallbackName }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
-	let image = $derived(localized?.wikipedia?.thumbnail ?? global?.wikidata?.image);
+	let image = $derived(localized?.wikipedia?.thumbnail ?? global?.wikidata?.image?.[0]);
 	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
