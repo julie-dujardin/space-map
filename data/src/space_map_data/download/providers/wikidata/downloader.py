@@ -10,6 +10,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
+from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,16 @@ class WikidataDownloader(Downloader):
         entities_dir = self.out_dir / "entities"
         entities_dir.mkdir(exist_ok=True)
         self._fetch_entities(all_qids, entities_dir, limit=limit, fetch_desc="bodies")
+
+        # Fetch orbit class entities into their own directory
+        orbit_class_qids = sorted(
+            {qid for qid in ORBIT_CLASS_QIDS.values() if qid is not None}
+        )
+        orbit_classes_dir = self.out_dir / "orbit_classes"
+        orbit_classes_dir.mkdir(exist_ok=True)
+        self._fetch_entities(
+            orbit_class_qids, orbit_classes_dir, limit=None, fetch_desc="orbit classes"
+        )
 
         # Second pass: fetch referenced entities and units
         referenced_dir = self.out_dir / "referenced"

@@ -31,31 +31,31 @@ class OrbitClass(StrEnum):
     """
 
     # Asteroids
-    IEO = "IEO"  # Atira — orbit entirely within Earth's orbit (Q < 0.983 au)
-    ATE = "ATE"  # Aten — a < 1.0 au; Q > 0.983 au
-    APO = "APO"  # Apollo — a > 1.0 au; q < 1.017 au
-    AMO = "AMO"  # Amor — 1.017 au < q < 1.3 au
-    MCA = "MCA"  # Mars-crossing — 1.3 au < q < 1.666 au; a < 3.2 au
-    IMB = "IMB"  # Inner Main-belt — a < 2.0 au; q > 1.666 au
-    MBA = "MBA"  # Main-belt — 2.0 au < a < 3.2 au; q > 1.666 au
-    OMB = "OMB"  # Outer Main-belt — 3.2 au < a < 4.6 au
-    TJN = "TJN"  # Jupiter Trojan — 4.6 au < a < 5.5 au; e < 0.3
-    AST = "AST"  # Asteroid (unclassified)
+    Atira = "IEO"  # Atira — orbit entirely within Earth's orbit (Q < 0.983 au)
+    Aten = "ATE"  # Aten — a < 1.0 au; Q > 0.983 au
+    Apollo = "APO"  # Apollo — a > 1.0 au; q < 1.017 au
+    Amor = "AMO"  # Amor — 1.017 au < q < 1.3 au
+    MarsCrossing = "MCA"  # Mars-crossing — 1.3 au < q < 1.666 au; a < 3.2 au
+    InnerMainBelt = "IMB"  # Inner Main-belt — a < 2.0 au; q > 1.666 au
+    MainBelt = "MBA"  # Main-belt — 2.0 au < a < 3.2 au; q > 1.666 au
+    OuterMainBelt = "OMB"  # Outer Main-belt — 3.2 au < a < 4.6 au
+    JupiterTrojan = "TJN"  # Jupiter Trojan — 4.6 au < a < 5.5 au; e < 0.3
+    Asteroid = "AST"  # Asteroid (unclassified)
     # Trans-Jovian / outer solar system
-    CEN = "CEN"  # Centaur — 5.5 au < a < 30.1 au
-    TNO = "TNO"  # TransNeptunian Object — a > 30.1 au
+    Centaur = "CEN"  # Centaur — 5.5 au < a < 30.1 au
+    TransNeptunian = "TNO"  # TransNeptunian Object — a > 30.1 au
     # Non-elliptic asteroids
-    PAA = "PAA"  # Parabolic "Asteroid" — e = 1.0
-    HYA = "HYA"  # Hyperbolic "Asteroid" — e > 1.0
+    ParabolicAsteroid = "PAA"  # Parabolic "Asteroid" — e = 1.0
+    HyperbolicAsteroid = "HYA"  # Hyperbolic "Asteroid" — e > 1.0
     # Comets
-    ETc = "ETc"  # Encke-type Comet — Tj > 3; a < aJ
-    JFc = "JFc"  # Jupiter-family Comet (Levison & Duncan) — 2 < Tj < 3
-    JFC = "JFC"  # Jupiter-family Comet (classical) — P < 20 y
-    CTc = "CTc"  # Chiron-type Comet — Tj > 3; a > aJ
-    HTC = "HTC"  # Halley-type Comet (classical) — 20 y < P < 200 y
-    PAR = "PAR"  # Parabolic Comet — e = 1.0
-    HYP = "HYP"  # Hyperbolic Comet — e > 1.0
-    COM = "COM"  # Comet (unclassified)
+    EnckeType = "ETc"  # Encke-type Comet — Tj > 3; a < aJ
+    JupiterFamilyLD = "JFc"  # Jupiter-family Comet (Levison & Duncan) — 2 < Tj < 3
+    JupiterFamilyC = "JFC"  # Jupiter-family Comet (classical) — P < 20 y
+    ChironType = "CTc"  # Chiron-type Comet — Tj > 3; a > aJ
+    HalleyType = "HTC"  # Halley-type Comet (classical) — 20 y < P < 200 y
+    ParabolicComet = "PAR"  # Parabolic Comet — e = 1.0
+    HyperbolicComet = "HYP"  # Hyperbolic Comet — e > 1.0
+    Comet = "COM"  # Comet (unclassified)
 
 
 class CometPrefix(StrEnum):
@@ -66,12 +66,14 @@ class CometPrefix(StrEnum):
     - https://iauarchive.eso.org/news/announcements/detail/ann17045/
     """
 
-    P = "P"  # Periodic comet — P < 200 y, or confirmed at >1 perihelion (e.g. 1P/Halley)
-    C = "C"  # Non-periodic comet — P ≥ 200 y, or periodicity unconfirmed
-    D = "D"  # Defunct comet — no longer exists or disappeared (e.g. D/1993 F2 Shoemaker-Levy 9)
-    X = "X"  # Uncertain comet — no meaningful orbit computable; typically historical
-    A = "A"  # Minor planet with cometary designation — asteroidal object or near-parabolic/hyperbolic without cometary activity
-    I_ = "I"  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
+    Periodic = "P"  # Periodic comet — P < 200 y, or confirmed at >1 perihelion (e.g. 1P/Halley)
+    NonPeriodic = "C"  # Non-periodic comet — P ≥ 200 y, or periodicity unconfirmed
+    Defunct = "D"  # Defunct comet — no longer exists or disappeared (e.g. D/1993 F2 Shoemaker-Levy 9)
+    Uncertain = (
+        "X"  # Uncertain comet — no meaningful orbit computable; typically historical
+    )
+    Asteroid = "A"  # Minor planet with cometary designation — asteroidal object or near-parabolic/hyperbolic without cometary activity
+    Interstellar = "I"  # Interstellar object — not gravitationally bound to the solar system (e.g. 1I/ʻOumuamua); prefix introduced 2017
 
 
 class SBDB(Base):
