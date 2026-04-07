@@ -105,12 +105,14 @@ export class ChunkLoader {
 			const objType = cols.objectType[idx] as ObjectType;
 
 			// Parabolic comets always have a valid orbit; for Keplerian, skip
-			// degenerate a=0 bodies (except structural barycenters/Lagrange points).
+			// degenerate a=0 bodies (except structural barycenters/Lagrange points
+			// and major bodies that orbit at their own barycenter, e.g. Mars).
 			if (
 				!isParabolic &&
 				(cols as KeplerianColumns).a[idx] === 0 &&
 				objType !== ObjectType.BARYCENTER &&
-				objType !== ObjectType.LAGRANGE_POINT
+				objType !== ObjectType.LAGRANGE_POINT &&
+				!isMajorBody(objType)
 			) {
 				continue;
 			}
