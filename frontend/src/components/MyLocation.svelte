@@ -43,8 +43,8 @@
 	disabled={state === 'loading'}
 	class="flex items-center justify-center
 		w-15 h-15 md:w-10 md:h-10 rounded-full
-		bg-black hover:bg-black/80
-		text-white transition-colors cursor-pointer
+		bg-primary-foreground hover:bg-primary-foreground/80
+		text-primary transition-colors cursor-pointer
 		disabled:opacity-50 disabled:cursor-wait"
 	title={m.my_location()}
 	aria-label={m.my_location()}
