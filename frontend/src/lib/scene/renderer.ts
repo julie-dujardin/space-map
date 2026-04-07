@@ -50,6 +50,7 @@ export class SceneRenderer {
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
+	private pendingSceneAdds: Points[] = [];
 
 	// TODO: expose via UI settings
 	hideCappedMoonLabels = false;
@@ -187,13 +188,15 @@ export class SceneRenderer {
 	}
 
 	rebuildMinorPointClouds(): void {
-		rebuildMinorPointClouds(
+		const newPoints = rebuildMinorPointClouds(
 			this.ctx,
 			this.circleTexture,
 			this.asteroidPoints,
-			this.spacecraftPoints,
-			this.scene
+			this.spacecraftPoints
 		);
+		if (newPoints.length > 0) {
+			this.pendingSceneAdds.push(...newPoints);
+		}
 	}
 
 	// --- RAF loop ---
@@ -348,6 +351,11 @@ export class SceneRenderer {
 			const isFocused = bo.body.data.id === focusedBodyId;
 			const isHovered = bo.label?.element.matches(':hover') ?? false;
 			mat.uniforms.uAlphaMultiplier.value = isFocused ? 2 : isHovered ? 1.75 : 1.0;
+		}
+
+		// Stagger new point cloud additions: one per frame to spread GPU upload cost
+		if (this.pendingSceneAdds.length > 0) {
+			this.scene.add(this.pendingSceneAdds.shift()!);
 		}
 
 		this.renderer.render(this.scene, this.camera);

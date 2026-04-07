@@ -207,18 +207,22 @@ export function buildPointClouds(
 }
 
 /**
- * Rebuilds the asteroid and spacecraft point clouds from updated context data.
+ * Rebuilds only the dirty asteroid and spacecraft point clouds.
+ * Returns new Points objects that need to be added to the scene (caller
+ * should stagger these across frames to avoid GPU-upload hitches).
  */
 export function rebuildMinorPointClouds(
 	ctx: ContextManager,
 	circleTexture: CanvasTexture,
 	asteroidPoints: Map<string, Points>,
-	spacecraftPoints: Map<string, Points>,
-	scene: Scene
-): void {
-	// Asteroid clouds — per zone, reuse existing Points or create new ones
-	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
-		if (bodies.length === 0) continue;
+	spacecraftPoints: Map<string, Points>
+): Points[] {
+	const pendingAdd: Points[] = [];
+
+	// Asteroid clouds — only dirty zones
+	for (const zone of ctx.dirtyAsteroidZones) {
+		const bodies = ctx.asteroidBodiesByZone.get(zone);
+		if (!bodies || bodies.length === 0) continue;
 		const valid = filterFinitePositions(bodies);
 		const existing = asteroidPoints.get(zone);
 		if (existing) {
@@ -229,12 +233,14 @@ export function rebuildMinorPointClouds(
 		} else {
 			const pts = makePointCloud(valid, circleTexture);
 			asteroidPoints.set(zone, pts);
-			scene.add(pts);
+			pendingAdd.push(pts);
 		}
 	}
 
-	// Spacecraft clouds — update existing groups, create new ones
-	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
+	// Spacecraft clouds — only dirty groups
+	for (const groupParentId of ctx.dirtySpacecraftGroups) {
+		const bodies = ctx.spacecraftByParent.get(groupParentId);
+		if (!bodies || bodies.length === 0) continue;
 		const valid = filterFinitePositions(bodies);
 		const existing = spacecraftPoints.get(groupParentId);
 		if (existing) {
@@ -245,9 +251,14 @@ export function rebuildMinorPointClouds(
 		} else {
 			const points = makePointCloud(valid, circleTexture);
 			spacecraftPoints.set(groupParentId, points);
-			scene.add(points);
+			pendingAdd.push(points);
 		}
 	}
+
+	ctx.dirtyAsteroidZones.clear();
+	ctx.dirtySpacecraftGroups.clear();
+
+	return pendingAdd;
 }
 
 export async function loadBodyTexture(

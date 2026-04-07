@@ -119,6 +119,9 @@ export class ContextManager {
 	majorBodies = $state<PositionedBody[]>([]);
 	asteroidBodiesByZone = $state(new SvelteMap<string, PositionedBody[]>());
 	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
+	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
+	dirtyAsteroidZones = new SvelteSet<string>();
+	dirtySpacecraftGroups = new SvelteSet<string>();
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
@@ -217,10 +220,12 @@ export class ContextManager {
 									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
 									list.push(b);
 									pendingSpacecraft.set(b.data.parentId, list);
+									this.dirtySpacecraftGroups.add(b.data.parentId);
 								} else {
 									const list = pendingAsteroids.get(zone) ?? [];
 									list.push(b);
 									pendingAsteroids.set(zone, list);
+									this.dirtyAsteroidZones.add(zone);
 								}
 							}
 						})
