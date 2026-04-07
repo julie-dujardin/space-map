@@ -303,12 +303,6 @@ export class SceneRenderer {
 			);
 			// Skip controls.update() — we're driving the camera directly
 			controlsSettled = false;
-		} else if (isAnimating) {
-			const s = t * t * (3 - 2 * t);
-			this.focusTruePos = f64lerp(this.focusOriginWorld, this.focusTargetWorld, s);
-			this.repositionAll();
-			this.controls.target.set(0, 0, 0);
-			controlsSettled = !this.controls.update();
 		} else {
 			if (
 				this.focusTruePos[0] !== this.focusTargetWorld[0] ||
@@ -560,11 +554,25 @@ export class SceneRenderer {
 			this.camera.position.copy(savedPos);
 			this.camera.quaternion.copy(this.flyQ0);
 		} else {
-			this.camOriginWorld = null;
-			this.camTargetWorld = null;
-			this.flyQ0 = null;
-			this.flyQ1 = null;
+			// Camera stays at current world position, only rotates toward new focus
+			const camWorld = this.cameraTruePos();
+			this.camOriginWorld = camWorld;
+			this.camTargetWorld = [...camWorld];
 			this.focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
+			// Compute orientation slerp: current → looking at new focus body
+			this.flyQ0 = this.camera.quaternion.clone();
+			const savedPos = this.camera.position.clone();
+			const savedQ = this.camera.quaternion.clone();
+			// Temporarily place camera at final focus-relative position to compute lookAt
+			this.camera.position.set(
+				camWorld[0] - body.position[0],
+				camWorld[1] - body.position[1],
+				camWorld[2] - body.position[2]
+			);
+			this.camera.lookAt(0, 0, 0);
+			this.flyQ1 = this.camera.quaternion.clone();
+			this.camera.position.copy(savedPos);
+			this.camera.quaternion.copy(savedQ);
 		}
 	}
 
