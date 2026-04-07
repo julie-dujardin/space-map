@@ -191,10 +191,11 @@ _QID_MEAN = "Q2796622"
 
 # P1013 (criterion used) qualifier: preferred values per property, tried in order.
 _PREFERRED_CRITERIA: dict[str, list[str]] = {
-    "P2067": [
+    "P2067": [  # Arbitrarily prefer the mass closer to service entry, instead of dry mass
         "Q29933828",  # service entry
         "Q2333272",  # launch mass
         "Q854248",  # takeoff
+        "Q65088056",  # Gross mass
     ],
 }
 _TRUSTED_PROVIDERS = [

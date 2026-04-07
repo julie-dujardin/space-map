@@ -259,7 +259,7 @@ class SBDB(Base):
     )  # Doppler-radar observations used in fit
     condition_code: Mapped[str | None] = mapped_column(
         default=None
-    )  # orbit condition code (MPC 'U' parameter)
+    )  # orbit condition code (MPC 'U' parameter). orbit quality is 0-9 with 9 being very bad.
     rms: Mapped[float | None] = mapped_column(
         default=None
     )  # normalized RMS of orbit fit [arcsec]

@@ -7,6 +7,9 @@ export interface OrbitalElements {
 	ma: number; // mean anomaly at epoch (degrees)
 	n: number; // mean motion (degrees/day)
 	epoch: number; // epoch (Julian Date)
+	// Parabolic orbits (e=1): a/ma/n are not available; use q and tp instead
+	q?: number; // perihelion distance (AU) — only for parabolic orbits
+	tp?: number; // time of perihelion passage (Julian Date) — only for parabolic orbits
 }
 
 /** Unified body data from the binary export. */

@@ -55,6 +55,7 @@
 	"jpl_sbdb": "JPL Small-Body Database ({id})",
 	"jpl_horizons": "JPL Horizons ({id})",
 	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
+	"my_location": "My location",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "apparent magnitude",
 	"property_name_asteroid_family": "asteroid family",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "t",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg",
-	"my_location": "My location"
+	"unit_symbol_zettagram": "Zg"
 }

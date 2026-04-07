@@ -47,6 +47,35 @@ export function solveKeplerHyperbolic(
 }
 
 /**
+ * Solve Barker's equation for parabolic orbits (e = 1).
+ *
+ * Given perihelion distance q [AU] and time of perihelion tp [JD],
+ * returns [trueAnomaly, radius] at the given Julian date, or null
+ * if the computation fails.
+ *
+ * Uses the standard cubic form:  W = tan(ν/2)/2 + tan³(ν/2)/6
+ * where W = sqrt(GM_sun / (2 q³)) · (t − tp),
+ * with GM_sun in AU³/day² = k² (k = 0.01720209895 rad/day, Gaussian gravitational constant).
+ */
+export function solveBarker(q: number, tp: number, jd: number): { nu: number; r: number } | null {
+	const k = 0.01720209895; // Gaussian gravitational constant [AU^(3/2) / day]
+	const dt = jd - tp; // days since perihelion
+	const W = (k * dt) / (Math.sqrt(2) * Math.pow(q, 1.5));
+
+	// Solve W = s + s³/3 where s = tan(ν/2), i.e. 3W = 3s + s³
+	// Use the real cube-root solution (Barker's formula):
+	// s = 2 cot(2 arctan(cbrt(3W)))  — but the direct cubic solution is simpler:
+	const y = Math.cbrt(3 * W + Math.sqrt(1 + 9 * W * W));
+	const s = y - 1 / y; // tan(ν/2)
+
+	const nu = 2 * Math.atan(s);
+	const r = q * (1 + s * s); // r = q(1 + tan²(ν/2)) = 2q/(1+cos ν)
+
+	if (!isFinite(nu) || !isFinite(r) || r <= 0) return null;
+	return { nu, r };
+}
+
+/**
  * Rotate orbital-plane position (xOrb, yOrb) to Three.js coordinates.
  * Shared by elliptical and hyperbolic paths.
  */
@@ -91,13 +120,30 @@ export function orbitalElementsToPosition(
 	const { a, e, i, om, w, ma, n, epoch } = el;
 
 	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n)) {
-		// console.warn(`NaN in orbital elements: a=${a} e=${e} ma=${ma} n=${n}`);
+		console.warn(`NaN in orbital elements: a=${a} e=${e} ma=${ma} n=${n}`);
 		return null;
 	}
 
 	// Propagate mean anomaly from epoch to requested date
 	const dt = dateToJD(date) - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
+
+	// Near-parabolic orbits (|e − 1| < 0.01): the hyperbolic/elliptical Kepler
+	// solvers are ill-conditioned here (denominator e·cosh(H)−1 ≈ 0 causes
+	// Newton-Raphson to overshoot). Fall back to Barker's equation with
+	// q and tp derived from the standard elements.
+	// See spkid-1001113 C/1962 C1 (Seki-Lines)
+	if (Math.abs(e - 1) < 0.01) {
+		const q = Math.abs(a) * Math.abs(1 - e); // works for both e<1 and e>1
+		const tp = n !== 0 ? epoch - ma / n : epoch; // tp in JD (ma in deg, n in deg/day)
+		const jd = dateToJD(date);
+		const result = solveBarker(q, tp, jd);
+		if (!result) return null;
+		const xOrb = result.r * Math.cos(result.nu);
+		const yOrb = result.r * Math.sin(result.nu);
+		if (!isFinite(xOrb) || !isFinite(yOrb)) return null;
+		return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+	}
 
 	let nu: number;
 	let r: number;
@@ -113,12 +159,12 @@ export function orbitalElementsToPosition(
 		// Hyperbolic orbit (a < 0, e > 1; also covers near-parabolic e ≈ 1)
 		const H = solveKeplerHyperbolic(M, e);
 		if (!isFinite(H)) {
-			// console.warn(`solveKeplerHyperbolic overflow: M=${M} e=${e}`);
+			console.warn(`solveKeplerHyperbolic overflow: M=${M} e=${e}`);
 			return null;
 		}
 		const denom = e * Math.cosh(H) - 1;
 		if (Math.abs(denom) < 1e-15) {
-			// console.warn(`Hyperbolic denom near zero: H=${H} e=${e} denom=${denom}`);
+			console.warn(`Hyperbolic denom near zero: H=${H} e=${e} denom=${denom}`);
 			return null;
 		}
 		const sinNu = (Math.sqrt(e * e - 1) * Math.sinh(H)) / denom;
@@ -131,11 +177,65 @@ export function orbitalElementsToPosition(
 	const xOrb = r * Math.cos(nu);
 	const yOrb = r * Math.sin(nu);
 	if (!isFinite(xOrb) || !isFinite(yOrb)) {
-		// console.warn(`Non-finite orbital position: r=${r} nu=${nu} xOrb=${xOrb} yOrb=${yOrb} a=${a} e=${e}`);
+		console.warn(
+			`Non-finite orbital position: r=${r} nu=${nu} xOrb=${xOrb} yOrb=${yOrb} a=${a} e=${e}`
+		);
 		return null;
 	}
 
 	return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+}
+
+/**
+ * Convert parabolic orbital elements to Cartesian position using Barker's equation.
+ * Requires el.q (perihelion distance) and el.tp (time of perihelion).
+ */
+export function parabolicToPosition(
+	el: OrbitalElements,
+	date: Date = new Date()
+): [number, number, number] | null {
+	const { q, tp, i, om, w } = el;
+	if (q == null || tp == null || !isFinite(q) || !isFinite(tp)) {
+		return null;
+	}
+
+	const jd = dateToJD(date);
+	const result = solveBarker(q, tp, jd);
+	if (!result) return null;
+
+	const xOrb = result.r * Math.cos(result.nu);
+	const yOrb = result.r * Math.sin(result.nu);
+	if (!isFinite(xOrb) || !isFinite(yOrb)) return null;
+
+	return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+}
+
+/**
+ * Generate points along a parabolic trajectory for rendering orbit lines.
+ * Returns an open curve in Three.js coordinates.
+ * Samples uniformly in true anomaly, capped at rMaxAU from the focus.
+ */
+export function orbitalElementsToParabola(
+	el: OrbitalElements,
+	numPoints = 512,
+	rMaxAU = 50
+): [number, number, number][] {
+	const q = el.q ?? el.a;
+	if (!isFinite(q) || q <= 0) return [];
+
+	// r = 2q / (1 + cos ν), so cos(νMax) = 2q/rMax - 1
+	const cosNuMax = Math.max((2 * q) / rMaxAU - 1, -0.999);
+	const nuMax = Math.acos(cosNuMax);
+
+	const points: [number, number, number][] = [];
+	for (let j = 0; j <= numPoints; j++) {
+		const nu = -nuMax + (2 * nuMax * j) / numPoints;
+		const r = (2 * q) / (1 + Math.cos(nu));
+		const xOrb = r * Math.cos(nu);
+		const yOrb = r * Math.sin(nu);
+		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om));
+	}
+	return points;
 }
 
 /**
@@ -198,13 +298,17 @@ export function orbitalElementsToHyperbola(
 }
 
 /**
- * Generate orbit/trajectory curve points, dispatching to ellipse or hyperbola
- * based on eccentricity.
+ * Generate orbit/trajectory curve points, dispatching to ellipse, parabola,
+ * or hyperbola based on eccentricity.
  */
 export function orbitalElementsToCurve(
 	el: OrbitalElements,
 	numPoints = 512
 ): [number, number, number][] {
+	if (el.q != null || Math.abs(el.e - 1) < 0.01) {
+		const q = el.q ?? Math.abs(el.a) * Math.abs(1 - el.e);
+		return orbitalElementsToParabola({ ...el, q }, numPoints);
+	}
 	if (el.e >= 1) return orbitalElementsToHyperbola(el, numPoints);
 	return orbitalElementsToEllipse(el, numPoints);
 }

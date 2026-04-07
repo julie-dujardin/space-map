@@ -55,6 +55,7 @@
 	"type_planet": "كوكب",
 	"type_spacecraft": "مركبة فضائية",
 	"type_star": "نجم",
+	"my_location": "موقعي",
 	"property_name_absolute_magnitude": "القدر المطلق",
 	"property_name_apparent_magnitude": "القدر الظاهري",
 	"property_name_asteroid_family": "عائلة الكويكبات",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "طن",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "يوغ",
-	"unit_symbol_zettagram": "زتغ",
-	"my_location": "موقعي"
+	"unit_symbol_zettagram": "زتغ"
 }

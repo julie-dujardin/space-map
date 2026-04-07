@@ -35,6 +35,7 @@ _SBDB_FIELDS = (
     "PC",
     "first_obs",
     "mass_kg",
+    "condition_code",
 )
 
 

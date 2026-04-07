@@ -30,7 +30,10 @@ function filterFinitePositions(bodies: PositionedBody[]): PositionedBody[] {
 	return bodies.filter((b) => {
 		const [x, y, z] = b.position;
 		if (isF32Safe(x) && isF32Safe(y) && isF32Safe(z)) return true;
-		// console.warn(`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`, b.position);
+		console.warn(
+			`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`,
+			b.position
+		);
 		return false;
 	});
 }

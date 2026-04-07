@@ -1,5 +1,5 @@
 import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
-import { orbitalElementsToPosition } from '$lib/math/kepler';
+import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/kepler';
 import { fetchElements, type ElementColumns } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
@@ -8,14 +8,19 @@ import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/t
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
 
+/** Zone directory name for parabolic comets (OrbitClass.PAR.name in Python). */
+const PARABOLIC_ZONE = 'PAR';
+
 function columnarToBody(
 	cols: ElementColumns,
 	idx: number,
 	labels: Map<number, string>,
 	flags: Map<number, number>,
-	idMap: Map<number, string>
+	idMap: Map<number, string>,
+	zone: string
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
+	const isParabolic = zone === PARABOLIC_ZONE;
 
 	return {
 		id: idMap.get(idx)!,
@@ -32,7 +37,9 @@ function columnarToBody(
 		w: cols.w[idx],
 		ma: cols.ma[idx],
 		n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
-		epoch: cols.epochJd[idx]
+		epoch: cols.epochJd[idx],
+		// Parabolic comets: binary encodes q in the 'a' slot and tp in the 'ma' slot
+		...(isParabolic ? { q: cols.a[idx], tp: cols.ma[idx] } : {})
 	};
 }
 
@@ -86,12 +93,17 @@ export class ChunkLoader {
 			}
 			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
 
-			const body = columnarToBody(cols, idx, labels, flags, idMap);
+			const body = columnarToBody(cols, idx, labels, flags, idMap, zone);
 			const offset =
-				a === 0 ? ([0, 0, 0] as [number, number, number]) : orbitalElementsToPosition(body, date);
+				a === 0
+					? ([0, 0, 0] as [number, number, number])
+					: body.q != null
+						? parabolicToPosition(body, date)
+						: orbitalElementsToPosition(body, date);
 			if (!offset) {
-				// TODO: fix orbit calculation
-				// console.warn(`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`);
+				console.warn(
+					`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`
+				);
 				continue;
 			}
 			const pos: [number, number, number] = [

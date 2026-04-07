@@ -55,6 +55,7 @@
 	"type_planet": "планета",
 	"type_spacecraft": "космический аппарат",
 	"type_star": "звезда",
+	"my_location": "Моё местоположение",
 	"property_name_absolute_magnitude": "абсолютная звёздная величина",
 	"property_name_apparent_magnitude": "видимая звёздная величина",
 	"property_name_asteroid_family": "семейство астероидов",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "т",
 	"unit_symbol_year": "год",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg",
-	"my_location": "Моё местоположение"
+	"unit_symbol_zettagram": "Zg"
 }

@@ -170,7 +170,10 @@ export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture)
 			Math.abs(z) <= F32_MAX
 		)
 			return true;
-		// console.warn(`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`, b.position);
+		console.warn(
+			`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`,
+			b.position
+		);
 		return false;
 	});
 	const positions = new Float32Array(valid.length * 3);
