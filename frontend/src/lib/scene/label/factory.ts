@@ -49,22 +49,33 @@ export function createLabel(
 	}
 	el.appendChild(halo);
 
+	// Click-vs-drag: record pointer position on pointerdown, then compare
+	// with the click event's coordinates (which reflect the mouseup position).
+	// This avoids pointermove which stops firing when the pointer leaves the
+	// small label element during a drag.
+	let downX = 0;
+	let downY = 0;
+	el.addEventListener('pointerdown', (e: PointerEvent) => {
+		downX = e.clientX;
+		downY = e.clientY;
+	});
+	const guardedClick = (e: MouseEvent) => {
+		e.stopPropagation();
+		const dx = e.clientX - downX;
+		const dy = e.clientY - downY;
+		if (dx * dx + dy * dy <= 9) onClick();
+	};
+
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) {
 		const span = document.createElement('span');
 		span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
 		span.textContent = name;
-		span.addEventListener('click', (e) => {
-			e.stopPropagation();
-			onClick();
-		});
+		span.addEventListener('click', guardedClick);
 		el.appendChild(span);
 	}
 
-	el.addEventListener('click', (e) => {
-		e.stopPropagation();
-		onClick();
-	});
+	el.addEventListener('click', guardedClick);
 	el.addEventListener('mouseenter', () => {
 		halo.style.transform = 'scale(1.15)';
 		document.body.style.cursor = 'pointer';

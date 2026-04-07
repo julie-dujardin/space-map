@@ -116,15 +116,35 @@ export function buildMajorBodies(
 				},
 				{ passive: false }
 			);
-			// Forward touch pointerdown events so OrbitControls sees every finger for pinch-zoom.
-			// Both fingers must reach the canvas — in crowded areas both may land on labels.
-			// Mouse events are NOT forwarded: setPointerCapture would steal the pointerup from
-			// the label and prevent its click from firing. Touch-taps are fine because the
-			// browser synthesizes click from touch location regardless of pointer capture.
+			// Forward pointer events so OrbitControls can pan/pinch from labels.
+			// Touch: forward immediately (pinch-zoom needs both fingers fast).
+			// Mouse: defer until pointer moves >3px so taps still fire click on
+			// the label. Once forwarded, setPointerCapture on the canvas steals
+			// subsequent events, which suppresses the label's click
 			label.element.addEventListener('pointerdown', (e: PointerEvent) => {
 				if (e.pointerType === 'touch') {
 					rendererElement.dispatchEvent(new PointerEvent('pointerdown', e));
+					return;
 				}
+				const downX = e.clientX;
+				const downY = e.clientY;
+				const savedDown = e; // keep the original event for deferred forwarding
+				const onMove = (me: PointerEvent) => {
+					const dx = me.clientX - downX;
+					const dy = me.clientY - downY;
+					if (dx * dx + dy * dy > 9) {
+						cleanup();
+						rendererElement.dispatchEvent(new PointerEvent('pointerdown', savedDown));
+						rendererElement.dispatchEvent(new PointerEvent('pointermove', me));
+					}
+				};
+				const onUp = () => cleanup();
+				const cleanup = () => {
+					window.removeEventListener('pointermove', onMove);
+					window.removeEventListener('pointerup', onUp);
+				};
+				window.addEventListener('pointermove', onMove);
+				window.addEventListener('pointerup', onUp);
 			});
 			group.add(label);
 		}
