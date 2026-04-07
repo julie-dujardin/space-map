@@ -19,14 +19,14 @@ export interface KeplerianColumns {
 	parentId: Int32Array;
 	scale: Uint8Array;
 	epochJd: Float64Array;
-	a: Float64Array;
-	e: Float64Array;
-	i: Float64Array;
-	om: Float64Array;
-	w: Float64Array;
-	ma: Float64Array;
-	n: Float64Array;
-	radiusKm: Float64Array;
+	a: Float32Array;
+	e: Float32Array;
+	i: Float32Array;
+	om: Float32Array;
+	w: Float32Array;
+	ma: Float32Array;
+	n: Float32Array;
+	radiusKm: Float32Array;
 	rowCount: number;
 }
 
@@ -37,13 +37,13 @@ export interface ParabolicColumns {
 	parentId: Int32Array;
 	scale: Uint8Array;
 	epochJd: Float64Array;
-	q: Float64Array;
-	e: Float64Array;
-	i: Float64Array;
-	om: Float64Array;
-	w: Float64Array;
+	q: Float32Array;
+	e: Float32Array;
+	i: Float32Array;
+	om: Float32Array;
+	w: Float32Array;
 	tp: Float64Array;
-	radiusKm: Float64Array;
+	radiusKm: Float32Array;
 	rowCount: number;
 }
 
@@ -130,24 +130,28 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	} = parseSharedColumns(buffer, rowCount);
 	let offset = startOffset;
 
-	// Columns 4–11: Keplerian float64
+	// Column 4: epoch_jd (float64 — Julian Dates need full precision)
 	const epochJd = new Float64Array(buffer, offset, rowCount);
 	offset += rowCount * 8;
-	const a = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const e = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const i = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const om = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const w = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const ma = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const n = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const radiusKm = new Float64Array(buffer, offset, rowCount);
+
+	// Columns 5–11: float32 orbital elements
+	const a = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const e = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const i = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const om = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const w = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const ma = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const n = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+
+	// Column 12: radius_km (float32)
+	const radiusKm = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'keplerian',
@@ -178,22 +182,30 @@ function parseParabolicElements(buffer: ArrayBuffer, rowCount: number): Paraboli
 	} = parseSharedColumns(buffer, rowCount);
 	let offset = startOffset;
 
-	// Columns 4–10: parabolic float64 (epoch_jd, q, e, i, om, w, tp)
+	// Column 4: epoch_jd (float64 — Julian Dates need full precision)
 	const epochJd = new Float64Array(buffer, offset, rowCount);
 	offset += rowCount * 8;
-	const q = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const e = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const i = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const om = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
-	const w = new Float64Array(buffer, offset, rowCount);
-	offset += rowCount * 8;
+
+	// Column 5: q (float32, perihelion distance AU)
+	const q = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+
+	// Columns 6–9: e, i, om, w (float32)
+	const e = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const i = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const om = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const w = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+
+	// Column 10: tp (float64 — Julian Dates need full precision)
 	const tp = new Float64Array(buffer, offset, rowCount);
 	offset += rowCount * 8;
-	const radiusKm = new Float64Array(buffer, offset, rowCount);
+
+	// Column 11: radius_km (float32)
+	const radiusKm = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'parabolic',

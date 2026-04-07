@@ -98,16 +98,16 @@ class TestWriteElements:
         write_elements([obj], out)
 
         raw = gzip.decompress(out.read_bytes())
-        # radius_km is column 12 (last float64 column)
+        # radius_km is column 12 (last float32 column)
         # Compute offset: header + 13 columns of data for 1 row
         # col0: int32(1) + pad to 8 = 8
         # col1: uint8(1) + pad to 8 = 8
         # col2: int32(1) + pad to 8 = 8
         # col3: uint8(1) + pad to 8 = 8
-        # cols 4-11: 8 x float64(1) = 8 x 8 = 64
-        # col12: float64(1) = 8
-        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 64  # start of col 12
-        (radius,) = struct.unpack_from("<d", raw, offset)
+        # col4: epoch_jd float64(1) = 8
+        # cols 5-11: 7 x float32(1) + pad to 8 = 7 x 8 = 56
+        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56  # start of col 12
+        (radius,) = struct.unpack_from("<f", raw, offset)
         assert radius == 16.5  # 33.0 / 2
 
     def test_radius_override(self, tmp_path):
@@ -118,8 +118,8 @@ class TestWriteElements:
         write_elements([obj], out, radius_km_overrides={"naif-399": 6371.0})
 
         raw = gzip.decompress(out.read_bytes())
-        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 64
-        (radius,) = struct.unpack_from("<d", raw, offset)
+        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56
+        (radius,) = struct.unpack_from("<f", raw, offset)
         assert radius == 6371.0
 
     def test_missing_radius(self, tmp_path):
@@ -130,8 +130,8 @@ class TestWriteElements:
         write_elements([obj], out)
 
         raw = gzip.decompress(out.read_bytes())
-        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 64
-        (radius,) = struct.unpack_from("<d", raw, offset)
+        offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56
+        (radius,) = struct.unpack_from("<f", raw, offset)
         assert math.isnan(radius)
 
 
@@ -187,18 +187,15 @@ class TestWriteParabolicElements:
         # col2: int32(1) + pad = 8
         # col3: uint8(1) + pad = 8
         # col4: epoch_jd float64 = 8
-        # col5: q float64 = 8
-        # col6: e float64 = 8
-        # col7: i float64 = 8
-        # col8: om float64 = 8
-        # col9: w float64 = 8
+        # col5: q float32(1) + pad = 8
+        # col6-9: e,i,om,w float32(1) + pad = 4 x 8 = 32
         # col10: tp float64 = 8
-        # col11: radius_km float64 = 8
+        # col11: radius_km float32(1) + pad = 8
         q_offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8  # after shared + epoch_jd
-        (q,) = struct.unpack_from("<d", raw, q_offset)
-        assert q == 2.3
+        (q,) = struct.unpack_from("<f", raw, q_offset)
+        assert abs(q - 2.3) < 1e-6
 
-        tp_offset = q_offset + 8 * 5  # skip q, e, i, om, w
+        tp_offset = q_offset + 8 + 32  # skip q + e,i,om,w
         (tp,) = struct.unpack_from("<d", raw, tp_offset)
         assert tp == 2460100.5
 

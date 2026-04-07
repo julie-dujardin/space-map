@@ -1,4 +1,4 @@
-# Export Format (v1)
+# Export Format (v2)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -56,14 +56,14 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type   | Field     |
 |--------|--------|-----------|
 | 0      | char[4]| Magic `SMAP` |
-| 4      | uint16 | Version (1) |
+| 4      | uint16 | Version (2) |
 | 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic |
 | 8      | uint32 | Row count |
 | 12     | uint32 | Reserved  |
 
 ### Keplerian columns (format type 0)
 
-Each sub-byte-width column is padded to 8-byte alignment. Float64 columns are naturally aligned.
+Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day precision; other numeric columns use float32 (~7 significant digits).
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
@@ -72,14 +72,14 @@ Each sub-byte-width column is padded to 8-byte alignment. Float64 columns are na
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
 | 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
-| 5 | a           | float64 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale |
-| 6 | e           | float64 | NaN     | Eccentricity |
-| 7 | i           | float64 | NaN     | Inclination (deg) |
-| 8 | om          | float64 | NaN     | Longitude of ascending node (deg) |
-| 9 | w           | float64 | NaN     | Argument of perihelion (deg) |
-| 10| ma          | float64 | NaN     | Mean anomaly (deg) |
-| 11| n           | float64 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
-| 12| radius_km   | float64 | NaN     | Physical radius (km) |
+| 5 | a           | float32 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale |
+| 6 | e           | float32 | NaN     | Eccentricity |
+| 7 | i           | float32 | NaN     | Inclination (deg) |
+| 8 | om          | float32 | NaN     | Longitude of ascending node (deg) |
+| 9 | w           | float32 | NaN     | Argument of perihelion (deg) |
+| 10| ma          | float32 | NaN     | Mean anomaly (deg) |
+| 11| n           | float32 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
+| 12| radius_km   | float32 | NaN     | Physical radius (km) |
 
 Coordinate frame: ecliptic J2000.
 
@@ -107,18 +107,18 @@ To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`,
 
 Used for the `PAR` zone. Parabolic comets (`e = 1`) lack a semi-major axis and mean motion; they use perihelion distance and time of perihelion instead.
 
-Columns 0–3 are identical to Keplerian. The float64 columns differ:
+Columns 0–3 are identical to Keplerian. Julian Dates use float64; other columns use float32:
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
 | 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
-| 5 | q           | float64 | NaN     | Perihelion distance (AU) |
-| 6 | e           | float64 | NaN     | Eccentricity (= 1.0) |
-| 7 | i           | float64 | NaN     | Inclination (deg) |
-| 8 | om          | float64 | NaN     | Longitude of ascending node (deg) |
-| 9 | w           | float64 | NaN     | Argument of perihelion (deg) |
+| 5 | q           | float32 | NaN     | Perihelion distance (AU) |
+| 6 | e           | float32 | NaN     | Eccentricity (= 1.0) |
+| 7 | i           | float32 | NaN     | Inclination (deg) |
+| 8 | om          | float32 | NaN     | Longitude of ascending node (deg) |
+| 9 | w           | float32 | NaN     | Argument of perihelion (deg) |
 | 10| tp          | float64 | NaN     | Time of perihelion passage (Julian Date, TDB) |
-| 11| radius_km   | float64 | NaN     | Physical radius (km) |
+| 11| radius_km   | float32 | NaN     | Physical radius (km) |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
 

@@ -66,17 +66,20 @@ def write_elements(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    # Columns 4–11: float64 Keplerian orbital elements
-    float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
-    for attr in float_attrs:
-        _write_float64(
+    # Column 4: epoch_jd (float64 — Julian Dates need full precision)
+    _write_float64(buf, n, [_float_value(o, "epoch_jd") for o in objects])
+
+    # Columns 5–11: float32 Keplerian orbital elements
+    float32_attrs = ["a", "e", "i", "om", "w", "ma", "n"]
+    for attr in float32_attrs:
+        _write_float32(
             buf,
             n,
             [_float_value(o, attr) for o in objects],
         )
 
-    # Column 12: radius_km
-    _write_float64(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+    # Column 12: radius_km (float32)
+    _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -117,21 +120,21 @@ def write_parabolic_elements(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    # Column 4: epoch_jd
+    # Column 4: epoch_jd (float64 — Julian Date needs full precision)
     _write_float64(buf, n, [_required_float(o, "epoch_jd") for o in objects])
 
-    # Column 5: q (perihelion distance, AU) — from SBDB
-    _write_float64(buf, n, [_required_sbdb_float(o, "q") for o in objects])
+    # Column 5: q (float32, perihelion distance AU) — from SBDB
+    _write_float32(buf, n, [_required_sbdb_float(o, "q") for o in objects])
 
-    # Columns 6–9: e, i, om, w
+    # Columns 6–9: e, i, om, w (float32)
     for attr in ("e", "i", "om", "w"):
-        _write_float64(buf, n, [_required_float(o, attr) for o in objects])
+        _write_float32(buf, n, [_required_float(o, attr) for o in objects])
 
-    # Column 10: tp (time of perihelion, JD TDB) — from SBDB
+    # Column 10: tp (float64 — Julian Date needs full precision) — from SBDB
     _write_float64(buf, n, [_required_sbdb_float(o, "tp") for o in objects])
 
-    # Column 11: radius_km
-    _write_float64(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+    # Column 11: radius_km (float32)
+    _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -200,6 +203,11 @@ def _write_int32(f, n: int, values: list[int]) -> None:
 def _write_uint8(f, n: int, values: list[int]) -> None:
     f.write(struct.pack(f"<{n}B", *values))
     _pad8(f, n)
+
+
+def _write_float32(f, n: int, values: list[float]) -> None:
+    f.write(struct.pack(f"<{n}f", *values))
+    _pad8(f, n * 4)
 
 
 def _write_float64(f, n: int, values: list[float]) -> None:

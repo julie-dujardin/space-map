@@ -5,7 +5,7 @@ import struct
 from space_map_data.models.object import ObjectType, ElementsScale
 
 MAGIC = b"SMAP"
-VERSION = 1
+VERSION = 2
 HEADER_SIZE = 16  # must be 8-byte aligned
 
 # Format types (uint16 at header offset 6)
