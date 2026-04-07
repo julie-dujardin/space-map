@@ -117,15 +117,10 @@ export function buildMajorBodies(
 				{ passive: false }
 			);
 			// Forward pointer events so OrbitControls can pan/pinch from labels.
-			// Touch: forward immediately (pinch-zoom needs both fingers fast).
-			// Mouse: defer until pointer moves >3px so taps still fire click on
+			// Defer until pointer moves >3px so taps still fire click on
 			// the label. Once forwarded, setPointerCapture on the canvas steals
 			// subsequent events, which suppresses the label's click
 			label.element.addEventListener('pointerdown', (e: PointerEvent) => {
-				if (e.pointerType === 'touch') {
-					rendererElement.dispatchEvent(new PointerEvent('pointerdown', e));
-					return;
-				}
 				const downX = e.clientX;
 				const downY = e.clientY;
 				const savedDown = e; // keep the original event for deferred forwarding
