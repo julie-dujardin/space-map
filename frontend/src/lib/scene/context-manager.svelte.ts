@@ -74,11 +74,11 @@ async function createPlaceholderBody(
 
 	const data: BodyData = {
 		id: targetId,
-		name: global.name ?? null,
+		name: global.name ?? global.sbdb_primary_designation ?? global.provisional_designation ?? null,
 		objectType: parseObjectType(global.type),
 		parentId: `naif-${orbit.parent_naif_id}`,
 		radiusKm: (global.sbdb?.diameter ?? 0) / 2,
-		objectFileFlag: 1,
+		objectFileFlag: detail.localized ? 1 : 0,
 		a: isPlanetScale ? orbit.a / AU_KM : orbit.a,
 		e: orbit.e,
 		i: orbit.i,

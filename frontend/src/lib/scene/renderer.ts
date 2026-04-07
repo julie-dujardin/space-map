@@ -162,24 +162,7 @@ export class SceneRenderer {
 		this.buildScene();
 
 		// If focused body has no visual objects (e.g. placeholder from global file), build them.
-		// Skip barycenters/Lagrange points — they are structural, not renderable.
-		if (
-			focusBody &&
-			!this.bodyObjects.has(focusBody.data.id) &&
-			focusBody.data.objectType !== ObjectType.BARYCENTER &&
-			focusBody.data.objectType !== ObjectType.LAGRANGE_POINT
-		) {
-			buildMajorBodies(
-				[focusBody],
-				this.scene,
-				this.clickables,
-				this.meshToBody,
-				this.bodyObjects,
-				canvas,
-				(body) => this.handleFocus(body)
-			);
-			buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
-		}
+		if (focusBody) this.ensureBodyObjects(focusBody);
 
 		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
@@ -627,14 +610,13 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
-		this.ensureBodyObjects(body);
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(camWorld, body.position);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 	}
 
-	/** Build mesh, label, and halo for a body that only existed as a point-cloud dot. */
+	/** Build mesh, label, halo, and orbit line for a body that only existed as a point-cloud dot. */
 	private ensureBodyObjects(body: PositionedBody): void {
 		if (
 			this.bodyObjects.has(body.data.id) ||
@@ -642,6 +624,12 @@ export class SceneRenderer {
 			body.data.objectType === ObjectType.LAGRANGE_POINT
 		)
 			return;
+		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
+		if (!body.orbitElements) {
+			body.orbitElements = body.data;
+			const parent = this.bodyObjects.get(body.data.parentId);
+			if (parent) body.orbitCenter = [...parent.body.position];
+		}
 		buildMajorBodies(
 			[body],
 			this.scene,
@@ -687,6 +675,7 @@ export class SceneRenderer {
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
+		this.ensureBodyObjects(body);
 		this.focusOriginWorld = [...this.focusTruePos];
 		this.focusTargetWorld = [...body.position];
 		this.focusStartTime = performance.now();
