@@ -531,12 +531,86 @@ export class SceneRenderer {
 			-((e.clientY - rect.top) / rect.height) * 2 + 1
 		);
 		this.raycaster.setFromCamera(this.pointer, this.camera);
+
+		// Check mesh hits (planets, stars, etc.)
 		const hits = this.raycaster.intersectObjects(this.clickables);
+		let bestBody: PositionedBody | undefined;
+		let bestDist = Infinity;
 		if (hits.length > 0) {
 			const body = this.meshToBody.get(hits[0].object as Mesh);
-			if (body && body.data.id !== this.focusedBody?.data.id) this.handleFocus(body);
+			if (body) {
+				bestBody = body;
+				bestDist = hits[0].distance;
+			}
+		}
+
+		// Check point cloud bodies (asteroids, spacecraft, moons shown as dots)
+		const pointHit = this.pickPointCloudBody();
+		if (pointHit && pointHit.distance < bestDist) {
+			bestBody = pointHit.body;
+		}
+
+		if (bestBody && bestBody.data.id !== this.focusedBody?.data.id) {
+			this.handleFocus(bestBody);
 		}
 	};
+
+	/** Find the closest visible point-cloud body to the current pointer (NDC). */
+	private pickPointCloudBody(): { body: PositionedBody; distance: number } | null {
+		const SCREEN_THRESHOLD = 8; // pixels
+		const w = this.renderer.domElement.clientWidth;
+		const h = this.renderer.domElement.clientHeight;
+		// Convert NDC pointer to pixel coords
+		const px = (this.pointer.x + 1) * 0.5 * w;
+		const py = (1 - this.pointer.y) * 0.5 * h;
+
+		const v = this._tmpV3;
+		const [fx, fy, fz] = this.focusTruePos;
+		let bestBody: PositionedBody | undefined;
+		let bestScreenDist = SCREEN_THRESHOLD;
+		let bestWorldDist = Infinity;
+
+		const testBody = (body: PositionedBody): void => {
+			// Project body position into camera-relative coordinates
+			v.set(body.position[0] - fx, body.position[1] - fy, body.position[2] - fz);
+			v.project(this.camera);
+			// Behind camera
+			if (v.z < 0 || v.z > 1) return;
+			const sx = (v.x + 1) * 0.5 * w;
+			const sy = (1 - v.y) * 0.5 * h;
+			const screenDist = Math.hypot(sx - px, sy - py);
+			if (screenDist < bestScreenDist) {
+				bestScreenDist = screenDist;
+				bestWorldDist = v.length();
+				bestBody = body;
+			} else if (screenDist === bestScreenDist && v.length() < bestWorldDist) {
+				bestWorldDist = v.length();
+				bestBody = body;
+			}
+		};
+
+		// Visible asteroid zones
+		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
+			if (!this.ctx.isAsteroidGroupVisible(zone)) continue;
+			for (const body of bodies) testBody(body);
+		}
+
+		// Visible spacecraft groups
+		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
+			if (!this.ctx.isSpacecraftGroupVisible(gid)) continue;
+			for (const body of bodies) testBody(body);
+		}
+
+		// Visible moon point-cloud groups (moons shown as dots when zoomed out)
+		for (const body of this.ctx.majorBodies) {
+			if (body.data.objectType !== ObjectType.MOON) continue;
+			if (!this.ctx.isMoonGroupVisible(body.data.parentId)) continue;
+			testBody(body);
+		}
+
+		if (!bestBody) return null;
+		return { body: bestBody, distance: bestWorldDist };
+	}
 
 	private maybeLoadTexture(body: PositionedBody): void {
 		const id = body.data.id;
@@ -547,15 +621,38 @@ export class SceneRenderer {
 			loadBodyTexture(
 				id,
 				bo.mesh.material as import('three').MeshStandardMaterial,
-				this.textureLoader
+				this.textureLoader,
+				body.data.objectFileFlag
 			);
 	}
 
 	private handleFocus(body: PositionedBody): void {
+		this.ensureBodyObjects(body);
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(camWorld, body.position);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
+	}
+
+	/** Build mesh, label, and halo for a body that only existed as a point-cloud dot. */
+	private ensureBodyObjects(body: PositionedBody): void {
+		if (
+			this.bodyObjects.has(body.data.id) ||
+			body.data.objectType === ObjectType.BARYCENTER ||
+			body.data.objectType === ObjectType.LAGRANGE_POINT
+		)
+			return;
+		buildMajorBodies(
+			[body],
+			this.scene,
+			this.clickables,
+			this.meshToBody,
+			this.bodyObjects,
+			this.renderer.domElement,
+			(b) => this.handleFocus(b)
+		);
+		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
+		this.repositionAll();
 	}
 
 	// --- Public API ---

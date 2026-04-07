@@ -294,9 +294,11 @@ export function rebuildMinorPointClouds(
 export async function loadBodyTexture(
 	fileId: string,
 	material: MeshStandardMaterial,
-	textureLoader: TextureLoader
+	textureLoader: TextureLoader,
+	objectFileFlag = 1
 ): Promise<void> {
-	const detail = await fetchObjectDetail(fileId);
+	if (objectFileFlag === 0) return;
+	const detail = await fetchObjectDetail(fileId, objectFileFlag);
 	if (!detail.global?.map_texture_available) return;
 	const texture = await new Promise<Texture>((resolve, reject) => {
 		textureLoader.load(`/data/v1/textures/${fileId}/low.webp`, resolve, undefined, reject);
