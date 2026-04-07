@@ -524,7 +524,7 @@ export class SceneRenderer {
 		const hits = this.raycaster.intersectObjects(this.clickables);
 		if (hits.length > 0) {
 			const body = this.meshToBody.get(hits[0].object as Mesh);
-			if (body) this.handleFocus(body);
+			if (body && body.data.id !== this.focusedBody?.data.id) this.handleFocus(body);
 		}
 	};
 
