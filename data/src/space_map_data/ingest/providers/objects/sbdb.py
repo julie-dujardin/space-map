@@ -312,7 +312,7 @@ def _parse_chunk(
                         "ma": float_or_none(row["ma"]),
                         "n": float_or_none(row["n"]),
                         "orbital_source": OrbitalSource.sbdb.value,
-                        "parent_naif_id": 0,
+                        "parent_naif_id": 10,  # SBDB is heliocentric, parent is Sun (NAIF ID 10)
                     },
                 }
             )
