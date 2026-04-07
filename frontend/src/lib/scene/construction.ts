@@ -21,6 +21,30 @@ import { createLabel, getLabelVariant } from './label/factory';
 import { makeCircleTexture, makeOrbitLine, makePointCloud } from './builders';
 import type { BodyObjects } from './types';
 
+const F32_MAX = 3.4028235e38;
+function isF32Safe(v: number): boolean {
+	return isFinite(v) && Math.abs(v) <= F32_MAX;
+}
+
+function filterFinitePositions(bodies: PositionedBody[]): PositionedBody[] {
+	return bodies.filter((b) => {
+		const [x, y, z] = b.position;
+		if (isF32Safe(x) && isF32Safe(y) && isF32Safe(z)) return true;
+		// console.warn(`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`, b.position);
+		return false;
+	});
+}
+
+function positionsArray(bodies: PositionedBody[]): Float32Array {
+	const arr = new Float32Array(bodies.length * 3);
+	for (let i = 0; i < bodies.length; i++) {
+		arr[i * 3] = bodies[i].position[0];
+		arr[i * 3 + 1] = bodies[i].position[1];
+		arr[i * 3 + 2] = bodies[i].position[2];
+	}
+	return arr;
+}
+
 export function buildMajorBodies(
 	bodies: PositionedBody[],
 	scene: Scene,
@@ -192,17 +216,15 @@ export function rebuildMinorPointClouds(
 	// Asteroid clouds — per zone, reuse existing Points or create new ones
 	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
 		if (bodies.length === 0) continue;
-		const posArr = new Float32Array(bodies.length * 3);
-		for (let i = 0; i < bodies.length; i++) {
-			posArr[i * 3] = bodies[i].position[0];
-			posArr[i * 3 + 1] = bodies[i].position[1];
-			posArr[i * 3 + 2] = bodies[i].position[2];
-		}
+		const valid = filterFinitePositions(bodies);
 		const existing = asteroidPoints.get(zone);
 		if (existing) {
-			existing.geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
+			existing.geometry.setAttribute(
+				'position',
+				new Float32BufferAttribute(positionsArray(valid), 3)
+			);
 		} else {
-			const pts = makePointCloud(bodies, circleTexture);
+			const pts = makePointCloud(valid, circleTexture);
 			asteroidPoints.set(zone, pts);
 			scene.add(pts);
 		}
@@ -210,17 +232,15 @@ export function rebuildMinorPointClouds(
 
 	// Spacecraft clouds — update existing groups, create new ones
 	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
+		const valid = filterFinitePositions(bodies);
 		const existing = spacecraftPoints.get(groupParentId);
 		if (existing) {
-			const posArr = new Float32Array(bodies.length * 3);
-			for (let i = 0; i < bodies.length; i++) {
-				posArr[i * 3] = bodies[i].position[0];
-				posArr[i * 3 + 1] = bodies[i].position[1];
-				posArr[i * 3 + 2] = bodies[i].position[2];
-			}
-			existing.geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
+			existing.geometry.setAttribute(
+				'position',
+				new Float32BufferAttribute(positionsArray(valid), 3)
+			);
 		} else {
-			const points = makePointCloud(bodies, circleTexture);
+			const points = makePointCloud(valid, circleTexture);
 			spacecraftPoints.set(groupParentId, points);
 			scene.add(points);
 		}

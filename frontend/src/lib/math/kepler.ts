@@ -23,35 +23,40 @@ export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 5
 }
 
 /**
- * Convert orbital elements to Cartesian position [x, y, z] in Three.js coordinates.
- *
- * Input: elements with angles in degrees, semi-major axis in AU.
- * Output: scaled Three.js coordinates where ecliptic plane = XZ plane, Y = up (north ecliptic pole).
+ * Solve the hyperbolic Kepler equation M = e*sinh(H) - H for hyperbolic anomaly H.
+ * Uses Newton-Raphson iteration.
+ * Returns NaN if the solver fails to converge or overflows.
  */
-export function orbitalElementsToPosition(
-	el: OrbitalElements,
-	date: Date = new Date()
+export function solveKeplerHyperbolic(
+	M: number,
+	e: number,
+	tolerance = 1e-10,
+	maxIter = 50
+): number {
+	// Initial guess: for small M use M, for large M use sign(M)*ln(2|M|/e)
+	let H = Math.abs(M) < 1 ? M : Math.sign(M) * Math.log((2 * Math.abs(M)) / e);
+	for (let i = 0; i < maxIter; i++) {
+		const sH = Math.sinh(H);
+		const cH = Math.cosh(H);
+		if (!isFinite(sH) || !isFinite(cH)) return NaN;
+		const dH = (e * sH - H - M) / (e * cH - 1);
+		H -= dH;
+		if (Math.abs(dH) < tolerance) break;
+	}
+	return H;
+}
+
+/**
+ * Rotate orbital-plane position (xOrb, yOrb) to Three.js coordinates.
+ * Shared by elliptical and hyperbolic paths.
+ */
+function orbitalToThreeJS(
+	xOrb: number,
+	yOrb: number,
+	w: number,
+	i: number,
+	om: number
 ): [number, number, number] {
-	const { a, e, i, om, w, ma, n, epoch } = el;
-
-	// Propagate mean anomaly from epoch to requested date
-	const dt = dateToJD(date) - epoch; // days since epoch
-	const M = (ma + n * dt) * DEG2RAD;
-	const E = solveKepler(M, e);
-
-	// True anomaly
-	const sinNu = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
-	const cosNu = (Math.cos(E) - e) / (1 - e * Math.cos(E));
-	const nu = Math.atan2(sinNu, cosNu);
-
-	// Distance from focus
-	const r = a * (1 - e * Math.cos(E));
-
-	// Position in orbital plane
-	const xOrb = r * Math.cos(nu);
-	const yOrb = r * Math.sin(nu);
-
-	// Rotation angles
 	const cosW = Math.cos(w * DEG2RAD);
 	const sinW = Math.sin(w * DEG2RAD);
 	const cosI = Math.cos(i * DEG2RAD);
@@ -71,6 +76,69 @@ export function orbitalElementsToPosition(
 }
 
 /**
+ * Convert orbital elements to Cartesian position [x, y, z] in Three.js coordinates.
+ *
+ * Input: elements with angles in degrees, semi-major axis in AU.
+ * Output: scaled Three.js coordinates where ecliptic plane = XZ plane, Y = up (north ecliptic pole).
+ *
+ * Supports elliptical (e < 1) and hyperbolic (e >= 1) orbits.
+ * For hyperbolic orbits, a is negative (JPL convention).
+ */
+export function orbitalElementsToPosition(
+	el: OrbitalElements,
+	date: Date = new Date()
+): [number, number, number] | null {
+	const { a, e, i, om, w, ma, n, epoch } = el;
+
+	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n)) {
+		// console.warn(`NaN in orbital elements: a=${a} e=${e} ma=${ma} n=${n}`);
+		return null;
+	}
+
+	// Propagate mean anomaly from epoch to requested date
+	const dt = dateToJD(date) - epoch; // days since epoch
+	const M = (ma + n * dt) * DEG2RAD;
+
+	let nu: number;
+	let r: number;
+
+	if (e < 1) {
+		// Elliptical orbit
+		const E = solveKepler(M, e);
+		const sinNu = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
+		const cosNu = (Math.cos(E) - e) / (1 - e * Math.cos(E));
+		nu = Math.atan2(sinNu, cosNu);
+		r = a * (1 - e * Math.cos(E));
+	} else {
+		// Hyperbolic orbit (a < 0, e > 1; also covers near-parabolic e ≈ 1)
+		const H = solveKeplerHyperbolic(M, e);
+		if (!isFinite(H)) {
+			// console.warn(`solveKeplerHyperbolic overflow: M=${M} e=${e}`);
+			return null;
+		}
+		const denom = e * Math.cosh(H) - 1;
+		if (Math.abs(denom) < 1e-15) {
+			// console.warn(`Hyperbolic denom near zero: H=${H} e=${e} denom=${denom}`);
+			return null;
+		}
+		const sinNu = (Math.sqrt(e * e - 1) * Math.sinh(H)) / denom;
+		const cosNu = (e - Math.cosh(H)) / denom;
+		nu = Math.atan2(sinNu, cosNu);
+		r = a * (1 - e * Math.cosh(H)); // a < 0 → r > 0
+	}
+
+	// Position in orbital plane
+	const xOrb = r * Math.cos(nu);
+	const yOrb = r * Math.sin(nu);
+	if (!isFinite(xOrb) || !isFinite(yOrb)) {
+		// console.warn(`Non-finite orbital position: r=${r} nu=${nu} xOrb=${xOrb} yOrb=${yOrb} a=${a} e=${e}`);
+		return null;
+	}
+
+	return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+}
+
+/**
  * Generate points along the full orbit ellipse for rendering orbit lines.
  * Returns array of [x, y, z] in Three.js coordinates.
  */
@@ -87,9 +155,58 @@ export function orbitalElementsToEllipse(
 		const E = (j / numPoints) * 2 * Math.PI; // eccentric anomaly in radians
 		// Kepler's equation: M = E - e*sin(E)
 		const ma = (E - el.e * Math.sin(E)) * (180 / Math.PI);
-		points.push(orbitalElementsToPosition({ ...el, ma, n: 0 }));
+		const pt = orbitalElementsToPosition({ ...el, ma, n: 0 });
+		if (pt) points.push(pt);
 	}
 	return points;
+}
+
+/**
+ * Generate points along a hyperbolic trajectory for rendering orbit lines.
+ * Returns an open curve (not closed) in Three.js coordinates.
+ *
+ * Computes positions directly from the hyperbolic anomaly H, avoiding the
+ * round-trip through mean anomaly and Newton-Raphson that can produce NaN.
+ *
+ * The curve extends to a maximum distance of `rMaxAU` from the focus.
+ */
+export function orbitalElementsToHyperbola(
+	el: OrbitalElements,
+	numPoints = 512,
+	rMaxAU = 50
+): [number, number, number][] {
+	const absA = Math.abs(el.a);
+	// H where r = rMax: r = |a|*(e*cosh(H) - 1), so cosh(H) = (rMax/|a| + 1) / e
+	const coshMax = absA > 0 ? (rMaxAU / absA + 1) / el.e : 100;
+	const Hmax = Math.min(Math.acosh(Math.max(coshMax, 1)), 6); // cap to avoid huge curves
+
+	const points: [number, number, number][] = [];
+	for (let j = 0; j <= numPoints; j++) {
+		const H = -Hmax + (2 * Hmax * j) / numPoints;
+		// Compute true anomaly and radius directly from H
+		const denom = el.e * Math.cosh(H) - 1;
+		if (Math.abs(denom) < 1e-15) continue; // skip degenerate point
+		const sinNu = (Math.sqrt(el.e * el.e - 1) * Math.sinh(H)) / denom;
+		const cosNu = (el.e - Math.cosh(H)) / denom;
+		const nu = Math.atan2(sinNu, cosNu);
+		const r = el.a * (1 - el.e * Math.cosh(H)); // a < 0 → r > 0
+		const xOrb = r * Math.cos(nu);
+		const yOrb = r * Math.sin(nu);
+		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om));
+	}
+	return points;
+}
+
+/**
+ * Generate orbit/trajectory curve points, dispatching to ellipse or hyperbola
+ * based on eccentricity.
+ */
+export function orbitalElementsToCurve(
+	el: OrbitalElements,
+	numPoints = 512
+): [number, number, number][] {
+	if (el.e >= 1) return orbitalElementsToHyperbola(el, numPoints);
+	return orbitalElementsToEllipse(el, numPoints);
 }
 
 /**
@@ -122,5 +239,5 @@ export function satelliteToOffset(sat: {
 		epoch: 0
 	};
 
-	return orbitalElementsToPosition(elements);
+	return orbitalElementsToPosition(elements) ?? [0, 0, 0];
 }

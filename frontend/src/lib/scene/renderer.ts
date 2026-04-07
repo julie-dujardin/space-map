@@ -136,8 +136,14 @@ export class SceneRenderer {
 		// Build all scene objects
 		this.buildScene();
 
-		// If focused body has no visual objects (e.g. placeholder from global file), build them
-		if (focusBody && !this.bodyObjects.has(focusBody.data.id)) {
+		// If focused body has no visual objects (e.g. placeholder from global file), build them.
+		// Skip barycenters/Lagrange points — they are structural, not renderable.
+		if (
+			focusBody &&
+			!this.bodyObjects.has(focusBody.data.id) &&
+			focusBody.data.objectType !== ObjectType.BARYCENTER &&
+			focusBody.data.objectType !== ObjectType.LAGRANGE_POINT
+		) {
 			buildMajorBodies(
 				[focusBody],
 				this.scene,
