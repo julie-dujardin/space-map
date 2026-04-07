@@ -2,6 +2,7 @@
 
 import csv
 import logging
+import math
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
@@ -70,11 +71,13 @@ class HorizonsIngestor:
             return string_or_none(row["designation"])
         return None
 
-    def _parse_row(self, row: dict) -> dict:
+    def _parse_row(self, row: dict) -> dict | None:
         rows = {}
         spk_id = self.get_spk_id(row)
         cospar_id = self.get_cospar_id(row)
         if row["type"].strip() in AUTHORITATIVE_ON:
+            if self._has_garbage_elements(row):
+                return None
             object_pk = f"{ID_TYPES.NAIF}-{row['naif_id']}"
             rows["object"] = dict(
                 id=object_pk,
@@ -123,6 +126,41 @@ class HorizonsIngestor:
             PR=float_or_none(row["PR"]),
         )
         return rows
+
+    # Horizons returns NaN / placeholder elements for these binary system
+    # components — suppress warnings since they need dedicated handling.
+    _KNOWN_BAD_NAIF_IDS = {120000617, 920000617}  # Menoetius, Patroclus primary
+
+    def _has_garbage_elements(self, row: dict) -> bool:
+        """Return True if Horizons returned unusable orbital elements.
+
+        Horizons cannot compute Keplerian elements for some mutual orbits
+        (e.g. binary asteroid components) and returns NaN / placeholder values.
+        """
+        e = float_or_none(row["EC"])
+        a = float_or_none(row["A"])
+        if (e is not None and math.isnan(e)) or (
+            a is not None and (math.isnan(a) or abs(a) > 1e10)
+        ):
+            naif_id = int_or_none(row["naif_id"])
+            name = row.get("name", "?")
+            if naif_id in self._KNOWN_BAD_NAIF_IDS:
+                logger.debug(
+                    "Skipping %s (NAIF %s): known binary system component "
+                    "with unusable Horizons elements",
+                    name,
+                    naif_id,
+                )
+            else:
+                logger.warning(
+                    "Skipping %s (NAIF %s): garbage Horizons elements (e=%s, a=%s)",
+                    name,
+                    naif_id,
+                    e,
+                    a,
+                )
+            return True
+        return False
 
     def _insert(self, rows: list[dict]) -> None:
         if not rows:
@@ -275,7 +313,9 @@ class HorizonsIngestor:
         batch: list[dict] = []
         with open(self.csv_path, newline="") as f:
             for row in tqdm(csv.DictReader(f), total=total, desc="Horizons ingest"):
-                batch.append(self._parse_row(row))
+                parsed = self._parse_row(row)
+                if parsed is not None:
+                    batch.append(parsed)
                 self.total_rows += 1
 
                 if len(batch) >= self.BATCH:

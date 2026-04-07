@@ -55,6 +55,7 @@
 	"type_planet": "行星",
 	"type_spacecraft": "航天器",
 	"type_star": "恒星",
+	"my_location": "我的位置",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "視星等",
 	"property_name_asteroid_family": "asteroid family",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "t",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg",
-	"my_location": "我的位置"
+	"unit_symbol_zettagram": "Zg"
 }

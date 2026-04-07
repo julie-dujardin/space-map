@@ -55,6 +55,7 @@
 	"type_planet": "惑星",
 	"type_spacecraft": "宇宙機",
 	"type_star": "恒星",
+	"my_location": "現在地",
 	"property_name_absolute_magnitude": "絶対等級",
 	"property_name_apparent_magnitude": "実視等級",
 	"property_name_asteroid_family": "小惑星族",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "t",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg",
-	"my_location": "現在地"
+	"unit_symbol_zettagram": "Zg"
 }

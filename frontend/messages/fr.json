@@ -55,6 +55,7 @@
 	"type_planet": "planète",
 	"type_spacecraft": "engin spatial",
 	"type_star": "étoile",
+	"my_location": "Ma position",
 	"property_name_absolute_magnitude": "magnitude absolue",
 	"property_name_apparent_magnitude": "magnitude apparente",
 	"property_name_asteroid_family": "famille d'astéroïdes",
@@ -125,6 +126,5 @@
 	"unit_symbol_tonne": "t",
 	"unit_symbol_year": "a",
 	"unit_symbol_yottagram": "Yg",
-	"unit_symbol_zettagram": "Zg",
-	"my_location": "Ma position"
+	"unit_symbol_zettagram": "Zg"
 }

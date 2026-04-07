@@ -2,6 +2,7 @@
 
 import gzip
 import io
+import logging
 import re
 import struct
 from pathlib import Path
@@ -16,14 +17,14 @@ from space_map_data.export.elements.format import (
     pack_header,
 )
 from space_map_data.models.object import Object
+from space_map_data.models.object.sbdb import OrbitClass
 
+logger = logging.getLogger(__name__)
 
-def _parse_numeric_id(obj: Object) -> int:
-    """Extract the numeric ID from Object.id (e.g. 'naif-399' → 399, 'spkid-2000433' → 2000433)."""
-    match = re.search(r"[-:](-?\d+)$", obj.id)
-    if match:
-        return int(match.group(1))
-    return MISSING_INT32
+# Orbital element columns that the frontend needs to compute a position.
+# Parabolic comets use q/tp instead of a/ma/n; checked separately.
+_REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
+_REQUIRED_PARABOLIC = {"e", "i", "om", "w"}
 
 
 def write_elements(
@@ -31,7 +32,16 @@ def write_elements(
     out_file: Path,
     radius_km_overrides: dict[str, float] | None = None,
 ) -> None:
-    """Write a binary elements file from a list of Objects (already sorted)."""
+    """Write a binary elements file from a list of Objects (already sorted).
+
+    For parabolic comets (OrbitClass.PAR), the ``a`` slot carries perihelion
+    distance *q* [AU] and the ``ma`` slot carries time of perihelion passage
+    *tp* [JD].  The ``n`` slot is written as 0 (unused).  The frontend
+    distinguishes these by zone name.
+
+    Raises ValueError if a required orbital element is None — this catches
+    data issues at export time rather than producing silent NaN in the binary.
+    """
     n = len(objects)
     buf = io.BytesIO()
 
@@ -65,15 +75,13 @@ def write_elements(
     )
 
     # Columns 4–11: float64 orbital element columns
+    # For parabolic comets: a→q, ma→tp, n→0 (see docstring)
     float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
     for attr in float_attrs:
         _write_float64(
             buf,
             n,
-            [
-                getattr(o, attr) if getattr(o, attr) is not None else MISSING_FLOAT64
-                for o in objects
-            ],
+            [_float_value(o, attr) for o in objects],
         )
 
     # Column 12: radius_km — from SBDB diameter, or wikidata overrides
@@ -91,6 +99,65 @@ def write_elements(
     _write_float64(buf, n, [_radius_km(o) for o in objects])
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
+
+
+def _parse_numeric_id(obj: Object) -> int:
+    """Extract the numeric ID from Object.id (e.g. 'naif-399' → 399, 'spkid-2000433' → 2000433)."""
+    match = re.search(r"[-:](-?\d+)$", obj.id)
+    if match:
+        return int(match.group(1))
+    return MISSING_INT32
+
+
+def _float_value(o: Object, attr: str) -> float:
+    """Get the float64 value for a column, remapping for parabolic comets.
+
+    Raises ValueError if a required parabolic element (q/tp) is missing.
+    Logs a warning and returns NaN for non-parabolic objects missing required
+    elements (bad source data) — the frontend will skip these.
+    """
+    # o.sbdb will only be available if the table was joined
+    sbdb = o.sbdb if o.sbdb_spkid is not None else None
+    if sbdb is not None and sbdb.class_ == OrbitClass.PAR:
+        if attr == "a":
+            if sbdb.q is None:
+                raise ValueError(
+                    f"{o.id}: parabolic comet missing q (perihelion distance)"
+                )
+            return sbdb.q
+        if attr == "ma":
+            if sbdb.tp is None:
+                raise ValueError(
+                    f"{o.id}: parabolic comet missing tp (time of perihelion)"
+                )
+            return sbdb.tp
+        if attr == "n":
+            return MISSING_FLOAT64
+        if attr in _REQUIRED_PARABOLIC:
+            val = getattr(o, attr)
+            if val is None:
+                raise ValueError(
+                    f"{o.id}: parabolic comet missing required element '{attr}'"
+                )
+            return val
+    else:
+        if attr in _REQUIRED_KEPLERIAN:
+            val = getattr(o, attr)
+            if val is None:
+                # Acceptable if orbit is bad quality
+                # One known case: SPKID 3137759 (2002 PD153)
+                if sbdb and sbdb.condition_code == "9":
+                    logger.warning(
+                        "%s: missing required orbital element '%s'", o.id, attr
+                    )
+                else:
+                    raise ValueError(
+                        f"{o.id}: missing required orbital element '{attr}'"
+                    )
+                return MISSING_FLOAT64
+            return val
+    val = getattr(o, attr)
+    return val if val is not None else MISSING_FLOAT64
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:
