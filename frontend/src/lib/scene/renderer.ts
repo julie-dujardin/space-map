@@ -1,5 +1,6 @@
 import {
 	AmbientLight,
+	Float32BufferAttribute,
 	Mesh,
 	PerspectiveCamera,
 	Points,
@@ -253,10 +254,35 @@ export class SceneRenderer {
 		for (const zone of this.asteroidPoints.keys()) this.ctx.dirtyAsteroidZones.add(zone);
 		for (const gid of this.spacecraftPoints.keys()) this.ctx.dirtySpacecraftGroups.add(gid);
 		this.rebuildMinorPointClouds();
+		// Rebuild moon point cloud vertex buffers with new basis
+		this.rebuildMoonPointClouds();
 		// Reset point cloud object positions since basis matches focus
 		for (const pts of this.asteroidPoints.values()) pts.position.set(0, 0, 0);
 		for (const pts of this.spacecraftPoints.values()) pts.position.set(0, 0, 0);
 		for (const pts of this.moonPoints.values()) pts.position.set(0, 0, 0);
+	}
+
+	private rebuildMoonPointClouds(): void {
+		const basis = this.pointCloudBasisPos;
+		const moonsByParent = new Map<string, PositionedBody[]>();
+		for (const body of this.ctx.majorBodies) {
+			if (body.data.objectType === ObjectType.MOON) {
+				const list = moonsByParent.get(body.data.parentId) ?? [];
+				list.push(body);
+				moonsByParent.set(body.data.parentId, list);
+			}
+		}
+		for (const [parentId, moons] of moonsByParent) {
+			const existing = this.moonPoints.get(parentId);
+			if (!existing) continue;
+			const positions = new Float32Array(moons.length * 3);
+			for (let i = 0; i < moons.length; i++) {
+				positions[i * 3] = moons[i].position[0] - basis[0];
+				positions[i * 3 + 1] = moons[i].position[1] - basis[1];
+				positions[i * 3 + 2] = moons[i].position[2] - basis[2];
+			}
+			existing.geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+		}
 	}
 
 	// Reconstruct camera true world position (Float64)
