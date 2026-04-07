@@ -63,7 +63,7 @@ Columnar binary format with zero-copy typed array support.
 
 ### Keplerian columns (format type 0)
 
-Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day precision; other numeric columns use float32 (~7 significant digits).
+Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day precision; other numeric columns use float32 (~7 significant digits). See [Precision rationale](#precision-rationale) below.
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
@@ -121,6 +121,23 @@ Columns 0–3 are identical to Keplerian. Julian Dates use float64; other column
 | 11| radius_km   | float32 | NaN     | Physical radius (km) |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
+
+### Precision rationale
+
+Orbit propagation computes mean anomaly as `M = ma + n * (jd_now - epoch_jd)`. The `jd_now - epoch_jd` subtraction is the precision bottleneck: Julian Dates are ~2,460,000, so float32 (24-bit mantissa) can only resolve ~0.25 days (6 hours) at that magnitude — causing degree-scale position errors for fast-moving bodies. float64 resolves ~0.1 ms, which is more than sufficient. The same applies to `tp` in the parabolic format.
+
+All other columns are safe as float32 based on their value ranges in the database:
+
+| Column     | DB range                | float32 worst-case precision | Notes |
+|------------|-------------------------|------------------------------|-------|
+| a (AU)     | 0 – 1.6 × 10⁶          | ~0.125 AU at max             | At typical values (< 100 AU): ~8 × 10⁻⁶ AU ≈ 1 km |
+| a (km)     | 6,500 – 430,000         | ~0.03 km at max              | Earth-orbiting satellites |
+| e          | 0 – 6.3                 | ~5 × 10⁻⁷                   | |
+| i, om, w, ma | 0 – 360              | ~2 × 10⁻⁵ deg ≈ 0.08 arcsec | |
+| n (deg/d)  | 0 – 1,225               | ~7 × 10⁻⁵ deg/d             | |
+| n (rev/d)  | 0.07 – 16.4             | ~1 × 10⁻⁶ rev/d             | Earth-orbiting satellites |
+| q (AU)     | 0 – 43                  | ~3 × 10⁻⁶ AU                | Parabolic comets only |
+| radius_km  | 0.001 – 70,000          | ~0.004 km at max             | |
 
 ## Object IDs file (`.txt.gz`)
 
