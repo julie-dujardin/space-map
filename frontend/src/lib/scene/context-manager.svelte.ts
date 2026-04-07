@@ -120,8 +120,10 @@ export class ContextManager {
 	asteroidBodiesByZone = $state(new SvelteMap<string, PositionedBody[]>());
 	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
-	dirtyAsteroidZones = new SvelteSet<string>();
-	dirtySpacecraftGroups = new SvelteSet<string>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive; read only during rebuild, not in $effect tracking
+	dirtyAsteroidZones = new Set<string>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	dirtySpacecraftGroups = new Set<string>();
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
