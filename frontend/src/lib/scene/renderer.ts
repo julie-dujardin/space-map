@@ -52,6 +52,7 @@ export class SceneRenderer {
 	private controls: OrbitControls;
 	private raycaster = new Raycaster();
 	private pointer = new Vector2();
+	private pointerDownPos = new Vector2();
 
 	private ctx: ContextManager;
 	private callbacks: Callbacks;
@@ -188,6 +189,7 @@ export class SceneRenderer {
 
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
+		canvas.addEventListener('pointerup', this.onPointerUp);
 
 		// Start loop
 		this.tick();
@@ -514,6 +516,14 @@ export class SceneRenderer {
 	};
 
 	private onPointerDown = (e: PointerEvent): void => {
+		this.pointerDownPos.set(e.clientX, e.clientY);
+	};
+
+	private onPointerUp = (e: PointerEvent): void => {
+		const dx = e.clientX - this.pointerDownPos.x;
+		const dy = e.clientY - this.pointerDownPos.y;
+		if (dx * dx + dy * dy > 9) return;
+
 		const canvas = this.renderer.domElement;
 		const rect = canvas.getBoundingClientRect();
 		this.pointer.set(
@@ -648,6 +658,7 @@ export class SceneRenderer {
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
 		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
+		this.renderer.domElement.removeEventListener('pointerup', this.onPointerUp);
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.renderer.dispose();
