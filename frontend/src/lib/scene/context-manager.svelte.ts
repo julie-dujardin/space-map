@@ -108,6 +108,11 @@ async function createPlaceholderBody(
 	return { data, position, orbitElements: data, orbitCenter: parentPos };
 }
 
+/** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
+function isTopLevelParent(parentId: string): boolean {
+	return parentId === 'naif-0' || parentId === 'naif-10';
+}
+
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.3;
 
@@ -293,13 +298,9 @@ export class ContextManager {
 	setFocused(body: PositionedBody): void {
 		if (body.data.id !== this.focusedBodyId) {
 			this.focusedBodyId = body.data.id;
-			// System ID is either the parent (for moons or planet that orbit a barycenter), or the body's own ID (for venus, ceres...)
-			this.focusedSystemId =
-				body.data.objectType === ObjectType.STAR
-					? null
-					: body.data.parentId !== 'naif-0'
-						? body.data.parentId
-						: body.data.id;
+			const isTopLevel =
+				body.data.objectType === ObjectType.STAR || isTopLevelParent(body.data.parentId);
+			this.focusedSystemId = isTopLevel ? null : body.data.parentId;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 			this.lastRecomputeDist = -1; // force recompute on next updateCamera
 			this.recomputeFullMoons();
@@ -357,11 +358,11 @@ export class ContextManager {
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		// Determine the effective solar-orbit semi-major axis for the ratio:
-		// - Body orbits SSB directly (parentId=0): use body.data.a
+		// - Body orbits SSB/Sun directly: use body.data.a
 		// - Body orbits a barycenter with a>0 (e.g. EMB at ~1 AU): use barycenter's a
 		// - Body orbits a barycenter with a=0 (e.g. Mars bary): fall back to body.data.a
 		let refA = body.data.a;
-		if (body.data.parentId !== 'naif-0') {
+		if (!isTopLevelParent(body.data.parentId)) {
 			const parent = this.bodiesById.get(body.data.parentId);
 			if (parent) {
 				if (parent.data.a) refA = parent.data.a;
@@ -385,7 +386,7 @@ export class ContextManager {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
 		return this.isInActiveSystem(
-			body.data.parentId !== 'naif-0' ? body.data.parentId : body.data.id
+			isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId
 		);
 	}
 
@@ -395,7 +396,7 @@ export class ContextManager {
 	 * Planet-orbiting groups are only visible when in the active system.
 	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
-		if (groupParentId === 'naif-0') return true;
+		if (isTopLevelParent(groupParentId)) return true;
 		const parent = this.bodiesById.get(groupParentId);
 		if (parent?.data.objectType === ObjectType.STAR) return true;
 		const sysId = this.activeSystemId;
