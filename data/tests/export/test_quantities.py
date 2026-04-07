@@ -5,11 +5,6 @@ import pytest
 from space_map_data.export.quantities import UnitConverter
 
 
-# ---------------------------------------------------------------------------
-# Helpers — build Wikidata-like claim structures
-# ---------------------------------------------------------------------------
-
-
 def _p31_stmt(qid: str, rank: str = "normal") -> dict:
     return {
         "rank": rank,
@@ -31,12 +26,9 @@ def _p2370_stmt(amount: str, unit_qid: str, rank: str = "normal") -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Static methods
-# ---------------------------------------------------------------------------
-
-
 class TestStripTrailingZeros:
+    """UnitConverter._strip_trailing_zeros"""
+
     def test_integer_float(self):
         assert UnitConverter._strip_trailing_zeros(1.0) == 1
 
@@ -91,11 +83,6 @@ class TestExtractP2370:
 
     def test_missing(self):
         assert UnitConverter._extract_p2370({}) is None
-
-
-# ---------------------------------------------------------------------------
-# UnitConverter with a fake cache (duck-typed, not mocked)
-# ---------------------------------------------------------------------------
 
 
 def _make_unit_entity(

@@ -3,12 +3,9 @@
 from space_map_data.export.objects.wikipedia import WikipediaSummary, _extract_wikipedia
 
 
-# ---------------------------------------------------------------------------
-# WikipediaSummary.to_dict
-# ---------------------------------------------------------------------------
-
-
 class TestToDict:
+    """WikipediaSummary.to_dict"""
+
     def test_filters_none(self):
         s = WikipediaSummary(extract="Hello", thumbnail=None)
         d = s.to_dict()
@@ -29,12 +26,9 @@ class TestToDict:
         assert WikipediaSummary().to_dict() == {}
 
 
-# ---------------------------------------------------------------------------
-# _extract_wikipedia
-# ---------------------------------------------------------------------------
-
-
 class TestExtractWikipedia:
+    """_extract_wikipedia"""
+
     def test_full_page(self):
         page = {
             "extract": "Earth is a planet.",

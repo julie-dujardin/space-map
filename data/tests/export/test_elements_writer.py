@@ -15,12 +15,9 @@ from space_map_data.models.object import ObjectType
 from tests.conftest import make_object
 
 
-# ---------------------------------------------------------------------------
-# _parse_numeric_id
-# ---------------------------------------------------------------------------
-
-
 class TestParseNumericId:
+    """_parse_numeric_id"""
+
     def test_naif_id(self):
         obj = make_object(id="naif-399")
         assert _parse_numeric_id(obj) == 399
@@ -36,11 +33,6 @@ class TestParseNumericId:
     def test_no_match(self):
         obj = make_object(id="unknown")
         assert _parse_numeric_id(obj) == MISSING_INT32
-
-
-# ---------------------------------------------------------------------------
-# write_elements (round-trip with tmp_path)
-# ---------------------------------------------------------------------------
 
 
 def _read_header(data: bytes) -> tuple[bytes, int, int]:

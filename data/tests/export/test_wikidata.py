@@ -11,12 +11,9 @@ from space_map_data.export.wikidata import (
 from tests.conftest import make_object
 
 
-# ---------------------------------------------------------------------------
-# _extract_lang_values
-# ---------------------------------------------------------------------------
-
-
 class TestExtractLangValues:
+    """_extract_lang_values"""
+
     def test_dict_format(self):
         data = {"en": {"value": "Earth", "language": "en"}}
         assert _extract_lang_values(data) == {"en": "Earth"}
@@ -36,12 +33,9 @@ class TestExtractLangValues:
         assert _extract_lang_values(data) == {"en": "Earth", "fr": "Terre"}
 
 
-# ---------------------------------------------------------------------------
-# _extract_lang_aliases
-# ---------------------------------------------------------------------------
-
-
 class TestExtractLangAliases:
+    """_extract_lang_aliases"""
+
     def test_normal(self):
         data = {
             "en": [{"value": "Terra"}, {"value": "Blue Planet"}],
@@ -61,12 +55,9 @@ class TestExtractLangAliases:
         assert _extract_lang_aliases({}) == {}
 
 
-# ---------------------------------------------------------------------------
-# _extract_sitelinks
-# ---------------------------------------------------------------------------
-
-
 class TestExtractSitelinks:
+    """_extract_sitelinks"""
+
     def test_extracts_lang(self):
         data = {"enwiki": {"title": "Earth"}, "frwiki": {"title": "Terre"}}
         assert _extract_sitelinks(data) == {"en": "Earth", "fr": "Terre"}
@@ -90,12 +81,9 @@ class TestExtractSitelinks:
         assert _extract_sitelinks(data) == {}
 
 
-# ---------------------------------------------------------------------------
-# _parse_entity
-# ---------------------------------------------------------------------------
-
-
 class TestParseEntity:
+    """_parse_entity"""
+
     def test_minimal_with_labels(self):
         entity = {"labels": {"en": {"value": "Earth"}}}
         result = _parse_entity(entity)
@@ -129,12 +117,9 @@ class TestParseEntity:
         assert result["sitelinks"] == {"en": "Earth"}
 
 
-# ---------------------------------------------------------------------------
-# resolve_name
-# ---------------------------------------------------------------------------
-
-
 class TestResolveName:
+    """resolve_name"""
+
     def _wd(self, labels: dict[str, str]) -> WikidataEntity:
         return WikidataEntity(
             labels=labels,
