@@ -24,12 +24,36 @@
 	let loading = $state(true);
 	let isMobile = $state(false);
 
-	// Mobile bottom sheet snap points (% of dynamic viewport height)
-	const SNAPS = [12, 30, 95];
-	let sheetHeight = $state(SNAPS[0]);
+	// Mobile bottom sheet snap points
+	// Bottom snap is measured from the handle in px; mid/top are in dvh.
+	let handleEl = $state<HTMLDivElement>();
+	let bottomSnapPx = $state(0);
+	const MID_SNAP = 30;
+	const TOP_SNAP = 95;
+	let sheetHeight = $state(0);
 	let isDragging = $state(false);
 	let dragStartY = 0;
 	let dragStartHeight = 0;
+
+	function bottomSnapDvh() {
+		return (bottomSnapPx / window.innerHeight) * 100;
+	}
+	// Snaps always reflects current viewport
+	function getSnaps(): [number, number, number] {
+		return [bottomSnapDvh(), MID_SNAP, TOP_SNAP];
+	}
+
+	$effect(() => {
+		if (!handleEl) return;
+		const update = () => {
+			bottomSnapPx = handleEl!.offsetHeight;
+			if (sheetHeight < bottomSnapDvh()) sheetHeight = bottomSnapDvh();
+		};
+		update();
+		const ro = new ResizeObserver(update);
+		ro.observe(handleEl);
+		return () => ro.disconnect();
+	});
 
 	// Velocity tracking (dvh/ms, positive = sheet moving up)
 	let velocity = 0;
@@ -51,7 +75,7 @@
 
 	$effect(() => {
 		void body.data.id;
-		if (isMobile) sheetHeight = SNAPS[0];
+		if (isMobile) sheetHeight = bottomSnapDvh();
 	});
 
 	$effect(() => {
@@ -75,10 +99,11 @@
 	const VELOCITY_THRESHOLD = 0.2; // dvh/ms
 
 	function snap() {
-		if (velocity > VELOCITY_THRESHOLD) sheetHeight = SNAPS[SNAPS.length - 1];
-		else if (velocity < -VELOCITY_THRESHOLD) sheetHeight = SNAPS[0];
+		const s = getSnaps();
+		if (velocity > VELOCITY_THRESHOLD) sheetHeight = s[2];
+		else if (velocity < -VELOCITY_THRESHOLD) sheetHeight = s[0];
 		else
-			sheetHeight = SNAPS.reduce((a, b) =>
+			sheetHeight = s.reduce((a, b) =>
 				Math.abs(a - sheetHeight) <= Math.abs(b - sheetHeight) ? a : b
 			);
 	}
@@ -119,7 +144,8 @@
 		if (!isDragging) return;
 		trackVelocity(e.clientY, 1);
 		const dy = ((dragStartY - e.clientY) / window.innerHeight) * 100;
-		sheetHeight = Math.max(SNAPS[0], Math.min(SNAPS[SNAPS.length - 1], dragStartHeight + dy));
+		const s = getSnaps();
+		sheetHeight = Math.max(s[0], Math.min(s[2], dragStartHeight + dy));
 	}
 
 	function onDragUp() {
@@ -160,14 +186,14 @@
 			lastMoveY = e.touches[0].clientY;
 			lastMoveTime = now;
 			const dvh = (dy / window.innerHeight) * 100;
-			sheetHeight = Math.max(SNAPS[0], SNAPS[SNAPS.length - 1] - dvh);
+			sheetHeight = Math.max(bottomSnapDvh(), TOP_SNAP - dvh);
 		}
 	}
 
 	function onContentTouchEnd() {
 		if (overscrolling) {
 			overscrolling = false;
-			if (overscrollPeakVelocity > VELOCITY_THRESHOLD) sheetHeight = SNAPS[0];
+			if (overscrollPeakVelocity > VELOCITY_THRESHOLD) sheetHeight = bottomSnapDvh();
 			else snap();
 		}
 	}
@@ -176,8 +202,9 @@
 		if (isMobile) onSheetResize?.(sheetHeight);
 	});
 
-	let isExpanded = $derived(sheetHeight > SNAPS[0] + 5);
-	let isFullscreen = $derived(sheetHeight >= SNAPS[SNAPS.length - 1] - 5);
+	let isAtBottomSnap = $derived(bottomSnapPx > 0 && sheetHeight <= bottomSnapDvh() + 1);
+	let isExpanded = $derived(sheetHeight > bottomSnapDvh() + 5);
+	let isFullscreen = $derived(sheetHeight >= TOP_SNAP - 5);
 
 	let displayName = $derived(
 		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
@@ -214,7 +241,9 @@
 		class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-xl border-t bg-background shadow-lg {!isFullscreen
 			? 'cursor-grab touch-none'
 			: ''}"
-		style="height: {sheetHeight}dvh; transition: {isDragging || overscrolling
+		style="height: {isAtBottomSnap
+			? `${bottomSnapPx}px`
+			: `${sheetHeight}dvh`}; transition: {isDragging || overscrolling
 			? 'none'
 			: 'height 0.3s ease'};"
 		onpointerdown={onAsidePointerDown}
@@ -225,6 +254,7 @@
 		<!-- Drag handle (always draggable) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
+			bind:this={handleEl}
 			class="flex flex-col items-center gap-2 px-4 pt-3 pb-2 cursor-grab touch-none"
 			onpointerdown={onHandlePointerDown}
 			onpointermove={onDragMove}
