@@ -133,7 +133,10 @@ export function orbitalElementsToPosition(
 	// Newton-Raphson to overshoot). Fall back to Barker's equation with
 	// q and tp derived from the standard elements.
 	// See spkid-1001113 C/1962 C1 (Seki-Lines)
-	if (Math.abs(e - 1) < 0.01) {
+	// Skip for tiny orbits (a < 0.001 AU): numerical instability is negligible
+	// at that scale, and planets orbiting their barycenters can have spurious
+	// high eccentricity (e.g. Jupiter e≈0.996 around its barycenter).
+	if (Math.abs(e - 1) < 0.01 && Math.abs(a) >= 0.001) {
 		const q = Math.abs(a) * Math.abs(1 - e); // works for both e<1 and e>1
 		const tp = n !== 0 ? epoch - ma / n : epoch; // tp in JD (ma in deg, n in deg/day)
 		const jd = dateToJD(date);
@@ -305,7 +308,7 @@ export function orbitalElementsToCurve(
 	el: OrbitalElements,
 	numPoints = 512
 ): [number, number, number][] {
-	if (el.q != null || Math.abs(el.e - 1) < 0.01) {
+	if (el.q != null || (Math.abs(el.e - 1) < 0.01 && Math.abs(el.a) >= 0.001)) {
 		const q = el.q ?? Math.abs(el.a) * Math.abs(1 - el.e);
 		return orbitalElementsToParabola({ ...el, q }, numPoints);
 	}
