@@ -225,6 +225,23 @@ def _object_type(row: dict[str, str]) -> ObjectType:
     return ObjectType.comet if prefix else ObjectType.asteroid
 
 
+def _display_name(row: dict[str, str], object_type: ObjectType) -> str | None:
+    """Build the display name for an SBDB object.
+
+    Comets: full_name (e.g. "29P/Schwassmann-Wachmann 1", "C/2007 H6 (SOHO)").
+    Asteroids with name: "<pdes> <name>" (e.g. "3173 McNaught").
+    Asteroids unnamed: pdes as provisional designation (e.g. "1996 XG32").
+    """
+    if object_type == ObjectType.comet:
+        return string_or_none(row["full_name"])
+
+    name = string_or_none(row["name"])
+    pdes = string_or_none(row["pdes"])
+    if name and pdes:
+        return f"{pdes} {name}"
+    return pdes or name
+
+
 def _provisional_designation(full_name: str | None) -> str | None:
     """Extract the provisional designation from the parenthesised part of full_name."""
     if not full_name:
@@ -298,7 +315,7 @@ def _parse_chunk(
                     },
                     "object": {
                         "id": object_id,
-                        "name": name,
+                        "name": _display_name(row, object_type),
                         "object_type": object_type,
                         "provisional_designation": prov,
                         "sbdb_spkid": spkid,
