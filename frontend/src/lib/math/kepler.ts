@@ -296,20 +296,22 @@ export function orbitalElementsToHyperbola(
 	return points;
 }
 
+export interface OrbitCurve {
+	points: [number, number, number][];
+	isOpen: boolean;
+}
+
 /**
  * Generate orbit/trajectory curve points, dispatching to ellipse, parabola,
  * or hyperbola based on eccentricity.
  */
-export function orbitalElementsToCurve(
-	el: OrbitalElements,
-	numPoints = 512
-): [number, number, number][] {
+export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): OrbitCurve {
 	if (el.q != null || (Math.abs(el.e - 1) < 0.01 && Math.abs(el.a) >= 0.001)) {
 		const q = el.q ?? Math.abs(el.a) * Math.abs(1 - el.e);
-		return orbitalElementsToParabola({ ...el, q }, numPoints);
+		return { points: orbitalElementsToParabola({ ...el, q }, numPoints), isOpen: true };
 	}
-	if (el.e >= 1) return orbitalElementsToHyperbola(el, numPoints);
-	return orbitalElementsToEllipse(el, numPoints);
+	if (el.e >= 1) return { points: orbitalElementsToHyperbola(el, numPoints), isOpen: true };
+	return { points: orbitalElementsToEllipse(el, numPoints), isOpen: false };
 }
 
 /**
