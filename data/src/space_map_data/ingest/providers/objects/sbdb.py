@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.models.object.sbdb import OrbitClass
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
@@ -115,57 +116,6 @@ _SBDB_COLUMNS = [
     "DT_sigma",
 ]
 
-
-# -- SBDB orbit class → ObjectType --
-
-SBDB_CLASS_MAP: dict[str, ObjectType] = {
-    # Near-Earth asteroids
-    "AMO": ObjectType.asteroid_inner,  # Amor — orbit exterior to Earth, interior to Mars (1.017 < q < 1.3 AU)
-    "APO": ObjectType.asteroid_inner,  # Apollo — Earth-crossing, a > 1 AU (q < 1.017 AU)
-    "ATE": ObjectType.asteroid_inner,  # Aten — a < 1 AU, Earth-crossing (Q > 0.983 AU)
-    "IEO": ObjectType.asteroid_inner,  # Interior Earth Object (Atira) — orbit entirely inside Earth's (Q < 0.983 AU)
-    "MCA": ObjectType.asteroid_inner,  # Mars-crossing asteroid (1.3 < q < 1.666 AU, a < 3.2 AU)
-    # Main belt
-    "MBA": ObjectType.asteroid_main_belt,  # Main-belt asteroid (2.0 < a < 3.2 AU)
-    "IMB": ObjectType.asteroid_main_belt,  # Inner main-belt asteroid (a < 2.0 AU, q > 1.666 AU)
-    "OMB": ObjectType.asteroid_main_belt,  # Outer main-belt asteroid (3.2 < a < 4.6 AU)
-    # Special populations
-    "TJN": ObjectType.asteroid_trojan,  # Jupiter Trojan — trapped at L4/L5 (4.6 < a < 5.5 AU, e < 0.3)
-    "CEN": ObjectType.asteroid_centaur,  # Centaur — orbit between Jupiter and Neptune (5.5 < a < 30.1 AU)
-    "TNO": ObjectType.asteroid_tno,  # Trans-Neptunian Object (a > 30.1 AU)
-    "ETc": ObjectType.asteroid_tno,  # Encke-type comet (T_Jup > 3, a < a_Jup) — classified as TNO
-    # Comets
-    "PAR": ObjectType.comet,  # Parabolic comet (e ≈ 1.0)
-    "HYP": ObjectType.comet,  # Hyperbolic comet (e > 1.0)
-    "HYA": ObjectType.comet,  # Hyperbolic asteroid (e > 1.0)
-    "COM": ObjectType.comet,  # Comet — not matching any defined class
-    "JFC": ObjectType.comet,  # Jupiter-family comet, classical (P < 20 yr)
-    "JFc": ObjectType.comet,  # Jupiter-family comet, Levison-Duncan (2 < T_Jup < 3)
-    "HTC": ObjectType.comet,  # Halley-type comet (20 < P < 200 yr)
-    "CTc": ObjectType.comet,  # Chiron-type comet (T_Jup > 3, a > a_Jup)
-    # Catch-all
-    "AST": ObjectType.asteroid,  # Asteroid — not matching any defined class
-}
-
-
-def _object_type(row: dict[str, str]) -> ObjectType:
-    cls = string_or_none(row["class"])
-    prefix = string_or_none(row["prefix"])
-    name = string_or_none(row["name"])
-
-    if name and name.lower() in DWARF_PLANETS:
-        return ObjectType.dwarf_planet
-
-    if cls in SBDB_CLASS_MAP:
-        mapped = SBDB_CLASS_MAP[cls]
-        # Comet prefix overrides asteroid classification
-        if prefix and mapped.value.startswith("asteroid"):
-            return ObjectType.comet
-        return mapped
-
-    return ObjectType.comet if prefix else ObjectType.asteroid
-
-
 _FLOAT_COLS = {
     "H",
     "G",
@@ -225,6 +175,54 @@ _INT_COLS = {"sats", "data_arc", "n_obs_used", "n_del_obs_used", "n_dop_obs_used
 _BOOL_COLS = {"neo", "pha", "two_body"}
 _PARTIAL_DATE_COLS = {"first_obs", "last_obs"}  # input can be YYYY-MM-DD or YYYY-??-??
 # "epoch_cal", "tp_cal": could parse to datetime but BCE dates (C/-146 P1: -146-06-28.0000000) cause issues, string is fine
+
+
+SBDB_CLASS_MAP: dict[str, ObjectType] = {
+    # Near-Earth asteroids
+    OrbitClass.AMO.name: ObjectType.asteroid_inner,  # Amor — orbit exterior to Earth, interior to Mars (1.017 < q < 1.3 AU)
+    OrbitClass.APO.name: ObjectType.asteroid_inner,  # Apollo — Earth-crossing, a > 1 AU (q < 1.017 AU)
+    OrbitClass.ATE.name: ObjectType.asteroid_inner,  # Aten — a < 1 AU, Earth-crossing (Q > 0.983 AU)
+    OrbitClass.IEO.name: ObjectType.asteroid_inner,  # Interior Earth Object (Atira) — orbit entirely inside Earth's (Q < 0.983 AU)
+    OrbitClass.MCA.name: ObjectType.asteroid_inner,  # Mars-crossing asteroid (1.3 < q < 1.666 AU, a < 3.2 AU)
+    # Main belt
+    OrbitClass.MBA.name: ObjectType.asteroid_main_belt,  # Main-belt asteroid (2.0 < a < 3.2 AU)
+    OrbitClass.IMB.name: ObjectType.asteroid_main_belt,  # Inner main-belt asteroid (a < 2.0 AU, q > 1.666 AU)
+    OrbitClass.OMB.name: ObjectType.asteroid_main_belt,  # Outer main-belt asteroid (3.2 < a < 4.6 AU)
+    # Special populations
+    OrbitClass.TJN.name: ObjectType.asteroid_trojan,  # Jupiter Trojan — trapped at L4/L5 (4.6 < a < 5.5 AU, e < 0.3)
+    OrbitClass.CEN.name: ObjectType.asteroid_centaur,  # Centaur — orbit between Jupiter and Neptune (5.5 < a < 30.1 AU)
+    OrbitClass.TNO.name: ObjectType.asteroid_tno,  # Trans-Neptunian Object (a > 30.1 AU)
+    OrbitClass.ETc.name: ObjectType.asteroid_tno,  # Encke-type comet (T_Jup > 3, a < a_Jup) — classified as TNO
+    # Comets
+    OrbitClass.PAR.name: ObjectType.comet,  # Parabolic comet (e ≈ 1.0)
+    OrbitClass.HYP.name: ObjectType.comet,  # Hyperbolic comet (e > 1.0)
+    OrbitClass.HYA.name: ObjectType.comet,  # Hyperbolic asteroid (e > 1.0)
+    OrbitClass.COM.name: ObjectType.comet,  # Comet — not matching any defined class
+    OrbitClass.JFC.name: ObjectType.comet,  # Jupiter-family comet, classical (P < 20 yr)
+    OrbitClass.JFc.name: ObjectType.comet,  # Jupiter-family comet, Levison-Duncan (2 < T_Jup < 3)
+    OrbitClass.HTC.name: ObjectType.comet,  # Halley-type comet (20 < P < 200 yr)
+    OrbitClass.CTc.name: ObjectType.comet,  # Chiron-type comet (T_Jup > 3, a > a_Jup)
+    # Catch-all
+    OrbitClass.AST.name: ObjectType.asteroid,  # Asteroid — not matching any defined class
+}
+
+
+def _object_type(row: dict[str, str]) -> ObjectType:
+    cls = string_or_none(row["class"])
+    prefix = string_or_none(row["prefix"])
+    name = string_or_none(row["name"])
+
+    if name and name.lower() in DWARF_PLANETS:
+        return ObjectType.dwarf_planet
+
+    if cls in SBDB_CLASS_MAP:
+        mapped = SBDB_CLASS_MAP[cls]
+        # Comet prefix overrides asteroid classification
+        if prefix and mapped.value.startswith("asteroid"):
+            return ObjectType.comet
+        return mapped
+
+    return ObjectType.comet if prefix else ObjectType.asteroid
 
 
 def _provisional_designation(full_name: str | None) -> str | None:
