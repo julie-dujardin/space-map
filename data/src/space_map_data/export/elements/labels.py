@@ -1,4 +1,4 @@
-"""Write element_labels/<lang>.txt.gz files (gzip-compressed)."""
+"""Write element label files (gzip-compressed)."""
 
 import gzip
 import logging
@@ -39,10 +39,9 @@ def write_labels(
             or obj.name
             or obj.sbdb_mcp_designation
             or obj.provisional_designation
-            or ""
         )
         if not name:
-            logger.warning("No name found for object %s (id=%s)", obj, obj.id)
+            raise ValueError(f"No name found for object {obj} (id={obj.id})")
         flag = flags.get(obj.id, 0)
         lines.append(f"{flag}{_US}{name}")
 

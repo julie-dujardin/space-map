@@ -69,7 +69,7 @@ def _build_metadata(
 
 def _remove_old_outputs(out_dir: Path) -> None:
     """Remove all chunk output directories before a fresh export."""
-    for d in ("elements", "element_labels", "objects"):
+    for d in ("elements", "objects"):
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)

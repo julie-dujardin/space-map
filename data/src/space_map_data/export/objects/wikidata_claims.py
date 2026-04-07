@@ -189,7 +189,7 @@ _QID_MAXIMUM = "Q10578722"
 _QID_AVERAGE = "Q202785"
 _QID_MEAN = "Q2796622"
 
-# P1013 (criterion used) qualifier: preferred values per property, tried in order.
+# qualifier: preferred values per property, tried in order.
 _PREFERRED_CRITERIA: dict[str, list[str]] = {
     "P2067": [  # Arbitrarily prefer the mass closer to service entry, instead of dry mass
         "Q29933828",  # service entry
@@ -365,9 +365,10 @@ def _single_quantity(
             for s, p in pairs
             if crit_qid
             in (
-                _qualifier_qid(s, "P1013"),
-                _qualifier_qid(s, "P518"),
-                _qualifier_qid(s, "P3831"),
+                _qualifier_qid(s, "P1013"),  # criterion used
+                _qualifier_qid(s, "P518"),  # applies to part
+                _qualifier_qid(s, "P3831"),  # object of statement has role
+                _qualifier_qid(s, "P1552"),  # has characteristic
             )
         ]
         if len(matched) == 1:

@@ -57,16 +57,13 @@ def write_chunk(
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:
-        labels_path = (
-            out_dir / "element_labels" / lang / zone / str(zoom) / f"{part}.txt.gz"
-        )
-        labels_path.parent.mkdir(parents=True, exist_ok=True)
+        labels_path = out_dir / "elements" / zone / str(zoom) / f"{part}.{lang}.gz"
         lang_flags = {
             obj.id: object_flags.get(obj.id, {}).get(lang, 0) for obj in objects
         }
         write_labels(objects, labels_path, lang, chunk_entities, lang_flags)
 
-    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.txt.gz"
+    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.id.gz"
     ids_path.write_bytes(gzip.compress("\n".join(obj.id for obj in objects).encode()))
 
     return elements_bytes
