@@ -57,11 +57,11 @@ Columnar binary format with zero-copy typed array support.
 |--------|--------|-----------|
 | 0      | char[4]| Magic `SMAP` |
 | 4      | uint16 | Version (1) |
-| 6      | uint16 | Reserved  |
+| 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic |
 | 8      | uint32 | Row count |
 | 12     | uint32 | Reserved  |
 
-### Columns (in order)
+### Keplerian columns (format type 0)
 
 Each sub-byte-width column is padded to 8-byte alignment. Float64 columns are naturally aligned.
 
@@ -72,12 +72,12 @@ Each sub-byte-width column is padded to 8-byte alignment. Float64 columns are na
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
 | 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
-| 5 | a           | float64 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale. See [parabolic comets](#parabolic-comets-par-zone). |
+| 5 | a           | float64 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale |
 | 6 | e           | float64 | NaN     | Eccentricity |
 | 7 | i           | float64 | NaN     | Inclination (deg) |
 | 8 | om          | float64 | NaN     | Longitude of ascending node (deg) |
 | 9 | w           | float64 | NaN     | Argument of perihelion (deg) |
-| 10| ma          | float64 | NaN     | Mean anomaly (deg). See [parabolic comets](#parabolic-comets-par-zone). |
+| 10| ma          | float64 | NaN     | Mean anomaly (deg) |
 | 11| n           | float64 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
 | 12| radius_km   | float64 | NaN     | Physical radius (km) |
 
@@ -103,17 +103,22 @@ The `scale` flag determines how to interpret `a` and `n`:
 
 To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`, `n_degday = n * 360`.
 
-### Parabolic comets (PAR zone)
+### Parabolic columns (format type 1)
 
-Parabolic comets (`e = 1`) lack a semi-major axis and mean motion. For objects in the `PAR` zone, three columns carry different data:
+Used for the `PAR` zone. Parabolic comets (`e = 1`) lack a semi-major axis and mean motion; they use perihelion distance and time of perihelion instead.
 
-| # | Standard meaning | PAR zone meaning |
-|---|------------------|------------------|
-| 5 | `a` (semi-major axis) | `q` — perihelion distance (AU) |
-| 10| `ma` (mean anomaly)   | `tp` — time of perihelion passage (Julian Date, TDB) |
-| 11| `n` (mean motion)     | Always 0 (unused) |
+Columns 0–3 are identical to Keplerian. The float64 columns differ:
 
-All other columns (`e`, `i`, `om`, `w`, `epoch_jd`) retain their standard meaning.
+| # | Name        | Type    | Missing | Notes |
+|---|-------------|---------|---------|-------|
+| 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
+| 5 | q           | float64 | NaN     | Perihelion distance (AU) |
+| 6 | e           | float64 | NaN     | Eccentricity (= 1.0) |
+| 7 | i           | float64 | NaN     | Inclination (deg) |
+| 8 | om          | float64 | NaN     | Longitude of ascending node (deg) |
+| 9 | w           | float64 | NaN     | Argument of perihelion (deg) |
+| 10| tp          | float64 | NaN     | Time of perihelion passage (Julian Date, TDB) |
+| 11| radius_km   | float64 | NaN     | Physical radius (km) |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
 
@@ -156,11 +161,15 @@ interface GlobalObjectData {
     celestrak_cospar_id?: string;
   };
   orbit?: {
-    epoch_jd: number; a: number; e: number; i: number;
-    om: number; w: number; ma: number; n: number;
+    epoch_jd: number; e: number; i: number;
+    om: number; w: number;
     scale: "planet" | "system";
     parent_naif_id: number;
     source: "horizons" | "sbdb" | "celestrak";
+    // Keplerian (standard orbits):
+    a?: number; ma?: number; n?: number;
+    // Parabolic (e=1 comets):
+    q?: number; tp?: number;
   };
   sbdb?: {
     neo?: boolean;   pha?: boolean;   class?: string;
@@ -274,5 +283,5 @@ The size is a target, not a hard limit. Some textures go over it.
    - `.txt.gz` (IDs) — split by newline, index matches binary row order
    - `element_labels/{lang}/...txt.gz` — split by newline, parse flag + name
 3. Combine by array index to get full body records
-4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for the `PAR` zone)
+4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
 5. Object detail files are fetched on demand using the ID and the label flag

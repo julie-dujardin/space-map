@@ -36,8 +36,10 @@ export function makeOrbitLine(
 	const { orbitElements, orbitCenter, data } = body;
 	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
 
-	const isHyperbolic = orbitElements.e >= 1;
-	const curve = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
+	const { points: curve, isOpen: isOpenCurve } = orbitalElementsToCurve(
+		orbitElements,
+		NUM_ORBIT_POINTS
+	);
 
 	// Body position in orbit-local coordinates
 	const cx = orbitCenter?.[0] ?? 0;
@@ -77,17 +79,17 @@ export function makeOrbitLine(
 	const trailStart = distPrev < distNext ? prev : nearest;
 
 	const useTrail =
-		isHyperbolic ||
+		isOpenCurve ||
 		data.objectType === ObjectType.DWARF_PLANET ||
 		data.objectType === ObjectType.MOON ||
 		isAsteroid(data.objectType);
-	const trailFraction = useTrail ? (isHyperbolic ? 3 / 3 : 1 / 3) : undefined;
+	const trailFraction = useTrail ? (isOpenCurve ? 3 / 3 : 1 / 3) : undefined;
 	const trailLen = trailFraction ? Math.round(trailFraction * NUM_ORBIT_POINTS) : NUM_ORBIT_POINTS;
 	const closeLoop = !trailFraction;
 
 	const points: [number, number, number][] = [bodyLocal];
 	for (let k = 0; k < trailLen - 1; k++) {
-		if (isHyperbolic) {
+		if (isOpenCurve) {
 			// Open curve: clamp to bounds instead of wrapping
 			const idx = Math.max(trailStart - k, 0);
 			points.push(curve[idx]);

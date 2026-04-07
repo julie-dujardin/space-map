@@ -8,6 +8,10 @@ MAGIC = b"SMAP"
 VERSION = 1
 HEADER_SIZE = 16  # must be 8-byte aligned
 
+# Format types (uint16 at header offset 6)
+FORMAT_KEPLERIAN = 0  # Standard Keplerian elements (a, e, i, om, w, ma, n)
+FORMAT_PARABOLIC = 1  # Parabolic elements (q, e, i, om, w, tp)
+
 # ObjectType → uint8 ordinal (must match frontend format.ts)
 OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {t: i for i, t in enumerate(ObjectType)}
 
@@ -20,13 +24,13 @@ MISSING_UINT8 = 255
 MISSING_FLOAT64 = float("nan")
 
 
-def pack_header(row_count: int) -> bytes:
+def pack_header(row_count: int, format_type: int = FORMAT_KEPLERIAN) -> bytes:
     """Pack the 16-byte file header."""
     return struct.pack(
         "<4sHHII",
         MAGIC,
         VERSION,
-        0,  # reserved
+        format_type,
         row_count,
         0,  # reserved
     )

@@ -8,6 +8,7 @@ import struct
 from pathlib import Path
 
 from space_map_data.export.elements.format import (
+    FORMAT_PARABOLIC,
     MISSING_FLOAT64,
     MISSING_INT32,
     MISSING_UINT8,
@@ -17,14 +18,10 @@ from space_map_data.export.elements.format import (
     pack_header,
 )
 from space_map_data.models.object import Object
-from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
 
-# Orbital element columns that the frontend needs to compute a position.
-# Parabolic comets use q/tp instead of a/ma/n; checked separately.
 _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
-_REQUIRED_PARABOLIC = {"e", "i", "om", "w"}
 
 
 def write_elements(
@@ -32,12 +29,7 @@ def write_elements(
     out_file: Path,
     radius_km_overrides: dict[str, float] | None = None,
 ) -> None:
-    """Write a binary elements file from a list of Objects (already sorted).
-
-    For parabolic comets (OrbitClass.PAR), the ``a`` slot carries perihelion
-    distance *q* [AU] and the ``ma`` slot carries time of perihelion passage
-    *tp* [JD].  The ``n`` slot is written as 0 (unused).  The frontend
-    distinguishes these by zone name.
+    """Write a Keplerian binary elements file (format_type=0).
 
     Raises ValueError if a required orbital element is None — this catches
     data issues at export time rather than producing silent NaN in the binary.
@@ -74,8 +66,7 @@ def write_elements(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    # Columns 4–11: float64 orbital element columns
-    # For parabolic comets: a→q, ma→tp, n→0 (see docstring)
+    # Columns 4–11: float64 Keplerian orbital elements
     float_attrs = ["epoch_jd", "a", "e", "i", "om", "w", "ma", "n"]
     for attr in float_attrs:
         _write_float64(
@@ -84,19 +75,63 @@ def write_elements(
             [_float_value(o, attr) for o in objects],
         )
 
-    # Column 12: radius_km — from SBDB diameter, or wikidata overrides
-    def _radius_km(o: Object) -> float:
-        if (
-            o.sbdb_spkid is not None
-            and o.sbdb is not None
-            and o.sbdb.diameter is not None
-        ):
-            return o.sbdb.diameter / 2.0
-        if radius_km_overrides and (r := radius_km_overrides.get(o.id)):
-            return r
-        return MISSING_FLOAT64
+    # Column 12: radius_km
+    _write_float64(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
-    _write_float64(buf, n, [_radius_km(o) for o in objects])
+    out_file.write_bytes(gzip.compress(buf.getvalue()))
+
+
+def write_parabolic_elements(
+    objects: list[Object],
+    out_file: Path,
+    radius_km_overrides: dict[str, float] | None = None,
+) -> None:
+    """Write a parabolic binary elements file (format_type=1).
+
+    Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp, radius_km.
+    Raises ValueError if a required element (q, tp, e, i, om, w) is missing.
+    """
+    n = len(objects)
+    buf = io.BytesIO()
+
+    buf.write(pack_header(n, FORMAT_PARABOLIC))
+
+    # Columns 0–3: same as Keplerian
+    _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
+    _write_uint8(
+        buf,
+        n,
+        [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
+    )
+    _write_int32(
+        buf,
+        n,
+        [
+            o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
+            for o in objects
+        ],
+    )
+    _write_uint8(
+        buf,
+        n,
+        [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
+    )
+
+    # Column 4: epoch_jd
+    _write_float64(buf, n, [_required_float(o, "epoch_jd") for o in objects])
+
+    # Column 5: q (perihelion distance, AU) — from SBDB
+    _write_float64(buf, n, [_required_sbdb_float(o, "q") for o in objects])
+
+    # Columns 6–9: e, i, om, w
+    for attr in ("e", "i", "om", "w"):
+        _write_float64(buf, n, [_required_float(o, attr) for o in objects])
+
+    # Column 10: tp (time of perihelion, JD TDB) — from SBDB
+    _write_float64(buf, n, [_required_sbdb_float(o, "tp") for o in objects])
+
+    # Column 11: radius_km
+    _write_float64(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -110,54 +145,51 @@ def _parse_numeric_id(obj: Object) -> int:
 
 
 def _float_value(o: Object, attr: str) -> float:
-    """Get the float64 value for a column, remapping for parabolic comets.
+    """Get the float64 value for a Keplerian column.
 
-    Raises ValueError if a required parabolic element (q/tp) is missing.
-    Logs a warning and returns NaN for non-parabolic objects missing required
-    elements (bad source data) — the frontend will skip these.
+    Raises ValueError if a required element is missing, unless the orbit
+    quality is known-bad (condition_code 9).
     """
-    # o.sbdb will only be available if the table was joined
-    sbdb = o.sbdb if o.sbdb_spkid is not None else None
-    if sbdb is not None and sbdb.class_ == OrbitClass.PAR:
-        if attr == "a":
-            if sbdb.q is None:
-                raise ValueError(
-                    f"{o.id}: parabolic comet missing q (perihelion distance)"
-                )
-            return sbdb.q
-        if attr == "ma":
-            if sbdb.tp is None:
-                raise ValueError(
-                    f"{o.id}: parabolic comet missing tp (time of perihelion)"
-                )
-            return sbdb.tp
-        if attr == "n":
+    if attr in _REQUIRED_KEPLERIAN:
+        val = getattr(o, attr)
+        if val is None:
+            sbdb = o.sbdb if o.sbdb_spkid is not None else None
+            if sbdb and sbdb.condition_code == "9":
+                logger.warning("%s: missing required orbital element '%s'", o.id, attr)
+            else:
+                raise ValueError(f"{o.id}: missing required orbital element '{attr}'")
             return MISSING_FLOAT64
-        if attr in _REQUIRED_PARABOLIC:
-            val = getattr(o, attr)
-            if val is None:
-                raise ValueError(
-                    f"{o.id}: parabolic comet missing required element '{attr}'"
-                )
-            return val
-    else:
-        if attr in _REQUIRED_KEPLERIAN:
-            val = getattr(o, attr)
-            if val is None:
-                # Acceptable if orbit is bad quality
-                # One known case: SPKID 3137759 (2002 PD153)
-                if sbdb and sbdb.condition_code == "9":
-                    logger.warning(
-                        "%s: missing required orbital element '%s'", o.id, attr
-                    )
-                else:
-                    raise ValueError(
-                        f"{o.id}: missing required orbital element '{attr}'"
-                    )
-                return MISSING_FLOAT64
-            return val
+        return val
     val = getattr(o, attr)
     return val if val is not None else MISSING_FLOAT64
+
+
+def _required_float(o: Object, attr: str) -> float:
+    """Get a required float64 attribute, raising ValueError if missing."""
+    val = getattr(o, attr)
+    if val is None:
+        raise ValueError(f"{o.id}: missing required element '{attr}'")
+    return val
+
+
+def _required_sbdb_float(o: Object, attr: str) -> float:
+    """Get a required float64 from the SBDB relation, raising ValueError if missing."""
+    sbdb = o.sbdb if o.sbdb_spkid is not None else None
+    if sbdb is None:
+        raise ValueError(f"{o.id}: no SBDB data for parabolic element '{attr}'")
+    val = getattr(sbdb, attr)
+    if val is None:
+        raise ValueError(f"{o.id}: parabolic comet missing '{attr}'")
+    return val
+
+
+def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
+    """Get object radius in km from SBDB diameter or overrides."""
+    if o.sbdb_spkid is not None and o.sbdb is not None and o.sbdb.diameter is not None:
+        return o.sbdb.diameter / 2.0
+    if overrides and (r := overrides.get(o.id)):
+        return r
+    return MISSING_FLOAT64
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

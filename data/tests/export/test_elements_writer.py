@@ -5,13 +5,21 @@ import math
 import struct
 
 from space_map_data.export.elements.format import (
+    FORMAT_KEPLERIAN,
+    FORMAT_PARABOLIC,
     HEADER_SIZE,
     MAGIC,
     MISSING_INT32,
     VERSION,
 )
-from space_map_data.export.elements.writer import _parse_numeric_id, write_elements
+from space_map_data.export.elements.writer import (
+    _parse_numeric_id,
+    write_elements,
+    write_parabolic_elements,
+)
 from space_map_data.models.object import ObjectType
+from space_map_data.models.object.main import Object
+from space_map_data.models.object.sbdb import OrbitClass, SBDB
 from tests.conftest import make_object
 
 
@@ -35,9 +43,11 @@ class TestParseNumericId:
         assert _parse_numeric_id(obj) == MISSING_INT32
 
 
-def _read_header(data: bytes) -> tuple[bytes, int, int]:
-    magic, version, _, row_count, _ = struct.unpack("<4sHHII", data[:HEADER_SIZE])
-    return magic, version, row_count
+def _read_header(data: bytes) -> tuple[bytes, int, int, int]:
+    magic, version, format_type, row_count, _ = struct.unpack(
+        "<4sHHII", data[:HEADER_SIZE]
+    )
+    return magic, version, format_type, row_count
 
 
 class TestWriteElements:
@@ -52,9 +62,10 @@ class TestWriteElements:
         write_elements(objects, out)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, row_count = _read_header(raw)
+        magic, version, format_type, row_count = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
+        assert format_type == FORMAT_KEPLERIAN
         assert row_count == 2
 
         # Read back column 0 (id, int32)
@@ -67,7 +78,7 @@ class TestWriteElements:
         write_elements([], out)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, row_count = _read_header(raw)
+        _, _, _, row_count = _read_header(raw)
         assert row_count == 0
         assert len(raw) == HEADER_SIZE
 
@@ -122,3 +133,81 @@ class TestWriteElements:
         offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 64
         (radius,) = struct.unpack_from("<d", raw, offset)
         assert math.isnan(radius)
+
+
+def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
+    """Create a parabolic comet Object with SBDB relation."""
+    sbdb = SBDB(
+        spkid="1000001",
+        object_id=id,
+        class_=OrbitClass.PAR,
+        q=overrides.pop("sbdb_q", 1.5),
+        tp=overrides.pop("sbdb_tp", 2460000.5),
+    )
+    obj = make_object(
+        id=id,
+        object_type=ObjectType.comet,
+        sbdb_spkid=1000001,
+        e=1.0,
+        # a/ma/n are meaningless for parabolic comets
+        a=None,
+        ma=None,
+        n=None,
+        **overrides,
+    )
+    obj.sbdb = sbdb
+    return obj
+
+
+class TestWriteParabolicElements:
+    """write_parabolic_elements"""
+
+    def test_round_trip(self, tmp_path):
+        obj = _make_parabolic_object()
+        out = tmp_path / "par.bin.gz"
+        write_parabolic_elements([obj], out)
+
+        raw = gzip.decompress(out.read_bytes())
+        magic, version, format_type, row_count = _read_header(raw)
+        assert magic == MAGIC
+        assert version == VERSION
+        assert format_type == FORMAT_PARABOLIC
+        assert row_count == 1
+
+    def test_q_and_tp_columns(self, tmp_path):
+        """q and tp are written as proper columns (not stuffed into a/ma)."""
+        obj = _make_parabolic_object(sbdb_q=2.3, sbdb_tp=2460100.5)
+        out = tmp_path / "par.bin.gz"
+        write_parabolic_elements([obj], out)
+
+        raw = gzip.decompress(out.read_bytes())
+        # Parabolic layout for 1 row:
+        # col0: int32(1) + pad = 8
+        # col1: uint8(1) + pad = 8
+        # col2: int32(1) + pad = 8
+        # col3: uint8(1) + pad = 8
+        # col4: epoch_jd float64 = 8
+        # col5: q float64 = 8
+        # col6: e float64 = 8
+        # col7: i float64 = 8
+        # col8: om float64 = 8
+        # col9: w float64 = 8
+        # col10: tp float64 = 8
+        # col11: radius_km float64 = 8
+        q_offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8  # after shared + epoch_jd
+        (q,) = struct.unpack_from("<d", raw, q_offset)
+        assert q == 2.3
+
+        tp_offset = q_offset + 8 * 5  # skip q, e, i, om, w
+        (tp,) = struct.unpack_from("<d", raw, tp_offset)
+        assert tp == 2460100.5
+
+    def test_empty(self, tmp_path):
+        out = tmp_path / "par_empty.bin.gz"
+        write_parabolic_elements([], out)
+
+        raw = gzip.decompress(out.read_bytes())
+        _, _, format_type, row_count = _read_header(raw)
+        assert format_type == FORMAT_PARABOLIC
+        assert row_count == 0
+        assert len(raw) == HEADER_SIZE

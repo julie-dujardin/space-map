@@ -1,6 +1,10 @@
 import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/kepler';
-import { fetchElements, type ElementColumns } from '$lib/fetch/elements/elements';
+import {
+	fetchElements,
+	type KeplerianColumns,
+	type ParabolicColumns
+} from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './constants';
@@ -8,20 +12,14 @@ import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/t
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
 
-/** Zone directory name for parabolic comets (OrbitClass.PAR.name in Python). */
-const PARABOLIC_ZONE = 'PAR';
-
-function columnarToBody(
-	cols: ElementColumns,
+function keplerianToBody(
+	cols: KeplerianColumns,
 	idx: number,
 	labels: Map<number, string>,
 	flags: Map<number, number>,
-	idMap: Map<number, string>,
-	zone: string
+	idMap: Map<number, string>
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
-	const isParabolic = zone === PARABOLIC_ZONE;
-
 	return {
 		id: idMap.get(idx)!,
 		name: labels.get(idx) ?? null,
@@ -37,9 +35,34 @@ function columnarToBody(
 		w: cols.w[idx],
 		ma: cols.ma[idx],
 		n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
+		epoch: cols.epochJd[idx]
+	};
+}
+
+function parabolicToBody(
+	cols: ParabolicColumns,
+	idx: number,
+	labels: Map<number, string>,
+	flags: Map<number, number>,
+	idMap: Map<number, string>
+): BodyData {
+	return {
+		id: idMap.get(idx)!,
+		name: labels.get(idx) ?? null,
+		objectFileFlag: flags.get(idx) ?? 0,
+		objectType: cols.objectType[idx] as ObjectType,
+		parentId: `naif-${cols.parentId[idx]}`,
+		radiusKm: cols.radiusKm[idx],
+		a: 0,
+		e: cols.e[idx],
+		i: cols.i[idx],
+		om: cols.om[idx],
+		w: cols.w[idx],
+		ma: 0,
+		n: 0,
 		epoch: cols.epochJd[idx],
-		// Parabolic comets: binary encodes q in the 'a' slot and tp in the 'ma' slot
-		...(isParabolic ? { q: cols.a[idx], tp: cols.ma[idx] } : {})
+		q: cols.q[idx],
+		tp: cols.tp[idx]
 	};
 }
 
@@ -76,14 +99,19 @@ export class ChunkLoader {
 		const { labels, flags } = labelData;
 
 		console.log(`Loaded: ${cols.rowCount} objects`);
+		const isParabolic = cols.kind === 'parabolic';
 
 		for (let idx = 0; idx < cols.rowCount; idx++) {
-			const a = cols.a[idx];
 			const objType = cols.objectType[idx] as ObjectType;
 
-			// Barycenters/Lagrange points with a=0 are structural (parent lookup tree);
-			// all other bodies with a=0 are degenerate and should be skipped.
-			if (a === 0 && objType !== ObjectType.BARYCENTER && objType !== ObjectType.LAGRANGE_POINT) {
+			// Parabolic comets always have a valid orbit; for Keplerian, skip
+			// degenerate a=0 bodies (except structural barycenters/Lagrange points).
+			if (
+				!isParabolic &&
+				(cols as KeplerianColumns).a[idx] === 0 &&
+				objType !== ObjectType.BARYCENTER &&
+				objType !== ObjectType.LAGRANGE_POINT
+			) {
 				continue;
 			}
 
@@ -93,9 +121,11 @@ export class ChunkLoader {
 			}
 			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
 
-			const body = columnarToBody(cols, idx, labels, flags, idMap, zone);
+			const body = isParabolic
+				? parabolicToBody(cols as ParabolicColumns, idx, labels, flags, idMap)
+				: keplerianToBody(cols as KeplerianColumns, idx, labels, flags, idMap);
 			const offset =
-				a === 0
+				body.a === 0 && !isParabolic
 					? ([0, 0, 0] as [number, number, number])
 					: body.q != null
 						? parabolicToPosition(body, date)

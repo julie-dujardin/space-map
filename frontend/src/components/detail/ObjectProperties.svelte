@@ -5,6 +5,7 @@
 	import type { OrbitalElements } from '$lib/types/objects';
 	import { formatNumber, formatUnit, formatQuantity, ucfirst } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
+	import { formatJulianDate } from '$lib/format/date';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -96,6 +97,8 @@
 				label: m.orbital_period(),
 				value: `${formatNumber(sbdb.per_y)} ${formatUnit('year')}`
 			});
+		if (sbdb?.condition_code)
+			props.push({ label: m.condition_code(), value: formatNumber(sbdb.condition_code) });
 		if (orbit?.a)
 			props.push({
 				label: m.semi_major_axis(),
@@ -104,10 +107,19 @@
 		if (orbit?.e != null) props.push({ label: m.eccentricity(), value: formatNumber(orbit.e) });
 		if (orbit?.i != null)
 			props.push({ label: m.inclination(), value: `${formatNumber(orbit.i)}°` });
-		if (sbdb?.q)
+		// Perihelion distance: prefer orbit.q (parabolic), fall back to sbdb.q
+		const q = orbit?.q ?? sbdb?.q;
+		if (q)
 			props.push({
 				label: m.perihelion(),
-				value: `${formatNumber(sbdb.q)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(q)} ${formatUnit('astronomical_unit')}`
+			});
+		// Time of perihelion passage (parabolic orbits)
+		const tp = orbit?.tp;
+		if (tp != null)
+			props.push({
+				label: m.perihelion_time(),
+				value: formatJulianDate(tp)
 			});
 		if (sbdb?.ad)
 			props.push({
