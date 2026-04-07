@@ -28,7 +28,11 @@ export function makeCircleTexture(): CanvasTexture {
 	return new CanvasTexture(canvas);
 }
 
-export function makeOrbitLine(body: PositionedBody, color: string): Line {
+export function makeOrbitLine(
+	body: PositionedBody,
+	color: string,
+	basisPos: [number, number, number] = [0, 0, 0]
+): Line {
 	const { orbitElements, orbitCenter, data } = body;
 	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
 
@@ -116,11 +120,19 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 		}
 	}
 
+	// Write positions as focus-relative: orbitLocal + orbitCenter - basisPos (Float64 math, small result)
+	const bx = cx - basisPos[0],
+		by = cy - basisPos[1],
+		bz = cz - basisPos[2];
+	const posArr = new Float32Array(validPoints.length * 3);
+	for (let k = 0; k < validPoints.length; k++) {
+		posArr[k * 3] = validPoints[k][0] + bx;
+		posArr[k * 3 + 1] = validPoints[k][1] + by;
+		posArr[k * 3 + 2] = validPoints[k][2] + bz;
+	}
+
 	const geometry = new BufferGeometry();
-	geometry.setAttribute(
-		'position',
-		new Float32BufferAttribute(new Float32Array(validPoints.flat()), 3)
-	);
+	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 	geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
 
 	const material = new ShaderMaterial({
@@ -151,14 +163,20 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 	});
 
 	const line = new Line(geometry, material);
-	line.frustumCulled = false; // geometry is orbit-local; shader repositions it via uCenterOffset
+	line.frustumCulled = false; // shader repositions geometry via uCenterOffset
+	// Store Float64 orbit-local positions for rebuilding when focus changes
 	line.userData.orbitCenter = new Vector3(cx, cy, cz);
+	line.userData.orbitLocalPositions = validPoints;
 	return line;
 }
 
 const F32_MAX = 3.4028235e38;
 
-export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture): Points {
+export function makePointCloud(
+	bodies: PositionedBody[],
+	texture: CanvasTexture,
+	basisPos: [number, number, number] = [0, 0, 0]
+): Points {
 	const valid = bodies.filter((b) => {
 		const [x, y, z] = b.position;
 		if (
@@ -178,9 +196,9 @@ export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture)
 	});
 	const positions = new Float32Array(valid.length * 3);
 	for (let i = 0; i < valid.length; i++) {
-		positions[i * 3] = valid[i].position[0];
-		positions[i * 3 + 1] = valid[i].position[1];
-		positions[i * 3 + 2] = valid[i].position[2];
+		positions[i * 3] = valid[i].position[0] - basisPos[0];
+		positions[i * 3 + 1] = valid[i].position[1] - basisPos[1];
+		positions[i * 3 + 2] = valid[i].position[2] - basisPos[2];
 	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));

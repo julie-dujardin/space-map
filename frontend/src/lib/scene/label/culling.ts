@@ -110,7 +110,8 @@ export function cullOverlappingLabels(
 	screenHeight: number,
 	camera: PerspectiveCamera,
 	focusedBodyId: string | undefined,
-	ctx: ContextManager
+	ctx: ContextManager,
+	focusTruePos: [number, number, number] = [0, 0, 0]
 ): void {
 	// Estimated label bounding box in CSS pixels
 	const LW = 90;
@@ -128,13 +129,24 @@ export function cullOverlappingLabels(
 		dist: number;
 	};
 
+	// Camera true world position (Float64)
+	const camWx = focusTruePos[0] + camera.position.x;
+	const camWy = focusTruePos[1] + camera.position.y;
+	const camWz = focusTruePos[2] + camera.position.z;
+
 	const tmpV3 = new Vector3();
 	const candidates: Candidate[] = [];
 
 	for (const { body, label, labelHalo } of bodyObjects.values()) {
 		if (!label?.visible) continue;
-		tmpV3.set(...body.position);
-		const dist = camera.position.distanceTo(tmpV3);
+		// Focus-relative position for projection (matches camera's coordinate space)
+		const [bx, by, bz] = body.position;
+		tmpV3.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
+		// Distance in Float64 from world positions
+		const dx = bx - camWx,
+			dy = by - camWy,
+			dz = bz - camWz;
+		const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 		tmpV3.project(camera);
 		if (tmpV3.z > 1) continue;
 		const isFocused = body.data.id === focusedBodyId;
