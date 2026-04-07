@@ -149,13 +149,17 @@ export function buildMajorBodies(
 	}
 }
 
-export function buildOrbitLines(bodyObjects: Map<string, BodyObjects>, scene: Scene): void {
+export function buildOrbitLines(
+	bodyObjects: Map<string, BodyObjects>,
+	scene: Scene,
+	basisPos: [number, number, number] = [0, 0, 0]
+): void {
 	for (const [, bo] of bodyObjects) {
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
 		const color = BODY_COLORS[body.data.id] ?? DEFAULT_BODY_COLOR;
-		const line = makeOrbitLine(body, color);
+		const line = makeOrbitLine(body, color, basisPos);
 		scene.add(line);
 		bo.orbitLine = line;
 	}

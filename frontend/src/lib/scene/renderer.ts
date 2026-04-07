@@ -177,7 +177,7 @@ export class SceneRenderer {
 				canvas,
 				(body) => this.handleFocus(body)
 			);
-			buildOrbitLines(this.bodyObjects, this.scene);
+			buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
 		}
 
 		// Apply focus-relative positions to all scene objects
@@ -210,7 +210,10 @@ export class SceneRenderer {
 		this.spacecraftPoints = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
 		// Defer orbit line geometry (100K+ Kepler solves) to after first paint
-		requestIdleCallback(() => buildOrbitLines(this.bodyObjects, this.scene), { timeout: 2000 });
+		const basis = this.pointCloudBasisPos;
+		requestIdleCallback(() => buildOrbitLines(this.bodyObjects, this.scene, basis), {
+			timeout: 2000
+		});
 	}
 
 	rebuildMinorPointClouds(): void {
@@ -256,6 +259,8 @@ export class SceneRenderer {
 		this.rebuildMinorPointClouds();
 		// Rebuild moon point cloud vertex buffers with new basis
 		this.rebuildMoonPointClouds();
+		// Rebuild orbit line vertex buffers with new basis
+		this.rebuildOrbitLineBasis();
 		// Reset point cloud object positions since basis matches focus
 		for (const pts of this.asteroidPoints.values()) pts.position.set(0, 0, 0);
 		for (const pts of this.spacecraftPoints.values()) pts.position.set(0, 0, 0);
@@ -282,6 +287,31 @@ export class SceneRenderer {
 				positions[i * 3 + 2] = moons[i].position[2] - basis[2];
 			}
 			existing.geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+		}
+	}
+
+	private rebuildOrbitLineBasis(): void {
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		for (const bo of this.bodyObjects.values()) {
+			const line = bo.orbitLine;
+			if (!line) continue;
+			const localPositions = line.userData.orbitLocalPositions as
+				| [number, number, number][]
+				| undefined;
+			if (!localPositions) continue;
+			const oc = line.userData.orbitCenter as Vector3;
+			// orbitCenter - basisPos in Float64, then add each orbit-local point
+			const ox = oc.x - bx,
+				oy = oc.y - by,
+				oz = oc.z - bz;
+			const posAttr = line.geometry.getAttribute('position');
+			const arr = posAttr.array as Float32Array;
+			for (let i = 0; i < localPositions.length; i++) {
+				arr[i * 3] = localPositions[i][0] + ox;
+				arr[i * 3 + 1] = localPositions[i][1] + oy;
+				arr[i * 3 + 2] = localPositions[i][2] + oz;
+			}
+			posAttr.needsUpdate = true;
 		}
 	}
 
@@ -449,13 +479,14 @@ export class SceneRenderer {
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			if (!line?.visible) continue;
-			const oc = line.userData.orbitCenter as Vector3;
 			const mat = line.material as ShaderMaterial;
-			// (orbitCenter - focusTruePos) in Float64 first, then subtract camera.position (small)
+			// Vertices are stored relative to pointCloudBasisPos, so offset = (basis - focus) - cam
+			// (basis - focus) computed in Float64; when basis == focus, offset is just -cam (tiny)
+			const [bpx, bpy, bpz] = this.pointCloudBasisPos;
 			mat.uniforms.uCenterOffset.value.set(
-				oc.x - this.focusTruePos[0] - this.camera.position.x,
-				oc.y - this.focusTruePos[1] - this.camera.position.y,
-				oc.z - this.focusTruePos[2] - this.camera.position.z
+				bpx - this.focusTruePos[0] - this.camera.position.x,
+				bpy - this.focusTruePos[1] - this.camera.position.y,
+				bpz - this.focusTruePos[2] - this.camera.position.z
 			);
 			const isFocused = bo.body.data.id === focusedBodyId;
 			const isHovered = bo.label?.element.matches(':hover') ?? false;
