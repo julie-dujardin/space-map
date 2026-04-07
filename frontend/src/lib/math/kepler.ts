@@ -1,12 +1,8 @@
 import type { OrbitalElements } from '$lib/types/objects';
+import { dateToJD } from '$lib/format/date';
 import { AU_KM, AU_SCALE } from './units';
 
 const DEG2RAD = Math.PI / 180;
-
-/** Convert a JS Date to Julian Date. */
-export function dateToJD(date: Date): number {
-	return date.getTime() / 86400000 + 2440587.5;
-}
 
 /**
  * Solve Kepler's equation M = E - e*sin(E) for eccentric anomaly E.

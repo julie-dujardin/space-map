@@ -70,6 +70,7 @@ export interface GlobalObjectData {
 		K2?: number;
 		PC?: number;
 		first_obs?: string;
+		condition_code?: number;
 	};
 	wikidata?: {
 		discovery_date?: string[];
