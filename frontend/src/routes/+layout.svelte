@@ -2,6 +2,7 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
+	import Sonner from '$lib/components/ui/sonner/sonner.svelte';
 
 	let { children } = $props();
 
@@ -16,4 +17,5 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+<Sonner position="top-right" />
 {@render children()}

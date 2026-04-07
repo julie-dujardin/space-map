@@ -58,6 +58,7 @@
 	"type_spacecraft": "مركبة فضائية",
 	"type_star": "نجم",
 	"my_location": "موقعي",
+	"object_not_found": "الجسم {id} غير موجود",
 	"property_name_absolute_magnitude": "القدر المطلق",
 	"property_name_apparent_magnitude": "القدر الظاهري",
 	"property_name_asteroid_family": "عائلة الكويكبات",

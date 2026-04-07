@@ -58,6 +58,7 @@
 	"type_spacecraft": "宇宙機",
 	"type_star": "恒星",
 	"my_location": "現在地",
+	"object_not_found": "オブジェクト {id} が見つかりません",
 	"property_name_absolute_magnitude": "絶対等級",
 	"property_name_apparent_magnitude": "実視等級",
 	"property_name_asteroid_family": "小惑星族",

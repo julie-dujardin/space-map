@@ -58,6 +58,7 @@
 	"type_spacecraft": "космический аппарат",
 	"type_star": "звезда",
 	"my_location": "Моё местоположение",
+	"object_not_found": "Объект {id} не найден",
 	"property_name_absolute_magnitude": "абсолютная звёздная величина",
 	"property_name_apparent_magnitude": "видимая звёздная величина",
 	"property_name_asteroid_family": "семейство астероидов",

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount, setContext } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import Scene from '../../../../components/Scene.svelte';
 	import { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { type PositionedBody } from '$lib/types/objects';
-	import { parseUrl, DEFAULT_VIEW } from '$lib/url-state';
+	import { parseUrl, DEFAULT_VIEW, serializeUrl } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -11,12 +12,20 @@
 	const ctx = new ContextManager();
 	setContext('ctx', ctx);
 
-	const initialView = parseUrl() ?? DEFAULT_VIEW;
+	const parsed = parseUrl();
+	const initialView = parsed ?? DEFAULT_VIEW;
 	let selectedBody = $state<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 
-	onMount(() => ctx.load(initialView.date, initialView.id));
+	onMount(async () => {
+		await ctx.load(initialView.date, initialView.id);
+		if (parsed && !ctx.hasBody(parsed.id)) {
+			toast.warning(m.object_not_found({ id: parsed.id }));
+			const defaultUrl = serializeUrl(DEFAULT_VIEW);
+			history.replaceState(history.state, '', defaultUrl);
+		}
+	});
 </script>
 
 <svelte:head>

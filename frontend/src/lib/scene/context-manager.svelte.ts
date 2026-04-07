@@ -153,6 +153,10 @@ export class ContextManager {
 		return [...this.bodiesById.values()];
 	}
 
+	hasBody(id: string): boolean {
+		return this.bodiesById.has(id);
+	}
+
 	async load(date: Date, targetId?: string): Promise<void> {
 		try {
 			const loader = new ChunkLoader();

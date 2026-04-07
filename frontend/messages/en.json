@@ -58,6 +58,7 @@
 	"jpl_horizons": "JPL Horizons ({id})",
 	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
 	"my_location": "My location",
+	"object_not_found": "Object {id} not found",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "apparent magnitude",
 	"property_name_asteroid_family": "asteroid family",

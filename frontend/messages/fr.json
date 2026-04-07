@@ -57,6 +57,7 @@
 	"type_planet": "planète",
 	"type_spacecraft": "engin spatial",
 	"type_star": "étoile",
+	"object_not_found": "Objet {id} introuvable",
 	"my_location": "Ma position",
 	"property_name_absolute_magnitude": "magnitude absolue",
 	"property_name_apparent_magnitude": "magnitude apparente",
