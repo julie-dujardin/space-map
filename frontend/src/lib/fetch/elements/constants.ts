@@ -7,6 +7,10 @@ export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
 export const VERSION = 1;
 export const HEADER_SIZE = 16;
 
+/** Format types (uint16 at header offset 6). */
+export const FORMAT_KEPLERIAN = 0;
+export const FORMAT_PARABOLIC = 1;
+
 export const BASE_ELEMENT_PATH = '/data/v1/elements';
 export const BASE_LABEL_PATH = '/data/v1/element_labels';
 

@@ -2,7 +2,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_KM, AU_SCALE } from '../math/units';
-import { orbitalElementsToPosition } from '$lib/math/kepler';
+import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/kepler';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 
 /*
@@ -71,6 +71,7 @@ async function createPlaceholderBody(
 
 	const orbit = global.orbit;
 	const isPlanetScale = orbit.scale === 'planet';
+	const isParabolic = orbit.q != null;
 
 	const data: BodyData = {
 		id: targetId,
@@ -79,18 +80,21 @@ async function createPlaceholderBody(
 		parentId: `naif-${orbit.parent_naif_id}`,
 		radiusKm: (global.sbdb?.diameter ?? 0) / 2,
 		objectFileFlag: detail.localized ? 1 : 0,
-		a: isPlanetScale ? orbit.a / AU_KM : orbit.a,
+		a: isPlanetScale ? (orbit.a ?? 0) / AU_KM : (orbit.a ?? 0),
 		e: orbit.e,
 		i: orbit.i,
 		om: orbit.om,
 		w: orbit.w,
-		ma: orbit.ma,
-		n: isPlanetScale ? orbit.n * 360 : orbit.n,
-		epoch: orbit.epoch_jd
+		ma: orbit.ma ?? 0,
+		n: isPlanetScale ? (orbit.n ?? 0) * 360 : (orbit.n ?? 0),
+		epoch: orbit.epoch_jd,
+		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {})
 	};
 
 	const parentPos = loader.positions.get(orbit.parent_naif_id) ?? [0, 0, 0];
-	const offset = orbitalElementsToPosition(data, date);
+	const offset = isParabolic
+		? parabolicToPosition(data, date)
+		: orbitalElementsToPosition(data, date);
 	if (!offset) {
 		console.warn(`Failed to compute position for ${targetId} (e=${data.e})`);
 		return null;

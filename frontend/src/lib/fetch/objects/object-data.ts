@@ -24,16 +24,20 @@ export interface GlobalObjectData {
 	};
 	orbit?: {
 		epoch_jd: number;
-		a: number;
 		e: number;
 		i: number;
 		om: number;
 		w: number;
-		ma: number;
-		n: number;
 		scale: string;
 		parent_naif_id: number;
 		source: string;
+		// Keplerian elements (standard orbits)
+		a?: number;
+		ma?: number;
+		n?: number;
+		// Parabolic elements (e=1 comets)
+		q?: number;
+		tp?: number;
 	};
 	sbdb?: {
 		neo?: boolean;
