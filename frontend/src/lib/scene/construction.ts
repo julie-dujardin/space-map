@@ -38,12 +38,15 @@ function filterFinitePositions(bodies: PositionedBody[]): PositionedBody[] {
 	});
 }
 
-function positionsArray(bodies: PositionedBody[]): Float32Array {
+function positionsArray(
+	bodies: PositionedBody[],
+	basisPos: [number, number, number] = [0, 0, 0]
+): Float32Array {
 	const arr = new Float32Array(bodies.length * 3);
 	for (let i = 0; i < bodies.length; i++) {
-		arr[i * 3] = bodies[i].position[0];
-		arr[i * 3 + 1] = bodies[i].position[1];
-		arr[i * 3 + 2] = bodies[i].position[2];
+		arr[i * 3] = bodies[i].position[0] - basisPos[0];
+		arr[i * 3 + 1] = bodies[i].position[1] - basisPos[1];
+		arr[i * 3 + 2] = bodies[i].position[2] - basisPos[2];
 	}
 	return arr;
 }
@@ -67,7 +70,8 @@ export function buildMajorBodies(
 		const isStar = body.data.objectType === ObjectType.STAR;
 
 		const group = new Group();
-		group.position.set(...body.position);
+		// Position set to origin — repositionAll() applies focus-relative offset each frame
+		group.position.set(0, 0, 0);
 
 		if (isStar) {
 			group.add(new PointLight(0xffffff, 3, 0, 0));
@@ -160,7 +164,8 @@ export function buildOrbitLines(bodyObjects: Map<string, BodyObjects>, scene: Sc
 export function buildPointClouds(
 	ctx: ContextManager,
 	scene: Scene,
-	circleTexture: CanvasTexture
+	circleTexture: CanvasTexture,
+	basisPos: [number, number, number] = [0, 0, 0]
 ): {
 	asteroidPoints: Map<string, Points>;
 	spacecraftPoints: Map<string, Points>;
@@ -173,7 +178,7 @@ export function buildPointClouds(
 	// Asteroid point clouds (one per zone)
 	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
 		if (bodies.length > 0) {
-			const pts = makePointCloud(bodies, circleTexture);
+			const pts = makePointCloud(bodies, circleTexture, basisPos);
 			asteroidPoints.set(zone, pts);
 			scene.add(pts);
 		}
@@ -181,7 +186,7 @@ export function buildPointClouds(
 
 	// Spacecraft point clouds (one per parent body)
 	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
-		const points = makePointCloud(bodies, circleTexture);
+		const points = makePointCloud(bodies, circleTexture, basisPos);
 		spacecraftPoints.set(groupParentId, points);
 		scene.add(points);
 	}
@@ -196,7 +201,7 @@ export function buildPointClouds(
 		}
 	}
 	for (const [parentId, moons] of moonsByParent) {
-		const pts = makePointCloud(moons, circleTexture);
+		const pts = makePointCloud(moons, circleTexture, basisPos);
 		(pts.material as PointsMaterial).depthTest = true;
 		pts.visible = false;
 		moonPoints.set(parentId, pts);
@@ -215,7 +220,8 @@ export function rebuildMinorPointClouds(
 	ctx: ContextManager,
 	circleTexture: CanvasTexture,
 	asteroidPoints: Map<string, Points>,
-	spacecraftPoints: Map<string, Points>
+	spacecraftPoints: Map<string, Points>,
+	basisPos: [number, number, number] = [0, 0, 0]
 ): Points[] {
 	const pendingAdd: Points[] = [];
 
@@ -228,10 +234,10 @@ export function rebuildMinorPointClouds(
 		if (existing) {
 			existing.geometry.setAttribute(
 				'position',
-				new Float32BufferAttribute(positionsArray(valid), 3)
+				new Float32BufferAttribute(positionsArray(valid, basisPos), 3)
 			);
 		} else {
-			const pts = makePointCloud(valid, circleTexture);
+			const pts = makePointCloud(valid, circleTexture, basisPos);
 			asteroidPoints.set(zone, pts);
 			pendingAdd.push(pts);
 		}
@@ -246,10 +252,10 @@ export function rebuildMinorPointClouds(
 		if (existing) {
 			existing.geometry.setAttribute(
 				'position',
-				new Float32BufferAttribute(positionsArray(valid), 3)
+				new Float32BufferAttribute(positionsArray(valid, basisPos), 3)
 			);
 		} else {
-			const points = makePointCloud(valid, circleTexture);
+			const points = makePointCloud(valid, circleTexture, basisPos);
 			spacecraftPoints.set(groupParentId, points);
 			pendingAdd.push(points);
 		}

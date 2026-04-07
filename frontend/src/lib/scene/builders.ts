@@ -158,7 +158,11 @@ export function makeOrbitLine(body: PositionedBody, color: string): Line {
 
 const F32_MAX = 3.4028235e38;
 
-export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture): Points {
+export function makePointCloud(
+	bodies: PositionedBody[],
+	texture: CanvasTexture,
+	basisPos: [number, number, number] = [0, 0, 0]
+): Points {
 	const valid = bodies.filter((b) => {
 		const [x, y, z] = b.position;
 		if (
@@ -178,9 +182,9 @@ export function makePointCloud(bodies: PositionedBody[], texture: CanvasTexture)
 	});
 	const positions = new Float32Array(valid.length * 3);
 	for (let i = 0; i < valid.length; i++) {
-		positions[i * 3] = valid[i].position[0];
-		positions[i * 3 + 1] = valid[i].position[1];
-		positions[i * 3 + 2] = valid[i].position[2];
+		positions[i * 3] = valid[i].position[0] - basisPos[0];
+		positions[i * 3 + 1] = valid[i].position[1] - basisPos[1];
+		positions[i * 3 + 2] = valid[i].position[2] - basisPos[2];
 	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));

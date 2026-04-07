@@ -28,6 +28,19 @@ import {
 } from './construction';
 import type { BodyObjects, Callbacks } from './types';
 
+type Vec3 = [number, number, number];
+
+function f64lerp(a: Vec3, b: Vec3, t: number): Vec3 {
+	return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function f64dist(a: Vec3, b: Vec3): number {
+	const dx = a[0] - b[0],
+		dy = a[1] - b[1],
+		dz = a[2] - b[2];
+	return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 // --- SceneRenderer ---
 
 export class SceneRenderer {
@@ -56,14 +69,20 @@ export class SceneRenderer {
 	hideCappedMoonLabels = false;
 
 	private focusedBody: PositionedBody | undefined;
-	private focusTarget = new Vector3();
 	private readonly _tmpV3 = new Vector3();
-	private focusOrigin = new Vector3();
-	private focusStartTime = 0;
-	private camOrigin: Vector3 | null = null;
-	private camTarget: Vector3 | null = null;
+	private readonly _camWorldV3 = new Vector3();
+
+	// Float64 world positions for focus-relative rendering
+	private focusTruePos: Vec3 = [0, 0, 0];
+	private focusOriginWorld: Vec3 = [0, 0, 0];
+	private focusTargetWorld: Vec3 = [0, 0, 0];
+	private camOriginWorld: Vec3 | null = null;
+	private camTargetWorld: Vec3 | null = null;
+	private pointCloudBasisPos: Vec3 = [0, 0, 0];
+
 	private flyQ0: Quaternion | null = null;
 	private flyQ1: Quaternion | null = null;
+	private focusStartTime = 0;
 	private static readonly FOCUS_DURATION_MS = 350;
 	private static readonly FLY_DURATION_MS = 1600;
 	private focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
@@ -105,25 +124,28 @@ export class SceneRenderer {
 		const allBodies = ctx.allBodies;
 		const matchedBody = allBodies.find((b) => b.data.id === initialView.id);
 		const focusBody = matchedBody ?? sunBody;
-		const focusPos: [number, number, number] = focusBody?.position ?? [0, 0, 0];
+		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
 
 		this.focusedBody = focusBody;
-		this.focusTarget.set(...focusPos);
-		this.focusOrigin.set(...focusPos);
+		this.focusTruePos = [...focusPos];
+		this.focusOriginWorld = [...focusPos];
+		this.focusTargetWorld = [...focusPos];
+		this.pointCloudBasisPos = [...focusPos];
 		this.focusStartTime = -SceneRenderer.FOCUS_DURATION_MS; // already settled
 
+		// Camera position: focus-relative (small offset from origin)
 		const camPos = sphericalToCartesian(
-			focusPos,
+			[0, 0, 0],
 			initialView.latitude,
 			initialView.longitude,
 			initialView.zoom
 		);
 		this.camera.position.set(...camPos);
 
-		// OrbitControls
+		// OrbitControls — target always at origin
 		this.controls = new OrbitControls(this.camera, canvas);
 		this.controls.enableDamping = true;
-		this.controls.target.set(...focusPos);
+		this.controls.target.set(0, 0, 0);
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
 
@@ -157,6 +179,9 @@ export class SceneRenderer {
 			buildOrbitLines(this.bodyObjects, this.scene);
 		}
 
+		// Apply focus-relative positions to all scene objects
+		this.repositionAll();
+
 		// Load texture for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
 
@@ -179,7 +204,7 @@ export class SceneRenderer {
 			this.renderer.domElement,
 			(body) => this.handleFocus(body)
 		);
-		const pts = buildPointClouds(this.ctx, this.scene, this.circleTexture);
+		const pts = buildPointClouds(this.ctx, this.scene, this.circleTexture, this.pointCloudBasisPos);
 		this.asteroidPoints = pts.asteroidPoints;
 		this.spacecraftPoints = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
@@ -192,11 +217,55 @@ export class SceneRenderer {
 			this.ctx,
 			this.circleTexture,
 			this.asteroidPoints,
-			this.spacecraftPoints
+			this.spacecraftPoints,
+			this.pointCloudBasisPos
 		);
 		if (newPoints.length > 0) {
 			this.pendingSceneAdds.push(...newPoints);
 		}
+	}
+
+	// --- Focus-relative positioning ---
+
+	private repositionAll(): void {
+		const [fx, fy, fz] = this.focusTruePos;
+		for (const bo of this.bodyObjects.values()) {
+			const [bx, by, bz] = bo.body.position;
+			bo.group.position.set(bx - fx, by - fy, bz - fz);
+		}
+		this.repositionPointClouds();
+	}
+
+	private repositionPointClouds(): void {
+		const [fx, fy, fz] = this.focusTruePos;
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		const dx = bx - fx,
+			dy = by - fy,
+			dz = bz - fz;
+		for (const pts of this.asteroidPoints.values()) pts.position.set(dx, dy, dz);
+		for (const pts of this.spacecraftPoints.values()) pts.position.set(dx, dy, dz);
+		for (const pts of this.moonPoints.values()) pts.position.set(dx, dy, dz);
+	}
+
+	private rebuildPointCloudBasis(): void {
+		this.pointCloudBasisPos = [...this.focusTruePos];
+		// Re-trigger dirty flags for all zones so they rebuild with new basis
+		for (const zone of this.asteroidPoints.keys()) this.ctx.dirtyAsteroidZones.add(zone);
+		for (const gid of this.spacecraftPoints.keys()) this.ctx.dirtySpacecraftGroups.add(gid);
+		this.rebuildMinorPointClouds();
+		// Reset point cloud object positions since basis matches focus
+		for (const pts of this.asteroidPoints.values()) pts.position.set(0, 0, 0);
+		for (const pts of this.spacecraftPoints.values()) pts.position.set(0, 0, 0);
+		for (const pts of this.moonPoints.values()) pts.position.set(0, 0, 0);
+	}
+
+	// Reconstruct camera true world position (Float64)
+	private cameraTruePos(): Vec3 {
+		return [
+			this.focusTruePos[0] + this.camera.position.x,
+			this.focusTruePos[1] + this.camera.position.y,
+			this.focusTruePos[2] + this.camera.position.z
+		];
 	}
 
 	// --- RAF loop ---
@@ -207,35 +276,59 @@ export class SceneRenderer {
 		// Snap controls target on first frame
 		if (this.firstFrame) {
 			this.firstFrame = false;
-			this.controls.target.copy(this.focusTarget);
+			this.controls.target.set(0, 0, 0);
 			this.controls.update();
 		}
 
-		// Animate controls target (and optionally camera position) with smoothstep over fixed duration
+		// Animate focus position (and optionally camera position) with smoothstep over fixed duration
 		const elapsed = performance.now() - this.focusStartTime;
 		const t = Math.min(elapsed / this.focusDurationMs, 1);
 		const isAnimating = t < 1;
-		const isFlying = !!(this.camOrigin && this.camTarget && this.flyQ0 && this.flyQ1);
+		const isFlying = !!(this.camOriginWorld && this.camTargetWorld && this.flyQ0 && this.flyQ1);
 		let controlsSettled: boolean;
 		if (isAnimating && isFlying) {
 			const s = t * t * (3 - 2 * t); // smoothstep
+			// Lerp focus position in Float64
+			this.focusTruePos = f64lerp(this.focusOriginWorld, this.focusTargetWorld, s);
+			this.repositionAll();
 			// Slerp camera orientation for uniform angular velocity
 			this.camera.quaternion.slerpQuaternions(this.flyQ0!, this.flyQ1!, s);
-			// Camera position eases in so rotation is visible first
+			// Camera world position eases in so rotation is visible first
 			const sCam = t * t * t; // cubic ease-in
-			this.camera.position.copy(this.camOrigin!).lerp(this.camTarget!, sCam);
+			const camWorld = f64lerp(this.camOriginWorld!, this.camTargetWorld!, sCam);
+			this.camera.position.set(
+				camWorld[0] - this.focusTruePos[0],
+				camWorld[1] - this.focusTruePos[1],
+				camWorld[2] - this.focusTruePos[2]
+			);
 			// Skip controls.update() — we're driving the camera directly
 			controlsSettled = false;
 		} else if (isAnimating) {
 			const s = t * t * (3 - 2 * t);
-			this.controls.target.copy(this.focusOrigin).lerp(this.focusTarget, s);
+			this.focusTruePos = f64lerp(this.focusOriginWorld, this.focusTargetWorld, s);
+			this.repositionAll();
+			this.controls.target.set(0, 0, 0);
 			controlsSettled = !this.controls.update();
 		} else {
-			this.controls.target.copy(this.focusTarget);
-			if (this.camTarget) {
-				this.camera.position.copy(this.camTarget);
-				this.camOrigin = null;
-				this.camTarget = null;
+			if (
+				this.focusTruePos[0] !== this.focusTargetWorld[0] ||
+				this.focusTruePos[1] !== this.focusTargetWorld[1] ||
+				this.focusTruePos[2] !== this.focusTargetWorld[2]
+			) {
+				this.focusTruePos = [...this.focusTargetWorld];
+				this.repositionAll();
+				// Rebuild point cloud vertex buffers relative to new focus
+				this.rebuildPointCloudBasis();
+			}
+			this.controls.target.set(0, 0, 0);
+			if (this.camTargetWorld) {
+				this.camera.position.set(
+					this.camTargetWorld[0] - this.focusTruePos[0],
+					this.camTargetWorld[1] - this.focusTruePos[1],
+					this.camTargetWorld[2] - this.focusTruePos[2]
+				);
+				this.camOriginWorld = null;
+				this.camTargetWorld = null;
 				this.flyQ0 = null;
 				this.flyQ1 = null;
 			}
@@ -251,6 +344,10 @@ export class SceneRenderer {
 		const { distance } = this.getCameraState();
 		this.ctx.updateCamera(distance);
 
+		// Camera true world position for Float64 distance calculations
+		const camTrue = this.cameraTruePos();
+		this._camWorldV3.set(camTrue[0], camTrue[1], camTrue[2]);
+
 		// Visibility updates
 		const fovRad = (this.camera.fov * Math.PI) / 180;
 		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
@@ -258,8 +355,7 @@ export class SceneRenderer {
 
 		for (const bo of this.bodyObjects.values()) {
 			const { body, group, orbitLine } = bo;
-			this._tmpV3.set(...body.position);
-			const dist = this.camera.position.distanceTo(this._tmpV3);
+			const dist = f64dist(camTrue, body.position);
 
 			let showLabel: boolean;
 			let isClose: boolean;
@@ -310,18 +406,9 @@ export class SceneRenderer {
 			if (!bo.label?.visible) continue;
 			if (bo.body.data.objectType === ObjectType.STAR) continue;
 			const [bx, by, bz] = bo.body.position;
-			this._tmpV3.set(bx, by, bz);
-			const dist = this.camera.position.distanceTo(this._tmpV3);
+			const dist = f64dist(camTrue, bo.body.position);
 			if (
-				isOccludedByPlanet(
-					bx,
-					by,
-					bz,
-					dist,
-					bo.body.data.id,
-					this.camera.position,
-					this.bodyObjects
-				)
+				isOccludedByPlanet(bx, by, bz, dist, bo.body.data.id, this._camWorldV3, this.bodyObjects)
 			) {
 				bo.label.visible = false;
 			}
@@ -333,7 +420,8 @@ export class SceneRenderer {
 			this.renderer.domElement.clientHeight,
 			this.camera,
 			focusedBodyId,
-			this.ctx
+			this.ctx,
+			this.focusTruePos
 		);
 
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
@@ -343,10 +431,11 @@ export class SceneRenderer {
 			if (!line?.visible) continue;
 			const oc = line.userData.orbitCenter as Vector3;
 			const mat = line.material as ShaderMaterial;
+			// (orbitCenter - focusTruePos) in Float64 first, then subtract camera.position (small)
 			mat.uniforms.uCenterOffset.value.set(
-				oc.x - this.camera.position.x,
-				oc.y - this.camera.position.y,
-				oc.z - this.camera.position.z
+				oc.x - this.focusTruePos[0] - this.camera.position.x,
+				oc.y - this.focusTruePos[1] - this.camera.position.y,
+				oc.z - this.focusTruePos[2] - this.camera.position.z
 			);
 			const isFocused = bo.body.data.id === focusedBodyId;
 			const isHovered = bo.label?.element.matches(':hover') ?? false;
@@ -364,9 +453,9 @@ export class SceneRenderer {
 
 	// --- Interaction ---
 
-	private getCameraState(target = this.controls.target) {
+	private getCameraState() {
 		const cam = this.camera.position;
-		return cartesianToSpherical([cam.x, cam.y, cam.z], [target.x, target.y, target.z]);
+		return cartesianToSpherical([cam.x, cam.y, cam.z], [0, 0, 0]);
 	}
 
 	private onControlsEnd = (): void => {
@@ -403,7 +492,8 @@ export class SceneRenderer {
 
 	private handleFocus(body: PositionedBody): void {
 		this.setFocusTarget(body);
-		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
+		const camWorld = this.cameraTruePos();
+		const { latitude, longitude, distance } = cartesianToSpherical(camWorld, body.position);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 	}
 
@@ -414,12 +504,16 @@ export class SceneRenderer {
 		if (!body) return 0;
 		if (zoom !== undefined) {
 			// Place camera at `zoom` distance, arriving from the current camera direction
+			const camWorld = this.cameraTruePos();
 			const dir = this._tmpV3
-				.set(...body.position)
-				.sub(this.camera.position)
+				.set(
+					body.position[0] - camWorld[0],
+					body.position[1] - camWorld[1],
+					body.position[2] - camWorld[2]
+				)
 				.normalize()
 				.negate();
-			const camPos: [number, number, number] = [
+			const camPos: Vec3 = [
 				body.position[0] + dir.x * zoom,
 				body.position[1] + dir.y * zoom,
 				body.position[2] + dir.z * zoom
@@ -428,34 +522,46 @@ export class SceneRenderer {
 		} else {
 			this.setFocusTarget(body);
 		}
-		const { latitude, longitude, distance } = this.getCameraState(this.focusTarget);
+		const camWorld = this.cameraTruePos();
+		const { latitude, longitude, distance } = cartesianToSpherical(camWorld, body.position);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 		return this.focusDurationMs;
 	}
 
-	setFocusTarget(body: PositionedBody, camPos?: [number, number, number]): void {
-		this.focusOrigin.copy(this.controls.target);
+	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
+		this.focusOriginWorld = [...this.focusTruePos];
+		this.focusTargetWorld = [...body.position];
 		this.focusStartTime = performance.now();
 		this.focusedBody = body;
-		this.focusTarget.set(...body.position);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
 		if (camPos) {
-			this.camOrigin = this.camera.position.clone();
-			this.camTarget = new Vector3(...camPos);
+			this.camOriginWorld = this.cameraTruePos();
+			this.camTargetWorld = camPos;
 			this.focusDurationMs = SceneRenderer.FLY_DURATION_MS;
 			// Capture start orientation, compute end orientation for slerp
 			this.flyQ0 = this.camera.quaternion.clone();
 			const savedPos = this.camera.position.clone();
-			this.camera.position.set(...camPos);
-			this.camera.lookAt(this.focusTarget);
+			// Temporarily place camera at target in focus-relative space (using CURRENT focusTruePos)
+			this.camera.position.set(
+				camPos[0] - this.focusTruePos[0],
+				camPos[1] - this.focusTruePos[1],
+				camPos[2] - this.focusTruePos[2]
+			);
+			// lookAt target body in focus-relative space
+			const bodyRel = this._tmpV3.set(
+				body.position[0] - this.focusTruePos[0],
+				body.position[1] - this.focusTruePos[1],
+				body.position[2] - this.focusTruePos[2]
+			);
+			this.camera.lookAt(bodyRel);
 			this.flyQ1 = this.camera.quaternion.clone();
 			this.camera.position.copy(savedPos);
 			this.camera.quaternion.copy(this.flyQ0);
 		} else {
-			this.camOrigin = null;
-			this.camTarget = null;
+			this.camOriginWorld = null;
+			this.camTargetWorld = null;
 			this.flyQ0 = null;
 			this.flyQ1 = null;
 			this.focusDurationMs = SceneRenderer.FOCUS_DURATION_MS;
