@@ -225,12 +225,14 @@ def _object_type(row: dict[str, str]) -> ObjectType:
     return ObjectType.comet if prefix else ObjectType.asteroid
 
 
-def _display_name(row: dict[str, str], object_type: ObjectType) -> str | None:
+def _display_name(
+    row: dict[str, str], object_type: ObjectType, provisional_designation: str | None
+) -> str | None:
     """Build the display name for an SBDB object.
 
     Comets: full_name (e.g. "29P/Schwassmann-Wachmann 1", "C/2007 H6 (SOHO)").
     Asteroids with name: "<pdes> <name>" (e.g. "3173 McNaught").
-    Asteroids unnamed: pdes as provisional designation (e.g. "1996 XG32").
+    Asteroids unnamed: provisional designation (e.g. "1996 XG32").
     """
     if object_type == ObjectType.comet:
         return string_or_none(row["full_name"])
@@ -239,7 +241,7 @@ def _display_name(row: dict[str, str], object_type: ObjectType) -> str | None:
     pdes = string_or_none(row["pdes"])
     if name and pdes:
         return f"{pdes} {name}"
-    return pdes or name
+    return provisional_designation
 
 
 def _provisional_designation(full_name: str | None) -> str | None:
@@ -298,12 +300,12 @@ def _parse_chunk(
             spkid = int_or_none(row["spkid"])
             object_type = _object_type(row)
             object_id = f"{ID_TYPES.SPKID}-{spkid}"
+            provisional_designation = _provisional_designation(row["full_name"])
             name = string_or_none(row["name"])
-            prov = _provisional_designation(row["full_name"])
-            if prov == name:
-                prov = None
+            if provisional_designation == name:
+                provisional_designation = None
             pdes = string_or_none(row["pdes"])
-            if pdes == prov:
+            if pdes == provisional_designation:
                 pdes = None
 
             rows.append(
@@ -311,13 +313,15 @@ def _parse_chunk(
                     "sbdb": {
                         **_sbdb_dict(row),
                         "object_id": object_id,
-                        "provisional_designation": prov,
+                        "provisional_designation": provisional_designation,
                     },
                     "object": {
                         "id": object_id,
-                        "name": _display_name(row, object_type),
+                        "name": _display_name(
+                            row, object_type, provisional_designation
+                        ),
                         "object_type": object_type,
-                        "provisional_designation": prov,
+                        "provisional_designation": provisional_designation,
                         "sbdb_spkid": spkid,
                         "sbdb_mcp_designation": pdes,
                         "epoch_jd": float_or_none(row["epoch"]),
