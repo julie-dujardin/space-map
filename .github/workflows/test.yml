@@ -37,3 +37,21 @@ jobs:
       - uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files --hook-stage manual
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: data/pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: cd data && uv sync --locked --dev
+
+      - name: Run tests
+        run: cd data && uv run pytest
