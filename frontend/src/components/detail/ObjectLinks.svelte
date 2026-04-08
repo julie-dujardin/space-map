@@ -13,6 +13,7 @@
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
 	let websites = $derived(global?.wikidata?.website ?? []);
+	let blogs = $derived(global?.wikidata?.blog ?? []);
 	let sbdbDesignation = $derived(
 		global?.cross_refs?.sbdb_mcp_designation ?? global?.cross_refs?.sbdb_spkid
 	);
@@ -26,6 +27,7 @@
 		wikipediaUrl ||
 			wikidataQid ||
 			websites.length ||
+			blogs.length ||
 			sbdbDesignation ||
 			horizonsNaifId ||
 			noradCatId
@@ -55,6 +57,14 @@
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground text-muted-foreground"
 					>{new URL(url).hostname.replace(/^www\./, '')}</a
+				>
+			{/each}
+			{#each blogs as url (url)}
+				<a
+					href={url}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground text-muted-foreground">{m.property_name_blog()}</a
 				>
 			{/each}
 			{#if horizonsNaifId}

@@ -222,6 +222,11 @@ interface GlobalObjectData {
     min_temperature?: QuantityWithUnit;
     max_temperature?: QuantityWithUnit;
     website?: string;
+    blog?: string;
+    logo_image?: string;          // URL
+    capital_cost?: QuantityWithUnit;
+    length?: QuantityWithUnit;
+    width?: QuantityWithUnit;
   };
 }
 
@@ -249,6 +254,11 @@ interface LocalizedObjectData {
   manufacturer?: EntityRef;
   launch_vehicle?: EntityRef;
   launch_site?: EntityRef;
+  developer?: EntityRef[];
+  funder?: EntityRef[];
+  country_of_origin?: EntityRef[];
+  launch_contractor?: EntityRef[];
+  part_of?: EntityRef[];
   wikipedia?: {
     extract?: string;
     description?: string;

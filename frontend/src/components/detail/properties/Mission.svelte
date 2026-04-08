@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatWikidataDate } from '$lib/format/date';
+	import { formatQuantity } from '$lib/format/quantities';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -13,13 +14,33 @@
 
 	let { global, localized }: Props = $props();
 
+	let capitalCost = $derived(global?.wikidata?.capital_cost);
 	let launchDate = $derived(global?.wikidata?.launch_date);
 	let operator = $derived(localized?.operator);
 	let manufacturer = $derived(localized?.manufacturer);
+	let developer = $derived(localized?.developer);
+	let funder = $derived(localized?.funder);
+	let countryOfOrigin = $derived(localized?.country_of_origin);
+	let launchContractor = $derived(localized?.launch_contractor);
 	let launchVehicle = $derived(localized?.launch_vehicle);
 	let launchSite = $derived(localized?.launch_site);
+	let namedAfter = $derived(localized?.named_after);
+	let partOf = $derived(localized?.part_of);
 
-	let hasContent = $derived(launchDate || operator || manufacturer || launchVehicle || launchSite);
+	let hasContent = $derived(
+		launchDate ||
+			operator ||
+			manufacturer ||
+			developer ||
+			funder ||
+			countryOfOrigin ||
+			launchContractor ||
+			launchVehicle ||
+			launchSite ||
+			namedAfter ||
+			partOf ||
+			capitalCost
+	);
 </script>
 
 {#if hasContent}
@@ -42,10 +63,43 @@
 				<EntityLinks entities={[launchVehicle]} />
 			</Row>
 		{/if}
+		{#if launchContractor && launchContractor.length > 0}
+			<Row label={m.property_name_launch_contractor()}>
+				<EntityLinks entities={launchContractor} />
+			</Row>
+		{/if}
 		{#if launchSite && launchSite.length > 0}
 			<Row label={m.launch_site()}>
 				<EntityLinks entities={launchSite} />
 			</Row>
+		{/if}
+		{#if developer && developer.length > 0}
+			<Row label={m.property_name_developer()}>
+				<EntityLinks entities={developer} />
+			</Row>
+		{/if}
+		{#if funder && funder.length > 0}
+			<Row label={m.property_name_funder()}>
+				<EntityLinks entities={funder} />
+			</Row>
+		{/if}
+		{#if countryOfOrigin && countryOfOrigin.length > 0}
+			<Row label={m.property_name_country_of_origin()}>
+				<EntityLinks entities={countryOfOrigin} />
+			</Row>
+		{/if}
+		{#if namedAfter && namedAfter.length > 0}
+			<Row label={m.property_name_named_after()}>
+				<EntityLinks entities={namedAfter} />
+			</Row>
+		{/if}
+		{#if partOf && partOf.length > 0}
+			<Row label={m.property_name_part_of()}>
+				<EntityLinks entities={partOf} />
+			</Row>
+		{/if}
+		{#if capitalCost}
+			<Row label={m.property_name_capital_cost()} value={formatQuantity(capitalCost)} />
 		{/if}
 	</Section>
 {/if}

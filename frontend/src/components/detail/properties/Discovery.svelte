@@ -13,10 +13,10 @@
 
 	let { global, localized }: Props = $props();
 
+	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 	let discoveryDate = $derived(global?.wikidata?.discovery_date?.[0] ?? global?.sbdb?.first_obs);
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
-	let namedAfter = $derived(localized?.named_after);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 	let asteroidFamily = $derived(localized?.asteroid_family);
 	let orbitClass = $derived(global?.sbdb?.class);
@@ -24,14 +24,14 @@
 	let sats = $derived(global?.sbdb?.sats);
 
 	let hasContent = $derived(
-		discoveryDate ||
-			discoverers ||
-			discoverySite ||
-			namedAfter ||
-			minorPlanetGroup ||
-			asteroidFamily ||
-			orbitClass ||
-			cometPrefix
+		!isSpacecraft &&
+			(discoveryDate ||
+				discoverers ||
+				discoverySite ||
+				minorPlanetGroup ||
+				asteroidFamily ||
+				orbitClass ||
+				cometPrefix)
 	);
 </script>
 
@@ -48,11 +48,6 @@
 		{#if discoverySite && discoverySite.length > 0}
 			<Row label={m.discovery_site()}>
 				<EntityLinks entities={discoverySite} />
-			</Row>
-		{/if}
-		{#if namedAfter && namedAfter.length > 0}
-			<Row label={m.property_name_named_after()}>
-				<EntityLinks entities={namedAfter} />
 			</Row>
 		{/if}
 		{#if orbitClass}

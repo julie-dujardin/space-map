@@ -21,6 +21,8 @@
 			wd?.radius ||
 			sbdb?.diameter ||
 			sbdb?.extent ||
+			wd?.length ||
+			wd?.width ||
 			wd?.density ||
 			wd?.surface_gravity ||
 			sbdb?.albedo ||
@@ -48,6 +50,12 @@
 			<Row label={m.property_name_radius()} value={formatQuantity(wd.radius)} />
 		{:else if sbdb?.diameter}
 			<Row label={m.diameter()} value={`${sbdb.diameter} ${formatUnit('kilometre')}`} />
+		{/if}
+		{#if wd?.length}
+			<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
+		{/if}
+		{#if wd?.width}
+			<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
 		{/if}
 		{#if sbdb?.extent}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
