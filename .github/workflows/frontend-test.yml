@@ -1,25 +1,17 @@
-name: pre-commit
+name: frontend-test
 
 on:
   push:
     branches: [main]
+    paths: [frontend/**]
   pull_request:
+    paths: [frontend/**]
 
 jobs:
-  pre-commit:
+  vitest:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version-file: data/pyproject.toml
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install data dev dependencies
-        run: cd data && uv sync --locked --dev
 
       - uses: pnpm/action-setup@v4
         with:
@@ -31,9 +23,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: cd frontend && pnpm install --frozen-lockfile
 
-      - uses: pre-commit/action@v3.0.1
-        with:
-          extra_args: --all-files --hook-stage manual
+      - name: Run tests
+        run: cd frontend && npx vitest run
