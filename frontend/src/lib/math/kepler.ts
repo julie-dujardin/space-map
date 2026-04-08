@@ -312,6 +312,10 @@ export interface OrbitCurve {
  */
 export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): OrbitCurve {
 	if (el.q != null || (Math.abs(el.e - 1) < 0.01 && Math.abs(el.a) >= 0.001)) {
+		// True parabolic (q set) or near-parabolic elliptic/hyperbolic: use the parabolic
+		// renderer which concentrates all points near perihelion (capped at rMaxAU).
+		// This gives much better visual density than spreading 512 points across a
+		// 100+ AU ellipse where only the perihelion region is visible.
 		const q = el.q ?? Math.abs(el.a) * Math.abs(1 - el.e);
 		return { points: orbitalElementsToParabola({ ...el, q }, numPoints), isOpen: true };
 	}
