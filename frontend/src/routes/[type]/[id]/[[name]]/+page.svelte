@@ -21,7 +21,7 @@
 
 	onMount(async () => {
 		await ctx.load(initialView.date, initialView.id);
-		if (parsed && !ctx.hasBody(parsed.id)) {
+		if (parsed && !ctx.getBody(parsed.id)) {
 			toast.warning(m.object_not_found({ id: parsed.id }));
 			const defaultUrl = serializeUrl(DEFAULT_VIEW);
 			history.replaceState(history.state, '', defaultUrl);

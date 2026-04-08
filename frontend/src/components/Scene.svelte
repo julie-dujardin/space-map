@@ -60,7 +60,7 @@
 		const onPopState = () => {
 			const parsed = parseUrl();
 			if (!parsed) return;
-			const body = ctx.allBodies.find((b) => b.data.id === parsed.id);
+			const body = ctx.getBody(parsed.id);
 			const target = body?.position ?? renderer?.getFocusedBody()?.position ?? [0, 0, 0];
 			const camPos = sphericalToCartesian(target, parsed.latitude, parsed.longitude, parsed.zoom);
 			if (body) renderer?.setFocusTarget(body, camPos);

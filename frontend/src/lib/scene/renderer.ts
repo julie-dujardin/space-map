@@ -123,8 +123,7 @@ export class SceneRenderer {
 
 		// Set initial camera position from URL state
 		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
-		const allBodies = ctx.allBodies;
-		const matchedBody = allBodies.find((b) => b.data.id === initialView.id);
+		const matchedBody = ctx.getBody(initialView.id);
 		const focusBody = matchedBody ?? sunBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
 
@@ -650,7 +649,7 @@ export class SceneRenderer {
 	// --- Public API ---
 
 	focusOnBody(id: string, zoom?: number): number {
-		const body = this.ctx.allBodies.find((b) => b.data.id === id);
+		const body = this.ctx.getBody(id);
 		if (!body) return 0;
 		if (zoom !== undefined) {
 			// Place camera at `zoom` distance, arriving from the current camera direction

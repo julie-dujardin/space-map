@@ -149,12 +149,22 @@ export class ContextManager {
 	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
 	private fullMoonIds = new SvelteSet<string>();
 
-	get allBodies(): PositionedBody[] {
-		return [...this.bodiesById.values()];
-	}
-
-	hasBody(id: string): boolean {
-		return this.bodiesById.has(id);
+	/**
+	 * Look up any body by ID. Checks the major-body index first,
+	 * then falls back to a linear scan of asteroid/spacecraft zone maps.
+	 */
+	getBody(id: string): PositionedBody | undefined {
+		const major = this.bodiesById.get(id);
+		if (major) return major;
+		for (const bodies of this.asteroidBodiesByZone.values()) {
+			const hit = bodies.find((b) => b.data.id === id);
+			if (hit) return hit;
+		}
+		for (const bodies of this.spacecraftByParent.values()) {
+			const hit = bodies.find((b) => b.data.id === id);
+			if (hit) return hit;
+		}
+		return undefined;
 	}
 
 	async load(date: Date, targetId?: string): Promise<void> {
@@ -200,7 +210,7 @@ export class ContextManager {
 
 			// If the target body wasn't in majors/moons, resolve it from the global object file
 			// so the renderer can focus on it immediately without waiting for its element chunk.
-			if (targetId && !this.bodiesById.has(targetId)) {
+			if (targetId && !this.getBody(targetId)) {
 				const placeholder = await createPlaceholderBody(targetId, date, loader);
 				if (placeholder) this.addBodies([placeholder]);
 			}
@@ -229,7 +239,6 @@ export class ContextManager {
 				await Promise.all(
 					minorChunkArgs.map(({ zone, zoom, part }) =>
 						loader.process(zone, zoom, part, date).then((chunk) => {
-							this.addBodies(chunk);
 							for (const b of chunk) {
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
 									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
