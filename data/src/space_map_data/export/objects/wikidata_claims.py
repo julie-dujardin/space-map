@@ -112,24 +112,27 @@ def extract_claims(claims: dict, qid: str) -> dict:
         if v:
             result[claim.key] = v
 
-    # P2076 (temperature): route by P1480 qualifier (min/max/average).
+    # P2076 (temperature): group by P1480/P5102 qualifier, then disambiguate each group.
     # P7422/P6591 from the loop above take priority via setdefault.
-    _P1480_ROUTE = {
+    _NATURE_ROUTE = {
         _QID_MINIMUM: "min_temperature",
         _QID_MAXIMUM: "max_temperature",
         _QID_AVERAGE: "temperature",
         _QID_MEAN: "temperature",
     }
+    grouped: dict[str, list[dict]] = {}
     for stmt in _active_stmts(claims, "P2076"):
-        dv = _stmt_value(stmt)
-        if dv is None:
-            continue
-        parsed = _parse_quantity(dv)
-        if parsed is None:
-            continue
-        nature = _qualifier_qid(stmt, "P1480") or _qualifier_qid(stmt, "P5102")
-        key = _P1480_ROUTE.get(nature, "temperature") if nature else "temperature"
-        result.setdefault(key, parsed)
+        nature = (
+            _qualifier_qid(stmt, "P1480")
+            or _qualifier_qid(stmt, "P5102")
+            or _qualifier_qid(stmt, "P518")
+        )
+        key = _NATURE_ROUTE.get(nature, "temperature") if nature else "temperature"
+        grouped.setdefault(key, []).append(stmt)
+    for key, stmts in grouped.items():
+        v = _resolve_quantity(_qty_pairs(stmts), "P2076", qid=qid)
+        if v:
+            result.setdefault(key, v)
 
     for claim in ENTITY_REF_CLAIMS:
         if claim.multiple:
@@ -315,19 +318,10 @@ def _parse_quantity(dv: dict) -> dict | float | None:
     return {"value": value, "unit": unit_qid}
 
 
-def _single_quantity(
-    claims: dict,
-    prop: str,
-    *,
-    needs_unit: bool,
-    qid: str,
-) -> dict | float | None:
-    """Extract the single quantity value from a claim.
-
-    Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
-    Entries lacking units are ignored when *needs_unit* is True.
-    """
-    stmts = _active_stmts(claims, prop)
+def _qty_pairs(
+    stmts: list[dict], *, needs_unit: bool = True
+) -> list[tuple[dict, dict | float]]:
+    """Parse statements into (statement, parsed-value) pairs, filtering by unit requirement."""
     pairs: list[tuple[dict, dict | float]] = []
     for stmt in stmts:
         dv = _stmt_value(stmt)
@@ -339,7 +333,20 @@ def _single_quantity(
         if needs_unit and isinstance(parsed, (int, float)):
             continue
         pairs.append((stmt, parsed))
+    return pairs
 
+
+def _resolve_quantity(
+    pairs: list[tuple[dict, dict | float]],
+    prop: str,
+    *,
+    qid: str,
+) -> dict | float | None:
+    """Disambiguate a list of (statement, parsed-value) pairs into a single value.
+
+    Applies deduplication, qualifier-based preference, trusted-source preference,
+    and per-entity overrides (_PICK_FIRST, _AVERAGE, _DISCARD).
+    """
     if len(pairs) <= 1:
         return pairs[0][1] if pairs else None
 
@@ -399,6 +406,22 @@ def _single_quantity(
     raise MultipleClaimValues(
         f"Multiple quantity values for {key}: {[p for _, p in pairs]}"
     )
+
+
+def _single_quantity(
+    claims: dict,
+    prop: str,
+    *,
+    needs_unit: bool,
+    qid: str,
+) -> dict | float | None:
+    """Extract the single quantity value from a claim.
+
+    Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
+    Entries lacking units are ignored when *needs_unit* is True.
+    """
+    pairs = _qty_pairs(_active_stmts(claims, prop), needs_unit=needs_unit)
+    return _resolve_quantity(pairs, prop, qid=qid)
 
 
 def _single_entity_qid(claims: dict, prop: str) -> str | None:

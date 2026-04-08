@@ -637,12 +637,18 @@ class TestExtractClaims:
         assert result["max_temperature"] == {"value": 56.7, "unit": "Q25267"}
 
     def test_venus_temperature_p1480_mean(self):
-        """Q313 Venus: P2076 with P1480=Q2796622 (mean) routes to temperature."""
+        """Q313 Venus: two P2076 stmts route to temperature; NASA source wins."""
         claims = {
             "P2076": [
                 _stmt(
                     _qty_snak("+464", "Q25267"),
                     qualifiers={"P1480": [_entity_snak("Q2796622")]},  # mean
+                    references=[
+                        _p854_ref(
+                            "https://nssdc.gsfc.nasa.gov/planetary/factsheet/venusfact.html"
+                        ),
+                        _p248_ref("Q6952408"),
+                    ],
                 ),
                 _stmt(_qty_snak("+474", "Q25267")),
             ]
@@ -692,6 +698,25 @@ class TestExtractClaims:
         assert result["temperature"] == {"value": 259.0, "unit": "Q11579"}
         assert result["min_temperature"] == {"value": 236.0, "unit": "Q11579"}
         assert result["max_temperature"] == {"value": 279.0, "unit": "Q11579"}
+
+    def test_vesta_temperature_p518_qualifier(self):
+        """Q3030 Vesta: P2076 uses P518 (applies to part) for min/max routing."""
+        claims = {
+            "P2076": [
+                _stmt(
+                    _qty_snak("+85", "Q11579"),
+                    qualifiers={"P518": [_entity_snak("Q10585806")]},  # minimum
+                ),
+                _stmt(
+                    _qty_snak("+270", "Q11579"),
+                    qualifiers={"P518": [_entity_snak("Q10578722")]},  # maximum
+                ),
+            ]
+        }
+        result = extract_claims(claims, "Q3030")
+        assert result["min_temperature"] == {"value": 85.0, "unit": "Q11579"}
+        assert result["max_temperature"] == {"value": 270.0, "unit": "Q11579"}
+        assert "temperature" not in result
 
     def test_empty_claims(self):
         assert extract_claims({}, "Q2") == {}
