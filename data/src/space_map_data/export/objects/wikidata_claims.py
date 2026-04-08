@@ -45,7 +45,12 @@ GLOBAL_CLAIMS = (
     GlobalClaim("min_temperature", "P7422", "quantity"),
     GlobalClaim("max_temperature", "P6591", "quantity"),
     GlobalClaim("website", "P856", "url", multiple=True),
+    GlobalClaim("blog", "P1581", "url", multiple=True),
+    GlobalClaim("logo_image", "P154", "image", multiple=True),
     GlobalClaim("population", "P1082", "quantity", needs_unit=False),
+    GlobalClaim("capital_cost", "P2130", "quantity"),
+    GlobalClaim("length", "P2043", "quantity"),
+    GlobalClaim("width", "P2049", "quantity"),
 )
 
 
@@ -70,6 +75,11 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("launch_vehicle", "P375"),
     EntityRefClaim("launch_site", "P1427", multiple=True),
     EntityRefClaim("discoverers", "P61", multiple=True),
+    EntityRefClaim("developer", "P178", multiple=True),
+    EntityRefClaim("funder", "P8324", multiple=True),
+    EntityRefClaim("country_of_origin", "P495", multiple=True),
+    EntityRefClaim("launch_contractor", "P1079", multiple=True),
+    EntityRefClaim("part_of", "P361", multiple=True),  # Nasa programs
 )
 
 PID_TO_KEY: dict[str, str] = {
@@ -218,6 +228,8 @@ _AVERAGE: set[tuple[str, str]] = {
 _DISCARD: set[tuple[str, str]] = {
     ("Q147561", "P7015"),  # 2101 Adonis surface gravity (uncorrelated values)
 }
+# Properties where the largest value wins when multiple remain after filtering.
+_PICK_MAX: set[str] = {"P2043", "P2049"}  # length, width
 
 
 def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
@@ -401,6 +413,9 @@ def _resolve_quantity(
         return mean
     if (qid, prop) in _DISCARD:
         return None
+    if prop in _PICK_MAX:
+        vals = [(p["value"] if isinstance(p, dict) else p, p) for _, p in pairs]
+        return max(vals, key=lambda t: t[0])[1]
 
     key = PID_TO_KEY.get(prop, prop)
     raise MultipleClaimValues(

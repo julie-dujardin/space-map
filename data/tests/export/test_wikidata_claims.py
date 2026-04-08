@@ -453,6 +453,40 @@ class TestSingleQuantity:
         with pytest.raises(MultipleClaimValues, match="density"):
             _single_quantity(claims, "P2054", needs_unit=True, qid="Q99999")
 
+    def test_width_picks_max_soho(self):
+        """Q320638 SOHO: width 2.7m (body) vs 9.5m (solar panel span) — pick max."""
+        claims = {
+            "P2049": [
+                _stmt(
+                    _qty_snak("+2.7", "Q11573"),
+                    qualifiers={"P518": [_entity_snak("Q372881")]},  # body
+                ),
+                _stmt(
+                    _qty_snak("+9.5", "Q11573"),
+                    qualifiers={"P1706": [_entity_snak("Q7556726")]},  # solar panel
+                ),
+            ]
+        }
+        result = _single_quantity(claims, "P2049", needs_unit=True, qid="Q320638")
+        assert result == {"value": 9.5, "unit": "Q11573"}
+
+    def test_length_picks_max_iss(self):
+        """Q193538 ISS: length 141ft (pressurized) vs 151ft (with arrays) — pick max."""
+        claims = {
+            "P2043": [
+                _stmt(
+                    _qty_snak("+141", "Q174728"),
+                    qualifiers={"P518": [_entity_snak("Q1128004")]},  # pressurized
+                ),
+                _stmt(
+                    _qty_snak("+151", "Q174728"),
+                    qualifiers={"P518": [_entity_snak("Q7556726")]},  # overall
+                ),
+            ]
+        }
+        result = _single_quantity(claims, "P2043", needs_unit=True, qid="Q193538")
+        assert result == {"value": 151.0, "unit": "Q174728"}
+
     def test_preferred_criterion_qualifier(self):
         """P2067 prefers Q2333272 (launch mass) via P1013 qualifier."""
         claims = {
