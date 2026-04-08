@@ -76,7 +76,7 @@ export function buildMajorBodies(
 		let mesh: Mesh | null = null;
 		if (!isVirtual) {
 			if (isStar) {
-				group.add(new PointLight(0xffffff, 3, 0, 0));
+				group.add(new PointLight(0xffffff, 2, 0, 0));
 			}
 
 			const segments = isStar ? 96 : 64;

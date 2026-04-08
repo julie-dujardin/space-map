@@ -12,7 +12,7 @@
 
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
-	let website = $derived(global?.wikidata?.website?.[0]);
+	let websites = $derived(global?.wikidata?.website ?? []);
 	let sbdbDesignation = $derived(
 		global?.cross_refs?.sbdb_mcp_designation ?? global?.cross_refs?.sbdb_spkid
 	);
@@ -23,7 +23,12 @@
 	);
 
 	let hasLinks = $derived(
-		wikipediaUrl || wikidataQid || website || sbdbDesignation || horizonsNaifId || noradCatId
+		wikipediaUrl ||
+			wikidataQid ||
+			websites.length ||
+			sbdbDesignation ||
+			horizonsNaifId ||
+			noradCatId
 	);
 </script>
 
@@ -43,14 +48,15 @@
 					class="underline hover:text-foreground text-muted-foreground">{m.wikipedia()}</a
 				>
 			{/if}
-			{#if website}
+			{#each websites as url (url)}
 				<a
-					href={website}
+					href={url}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{website}</a
+					class="underline hover:text-foreground text-muted-foreground"
+					>{new URL(url).hostname.replace(/^www\./, '')}</a
 				>
-			{/if}
+			{/each}
 			{#if horizonsNaifId}
 				<a
 					href="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='{horizonsNaifId}'"
