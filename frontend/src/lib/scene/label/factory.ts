@@ -37,15 +37,29 @@ export function createLabel(
 	el.className = `scene-label scene-label--${variant}`;
 
 	// halo: visual ring/hexagon, transition lives here not on root
-	const halo = document.createElement('div');
-	halo.className = `scene-label__halo scene-label__halo--${variant}`;
-	// color-derived styles stay inline
+	let halo: HTMLElement | SVGSVGElement;
 	if (variant === 'major') {
-		halo.style.border = `2px solid ${color}`;
-		halo.style.background = `${color}22`;
+		const div = document.createElement('div');
+		div.className = `scene-label__halo scene-label__halo--major`;
+		div.style.border = `2px solid ${color}`;
+		div.style.background = `${color}22`;
+		halo = div;
 	} else {
-		halo.style.background = `${color}22`;
-		halo.style.outline = `2px solid ${color}`;
+		const ns = 'http://www.w3.org/2000/svg';
+		const svg = document.createElementNS(ns, 'svg');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('fill', `${color}22`);
+		svg.setAttribute('stroke', color);
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linejoin', 'round');
+		svg.classList.add('scene-label__halo', 'scene-label__halo--spacecraft');
+		const path = document.createElementNS(ns, 'path');
+		path.setAttribute(
+			'd',
+			'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'
+		);
+		svg.appendChild(path);
+		halo = svg;
 	}
 	el.appendChild(halo);
 

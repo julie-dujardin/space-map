@@ -6,14 +6,8 @@
 	cursor: pointer;
 	user-select: none;
 	touch-action: none; /* prevent browser pinch-zoom; 2nd-finger pointerdown forwarded to canvas */
-}
-.scene-label--major {
 	width: 32px;
 	height: 32px;
-}
-.scene-label--spacecraft {
-	width: 20px;
-	height: 20px;
 }
 
 .scene-label__halo {
@@ -21,11 +15,11 @@
 	height: 100%;
 	transition: transform 0.1s;
 }
-.scene-label__halo--major {
+.scene-label__halo {
 	border-radius: 50%;
 }
 .scene-label__halo--spacecraft {
-	clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+	overflow: visible;
 }
 
 .scene-label__name {
@@ -41,14 +35,10 @@
 		0 0 4px #000,
 		0 0 4px #000;
 }
-.scene-label__name--major {
+.scene-label__name {
 	left: 32px;
 	font-size: 14px;
 	font-weight: bold;
-}
-.scene-label__name--spacecraft {
-	left: 20px;
-	font-size: 10px;
 }
 .scene-label__name--large {
 	font-size: 16px;
