@@ -18,6 +18,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
 import {
 	buildMajorBodies,
@@ -119,7 +120,7 @@ export class SceneRenderer {
 
 		// Camera
 		const aspect = canvas.clientWidth / canvas.clientHeight;
-		this.camera = new PerspectiveCamera(60, aspect, 0.000001, 100000);
+		this.camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), 100000);
 
 		// Set initial camera position from URL state
 		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
@@ -146,6 +147,8 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControls(this.camera, canvas);
 		this.controls.enableDamping = true;
+		this.controls.minDistance = kmToScene(0.01); // 10 m
+		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
 		this.controls.target.set(0, 0, 0);
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
