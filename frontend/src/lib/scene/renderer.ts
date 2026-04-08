@@ -434,6 +434,19 @@ export class SceneRenderer {
 				isClose = full && vis === VISIBILITY.CLOSE;
 			}
 
+			// Detach labels from hidden groups so CSS2DRenderer's recursive
+			// renderObject() doesn't visit them and write display:'none' every frame.
+			// Re-attach when the group becomes visible — CSS2DRenderer re-appends
+			// the DOM element automatically on next render.
+			// Required for good safari performance
+			const { label } = bo;
+			if (!group.visible && label && label.parent === group) {
+				group.remove(label);
+				label.element.remove();
+			} else if (group.visible && label && label.parent !== group) {
+				group.add(label);
+			}
+
 			applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
 		}
 
