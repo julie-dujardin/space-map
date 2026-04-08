@@ -6,7 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.models.object.sbdb import OrbitClass
 from sqlalchemy import delete, insert
 from tqdm import tqdm
@@ -298,8 +298,11 @@ def _parse_chunk(
                 break
 
             spkid = int_or_none(row["spkid"])
+            assert spkid is not None, (
+                f"Missing or invalid SPKID in row {idx} of {chunk_path.name}"
+            )
             object_type = _object_type(row)
-            object_id = f"{ID_TYPES.SPKID}-{spkid}"
+            object_id = make_object_id(ID_TYPES.SPKID, spkid)
             provisional_designation = _provisional_designation(row["full_name"])
             name = string_or_none(row["name"])
             if provisional_designation == name:
@@ -356,9 +359,8 @@ def _count_csv_rows(path: Path) -> int:
 class SBDBIngestor:
     BATCH = 50_000
 
-    def __init__(self, download_dir: Path, *, limit: int | None = None):
+    def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.limit = limit
         self.sbdb_dir = download_dir / PROVIDERS.SBDB
         self.total_rows = 0
 
@@ -417,11 +419,8 @@ class SBDBIngestor:
                 self._insert(rows)
                 self.total_rows += len(rows)
 
-                if self.limit and self.total_rows >= self.limit:
-                    break
-
         logger.info("Ingested %d SBDB bodies", self.total_rows)
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
-    SBDBIngestor(download_dir, limit=limit).run()
+def ingest(download_dir: Path) -> None:
+    SBDBIngestor(download_dir).run()

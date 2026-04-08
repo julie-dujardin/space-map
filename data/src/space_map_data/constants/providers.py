@@ -21,6 +21,11 @@ class ID_TYPES(StrEnum):
     NAME = "name"
 
 
+def make_object_id(id_type: ID_TYPES, value: int | str) -> str:
+    """Build a canonical object ID, e.g. ``make_object_id(ID_TYPES.NAIF, 399)`` → ``'naif-399'``."""
+    return f"{id_type}-{value}"
+
+
 ID_TYPE_TO_WIKIDATA_PID = {
     ID_TYPES.NAIF: "P2956",
     ID_TYPES.SPKID: "P716",

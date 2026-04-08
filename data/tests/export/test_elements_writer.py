@@ -24,22 +24,30 @@ from tests.conftest import make_object
 
 
 class TestParseNumericId:
-    """_parse_numeric_id"""
+    """_parse_numeric_id uses source-specific columns instead of parsing Object.id."""
 
     def test_naif_id(self):
-        obj = make_object(id="naif-399")
+        obj = make_object(id="naif-399", horizons_naif_id=399)
         assert _parse_numeric_id(obj) == 399
 
-    def test_sbdb_id(self):
-        obj = make_object(id="sbdb:2000433")
+    def test_sbdb_spkid(self):
+        obj = make_object(id="spkid-2000433", sbdb_spkid=2000433)
         assert _parse_numeric_id(obj) == 2000433
 
-    def test_negative_id(self):
-        obj = make_object(id="naif--10")
-        assert _parse_numeric_id(obj) == -10
+    def test_celestrak_norad_cat_id(self):
+        obj = make_object(id="norad_satcat-25544", celestrak_norad_cat_id=25544)
+        assert _parse_numeric_id(obj) == 25544
 
-    def test_no_match(self):
-        obj = make_object(id="unknown")
+    def test_negative_naif_id(self):
+        obj = make_object(id="naif--31", horizons_naif_id=-31)
+        assert _parse_numeric_id(obj) == -31
+
+    def test_missing_column_returns_sentinel(self):
+        obj = make_object(id="naif-399", horizons_naif_id=None)
+        assert _parse_numeric_id(obj) == MISSING_INT32
+
+    def test_unknown_id_type_returns_sentinel(self):
+        obj = make_object(id="unknown-123")
         assert _parse_numeric_id(obj) == MISSING_INT32
 
 
@@ -53,9 +61,17 @@ def _read_header(data: bytes) -> tuple[bytes, int, int, int]:
 class TestWriteElements:
     def test_round_trip(self, tmp_path):
         objects = [
-            make_object(id="naif-399", object_type=ObjectType.planet),
             make_object(
-                id="naif-499", name="Venus", object_type=ObjectType.planet, a=0.723
+                id="naif-399",
+                horizons_naif_id=399,
+                object_type=ObjectType.planet,
+            ),
+            make_object(
+                id="naif-299",
+                horizons_naif_id=299,
+                name="Venus",
+                object_type=ObjectType.planet,
+                a=0.723,
             ),
         ]
         out = tmp_path / "elements.bin.gz"
@@ -71,7 +87,7 @@ class TestWriteElements:
         # Read back column 0 (id, int32)
         offset = HEADER_SIZE
         ids = struct.unpack_from("<2i", raw, offset)
-        assert ids == (399, 499)
+        assert ids == (399, 299)
 
     def test_empty(self, tmp_path):
         out = tmp_path / "empty.bin.gz"
@@ -86,9 +102,9 @@ class TestWriteElements:
         """Object with SBDB diameter gets radius = diameter / 2."""
         from space_map_data.models.object.sbdb import SBDB
 
-        sbdb = SBDB(spkid="2000433", object_id="sbdb:2000433", diameter=33.0)
+        sbdb = SBDB(spkid="2000433", object_id="spkid-2000433", diameter=33.0)
         obj = make_object(
-            id="sbdb:2000433",
+            id="spkid-2000433",
             object_type=ObjectType.asteroid,
             sbdb_spkid=2000433,
         )

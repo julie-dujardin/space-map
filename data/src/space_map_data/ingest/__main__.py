@@ -29,13 +29,6 @@ def cli():
         help=f"Targets to ingest: {', '.join(ALL_TARGETS)}, all (default: all)",
     )
     parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Max records per source (for quick testing)",
-    )
-    parser.add_argument(
         "--force",
         action="store_true",
         help="Reprocess even if output already exists (textures)",
@@ -49,11 +42,11 @@ def cli():
 
     with session_scope(create_db=True):
         if "objects" in selected:
-            ingest_objects(DOWNLOAD_DIR, limit=args.limit)
+            ingest_objects(DOWNLOAD_DIR)
         if "features" in selected:
-            ingest_features(DOWNLOAD_DIR, limit=args.limit)
+            ingest_features(DOWNLOAD_DIR)
         if "wikidata" in selected:
-            ingest_wikidata(DOWNLOAD_DIR, limit=args.limit)
+            ingest_wikidata(DOWNLOAD_DIR)
         if "objects" in selected or "features" in selected or "wikidata" in selected:
             log_db_summary()
         if "textures" in selected:

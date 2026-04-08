@@ -3,7 +3,6 @@
 import gzip
 import io
 import logging
-import re
 import struct
 from pathlib import Path
 
@@ -139,11 +138,34 @@ def write_parabolic_elements(
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
 
+_ID_TYPE_ATTR: dict[str, str] = {
+    "naif": "horizons_naif_id",
+    "spkid": "sbdb_spkid",
+    "norad_satcat": "celestrak_norad_cat_id",
+}
+
+
 def _parse_numeric_id(obj: Object) -> int:
-    """Extract the numeric ID from Object.id (e.g. 'naif-399' → 399, 'spkid-2000433' → 2000433)."""
-    match = re.search(r"[-:](-?\d+)$", obj.id)
-    if match:
-        return int(match.group(1))
+    """Return the source-specific numeric ID for the binary export.
+
+    Uses the proper column (horizons_naif_id, sbdb_spkid, or
+    celestrak_norad_cat_id) based on the Object.id prefix (ID_TYPE).
+    """
+    # ID format: "{id_type}-{value}" (built by make_object_id)
+    pos = obj.id.find("-")
+    if pos == -1:
+        logger.warning("%s: no separator in object ID", obj.id)
+        return MISSING_INT32
+    id_type = obj.id[:pos]
+
+    attr = _ID_TYPE_ATTR.get(id_type)
+    if attr is not None:
+        val = getattr(obj, attr)
+        if val is not None:
+            return val
+        logger.warning("%s: missing %s for binary export", obj.id, attr)
+    else:
+        logger.warning("%s: unknown ID type '%s' for numeric ID", obj.id, id_type)
     return MISSING_INT32
 
 

@@ -115,16 +115,12 @@ def _insert_unambiguous(
     session,
     obj_to_qids: dict[str, set[str]],
     qid_to_objs: dict[str, set[str]],
-    *,
-    limit: int | None = None,
 ) -> int:
     """Set wikidata_qid for strict 1-to-1 mappings. Returns update count."""
     updated = 0
     pending = 0
 
     for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):  # noqa: F821
-        if limit is not None and updated >= limit:
-            break
         if len(qids) != 1:
             continue
         (qid,) = qids
@@ -192,7 +188,7 @@ def _write_ambiguous(
         )
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
+def ingest(download_dir: Path) -> None:
     ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
     if not ids_dir.exists():
         logger.warning("Wikidata ids/ not found at %s, skipping", ids_dir)
@@ -209,7 +205,7 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
         len(qid_to_objs),
     )
 
-    inserted = _insert_unambiguous(session, obj_to_qids, qid_to_objs, limit=limit)
+    inserted = _insert_unambiguous(session, obj_to_qids, qid_to_objs)
     _write_ambiguous(ids_dir, obj_to_qids, qid_to_objs)
 
     logger.info("Wikidata ingest: %d objects updated", inserted)

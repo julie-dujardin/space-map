@@ -81,7 +81,7 @@ class Object(Base):
 
     id: Mapped[str] = mapped_column(
         primary_key=True
-    )  # <authoritative_source>:<authoritative_id> (e.g. sbdb:2000433, horizons:399, wikidata:Q2)
+    )  # <id_type>-<value> (e.g. spkid-2000433, naif-399, norad_satcat-25544)
     name: Mapped[str | None] = mapped_column(
         default=None
     )  # best available name (IAU name, designation, or object name)

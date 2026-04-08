@@ -4,7 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
@@ -30,9 +30,8 @@ logger = logging.getLogger(__name__)
 class CelesTrakIngestor:
     BATCH = 10_000
 
-    def __init__(self, download_dir: Path, *, limit: int | None = None):
+    def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.limit = limit
         self.csv_path = download_dir / PROVIDERS.CELESTRAK / "gp-active.csv"
         self.total_rows = 0
 
@@ -40,7 +39,7 @@ class CelesTrakIngestor:
         mean_motion = float_or_none(row["MEAN_MOTION"])
         a_km = mean_motion_to_a_km(mean_motion) if mean_motion else None
 
-        object_id = f"{ID_TYPES.NORAD_SATCAT}-{row['NORAD_CAT_ID']}"
+        object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
         obj = dict(
             id=object_id,
             name=string_or_none(row["OBJECT_NAME"]),
@@ -104,8 +103,6 @@ class CelesTrakIngestor:
         self._clear()
 
         total = _count_csv_rows(self.csv_path)
-        if self.limit:
-            total = min(total, self.limit)
 
         batch: list[dict] = []
         with open(self.csv_path, newline="") as f:
@@ -117,9 +114,6 @@ class CelesTrakIngestor:
                     self._insert(batch)
                     batch = []
 
-                if self.limit and self.total_rows >= self.limit:
-                    break
-
         self._insert(batch)
         logger.info("Ingested %d CelesTrak satellites", self.total_rows)
 
@@ -129,5 +123,5 @@ def _count_csv_rows(path: Path) -> int:
         return sum(1 for _ in f) - 1
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
-    CelesTrakIngestor(download_dir, limit=limit).run()
+def ingest(download_dir: Path) -> None:
+    CelesTrakIngestor(download_dir).run()

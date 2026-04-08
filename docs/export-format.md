@@ -67,7 +67,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
-| 0 | id          | int32   | -1      | Numeric part of the object ID |
+| 0 | id          | int32   | -1      | Source-specific numeric ID (`horizons_naif_id`, `sbdb_spkid`, or `celestrak_norad_cat_id`) |
 | 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |

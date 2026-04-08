@@ -12,7 +12,6 @@ def _make_ingestor() -> HorizonsIngestor:
     """Create a HorizonsIngestor without touching the database."""
     obj = object.__new__(HorizonsIngestor)
     obj.session = None
-    obj.limit = None
     obj.csv_path = Path("/dev/null")
     obj.total_rows = 0
     return obj

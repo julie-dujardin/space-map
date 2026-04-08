@@ -34,7 +34,7 @@ def _read_ids_csv(csv_path: Path) -> dict[str, list[str]]:
     return mapping
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
+def ingest(download_dir: Path) -> None:
     ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
     csv_path = ids_dir / "P2824.csv"
     if not csv_path.exists():
@@ -73,8 +73,6 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
     pending = 0
 
     for feature_id, qids in tqdm(feat_to_qids.items(), desc="feature wikidata IDs"):
-        if limit is not None and updated >= limit:
-            break
         if len(qids) != 1:
             continue
         (qid,) = qids

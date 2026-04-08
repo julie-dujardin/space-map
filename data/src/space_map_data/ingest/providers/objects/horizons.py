@@ -5,7 +5,7 @@ import logging
 import math
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from sqlalchemy import delete, insert, select, update
 from tqdm import tqdm
 
@@ -34,9 +34,8 @@ AUTHORITATIVE_ON = (
 class HorizonsIngestor:
     BATCH = 10_000
 
-    def __init__(self, download_dir: Path, *, limit: int | None = None):
+    def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.limit = limit
         self.csv_path = download_dir / PROVIDERS.HORIZONS / "bodies.csv"
         self.total_rows = 0
 
@@ -78,7 +77,7 @@ class HorizonsIngestor:
         if row["type"].strip() in AUTHORITATIVE_ON:
             if self._has_garbage_elements(row):
                 return None
-            object_pk = f"{ID_TYPES.NAIF}-{row['naif_id']}"
+            object_pk = make_object_id(ID_TYPES.NAIF, row["naif_id"])
             rows["object"] = dict(
                 id=object_pk,
                 name=string_or_none(row["name"]) or string_or_none(row["designation"]),
@@ -190,7 +189,7 @@ class HorizonsIngestor:
                 hz.object_id = obj.id
             else:
                 # No match — create a new Object for this probe
-                object_id = f"{ID_TYPES.NAIF}:{hz.naif_id}"
+                object_id = make_object_id(ID_TYPES.NAIF, hz.naif_id)
                 new_objects.append(
                     Object(
                         id=object_id,
@@ -307,8 +306,6 @@ class HorizonsIngestor:
         self._clear()
 
         total = _count_csv_rows(self.csv_path)
-        if self.limit:
-            total = min(total, self.limit)
 
         batch: list[dict] = []
         with open(self.csv_path, newline="") as f:
@@ -322,9 +319,6 @@ class HorizonsIngestor:
                     self._insert(batch)
                     batch = []
 
-                if self.limit and self.total_rows >= self.limit:
-                    break
-
         self._insert(batch)
         logger.info("Ingested %d Horizons bodies", self.total_rows)
 
@@ -337,5 +331,5 @@ def _count_csv_rows(path: Path) -> int:
         return sum(1 for _ in f) - 1
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
-    HorizonsIngestor(download_dir, limit=limit).run()
+def ingest(download_dir: Path) -> None:
+    HorizonsIngestor(download_dir).run()

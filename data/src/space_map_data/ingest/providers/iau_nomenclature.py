@@ -77,9 +77,8 @@ def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:
 class IAUNomenclatureIngestor:
     BATCH = 10_000
 
-    def __init__(self, download_dir: Path, *, limit: int | None = None):
+    def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.limit = limit
         self.provider_dir = download_dir / PROVIDERS.IAU_NOMENCLATURE
         self.total_rows = 0
         self.seen_ids: set[int] = set()
@@ -118,9 +117,6 @@ class IAUNomenclatureIngestor:
             if len(batch) >= self.BATCH:
                 self._insert(batch)
                 batch = []
-
-            if self.limit and self.total_rows >= self.limit:
-                break
 
         self._insert(batch)
 
@@ -164,5 +160,5 @@ class IAUNomenclatureIngestor:
         )
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
-    IAUNomenclatureIngestor(download_dir, limit=limit).run()
+def ingest(download_dir: Path) -> None:
+    IAUNomenclatureIngestor(download_dir).run()

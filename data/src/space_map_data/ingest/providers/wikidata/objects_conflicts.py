@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 BATCH = 1000
 
 
-def ingest(download_dir: Path, *, limit: int | None = None) -> None:
+def ingest(download_dir: Path) -> None:
     csv_path = download_dir / PROVIDERS.WIKIDATA / "ids" / "resolved_conflicts.csv"
     if not csv_path.exists():
         return
@@ -26,9 +26,6 @@ def ingest(download_dir: Path, *, limit: int | None = None) -> None:
 
     with open(csv_path) as f:
         rows = list(csv.reader(f))
-
-    if limit is not None:
-        rows = rows[:limit]
 
     for row in tqdm(rows, desc="Wikidata IDs resolution"):
         if not row or len(row) < 2:
