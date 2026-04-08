@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		GlobalObjectData,
@@ -27,9 +26,8 @@
 	let namedAfter = $derived(localized?.named_after);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 	let asteroidFamily = $derived(localized?.asteroid_family);
-	let isNeo = $derived(global?.sbdb?.neo);
-	let isPha = $derived(global?.sbdb?.pha);
 	let orbitClass = $derived(global?.sbdb?.class);
+	let cometPrefix = $derived(global?.sbdb?.prefix);
 	let sats = $derived(global?.sbdb?.sats);
 
 	// Spacecraft fields
@@ -46,9 +44,8 @@
 			namedAfter ||
 			minorPlanetGroup ||
 			asteroidFamily ||
-			isNeo ||
-			isPha ||
 			orbitClass ||
+			cometPrefix ||
 			operator ||
 			manufacturer ||
 			launchVehicle ||
@@ -84,13 +81,6 @@
 		</h3>
 		<Separator />
 
-		{#if isNeo || isPha}
-			<div class="flex gap-1.5 mb-1">
-				{#if isNeo}<Badge variant="outline">{m.neo()}</Badge>{/if}
-				{#if isPha}<Badge variant="destructive">{m.pha()}</Badge>{/if}
-			</div>
-		{/if}
-
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#if discoveryDate}
 				<dt class="text-muted-foreground">{ucfirst(m.first_observed())}</dt>
@@ -121,6 +111,10 @@
 			{#if orbitClass}
 				<dt class="text-muted-foreground">{ucfirst(m.orbit_class())}</dt>
 				<dd class="text-right">{orbitClass}</dd>
+			{/if}
+			{#if cometPrefix}
+				<dt class="text-muted-foreground">{ucfirst(m.comet_type())}</dt>
+				<dd class="text-right">{cometPrefix}</dd>
 			{/if}
 			{#if minorPlanetGroup && minorPlanetGroup.length > 0}
 				<dt class="text-muted-foreground">{ucfirst(m.property_name_minor_planet_group())}</dt>

@@ -200,10 +200,13 @@ interface GlobalObjectData {
     moid?: number;   // AU, Earth MOID
     moid_jup?: number; t_jup?: number;
     per_y?: number;  // orbital period, years
-    q?: number; ad?: number;  // AU
+    ad?: number;  // AU, aphelion distance
     prefix?: string; // comet prefix
     M1?: number; M2?: number; K1?: number; K2?: number; PC?: number;
     first_obs?: string;
+    last_obs?: string;
+    data_arc?: number;   // observation arc span, days
+    n_obs_used?: number; // number of observations used
   };
   wikidata?: {
     discovery_date?: string;  // ISO 8601

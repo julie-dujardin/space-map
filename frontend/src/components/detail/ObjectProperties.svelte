@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
@@ -87,6 +88,9 @@
 		return props;
 	});
 
+	let isNeo = $derived(global?.sbdb?.neo);
+	let isPha = $derived(global?.sbdb?.pha);
+
 	let orbitalProps = $derived.by(() => {
 		const props: Property[] = [];
 		const orbit = orbitElements ?? global?.orbit;
@@ -97,8 +101,6 @@
 				label: m.orbital_period(),
 				value: `${formatNumber(sbdb.per_y)} ${formatUnit('year')}`
 			});
-		if (sbdb?.condition_code)
-			props.push({ label: m.condition_code(), value: formatNumber(sbdb.condition_code) });
 		if (orbit?.a)
 			props.push({
 				label: m.semi_major_axis(),
@@ -107,12 +109,10 @@
 		if (orbit?.e != null) props.push({ label: m.eccentricity(), value: formatNumber(orbit.e) });
 		if (orbit?.i != null)
 			props.push({ label: m.inclination(), value: `${formatNumber(orbit.i)}°` });
-		// Perihelion distance: prefer orbit.q (parabolic), fall back to sbdb.q
-		const q = orbit?.q ?? sbdb?.q;
-		if (q)
+		if (orbit?.q)
 			props.push({
 				label: m.perihelion(),
-				value: `${formatNumber(q)} ${formatUnit('astronomical_unit')}`
+				value: `${formatNumber(orbit.q)} ${formatUnit('astronomical_unit')}`
 			});
 		// Time of perihelion passage (parabolic orbits)
 		const tp = orbit?.tp;
@@ -131,12 +131,20 @@
 				label: m.earth_moid(),
 				value: `${formatNumber(sbdb.moid)} ${formatUnit('astronomical_unit')}`
 			});
-		if (sbdb?.moid_jup)
-			props.push({
-				label: m.jupiter_moid(),
-				value: `${formatNumber(sbdb.moid_jup)} ${formatUnit('astronomical_unit')}`
-			});
 		if (sbdb?.t_jup) props.push({ label: m.tisserand_jupiter(), value: formatNumber(sbdb.t_jup) });
+		if (sbdb?.condition_code != null)
+			props.push({ label: m.condition_code(), value: formatNumber(sbdb.condition_code) });
+		if (sbdb?.data_arc != null) {
+			const years = sbdb.data_arc / 365.25;
+			const value =
+				years >= 1
+					? `${formatNumber(years)} ${formatUnit('year')}`
+					: `${formatNumber(sbdb.data_arc)} ${formatUnit('day')}`;
+			props.push({ label: m.observation_arc(), value });
+		}
+		if (sbdb?.n_obs_used != null)
+			props.push({ label: m.observations_used(), value: formatNumber(sbdb.n_obs_used) });
+		if (sbdb?.last_obs) props.push({ label: m.last_observed(), value: sbdb.last_obs });
 
 		return props;
 	});
@@ -155,10 +163,16 @@
 	</div>
 {/if}
 
-{#if orbitalProps.length > 0}
+{#if orbitalProps.length > 0 || isNeo || isPha}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.orbital_elements()}</h3>
 		<Separator />
+		{#if isNeo || isPha}
+			<div class="flex gap-1.5 mb-1">
+				{#if isNeo}<Badge variant="outline">{m.neo()}</Badge>{/if}
+				{#if isPha}<Badge variant="destructive">{m.pha()}</Badge>{/if}
+			</div>
+		{/if}
 		<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
 			{#each orbitalProps as prop (prop.label)}
 				<dt class="text-muted-foreground">{ucfirst(prop.label)}</dt>

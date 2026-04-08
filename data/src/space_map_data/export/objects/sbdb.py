@@ -25,7 +25,6 @@ _SBDB_FIELDS = (
     "moid_jup",
     "t_jup",
     "per_y",
-    "q",
     "ad",
     "prefix",
     "M1",
@@ -34,6 +33,9 @@ _SBDB_FIELDS = (
     "K2",
     "PC",
     "first_obs",
+    "last_obs",
+    "data_arc",
+    "n_obs_used",
     "mass_kg",
     "condition_code",
 )

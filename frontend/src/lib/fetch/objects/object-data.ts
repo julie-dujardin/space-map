@@ -61,7 +61,6 @@ export interface GlobalObjectData {
 		moid_jup?: number;
 		t_jup?: number;
 		per_y?: number;
-		q?: number;
 		ad?: number;
 		prefix?: string;
 		M1?: number;
@@ -70,6 +69,9 @@ export interface GlobalObjectData {
 		K2?: number;
 		PC?: number;
 		first_obs?: string;
+		last_obs?: string;
+		data_arc?: number;
+		n_obs_used?: number;
 		condition_code?: number;
 	};
 	wikidata?: {
