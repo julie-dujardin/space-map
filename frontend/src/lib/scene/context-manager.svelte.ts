@@ -412,7 +412,7 @@ export class ContextManager {
 	/**
 	 * Whether an asteroid zone's point-cloud should be visible.
 	 * Compares camera distance (AU) to the zone's semi-major axis range.
-	 * Zones without a defined range (comets, parabolic, unclassified) are always visible.
+	 * Zones without a defined range (parabolic, unclassified) are always visible.
 	 */
 	isAsteroidGroupVisible(zone: string): boolean {
 		const range = ZONE_A_RANGE[zone];

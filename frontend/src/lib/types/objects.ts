@@ -57,7 +57,7 @@ export enum ObjectType {
 /**
  * Semi-major axis range (AU) for each SBDB orbit-class zone.
  * Used to gate asteroid point-cloud visibility based on camera distance.
- * Groups not defined by semi-major axis (comets, parabolic/hyperbolic, unclassified) are omitted
+ * Groups not defined by semi-major axis (most comets, parabolic/hyperbolic, unclassified) are omitted
  * and treated as always-visible.
  */
 export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
@@ -71,6 +71,10 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 	IMB: { minA: 1.666, maxA: 2.0 },
 	MBA: { minA: 2.0, maxA: 3.2 },
 	OMB: { minA: 3.2, maxA: 4.6 },
+	// Jupiter-region comets — show alongside-ish Trojans
+	// excentricity range is much higher, values fine-tuned from min perihelion/max aphelion in DB
+	ETc: { minA: 0, maxA: 5.5 },
+	JFC: { minA: 0, maxA: 15 },
 	// Outer solar system — direct a ranges
 	TJN: { minA: 4.6, maxA: 5.5 },
 	CEN: { minA: 5.5, maxA: 30.1 },
