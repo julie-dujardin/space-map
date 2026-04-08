@@ -245,17 +245,22 @@ export function orbitalElementsToEllipse(
 	el: OrbitalElements,
 	numPoints = 128
 ): [number, number, number][] {
+	const { a, e, i, om, w } = el;
 	const points: [number, number, number][] = [];
 	for (let j = 0; j <= numPoints; j++) {
 		// Sample uniformly in eccentric anomaly E for near-uniform arc spacing.
-		// Mean anomaly sampling (M = j/n * 360) produces wildly unequal spacing for
-		// high-eccentricity orbits: points cluster near aphelion and are sparse near
-		// perihelion. E-uniform sampling keeps spacing roughly constant everywhere.
-		const E = (j / numPoints) * 2 * Math.PI; // eccentric anomaly in radians
-		// Kepler's equation: M = E - e*sin(E)
-		const ma = (E - el.e * Math.sin(E)) * (180 / Math.PI);
-		const pt = orbitalElementsToPosition({ ...el, ma, n: 0 });
-		if (pt) points.push(pt);
+		// Compute position directly from E to avoid the E→M→solveKepler→E round-trip
+		// which diverges for high-eccentricity orbits (Newton-Raphson overshoots when
+		// 1 - e·cos(E) ≈ 0 near perihelion).
+		const E = (j / numPoints) * 2 * Math.PI;
+		const sinNu = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
+		const cosNu = (Math.cos(E) - e) / (1 - e * Math.cos(E));
+		const nu = Math.atan2(sinNu, cosNu);
+		const r = a * (1 - e * Math.cos(E));
+		const xOrb = r * Math.cos(nu);
+		const yOrb = r * Math.sin(nu);
+		if (!isFinite(xOrb) || !isFinite(yOrb)) continue;
+		points.push(orbitalToThreeJS(xOrb, yOrb, w, i, om));
 	}
 	return points;
 }
