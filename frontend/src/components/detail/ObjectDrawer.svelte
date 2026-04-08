@@ -7,8 +7,10 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
-	import ObjectProperties from './ObjectProperties.svelte';
-	import ObjectDiscovery from './ObjectDiscovery.svelte';
+	import Physical from './properties/Physical.svelte';
+	import Orbital from './properties/Orbital.svelte';
+	import Discovery from './properties/Discovery.svelte';
+	import Mission from './properties/Mission.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -228,8 +230,10 @@
 				fallbackName={body.data.name}
 			/>
 			<ObjectDescription extract={data?.localized?.wikipedia?.extract} />
-			<ObjectProperties global={data?.global ?? null} orbitElements={body.orbitElements} />
-			<ObjectDiscovery global={data?.global ?? null} localized={data?.localized ?? null} />
+			<Physical global={data?.global ?? null} />
+			<Orbital global={data?.global ?? null} orbitElements={body.orbitElements} />
+			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
+			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
 	{/if}
