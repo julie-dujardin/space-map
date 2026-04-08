@@ -25,7 +25,7 @@ export function typePriority(type: ObjectType): number {
 export interface BodyObjects {
 	body: PositionedBody;
 	group: Group;
-	mesh: Mesh;
+	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
 	orbitLine: Line | null;

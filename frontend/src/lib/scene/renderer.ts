@@ -600,7 +600,7 @@ export class SceneRenderer {
 		if (this.textureLoaded.has(id)) return;
 		this.textureLoaded.add(id);
 		const bo = this.bodyObjects.get(id);
-		if (bo)
+		if (bo?.mesh)
 			loadBodyTexture(
 				id,
 				bo.mesh.material as import('three').MeshStandardMaterial,
@@ -618,12 +618,7 @@ export class SceneRenderer {
 
 	/** Build mesh, label, halo, and orbit line for a body that only existed as a point-cloud dot. */
 	private ensureBodyObjects(body: PositionedBody): void {
-		if (
-			this.bodyObjects.has(body.data.id) ||
-			body.data.objectType === ObjectType.BARYCENTER ||
-			body.data.objectType === ObjectType.LAGRANGE_POINT
-		)
-			return;
+		if (this.bodyObjects.has(body.data.id)) return;
 		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
 		if (!body.orbitElements) {
 			body.orbitElements = body.data;

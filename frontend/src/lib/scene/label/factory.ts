@@ -6,7 +6,14 @@ export type LabelVariant = 'major' | 'spacecraft' | 'none';
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {
 	const t = body.data.objectType;
-	if (isMajorBody(t) || t === ObjectType.STAR || isAsteroid(t) || t === ObjectType.COMET)
+	if (
+		isMajorBody(t) ||
+		t === ObjectType.STAR ||
+		isAsteroid(t) ||
+		t === ObjectType.COMET ||
+		t === ObjectType.BARYCENTER ||
+		t === ObjectType.LAGRANGE_POINT
+	)
 		return 'major';
 	if (t === ObjectType.SPACECRAFT) return 'spacecraft';
 	return 'none';

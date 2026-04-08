@@ -154,7 +154,12 @@ export class ChunkLoader {
 					}
 					this.positions.set(id, pos);
 				}
-				bodies.push({ data: body, position: pos });
+				bodies.push({
+					data: body,
+					position: pos,
+					orbitElements: body.a > 0 ? body : undefined,
+					orbitCenter: parentPos
+				});
 				continue;
 			}
 

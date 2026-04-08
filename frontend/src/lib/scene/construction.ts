@@ -11,7 +11,7 @@ import {
 	Scene,
 	SphereGeometry
 } from 'three';
-import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
+import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -62,7 +62,10 @@ export function buildMajorBodies(
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
-		const color = BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
+		const isVirtual =
+			body.data.objectType === ObjectType.BARYCENTER ||
+			body.data.objectType === ObjectType.LAGRANGE_POINT;
+		const color = resolveBodyColor(id, body.data.objectType, body.data.parentId);
 		const rawRadiusKm = Number.isFinite(body.data.radiusKm)
 			? body.data.radiusKm
 			: [ObjectType.SPACECRAFT].includes(body.data.objectType)
@@ -75,20 +78,23 @@ export function buildMajorBodies(
 		// Position set to origin — repositionAll() applies focus-relative offset each frame
 		group.position.set(0, 0, 0);
 
-		if (isStar) {
-			group.add(new PointLight(0xffffff, 3, 0, 0));
+		let mesh: Mesh | null = null;
+		if (!isVirtual) {
+			if (isStar) {
+				group.add(new PointLight(0xffffff, 3, 0, 0));
+			}
+
+			const segments = isStar ? 96 : 64;
+			const geometry = new SphereGeometry(radius, segments, segments);
+			const material = isStar
+				? new MeshBasicMaterial({ color })
+				: new MeshStandardMaterial({ color });
+			mesh = new Mesh(geometry, material);
+			group.add(mesh);
+
+			clickables.push(mesh);
+			meshToBody.set(mesh, body);
 		}
-
-		const segments = isStar ? 96 : 64;
-		const geometry = new SphereGeometry(radius, segments, segments);
-		const material = isStar
-			? new MeshBasicMaterial({ color })
-			: new MeshStandardMaterial({ color });
-		const mesh = new Mesh(geometry, material);
-		group.add(mesh);
-
-		clickables.push(mesh);
-		meshToBody.set(mesh, body);
 
 		// CSS2D label
 		const variant = getLabelVariant(body);
@@ -175,7 +181,7 @@ export function buildOrbitLines(
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
-		const color = BODY_COLORS[body.data.id] ?? DEFAULT_BODY_COLOR;
+		const color = resolveBodyColor(body.data.id, body.data.objectType, body.data.parentId);
 		const line = makeOrbitLine(body, color, basisPos);
 		scene.add(line);
 		bo.orbitLine = line;

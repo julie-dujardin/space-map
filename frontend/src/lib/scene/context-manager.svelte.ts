@@ -205,11 +205,7 @@ export class ContextManager {
 				if (placeholder) this.addBodies([placeholder]);
 			}
 
-			this.majorBodies = major.filter(
-				(b) =>
-					b.data.objectType !== ObjectType.BARYCENTER &&
-					b.data.objectType !== ObjectType.LAGRANGE_POINT
-			);
+			this.majorBodies = major;
 			this.loading = false;
 
 			// Phase 2: minors — load in background, flush to reactive state periodically
