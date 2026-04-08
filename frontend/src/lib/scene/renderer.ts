@@ -198,9 +198,9 @@ export class SceneRenderer {
 		this.moonPoints = pts.moonPoints;
 		// Defer orbit line geometry (100K+ Kepler solves) to after first paint
 		const basis = this.pointCloudBasisPos;
-		requestIdleCallback(() => buildOrbitLines(this.bodyObjects, this.scene, basis), {
-			timeout: 2000
-		});
+		// requestIdleCallback isn't available in Safari
+		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 0));
+		scheduleIdle(() => buildOrbitLines(this.bodyObjects, this.scene, basis));
 	}
 
 	rebuildMinorPointClouds(): void {
