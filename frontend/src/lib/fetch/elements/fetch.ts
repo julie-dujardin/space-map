@@ -29,11 +29,10 @@ export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<
 	return fetchTextMap(elementIdsUrl(zone, zoom, part));
 }
 
-export async function fetchLabels(zone: string, zoom: number, part: number): Promise<LabelData> {
-	const url = elementLabelsUrl(getLocale(), zone, zoom, part);
+export function parseLabels(text: string): LabelData {
 	const labels = new Map<number, string>();
 	const flags = new Map<number, number>();
-	const lines = (await fetchGzText(url)).split('\n');
+	const lines = text.split('\n');
 	for (let i = 0; i < lines.length; i++) {
 		const sepIdx = lines[i].indexOf(US);
 		if (sepIdx === -1) {
@@ -45,4 +44,9 @@ export async function fetchLabels(zone: string, zoom: number, part: number): Pro
 		}
 	}
 	return { labels, flags };
+}
+
+export async function fetchLabels(zone: string, zoom: number, part: number): Promise<LabelData> {
+	const url = elementLabelsUrl(getLocale(), zone, zoom, part);
+	return parseLabels(await fetchGzText(url));
 }
