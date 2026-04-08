@@ -492,7 +492,6 @@ export class SceneRenderer {
 		// Hide labels of bodies occluded by a planet sphere
 		for (const bo of this.bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
-			if (bo.body.data.objectType === ObjectType.STAR) continue;
 			const [bx, by, bz] = bo.body.position;
 			const dist = f64dist(camTrue, bo.body.position);
 			if (

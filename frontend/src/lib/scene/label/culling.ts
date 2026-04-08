@@ -86,7 +86,7 @@ export function isOccludedByPlanet(
 	const tmpDir = new Vector3();
 	const tmpPlanet = new Vector3();
 	for (const bo of bodyObjects.values()) {
-		if (bo.body.data.objectType !== ObjectType.PLANET) continue;
+		if (!bo.radiusScene) continue;
 		if (bo.body.data.id === selfId) continue;
 		tmpPlanet.set(...bo.body.position);
 		const planetDist = camPos.distanceTo(tmpPlanet);
