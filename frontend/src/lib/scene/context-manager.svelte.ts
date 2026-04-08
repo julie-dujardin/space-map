@@ -1,4 +1,4 @@
-import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { SvelteMap } from 'svelte/reactivity';
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_KM, AU_SCALE } from '../math/units';
@@ -117,10 +117,13 @@ function isTopLevelParent(parentId: string): boolean {
 export const ZOOM_THRESHOLD_AU = 0.3;
 
 export class ContextManager {
-	private readonly childrenByParent = new SvelteMap<string, SvelteSet<string>>();
-	private readonly bodiesById = new SvelteMap<string, PositionedBody>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
+	private readonly childrenByParent = new Map<string, Set<string>>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
+	private readonly bodiesById = new Map<string, PositionedBody>();
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
-	private readonly moonMaxAByParent = new SvelteMap<string, number>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
+	private readonly moonMaxAByParent = new Map<string, number>();
 
 	// --- Reactive loading state ($state safe: only mutated during async load, never in useTask) ---
 	loading = $state(true);
@@ -147,7 +150,8 @@ export class ContextManager {
 	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
 	private scaledSystem = SYSTEM_DISTANCE_RATIO_THRESHOLDS;
 	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
-	private fullMoonIds = new SvelteSet<string>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
+	private fullMoonIds = new Set<string>();
 
 	/**
 	 * Look up any body by ID. Checks the major-body index first,
@@ -268,7 +272,8 @@ export class ContextManager {
 	addBodies(bodies: PositionedBody[]): void {
 		for (const b of bodies) {
 			this.bodiesById.set(b.data.id, b);
-			const set = this.childrenByParent.get(b.data.parentId) ?? new SvelteSet<string>();
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
 			set.add(b.data.id);
 			this.childrenByParent.set(b.data.parentId, set);
 			if (b.data.objectType === ObjectType.MOON) {
