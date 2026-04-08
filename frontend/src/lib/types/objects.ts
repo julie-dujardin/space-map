@@ -81,6 +81,18 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 	TNO: { minA: 30.1, maxA: Infinity }
 };
 
+/** Default visual radius in km for bodies with no known radius. */
+const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
+	[ObjectType.SPACECRAFT]: 0.005
+};
+const DEFAULT_FALLBACK_RADIUS_KM = 10;
+
+/** Effective radius in km, using a fallback when the data has no finite value. */
+export function effectiveRadiusKm(data: BodyData): number {
+	if (Number.isFinite(data.radiusKm)) return data.radiusKm;
+	return FALLBACK_RADIUS_KM[data.objectType] ?? DEFAULT_FALLBACK_RADIUS_KM;
+}
+
 /** Returns true for any asteroid subtype. */
 export function isAsteroid(type: ObjectType): boolean {
 	return type >= ObjectType.ASTEROID && type <= ObjectType.ASTEROID_TNO;

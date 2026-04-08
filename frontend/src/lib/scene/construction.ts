@@ -13,7 +13,7 @@ import {
 } from 'three';
 import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
@@ -66,12 +66,7 @@ export function buildMajorBodies(
 			body.data.objectType === ObjectType.BARYCENTER ||
 			body.data.objectType === ObjectType.LAGRANGE_POINT;
 		const color = resolveBodyColor(id, body.data.objectType);
-		const rawRadiusKm = Number.isFinite(body.data.radiusKm)
-			? body.data.radiusKm
-			: [ObjectType.SPACECRAFT].includes(body.data.objectType)
-				? 0.01
-				: 10;
-		const radius = kmToScene(rawRadiusKm);
+		const radius = kmToScene(effectiveRadiusKm(body.data));
 		const isStar = body.data.objectType === ObjectType.STAR;
 
 		const group = new Group();

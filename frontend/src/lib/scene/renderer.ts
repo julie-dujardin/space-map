@@ -16,7 +16,7 @@ import {
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
@@ -41,6 +41,35 @@ function f64dist(a: Vec3, b: Vec3): number {
 		dy = a[1] - b[1],
 		dz = a[2] - b[2];
 	return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/** Default surface clearance in km, by object type. */
+const SURFACE_CLEARANCE_KM: Partial<Record<ObjectType, number>> = {
+	[ObjectType.STAR]: 1000,
+	[ObjectType.PLANET]: 100,
+	[ObjectType.DWARF_PLANET]: 10,
+	[ObjectType.ASTEROID]: 0.1,
+	[ObjectType.ASTEROID_INNER]: 0.1,
+	[ObjectType.ASTEROID_MAIN_BELT]: 0.1,
+	[ObjectType.ASTEROID_CENTAUR]: 1,
+	[ObjectType.ASTEROID_TROJAN]: 1,
+	[ObjectType.ASTEROID_TNO]: 1,
+	[ObjectType.COMET]: 1,
+	[ObjectType.MOON]: 1,
+	[ObjectType.SPACECRAFT]: 0.01
+};
+const DEFAULT_CLEARANCE_KM = 0.01; // 10 m
+
+/** Per-body overrides for surface clearance (km). Keyed by body id (e.g. "naif-10"). */
+const BODY_CLEARANCE_OVERRIDES: Record<string, number> = {};
+
+function minCameraDistance(body: PositionedBody): number {
+	const radiusKm = effectiveRadiusKm(body.data);
+	const clearance =
+		BODY_CLEARANCE_OVERRIDES[body.data.id] ??
+		SURFACE_CLEARANCE_KM[body.data.objectType] ??
+		DEFAULT_CLEARANCE_KM;
+	return kmToScene(radiusKm + clearance);
 }
 
 // --- SceneRenderer ---
@@ -147,7 +176,7 @@ export class SceneRenderer {
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControls(this.camera, canvas);
 		this.controls.enableDamping = true;
-		this.controls.minDistance = kmToScene(0.01); // 10 m
+		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
 		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
 		this.controls.target.set(0, 0, 0);
 		this.controls.update();
@@ -699,6 +728,7 @@ export class SceneRenderer {
 		this.focusTargetWorld = [...body.position];
 		this.focusStartTime = performance.now();
 		this.focusedBody = body;
+		this.controls.minDistance = minCameraDistance(body);
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
