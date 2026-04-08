@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		GlobalObjectData,
@@ -109,7 +110,18 @@
 				<dd class="text-right text-muted-foreground">{@render entityLinks(namedAfter)}</dd>
 			{/if}
 			{#if orbitClass}
-				<dt class="text-muted-foreground">{ucfirst(m.orbit_class())}</dt>
+				<dt class="text-muted-foreground">
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<span class="cursor-help decoration-dotted underline underline-offset-2" {...props}>
+									{ucfirst(m.orbit_class())}
+								</span>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.tooltip_orbit_class()}</Tooltip.Content>
+					</Tooltip.Root>
+				</dt>
 				<dd class="text-right">{orbitClass}</dd>
 			{/if}
 			{#if cometPrefix}
@@ -125,7 +137,18 @@
 				<dd class="text-right text-muted-foreground">{@render entityLink(asteroidFamily)}</dd>
 			{/if}
 			{#if sats != null && sats > 0}
-				<dt class="text-muted-foreground">{ucfirst(m.known_satellites())}</dt>
+				<dt class="text-muted-foreground">
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<span class="cursor-help decoration-dotted underline underline-offset-2" {...props}>
+									{ucfirst(m.known_satellites())}
+								</span>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.tooltip_known_satellites()}</Tooltip.Content>
+					</Tooltip.Root>
+				</dt>
 				<dd class="text-right">{sats}</dd>
 			{/if}
 			{#if operator && operator.length > 0}

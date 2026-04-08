@@ -8,6 +8,7 @@
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	const ctx = new ContextManager();
 	setContext('ctx', ctx);
@@ -43,24 +44,26 @@
 		{m.error_prefix({ error: ctx.error })}
 	</div>
 {:else}
-	<div class="relative w-full h-screen">
-		<Scene bind:this={scene} {initialView} onFocusChange={(body) => (selectedBody = body)} />
-		{#if selectedBody?.data.id}
-			<ObjectDrawer
-				body={selectedBody}
-				onClose={() => {
-					selectedBody = undefined;
-					drawerHeightDvh = 0;
-				}}
-				onSheetResize={(h) => (drawerHeightDvh = h)}
-			/>
-		{/if}
-		<div
-			class="fixed right-4 z-10 transition-opacity duration-300 ease-in-out
+	<Tooltip.Provider delayDuration={300}>
+		<div class="relative w-full h-screen">
+			<Scene bind:this={scene} {initialView} onFocusChange={(body) => (selectedBody = body)} />
+			{#if selectedBody?.data.id}
+				<ObjectDrawer
+					body={selectedBody}
+					onClose={() => {
+						selectedBody = undefined;
+						drawerHeightDvh = 0;
+					}}
+					onSheetResize={(h) => (drawerHeightDvh = h)}
+				/>
+			{/if}
+			<div
+				class="fixed right-4 z-10 transition-opacity duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-			style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
-		>
-			<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom) ?? 0} />
+				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
+			>
+				<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom) ?? 0} />
+			</div>
 		</div>
-	</div>
+	</Tooltip.Provider>
 {/if}
