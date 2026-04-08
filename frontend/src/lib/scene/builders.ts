@@ -9,7 +9,7 @@ import {
 	ShaderMaterial,
 	Vector3
 } from 'three';
-import { orbitalElementsToCurve } from '$lib/math/orbit/orbit-curves';
+import { orbitalElementsToCurve } from '$lib/math/orbit/curves';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 
 export const NUM_ORBIT_POINTS = 512;
