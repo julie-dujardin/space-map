@@ -33,5 +33,3 @@ export const BODY_COLORS: Record<string, string> = {
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';
-/** Default radius for unknown bodies, in km */
-export const DEFAULT_BODY_RADIUS_KM = 100;

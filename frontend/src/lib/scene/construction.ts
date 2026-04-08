@@ -11,7 +11,7 @@ import {
 	Scene,
 	SphereGeometry
 } from 'three';
-import { BODY_COLORS, DEFAULT_BODY_COLOR, DEFAULT_BODY_RADIUS_KM } from '$lib/constants';
+import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
@@ -65,7 +65,9 @@ export function buildMajorBodies(
 		const color = BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
 		const rawRadiusKm = Number.isFinite(body.data.radiusKm)
 			? body.data.radiusKm
-			: DEFAULT_BODY_RADIUS_KM;
+			: [ObjectType.SPACECRAFT].includes(body.data.objectType)
+				? 0.01
+				: 10;
 		const radius = kmToScene(rawRadiusKm);
 		const isStar = body.data.objectType === ObjectType.STAR;
 
