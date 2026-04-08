@@ -3,6 +3,7 @@
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
+	import { page } from '$app/state';
 	import {
 		type MapViewState,
 		sphericalToCartesian,
@@ -80,11 +81,11 @@
 		ro.observe(canvas);
 
 		const onPopState = () => {
-			const parsed = parseUrl();
-			if (!parsed) return;
-			const body = ctx.getBody(parsed.id);
+			const view = page.state.view ?? parseUrl();
+			if (!view) return;
+			const body = ctx.getBody(view.id);
 			const target = body?.position ?? renderer?.getFocusedBody()?.position ?? [0, 0, 0];
-			const camPos = sphericalToCartesian(target, parsed.latitude, parsed.longitude, parsed.zoom);
+			const camPos = sphericalToCartesian(target, view.latitude, view.longitude, view.zoom);
 			if (body) renderer?.setFocusTarget(body, camPos);
 		};
 		window.addEventListener('popstate', onPopState);

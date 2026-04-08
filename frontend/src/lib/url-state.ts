@@ -136,12 +136,12 @@ export function writeUrlState(state: MapViewState): void {
 
 	const url = serializeUrl(state);
 	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
-	svelteReplaceState(url, {});
+	svelteReplaceState(url, { view: state });
 }
 
 /** Like writeUrlState but pushes a new history entry (use when switching focus target). */
 export function pushUrlState(state: MapViewState): void {
 	const url = serializeUrl(state);
 	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
-	sveltePushState(url, {});
+	sveltePushState(url, { view: state });
 }
