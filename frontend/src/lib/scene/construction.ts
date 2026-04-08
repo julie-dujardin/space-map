@@ -65,7 +65,7 @@ export function buildMajorBodies(
 		const isVirtual =
 			body.data.objectType === ObjectType.BARYCENTER ||
 			body.data.objectType === ObjectType.LAGRANGE_POINT;
-		const color = resolveBodyColor(id, body.data.objectType, body.data.parentId);
+		const color = resolveBodyColor(id, body.data.objectType);
 		const rawRadiusKm = Number.isFinite(body.data.radiusKm)
 			? body.data.radiusKm
 			: [ObjectType.SPACECRAFT].includes(body.data.objectType)
@@ -181,7 +181,7 @@ export function buildOrbitLines(
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
-		const color = resolveBodyColor(body.data.id, body.data.objectType, body.data.parentId);
+		const color = resolveBodyColor(body.data.id, body.data.objectType);
 		const line = makeOrbitLine(body, color, basisPos);
 		scene.add(line);
 		bo.orbitLine = line;

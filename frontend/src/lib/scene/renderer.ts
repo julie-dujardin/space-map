@@ -395,7 +395,16 @@ export class SceneRenderer {
 			let showLabel: boolean;
 			let isClose: boolean;
 
-			if (body.data.objectType === ObjectType.MOON) {
+			if (
+				body.data.objectType === ObjectType.BARYCENTER ||
+				body.data.objectType === ObjectType.LAGRANGE_POINT
+			) {
+				// Virtual bodies promoted via URL navigation: always visible once built
+				group.visible = true;
+				if (orbitLine) orbitLine.visible = true;
+				showLabel = true;
+				isClose = false;
+			} else if (body.data.objectType === ObjectType.MOON) {
 				const vis = this.ctx.getMoonVisibility(body);
 				// By default (hideCappedMoonLabels=false), CAPPED moons are demoted to the
 				// parent's point cloud. When hideCappedMoonLabels=true, they render individually

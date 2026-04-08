@@ -205,7 +205,11 @@ export class ContextManager {
 				if (placeholder) this.addBodies([placeholder]);
 			}
 
-			this.majorBodies = major;
+			this.majorBodies = major.filter(
+				(b) =>
+					b.data.objectType !== ObjectType.BARYCENTER &&
+					b.data.objectType !== ObjectType.LAGRANGE_POINT
+			);
 			this.loading = false;
 
 			// Phase 2: minors — load in background, flush to reactive state periodically
@@ -298,9 +302,20 @@ export class ContextManager {
 	setFocused(body: PositionedBody): void {
 		if (body.data.id !== this.focusedBodyId) {
 			this.focusedBodyId = body.data.id;
+			// A planetary barycenter IS the system root (planets/moons are its children),
+			// but the SSB (naif-0) is top-level, not a system.
+			const isSystemBarycenter =
+				body.data.objectType === ObjectType.BARYCENTER &&
+				isTopLevelParent(body.data.parentId) &&
+				!isTopLevelParent(body.data.id);
 			const isTopLevel =
-				body.data.objectType === ObjectType.STAR || isTopLevelParent(body.data.parentId);
-			this.focusedSystemId = isTopLevel ? null : body.data.parentId;
+				body.data.objectType === ObjectType.STAR ||
+				(!isSystemBarycenter && isTopLevelParent(body.data.parentId));
+			this.focusedSystemId = isSystemBarycenter
+				? body.data.id
+				: isTopLevel
+					? null
+					: body.data.parentId;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 			this.lastRecomputeDist = -1; // force recompute on next updateCamera
 			this.recomputeFullMoons();
