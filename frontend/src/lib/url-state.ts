@@ -1,3 +1,5 @@
+import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { page } from '$app/state';
 
 /** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
@@ -83,9 +85,13 @@ export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
-	const slug = state.name ? `/${encodeURIComponent(state.name)}` : '';
 	const numericId = state.id.slice(state.id.lastIndexOf('-') + 1);
-	return `/${state.type}/${numericId}${slug}?at=${at}`;
+	const path = resolve('/[type]/[id]/[[name]]', {
+		type: state.type,
+		id: numericId,
+		name: state.name || undefined
+	});
+	return `${path}?at=${at}`;
 }
 
 /** Camera-relative-to-target → spherical (degrees, Y-up) */
@@ -120,9 +126,22 @@ export function sphericalToCartesian(
 	];
 }
 
+let lastWriteTime = 0;
+const WRITE_THROTTLE_MS = 250;
+
 export function writeUrlState(state: MapViewState): void {
+	const now = performance.now();
+	if (now - lastWriteTime < WRITE_THROTTLE_MS) return;
+	lastWriteTime = now;
+
 	const url = serializeUrl(state);
-	if (url !== window.location.pathname + window.location.search) {
-		history.replaceState(history.state, '', url); // intentional: bypass SvelteKit router for camera position sync
-	}
+	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
+	svelteReplaceState(url, {});
+}
+
+/** Like writeUrlState but pushes a new history entry (use when switching focus target). */
+export function pushUrlState(state: MapViewState): void {
+	const url = serializeUrl(state);
+	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
+	sveltePushState(url, {});
 }

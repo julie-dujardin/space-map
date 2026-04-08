@@ -7,6 +7,7 @@
 		type MapViewState,
 		sphericalToCartesian,
 		writeUrlState,
+		pushUrlState,
 		parseUrl,
 		urlTypeFromId
 	} from '$lib/url-state';
@@ -29,7 +30,14 @@
 		return renderer?.focusOnBody(id, zoom) ?? 0;
 	}
 
+	let lastCameraPos = {
+		latitude: initialView.latitude,
+		longitude: initialView.longitude,
+		zoom: initialView.zoom
+	};
+
 	function syncUrl(latitude: number, longitude: number, zoom: number) {
+		lastCameraPos = { latitude, longitude, zoom };
 		if (!focusedBody) return;
 		writeUrlState({
 			type: urlTypeFromId(focusedBody.data.id),
@@ -43,11 +51,25 @@
 		});
 	}
 
+	let isInitialFocus = true;
+
 	onMount(() => {
 		renderer = new SceneRenderer(canvas, labelContainer, ctx, initialView, {
 			onFocusChange(body) {
+				const wasInitial = isInitialFocus;
+				isInitialFocus = false;
 				focusedBody = body;
 				onFocusChange?.(body);
+				if (!wasInitial && body) {
+					pushUrlState({
+						type: urlTypeFromId(body.data.id),
+						id: body.data.id,
+						name: body.data.name ?? '',
+						date: initialView.date,
+						isNow: initialView.isNow,
+						...lastCameraPos
+					});
+				}
 			},
 			onCameraPosition: syncUrl
 		});
