@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
@@ -6,6 +7,9 @@ import { defineConfig } from 'vite';
 const dataTarget = process.env.DATA_SERVER_URL ?? 'http://localhost:8080';
 
 export default defineConfig({
+	test: {
+		include: ['src/**/*.test.ts']
+	},
 	plugins: [
 		sveltekit(),
 		tailwindcss(),
