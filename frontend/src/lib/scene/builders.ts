@@ -83,24 +83,23 @@ export function makeOrbitLine(
 		data.objectType === ObjectType.DWARF_PLANET ||
 		data.objectType === ObjectType.MOON ||
 		isAsteroid(data.objectType);
-	const trailFraction = useTrail ? (isOpenCurve ? 3 / 3 : 1 / 3) : undefined;
-	const trailLen = trailFraction ? Math.round(trailFraction * NUM_ORBIT_POINTS) : NUM_ORBIT_POINTS;
-	const closeLoop = !trailFraction;
 
+	// Always build the full orbit so we can show it when focused
 	const points: [number, number, number][] = [bodyLocal];
-	for (let k = 0; k < trailLen - 1; k++) {
-		if (isOpenCurve) {
-			// Open curve: clamp to bounds instead of wrapping
+	if (isOpenCurve) {
+		for (let k = 0; k < NUM_ORBIT_POINTS - 1; k++) {
 			const idx = Math.max(trailStart - k, 0);
 			points.push(curve[idx]);
-			if (idx === 0) break; // reached start of curve
-		} else {
+			if (idx === 0) break;
+		}
+	} else {
+		for (let k = 0; k < NUM_ORBIT_POINTS - 1; k++) {
 			points.push(
 				curve[(((trailStart - k) % NUM_ORBIT_POINTS) + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS]
 			);
 		}
+		points.push(bodyLocal); // close the loop
 	}
-	if (closeLoop) points.push(bodyLocal);
 
 	// Filter out any points with NaN/Infinity coordinates (degenerate orbital elements)
 	const validPoints = points.filter((p) => p.every(Number.isFinite));
@@ -113,13 +112,26 @@ export function makeOrbitLine(
 		return line;
 	}
 
-	const alphas = new Float32Array(validPoints.length);
+	// Full-orbit alphas: shown when focused (or always for planets)
+	const fullAlphas = new Float32Array(validPoints.length);
 	{
-		const maxAlpha = closeLoop ? 0.9 : 0.6;
-		const minAlpha = closeLoop ? maxAlpha / 3 : 0;
+		const maxAlpha = 0.9;
+		const minAlpha = isOpenCurve ? 0 : maxAlpha / 3;
 		for (let k = 0; k < validPoints.length; k++) {
-			alphas[k] = maxAlpha - (k / (validPoints.length - 1)) * (maxAlpha - minAlpha);
+			fullAlphas[k] = maxAlpha - (k / (validPoints.length - 1)) * (maxAlpha - minAlpha);
 		}
+	}
+
+	// Trail alphas: partial trail when unfocused; same as full for non-trail bodies
+	const trailAlphas = new Float32Array(validPoints.length);
+	if (useTrail && !isOpenCurve) {
+		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
+		const maxAlpha = 0.6;
+		for (let k = 0; k < trailLen; k++) {
+			trailAlphas[k] = maxAlpha - (k / (trailLen - 1)) * maxAlpha;
+		}
+	} else {
+		trailAlphas.set(fullAlphas);
 	}
 
 	// Write positions as focus-relative: orbitLocal + orbitCenter - basisPos (Float64 math, small result)
@@ -135,23 +147,28 @@ export function makeOrbitLine(
 
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
-	geometry.setAttribute('alpha', new Float32BufferAttribute(alphas, 1));
+	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
+	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
 
 	const material = new ShaderMaterial({
 		transparent: true,
 		uniforms: {
 			uColor: { value: new Color(color) },
 			uCenterOffset: { value: new Vector3() },
-			uAlphaMultiplier: { value: 1.0 }
+			uAlphaMultiplier: { value: 1.0 },
+			uAlphaMin: { value: 0.0 },
+			uShowFull: { value: 0.0 }
 		},
 		vertexShader: `
 			#include <common>
 			#include <logdepthbuf_pars_vertex>
 			uniform vec3 uCenterOffset;
-			attribute float alpha;
+			uniform float uShowFull;
+			attribute float trailAlpha;
+			attribute float fullAlpha;
 			varying float vAlpha;
 			void main() {
-				vAlpha = alpha;
+				vAlpha = mix(trailAlpha, fullAlpha, uShowFull);
 				vec3 relPos = position + uCenterOffset;
 				gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * relPos, 1.0);
 				#include <logdepthbuf_vertex>
@@ -161,9 +178,10 @@ export function makeOrbitLine(
 			#include <logdepthbuf_pars_fragment>
 			uniform vec3 uColor;
 			uniform float uAlphaMultiplier;
+			uniform float uAlphaMin;
 			varying float vAlpha;
 			void main() {
-				gl_FragColor = vec4(uColor, clamp(vAlpha * uAlphaMultiplier, 0.0, 1.0));
+				gl_FragColor = vec4(uColor, clamp(max(vAlpha * uAlphaMultiplier, uAlphaMin), 0.0, 1.0));
 				#include <logdepthbuf_fragment>
 			}
 		`

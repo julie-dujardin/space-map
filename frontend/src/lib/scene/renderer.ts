@@ -527,7 +527,9 @@ export class SceneRenderer {
 			);
 			const isFocused = bo.body.data.id === focusedBodyId;
 			const isHovered = bo.label?.element.matches(':hover') ?? false;
-			mat.uniforms.uAlphaMultiplier.value = isFocused ? 2 : isHovered ? 1.75 : 1.0;
+			mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
+			mat.uniforms.uAlphaMin.value = isFocused ? 0.15 : 0.0;
+			mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
 		}
 
 		// Stagger new point cloud additions: one per frame to spread GPU upload cost
