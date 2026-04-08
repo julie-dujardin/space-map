@@ -145,6 +145,8 @@ export function makeOrbitLine(
 			uAlphaMultiplier: { value: 1.0 }
 		},
 		vertexShader: `
+			#include <common>
+			#include <logdepthbuf_pars_vertex>
 			uniform vec3 uCenterOffset;
 			attribute float alpha;
 			varying float vAlpha;
@@ -152,14 +154,17 @@ export function makeOrbitLine(
 				vAlpha = alpha;
 				vec3 relPos = position + uCenterOffset;
 				gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * relPos, 1.0);
+				#include <logdepthbuf_vertex>
 			}
 		`,
 		fragmentShader: `
+			#include <logdepthbuf_pars_fragment>
 			uniform vec3 uColor;
 			uniform float uAlphaMultiplier;
 			varying float vAlpha;
 			void main() {
 				gl_FragColor = vec4(uColor, clamp(vAlpha * uAlphaMultiplier, 0.0, 1.0));
+				#include <logdepthbuf_fragment>
 			}
 		`
 	});
