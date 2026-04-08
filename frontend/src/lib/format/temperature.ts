@@ -26,18 +26,28 @@ function fromKelvin(kelvin: number, to: TemperatureUnit): number {
 	}
 }
 
-function significantDigits(n: number): number {
+/** Place value of the least significant digit (e.g. 49 → 1, 4900 → 100, 4.9 → 0.1). */
+function absolutePrecision(n: number): number {
 	if (n === 0) return 1;
 	const s = Math.abs(n).toExponential();
 	const mantissa = s.slice(0, s.indexOf('e'));
-	return mantissa.replace('.', '').replace(/^0+/, '').length;
+	const sigfigs = mantissa.replace('.', '').replace(/^0+/, '').length;
+	const magnitude = Math.floor(Math.log10(Math.abs(n)));
+	return Math.pow(10, magnitude - sigfigs + 1);
 }
 
-function toSignificantDigits(n: number, digits: number): number {
-	if (n === 0) return 0;
-	const magnitude = Math.floor(Math.log10(Math.abs(n)));
-	const factor = Math.pow(10, digits - 1 - magnitude);
-	return Math.round(n * factor) / factor;
+/** Derivative dOutput/dInput for the conversion path, used to scale uncertainty. */
+function conversionScale(from: TemperatureUnit, to: TemperatureUnit): number {
+	if (from === to) return 1;
+	// K↔C is pure offset → derivative = 1
+	// Anything involving F has a 9/5 (or 5/9) scaling factor
+	const involvesF = from === 'degree_fahrenheit' || to === 'degree_fahrenheit';
+	if (!involvesF) return 1;
+	return to === 'degree_fahrenheit' ? 9 / 5 : 5 / 9;
+}
+
+function roundToPrecision(n: number, precision: number): number {
+	return Math.round(n / precision) * precision;
 }
 
 /** Convert a temperature quantity to the preferred unit, preserving significant digits. */
@@ -49,7 +59,8 @@ export function convertTemperature(q: { value: number; unit: string }): {
 	const source = q.unit as TemperatureUnit;
 	if (source === target) return { value: q.value, unit: target };
 	const converted = fromKelvin(toKelvin(q.value, source), target);
-	return { value: toSignificantDigits(converted, significantDigits(q.value)), unit: target };
+	const precision = absolutePrecision(q.value) * conversionScale(source, target);
+	return { value: roundToPrecision(converted, precision), unit: target };
 }
 
 export function formatTemperature(q: { value: number; unit: string }): string {
