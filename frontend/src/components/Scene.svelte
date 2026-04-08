@@ -53,6 +53,7 @@
 	}
 
 	let isInitialFocus = true;
+	let isNavigatingBack = false;
 
 	onMount(() => {
 		renderer = new SceneRenderer(canvas, labelContainer, ctx, initialView, {
@@ -61,7 +62,7 @@
 				isInitialFocus = false;
 				focusedBody = body;
 				onFocusChange?.(body);
-				if (!wasInitial && body) {
+				if (!wasInitial && !isNavigatingBack && body) {
 					pushUrlState({
 						type: urlTypeFromId(body.data.id),
 						id: body.data.id,
@@ -86,7 +87,9 @@
 			const body = ctx.getBody(view.id);
 			const target = body?.position ?? renderer?.getFocusedBody()?.position ?? [0, 0, 0];
 			const camPos = sphericalToCartesian(target, view.latitude, view.longitude, view.zoom);
+			isNavigatingBack = true;
 			if (body) renderer?.setFocusTarget(body, camPos);
+			isNavigatingBack = false;
 		};
 		window.addEventListener('popstate', onPopState);
 
