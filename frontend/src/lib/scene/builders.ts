@@ -212,5 +212,7 @@ export function makePointCloud(
 		depthTest: true,
 		depthWrite: false
 	});
-	return new Points(geometry, material);
+	const points = new Points(geometry, material);
+	points.frustumCulled = false; // visibility managed by context-manager thresholds
+	return points;
 }
