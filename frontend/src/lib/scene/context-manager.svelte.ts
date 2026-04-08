@@ -403,9 +403,12 @@ export class ContextManager {
 			}
 		}
 		if (!refA) {
-			console.log(
-				`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
-			);
+			if (body.data.e < 0.9) {
+				// Skip for highly eccentric orbits
+				console.log(
+					`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
+				);
+			}
 			return VISIBILITY.FULL;
 		}
 		const ratio = camDistThreeJS / AU_SCALE / refA;
