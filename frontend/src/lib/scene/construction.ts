@@ -77,7 +77,7 @@ export function buildMajorBodies(
 			group.add(new PointLight(0xffffff, 3, 0, 0));
 		}
 
-		const segments = isStar ? 32 : 64;
+		const segments = isStar ? 96 : 64;
 		const geometry = new SphereGeometry(radius, segments, segments);
 		const material = isStar
 			? new MeshBasicMaterial({ color })
