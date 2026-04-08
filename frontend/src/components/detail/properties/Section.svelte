@@ -15,7 +15,7 @@
 	<h3 class="text-sm font-medium">{title}</h3>
 	<Separator />
 	{#if header}{@render header()}{/if}
-	<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+	<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
 		{@render children()}
 	</dl>
 </div>
