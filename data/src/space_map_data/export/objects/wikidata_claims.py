@@ -127,7 +127,7 @@ def extract_claims(claims: dict, qid: str) -> dict:
         parsed = _parse_quantity(dv)
         if parsed is None:
             continue
-        nature = _qualifier_qid(stmt, "P1480")
+        nature = _qualifier_qid(stmt, "P1480") or _qualifier_qid(stmt, "P5102")
         key = _P1480_ROUTE.get(nature, "temperature") if nature else "temperature"
         result.setdefault(key, parsed)
 

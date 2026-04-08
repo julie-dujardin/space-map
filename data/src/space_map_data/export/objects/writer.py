@@ -182,9 +182,11 @@ def _build_global(
     # Wikidata claims (non-localized)
     if extracted:
         wikidata_section: dict = {}
-        for claim in GLOBAL_CLAIMS:
-            if claim.key in extracted:
-                val = extracted[claim.key]
+        # Keys from GLOBAL_CLAIMS + "temperature" (routed from P2076, not a GlobalClaim)
+        wikidata_keys = [c.key for c in GLOBAL_CLAIMS] + ["temperature"]
+        for key in wikidata_keys:
+            if key in extracted:
+                val = extracted[key]
                 if isinstance(val, dict) and "unit" in val:
                     converted = units.convert(float(val["value"]), val["unit"])
                     if converted is not None:
@@ -194,7 +196,7 @@ def _build_global(
                         if resolved:
                             units.used_units.add(resolved)
                             val = {**val, "unit": resolved}
-                wikidata_section[claim.key] = val
+                wikidata_section[key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section
 

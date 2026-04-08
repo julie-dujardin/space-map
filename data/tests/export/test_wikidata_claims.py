@@ -610,6 +610,89 @@ class TestExtractClaims:
         result = extract_claims(claims, "Q2")
         assert result["min_temperature"] == {"value": -89.2, "unit": "Q25267"}
 
+    def test_sun_temperature_preferred_rank(self):
+        """Q525 Sun: preferred P2076 statement (15.71M K) wins over normal ones."""
+        claims = {
+            "P2076": [
+                _stmt(_qty_snak("+15710000", "Q11579"), rank="preferred"),
+                _stmt(_qty_snak("+5772", "Q11579"), rank="normal"),
+                _stmt(_qty_snak("+2000000", "Q11579"), rank="normal"),
+            ]
+        }
+        result = extract_claims(claims, "Q525")
+        assert result["temperature"] == {"value": 15710000.0, "unit": "Q11579"}
+        assert "min_temperature" not in result
+        assert "max_temperature" not in result
+
+    def test_earth_temperature_with_p7422_p6591(self):
+        """Q2 Earth: P2076 for avg, P7422 for min, P6591 for max."""
+        claims = {
+            "P2076": [_stmt(_qty_snak("+15", "Q25267"))],
+            "P7422": [_stmt(_qty_snak("-89.2", "Q25267"))],
+            "P6591": [_stmt(_qty_snak("+56.7", "Q25267"))],
+        }
+        result = extract_claims(claims, "Q2")
+        assert result["temperature"] == {"value": 15.0, "unit": "Q25267"}
+        assert result["min_temperature"] == {"value": -89.2, "unit": "Q25267"}
+        assert result["max_temperature"] == {"value": 56.7, "unit": "Q25267"}
+
+    def test_venus_temperature_p1480_mean(self):
+        """Q313 Venus: P2076 with P1480=Q2796622 (mean) routes to temperature."""
+        claims = {
+            "P2076": [
+                _stmt(
+                    _qty_snak("+464", "Q25267"),
+                    qualifiers={"P1480": [_entity_snak("Q2796622")]},  # mean
+                ),
+                _stmt(_qty_snak("+474", "Q25267")),
+            ]
+        }
+        result = extract_claims(claims, "Q313")
+        assert result["temperature"] == {"value": 464.0, "unit": "Q25267"}
+
+    def test_mars_temperature_mixed_p1480(self):
+        """Q111 Mars: P2076 without qualifier is avg, others have P1480 min/max."""
+        claims = {
+            "P2076": [
+                _stmt(_qty_snak("-63", "Q25267")),
+                _stmt(
+                    _qty_snak("-143", "Q25267"),
+                    qualifiers={"P1480": [_entity_snak("Q10585806")]},  # minimum
+                ),
+                _stmt(
+                    _qty_snak("+35", "Q25267"),
+                    qualifiers={"P1480": [_entity_snak("Q10578722")]},  # maximum
+                ),
+            ]
+        }
+        result = extract_claims(claims, "Q111")
+        assert result["temperature"] == {"value": -63.0, "unit": "Q25267"}
+        assert result["min_temperature"] == {"value": -143.0, "unit": "Q25267"}
+        assert result["max_temperature"] == {"value": 35.0, "unit": "Q25267"}
+
+    def test_bennu_temperature_p5102_qualifier(self):
+        """Q11558 Bennu: P2076 uses P5102 instead of P1480 for nature-of-value."""
+        claims = {
+            "P2076": [
+                _stmt(
+                    _qty_snak("+236", "Q11579"),
+                    qualifiers={"P5102": [_entity_snak("Q10585806")]},  # minimum
+                ),
+                _stmt(
+                    _qty_snak("+259", "Q11579"),
+                    qualifiers={"P5102": [_entity_snak("Q202785")]},  # average
+                ),
+                _stmt(
+                    _qty_snak("+279", "Q11579"),
+                    qualifiers={"P5102": [_entity_snak("Q10578722")]},  # maximum
+                ),
+            ]
+        }
+        result = extract_claims(claims, "Q11558")
+        assert result["temperature"] == {"value": 259.0, "unit": "Q11579"}
+        assert result["min_temperature"] == {"value": 236.0, "unit": "Q11579"}
+        assert result["max_temperature"] == {"value": 279.0, "unit": "Q11579"}
+
     def test_empty_claims(self):
         assert extract_claims({}, "Q2") == {}
 
