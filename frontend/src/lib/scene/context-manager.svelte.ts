@@ -117,7 +117,7 @@ function isTopLevelParent(parentId: string): boolean {
 export const ZOOM_THRESHOLD_AU = 0.3;
 
 export class ContextManager {
-	private readonly childrenByParent = new SvelteMap<string, PositionedBody[]>();
+	private readonly childrenByParent = new SvelteMap<string, SvelteSet<string>>();
 	private readonly bodiesById = new SvelteMap<string, PositionedBody>();
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
 	private readonly moonMaxAByParent = new SvelteMap<string, number>();
@@ -259,9 +259,9 @@ export class ContextManager {
 	addBodies(bodies: PositionedBody[]): void {
 		for (const b of bodies) {
 			this.bodiesById.set(b.data.id, b);
-			const list = this.childrenByParent.get(b.data.parentId) ?? [];
-			list.push(b);
-			this.childrenByParent.set(b.data.parentId, list);
+			const set = this.childrenByParent.get(b.data.parentId) ?? new SvelteSet<string>();
+			set.add(b.data.id);
+			this.childrenByParent.set(b.data.parentId, set);
 			if (b.data.objectType === ObjectType.MOON) {
 				const prev = this.moonMaxAByParent.get(b.data.parentId) ?? 0;
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
@@ -332,12 +332,17 @@ export class ContextManager {
 		const sysId = this.focusedSystemId;
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
-		(this.childrenByParent.get(sysId) ?? [])
-			.filter(
-				(b) =>
-					b.data.objectType === ObjectType.MOON &&
-					camDistAU / b.data.a <= this.scaledPlanetary[VISIBILITY.FULL]
+		const children: PositionedBody[] = [];
+		for (const id of this.childrenByParent.get(sysId) ?? []) {
+			const b = this.bodiesById.get(id);
+			if (
+				b &&
+				b.data.objectType === ObjectType.MOON &&
+				camDistAU / b.data.a <= this.scaledPlanetary[VISIBILITY.FULL]
 			)
+				children.push(b);
+		}
+		children
 			.sort((a, b) => a.data.a - b.data.a)
 			.slice(0, MAX_FULL_MOONS)
 			.forEach((m) => this.fullMoonIds.add(m.data.id));
@@ -406,7 +411,7 @@ export class ContextManager {
 		const sysId = this.activeSystemId;
 		if (!sysId) return false;
 		if (groupParentId === sysId) return true;
-		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === groupParentId);
+		return this.childrenByParent.get(sysId)?.has(groupParentId) ?? false;
 	}
 
 	/**
@@ -438,6 +443,6 @@ export class ContextManager {
 	private isInSystem(parentId: string, sysId: string | null): boolean {
 		if (!sysId) return false;
 		if (parentId === sysId) return true;
-		return (this.childrenByParent.get(sysId) ?? []).some((c) => c.data.id === parentId);
+		return this.childrenByParent.get(sysId)?.has(parentId) ?? false;
 	}
 }
