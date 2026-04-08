@@ -126,17 +126,16 @@ export function sphericalToCartesian(
 	];
 }
 
-let lastWriteTime = 0;
-const WRITE_THROTTLE_MS = 250;
+let writeTimer: ReturnType<typeof setTimeout> | undefined;
+const WRITE_DEBOUNCE_MS = 250;
 
 export function writeUrlState(state: MapViewState): void {
-	const now = performance.now();
-	if (now - lastWriteTime < WRITE_THROTTLE_MS) return;
-	lastWriteTime = now;
-
-	const url = serializeUrl(state);
-	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
-	svelteReplaceState(url, { view: state });
+	clearTimeout(writeTimer);
+	writeTimer = setTimeout(() => {
+		const url = serializeUrl(state);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
+		svelteReplaceState(url, { view: state });
+	}, WRITE_DEBOUNCE_MS);
 }
 
 /** Like writeUrlState but pushes a new history entry (use when switching focus target). */
