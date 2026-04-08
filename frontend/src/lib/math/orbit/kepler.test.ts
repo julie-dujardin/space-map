@@ -1,15 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { OrbitalElements } from '$lib/types/objects';
+import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
+import { orbitalElementsToPosition } from './position';
 import {
-	solveKepler,
-	solveKeplerHyperbolic,
-	solveBarker,
-	orbitalElementsToPosition,
 	orbitalElementsToEllipse,
 	orbitalElementsToParabola,
 	orbitalElementsToHyperbola,
 	orbitalElementsToCurve
-} from './kepler';
+} from './orbit-curves';
 import fixtures from './kepler.fixtures.json';
 
 // Mock dateToJD so we don't depend on paraglide / real dates

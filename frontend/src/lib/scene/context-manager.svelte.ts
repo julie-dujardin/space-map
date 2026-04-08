@@ -2,7 +2,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_KM, AU_SCALE } from '../math/units';
-import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/kepler';
+import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 
 /*

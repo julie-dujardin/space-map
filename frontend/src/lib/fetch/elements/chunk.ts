@@ -1,5 +1,5 @@
 import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
-import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/kepler';
+import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import {
 	fetchElements,
 	type KeplerianColumns,
