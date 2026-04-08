@@ -62,13 +62,11 @@
 	"type_star": "恒星",
 	"my_location": "現在地",
 	"object_not_found": "オブジェクト {id} が見つかりません",
-
 	"tooltip_extent": "三軸楕円体の寸法",
 	"tooltip_density": "平均密度",
 	"tooltip_surface_gravity": "表面での重力加速度",
 	"tooltip_albedo": "表面が反射する太陽光の割合",
 	"tooltip_rotation_period": "自軸の周りを1回転するのに要する時間",
-
 	"tooltip_absolute_magnitude": "天体固有の明るさ",
 	"tooltip_absolute_magnitude_h": "太陽と観測者から1AUの距離、位相角0度での明るさ",
 	"tooltip_apparent_magnitude": "地球から見た明るさ",
@@ -86,11 +84,9 @@
 	"tooltip_condition_code": "軌道品質（0 = 精度良好、9 = 不確実性大）",
 	"tooltip_observation_arc": "使用された最初と最後の観測の間隔",
 	"tooltip_observations_used": "軌道計算に使用された観測数",
-
 	"tooltip_neo": "軌道が太陽から1.3AU以内に近づく天体",
 	"tooltip_pha": "絶対等級 H ≤ 22 かつ地球MOID ≤ 0.05 AUの地球近傍天体",
 	"tooltip_orbit_class": "軌道要素に基づくJPL軌道分類",
-
 	"tooltip_known_satellites": "既知の自然衛星の数",
 	"property_name_absolute_magnitude": "絶対等級",
 	"property_name_apparent_magnitude": "実視等級",

@@ -62,13 +62,11 @@
 	"type_star": "恒星",
 	"my_location": "我的位置",
 	"object_not_found": "未找到对象 {id}",
-
 	"tooltip_extent": "三轴椭球体尺寸",
 	"tooltip_density": "平均密度",
 	"tooltip_surface_gravity": "表面重力加速度",
 	"tooltip_albedo": "表面反射太阳光的比例",
 	"tooltip_rotation_period": "自转一周所需时间",
-
 	"tooltip_absolute_magnitude": "天体的固有亮度",
 	"tooltip_absolute_magnitude_h": "距太阳和观测者1AU、相位角为零时的亮度",
 	"tooltip_apparent_magnitude": "从地球看到的亮度",
@@ -86,11 +84,9 @@
 	"tooltip_condition_code": "轨道质量，从0（确定性好）到9（高度不确定）",
 	"tooltip_observation_arc": "首次和末次观测之间的时间跨度",
 	"tooltip_observations_used": "轨道解算中使用的观测次数",
-
 	"tooltip_neo": "轨道使其在距太阳1.3AU以内运行的天体",
 	"tooltip_pha": "绝对星等 H ≤ 22 且地球MOID ≤ 0.05 AU的近地天体",
 	"tooltip_orbit_class": "基于轨道要素的JPL轨道分类",
-
 	"tooltip_known_satellites": "已知天然卫星数量",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "視星等",

@@ -62,13 +62,11 @@
 	"type_star": "نجم",
 	"my_location": "موقعي",
 	"object_not_found": "الجسم {id} غير موجود",
-
 	"tooltip_extent": "أبعاد المجسم الإهليلجي ثلاثي المحاور",
 	"tooltip_density": "الكثافة المتوسطة",
 	"tooltip_surface_gravity": "التسارع الجاذبي على السطح",
 	"tooltip_albedo": "نسبة ضوء الشمس المنعكس من السطح",
 	"tooltip_rotation_period": "الزمن اللازم لدورة كاملة حول محوره",
-
 	"tooltip_absolute_magnitude": "السطوع الذاتي للجرم",
 	"tooltip_absolute_magnitude_h": "السطوع على بعد 1 و.ف من الشمس والراصد، بزاوية طور صفرية",
 	"tooltip_apparent_magnitude": "السطوع كما يُرى من الأرض",
@@ -86,11 +84,9 @@
 	"tooltip_condition_code": "جودة المدار من 0 (محدد جيداً) إلى 9 (غير مؤكد)",
 	"tooltip_observation_arc": "الفترة الزمنية بين أول وآخر رصد مستخدم",
 	"tooltip_observations_used": "عدد الأرصاد المستخدمة في حساب المدار",
-
 	"tooltip_neo": "جرم يقترب مداره إلى أقل من 1.3 و.ف من الشمس",
 	"tooltip_pha": "جرم قريب بقدر مطلق H ≤ 22 و MOID أرضي ≤ 0.05 و.ف",
 	"tooltip_orbit_class": "تصنيف مداري من JPL بناءً على العناصر المدارية",
-
 	"tooltip_known_satellites": "عدد الأقمار الطبيعية المعروفة",
 	"property_name_absolute_magnitude": "القدر المطلق",
 	"property_name_apparent_magnitude": "القدر الظاهري",
