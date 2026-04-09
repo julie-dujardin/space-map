@@ -21,14 +21,17 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-# Wikidata property ID → (Object column, value converter)
-PID_TO_COLUMN = {
-    "P2956": (Object.horizons_naif_id, int),
-    "P716": (Object.sbdb_spkid, int),
-    "P5736": (Object.sbdb_mcp_designation, str),
-    "P377": (Object.celestrak_norad_cat_id, int),
-    "P247": (Object.celestrak_cospar_id, str),
-    "P490": (Object.provisional_designation, str),
+# Wikidata property ID → list of (Object column, value converter)
+PID_TO_COLUMNS = {
+    "P2956": [(Object.horizons_naif_id, int)],
+    "P716": [(Object.sbdb_spkid, int)],
+    "P5736": [
+        (Object.sbdb_mcp_designation, str),
+        (Object.provisional_designation, str),
+    ],
+    "P377": [(Object.celestrak_norad_cat_id, int)],
+    "P247": [(Object.celestrak_cospar_id, str)],
+    "P490": [(Object.provisional_designation, str)],
 }
 
 BATCH = 1000
@@ -59,36 +62,40 @@ def _build_mappings(
     # Process property-based CSVs
     for csv_path in ids_dir.glob("P*.csv"):
         pid = csv_path.stem
-        if pid not in PID_TO_COLUMN:
+        if pid not in PID_TO_COLUMNS:
             logger.debug("Skipping unknown PID %s", pid)
             continue
 
-        column, converter = PID_TO_COLUMN[pid]
         id_to_qids = _read_ids_csv(csv_path)
 
-        # Batch-lookup: convert search terms and find matching objects
-        converted: dict = {}  # converted_value → [qids]
-        for search_term, qids in id_to_qids.items():
-            if not qids:
-                continue
-            try:
-                key = converter(search_term)
-            except (ValueError, TypeError):
-                continue
-            converted.setdefault(key, []).extend(qids)
+        for column, converter in PID_TO_COLUMNS[pid]:
+            # Batch-lookup: convert search terms and find matching objects
+            converted: dict = {}  # converted_value → [qids]
+            for search_term, qids in id_to_qids.items():
+                if not qids:
+                    continue
+                try:
+                    key = converter(search_term)
+                except (ValueError, TypeError):
+                    continue
+                converted.setdefault(key, []).extend(qids)
 
-        if not converted:
-            continue
+            if not converted:
+                continue
 
-        # Query DB in batches
-        keys = list(converted.keys())
-        for i in range(0, len(keys), BATCH):
-            batch_keys = keys[i : i + BATCH]
-            rows = session.query(Object.id, column).filter(column.in_(batch_keys)).all()
-            for obj_id, col_value in rows:
-                for qid in converted.get(col_value, []):
-                    obj_to_qids[obj_id].add(qid)
-                    qid_to_objs[qid].add(obj_id)
+            # Query DB in batches
+            keys = list(converted.keys())
+            for i in range(0, len(keys), BATCH):
+                batch_keys = keys[i : i + BATCH]
+                rows = (
+                    session.query(Object.id, column)
+                    .filter(column.in_(batch_keys))
+                    .all()
+                )
+                for obj_id, col_value in rows:
+                    for qid in converted.get(col_value, []):
+                        obj_to_qids[obj_id].add(qid)
+                        qid_to_objs[qid].add(obj_id)
 
     # Process name-based CSV
     name_csv = ids_dir / "name.csv"
