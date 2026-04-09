@@ -57,7 +57,7 @@ def write_chunk(
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:
-        labels_path = out_dir / "elements" / zone / str(zoom) / f"{part}.{lang}.gz"
+        labels_path = out_dir / "elements" / zone / str(zoom) / f"{part}.loc.{lang}.gz"
         lang_flags = {
             obj.id: object_flags.get(obj.id, {}).get(lang, 0) for obj in objects
         }

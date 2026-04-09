@@ -18,7 +18,7 @@ export const elementsBinUrl = (zone: string, zoom: number, part: number): string
 export const elementIdsUrl = (zone: string, zoom: number, part: number): string =>
 	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.id.gz`;
 export const elementLabelsUrl = (lang: string, zone: string, zoom: number, part: number): string =>
-	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.${lang}.gz`;
+	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.loc.${lang}.gz`;
 
 /** Sentinel values for missing data in the binary format. */
 export const MISSING_INT32 = -1;

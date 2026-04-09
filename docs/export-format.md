@@ -9,7 +9,7 @@ v1/
   metadata.json                                  (not gzipped)
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
-  elements/{zone}/{zoom}/{part}.{lang}.gz        localized labels
+  elements/{zone}/{zoom}/{part}.loc.{lang}.gz     localized labels
   objects/__global__/{id}.json.gz                global object details
   objects/{lang}/{id}.json.gz                    localized object details
   textures/{id}/low.webp
@@ -143,7 +143,7 @@ All other columns are safe as float32 based on their value ranges in the databas
 
 Newline-delimited text, one ID per line, same order as the binary file. Format: `{source}-{numeric_id}`, e.g. `naif-399`, `spkid-2000433`, `norad_satcat-25544`.
 
-## Element labels file (`.{lang}.gz`)
+## Element labels file (`.loc.{lang}.gz`)
 
 One line per object, same order as the binary file. Each line:
 
@@ -311,7 +311,7 @@ The size is a target, not a hard limit. Some textures go over it.
 2. For each (zone, zoom, part), fetch the three element files in parallel:
    - `.bin.gz` — parse with the binary format above
    - `.id.gz` (IDs) — split by newline, index matches binary row order
-   - `.{lang}.gz` (labels) — split by newline, parse flag + name
+   - `.loc.{lang}.gz` (labels) — split by newline, parse flag + name
 3. Combine by array index to get full body records
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
 5. Object detail files are fetched on demand using the ID and the label flag
