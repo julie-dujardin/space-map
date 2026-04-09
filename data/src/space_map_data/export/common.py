@@ -20,6 +20,7 @@ from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
+from space_map_data.export.textures import write_system_textures
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
@@ -73,6 +74,10 @@ def _remove_old_outputs(out_dir: Path) -> None:
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
+    # System texture metadata is regenerated each export (individual textures are not)
+    p = out_dir / "textures" / "systems"
+    if p.exists():
+        shutil.rmtree(p)
 
 
 def _write_parts(
@@ -237,6 +242,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
+
+        write_system_textures(session, out_dir)
 
     for f in as_completed(futures):
         zone, zoom, count = futures[f]

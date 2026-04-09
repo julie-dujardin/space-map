@@ -326,4 +326,43 @@ export async function loadBodyTexture(
 	material.needsUpdate = true;
 }
 
+/**
+ * Fetch the system texture metadata and preload low-res textures for all bodies in that system.
+ * The metadata file is keyed by barycenter ID (e.g. naif-3, naif-5).
+ */
+export async function loadSystemTextures(
+	barycenterId: string,
+	bodyObjects: Map<string, BodyObjects>,
+	textureLoader: TextureLoader,
+	textureLoaded: Set<string>
+): Promise<void> {
+	let meta: Record<string, { tiers: string[] }>;
+	try {
+		const resp = await fetch(`/data/v1/textures/systems/${barycenterId}.json`);
+		if (!resp.ok) return;
+		meta = await resp.json();
+	} catch {
+		return;
+	}
+
+	const promises: Promise<void>[] = [];
+	for (const bodyId of Object.keys(meta)) {
+		if (textureLoaded.has(bodyId)) continue;
+		textureLoaded.add(bodyId);
+		const bo = bodyObjects.get(bodyId);
+		if (!bo?.mesh) continue;
+		const material = bo.mesh.material as MeshStandardMaterial;
+		promises.push(
+			new Promise<Texture>((resolve, reject) => {
+				textureLoader.load(`/data/v1/textures/${bodyId}/low.webp`, resolve, undefined, reject);
+			}).then((texture) => {
+				material.map = texture;
+				material.color.set(0xffffff);
+				material.needsUpdate = true;
+			})
+		);
+	}
+	await Promise.allSettled(promises);
+}
+
 export { makeCircleTexture };

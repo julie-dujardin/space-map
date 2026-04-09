@@ -26,6 +26,7 @@ import {
 	buildPointClouds,
 	rebuildMinorPointClouds,
 	loadBodyTexture,
+	loadSystemTextures,
 	makeCircleTexture
 } from './construction';
 import type { BodyObjects, Callbacks } from './types';
@@ -91,6 +92,7 @@ export class SceneRenderer {
 	private circleTexture = makeCircleTexture();
 	private asteroidPoints = new Map<string, Points>();
 	private textureLoaded = new Set<string>();
+	private lastSystemTextureBarycenter: string | null = null;
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
@@ -199,8 +201,9 @@ export class SceneRenderer {
 		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
 
-		// Load texture for initial focus (bodyObjects is now populated)
+		// Load textures for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
+		this.maybeLoadSystemTextures();
 
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -696,6 +699,19 @@ export class SceneRenderer {
 		return { body: bestBody, distance: bestWorldDist };
 	}
 
+	/** Preload low-res textures for all bodies in the focused system (if changed). */
+	private maybeLoadSystemTextures(): void {
+		const sysId = this.ctx.focusedSystemId;
+		if (!sysId) return;
+		// Resolve to barycenter: if sysId is a planet (e.g. naif-599), its parent is the barycenter
+		const body = this.ctx.getBody(sysId);
+		const baryId =
+			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
+		if (baryId === this.lastSystemTextureBarycenter) return;
+		this.lastSystemTextureBarycenter = baryId;
+		loadSystemTextures(baryId, this.bodyObjects, this.textureLoader, this.textureLoaded);
+	}
+
 	private maybeLoadTexture(body: PositionedBody): void {
 		const id = body.data.id;
 		if (this.textureLoaded.has(id)) return;
@@ -812,6 +828,7 @@ export class SceneRenderer {
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
+		this.maybeLoadSystemTextures();
 		if (camPos) {
 			this.camOriginWorld = this.cameraTruePos();
 			this.camTargetWorld = camPos;

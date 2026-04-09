@@ -308,6 +308,19 @@ The size is a target, not a hard limit. Some textures go over it.
 }
 ```
 
+### System texture metadata (`textures/systems/{barycenter_id}.json`)
+
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Lists all textured bodies in the system with their available tiers.
+
+```json
+{
+  "naif-399": { "tiers": ["high", "low", "medium"] },
+  "naif-301": { "tiers": ["low"] }
+}
+```
+
+The frontend fetches this when entering a system and preloads low-res textures for all listed bodies, instead of waiting for each body to be individually focused.
+
 ## Consuming the data
 
 1. Fetch `metadata.json` to discover available chunks
