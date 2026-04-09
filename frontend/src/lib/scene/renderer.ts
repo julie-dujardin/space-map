@@ -489,10 +489,11 @@ export class SceneRenderer {
 				showLabel = vis === VISIBILITY.FULL || (capped && this.hideCappedMoonLabels);
 				isClose = vis === VISIBILITY.CLOSE;
 			} else if (body.data.objectType === ObjectType.STAR) {
+				const full = this.ctx.hasFullRendering(body);
 				group.visible = true;
 				const screenR = (bo.radiusScene / dist) * projScale;
-				isClose = screenR >= 1;
-				showLabel = !isClose;
+				isClose = full && screenR >= 1;
+				showLabel = full && !isClose;
 			} else {
 				const vis = this.ctx.getPlanetVisibility(body, dist);
 				const full = this.ctx.hasFullRendering(body);

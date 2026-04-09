@@ -114,7 +114,7 @@ function isTopLevelParent(parentId: string): boolean {
 }
 
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
-export const ZOOM_THRESHOLD_AU = 0.3;
+export const ZOOM_THRESHOLD_AU = 0.1;
 
 export class ContextManager {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
@@ -433,10 +433,10 @@ export class ContextManager {
 	 * Planet-orbiting groups are only visible when in the active system.
 	 */
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
-		if (isTopLevelParent(groupParentId)) return true;
-		const parent = this.bodiesById.get(groupParentId);
-		if (parent?.data.objectType === ObjectType.STAR) return true;
 		const sysId = this.activeSystemId;
+		if (isTopLevelParent(groupParentId)) return !sysId;
+		const parent = this.bodiesById.get(groupParentId);
+		if (parent?.data.objectType === ObjectType.STAR) return !sysId;
 		if (!sysId) return false;
 		if (groupParentId === sysId) return true;
 		return this.childrenByParent.get(sysId)?.has(groupParentId) ?? false;
@@ -448,6 +448,7 @@ export class ContextManager {
 	 * Zones without a defined range (parabolic, unclassified) are always visible.
 	 */
 	isAsteroidGroupVisible(zone: string): boolean {
+		if (this.activeSystemId) return false;
 		const range = ZONE_A_RANGE[zone];
 		if (!range) return true;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
