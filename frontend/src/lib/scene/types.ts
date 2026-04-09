@@ -1,4 +1,4 @@
-import type { Group, Mesh, Line } from 'three';
+import type { Group, Mesh, Line, Object3D, Points } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 
@@ -28,6 +28,10 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
+	/** Top-level scene objects that track this body's position (corona, lensflare). */
+	extraObjects: Object3D[];
+	/** Fixed-size star dot shown when the mesh is sub-pixel. */
+	starPoint: Points | null;
 	orbitLine: Line | null;
 	radiusScene: number;
 }

@@ -12,6 +12,7 @@ import {
 	SpriteMaterial,
 	Vector3
 } from 'three';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { orbitalElementsToCurve } from '$lib/math/orbit/curves';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 
@@ -223,10 +224,18 @@ function hexToRgb(hex: string): string {
 	return `rgb(${r}, ${g}, ${b})`;
 }
 
-/** Build a corona glow sprite for a star. */
-export function makeStarGlow(radius: number, color: string): Sprite {
+/**
+ * Build corona glow sprite + lensflare for a star.
+ * The sprite is a soft additive-blended billboard, and the lensflare adds
+ * camera-facing flare elements that scale with distance.
+ */
+export function makeStarGlow(
+	radius: number,
+	color: string
+): { corona: Sprite; lensflare: Lensflare } {
 	const rgbColor = color.startsWith('#') ? hexToRgb(color) : color;
 
+	// Corona glow sprite — 6x the star radius for a soft halo
 	const glowTexture = makeGlowTexture(rgbColor);
 	const coronaMaterial = new SpriteMaterial({
 		map: glowTexture,
@@ -240,7 +249,30 @@ export function makeStarGlow(radius: number, color: string): Sprite {
 	const glowSize = radius * 6;
 	corona.scale.set(glowSize, glowSize, 1);
 
-	return corona;
+	// Lensflare — subtle flare elements
+	const flareTexture = makeGlowTexture(rgbColor, 128);
+	const lensflare = new Lensflare();
+	lensflare.addElement(new LensflareElement(flareTexture, 35, 0, new Color(color)));
+
+	return { corona, lensflare };
+}
+
+/** Single fixed-size dot for a star, visible when the mesh is sub-pixel. */
+export function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(3), 3));
+	const material = new PointsMaterial({
+		color,
+		map: circleTexture,
+		transparent: true,
+		size: 6,
+		sizeAttenuation: false,
+		depthTest: true,
+		depthWrite: false
+	});
+	const points = new Points(geometry, material);
+	points.frustumCulled = false;
+	return points;
 }
 
 const F32_MAX = 3.4028235e38;

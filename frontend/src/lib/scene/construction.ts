@@ -5,6 +5,7 @@ import {
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
+	type Object3D,
 	Points,
 	PointLight,
 	PointsMaterial,
@@ -18,7 +19,13 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label/factory';
-import { makeCircleTexture, makeOrbitLine, makePointCloud, makeStarGlow } from './builders';
+import {
+	makeCircleTexture,
+	makeOrbitLine,
+	makePointCloud,
+	makeStarGlow,
+	makeStarPoint
+} from './builders';
 import type { BodyObjects } from './types';
 
 const F32_MAX = 3.4028235e38;
@@ -57,6 +64,7 @@ export function buildMajorBodies(
 	clickables: Mesh[],
 	meshToBody: Map<Mesh, PositionedBody>,
 	bodyObjects: Map<string, BodyObjects>,
+	circleTexture: CanvasTexture,
 	rendererElement: HTMLCanvasElement,
 	handleFocus: (body: PositionedBody) => void
 ): void {
@@ -74,10 +82,18 @@ export function buildMajorBodies(
 		group.position.set(0, 0, 0);
 
 		let mesh: Mesh | null = null;
+		let starPoint: Points | null = null;
+		const extraObjects: Object3D[] = [];
 		if (!isVirtual) {
 			if (isStar) {
-				group.add(new PointLight(0xffffff, 2, 0, 0));
-				group.add(makeStarGlow(radius, color));
+				const light = new PointLight(0xffffff, 2, 0, 0);
+				scene.add(light);
+				const { corona, lensflare } = makeStarGlow(radius, color);
+				scene.add(corona);
+				scene.add(lensflare);
+				starPoint = makeStarPoint(color, circleTexture);
+				scene.add(starPoint);
+				extraObjects.push(light, corona, lensflare, starPoint);
 			}
 
 			const segments = isStar ? 96 : 64;
@@ -86,7 +102,8 @@ export function buildMajorBodies(
 				? new MeshBasicMaterial({ color })
 				: new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
-			group.add(mesh);
+			scene.add(mesh);
+			extraObjects.push(mesh);
 
 			clickables.push(mesh);
 			meshToBody.set(mesh, body);
@@ -162,6 +179,8 @@ export function buildMajorBodies(
 			mesh,
 			label,
 			labelHalo,
+			extraObjects,
+			starPoint,
 			orbitLine,
 			radiusScene: radius
 		});

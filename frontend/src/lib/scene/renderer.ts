@@ -219,6 +219,7 @@ export class SceneRenderer {
 			this.clickables,
 			this.meshToBody,
 			this.bodyObjects,
+			this.circleTexture,
 			this.renderer.domElement,
 			(body) => this.handleFocus(body)
 		);
@@ -252,7 +253,11 @@ export class SceneRenderer {
 		const [fx, fy, fz] = this.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const [bx, by, bz] = bo.body.position;
-			bo.group.position.set(bx - fx, by - fy, bz - fz);
+			const rx = bx - fx,
+				ry = by - fy,
+				rz = bz - fz;
+			bo.group.position.set(rx, ry, rz);
+			for (const obj of bo.extraObjects) obj.position.set(rx, ry, rz);
 		}
 		this.repositionPointClouds();
 	}
@@ -494,6 +499,7 @@ export class SceneRenderer {
 				const screenR = (bo.radiusScene / dist) * projScale;
 				isClose = full && screenR >= 1;
 				showLabel = full && !isClose;
+				if (bo.starPoint) bo.starPoint.visible = screenR < 1;
 			} else {
 				const vis = this.ctx.getPlanetVisibility(body, dist);
 				const full = this.ctx.hasFullRendering(body);
@@ -726,6 +732,7 @@ export class SceneRenderer {
 			this.clickables,
 			this.meshToBody,
 			this.bodyObjects,
+			this.circleTexture,
 			this.renderer.domElement,
 			(b) => this.handleFocus(b)
 		);
