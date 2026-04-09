@@ -740,6 +740,9 @@ export class SceneRenderer {
 				];
 			}
 			if (this.focusedBody?.data.id === id) {
+				// Snap focus in case a prior fly animation hasn't fully settled
+				this.focusTruePos = [...body.position];
+				this.repositionAll();
 				this.flyToCamera(camPos);
 			} else {
 				this.setFocusTarget(body, camPos);
