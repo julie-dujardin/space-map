@@ -20,7 +20,7 @@
 	}
 </script>
 
-<span class="text-muted-foreground flex flex-wrap justify-end gap-x-1">
+<span class="text-muted-foreground flex flex-wrap justify-end gap-x-2">
 	{#each entities as entity (entity.name)}
 		<Tooltip.Root disabled={!truncated[entity.name]}>
 			<Tooltip.Trigger>
