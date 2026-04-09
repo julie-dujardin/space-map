@@ -41,6 +41,10 @@ export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
 	[VISIBILITY.HIDE]: Infinity
 };
 
+/** Multiplier applied to the FULL threshold for the currently focused body. */
+const FOCUSED_FULL_MULTIPLIER_MOON = 5;
+const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacecraft that orbit farther than GEO
+
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 25;
 
@@ -341,8 +345,11 @@ export class ContextManager {
 		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
 		if (ratio <= this.scaledPlanetary[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= this.scaledPlanetary[VISIBILITY.FULL])
-			return this.fullMoonIds.has(moon.data.id) ? VISIBILITY.FULL : VISIBILITY.CAPPED;
+		const isFocused = moon.data.id === this.focusedBodyId;
+		const fullThreshold =
+			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
+		if (ratio <= fullThreshold)
+			return this.fullMoonIds.has(moon.data.id) || isFocused ? VISIBILITY.FULL : VISIBILITY.CAPPED;
 		if (ratio <= this.scaledPlanetary[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
 	}
@@ -413,7 +420,8 @@ export class ContextManager {
 		}
 		const ratio = camDistThreeJS / AU_SCALE / refA;
 		if (ratio <= this.scaledSystem[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		if (ratio <= this.scaledSystem[VISIBILITY.FULL]) return VISIBILITY.FULL;
+		const focusedMul = body.data.id === this.focusedBodyId ? FOCUSED_FULL_MULTIPLIER_SPACECRAFT : 1;
+		if (ratio <= this.scaledSystem[VISIBILITY.FULL] * focusedMul) return VISIBILITY.FULL;
 		if (ratio <= this.scaledSystem[VISIBILITY.FAR]) return VISIBILITY.FAR;
 		return VISIBILITY.HIDE;
 	}
