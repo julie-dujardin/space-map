@@ -404,11 +404,15 @@ export class SceneRenderer {
 			}
 			this.controls.target.set(0, 0, 0);
 			if (this.camTargetWorld) {
-				this.camera.position.set(
-					this.camTargetWorld[0] - this.focusTruePos[0],
-					this.camTargetWorld[1] - this.focusTruePos[1],
-					this.camTargetWorld[2] - this.focusTruePos[2]
-				);
+				const cx = this.camTargetWorld[0] - this.focusTruePos[0];
+				const cy = this.camTargetWorld[1] - this.focusTruePos[1];
+				const cz = this.camTargetWorld[2] - this.focusTruePos[2];
+				this.camera.position.set(cx, cy, cz);
+				// Flush stale OrbitControls damping delta accumulated during the fly
+				this.controls.enableDamping = false;
+				this.controls.update();
+				this.controls.enableDamping = true;
+				this.camera.position.set(cx, cy, cz);
 				this.camOriginWorld = null;
 				this.camTargetWorld = null;
 				this.flyQ0 = null;
