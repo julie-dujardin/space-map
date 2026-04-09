@@ -290,7 +290,7 @@
 {:else}
 	<!-- Desktop: side panel -->
 	<aside
-		class="fixed top-0 start-0 z-50 flex h-full w-[500px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
+		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
 		<div class="flex items-center justify-between p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
