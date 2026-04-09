@@ -224,7 +224,7 @@ interface GlobalObjectData {
     website?: string;
     blog?: string;
     logo_image?: string;          // URL
-    capital_cost?: QuantityWithUnit;
+    capital_cost?: CurrencyQuantity;
     length?: QuantityWithUnit;
     width?: QuantityWithUnit;
   };
@@ -232,6 +232,8 @@ interface GlobalObjectData {
 
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
 interface QuantityWithUnit { value: number; unit: string; }
+// Currencies use ISO 4217 codes (e.g. "EUR", "USD")
+interface CurrencyQuantity { value: number; currency: string; }
 ```
 
 ### Localized (`objects/{lang}/{id}.json.gz`)

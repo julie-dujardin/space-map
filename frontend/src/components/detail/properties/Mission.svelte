@@ -2,7 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatWikidataDate } from '$lib/format/date';
-	import { formatQuantity } from '$lib/format/quantities';
+	import { formatCurrency } from '$lib/format/quantities';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -99,7 +99,7 @@
 			</Row>
 		{/if}
 		{#if capitalCost}
-			<Row label={m.property_name_capital_cost()} value={formatQuantity(capitalCost)} />
+			<Row label={m.property_name_capital_cost()} value={formatCurrency(capitalCost)} />
 		{/if}
 	</Section>
 {/if}

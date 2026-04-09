@@ -9,6 +9,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
+    active_statements,
 )
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
@@ -27,6 +28,29 @@ from space_map_data.models.object import Object
 from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
+
+_QID_CURRENCY = "Q8142"
+
+
+def _iso_currency_code(
+    unit_qid: str, wikidata_entities: WikidataEntityCache
+) -> str | None:
+    """Return the ISO 4217 code if *unit_qid* is a currency, else None."""
+    entity = wikidata_entities.get_referenced(unit_qid)
+    if not entity:
+        return None
+    p31_qids = {
+        stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
+        for stmt in active_statements(entity["claims"], "P31")
+    }
+    if _QID_CURRENCY not in p31_qids:
+        return None
+    for stmt in active_statements(entity["claims"], "P498"):
+        dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+        if isinstance(dv, str):
+            return dv
+    return None
+
 
 _CROSS_REF_FIELDS = (
     "wikidata_qid",
@@ -188,14 +212,18 @@ def _build_global(
             if key in extracted:
                 val = extracted[key]
                 if isinstance(val, dict) and "unit" in val:
-                    converted = units.convert(float(val["value"]), val["unit"])
-                    if converted is not None:
-                        val = converted
+                    iso = _iso_currency_code(val["unit"], wikidata_entities)
+                    if iso:
+                        val = {"value": val["value"], "currency": iso}
                     else:
-                        resolved = resolve_unit(val["unit"], wikidata_entities)
-                        if resolved:
-                            units.used_units.add(resolved)
-                            val = {**val, "unit": resolved}
+                        converted = units.convert(float(val["value"]), val["unit"])
+                        if converted is not None:
+                            val = converted
+                        else:
+                            resolved = resolve_unit(val["unit"], wikidata_entities)
+                            if resolved:
+                                units.used_units.add(resolved)
+                                val = {**val, "unit": resolved}
                 wikidata_section[key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section

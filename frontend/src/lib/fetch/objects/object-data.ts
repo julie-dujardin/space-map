@@ -7,6 +7,11 @@ export interface QuantityWithUnit {
 	unit: string;
 }
 
+export interface CurrencyQuantity {
+	value: number;
+	currency: string;
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
@@ -91,7 +96,7 @@ export interface GlobalObjectData {
 		website?: string[];
 		blog?: string[];
 		logo_image?: string[];
-		capital_cost?: QuantityWithUnit;
+		capital_cost?: CurrencyQuantity;
 		length?: QuantityWithUnit;
 		width?: QuantityWithUnit;
 	};

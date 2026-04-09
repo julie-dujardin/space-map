@@ -21,6 +21,7 @@ export default defineConfig({
 		})
 	],
 	server: {
+		allowedHosts: ['space.ilus.pw'],
 		host: '0.0.0.0',
 		proxy: {
 			'/data': {

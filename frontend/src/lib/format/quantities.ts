@@ -26,3 +26,10 @@ export function formatNumber(n: number): string {
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
 	return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
 }
+
+export function formatCurrency(q: { value: number; currency: string }): string {
+	return new Intl.NumberFormat(getLocale(), {
+		style: 'currency',
+		currency: q.currency
+	}).format(q.value);
+}

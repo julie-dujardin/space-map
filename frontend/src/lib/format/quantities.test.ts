@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
-import { formatNumber, ucfirst } from './quantities';
+import { formatCurrency, formatNumber, ucfirst } from './quantities';
 
 describe('formatNumber', () => {
 	it.each([
@@ -23,6 +23,20 @@ describe('formatNumber', () => {
 
 	it('returns "Infinity" for Infinity', () => {
 		expect(formatNumber(Infinity)).toBe('Infinity');
+	});
+});
+
+describe('formatCurrency', () => {
+	it('formats EUR', () => {
+		const result = formatCurrency({ value: 42000000, currency: 'EUR' });
+		expect(result).toContain('42,000,000');
+		expect(result).toContain('€');
+	});
+
+	it('formats USD', () => {
+		const result = formatCurrency({ value: 1500, currency: 'USD' });
+		expect(result).toContain('1,500');
+		expect(result).toContain('$');
 	});
 });
 
