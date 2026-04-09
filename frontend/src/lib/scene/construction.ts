@@ -47,6 +47,11 @@ function filterFinitePositions(bodies: PositionedBody[]): PositionedBody[] {
 	});
 }
 
+function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
+	if (!promotedIds || promotedIds.size === 0) return bodies;
+	return bodies.filter((b) => !promotedIds.has(b.data.id));
+}
+
 function positionsArray(
 	bodies: PositionedBody[],
 	basisPos: [number, number, number] = [0, 0, 0]
@@ -215,7 +220,8 @@ export function buildPointClouds(
 	ctx: ContextManager,
 	scene: Scene,
 	circleTexture: CanvasTexture,
-	basisPos: [number, number, number] = [0, 0, 0]
+	basisPos: [number, number, number] = [0, 0, 0],
+	promotedIds?: Set<string>
 ): {
 	asteroidPoints: Map<string, Points>;
 	spacecraftPoints: Map<string, Points>;
@@ -227,8 +233,9 @@ export function buildPointClouds(
 
 	// Asteroid point clouds (one per zone)
 	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
-		if (bodies.length > 0) {
-			const pts = makePointCloud(bodies, circleTexture, basisPos);
+		const filtered = excludePromoted(bodies, promotedIds);
+		if (filtered.length > 0) {
+			const pts = makePointCloud(filtered, circleTexture, basisPos);
 			asteroidPoints.set(zone, pts);
 			scene.add(pts);
 		}
@@ -236,7 +243,9 @@ export function buildPointClouds(
 
 	// Spacecraft point clouds (one per parent body)
 	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
-		const points = makePointCloud(bodies, circleTexture, basisPos);
+		const filtered = excludePromoted(bodies, promotedIds);
+		if (filtered.length === 0) continue;
+		const points = makePointCloud(filtered, circleTexture, basisPos);
 		spacecraftPoints.set(groupParentId, points);
 		scene.add(points);
 	}
@@ -271,7 +280,8 @@ export function rebuildMinorPointClouds(
 	circleTexture: CanvasTexture,
 	asteroidPoints: Map<string, Points>,
 	spacecraftPoints: Map<string, Points>,
-	basisPos: [number, number, number] = [0, 0, 0]
+	basisPos: [number, number, number] = [0, 0, 0],
+	promotedIds?: Set<string>
 ): Points[] {
 	const pendingAdd: Points[] = [];
 
@@ -279,7 +289,7 @@ export function rebuildMinorPointClouds(
 	for (const zone of ctx.dirtyAsteroidZones) {
 		const bodies = ctx.asteroidBodiesByZone.get(zone);
 		if (!bodies || bodies.length === 0) continue;
-		const valid = filterFinitePositions(bodies);
+		const valid = filterFinitePositions(excludePromoted(bodies, promotedIds));
 		const existing = asteroidPoints.get(zone);
 		if (existing) {
 			existing.geometry.setAttribute(
@@ -297,7 +307,7 @@ export function rebuildMinorPointClouds(
 	for (const groupParentId of ctx.dirtySpacecraftGroups) {
 		const bodies = ctx.spacecraftByParent.get(groupParentId);
 		if (!bodies || bodies.length === 0) continue;
-		const valid = filterFinitePositions(bodies);
+		const valid = filterFinitePositions(excludePromoted(bodies, promotedIds));
 		const existing = spacecraftPoints.get(groupParentId);
 		if (existing) {
 			existing.geometry.setAttribute(

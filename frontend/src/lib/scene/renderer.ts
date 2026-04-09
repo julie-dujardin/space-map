@@ -16,7 +16,7 @@ import {
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
-import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
@@ -226,7 +226,14 @@ export class SceneRenderer {
 			this.renderer.domElement,
 			(body) => this.handleFocus(body)
 		);
-		const pts = buildPointClouds(this.ctx, this.scene, this.circleTexture, this.pointCloudBasisPos);
+		const promotedIds = new Set(this.bodyObjects.keys());
+		const pts = buildPointClouds(
+			this.ctx,
+			this.scene,
+			this.circleTexture,
+			this.pointCloudBasisPos,
+			promotedIds
+		);
 		this.asteroidPoints = pts.asteroidPoints;
 		this.spacecraftPoints = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
@@ -243,7 +250,8 @@ export class SceneRenderer {
 			this.circleTexture,
 			this.asteroidPoints,
 			this.spacecraftPoints,
-			this.pointCloudBasisPos
+			this.pointCloudBasisPos,
+			new Set(this.bodyObjects.keys())
 		);
 		if (newPoints.length > 0) {
 			this.pendingSceneAdds.push(...newPoints);
@@ -767,6 +775,19 @@ export class SceneRenderer {
 		);
 		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
 		this.repositionAll();
+
+		// Rebuild the point cloud for this body's group so the promoted dot is removed
+		if (body.data.objectType === ObjectType.SPACECRAFT) {
+			this.ctx.dirtySpacecraftGroups.add(body.data.parentId);
+		} else if (isAsteroid(body.data.objectType)) {
+			for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
+				if (bodies.some((b) => b.data.id === body.data.id)) {
+					this.ctx.dirtyAsteroidZones.add(zone);
+					break;
+				}
+			}
+		}
+		this.rebuildMinorPointClouds();
 	}
 
 	// --- Public API ---
