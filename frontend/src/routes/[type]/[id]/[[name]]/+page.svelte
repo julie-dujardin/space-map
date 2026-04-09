@@ -58,7 +58,7 @@
 				/>
 			{/if}
 			<div
-				class="fixed right-4 z-10 transition-opacity duration-300 ease-in-out
+				class="fixed end-4 z-10 transition-opacity duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
 			>

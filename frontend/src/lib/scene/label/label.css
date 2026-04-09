@@ -23,7 +23,7 @@
 }
 
 .scene-label__name {
-	padding-left: 8px;
+	padding-inline-start: 8px;
 	position: absolute;
 	top: 50%;
 	transform: translateY(-50%);
@@ -36,7 +36,7 @@
 		0 0 4px #000;
 }
 .scene-label__name {
-	left: 32px;
+	inset-inline-start: 32px;
 	font-size: 14px;
 	font-weight: bold;
 }

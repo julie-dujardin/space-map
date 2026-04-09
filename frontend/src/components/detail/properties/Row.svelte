@@ -29,7 +29,7 @@
 		{ucfirst(label)}
 	{/if}
 </dt>
-<dd class="text-right">
+<dd class="text-end">
 	{#if children}
 		{@render children()}
 	{:else}
