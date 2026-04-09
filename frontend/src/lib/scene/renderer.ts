@@ -503,6 +503,19 @@ export class SceneRenderer {
 				isClose = full && screenR >= 1;
 				showLabel = full && !isClose;
 				if (bo.starPoint) bo.starPoint.visible = screenR < 1;
+				// Hide corona/lensflare when star is occluded by a planet
+				const [sx, sy, sz] = body.position;
+				const starOccluded = isOccludedByPlanet(
+					sx,
+					sy,
+					sz,
+					dist,
+					body.data.id,
+					this._camWorldV3,
+					this.bodyObjects
+				);
+				if (bo.corona) bo.corona.visible = !starOccluded;
+				if (bo.lensflare) bo.lensflare.visible = !starOccluded;
 			} else {
 				const vis = this.ctx.getPlanetVisibility(body, dist);
 				const full = this.ctx.hasFullRendering(body);

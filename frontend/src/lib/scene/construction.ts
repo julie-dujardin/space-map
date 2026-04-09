@@ -10,8 +10,10 @@ import {
 	PointLight,
 	PointsMaterial,
 	Scene,
-	SphereGeometry
+	SphereGeometry,
+	type Sprite
 } from 'three';
+import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
@@ -83,12 +85,16 @@ export function buildMajorBodies(
 
 		let mesh: Mesh | null = null;
 		let starPoint: Points | null = null;
+		let coronaSprite: Sprite | null = null;
+		let lensflareObj: Lensflare | null = null;
 		const extraObjects: Object3D[] = [];
 		if (!isVirtual) {
 			if (isStar) {
 				const light = new PointLight(0xffffff, 2, 0, 0);
 				scene.add(light);
 				const { corona, lensflare } = makeStarGlow(radius, color);
+				coronaSprite = corona;
+				lensflareObj = lensflare;
 				scene.add(corona);
 				scene.add(lensflare);
 				starPoint = makeStarPoint(color, circleTexture);
@@ -180,6 +186,8 @@ export function buildMajorBodies(
 			label,
 			labelHalo,
 			extraObjects,
+			corona: coronaSprite,
+			lensflare: lensflareObj,
 			starPoint,
 			orbitLine,
 			radiusScene: radius
