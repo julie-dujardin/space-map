@@ -188,7 +188,7 @@
 			lastMoveY = e.touches[0].clientY;
 			lastMoveTime = now;
 			const dvh = (dy / window.innerHeight) * 100;
-			sheetHeight = Math.max(bottomSnapDvh(), TOP_SNAP - dvh);
+			sheetHeight = Math.min(TOP_SNAP, Math.max(bottomSnapDvh(), TOP_SNAP - dvh));
 		}
 	}
 
