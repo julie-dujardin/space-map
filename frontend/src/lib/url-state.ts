@@ -85,7 +85,12 @@ export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
-	const numericId = state.id.slice(state.id.lastIndexOf('-') + 1);
+	const prefix = state.id.startsWith('norad_satcat-')
+		? 'norad_satcat-'
+		: state.id.startsWith('spkid-')
+			? 'spkid-'
+			: 'naif-';
+	const numericId = state.id.slice(prefix.length);
 	const path = resolve('/[type]/[id]/[[name]]', {
 		type: state.type,
 		id: numericId,
