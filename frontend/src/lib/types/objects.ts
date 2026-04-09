@@ -87,9 +87,9 @@ const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
 };
 const DEFAULT_FALLBACK_RADIUS_KM = 10;
 
-/** Effective radius in km, using a fallback when the data has no finite value. */
+/** Effective radius in km, using a fallback when the data has no known positive value. */
 export function effectiveRadiusKm(data: BodyData): number {
-	if (Number.isFinite(data.radiusKm)) return data.radiusKm;
+	if (Number.isFinite(data.radiusKm) && data.radiusKm > 0) return data.radiusKm;
 	return FALLBACK_RADIUS_KM[data.objectType] ?? DEFAULT_FALLBACK_RADIUS_KM;
 }
 
