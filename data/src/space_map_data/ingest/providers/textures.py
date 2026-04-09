@@ -113,7 +113,7 @@ _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 class TextureProcessor:
     def __init__(self) -> None:
         self._raw_meta: list[dict] = yaml.safe_load(
-            (RAW_DIR / "download-metadata.yaml").read_text()
+            (DOWNLOAD_DIR / "textures" / "download-metadata.yaml").read_text()
         )["bodies"]
         self._global_warnings: list[str] = []
 
