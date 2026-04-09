@@ -84,7 +84,7 @@ export function parseUrl(): MapViewState | null {
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
-	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${r(state.zoom)}`;
+	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
 	const prefix = state.id.startsWith('norad_satcat-')
 		? 'norad_satcat-'
 		: state.id.startsWith('spkid-')
