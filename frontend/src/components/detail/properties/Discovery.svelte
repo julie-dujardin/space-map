@@ -22,6 +22,8 @@
 	let orbitClass = $derived(global?.sbdb?.class);
 	let cometPrefix = $derived(global?.sbdb?.prefix);
 	let sats = $derived(global?.sbdb?.sats);
+	let partOf = $derived(localized?.part_of);
+	let namedAfter = $derived(localized?.named_after);
 
 	let hasContent = $derived(
 		!isSpacecraft &&
@@ -31,7 +33,9 @@
 				minorPlanetGroup ||
 				asteroidFamily ||
 				orbitClass ||
-				cometPrefix)
+				cometPrefix ||
+				partOf ||
+				namedAfter)
 	);
 </script>
 
@@ -48,6 +52,11 @@
 		{#if discoverySite && discoverySite.length > 0}
 			<Row label={m.discovery_site()}>
 				<EntityLinks entities={discoverySite} />
+			</Row>
+		{/if}
+		{#if namedAfter && namedAfter.length > 0}
+			<Row label={m.property_name_named_after()}>
+				<EntityLinks entities={namedAfter} />
 			</Row>
 		{/if}
 		{#if orbitClass}
@@ -72,6 +81,11 @@
 				tooltip={m.tooltip_known_satellites()}
 				value={String(sats)}
 			/>
+		{/if}
+		{#if partOf && partOf.length > 0}
+			<Row label={m.property_name_part_of()}>
+				<EntityLinks entities={partOf} />
+			</Row>
 		{/if}
 	</Section>
 {/if}

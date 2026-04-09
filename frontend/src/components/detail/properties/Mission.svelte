@@ -14,6 +14,7 @@
 
 	let { global, localized }: Props = $props();
 
+	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 	let capitalCost = $derived(global?.wikidata?.capital_cost);
 	let launchDate = $derived(global?.wikidata?.launch_date);
 	let operator = $derived(localized?.operator);
@@ -28,18 +29,19 @@
 	let partOf = $derived(localized?.part_of);
 
 	let hasContent = $derived(
-		launchDate ||
-			operator ||
-			manufacturer ||
-			developer ||
-			funder ||
-			countryOfOrigin ||
-			launchContractor ||
-			launchVehicle ||
-			launchSite ||
-			namedAfter ||
-			partOf ||
-			capitalCost
+		isSpacecraft &&
+			(launchDate ||
+				operator ||
+				manufacturer ||
+				developer ||
+				funder ||
+				countryOfOrigin ||
+				launchContractor ||
+				launchVehicle ||
+				launchSite ||
+				namedAfter ||
+				partOf ||
+				capitalCost)
 	);
 </script>
 
