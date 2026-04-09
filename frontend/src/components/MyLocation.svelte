@@ -5,8 +5,8 @@
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 
 	interface Props {
-		/** Called with zoom distance; returns animation duration in ms. */
-		onLocate: (zoom: number) => number;
+		/** Called with zoom distance and optional geolocation; returns animation duration in ms. */
+		onLocate: (zoom: number, latitude?: number, longitude?: number) => number;
 	}
 
 	let { onLocate }: Props = $props();
@@ -15,8 +15,11 @@
 
 	let state = $state<'idle' | 'loading'>('idle');
 
-	function flyAndWait() {
-		const durationMs = onLocate(EARTH_VIEW_DISTANCE);
+	const CLOSE_VIEW_DISTANCE = 0.001;
+
+	function flyAndWait(latitude?: number, longitude?: number) {
+		const zoom = latitude !== undefined ? CLOSE_VIEW_DISTANCE : EARTH_VIEW_DISTANCE;
+		const durationMs = onLocate(zoom, latitude, longitude);
 		setTimeout(() => (state = 'idle'), durationMs);
 	}
 
@@ -28,7 +31,7 @@
 			return;
 		}
 		navigator.geolocation.getCurrentPosition(
-			() => flyAndWait(),
+			(pos) => flyAndWait(pos.coords.latitude, pos.coords.longitude),
 			(err) => {
 				console.warn('Geolocation error:', err.message);
 				flyAndWait();

@@ -27,8 +27,13 @@
 	let renderer: SceneRenderer | undefined;
 	let focusedBody = $state<PositionedBody | undefined>();
 
-	export function focusOnBody(id: string, zoom?: number): number {
-		return renderer?.focusOnBody(id, zoom) ?? 0;
+	export function focusOnBody(
+		id: string,
+		zoom?: number,
+		latitude?: number,
+		longitude?: number
+	): number {
+		return renderer?.focusOnBody(id, zoom, latitude, longitude) ?? 0;
 	}
 
 	let lastCameraPos = {

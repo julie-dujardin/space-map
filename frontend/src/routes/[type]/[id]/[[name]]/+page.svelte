@@ -62,7 +62,10 @@
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
 			>
-				<MyLocation onLocate={(zoom) => scene?.focusOnBody('naif-399', zoom) ?? 0} />
+				<MyLocation
+					onLocate={(zoom: number, lat?: number, lng?: number) =>
+						scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0}
+				/>
 			</div>
 		</div>
 	</Tooltip.Provider>
