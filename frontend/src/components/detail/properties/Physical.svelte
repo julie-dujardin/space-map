@@ -15,6 +15,8 @@
 	let wd = $derived(global?.wikidata);
 	let sbdb = $derived(global?.sbdb);
 
+	let sats = $derived(sbdb?.sats);
+
 	let hasContent = $derived(
 		wd?.mass ||
 			sbdb?.mass ||
@@ -35,7 +37,8 @@
 			sbdb?.H != null ||
 			wd?.apparent_magnitude != null ||
 			sbdb?.spec_B ||
-			sbdb?.spec_T
+			sbdb?.spec_T ||
+			(sats != null && sats > 0)
 	);
 </script>
 
@@ -126,6 +129,13 @@
 				label={m.spectral_type_tholen()}
 				value={sbdb.spec_T}
 				tooltip={m.tooltip_spectral_type_tholen()}
+			/>
+		{/if}
+		{#if sats != null && sats > 0}
+			<Row
+				label={m.known_satellites()}
+				tooltip={m.tooltip_known_satellites()}
+				value={String(sats)}
 			/>
 		{/if}
 	</Section>

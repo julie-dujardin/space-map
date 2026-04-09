@@ -2,22 +2,27 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
+	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
 	import { formatNumber, formatUnit } from '$lib/format/quantities';
 	import { formatJulianDate } from '$lib/format/date';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
+	import EntityLinks from './EntityLinks.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
+		localized: LocalizedObjectData | null;
 		orbitElements?: OrbitalElements;
 	}
 
-	let { global, orbitElements }: Props = $props();
+	let { global, localized, orbitElements }: Props = $props();
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
 	let sbdb = $derived(global?.sbdb);
+	let orbitClass = $derived(sbdb?.class);
+	let cometPrefix = $derived(sbdb?.prefix);
+	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 	let isNeo = $derived(sbdb?.neo);
 	let isPha = $derived(sbdb?.pha);
 
@@ -42,6 +47,9 @@
 			sbdb?.data_arc != null ||
 			sbdb?.n_obs_used != null ||
 			sbdb?.last_obs ||
+			orbitClass ||
+			cometPrefix ||
+			minorPlanetGroup ||
 			isNeo ||
 			isPha
 	);
@@ -75,6 +83,17 @@
 				</div>
 			{/if}
 		{/snippet}
+		{#if orbitClass}
+			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()} value={orbitClass} />
+		{/if}
+		{#if cometPrefix}
+			<Row label={m.comet_type()} value={cometPrefix} />
+		{/if}
+		{#if minorPlanetGroup && minorPlanetGroup.length > 0 && !orbitClass}
+			<Row label={m.property_name_minor_planet_group()}>
+				<EntityLinks entities={minorPlanetGroup} />
+			</Row>
+		{/if}
 		{#if sbdb?.per_y}
 			<Row
 				label={m.orbital_period()}
@@ -87,20 +106,6 @@
 				label={m.semi_major_axis()}
 				value={`${formatNumber(orbit.a)} ${formatUnit('astronomical_unit')}`}
 				tooltip={m.tooltip_semi_major_axis()}
-			/>
-		{/if}
-		{#if orbit?.e != null}
-			<Row
-				label={m.eccentricity()}
-				value={formatNumber(orbit.e)}
-				tooltip={m.tooltip_eccentricity()}
-			/>
-		{/if}
-		{#if orbit?.i != null}
-			<Row
-				label={m.inclination()}
-				value={`${formatNumber(orbit.i)}°`}
-				tooltip={m.tooltip_inclination()}
 			/>
 		{/if}
 		{#if orbit?.q}
@@ -122,6 +127,20 @@
 				label={m.aphelion()}
 				value={`${formatNumber(sbdb.ad)} ${formatUnit('astronomical_unit')}`}
 				tooltip={m.tooltip_aphelion()}
+			/>
+		{/if}
+		{#if orbit?.e != null}
+			<Row
+				label={m.eccentricity()}
+				value={formatNumber(orbit.e)}
+				tooltip={m.tooltip_eccentricity()}
+			/>
+		{/if}
+		{#if orbit?.i != null}
+			<Row
+				label={m.inclination()}
+				value={`${formatNumber(orbit.i)}°`}
+				tooltip={m.tooltip_inclination()}
 			/>
 		{/if}
 		{#if sbdb?.moid}
