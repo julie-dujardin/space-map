@@ -24,97 +24,58 @@
 		global?.provisional_designation ?? global?.cross_refs?.sbdb_mcp_designation
 	);
 
-	let hasLinks = $derived(
-		wikipediaUrl ||
-			nasaScienceUrl ||
-			wikidataQid ||
-			websites.length ||
-			blogs.length ||
-			sbdbDesignation ||
-			horizonsNaifId ||
-			noradCatId
-	);
+	interface Link {
+		href: string;
+		label: string;
+	}
+
+	let links = $derived.by(() => {
+		const result: Link[] = [];
+		if (wikipediaUrl) result.push({ href: wikipediaUrl, label: m.wikipedia() });
+		if (nasaScienceUrl) result.push({ href: nasaScienceUrl, label: m.nasa_science() });
+		for (const url of websites)
+			result.push({ href: url, label: new URL(url).hostname.replace(/^www\./, '') });
+		for (const url of blogs) result.push({ href: url, label: m.property_name_blog() });
+		if (horizonsNaifId)
+			result.push({
+				href: `https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='${horizonsNaifId}'`,
+				label: m.jpl_horizons({ id: String(horizonsNaifId) })
+			});
+		if (sbdbDesignation)
+			result.push({
+				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(sbdbDesignation))}`,
+				label: m.jpl_sbdb({ id: String(sbdbDesignation) })
+			});
+		if (noradCatId)
+			result.push({
+				href: `https://www.n2yo.com/satellite/?s=${noradCatId}`,
+				label: m.n2yo_satellite_tracker({ id: String(noradCatId) })
+			});
+		if (wikidataQid)
+			result.push({
+				href: `https://www.wikidata.org/wiki/${wikidataQid}`,
+				label: m.wikidata_label({ qid: wikidataQid })
+			});
+		return result;
+	});
 </script>
 
-{#if hasLinks || designation}
+{#if links.length || designation}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.links()}</h3>
 		<Separator />
-		<div class="flex flex-col gap-1 text-sm">
+		<div class="flex flex-col gap-2.5 text-sm">
 			{#if designation}
 				<p class="text-muted-foreground">{m.designation_label({ designation })}</p>
 			{/if}
-			{#if wikipediaUrl}
+			{#each links as link (link.href)}
 				<a
-					href={wikipediaUrl}
+					href={link.href}
 					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{m.wikipedia()}</a
-				>
-			{/if}
-			{#if nasaScienceUrl}
-				<a
-					href={nasaScienceUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{m.nasa_science()}</a
-				>
-			{/if}
-			{#each websites as url (url)}
-				<a
-					href={url}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground"
-					>{new URL(url).hostname.replace(/^www\./, '')}</a
+					rel="noopener"
+					class="w-fit underline hover:text-foreground text-muted-foreground">{link.label}</a
 				>
 			{/each}
-			{#each blogs as url (url)}
-				<a
-					href={url}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground">{m.property_name_blog()}</a
-				>
-			{/each}
-			{#if horizonsNaifId}
-				<a
-					href="https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='{horizonsNaifId}'"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground"
-					>{m.jpl_horizons({ id: String(horizonsNaifId) })}</a
-				>
-			{/if}
-			{#if sbdbDesignation}
-				<a
-					href="https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr={encodeURIComponent(
-						String(sbdbDesignation)
-					)}"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground"
-					>{m.jpl_sbdb({ id: String(sbdbDesignation) })}</a
-				>
-			{/if}
-			{#if noradCatId}
-				<a
-					href="https://www.n2yo.com/satellite/?s={noradCatId}"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground"
-					>{m.n2yo_satellite_tracker({ id: String(noradCatId) })}</a
-				>
-			{/if}
-			{#if wikidataQid}
-				<a
-					href="https://www.wikidata.org/wiki/{wikidataQid}"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline hover:text-foreground text-muted-foreground"
-					>{m.wikidata_label({ qid: wikidataQid })}</a
-				>
-			{/if}
 		</div>
 	</div>
 {/if}

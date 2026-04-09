@@ -30,7 +30,7 @@
 							<a
 								href={entity.wikipedia}
 								target="_blank"
-								rel="noopener noreferrer"
+								rel="noopener"
 								class="underline hover:text-foreground">{entity.name}</a
 							>
 						{:else}
