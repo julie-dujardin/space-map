@@ -18,7 +18,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant } from './label/factory';
-import { makeCircleTexture, makeOrbitLine, makePointCloud } from './builders';
+import { makeCircleTexture, makeOrbitLine, makePointCloud, makeStarGlow } from './builders';
 import type { BodyObjects } from './types';
 
 const F32_MAX = 3.4028235e38;
@@ -77,6 +77,7 @@ export function buildMajorBodies(
 		if (!isVirtual) {
 			if (isStar) {
 				group.add(new PointLight(0xffffff, 2, 0, 0));
+				group.add(makeStarGlow(radius, color));
 			}
 
 			const segments = isStar ? 96 : 64;

@@ -1,4 +1,5 @@
 import {
+	AdditiveBlending,
 	BufferGeometry,
 	CanvasTexture,
 	Color,
@@ -7,6 +8,8 @@ import {
 	Points,
 	PointsMaterial,
 	ShaderMaterial,
+	Sprite,
+	SpriteMaterial,
 	Vector3
 } from 'three';
 import { orbitalElementsToCurve } from '$lib/math/orbit/curves';
@@ -193,6 +196,51 @@ export function makeOrbitLine(
 	line.userData.orbitCenter = new Vector3(cx, cy, cz);
 	line.userData.orbitLocalPositions = validPoints;
 	return line;
+}
+
+/** Create a radial gradient canvas texture for the star corona glow. */
+function makeGlowTexture(color: string, size = 256): CanvasTexture {
+	const canvas = document.createElement('canvas');
+	canvas.width = size;
+	canvas.height = size;
+	const ctx = canvas.getContext('2d')!;
+	const half = size / 2;
+	const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+	gradient.addColorStop(0, color);
+	gradient.addColorStop(0.15, color);
+	gradient.addColorStop(0.4, color.replace(')', ', 0.3)').replace('rgb(', 'rgba('));
+	gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+	ctx.fillStyle = gradient;
+	ctx.fillRect(0, 0, size, size);
+	return new CanvasTexture(canvas);
+}
+
+/** Convert hex color like #ffdd44 to rgb() string. */
+function hexToRgb(hex: string): string {
+	const r = parseInt(hex.slice(1, 3), 16);
+	const g = parseInt(hex.slice(3, 5), 16);
+	const b = parseInt(hex.slice(5, 7), 16);
+	return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** Build a corona glow sprite for a star. */
+export function makeStarGlow(radius: number, color: string): Sprite {
+	const rgbColor = color.startsWith('#') ? hexToRgb(color) : color;
+
+	const glowTexture = makeGlowTexture(rgbColor);
+	const coronaMaterial = new SpriteMaterial({
+		map: glowTexture,
+		blending: AdditiveBlending,
+		transparent: true,
+		opacity: 0.6,
+		depthWrite: false,
+		depthTest: false
+	});
+	const corona = new Sprite(coronaMaterial);
+	const glowSize = radius * 6;
+	corona.scale.set(glowSize, glowSize, 1);
+
+	return corona;
 }
 
 const F32_MAX = 3.4028235e38;

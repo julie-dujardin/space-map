@@ -44,6 +44,9 @@ export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 25;
 
+/** Below this distance, hide other systems (halos, orbits, spacecraft). */
+export const ZOOM_THRESHOLD_AU = 0.05;
+
 /** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
 function parseObjectType(typeStr: string): ObjectType {
 	const key = typeStr.toUpperCase() as keyof typeof ObjectType;
@@ -112,9 +115,6 @@ async function createPlaceholderBody(
 function isTopLevelParent(parentId: string): boolean {
 	return parentId === 'naif-0' || parentId === 'naif-10';
 }
-
-/** Below this distance, hide other systems (halos, orbits, spacecraft). */
-export const ZOOM_THRESHOLD_AU = 0.1;
 
 export class ContextManager {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
