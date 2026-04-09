@@ -113,6 +113,14 @@ export function buildMajorBodies(
 				? new MeshBasicMaterial({ color })
 				: new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
+			if (!isStar) {
+				mesh.receiveShadow = true;
+				const canCast =
+					body.data.objectType === ObjectType.PLANET ||
+					body.data.objectType === ObjectType.DWARF_PLANET ||
+					body.data.objectType === ObjectType.MOON;
+				mesh.castShadow = canCast;
+			}
 			scene.add(mesh);
 			extraObjects.push(mesh);
 

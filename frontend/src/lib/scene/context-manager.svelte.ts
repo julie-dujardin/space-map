@@ -465,6 +465,11 @@ export class ContextManager {
 		return ratio <= this.scaledSystem[VISIBILITY.FAR] / 3;
 	}
 
+	/** Max orbital semi-major axis (AU) of moons in a system. Used to size the shadow camera frustum. */
+	getSystemExtent(sysId: string): number {
+		return this.moonMaxAByParent.get(sysId) ?? 0.01;
+	}
+
 	isInActiveSystem(parentId: string): boolean {
 		return this.isInSystem(parentId, this.activeSystemId);
 	}

@@ -1,8 +1,11 @@
 import {
 	AmbientLight,
+	DirectionalLight,
 	Float32BufferAttribute,
 	Mesh,
+	BasicShadowMap,
 	PerspectiveCamera,
+	PointLight,
 	Points,
 	Quaternion,
 	Raycaster,
@@ -125,6 +128,8 @@ export class SceneRenderer {
 	private firstFrame = true;
 	private pendingUrlWrite = false;
 	private readonly textureLoader = new TextureLoader();
+	private readonly shadowLight: DirectionalLight;
+	private sunPointLight: PointLight | undefined;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -140,6 +145,8 @@ export class SceneRenderer {
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+		this.renderer.shadowMap.enabled = true;
+		this.renderer.shadowMap.type = BasicShadowMap;
 
 		// CSS2D label renderer
 		this.labelRenderer = new CSS2DRenderer({ element: labelContainer });
@@ -149,6 +156,14 @@ export class SceneRenderer {
 		// Scene + lights
 		this.scene = new Scene();
 		this.scene.add(new AmbientLight(0xffffff, 0.05));
+
+		// Shadow-casting directional light (swapped in when zoomed into a sub-system)
+		this.shadowLight = new DirectionalLight(0xffffff, 0);
+		this.shadowLight.castShadow = true;
+		this.shadowLight.shadow.mapSize.set(4096, 4096);
+		this.shadowLight.shadow.bias = -0.00001;
+		this.scene.add(this.shadowLight);
+		this.scene.add(this.shadowLight.target);
 
 		// Camera
 		const aspect = canvas.clientWidth / canvas.clientHeight;
@@ -194,6 +209,10 @@ export class SceneRenderer {
 
 		// Build all scene objects
 		this.buildScene();
+
+		// Grab reference to Sun's PointLight for shadow swap
+		const sunBo = this.bodyObjects.get('naif-10');
+		this.sunPointLight = sunBo?.extraObjects.find((o): o is PointLight => o instanceof PointLight);
 
 		// If focused body has no visual objects (e.g. placeholder from global file), build them.
 		if (focusBody) this.ensureBodyObjects(focusBody);
@@ -601,6 +620,38 @@ export class SceneRenderer {
 			mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
 			mat.uniforms.uAlphaMin.value = isFocused ? 0.15 : 0.0;
 			mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
+		}
+
+		// Shadow light: swap between PointLight (solar system) and DirectionalLight (sub-system)
+		const sysId = this.ctx.activeSystemId;
+		if (sysId) {
+			// Sun direction in focus-relative coordinates
+			const sunPos = this.bodyObjects.get('naif-10')?.body.position;
+			const [fx, fy, fz] = this.focusTruePos;
+			const sunRelX = (sunPos?.[0] ?? 0) - fx;
+			const sunRelY = (sunPos?.[1] ?? 0) - fy;
+			const sunRelZ = (sunPos?.[2] ?? 0) - fz;
+			const sunDir = this._tmpV3.set(sunRelX, sunRelY, sunRelZ).normalize();
+
+			const lightDist = 10;
+			this.shadowLight.position.copy(sunDir).multiplyScalar(lightDist);
+			this.shadowLight.target.position.set(0, 0, 0);
+			this.shadowLight.intensity = 2;
+			if (this.sunPointLight) this.sunPointLight.intensity = 0;
+
+			// Lateral extent: tight to camera view for high texel density.
+			// Depth extent: full system so off-screen casters still produce shadows.
+			const lateral = Math.max(distance * 2, 0.001);
+			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
+			const shadowCam = this.shadowLight.shadow.camera;
+			shadowCam.left = shadowCam.bottom = -lateral;
+			shadowCam.right = shadowCam.top = lateral;
+			shadowCam.near = lightDist - depthExtent;
+			shadowCam.far = lightDist + depthExtent;
+			shadowCam.updateProjectionMatrix();
+		} else {
+			this.shadowLight.intensity = 0;
+			if (this.sunPointLight) this.sunPointLight.intensity = 2;
 		}
 
 		// Stagger new point cloud additions: one per frame to spread GPU upload cost
