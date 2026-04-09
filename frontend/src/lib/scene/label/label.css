@@ -2,6 +2,7 @@
 
 .scene-label {
 	position: relative;
+	left: 0; /* anchor to left edge — CSS2DRenderer uses position:absolute + transform, which breaks in RTL containers without an explicit inset */
 	pointer-events: auto;
 	cursor: pointer;
 	user-select: none;
@@ -23,7 +24,7 @@
 }
 
 .scene-label__name {
-	padding-inline-start: 8px;
+	padding-left: 8px;
 	position: absolute;
 	top: 50%;
 	transform: translateY(-50%);
@@ -36,7 +37,7 @@
 		0 0 4px #000;
 }
 .scene-label__name {
-	inset-inline-start: 32px;
+	left: 32px;
 	font-size: 14px;
 	font-weight: bold;
 }
