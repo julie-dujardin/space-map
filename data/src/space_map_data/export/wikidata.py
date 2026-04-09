@@ -159,6 +159,13 @@ def _extract_lang_aliases(
     return result
 
 
+def active_statements(claims: dict, prop: str) -> list[dict]:
+    """Return non-deprecated statements for *prop*, preferring ``preferred`` rank."""
+    stmts = [s for s in claims.get(prop, []) if s.get("rank") != "deprecated"]
+    preferred = [s for s in stmts if s.get("rank") == "preferred"]
+    return preferred if preferred else stmts
+
+
 def _extract_sitelinks(data: dict) -> dict[str, str]:
     """Extract {lang: article_title} from Wikidata sitelinks."""
     result: dict[str, str] = {}

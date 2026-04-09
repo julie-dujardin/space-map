@@ -144,7 +144,13 @@ class WikidataDownloader(Downloader):
                         if isinstance(unit, str) and "wikidata.org/entity/Q" in unit:
                             units.add(unit.rsplit("/", 1)[-1])
         on_disk = self._on_disk(all_dirs)
-        return referenced - on_disk, units - on_disk
+        # Unit QIDs should not be skipped just because they exist in referenced/.
+        # A QID in referenced/ is not usable as a unit (localization only scans
+        # units/), so we exclude only primary dirs + units/ when deduplicating.
+        units_on_disk = self._on_disk(primary_dirs) | self._on_disk(
+            [d for d in all_dirs if d.name == "units"]
+        )
+        return referenced - on_disk, units - units_on_disk
 
     # -- Entity fetching --
 

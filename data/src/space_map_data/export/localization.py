@@ -5,7 +5,11 @@ import logging
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
-from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    active_statements,
+)
 from space_map_data.utils.paths import DOWNLOAD_DIR, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
@@ -37,15 +41,12 @@ def _unit_qids() -> set[str]:
 
 
 def _extract_symbol(entity: WikidataEntity, lang: str) -> str | None:
-    """Extract the unit symbol (P5061) for a given language, falling back to English."""
-    for stmt in entity["claims"].get(_UNIT_SYMBOL_PID, []):
-        dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-        if isinstance(dv, dict) and dv.get("language") == lang:
-            return dv.get("text")
-    if lang != "en":
-        for stmt in entity["claims"].get(_UNIT_SYMBOL_PID, []):
+    """Extract the unit symbol (P5061), preferring *lang* then ``mul`` (multilingual) then English."""
+    stmts = active_statements(entity["claims"], _UNIT_SYMBOL_PID)
+    for target in (lang, "mul", "en"):
+        for stmt in stmts:
             dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-            if isinstance(dv, dict) and dv.get("language") == "en":
+            if isinstance(dv, dict) and dv.get("language") == target:
                 return dv.get("text")
     return None
 
@@ -87,7 +88,7 @@ def _collect_unit_labels(
             if symbol:
                 labels[f"unit_symbol_{key}"] = symbol
             elif label:
-                labels[f"unit_symbol_{key}"] = entity["labels"].get("en", label)
+                labels[f"unit_symbol_{key}"] = label
 
         result[lang] = labels
 

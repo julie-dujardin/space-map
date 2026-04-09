@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from space_map_data.export.wikidata import active_statements
 from space_map_data.export.objects.wikidata_claims import (
     MultipleClaimValues,
     extract_claims,
     radius_km_from_claims,
     resolve_entity_ref,
     resolve_unit,
-    _active_stmts,
     _all_entity_qids,
     _all_strings,
     _all_times,
@@ -112,7 +112,7 @@ def _p854_ref(url: str) -> dict:
 
 
 class TestActiveStmts:
-    """_active_stmts"""
+    """active_statements"""
 
     def test_filters_deprecated(self):
         claims = {
@@ -121,7 +121,7 @@ class TestActiveStmts:
                 _stmt(_qty_snak("+2"), rank="deprecated"),
             ]
         }
-        result = _active_stmts(claims, "P1")
+        result = active_statements(claims, "P1")
         assert len(result) == 1
         assert result[0]["rank"] == "normal"
 
@@ -133,7 +133,7 @@ class TestActiveStmts:
                 _stmt(_qty_snak("+3"), rank="normal"),
             ]
         }
-        result = _active_stmts(claims, "P1")
+        result = active_statements(claims, "P1")
         assert len(result) == 1
         assert result[0]["rank"] == "preferred"
 
@@ -144,10 +144,10 @@ class TestActiveStmts:
                 _stmt(_qty_snak("+2"), rank="normal"),
             ]
         }
-        assert len(_active_stmts(claims, "P1")) == 2
+        assert len(active_statements(claims, "P1")) == 2
 
     def test_missing_property_returns_empty(self):
-        assert _active_stmts({}, "P1") == []
+        assert active_statements({}, "P1") == []
 
     def test_all_deprecated_returns_empty(self):
         claims = {
@@ -156,7 +156,7 @@ class TestActiveStmts:
                 _stmt(_qty_snak("+2"), rank="deprecated"),
             ]
         }
-        assert _active_stmts(claims, "P1") == []
+        assert active_statements(claims, "P1") == []
 
 
 class TestStmtValue:

@@ -5,7 +5,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import quote
 
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache, active_statements
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ def extract_claims(claims: dict, qid: str) -> dict:
         _QID_MEAN: "temperature",
     }
     grouped: dict[str, list[dict]] = {}
-    for stmt in _active_stmts(claims, "P2076"):
+    for stmt in active_statements(claims, "P2076"):
         nature = (
             _qualifier_qid(stmt, "P1480")
             or _qualifier_qid(stmt, "P5102")
@@ -241,13 +241,6 @@ def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
     return None
 
 
-def _active_stmts(claims: dict, prop: str) -> list[dict]:
-    """Return non-deprecated statements for *prop*, preferring ``preferred`` rank."""
-    stmts = [s for s in claims.get(prop, []) if s.get("rank") != "deprecated"]
-    preferred = [s for s in stmts if s.get("rank") == "preferred"]
-    return preferred if preferred else stmts
-
-
 def _stmt_value(stmt: dict):
     """Extract ``mainsnak.datavalue.value`` from a statement, or None."""
     return stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
@@ -279,7 +272,7 @@ def _claim_values(claims: dict, prop: str):
     Skips deprecated statements.  If any statement has rank ``preferred``,
     only those are yielded.
     """
-    for stmt in _active_stmts(claims, prop):
+    for stmt in active_statements(claims, prop):
         val = _stmt_value(stmt)
         if val is not None:
             yield val
@@ -435,7 +428,7 @@ def _single_quantity(
     Returns plain float for dimensionless quantities, or {"value": float, "unit": "Q..."}.
     Entries lacking units are ignored when *needs_unit* is True.
     """
-    pairs = _qty_pairs(_active_stmts(claims, prop), needs_unit=needs_unit)
+    pairs = _qty_pairs(active_statements(claims, prop), needs_unit=needs_unit)
     return _resolve_quantity(pairs, prop, qid=qid)
 
 
