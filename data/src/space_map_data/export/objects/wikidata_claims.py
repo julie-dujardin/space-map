@@ -5,7 +5,11 @@ from typing import Literal, NamedTuple
 from urllib.parse import quote
 
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.wikidata import WikidataEntityCache, active_statements
+from space_map_data.export.wikidata import (
+    WikidataEntity,
+    WikidataEntityCache,
+    active_statements,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +164,10 @@ def extract_claims(claims: dict, qid: str) -> dict:
     return result
 
 
+_REF_NAME_SHORTEN_THRESHOLD = 15
+_REF_NAME_WARN_THRESHOLD = 20
+
+
 def resolve_entity_ref(
     qid: str,
     lang: str,
@@ -172,11 +180,39 @@ def resolve_entity_ref(
     name = wd["labels"].get(lang)
     if not name:
         return None
+    if len(name) > _REF_NAME_SHORTEN_THRESHOLD:
+        name = _shortest_ref_name(name, lang, wd, qid)
     result: dict = {"name": name}
     title = wd["sitelinks"].get(lang)
     if title:
         result["wikipedia"] = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
     return result
+
+
+def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity, qid: str) -> str:
+    """Return the shortest available name for a referenced entity.
+
+    Checks P1813 (short name) claims and aliases for the given language,
+    and returns the shortest candidate that is shorter than the label.
+    """
+    candidates: list[str] = []
+
+    # P1813 — official short name
+    for stmt in active_statements(wd["claims"], "P1813"):
+        val = _stmt_value(stmt)
+        if isinstance(val, dict) and val.get("language") == lang and val.get("text"):
+            candidates.append(val["text"])
+
+    # Aliases for this language
+    candidates.extend(wd["aliases"].get(lang, []))
+
+    shorter = [c for c in candidates if len(c) < len(label)]
+    if shorter:
+        return min(shorter, key=len)  # type: ignore  # ty what the fuck
+
+    if len(label) > _REF_NAME_WARN_THRESHOLD:
+        logger.warning("No short form for referenced entity %s (%s)", qid, label)
+    return label
 
 
 def resolve_unit(
