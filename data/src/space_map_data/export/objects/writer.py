@@ -80,6 +80,7 @@ def write_objects(
     wikidata_entities: WikidataEntityCache,
     chunk_entities: dict[str, WikidataEntity | None],
     units: UnitConverter,
+    nasa_science_urls: dict[str, str],
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -113,7 +114,9 @@ def write_objects(
             extracted = {}
 
         # Global (non-localized, always written)
-        global_data = _build_global(obj, extracted, wikidata_entities, units)
+        global_data = _build_global(
+            obj, extracted, wikidata_entities, units, nasa_science_urls
+        )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
         )
@@ -159,6 +162,7 @@ def _build_global(
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
+    nasa_science_urls: dict[str, str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -178,6 +182,10 @@ def _build_global(
     cross_refs = _pick_attrs(obj, _CROSS_REF_FIELDS)
     if cross_refs:
         data["cross_refs"] = cross_refs
+
+    nasa_url = nasa_science_urls.get(obj.id)
+    if nasa_url:
+        data["nasa_science_url"] = nasa_url
 
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
     sbdb = obj.sbdb if obj.sbdb_spkid is not None else None

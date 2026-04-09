@@ -59,6 +59,7 @@
 	"wikidata_label": "Wikidata ({qid})",
 	"jpl_sbdb": "JPL Small-Body Database ({id})",
 	"jpl_horizons": "JPL Horizons ({id})",
+	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
 	"my_location": "My location",
 	"object_not_found": "Object {id} not found",

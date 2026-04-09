@@ -51,6 +51,7 @@
 	"wikidata_label": "Викиданные ({qid})",
 	"jpl_sbdb": "База данных малых тел JPL ({id})",
 	"jpl_horizons": "JPL Horizons ({id})",
+	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO Спутниковый трекер ({id})",
 	"type_asteroid": "астероид",
 	"type_barycenter": "барицентр",

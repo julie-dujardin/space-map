@@ -19,6 +19,7 @@ export interface GlobalObjectData {
 	map_texture_available?: boolean;
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
+	nasa_science_url?: string;
 	cross_refs?: {
 		wikidata_qid?: string;
 		horizons_naif_id?: number;

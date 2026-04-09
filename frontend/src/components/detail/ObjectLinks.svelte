@@ -11,6 +11,7 @@
 	let { global, localized }: Props = $props();
 
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
+	let nasaScienceUrl = $derived(global?.nasa_science_url);
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
 	let websites = $derived(global?.wikidata?.website ?? []);
 	let blogs = $derived(global?.wikidata?.blog ?? []);
@@ -25,6 +26,7 @@
 
 	let hasLinks = $derived(
 		wikipediaUrl ||
+			nasaScienceUrl ||
 			wikidataQid ||
 			websites.length ||
 			blogs.length ||
@@ -48,6 +50,14 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline hover:text-foreground text-muted-foreground">{m.wikipedia()}</a
+				>
+			{/if}
+			{#if nasaScienceUrl}
+				<a
+					href={nasaScienceUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="underline hover:text-foreground text-muted-foreground">{m.nasa_science()}</a
 				>
 			{/if}
 			{#each websites as url (url)}

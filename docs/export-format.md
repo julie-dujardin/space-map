@@ -177,6 +177,7 @@ interface GlobalObjectData {
     celestrak_norad_cat_id?: number;
     celestrak_cospar_id?: string;
   };
+  nasa_science_url?: string;          // URL to science.nasa.gov page
   orbit?: {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;

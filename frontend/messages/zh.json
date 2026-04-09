@@ -51,6 +51,7 @@
 	"wikidata_label": "维基数据 ({qid})",
 	"jpl_sbdb": "JPL 小天体数据库 ({id})",
 	"jpl_horizons": "JPL Horizons ({id})",
+	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO 卫星追踪 ({id})",
 	"type_asteroid": "小行星",
 	"type_barycenter": "质心",

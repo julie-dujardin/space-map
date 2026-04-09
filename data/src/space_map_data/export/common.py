@@ -22,7 +22,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Object, ObjectType, SBDB
-from space_map_data.utils.paths import EXPORT_DIR
+from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ def _write_parts(
     zoom: int,
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
+    nasa_science_urls: dict[str, str],
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -100,6 +101,7 @@ def _write_parts(
             wikidata_entities,
             chunk_entities,
             units,
+            nasa_science_urls,
         )
         total_bytes += write_chunk(
             chunk,
@@ -123,6 +125,16 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     wikidata_entities = WikidataEntityCache()
     units = UnitConverter(wikidata_entities)
+
+    nasa_science_url_file = DOWNLOAD_DIR / "nasa-science-urls" / "pk-to-url.json"
+    if nasa_science_url_file.exists():
+        nasa_science_urls: dict[str, str] = orjson.loads(
+            nasa_science_url_file.read_bytes()
+        )
+        logger.info("Loaded %d NASA Science URLs", len(nasa_science_urls))
+    else:
+        nasa_science_urls = {}
+        logger.warning("NASA Science URL file not found: %s", nasa_science_url_file)
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -180,6 +192,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     0,
                     wikidata_entities,
                     units,
+                    nasa_science_urls,
                 )
                 futures[f] = (zone, 0, len(objects))
 
@@ -220,6 +233,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     zoom,
                     wikidata_entities,
                     units,
+                    nasa_science_urls,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
