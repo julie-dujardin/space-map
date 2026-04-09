@@ -18,17 +18,9 @@
 	const CLOSE_VIEW_DISTANCE = 0.001;
 
 	function flyAndWait(latitude?: number, longitude?: number) {
-		if (latitude !== undefined && longitude !== undefined) {
-			// Two-phase: fly to Earth overview, then orbit to user's location
-			const flyMs = onLocate(EARTH_VIEW_DISTANCE);
-			setTimeout(() => {
-				const orbitMs = onLocate(CLOSE_VIEW_DISTANCE, latitude, longitude);
-				setTimeout(() => (state = 'idle'), orbitMs);
-			}, flyMs);
-		} else {
-			const durationMs = onLocate(EARTH_VIEW_DISTANCE);
-			setTimeout(() => (state = 'idle'), durationMs);
-		}
+		const zoom = latitude !== undefined ? CLOSE_VIEW_DISTANCE : EARTH_VIEW_DISTANCE;
+		const durationMs = onLocate(zoom, latitude, longitude);
+		setTimeout(() => (state = 'idle'), durationMs);
 	}
 
 	function locate() {

@@ -365,18 +365,37 @@ export class SceneRenderer {
 			this.focusTruePos = f64lerp(this.focusOriginWorld, this.focusTargetWorld, s);
 			this.repositionAll();
 			if (this.orbitFly) {
-				// Orbit mode: lerp camera position, look at target each frame
-				const camWorld = f64lerp(this.camOriginWorld!, this.camTargetWorld!, s);
+				const focusChanging =
+					this.focusOriginWorld[0] !== this.focusTargetWorld[0] ||
+					this.focusOriginWorld[1] !== this.focusTargetWorld[1] ||
+					this.focusOriginWorld[2] !== this.focusTargetWorld[2];
+				// Ease-in position when approaching from afar, smoothstep when orbiting
+				const sCam = focusChanging ? t * t * t : s;
+				const camWorld = f64lerp(this.camOriginWorld!, this.camTargetWorld!, sCam);
 				this.camera.position.set(
 					camWorld[0] - this.focusTruePos[0],
 					camWorld[1] - this.focusTruePos[1],
 					camWorld[2] - this.focusTruePos[2]
 				);
-				this.camera.lookAt(
-					this.focusTargetWorld[0] - this.focusTruePos[0],
-					this.focusTargetWorld[1] - this.focusTruePos[1],
-					this.focusTargetWorld[2] - this.focusTruePos[2]
-				);
+				if (focusChanging) {
+					// Approaching: blend from slerp (turn) to lookAt (keep centered)
+					this.camera.quaternion.slerpQuaternions(this.flyQ0!, this.flyQ1!, s);
+					const slerpQ = this.camera.quaternion.clone();
+					this.camera.lookAt(
+						this.focusTargetWorld[0] - this.focusTruePos[0],
+						this.focusTargetWorld[1] - this.focusTruePos[1],
+						this.focusTargetWorld[2] - this.focusTruePos[2]
+					);
+					const lookAtQ = this.camera.quaternion.clone();
+					this.camera.quaternion.slerpQuaternions(slerpQ, lookAtQ, s);
+				} else {
+					// Already focused: pure lookAt
+					this.camera.lookAt(
+						this.focusTargetWorld[0] - this.focusTruePos[0],
+						this.focusTargetWorld[1] - this.focusTruePos[1],
+						this.focusTargetWorld[2] - this.focusTruePos[2]
+					);
+				}
 			} else {
 				// Slerp camera orientation for uniform angular velocity
 				this.camera.quaternion.slerpQuaternions(this.flyQ0!, this.flyQ1!, s);
@@ -743,9 +762,14 @@ export class SceneRenderer {
 				// Snap focus in case a prior fly animation hasn't fully settled
 				this.focusTruePos = [...body.position];
 				this.repositionAll();
+				this.rebuildPointCloudBasis();
 				this.flyToCamera(camPos);
 			} else {
 				this.setFocusTarget(body, camPos);
+				if (latitude !== undefined && longitude !== undefined) {
+					// Use orbit mode so Earth stays centered during approach
+					this.orbitFly = true;
+				}
 			}
 		} else {
 			this.setFocusTarget(body);
