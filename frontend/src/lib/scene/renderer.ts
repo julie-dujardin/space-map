@@ -20,7 +20,8 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
 import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
-import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
+import { VISIBILITY } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
 import {
@@ -46,6 +47,44 @@ function f64dist(a: Vec3, b: Vec3): number {
 		dy = a[1] - b[1],
 		dz = a[2] - b[2];
 	return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+type VisibilityFlags = {
+	groupVisible: boolean;
+	orbitVisible: boolean;
+	showLabel: boolean;
+	isClose: boolean;
+};
+
+function moonVisFlags(
+	vis: VISIBILITY,
+	hideCappedLabels: boolean,
+	isFocused: boolean
+): VisibilityFlags {
+	const capped = vis === VISIBILITY.CAPPED;
+	return {
+		groupVisible:
+			vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || (capped && hideCappedLabels),
+		// Focused body keeps orbit visible at CLOSE; applyLabelDisplay hides it when the sphere fills the screen.
+		orbitVisible: vis === VISIBILITY.FULL || (vis === VISIBILITY.CLOSE && isFocused),
+		showLabel: vis === VISIBILITY.FULL || (capped && hideCappedLabels),
+		isClose: vis === VISIBILITY.CLOSE
+	};
+}
+
+function bodyVisFlags(
+	vis: VISIBILITY,
+	fullRendering: boolean,
+	isFocused: boolean
+): VisibilityFlags {
+	return {
+		// No FAR — mesh is sub-pixel at that distance, point cloud suffices.
+		groupVisible: vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL,
+		orbitVisible:
+			(vis === VISIBILITY.FULL && fullRendering) || (vis === VISIBILITY.CLOSE && isFocused),
+		showLabel: vis === VISIBILITY.FULL && fullRendering,
+		isClose: fullRendering && vis === VISIBILITY.CLOSE
+	};
 }
 
 /** Default surface clearance in km, by object type. */
@@ -502,6 +541,7 @@ export class SceneRenderer {
 
 			let showLabel: boolean;
 			let isClose: boolean;
+			const isFocused = body.data.id === focusedBodyId;
 
 			if (
 				body.data.objectType === ObjectType.BARYCENTER ||
@@ -512,19 +552,6 @@ export class SceneRenderer {
 				if (orbitLine) orbitLine.visible = true;
 				showLabel = true;
 				isClose = false;
-			} else if (body.data.objectType === ObjectType.MOON) {
-				const vis = this.ctx.getMoonVisibility(body);
-				// By default (hideCappedMoonLabels=false), CAPPED moons are demoted to the
-				// parent's point cloud. When hideCappedMoonLabels=true, they render individually
-				// with dimmed labels instead.
-				const capped = vis === VISIBILITY.CAPPED;
-				group.visible =
-					vis === VISIBILITY.CLOSE ||
-					vis === VISIBILITY.FULL ||
-					(capped && this.hideCappedMoonLabels);
-				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL;
-				showLabel = vis === VISIBILITY.FULL || (capped && this.hideCappedMoonLabels);
-				isClose = vis === VISIBILITY.CLOSE;
 			} else if (body.data.objectType === ObjectType.STAR) {
 				const full = this.ctx.hasFullRendering(body);
 				group.visible = true;
@@ -543,16 +570,22 @@ export class SceneRenderer {
 					this._camWorldV3,
 					this.bodyObjects
 				);
+				bo.isOccluded = starOccluded;
 				if (bo.corona) bo.corona.visible = !starOccluded;
 				if (bo.lensflare) bo.lensflare.visible = !starOccluded;
 			} else {
-				const vis = this.ctx.getPlanetVisibility(body, dist);
-				const full = this.ctx.hasFullRendering(body);
-				group.visible =
-					vis === VISIBILITY.CLOSE || vis === VISIBILITY.FULL || vis === VISIBILITY.FAR;
-				if (orbitLine) orbitLine.visible = vis === VISIBILITY.FULL && full;
-				showLabel = vis === VISIBILITY.FULL && full;
-				isClose = full && vis === VISIBILITY.CLOSE;
+				// Moons, planets, spacecraft, asteroids, comets, dwarf planets
+				const isMoon = body.data.objectType === ObjectType.MOON;
+				const vis = isMoon
+					? this.ctx.getMoonVisibility(body)
+					: this.ctx.getPlanetVisibility(body, dist);
+				const vf = isMoon
+					? moonVisFlags(vis, this.hideCappedMoonLabels, isFocused)
+					: bodyVisFlags(vis, this.ctx.hasFullRendering(body), isFocused);
+				group.visible = vf.groupVisible;
+				if (orbitLine) orbitLine.visible = vf.orbitVisible;
+				showLabel = vf.showLabel;
+				isClose = vf.isClose;
 			}
 
 			// Detach labels from hidden groups so CSS2DRenderer's recursive
@@ -584,6 +617,11 @@ export class SceneRenderer {
 		// Hide labels of bodies occluded by a planet sphere
 		for (const bo of this.bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
+			// Stars already computed occlusion above for corona/lensflare — reuse
+			if (bo.isOccluded !== undefined) {
+				if (bo.isOccluded) bo.label.visible = false;
+				continue;
+			}
 			const [bx, by, bz] = bo.body.position;
 			const dist = f64dist(camTrue, bo.body.position);
 			if (

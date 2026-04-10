@@ -51,6 +51,20 @@ export const MAX_FULL_MOONS = 25;
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.05;
 
+/** Shared ratio→VISIBILITY mapping used by both moon and planet/spacecraft visibility. */
+function computeVisibilityFromRatio(
+	ratio: number,
+	thresholds: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS,
+	focusedMultiplier: number,
+	isFocused: boolean
+): VISIBILITY {
+	if (ratio <= thresholds[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+	if (ratio <= thresholds[VISIBILITY.FULL] * (isFocused ? focusedMultiplier : 1))
+		return VISIBILITY.FULL;
+	if (ratio <= thresholds[VISIBILITY.FAR]) return VISIBILITY.FAR;
+	return VISIBILITY.HIDE;
+}
+
 /** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
 function parseObjectType(typeStr: string): ObjectType {
 	const key = typeStr.toUpperCase() as keyof typeof ObjectType;
@@ -121,12 +135,9 @@ function isTopLevelParent(parentId: string): boolean {
 }
 
 export class ContextManager {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
 	private readonly childrenByParent = new Map<string, Set<string>>();
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
 	private readonly bodiesById = new Map<string, PositionedBody>();
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
 	private readonly moonMaxAByParent = new Map<string, number>();
 
 	// --- Reactive loading state ($state safe: only mutated during async load, never in useTask) ---
@@ -135,10 +146,9 @@ export class ContextManager {
 	majorBodies = $state<PositionedBody[]>([]);
 	asteroidBodiesByZone = $state(new SvelteMap<string, PositionedBody[]>());
 	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
+
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- intentionally non-reactive; read only during rebuild, not in $effect tracking
 	dirtyAsteroidZones = new Set<string>();
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	dirtySpacecraftGroups = new Set<string>();
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
@@ -154,8 +164,9 @@ export class ContextManager {
 	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
 	private scaledSystem = SYSTEM_DISTANCE_RATIO_THRESHOLDS;
 	/** IDs of moons allowed FULL visibility after the crowding cap is applied. */
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read only in RAF tick, never in $effect
 	private fullMoonIds = new Set<string>();
+	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
+	private moonVisibilityCache = new Map<string, VISIBILITY>();
 
 	/**
 	 * Look up any body by ID. Checks the major-body index first,
@@ -276,7 +287,7 @@ export class ContextManager {
 	addBodies(bodies: PositionedBody[]): void {
 		for (const b of bodies) {
 			this.bodiesById.set(b.data.id, b);
-			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+
 			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
 			set.add(b.data.id);
 			this.childrenByParent.set(b.data.parentId, set);
@@ -305,6 +316,7 @@ export class ContextManager {
 	/** Call from useTask every frame. */
 	updateCamera(dist: number): void {
 		this.cameraDistThreeJS = dist;
+		this.moonVisibilityCache.clear();
 		const zoomed = dist <= ZOOM_THRESHOLD_AU * AU_SCALE;
 		if (zoomed !== this.isZoomedIn) {
 			this.isZoomedIn = zoomed;
@@ -342,16 +354,26 @@ export class ContextManager {
 
 	/** Ratio-based visibility for a moon. Gated on the focused system (no zoom threshold). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
-		if (!this.isInFocusedSystem(moon.data.parentId)) return VISIBILITY.HIDE;
-		const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
-		if (ratio <= this.scaledPlanetary[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		const isFocused = moon.data.id === this.focusedBodyId;
-		const fullThreshold =
-			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
-		if (ratio <= fullThreshold)
-			return this.fullMoonIds.has(moon.data.id) || isFocused ? VISIBILITY.FULL : VISIBILITY.CAPPED;
-		if (ratio <= this.scaledPlanetary[VISIBILITY.FAR]) return VISIBILITY.FAR;
-		return VISIBILITY.HIDE;
+		const cached = this.moonVisibilityCache.get(moon.data.id);
+		if (cached !== undefined) return cached;
+		let vis: VISIBILITY;
+		if (!this.isInFocusedSystem(moon.data.parentId)) {
+			vis = VISIBILITY.HIDE;
+		} else {
+			const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
+			const isFocused = moon.data.id === this.focusedBodyId;
+			vis = computeVisibilityFromRatio(
+				ratio,
+				this.scaledPlanetary,
+				FOCUSED_FULL_MULTIPLIER_MOON,
+				isFocused
+			);
+			// Crowding cap: demote FULL → CAPPED if not in the top-N set
+			if (vis === VISIBILITY.FULL && !this.fullMoonIds.has(moon.data.id) && !isFocused)
+				vis = VISIBILITY.CAPPED;
+		}
+		this.moonVisibilityCache.set(moon.data.id, vis);
+		return vis;
 	}
 
 	/**
@@ -406,6 +428,8 @@ export class ContextManager {
 	 * Distance-ratio based visibility for non-moon, non-star bodies.
 	 * Bodies orbiting a planet (spacecraft, debris) are gated on the focused system,
 	 * like moons. Sun-orbiting bodies use the solar-orbit semi-major axis ratio.
+	 * Spacecraft use distance to focused body (like moons) so they appear/disappear
+	 * uniformly by zoom level; planets use distance to the body itself.
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		// Planet-orbiting bodies: only visible when their system is focused.
@@ -428,12 +452,17 @@ export class ContextManager {
 			}
 			return VISIBILITY.FULL;
 		}
-		const ratio = camDistThreeJS / AU_SCALE / refA;
-		if (ratio <= this.scaledSystem[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
-		const focusedMul = body.data.id === this.focusedBodyId ? FOCUSED_FULL_MULTIPLIER_SPACECRAFT : 1;
-		if (ratio <= this.scaledSystem[VISIBILITY.FULL] * focusedMul) return VISIBILITY.FULL;
-		if (ratio <= this.scaledSystem[VISIBILITY.FAR]) return VISIBILITY.FAR;
-		return VISIBILITY.HIDE;
+		// Spacecraft use distance to focused body (uniform visibility by zoom level),
+		// planets use distance to the body itself.
+		const dist =
+			body.data.objectType === ObjectType.SPACECRAFT ? this.cameraDistThreeJS : camDistThreeJS;
+		const isFocused = body.data.id === this.focusedBodyId;
+		return computeVisibilityFromRatio(
+			dist / AU_SCALE / refA,
+			this.scaledSystem,
+			FOCUSED_FULL_MULTIPLIER_SPACECRAFT,
+			isFocused
+		);
 	}
 
 	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in. */

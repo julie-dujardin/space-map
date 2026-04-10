@@ -27,7 +27,8 @@ export default ts.config(
 		},
 		rules: {
 			// Crashes on Threlte's T.* components — plugin bug
-			'svelte/no-navigation-without-resolve': 'off'
+			'svelte/no-navigation-without-resolve': 'off',
+			'svelte/prefer-svelte-reactivity': 'off'
 		}
 	},
 	{
