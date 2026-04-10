@@ -393,26 +393,35 @@ export class ContextManager {
 	}
 
 	/**
-	 * Distance-ratio based visibility for non-moon, non-star bodies (planets, dwarf planets…).
-	 * Ratio is (camera distance to the body / body semi-major axis), both in AU.
-	 * Falls back to FULL when no orbital data is available.
+	 * Whether a body orbits within a planetary system (not directly around SSB/Sun).
+	 * True for moons, planet-orbiting spacecraft, etc.
+	 */
+	isSystemBody(body: PositionedBody): boolean {
+		if (isTopLevelParent(body.data.parentId)) return false;
+		const parent = this.bodiesById.get(body.data.parentId);
+		return parent?.data.objectType !== ObjectType.BARYCENTER;
+	}
+
+	/**
+	 * Distance-ratio based visibility for non-moon, non-star bodies.
+	 * Bodies orbiting a planet (spacecraft, debris) are gated on the focused system,
+	 * like moons. Sun-orbiting bodies use the solar-orbit semi-major axis ratio.
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		// Determine the effective solar-orbit semi-major axis for the ratio.
-		// Walk up the parent chain to the first ancestor whose parent is top-level
-		// (SSB or Sun). This handles both planets (one hop to barycenter) and
-		// planet-orbiting spacecraft (two hops: planet → barycenter).
+		// Planet-orbiting bodies: only visible when their system is focused.
+		if (this.isSystemBody(body)) {
+			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
+			return VISIBILITY.FULL;
+		}
+
+		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
 		let refA = body.data.a;
 		if (!isTopLevelParent(body.data.parentId)) {
-			let ancestor = this.bodiesById.get(body.data.parentId);
-			while (ancestor && !isTopLevelParent(ancestor.data.parentId)) {
-				ancestor = this.bodiesById.get(ancestor.data.parentId);
-			}
-			if (ancestor?.data.a) refA = ancestor.data.a;
+			const parent = this.bodiesById.get(body.data.parentId);
+			if (parent?.data.a) refA = parent.data.a;
 		}
 		if (!refA || refA < 0) {
 			if (refA >= 0 && body.data.e < 0.9) {
-				// Only log for non-hyperbolic orbits with missing data
 				console.log(
 					`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
 				);

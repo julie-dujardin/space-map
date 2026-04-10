@@ -664,7 +664,7 @@ export class SceneRenderer {
 					continue;
 				}
 				const body = this.ctx.getBody(id);
-				if (!body) continue; // not loaded yet, try next ID
+				if (!body) continue; // not in exported data, skip
 				this.pendingDefaultPromotions.delete(id);
 				this.ensureBodyObjects(body);
 				break; // one per frame to spread GPU work
