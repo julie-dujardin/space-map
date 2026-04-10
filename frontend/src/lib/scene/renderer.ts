@@ -664,12 +664,10 @@ export class SceneRenderer {
 					continue;
 				}
 				const body = this.ctx.getBody(id);
-				if (body) {
-					this.pendingDefaultPromotions.delete(id);
-					this.ensureBodyObjects(body);
-					break; // one per frame to spread GPU work
-				}
-				break; // body not loaded yet, try next frame
+				if (!body) continue; // not loaded yet, try next ID
+				this.pendingDefaultPromotions.delete(id);
+				this.ensureBodyObjects(body);
+				break; // one per frame to spread GPU work
 			}
 		}
 

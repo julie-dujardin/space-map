@@ -398,16 +398,17 @@ export class ContextManager {
 	 * Falls back to FULL when no orbital data is available.
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		// Determine the effective solar-orbit semi-major axis for the ratio:
-		// - Body orbits SSB/Sun directly: use body.data.a
-		// - Body orbits a barycenter with a>0 (e.g. EMB at ~1 AU): use barycenter's a
-		// - Body orbits a barycenter with a=0 (e.g. Mars bary): fall back to body.data.a
+		// Determine the effective solar-orbit semi-major axis for the ratio.
+		// Walk up the parent chain to the first ancestor whose parent is top-level
+		// (SSB or Sun). This handles both planets (one hop to barycenter) and
+		// planet-orbiting spacecraft (two hops: planet → barycenter).
 		let refA = body.data.a;
 		if (!isTopLevelParent(body.data.parentId)) {
-			const parent = this.bodiesById.get(body.data.parentId);
-			if (parent) {
-				if (parent.data.a) refA = parent.data.a;
+			let ancestor = this.bodiesById.get(body.data.parentId);
+			while (ancestor && !isTopLevelParent(ancestor.data.parentId)) {
+				ancestor = this.bodiesById.get(ancestor.data.parentId);
 			}
+			if (ancestor?.data.a) refA = ancestor.data.a;
 		}
 		if (!refA || refA < 0) {
 			if (refA >= 0 && body.data.e < 0.9) {
