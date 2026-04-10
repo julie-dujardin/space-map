@@ -409,9 +409,9 @@ export class ContextManager {
 				if (parent.data.a) refA = parent.data.a;
 			}
 		}
-		if (!refA) {
-			if (body.data.e < 0.9) {
-				// Skip for highly eccentric orbits
+		if (!refA || refA < 0) {
+			if (refA >= 0 && body.data.e < 0.9) {
+				// Only log for non-hyperbolic orbits with missing data
 				console.log(
 					`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
 				);

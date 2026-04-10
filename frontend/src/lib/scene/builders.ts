@@ -86,6 +86,8 @@ export function makeOrbitLine(
 		isOpenCurve ||
 		data.objectType === ObjectType.DWARF_PLANET ||
 		data.objectType === ObjectType.MOON ||
+		data.objectType === ObjectType.SPACECRAFT ||
+		data.objectType === ObjectType.COMET ||
 		isAsteroid(data.objectType);
 
 	// Always build the full orbit so we can show it when focused

@@ -33,6 +33,7 @@ import {
 	makeCircleTexture
 } from './construction';
 import type { BodyObjects, Callbacks } from './types';
+import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 
 type Vec3 = [number, number, number];
 
@@ -101,6 +102,7 @@ export class SceneRenderer {
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 	private pendingSceneAdds: Points[] = [];
+	private pendingDefaultPromotions = new Set(DEFAULT_PROMOTED_IDS);
 
 	// TODO: expose via UI settings
 	hideCappedMoonLabels = false;
@@ -654,6 +656,23 @@ export class SceneRenderer {
 			if (this.sunPointLight) this.sunPointLight.intensity = 2;
 		}
 
+		// Auto-promote one default-important minor body per frame
+		if (this.pendingDefaultPromotions.size > 0) {
+			for (const id of this.pendingDefaultPromotions) {
+				if (this.bodyObjects.has(id)) {
+					this.pendingDefaultPromotions.delete(id);
+					continue;
+				}
+				const body = this.ctx.getBody(id);
+				if (body) {
+					this.pendingDefaultPromotions.delete(id);
+					this.ensureBodyObjects(body);
+					break; // one per frame to spread GPU work
+				}
+				break; // body not loaded yet, try next frame
+			}
+		}
+
 		// Stagger new point cloud additions: one per frame to spread GPU upload cost
 		if (this.pendingSceneAdds.length > 0) {
 			this.scene.add(this.pendingSceneAdds.shift()!);
@@ -830,7 +849,7 @@ export class SceneRenderer {
 		// Rebuild the point cloud for this body's group so the promoted dot is removed
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			this.ctx.dirtySpacecraftGroups.add(body.data.parentId);
-		} else if (isAsteroid(body.data.objectType)) {
+		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
 			for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
 				if (bodies.some((b) => b.data.id === body.data.id)) {
 					this.ctx.dirtyAsteroidZones.add(zone);
