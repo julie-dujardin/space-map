@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from space_map_data.models.object.sbdb import CometPrefix
-from sqlalchemy import case
+from sqlalchemy import case, or_
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
@@ -22,6 +22,9 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
 from space_map_data.export.textures import write_system_textures
 from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.download.providers.wikidata.id_resolver import (
+    CONSTELLATION_PREFIXES,
+)
 from space_map_data.models.object import Object, ObjectType, SBDB
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -149,16 +152,26 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     with Session(engine) as session:
         with ThreadPoolExecutor() as executor:
-            # Non-SBDB zones
+            # Non-SBDB zones: (zone, zoom, query)
+            _earth_base = session.query(Object).filter(
+                Object.sbdb_spkid.is_(None),
+                Object.object_type.in_(_EARTH_TYPE_VALUES),
+                Object.parent_naif_id == _EARTH_NAIF_ID,
+            )
+            _is_constellation = or_(
+                *(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES)
+            )
             non_sbdb = [
                 (
                     "major",
+                    0,
                     session.query(Object)
                     .options(joinedload(Object.sbdb))
                     .filter(Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES)),
                 ),
                 (
                     "moons",
+                    0,
                     session.query(Object).filter(
                         Object.sbdb_spkid.is_(None),
                         Object.object_type == ObjectType.moon.value,
@@ -166,14 +179,17 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 ),
                 (
                     "earth",
-                    session.query(Object).filter(
-                        Object.sbdb_spkid.is_(None),
-                        Object.object_type.in_(_EARTH_TYPE_VALUES),
-                        Object.parent_naif_id == _EARTH_NAIF_ID,
-                    ),
+                    0,
+                    _earth_base.filter(~_is_constellation),
+                ),
+                (
+                    "earth",
+                    1,
+                    _earth_base.filter(_is_constellation),
                 ),
                 (
                     "spacecraft",
+                    0,
                     session.query(Object).filter(
                         Object.sbdb_spkid.is_(None),
                         Object.object_type.in_(_EARTH_TYPE_VALUES),
@@ -181,10 +197,10 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     ),
                 ),
             ]
-            for zone, q in non_sbdb:
+            for zone, zoom, q in non_sbdb:
                 objects = q.order_by(Object.random_int).limit(limit_per_zone).all()
                 if not objects:
-                    logger.info("  %s: empty, skipping", zone)
+                    logger.info("  %s zoom=%d: empty, skipping", zone, zoom)
                     continue
                 if zone == "major":
                     # Barycenters must come first so parents resolve before children.
@@ -194,12 +210,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     objects,
                     out_dir,
                     zone,
-                    0,
+                    zoom,
                     wikidata_entities,
                     units,
                     nasa_science_urls,
                 )
-                futures[f] = (zone, 0, len(objects))
+                futures[f] = (zone, zoom, len(objects))
 
             # SBDB: one query per (class, zoom)
             named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
