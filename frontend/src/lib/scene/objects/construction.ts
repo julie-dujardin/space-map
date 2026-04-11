@@ -20,7 +20,7 @@ import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/o
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import { createLabel, getLabelVariant } from './label/factory';
+import { createLabel, getLabelVariant } from '../label/factory';
 import {
 	makeCircleTexture,
 	makeOrbitLine,
@@ -28,7 +28,7 @@ import {
 	makeStarGlow,
 	makeStarPoint
 } from './builders';
-import type { BodyObjects } from './types';
+import type { BodyObjects } from '../types';
 
 const F32_MAX = 3.4028235e38;
 function isF32Safe(v: number): boolean {
