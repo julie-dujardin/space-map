@@ -8,10 +8,20 @@ import {
 	type BodyObjects
 } from '../types';
 
-// Reusable Vector3 instances — safe because all usage is synchronous/non-reentrant
-const _tmpDir = new Vector3();
-const _tmpPlanet = new Vector3();
+// Reusable Vector3 — safe because all usage is synchronous/non-reentrant
 const _tmpProj = new Vector3();
+
+/**
+ * Screen-space occluder: a body whose sphere is large enough on screen to
+ * hide labels (and star coronas) that project behind it.
+ */
+export type ScreenOccluder = {
+	sx: number;
+	sy: number;
+	r: number;
+	id: string;
+	dist: number;
+};
 
 export function dimLabel(labelHalo: HTMLElement | null, nameSpan: HTMLElement | null): void {
 	if (labelHalo) labelHalo.style.transform = 'scale(0.3)';
@@ -75,33 +85,22 @@ export function applyLabelDisplay(
 }
 
 /**
- * Returns true if the point (bx,by,bz) at distance bodyDist from the camera
- * lies within the angular cone of any occluder sphere (i.e. is occluded by it).
- * selfId is excluded so a planet doesn't occlude its own label.
+ * Returns true when a screen point is inside any occluder disc that is closer
+ * to the camera. Used for star corona/lensflare occlusion from the renderer.
  */
-export function isOccludedByPlanet(
-	bx: number,
-	by: number,
-	bz: number,
-	bodyDist: number,
+export function isScreenOccluded(
+	sx: number,
+	sy: number,
+	dist: number,
 	selfId: string,
-	camPos: Vector3,
-	occluders: BodyObjects[]
+	occluders: ScreenOccluder[]
 ): boolean {
-	for (const bo of occluders) {
-		if (bo.body.data.id === selfId) continue;
-		_tmpPlanet.set(...bo.body.position);
-		const planetDist = camPos.distanceTo(_tmpPlanet);
-		if (planetDist >= bodyDist) continue; // planet is behind the body
-		// Direction camera → body
-		_tmpDir.set(bx, by, bz).sub(camPos).normalize();
-		// Direction camera → planet centre
-		_tmpPlanet.sub(camPos).normalize();
-		const cosAngle = _tmpDir.dot(_tmpPlanet);
-		if (cosAngle <= 0) continue;
-		const sinOcclude = bo.radiusScene / planetDist;
-		if (sinOcclude >= 1) continue;
-		if (cosAngle >= Math.sqrt(1 - sinOcclude * sinOcclude)) return true;
+	for (const occ of occluders) {
+		if (occ.id === selfId) continue;
+		if (occ.dist >= dist) continue;
+		const dx = sx - occ.sx,
+			dy = sy - occ.sy;
+		if (dx * dx + dy * dy < occ.r * occ.r) return true;
 	}
 	return false;
 }
@@ -131,16 +130,12 @@ export function cullOverlappingLabels(
 	focusedBodyId: string | undefined,
 	ctx: ContextManager,
 	hoveredBodyIds: Set<string>,
+	screenOccluders: ScreenOccluder[],
 	focusTruePos: [number, number, number] = [0, 0, 0]
 ): void {
 	// Estimated label bounding box in CSS pixels
 	const LW = 90;
 	const LH = 22;
-
-	// Camera true world position (Float64)
-	const camWx = focusTruePos[0] + camera.position.x;
-	const camWy = focusTruePos[1] + camera.position.y;
-	const camWz = focusTruePos[2] + camera.position.z;
 
 	_candidates.length = 0;
 	_accepted.length = 0;
@@ -189,11 +184,17 @@ export function cullOverlappingLabels(
 		isFocused,
 		isSelected,
 		screenX,
-		screenY
+		screenY,
+		dist
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 		if (isCapped && !isSelected) {
 			dimLabel(labelHalo, nameSpan);
+			continue;
+		}
+		// Check if behind a screen occluder (body large enough to hide labels behind it)
+		if (!isSelected && isScreenOccluded(screenX, screenY, dist, bodyId, screenOccluders)) {
+			label.visible = false;
 			continue;
 		}
 		const overlaps = _accepted.some(

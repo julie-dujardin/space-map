@@ -23,7 +23,12 @@ import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '
 import { VISIBILITY } from '$lib/scene/context-manager.svelte';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
-import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
+import {
+	applyLabelDisplay,
+	isScreenOccluded,
+	cullOverlappingLabels,
+	type ScreenOccluder
+} from './label/culling';
 import {
 	buildMajorBodies,
 	buildOrbitLines,
@@ -33,7 +38,7 @@ import {
 	loadSystemTextures,
 	makeCircleTexture
 } from './construction';
-import type { BodyObjects, Callbacks } from './types';
+import { HALO_RADIUS_PX, type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 
 type Vec3 = [number, number, number];
@@ -538,10 +543,28 @@ export class SceneRenderer {
 		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
 		const focusedBodyId = this.focusedBody?.data.id;
 
-		// Build occluder list: only bodies with nonzero radius can occlude labels
-		const occluders: BodyObjects[] = [];
+		// Build screen-space occluder list: bodies whose sphere fills enough of
+		// the screen to hide labels behind them (only when zoomed in close).
+		const screenW = this.renderer.domElement.clientWidth;
+		const screenH = this.renderer.domElement.clientHeight;
+		const fp = this.focusTruePos;
+		const screenOccluders: ScreenOccluder[] = [];
 		for (const bo of this.bodyObjects.values()) {
-			if (bo.radiusScene > 0) occluders.push(bo);
+			if (!bo.radiusScene) continue;
+			const dist = f64dist(camTrue, bo.body.position);
+			const screenR = (bo.radiusScene / dist) * projScale;
+			if (screenR < HALO_RADIUS_PX) continue;
+			const [bx, by, bz] = bo.body.position;
+			this._tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+			this._tmpV3.project(this.camera);
+			if (this._tmpV3.z > 1) continue;
+			screenOccluders.push({
+				sx: (this._tmpV3.x * 0.5 + 0.5) * screenW,
+				sy: (-this._tmpV3.y * 0.5 + 0.5) * screenH,
+				r: screenR,
+				id: bo.body.data.id,
+				dist
+			});
 		}
 
 		for (const bo of this.bodyObjects.values()) {
@@ -569,18 +592,25 @@ export class SceneRenderer {
 				isClose = full && screenR >= 1;
 				showLabel = full && !isClose;
 				if (bo.starPoint) bo.starPoint.visible = screenR < 1;
-				// Hide corona/lensflare when star is occluded by a planet
-				const [sx, sy, sz] = body.position;
-				const starOccluded = isOccludedByPlanet(
-					sx,
-					sy,
-					sz,
-					dist,
-					body.data.id,
-					this._camWorldV3,
-					occluders
+				// Hide corona/lensflare when star is occluded on screen
+				this._tmpV3.set(
+					body.position[0] - fp[0],
+					body.position[1] - fp[1],
+					body.position[2] - fp[2]
 				);
+				this._tmpV3.project(this.camera);
+				let starOccluded = false;
+				if (this._tmpV3.z <= 1) {
+					starOccluded = isScreenOccluded(
+						(this._tmpV3.x * 0.5 + 0.5) * screenW,
+						(-this._tmpV3.y * 0.5 + 0.5) * screenH,
+						dist,
+						body.data.id,
+						screenOccluders
+					);
+				}
 				bo.isOccluded = starOccluded;
+				if (starOccluded) showLabel = false;
 				if (bo.corona) bo.corona.visible = !starOccluded;
 				if (bo.lensflare) bo.lensflare.visible = !starOccluded;
 			} else {
@@ -624,33 +654,41 @@ export class SceneRenderer {
 			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
-		// Hide labels of bodies occluded by a planet sphere
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.label?.visible) continue;
-			// Stars already computed occlusion above for corona/lensflare — reuse
-			if (bo.isOccluded !== undefined) {
-				if (bo.isOccluded) bo.label.visible = false;
-				continue;
-			}
-			const [bx, by, bz] = bo.body.position;
-			if (
-				isOccludedByPlanet(bx, by, bz, bo.cachedDist, bo.body.data.id, this._camWorldV3, occluders)
-			) {
-				bo.label.visible = false;
+		// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).
+		// Overlap culling is throttled to every 3rd frame.
+		if (screenOccluders.length > 0) {
+			for (const bo of this.bodyObjects.values()) {
+				if (!bo.label?.visible) continue;
+				if (bo.isOccluded !== undefined) continue; // stars handled above
+				const [bx, by, bz] = bo.body.position;
+				this._tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+				this._tmpV3.project(this.camera);
+				if (this._tmpV3.z > 1) continue;
+				if (
+					isScreenOccluded(
+						(this._tmpV3.x * 0.5 + 0.5) * screenW,
+						(-this._tmpV3.y * 0.5 + 0.5) * screenH,
+						bo.cachedDist,
+						bo.body.data.id,
+						screenOccluders
+					)
+				) {
+					bo.label.visible = false;
+				}
 			}
 		}
 
-		// Throttle label overlap culling: run every 3rd frame unless hover state changed
 		if (++this.cullFrameCounter >= 3) {
 			this.cullFrameCounter = 0;
 			cullOverlappingLabels(
 				this.bodyObjects,
-				this.renderer.domElement.clientWidth,
-				this.renderer.domElement.clientHeight,
+				screenW,
+				screenH,
 				this.camera,
 				focusedBodyId,
 				this.ctx,
 				this.hoveredBodyIds,
+				screenOccluders,
 				this.focusTruePos
 			);
 		}
