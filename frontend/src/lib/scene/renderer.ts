@@ -23,7 +23,12 @@ import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '
 import { VISIBILITY } from '$lib/scene/context-manager.svelte';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
-import { applyLabelDisplay, isOccludedByPlanet, cullOverlappingLabels } from './label/culling';
+import {
+	applyLabelDisplay,
+	isScreenOccluded,
+	cullOverlappingLabels,
+	type ScreenOccluder
+} from './label/culling';
 import {
 	buildMajorBodies,
 	buildOrbitLines,
@@ -33,7 +38,7 @@ import {
 	loadSystemTextures,
 	makeCircleTexture
 } from './construction';
-import type { BodyObjects, Callbacks } from './types';
+import { HALO_RADIUS_PX, type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 
 type Vec3 = [number, number, number];
@@ -142,6 +147,8 @@ export class SceneRenderer {
 	private meshToBody = new Map<Mesh, PositionedBody>();
 	private pendingSceneAdds: Points[] = [];
 	private pendingDefaultPromotions = new Set(DEFAULT_PROMOTED_IDS);
+	private hoveredBodyIds = new Set<string>();
+	private cullFrameCounter = 0;
 
 	// TODO: expose via UI settings
 	hideCappedMoonLabels = false;
@@ -284,7 +291,8 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.circleTexture,
 			this.renderer.domElement,
-			(body) => this.handleFocus(body)
+			(body) => this.handleFocus(body),
+			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		const promotedIds = new Set(this.bodyObjects.keys());
 		const pts = buildPointClouds(
@@ -535,9 +543,34 @@ export class SceneRenderer {
 		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
 		const focusedBodyId = this.focusedBody?.data.id;
 
+		// Build screen-space occluder list: bodies whose sphere fills enough of
+		// the screen to hide labels behind them (only when zoomed in close).
+		const screenW = this.renderer.domElement.clientWidth;
+		const screenH = this.renderer.domElement.clientHeight;
+		const fp = this.focusTruePos;
+		const screenOccluders: ScreenOccluder[] = [];
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.radiusScene) continue;
+			const dist = f64dist(camTrue, bo.body.position);
+			const screenR = (bo.radiusScene / dist) * projScale;
+			if (screenR < HALO_RADIUS_PX) continue;
+			const [bx, by, bz] = bo.body.position;
+			this._tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+			this._tmpV3.project(this.camera);
+			if (this._tmpV3.z > 1) continue;
+			screenOccluders.push({
+				sx: (this._tmpV3.x * 0.5 + 0.5) * screenW,
+				sy: (-this._tmpV3.y * 0.5 + 0.5) * screenH,
+				r: screenR,
+				id: bo.body.data.id,
+				dist
+			});
+		}
+
 		for (const bo of this.bodyObjects.values()) {
 			const { body, group, orbitLine } = bo;
 			const dist = f64dist(camTrue, body.position);
+			bo.cachedDist = dist;
 
 			let showLabel: boolean;
 			let isClose: boolean;
@@ -559,18 +592,25 @@ export class SceneRenderer {
 				isClose = full && screenR >= 1;
 				showLabel = full && !isClose;
 				if (bo.starPoint) bo.starPoint.visible = screenR < 1;
-				// Hide corona/lensflare when star is occluded by a planet
-				const [sx, sy, sz] = body.position;
-				const starOccluded = isOccludedByPlanet(
-					sx,
-					sy,
-					sz,
-					dist,
-					body.data.id,
-					this._camWorldV3,
-					this.bodyObjects
+				// Hide corona/lensflare when star is occluded on screen
+				this._tmpV3.set(
+					body.position[0] - fp[0],
+					body.position[1] - fp[1],
+					body.position[2] - fp[2]
 				);
+				this._tmpV3.project(this.camera);
+				let starOccluded = false;
+				if (this._tmpV3.z <= 1) {
+					starOccluded = isScreenOccluded(
+						(this._tmpV3.x * 0.5 + 0.5) * screenW,
+						(-this._tmpV3.y * 0.5 + 0.5) * screenH,
+						dist,
+						body.data.id,
+						screenOccluders
+					);
+				}
 				bo.isOccluded = starOccluded;
+				if (starOccluded) showLabel = false;
 				if (bo.corona) bo.corona.visible = !starOccluded;
 				if (bo.lensflare) bo.lensflare.visible = !starOccluded;
 			} else {
@@ -614,32 +654,44 @@ export class SceneRenderer {
 			pts.visible = this.ctx.isMoonGroupVisible(parentId);
 		}
 
-		// Hide labels of bodies occluded by a planet sphere
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.label?.visible) continue;
-			// Stars already computed occlusion above for corona/lensflare — reuse
-			if (bo.isOccluded !== undefined) {
-				if (bo.isOccluded) bo.label.visible = false;
-				continue;
-			}
-			const [bx, by, bz] = bo.body.position;
-			const dist = f64dist(camTrue, bo.body.position);
-			if (
-				isOccludedByPlanet(bx, by, bz, dist, bo.body.data.id, this._camWorldV3, this.bodyObjects)
-			) {
-				bo.label.visible = false;
+		// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).
+		// Overlap culling is throttled to every 3rd frame.
+		if (screenOccluders.length > 0) {
+			for (const bo of this.bodyObjects.values()) {
+				if (!bo.label?.visible) continue;
+				if (bo.isOccluded !== undefined) continue; // stars handled above
+				const [bx, by, bz] = bo.body.position;
+				this._tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+				this._tmpV3.project(this.camera);
+				if (this._tmpV3.z > 1) continue;
+				if (
+					isScreenOccluded(
+						(this._tmpV3.x * 0.5 + 0.5) * screenW,
+						(-this._tmpV3.y * 0.5 + 0.5) * screenH,
+						bo.cachedDist,
+						bo.body.data.id,
+						screenOccluders
+					)
+				) {
+					bo.label.visible = false;
+				}
 			}
 		}
 
-		cullOverlappingLabels(
-			this.bodyObjects,
-			this.renderer.domElement.clientWidth,
-			this.renderer.domElement.clientHeight,
-			this.camera,
-			focusedBodyId,
-			this.ctx,
-			this.focusTruePos
-		);
+		if (++this.cullFrameCounter >= 3) {
+			this.cullFrameCounter = 0;
+			cullOverlappingLabels(
+				this.bodyObjects,
+				screenW,
+				screenH,
+				this.camera,
+				focusedBodyId,
+				this.ctx,
+				this.hoveredBodyIds,
+				screenOccluders,
+				this.focusTruePos
+			);
+		}
 
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
 		// Also update alpha multiplier for hover/focus highlight
@@ -656,7 +708,7 @@ export class SceneRenderer {
 				bpz - this.focusTruePos[2] - this.camera.position.z
 			);
 			const isFocused = bo.body.data.id === focusedBodyId;
-			const isHovered = bo.label?.element.matches(':hover') ?? false;
+			const isHovered = this.hoveredBodyIds.has(bo.body.data.id);
 			mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
 			mat.uniforms.uAlphaMin.value = isFocused ? 0.15 : 0.0;
 			mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
@@ -877,7 +929,8 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.circleTexture,
 			this.renderer.domElement,
-			(b) => this.handleFocus(b)
+			(b) => this.handleFocus(b),
+			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
 		this.repositionAll();

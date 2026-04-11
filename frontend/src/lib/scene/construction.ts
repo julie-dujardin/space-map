@@ -73,7 +73,8 @@ export function buildMajorBodies(
 	bodyObjects: Map<string, BodyObjects>,
 	circleTexture: CanvasTexture,
 	rendererElement: HTMLCanvasElement,
-	handleFocus: (body: PositionedBody) => void
+	handleFocus: (body: PositionedBody) => void,
+	onHoverChange?: (id: string, hovered: boolean) => void
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
@@ -136,7 +137,8 @@ export function buildMajorBodies(
 			body.data.name ?? '',
 			variant,
 			() => handleFocus(body),
-			isLarge
+			isLarge,
+			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined
 		);
 		if (label) {
 			// Forward wheel events so OrbitControls zoom still works when hovering a label
@@ -203,7 +205,8 @@ export function buildMajorBodies(
 			lensflare: lensflareObj,
 			starPoint,
 			orbitLine,
-			radiusScene: radius
+			radiusScene: radius,
+			cachedDist: 0
 		});
 	}
 }

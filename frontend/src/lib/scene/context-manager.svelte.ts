@@ -1,4 +1,3 @@
-import { SvelteMap } from 'svelte/reactivity';
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_KM, AU_SCALE } from '../math/units';
@@ -46,7 +45,7 @@ const FOCUSED_FULL_MULTIPLIER_MOON = 5;
 const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacecraft that orbit farther than GEO
 
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
-export const MAX_FULL_MOONS = 25;
+export const MAX_FULL_MOONS = 20;
 
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.05;
@@ -140,12 +139,16 @@ export class ContextManager {
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
 	private readonly moonMaxAByParent = new Map<string, number>();
 
-	// --- Reactive loading state ($state safe: only mutated during async load, never in useTask) ---
+	// --- Reactive loading state ---
 	loading = $state(true);
 	error = $state<string | null>(null);
-	majorBodies = $state<PositionedBody[]>([]);
-	asteroidBodiesByZone = $state(new SvelteMap<string, PositionedBody[]>());
-	spacecraftByParent = $state(new SvelteMap<string, PositionedBody[]>());
+	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
+	minorBodyVersion = $state(0);
+
+	// --- Non-reactive data (only read from renderer/construction, never from Svelte templates) ---
+	majorBodies: PositionedBody[] = [];
+	asteroidBodiesByZone = new Map<string, PositionedBody[]>();
+	spacecraftByParent = new Map<string, PositionedBody[]>();
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
@@ -245,12 +248,13 @@ export class ContextManager {
 			// minorChunkArgsPromise has been running in parallel; files are likely cached already
 			const minorChunkArgs = await minorChunkArgsPromise;
 
-			const pendingAsteroids = new SvelteMap<string, PositionedBody[]>();
-			const pendingSpacecraft = new SvelteMap<string, PositionedBody[]>();
+			const pendingAsteroids = new Map<string, PositionedBody[]>();
+			const pendingSpacecraft = new Map<string, PositionedBody[]>();
 
 			const flush = () => {
-				this.asteroidBodiesByZone = new SvelteMap(pendingAsteroids);
-				this.spacecraftByParent = new SvelteMap(pendingSpacecraft);
+				this.asteroidBodiesByZone = new Map(pendingAsteroids);
+				this.spacecraftByParent = new Map(pendingSpacecraft);
+				this.minorBodyVersion++;
 			};
 			const intervalId = setInterval(flush, 500);
 

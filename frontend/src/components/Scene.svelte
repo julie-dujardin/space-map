@@ -105,7 +105,7 @@
 	});
 
 	$effect(() => {
-		void ctx.asteroidBodiesByZone.size; // reactive dependency — re-runs on each flush
+		void ctx.minorBodyVersion; // reactive dependency — re-runs on each flush
 		renderer?.rebuildMinorPointClouds();
 	});
 
