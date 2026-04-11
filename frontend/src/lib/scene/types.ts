@@ -39,6 +39,8 @@ export interface BodyObjects {
 	starPoint: Points | null;
 	orbitLine: Line | null;
 	radiusScene: number;
+	/** Cached distance from camera, computed once per frame. */
+	cachedDist: number;
 	/** Cached per-frame occlusion result (stars). */
 	isOccluded?: boolean;
 }

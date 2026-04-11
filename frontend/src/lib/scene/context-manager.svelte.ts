@@ -46,7 +46,7 @@ const FOCUSED_FULL_MULTIPLIER_MOON = 5;
 const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacecraft that orbit farther than GEO
 
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
-export const MAX_FULL_MOONS = 25;
+export const MAX_FULL_MOONS = 20;
 
 /** Below this distance, hide other systems (halos, orbits, spacecraft). */
 export const ZOOM_THRESHOLD_AU = 0.05;

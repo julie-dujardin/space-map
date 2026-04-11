@@ -8,6 +8,11 @@ import {
 	type BodyObjects
 } from '../types';
 
+// Reusable Vector3 instances — safe because all usage is synchronous/non-reentrant
+const _tmpDir = new Vector3();
+const _tmpPlanet = new Vector3();
+const _tmpProj = new Vector3();
+
 export function dimLabel(labelHalo: HTMLElement | null, nameSpan: HTMLElement | null): void {
 	if (labelHalo) labelHalo.style.transform = 'scale(0.3)';
 	if (nameSpan) {
@@ -71,7 +76,7 @@ export function applyLabelDisplay(
 
 /**
  * Returns true if the point (bx,by,bz) at distance bodyDist from the camera
- * lies within the angular cone of any planet sphere (i.e. is occluded by it).
+ * lies within the angular cone of any occluder sphere (i.e. is occluded by it).
  * selfId is excluded so a planet doesn't occlude its own label.
  */
 export function isOccludedByPlanet(
@@ -81,21 +86,18 @@ export function isOccludedByPlanet(
 	bodyDist: number,
 	selfId: string,
 	camPos: Vector3,
-	bodyObjects: Map<string, BodyObjects>
+	occluders: BodyObjects[]
 ): boolean {
-	const tmpDir = new Vector3();
-	const tmpPlanet = new Vector3();
-	for (const bo of bodyObjects.values()) {
-		if (!bo.radiusScene) continue;
+	for (const bo of occluders) {
 		if (bo.body.data.id === selfId) continue;
-		tmpPlanet.set(...bo.body.position);
-		const planetDist = camPos.distanceTo(tmpPlanet);
+		_tmpPlanet.set(...bo.body.position);
+		const planetDist = camPos.distanceTo(_tmpPlanet);
 		if (planetDist >= bodyDist) continue; // planet is behind the body
 		// Direction camera → body
-		tmpDir.set(bx, by, bz).sub(camPos).normalize();
+		_tmpDir.set(bx, by, bz).sub(camPos).normalize();
 		// Direction camera → planet centre
-		tmpPlanet.sub(camPos).normalize();
-		const cosAngle = tmpDir.dot(tmpPlanet);
+		_tmpPlanet.sub(camPos).normalize();
+		const cosAngle = _tmpDir.dot(_tmpPlanet);
 		if (cosAngle <= 0) continue;
 		const sinOcclude = bo.radiusScene / planetDist;
 		if (sinOcclude >= 1) continue;
@@ -104,6 +106,23 @@ export function isOccludedByPlanet(
 	return false;
 }
 
+type Candidate = {
+	bodyId: string;
+	body: BodyObjects['body'];
+	label: NonNullable<BodyObjects['label']>;
+	labelHalo: HTMLElement | null;
+	isCapped: boolean;
+	isFocused: boolean;
+	isSelected: boolean;
+	screenX: number;
+	screenY: number;
+	dist: number;
+};
+
+// Reusable arrays — cleared each frame, avoids per-frame allocation
+const _candidates: Candidate[] = [];
+const _accepted: { x: number; y: number }[] = [];
+
 export function cullOverlappingLabels(
 	bodyObjects: Map<string, BodyObjects>,
 	screenWidth: number,
@@ -111,47 +130,33 @@ export function cullOverlappingLabels(
 	camera: PerspectiveCamera,
 	focusedBodyId: string | undefined,
 	ctx: ContextManager,
+	hoveredBodyIds: Set<string>,
 	focusTruePos: [number, number, number] = [0, 0, 0]
 ): void {
 	// Estimated label bounding box in CSS pixels
 	const LW = 90;
 	const LH = 22;
 
-	type Candidate = {
-		body: BodyObjects['body'];
-		label: NonNullable<BodyObjects['label']>;
-		labelHalo: HTMLElement | null;
-		isCapped: boolean;
-		isFocused: boolean;
-		isSelected: boolean;
-		screenX: number;
-		screenY: number;
-		dist: number;
-	};
-
 	// Camera true world position (Float64)
 	const camWx = focusTruePos[0] + camera.position.x;
 	const camWy = focusTruePos[1] + camera.position.y;
 	const camWz = focusTruePos[2] + camera.position.z;
 
-	const tmpV3 = new Vector3();
-	const candidates: Candidate[] = [];
+	_candidates.length = 0;
+	_accepted.length = 0;
 
-	for (const { body, label, labelHalo } of bodyObjects.values()) {
+	for (const bo of bodyObjects.values()) {
+		const { body, label, labelHalo } = bo;
 		if (!label?.visible) continue;
 		// Focus-relative position for projection (matches camera's coordinate space)
 		const [bx, by, bz] = body.position;
-		tmpV3.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
-		// Distance in Float64 from world positions
-		const dx = bx - camWx,
-			dy = by - camWy,
-			dz = bz - camWz;
-		const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-		tmpV3.project(camera);
-		if (tmpV3.z > 1) continue;
+		_tmpProj.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
+		_tmpProj.project(camera);
+		if (_tmpProj.z > 1) continue;
 		const isFocused = body.data.id === focusedBodyId;
-		const isHovered = label.element.matches(':hover');
-		candidates.push({
+		const isHovered = hoveredBodyIds.has(body.data.id);
+		_candidates.push({
+			bodyId: body.data.id,
 			body,
 			label,
 			labelHalo,
@@ -161,14 +166,14 @@ export function cullOverlappingLabels(
 					: false,
 			isFocused,
 			isSelected: isFocused || isHovered,
-			screenX: (tmpV3.x * 0.5 + 0.5) * screenWidth,
-			screenY: (-tmpV3.y * 0.5 + 0.5) * screenHeight,
-			dist
+			screenX: (_tmpProj.x * 0.5 + 0.5) * screenWidth,
+			screenY: (-_tmpProj.y * 0.5 + 0.5) * screenHeight,
+			dist: bo.cachedDist
 		});
 	}
 
 	// Sort: selected first, then by type priority, then closer first
-	candidates.sort((a, b) => {
+	_candidates.sort((a, b) => {
 		if (a.isSelected !== b.isSelected) return a.isSelected ? -1 : 1;
 		const pa = typePriority(a.body.data.objectType);
 		const pb = typePriority(b.body.data.objectType);
@@ -176,8 +181,8 @@ export function cullOverlappingLabels(
 		return a.dist - b.dist;
 	});
 
-	const accepted: { x: number; y: number }[] = [];
 	for (const {
+		bodyId,
 		label,
 		labelHalo,
 		isCapped,
@@ -185,20 +190,23 @@ export function cullOverlappingLabels(
 		isSelected,
 		screenX,
 		screenY
-	} of candidates) {
+	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 		if (isCapped && !isSelected) {
 			dimLabel(labelHalo, nameSpan);
 			continue;
 		}
-		const overlaps = accepted.some(
+		const overlaps = _accepted.some(
 			({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
 		);
 		if (!overlaps) {
-			accepted.push({ x: screenX, y: screenY });
-			restoreLabel(labelHalo, nameSpan, label.element.matches(':hover'), isFocused);
+			_accepted.push({ x: screenX, y: screenY });
+			restoreLabel(labelHalo, nameSpan, hoveredBodyIds.has(bodyId), isFocused);
 		} else {
 			dimLabel(labelHalo, nameSpan);
 		}
 	}
+
+	// Release references to avoid retaining body objects between frames
+	_candidates.length = 0;
 }

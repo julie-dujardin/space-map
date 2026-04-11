@@ -35,7 +35,8 @@ export function createLabel(
 	name: string,
 	variant: LabelVariant,
 	onClick: () => void,
-	isLarge = false
+	isLarge = false,
+	onHoverChange?: (hovered: boolean) => void
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
@@ -100,10 +101,12 @@ export function createLabel(
 	el.addEventListener('mouseenter', () => {
 		halo.style.transform = 'scale(1.15)';
 		document.body.style.cursor = 'pointer';
+		onHoverChange?.(true);
 	});
 	el.addEventListener('mouseleave', () => {
 		halo.style.transform = '';
 		document.body.style.cursor = '';
+		onHoverChange?.(false);
 	});
 
 	return new CSS2DObject(el);

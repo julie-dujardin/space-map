@@ -142,6 +142,8 @@ export class SceneRenderer {
 	private meshToBody = new Map<Mesh, PositionedBody>();
 	private pendingSceneAdds: Points[] = [];
 	private pendingDefaultPromotions = new Set(DEFAULT_PROMOTED_IDS);
+	private hoveredBodyIds = new Set<string>();
+	private cullFrameCounter = 0;
 
 	// TODO: expose via UI settings
 	hideCappedMoonLabels = false;
@@ -284,7 +286,8 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.circleTexture,
 			this.renderer.domElement,
-			(body) => this.handleFocus(body)
+			(body) => this.handleFocus(body),
+			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		const promotedIds = new Set(this.bodyObjects.keys());
 		const pts = buildPointClouds(
@@ -535,9 +538,16 @@ export class SceneRenderer {
 		const projScale = this.renderer.domElement.clientHeight / (2 * Math.tan(fovRad / 2));
 		const focusedBodyId = this.focusedBody?.data.id;
 
+		// Build occluder list: only bodies with nonzero radius can occlude labels
+		const occluders: BodyObjects[] = [];
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.radiusScene > 0) occluders.push(bo);
+		}
+
 		for (const bo of this.bodyObjects.values()) {
 			const { body, group, orbitLine } = bo;
 			const dist = f64dist(camTrue, body.position);
+			bo.cachedDist = dist;
 
 			let showLabel: boolean;
 			let isClose: boolean;
@@ -568,7 +578,7 @@ export class SceneRenderer {
 					dist,
 					body.data.id,
 					this._camWorldV3,
-					this.bodyObjects
+					occluders
 				);
 				bo.isOccluded = starOccluded;
 				if (bo.corona) bo.corona.visible = !starOccluded;
@@ -623,23 +633,27 @@ export class SceneRenderer {
 				continue;
 			}
 			const [bx, by, bz] = bo.body.position;
-			const dist = f64dist(camTrue, bo.body.position);
 			if (
-				isOccludedByPlanet(bx, by, bz, dist, bo.body.data.id, this._camWorldV3, this.bodyObjects)
+				isOccludedByPlanet(bx, by, bz, bo.cachedDist, bo.body.data.id, this._camWorldV3, occluders)
 			) {
 				bo.label.visible = false;
 			}
 		}
 
-		cullOverlappingLabels(
-			this.bodyObjects,
-			this.renderer.domElement.clientWidth,
-			this.renderer.domElement.clientHeight,
-			this.camera,
-			focusedBodyId,
-			this.ctx,
-			this.focusTruePos
-		);
+		// Throttle label overlap culling: run every 3rd frame unless hover state changed
+		if (++this.cullFrameCounter >= 3) {
+			this.cullFrameCounter = 0;
+			cullOverlappingLabels(
+				this.bodyObjects,
+				this.renderer.domElement.clientWidth,
+				this.renderer.domElement.clientHeight,
+				this.camera,
+				focusedBodyId,
+				this.ctx,
+				this.hoveredBodyIds,
+				this.focusTruePos
+			);
+		}
 
 		// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
 		// Also update alpha multiplier for hover/focus highlight
@@ -656,7 +670,7 @@ export class SceneRenderer {
 				bpz - this.focusTruePos[2] - this.camera.position.z
 			);
 			const isFocused = bo.body.data.id === focusedBodyId;
-			const isHovered = bo.label?.element.matches(':hover') ?? false;
+			const isHovered = this.hoveredBodyIds.has(bo.body.data.id);
 			mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
 			mat.uniforms.uAlphaMin.value = isFocused ? 0.15 : 0.0;
 			mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
@@ -877,7 +891,8 @@ export class SceneRenderer {
 			this.bodyObjects,
 			this.circleTexture,
 			this.renderer.domElement,
-			(b) => this.handleFocus(b)
+			(b) => this.handleFocus(b),
+			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
 		this.repositionAll();
