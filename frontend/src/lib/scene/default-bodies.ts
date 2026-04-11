@@ -49,7 +49,8 @@ export const DEFAULT_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'norad_satcat-48274', // CSS Tianhe (Tiangong)
 
 	// Asteroids (visited, hazardous, or otherwise famous)
-	// 'spkid-20000002', // 2 Pallas
+	// TODO: reduced set due to performance
+	'spkid-20000002', // 2 Pallas
 	// 'spkid-20000003', // 3 Juno
 	'spkid-20000004', // 4 Vesta
 	// 'spkid-20000010', // 10 Hygiea

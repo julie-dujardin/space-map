@@ -732,9 +732,13 @@ export class SceneRenderer {
 			if (this.sunPointLight) this.sunPointLight.intensity = 0;
 
 			// Lateral extent: tight to camera view for high texel density.
-			// Depth extent: full system so off-screen casters still produce shadows.
+			// Depth extent: clamped to camera vicinity so shadow-map depth
+			// precision stays high (full system extent causes banding on mobile).
 			const lateral = Math.max(distance * 2, 0.001);
-			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
+			const depthExtent = Math.min(
+				this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2,
+				lateral * 4
+			);
 			const shadowCam = this.shadowLight.shadow.camera;
 			shadowCam.left = shadowCam.bottom = -lateral;
 			shadowCam.right = shadowCam.top = lateral;
