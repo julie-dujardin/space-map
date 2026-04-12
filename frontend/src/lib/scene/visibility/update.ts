@@ -23,7 +23,6 @@ export function updateBodyVisibility(
 	focusedBodyId: string | undefined,
 	hideCappedMoonLabels: boolean,
 	hoveredBodyIds: Set<string>,
-	pointCloudBasisPos: Vec3,
 	asteroidPoints: Map<string, Points>,
 	spacecraftPoints: Map<string, Points>,
 	moonPoints: Map<string, Points>,
@@ -191,13 +190,13 @@ export function updateBodyVisibility(
 		const line = bo.orbitLine;
 		if (!line?.visible) continue;
 		const mat = line.material as ShaderMaterial;
-		// Vertices are stored relative to pointCloudBasisPos, so offset = (basis - focus) - cam
-		// (basis - focus) computed in Float64; when basis == focus, offset is just -cam (tiny)
-		const [bpx, bpy, bpz] = pointCloudBasisPos;
+		// Orbit line vertices are written focus-relative (by refreshOrbitLineGeometry
+		// every frame), so offset is simply −cam — tiny, keeping (vertex + offset)
+		// precise in Float32 even for meter-scale viewing of distant bodies.
 		mat.uniforms.uCenterOffset.value.set(
-			bpx - focusTruePos[0] - camera.position.x,
-			bpy - focusTruePos[1] - camera.position.y,
-			bpz - focusTruePos[2] - camera.position.z
+			-camera.position.x,
+			-camera.position.y,
+			-camera.position.z
 		);
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);

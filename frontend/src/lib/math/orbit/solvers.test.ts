@@ -27,13 +27,11 @@ describe('solveKepler', () => {
 		}
 	});
 
-	it('diverges for high-e near perihelion (documents why orbitalElementsToEllipse avoids round-trip)', () => {
-		// With e=0.989 and M near perihelion, the derivative 1-e·cos(E) ≈ 0.011
-		// causes Newton-Raphson to overshoot. This is why orbitalElementsToEllipse
-		// computes positions directly from E instead of going through M → solveKepler → E.
+	it('round-trips E→M→solveKepler→E for all E at high eccentricity', () => {
+		// At e≈0.989 the derivative 1-e·cos(E) collapses near perihelion. Unclamped
+		// Newton-Raphson oscillates; the damped step in solveKepler keeps it convergent
+		// so the body position stays pinned to the rendered ellipse every frame.
 		const e = MRKOS.e;
-		let failures = 0;
-
 		for (let j = 0; j <= 512; j++) {
 			const E_orig = (j / 512) * 2 * Math.PI;
 			const M = E_orig - e * Math.sin(E_orig);
@@ -42,11 +40,8 @@ describe('solveKepler', () => {
 			const normalize = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 			const diff = Math.abs(normalize(E_recovered) - normalize(E_orig));
 			const err = Math.min(diff, 2 * Math.PI - diff);
-			if (err > 0.001) failures++;
+			expect(err).toBeLessThan(1e-6);
 		}
-		// Newton-Raphson diverges for ~3% of E values at this eccentricity
-		expect(failures).toBeGreaterThan(0);
-		expect(failures).toBeLessThan(30);
 	});
 });
 

@@ -37,18 +37,28 @@ export function orbitalElementsToEllipse(
 	el: OrbitalElements,
 	numPoints = 128
 ): [number, number, number][] {
-	const { a, e, i, om, w } = el;
+	const { a, i, om, w } = el;
+	// Clamp e just below 1 so 1-e² stays positive for near-parabolic bound orbits
+	// (matches the clamp in orbitalElementsToPositionJD, keeping curve and body aligned).
+	const e = Math.min(el.e, 1 - 1e-7);
+	// Concentrate samples near perihelion by warping the E sweep: u ∈ [-1,1] uniform,
+	// E = π·sign(u)·|u|^p. p=1 reproduces uniform E; raising p with e packs points
+	// into the visually dominant perihelion arc instead of spreading them across the
+	// apoapsis reach (for e=0.995, a=186 AU the old uniform sweep left almost no
+	// points in the ~1 AU perihelion region where the body actually appears).
+	const p = 1 + 3 * e;
+	const sqrt1me2 = Math.sqrt(1 - e * e);
 	const points: [number, number, number][] = [];
 	for (let j = 0; j <= numPoints; j++) {
-		// Sample uniformly in eccentric anomaly E for near-uniform arc spacing.
-		// Compute position directly from E to avoid the E→M→solveKepler→E round-trip
-		// which diverges for high-eccentricity orbits (Newton-Raphson overshoots when
-		// 1 - e·cos(E) ≈ 0 near perihelion).
-		const E = (j / numPoints) * 2 * Math.PI;
-		const sinNu = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
-		const cosNu = (Math.cos(E) - e) / (1 - e * Math.cos(E));
+		const u = (2 * j) / numPoints - 1;
+		const E = Math.PI * Math.sign(u) * Math.pow(Math.abs(u), p);
+		const cosE = Math.cos(E);
+		const sinE = Math.sin(E);
+		const denom = 1 - e * cosE;
+		const sinNu = (sqrt1me2 * sinE) / denom;
+		const cosNu = (cosE - e) / denom;
 		const nu = Math.atan2(sinNu, cosNu);
-		const r = a * (1 - e * Math.cos(E));
+		const r = a * denom;
 		const xOrb = r * Math.cos(nu);
 		const yOrb = r * Math.sin(nu);
 		if (!isFinite(xOrb) || !isFinite(yOrb)) continue;
@@ -103,15 +113,15 @@ export interface OrbitCurve {
  * or hyperbola based on eccentricity.
  */
 export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): OrbitCurve {
-	if (el.q != null || (Math.abs(el.e - 1) < 0.01 && Math.abs(el.a) >= 0.001)) {
-		// True parabolic (q set) or near-parabolic elliptic/hyperbolic: use the parabolic
-		// renderer which concentrates all points near perihelion (capped at rMaxAU).
-		// This gives much better visual density than spreading 512 points across a
-		// 100+ AU ellipse where only the perihelion region is visible.
-		// Floor |1-e| to guard against float32 precision loss (e=0.9999999... rounds to 1.0).
-		const q = el.q ?? Math.abs(el.a) * Math.max(Math.abs(1 - el.e), 1e-7);
-		return { points: orbitalElementsToParabola({ ...el, q }, numPoints), isOpen: true };
+	// Bound orbits (a > 0 per JPL convention) always render as ellipses, even when
+	// e is rounded to 1.0 in float32. This keeps the curve aligned with the body
+	// position, which goes through the elliptic Kepler branch with the same eClamped.
+	const bound = isFinite(el.a) && el.a > 0;
+	if (!bound && el.q != null) {
+		return { points: orbitalElementsToParabola(el, numPoints), isOpen: true };
 	}
-	if (el.e >= 1) return { points: orbitalElementsToHyperbola(el, numPoints), isOpen: true };
+	if (!bound && el.e >= 1) {
+		return { points: orbitalElementsToHyperbola(el, numPoints), isOpen: true };
+	}
 	return { points: orbitalElementsToEllipse(el, numPoints), isOpen: false };
 }

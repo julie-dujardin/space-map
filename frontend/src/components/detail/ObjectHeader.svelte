@@ -20,9 +20,44 @@
 	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
+	let fallbackType = $derived(global?.type ? objectTypeLabel(global.type) : m.object());
 
 	function ucfirst(s: string): string {
 		return s.charAt(0).toUpperCase() + s.slice(1);
+	}
+
+	function objectTypeLabel(type: string): string {
+		switch (type) {
+			case 'barycenter':
+				return m.type_barycenter();
+			case 'lagrange_point':
+				return m.type_lagrange_point();
+			case 'star':
+				return m.type_star();
+			case 'planet':
+				return m.type_planet();
+			case 'dwarf_planet':
+				return m.type_dwarf_planet();
+			case 'moon':
+				return m.type_moon();
+			case 'asteroid':
+			case 'asteroid_inner':
+			case 'asteroid_main_belt':
+			case 'asteroid_trojan':
+			case 'asteroid_centaur':
+			case 'asteroid_tno':
+				return m.type_asteroid();
+			case 'comet':
+				return m.type_comet();
+			case 'spacecraft':
+				return m.type_spacecraft();
+			case 'debris':
+				return m.type_debris();
+			case 'undocumented':
+				return m.type_undocumented();
+			default:
+				return m.object();
+		}
 	}
 </script>
 
@@ -36,7 +71,7 @@
 				<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(t.name)}</Badge>
 			{/each}
 		{:else}
-			<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(m.object())}</Badge>
+			<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(fallbackType)}</Badge>
 		{/if}
 	</div>
 	{#if description}

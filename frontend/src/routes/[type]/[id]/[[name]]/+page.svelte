@@ -3,10 +3,13 @@
 	import { toast } from 'svelte-sonner';
 	import Scene from '../../../../components/Scene.svelte';
 	import { ContextManager } from '$lib/scene/context-manager.svelte';
+	import { SimClock } from '$lib/scene/clock.svelte';
+	import { dateToJD } from '$lib/format/date';
 	import { type PositionedBody } from '$lib/types/objects';
 	import { parseUrl, DEFAULT_VIEW, serializeUrl } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
+	import TimeControls from '../../../../components/TimeControls.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -15,6 +18,7 @@
 
 	const parsed = parseUrl();
 	const initialView = parsed ?? DEFAULT_VIEW;
+	const clock = new SimClock(dateToJD(initialView.date));
 	let selectedBody = $state<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
@@ -46,7 +50,13 @@
 {:else}
 	<Tooltip.Provider delayDuration={300}>
 		<div class="relative w-full h-screen">
-			<Scene bind:this={scene} {initialView} onFocusChange={(body) => (selectedBody = body)} />
+			<Scene
+				bind:this={scene}
+				{initialView}
+				{clock}
+				onFocusChange={(body) => (selectedBody = body)}
+			/>
+			<TimeControls {clock} />
 			{#if selectedBody?.data.id}
 				<ObjectDrawer
 					body={selectedBody}

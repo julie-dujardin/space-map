@@ -100,16 +100,12 @@ describe('orbitalElementsToCurve', () => {
 		{ name: 'Chiron (e=0.379)', el: CHIRON },
 		{ name: 'Eris (e=0.438)', el: ERIS },
 		{ name: 'Halley (e=0.968)', el: HALLEY },
-		{ name: 'Mrkos (e=0.989)', el: MRKOS }
+		{ name: 'Mrkos (e=0.989)', el: MRKOS },
+		{ name: 'A/2020 H9 (e=0.992)', el: A2020H9 }
 	])('returns closed curve for $name', ({ el }) => {
 		const { isOpen, points } = orbitalElementsToCurve(el, 128);
 		expect(isOpen).toBe(false);
 		expect(points.length).toBeGreaterThan(0);
-	});
-
-	it('returns open curve for near-parabolic A/2020 H9 (e=0.992)', () => {
-		const { isOpen } = orbitalElementsToCurve(A2020H9, 64);
-		expect(isOpen).toBe(true);
 	});
 
 	it('returns open curve for synthetic parabolic orbit', () => {

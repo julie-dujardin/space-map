@@ -2,6 +2,7 @@
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
+	import type { SimClock } from '$lib/scene/clock.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
 	import {
@@ -12,13 +13,15 @@
 		parseUrl,
 		urlTypeFromId
 	} from '$lib/url-state';
+	import { dateToJD, jdToDate } from '$lib/format/date';
 
 	interface Props {
 		initialView: MapViewState;
+		clock: SimClock;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
 	}
 
-	let { initialView, onFocusChange }: Props = $props();
+	let { initialView, clock, onFocusChange }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 
@@ -42,40 +45,46 @@
 		zoom: initialView.zoom
 	};
 
+	function currentViewState(
+		body: PositionedBody,
+		cam: { latitude: number; longitude: number; zoom: number }
+	): MapViewState {
+		const jd = clock.jd;
+		const wallJd = dateToJD(new Date());
+		// Within ~1 day of wall clock and playing at 1× → treat as "live".
+		// This keeps the URL showing "now" for a normally-running session and
+		// preserves shareable snapshots when the user has scrubbed or paused.
+		const isNow = clock.timeScale === 1 && Math.abs(jd - wallJd) < 1;
+		return {
+			type: urlTypeFromId(body.data.id),
+			id: body.data.id,
+			name: body.data.name ?? '',
+			date: jdToDate(jd),
+			isNow,
+			latitude: cam.latitude,
+			longitude: cam.longitude,
+			zoom: cam.zoom
+		};
+	}
+
 	function syncUrl(latitude: number, longitude: number, zoom: number) {
 		lastCameraPos = { latitude, longitude, zoom };
 		if (!focusedBody) return;
-		writeUrlState({
-			type: urlTypeFromId(focusedBody.data.id),
-			id: focusedBody.data.id,
-			name: focusedBody.data.name ?? '',
-			date: initialView.date,
-			isNow: initialView.isNow,
-			latitude,
-			longitude,
-			zoom
-		});
+		writeUrlState(currentViewState(focusedBody, lastCameraPos));
 	}
 
 	let isInitialFocus = true;
 	let isNavigatingBack = false;
 
 	onMount(() => {
-		renderer = new SceneRenderer(canvas, labelContainer, ctx, initialView, {
+		renderer = new SceneRenderer(canvas, labelContainer, ctx, clock, initialView, {
 			onFocusChange(body) {
 				const wasInitial = isInitialFocus;
 				isInitialFocus = false;
 				focusedBody = body;
 				onFocusChange?.(body);
 				if (!wasInitial && !isNavigatingBack && body) {
-					pushUrlState({
-						type: urlTypeFromId(body.data.id),
-						id: body.data.id,
-						name: body.data.name ?? '',
-						date: initialView.date,
-						isNow: initialView.isNow,
-						...lastCameraPos
-					});
+					pushUrlState(currentViewState(body, lastCameraPos));
 				}
 			},
 			onCameraPosition: syncUrl
@@ -85,6 +94,14 @@
 			renderer?.resize(canvas.clientWidth, canvas.clientHeight);
 		});
 		ro.observe(canvas);
+
+		// Keep the URL's time stamp in sync with the sim clock so reload/share
+		// preserves the current moment. Goes through the same 250ms debounce
+		// as camera sync — nothing writes more than once per debounce window.
+		const clockSyncId = setInterval(() => {
+			if (!focusedBody) return;
+			writeUrlState(currentViewState(focusedBody, lastCameraPos));
+		}, 500);
 
 		const onPopState = () => {
 			const view = page.state.view ?? parseUrl();
@@ -99,6 +116,7 @@
 		window.addEventListener('popstate', onPopState);
 
 		return () => {
+			clearInterval(clockSyncId);
 			ro.disconnect();
 			window.removeEventListener('popstate', onPopState);
 		};

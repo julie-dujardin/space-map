@@ -435,8 +435,9 @@ export async function loadSystemData(
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
 
-		// Apply orientation (axial tilt + spin)
+		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
+			bo.orientation = bodyMeta.orientation;
 			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd);
 		}
 
