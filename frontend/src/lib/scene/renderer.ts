@@ -662,8 +662,8 @@ export class SceneRenderer {
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
 		const body = this.ctx.getBody(id);
 		if (!body) return 0;
+		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
-			let camPos: Vec3;
 			if (latitude !== undefined && longitude !== undefined) {
 				camPos = sphericalToCartesian(
 					body.position,
@@ -689,6 +689,14 @@ export class SceneRenderer {
 					body.position[2] + dir.z * zoom
 				];
 			}
+		}
+		// Emit the target camera position before any focus/fly dispatch so that
+		// downstream `lastCameraPos` is fresh when `onFocusChange` fires inside
+		// `setFocusTarget` and `pushUrlState` captures the intended destination.
+		const emitFrom = camPos ?? this.cameraTruePos();
+		const spherical = cartesianToSpherical(emitFrom, body.position, this.focusedBodyQuat(body));
+		this.callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
+		if (zoom !== undefined && camPos) {
 			if (this.focusedBody?.data.id === id) {
 				// Snap focus in case a prior fly animation hasn't fully settled
 				this.focus.focusTruePos = [...body.position];
@@ -705,9 +713,6 @@ export class SceneRenderer {
 		} else {
 			this.setFocusTarget(body);
 		}
-		const camWorld = this.cameraTruePos();
-		const spherical = cartesianToSpherical(camWorld, body.position, this.focusedBodyQuat(body));
-		this.callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		return this.focus.focusDurationMs;
 	}
 
