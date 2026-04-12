@@ -97,6 +97,16 @@ export class SceneRenderer {
 	private rafId = 0;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
+	/**
+	 * Initial lat/lon/zoom stashed until the focused body's orientation has
+	 * loaded, at which point we re-place the camera in body-fixed coords.
+	 * Cleared once applied or once the user moves the camera.
+	 */
+	private pendingInitialView: {
+		latitude: number;
+		longitude: number;
+		zoom: number;
+	} | null = null;
 	private readonly textureLoader = new TextureLoader();
 	private readonly shadowLight: DirectionalLight;
 	private sunPointLight: PointLight | undefined;
@@ -152,14 +162,24 @@ export class SceneRenderer {
 		this.pointCloudBasisPos = [...focusPos];
 		this.focus.focusStartTime = -FOCUS_DURATION_MS; // already settled
 
-		// Camera position: focus-relative (small offset from origin)
+		// Camera position: focus-relative (small offset from origin).
+		// lat/lon are body-fixed, but the mesh quaternion is still identity here
+		// because the focused body's orientation metadata hasn't been fetched
+		// yet — so this initial placement falls back to scene-frame. We stash
+		// the requested view and re-apply it once orientation loads below.
 		const camPos = sphericalToCartesian(
 			[0, 0, 0],
 			initialView.latitude,
 			initialView.longitude,
-			initialView.zoom
+			initialView.zoom,
+			this.focusedBodyQuat()
 		);
 		this.camera.position.set(...camPos);
+		this.pendingInitialView = {
+			latitude: initialView.latitude,
+			longitude: initialView.longitude,
+			zoom: initialView.zoom
+		};
 
 		// OrbitControls — target always at origin
 		this.controls = new OrbitControls(this.camera, canvas);
@@ -338,6 +358,20 @@ export class SceneRenderer {
 		}
 	}
 
+	/**
+	 * Quaternion of the currently focused body's mesh, for body-fixed lat/lon.
+	 * Returns undefined if there's no mesh (e.g., focus on a point-cloud body) —
+	 * callers then fall back to scene-frame lat/lon.
+	 */
+	private focusedBodyQuat(body?: PositionedBody): [number, number, number, number] | undefined {
+		const id = (body ?? this.focusedBody)?.data.id;
+		if (!id) return undefined;
+		const mesh = this.bodyObjects.get(id)?.mesh;
+		if (!mesh) return undefined;
+		const q = mesh.quaternion;
+		return [q.x, q.y, q.z, q.w];
+	}
+
 	// Reconstruct camera true world position (Float64)
 	private cameraTruePos(): Vec3 {
 		return [
@@ -456,11 +490,13 @@ export class SceneRenderer {
 
 	private getCameraState() {
 		const cam = this.camera.position;
-		return cartesianToSpherical([cam.x, cam.y, cam.z], [0, 0, 0]);
+		return cartesianToSpherical([cam.x, cam.y, cam.z], [0, 0, 0], this.focusedBodyQuat());
 	}
 
 	private onControlsEnd = (): void => {
 		this.pendingUrlWrite = true;
+		// User-initiated motion wins — don't overwrite it when orientation loads.
+		this.pendingInitialView = null;
 	};
 
 	private onPointerDown = (e: PointerEvent): void => {
@@ -522,7 +558,41 @@ export class SceneRenderer {
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
 		const currentJd = dateToJD(new Date());
-		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.textureLoaded, currentJd);
+		loadSystemData(
+			baryId,
+			this.bodyObjects,
+			this.textureLoader,
+			this.textureLoaded,
+			currentJd
+		).then(() => this.reapplyInitialViewIfPending());
+	}
+
+	/**
+	 * Re-place the camera using the URL's body-fixed lat/lon once the focused
+	 * body's orientation has been applied. The initial placement in the
+	 * constructor runs before orientation fetches, so it falls back to
+	 * scene-frame; this corrects for that as soon as the mesh is oriented.
+	 */
+	private reapplyInitialViewIfPending(): void {
+		const pending = this.pendingInitialView;
+		if (!pending) return;
+		const quat = this.focusedBodyQuat();
+		// If the mesh still has identity quaternion, the body has no orientation
+		// data (e.g. asteroids) — the initial scene-frame placement stands.
+		if (!quat || (quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1)) {
+			this.pendingInitialView = null;
+			return;
+		}
+		const camPos = sphericalToCartesian(
+			[0, 0, 0],
+			pending.latitude,
+			pending.longitude,
+			pending.zoom,
+			quat
+		);
+		this.camera.position.set(...camPos);
+		this.controls.update();
+		this.pendingInitialView = null;
 	}
 
 	private maybeLoadTexture(body: PositionedBody): void {
@@ -542,7 +612,11 @@ export class SceneRenderer {
 	private handleFocus(body: PositionedBody): void {
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
-		const { latitude, longitude, distance } = cartesianToSpherical(camWorld, body.position);
+		const { latitude, longitude, distance } = cartesianToSpherical(
+			camWorld,
+			body.position,
+			this.focusedBodyQuat(body)
+		);
 		this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 	}
 
@@ -591,7 +665,13 @@ export class SceneRenderer {
 		if (zoom !== undefined) {
 			let camPos: Vec3;
 			if (latitude !== undefined && longitude !== undefined) {
-				camPos = sphericalToCartesian(body.position, latitude, longitude, zoom);
+				camPos = sphericalToCartesian(
+					body.position,
+					latitude,
+					longitude,
+					zoom,
+					this.focusedBodyQuat(body)
+				);
 			} else {
 				// Place camera at `zoom` distance, arriving from the current camera direction
 				const camWorld = this.cameraTruePos();
@@ -626,7 +706,7 @@ export class SceneRenderer {
 			this.setFocusTarget(body);
 		}
 		const camWorld = this.cameraTruePos();
-		const spherical = cartesianToSpherical(camWorld, body.position);
+		const spherical = cartesianToSpherical(camWorld, body.position, this.focusedBodyQuat(body));
 		this.callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		return this.focus.focusDurationMs;
 	}
