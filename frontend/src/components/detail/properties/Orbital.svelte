@@ -5,6 +5,7 @@
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
 	import { formatNumber, formatUnit } from '$lib/format/quantities';
+	import { formatDistance } from '$lib/format/distance';
 	import { formatJulianDate } from '$lib/format/date';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
@@ -104,14 +105,14 @@
 		{#if orbit?.a}
 			<Row
 				label={m.semi_major_axis()}
-				value={`${formatNumber(orbit.a)} ${formatUnit('astronomical_unit')}`}
+				value={formatDistance(orbit.a)}
 				tooltip={m.tooltip_semi_major_axis()}
 			/>
 		{/if}
 		{#if orbit?.q}
 			<Row
 				label={m.perihelion()}
-				value={`${formatNumber(orbit.q)} ${formatUnit('astronomical_unit')}`}
+				value={formatDistance(orbit.q)}
 				tooltip={m.tooltip_perihelion()}
 			/>
 		{/if}
@@ -125,7 +126,7 @@
 		{#if sbdb?.ad}
 			<Row
 				label={m.aphelion()}
-				value={`${formatNumber(sbdb.ad)} ${formatUnit('astronomical_unit')}`}
+				value={formatDistance(sbdb.ad)}
 				tooltip={m.tooltip_aphelion()}
 			/>
 		{/if}
@@ -146,7 +147,7 @@
 		{#if sbdb?.moid}
 			<Row
 				label={m.earth_moid()}
-				value={`${formatNumber(sbdb.moid)} ${formatUnit('astronomical_unit')}`}
+				value={formatDistance(sbdb.moid)}
 				tooltip={m.tooltip_earth_moid()}
 			/>
 		{/if}
