@@ -413,6 +413,36 @@ class SpiceDownloader(Downloader):
             )
         return rows
 
+    @staticmethod
+    def _extract_radii() -> list[dict]:
+        """Extract PCK triaxial radii (a, b, c in km) for all bodies that have them.
+
+        Enumerated independently from orientation — a body can have radii
+        without pole data, and vice versa.
+        """
+        matches = spiceypy.gnpool("BODY*_RADII", 0, 1000)
+        naif_ids: set[int] = set()
+        for var in matches:
+            m = re.match(r"BODY(-?\d+)_RADII", var)
+            if m:
+                naif_ids.add(int(m.group(1)))
+
+        rows = []
+        for naif_id in sorted(naif_ids):
+            try:
+                radii = spiceypy.bodvrd(str(naif_id), "RADII", 3)[1]
+            except spiceypy.exceptions.SpiceyError:
+                continue
+            rows.append(
+                {
+                    "naif_id": naif_id,
+                    "radius_a_km": radii[0],
+                    "radius_b_km": radii[1],
+                    "radius_c_km": radii[2],
+                }
+            )
+        return rows
+
     def download(
         self, limit: int | None = None, epoch: date | None = None, **kwargs: object
     ) -> None:
@@ -627,6 +657,18 @@ class SpiceDownloader(Downloader):
             orientation_file.name,
         )
 
+        # Step 8: Extract triaxial radii
+        radii_rows = self._extract_radii()
+        radii_file = self.out_dir / "radii.csv"
+        with radii_file.open("w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["naif_id", "radius_a_km", "radius_b_km", "radius_c_km"],
+            )
+            writer.writeheader()
+            writer.writerows(radii_rows)
+        logger.info("Saved %d radii records -> %s", len(radii_rows), radii_file.name)
+
         self._save_metadata(
             _NAIF_BASE_URL,
             len(rows),
@@ -634,4 +676,5 @@ class SpiceDownloader(Downloader):
             epoch=epoch.isoformat(),
             epoch_jd=f"{epoch_jd:.1f}",
             orientation_count=len(orientation_rows),
+            radii_count=len(radii_rows),
         )
