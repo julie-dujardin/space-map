@@ -29,6 +29,13 @@ _ALWAYS_INCLUDE_UNITS: set[str] = {
     "astronomical_unit",  # system scale orbital elements
     "hour",  # sbdb rot_per - rotation period
     "year",  # sbdb per_y - orbital period
+    "jupiter_radius",  # exoplanet radii
+    "kilometre_per_second",  # orbital speed readout
+}
+
+# Units with no Wikidata entity — reuse the same label/symbol across all languages.
+_UNIT_FALLBACK_LABELS: dict[str, tuple[str, str]] = {
+    "magnitude": ("magnitude", "magnitude"),
 }
 
 
@@ -89,6 +96,10 @@ def _collect_unit_labels(
                 labels[f"unit_symbol_{key}"] = symbol
             elif label:
                 labels[f"unit_symbol_{key}"] = label
+
+        for key, (name, symbol) in _UNIT_FALLBACK_LABELS.items():
+            labels[f"unit_name_{key}"] = name
+            labels[f"unit_symbol_{key}"] = symbol
 
         result[lang] = labels
 
