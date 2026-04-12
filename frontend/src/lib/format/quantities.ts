@@ -15,12 +15,17 @@ export function formatUnit(unit: string, short?: boolean): string {
 	return fn();
 }
 
+/** Intl rounding options that keep ~3 digits of precision (4+ digit integers unchanged). */
+export function precisionOptions(
+	n: number
+): Pick<Intl.NumberFormatOptions, 'maximumFractionDigits'> {
+	const intDigits = Math.floor(Math.abs(n)) === 0 ? 0 : Math.floor(Math.log10(Math.abs(n))) + 1;
+	return { maximumFractionDigits: Math.max(0, 3 - intDigits) };
+}
+
 export function formatNumber(n: number): string {
 	if (!Number.isFinite(n)) return String(n);
-	const intDigits = Math.floor(Math.abs(n)) === 0 ? 0 : Math.floor(Math.log10(Math.abs(n))) + 1;
-	const fracDigits = Math.max(0, 3 - intDigits);
-	const rounded = fracDigits === 0 ? Math.round(n) : parseFloat(n.toFixed(fracDigits));
-	return rounded.toLocaleString(getLocale());
+	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {

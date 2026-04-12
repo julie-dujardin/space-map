@@ -1,4 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
+import { precisionOptions } from './quantities';
 
 type DurationUnit = 'year' | 'day' | 'hour' | 'minute';
 
@@ -28,10 +29,11 @@ function convert(days: number, to: DurationUnit): number {
 /** Format a duration (in days) to a human-readable string with auto-selected unit. */
 export function formatDuration(days: number): string {
 	const unit = pickUnit(days);
+	const value = convert(days, unit);
 	return new Intl.NumberFormat(getLocale(), {
 		style: 'unit',
 		unit,
 		unitDisplay: 'long',
-		maximumSignificantDigits: 3
-	}).format(convert(days, unit));
+		...precisionOptions(value)
+	}).format(value);
 }
