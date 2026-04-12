@@ -364,6 +364,8 @@ interface SystemBodyMeta {
 		w0: number;
 		w_rate: number;
 	};
+	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). */
+	radii?: { a: number; b: number; c: number };
 }
 
 /**
@@ -394,6 +396,15 @@ export async function loadSystemData(
 		// Apply orientation (axial tilt + spin)
 		if (bodyMeta.orientation) {
 			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd);
+		}
+
+		// Apply triaxial flattening. applyOrientation puts the body's pole on
+		// local +Y and the ascending node on local +X, so SPICE (X, Y, Z)
+		// maps to mesh local (X, Z, Y).
+		if (bodyMeta.radii && bo.radiusScene > 0) {
+			const { a, b, c } = bodyMeta.radii;
+			const s = kmToScene(1) / bo.radiusScene;
+			bo.mesh.scale.set(a * s, c * s, b * s);
 		}
 
 		// Load textures
