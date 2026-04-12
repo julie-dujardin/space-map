@@ -32,30 +32,21 @@ export function makeCircleTexture(): CanvasTexture {
 	return new CanvasTexture(canvas);
 }
 
-export function makeOrbitLine(
+/** Anchor the static curve at the body's current position so the trail trails *behind* it. */
+function buildOrbitTrailPoints(
 	body: PositionedBody,
-	color: string,
-	basisPos: [number, number, number] = [0, 0, 0]
-): Line {
-	const { orbitElements, orbitCenter, data } = body;
-	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
-
-	const { points: curve, isOpen: isOpenCurve } = orbitalElementsToCurve(
-		orbitElements,
-		NUM_ORBIT_POINTS
-	);
-
-	// Body position in orbit-local coordinates
-	const cx = orbitCenter?.[0] ?? 0;
-	const cy = orbitCenter?.[1] ?? 0;
-	const cz = orbitCenter?.[2] ?? 0;
+	curve: [number, number, number][],
+	isOpenCurve: boolean,
+	cx: number,
+	cy: number,
+	cz: number
+): [number, number, number][] {
 	const bodyLocal: [number, number, number] = [
 		body.position[0] - cx,
 		body.position[1] - cy,
 		body.position[2] - cz
 	];
 
-	// Find nearest curve point to the body
 	let nearest = 0;
 	let best = Infinity;
 	for (let j = 0; j < curve.length; j++) {
@@ -69,7 +60,6 @@ export function makeOrbitLine(
 		}
 	}
 
-	// Determine trail direction (the "behind" neighbor is the trail start)
 	const prev = Math.max(nearest - 1, 0);
 	const next = Math.min(nearest + 1, curve.length - 1);
 	const distPrev =
@@ -82,15 +72,6 @@ export function makeOrbitLine(
 		(curve[next][2] - bodyLocal[2]) ** 2;
 	const trailStart = distPrev < distNext ? prev : nearest;
 
-	const useTrail =
-		isOpenCurve ||
-		data.objectType === ObjectType.DWARF_PLANET ||
-		data.objectType === ObjectType.MOON ||
-		data.objectType === ObjectType.SPACECRAFT ||
-		data.objectType === ObjectType.COMET ||
-		isAsteroid(data.objectType);
-
-	// Always build the full orbit so we can show it when focused
 	const points: [number, number, number][] = [bodyLocal];
 	if (isOpenCurve) {
 		for (let k = 0; k < NUM_ORBIT_POINTS - 1; k++) {
@@ -106,9 +87,64 @@ export function makeOrbitLine(
 		}
 		points.push(bodyLocal); // close the loop
 	}
+	return points.filter((p) => p.every(Number.isFinite));
+}
 
-	// Filter out any points with NaN/Infinity coordinates (degenerate orbital elements)
-	const validPoints = points.filter((p) => p.every(Number.isFinite));
+/**
+ * Fill `fullArr` with the full-orbit alpha ramp (fades along the whole curve)
+ * and `trailArr` with the partial-trail ramp (fade from the body over ~1/3 of
+ * the orbit). For non-trail bodies the trail ramp is a copy of the full ramp.
+ */
+function writeOrbitAlphas(
+	fullArr: Float32Array,
+	trailArr: Float32Array,
+	isOpenCurve: boolean,
+	useTrail: boolean
+): void {
+	const fullMax = 0.9;
+	const fullMin = isOpenCurve ? 0 : fullMax / 3;
+	const last = fullArr.length - 1;
+	for (let k = 0; k < fullArr.length; k++) {
+		fullArr[k] = fullMax - (last > 0 ? k / last : 0) * (fullMax - fullMin);
+	}
+	if (useTrail && !isOpenCurve) {
+		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
+		const trailMax = 0.6;
+		trailArr.fill(0);
+		for (let k = 0; k < Math.min(trailLen, trailArr.length); k++) {
+			trailArr[k] = trailMax - (k / (trailLen - 1)) * trailMax;
+		}
+	} else {
+		trailArr.set(fullArr);
+	}
+}
+
+export function makeOrbitLine(
+	body: PositionedBody,
+	color: string,
+	basisPos: [number, number, number] = [0, 0, 0]
+): Line {
+	const { orbitElements, orbitCenter, data } = body;
+	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
+
+	const { points: curve, isOpen: isOpenCurve } = orbitalElementsToCurve(
+		orbitElements,
+		NUM_ORBIT_POINTS
+	);
+
+	const cx = orbitCenter?.[0] ?? 0;
+	const cy = orbitCenter?.[1] ?? 0;
+	const cz = orbitCenter?.[2] ?? 0;
+
+	const useTrail =
+		isOpenCurve ||
+		data.objectType === ObjectType.DWARF_PLANET ||
+		data.objectType === ObjectType.MOON ||
+		data.objectType === ObjectType.SPACECRAFT ||
+		data.objectType === ObjectType.COMET ||
+		isAsteroid(data.objectType);
+
+	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) {
 		const geometry = new BufferGeometry();
 		geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
@@ -118,29 +154,14 @@ export function makeOrbitLine(
 		return line;
 	}
 
-	// Full-orbit alphas: shown when focused (or always for planets)
 	const fullAlphas = new Float32Array(validPoints.length);
-	{
-		const maxAlpha = 0.9;
-		const minAlpha = isOpenCurve ? 0 : maxAlpha / 3;
-		for (let k = 0; k < validPoints.length; k++) {
-			fullAlphas[k] = maxAlpha - (k / (validPoints.length - 1)) * (maxAlpha - minAlpha);
-		}
-	}
-
-	// Trail alphas: partial trail when unfocused; same as full for non-trail bodies
 	const trailAlphas = new Float32Array(validPoints.length);
-	if (useTrail && !isOpenCurve) {
-		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
-		const maxAlpha = 0.6;
-		for (let k = 0; k < trailLen; k++) {
-			trailAlphas[k] = maxAlpha - (k / (trailLen - 1)) * maxAlpha;
-		}
-	} else {
-		trailAlphas.set(fullAlphas);
-	}
+	writeOrbitAlphas(fullAlphas, trailAlphas, isOpenCurve, useTrail);
 
-	// Write positions as focus-relative: orbitLocal + orbitCenter - basisPos (Float64 math, small result)
+	// Store vertices in basis-relative coords (world − basis). Basis tracks
+	// the focused body, so for focused bodies the vertex magnitudes stay
+	// small and the shader's (vertex + uCenterOffset) avoids catastrophic
+	// Float32 cancellation even for distant outer-solar-system bodies.
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],
 		bz = cz - basisPos[2];
@@ -195,10 +216,66 @@ export function makeOrbitLine(
 
 	const line = new Line(geometry, material);
 	line.frustumCulled = false; // shader repositions geometry via uCenterOffset
-	// Store Float64 orbit-local positions for rebuilding when focus changes
+	// Store Float64 orbit-local positions for rebuilding when focus changes,
+	// and the static curve + flags for per-frame trail refresh while time plays.
 	line.userData.orbitCenter = new Vector3(cx, cy, cz);
 	line.userData.orbitLocalPositions = validPoints;
+	line.userData.orbitCurve = curve;
+	line.userData.isOpenCurve = isOpenCurve;
+	line.userData.useTrail = useTrail;
 	return line;
+}
+
+/**
+ * Re-anchor an orbit line's trail at the body's current position. Must run
+ * after the body (and its `orbitCenter`) have been updated this frame.
+ */
+export function refreshOrbitLineGeometry(
+	body: PositionedBody,
+	line: Line,
+	basisPos: [number, number, number]
+): void {
+	const curve = line.userData.orbitCurve as [number, number, number][] | undefined;
+	if (!curve) return;
+	const isOpenCurve = line.userData.isOpenCurve as boolean;
+	const useTrail = line.userData.useTrail as boolean;
+	const oc = line.userData.orbitCenter as Vector3;
+	const cx = oc.x,
+		cy = oc.y,
+		cz = oc.z;
+
+	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
+	if (validPoints.length < 2) return;
+
+	const posAttr = line.geometry.getAttribute('position');
+	const trailAttr = line.geometry.getAttribute('trailAlpha');
+	const fullAttr = line.geometry.getAttribute('fullAlpha');
+	// Skip if buffer shrank (e.g. open curve clamped); next focus change will rebuild.
+	if (posAttr.count < validPoints.length) return;
+
+	const posArr = posAttr.array as Float32Array;
+	const trailArr = trailAttr.array as Float32Array;
+	const fullArr = fullAttr.array as Float32Array;
+	const bx = cx - basisPos[0],
+		by = cy - basisPos[1],
+		bz = cz - basisPos[2];
+	for (let k = 0; k < validPoints.length; k++) {
+		posArr[k * 3] = validPoints[k][0] + bx;
+		posArr[k * 3 + 1] = validPoints[k][1] + by;
+		posArr[k * 3 + 2] = validPoints[k][2] + bz;
+	}
+	writeOrbitAlphas(
+		fullArr.subarray(0, validPoints.length) as Float32Array,
+		trailArr.subarray(0, validPoints.length) as Float32Array,
+		isOpenCurve,
+		useTrail
+	);
+	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
+	line.userData.orbitLocalPositions = validPoints;
+
+	posAttr.needsUpdate = true;
+	trailAttr.needsUpdate = true;
+	fullAttr.needsUpdate = true;
 }
 
 /** Create a radial gradient canvas texture for the star corona glow. */

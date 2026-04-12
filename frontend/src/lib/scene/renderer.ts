@@ -17,10 +17,12 @@ import {
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
-import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { applyOrientation } from '$lib/math/orientation';
+import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import {
 	buildMajorBodies,
 	buildOrbitLines,
@@ -31,6 +33,7 @@ import {
 	loadSystemData,
 	makeCircleTexture
 } from './objects/construction';
+import { refreshOrbitLineGeometry } from './objects/builders';
 import { type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 import type { Vec3 } from './animation/math';
@@ -45,6 +48,15 @@ import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
 
+/**
+ * Sim-seconds per real-second above which spacecraft point-cloud phases stop
+ * advancing. At this rate per-frame sim advance (~1 min at 60fps) is ~1% of a
+ * LEO orbit — below it per-frame motion is smooth; above, the round-robin
+ * recompute aliases sats to random new phases every cycle and the cloud
+ * visibly scrambles. 2 h/s.
+ */
+const SPACECRAFT_PHASE_FREEZE_RATE = 7200;
+
 // --- SceneRenderer ---
 
 export class SceneRenderer {
@@ -58,6 +70,7 @@ export class SceneRenderer {
 	private pointerDownPos = new Vector2();
 
 	private ctx: ContextManager;
+	private clock: SimClock;
 	private callbacks: Callbacks;
 
 	private bodyObjects = new Map<string, BodyObjects>();
@@ -93,6 +106,22 @@ export class SceneRenderer {
 		focusDurationMs: FOCUS_DURATION_MS
 	};
 	private pointCloudBasisPos: Vec3 = [0, 0, 0];
+	/** Round-robin cursor: which minor point cloud (asteroid zone / spacecraft group) to refresh next. */
+	private pointCloudUpdateIdx = 0;
+	/** JD at which per-frame body positions were last computed. */
+	private lastUpdatedJd = NaN;
+	/**
+	 * Parent position snapshot per point-cloud group at the moment of the
+	 * last Kepler recompute. Frame-to-frame, we translate the Points object
+	 * by (current parent pos − snapshot) so bodies stay attached to their
+	 * moving parent without paying Kepler cost every frame. Keys:
+	 * `asteroid:<zone>`, `spacecraft:<parentId>`.
+	 */
+	private pointCloudParentAtUpdate = new Map<string, Vec3>();
+	/** True while time rate is above {@link SPACECRAFT_PHASE_FREEZE_RATE}. Tracked to trigger a catch-up recompute on transition out. */
+	private spacecraftFrozen = false;
+	/** Memoized moon → parent grouping; invalidated when majorBodies count changes (new chunk loaded). */
+	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
 
 	private rafId = 0;
 	private firstFrame = true;
@@ -115,10 +144,12 @@ export class SceneRenderer {
 		canvas: HTMLCanvasElement,
 		labelContainer: HTMLElement,
 		ctx: ContextManager,
+		clock: SimClock,
 		initialView: MapViewState,
 		callbacks: Callbacks
 	) {
 		this.ctx = ctx;
+		this.clock = clock;
 		this.callbacks = callbacks;
 
 		// Renderer
@@ -271,6 +302,12 @@ export class SceneRenderer {
 	// --- Focus-relative positioning ---
 
 	private repositionAll(): void {
+		this.repositionBodies();
+		this.rebuildOrbitLineBasis();
+	}
+
+	/** Like {@link repositionAll} but skips the orbit-line rewrite — for callers that already refreshed lines per-body. */
+	private repositionBodies(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const [bx, by, bz] = bo.body.position;
@@ -289,38 +326,211 @@ export class SceneRenderer {
 		const dx = bx - fx,
 			dy = by - fy,
 			dz = bz - fz;
-		for (const pts of this.asteroidPoints.values()) pts.position.set(dx, dy, dz);
-		for (const pts of this.spacecraftPoints.values()) pts.position.set(dx, dy, dz);
+		// Shift each group by (parent_now − parent_at_last_kepler_update) so
+		// bodies ride along with their moving parent. Without this, point-cloud
+		// satellites visibly lag their planet and snap back each round-robin
+		// refresh (once per ~group_count frames).
+		for (const [zone, pts] of this.asteroidPoints) {
+			const [sx, sy, sz] = this.parentShift(`asteroid:${zone}`, 'naif-10');
+			pts.position.set(dx + sx, dy + sy, dz + sz);
+		}
+		for (const [gid, pts] of this.spacecraftPoints) {
+			const [sx, sy, sz] = this.parentShift(`spacecraft:${gid}`, gid);
+			pts.position.set(dx + sx, dy + sy, dz + sz);
+		}
+		// Moon point clouds are re-written every frame (writeMoonPointClouds),
+		// so vertex buffers are always current — no shift needed.
 		for (const pts of this.moonPoints.values()) pts.position.set(dx, dy, dz);
+	}
+
+	private parentShift(snapshotKey: string, parentId: string): Vec3 {
+		const snapshot = this.pointCloudParentAtUpdate.get(snapshotKey);
+		const current = this.ctx.getBody(parentId)?.position;
+		if (!snapshot || !current) return [0, 0, 0];
+		return [current[0] - snapshot[0], current[1] - snapshot[1], current[2] - snapshot[2]];
+	}
+
+	/**
+	 * Rebase point clouds when focus has drifted > 0.01 AU from the basis —
+	 * keeps Float32 vertex precision at ~4 km while avoiding thrash.
+	 */
+	private maybeRebasePointClouds(): void {
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		const dx = fx - bx,
+			dy = fy - by,
+			dz = fz - bz;
+		const drift2 = dx * dx + dy * dy + dz * dz;
+		const threshold = 0.01 * AU_SCALE;
+		if (drift2 > threshold * threshold) this.rebuildPointCloudBasis();
 	}
 
 	private rebuildPointCloudBasis(): void {
 		this.pointCloudBasisPos = [...this.focus.focusTruePos];
-		// Re-trigger dirty flags for all zones so they rebuild with new basis
 		for (const zone of this.asteroidPoints.keys()) this.ctx.dirtyAsteroidZones.add(zone);
 		for (const gid of this.spacecraftPoints.keys()) this.ctx.dirtySpacecraftGroups.add(gid);
 		this.rebuildMinorPointClouds();
-		// Rebuild moon point cloud vertex buffers with new basis
+		// NOTE: do NOT reset parent snapshots here. Vertex buffers were rewritten
+		// from the *stale* body.position left over from the last round-robin
+		// writeMinorPointCloud, so the snapshot must stay pinned to that same
+		// moment (parent-at-body-was-written), not to "now". Resetting it makes
+		// parentShift undercompensate by (parent_now − parent_old) and the
+		// cluster jumps on every rebase.
 		this.rebuildMoonPointClouds();
-		// Rebuild orbit line vertex buffers with new basis
 		this.rebuildOrbitLineBasis();
-		// Reset point cloud object positions since basis matches focus
-		for (const pts of this.asteroidPoints.values()) pts.position.set(0, 0, 0);
-		for (const pts of this.spacecraftPoints.values()) pts.position.set(0, 0, 0);
-		for (const pts of this.moonPoints.values()) pts.position.set(0, 0, 0);
+		// Basis now matches focus, so (basis − focus) = 0, but parentShift is
+		// still non-zero (snapshots are intentionally pinned to their vertex
+		// data's age, not reset). Run the normal repositioner so each Points
+		// object gets shift-compensated — hardcoding 0 here misplaces clusters
+		// by ~parentShift for one frame, which at high time rates (rebases
+		// several times per second) reads as a visibility flicker when the
+		// offset pushes them out of the camera frustum.
+		this.repositionPointClouds();
+	}
+
+	/**
+	 * Moons copy already-repositioned coords (cheap). Asteroid zones and
+	 * spacecraft groups each do thousands of Kepler solves, so they're
+	 * round-robined one-per-frame to bound the frame budget.
+	 *
+	 * Above {@link SPACECRAFT_PHASE_FREEZE_RATE}, we stop advancing spacecraft
+	 * phases — sim advance per frame exceeds an appreciable fraction of LEO
+	 * orbital period, so per-cycle recomputes just alias each sat to a
+	 * random new phase. Freezing gives a visually stable cloud that still
+	 * rides along with its parent via parentShift in {@link repositionPointClouds}.
+	 *
+	 * TODO: move Kepler solves off the main thread (worker pool, transferable
+	 * Float32Array buffers). With per-frame updates for all groups in parallel
+	 * we could drop the round-robin entirely and lower this freeze threshold.
+	 */
+	private updatePointClouds(jd: number): void {
+		this.writeMoonPointClouds();
+
+		const freezeSpacecraft = Math.abs(this.clock.timeScale) >= SPACECRAFT_PHASE_FREEZE_RATE;
+		// On transition out of freeze, catch up every spacecraft group in one
+		// pass so the cloud reflects current jd immediately (user typically
+		// just paused or slowed down — a one-frame hitch is fine, and the
+		// alternative is stale positions until each group cycles round-robin).
+		if (this.spacecraftFrozen && !freezeSpacecraft) {
+			for (const gid of this.spacecraftPoints.keys()) {
+				this.writeMinorPointCloud(gid, 'spacecraft', jd);
+			}
+		}
+		this.spacecraftFrozen = freezeSpacecraft;
+
+		const asteroidKeys = [...this.asteroidPoints.keys()];
+		const spacecraftKeys = freezeSpacecraft ? [] : [...this.spacecraftPoints.keys()];
+		const total = asteroidKeys.length + spacecraftKeys.length;
+		if (total === 0) return;
+		this.pointCloudUpdateIdx = (this.pointCloudUpdateIdx + 1) % total;
+		const idx = this.pointCloudUpdateIdx;
+		if (idx < asteroidKeys.length) {
+			const zone = asteroidKeys[idx];
+			this.writeMinorPointCloud(zone, 'asteroid', jd);
+		} else {
+			const gid = spacecraftKeys[idx - asteroidKeys.length];
+			this.writeMinorPointCloud(gid, 'spacecraft', jd);
+		}
+	}
+
+	private getMoonsByParent(): Map<string, PositionedBody[]> {
+		const len = this.ctx.majorBodies.length;
+		if (this.moonsByParentCache?.len === len) return this.moonsByParentCache.map;
+		const map = new Map<string, PositionedBody[]>();
+		for (const body of this.ctx.majorBodies) {
+			if (body.data.objectType === ObjectType.MOON) {
+				const list = map.get(body.data.parentId) ?? [];
+				list.push(body);
+				map.set(body.data.parentId, list);
+			}
+		}
+		this.moonsByParentCache = { len, map };
+		return map;
+	}
+
+	private writeMoonPointClouds(): void {
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		for (const [parentId, moons] of this.getMoonsByParent()) {
+			const pts = this.moonPoints.get(parentId);
+			if (!pts) continue;
+			const posAttr = pts.geometry.getAttribute('position');
+			const arr = posAttr.array as Float32Array;
+			const n = Math.min(moons.length, arr.length / 3);
+			for (let i = 0; i < n; i++) {
+				arr[i * 3] = moons[i].position[0] - bx;
+				arr[i * 3 + 1] = moons[i].position[1] - by;
+				arr[i * 3 + 2] = moons[i].position[2] - bz;
+			}
+			posAttr.needsUpdate = true;
+		}
+	}
+
+	/**
+	 * Recompute one group's positions at `jd` into its geometry buffer.
+	 * Parents that aren't meshed fall back to SSB — fine for asteroids since
+	 * the Sun's offset from SSB is sub-km.
+	 */
+	private writeMinorPointCloud(key: string, kind: 'asteroid' | 'spacecraft', jd: number): void {
+		const sourceBodies =
+			kind === 'asteroid'
+				? this.ctx.asteroidBodiesByZone.get(key)
+				: this.ctx.spacecraftByParent.get(key);
+		const points =
+			kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
+		if (!sourceBodies || !points) return;
+
+		// Snapshot the parent's position so {@link parentShift} can translate
+		// the Points object each frame between round-robin recomputes.
+		const groupParentId = kind === 'asteroid' ? 'naif-10' : key;
+		const groupParentPos = this.ctx.getBody(groupParentId)?.position;
+		if (groupParentPos) {
+			this.pointCloudParentAtUpdate.set(`${kind}:${key}`, [
+				groupParentPos[0],
+				groupParentPos[1],
+				groupParentPos[2]
+			]);
+		}
+
+		const promoted = this.bodyObjects;
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		const posAttr = points.geometry.getAttribute('position');
+		const arr = posAttr.array as Float32Array;
+		const capacity = arr.length / 3;
+
+		let writeIdx = 0;
+		for (const body of sourceBodies) {
+			if (writeIdx >= capacity) break;
+			if (promoted.has(body.data.id)) continue;
+
+			const parent = promoted.get(body.data.parentId)?.body.position;
+			const px = parent?.[0] ?? 0;
+			const py = parent?.[1] ?? 0;
+			const pz = parent?.[2] ?? 0;
+			const offset =
+				body.data.q != null
+					? parabolicToPositionJD(body.data, jd)
+					: orbitalElementsToPositionJD(body.data, jd);
+			if (!offset) {
+				writeIdx++;
+				continue;
+			}
+			const x = px + offset[0];
+			const y = py + offset[1];
+			const z = pz + offset[2];
+			body.position[0] = x;
+			body.position[1] = y;
+			body.position[2] = z;
+			arr[writeIdx * 3] = x - bx;
+			arr[writeIdx * 3 + 1] = y - by;
+			arr[writeIdx * 3 + 2] = z - bz;
+			writeIdx++;
+		}
+		posAttr.needsUpdate = true;
 	}
 
 	private rebuildMoonPointClouds(): void {
 		const basis = this.pointCloudBasisPos;
-		const moonsByParent = new Map<string, PositionedBody[]>();
-		for (const body of this.ctx.majorBodies) {
-			if (body.data.objectType === ObjectType.MOON) {
-				const list = moonsByParent.get(body.data.parentId) ?? [];
-				list.push(body);
-				moonsByParent.set(body.data.parentId, list);
-			}
-		}
-		for (const [parentId, moons] of moonsByParent) {
+		for (const [parentId, moons] of this.getMoonsByParent()) {
 			const existing = this.moonPoints.get(parentId);
 			if (!existing) continue;
 			const positions = new Float32Array(moons.length * 3);
@@ -333,8 +543,13 @@ export class SceneRenderer {
 		}
 	}
 
+	/**
+	 * Rebase the cached orbit-local vertices against the current focus (no
+	 * Kepler recompute). Used by focus animation paths; the per-jd path goes
+	 * through {@link refreshOrbitLineGeometry} instead.
+	 */
 	private rebuildOrbitLineBasis(): void {
-		const [bx, by, bz] = this.pointCloudBasisPos;
+		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			if (!line) continue;
@@ -343,10 +558,9 @@ export class SceneRenderer {
 				| undefined;
 			if (!localPositions) continue;
 			const oc = line.userData.orbitCenter as Vector3;
-			// orbitCenter - basisPos in Float64, then add each orbit-local point
-			const ox = oc.x - bx,
-				oy = oc.y - by,
-				oz = oc.z - bz;
+			const ox = oc.x - fx,
+				oy = oc.y - fy,
+				oz = oc.z - fz;
 			const posAttr = line.geometry.getAttribute('position');
 			const arr = posAttr.array as Float32Array;
 			for (let i = 0; i < localPositions.length; i++) {
@@ -381,6 +595,101 @@ export class SceneRenderer {
 		];
 	}
 
+	// --- Per-frame body position & orientation updates ---
+
+	private updatePositions(jd: number): void {
+		// Seed positionMap with SSB at origin. Iterate ALL bodies with orbit
+		// elements (majors, moons, barycenters, promoted minor bodies). Moons'
+		// parentId is the planetary barycenter (SPICE convention: Io → naif-5),
+		// not the planet, so barycenters must be in the map for children to
+		// find their parent; barycenters are in ctx.bodiesById but not meshed.
+		const positionMap = new Map<string, Vec3>();
+		positionMap.set('naif-0', [0, 0, 0]);
+
+		// Propagate position from `body.data` (the body's own elements around
+		// its parent), NOT `body.orbitElements` — for planets those differ:
+		// `orbitElements` stores the barycenter's orbit around SSB so the
+		// orbit line is drawn correctly, while `body.data.a === 0` means
+		// "planet sits at its own barycenter" for positioning. Adding the
+		// barycenter's offset on top of the barycenter's position would
+		// double-count it.
+		// Pass 1: compute positions and update orbitCenters. Do NOT touch orbit
+		// line geometry yet — it depends on focus.focusTruePos, which we can't
+		// update until the focused body's own position is known below.
+		const computePosition = (body: PositionedBody) => {
+			const d = body.data;
+			const parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
+			const isParabolic = d.q != null;
+			let x: number, y: number, z: number;
+			if (d.a === 0 && !isParabolic) {
+				// Body coincides with its parent (e.g. planet at its barycenter).
+				[x, y, z] = parentPos;
+			} else {
+				const offset = isParabolic
+					? parabolicToPositionJD(d, jd)
+					: orbitalElementsToPositionJD(d, jd);
+				if (!offset) return;
+				x = parentPos[0] + offset[0];
+				y = parentPos[1] + offset[1];
+				z = parentPos[2] + offset[2];
+			}
+			body.position[0] = x;
+			body.position[1] = y;
+			body.position[2] = z;
+			if (body.orbitCenter) {
+				body.orbitCenter[0] = parentPos[0];
+				body.orbitCenter[1] = parentPos[1];
+				body.orbitCenter[2] = parentPos[2];
+			}
+			positionMap.set(d.id, body.position);
+
+			const bo = this.bodyObjects.get(d.id);
+			if (!bo) return;
+			if (bo.orbitLine && body.orbitCenter) {
+				const oc = bo.orbitLine.userData.orbitCenter as Vector3 | undefined;
+				if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
+			}
+			if (bo.orientation && bo.mesh) {
+				applyOrientation(bo.mesh, bo.orientation, jd);
+			}
+		};
+
+		// First pass: bodies in ctx.bodiesById (barycenters → planets → moons,
+		// in dependency order). Second pass: promoted minor bodies that only
+		// live in bodyObjects, whose parents are now in positionMap.
+		for (const body of this.ctx.bodiesById.values()) computePosition(body);
+		for (const bo of this.bodyObjects.values()) {
+			if (!this.ctx.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
+		}
+
+		// Pass 2a: now that all positions are current, lock focus onto the
+		// focused body's *new* position (unless an animation is driving it).
+		if (this.focusedBody) {
+			const p = this.focusedBody.position;
+			const elapsed = performance.now() - this.focus.focusStartTime;
+			const animating = elapsed < this.focus.focusDurationMs;
+			this.focus.focusTargetWorld[0] = p[0];
+			this.focus.focusTargetWorld[1] = p[1];
+			this.focus.focusTargetWorld[2] = p[2];
+			if (!animating) {
+				this.focus.focusTruePos[0] = p[0];
+				this.focus.focusTruePos[1] = p[1];
+				this.focus.focusTruePos[2] = p[2];
+			}
+		}
+
+		// Pass 2b: refresh orbit-line geometry against the fresh focus basis.
+		// If we did this inside computePosition, vertices would be stored
+		// against last frame's focus, and rendering (which uses the new focus)
+		// would shift every trail by focus-velocity * dt — visible as trails
+		// "preceding" the body along the focus's own orbit direction.
+		const basis = this.focus.focusTruePos;
+		for (const bo of this.bodyObjects.values()) {
+			const line = bo.orbitLine;
+			if (line) refreshOrbitLineGeometry(bo.body, line, basis);
+		}
+	}
+
 	// --- RAF loop ---
 
 	private tick = (): void => {
@@ -391,6 +700,25 @@ export class SceneRenderer {
 			this.firstFrame = false;
 			this.controls.target.set(0, 0, 0);
 			this.controls.update();
+		}
+
+		// Gate body updates on jd actually changing — fires for play, pause→now,
+		// and manual setJD alike; skips work while paused.
+		this.clock.tick(performance.now());
+		// A drop from "phases frozen" to "phases live" (pause, slow-down, `now`)
+		// also requires a recompute, even if jd didn't advance.
+		const exitingFreeze =
+			this.spacecraftFrozen && Math.abs(this.clock.timeScale) < SPACECRAFT_PHASE_FREEZE_RATE;
+		if (this.clock.jd !== this.lastUpdatedJd || exitingFreeze) {
+			this.lastUpdatedJd = this.clock.jd;
+			this.updatePositions(this.clock.jd);
+			this.updatePointClouds(this.clock.jd);
+			// When animating, stepFocusAnimation below does repositionAll already.
+			const elapsed = performance.now() - this.focus.focusStartTime;
+			if (elapsed >= this.focus.focusDurationMs) {
+				this.repositionBodies();
+				this.maybeRebasePointClouds();
+			}
 		}
 
 		// Animate focus/fly
@@ -420,7 +748,6 @@ export class SceneRenderer {
 			this.focusedBody?.data.id,
 			this.hideCappedMoonLabels,
 			this.hoveredBodyIds,
-			this.pointCloudBasisPos,
 			this.asteroidPoints,
 			this.spacecraftPoints,
 			this.moonPoints,
@@ -559,8 +886,7 @@ export class SceneRenderer {
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
-		const currentJd = dateToJD(new Date());
-		loadSystemData(baryId, this.bodyObjects, this.textureLoader, currentJd).then(() =>
+		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd).then(() =>
 			this.reapplyInitialViewIfPending()
 		);
 	}

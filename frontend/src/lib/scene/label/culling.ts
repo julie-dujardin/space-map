@@ -62,22 +62,23 @@ export function applyLabelDisplay(
 	const { label, labelHalo, radiusScene } = bo;
 	if (!label) return;
 
-	let hideHaloRing = false;
-	let screenR = 0;
+	const screenR = radiusScene > 0 ? (radiusScene / distToBody) * projScale : 0;
+	const isFocused = bo.body.data.id === focusedBodyId;
+	// Hide the halo ring (and its accompanying trail) whenever the rendered
+	// sphere is at least the halo's size — the sphere itself substitutes for
+	// both indicators. Applies to any body type regardless of visibility tier.
+	const hideHaloRing = screenR >= HALO_RADIUS_PX;
 
 	if (!show && isClose) {
-		screenR = (radiusScene / distToBody) * projScale;
-		// For bodies that entered CLOSE state because the camera is near their parent
-		// (e.g. outer moons when zoomed into Saturn), screenR is near-zero even though
-		// the body is physically far. Skip the close logic unless we're actually zoomed
-		// into this specific body (isFocused) or it's large enough on screen (screenR >= 1).
-		const isFocused = bo.body.data.id === focusedBodyId;
+		// CLOSE tier but label was suppressed (e.g. outer moons when zoomed into
+		// their parent system): re-show the label until the sphere fills most
+		// of the screen. Skip unless we're actually zoomed into this body or
+		// it's ≥1px onscreen — CLOSE can fire on distant bodies too.
 		if (isFocused || screenR >= 1) {
 			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
-			hideHaloRing = screenR >= HALO_RADIUS_PX;
-			if (bo.orbitLine) bo.orbitLine.visible = !hideHaloRing;
 		}
 	}
+	if (bo.orbitLine && hideHaloRing) bo.orbitLine.visible = false;
 
 	label.visible = show;
 	if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';

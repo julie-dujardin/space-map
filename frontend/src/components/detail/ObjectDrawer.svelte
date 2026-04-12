@@ -311,7 +311,7 @@
 		</div>
 
 		<ScrollArea class="flex-1 min-h-0">
-			<div class="px-4 pb-4 -mt-2">
+			<div class="px-4 pb-4">
 				{@render drawerContent()}
 			</div>
 		</ScrollArea>

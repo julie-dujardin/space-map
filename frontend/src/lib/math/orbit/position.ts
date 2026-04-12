@@ -49,6 +49,14 @@ export function orbitalElementsToPosition(
 	el: OrbitalElements,
 	date: Date = new Date()
 ): [number, number, number] | null {
+	return orbitalElementsToPositionJD(el, dateToJD(date));
+}
+
+/** JD-based variant of {@link orbitalElementsToPosition}. Avoids Date allocation in hot loops. */
+export function orbitalElementsToPositionJD(
+	el: OrbitalElements,
+	jd: number
+): [number, number, number] | null {
 	const { a, e, i, om, w, ma, n, epoch } = el;
 
 	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n)) {
@@ -57,32 +65,16 @@ export function orbitalElementsToPosition(
 	}
 
 	// Propagate mean anomaly from epoch to requested date
-	const dt = dateToJD(date) - epoch; // days since epoch
+	const dt = jd - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
 
-	// Near-parabolic (|e − 1| < 0.01) with a > 0 (closed orbit per JPL
-	// convention): use Barker ONLY near perihelion, where the elliptic
-	// solver's denominator (1 − e·cos(E)) collapses. Elsewhere, the elliptic
-	// solver with clamped e is well-conditioned and gives the correct r at
-	// apoapsis (Barker would give r → ∞, which is wrong for bound orbits).
-	// Example: spkid-1001113 C/1962 C1 Seki-Lines needs Barker near perihelion;
-	// the SPICE Sun (e rounded-to-1 in float32, M=180°) needs the elliptic path.
-	// Skip for tiny orbits (a < 0.001 AU): numerical issues are negligible.
-	const nearPerihelion = Math.abs(((ma + n * dt) % 360) + 360) % 360;
-	const perihelionDist = Math.min(nearPerihelion, 360 - nearPerihelion); // deg from M=0
-	if (Math.abs(e - 1) < 0.01 && Math.abs(a) >= 0.001 && perihelionDist < 30) {
-		// Floor |1-e| to guard against float32 precision loss on q.
-		const oneMinusE = Math.max(Math.abs(1 - e), 1e-7);
-		const q = Math.abs(a) * oneMinusE;
-		const tp = n !== 0 ? epoch - ma / n : epoch;
-		const jd = dateToJD(date);
-		const result = solveBarker(q, tp, jd);
-		if (!result) return null;
-		const xOrb = result.r * Math.cos(result.nu);
-		const yOrb = result.r * Math.sin(result.nu);
-		if (!isFinite(xOrb) || !isFinite(yOrb)) return null;
-		return orbitalToThreeJS(xOrb, yOrb, w, i, om);
-	}
+	// Truly parabolic comets (e ≈ 1, unbound) come through parabolicToPositionJD
+	// with explicit q/tp and bypass this function. Bound orbits with e rounded
+	// to 1 in float32 (e.g. the SPICE Sun: a=0.003 AU, e≈1−7e−10) go through
+	// the elliptic branch below with eClamped — stable for all M and gives a
+	// bounded r. Barker must not run on bound orbits: it assumes r → ∞ away
+	// from perihelion, producing multi-AU flickers each time the body
+	// (e.g. the Sun) crosses the near-perihelion band in mean anomaly.
 
 	let nu: number;
 	let r: number;
@@ -136,12 +128,19 @@ export function parabolicToPosition(
 	el: OrbitalElements,
 	date: Date = new Date()
 ): [number, number, number] | null {
+	return parabolicToPositionJD(el, dateToJD(date));
+}
+
+/** JD-based variant of {@link parabolicToPosition}. Avoids Date allocation in hot loops. */
+export function parabolicToPositionJD(
+	el: OrbitalElements,
+	jd: number
+): [number, number, number] | null {
 	const { q, tp, i, om, w } = el;
 	if (q == null || tp == null || !isFinite(q) || !isFinite(tp)) {
 		return null;
 	}
 
-	const jd = dateToJD(date);
 	const result = solveBarker(q, tp, jd);
 	if (!result) return null;
 

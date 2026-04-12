@@ -26,8 +26,17 @@ describe('currentStateFromElements', () => {
 		expect(s!.vKms).toBeGreaterThan(0);
 	});
 
-	it('returns null for parabolic orbits (no mean motion)', () => {
+	it('returns finite state for parabolic orbits via Barker + heliocentric GM', () => {
 		const s = currentStateFromElements(SYNTHETIC_PARABOLIC);
+		expect(s).not.toBeNull();
+		expect(isFinite(s!.rKm)).toBe(true);
+		expect(isFinite(s!.vKms)).toBe(true);
+		expect(s!.rKm).toBeGreaterThan(0);
+		expect(s!.vKms).toBeGreaterThan(0);
+	});
+
+	it('returns null for parabolic orbits missing q/tp', () => {
+		const s = currentStateFromElements({ ...SYNTHETIC_PARABOLIC, q: undefined, tp: undefined });
 		expect(s).toBeNull();
 	});
 });

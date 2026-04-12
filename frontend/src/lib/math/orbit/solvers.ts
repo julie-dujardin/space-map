@@ -6,7 +6,14 @@ export function solveKepler(M: number, e: number, tolerance = 1e-10, maxIter = 5
 	let E = M; // initial guess
 	for (let i = 0; i < maxIter; i++) {
 		const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-		E -= dE;
+		// Damp the Newton step. For near-parabolic orbits (e ≳ 0.99) with small
+		// M, f'(E) = 1 - e·cos(E) is near zero and unclamped Newton-Raphson
+		// shoots past the solution and can oscillate chaotically — stopping at
+		// different E each frame causes visible position flicker (e.g. Hale-Bopp).
+		// Clamping each step to ≤1 rad preserves quadratic convergence where
+		// it's well-behaved and forces monotone progress elsewhere.
+		const clamped = Math.max(-1, Math.min(1, dE));
+		E -= clamped;
 		if (Math.abs(dE) < tolerance) break;
 	}
 	return E;

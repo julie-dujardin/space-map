@@ -1,26 +1,44 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { dateToJD } from '$lib/format/date';
 import { AU_KM } from '$lib/math/units';
-import { solveKepler, solveKeplerHyperbolic } from './solvers';
+import { solveBarker, solveKepler, solveKeplerHyperbolic } from './solvers';
 
 const DEG2RAD = Math.PI / 180;
 const SEC_PER_DAY = 86400;
+// Gaussian gravitational constant: sqrt(GM_sun) with GM in AU^3/day^2.
+const GAUSS_K = 0.01720209895;
+const AU_PER_DAY_TO_KM_PER_SEC = AU_KM / SEC_PER_DAY;
 
 /**
  * Current orbital radius (km from parent) and speed (km/s) derived from elements
- * via vis-viva. GM is recovered from Kepler's third law (GM = n² a³) using the
- * supplied mean motion, so no parent-GM lookup is needed.
+ * via vis-viva. For elliptical/hyperbolic orbits GM is recovered from Kepler's
+ * third law (GM = n² a³) using the supplied mean motion. For parabolic orbits
+ * (e ≈ 1, no a) the heliocentric GM is assumed (GAUSS_K²).
  *
- * Returns null for parabolic orbits (no a) or when elements are non-finite.
+ * Returns null when required elements are non-finite.
  */
 export function currentStateFromElements(
 	el: OrbitalElements,
 	date: Date = new Date()
 ): { rKm: number; vKms: number } | null {
-	const { a, e, ma, n, epoch } = el;
+	const { a, e, ma, n, epoch, q, tp } = el;
 
-	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n) || n <= 0 || a === 0) {
-		console.warn(`currentStateFromElements: skipped, non-finite or parabolic elements`, el);
+	// Parabolic: no semi-major axis / mean motion; use Barker + heliocentric GM.
+	if (!isFinite(a) || a === 0 || !isFinite(n) || n <= 0) {
+		if (q == null || tp == null || !isFinite(q) || !isFinite(tp) || q <= 0) {
+			console.warn(`currentStateFromElements: skipped, non-finite elements`, el);
+			return null;
+		}
+		const result = solveBarker(q, tp, dateToJD(date));
+		if (!result) return null;
+		const rKm = result.r * AU_KM;
+		// v² = GM · 2/r (1/a = 0 for parabolic); GM = k² in AU³/day².
+		const vAuPerDay = GAUSS_K * Math.sqrt(2 / result.r);
+		return { rKm, vKms: vAuPerDay * AU_PER_DAY_TO_KM_PER_SEC };
+	}
+
+	if (!isFinite(e) || !isFinite(ma)) {
+		console.warn(`currentStateFromElements: skipped, non-finite elements`, el);
 		return null;
 	}
 

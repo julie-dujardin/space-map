@@ -135,7 +135,7 @@ function isTopLevelParent(parentId: string): boolean {
 
 export class ContextManager {
 	private readonly childrenByParent = new Map<string, Set<string>>();
-	private readonly bodiesById = new Map<string, PositionedBody>();
+	readonly bodiesById = new Map<string, PositionedBody>();
 	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
 	private readonly moonMaxAByParent = new Map<string, number>();
 

@@ -1,6 +1,7 @@
 import type { Group, Mesh, Line, Object3D, Points, Sprite } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import type { Orientation } from '$lib/math/orientation';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 
 // For focused objects:
@@ -49,6 +50,8 @@ export interface BodyObjects {
 	textureTier?: string;
 	/** Guard: a tier upgrade is currently in flight. */
 	textureLoading?: boolean;
+	/** Cached IAU orientation (pole + spin) so the mesh can be re-oriented per frame. */
+	orientation?: Orientation;
 }
 
 export interface Callbacks {
