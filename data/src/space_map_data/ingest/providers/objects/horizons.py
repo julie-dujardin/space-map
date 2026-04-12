@@ -157,7 +157,13 @@ class HorizonsIngestor:
         self.session.execute(
             delete(Object).where(Object.orbital_source == OrbitalSource.horizons)
         )
-        self.session.execute(update(Object).values(horizons_naif_id=None))
+        # Only clear horizons_naif_id on rows that Horizons set (via cross-referencing).
+        # SPICE-owned rows keep their authoritative NAIF IDs.
+        self.session.execute(
+            update(Object)
+            .where(Object.orbital_source != OrbitalSource.spice)
+            .values(horizons_naif_id=None)
+        )
         self.session.commit()
 
     def run(self) -> None:
