@@ -293,6 +293,14 @@ def _is_sourced_to(stmt: dict, qid: str) -> bool:
     return False
 
 
+def _has_any_reference(stmt: dict) -> bool:
+    """Check whether a statement has any non-empty reference block."""
+    for ref in stmt.get("references", []):
+        if ref.get("snaks"):
+            return True
+    return False
+
+
 def _has_nasa_ref_url(stmt: dict) -> bool:
     """Check whether a statement has a P854 (reference URL) on a nasa.gov domain."""
     for ref in stmt.get("references", []):
@@ -431,6 +439,9 @@ def _resolve_quantity(
     nasa = [(s, p) for s, p in pairs if _has_nasa_ref_url(s)]
     if len(nasa) == 1:
         return nasa[0][1]
+    sourced = [(s, p) for s, p in pairs if _has_any_reference(s)]
+    if len(sourced) == 1:
+        return sourced[0][1]
 
     if (qid, prop) in _PICK_FIRST:
         return pairs[0][1]
