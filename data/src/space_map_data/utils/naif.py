@@ -107,9 +107,11 @@ def classify_object(
 
 @dataclass
 class MajorBody:
-    name: str
+    name: str | None
     naif_id: int
     parent_naif_id: int
     object_type: ObjectType
     designation: str | None = None
     extra: str | None = None
+    iau_roman_designation: str | None = None
+    horizons_naif_id_extended: int | None = None

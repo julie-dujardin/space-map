@@ -4,6 +4,7 @@ import csv
 import logging
 import math
 import re
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -120,12 +121,78 @@ _LAGRANGE_POINTS = [
 ]
 
 
-def _get_body_name(naif_id: int) -> str:
-    """Get body name from SPICE, with fallback."""
-    try:
-        return spiceypy.bodc2n(naif_id)
-    except spiceypy.exceptions.SpiceyError:
-        return f"Body {naif_id}"
+@dataclass
+class _HorizonsAlias:
+    name: str | None = None
+    designation: str | None = None
+    iau_roman_designation: str | None = None
+    horizons_naif_id_extended: int | None = None
+
+
+_ROMAN_RE = re.compile(r"^[JSUNM][IVXLCDM]+$")
+_EXT_NAIF_RE = re.compile(r"^[0-9]{4,5}$")
+
+
+def _load_horizons_names(download_dir: Path) -> dict[int, _HorizonsAlias]:
+    """Parse Horizons major_bodies.txt into {naif_id: HorizonsAlias}.
+
+    Horizons publishes names for recently-named moons (e.g. 557 Eirene) that
+    the bundled SPICE name table doesn't know about, so we use it as the
+    primary name source and fall back to SPICE's `bodc2n` only when absent.
+    The IAU/aliases column also carries the Roman-numeral IAU designation and
+    the 5-digit extended NAIF ID that SPICE uses for irregular-moon kernels.
+    """
+    path = download_dir / PROVIDERS.HORIZONS / "major_bodies.txt"
+    result: dict[int, _HorizonsAlias] = {}
+    if not path.exists():
+        logger.warning("Horizons major_bodies.txt not found at %s", path)
+        return result
+
+    # Fixed-width columns from the separator line:
+    #   cols  2–8  = ID, 11–44 = Name, 46–56 = Designation, 59+ = IAU/aliases
+    with path.open() as f:
+        in_data = False
+        for line in f:
+            if line.startswith("  -------"):
+                in_data = True
+                continue
+            if not in_data or len(line) < 11:
+                continue
+            id_str = line[0:9].strip()
+            if not id_str.lstrip("-").isdigit():
+                continue
+            naif_id = int(id_str)
+            alias = _HorizonsAlias(
+                name=line[11:45].strip() or None,
+                designation=(line[46:57].strip() if len(line) > 46 else "") or None,
+            )
+            for token in line[59:].split() if len(line) > 59 else ():
+                if alias.iau_roman_designation is None and _ROMAN_RE.match(token):
+                    alias.iau_roman_designation = token
+                elif alias.horizons_naif_id_extended is None and _EXT_NAIF_RE.match(
+                    token
+                ):
+                    alias.horizons_naif_id_extended = int(token)
+            result[naif_id] = alias
+    logger.info("Loaded %d names from Horizons major_bodies.txt", len(result))
+    return result
+
+
+def _resolve_name(
+    naif_id: int, horizons_map: dict[int, _HorizonsAlias]
+) -> _HorizonsAlias:
+    """Resolve name + cross-reference aliases for a body.
+
+    Prefers Horizons (properly cased, broader name coverage); falls back to
+    SPICE's built-in name table; returns name=None when neither has one.
+    """
+    alias = horizons_map.get(naif_id) or _HorizonsAlias()
+    if alias.name is None:
+        try:
+            alias.name = spiceypy.bodc2n(naif_id)
+        except spiceypy.exceptions.SpiceyError:
+            pass
+    return alias
 
 
 def _compute_lagrange_point(
@@ -378,25 +445,43 @@ class SpiceDownloader(Downloader):
         all_ids = spk_ids | set(_EXTRA_NAIF_IDS)
 
         # Step 4: Classify and extract elements
+        horizons_names = _load_horizons_names(self.out_dir.parent)
         bodies: list[MajorBody] = []
         for naif_id in sorted(all_ids):
-            name = _get_body_name(naif_id)
+            alias = _resolve_name(naif_id, horizons_names)
             try:
-                obj_type, parent_id = classify_object(naif_id, name, name, None)
+                obj_type, parent_id = classify_object(
+                    naif_id, alias.name or "", alias.name or "", None
+                )
             except ValueError:
-                logger.warning("Skipping unclassifiable body %d (%s)", naif_id, name)
+                logger.warning(
+                    "Skipping unclassifiable body %d (%s)", naif_id, alias.name
+                )
                 continue
 
             if obj_type not in _ELEMENT_TYPES:
                 continue
 
-            bodies.append(MajorBody(name, naif_id, parent_id, obj_type))
+            bodies.append(
+                MajorBody(
+                    name=alias.name,
+                    naif_id=naif_id,
+                    parent_naif_id=parent_id,
+                    object_type=obj_type,
+                    designation=alias.designation,
+                    iau_roman_designation=alias.iau_roman_designation,
+                    horizons_naif_id_extended=alias.horizons_naif_id_extended,
+                )
+            )
 
         logger.info("Classified %d bodies for element extraction", len(bodies))
 
         # Step 5: Extract orbital elements
         fieldnames = [
             "name",
+            "provisional_designation",
+            "iau_roman_designation",
+            "horizons_naif_id_extended",
             "naif_id",
             "type",
             "parent_naif_id",
@@ -422,6 +507,9 @@ class SpiceDownloader(Downloader):
                 rows.append(
                     {
                         "name": body.name,
+                        "provisional_designation": body.designation,
+                        "iau_roman_designation": body.iau_roman_designation,
+                        "horizons_naif_id_extended": body.horizons_naif_id_extended,
                         "naif_id": body.naif_id,
                         "type": body.object_type,
                         "parent_naif_id": body.parent_naif_id,
@@ -479,6 +567,9 @@ class SpiceDownloader(Downloader):
             rows.append(
                 {
                     "name": body.name,
+                    "provisional_designation": body.designation,
+                    "iau_roman_designation": body.iau_roman_designation,
+                    "horizons_naif_id_extended": body.horizons_naif_id_extended,
                     "naif_id": body.naif_id,
                     "type": body.object_type,
                     "parent_naif_id": body.parent_naif_id,

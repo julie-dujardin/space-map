@@ -39,7 +39,7 @@ class SpiceIngestor:
         self.csv_path = download_dir / PROVIDERS.SPICE / "bodies.csv"
         self.total_rows = 0
 
-    def _parse_row(self, row: dict) -> dict | None:
+    def _parse_row(self, row: dict[str, str]) -> dict | None:
         obj_type = string_or_none(row["type"])
         if obj_type not in AUTHORITATIVE_ON:
             return None
@@ -53,7 +53,14 @@ class SpiceIngestor:
         sbdb_spkid = spk_id_from_naif(naif_id, obj_type)
         return {
             "id": object_pk,
-            "name": _clean_name(row["name"]),
+            "name": string_or_none(row["name"]),
+            "provisional_designation": string_or_none(
+                row.get("provisional_designation")
+            ),
+            "iau_roman_designation": string_or_none(row.get("iau_roman_designation")),
+            "horizons_naif_id_extended": int_or_none(
+                row.get("horizons_naif_id_extended")
+            ),
             "object_type": obj_type,
             "horizons_naif_id": naif_id,
             "sbdb_spkid": sbdb_spkid,
@@ -135,14 +142,6 @@ class SpiceIngestor:
 
         self._insert(batch)
         logger.info("Ingested %d SPICE bodies", self.total_rows)
-
-
-def _clean_name(raw: str) -> str | None:
-    name = string_or_none(raw)
-    if name is None:
-        return None
-    name = name.removeprefix("Body ")
-    return name.capitalize()
 
 
 def _count_csv_rows(path: Path) -> int:
