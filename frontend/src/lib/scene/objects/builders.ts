@@ -216,6 +216,7 @@ export function makeOrbitLine(
 
 	const line = new Line(geometry, material);
 	line.frustumCulled = false; // shader repositions geometry via uCenterOffset
+	line.visible = false; // updateBodyVisibility sets the correct state next frame; avoids a 1-frame flash when added mid-load
 	// Store Float64 orbit-local positions for rebuilding when focus changes,
 	// and the static curve + flags for per-frame trail refresh while time plays.
 	line.userData.orbitCenter = new Vector3(cx, cy, cz);
