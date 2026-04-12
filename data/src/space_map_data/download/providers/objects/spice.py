@@ -112,14 +112,6 @@ _ELEMENT_TYPES = frozenset(
     }
 )
 
-# Known Lagrange points: (NAIF ID, name, primary body NAIF ID, secondary body NAIF ID, L-number)
-_LAGRANGE_POINTS = [
-    (391, "Sun-Earth L1", 10, 3, 1),
-    (392, "Sun-Earth L2", 10, 3, 2),
-    (394, "Sun-Jupiter L4", 10, 5, 4),
-    (395, "Sun-Jupiter L5", 10, 5, 5),
-]
-
 
 @dataclass
 class _HorizonsAlias:
@@ -193,89 +185,6 @@ def _resolve_name(
         except spiceypy.exceptions.SpiceyError:
             pass
     return alias
-
-
-def _compute_lagrange_point(
-    et: float, primary_naif: int, secondary_naif: int, l_number: int
-) -> tuple[float, float, float, float, float, float]:
-    """Compute Lagrange point position as a state vector relative to SSB.
-
-    Returns (x, y, z, vx, vy, vz) in km and km/s.
-    """
-    state_primary, _ = spiceypy.spkezr(str(primary_naif), et, "ECLIPJ2000", "NONE", "0")
-    state_secondary, _ = spiceypy.spkezr(
-        str(secondary_naif), et, "ECLIPJ2000", "NONE", "0"
-    )
-
-    # Get GM values
-    gm_primary = spiceypy.bodvrd(str(primary_naif), "GM", 1)[1][0]
-    gm_secondary = spiceypy.bodvrd(str(secondary_naif), "GM", 1)[1][0]
-    mu = gm_secondary / (gm_primary + gm_secondary)  # mass ratio
-
-    # Vector from primary to secondary
-    dx = [state_secondary[i] - state_primary[i] for i in range(3)]
-    dv = [state_secondary[i + 3] - state_primary[i + 3] for i in range(3)]
-    dist = math.sqrt(sum(d * d for d in dx))
-    unit = [d / dist for d in dx]
-
-    if l_number == 1:
-        # L1: between primary and secondary, at distance r*(1-(mu/3)^(1/3)) from primary
-        r_l1 = dist * (1 - (mu / 3) ** (1 / 3))
-        pos = [state_primary[i] + r_l1 * unit[i] for i in range(3)]
-    elif l_number == 2:
-        # L2: beyond secondary, at distance r*(1+(mu/3)^(1/3)) from primary
-        r_l2 = dist * (1 + (mu / 3) ** (1 / 3))
-        pos = [state_primary[i] + r_l2 * unit[i] for i in range(3)]
-    elif l_number == 4:
-        # L4: 60 degrees ahead of secondary in its orbit (leading)
-        # Rotate the primary->secondary vector by +60 degrees in the orbital plane
-        pos = _rotate_in_orbital_plane(
-            state_primary, state_secondary, dx, dist, math.radians(60)
-        )
-    elif l_number == 5:
-        # L5: 60 degrees behind secondary in its orbit (trailing)
-        pos = _rotate_in_orbital_plane(
-            state_primary, state_secondary, dx, dist, math.radians(-60)
-        )
-    else:
-        raise ValueError(f"Unsupported Lagrange point L{l_number}")
-
-    # Approximate velocity: same angular velocity as secondary around primary
-    return (pos[0], pos[1], pos[2], dv[0], dv[1], dv[2])
-
-
-def _rotate_in_orbital_plane(
-    state_primary: list[float],
-    state_secondary: list[float],
-    dx: list[float],
-    dist: float,
-    angle: float,
-) -> list[float]:
-    """Rotate the primary->secondary vector by angle in the orbital plane."""
-    # Orbital plane normal: r x v
-    dv = [state_secondary[i + 3] - state_primary[i + 3] for i in range(3)]
-    normal = [
-        dx[1] * dv[2] - dx[2] * dv[1],
-        dx[2] * dv[0] - dx[0] * dv[2],
-        dx[0] * dv[1] - dx[1] * dv[0],
-    ]
-    norm_mag = math.sqrt(sum(n * n for n in normal))
-    normal = [n / norm_mag for n in normal]
-
-    # Rodrigues' rotation formula
-    cos_a = math.cos(angle)
-    sin_a = math.sin(angle)
-    dot = sum(dx[i] * normal[i] for i in range(3))
-    cross = [
-        normal[1] * dx[2] - normal[2] * dx[1],
-        normal[2] * dx[0] - normal[0] * dx[2],
-        normal[0] * dx[1] - normal[1] * dx[0],
-    ]
-    rotated = [
-        dx[i] * cos_a + cross[i] * sin_a + normal[i] * dot * (1 - cos_a)
-        for i in range(3)
-    ]
-    return [state_primary[i] + rotated[i] for i in range(3)]
 
 
 def _dominant_partner_mu(gm_self: float, candidate_naifs: list[int]) -> float | None:
@@ -708,32 +617,6 @@ class SpiceDownloader(Downloader):
                     "naif_id": body.naif_id,
                     "type": body.object_type,
                     "parent_naif_id": body.parent_naif_id,
-                    "JDTDB": f"{epoch_jd:.1f}",
-                    **elts,
-                }
-            )
-
-        # Step 6: Lagrange points
-        for lp_naif, lp_name, primary, secondary, l_num in _LAGRANGE_POINTS:
-            try:
-                state = _compute_lagrange_point(et, primary, secondary, l_num)
-            except Exception:
-                logger.warning("Failed to compute %s", lp_name)
-                continue
-
-            # Get GM of SSB (sum of all) — use Sun's GM as approximation for SSB orbits
-            gm_sun = spiceypy.bodvrd("10", "GM", 1)[1][0]
-            elts = _state_to_elements(list(state), et, gm_sun)
-            if elts is None:
-                logger.warning("Degenerate Lagrange point orbit for %s", lp_name)
-                continue
-
-            rows.append(
-                {
-                    "name": lp_name,
-                    "naif_id": lp_naif,
-                    "type": ObjectType.lagrange_point,
-                    "parent_naif_id": 0,
                     "JDTDB": f"{epoch_jd:.1f}",
                     **elts,
                 }
