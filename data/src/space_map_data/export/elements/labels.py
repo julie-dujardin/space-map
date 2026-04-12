@@ -39,6 +39,7 @@ def write_labels(
             or obj.name
             or obj.sbdb_mcp_designation
             or obj.provisional_designation
+            or obj.horizons_naif_id
         )
         if not name:
             raise ValueError(f"No name found for object {obj} (id={obj.id})")
