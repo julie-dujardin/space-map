@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { PositionedBody } from '$lib/types/objects';
+	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
@@ -21,6 +23,9 @@
 	}
 
 	let { body, onClose, onSheetResize }: Props = $props();
+
+	const ctx = getContext<ContextManager>('ctx');
+	let parentBody = $derived(ctx?.getBody(body.data.parentId));
 
 	let data = $state<ObjectDetailData | null>(null);
 	let loading = $state(true);
@@ -234,7 +239,8 @@
 			<Orbital
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
-				orbitElements={body.orbitElements}
+				orbitElements={body.orbitElements ?? body.data}
+				{parentBody}
 			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />

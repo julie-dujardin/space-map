@@ -3,11 +3,13 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import type { OrbitalElements } from '$lib/types/objects';
-	import { formatNumber } from '$lib/format/quantities';
+	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
+	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatJulianDate } from '$lib/format/date';
+	import { currentStateFromElements } from '$lib/math/orbit/state';
+	import { AU_KM } from '$lib/math/units';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -16,11 +18,23 @@
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
 		orbitElements?: OrbitalElements;
+		parentBody?: PositionedBody;
 	}
 
-	let { global, localized, orbitElements }: Props = $props();
+	let { global, localized, orbitElements, parentBody }: Props = $props();
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
+	let currentState = $derived(orbitElements ? currentStateFromElements(orbitElements) : null);
+	let showAltitude = $derived(
+		currentState != null &&
+			parentBody != null &&
+			parentBody.data.radiusKm > 0 &&
+			parentBody.data.objectType !== ObjectType.STAR &&
+			parentBody.data.objectType !== ObjectType.BARYCENTER
+	);
+	let altitudeKm = $derived(
+		showAltitude && currentState && parentBody ? currentState.rKm - parentBody.data.radiusKm : null
+	);
 	let sbdb = $derived(global?.sbdb);
 	let orbitClass = $derived(sbdb?.class);
 	let cometPrefix = $derived(sbdb?.prefix);
@@ -102,6 +116,20 @@
 				label={m.semi_major_axis()}
 				value={formatDistance(orbit.a)}
 				tooltip={m.tooltip_semi_major_axis()}
+			/>
+		{/if}
+		{#if currentState}
+			<Row
+				label={m.orbital_speed()}
+				value={formatQuantity({ value: currentState.vKms, unit: 'kilometre_per_second' }, true)}
+				tooltip={m.tooltip_orbital_speed()}
+			/>
+		{/if}
+		{#if altitudeKm != null && altitudeKm > 0}
+			<Row
+				label={m.altitude()}
+				value={formatDistance(altitudeKm / AU_KM)}
+				tooltip={m.tooltip_altitude()}
 			/>
 		{/if}
 		{#if orbit?.q}
