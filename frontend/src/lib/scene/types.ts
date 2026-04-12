@@ -43,6 +43,12 @@ export interface BodyObjects {
 	cachedDist: number;
 	/** Cached per-frame occlusion result (stars). */
 	isOccluded?: boolean;
+	/** Texture resolution tiers available for this body (e.g. ['low', 'medium', 'high']). */
+	availableTiers?: string[];
+	/** Currently loaded texture tier name. */
+	textureTier?: string;
+	/** Guard: a tier upgrade is currently in flight. */
+	textureLoading?: boolean;
 }
 
 export interface Callbacks {

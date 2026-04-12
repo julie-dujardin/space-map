@@ -27,6 +27,7 @@ import {
 	buildPointClouds,
 	rebuildMinorPointClouds,
 	loadBodyTexture,
+	loadBodyTextureTier,
 	loadSystemData,
 	makeCircleTexture
 } from './objects/construction';
@@ -62,7 +63,6 @@ export class SceneRenderer {
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture = makeCircleTexture();
 	private asteroidPoints = new Map<string, Points>();
-	private textureLoaded = new Set<string>();
 	private lastSystemTextureBarycenter: string | null = null;
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
@@ -429,6 +429,8 @@ export class SceneRenderer {
 			this._tmpV3
 		);
 
+		this.updateTextureLOD();
+
 		// Shadow light: swap between PointLight (solar system) and DirectionalLight (sub-system)
 		const sysId = this.ctx.activeSystemId;
 		if (sysId) {
@@ -558,13 +560,9 @@ export class SceneRenderer {
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
 		const currentJd = dateToJD(new Date());
-		loadSystemData(
-			baryId,
-			this.bodyObjects,
-			this.textureLoader,
-			this.textureLoaded,
-			currentJd
-		).then(() => this.reapplyInitialViewIfPending());
+		loadSystemData(baryId, this.bodyObjects, this.textureLoader, currentJd).then(() =>
+			this.reapplyInitialViewIfPending()
+		);
 	}
 
 	/**
@@ -596,17 +594,52 @@ export class SceneRenderer {
 	}
 
 	private maybeLoadTexture(body: PositionedBody): void {
-		const id = body.data.id;
-		if (this.textureLoaded.has(id)) return;
-		this.textureLoaded.add(id);
-		const bo = this.bodyObjects.get(id);
-		if (bo?.mesh)
-			loadBodyTexture(
-				id,
-				bo.mesh.material as import('three').MeshStandardMaterial,
-				this.textureLoader,
-				body.data.objectFileFlag
-			);
+		const bo = this.bodyObjects.get(body.data.id);
+		if (!bo) return;
+		loadBodyTexture(bo, this.textureLoader, body.data.objectFileFlag);
+	}
+
+	/**
+	 * Per-frame texture LOD: upgrade each visible body's texture tier based on
+	 * its screen-space radius. One-way upgrade — the prior texture is disposed
+	 * when a higher tier loads, so at most one tier per body lives on the GPU.
+	 */
+	private updateTextureLOD(): void {
+		if (!this.ctx.activeSystemId) return;
+		const fovRad = (this.camera.fov * Math.PI) / 180;
+		const screenH = this.renderer.domElement.clientHeight;
+		const projScale = screenH / (2 * Math.tan(fovRad / 2));
+
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
+			if (!bo.availableTiers?.length || bo.textureLoading) continue;
+			if (bo.cachedDist <= 0) continue;
+			if (!this.ctx.isInActiveSystem(bo.body.data.parentId)) continue;
+
+			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
+			let desired: 'low' | 'medium' | 'high';
+			if (screenR < 256) desired = 'low';
+			else if (screenR < 1024) desired = 'medium';
+			else desired = 'high';
+
+			const TIER_RANK = { low: 0, medium: 1, high: 2 } as const;
+			const currentRank = bo.textureTier
+				? (TIER_RANK[bo.textureTier as keyof typeof TIER_RANK] ?? -1)
+				: -1;
+			if (TIER_RANK[desired] <= currentRank) continue;
+
+			// Clamp desired down to the highest available tier we haven't loaded.
+			let target: string | undefined;
+			for (let r = TIER_RANK[desired]; r > currentRank; r--) {
+				const name = (['low', 'medium', 'high'] as const)[r];
+				if (bo.availableTiers.includes(name)) {
+					target = name;
+					break;
+				}
+			}
+			if (!target) continue;
+			loadBodyTextureTier(bo, target, this.textureLoader);
+		}
 	}
 
 	private handleFocus(body: PositionedBody): void {

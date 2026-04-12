@@ -339,21 +339,64 @@ export function rebuildMinorPointClouds(
 	return pendingAdd;
 }
 
+/**
+ * Load a texture tier and swap it onto the body's material, disposing the
+ * prior map. Sets `textureLoading` while in flight and `textureTier` on success.
+ */
+async function swapBodyTexture(
+	bo: BodyObjects,
+	tier: string,
+	textureLoader: TextureLoader
+): Promise<void> {
+	if (!bo.mesh) return;
+	const fileId = bo.body.data.id;
+	bo.textureLoading = true;
+	try {
+		const texture = await new Promise<Texture>((resolve, reject) => {
+			textureLoader.load(`/data/v1/textures/${fileId}/${tier}.webp`, resolve, undefined, reject);
+		});
+		const material = bo.mesh.material as MeshStandardMaterial;
+		material.map?.dispose();
+		material.map = texture;
+		material.color.set(0xffffff);
+		material.needsUpdate = true;
+		bo.textureTier = tier;
+	} catch (err) {
+		console.warn(`Failed to load ${tier} texture for ${fileId}:`, err);
+	} finally {
+		bo.textureLoading = false;
+	}
+}
+
+/**
+ * Initial low-tier texture load, used when focusing a body that may not be
+ * part of a pre-declared system (the system-metadata path handles the rest).
+ */
 export async function loadBodyTexture(
-	fileId: string,
-	material: MeshStandardMaterial,
+	bo: BodyObjects,
 	textureLoader: TextureLoader,
 	objectFileFlag = 1
 ): Promise<void> {
 	if (objectFileFlag === 0) return;
-	const detail = await fetchObjectDetail(fileId, objectFileFlag);
+	if (bo.textureTier || bo.textureLoading) return;
+	const detail = await fetchObjectDetail(bo.body.data.id, objectFileFlag);
 	if (!detail.global?.map_texture_available) return;
-	const texture = await new Promise<Texture>((resolve, reject) => {
-		textureLoader.load(`/data/v1/textures/${fileId}/low.webp`, resolve, undefined, reject);
-	});
-	material.map = texture;
-	material.color.set(0xffffff);
-	material.needsUpdate = true;
+	if (bo.textureTier || bo.textureLoading) return;
+	await swapBodyTexture(bo, 'low', textureLoader);
+}
+
+/**
+ * Load a specific texture tier for a body and swap it onto its material.
+ * No-op if the tier is already loaded, unavailable, or another load is in flight.
+ */
+export async function loadBodyTextureTier(
+	bo: BodyObjects,
+	tier: string,
+	textureLoader: TextureLoader
+): Promise<void> {
+	if (bo.textureTier === tier || bo.textureLoading) return;
+	if (!bo.availableTiers?.includes(tier)) return;
+	await swapBodyTexture(bo, tier, textureLoader);
 }
 
 interface SystemBodyMeta {
@@ -376,7 +419,6 @@ export async function loadSystemData(
 	barycenterId: string,
 	bodyObjects: Map<string, BodyObjects>,
 	textureLoader: TextureLoader,
-	textureLoaded: Set<string>,
 	currentJd: number
 ): Promise<void> {
 	let meta: Record<string, SystemBodyMeta>;
@@ -407,19 +449,11 @@ export async function loadSystemData(
 			bo.mesh.scale.set(a * s, c * s, b * s);
 		}
 
-		// Load textures
-		if (bodyMeta.tiers?.length && !textureLoaded.has(bodyId)) {
-			textureLoaded.add(bodyId);
-			const material = bo.mesh.material as MeshStandardMaterial;
-			promises.push(
-				new Promise<Texture>((resolve, reject) => {
-					textureLoader.load(`/data/v1/textures/${bodyId}/low.webp`, resolve, undefined, reject);
-				}).then((texture) => {
-					material.map = texture;
-					material.color.set(0xffffff);
-					material.needsUpdate = true;
-				})
-			);
+		// Record available tiers and load the base `low` tier. Higher tiers are
+		// loaded on-demand by the per-frame LOD update based on screen size.
+		if (bodyMeta.tiers?.length) {
+			bo.availableTiers = bodyMeta.tiers;
+			promises.push(loadBodyTextureTier(bo, 'low', textureLoader));
 		}
 	}
 	await Promise.allSettled(promises);
