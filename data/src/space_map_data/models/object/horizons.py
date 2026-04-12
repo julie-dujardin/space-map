@@ -23,9 +23,6 @@ class Horizons(Base):
     )  # NAIF integer ID
     object_id: Mapped[str | None] = mapped_column(ForeignKey("objects.id"))
 
-    computed_spk_id: Mapped[str | None] = mapped_column(
-        default=None
-    )  # See HorizonsIngestor.get_spk_id()
     cospar_id: Mapped[str | None] = mapped_column(
         default=None
     )  # See HorizonsIngestor.get_cospar_id()

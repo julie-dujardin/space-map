@@ -74,6 +74,7 @@ class OrbitalSource(StrEnum):
     horizons = PROVIDERS.HORIZONS
     sbdb = PROVIDERS.SBDB
     celestrak = PROVIDERS.CELESTRAK
+    spice = PROVIDERS.SPICE
 
 
 class Object(Base):

@@ -5,6 +5,27 @@ from dataclasses import dataclass
 from space_map_data.models.object import ObjectType, DWARF_PLANETS
 
 
+def spk_id_from_naif(
+    naif_id: int, obj_type: ObjectType | str | None = None
+) -> int | None:
+    """Inverse of the SBDB `_compute_naif_id` mapping.
+
+    Returns the SBDB SPK ID corresponding to a Horizons/SPICE NAIF ID, or None
+    if there is no SBDB counterpart.
+    """
+    if naif_id == 999:
+        return 20134340  # Pluto
+    if 2_000_000 <= naif_id <= 2_999_999:
+        return naif_id + 18_000_000  # numbered asteroids
+    if 20_000_000 <= naif_id <= 29_999_999:
+        return naif_id  # already in SBDB range
+    if 900_000_000 <= naif_id <= 999_999_999:
+        return naif_id - 900_000_000  # binary asteroid primaries
+    if obj_type == ObjectType.comet:
+        return naif_id  # comets share the same numbering
+    return None
+
+
 def classify_object(
     naif_id: int, name: str, name_pretty: str, extra: str | None
 ) -> tuple[ObjectType, int]:
