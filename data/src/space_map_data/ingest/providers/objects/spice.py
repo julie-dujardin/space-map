@@ -53,7 +53,7 @@ class SpiceIngestor:
         sbdb_spkid = spk_id_from_naif(naif_id, obj_type)
         return {
             "id": object_pk,
-            "name": string_or_none(row["name"]),
+            "name": _clean_name(row["name"]),
             "object_type": obj_type,
             "horizons_naif_id": naif_id,
             "sbdb_spkid": sbdb_spkid,
@@ -135,6 +135,14 @@ class SpiceIngestor:
 
         self._insert(batch)
         logger.info("Ingested %d SPICE bodies", self.total_rows)
+
+
+def _clean_name(raw: str) -> str | None:
+    name = string_or_none(raw)
+    if name is None:
+        return None
+    name = name.removeprefix("Body ")
+    return name.capitalize()
 
 
 def _count_csv_rows(path: Path) -> int:
