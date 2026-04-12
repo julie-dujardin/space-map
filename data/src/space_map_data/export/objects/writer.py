@@ -82,6 +82,7 @@ def write_objects(
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
+    radii: dict[int, dict],
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -116,7 +117,13 @@ def write_objects(
 
         # Global (non-localized, always written)
         global_data = _build_global(
-            obj, extracted, wikidata_entities, units, nasa_science_urls, orientation
+            obj,
+            extracted,
+            wikidata_entities,
+            units,
+            nasa_science_urls,
+            orientation,
+            radii,
         )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
@@ -165,6 +172,7 @@ def _build_global(
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
+    radii: dict[int, dict],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -211,6 +219,10 @@ def _build_global(
     if obj.horizons_naif_id is not None and obj.horizons_naif_id in orientation:
         data["orientation"] = orientation[obj.horizons_naif_id]
 
+    # Triaxial radii (km, along body-fixed X, Y, Z) from SPICE PCK
+    if obj.horizons_naif_id is not None and obj.horizons_naif_id in radii:
+        data["radii"] = radii[obj.horizons_naif_id]
+
     # SBDB extras
     if sbdb is not None:
         sbdb_data = build_sbdb(sbdb, units)
@@ -222,6 +234,9 @@ def _build_global(
         wikidata_section: dict = {}
         # Keys from GLOBAL_CLAIMS + "temperature" (routed from P2076, not a GlobalClaim)
         wikidata_keys = [c.key for c in GLOBAL_CLAIMS] + ["temperature"]
+        # SPICE PCK radii supersede the Wikidata radius — skip it when present.
+        if "radii" in data:
+            wikidata_keys = [k for k in wikidata_keys if k != "radius"]
         for key in wikidata_keys:
             if key in extracted:
                 val = extracted[key]

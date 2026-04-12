@@ -20,7 +20,11 @@ from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
-from space_map_data.export.systems import load_orientation, write_system_metadata
+from space_map_data.export.systems import (
+    load_orientation,
+    load_radii,
+    write_system_metadata,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
@@ -93,6 +97,7 @@ def _write_parts(
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
+    radii: dict[int, dict],
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -113,6 +118,7 @@ def _write_parts(
             units,
             nasa_science_urls,
             orientation=orientation,
+            radii=radii,
         )
         total_bytes += write_chunk(
             chunk,
@@ -148,6 +154,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         logger.warning("NASA Science URL file not found: %s", nasa_science_url_file)
 
     orientation = load_orientation(DOWNLOAD_DIR)
+    radii = load_radii(DOWNLOAD_DIR)
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -228,6 +235,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     units,
                     nasa_science_urls,
                     orientation,
+                    radii,
                 )
                 futures[f] = (zone, zoom, len(objects))
 
@@ -270,11 +278,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     units,
                     nasa_science_urls,
                     orientation,
+                    radii,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
 
-        write_system_metadata(session, out_dir, orientation)
+        write_system_metadata(session, out_dir, orientation, radii)
 
     for f in as_completed(futures):
         zone, zoom, count = futures[f]

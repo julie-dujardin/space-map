@@ -53,8 +53,33 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
     return result
 
 
+def load_radii(download_dir: Path) -> dict[int, dict]:
+    """Load triaxial radii from SPICE radii.csv.
+
+    Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z.
+    """
+    csv_path = download_dir / PROVIDERS.SPICE / "radii.csv"
+    if not csv_path.exists():
+        logger.warning("No radii CSV at %s", csv_path)
+        return {}
+    result: dict[int, dict] = {}
+    with csv_path.open(newline="") as f:
+        for row in csv.DictReader(f):
+            naif_id = int(row["naif_id"])
+            result[naif_id] = {
+                "a": float(row["radius_a_km"]),
+                "b": float(row["radius_b_km"]),
+                "c": float(row["radius_c_km"]),
+            }
+    logger.info("Loaded %d radii records", len(result))
+    return result
+
+
 def write_system_metadata(
-    session: Session, out_dir: Path, orientation: dict[int, dict]
+    session: Session,
+    out_dir: Path,
+    orientation: dict[int, dict],
+    radii: dict[int, dict],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -135,6 +160,10 @@ def write_system_metadata(
             # Orientation data
             if obj.horizons_naif_id is not None and obj.horizons_naif_id in orientation:
                 entry["orientation"] = orientation[obj.horizons_naif_id]
+
+            # Triaxial radii (km, along body-fixed X, Y, Z)
+            if obj.horizons_naif_id is not None and obj.horizons_naif_id in radii:
+                entry["radii"] = radii[obj.horizons_naif_id]
 
             if entry:
                 bodies[obj.id] = entry

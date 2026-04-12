@@ -178,6 +178,12 @@ interface GlobalObjectData {
     celestrak_cospar_id?: string;
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
+  orientation?: {                     // SPICE PCK pole/spin (deg, deg/day)
+    pole_ra: number; pole_dec: number; w0: number; w_rate: number;
+  };
+  radii?: {                           // SPICE PCK triaxial radii (km, body-fixed X/Y/Z)
+    a: number; b: number; c: number;
+  };
   orbit?: {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;
@@ -308,18 +314,22 @@ The size is a target, not a hard limit. Some textures go over it.
 }
 ```
 
-### System texture metadata (`textures/systems/{barycenter_id}.json`)
+### System metadata (`systems/{barycenter_id}.json`)
 
-Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Lists all textured bodies in the system with their available tiers.
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, SPICE PCK orientation (pole/spin), and triaxial radii when known.
 
 ```json
 {
-  "naif-399": { "tiers": ["high", "low", "medium"] },
+  "naif-399": {
+    "tiers": ["high", "low", "medium"],
+    "orientation": { "pole_ra": 0.0, "pole_dec": 90.0, "w0": 190.147, "w_rate": 360.9856235 },
+    "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
+  },
   "naif-301": { "tiers": ["low"] }
 }
 ```
 
-The frontend fetches this when entering a system and preloads low-res textures for all listed bodies, instead of waiting for each body to be individually focused.
+The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies axial tilt + spin to meshes, and (where `radii` differ) flattens bodies into oblate ellipsoids.
 
 ## Consuming the data
 
