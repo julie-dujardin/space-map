@@ -9,10 +9,12 @@ v1/
   metadata.json                                  (not gzipped)
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
-  elements/{zone}/{zoom}/{part}.loc.{lang}.gz     localized labels
+  elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
   objects/__global__/{id}.json.gz                global object details
   objects/{lang}/{id}.json.gz                    localized object details
-  textures/{id}/low.webp
+  textures/{id}/{tier}.webp                      tier = low | medium | high
+  textures/{id}/metadata.json                    texture source + exports
+  systems/{barycenter_id}.json                   per-system body metadata
 ```
 
 ## metadata.json
@@ -169,6 +171,7 @@ interface GlobalObjectData {
   name?: string;
   map_texture_available?: boolean;    // only present if true
   provisional_designation?: string;
+  sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   cross_refs?: {
     wikidata_qid?: string;
     horizons_naif_id?: number;
@@ -314,7 +317,7 @@ The size is a target, not a hard limit. Some textures go over it.
 }
 ```
 
-### System metadata (`systems/{barycenter_id}.json`)
+## System metadata (`systems/{barycenter_id}.json`)
 
 Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, SPICE PCK orientation (pole/spin), and triaxial radii when known.
 
