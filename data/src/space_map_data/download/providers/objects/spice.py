@@ -278,6 +278,29 @@ def _rotate_in_orbital_plane(
     return [state_primary[i] + rotated[i] for i in range(3)]
 
 
+def _dominant_partner_mu(gm_self: float, candidate_naifs: list[int]) -> float | None:
+    """Effective mu for the heavier member of a two-body pair around their barycenter.
+
+    When a massive body (planet, Sun) orbits its own system barycenter, its
+    motion is driven not by GM of the barycenter but by the gravity of the
+    next-heaviest member. The two-body reduction yields
+      mu_eff = GM_partner^3 / (GM_self + GM_partner)^2
+    which produces the correct Kepler ellipse matching the partner's period.
+    Returns None if no candidate has a known GM.
+    """
+    best_gm = 0.0
+    for naif in candidate_naifs:
+        try:
+            gm = spiceypy.bodvrd(str(naif), "GM", 1)[1][0]
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        if gm > best_gm:
+            best_gm = gm
+    if best_gm <= 0:
+        return None
+    return best_gm**3 / (gm_self + best_gm) ** 2
+
+
 def _state_to_elements(
     state: list[float], et: float, gm: float
 ) -> dict[str, float] | None:
@@ -549,11 +572,78 @@ class SpiceDownloader(Downloader):
                 )
                 continue
 
-            # Get GM of the parent body.
+            # Get the gravitational parameter governing this orbit.
             # SSB (0) has no GM in SPICE — use the Sun's GM instead,
             # since the Sun dominates the system mass.
-            if body.parent_naif_id == 0:
-                gm = gm_sun
+            if body.naif_id == 10:
+                # Sun orbiting the SSB: heaviest member of a many-body dance
+                # dominated by Jupiter. Using GM_sun (the Sun's self-gravity)
+                # would give ecc≈1 for the same reason as planet-around-
+                # barycenter. Use Jupiter-barycenter as the effective partner.
+                gm = _dominant_partner_mu(
+                    spiceypy.bodvrd("10", "GM", 1)[1][0],
+                    list(range(1, 10)),  # planetary barycenters
+                )
+                if gm is None:
+                    gm = gm_sun
+            elif body.parent_naif_id == 0:
+                if body.object_type == ObjectType.barycenter and 1 <= body.naif_id <= 9:
+                    # Planetary-system barycenter around SSB: lighter partner
+                    # of the Sun in a two-body reduction, giving
+                    #   mu_eff = GM_sun^3 / (GM_sun + GM_system)^2
+                    # (barely differs from GM_sun but is the correct value).
+                    try:
+                        gm_sys = spiceypy.bodvrd(str(body.naif_id), "GM", 1)[1][0]
+                        gm = gm_sun**3 / (gm_sun + gm_sys) ** 2
+                    except spiceypy.exceptions.SpiceyError:
+                        gm = gm_sun
+                else:
+                    gm = gm_sun
+            elif body.object_type in (ObjectType.planet, ObjectType.dwarf_planet) and (
+                1 <= body.parent_naif_id <= 9
+            ):
+                # Planet orbiting its own system barycenter: it's the heavier
+                # member of a two-body dance with its dominant moon, not an
+                # orbit in a GM(barycenter) field. Using GM(barycenter) with
+                # the tiny ~km/day velocity produces ecc≈1. The correct mu
+                # for the planet's orbit around the barycenter is
+                #   mu_eff = GM_moon^3 / (GM_planet + GM_moon)^2
+                try:
+                    gm_planet = spiceypy.bodvrd(str(body.naif_id), "GM", 1)[1][0]
+                except spiceypy.exceptions.SpiceyError:
+                    gm_planet = None
+                moon_candidates = [
+                    n
+                    for n in range(
+                        body.parent_naif_id * 100 + 1, body.parent_naif_id * 100 + 99
+                    )
+                    if n != body.naif_id
+                ]
+                gm = (
+                    _dominant_partner_mu(gm_planet, moon_candidates)
+                    if gm_planet is not None
+                    else None
+                )
+                if gm is None:
+                    logger.debug(
+                        "No dominant moon for %s (%d); using zero elements",
+                        body.name,
+                        body.naif_id,
+                    )
+                    rows.append(
+                        {
+                            "name": body.name,
+                            "provisional_designation": body.designation,
+                            "iau_roman_designation": body.iau_roman_designation,
+                            "horizons_naif_id_extended": body.horizons_naif_id_extended,
+                            "naif_id": body.naif_id,
+                            "type": body.object_type,
+                            "parent_naif_id": body.parent_naif_id,
+                            "JDTDB": f"{epoch_jd:.1f}",
+                            **_ZERO_ROW,
+                        }
+                    )
+                    continue
             else:
                 try:
                     gm = spiceypy.bodvrd(str(body.parent_naif_id), "GM", 1)[1][0]
@@ -591,6 +681,21 @@ class SpiceDownloader(Downloader):
                     "Degenerate orbit for %s (%d), using zero elements",
                     body.name,
                     body.naif_id,
+                )
+                elts = _ZERO_ROW
+            elif (
+                body.object_type in (ObjectType.planet, ObjectType.dwarf_planet)
+                and 1 <= body.parent_naif_id <= 9
+                and elts["EC"] > 0.6
+            ):
+                # The single-dominant-moon mu approximation failed — likely a
+                # system with multiple comparable moons (Uranus, Jupiter) whose
+                # barycenter wobble is not well-described by a Kepler orbit.
+                logger.info(
+                    "Non-Keplerian barycenter wobble for %s (%d), zeroing (got ecc=%.3f)",
+                    body.name,
+                    body.naif_id,
+                    elts["EC"],
                 )
                 elts = _ZERO_ROW
 
