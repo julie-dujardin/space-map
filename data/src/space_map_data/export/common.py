@@ -20,7 +20,7 @@ from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
-from space_map_data.export.textures import write_system_textures
+from space_map_data.export.systems import load_orientation, write_system_metadata
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
@@ -77,10 +77,11 @@ def _remove_old_outputs(out_dir: Path) -> None:
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
-    # System texture metadata is regenerated each export (individual textures are not)
-    p = out_dir / "textures" / "systems"
-    if p.exists():
-        shutil.rmtree(p)
+    # System metadata is regenerated each export (individual textures are not)
+    for d in ("textures/systems", "systems"):
+        p = out_dir / d
+        if p.exists():
+            shutil.rmtree(p)
 
 
 def _write_parts(
@@ -91,6 +92,7 @@ def _write_parts(
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
+    orientation: dict[int, dict],
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -110,6 +112,7 @@ def _write_parts(
             chunk_entities,
             units,
             nasa_science_urls,
+            orientation=orientation,
         )
         total_bytes += write_chunk(
             chunk,
@@ -143,6 +146,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     else:
         nasa_science_urls = {}
         logger.warning("NASA Science URL file not found: %s", nasa_science_url_file)
+
+    orientation = load_orientation(DOWNLOAD_DIR)
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -203,8 +208,16 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     logger.info("  %s zoom=%d: empty, skipping", zone, zoom)
                     continue
                 if zone == "major":
-                    # Barycenters must come first so parents resolve before children.
-                    objects.sort(key=lambda o: o.object_type != ObjectType.barycenter)
+                    # Parents must come before children so positions resolve during chunk load.
+                    # Barycenters (incl. SSB) → stars (Sun) → everything else.
+                    def _major_sort_key(o: Object) -> int:
+                        if o.object_type == ObjectType.barycenter:
+                            return 0
+                        if o.object_type == ObjectType.star:
+                            return 1
+                        return 2
+
+                    objects.sort(key=_major_sort_key)
                 f = executor.submit(
                     _write_parts,
                     objects,
@@ -214,6 +227,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     wikidata_entities,
                     units,
                     nasa_science_urls,
+                    orientation,
                 )
                 futures[f] = (zone, zoom, len(objects))
 
@@ -255,11 +269,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     wikidata_entities,
                     units,
                     nasa_science_urls,
+                    orientation,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
 
-        write_system_textures(session, out_dir)
+        write_system_metadata(session, out_dir, orientation)
 
     for f in as_completed(futures):
         zone, zoom, count = futures[f]

@@ -210,8 +210,9 @@ def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity, qid: str) -> s
     if shorter:
         return min(shorter, key=len)  # type: ignore  # ty what the fuck
 
-    if len(label) > _REF_NAME_WARN_THRESHOLD:
-        logger.warning("No short form for referenced entity %s (%s)", qid, label)
+    # TODO: export both long & short forms, let the frontend handle it
+    # if len(label) > _REF_NAME_WARN_THRESHOLD:
+    #     logger.warning("No short form for referenced entity %s (%s)", qid, label)
     return label
 
 

@@ -81,6 +81,7 @@ def write_objects(
     chunk_entities: dict[str, WikidataEntity | None],
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
+    orientation: dict[int, dict],
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -115,7 +116,7 @@ def write_objects(
 
         # Global (non-localized, always written)
         global_data = _build_global(
-            obj, extracted, wikidata_entities, units, nasa_science_urls
+            obj, extracted, wikidata_entities, units, nasa_science_urls, orientation
         )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
@@ -163,6 +164,7 @@ def _build_global(
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
+    orientation: dict[int, dict],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -204,6 +206,10 @@ def _build_global(
         if obj.orbital_source is not None:
             orbit["source"] = obj.orbital_source
         data["orbit"] = orbit
+
+    # Orientation data (from SPICE PCK)
+    if obj.horizons_naif_id is not None and obj.horizons_naif_id in orientation:
+        data["orientation"] = orientation[obj.horizons_naif_id]
 
     # SBDB extras
     if sbdb is not None:

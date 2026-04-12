@@ -910,22 +910,6 @@ class TestResolveEntityRef:
         assert result is not None
         assert result["name"] == long_name
 
-    def test_warns_when_no_shorter_form_over_threshold(self, caplog):
-        """A warning is logged when no shorter form exists and name > warn threshold."""
-        long_name = "x" * (_REF_NAME_WARN_THRESHOLD + 1)
-        cache = self._mock_cache(
-            {
-                "labels": {"en": long_name},
-                "sitelinks": {},
-            }
-        )
-        with caplog.at_level(logging.WARNING):
-            result = resolve_entity_ref("Q1", "en", cache)
-        assert result is not None
-        assert result["name"] == long_name
-        assert "No short form" in caplog.text
-        assert "Q1" in caplog.text
-
     def test_no_warning_when_no_shorter_form_under_warn_threshold(self, caplog):
         """No warning when the name is between shorten and warn thresholds."""
         name = "x" * (_REF_NAME_SHORTEN_THRESHOLD + 1)
