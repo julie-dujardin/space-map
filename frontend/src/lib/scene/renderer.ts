@@ -940,12 +940,17 @@ export class SceneRenderer {
 			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
 			if (!bo.availableTiers?.length || bo.textureLoading) continue;
 			if (bo.cachedDist <= 0) continue;
-			if (!this.ctx.isInActiveSystem(bo.body.data.parentId)) continue;
+			if (
+				bo.body.data.id !== this.ctx.activeSystemId &&
+				!this.ctx.isInActiveSystem(bo.body.data.parentId)
+			)
+				continue;
 
 			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
+			const altitudeRadii = bo.cachedDist / bo.radiusScene;
 			let desired: 'low' | 'medium' | 'high';
-			if (screenR < 256) desired = 'low';
-			else if (screenR < 1024) desired = 'medium';
+			if (screenR < 256 && altitudeRadii > 10) desired = 'low';
+			else if (screenR < 1024 && altitudeRadii > 2) desired = 'medium';
 			else desired = 'high';
 
 			const TIER_RANK = { low: 0, medium: 1, high: 2 } as const;
