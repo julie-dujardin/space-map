@@ -30,8 +30,10 @@ export function orbitalToThreeJS(
 		(sinOm * cosW + cosOm * sinW * cosI) * xOrb + (-sinOm * sinW + cosOm * cosW * cosI) * yOrb;
 	const zEcl = sinW * sinI * xOrb + cosW * sinI * yOrb;
 
-	// Map ecliptic -> Three.js: ecliptic X -> X, ecliptic Z (north pole) -> Y, ecliptic Y -> Z
-	return [xEcl * AU_SCALE, zEcl * AU_SCALE, yEcl * AU_SCALE];
+	// Map ecliptic -> Three.js: ecliptic X -> X, ecliptic Z (north pole) -> Y, ecliptic Y -> -Z.
+	// The Y -> -Z flip keeps the mapping handedness-preserving (det +1), so body spin
+	// computed via the right-hand rule matches physical rotation direction.
+	return [xEcl * AU_SCALE, zEcl * AU_SCALE, -yEcl * AU_SCALE];
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Quaternion, Vector3 } from 'three';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 import type { Mesh } from 'three';
 
 const DEG2RAD = Math.PI / 180;
@@ -20,68 +20,54 @@ export interface Orientation {
 }
 
 /**
- * Convert equatorial J2000 RA/Dec to ecliptic J2000 longitude/latitude.
- * Rotates around the X axis by the obliquity of the ecliptic.
+ * Rotate an equatorial J2000 unit vector into the three.js scene frame
+ * (ecliptic X→scene X, ecliptic north Z→scene Y, ecliptic Y→scene −Z).
+ * The Y→−Z flip keeps the mapping a proper rotation (det +1) so chiral
+ * quantities like spin axes survive intact.
  */
-function equatorialToEcliptic(raDeg: number, decDeg: number): [number, number] {
-	const ra = raDeg * DEG2RAD;
-	const dec = decDeg * DEG2RAD;
-
-	// Equatorial unit vector
-	const cosD = Math.cos(dec);
-	const xEq = cosD * Math.cos(ra);
-	const yEq = cosD * Math.sin(ra);
-	const zEq = Math.sin(dec);
-
-	// Rotate around X by obliquity (equatorial -> ecliptic)
+function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
 	const xEcl = xEq;
 	const yEcl = yEq * COS_OBL + zEq * SIN_OBL;
 	const zEcl = -yEq * SIN_OBL + zEq * COS_OBL;
-
-	const lat = Math.asin(zEcl);
-	const lon = Math.atan2(yEcl, xEcl);
-
-	return [lon, lat]; // radians
+	return new Vector3(xEcl, zEcl, -yEcl);
 }
 
 /**
  * Apply body orientation (axial tilt + spin) to a Three.js mesh.
  *
- * The mesh's local Y-axis is treated as its default pole direction.
- * This function computes a quaternion that:
- * 1. Tilts the pole from the ecliptic north to the body's actual pole direction
- * 2. Applies spin rotation around the pole axis
- *
- * Coordinate system: ecliptic X→X, ecliptic north (Z)→Y, ecliptic Y→Z
+ * The mesh is oriented so that its local +Y axis is the body's north pole and
+ * its local +X axis is the IAU ascending node Q (intersection of the body's
+ * equator with the ICRF equator where the body equator crosses south→north).
+ * The prime meridian (local +X after the spin) is at angle W from Q along the
+ * equator, following the IAU convention. This matches the longitude system used
+ * by USGS / Blue Marble equirectangular maps (u=0 at longitude ±180°, longitude
+ * increasing east through u=0.5 at longitude 0°).
  */
 export function applyOrientation(mesh: Mesh, orientation: Orientation, currentJd: number): void {
 	const { pole_ra, pole_dec, w0, w_rate } = orientation;
 
-	// Convert pole direction from equatorial to ecliptic
-	const [eclLon, eclLat] = equatorialToEcliptic(pole_ra, pole_dec);
+	const ra = pole_ra * DEG2RAD;
+	const dec = pole_dec * DEG2RAD;
+	const cosDec = Math.cos(dec);
 
-	// Pole direction as unit vector in ecliptic coordinates
-	const cosLat = Math.cos(eclLat);
-	const poleEclX = cosLat * Math.cos(eclLon);
-	const poleEclY = cosLat * Math.sin(eclLon);
-	const poleEclZ = Math.sin(eclLat);
+	const pole = equatorialToThreeJS(
+		cosDec * Math.cos(ra),
+		cosDec * Math.sin(ra),
+		Math.sin(dec)
+	).normalize();
 
-	// Map ecliptic (X, Y, Z) to Three.js (X, Z, Y) — same mapping as orbitalToThreeJS
-	// ecliptic X -> Three.js X, ecliptic Z (north pole) -> Three.js Y, ecliptic Y -> Three.js Z
-	const poleThreeJS = new Vector3(poleEclX, poleEclZ, poleEclY);
-	poleThreeJS.normalize();
+	// Ascending node in equatorial J2000: Q = (K × P) / |K × P| = (−sin α, cos α, 0).
+	const node = equatorialToThreeJS(-Math.sin(ra), Math.cos(ra), 0).normalize();
 
-	// Compute quaternion that rotates default Y-axis (0,1,0) to pole direction
-	const defaultPole = new Vector3(0, 1, 0);
-	const tiltQuat = new Quaternion().setFromUnitVectors(defaultPole, poleThreeJS);
+	// Right-handed basis: local +X → Q, local +Y → P, local +Z → Q × P.
+	const third = new Vector3().crossVectors(node, pole).normalize();
+	const tiltQuat = new Quaternion().setFromRotationMatrix(
+		new Matrix4().makeBasis(node, pole, third)
+	);
 
-	// Compute spin angle: W = W0 + W_rate * (JD - J2000)
 	const dt = currentJd - J2000_JD;
 	const spinAngle = (w0 + w_rate * dt) * DEG2RAD;
+	const spinQuat = new Quaternion().setFromAxisAngle(pole, spinAngle);
 
-	// Spin around the pole axis (local Y after tilt)
-	const spinQuat = new Quaternion().setFromAxisAngle(poleThreeJS, spinAngle);
-
-	// Apply: first tilt, then spin
 	mesh.quaternion.copy(spinQuat.multiply(tiltQuat));
 }
