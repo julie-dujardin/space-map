@@ -3,6 +3,7 @@
 import argparse
 import logging
 import logging.config
+import time
 import tomllib
 
 from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
@@ -40,6 +41,7 @@ def cli():
 
     full_rebuild = "all" in args.targets
     selected = ALL_TARGETS if full_rebuild else args.targets
+    start_time = time.perf_counter()
 
     if full_rebuild:
         for suffix in ("", "-wal", "-shm"):
@@ -54,7 +56,7 @@ def cli():
         if "wikidata" in selected:
             ingest_wikidata(DOWNLOAD_DIR)
         if "objects" in selected or "features" in selected or "wikidata" in selected:
-            log_db_summary()
+            log_db_summary(start_time=start_time)
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
 

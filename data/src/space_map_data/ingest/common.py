@@ -1,6 +1,7 @@
 """Ingest downloaded CSV sources into a unified SQLite database."""
 
 import logging
+import time
 from pathlib import Path
 
 from sqlalchemy import func
@@ -38,8 +39,8 @@ def ingest_wikidata(download_dir: Path) -> None:
     nomenclature.ingest(download_dir)
 
 
-def log_db_summary() -> None:
-    """Log object counts by type."""
+def log_db_summary(start_time: float | None = None) -> None:
+    """Log object counts by type, plus elapsed wall-time if start_time is given."""
     session = get_session()
     counts = (
         session.query(Object.object_type, func.count())
@@ -51,6 +52,8 @@ def log_db_summary() -> None:
         logger.info("  %-20s %d", object_type, cnt)
     total = session.query(func.count(Object.id)).scalar()
     logger.info("Total: %d objects", total)
+    if start_time is not None:
+        logger.info("Elapsed: %.1fs", time.perf_counter() - start_time)
 
 
 def ingest(download_dir: Path) -> None:
