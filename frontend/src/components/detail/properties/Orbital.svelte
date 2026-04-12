@@ -4,8 +4,9 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import type { OrbitalElements } from '$lib/types/objects';
-	import { formatNumber, formatUnit } from '$lib/format/quantities';
+	import { formatNumber } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
+	import { formatDuration } from '$lib/format/duration';
 	import { formatJulianDate } from '$lib/format/date';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
@@ -27,13 +28,7 @@
 	let isNeo = $derived(sbdb?.neo);
 	let isPha = $derived(sbdb?.pha);
 
-	let dataArcValue = $derived.by(() => {
-		if (sbdb?.data_arc == null) return null;
-		const years = sbdb.data_arc / 365.25;
-		return years >= 1
-			? `${formatNumber(years)} ${formatUnit('year')}`
-			: `${formatNumber(sbdb.data_arc)} ${formatUnit('day')}`;
-	});
+	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
 
 	let hasContent = $derived(
 		sbdb?.per_y ||
@@ -98,7 +93,7 @@
 		{#if sbdb?.per_y}
 			<Row
 				label={m.orbital_period()}
-				value={`${formatNumber(sbdb.per_y)} ${formatUnit('year')}`}
+				value={formatDuration(sbdb.per_y * 365.25)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{/if}

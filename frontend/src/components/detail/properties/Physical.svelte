@@ -3,6 +3,7 @@
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
+	import { formatDuration } from '$lib/format/duration';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 
@@ -75,7 +76,7 @@
 		{#if sbdb?.rot_per}
 			<Row
 				label={m.rotation_period()}
-				value={`${sbdb.rot_per} ${formatUnit('hour')}`}
+				value={formatDuration(sbdb.rot_per / 24)}
 				tooltip={m.tooltip_rotation_period()}
 			/>
 		{/if}
