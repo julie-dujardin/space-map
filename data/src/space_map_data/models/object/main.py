@@ -74,6 +74,7 @@ class OrbitalSource(StrEnum):
     horizons = PROVIDERS.HORIZONS
     sbdb = PROVIDERS.SBDB
     celestrak = PROVIDERS.CELESTRAK
+    spice = PROVIDERS.SPICE
 
 
 class Object(Base):
@@ -117,6 +118,12 @@ class Object(Base):
     celestrak_cospar_id: Mapped[str | None] = mapped_column(
         unique=True, default=None, index=True
     )  # COSPAR international designator (YYYY-NNNP), from CelesTrak
+    iau_roman_designation: Mapped[str | None] = mapped_column(
+        unique=False, default=None, index=True
+    )  # IAU satellite designation (planet letter + Roman numeral, e.g. JLVII)
+    horizons_naif_id_extended: Mapped[int | None] = mapped_column(
+        unique=True, default=None, index=True
+    )  # 5-digit extended NAIF ID used by SPICE for irregular-moon kernels
 
     # Keplerian elements (osculating, from best available source)
     epoch_jd: Mapped[float | None] = mapped_column(

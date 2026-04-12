@@ -58,17 +58,21 @@ export function orbitalElementsToPosition(
 	const dt = dateToJD(date) - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
 
-	// Near-parabolic orbits (|e − 1| < 0.01): the hyperbolic/elliptical Kepler
-	// solvers are ill-conditioned here (denominator e·cosh(H)−1 ≈ 0 causes
-	// Newton-Raphson to overshoot). Fall back to Barker's equation with
-	// q and tp derived from the standard elements.
-	// See spkid-1001113 C/1962 C1 (Seki-Lines)
-	// Skip for tiny orbits (a < 0.001 AU): numerical instability is negligible
-	// at that scale, and planets orbiting their barycenters can have spurious
-	// high eccentricity (e.g. Jupiter e≈0.996 around its barycenter).
-	if (Math.abs(e - 1) < 0.01 && Math.abs(a) >= 0.001) {
-		const q = Math.abs(a) * Math.abs(1 - e); // works for both e<1 and e>1
-		const tp = n !== 0 ? epoch - ma / n : epoch; // tp in JD (ma in deg, n in deg/day)
+	// Near-parabolic (|e − 1| < 0.01) with a > 0 (closed orbit per JPL
+	// convention): use Barker ONLY near perihelion, where the elliptic
+	// solver's denominator (1 − e·cos(E)) collapses. Elsewhere, the elliptic
+	// solver with clamped e is well-conditioned and gives the correct r at
+	// apoapsis (Barker would give r → ∞, which is wrong for bound orbits).
+	// Example: spkid-1001113 C/1962 C1 Seki-Lines needs Barker near perihelion;
+	// the SPICE Sun (e rounded-to-1 in float32, M=180°) needs the elliptic path.
+	// Skip for tiny orbits (a < 0.001 AU): numerical issues are negligible.
+	const nearPerihelion = Math.abs(((ma + n * dt) % 360) + 360) % 360;
+	const perihelionDist = Math.min(nearPerihelion, 360 - nearPerihelion); // deg from M=0
+	if (Math.abs(e - 1) < 0.01 && Math.abs(a) >= 0.001 && perihelionDist < 30) {
+		// Floor |1-e| to guard against float32 precision loss on q.
+		const oneMinusE = Math.max(Math.abs(1 - e), 1e-7);
+		const q = Math.abs(a) * oneMinusE;
+		const tp = n !== 0 ? epoch - ma / n : epoch;
 		const jd = dateToJD(date);
 		const result = solveBarker(q, tp, jd);
 		if (!result) return null;
@@ -81,13 +85,16 @@ export function orbitalElementsToPosition(
 	let nu: number;
 	let r: number;
 
-	if (e < 1) {
-		// Elliptical orbit
-		const E = solveKepler(M, e);
-		const sinNu = (Math.sqrt(1 - e * e) * Math.sin(E)) / (1 - e * Math.cos(E));
-		const cosNu = (Math.cos(E) - e) / (1 - e * Math.cos(E));
+	if (e < 1 || a > 0) {
+		// Elliptical orbit (or e rounded-to-1 on a closed orbit per JPL convention).
+		// Clamp e just below 1 so 1-e² stays positive and the solver doesn't divide
+		// by zero at perihelion. Away from perihelion this is numerically harmless.
+		const eClamped = Math.min(e, 1 - 1e-7);
+		const E = solveKepler(M, eClamped);
+		const sinNu = (Math.sqrt(1 - eClamped * eClamped) * Math.sin(E)) / (1 - eClamped * Math.cos(E));
+		const cosNu = (Math.cos(E) - eClamped) / (1 - eClamped * Math.cos(E));
 		nu = Math.atan2(sinNu, cosNu);
-		r = a * (1 - e * Math.cos(E));
+		r = a * (1 - eClamped * Math.cos(E));
 	} else {
 		// Hyperbolic orbit (a < 0, e > 1; also covers near-parabolic e ≈ 1)
 		const H = solveKeplerHyperbolic(M, e);

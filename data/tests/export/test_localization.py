@@ -35,15 +35,15 @@ def _entity_with_symbols(
 
 
 class TestExtractSymbol:
-    """Tests for _extract_symbol with mul > lang > en fallback chain."""
+    """Tests for _extract_symbol with lang > mul > en fallback chain."""
 
-    def test_mul_preferred_over_lang(self):
-        entity = _entity_with_symbols({"mul": "€", "en": "EUR", "de": "EUR"})
-        assert _extract_symbol(entity, "de") == "€"
+    def test_lang_preferred_over_mul(self):
+        entity = _entity_with_symbols({"mul": "€", "de": "EUR"})
+        assert _extract_symbol(entity, "de") == "EUR"
 
     def test_mul_preferred_over_en(self):
         entity = _entity_with_symbols({"mul": "€", "en": "EUR"})
-        assert _extract_symbol(entity, "en") == "€"
+        assert _extract_symbol(entity, "ja") == "€"
 
     def test_target_lang(self):
         entity = _entity_with_symbols({"en": "kg", "de": "kg"})

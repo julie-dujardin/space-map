@@ -5,6 +5,7 @@ class PROVIDERS(StrEnum):
     HORIZONS = "horizons"
     CELESTRAK = "celestrak"
     SBDB = "sbdb"
+    SPICE = "spice"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
     IAU_NOMENCLATURE = "iau_nomenclature"

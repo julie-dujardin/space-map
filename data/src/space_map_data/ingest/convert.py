@@ -34,12 +34,12 @@ def bool_or_none(val: str) -> bool | None:
     raise ValueError(f"Cannot convert '{val}' to bool")
 
 
-def int_or_none(val: str) -> int | None:
+def int_or_none(val: str | None) -> int | None:
     """Convert string to int, treating empty or whitespace-only strings as None.
 
     Raise an error otherwise.
     """
-    if val.strip() == "":
+    if val is None or val.strip() == "":
         return None
     return int(val)
 

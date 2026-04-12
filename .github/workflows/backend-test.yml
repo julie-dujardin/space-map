@@ -3,7 +3,6 @@ name: backend-test
 on:
   push:
     branches: [main]
-    paths: [data/**]
   pull_request:
     paths: [data/**]
 

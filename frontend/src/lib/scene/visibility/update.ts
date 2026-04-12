@@ -1,6 +1,5 @@
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
-import { VISIBILITY } from '$lib/scene/context-manager.svelte';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import {
 	applyLabelDisplay,
@@ -92,11 +91,7 @@ export function updateBodyVisibility(
 			showLabel = full && !isClose;
 			if (bo.starPoint) bo.starPoint.visible = screenR < 1;
 			// Hide corona/lensflare when star is occluded on screen
-			tmpV3.set(
-				body.position[0] - fp[0],
-				body.position[1] - fp[1],
-				body.position[2] - fp[2]
-			);
+			tmpV3.set(body.position[0] - fp[0], body.position[1] - fp[1], body.position[2] - fp[2]);
 			tmpV3.project(camera);
 			let starOccluded = false;
 			if (tmpV3.z <= 1) {
@@ -115,9 +110,7 @@ export function updateBodyVisibility(
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets
 			const isMoon = body.data.objectType === ObjectType.MOON;
-			const vis = isMoon
-				? ctx.getMoonVisibility(body)
-				: ctx.getPlanetVisibility(body, dist);
+			const vis = isMoon ? ctx.getMoonVisibility(body) : ctx.getPlanetVisibility(body, dist);
 			const vf = isMoon
 				? moonVisFlags(vis, hideCappedMoonLabels, isFocused)
 				: bodyVisFlags(vis, ctx.hasFullRendering(body), isFocused);

@@ -8,6 +8,7 @@ dependencies = [
     "orjson>=3.11.8",
     "pillow>=12.2.0",
     "pyyaml>=6.0.3",
+    "spiceypy>=8.1.0",
     "sqlalchemy>=2.0",
     "tifffile>=2026.3.3",
     "tqdm",

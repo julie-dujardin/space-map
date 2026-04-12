@@ -3,9 +3,10 @@
 import argparse
 import logging
 import logging.config
+import time
 import tomllib
 
-from space_map_data.utils.paths import DATA_DIR, DOWNLOAD_DIR
+from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
 from space_map_data.utils.db import session_scope
 from space_map_data.ingest.common import (
     ingest_objects,
@@ -38,7 +39,14 @@ def cli():
     with open(DATA_DIR / "logging.toml", "rb") as f:
         logging.config.dictConfig(tomllib.load(f))
 
-    selected = ALL_TARGETS if "all" in args.targets else args.targets
+    full_rebuild = "all" in args.targets
+    selected = ALL_TARGETS if full_rebuild else args.targets
+    start_time = time.perf_counter()
+
+    if full_rebuild:
+        for suffix in ("", "-wal", "-shm"):
+            (DB_FILE.parent / f"{DB_FILE.name}{suffix}").unlink(missing_ok=True)
+        logging.getLogger(__name__).info("Full rebuild: dropped %s", DB_FILE)
 
     with session_scope(create_db=True):
         if "objects" in selected:
@@ -48,7 +56,7 @@ def cli():
         if "wikidata" in selected:
             ingest_wikidata(DOWNLOAD_DIR)
         if "objects" in selected or "features" in selected or "wikidata" in selected:
-            log_db_summary()
+            log_db_summary(start_time=start_time)
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
 
