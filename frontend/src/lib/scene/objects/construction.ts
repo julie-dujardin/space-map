@@ -16,6 +16,7 @@ import {
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
+import { applyOrientation } from '$lib/math/orientation';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
@@ -355,19 +356,30 @@ export async function loadBodyTexture(
 	material.needsUpdate = true;
 }
 
+interface SystemBodyMeta {
+	tiers?: string[];
+	orientation?: {
+		pole_ra: number;
+		pole_dec: number;
+		w0: number;
+		w_rate: number;
+	};
+}
+
 /**
- * Fetch the system texture metadata and preload low-res textures for all bodies in that system.
+ * Fetch system metadata (textures + orientation) and apply to all bodies in that system.
  * The metadata file is keyed by barycenter ID (e.g. naif-3, naif-5).
  */
-export async function loadSystemTextures(
+export async function loadSystemData(
 	barycenterId: string,
 	bodyObjects: Map<string, BodyObjects>,
 	textureLoader: TextureLoader,
-	textureLoaded: Set<string>
+	textureLoaded: Set<string>,
+	currentJd: number
 ): Promise<void> {
-	let meta: Record<string, { tiers: string[] }>;
+	let meta: Record<string, SystemBodyMeta>;
 	try {
-		const resp = await fetch(`/data/v1/textures/systems/${barycenterId}.json`);
+		const resp = await fetch(`/data/v1/systems/${barycenterId}.json`);
 		if (!resp.ok) return;
 		meta = await resp.json();
 	} catch {
@@ -375,21 +387,29 @@ export async function loadSystemTextures(
 	}
 
 	const promises: Promise<void>[] = [];
-	for (const bodyId of Object.keys(meta)) {
-		if (textureLoaded.has(bodyId)) continue;
-		textureLoaded.add(bodyId);
+	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
-		const material = bo.mesh.material as MeshStandardMaterial;
-		promises.push(
-			new Promise<Texture>((resolve, reject) => {
-				textureLoader.load(`/data/v1/textures/${bodyId}/low.webp`, resolve, undefined, reject);
-			}).then((texture) => {
-				material.map = texture;
-				material.color.set(0xffffff);
-				material.needsUpdate = true;
-			})
-		);
+
+		// Apply orientation (axial tilt + spin)
+		if (bodyMeta.orientation) {
+			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd);
+		}
+
+		// Load textures
+		if (bodyMeta.tiers?.length && !textureLoaded.has(bodyId)) {
+			textureLoaded.add(bodyId);
+			const material = bo.mesh.material as MeshStandardMaterial;
+			promises.push(
+				new Promise<Texture>((resolve, reject) => {
+					textureLoader.load(`/data/v1/textures/${bodyId}/low.webp`, resolve, undefined, reject);
+				}).then((texture) => {
+					material.map = texture;
+					material.color.set(0xffffff);
+					material.needsUpdate = true;
+				})
+			);
+		}
 	}
 	await Promise.allSettled(promises);
 }

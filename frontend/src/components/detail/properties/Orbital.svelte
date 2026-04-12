@@ -124,11 +124,7 @@
 			/>
 		{/if}
 		{#if sbdb?.ad}
-			<Row
-				label={m.aphelion()}
-				value={formatDistance(sbdb.ad)}
-				tooltip={m.tooltip_aphelion()}
-			/>
+			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
 		{/if}
 		{#if orbit?.e != null}
 			<Row

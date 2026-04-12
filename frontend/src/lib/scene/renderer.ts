@@ -17,6 +17,7 @@ import {
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
+import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
@@ -26,7 +27,7 @@ import {
 	buildPointClouds,
 	rebuildMinorPointClouds,
 	loadBodyTexture,
-	loadSystemTextures,
+	loadSystemData,
 	makeCircleTexture
 } from './objects/construction';
 import { type BodyObjects, type Callbacks } from './types';
@@ -191,7 +192,7 @@ export class SceneRenderer {
 
 		// Load textures for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
-		this.maybeLoadSystemTextures();
+		this.maybeLoadSystemData();
 
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -415,10 +416,7 @@ export class SceneRenderer {
 			// Depth extent: clamped to camera vicinity so shadow-map depth
 			// precision stays high (full system extent causes banding on mobile).
 			const lateral = Math.max(distance * 2, 0.001);
-			const depthExtent = Math.min(
-				this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2,
-				lateral * 4
-			);
+			const depthExtent = Math.min(this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2, lateral * 4);
 			const shadowCam = this.shadowLight.shadow.camera;
 			shadowCam.left = shadowCam.bottom = -lateral;
 			shadowCam.right = shadowCam.top = lateral;
@@ -513,8 +511,8 @@ export class SceneRenderer {
 		}
 	};
 
-	/** Preload low-res textures for all bodies in the focused system (if changed). */
-	private maybeLoadSystemTextures(): void {
+	/** Load system metadata (textures + orientation) for the focused system (if changed). */
+	private maybeLoadSystemData(): void {
 		const sysId = this.ctx.focusedSystemId;
 		if (!sysId) return;
 		// Resolve to barycenter: if sysId is a planet (e.g. naif-599), its parent is the barycenter
@@ -523,7 +521,8 @@ export class SceneRenderer {
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
-		loadSystemTextures(baryId, this.bodyObjects, this.textureLoader, this.textureLoaded);
+		const currentJd = dateToJD(new Date());
+		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.textureLoaded, currentJd);
 	}
 
 	private maybeLoadTexture(body: PositionedBody): void {
@@ -639,14 +638,8 @@ export class SceneRenderer {
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
-		this.maybeLoadSystemTextures();
-		prepareFocusTarget(
-			this.focus,
-			[...body.position],
-			this.camera,
-			this.cameraTruePos(),
-			camPos
-		);
+		this.maybeLoadSystemData();
+		prepareFocusTarget(this.focus, [...body.position], this.camera, this.cameraTruePos(), camPos);
 	}
 
 	getFocusedBody(): PositionedBody | undefined {

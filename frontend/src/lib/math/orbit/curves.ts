@@ -108,7 +108,8 @@ export function orbitalElementsToCurve(el: OrbitalElements, numPoints = 512): Or
 		// renderer which concentrates all points near perihelion (capped at rMaxAU).
 		// This gives much better visual density than spreading 512 points across a
 		// 100+ AU ellipse where only the perihelion region is visible.
-		const q = el.q ?? Math.abs(el.a) * Math.abs(1 - el.e);
+		// Floor |1-e| to guard against float32 precision loss (e=0.9999999... rounds to 1.0).
+		const q = el.q ?? Math.abs(el.a) * Math.max(Math.abs(1 - el.e), 1e-7);
 		return { points: orbitalElementsToParabola({ ...el, q }, numPoints), isOpen: true };
 	}
 	if (el.e >= 1) return { points: orbitalElementsToHyperbola(el, numPoints), isOpen: true };

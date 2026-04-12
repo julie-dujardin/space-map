@@ -45,6 +45,12 @@ export interface GlobalObjectData {
 		q?: number;
 		tp?: number;
 	};
+	orientation?: {
+		pole_ra: number;
+		pole_dec: number;
+		w0: number;
+		w_rate: number;
+	};
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;
