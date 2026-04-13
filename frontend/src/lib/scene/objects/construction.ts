@@ -1,6 +1,5 @@
 import {
 	CanvasTexture,
-	Float32BufferAttribute,
 	Group,
 	Mesh,
 	MeshBasicMaterial,
@@ -31,39 +30,9 @@ import {
 } from './builders';
 import type { BodyObjects } from '../types';
 
-const F32_MAX = 3.4028235e38;
-function isF32Safe(v: number): boolean {
-	return isFinite(v) && Math.abs(v) <= F32_MAX;
-}
-
-function filterFinitePositions(bodies: PositionedBody[]): PositionedBody[] {
-	return bodies.filter((b) => {
-		const [x, y, z] = b.position;
-		if (isF32Safe(x) && isF32Safe(y) && isF32Safe(z)) return true;
-		console.warn(
-			`Skipping body with non-finite position: id=${b.data.id} name=${b.data.name}`,
-			b.position
-		);
-		return false;
-	});
-}
-
 function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
 	if (!promotedIds || promotedIds.size === 0) return bodies;
 	return bodies.filter((b) => !promotedIds.has(b.data.id));
-}
-
-function positionsArray(
-	bodies: PositionedBody[],
-	basisPos: [number, number, number] = [0, 0, 0]
-): Float32Array {
-	const arr = new Float32Array(bodies.length * 3);
-	for (let i = 0; i < bodies.length; i++) {
-		arr[i * 3] = bodies[i].position[0] - basisPos[0];
-		arr[i * 3 + 1] = bodies[i].position[1] - basisPos[1];
-		arr[i * 3 + 2] = bodies[i].position[2] - basisPos[2];
-	}
-	return arr;
 }
 
 export function buildMajorBodies(
@@ -280,63 +249,6 @@ export function buildPointClouds(
 	}
 
 	return { asteroidPoints, spacecraftPoints, moonPoints };
-}
-
-/**
- * Rebuilds only the dirty asteroid and spacecraft point clouds.
- * Returns new Points objects that need to be added to the scene (caller
- * should stagger these across frames to avoid GPU-upload hitches).
- */
-export function rebuildMinorPointClouds(
-	ctx: ContextManager,
-	circleTexture: CanvasTexture,
-	asteroidPoints: Map<string, Points>,
-	spacecraftPoints: Map<string, Points>,
-	basisPos: [number, number, number] = [0, 0, 0],
-	promotedIds?: Set<string>
-): Points[] {
-	const pendingAdd: Points[] = [];
-
-	// Asteroid clouds — only dirty zones
-	for (const zone of ctx.dirtyAsteroidZones) {
-		const bodies = ctx.asteroidBodiesByZone.get(zone);
-		if (!bodies || bodies.length === 0) continue;
-		const valid = filterFinitePositions(excludePromoted(bodies, promotedIds));
-		const existing = asteroidPoints.get(zone);
-		if (existing) {
-			existing.geometry.setAttribute(
-				'position',
-				new Float32BufferAttribute(positionsArray(valid, basisPos), 3)
-			);
-		} else {
-			const pts = makePointCloud(valid, circleTexture, basisPos);
-			asteroidPoints.set(zone, pts);
-			pendingAdd.push(pts);
-		}
-	}
-
-	// Spacecraft clouds — only dirty groups
-	for (const groupParentId of ctx.dirtySpacecraftGroups) {
-		const bodies = ctx.spacecraftByParent.get(groupParentId);
-		if (!bodies || bodies.length === 0) continue;
-		const valid = filterFinitePositions(excludePromoted(bodies, promotedIds));
-		const existing = spacecraftPoints.get(groupParentId);
-		if (existing) {
-			existing.geometry.setAttribute(
-				'position',
-				new Float32BufferAttribute(positionsArray(valid, basisPos), 3)
-			);
-		} else {
-			const points = makePointCloud(valid, circleTexture, basisPos);
-			spacecraftPoints.set(groupParentId, points);
-			pendingAdd.push(points);
-		}
-	}
-
-	ctx.dirtyAsteroidZones.clear();
-	ctx.dirtySpacecraftGroups.clear();
-
-	return pendingAdd;
 }
 
 /**
