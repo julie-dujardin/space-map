@@ -24,6 +24,7 @@ import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
+import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
 	buildOrbitLines,
@@ -881,7 +882,8 @@ export class SceneRenderer {
 			this.focus.focusTruePos,
 			canvas.clientWidth,
 			canvas.clientHeight,
-			this._tmpV3
+			this._tmpV3,
+			this.clock.jd
 		);
 		if (pointHit && pointHit.distance < bestDist) {
 			bestBody = pointHit.body;
@@ -1004,6 +1006,11 @@ export class SceneRenderer {
 	/** Build mesh, label, halo, and orbit line for a body that only existed as a point-cloud dot. */
 	private ensureBodyObjects(body: PositionedBody): void {
 		if (this.bodyObjects.has(body.data.id)) return;
+		// Point-cloud bodies aren't touched by updatePositions — their CPU
+		// position is frozen at load. Refresh before building so the mesh,
+		// halo, and orbit line spawn at the current jd instead of jumping on
+		// the next tick.
+		refreshMinorBodyPosition(body, this.clock.jd, this.ctx);
 		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
 		if (!body.orbitElements) {
 			body.orbitElements = body.data;
