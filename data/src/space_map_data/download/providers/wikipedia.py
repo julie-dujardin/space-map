@@ -7,6 +7,7 @@ from collections import defaultdict
 from itertools import islice
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import unquote, urlparse
 
 from httpx import Response
 from space_map_data.constants.providers import LANGUAGES
@@ -48,6 +49,7 @@ class WikipediaDownloader(Downloader):
             return
 
         self._fetch_summaries(tasks_by_lang, limit=limit)
+        self._download_images()
 
         total = sum(len(items) for items in tasks_by_lang.values())
         self._save_metadata(
@@ -191,3 +193,44 @@ class WikipediaDownloader(Downloader):
 
             out_file = out_dir / f"{qid}.json"
             out_file.write_text(json.dumps(page, ensure_ascii=False, indent=2))
+
+    def _download_images(self) -> None:
+        """Download unique thumbnail and original images referenced by saved summaries.
+
+        Saves to ``wikipedia/images/{thumb,full}/{filename from URL}``. Dedupes by URL
+        across languages and skips files already on disk.
+        """
+        urls: dict[str, Path] = {}
+        for summary_file in self.out_dir.glob("*/Q*.json"):
+            try:
+                page = json.loads(summary_file.read_text())
+            except json.JSONDecodeError:
+                logger.warning("Skipping invalid summary file %s", summary_file)
+                continue
+            for kind, key in (("thumb", "thumbnail"), ("full", "original")):
+                src = (page.get(key) or {}).get("source")
+                if not src or src in urls:
+                    continue
+                filename = unquote(urlparse(src).path.rsplit("/", 1)[-1])
+                if not filename:
+                    continue
+                urls[src] = self.out_dir / "images" / kind / filename
+
+        to_download = [(url, path) for url, path in urls.items() if not path.exists()]
+        logger.info(
+            "Wikipedia images: %s unique, %s to download",
+            f"{len(urls):,}",
+            f"{len(to_download):,}",
+        )
+        if not to_download:
+            return
+
+        for url, out_path in tqdm(to_download, desc="Wikipedia images", unit="img"):
+            try:
+                response = self._request(url)
+                response.raise_for_status()
+            except Exception:
+                logger.warning("Failed to download image %s", url)
+                continue
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(response.content)
