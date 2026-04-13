@@ -64,4 +64,23 @@ class CelesTrak(Base):
         default=None
     )  # second derivative of mean motion [rev/d³]
 
+    # SATCAT fields (from satcat.csv)
+    OBJECT_TYPE: Mapped[str | None] = mapped_column(default=None)  # PAY/R/B/DEB/UNK
+    OPS_STATUS_CODE: Mapped[str | None] = mapped_column(default=None)
+    OWNER: Mapped[str | None] = mapped_column(default=None)  # UN/COSPAR country code
+    LAUNCH_DATE: Mapped[str | None] = mapped_column(default=None)  # ISO date
+    LAUNCH_SITE: Mapped[str | None] = mapped_column(default=None)  # CelesTrak site code
+    DECAY_DATE: Mapped[str | None] = mapped_column(default=None)  # ISO date
+    PERIOD: Mapped[float | None] = mapped_column(default=None)  # minutes
+    APOGEE: Mapped[float | None] = mapped_column(default=None)  # km
+    PERIGEE: Mapped[float | None] = mapped_column(default=None)  # km
+    RCS: Mapped[float | None] = mapped_column(default=None)  # m²
+    DATA_STATUS_CODE: Mapped[str | None] = mapped_column(default=None)
+    ORBIT_CENTER: Mapped[str | None] = mapped_column(default=None)
+    ORBIT_TYPE: Mapped[str | None] = mapped_column(default=None)
+
+    constellation_slug: Mapped[str | None] = mapped_column(
+        ForeignKey("constellation.slug"), default=None
+    )
+
     object: Mapped["Object"] = relationship(back_populates="celestrak")

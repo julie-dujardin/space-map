@@ -13,9 +13,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
+from space_map_data.constants.constellations import PREFIX_TO_SLUG
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
+
+CONSTELLATION_PREFIXES: tuple[str, ...] = tuple(PREFIX_TO_SLUG.keys())
 
 logger = logging.getLogger(__name__)
 
@@ -24,27 +27,6 @@ SPARQL_URL = "https://query.wikidata.org/sparql"
 SPARQL_BATCH_SIZE = 1000
 NAME_BATCH_SIZE = 200
 AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
-
-# Satellite constellations to exclude
-# individual constellation members don't have meaningful Wikidata entries.
-CONSTELLATION_PREFIXES = (
-    "STARLINK",
-    "ONEWEB",
-    "IRIDIUM",
-    "KUIPER",
-    "QIANFAN",
-    "HULIANWANG DIGUI",
-    "GLOBALSTAR",
-    "ORBCOMM",
-    "FLOCK",
-    "SPACEBEE",
-    "SITRO-AIS",
-    "GEESAT",
-    "GONETS-M",
-    "TIANQI",
-    "CONNECTA IOT",
-    "TIANMU-1",
-)
 
 # Each source maps to: (id_type, db_query_func_name, label)
 SOURCES = (
