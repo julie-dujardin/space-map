@@ -883,7 +883,8 @@ export class SceneRenderer {
 			canvas.clientWidth,
 			canvas.clientHeight,
 			this._tmpV3,
-			this.clock.jd
+			this.clock.jd,
+			e.pointerType
 		);
 		if (pointHit && pointHit.distance < bestDist) {
 			bestBody = pointHit.body;

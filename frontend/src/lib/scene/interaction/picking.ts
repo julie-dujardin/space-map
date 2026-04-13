@@ -13,9 +13,10 @@ export function pickPointCloudBody(
 	canvasWidth: number,
 	canvasHeight: number,
 	tmpV3: Vector3,
-	jd: number
+	jd: number,
+	pointerType: string
 ): { body: PositionedBody; distance: number } | null {
-	const SCREEN_THRESHOLD = 8; // pixels
+	const SCREEN_THRESHOLD = pointerType === 'touch' || pointerType === 'pen' ? 16 : 12;
 	// Convert NDC pointer to pixel coords
 	const px = (pointer.x + 1) * 0.5 * canvasWidth;
 	const py = (1 - pointer.y) * 0.5 * canvasHeight;
