@@ -6,6 +6,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { PositionedBody } from '$lib/types/objects';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
+	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
@@ -18,11 +19,12 @@
 
 	interface Props {
 		body: PositionedBody;
+		clock: SimClock;
 		onClose: () => void;
 		onSheetResize?: (heightDvh: number) => void;
 	}
 
-	let { body, onClose, onSheetResize }: Props = $props();
+	let { body, clock, onClose, onSheetResize }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	let parentBody = $derived(ctx?.getBody(body.data.parentId));
@@ -241,6 +243,7 @@
 				localized={data?.localized ?? null}
 				orbitElements={body.orbitElements ?? body.data}
 				{parentBody}
+				jd={clock.jd}
 			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
