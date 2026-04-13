@@ -92,6 +92,7 @@ export class SceneRenderer {
 		focusTargetWorld: [0, 0, 0],
 		camOriginWorld: null,
 		camTargetWorld: null,
+		camTargetOffset: null,
 		flyQ0: null,
 		flyQ1: null,
 		orbitFly: false,
@@ -681,6 +682,15 @@ export class SceneRenderer {
 			this.focus.focusTargetWorld[0] = p[0];
 			this.focus.focusTargetWorld[1] = p[1];
 			this.focus.focusTargetWorld[2] = p[2];
+			// Refresh body-relative camera target so the fly destination tracks
+			// the moving body (otherwise we land at the body's start-of-fly
+			// position offset).
+			const camOff = this.focus.camTargetOffset;
+			if (camOff && this.focus.camTargetWorld) {
+				this.focus.camTargetWorld[0] = p[0] + camOff[0];
+				this.focus.camTargetWorld[1] = p[1] + camOff[1];
+				this.focus.camTargetWorld[2] = p[2] + camOff[2];
+			}
 			if (!animating) {
 				this.focus.focusTruePos[0] = p[0];
 				this.focus.focusTruePos[1] = p[1];
@@ -980,6 +990,7 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
+		if (this.focusedBody?.data.id === body.data.id) return;
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(

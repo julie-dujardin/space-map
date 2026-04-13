@@ -1,4 +1,4 @@
-import type { PerspectiveCamera, Quaternion } from 'three';
+import { Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Vec3 } from './math';
 import { f64lerp } from './math';
@@ -12,11 +12,31 @@ export interface FocusState {
 	focusTargetWorld: Vec3;
 	camOriginWorld: Vec3 | null;
 	camTargetWorld: Vec3 | null;
+	/**
+	 * Offset of `camTargetWorld` relative to the focused body's position. When set,
+	 * the renderer refreshes `camTargetWorld = body.position + camTargetOffset` every
+	 * frame so the fly target tracks a moving body. Null when the camera target is
+	 * world-fixed (e.g. focus-rotation without a fly).
+	 */
+	camTargetOffset: Vec3 | null;
 	flyQ0: Quaternion | null;
 	flyQ1: Quaternion | null;
 	orbitFly: boolean;
 	focusStartTime: number;
 	focusDurationMs: number;
+}
+
+const _lookAtMatrix = new Matrix4();
+const _lookAtEye = new Vector3();
+const _lookAtTarget = new Vector3();
+const _lookAtQuat = new Quaternion();
+
+/** Compute the orientation a camera at `eye` would have when looking at `target`, without mutating any camera. */
+function lookAtQuaternion(eye: Vec3, target: Vec3, up: Vector3): Quaternion {
+	_lookAtEye.set(eye[0], eye[1], eye[2]);
+	_lookAtTarget.set(target[0], target[1], target[2]);
+	_lookAtMatrix.lookAt(_lookAtEye, _lookAtTarget, up);
+	return _lookAtQuat.setFromRotationMatrix(_lookAtMatrix).clone();
 }
 
 /**
@@ -74,8 +94,11 @@ export function stepFocusAnimation(
 				);
 			}
 		} else {
-			// Slerp camera orientation for uniform angular velocity
-			camera.quaternion.slerpQuaternions(state.flyQ0!, state.flyQ1!, s);
+			// Slerp camera orientation toward a lookAt that tracks the body's *current*
+			// position each frame — without this, animation ends pointed at the body's
+			// start-of-animation position and snaps when controls re-center on settle.
+			const lookAtQ = lookAtQuaternion(state.camOriginWorld!, state.focusTargetWorld, camera.up);
+			camera.quaternion.slerpQuaternions(state.flyQ0!, lookAtQ, s);
 			// Camera world position eases in so rotation is visible first
 			const sCam = t * t * t; // cubic ease-in
 			const camWorld = f64lerp(state.camOriginWorld!, state.camTargetWorld!, sCam);
@@ -113,6 +136,7 @@ export function stepFocusAnimation(
 		camera.position.set(cx, cy, cz);
 		state.camOriginWorld = null;
 		state.camTargetWorld = null;
+		state.camTargetOffset = null;
 		state.flyQ0 = null;
 		state.flyQ1 = null;
 		state.orbitFly = false;
@@ -134,7 +158,14 @@ export function prepareFocusTarget(
 
 	if (camPos) {
 		state.camOriginWorld = cameraTruePos;
-		state.camTargetWorld = camPos;
+		state.camTargetWorld = [...camPos];
+		// Body-relative offset so camTargetWorld can be refreshed each frame as the
+		// body moves; the relative direction (and therefore flyQ1) stays valid.
+		state.camTargetOffset = [
+			camPos[0] - bodyPosition[0],
+			camPos[1] - bodyPosition[1],
+			camPos[2] - bodyPosition[2]
+		];
 		state.focusDurationMs = FLY_DURATION_MS;
 		// Capture start orientation, compute end orientation for slerp
 		state.flyQ0 = camera.quaternion.clone();
@@ -155,24 +186,19 @@ export function prepareFocusTarget(
 		camera.position.copy(savedPos);
 		camera.quaternion.copy(state.flyQ0);
 	} else {
-		// Camera stays at current world position, only rotates toward new focus
+		// Camera stays at current world position, only rotates toward new focus.
+		// camTargetOffset stays null — the camera target is world-fixed (camera
+		// doesn't move); the orientation slerp recomputes its lookAt each frame
+		// against the body's current position in stepFocusAnimation.
 		state.camOriginWorld = cameraTruePos;
 		state.camTargetWorld = [...cameraTruePos];
+		state.camTargetOffset = null;
 		state.focusDurationMs = FOCUS_DURATION_MS;
-		// Compute orientation slerp: current → looking at new focus body
 		state.flyQ0 = camera.quaternion.clone();
-		const savedPos = camera.position.clone();
-		const savedQ = camera.quaternion.clone();
-		// Temporarily place camera at final focus-relative position to compute lookAt
-		camera.position.set(
-			cameraTruePos[0] - bodyPosition[0],
-			cameraTruePos[1] - bodyPosition[1],
-			cameraTruePos[2] - bodyPosition[2]
-		);
-		camera.lookAt(0, 0, 0);
-		state.flyQ1 = camera.quaternion.clone();
-		camera.position.copy(savedPos);
-		camera.quaternion.copy(savedQ);
+		// flyQ1 is unused on this path (orientation slerps to a per-frame lookAt
+		// against the body's current position); set it non-null so the isFlying
+		// gate in stepFocusAnimation passes.
+		state.flyQ1 = state.flyQ0.clone();
 	}
 }
 
@@ -184,7 +210,14 @@ export function prepareFlyToCamera(
 	camPos: Vec3
 ): void {
 	state.camOriginWorld = cameraTruePos;
-	state.camTargetWorld = camPos;
+	state.camTargetWorld = [...camPos];
+	// Body-relative offset (focusTruePos == focused body position at this point)
+	// so camTargetWorld follows the body during the orbit fly.
+	state.camTargetOffset = [
+		camPos[0] - state.focusTruePos[0],
+		camPos[1] - state.focusTruePos[1],
+		camPos[2] - state.focusTruePos[2]
+	];
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...state.focusTruePos];
 	state.focusStartTime = performance.now();
