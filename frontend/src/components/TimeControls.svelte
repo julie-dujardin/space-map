@@ -56,7 +56,8 @@
 		{ label: '1 h/s', value: 3600 },
 		{ label: '1 d/s', value: 86400 },
 		{ label: '1 w/s', value: 604800 },
-		{ label: '1 mo/s', value: 2_592_000 }
+		{ label: '1 mo/s', value: 2_592_000 },
+		{ label: '1 y/s', value: 31_557_600 }
 	];
 
 	let dateLabel = $derived.by(() => {
