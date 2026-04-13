@@ -29,6 +29,14 @@
 	const ctx = getContext<ContextManager>('ctx');
 	let parentBody = $derived(ctx?.getBody(body.data.parentId));
 
+	// Sample sim time at 2 Hz so speed/altitude in the description update
+	// smoothly without re-deriving on every animation frame.
+	let sampledJd = $state(clock.jd);
+	$effect(() => {
+		const id = setInterval(() => (sampledJd = clock.jd), 200);
+		return () => clearInterval(id);
+	});
+
 	let data = $state<ObjectDetailData | null>(null);
 	let loading = $state(true);
 	let isMobile = $state(false);
@@ -243,7 +251,7 @@
 				localized={data?.localized ?? null}
 				orbitElements={body.orbitElements ?? body.data}
 				{parentBody}
-				jd={clock.jd}
+				jd={sampledJd}
 			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
