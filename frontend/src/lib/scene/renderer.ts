@@ -355,7 +355,8 @@ export class SceneRenderer {
 		groupId: string,
 		positions: Float32Array,
 		count: number,
-		basisUsed: Vec3
+		basisUsed: Vec3,
+		parentUsed: Vec3
 	): void => {
 		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
 		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
@@ -367,19 +368,27 @@ export class SceneRenderer {
 		// frame between the basis change and the next worker result.
 		pts.userData.frontBasis = [basisUsed[0], basisUsed[1], basisUsed[2]];
 
-		// Snapshot the parent's position so {@link parentShift} compensates for
-		// parent motion between the jd that the pool solved for and the current
-		// frame (worker roundtrip latency + frames where the group was skipped
-		// because its back-buffer was still in flight).
-		const groupParentId = kind === 'asteroid' ? 'naif-10' : key;
-		const groupParentPos = this.ctx.getBody(groupParentId)?.position;
-		if (groupParentPos) {
-			this.pointCloudParentAtUpdate.set(groupId, [
-				groupParentPos[0],
-				groupParentPos[1],
-				groupParentPos[2]
-			]);
-		}
+		// Snapshot the parent's position *as it was passed to the worker at
+		// dispatch* (not the parent's position now): {@link parentShift}
+		// compensates for parent motion between the jd the worker solved for
+		// and the current frame. Snapshotting the post-result parent would
+		// hide the worker-latency motion — that error becomes visible at high
+		// time rates and freezes in when the user pauses.
+		this.pointCloudParentAtUpdate.set(groupId, [parentUsed[0], parentUsed[1], parentUsed[2]]);
+
+		// Re-position the Points container *now*, against the new frontBasis
+		// and parent snapshot. The per-frame repositioner only runs when jd
+		// changes, so without this a worker result arriving while paused would
+		// leave pts.position pinned to its pre-result value while the geometry
+		// it wraps used a different basis — the cloud would render visibly
+		// offset from where its bodies actually orbit.
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const parentNowId = kind === 'asteroid' ? 'naif-10' : key;
+		const parentNow = this.ctx.getBody(parentNowId)?.position;
+		const sx = parentNow ? parentNow[0] - parentUsed[0] : 0;
+		const sy = parentNow ? parentNow[1] - parentUsed[1] : 0;
+		const sz = parentNow ? parentNow[2] - parentUsed[2] : 0;
+		pts.position.set(basisUsed[0] - fx + sx, basisUsed[1] - fy + sy, basisUsed[2] - fz + sz);
 	};
 
 	// --- Focus-relative positioning ---

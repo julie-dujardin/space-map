@@ -32,15 +32,20 @@ interface GroupState {
 	count: number;
 	/** Basis passed to the worker at dispatch of the in-flight tick (if any). */
 	pendingBasis: Vec3 | null;
+	/** Parent position passed to the worker at dispatch of the in-flight tick. */
+	pendingParent: Vec3 | null;
 	/** Basis that the current `front` buffer was computed under. */
 	frontBasis: Vec3;
+	/** Parent position that the current `front` buffer was computed under. */
+	frontParent: Vec3;
 }
 
 export type GroupResultHandler = (
 	id: string,
 	positions: Float32Array,
 	count: number,
-	basis: Vec3
+	basis: Vec3,
+	parent: Vec3
 ) => void;
 
 export interface GroupInput {
@@ -98,14 +103,17 @@ export class OrbitWorkerPool {
 			// rewire and the next worker result, which at high time rates (frequent
 			// rebases triggering rewires) reads as constant cloud-flicker.
 			//
-			// If the back buffer is in flight we allocate a fresh one; the in-flight
-			// buffer eventually returns to the new state via onMessage and replaces
-			// front, which is fine — its contents are still valid orbital positions.
+			// We do NOT allocate a fresh back when one is in flight: doing so would
+			// let a new tick dispatch before the old one returns, and the old
+			// result would then be paired with the new dispatch's pendingBasis /
+			// pendingParent in onMessage — placing the cloud at a wrong location.
+			// Letting back stay null defers the next dispatch until the in-flight
+			// tick lands naturally.
 			let front: Float32Array;
 			let back: Float32Array | null;
 			if (prev && prev.capacity === capacity) {
 				front = prev.front;
-				back = prev.back ?? new Float32Array(capacity * 3);
+				back = prev.back;
 			} else {
 				front = new Float32Array(capacity * 3);
 				back = new Float32Array(capacity * 3);
@@ -117,14 +125,20 @@ export class OrbitWorkerPool {
 
 			const cols = packBodies(g.bodies, skip);
 			perWorker[workerIdx].push({ id: g.id, cols });
+			// If a tick is in flight (prev.back === null), preserve its pending
+			// dispatch state so the returning result is paired with the basis /
+			// parent it was actually computed under — see comment above re: back.
+			const inFlight = !!prev && prev.back === null;
 			nextGroups.set(g.id, {
 				workerIdx,
 				capacity,
 				front,
 				back,
 				count: prev?.count ?? capacity,
-				pendingBasis: null,
-				frontBasis: prev?.frontBasis ?? [0, 0, 0]
+				pendingBasis: inFlight ? prev!.pendingBasis : null,
+				pendingParent: inFlight ? prev!.pendingParent : null,
+				frontBasis: prev?.frontBasis ?? [0, 0, 0],
+				frontParent: prev?.frontParent ?? [0, 0, 0]
 			});
 		}
 
@@ -163,6 +177,7 @@ export class OrbitWorkerPool {
 			});
 			state.back = null;
 			state.pendingBasis = [basis[0], basis[1], basis[2]];
+			state.pendingParent = [parent[0], parent[1], parent[2]];
 		}
 
 		for (let i = 0; i < this.workers.length; i++) {
@@ -187,9 +202,12 @@ export class OrbitWorkerPool {
 			state.back = oldFront;
 			state.count = g.count;
 			const basis = state.pendingBasis ?? state.frontBasis;
+			const parent = state.pendingParent ?? state.frontParent;
 			state.frontBasis = basis;
+			state.frontParent = parent;
 			state.pendingBasis = null;
-			this.onResult?.(g.id, returned, g.count, basis);
+			state.pendingParent = null;
+			this.onResult?.(g.id, returned, g.count, basis, parent);
 		}
 	}
 
