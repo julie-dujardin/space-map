@@ -19,12 +19,13 @@
 		localized: LocalizedObjectData | null;
 		orbitElements?: OrbitalElements;
 		parentBody?: PositionedBody;
+		jd: number;
 	}
 
-	let { global, localized, orbitElements, parentBody }: Props = $props();
+	let { global, localized, orbitElements, parentBody, jd }: Props = $props();
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
-	let currentState = $derived(orbitElements ? currentStateFromElements(orbitElements) : null);
+	let currentState = $derived(orbitElements ? currentStateFromElements(orbitElements, jd) : null);
 	let showAltitude = $derived(
 		currentState != null &&
 			parentBody != null &&

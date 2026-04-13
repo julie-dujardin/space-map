@@ -1,5 +1,4 @@
 import type { OrbitalElements } from '$lib/types/objects';
-import { dateToJD } from '$lib/format/date';
 import { AU_KM } from '$lib/math/units';
 import { solveBarker, solveKepler, solveKeplerHyperbolic } from './solvers';
 
@@ -19,7 +18,7 @@ const AU_PER_DAY_TO_KM_PER_SEC = AU_KM / SEC_PER_DAY;
  */
 export function currentStateFromElements(
 	el: OrbitalElements,
-	date: Date = new Date()
+	jd: number
 ): { rKm: number; vKms: number } | null {
 	const { a, e, ma, n, epoch, q, tp } = el;
 
@@ -29,7 +28,7 @@ export function currentStateFromElements(
 			console.warn(`currentStateFromElements: skipped, non-finite elements`, el);
 			return null;
 		}
-		const result = solveBarker(q, tp, dateToJD(date));
+		const result = solveBarker(q, tp, jd);
 		if (!result) return null;
 		const rKm = result.r * AU_KM;
 		// v² = GM · 2/r (1/a = 0 for parabolic); GM = k² in AU³/day².
@@ -46,7 +45,7 @@ export function currentStateFromElements(
 	const nRadPerSec = (n * DEG2RAD) / SEC_PER_DAY;
 	const gm = nRadPerSec * nRadPerSec * aKm * aKm * aKm; // km^3/s^2
 
-	const dt = dateToJD(date) - epoch;
+	const dt = jd - epoch;
 	const M = (ma + n * dt) * DEG2RAD;
 
 	let rAu: number;

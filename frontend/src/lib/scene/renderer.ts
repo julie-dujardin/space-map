@@ -1,5 +1,6 @@
 import {
 	AmbientLight,
+	BufferAttribute,
 	DirectionalLight,
 	Float32BufferAttribute,
 	Mesh,
@@ -23,17 +24,18 @@ import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
+import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
 	buildOrbitLines,
 	buildPointClouds,
-	rebuildMinorPointClouds,
 	loadBodyTexture,
 	loadBodyTextureTier,
 	loadSystemData,
 	makeCircleTexture
 } from './objects/construction';
-import { refreshOrbitLineGeometry } from './objects/builders';
+import { makePointCloudFromBuffer, refreshOrbitLineGeometry } from './objects/builders';
+import { OrbitWorkerPool, type GroupInput } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 import type { Vec3 } from './animation/math';
@@ -47,15 +49,6 @@ import {
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
-
-/**
- * Sim-seconds per real-second above which spacecraft point-cloud phases stop
- * advancing. At this rate per-frame sim advance (~1 min at 60fps) is ~1% of a
- * LEO orbit — below it per-frame motion is smooth; above, the round-robin
- * recompute aliases sats to random new phases every cycle and the cloud
- * visibly scrambles. 2 h/s.
- */
-const SPACECRAFT_PHASE_FREEZE_RATE = 7200;
 
 // --- SceneRenderer ---
 
@@ -75,6 +68,7 @@ export class SceneRenderer {
 
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture = makeCircleTexture();
+	private orbitPool = new OrbitWorkerPool();
 	private asteroidPoints = new Map<string, Points>();
 	private lastSystemTextureBarycenter: string | null = null;
 	private spacecraftPoints = new Map<string, Points>();
@@ -99,6 +93,7 @@ export class SceneRenderer {
 		focusTargetWorld: [0, 0, 0],
 		camOriginWorld: null,
 		camTargetWorld: null,
+		camTargetOffset: null,
 		flyQ0: null,
 		flyQ1: null,
 		orbitFly: false,
@@ -106,8 +101,6 @@ export class SceneRenderer {
 		focusDurationMs: FOCUS_DURATION_MS
 	};
 	private pointCloudBasisPos: Vec3 = [0, 0, 0];
-	/** Round-robin cursor: which minor point cloud (asteroid zone / spacecraft group) to refresh next. */
-	private pointCloudUpdateIdx = 0;
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
 	/**
@@ -118,8 +111,6 @@ export class SceneRenderer {
 	 * `asteroid:<zone>`, `spacecraft:<parentId>`.
 	 */
 	private pointCloudParentAtUpdate = new Map<string, Vec3>();
-	/** True while time rate is above {@link SPACECRAFT_PHASE_FREEZE_RATE}. Tracked to trigger a catch-up recompute on transition out. */
-	private spacecraftFrozen = false;
 	/** Memoized moon → parent grouping; invalidated when majorBodies count changes (new chunk loaded). */
 	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
 
@@ -249,6 +240,8 @@ export class SceneRenderer {
 		canvas.addEventListener('pointerdown', this.onPointerDown);
 		canvas.addEventListener('pointerup', this.onPointerUp);
 
+		this.orbitPool.setResultHandler(this.onPoolResult);
+
 		// Start loop
 		this.tick();
 	}
@@ -285,19 +278,120 @@ export class SceneRenderer {
 		scheduleIdle(() => buildOrbitLines(this.bodyObjects, this.scene, basis));
 	}
 
+	/**
+	 * Rebuild the pool's owned group set to match the current ctx contents, and
+	 * ensure every zone/group has a Points object whose position attribute is
+	 * backed by the pool's front buffer. Called whenever the minor-body data
+	 * changes (new chunks loaded) or the promoted set changes.
+	 *
+	 * Worker ticks asynchronously refresh the positions; this method just
+	 * (re)wires the handoff between the pool and the Three.js geometries.
+	 */
 	rebuildMinorPointClouds(): void {
-		const newPoints = rebuildMinorPointClouds(
-			this.ctx,
-			this.circleTexture,
-			this.asteroidPoints,
-			this.spacecraftPoints,
-			this.pointCloudBasisPos,
-			new Set(this.bodyObjects.keys())
-		);
-		if (newPoints.length > 0) {
-			this.pendingSceneAdds.push(...newPoints);
+		const skip = new Set(this.bodyObjects.keys());
+		const input: GroupInput[] = [];
+		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
+			input.push({ id: `asteroid:${zone}`, bodies });
+		}
+		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
+			input.push({ id: `spacecraft:${gid}`, bodies });
+		}
+		this.orbitPool.rewire(input, skip);
+
+		const seedBasis: Vec3 = [
+			this.pointCloudBasisPos[0],
+			this.pointCloudBasisPos[1],
+			this.pointCloudBasisPos[2]
+		];
+		// Only seed brand-new groups from body.position. For existing groups we
+		// keep whatever the pool has (worker-computed positions) — overwriting
+		// it would clobber fresh data with stale load-time positions and cause
+		// the cloud to flicker between current and load-time locations on every
+		// rebase (rebases happen frequently at high time rates).
+		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
+			const front = this.orbitPool.front(`asteroid:${zone}`);
+			if (!front) continue;
+			const existing = this.asteroidPoints.get(zone);
+			if (existing) {
+				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
+			} else {
+				this.seedFrontFromBodies(front, bodies);
+				const pts = makePointCloudFromBuffer(front, bodies.length, this.circleTexture);
+				pts.userData.frontBasis = seedBasis;
+				this.asteroidPoints.set(zone, pts);
+				this.pendingSceneAdds.push(pts);
+			}
+		}
+		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
+			const front = this.orbitPool.front(`spacecraft:${gid}`);
+			if (!front) continue;
+			const existing = this.spacecraftPoints.get(gid);
+			if (existing) {
+				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
+			} else {
+				this.seedFrontFromBodies(front, bodies);
+				const pts = makePointCloudFromBuffer(front, bodies.length, this.circleTexture);
+				pts.userData.frontBasis = seedBasis;
+				this.spacecraftPoints.set(gid, pts);
+				this.pendingSceneAdds.push(pts);
+			}
+		}
+		this.ctx.dirtyAsteroidZones.clear();
+		this.ctx.dirtySpacecraftGroups.clear();
+	}
+
+	/** Fill a pool-owned Float32Array with basis-relative body positions (for the 1-2 frames before the first worker tick result arrives). */
+	private seedFrontFromBodies(front: Float32Array, bodies: PositionedBody[]): void {
+		const [bx, by, bz] = this.pointCloudBasisPos;
+		const n = Math.min(bodies.length, front.length / 3);
+		for (let i = 0; i < n; i++) {
+			const p = bodies[i].position;
+			front[i * 3] = p[0] - bx;
+			front[i * 3 + 1] = p[1] - by;
+			front[i * 3 + 2] = p[2] - bz;
 		}
 	}
+
+	/** Pool result handler: swap the returned buffer into the geometry. */
+	private onPoolResult = (
+		groupId: string,
+		positions: Float32Array,
+		count: number,
+		basisUsed: Vec3,
+		parentUsed: Vec3
+	): void => {
+		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
+		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
+		if (!pts) return;
+		pts.geometry.setAttribute('position', new BufferAttribute(positions, 3));
+		pts.geometry.setDrawRange(0, count);
+		// Record the basis the worker used; repositionPointClouds applies this
+		// per-group so a mid-flight rebase doesn't misplace the cloud for the
+		// frame between the basis change and the next worker result.
+		pts.userData.frontBasis = [basisUsed[0], basisUsed[1], basisUsed[2]];
+
+		// Snapshot the parent's position *as it was passed to the worker at
+		// dispatch* (not the parent's position now): {@link parentShift}
+		// compensates for parent motion between the jd the worker solved for
+		// and the current frame. Snapshotting the post-result parent would
+		// hide the worker-latency motion — that error becomes visible at high
+		// time rates and freezes in when the user pauses.
+		this.pointCloudParentAtUpdate.set(groupId, [parentUsed[0], parentUsed[1], parentUsed[2]]);
+
+		// Re-position the Points container *now*, against the new frontBasis
+		// and parent snapshot. The per-frame repositioner only runs when jd
+		// changes, so without this a worker result arriving while paused would
+		// leave pts.position pinned to its pre-result value while the geometry
+		// it wraps used a different basis — the cloud would render visibly
+		// offset from where its bodies actually orbit.
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const parentNowId = kind === 'asteroid' ? 'naif-10' : key;
+		const parentNow = this.ctx.getBody(parentNowId)?.position;
+		const sx = parentNow ? parentNow[0] - parentUsed[0] : 0;
+		const sy = parentNow ? parentNow[1] - parentUsed[1] : 0;
+		const sz = parentNow ? parentNow[2] - parentUsed[2] : 0;
+		pts.position.set(basisUsed[0] - fx + sx, basisUsed[1] - fy + sy, basisUsed[2] - fz + sz);
+	};
 
 	// --- Focus-relative positioning ---
 
@@ -322,24 +416,27 @@ export class SceneRenderer {
 
 	private repositionPointClouds(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const [bx, by, bz] = this.pointCloudBasisPos;
-		const dx = bx - fx,
-			dy = by - fy,
-			dz = bz - fz;
-		// Shift each group by (parent_now − parent_at_last_kepler_update) so
-		// bodies ride along with their moving parent. Without this, point-cloud
-		// satellites visibly lag their planet and snap back each round-robin
-		// refresh (once per ~group_count frames).
+		const currentBasis = this.pointCloudBasisPos;
+		// Minor-body clouds use the *per-group* basis the worker computed under,
+		// not `pointCloudBasisPos` — a rebase that lands between tick-dispatch
+		// and worker result would otherwise misplace the cloud by the rebase
+		// distance for 1-2 frames, causing visible flicker when focus drifts.
 		for (const [zone, pts] of this.asteroidPoints) {
+			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
 			const [sx, sy, sz] = this.parentShift(`asteroid:${zone}`, 'naif-10');
-			pts.position.set(dx + sx, dy + sy, dz + sz);
+			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
 		}
 		for (const [gid, pts] of this.spacecraftPoints) {
+			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
 			const [sx, sy, sz] = this.parentShift(`spacecraft:${gid}`, gid);
-			pts.position.set(dx + sx, dy + sy, dz + sz);
+			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
 		}
 		// Moon point clouds are re-written every frame (writeMoonPointClouds),
 		// so vertex buffers are always current — no shift needed.
+		const [bx, by, bz] = currentBasis;
+		const dx = bx - fx,
+			dy = by - fy,
+			dz = bz - fz;
 		for (const pts of this.moonPoints.values()) pts.position.set(dx, dy, dz);
 	}
 
@@ -389,48 +486,26 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Moons copy already-repositioned coords (cheap). Asteroid zones and
-	 * spacecraft groups each do thousands of Kepler solves, so they're
-	 * round-robined one-per-frame to bound the frame budget.
+	 * Dispatch a per-frame Kepler solve to the worker pool for every asteroid
+	 * zone and spacecraft group. Moons remain on the main thread — they read
+	 * already-computed coords from majorBodies, so they're nearly free.
 	 *
-	 * Above {@link SPACECRAFT_PHASE_FREEZE_RATE}, we stop advancing spacecraft
-	 * phases — sim advance per frame exceeds an appreciable fraction of LEO
-	 * orbital period, so per-cycle recomputes just alias each sat to a
-	 * random new phase. Freezing gives a visually stable cloud that still
-	 * rides along with its parent via parentShift in {@link repositionPointClouds}.
-	 *
-	 * TODO: move Kepler solves off the main thread (worker pool, transferable
-	 * Float32Array buffers). With per-frame updates for all groups in parallel
-	 * we could drop the round-robin entirely and lower this freeze threshold.
+	 * Worker roundtrip latency means individual groups refresh at ~½× the tick
+	 * rate; {@link parentShift} compensates parent motion between refreshes.
 	 */
 	private updatePointClouds(jd: number): void {
 		this.writeMoonPointClouds();
 
-		const freezeSpacecraft = Math.abs(this.clock.timeScale) >= SPACECRAFT_PHASE_FREEZE_RATE;
-		// On transition out of freeze, catch up every spacecraft group in one
-		// pass so the cloud reflects current jd immediately (user typically
-		// just paused or slowed down — a one-frame hitch is fine, and the
-		// alternative is stale positions until each group cycles round-robin).
-		if (this.spacecraftFrozen && !freezeSpacecraft) {
-			for (const gid of this.spacecraftPoints.keys()) {
-				this.writeMinorPointCloud(gid, 'spacecraft', jd);
-			}
+		const parents = new Map<string, Vec3>();
+		const sunPos = this.ctx.getBody('naif-10')?.position ?? ([0, 0, 0] as Vec3);
+		for (const [zone] of this.ctx.asteroidBodiesByZone) {
+			parents.set(`asteroid:${zone}`, [sunPos[0], sunPos[1], sunPos[2]]);
 		}
-		this.spacecraftFrozen = freezeSpacecraft;
-
-		const asteroidKeys = [...this.asteroidPoints.keys()];
-		const spacecraftKeys = freezeSpacecraft ? [] : [...this.spacecraftPoints.keys()];
-		const total = asteroidKeys.length + spacecraftKeys.length;
-		if (total === 0) return;
-		this.pointCloudUpdateIdx = (this.pointCloudUpdateIdx + 1) % total;
-		const idx = this.pointCloudUpdateIdx;
-		if (idx < asteroidKeys.length) {
-			const zone = asteroidKeys[idx];
-			this.writeMinorPointCloud(zone, 'asteroid', jd);
-		} else {
-			const gid = spacecraftKeys[idx - asteroidKeys.length];
-			this.writeMinorPointCloud(gid, 'spacecraft', jd);
+		for (const [gid] of this.ctx.spacecraftByParent) {
+			const pp = this.ctx.getBody(gid)?.position ?? ([0, 0, 0] as Vec3);
+			parents.set(`spacecraft:${gid}`, [pp[0], pp[1], pp[2]]);
 		}
+		this.orbitPool.tick(jd, this.pointCloudBasisPos, parents);
 	}
 
 	private getMoonsByParent(): Map<string, PositionedBody[]> {
@@ -463,69 +538,6 @@ export class SceneRenderer {
 			}
 			posAttr.needsUpdate = true;
 		}
-	}
-
-	/**
-	 * Recompute one group's positions at `jd` into its geometry buffer.
-	 * Parents that aren't meshed fall back to SSB — fine for asteroids since
-	 * the Sun's offset from SSB is sub-km.
-	 */
-	private writeMinorPointCloud(key: string, kind: 'asteroid' | 'spacecraft', jd: number): void {
-		const sourceBodies =
-			kind === 'asteroid'
-				? this.ctx.asteroidBodiesByZone.get(key)
-				: this.ctx.spacecraftByParent.get(key);
-		const points =
-			kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
-		if (!sourceBodies || !points) return;
-
-		// Snapshot the parent's position so {@link parentShift} can translate
-		// the Points object each frame between round-robin recomputes.
-		const groupParentId = kind === 'asteroid' ? 'naif-10' : key;
-		const groupParentPos = this.ctx.getBody(groupParentId)?.position;
-		if (groupParentPos) {
-			this.pointCloudParentAtUpdate.set(`${kind}:${key}`, [
-				groupParentPos[0],
-				groupParentPos[1],
-				groupParentPos[2]
-			]);
-		}
-
-		const promoted = this.bodyObjects;
-		const [bx, by, bz] = this.pointCloudBasisPos;
-		const posAttr = points.geometry.getAttribute('position');
-		const arr = posAttr.array as Float32Array;
-		const capacity = arr.length / 3;
-
-		let writeIdx = 0;
-		for (const body of sourceBodies) {
-			if (writeIdx >= capacity) break;
-			if (promoted.has(body.data.id)) continue;
-
-			const parent = promoted.get(body.data.parentId)?.body.position;
-			const px = parent?.[0] ?? 0;
-			const py = parent?.[1] ?? 0;
-			const pz = parent?.[2] ?? 0;
-			const offset =
-				body.data.q != null
-					? parabolicToPositionJD(body.data, jd)
-					: orbitalElementsToPositionJD(body.data, jd);
-			if (!offset) {
-				writeIdx++;
-				continue;
-			}
-			const x = px + offset[0];
-			const y = py + offset[1];
-			const z = pz + offset[2];
-			body.position[0] = x;
-			body.position[1] = y;
-			body.position[2] = z;
-			arr[writeIdx * 3] = x - bx;
-			arr[writeIdx * 3 + 1] = y - by;
-			arr[writeIdx * 3 + 2] = z - bz;
-			writeIdx++;
-		}
-		posAttr.needsUpdate = true;
 	}
 
 	private rebuildMoonPointClouds(): void {
@@ -671,6 +683,15 @@ export class SceneRenderer {
 			this.focus.focusTargetWorld[0] = p[0];
 			this.focus.focusTargetWorld[1] = p[1];
 			this.focus.focusTargetWorld[2] = p[2];
+			// Refresh body-relative camera target so the fly destination tracks
+			// the moving body (otherwise we land at the body's start-of-fly
+			// position offset).
+			const camOff = this.focus.camTargetOffset;
+			if (camOff && this.focus.camTargetWorld) {
+				this.focus.camTargetWorld[0] = p[0] + camOff[0];
+				this.focus.camTargetWorld[1] = p[1] + camOff[1];
+				this.focus.camTargetWorld[2] = p[2] + camOff[2];
+			}
 			if (!animating) {
 				this.focus.focusTruePos[0] = p[0];
 				this.focus.focusTruePos[1] = p[1];
@@ -705,11 +726,7 @@ export class SceneRenderer {
 		// Gate body updates on jd actually changing — fires for play, pause→now,
 		// and manual setJD alike; skips work while paused.
 		this.clock.tick(performance.now());
-		// A drop from "phases frozen" to "phases live" (pause, slow-down, `now`)
-		// also requires a recompute, even if jd didn't advance.
-		const exitingFreeze =
-			this.spacecraftFrozen && Math.abs(this.clock.timeScale) < SPACECRAFT_PHASE_FREEZE_RATE;
-		if (this.clock.jd !== this.lastUpdatedJd || exitingFreeze) {
+		if (this.clock.jd !== this.lastUpdatedJd) {
 			this.lastUpdatedJd = this.clock.jd;
 			this.updatePositions(this.clock.jd);
 			this.updatePointClouds(this.clock.jd);
@@ -865,7 +882,8 @@ export class SceneRenderer {
 			this.focus.focusTruePos,
 			canvas.clientWidth,
 			canvas.clientHeight,
-			this._tmpV3
+			this._tmpV3,
+			this.clock.jd
 		);
 		if (pointHit && pointHit.distance < bestDist) {
 			bestBody = pointHit.body;
@@ -974,6 +992,7 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
+		if (this.focusedBody?.data.id === body.data.id) return;
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(
@@ -987,6 +1006,11 @@ export class SceneRenderer {
 	/** Build mesh, label, halo, and orbit line for a body that only existed as a point-cloud dot. */
 	private ensureBodyObjects(body: PositionedBody): void {
 		if (this.bodyObjects.has(body.data.id)) return;
+		// Point-cloud bodies aren't touched by updatePositions — their CPU
+		// position is frozen at load. Refresh before building so the mesh,
+		// halo, and orbit line spawn at the current jd instead of jumping on
+		// the next tick.
+		refreshMinorBodyPosition(body, this.clock.jd, this.ctx);
 		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
 		if (!body.orbitElements) {
 			body.orbitElements = body.data;

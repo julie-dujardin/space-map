@@ -60,6 +60,7 @@
 			{#if selectedBody?.data.id}
 				<ObjectDrawer
 					body={selectedBody}
+					{clock}
 					onClose={() => {
 						selectedBody = undefined;
 						drawerHeightDvh = 0;

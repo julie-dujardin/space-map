@@ -1,6 +1,7 @@
 import type { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { Vec3 } from '../animation/math';
 
 /** Find the closest visible point-cloud body to the given pointer (NDC). */
@@ -11,7 +12,8 @@ export function pickPointCloudBody(
 	focusTruePos: Vec3,
 	canvasWidth: number,
 	canvasHeight: number,
-	tmpV3: Vector3
+	tmpV3: Vector3,
+	jd: number
 ): { body: PositionedBody; distance: number } | null {
 	const SCREEN_THRESHOLD = 8; // pixels
 	// Convert NDC pointer to pixel coords
@@ -25,6 +27,10 @@ export function pickPointCloudBody(
 	let bestWorldDist = Infinity;
 
 	const testBody = (body: PositionedBody): void => {
+		// Point-cloud bodies' positions are advanced on the GPU; refresh the
+		// CPU copy from orbital elements at the current jd so picking matches
+		// the rendered dot even while paused.
+		refreshMinorBodyPosition(body, jd, ctx);
 		// Project body position into camera-relative coordinates
 		v.set(body.position[0] - fx, body.position[1] - fy, body.position[2] - fz);
 		v.project(camera);

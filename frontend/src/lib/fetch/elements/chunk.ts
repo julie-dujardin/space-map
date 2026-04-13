@@ -169,11 +169,18 @@ export class ChunkLoader {
 
 			if (isMajorBody(objType)) {
 				const isMoon = objType === ObjectType.MOON;
+				// If the parent has barycenter elements, draw the orbit around SSB
+				// (centered at origin) using those elements. Otherwise the body's
+				// own elements are around the parent (e.g. Ceres around the Sun),
+				// so the orbit must be drawn centered on the parent's actual
+				// position, not at SSB — failing to do so leaves the trail offset
+				// from the body by parent_pos − SSB.
+				const hasBarycenter = this.barycenters.has(parentId);
 				bodies.push({
 					data: body,
 					position: pos,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
-					orbitCenter: isMoon ? parentPos : undefined
+					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {
 				bodies.push({

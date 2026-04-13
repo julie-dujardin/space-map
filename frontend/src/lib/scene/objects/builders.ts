@@ -1,5 +1,6 @@
 import {
 	AdditiveBlending,
+	BufferAttribute,
 	BufferGeometry,
 	CanvasTexture,
 	Color,
@@ -397,5 +398,35 @@ export function makePointCloud(
 	});
 	const points = new Points(geometry, material);
 	points.frustumCulled = false; // visibility managed by context-manager thresholds
+	return points;
+}
+
+/**
+ * Build a Points object whose position attribute is backed by a caller-owned
+ * Float32Array. Used by the orbit worker pool, which swaps the backing array
+ * each time a worker returns a fresh tick result — so the geometry buffer IS
+ * the pool's front buffer, no copy per frame.
+ *
+ * `drawCount` controls the initial draw range; the caller updates it via
+ * geometry.setDrawRange() when a worker returns a different valid count.
+ */
+export function makePointCloudFromBuffer(
+	positions: Float32Array,
+	drawCount: number,
+	texture: CanvasTexture
+): Points {
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new BufferAttribute(positions, 3));
+	geometry.setDrawRange(0, drawCount);
+	const material = new PointsMaterial({
+		map: texture,
+		transparent: true,
+		size: 4,
+		sizeAttenuation: false,
+		depthTest: true,
+		depthWrite: false
+	});
+	const points = new Points(geometry, material);
+	points.frustumCulled = false;
 	return points;
 }
