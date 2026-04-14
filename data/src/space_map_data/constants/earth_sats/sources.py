@@ -66,12 +66,14 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("GUAT", "Guatemala", countries=("GT",)),
     SourceSpec("HRV", "Croatia", countries=("HR",)),
     SourceSpec("HUN", "Hungary", countries=("HU",)),
-    SourceSpec("IM", "Inmarsat", operator="Inmarsat"),  
+    SourceSpec("IM", "Inmarsat", operator="Inmarsat"),
     SourceSpec("IND", "India", countries=("IN",)),
     SourceSpec("INDO", "Indonesia", countries=("ID",)),
     SourceSpec("IRAN", "Iran", countries=("IR",)),
     SourceSpec("IRAQ", "Iraq", countries=("IQ",)),
-    SourceSpec("IRID", "Iridium", operator="Iridium"),  # not present in data, use prefix
+    SourceSpec(
+        "IRID", "Iridium", operator="Iridium"
+    ),  # not present in data, use prefix
     SourceSpec("IRL", "Ireland", countries=("IE",)),
     SourceSpec("ISRA", "Israel", countries=("IL",)),
     SourceSpec(
