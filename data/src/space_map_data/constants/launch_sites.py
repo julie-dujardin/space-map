@@ -54,7 +54,11 @@ LAUNCH_SITES: tuple[LaunchSiteSpec, ...] = (
     LaunchSiteSpec("SVOBO", "Svobodnyy Launch Complex, Russia", "Q1366384"),
     LaunchSiteSpec("TAISC", "Taiyuan Space Center, PRC", "Q1194479"),
     LaunchSiteSpec("TANSC", "Tanegashima Space Center, Japan", "Q742683"),
-    LaunchSiteSpec("TYMSC", "Tyuratam Missile and Space Center, Kazakhstan", "Q177477"),
+    LaunchSiteSpec(
+        "TYMSC",
+        "Tyuratam Missile and Space Center / Baikonur Cosmodrome, Kazakhstan",
+        "Q177477",
+    ),
     LaunchSiteSpec("UNK", "Unknown"),
     LaunchSiteSpec("VOSTO", "Vostochny Cosmodrome, Russia", "Q1166191"),
     LaunchSiteSpec("WLPIS", "Wallops Island, Virginia, USA", "Q182348"),
@@ -62,7 +66,9 @@ LAUNCH_SITES: tuple[LaunchSiteSpec, ...] = (
     LaunchSiteSpec("WRAS", "Western Range Airspace"),
     LaunchSiteSpec("WSC", "Wenchang Satellite Launch Site, PRC", "Q1246624"),
     LaunchSiteSpec("XICLF", "Xichang Launch Facility, PRC", "Q734306"),
-    LaunchSiteSpec("YAVNE", "Yavne Launch Facility, Israel", "Q590092"),
+    LaunchSiteSpec(
+        "YAVNE", "Yavne Launch Facility / Palmachim Airbase, Israel", "Q590092"
+    ),
     LaunchSiteSpec("YSLA", "Yellow Sea Launch Area, PRC"),
     LaunchSiteSpec(
         "YUN",
