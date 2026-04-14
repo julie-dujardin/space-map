@@ -55,6 +55,7 @@
 	"jpl_horizons": "JPL Horizons ({id})",
 	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO متتبع الأقمار الصناعية ({id})",
+	"celestrak_orbit_data": "CelesTrak بيانات المدار ({id})",
 	"type_asteroid": "كويكب",
 	"type_barycenter": "مركز ثقل",
 	"type_comet": "مذنب",

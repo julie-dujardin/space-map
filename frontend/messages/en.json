@@ -71,6 +71,7 @@
 	"jpl_horizons": "JPL Horizons ({id})",
 	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
+	"celestrak_orbit_data": "CelesTrak Orbit Data ({id})",
 	"my_location": "My location",
 	"object_not_found": "Object {id} not found",
 	"tooltip_extent": "Tri-axial ellipsoid dimensions",

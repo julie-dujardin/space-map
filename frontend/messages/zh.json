@@ -55,6 +55,7 @@
 	"jpl_horizons": "JPL Horizons ({id})",
 	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO 卫星追踪 ({id})",
+	"celestrak_orbit_data": "CelesTrak 轨道数据 ({id})",
 	"type_asteroid": "小行星",
 	"type_barycenter": "质心",
 	"type_comet": "彗星",

@@ -46,11 +46,16 @@
 				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(sbdbDesignation))}`,
 				label: m.jpl_sbdb({ id: String(sbdbDesignation) })
 			});
-		if (noradCatId)
+		if (noradCatId) {
+			result.push({
+				href: `https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=${noradCatId}`,
+				label: m.celestrak_orbit_data({ id: String(noradCatId) })
+			});
 			result.push({
 				href: `https://www.n2yo.com/satellite/?s=${noradCatId}`,
 				label: m.n2yo_satellite_tracker({ id: String(noradCatId) })
 			});
+		}
 		if (wikidataQid)
 			result.push({
 				href: `https://www.wikidata.org/wiki/${wikidataQid}`,
