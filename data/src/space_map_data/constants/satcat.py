@@ -11,6 +11,7 @@ Sources:
 - https://celestrak.org/satcat/launchsites.php
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -140,283 +141,157 @@ DATA_STATUS_CODES: dict[str, DataStatus] = {
 
 
 # https://celestrak.org/satcat/sources.php
-class Owner(StrEnum):
-    ARAB_SATELLITE_COMMUNICATIONS = "arab_satellite_communications"
-    ASIA_BROADCAST_SATELLITE = "asia_broadcast_satellite"
-    ASIASAT = "asiasat"
-    ALGERIA = "algeria"
-    ANGOLA = "angola"
-    ARGENTINA = "argentina"
-    ARMENIA = "armenia"
-    AUSTRIA = "austria"
-    AUSTRALIA = "australia"
-    AZERBAIJAN = "azerbaijan"
-    BELGIUM = "belgium"
-    BELARUS = "belarus"
-    BERMUDA = "bermuda"
-    BANGLADESH = "bangladesh"
-    BAHRAIN = "bahrain"
-    BHUTAN = "bhutan"
-    BOLIVIA = "bolivia"
-    BRAZIL = "brazil"
-    BULGARIA = "bulgaria"
-    BOTSWANA = "botswana"
-    CANADA = "canada"
-    CHINA_BRAZIL = "china_brazil"
-    CHINA_TURKIYE = "china_turkiye"
-    CHILE = "chile"
-    COMMONWEALTH_OF_INDEPENDENT_STATES = "commonwealth_of_independent_states"
-    COLOMBIA = "colombia"
-    COSTA_RICA = "costa_rica"
-    CZECH_REPUBLIC = "czech_republic"
-    DENMARK = "denmark"
-    DJIBOUTI = "djibouti"
-    ECUADOR = "ecuador"
-    EGYPT = "egypt"
-    EUROPEAN_SPACE_AGENCY = "european_space_agency"
-    EUROPEAN_SPACE_RESEARCH_ORGANIZATION = "european_space_research_organization"
-    ESTONIA = "estonia"
-    ETHIOPIA = "ethiopia"
-    EUMETSAT = "eumetsat"
-    EUTELSAT = "eutelsat"
-    FRANCE_GERMANY = "france_germany"
-    FINLAND = "finland"
-    FRANCE = "france"
-    FRANCE_ITALY = "france_italy"
-    GERMANY = "germany"
-    GHANA = "ghana"
-    GLOBALSTAR = "globalstar"
-    GREECE = "greece"
-    GREECE_SAUDI_ARABIA = "greece_saudi_arabia"
-    GUATEMALA = "guatemala"
-    CROATIA = "croatia"
-    HUNGARY = "hungary"
-    INMARSAT = "inmarsat"
-    INDIA = "india"
-    INDONESIA = "indonesia"
-    IRAN = "iran"
-    IRAQ = "iraq"
-    IRIDIUM = "iridium"
-    IRELAND = "ireland"
-    ISRAEL = "israel"
-    ISRO = "isro"
-    INTERNATIONAL_SPACE_STATION = "international_space_station"
-    ITALY = "italy"
-    INTELSAT = "intelsat"
-    JORDAN = "jordan"
-    JAPAN = "japan"
-    KAZAKHSTAN = "kazakhstan"
-    KENYA = "kenya"
-    KUWAIT = "kuwait"
-    LAOS = "laos"
-    SRI_LANKA = "sri_lanka"
-    LITHUANIA = "lithuania"
-    LUXEMBOURG = "luxembourg"
-    MOROCCO = "morocco"
-    MALAYSIA = "malaysia"
-    MONACO = "monaco"
-    MOLDOVA = "moldova"
-    MEXICO = "mexico"
-    MYANMAR = "myanmar"
-    MONTENEGRO = "montenegro"
-    MONGOLIA = "mongolia"
-    MAURITIUS = "mauritius"
-    NATO = "nato"
-    NETHERLANDS = "netherlands"
-    NEW_ICO = "new_ico"
-    NIGERIA = "nigeria"
-    NORTH_KOREA = "north_korea"
-    NORWAY = "norway"
-    NEPAL = "nepal"
-    NEW_ZEALAND = "new_zealand"
-    O3B_NETWORKS = "o3b_networks"
-    ORBCOMM = "orbcomm"
-    PAKISTAN = "pakistan"
-    PERU = "peru"
-    POLAND = "poland"
-    PORTUGAL = "portugal"
-    CHINA = "china"
-    PARAGUAY = "paraguay"
-    CHINA_ESA = "china_esa"
-    QATAR = "qatar"
-    RASCOMSTAR_QAF = "rascomstar_qaf"
-    TAIWAN = "taiwan"
-    ROMANIA = "romania"
-    PHILIPPINES = "philippines"
-    RWANDA = "rwanda"
-    SOUTH_AFRICA = "south_africa"
-    SAUDI_ARABIA = "saudi_arabia"
-    SUDAN = "sudan"
-    SEA_LAUNCH = "sea_launch"
-    SENEGAL = "senegal"
-    SES = "ses"
-    SINGAPORE_JAPAN = "singapore_japan"
-    SINGAPORE = "singapore"
-    SOUTH_KOREA = "south_korea"
-    SOLOMON_ISLANDS = "solomon_islands"
-    SPAIN = "spain"
-    SINGAPORE_TAIWAN = "singapore_taiwan"
-    SLOVAKIA = "slovakia"
-    SLOVENIA = "slovenia"
-    SWEDEN = "sweden"
-    SWITZERLAND = "switzerland"
-    TBD = "tbd"
-    THAILAND = "thailand"
-    TURKMENISTAN_MONACO = "turkmenistan_monaco"
-    TUNISIA = "tunisia"
-    TURKIYE = "turkiye"
-    UNITED_ARAB_EMIRATES = "united_arab_emirates"
-    UGANDA = "uganda"
-    UNITED_KINGDOM = "united_kingdom"
-    UKRAINE = "ukraine"
-    UNKNOWN = "unknown"
-    URUGUAY = "uruguay"
-    UNITED_STATES = "united_states"
-    UNITED_STATES_BRAZIL = "united_states_brazil"
-    VATICAN = "vatican"
-    VENEZUELA = "venezuela"
-    VIETNAM = "vietnam"
-    ZIMBABWE = "zimbabwe"
+@dataclass(frozen=True)
+class SourceSpec:
+    code: str  # SATCAT short code (primary key)
+    name: str  # CelesTrak sources.php description
+    countries: tuple[str, ...] = ()  # ISO 3166-1 alpha-2 codes
+    operator: str | None = None  # Free-text operator name
 
 
-OWNER_CODES: dict[str, Owner] = {
-    "AB": Owner.ARAB_SATELLITE_COMMUNICATIONS,
-    "ABS": Owner.ASIA_BROADCAST_SATELLITE,
-    "AC": Owner.ASIASAT,
-    "ALG": Owner.ALGERIA,
-    "ANG": Owner.ANGOLA,
-    "ARGN": Owner.ARGENTINA,
-    "ARM": Owner.ARMENIA,
-    "ASRA": Owner.AUSTRIA,
-    "AUS": Owner.AUSTRALIA,
-    "AZER": Owner.AZERBAIJAN,
-    "BEL": Owner.BELGIUM,
-    "BELA": Owner.BELARUS,
-    "BERM": Owner.BERMUDA,
-    "BGD": Owner.BANGLADESH,
-    "BHR": Owner.BAHRAIN,
-    "BHUT": Owner.BHUTAN,
-    "BOL": Owner.BOLIVIA,
-    "BRAZ": Owner.BRAZIL,
-    "BUL": Owner.BULGARIA,
-    "BWA": Owner.BOTSWANA,
-    "CA": Owner.CANADA,
-    "CHBZ": Owner.CHINA_BRAZIL,
-    "CHTU": Owner.CHINA_TURKIYE,
-    "CHLE": Owner.CHILE,
-    "CIS": Owner.COMMONWEALTH_OF_INDEPENDENT_STATES,
-    "COL": Owner.COLOMBIA,
-    "CRI": Owner.COSTA_RICA,
-    "CZCH": Owner.CZECH_REPUBLIC,
-    "DEN": Owner.DENMARK,
-    "DJI": Owner.DJIBOUTI,
-    "ECU": Owner.ECUADOR,
-    "EGYP": Owner.EGYPT,
-    "ESA": Owner.EUROPEAN_SPACE_AGENCY,
-    "ESRO": Owner.EUROPEAN_SPACE_RESEARCH_ORGANIZATION,
-    "EST": Owner.ESTONIA,
-    "ETH": Owner.ETHIOPIA,
-    "EUME": Owner.EUMETSAT,
-    "EUTE": Owner.EUTELSAT,
-    "FGER": Owner.FRANCE_GERMANY,
-    "FIN": Owner.FINLAND,
-    "FR": Owner.FRANCE,
-    "FRIT": Owner.FRANCE_ITALY,
-    "GER": Owner.GERMANY,
-    "GHA": Owner.GHANA,
-    "GLOB": Owner.GLOBALSTAR,
-    "GREC": Owner.GREECE,
-    "GRSA": Owner.GREECE_SAUDI_ARABIA,
-    "GUAT": Owner.GUATEMALA,
-    "HRV": Owner.CROATIA,
-    "HUN": Owner.HUNGARY,
-    "IM": Owner.INMARSAT,
-    "IND": Owner.INDIA,
-    "INDO": Owner.INDONESIA,
-    "IRAN": Owner.IRAN,
-    "IRAQ": Owner.IRAQ,
-    "IRID": Owner.IRIDIUM,
-    "IRL": Owner.IRELAND,
-    "ISRA": Owner.ISRAEL,
-    "ISRO": Owner.ISRO,
-    "ISS": Owner.INTERNATIONAL_SPACE_STATION,
-    "IT": Owner.ITALY,
-    "ITSO": Owner.INTELSAT,
-    "JOR": Owner.JORDAN,
-    "JPN": Owner.JAPAN,
-    "KAZ": Owner.KAZAKHSTAN,
-    "KEN": Owner.KENYA,
-    "KWT": Owner.KUWAIT,
-    "LAOS": Owner.LAOS,
-    "LKA": Owner.SRI_LANKA,
-    "LTU": Owner.LITHUANIA,
-    "LUXE": Owner.LUXEMBOURG,
-    "MA": Owner.MOROCCO,
-    "MALA": Owner.MALAYSIA,
-    "MCO": Owner.MONACO,
-    "MDA": Owner.MOLDOVA,
-    "MEX": Owner.MEXICO,
-    "MMR": Owner.MYANMAR,
-    "MNE": Owner.MONTENEGRO,
-    "MNG": Owner.MONGOLIA,
-    "MUS": Owner.MAURITIUS,
-    "NATO": Owner.NATO,
-    "NETH": Owner.NETHERLANDS,
-    "NICO": Owner.NEW_ICO,
-    "NIG": Owner.NIGERIA,
-    "NKOR": Owner.NORTH_KOREA,
-    "NOR": Owner.NORWAY,
-    "NPL": Owner.NEPAL,
-    "NZ": Owner.NEW_ZEALAND,
-    "O3B": Owner.O3B_NETWORKS,
-    "ORB": Owner.ORBCOMM,
-    "PAKI": Owner.PAKISTAN,
-    "PERU": Owner.PERU,
-    "POL": Owner.POLAND,
-    "POR": Owner.PORTUGAL,
-    "PRC": Owner.CHINA,
-    "PRY": Owner.PARAGUAY,
-    "PRES": Owner.CHINA_ESA,
-    "QAT": Owner.QATAR,
-    "RASC": Owner.RASCOMSTAR_QAF,
-    "ROC": Owner.TAIWAN,
-    "ROM": Owner.ROMANIA,
-    "RP": Owner.PHILIPPINES,
-    "RWA": Owner.RWANDA,
-    "SAFR": Owner.SOUTH_AFRICA,
-    "SAUD": Owner.SAUDI_ARABIA,
-    "SDN": Owner.SUDAN,
-    "SEAL": Owner.SEA_LAUNCH,
-    "SEN": Owner.SENEGAL,
-    "SES": Owner.SES,
-    "SGJP": Owner.SINGAPORE_JAPAN,
-    "SING": Owner.SINGAPORE,
-    "SKOR": Owner.SOUTH_KOREA,
-    "SLB": Owner.SOLOMON_ISLANDS,
-    "SPN": Owner.SPAIN,
-    "STCT": Owner.SINGAPORE_TAIWAN,
-    "SVK": Owner.SLOVAKIA,
-    "SVN": Owner.SLOVENIA,
-    "SWED": Owner.SWEDEN,
-    "SWTZ": Owner.SWITZERLAND,
-    "TBD": Owner.TBD,
-    "THAI": Owner.THAILAND,
-    "TMMC": Owner.TURKMENISTAN_MONACO,
-    "TUN": Owner.TUNISIA,
-    "TURK": Owner.TURKIYE,
-    "UAE": Owner.UNITED_ARAB_EMIRATES,
-    "UGA": Owner.UGANDA,
-    "UK": Owner.UNITED_KINGDOM,
-    "UKR": Owner.UKRAINE,
-    "UNK": Owner.UNKNOWN,
-    "URY": Owner.URUGUAY,
-    "US": Owner.UNITED_STATES,
-    "USBZ": Owner.UNITED_STATES_BRAZIL,
-    "VAT": Owner.VATICAN,
-    "VENZ": Owner.VENEZUELA,
-    "VTNM": Owner.VIETNAM,
-    "ZWE": Owner.ZIMBABWE,
-}
+SOURCES: tuple[SourceSpec, ...] = (
+    SourceSpec("AB", "Arab Satellite Communications Organization", operator="Arabsat"),
+    SourceSpec("ABS", "Asia Broadcast Satellite", operator="Asia Broadcast Satellite"),
+    SourceSpec("AC", "AsiaSat", operator="AsiaSat"),
+    SourceSpec("ALG", "Algeria", countries=("DZ",)),
+    SourceSpec("ANG", "Angola", countries=("AO",)),
+    SourceSpec("ARGN", "Argentina", countries=("AR",)),
+    SourceSpec("ARM", "Armenia", countries=("AM",)),
+    SourceSpec("ASRA", "Austria", countries=("AT",)),
+    SourceSpec("AUS", "Australia", countries=("AU",)),
+    SourceSpec("AZER", "Azerbaijan", countries=("AZ",)),
+    SourceSpec("BEL", "Belgium", countries=("BE",)),
+    SourceSpec("BELA", "Belarus", countries=("BY",)),
+    SourceSpec("BERM", "Bermuda", countries=("BM",)),
+    SourceSpec("BGD", "Bangladesh", countries=("BD",)),
+    SourceSpec("BHR", "Bahrain", countries=("BH",)),
+    SourceSpec("BHUT", "Bhutan", countries=("BT",)),
+    SourceSpec("BOL", "Bolivia", countries=("BO",)),
+    SourceSpec("BRAZ", "Brazil", countries=("BR",)),
+    SourceSpec("BUL", "Bulgaria", countries=("BG",)),
+    SourceSpec("BWA", "Botswana", countries=("BW",)),
+    SourceSpec("CA", "Canada", countries=("CA",)),
+    SourceSpec("CHBZ", "China-Brazil", countries=("CN", "BR")),
+    SourceSpec("CHTU", "China-Türkiye", countries=("CN", "TR")),
+    SourceSpec("CHLE", "Chile", countries=("CL",)),
+    SourceSpec("CIS", "Commonwealth of Independent States"),
+    SourceSpec("COL", "Colombia", countries=("CO",)),
+    SourceSpec("CRI", "Costa Rica", countries=("CR",)),
+    SourceSpec("CZCH", "Czech Republic", countries=("CZ",)),
+    SourceSpec("DEN", "Denmark", countries=("DK",)),
+    SourceSpec("DJI", "Djibouti", countries=("DJ",)),
+    SourceSpec("ECU", "Ecuador", countries=("EC",)),
+    SourceSpec("EGYP", "Egypt", countries=("EG",)),
+    SourceSpec("ESA", "European Space Agency", operator="ESA"),
+    SourceSpec("ESRO", "European Space Research Organization", operator="ESRO"),
+    SourceSpec("EST", "Estonia", countries=("EE",)),
+    SourceSpec("ETH", "Ethiopia", countries=("ET",)),
+    SourceSpec("EUME", "EUMETSAT", operator="EUMETSAT"),
+    SourceSpec("EUTE", "EUTELSAT", operator="Eutelsat"),
+    SourceSpec("FGER", "France-Germany", countries=("FR", "DE")),
+    SourceSpec("FIN", "Finland", countries=("FI",)),
+    SourceSpec("FR", "France", countries=("FR",)),
+    SourceSpec("FRIT", "France-Italy", countries=("FR", "IT")),
+    SourceSpec("GER", "Germany", countries=("DE",)),
+    SourceSpec("GHA", "Ghana", countries=("GH",)),
+    SourceSpec("GLOB", "Globalstar", operator="Globalstar"),
+    SourceSpec("GREC", "Greece", countries=("GR",)),
+    SourceSpec("GRSA", "Greece-Saudi Arabia", countries=("GR", "SA")),
+    SourceSpec("GUAT", "Guatemala", countries=("GT",)),
+    SourceSpec("HRV", "Croatia", countries=("HR",)),
+    SourceSpec("HUN", "Hungary", countries=("HU",)),
+    SourceSpec("IM", "Inmarsat", operator="Inmarsat"),
+    SourceSpec("IND", "India", countries=("IN",)),
+    SourceSpec("INDO", "Indonesia", countries=("ID",)),
+    SourceSpec("IRAN", "Iran", countries=("IR",)),
+    SourceSpec("IRAQ", "Iraq", countries=("IQ",)),
+    SourceSpec("IRID", "Iridium", operator="Iridium"),
+    SourceSpec("IRL", "Ireland", countries=("IE",)),
+    SourceSpec("ISRA", "Israel", countries=("IL",)),
+    SourceSpec(
+        "ISRO", "Indian Space Research Organisation", countries=("IN",), operator="ISRO"
+    ),
+    SourceSpec("ISS", "International Space Station"),
+    SourceSpec("IT", "Italy", countries=("IT",)),
+    SourceSpec("ITSO", "Intelsat", operator="Intelsat"),
+    SourceSpec("JOR", "Jordan", countries=("JO",)),
+    SourceSpec("JPN", "Japan", countries=("JP",)),
+    SourceSpec("KAZ", "Kazakhstan", countries=("KZ",)),
+    SourceSpec("KEN", "Kenya", countries=("KE",)),
+    SourceSpec("KWT", "Kuwait", countries=("KW",)),
+    SourceSpec("LAOS", "Laos", countries=("LA",)),
+    SourceSpec("LKA", "Sri Lanka", countries=("LK",)),
+    SourceSpec("LTU", "Lithuania", countries=("LT",)),
+    SourceSpec("LUXE", "Luxembourg", countries=("LU",)),
+    SourceSpec("MA", "Morocco", countries=("MA",)),
+    SourceSpec("MALA", "Malaysia", countries=("MY",)),
+    SourceSpec("MCO", "Monaco", countries=("MC",)),
+    SourceSpec("MDA", "Moldova", countries=("MD",)),
+    SourceSpec("MEX", "Mexico", countries=("MX",)),
+    SourceSpec("MMR", "Myanmar", countries=("MM",)),
+    SourceSpec("MNE", "Montenegro", countries=("ME",)),
+    SourceSpec("MNG", "Mongolia", countries=("MN",)),
+    SourceSpec("MUS", "Mauritius", countries=("MU",)),
+    SourceSpec("NATO", "North Atlantic Treaty Organization", operator="NATO"),
+    SourceSpec("NETH", "Netherlands", countries=("NL",)),
+    SourceSpec("NICO", "New ICO", operator="ICO Global Communications"),
+    SourceSpec("NIG", "Nigeria", countries=("NG",)),
+    SourceSpec("NKOR", "North Korea", countries=("KP",)),
+    SourceSpec("NOR", "Norway", countries=("NO",)),
+    SourceSpec("NPL", "Nepal", countries=("NP",)),
+    SourceSpec("NZ", "New Zealand", countries=("NZ",)),
+    SourceSpec("O3B", "O3b Networks", operator="O3b Networks"),
+    SourceSpec("ORB", "ORBCOMM", operator="Orbcomm"),
+    SourceSpec("PAKI", "Pakistan", countries=("PK",)),
+    SourceSpec("PERU", "Peru", countries=("PE",)),
+    SourceSpec("POL", "Poland", countries=("PL",)),
+    SourceSpec("POR", "Portugal", countries=("PT",)),
+    SourceSpec("PRC", "People's Republic of China", countries=("CN",)),
+    SourceSpec("PRY", "Paraguay", countries=("PY",)),
+    SourceSpec("PRES", "People's Republic of China / ESA"),
+    SourceSpec("QAT", "Qatar", countries=("QA",)),
+    SourceSpec("RASC", "RascomStar-QAF", operator="RascomStar-QAF"),
+    SourceSpec("ROC", "Taiwan", countries=("TW",)),
+    SourceSpec("ROM", "Romania", countries=("RO",)),
+    SourceSpec("RP", "Philippines", countries=("PH",)),
+    SourceSpec("RWA", "Rwanda", countries=("RW",)),
+    SourceSpec("SAFR", "South Africa", countries=("ZA",)),
+    SourceSpec("SAUD", "Saudi Arabia", countries=("SA",)),
+    SourceSpec("SDN", "Sudan", countries=("SD",)),
+    SourceSpec("SEAL", "Sea Launch", operator="Sea Launch"),
+    SourceSpec("SEN", "Senegal", countries=("SN",)),
+    SourceSpec("SES", "SES", operator="SES"),
+    SourceSpec("SGJP", "Singapore-Japan", countries=("SG", "JP")),
+    SourceSpec("SING", "Singapore", countries=("SG",)),
+    SourceSpec("SKOR", "South Korea", countries=("KR",)),
+    SourceSpec("SLB", "Solomon Islands", countries=("SB",)),
+    SourceSpec("SPN", "Spain", countries=("ES",)),
+    SourceSpec("STCT", "Singapore-Taiwan", countries=("SG", "TW")),
+    SourceSpec("SVK", "Slovakia", countries=("SK",)),
+    SourceSpec("SVN", "Slovenia", countries=("SI",)),
+    SourceSpec("SWED", "Sweden", countries=("SE",)),
+    SourceSpec("SWTZ", "Switzerland", countries=("CH",)),
+    SourceSpec("TBD", "To Be Determined"),
+    SourceSpec("THAI", "Thailand", countries=("TH",)),
+    SourceSpec("TMMC", "Turkmenistan-Monaco", countries=("TM", "MC")),
+    SourceSpec("TUN", "Tunisia", countries=("TN",)),
+    SourceSpec("TURK", "Türkiye", countries=("TR",)),
+    SourceSpec("UAE", "United Arab Emirates", countries=("AE",)),
+    SourceSpec("UGA", "Uganda", countries=("UG",)),
+    SourceSpec("UK", "United Kingdom", countries=("GB",)),
+    SourceSpec("UKR", "Ukraine", countries=("UA",)),
+    SourceSpec("UNK", "Unknown"),
+    SourceSpec("URY", "Uruguay", countries=("UY",)),
+    SourceSpec("US", "United States", countries=("US",)),
+    SourceSpec("USBZ", "United States-Brazil", countries=("US", "BR")),
+    SourceSpec("VAT", "Vatican City", countries=("VA",)),
+    SourceSpec("VENZ", "Venezuela", countries=("VE",)),
+    SourceSpec("VTNM", "Vietnam", countries=("VN",)),
+    SourceSpec("ZWE", "Zimbabwe", countries=("ZW",)),
+)
+
+SOURCE_CODES: frozenset[str] = frozenset(o.code for o in SOURCES)
+SOURCE_BY_CODE: dict[str, SourceSpec] = {o.code: o for o in SOURCES}
 
 
 def _lookup[T](table: dict[str, T], code: str | None, field: str) -> T | None:
@@ -444,8 +319,13 @@ def parse_data_status(code: str | None) -> DataStatus | None:
     return _lookup(DATA_STATUS_CODES, code, "DATA_STATUS_CODE")
 
 
-def parse_owner(code: str | None) -> Owner | None:
-    return _lookup(OWNER_CODES, code, "OWNER")
+def parse_source(code: str | None) -> str | None:
+    """Validate a CelesTrak SATCAT SOURCE code and return it unchanged."""
+    if code is None or code == "":
+        return None
+    if code not in SOURCE_CODES:
+        raise ValueError(f"Unknown SATCAT SOURCE code: {code!r}")
+    return code
 
 
 def parse_orbit_center(code: str | None) -> tuple[OrbitCenter | None, int | None]:
