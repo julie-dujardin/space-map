@@ -51,6 +51,15 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "marisat", "Marisat", "Q6765591", prefix="LEMUR"
     ),  # operator: Inmarsat (Q827927)
+    ConstellationSpec(
+        "inmarsat", "Inmarsat", "Q827927", prefix="INMARSAT"
+    ),
+    ConstellationSpec(
+        "metop", "MetOp", "Q819651", prefix="METOP"
+    ),  # operator: EUMETSAT (Q692163)
+    ConstellationSpec(
+        "meteosat", "Meteosat", "Q1429889", prefix="METEOSAT"
+    ),  # operator: EUMETSAT (Q692163). Also see https://en.wikipedia.org/wiki/Jason_satellite_series
     # Derived from CelesTrak group membership
     ConstellationSpec(
         "orbcomm", "Orbcomm", "Q16960684", group="orbcomm"
@@ -66,14 +75,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec("galileo", "Galileo", "Q193902", group="galileo"),
     ConstellationSpec("beidou", "BeiDou", "Q857141", group="beidou"),
     # Derived from SATCAT SOURCE/OWNER code
-    ConstellationSpec("arabsat", "Arabsat", None, source="AB"),
-    ConstellationSpec("abs", "Asia Broadcast Satellite", None, source="ABS"),
-    ConstellationSpec("asiasat", "AsiaSat", None, source="AC"),
-    ConstellationSpec("eumetsat", "EUMETSAT", None, source="EUME"),
-    ConstellationSpec("new-ico", "New ICO", None, source="NICO"),
-    ConstellationSpec("o3b", "O3b", None, source="O3B"),
-    ConstellationSpec("inmarsat", "Inmarsat", "Q827927", source="IM"),
-    ConstellationSpec("rascomstar", "RascomStar-QAF", None, source="RASC"),
+    ConstellationSpec("arabsat", "Arabsat", "Q65277396", source="AB"),
+    ConstellationSpec("abs", "Asia Broadcast Satellite / Agility Beyond Space", "Q18238088", source="ABS"),
+    ConstellationSpec("asiasat", "AsiaSat", "Q726812", source="AC"),
+    ConstellationSpec("new-ico", "New ICO", "Q3792482", source="NICO"),
+    ConstellationSpec("o3b", "O3b", "Q3347484", source="O3B"),
+    ConstellationSpec("rascomstar", "RascomStar-QAF", "Q3415056", source="RASC"),
 )
 
 
