@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from space_map_data.constants.constellations import PREFIX_TO_SLUG
+from space_map_data.constants.earth_sats.constellations import PREFIX_TO_SLUG
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB

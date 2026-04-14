@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from space_map_data.constants.constellations import GROUP_TO_SLUG
+from space_map_data.constants.earth_sats.constellations import GROUP_TO_SLUG
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 

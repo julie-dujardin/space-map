@@ -58,7 +58,7 @@ LAUNCH_SITES: tuple[LaunchSiteSpec, ...] = (
         "TYMSC",
         "Tyuratam Missile and Space Center / Baikonur Cosmodrome, Kazakhstan",
         "Q177477",
-    ),
+    ),  # See https://www.cia.gov/readingroom/docs/CIA-RDP78T05439A000200390120-8.pdf
     LaunchSiteSpec("UNK", "Unknown"),
     LaunchSiteSpec("VOSTO", "Vostochny Cosmodrome, Russia", "Q1166191"),
     LaunchSiteSpec("WLPIS", "Wallops Island, Virginia, USA", "Q182348"),
