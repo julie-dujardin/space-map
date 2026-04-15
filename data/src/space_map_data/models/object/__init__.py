@@ -2,7 +2,6 @@
 
 from space_map_data.models.object.base import Base
 from space_map_data.models.object.celestrak import CelesTrak
-from space_map_data.models.object.constellation import Constellation
 from space_map_data.models.object.horizons import Horizons
 from space_map_data.models.object.main import (
     DWARF_PLANETS,
@@ -17,7 +16,6 @@ __all__ = [
     "Base",
     "CelesTrak",
     "CometPrefix",
-    "Constellation",
     "DWARF_PLANETS",
     "ElementsScale",
     "Horizons",
