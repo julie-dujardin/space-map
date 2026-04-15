@@ -26,34 +26,45 @@ class OperatorSpec:
 
 OPERATORS: tuple[OperatorSpec, ...] = (
     # Linked via a dedicated SATCAT SOURCE code
-    OperatorSpec("Arabsat", "Q65277396", source="AB"),
-    OperatorSpec("Asia Broadcast Satellite", "Q18238088", source="ABS"),
-    OperatorSpec("AsiaSat", "Q726812", source="AC"),
+    OperatorSpec("Arabsat", "Q65277396", source="AB", constellations=("arabsat",)),
+    OperatorSpec("Asia Broadcast Satellite", "Q18238088", source="ABS", constellations=("abs",)),
+    OperatorSpec("AsiaSat", "Q726812", source="AC", constellations=("asiasat",)),
     OperatorSpec("European Space Agency", None, source="ESA"),
     OperatorSpec("European Space Research Organization", None, source="ESRO"),
     OperatorSpec(
         "EUMETSAT", "Q692163", source="EUME", constellations=("metop", "meteosat")
     ),
-    OperatorSpec("Eutelsat", "Q848336", source="EUTE", constellations=("oneweb",)),
-    OperatorSpec("Globalstar", "Q1202533", source="GLOB"),
+    OperatorSpec(
+        "Eutelsat", "Q848336", source="EUTE", constellations=("oneweb", "eutelsat")
+    ),
+    OperatorSpec("Globalstar", "Q1202533", source="GLOB", constellations=("globalstar",)),
     OperatorSpec(
         "Inmarsat",
         "Q827927",
         source="IM",
         constellations=("marecs", "marisat", "inmarsat"),
     ),
-    OperatorSpec("Iridium", "Q3154356", source="IRID"),
+    OperatorSpec("Iridium", "Q3154356", source="IRID", constellations=("iridium",)),
     OperatorSpec("Indian Space Research Organisation", None, source="ISRO"),
-    OperatorSpec("Intelsat", "Q778126", source="ITSO"),
+    OperatorSpec("Intelsat", "Q778126", source="ITSO", constellations=("intelsat",)),
     OperatorSpec("North Atlantic Treaty Organization", None, source="NATO"),
-    OperatorSpec("ICO Global Communications", "Q3792482", source="NICO"),
-    OperatorSpec("O3b Networks", "Q3347484", source="O3B"),
-    OperatorSpec("Orbcomm", "Q16960684", source="ORB"),
-    OperatorSpec("RascomStar-QAF", "Q3415056", source="RASC"),
-    OperatorSpec("SES", "Q333025", source="SES"),
+    OperatorSpec("ICO Global Communications", "Q3792482", source="NICO", constellations=("new-ico",)),
+    OperatorSpec("O3b Networks", "Q3347484", source="O3B", constellations=("o3b",)),
+    OperatorSpec("Orbcomm", "Q16960684", source="ORB", constellations=("orbcomm",)),
+    OperatorSpec("RascomStar-QAF", "Q3415056", source="RASC", constellations=("rascomstar",)),
+    OperatorSpec("SES", "Q333025", source="SES", constellations=("ses",)),
     # Linked only via constellation
     OperatorSpec("SpaceX", "Q193701", constellations=("starlink",)),
     OperatorSpec("Amazon", "Q3884", constellations=("kuiper",)),
+    OperatorSpec(
+        "MEASAT Satellite Systems", "Q1881326", constellations=("measat", "africasat")
+    ),
+    OperatorSpec("Thaicom", "Q6903407", constellations=("thaicom",)),
+    OperatorSpec(
+        "Planet Labs", "Q17085620", constellations=("planet-flock", "planet-skysat")
+    ),
+    OperatorSpec("Spire Global", "Q19877982", constellations=("spire",)),
+    OperatorSpec("Telesat", "Q2401935", constellations=("telesat",)),
 )
 
 

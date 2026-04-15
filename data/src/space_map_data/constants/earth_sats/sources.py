@@ -17,6 +17,7 @@ class SourceSpec:
 # Operator metadata (name + Wikidata QID, keyed by source code) lives in
 # operators.py — query OPERATOR_BY_SOURCE for the structured operator linked to
 # any of the non-country source codes below.
+# https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
 SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("AB", "Arab Satellite Communications Organization", countries=("SA", "KW", "LY", "QA")),  # HQ in Riyadh
     SourceSpec("ABS", "Asia Broadcast Satellite / Agility Beyond Space", countries=("AE",)),  # HQ in dubai
