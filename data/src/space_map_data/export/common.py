@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 _EARTH_NAIF_ID = 399
 
-_EARTH_CONTEXT_TYPES = {ObjectType.spacecraft, ObjectType.debris}
-_EARTH_TYPE_VALUES = [t.value for t in _EARTH_CONTEXT_TYPES]
+_SAT_CONTEXT_TYPES = {ObjectType.spacecraft, ObjectType.debris}
+_SAT_TYPE_VALUES = [t.value for t in _SAT_CONTEXT_TYPES]
 
 _SUN_MAJOR_TYPES = {
     ObjectType.star,
@@ -170,7 +170,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 .options(joinedload(Object.celestrak))
                 .filter(
                     Object.sbdb_spkid.is_(None),
-                    Object.object_type.in_(_EARTH_TYPE_VALUES),
+                    Object.object_type.in_(_SAT_TYPE_VALUES),
                     Object.parent_naif_id == _EARTH_NAIF_ID,
                 )
             )
@@ -210,7 +210,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     .options(joinedload(Object.celestrak))
                     .filter(
                         Object.sbdb_spkid.is_(None),
-                        Object.object_type.in_(_EARTH_TYPE_VALUES),
+                        Object.object_type.in_(_SAT_TYPE_VALUES),
                         Object.parent_naif_id != _EARTH_NAIF_ID,
                     ),
                 ),

@@ -60,7 +60,7 @@ def build_celestrak_localized(
         if site is not None and site.wikidata_qid is not None:
             ref = resolve_entity_ref(site.wikidata_qid, lang, wikidata_entities)
             if ref:
-                data["launch_site"] = ref
+                data["launch_site"] = [ref]
 
     return data
 

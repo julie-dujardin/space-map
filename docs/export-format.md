@@ -281,8 +281,7 @@ interface LocalizedObjectData {
   minor_planet_group?: EntityRef;
   spectral_type?: EntityRef;
   asteroid_family?: EntityRef;
-  operator?: EntityRef;
-  operators?: EntityRef[];        // CelesTrak-derived (multiple possible)
+  operators?: EntityRef[];        // merged from Wikidata P137 + CelesTrak, deduped
   constellation?: EntityRef;      // CelesTrak-derived
   manufacturer?: EntityRef;
   launch_vehicle?: EntityRef;
