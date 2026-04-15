@@ -234,3 +234,4 @@ class WikipediaDownloader(Downloader):
                 continue
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(response.content)
+            time.sleep(1)
