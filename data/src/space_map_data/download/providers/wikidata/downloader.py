@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
@@ -66,9 +67,19 @@ class WikidataDownloader(Downloader):
             orbit_class_qids, orbit_classes_dir, limit=None, fetch_desc="orbit classes"
         )
 
-        # Second pass: fetch referenced entities and units
+        # Fetch QIDs declared in earth-sat constant catalogs (operators,
+        # constellations, launch sites). They aren't necessarily reachable via
+        # entity claims on satellites, so seed them directly.
         referenced_dir = self.out_dir / "referenced"
         referenced_dir.mkdir(exist_ok=True)
+        self._fetch_entities(
+            earth_sats_qids(),
+            referenced_dir,
+            limit=None,
+            fetch_desc="earth-sat catalogs",
+        )
+
+        # Second pass: fetch referenced entities and units
         units_dir = self.out_dir / "units"
         units_dir.mkdir(exist_ok=True)
         primary_dirs = [objects_dir, nomenclature_dir]
