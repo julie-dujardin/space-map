@@ -74,7 +74,7 @@ ENTITY_REF_CLAIMS = (
     EntityRefClaim("minor_planet_group", "P196", multiple=True),
     EntityRefClaim("spectral_type", "P720", multiple=True),
     EntityRefClaim("asteroid_family", "P744"),
-    EntityRefClaim("operator", "P137", multiple=True),
+    EntityRefClaim("operators", "P137", multiple=True),
     EntityRefClaim("manufacturer", "P176", multiple=True),
     EntityRefClaim("launch_vehicle", "P375"),
     EntityRefClaim("launch_site", "P1427", multiple=True),

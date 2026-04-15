@@ -218,6 +218,25 @@ interface GlobalObjectData {
     data_arc?: number;   // observation arc span, days
     n_obs_used?: number; // number of observations used
   };
+  celestrak?: {                       // present for CelesTrak-sourced satellites
+    object_type?: string;             // SATCAT: PAY / R/B / DEB / UNK
+    ops_status?: string;              // +/-/P/B/S/X/D/?
+    data_status?: string;
+    launch_date?: string;             // ISO date
+    decay_date?: string;              // ISO date
+    period?: number;                  // minutes
+    apogee?: number;                  // km
+    perigee?: number;                 // km
+    rcs?: number;                     // m²
+    orbit_center?: string;            // EA / JU / MO / …
+    orbit_center_docked_to?: number;  // NORAD of host (only when orbit_center == DOCKED)
+    orbit_type?: string;
+    launch_site_code?: string;        // see constants/earth_sats/launch_sites.py
+    owner?: string;                   // SATCAT OWNER (operator short code)
+    constellation_slug?: string;      // see constants/earth_sats/constellations.py
+    categories?: string[];            // SatelliteCategory values
+    country_codes?: string[];         // ISO 3166-1 alpha-2 (feed into Intl.DisplayNames)
+  };
   wikidata?: {
     discovery_date?: string;  // ISO 8601
     launch_date?: string;
@@ -263,9 +282,11 @@ interface LocalizedObjectData {
   spectral_type?: EntityRef;
   asteroid_family?: EntityRef;
   operator?: EntityRef;
+  operators?: EntityRef[];        // CelesTrak-derived (multiple possible)
+  constellation?: EntityRef;      // CelesTrak-derived
   manufacturer?: EntityRef;
   launch_vehicle?: EntityRef;
-  launch_site?: EntityRef;
+  launch_site?: EntityRef;        // CelesTrak-derived takes precedence over Wikidata P1427
   developer?: EntityRef[];
   funder?: EntityRef[];
   country_of_origin?: EntityRef[];

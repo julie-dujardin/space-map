@@ -78,3 +78,5 @@ LAUNCH_SITES: tuple[LaunchSiteSpec, ...] = (
 )
 
 LAUNCH_SITE_CODES: frozenset[str] = frozenset(s.code for s in LAUNCH_SITES)
+
+LAUNCH_SITE_BY_CODE: dict[str, LaunchSiteSpec] = {s.code: s for s in LAUNCH_SITES}

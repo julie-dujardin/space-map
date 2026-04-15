@@ -165,10 +165,14 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     with Session(engine) as session:
         with ThreadPoolExecutor() as executor:
             # Non-SBDB zones: (zone, zoom, query)
-            _earth_base = session.query(Object).filter(
-                Object.sbdb_spkid.is_(None),
-                Object.object_type.in_(_EARTH_TYPE_VALUES),
-                Object.parent_naif_id == _EARTH_NAIF_ID,
+            _earth_base = (
+                session.query(Object)
+                .options(joinedload(Object.celestrak))
+                .filter(
+                    Object.sbdb_spkid.is_(None),
+                    Object.object_type.in_(_EARTH_TYPE_VALUES),
+                    Object.parent_naif_id == _EARTH_NAIF_ID,
+                )
             )
             _is_constellation = or_(
                 *(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES)
@@ -202,7 +206,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 (
                     "spacecraft",
                     0,
-                    session.query(Object).filter(
+                    session.query(Object)
+                    .options(joinedload(Object.celestrak))
+                    .filter(
                         Object.sbdb_spkid.is_(None),
                         Object.object_type.in_(_EARTH_TYPE_VALUES),
                         Object.parent_naif_id != _EARTH_NAIF_ID,

@@ -15,6 +15,11 @@ from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
 )
+from space_map_data.export.objects.celestrak import (
+    build_celestrak_global,
+    build_celestrak_localized,
+    merge_operator_qids,
+)
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.objects.wikidata_claims import (
@@ -115,6 +120,8 @@ def write_objects(
             )
             extracted = {}
 
+        merge_operator_qids(extracted, obj.celestrak)
+
         # Global (non-localized, always written)
         global_data = _build_global(
             obj,
@@ -138,10 +145,6 @@ def write_objects(
 
         for lang in LANGUAGES:
             wiki_summary = wiki_summaries.get(lang)
-            if not wiki_summary:
-                # No wikipedia page → no localized file; mark english availability for frontend fallback
-                obj_flags[lang] = 2 if en_available else 0
-                continue
             lang_data = _build_localized(
                 obj, lang, wikidata_entities, wd, extracted, wiki_summary
             )
@@ -229,6 +232,12 @@ def _build_global(
         if sbdb_data:
             data["sbdb"] = sbdb_data
 
+    # CelesTrak enrichment
+    if obj.celestrak is not None:
+        celestrak_data = build_celestrak_global(obj.celestrak)
+        if celestrak_data:
+            data["celestrak"] = celestrak_data
+
     # Wikidata claims (non-localized)
     if extracted:
         wikidata_section: dict = {}
@@ -298,6 +307,11 @@ def _build_localized(
 
                 if ref:
                     data[claim.key] = ref
+
+    if obj.celestrak is not None:
+        # CelesTrak-derived refs overwrite Wikidata-derived ones (e.g. launch_site)
+        # since SATCAT is the authoritative source for satellite metadata.
+        data.update(build_celestrak_localized(obj.celestrak, lang, wikidata_entities))
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary.to_dict()
