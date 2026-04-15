@@ -109,5 +109,7 @@ export function createLabel(
 		onHoverChange?.(false);
 	});
 
-	return new CSS2DObject(el);
+	const obj = new CSS2DObject(el);
+	obj.visible = false; // updateBodyVisibility sets the correct state next frame; avoids a 1-frame flash when added mid-load
+	return obj;
 }
