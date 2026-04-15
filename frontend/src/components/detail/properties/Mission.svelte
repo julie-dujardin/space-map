@@ -16,8 +16,9 @@
 
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
 	let capitalCost = $derived(global?.wikidata?.capital_cost);
-	let launchDate = $derived(global?.wikidata?.launch_date);
-	let operator = $derived(localized?.operator);
+	let launchDate = $derived(global?.wikidata?.launch_date ?? global?.celestrak?.launch_date);
+	let decayDate = $derived(global?.celestrak?.decay_date);
+	let operators = $derived(localized?.operators);
 	let manufacturer = $derived(localized?.manufacturer);
 	let developer = $derived(localized?.developer);
 	let funder = $derived(localized?.funder);
@@ -31,7 +32,8 @@
 	let hasContent = $derived(
 		isSpacecraft &&
 			(launchDate ||
-				operator ||
+				decayDate ||
+				operators ||
 				manufacturer ||
 				developer ||
 				funder ||
@@ -50,9 +52,12 @@
 		{#if launchDate}
 			<Row label={m.launch_date()} value={formatWikidataDate(launchDate)} />
 		{/if}
-		{#if operator && operator.length > 0}
-			<Row label={m.property_name_operator()}>
-				<EntityLinks entities={operator} />
+		{#if decayDate}
+			<Row label={m.decay_date()} value={formatWikidataDate(decayDate)} />
+		{/if}
+		{#if operators && operators.length > 0}
+			<Row label={m.property_name_operators()}>
+				<EntityLinks entities={operators} />
 			</Row>
 		{/if}
 		{#if manufacturer && manufacturer.length > 0}

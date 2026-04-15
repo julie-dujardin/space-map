@@ -2,6 +2,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import { formatCategory, formatObjectType } from '$lib/format/satellite';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -17,6 +18,14 @@
 			global?.wikidata?.image?.[0] ??
 			global?.wikidata?.logo_image?.[0]
 	);
+	let celestrakBadges = $derived.by(() => {
+		const ct = global?.celestrak;
+		if (!ct) return null;
+		const out: string[] = [];
+		if (ct.object_type) out.push(formatObjectType(ct.object_type));
+		for (const cat of ct.categories ?? []) out.push(formatCategory(cat));
+		return out.length > 0 ? out : null;
+	});
 	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
 	let aliases = $derived(localized?.aliases);
@@ -66,7 +75,11 @@
 		<img src={image} alt={name} class="w-full max-h-48 object-cover rounded-md" />
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
-		{#if types}
+		{#if celestrakBadges}
+			{#each celestrakBadges as b, i (i)}
+				<Badge variant="secondary" class="shrink-0 text-xs">{b}</Badge>
+			{/each}
+		{:else if types}
 			{#each types as t, i (i)}
 				<Badge variant="secondary" class="shrink-0 text-xs">{ucfirst(t.name)}</Badge>
 			{/each}

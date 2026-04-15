@@ -37,6 +37,8 @@
 		showAltitude && currentState && parentBody ? currentState.rKm - parentBody.data.radiusKm : null
 	);
 	let sbdb = $derived(global?.sbdb);
+	let celestrak = $derived(global?.celestrak);
+	let satPeriodDays = $derived(celestrak?.period != null ? celestrak.period / 1440 : null);
 	let orbitClass = $derived(sbdb?.class);
 	let cometPrefix = $derived(sbdb?.prefix);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
@@ -62,7 +64,10 @@
 			cometPrefix ||
 			minorPlanetGroup ||
 			isNeo ||
-			isPha
+			isPha ||
+			satPeriodDays != null ||
+			celestrak?.apogee != null ||
+			celestrak?.perigee != null
 	);
 </script>
 
@@ -111,6 +116,12 @@
 				value={formatDuration(sbdb.per_y * 365.25)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
+		{:else if satPeriodDays != null}
+			<Row
+				label={m.orbital_period()}
+				value={formatDuration(satPeriodDays)}
+				tooltip={m.tooltip_orbital_period()}
+			/>
 		{/if}
 		{#if orbit?.a}
 			<Row
@@ -149,6 +160,18 @@
 		{/if}
 		{#if sbdb?.ad}
 			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
+		{/if}
+		{#if celestrak?.apogee != null}
+			<Row
+				label={m.apogee()}
+				value={formatQuantity({ value: celestrak.apogee, unit: 'kilometre' }, true)}
+			/>
+		{/if}
+		{#if celestrak?.perigee != null}
+			<Row
+				label={m.perigee()}
+				value={formatQuantity({ value: celestrak.perigee, unit: 'kilometre' }, true)}
+			/>
 		{/if}
 		{#if orbit?.e != null}
 			<Row

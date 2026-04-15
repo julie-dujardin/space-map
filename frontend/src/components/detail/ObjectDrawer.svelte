@@ -14,6 +14,7 @@
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
+	import Satellite from './properties/Satellite.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -255,6 +256,7 @@
 			/>
 			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			<Satellite global={data?.global ?? null} localized={data?.localized ?? null} />
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
 	{/if}

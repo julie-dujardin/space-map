@@ -107,6 +107,24 @@ export interface GlobalObjectData {
 		length?: QuantityWithUnit;
 		width?: QuantityWithUnit;
 	};
+	celestrak?: {
+		object_type?: string;
+		ops_status?: string;
+		data_status?: string;
+		launch_date?: string;
+		decay_date?: string;
+		period?: number; // minutes
+		apogee?: number; // km
+		perigee?: number; // km
+		rcs?: number; // m²
+		orbit_center?: string;
+		orbit_center_docked_to?: number;
+		launch_site_code?: string;
+		owner?: string;
+		constellation_slug?: string;
+		categories?: string[];
+		country_codes?: string[];
+	};
 }
 
 // --- Localized object data ---
@@ -127,7 +145,8 @@ export interface LocalizedObjectData {
 	minor_planet_group?: EntityRef[];
 	spectral_type?: EntityRef[];
 	asteroid_family?: EntityRef;
-	operator?: EntityRef[];
+	operators?: EntityRef[];
+	constellation?: EntityRef;
 	manufacturer?: EntityRef[];
 	launch_vehicle?: EntityRef;
 	launch_site?: EntityRef[];

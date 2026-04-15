@@ -219,20 +219,19 @@ interface GlobalObjectData {
     n_obs_used?: number; // number of observations used
   };
   celestrak?: {                       // present for CelesTrak-sourced satellites
-    object_type?: string;             // SATCAT: PAY / R/B / DEB / UNK
-    ops_status?: string;              // +/-/P/B/S/X/D/?
-    data_status?: string;
+    object_type?: string;             // payload / rocket_body / debris / unknown
+    ops_status?: string;              // operational / nonoperational / partial / backup / spare / extended_mission / decayed / unknown
+    data_status?: string;             // no_current_elements / no_initial_elements / no_elements_available
     launch_date?: string;             // ISO date
     decay_date?: string;              // ISO date
     period?: number;                  // minutes
     apogee?: number;                  // km
     perigee?: number;                 // km
     rcs?: number;                     // m²
-    orbit_center?: string;            // EA / JU / MO / …
-    orbit_center_docked_to?: number;  // NORAD of host (only when orbit_center == DOCKED)
-    orbit_type?: string;
-    launch_site_code?: string;        // see constants/earth_sats/launch_sites.py
-    owner?: string;                   // SATCAT OWNER (operator short code)
+    orbit_center?: string;            // earth / jupiter / moon / … / docked
+    orbit_center_docked_to?: number;  // NORAD of host (only when orbit_center == "docked")
+    launch_site_code?: string;        // SATCAT short code, see constants/earth_sats/launch_sites.py
+    owner?: string;                   // SATCAT OWNER short code, see constants/earth_sats/sources.py
     constellation_slug?: string;      // see constants/earth_sats/constellations.py
     categories?: string[];            // SatelliteCategory values
     country_codes?: string[];         // ISO 3166-1 alpha-2 (feed into Intl.DisplayNames)
