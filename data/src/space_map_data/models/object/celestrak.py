@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from space_map_data.constants.earth_sats.satcat import (
@@ -93,5 +93,12 @@ class CelesTrak(Base):
     launch_site_code: Mapped[str | None] = mapped_column(default=None)
     # References CONSTELLATIONS in constants/earth_sats/constellations.py
     constellation_slug: Mapped[str | None] = mapped_column(default=None)
+    # SatelliteCategory values. A sat can belong to several (e.g. GPS is both
+    # navigation and military).
+    categories: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Wikidata QIDs of matched operators (OPERATOR_BY_SOURCE ∪ OPERATOR_BY_CONSTELLATION).
+    operator_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # ISO 3166-1 alpha-2 country codes derived from SATCAT owner → SOURCES.
+    country_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     object: Mapped["Object"] = relationship(back_populates="celestrak")

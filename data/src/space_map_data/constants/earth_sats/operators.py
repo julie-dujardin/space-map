@@ -58,12 +58,11 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         source="NICO",
         constellations=("new-ico",),
     ),
-    OperatorSpec("O3b Networks", "Q3347484", source="O3B", constellations=("o3b",)),
     OperatorSpec("Orbcomm", "Q16960684", source="ORB", constellations=("orbcomm",)),
     OperatorSpec(
         "RascomStar-QAF", "Q3415056", source="RASC", constellations=("rascomstar",)
     ),
-    OperatorSpec("SES", "Q333025", source="SES", constellations=("ses",)),
+    OperatorSpec("SES", "Q333025", source="SES", constellations=("ses", "o3b")),
     # Linked only via constellation
     OperatorSpec("SpaceX", "Q193701", constellations=("starlink",)),
     OperatorSpec("Amazon", "Q3884", constellations=("kuiper",)),

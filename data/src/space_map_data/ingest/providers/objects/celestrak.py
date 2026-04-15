@@ -4,21 +4,36 @@ import csv
 import logging
 from pathlib import Path
 
-from space_map_data.constants.constellations import (
-    CONSTELLATIONS,
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_BY_SLUG,
+    GROUP_TO_CATEGORY,
     GROUP_TO_SLUG,
+    PREFERRED_SLUGS,
+    SOURCE_TO_SLUG,
+    UNPREFERRED_SLUGS,
     slug_from_name,
 )
+from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
+from space_map_data.constants.earth_sats.operators import (
+    OPERATOR_BY_CONSTELLATION,
+    OPERATOR_BY_SOURCE,
+)
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.earth_sats.satcat import (
+    parse_data_status,
+    parse_object_type,
+    parse_ops_status,
+    parse_orbit_center,
+    parse_orbit_type,
+)
+from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_source
 from sqlalchemy import delete, insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
 from space_map_data.models.object import (
     Object,
     ObjectType,
     CelesTrak as CelesTrakRow,
-    Constellation,
     ElementsScale,
     OrbitalSource,
 )
@@ -45,8 +60,16 @@ class CelesTrakIngestor:
         self.groups_dir = self.provider_dir / "groups"
         self.total_rows = 0
         self.missing_satcat = 0
+        self.missing_operator = 0
+        self.constellation_conflicts = 0
         self.satcat: dict[int, dict[str, str]] = {}
-        self.group_constellation: dict[int, str] = {}
+        # Group memberships indexed two ways so sats sharing a COSPAR across
+        # NORADs (analyst entries etc.) still inherit each other's group tags.
+        self.group_memberships_by_norad: dict[int, set[str]] = {}
+        self.group_memberships_by_cospar: dict[str, set[str]] = {}
+        # norad -> TLE row sourced from a group CSV (used for sats missing
+        # from gp-active.csv, e.g. debris not on the active list)
+        self.group_only_rows: dict[int, dict[str, str]] = {}
 
     def _load_satcat(self) -> None:
         if not self.satcat_path.exists():
@@ -63,17 +86,18 @@ class CelesTrakIngestor:
         logger.info("Loaded %d SATCAT rows", len(self.satcat))
 
     def _load_groups(self) -> None:
+        """Record group membership + stash full TLE rows for later fallback."""
         if not self.groups_dir.exists():
             logger.warning(
-                "Groups dir not found at %s; skipping constellation-group tagging",
+                "Groups dir not found at %s; skipping group tagging",
                 self.groups_dir,
             )
             return
         for group_file in sorted(self.groups_dir.glob("*.csv")):
-            slug = GROUP_TO_SLUG.get(group_file.stem)
-            if slug is None:
+            group = group_file.stem
+            if group not in GROUP_TO_SLUG and group not in GROUP_TO_CATEGORY:
                 logger.warning(
-                    "Group file %s has no mapped constellation; skipping",
+                    "Group file %s has no mapped slug or category; skipping",
                     group_file.name,
                 )
                 continue
@@ -86,31 +110,98 @@ class CelesTrakIngestor:
                     norad = int_or_none(row.get("NORAD_CAT_ID"))
                     if norad is None:
                         continue
-                    self.group_constellation[norad] = slug
+                    self.group_memberships_by_norad.setdefault(norad, set()).add(group)
+                    cospar = string_or_none(row.get("OBJECT_ID"))
+                    if cospar is not None:
+                        self.group_memberships_by_cospar.setdefault(cospar, set()).add(
+                            group
+                        )
+                    self.group_only_rows.setdefault(norad, row)
                     count += 1
-            logger.info("Group %s -> %d sats", slug, count)
+            logger.info("Group %s -> %d sats", group, count)
 
-    def _upsert_constellations(self) -> None:
-        rows = [
-            {"slug": c.slug, "name": c.name, "wikidata_qid": c.wikidata_qid}
-            for c in CONSTELLATIONS
-        ]
-        stmt = sqlite_insert(Constellation).values(rows)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["slug"],
-            set_={
-                "name": stmt.excluded.name,
-                "wikidata_qid": stmt.excluded.wikidata_qid,
-            },
+    def _resolve_constellation(
+        self,
+        norad: int,
+        name: str | None,
+        owner: str | None,
+        groups: set[str],
+    ) -> str | None:
+        """Pick a single constellation slug; log an error if candidates disagree."""
+        candidates: list[tuple[str, str]] = []  # (source, slug)
+        name_slug = slug_from_name(name)
+        if name_slug is not None:
+            candidates.append(("name-prefix", name_slug))
+        for group in groups:
+            group_slug = GROUP_TO_SLUG.get(group)
+            if group_slug is not None:
+                candidates.append((f"group:{group}", group_slug))
+        if owner is not None:
+            owner_slug = SOURCE_TO_SLUG.get(owner)
+            if owner_slug is not None:
+                candidates.append((f"owner:{owner}", owner_slug))
+
+        if not candidates:
+            return None
+        unique = {slug for _, slug in candidates}
+        if len(unique) == 1:
+            return candidates[0][1]
+
+        # Conflict: try the explicit preference list before the priority order.
+        preferred = next(
+            (slug for slug in PREFERRED_SLUGS if slug in unique),
+            None,
         )
-        self.session.execute(stmt)
-        self.session.commit()
+        if preferred is not None:
+            return preferred
+        # Drop any unpreferred candidates if a real alternative exists.
+        filtered = [c for c in candidates if c[1] not in UNPREFERRED_SLUGS]
+        if filtered and {slug for _, slug in filtered} != unique:
+            return filtered[0][1]
+        self.constellation_conflicts += 1
+        logger.error(
+            "NORAD %d has conflicting constellation matches: %s — picking %s",
+            norad,
+            ", ".join(f"{src}={slug}" for src, slug in candidates),
+            candidates[0][1],
+        )
+        return candidates[0][1]
 
-    def _constellation_for(self, norad: int, name: str | None) -> str | None:
-        slug = slug_from_name(name)
-        if slug is not None:
-            return slug
-        return self.group_constellation.get(norad)
+    def _resolve_categories(
+        self, constellation: str | None, groups: set[str]
+    ) -> list[str]:
+        cats: set[str] = set()
+        if constellation is not None:
+            spec = CONSTELLATION_BY_SLUG.get(constellation)
+            if spec is not None:
+                cats.add(spec.category.value)
+        for group in groups:
+            cat = GROUP_TO_CATEGORY.get(group)
+            if cat is not None:
+                cats.add(cat.value)
+        return sorted(cats)
+
+    def _resolve_operator_qids(
+        self, owner: str | None, constellation: str | None
+    ) -> list[str]:
+        qids: set[str] = set()
+        if owner is not None:
+            op = OPERATOR_BY_SOURCE.get(owner)
+            if op is not None and op.wikidata_qid is not None:
+                qids.add(op.wikidata_qid)
+        if constellation is not None:
+            op = OPERATOR_BY_CONSTELLATION.get(constellation)
+            if op is not None and op.wikidata_qid is not None:
+                qids.add(op.wikidata_qid)
+        return sorted(qids)
+
+    def _resolve_country_codes(self, owner: str | None) -> list[str]:
+        if owner is None:
+            return []
+        source = SOURCE_BY_CODE.get(owner)
+        if source is None:
+            return []
+        return list(source.countries)
 
     def _parse_row(self, row: dict) -> dict:
         mean_motion = float_or_none(row["MEAN_MOTION"])
@@ -119,10 +210,23 @@ class CelesTrakIngestor:
         object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
         norad = int(row["NORAD_CAT_ID"])
         name = string_or_none(row["OBJECT_NAME"])
+        if name == "UNKNOWN":
+            name = None
         sat = self.satcat.get(norad)
         if sat is None:
             self.missing_satcat += 1
-        constellation = self._constellation_for(norad, name)
+        satcat_fields = _satcat_fields(sat)
+        owner = satcat_fields["owner"]
+        cospar = string_or_none(row["OBJECT_ID"])
+        groups = set(self.group_memberships_by_norad.get(norad, set()))
+        if cospar is not None:
+            groups |= self.group_memberships_by_cospar.get(cospar, set())
+        constellation = self._resolve_constellation(norad, name, owner, groups)
+        categories = self._resolve_categories(constellation, groups)
+        operator_qids = self._resolve_operator_qids(owner, constellation)
+        country_codes = self._resolve_country_codes(owner)
+        if not operator_qids:
+            self.missing_operator += 1
 
         obj = dict(
             id=object_id,
@@ -161,20 +265,11 @@ class CelesTrakIngestor:
             BSTAR=float_or_none(row["BSTAR"]),
             MEAN_MOTION_DOT=float_or_none(row["MEAN_MOTION_DOT"]),
             MEAN_MOTION_DDOT=float_or_none(row["MEAN_MOTION_DDOT"]),
-            OBJECT_TYPE=string_or_none(sat["OBJECT_TYPE"]) if sat else None,
-            OPS_STATUS_CODE=string_or_none(sat["OPS_STATUS_CODE"]) if sat else None,
-            OWNER=string_or_none(sat["OWNER"]) if sat else None,
-            LAUNCH_DATE=string_or_none(sat["LAUNCH_DATE"]) if sat else None,
-            LAUNCH_SITE=string_or_none(sat["LAUNCH_SITE"]) if sat else None,
-            DECAY_DATE=string_or_none(sat["DECAY_DATE"]) if sat else None,
-            PERIOD=float_or_none(sat["PERIOD"]) if sat else None,
-            APOGEE=float_or_none(sat["APOGEE"]) if sat else None,
-            PERIGEE=float_or_none(sat["PERIGEE"]) if sat else None,
-            RCS=float_or_none(sat["RCS"]) if sat else None,
-            DATA_STATUS_CODE=string_or_none(sat["DATA_STATUS_CODE"]) if sat else None,
-            ORBIT_CENTER=string_or_none(sat["ORBIT_CENTER"]) if sat else None,
-            ORBIT_TYPE=string_or_none(sat["ORBIT_TYPE"]) if sat else None,
             constellation_slug=constellation,
+            categories=categories,
+            operator_qids=operator_qids,
+            country_codes=country_codes,
+            **satcat_fields,
         )
         return {"object": obj, "celestrak": ct}
 
@@ -199,35 +294,119 @@ class CelesTrakIngestor:
             logger.warning("CelesTrak CSV not found at %s, skipping", self.csv_path)
             return
         self._clear()
-        self._upsert_constellations()
         self._load_satcat()
         self._load_groups()
 
         total = _count_csv_rows(self.csv_path)
 
         batch: list[dict] = []
+        seen_norad: set[int] = set()
+        seen_cospar: set[str] = set()
         with open(self.csv_path, newline="") as f:
             for row in tqdm(csv.DictReader(f), total=total, desc="CelesTrak ingest"):
+                seen_norad.add(int(row["NORAD_CAT_ID"]))
+                cospar = string_or_none(row["OBJECT_ID"])
+                if cospar is not None:
+                    seen_cospar.add(cospar)
                 batch.append(self._parse_row(row))
                 self.total_rows += 1
 
                 if len(batch) >= self.BATCH:
                     self._insert(batch)
                     batch = []
-
         self._insert(batch)
-        logger.info("Ingested %d CelesTrak satellites", self.total_rows)
+
+        # Sats present only in group CSVs (e.g. debris not on the active list).
+        batch = []
+        group_only = 0
+        for norad, row in tqdm(
+            self.group_only_rows.items(), desc="CelesTrak group-only", unit="sat"
+        ):
+            if norad in seen_norad:
+                continue
+            cospar = string_or_none(row["OBJECT_ID"])
+            if cospar is not None and cospar in seen_cospar:
+                continue
+            if cospar is not None:
+                seen_cospar.add(cospar)
+            batch.append(self._parse_row(row))
+            self.total_rows += 1
+            group_only += 1
+            if len(batch) >= self.BATCH:
+                self._insert(batch)
+                batch = []
+        self._insert(batch)
+
+        logger.info(
+            "Ingested %d CelesTrak satellites (%d from group CSVs only)",
+            self.total_rows,
+            group_only,
+        )
         if self.missing_satcat:
             logger.info(
-                "%d/%d gp-active rows had no SATCAT match",
+                "%d/%d satellites had no SATCAT match",
                 self.missing_satcat,
                 self.total_rows,
+            )
+        if self.missing_operator:
+            logger.warning(
+                "%d/%d satellites could not be matched to an operator",
+                self.missing_operator,
+                self.total_rows,
+            )
+        if self.constellation_conflicts:
+            logger.error(
+                "%d satellites had conflicting constellation matches",
+                self.constellation_conflicts,
             )
 
 
 def _count_csv_rows(path: Path) -> int:
     with open(path) as f:
         return sum(1 for _ in f) - 1
+
+
+_EMPTY_SATCAT: dict[str, None] = {
+    "object_type": None,
+    "ops_status": None,
+    "owner": None,
+    "launch_date": None,
+    "launch_site_code": None,
+    "decay_date": None,
+    "period": None,
+    "apogee": None,
+    "perigee": None,
+    "rcs": None,
+    "data_status": None,
+    "orbit_center": None,
+    "orbit_center_docked_to": None,
+    "orbit_type": None,
+}
+
+
+def _satcat_fields(sat: dict[str, str] | None) -> dict:
+    if sat is None:
+        return dict(_EMPTY_SATCAT)
+    orbit_center, docked_to = parse_orbit_center(sat["ORBIT_CENTER"])
+    launch_site_code = string_or_none(sat["LAUNCH_SITE"])
+    if launch_site_code is not None and launch_site_code not in LAUNCH_SITE_CODES:
+        raise ValueError(f"Unknown SATCAT LAUNCH_SITE code: {launch_site_code!r}")
+    return dict(
+        object_type=parse_object_type(sat["OBJECT_TYPE"]),
+        ops_status=parse_ops_status(sat["OPS_STATUS_CODE"]),
+        owner=parse_source(sat["OWNER"]),
+        launch_date=string_or_none(sat["LAUNCH_DATE"]),
+        launch_site_code=launch_site_code,
+        decay_date=string_or_none(sat["DECAY_DATE"]),
+        period=float_or_none(sat["PERIOD"]),
+        apogee=float_or_none(sat["APOGEE"]),
+        perigee=float_or_none(sat["PERIGEE"]),
+        rcs=float_or_none(sat["RCS"]),
+        data_status=parse_data_status(sat["DATA_STATUS_CODE"]),
+        orbit_center=orbit_center,
+        orbit_center_docked_to=docked_to,
+        orbit_type=parse_orbit_type(sat["ORBIT_TYPE"]),
+    )
 
 
 def ingest(download_dir: Path) -> None:

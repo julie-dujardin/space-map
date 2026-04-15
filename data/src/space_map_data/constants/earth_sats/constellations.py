@@ -196,6 +196,10 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
 )
 
 
+CONSTELLATION_BY_SLUG: dict[str, ConstellationSpec] = {
+    c.slug: c for c in CONSTELLATIONS
+}
+
 PREFIX_TO_SLUG: dict[str, str] = {
     c.prefix: c.slug for c in CONSTELLATIONS if c.prefix is not None
 }
@@ -207,6 +211,21 @@ GROUP_TO_SLUG: dict[str, str] = {
 SOURCE_TO_SLUG: dict[str, str] = {
     c.source: c.slug for c in CONSTELLATIONS if c.source is not None
 }
+
+# When several rules match the same sat (name-prefix vs group vs source),
+# slugs listed here win — in order. Used to resolve conflicts like a debris
+# fragment of Iridium-33 that would otherwise also match the "iridium" prefix.
+PREFERRED_SLUGS: tuple[str, ...] = (
+    "fengyun-1c-asat-debris",
+    "iridium-33-debris",
+    "cosmos-2251-debris",
+    "o3b",  # more specific than SES (its parent operator)
+)
+
+# Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is
+# preferred over these. SBAS and Argos are broad groupings that overlap with
+# more specific constellation matches.
+UNPREFERRED_SLUGS: frozenset[str] = frozenset({"sbas", "argos"})
 
 # CelesTrak groups that tag sats with a category directly, without belonging to
 # a named constellation. See https://celestrak.org/NORAD/elements/.

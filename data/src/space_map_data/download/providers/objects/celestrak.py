@@ -1,7 +1,10 @@
 import logging
 import sys
 
-from space_map_data.constants.earth_sats.constellations import GROUP_TO_SLUG
+from space_map_data.constants.earth_sats.constellations import (
+    GROUP_TO_CATEGORY,
+    GROUP_TO_SLUG,
+)
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
@@ -10,8 +13,9 @@ logger = logging.getLogger(__name__)
 GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
 SATCAT_URL = "https://celestrak.org/pub/satcat.csv"
 
-# CelesTrak groups whose membership can't be trivially derived from OBJECT_NAME.
-GROUPS: tuple[str, ...] = tuple(GROUP_TO_SLUG.keys())
+# CelesTrak groups we fetch: constellation memberships (can't be derived from
+# OBJECT_NAME) and category-only groupings (military, radar, ...).
+GROUPS: tuple[str, ...] = tuple({*GROUP_TO_SLUG.keys(), *GROUP_TO_CATEGORY.keys()})
 
 
 class CelesTrakDownloader(Downloader):
