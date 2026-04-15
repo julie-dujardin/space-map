@@ -12,13 +12,15 @@ class SourceSpec:
     code: str  # SATCAT short code (primary key)
     name: str  # CelesTrak sources.php description
     countries: tuple[str, ...] = ()  # ISO 3166-1 alpha-2 codes
-    operator: str | None = None  # Free-text operator name
 
 
+# Operator metadata (name + Wikidata QID, keyed by source code) lives in
+# operators.py — query OPERATOR_BY_SOURCE for the structured operator linked to
+# any of the non-country source codes below.
 SOURCES: tuple[SourceSpec, ...] = (
-    SourceSpec("AB", "Arab Satellite Communications Organization", operator="Arabsat"),
-    SourceSpec("ABS", "Asia Broadcast Satellite", operator="Asia Broadcast Satellite"),
-    SourceSpec("AC", "AsiaSat", operator="AsiaSat"),
+    SourceSpec("AB", "Arab Satellite Communications Organization", countries=("SA", "KW", "LY", "QA")),  # HQ in Riyadh
+    SourceSpec("ABS", "Asia Broadcast Satellite / Agility Beyond Space", countries=("AE",)),  # HQ in dubai
+    SourceSpec("AC", "AsiaSat", countries=("HK",)),  # Hong kong company
     SourceSpec("ALG", "Algeria", countries=("DZ",)),
     SourceSpec("ANG", "Angola", countries=("AO",)),
     SourceSpec("ARGN", "Argentina", countries=("AR",)),
@@ -48,40 +50,36 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("DJI", "Djibouti", countries=("DJ",)),
     SourceSpec("ECU", "Ecuador", countries=("EC",)),
     SourceSpec("EGYP", "Egypt", countries=("EG",)),
-    SourceSpec("ESA", "European Space Agency", operator="ESA"),
-    SourceSpec("ESRO", "European Space Research Organization", operator="ESRO"),
+    SourceSpec("ESA", "European Space Agency", countries=("EU",)),  # European agency
+    SourceSpec("ESRO", "European Space Research Organization", countries=("EU",)),  # European agency
     SourceSpec("EST", "Estonia", countries=("EE",)),
     SourceSpec("ETH", "Ethiopia", countries=("ET",)),
-    SourceSpec("EUME", "EUMETSAT", operator="EUMETSAT"),  # Q692163, operator, multiple constellations
-    SourceSpec("EUTE", "EUTELSAT", operator="Eutelsat"),
+    SourceSpec("EUME", "EUMETSAT", countries=("EU",)),  # European agency
+    SourceSpec("EUTE", "EUTELSAT", countries=("FR",)),  # French company
     SourceSpec("FGER", "France-Germany", countries=("FR", "DE")),
     SourceSpec("FIN", "Finland", countries=("FI",)),
     SourceSpec("FR", "France", countries=("FR",)),
     SourceSpec("FRIT", "France-Italy", countries=("FR", "IT")),
     SourceSpec("GER", "Germany", countries=("DE",)),
     SourceSpec("GHA", "Ghana", countries=("GH",)),
-    SourceSpec("GLOB", "Globalstar", operator="Globalstar"),
+    SourceSpec("GLOB", "Globalstar", countries=("US",)),
     SourceSpec("GREC", "Greece", countries=("GR",)),
     SourceSpec("GRSA", "Greece-Saudi Arabia", countries=("GR", "SA")),
     SourceSpec("GUAT", "Guatemala", countries=("GT",)),
     SourceSpec("HRV", "Croatia", countries=("HR",)),
     SourceSpec("HUN", "Hungary", countries=("HU",)),
-    SourceSpec("IM", "Inmarsat", operator="Inmarsat"),
+    SourceSpec("IM", "Inmarsat", countries=("GB",)),
     SourceSpec("IND", "India", countries=("IN",)),
     SourceSpec("INDO", "Indonesia", countries=("ID",)),
     SourceSpec("IRAN", "Iran", countries=("IR",)),
     SourceSpec("IRAQ", "Iraq", countries=("IQ",)),
-    SourceSpec(
-        "IRID", "Iridium", operator="Iridium"
-    ),  # not present in data, use prefix
+    SourceSpec("IRID", "Iridium", countries=("US",)),  # not present in data, use prefix
     SourceSpec("IRL", "Ireland", countries=("IE",)),
     SourceSpec("ISRA", "Israel", countries=("IL",)),
-    SourceSpec(
-        "ISRO", "Indian Space Research Organisation", countries=("IN",), operator="ISRO"
-    ),
+    SourceSpec("ISRO", "Indian Space Research Organisation", countries=("IN",)),
     SourceSpec("ISS", "International Space Station"),
     SourceSpec("IT", "Italy", countries=("IT",)),
-    SourceSpec("ITSO", "Intelsat", operator="Intelsat"),
+    SourceSpec("ITSO", "Intelsat", countries=("LU", "US")),
     SourceSpec("JOR", "Jordan", countries=("JO",)),
     SourceSpec("JPN", "Japan", countries=("JP",)),
     SourceSpec("KAZ", "Kazakhstan", countries=("KZ",)),
@@ -100,25 +98,25 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("MNE", "Montenegro", countries=("ME",)),
     SourceSpec("MNG", "Mongolia", countries=("MN",)),
     SourceSpec("MUS", "Mauritius", countries=("MU",)),
-    SourceSpec("NATO", "North Atlantic Treaty Organization", operator="NATO"),
+    SourceSpec("NATO", "North Atlantic Treaty Organization", countries=("US",)),
     SourceSpec("NETH", "Netherlands", countries=("NL",)),
-    SourceSpec("NICO", "New ICO", operator="ICO Global Communications"),
+    SourceSpec("NICO", "New ICO / Pendrell Corporation", countries=("US",)),
     SourceSpec("NIG", "Nigeria", countries=("NG",)),
     SourceSpec("NKOR", "North Korea", countries=("KP",)),
     SourceSpec("NOR", "Norway", countries=("NO",)),
     SourceSpec("NPL", "Nepal", countries=("NP",)),
     SourceSpec("NZ", "New Zealand", countries=("NZ",)),
-    SourceSpec("O3B", "O3b Networks", operator="O3b Networks"),
-    SourceSpec("ORB", "ORBCOMM", operator="Orbcomm"),
+    SourceSpec("O3B", "O3b Networks", countries=("US",)),
+    SourceSpec("ORB", "ORBCOMM", countries=("US",)),
     SourceSpec("PAKI", "Pakistan", countries=("PK",)),
     SourceSpec("PERU", "Peru", countries=("PE",)),
     SourceSpec("POL", "Poland", countries=("PL",)),
     SourceSpec("POR", "Portugal", countries=("PT",)),
     SourceSpec("PRC", "People's Republic of China", countries=("CN",)),
     SourceSpec("PRY", "Paraguay", countries=("PY",)),
-    SourceSpec("PRES", "People's Republic of China / ESA"),
+    SourceSpec("PRES", "People's Republic of China / ESA", countries=("CN", "EU")),
     SourceSpec("QAT", "Qatar", countries=("QA",)),
-    SourceSpec("RASC", "RascomStar-QAF", operator="RascomStar-QAF"),
+    SourceSpec("RASC", "RascomStar-QAF"),  # Africa, see https://rascom.org/member-states/
     SourceSpec("ROC", "Taiwan", countries=("TW",)),
     SourceSpec("ROM", "Romania", countries=("RO",)),
     SourceSpec("RP", "Philippines", countries=("PH",)),
@@ -126,9 +124,9 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("SAFR", "South Africa", countries=("ZA",)),
     SourceSpec("SAUD", "Saudi Arabia", countries=("SA",)),
     SourceSpec("SDN", "Sudan", countries=("SD",)),
-    SourceSpec("SEAL", "Sea Launch"),
+    SourceSpec("SEAL", "Sea Launch", countries=("NO", "RU", "UA", "US")),
     SourceSpec("SEN", "Senegal", countries=("SN",)),
-    SourceSpec("SES", "SES", operator="SES"),
+    SourceSpec("SES", "SES", countries=("LU",)),
     SourceSpec("SGJP", "Singapore-Japan", countries=("SG", "JP")),
     SourceSpec("SING", "Singapore", countries=("SG",)),
     SourceSpec("SKOR", "South Korea", countries=("KR",)),
