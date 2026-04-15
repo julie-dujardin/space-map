@@ -19,8 +19,14 @@ class SourceSpec:
 # any of the non-country source codes below.
 # https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
 SOURCES: tuple[SourceSpec, ...] = (
-    SourceSpec("AB", "Arab Satellite Communications Organization", countries=("SA", "KW", "LY", "QA")),  # HQ in Riyadh
-    SourceSpec("ABS", "Asia Broadcast Satellite / Agility Beyond Space", countries=("AE",)),  # HQ in dubai
+    SourceSpec(
+        "AB",
+        "Arab Satellite Communications Organization",
+        countries=("SA", "KW", "LY", "QA"),
+    ),  # HQ in Riyadh
+    SourceSpec(
+        "ABS", "Asia Broadcast Satellite / Agility Beyond Space", countries=("AE",)
+    ),  # HQ in dubai
     SourceSpec("AC", "AsiaSat", countries=("HK",)),  # Hong kong company
     SourceSpec("ALG", "Algeria", countries=("DZ",)),
     SourceSpec("ANG", "Angola", countries=("AO",)),
@@ -52,7 +58,9 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("ECU", "Ecuador", countries=("EC",)),
     SourceSpec("EGYP", "Egypt", countries=("EG",)),
     SourceSpec("ESA", "European Space Agency", countries=("EU",)),  # European agency
-    SourceSpec("ESRO", "European Space Research Organization", countries=("EU",)),  # European agency
+    SourceSpec(
+        "ESRO", "European Space Research Organization", countries=("EU",)
+    ),  # European agency
     SourceSpec("EST", "Estonia", countries=("EE",)),
     SourceSpec("ETH", "Ethiopia", countries=("ET",)),
     SourceSpec("EUME", "EUMETSAT", countries=("EU",)),  # European agency
@@ -117,7 +125,9 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("PRY", "Paraguay", countries=("PY",)),
     SourceSpec("PRES", "People's Republic of China / ESA", countries=("CN", "EU")),
     SourceSpec("QAT", "Qatar", countries=("QA",)),
-    SourceSpec("RASC", "RascomStar-QAF"),  # Africa, see https://rascom.org/member-states/
+    SourceSpec(
+        "RASC", "RascomStar-QAF"
+    ),  # Africa, see https://rascom.org/member-states/
     SourceSpec("ROC", "Taiwan", countries=("TW",)),
     SourceSpec("ROM", "Romania", countries=("RO",)),
     SourceSpec("RP", "Philippines", countries=("PH",)),
