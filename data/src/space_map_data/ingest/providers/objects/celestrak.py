@@ -20,6 +20,7 @@ from space_map_data.constants.earth_sats.operators import (
 )
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.constants.earth_sats.satcat import (
+    SatcatObjectType,
     parse_data_status,
     parse_object_type,
     parse_ops_status,
@@ -217,6 +218,13 @@ class CelesTrakIngestor:
             self.missing_satcat += 1
         satcat_fields = _satcat_fields(sat)
         owner = satcat_fields["owner"]
+        satcat_object_type = satcat_fields["object_type"]
+        object_type = (
+            ObjectType.debris
+            if satcat_object_type
+            in (SatcatObjectType.ROCKET_BODY, SatcatObjectType.DEBRIS)
+            else ObjectType.spacecraft
+        )
         cospar = string_or_none(row["OBJECT_ID"])
         groups = set(self.group_memberships_by_norad.get(norad, set()))
         if cospar is not None:
@@ -231,7 +239,7 @@ class CelesTrakIngestor:
         obj = dict(
             id=object_id,
             name=name,
-            object_type=ObjectType.spacecraft,
+            object_type=object_type,
             celestrak_norad_cat_id=norad,
             celestrak_cospar_id=string_or_none(row["OBJECT_ID"]),
             epoch_jd=date_to_julian(row["EPOCH"]),

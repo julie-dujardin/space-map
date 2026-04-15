@@ -19,7 +19,6 @@ _GLOBAL_FIELDS = (
     "rcs",
     "orbit_center",
     "orbit_center_docked_to",
-    "orbit_type",
     "launch_site_code",
     "owner",
     "constellation_slug",
