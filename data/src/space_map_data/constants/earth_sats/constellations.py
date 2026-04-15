@@ -20,14 +20,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-class ConstellationCategory(StrEnum):
+class SatelliteCategory(StrEnum):
     """Top-level grouping from https://celestrak.org/NORAD/elements/"""
 
-    SPECIAL_INTEREST = "special_interest"
-    WEATHER_EARTH_RESOURCES = "weather_earth_resources"
+    DISASTER = "disaster-sar"
+    WEATHER = "weather"
+    OBSERVATION = "observation"
     COMMUNICATIONS = "communications"
     NAVIGATION = "navigation"
-    SCIENTIFIC = "scientific"
+    SCIENCE = "science"
+    MILITARY = "military"
+    DEBRIS = "debris"
+    STATION = "station"
     MISCELLANEOUS = "miscellaneous"
 
 
@@ -35,7 +39,7 @@ class ConstellationCategory(StrEnum):
 class ConstellationSpec:
     slug: str
     wikidata_qid: str | None
-    category: ConstellationCategory
+    category: SatelliteCategory
     prefix: str | None = None  # TLE OBJECT_NAME startswith
     group: str | None = None  # CelesTrak gp.php GROUP slug
     source: str | None = None  # SATCAT SOURCE/OWNER code
@@ -43,54 +47,152 @@ class ConstellationSpec:
 
 CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # Derived from OBJECT_NAME prefix
-    ConstellationSpec("starlink", "Q19867977", ConstellationCategory.COMMUNICATIONS, prefix="STARLINK"),
-    ConstellationSpec("oneweb", "Q17184117", ConstellationCategory.COMMUNICATIONS, prefix="ONEWEB"),
-    ConstellationSpec("iridium", "Q3154356", ConstellationCategory.COMMUNICATIONS, prefix="IRIDIUM"),
-    ConstellationSpec("kuiper", "Q62812537", ConstellationCategory.COMMUNICATIONS, prefix="KUIPER"),
-    ConstellationSpec("qianfan", "Q124981442", ConstellationCategory.COMMUNICATIONS, prefix="QIANFAN"),
-    ConstellationSpec("guowang", "Q123581514", ConstellationCategory.COMMUNICATIONS, prefix="HULIANWANG DIGUI"),
-    ConstellationSpec("globalstar", "Q1202533", ConstellationCategory.COMMUNICATIONS, prefix="GLOBALSTAR"),
-    ConstellationSpec("planet-flock", "Q97380305", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="FLOCK"),
-    ConstellationSpec("planet-skysat", "Q27031816", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="SKYSAT"),
-    ConstellationSpec("spacebee", "Q105334563", ConstellationCategory.COMMUNICATIONS, prefix="SPACEBEE"),
-    ConstellationSpec("sitro-ais", None, ConstellationCategory.COMMUNICATIONS, prefix="SITRO-AIS"),
-    ConstellationSpec("geesat", "Q125167295", ConstellationCategory.COMMUNICATIONS, prefix="GEESAT"),
-    ConstellationSpec("gonets", "Q2041033", ConstellationCategory.COMMUNICATIONS, prefix="GONETS"),
-    ConstellationSpec("tianqi", None, ConstellationCategory.COMMUNICATIONS, prefix="TIANQI"),
-    ConstellationSpec("connecta-iot", None, ConstellationCategory.COMMUNICATIONS, prefix="CONNECTA IOT"),
-    ConstellationSpec("tianmu", "Q124168307", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="TIANMU-1"),
-    ConstellationSpec("spire", "Q19877982", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="LEMUR"),
-    ConstellationSpec("marecs", "Q1881172", ConstellationCategory.COMMUNICATIONS, prefix="MARECS"),
-    ConstellationSpec("marisat", "Q6765591", ConstellationCategory.COMMUNICATIONS, prefix="LEMUR"),
-    ConstellationSpec("inmarsat", "Q827927", ConstellationCategory.COMMUNICATIONS, prefix="INMARSAT"),
-    ConstellationSpec("metop", "Q819651", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="METOP"),
     ConstellationSpec(
-        "meteosat", "Q1429889", ConstellationCategory.WEATHER_EARTH_RESOURCES, prefix="METEOSAT"
+        "starlink", "Q19867977", SatelliteCategory.COMMUNICATIONS, prefix="STARLINK"
+    ),
+    ConstellationSpec(
+        "oneweb", "Q17184117", SatelliteCategory.COMMUNICATIONS, prefix="ONEWEB"
+    ),
+    ConstellationSpec(
+        "iridium", "Q3154356", SatelliteCategory.COMMUNICATIONS, prefix="IRIDIUM"
+    ),
+    ConstellationSpec(
+        "kuiper", "Q62812537", SatelliteCategory.COMMUNICATIONS, prefix="KUIPER"
+    ),
+    ConstellationSpec(
+        "qianfan", "Q124981442", SatelliteCategory.COMMUNICATIONS, prefix="QIANFAN"
+    ),
+    ConstellationSpec(
+        "guowang",
+        "Q123581514",
+        SatelliteCategory.COMMUNICATIONS,
+        prefix="HULIANWANG DIGUI",
+    ),
+    ConstellationSpec(
+        "globalstar", "Q1202533", SatelliteCategory.COMMUNICATIONS, prefix="GLOBALSTAR"
+    ),
+    ConstellationSpec(
+        "planet-flock", "Q97380305", SatelliteCategory.OBSERVATION, prefix="FLOCK"
+    ),
+    ConstellationSpec(
+        "planet-skysat", "Q27031816", SatelliteCategory.OBSERVATION, prefix="SKYSAT"
+    ),
+    ConstellationSpec(
+        "spacebee", "Q105334563", SatelliteCategory.COMMUNICATIONS, prefix="SPACEBEE"
+    ),
+    ConstellationSpec(
+        "sitro-ais", None, SatelliteCategory.COMMUNICATIONS, prefix="SITRO-AIS"
+    ),
+    ConstellationSpec(
+        "geesat", "Q125167295", SatelliteCategory.COMMUNICATIONS, prefix="GEESAT"
+    ),
+    ConstellationSpec(
+        "gonets", "Q2041033", SatelliteCategory.COMMUNICATIONS, prefix="GONETS"
+    ),
+    ConstellationSpec(
+        "tianqi", None, SatelliteCategory.COMMUNICATIONS, prefix="TIANQI"
+    ),
+    ConstellationSpec(
+        "connecta-iot", None, SatelliteCategory.COMMUNICATIONS, prefix="CONNECTA IOT"
+    ),
+    ConstellationSpec(
+        "tianmu", "Q124168307", SatelliteCategory.WEATHER, prefix="TIANMU-1"
+    ),
+    ConstellationSpec(
+        "spire", "Q19877982", SatelliteCategory.OBSERVATION, prefix="LEMUR"
+    ),
+    ConstellationSpec(
+        "marecs", "Q1881172", SatelliteCategory.COMMUNICATIONS, prefix="MARECS"
+    ),
+    ConstellationSpec(
+        "marisat", "Q6765591", SatelliteCategory.COMMUNICATIONS, prefix="LEMUR"
+    ),
+    ConstellationSpec(
+        "inmarsat", "Q827927", SatelliteCategory.COMMUNICATIONS, prefix="INMARSAT"
+    ),
+    ConstellationSpec("metop", "Q819651", SatelliteCategory.WEATHER, prefix="METOP"),
+    ConstellationSpec(
+        "meteosat", "Q1429889", SatelliteCategory.WEATHER, prefix="METEOSAT"
     ),  # Also see https://en.wikipedia.org/wiki/Jason_satellite_series
-    ConstellationSpec("measat", None, ConstellationCategory.COMMUNICATIONS, prefix="MEASAT"),
-    ConstellationSpec("africasat", "Q20052527", ConstellationCategory.COMMUNICATIONS, prefix="AFRICASAT"),
-    ConstellationSpec("thaicom", None, ConstellationCategory.COMMUNICATIONS, prefix="THAICOM"),
+    ConstellationSpec(
+        "measat", None, SatelliteCategory.COMMUNICATIONS, prefix="MEASAT"
+    ),
+    ConstellationSpec(
+        "africasat", "Q20052527", SatelliteCategory.COMMUNICATIONS, prefix="AFRICASAT"
+    ),
+    ConstellationSpec(
+        "thaicom", None, SatelliteCategory.COMMUNICATIONS, prefix="THAICOM"
+    ),
+    ConstellationSpec(
+        "fengyun", "Q1404722", SatelliteCategory.WEATHER, prefix="FENGYUN"
+    ),
     # Derived from CelesTrak group membership
     ConstellationSpec(
-        "orbcomm", "Q16960684", ConstellationCategory.COMMUNICATIONS, group="orbcomm"
+        "orbcomm", "Q16960684", SatelliteCategory.COMMUNICATIONS, group="orbcomm"
     ),  # all are named "ORBCOMM-..." except VESSELSAT, which are part of the constellation
-    ConstellationSpec("intelsat", "Q778126", ConstellationCategory.COMMUNICATIONS, group="intelsat"),
-    ConstellationSpec("ses", "Q333025", ConstellationCategory.COMMUNICATIONS, group="ses"),
     ConstellationSpec(
-        "eutelsat", "Q848336", ConstellationCategory.COMMUNICATIONS, prefix="EUTELSAT"
+        "intelsat", "Q778126", SatelliteCategory.COMMUNICATIONS, group="intelsat"
+    ),
+    ConstellationSpec("ses", "Q333025", SatelliteCategory.COMMUNICATIONS, group="ses"),
+    ConstellationSpec(
+        "eutelsat", "Q848336", SatelliteCategory.COMMUNICATIONS, prefix="EUTELSAT"
     ),  # include Ekspress-AT
-    ConstellationSpec("telesat", "Q2401935", ConstellationCategory.COMMUNICATIONS, group="telesat"),
-    ConstellationSpec("gps", "Q18822", ConstellationCategory.NAVIGATION, group="gps-ops"),
-    ConstellationSpec("glonass", "Q486250", ConstellationCategory.NAVIGATION, group="glo-ops"),
-    ConstellationSpec("galileo", "Q193902", ConstellationCategory.NAVIGATION, group="galileo"),
-    ConstellationSpec("beidou", "Q857141", ConstellationCategory.NAVIGATION, group="beidou"),
+    ConstellationSpec(
+        "telesat", "Q2401935", SatelliteCategory.COMMUNICATIONS, group="telesat"
+    ),
+    ConstellationSpec("gps", "Q18822", SatelliteCategory.NAVIGATION, group="gps-ops"),
+    ConstellationSpec(
+        "glonass", "Q486250", SatelliteCategory.NAVIGATION, group="glo-ops"
+    ),
+    ConstellationSpec(
+        "galileo", "Q193902", SatelliteCategory.NAVIGATION, group="galileo"
+    ),
+    ConstellationSpec(
+        "beidou", "Q857141", SatelliteCategory.NAVIGATION, group="beidou"
+    ),
+    ConstellationSpec(
+        "transit", "Q651136", SatelliteCategory.NAVIGATION, group="nnss"
+    ),  # Navy Navigation Satellite System
+    ConstellationSpec("sbas", "Q2165162", SatelliteCategory.NAVIGATION, group="sbas"),
+    ConstellationSpec(
+        "fengyun-1c-asat-debris",
+        "Q182183",
+        SatelliteCategory.DEBRIS,
+        group="fengyun-1c-debris",
+    ),
+    ConstellationSpec(
+        "iridium-33-debris",
+        "Q843912",
+        SatelliteCategory.DEBRIS,
+        group="iridium-33-debris",
+    ),
+    ConstellationSpec(
+        "cosmos-2251-debris",
+        "Q843912",
+        SatelliteCategory.DEBRIS,
+        group="cosmos-2251-debris",
+    ),
+    ConstellationSpec("tdrss", "Q3522774", SatelliteCategory.DEBRIS, group="tdrss"),
+    ConstellationSpec("argos", "Q649489", SatelliteCategory.DEBRIS, group="argos"),
     # Derived from SATCAT SOURCE/OWNER code
-    ConstellationSpec("arabsat", "Q65277396", ConstellationCategory.COMMUNICATIONS, source="AB"),
-    ConstellationSpec("abs", "Q18238088", ConstellationCategory.COMMUNICATIONS, source="ABS"),
-    ConstellationSpec("asiasat", "Q726812", ConstellationCategory.COMMUNICATIONS, source="AC"),
-    ConstellationSpec("new-ico", "Q3792482", ConstellationCategory.COMMUNICATIONS, source="NICO"),
-    ConstellationSpec("o3b", "Q3347484", ConstellationCategory.COMMUNICATIONS, source="O3B"),
-    ConstellationSpec("rascomstar", "Q3415056", ConstellationCategory.COMMUNICATIONS, source="RASC"),
+    ConstellationSpec(
+        "arabsat", "Q65277396", SatelliteCategory.COMMUNICATIONS, source="AB"
+    ),
+    ConstellationSpec(
+        "abs", "Q18238088", SatelliteCategory.COMMUNICATIONS, source="ABS"
+    ),
+    ConstellationSpec(
+        "asiasat", "Q726812", SatelliteCategory.COMMUNICATIONS, source="AC"
+    ),
+    ConstellationSpec(
+        "new-ico", "Q3792482", SatelliteCategory.COMMUNICATIONS, source="NICO"
+    ),
+    ConstellationSpec(
+        "o3b", "Q3347484", SatelliteCategory.COMMUNICATIONS, source="O3B"
+    ),
+    ConstellationSpec(
+        "rascomstar", "Q3415056", SatelliteCategory.COMMUNICATIONS, source="RASC"
+    ),
 )
 
 
@@ -104,6 +206,22 @@ GROUP_TO_SLUG: dict[str, str] = {
 
 SOURCE_TO_SLUG: dict[str, str] = {
     c.source: c.slug for c in CONSTELLATIONS if c.source is not None
+}
+
+# CelesTrak groups that tag sats with a category directly, without belonging to
+# a named constellation. See https://celestrak.org/NORAD/elements/.
+GROUP_TO_CATEGORY: dict[str, SatelliteCategory] = {
+    "military": SatelliteCategory.MILITARY,
+    "radar": SatelliteCategory.MISCELLANEOUS,
+    "other-comm": SatelliteCategory.COMMUNICATIONS,
+    "analyst": SatelliteCategory.DEBRIS,
+    "stations": SatelliteCategory.STATION,
+    "dmc": SatelliteCategory.DISASTER,
+    "sarsat": SatelliteCategory.DISASTER,
+    "science": SatelliteCategory.SCIENCE,
+    "engineering": SatelliteCategory.SCIENCE,
+    "education": SatelliteCategory.SCIENCE,
+    "geodetic": SatelliteCategory.SCIENCE,
 }
 
 
