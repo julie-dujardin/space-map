@@ -32,6 +32,9 @@ class SatelliteCategory(StrEnum):
     MILITARY = "military"
     DEBRIS = "debris"
     STATION = "station"
+    MANNED_CAPSULE = "manned_capsule"
+    UNMANNED_CARGO = "unmanned_cargo"
+    SPACE_TUG = "space_tug"
     MISCELLANEOUS = "miscellaneous"
 
 
@@ -39,14 +42,18 @@ class SatelliteCategory(StrEnum):
 class ConstellationSpec:
     slug: str
     wikidata_qid: str | None
-    category: SatelliteCategory
-    prefix: str | None = None  # TLE OBJECT_NAME startswith
+    category: SatelliteCategory | tuple[SatelliteCategory, ...]
+    prefix: str | tuple[str, ...] | None = None  # TLE OBJECT_NAME startswith
+    contains: tuple[str, ...] | None = None  # like prefix but anywhere in the name
     group: str | None = None  # CelesTrak gp.php GROUP slug
     source: str | None = None  # SATCAT SOURCE/OWNER code
+    url: str | None = None  # When no wikipedia link
 
 
 CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
-    # Derived from OBJECT_NAME prefix
+    # -------------------------------------------------------------------------
+    # Major commercial / government constellations — identified by name prefix
+    # -------------------------------------------------------------------------
     ConstellationSpec(
         "starlink", "Q19867977", SatelliteCategory.COMMUNICATIONS, prefix="STARLINK"
     ),
@@ -66,8 +73,8 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "guowang",
         "Q123581514",
         SatelliteCategory.COMMUNICATIONS,
-        prefix="HULIANWANG DIGUI",
-    ),
+        prefix="HULIANWANG",
+    ),  # HULIANWANG JISHU, HULIANWAN GAOGUI, HULIANWANG DIGUI (that's the big one, first 2 are experimental?)
     ConstellationSpec(
         "globalstar", "Q1202533", SatelliteCategory.COMMUNICATIONS, prefix="GLOBALSTAR"
     ),
@@ -90,10 +97,18 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "gonets", "Q2041033", SatelliteCategory.COMMUNICATIONS, prefix="GONETS"
     ),
     ConstellationSpec(
-        "tianqi", None, SatelliteCategory.COMMUNICATIONS, prefix="TIANQI"
+        "tianqi",
+        None,
+        SatelliteCategory.COMMUNICATIONS,
+        prefix="TIANQI",
+        url="https://www.guodiangaoke.com/web/dist/index.html#/tianqixingzuo",
     ),
     ConstellationSpec(
-        "connecta-iot", None, SatelliteCategory.COMMUNICATIONS, prefix="CONNECTA IOT"
+        "connecta-iot",
+        None,
+        SatelliteCategory.COMMUNICATIONS,
+        prefix="CONNECTA IOT",
+        url="https://www.connectasat.com/technology/satellite-iot/",
     ),
     ConstellationSpec(
         "tianmu", "Q124168307", SatelliteCategory.WEATHER, prefix="TIANMU-1"
@@ -105,7 +120,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "marecs", "Q1881172", SatelliteCategory.COMMUNICATIONS, prefix="MARECS"
     ),
     ConstellationSpec(
-        "marisat", "Q6765591", SatelliteCategory.COMMUNICATIONS, prefix="LEMUR"
+        "marisat", "Q6765591", SatelliteCategory.COMMUNICATIONS, prefix="MARISAT"
     ),
     ConstellationSpec(
         "inmarsat", "Q827927", SatelliteCategory.COMMUNICATIONS, prefix="INMARSAT"
@@ -113,9 +128,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec("metop", "Q819651", SatelliteCategory.WEATHER, prefix="METOP"),
     ConstellationSpec(
         "meteosat", "Q1429889", SatelliteCategory.WEATHER, prefix="METEOSAT"
-    ),  # Also see https://en.wikipedia.org/wiki/Jason_satellite_series
+    ),
     ConstellationSpec(
-        "measat", None, SatelliteCategory.COMMUNICATIONS, prefix="MEASAT"
+        "measat",
+        None,
+        SatelliteCategory.COMMUNICATIONS,
+        prefix="MEASAT",
+        url="https://www.measat.com/our-coverage/measat-fleet/",
     ),
     ConstellationSpec(
         "africasat", "Q20052527", SatelliteCategory.COMMUNICATIONS, prefix="AFRICASAT"
@@ -126,7 +145,288 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "fengyun", "Q1404722", SatelliteCategory.WEATHER, prefix="FENGYUN"
     ),
+    # TODO:
+    # SCS-* - https://www.scs-space.com?
+    # -------------------------------------------------------------------------
+    # Chinese EO / mapping constellations (PRC owner)
+    # -------------------------------------------------------------------------
+    # Jilin-1: largest Chinese commercial EO constellation (CGST / Chang Guang).
+    ConstellationSpec(
+        "jilin", "Q123139897", SatelliteCategory.OBSERVATION, prefix="JILIN"
+    ),
+    # Gaofen: CNSA civil high-resolution EO programme (government/dual-use)
+    ConstellationSpec(
+        "gaofen", "Q18669407", SatelliteCategory.OBSERVATION, prefix="GAOFEN"
+    ),
+    # SuperView / Gaojing: commercial VHR EO (Beijing Space View / SI Imaging)
+    ConstellationSpec(
+        "superview-china-siwei",
+        "Q135765238",
+        SatelliteCategory.OBSERVATION,
+        prefix="SUPERVIEW",
+    ),
+    # Zhuhai: hyperspectral/SAR constellation (Orbita Aerospace)
+    ConstellationSpec(
+        "zhuhai",
+        None,
+        SatelliteCategory.OBSERVATION,
+        prefix="ZHUHAI-",
+        url="https://www.obtdata.com/en/zhuhai1.html",
+    ),
+    # Yunyao-1: commercial weather
+    ConstellationSpec(
+        "yunyao", "Q124256662", SatelliteCategory.WEATHER, prefix="YUNYAO-1"
+    ),
+    # Haiyang: CNSA ocean color and dynamics satellites
+    ConstellationSpec(
+        "haiyang", "Q2362851", SatelliteCategory.OBSERVATION, prefix="HAIYANG"
+    ),
+    # TODO: check
+    # - NINGXIA-1: https://www.newspace.im/constellations/ningxia
+    # - DONGPO: ????
+    # Centispace-1: Chinese nav-augmentation LEO constellation (Beijing Future Navigation Technology)?
+    ConstellationSpec(
+        "centispace", None, SatelliteCategory.NAVIGATION, prefix="CENTISPACE-"
+    ),
+    # Tianlian I / II: Chinese TDRSS equivalent (relay / tracking, CNSA)
+    ConstellationSpec(
+        "tianlian", "Q7800236", SatelliteCategory.COMMUNICATIONS, prefix="TIANLIAN"
+    ),  # Also Q67931551 but that has very low coverage
+    # Tiantong-1: Chinese mobile satellite comms (CASC / China Satcom)
+    ConstellationSpec(
+        "tiantong", "Q105274818", SatelliteCategory.COMMUNICATIONS, prefix="TIANTONG-"
+    ),
+    # Zhongxing / Chinasat: Chinese military and civil GEO comms (CASC / CASIC).
+    # SATCAT uses "ZHONGXING-N" and "CHINASAT N" interchangeably.
+    ConstellationSpec(
+        "zhongxing", None, SatelliteCategory.COMMUNICATIONS, prefix="ZHONGXING"
+    ),
+    ConstellationSpec(
+        "chinasat", None, SatelliteCategory.COMMUNICATIONS, prefix="CHINASAT"
+    ),
+    # Chinese Space Station (CSS): core module TIANHE + labs WENTIAN / MENGTIAN.
+    ConstellationSpec(
+        "chinese-space-station", "Q5100935", SatelliteCategory.STATION, prefix="CSS "
+    ),
+    # International Space Station: TLE names start with "ISS".
+    ConstellationSpec("iss", "Q25271", SatelliteCategory.STATION, prefix="ISS"),
+    # Yaogan: Chinese military reconnaissance constellation (PLA/CNSA).
+    # Covers SAR triplets, EO, and SIGINT pairs across many sub-series.
+    ConstellationSpec(
+        "yaogan",
+        "Q589786",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="YAOGAN",
+    ),
+    ConstellationSpec(
+        "tongxin-jishu-shiyan",
+        "Q60994560",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="TJS",
+    ),
+    # Yunhai: chinese weather for military
+    ConstellationSpec(
+        "yunhai-1",
+        "Q86726049",
+        (SatelliteCategory.WEATHER, SatelliteCategory.MILITARY),
+        prefix="YUNHAI-1",
+    ),
+    ConstellationSpec(
+        "yunhai-2",
+        "Q125398771",
+        (SatelliteCategory.WEATHER, SatelliteCategory.MILITARY),
+        prefix="YUNHAI-2",
+    ),
+    ConstellationSpec(
+        "yunhai-3",
+        "Q125447848",
+        (SatelliteCategory.WEATHER, SatelliteCategory.MILITARY),
+        prefix="YUNHAI-3",
+    ),
+    # Tianhui: Chinese military imaging
+    ConstellationSpec(
+        "tianhui",
+        "Q111496708",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix="TIANHUI",
+    ),
+    # Shijian, chuangxin, shiyan: Chinese technology-experiment / R&D series (CASC/CASIC).
+    # Extremely broad — covers dozens of unrelated missions.
+    # Classified, possibly military
+    ConstellationSpec(
+        "shijian", "Q11452851", SatelliteCategory.SCIENCE, prefix=("SHIJIAN", "SJ")
+    ),  # "Practice"
+    ConstellationSpec(
+        "chuangxin", None, SatelliteCategory.SCIENCE, prefix=("CHUANGXIN")
+    ),  # "Innovation"
+    ConstellationSpec(
+        "shiyan", "Q2279595", SatelliteCategory.SCIENCE, prefix=("SHIYAN")
+    ),  # "Experiment"
+    # -------------------------------------------------------------------------
+    # US military constellations
+    # -------------------------------------------------------------------------
+    # WGS: Wideband Global SATCOM — US DoD high-bandwidth GEO comms.
+    ConstellationSpec(
+        "wgs",
+        "Q2567808",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        prefix="WGS",
+    ),
+    # AEHF: Advanced Extremely High Frequency — comms.
+    ConstellationSpec(
+        "aehf",
+        "Q379544",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        prefix="AEHF",
+    ),
+    # MUOS: Mobile User Objective System — US Navy UHF narrowband satcom.
+    ConstellationSpec(
+        "muos",
+        "Q1810552",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        prefix="MUOS",
+    ),
+    # SBIRS: Space-Based Infrared System — US missile warning (GEO + HEO).
+    ConstellationSpec(
+        "sbirs",
+        "Q905215",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="SBIRS",
+    ),
+    # DMSP: Defense Meteorological Satellite Program.
+    ConstellationSpec(
+        "dmsp",
+        "Q1182618",
+        (SatelliteCategory.MILITARY, SatelliteCategory.WEATHER),
+        contains=("DMSP",),
+    ),
+    # SDA
+    ConstellationSpec(
+        "sda-praetorian", "Q75746123", SatelliteCategory.MILITARY, prefix="PRAETORIAN"
+    ),
+    ConstellationSpec("sda", "Q75746123", SatelliteCategory.MILITARY, prefix="SDA_"),
+    # Blackjack: DARPA LEO military demonstration programme.
+    ConstellationSpec(
+        "blackjack", "Q96373675", SatelliteCategory.MILITARY, prefix="BLACKJACK"
+    ),
+    # Checkmate: classified LEO military programme.
+    ConstellationSpec(
+        "checkmate", None, SatelliteCategory.MILITARY, prefix="CHECKMATE"
+    ),
+    # USA: classified US national-security payloads (NRO, AFSPC, etc.)
+    # Kept as last-resort for sats that match nothing more specific.
+    ConstellationSpec("usa-classified", None, SatelliteCategory.MILITARY, prefix="USA"),
+    # -------------------------------------------------------------------------
+    # US civilian / weather satellites
+    # -------------------------------------------------------------------------
+    # GOES: NOAA Geostationary Operational Environmental Satellites.
+    ConstellationSpec("goes", "Q976688", SatelliteCategory.WEATHER, prefix="GOES"),
+    # Landsat: USGS/NASA land-surface imaging series.
+    ConstellationSpec(
+        "landsat", "Q849791", SatelliteCategory.OBSERVATION, prefix="LANDSAT"
+    ),
+    # PE spinoff of a maxar division
+    ConstellationSpec(
+        "worldView-legion", "Q122398742", SatelliteCategory.OBSERVATION, prefix="LEGION"
+    ),
+    # -------------------------------------------------------------------------
+    # US commercial constellations
+    # -------------------------------------------------------------------------
+    # HawkEye 360: RF geolocation cluster constellation.
+    ConstellationSpec(
+        "hawkeye360", None, SatelliteCategory.OBSERVATION, prefix=("HAWK", "KESTREL-")
+    ),
+    # Capella Space: commercial SAR imaging constellation.
+    ConstellationSpec("capella", None, SatelliteCategory.OBSERVATION, prefix="CAPELLA"),
+    # Wildfire: wildfire-detection EO constellation TODO: (Tomorrow.io subsidiary?)
+    ConstellationSpec(
+        "wildfire", None, SatelliteCategory.OBSERVATION, prefix="WILDFIRE"
+    ),
+    # EchoStar / DISH: GEO broadcast + broadband (ECHOSTAR-N, JUPITER-N).
+    ConstellationSpec(
+        "echostar", "Q97217972", SatelliteCategory.COMMUNICATIONS, prefix="ECHOSTAR"
+    ),
+    # ViaSat: GEO high-throughput broadband (VIASAT-1, VIASAT-3 F1/F2/F3).
+    ConstellationSpec(
+        "viasat", None, SatelliteCategory.COMMUNICATIONS, prefix="VIASAT"
+    ),
+    # Lynk Global: direct-to-standard-cell IoT/broadband LEO constellation.
+    ConstellationSpec("lynk", None, SatelliteCategory.COMMUNICATIONS, prefix="LYNK"),
+    # ICEYE: Finnish SAR company, sells & operates sats (so country codes varies)
+    ConstellationSpec("iceye", None, SatelliteCategory.OBSERVATION, prefix="ICEYE"),
+    # Tomorrow.io: commercial weather-monitoring microsatellite constellation.
+    ConstellationSpec(
+        "tomorrow-io", None, SatelliteCategory.WEATHER, prefix="TOMORROW"
+    ),
+    # Planet Labs Pelican: next-gen high-revisit EO constellation.
+    ConstellationSpec(
+        "planet-pelican", None, SatelliteCategory.OBSERVATION, prefix="PELICAN"
+    ),
+    # AST SpaceMobile: direct-to-cell broadband LEO constellation.
+    ConstellationSpec(
+        "ast-spacemobile",
+        "Q131940547",
+        SatelliteCategory.COMMUNICATIONS,
+        prefix="SPACEMOBILE",
+    ),
+    # APrizeSat: low-cost store-and-forward IoT messaging (SpaceQuest).
+    ConstellationSpec(
+        "aprizesat",
+        "Q17512448",
+        SatelliteCategory.COMMUNICATIONS,
+        prefix=("APRIZESAT", "LatinSat"),
+    ),
+    # AeroCube: Aerospace Corporation technology-demonstration cubesats.
+    ConstellationSpec(
+        "aerocube",
+        None,
+        SatelliteCategory.SCIENCE,
+        prefix="AEROCUBE",
+        url="https://aerospace.org/paper/aerospace-corporations-aerocube-program",
+    ),
+    # D-Orbit ION Satellite Carrier: in-space transportation / hosted payload buses.
+    ConstellationSpec(
+        "d-orbit-ion", "Q65084209", SatelliteCategory.SPACE_TUG, prefix="ION "
+    ),
+    # ISS crewed / cargo vehicles catalogued as separate objects by NORAD.
+    ConstellationSpec(
+        "cygnus", "Q127924", SatelliteCategory.UNMANNED_CARGO, prefix="CYGNUS"
+    ),
+    ConstellationSpec(
+        "crew-dragon",
+        "Q105095031",
+        SatelliteCategory.MANNED_CAPSULE,
+        prefix="CREW DRAGON",
+    ),
+    # -------------------------------------------------------------------------
+    # Italian constellations
+    # -------------------------------------------------------------------------
+    # IRIDE: Italian national Earth observation constellation (ESA/ASI mandate,
+    # prime contractor Thales Alenia Space Italia).
+    ConstellationSpec(
+        "iride", "Q137485492", SatelliteCategory.OBSERVATION, prefix="IRIDE"
+    ),
+    # -------------------------------------------------------------------------
+    # Russian (CIS) constellations
+    # -------------------------------------------------------------------------
+    # Rassvet- Russian commercial broadband LEO (X holding).
+    ConstellationSpec(
+        "rassvet", "Q124753962", SatelliteCategory.COMMUNICATIONS, prefix="RASSVET"
+    ),
+    # Yamal: Russian geostationary communications (Gazprom Space Systems).
+    ConstellationSpec(
+        "Yamal", "Q3656794", SatelliteCategory.COMMUNICATIONS, prefix="YAMAL"
+    ),
+    ConstellationSpec(
+        "sputnik", "Q170413", SatelliteCategory.STATION, prefix="SPUTNIK"
+    ),
+    ConstellationSpec(
+        "soyuz", "Q579421", SatelliteCategory.MANNED_CAPSULE, prefix="SOYUZ"
+    ),
+    ConstellationSpec("salyut", "Q207933", SatelliteCategory.STATION, prefix="SALYUT"),
+    # -------------------------------------------------------------------------
     # Derived from CelesTrak group membership
+    # -------------------------------------------------------------------------
     ConstellationSpec(
         "orbcomm", "Q16960684", SatelliteCategory.COMMUNICATIONS, group="orbcomm"
     ),  # all are named "ORBCOMM-..." except VESSELSAT, which are part of the constellation
@@ -172,9 +472,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         SatelliteCategory.DEBRIS,
         group="cosmos-2251-debris",
     ),
-    ConstellationSpec("tdrss", "Q3522774", SatelliteCategory.DEBRIS, group="tdrss"),
-    ConstellationSpec("argos", "Q649489", SatelliteCategory.DEBRIS, group="argos"),
+    ConstellationSpec(
+        "tdrss", "Q3522774", SatelliteCategory.COMMUNICATIONS, group="tdrss"
+    ),
+    ConstellationSpec("argos", "Q649489", SatelliteCategory.OBSERVATION, group="argos"),
+    # -------------------------------------------------------------------------
     # Derived from SATCAT SOURCE/OWNER code
+    # -------------------------------------------------------------------------
     ConstellationSpec(
         "arabsat", "Q65277396", SatelliteCategory.COMMUNICATIONS, source="AB"
     ),
@@ -200,8 +504,20 @@ CONSTELLATION_BY_SLUG: dict[str, ConstellationSpec] = {
     c.slug: c for c in CONSTELLATIONS
 }
 
-PREFIX_TO_SLUG: dict[str, str] = {
-    c.prefix: c.slug for c in CONSTELLATIONS if c.prefix is not None
+PREFIX_TO_SLUG: dict[str, str] = dict(
+    sorted(
+        (
+            (p, c.slug)
+            for c in CONSTELLATIONS
+            if c.prefix is not None
+            for p in (c.prefix if isinstance(c.prefix, tuple) else (c.prefix,))
+        ),
+        key=lambda kv: -len(kv[0]),
+    )
+)
+
+CONTAINS_TO_SLUG: dict[str, str] = {
+    k: c.slug for c in CONSTELLATIONS if c.contains is not None for k in c.contains
 }
 
 GROUP_TO_SLUG: dict[str, str] = {
@@ -225,7 +541,7 @@ PREFERRED_SLUGS: tuple[str, ...] = (
 # Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is
 # preferred over these. SBAS and Argos are broad groupings that overlap with
 # more specific constellation matches.
-UNPREFERRED_SLUGS: frozenset[str] = frozenset({"sbas", "argos"})
+UNPREFERRED_SLUGS: frozenset[str] = frozenset({"sbas", "argos", "usa-classified"})
 
 # CelesTrak groups that tag sats with a category directly, without belonging to
 # a named constellation. See https://celestrak.org/NORAD/elements/.
@@ -249,5 +565,8 @@ def slug_from_name(name: str | None) -> str | None:
         return None
     for prefix, slug in PREFIX_TO_SLUG.items():
         if name.startswith(prefix):
+            return slug
+    for keyword, slug in CONTAINS_TO_SLUG.items():
+        if keyword in name:
             return slug
     return None

@@ -175,7 +175,10 @@ class CelesTrakIngestor:
         if constellation is not None:
             spec = CONSTELLATION_BY_SLUG.get(constellation)
             if spec is not None:
-                cats.add(spec.category.value)
+                if isinstance(spec.category, tuple):
+                    cats.update(c.value for c in spec.category)
+                else:
+                    cats.add(spec.category.value)
         for group in groups:
             cat = GROUP_TO_CATEGORY.get(group)
             if cat is not None:
