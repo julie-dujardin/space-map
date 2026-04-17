@@ -37,7 +37,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec("AsiaSat", "Q726812", source="AC", constellations=("asiasat",)),
     OperatorSpec(
-        "European Space Agency", "Q42262", source="ESA", constellations=("iride", "iss")
+        "ESA - European Space Agency",
+        "Q42262",
+        source="ESA",
+        constellations=("iride", "iss", "sentinel"),
     ),
     OperatorSpec("JAXA", "Q179103", constellations=("iss",)),
     OperatorSpec("CSA", "Q212227", constellations=("iss",)),
@@ -102,6 +105,11 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("gps", "wgs", "aehf", "sbirs", "dmsp", "checkmate", "muos"),
     ),
     OperatorSpec(
+        "S.P. Korolev Rocket and Space Corporation Energia - OKB-1",
+        "Q763402",
+        constellations=("molniya",),
+    ),
+    OperatorSpec(
         "Roscosmos",
         "Q190795",
         constellations=(
@@ -122,7 +130,16 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "NASA",
         "Q23548",
-        constellations=("explorer", "themis", "tdrss", "iss", "goes", "landsat"),
+        constellations=(
+            "explorer",
+            "themis",
+            "tdrss",
+            "iss",
+            "goes",
+            "landsat",
+            "jason",
+            "Television-Infrared-Observation-Satellite",
+        ),
     ),
     OperatorSpec("US Navy", "Q11220", constellations=("transit", "vanguard")),
     OperatorSpec(
@@ -142,7 +159,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q128693569",
         constellations=("qianfan",),
     ),
-    OperatorSpec("CNES", "Q48756", constellations=("argos",)),
+    OperatorSpec("CNES", "Q48756", constellations=("argos", "jason")),
     OperatorSpec("Geespace", "Q125167295", constellations=("geesat",)),
     OperatorSpec("ICS-Holding", "Q86669053", constellations=("rassvet",)),
     OperatorSpec("Gazprom Space Systems", "Q4131791", constellations=("Yamal",)),
@@ -217,6 +234,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "shiyan",
             "superview-china-siwei",
             "haiyang",
+            "long-march",
         ),
     ),
     # US military
@@ -233,7 +251,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         url="https://en.wikipedia.org/wiki/File:Nrol-39.jpg",
     ),
     # US civilian / weather
-    OperatorSpec("NOAA", "Q214700", constellations=("goes",)),
+    OperatorSpec("NOAA", "Q214700", constellations=("goes", "noaa", "jason")),
     OperatorSpec("USGS", "Q193755", constellations=("landsat",)),
     # US commercial
     OperatorSpec("HawkEye 360", "Q104845338", constellations=("hawkeye360",)),

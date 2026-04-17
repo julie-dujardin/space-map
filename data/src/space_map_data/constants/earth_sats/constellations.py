@@ -285,6 +285,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "shiyan", "Q2279595", SatelliteCategory.SCIENCE, prefix=("SHIYAN")
     ),  # "Experiment"
+    # Long march boosters
+    ConstellationSpec(
+        "long-march",
+        "Q53665",
+        (SatelliteCategory.ROCKET),
+        prefix="CZ-",
+    ),
     # -------------------------------------------------------------------------
     # US military constellations
     # -------------------------------------------------------------------------
@@ -361,6 +368,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # -------------------------------------------------------------------------
     # GOES: NOAA Geostationary Operational Environmental Satellites.
     ConstellationSpec("goes", "Q976688", SatelliteCategory.WEATHER, prefix="GOES"),
+    ConstellationSpec("noaa", None, SatelliteCategory.WEATHER, prefix="NOAA"),
+    ConstellationSpec(
+        "jason",
+        None,
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.SCIENCE),
+        prefix="JASON",
+    ),
     # Landsat: USGS/NASA land-surface imaging series.
     ConstellationSpec(
         "landsat", "Q849791", SatelliteCategory.OBSERVATION, prefix="LANDSAT"
@@ -452,6 +466,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "d-orbit-ion", "Q65084209", SatelliteCategory.SPACE_TUG, prefix="ION "
     ),
+    # Early weather satellites
+    ConstellationSpec(
+        "Television-Infrared-Observation-Satellite",
+        "Q2141538",
+        SatelliteCategory.WEATHER,
+        prefix="TIROS",
+    ),
     # ISS crewed / cargo vehicles catalogued as separate objects by NORAD.
     ConstellationSpec(
         "cygnus", "Q127924", SatelliteCategory.UNMANNED_CARGO, prefix="CYGNUS"
@@ -463,12 +484,15 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         prefix="CREW DRAGON",
     ),
     # -------------------------------------------------------------------------
-    # Italian constellations
+    # European constellations
     # -------------------------------------------------------------------------
     # IRIDE: Italian national Earth observation constellation (ESA/ASI mandate,
     # prime contractor Thales Alenia Space Italia).
     ConstellationSpec(
         "iride", "Q137485492", SatelliteCategory.OBSERVATION, prefix="IRIDE"
+    ),
+    ConstellationSpec(
+        "Sentinel", "Q4303731", SatelliteCategory.OBSERVATION, prefix="SENTINEL"
     ),
     # -------------------------------------------------------------------------
     # Russian/Soviet (CIS) constellations
@@ -515,6 +539,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
             "COSMOS 1932",
         ],
     ),
+    # Communication sats with high eccentricity orbits, for good polar coverage
+    ConstellationSpec(
+        "molniya",
+        "Q593283",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        prefix="MOLNIYA",
+    ),
     # COSMOS: generic classified satellites, TODO: not all are military
     ConstellationSpec("cosmos", "Q147802", SatelliteCategory.MILITARY, prefix="COSMOS"),
     # Rassvet- Russian commercial broadband LEO (X holding).
@@ -530,6 +561,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     ConstellationSpec(
         "soyuz", "Q579421", SatelliteCategory.MANNED_CAPSULE, prefix="SOYUZ"
+    ),
+    ConstellationSpec(
+        "Progress", "Q309363", SatelliteCategory.UNMANNED_CARGO, prefix="PROGRESS"
     ),
     ConstellationSpec(
         "salyut", "Q207933", SatelliteCategory.STATION, prefix="SALYUT"
