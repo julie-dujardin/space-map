@@ -55,7 +55,7 @@ class WikipediaDownloader(Downloader):
         self._save_metadata(
             "https://{lang}.wikipedia.org/w/api.php?action=query",
             total,
-            complete=limit is None or total <= limit,
+            complete=False,  # No global complete is needed
         )
 
     def _collect_tasks(self, wikidata_dir: Path) -> dict[str, list[tuple[str, str]]]:
