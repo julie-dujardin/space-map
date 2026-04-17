@@ -114,14 +114,22 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q190795",
         constellations=(
             "soyuz",
+            "soyuz-rocket",
+            "progress",
             "mir",
             "fregat",
             "proton-m",
             "glonass",
             "gonets",
             "iss",
+            "sputnik",
         ),
-    ),
+    ),  # TODO: pre/post 1992 (by launch/decay date), Soviet space program Q849730
+    OperatorSpec(
+        "Russian Aerospace Forces",
+        "Q21042210",
+        constellations=("cosmos",),
+    ),  # TODO: pre/post 1992 (by launch/decay date), Soviet Armed Forces Q7915590
     OperatorSpec(
         "European Union Agency for the Space Programme",
         "Q55610347",
@@ -162,7 +170,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("CNES", "Q48756", constellations=("argos", "jason")),
     OperatorSpec("Geespace", "Q125167295", constellations=("geesat",)),
     OperatorSpec("ICS-Holding", "Q86669053", constellations=("rassvet",)),
-    OperatorSpec("Gazprom Space Systems", "Q4131791", constellations=("Yamal",)),
+    OperatorSpec("Gazprom Space Systems", "Q4131791", constellations=("yamal",)),
     OperatorSpec("Northrop Grumman", "Q86894155", constellations=("cygnus",)),
     OperatorSpec(
         "Outpost Space",

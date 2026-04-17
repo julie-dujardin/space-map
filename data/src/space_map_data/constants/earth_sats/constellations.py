@@ -405,7 +405,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec("atlas", "Q22949", SatelliteCategory.ROCKET, prefix="ATLAS"),
     ConstellationSpec("delta", "Q49506", SatelliteCategory.ROCKET, prefix="DELTA"),
     ConstellationSpec(
-        "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="DELTA"
+        "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="ELECTRON"
     ),
     # -------------------------------------------------------------------------
     # US commercial constellations
@@ -492,7 +492,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "iride", "Q137485492", SatelliteCategory.OBSERVATION, prefix="IRIDE"
     ),
     ConstellationSpec(
-        "Sentinel", "Q4303731", SatelliteCategory.OBSERVATION, prefix="SENTINEL"
+        "sentinel", "Q4303731", SatelliteCategory.OBSERVATION, prefix="SENTINEL"
     ),
     # -------------------------------------------------------------------------
     # Russian/Soviet (CIS) constellations
@@ -554,7 +554,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     # Yamal: Russian geostationary communications (Gazprom Space Systems).
     ConstellationSpec(
-        "Yamal", "Q3656794", SatelliteCategory.COMMUNICATIONS, prefix="YAMAL"
+        "yamal", "Q3656794", SatelliteCategory.COMMUNICATIONS, prefix="YAMAL"
     ),
     ConstellationSpec(
         "sputnik", "Q170413", SatelliteCategory.SCIENCE, prefix="SPUTNIK"
@@ -563,14 +563,14 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "soyuz", "Q579421", SatelliteCategory.MANNED_CAPSULE, prefix="SOYUZ"
     ),
     ConstellationSpec(
-        "Progress", "Q309363", SatelliteCategory.UNMANNED_CARGO, prefix="PROGRESS"
+        "progress", "Q309363", SatelliteCategory.UNMANNED_CARGO, prefix="PROGRESS"
     ),
     ConstellationSpec(
         "salyut", "Q207933", SatelliteCategory.STATION, prefix="SALYUT"
     ),  # some were military, documented in individual pages (good coverage)
     ConstellationSpec("mir", "Q48604", SatelliteCategory.STATION, prefix="MIR"),
     ConstellationSpec(
-        "soyuz", "Q579421", SatelliteCategory.ROCKET, prefix="SL-"
+        "soyuz-rocket", "Q579421", SatelliteCategory.ROCKET, prefix="SL-"
     ),  # Soyuz rocket spent stages & debris
     ConstellationSpec(
         "fregat", "Q1453740", SatelliteCategory.ROCKET, prefix="FREGAT"
@@ -607,7 +607,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "transit", "Q651136", SatelliteCategory.NAVIGATION, group="nnss"
     ),  # Navy Navigation Satellite System
-    ConstellationSpec("sbas", "Q2165162", SatelliteCategory.NAVIGATION, group="sbas"),
+    ConstellationSpec(
+        "sbas", "Q2165162", SatelliteCategory.NAVIGATION, group="sbas"
+    ),  # generic "constellation"
     ConstellationSpec(
         "fengyun-1c-asat-debris",
         "Q182183",
