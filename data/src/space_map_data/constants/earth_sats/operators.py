@@ -79,11 +79,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         source="ESA",
         constellations=("iride", "iss", "sentinel"),
     ),
-    OperatorSpec("JAXA", "Q179103", constellations=("iss",)),
+    OperatorSpec(
+        "JAXA", "Q179103", constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket")
+    ),
     OperatorSpec("CSA", "Q212227", constellations=("iss",)),
     OperatorSpec("Italian Space Agency", "Q392953", constellations=("iride",)),
     OperatorSpec("European Space Research Organization", "Q473105", source="ESRO"),
-    OperatorSpec("ArianeGroup", "Q19951610", constellations=("ariane",)),
+    OperatorSpec("ArianeGroup", "Q19951610", constellations=("ariane", "vega")),
     OperatorSpec(
         "EUMETSAT", "Q692163", source="EUME", constellations=("metop", "meteosat")
     ),
@@ -100,7 +102,12 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("marecs", "marisat", "inmarsat"),
     ),
     OperatorSpec("Iridium", "Q3154356", source="IRID", constellations=("iridium",)),
-    OperatorSpec("Indian Space Research Organisation", "Q229058", source="ISRO"),
+    OperatorSpec(
+        "Indian Space Research Organisation",
+        "Q229058",
+        source="ISRO",
+        constellations=("pslv", "gslv"),
+    ),
     OperatorSpec(
         "Intelsat", "Q778126", source="ITSO", constellations=("intelsat", "galaxy")
     ),
@@ -118,10 +125,19 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("SES", "Q333025", source="SES", constellations=("ses", "o3b")),
     # Linked only via constellation
     OperatorSpec(
-        "SpaceX", "Q193701", constellations=("starlink", "crew-dragon", "falcon")
+        "SpaceX",
+        "Q193701",
+        constellations=("starlink", "crew-dragon", "falcon", "dragon"),
     ),
     OperatorSpec(
-        "ULA - United Launch Alliance", "Q1236833", constellations=("atlas", "delta")
+        "ULA - United Launch Alliance",
+        "Q1236833",
+        constellations=("atlas", "delta", "vulcan"),
+    ),
+    OperatorSpec(
+        "Boeing",
+        "Q66",
+        constellations=("ius",),
     ),
     OperatorSpec("Rocket Lab", "Q116319", constellations=("electron",)),
     OperatorSpec("Amazon", "Q3884", constellations=("kuiper",)),
@@ -160,6 +176,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "glonass",
             "gonets",
             "sputnik",
+            "salyut",
+            "venera",
+            "meteor",
+            "block-dm",
         ),
         active_until=1991,
     ),
@@ -176,6 +196,8 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "glonass",
             "gonets",
             "iss",
+            "meteor",
+            "block-dm",
         ),
         active_from=1992,
     ),
@@ -208,11 +230,26 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "landsat",
             "jason",
             "Television-Infrared-Observation-Satellite",
+            "apollo",
+            "saturn",
+            "scout",
+            "pegasus",
+            "thor",
+            "pageos",
+            "sts",
+            "nimbus",
         ),
     ),
     OperatorSpec("US Navy", "Q11220", constellations=("transit", "vanguard")),
     OperatorSpec(
-        "US Air Force", "Q11223", constellations=("us-ops-classified", "titan-rocket")
+        "US Air Force",
+        "Q11223",
+        constellations=("us-ops-classified", "titan-rocket"),
+    ),
+    OperatorSpec(
+        "CIA - Central Intelligence Agency",
+        "Q37230",
+        constellations=("corona",),
     ),
     OperatorSpec("Soviet Navy", "Q796754", constellations=("us-a",)),
     OperatorSpec(
@@ -228,11 +265,15 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q128693569",
         constellations=("qianfan",),
     ),
-    OperatorSpec("CNES", "Q48756", constellations=("argos", "jason")),
+    OperatorSpec("CNES", "Q48756", constellations=("argos", "jason", "diamant")),
     OperatorSpec("Geespace", "Q125167295", constellations=("geesat",)),
     OperatorSpec("ICS-Holding", "Q86669053", constellations=("rassvet",)),
     OperatorSpec("Gazprom Space Systems", "Q4131791", constellations=("yamal",)),
-    OperatorSpec("Northrop Grumman", "Q86894155", constellations=("cygnus",)),
+    OperatorSpec(
+        "Northrop Grumman",
+        "Q86894155",
+        constellations=("cygnus", "minotaur", "antares"),
+    ),
     OperatorSpec(
         "Outpost Space",
         url="https://www.outpost.space/",
@@ -285,6 +326,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=(
             "tianmu",
             "guowang",
+            "kuaizhou",
         ),
     ),
     OperatorSpec(
@@ -305,7 +347,14 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "superview-china-siwei",
             "haiyang",
             "long-march",
+            "yuanzheng",
+            "jielong",
         ),
+    ),
+    OperatorSpec(
+        "Chinese Academy of Sciences / CAS",
+        "Q530471",
+        constellations=("lijian",),
     ),
     # US military
     OperatorSpec(
@@ -362,6 +411,21 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "IRGC Aerospace Force",
         "Q4410582",
         constellations=("iran-classified",),
+    ),
+    OperatorSpec(
+        "Iranian Space Agency",
+        "Q572596",
+        constellations=("safir",),
+    ),
+    OperatorSpec(
+        "Israel Aerospace Industries",
+        "Q876017",
+        constellations=("shavit",),
+    ),
+    OperatorSpec(
+        "Firefly Aerospace",
+        "Q17492679",
+        constellations=("firefly",),
     ),
 )
 

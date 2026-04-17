@@ -36,6 +36,7 @@ class SatelliteCategory(StrEnum):
     UNMANNED_CARGO = "unmanned_cargo"
     SPACE_TUG = "space_tug"
     ROCKET = "rocket"  # spent stages, debris
+    UPPER_STAGE = "upper_stage"  # shared across multiple rocket families
     MISCELLANEOUS = "miscellaneous"
 
 
@@ -407,6 +408,54 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="ELECTRON"
     ),
+    ConstellationSpec("thor", "Q249534", SatelliteCategory.ROCKET, prefix="THOR"),
+    ConstellationSpec("pslv", "Q221654", SatelliteCategory.ROCKET, prefix="PSLV"),
+    ConstellationSpec("pegasus", "Q478603", SatelliteCategory.ROCKET, prefix="PEGASUS"),
+    ConstellationSpec("saturn", "Q1285723", SatelliteCategory.ROCKET, prefix="SATURN"),
+    ConstellationSpec("scout", "Q605072", SatelliteCategory.ROCKET, prefix="SCOUT"),
+    ConstellationSpec("diamant", "Q49568", SatelliteCategory.ROCKET, prefix="DIAMANT"),
+    ConstellationSpec("h-1", "Q1279552", SatelliteCategory.ROCKET, prefix="H-1"),
+    ConstellationSpec("h-2", "Q548376", SatelliteCategory.ROCKET, prefix="H-2"),
+    ConstellationSpec("gslv", "Q249238", SatelliteCategory.ROCKET, prefix="GSLV"),
+    ConstellationSpec(
+        "minotaur", "Q1727072", SatelliteCategory.ROCKET, prefix="MINOTAUR"
+    ),
+    ConstellationSpec("antares", "Q128683", SatelliteCategory.ROCKET, prefix="ANTARES"),
+    ConstellationSpec("shavit", "Q876010", SatelliteCategory.ROCKET, prefix="SHAVIT"),
+    ConstellationSpec(
+        "epsilon", "Q1135682", SatelliteCategory.ROCKET, prefix="EPSILON"
+    ),
+    ConstellationSpec("vulcan", "Q19816744", SatelliteCategory.ROCKET, prefix="VULCAN"),
+    ConstellationSpec(
+        "firefly", "Q21512704", SatelliteCategory.ROCKET, prefix="FIREFLY"
+    ),
+    ConstellationSpec("safir", "Q142596", SatelliteCategory.ROCKET, prefix="SAFIR"),
+    ConstellationSpec("kuaizhou", "Q15049837", SatelliteCategory.ROCKET, prefix="KZ-1"),
+    ConstellationSpec(
+        "lijian", "Q111745426", SatelliteCategory.ROCKET, prefix="LIJIAN"
+    ),
+    ConstellationSpec(
+        "jielong", "Q115555344", SatelliteCategory.ROCKET, prefix="JIELONG"
+    ),
+    ConstellationSpec(
+        "mu-rocket",
+        "Q218381",
+        SatelliteCategory.ROCKET,
+        prefix=("M-3S", "M-3C", "M-3H", "M-4S", "M-V"),
+    ),
+    # Upper stages — shared across multiple rocket families
+    ConstellationSpec(
+        "ius", "Q1662192", SatelliteCategory.UPPER_STAGE, prefix="IUS"
+    ),  # Inertial Upper Stage
+    ConstellationSpec(
+        "block-dm", "Q219166", SatelliteCategory.UPPER_STAGE, prefix="BLOCK"
+    ),
+    ConstellationSpec(
+        "yuanzheng", "Q20871633", SatelliteCategory.UPPER_STAGE, prefix="YZ-1"
+    ),
+    ConstellationSpec(
+        "vega", None, SatelliteCategory.ROCKET, prefix="AVUM"
+    ),  # avum is vega's upper stage
     # -------------------------------------------------------------------------
     # US commercial constellations
     # -------------------------------------------------------------------------
@@ -483,6 +532,28 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         SatelliteCategory.MANNED_CAPSULE,
         prefix="CREW DRAGON",
     ),
+    ConstellationSpec(
+        "apollo", "Q46611", SatelliteCategory.MANNED_CAPSULE, prefix="APOLLO"
+    ),
+    ConstellationSpec(
+        "sts", "Q1775296", SatelliteCategory.MANNED_CAPSULE, prefix="STS"
+    ),
+    ConstellationSpec(
+        "dragon", "Q236448", SatelliteCategory.UNMANNED_CARGO, prefix="DRAGON"
+    ),
+    # Science / geodetic
+    ConstellationSpec("pageos", "Q2043671", SatelliteCategory.SCIENCE, prefix="PAGEOS"),
+    ConstellationSpec("venera", "Q192144", SatelliteCategory.SCIENCE, prefix="VENERA"),
+    ConstellationSpec("nimbus", "Q609455", SatelliteCategory.SCIENCE, prefix="NIMBUS"),
+    # US reconnaissance
+    ConstellationSpec(
+        "corona",
+        "Q256812",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="DISCOVERER",
+    ),
+    # Russian/Soviet weather
+    ConstellationSpec("meteor", "Q1925316", SatelliteCategory.WEATHER, prefix="METEOR"),
     # -------------------------------------------------------------------------
     # European constellations
     # -------------------------------------------------------------------------
