@@ -654,6 +654,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "rascomstar", "Q3415056", SatelliteCategory.COMMUNICATIONS, source="RASC"
     ),
+    # -------------------------------------------------------------------------
+    # Classified payloads — fallback for "OBJECT X" names, keyed by SATCAT owner
+    # -------------------------------------------------------------------------
+    ConstellationSpec("prc-classified", None, SatelliteCategory.MILITARY),
+    ConstellationSpec("cis-classified", None, SatelliteCategory.MILITARY),
+    ConstellationSpec("skor-classified", None, SatelliteCategory.MILITARY),
+    ConstellationSpec("iran-classified", None, SatelliteCategory.MILITARY),
 )
 
 
@@ -685,6 +692,16 @@ SOURCE_TO_SLUG: dict[str, str] = {
     c.source: c.slug for c in CONSTELLATIONS if c.source is not None
 }
 
+# SATCAT owner code → classified constellation for "OBJECT X" payloads.
+# US is already handled by usa-classified (prefix "USA") and us-ops-classified.
+CLASSIFIED_BY_OWNER: dict[str, str] = {
+    "PRC": "prc-classified",
+    "CIS": "cis-classified",
+    "SKOR": "skor-classified",
+    "IRAN": "iran-classified",
+    "US": "usa-classified",
+}
+
 # When several rules match the same sat (name-prefix vs group vs source),
 # slugs listed here win — in order. Used to resolve conflicts like a debris
 # fragment of Iridium-33 that would otherwise also match the "iridium" prefix.
@@ -695,9 +712,7 @@ PREFERRED_SLUGS: tuple[str, ...] = (
     "o3b",  # more specific than SES (its parent operator)
 )
 
-# Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is
-# preferred over these. SBAS and Argos are broad groupings that overlap with
-# more specific constellation matches.
+# Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is preferred over these.
 UNPREFERRED_SLUGS: frozenset[str] = frozenset(
     {
         "sbas",  # type of sat
@@ -707,6 +722,7 @@ UNPREFERRED_SLUGS: frozenset[str] = frozenset(
         "cosmos",
         "tdrss",  # secondary use of some sats (iss)
         "intelsat",  # Multiple constellations
+        *CLASSIFIED_BY_OWNER.values(),
     }
 )
 

@@ -182,13 +182,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Soviet Armed Forces",
         "Q7915590",
-        constellations=("cosmos",),
+        constellations=("cosmos", "cis-classified"),
         active_until=1991,
     ),
     OperatorSpec(
         "Russian Aerospace Forces",
         "Q21042210",
-        constellations=("cosmos",),
+        constellations=("cosmos", "cis-classified"),
         active_from=1992,
     ),
     OperatorSpec(
@@ -276,6 +276,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "yunhai-1",
             "yunhai-2",
             "yunhai-3",
+            "prc-classified",
         ),
     ),
     OperatorSpec(
@@ -351,6 +352,17 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Vantor", "Q136461484", constellations=("worldView-legion",)
     ),  # PE spinoff of a maxar division
+    # Foreign military / classified
+    OperatorSpec(
+        "Agency for Defense Development",
+        "Q626610",
+        constellations=("skor-classified",),
+    ),  # South Korean defense R&D agency
+    OperatorSpec(
+        "IRGC Aerospace Force",
+        "Q4410582",
+        constellations=("iran-classified",),
+    ),
 )
 
 

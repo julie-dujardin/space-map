@@ -8,7 +8,10 @@ import csv
 import logging
 from pathlib import Path
 
+import re
+
 from space_map_data.constants.earth_sats.constellations import (
+    CLASSIFIED_BY_OWNER,
     CONSTELLATION_BY_SLUG,
     GROUP_TO_CATEGORY,
     GROUP_TO_SLUG,
@@ -34,6 +37,8 @@ from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_so
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 
 logger = logging.getLogger(__name__)
+
+_CLASSIFIED_NAME = re.compile(r"^OBJECT [A-Z]{1,2}$")
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +128,13 @@ def resolve_constellation(
         owner_slug = SOURCE_TO_SLUG.get(owner)
         if owner_slug is not None:
             candidates.append((f"owner:{owner}", owner_slug))
+
+    # Classified fallback: "OBJECT A" style names → country's classified constellation
+    if not candidates and name is not None and owner is not None:
+        if _CLASSIFIED_NAME.match(name):
+            classified_slug = CLASSIFIED_BY_OWNER.get(owner)
+            if classified_slug is not None:
+                return classified_slug
 
     if not candidates:
         return None
