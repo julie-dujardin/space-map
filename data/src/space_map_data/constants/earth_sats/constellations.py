@@ -494,6 +494,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "sentinel", "Q4303731", SatelliteCategory.OBSERVATION, prefix="SENTINEL"
     ),
+    ConstellationSpec("ariane", "Q131535", SatelliteCategory.ROCKET, prefix="ARIANE"),
     # -------------------------------------------------------------------------
     # Russian/Soviet (CIS) constellations
     # -------------------------------------------------------------------------
@@ -698,7 +699,15 @@ PREFERRED_SLUGS: tuple[str, ...] = (
 # preferred over these. SBAS and Argos are broad groupings that overlap with
 # more specific constellation matches.
 UNPREFERRED_SLUGS: frozenset[str] = frozenset(
-    {"sbas", "argos", "usa-classified", "us-ops-classified", "cosmos"}
+    {
+        "sbas",  # type of sat
+        "argos",
+        "usa-classified",
+        "us-ops-classified",
+        "cosmos",
+        "tdrss",  # secondary use of some sats (iss)
+        "intelsat",  # Multiple constellations
+    }
 )
 
 # CelesTrak groups that tag sats with a category directly, without belonging to

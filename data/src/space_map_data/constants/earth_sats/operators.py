@@ -13,9 +13,14 @@ The per-source ``operator`` free-text field on ``SourceSpec`` was removed in
 favor of this structured form.
 """
 
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date
 
 from space_map_data.constants.earth_sats.constellations import SatelliteCategory
+
+# Year-only or exact date for operator active periods.
+ActiveDate = int | date
 
 
 @dataclass(frozen=True)
@@ -27,6 +32,38 @@ class OperatorSpec:
     url: str | None = None  # Alternate ref if no wikipedia
     prefix: tuple[str, ...] = ()  # Companies with no constellations - direct to company
     category: SatelliteCategory | None = None  # Apply category to satelites
+    active_from: ActiveDate | None = None
+    active_until: ActiveDate | None = None
+
+
+def _to_date(d: str) -> date:
+    """Parse a SATCAT date string (YYYY-MM-DD) to a date."""
+    return date.fromisoformat(d[:10])
+
+
+def _active_as_date_lower(ad: ActiveDate) -> date:
+    """Earliest possible date: 1992 → 1992-01-01."""
+    return date(ad, 1, 1) if isinstance(ad, int) else ad
+
+
+def _active_as_date_upper(ad: ActiveDate) -> date:
+    """Latest possible date: 1991 → 1991-12-31."""
+    return date(ad, 12, 31) if isinstance(ad, int) else ad
+
+
+def operator_overlaps(
+    op: OperatorSpec,
+    launch_date: str | None,
+    decay_date: str | None,
+) -> bool:
+    """Check whether a satellite's lifetime overlaps the operator's active period."""
+    if op.active_until is not None and launch_date is not None:
+        if _to_date(launch_date) > _active_as_date_upper(op.active_until):
+            return False
+    if op.active_from is not None and decay_date is not None:
+        if _to_date(decay_date) < _active_as_date_lower(op.active_from):
+            return False
+    return True
 
 
 OPERATORS: tuple[OperatorSpec, ...] = (
@@ -46,6 +83,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("CSA", "Q212227", constellations=("iss",)),
     OperatorSpec("Italian Space Agency", "Q392953", constellations=("iride",)),
     OperatorSpec("European Space Research Organization", "Q473105", source="ESRO"),
+    OperatorSpec("ArianeGroup", "Q19951610", source="ariane"),
     OperatorSpec(
         "EUMETSAT", "Q692163", source="EUME", constellations=("metop", "meteosat")
     ),
@@ -110,6 +148,22 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("molniya",),
     ),
     OperatorSpec(
+        "Soviet space program",
+        "Q849730",
+        constellations=(
+            "soyuz",
+            "soyuz-rocket",
+            "progress",
+            "mir",
+            "fregat",
+            "proton-m",
+            "glonass",
+            "gonets",
+            "sputnik",
+        ),
+        active_until=1991,
+    ),
+    OperatorSpec(
         "Roscosmos",
         "Q190795",
         constellations=(
@@ -122,14 +176,21 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "glonass",
             "gonets",
             "iss",
-            "sputnik",
         ),
-    ),  # TODO: pre/post 1992 (by launch/decay date), Soviet space program Q849730
+        active_from=1992,
+    ),
+    OperatorSpec(
+        "Soviet Armed Forces",
+        "Q7915590",
+        constellations=("cosmos",),
+        active_until=1991,
+    ),
     OperatorSpec(
         "Russian Aerospace Forces",
         "Q21042210",
         constellations=("cosmos",),
-    ),  # TODO: pre/post 1992 (by launch/decay date), Soviet Armed Forces Q7915590
+        active_from=1992,
+    ),
     OperatorSpec(
         "European Union Agency for the Space Programme",
         "Q55610347",
@@ -296,6 +357,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
 OPERATOR_BY_SOURCE: dict[str, OperatorSpec] = {
     o.source: o for o in OPERATORS if o.source is not None
 }
-OPERATOR_BY_CONSTELLATION: dict[str, OperatorSpec] = {
-    slug: o for o in OPERATORS for slug in o.constellations
+
+_by_constellation: dict[str, list[OperatorSpec]] = defaultdict(list)
+for _op in OPERATORS:
+    for _slug in _op.constellations:
+        _by_constellation[_slug].append(_op)
+OPERATOR_BY_CONSTELLATION: dict[str, list[OperatorSpec]] = dict(_by_constellation)
+
+OPERATOR_BY_QID: dict[str, OperatorSpec] = {
+    o.wikidata_qid: o for o in OPERATORS if o.wikidata_qid is not None
 }

@@ -53,7 +53,9 @@ class SatcatIngestor:
 
         constellation = resolve_constellation(norad, name, owner, groups)
         categories = resolve_categories(constellation, groups)
-        operator_qids = resolve_operator_qids(owner, constellation)
+        operator_qids = resolve_operator_qids(
+            owner, constellation, fields["launch_date"], fields["decay_date"]
+        )
         country_codes = resolve_country_codes(owner)
         if not operator_qids:
             self.missing_operator += 1

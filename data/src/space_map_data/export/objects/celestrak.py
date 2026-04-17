@@ -2,6 +2,7 @@
 
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
+from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID, ActiveDate
 from space_map_data.export.objects.wikidata_claims import resolve_entity_ref
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Satcat
@@ -61,6 +62,11 @@ def build_satcat_localized(
             if ref:
                 data["launch_site"] = [ref]
 
+    if sat.operator_qids:
+        refs = resolve_operator_refs(sat.operator_qids, lang, wikidata_entities)
+        if refs:
+            data["operators"] = refs
+
     return data
 
 
@@ -75,3 +81,29 @@ def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
     existing = extracted.get("operators", [])
     merged = list(dict.fromkeys([*existing, *sat.operator_qids]))
     extracted["operators"] = merged
+
+
+def _serialize_active_date(ad: ActiveDate) -> int | str:
+    """int stays int (year), date becomes ISO string."""
+    return ad if isinstance(ad, int) else ad.isoformat()
+
+
+def resolve_operator_refs(
+    qids: list[str],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Resolve operator QIDs to entity refs with optional active_from/active_until."""
+    refs = []
+    for qid in qids:
+        ref = resolve_entity_ref(qid, lang, wikidata_entities)
+        if ref is None:
+            continue
+        spec = OPERATOR_BY_QID.get(qid)
+        if spec is not None:
+            if spec.active_from is not None:
+                ref["active_from"] = _serialize_active_date(spec.active_from)
+            if spec.active_until is not None:
+                ref["active_until"] = _serialize_active_date(spec.active_until)
+        refs.append(ref)
+    return refs

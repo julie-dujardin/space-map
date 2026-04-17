@@ -21,6 +21,7 @@ from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_CONSTELLATION,
     OPERATOR_BY_SOURCE,
+    operator_overlaps,
 )
 from space_map_data.constants.earth_sats.satcat import (
     parse_data_status,
@@ -163,16 +164,23 @@ def resolve_categories(constellation: str | None, groups: set[str]) -> list[str]
     return sorted(cats)
 
 
-def resolve_operator_qids(owner: str | None, constellation: str | None) -> list[str]:
+def resolve_operator_qids(
+    owner: str | None,
+    constellation: str | None,
+    launch_date: str | None = None,
+    decay_date: str | None = None,
+) -> list[str]:
     qids: set[str] = set()
     if owner is not None:
         op = OPERATOR_BY_SOURCE.get(owner)
         if op is not None and op.wikidata_qid is not None:
-            qids.add(op.wikidata_qid)
+            if operator_overlaps(op, launch_date, decay_date):
+                qids.add(op.wikidata_qid)
     if constellation is not None:
-        op = OPERATOR_BY_CONSTELLATION.get(constellation)
-        if op is not None and op.wikidata_qid is not None:
-            qids.add(op.wikidata_qid)
+        for op in OPERATOR_BY_CONSTELLATION.get(constellation, ()):
+            if op.wikidata_qid is not None:
+                if operator_overlaps(op, launch_date, decay_date):
+                    qids.add(op.wikidata_qid)
     return sorted(qids)
 
 
