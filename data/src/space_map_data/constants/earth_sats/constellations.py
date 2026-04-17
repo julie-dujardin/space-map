@@ -35,6 +35,7 @@ class SatelliteCategory(StrEnum):
     MANNED_CAPSULE = "manned_capsule"
     UNMANNED_CARGO = "unmanned_cargo"
     SPACE_TUG = "space_tug"
+    ROCKET = "rocket"  # spent stages, debris
     MISCELLANEOUS = "miscellaneous"
 
 
@@ -48,6 +49,16 @@ class ConstellationSpec:
     group: str | None = None  # CelesTrak gp.php GROUP slug
     source: str | None = None  # SATCAT SOURCE/OWNER code
     url: str | None = None  # When no wikipedia link
+    satellites: list[str] | None = None  # List of member names
+
+
+"""
+Science programs with members but no pattern and (certainly) lacking wikidata backlinks
+- https://en.wikipedia.org/wiki/Explorers_Program (later ones)
+- https://en.wikipedia.org/wiki/Cosmic_Vision
+- https://en.wikipedia.org/wiki/Discovery_Program
+- https://en.wikipedia.org/wiki/New_Frontiers_program
+"""
 
 
 CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
@@ -145,11 +156,17 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "fengyun", "Q1404722", SatelliteCategory.WEATHER, prefix="FENGYUN"
     ),
+    ConstellationSpec(
+        "galaxy", "Q832041", SatelliteCategory.COMMUNICATIONS, prefix="GALAXY"
+    ),
     # TODO:
     # SCS-* - https://www.scs-space.com?
     # -------------------------------------------------------------------------
     # Chinese EO / mapping constellations (PRC owner)
     # -------------------------------------------------------------------------
+    # XW, camsat: chinese amateur radio
+    ConstellationSpec("xw", None, SatelliteCategory.COMMUNICATIONS, prefix="XW"),
+    ConstellationSpec("cas", None, SatelliteCategory.COMMUNICATIONS, prefix="CAS-"),
     # Jilin-1: largest Chinese commercial EO constellation (CGST / Chang Guang).
     ConstellationSpec(
         "jilin", "Q123139897", SatelliteCategory.OBSERVATION, prefix="JILIN"
@@ -224,6 +241,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
         prefix="TJS",
     ),
+    ConstellationSpec(
+        "tianyan",
+        "Q123807910",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="TIANYAN",
+    ),
     # Yunhai: chinese weather for military
     ConstellationSpec(
         "yunhai-1",
@@ -265,6 +288,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # -------------------------------------------------------------------------
     # US military constellations
     # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "vanguard",
+        "Q179527",
+        (SatelliteCategory.MILITARY),
+        prefix="VANGUARD",
+    ),
     # WGS: Wideband Global SATCOM — US DoD high-bandwidth GEO comms.
     ConstellationSpec(
         "wgs",
@@ -316,6 +345,17 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # USA: classified US national-security payloads (NRO, AFSPC, etc.)
     # Kept as last-resort for sats that match nothing more specific.
     ConstellationSpec("usa-classified", None, SatelliteCategory.MILITARY, prefix="USA"),
+    # OPS: US military, classified into US air force due to https://en.wikipedia.org/wiki/SNAP-10A and launch times (pre-1980s)
+    ConstellationSpec(
+        "us-ops-classified", None, SatelliteCategory.MILITARY, prefix="OPS "
+    ),
+    # Titan rocket boosters, mostly military, ICBM-derived
+    ConstellationSpec(
+        "titan-rocket",
+        None,
+        (SatelliteCategory.ROCKET, SatelliteCategory.MILITARY),
+        prefix="TITAN",
+    ),
     # -------------------------------------------------------------------------
     # US civilian / weather satellites
     # -------------------------------------------------------------------------
@@ -325,9 +365,33 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "landsat", "Q849791", SatelliteCategory.OBSERVATION, prefix="LANDSAT"
     ),
+    ConstellationSpec(
+        "explorer",
+        "Q603526",
+        (SatelliteCategory.SCIENCE),
+        prefix="EXPLORER",
+    ),
+    ConstellationSpec(
+        "themis",
+        "Q837500",
+        (SatelliteCategory.SCIENCE),
+        contains=("THEMIS",),
+    ),
     # PE spinoff of a maxar division
     ConstellationSpec(
-        "worldView-legion", "Q122398742", SatelliteCategory.OBSERVATION, prefix="LEGION"
+        "worldView-legion",
+        "Q122398742",
+        SatelliteCategory.OBSERVATION,
+        prefix=("GEOEYE", "WORLDVIEW", "LEGION"),
+    ),
+    # Rocket stages
+    ConstellationSpec(
+        "falcon", "Q249091", SatelliteCategory.ROCKET, prefix="FALCON "
+    ),  # Includes one falcon 1 stage
+    ConstellationSpec("atlas", "Q22949", SatelliteCategory.ROCKET, prefix="ATLAS"),
+    ConstellationSpec("delta", "Q49506", SatelliteCategory.ROCKET, prefix="DELTA"),
+    ConstellationSpec(
+        "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="DELTA"
     ),
     # -------------------------------------------------------------------------
     # US commercial constellations
@@ -407,8 +471,52 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "iride", "Q137485492", SatelliteCategory.OBSERVATION, prefix="IRIDE"
     ),
     # -------------------------------------------------------------------------
-    # Russian (CIS) constellations
+    # Russian/Soviet (CIS) constellations
     # -------------------------------------------------------------------------
+    # US-A: soviet nuclear-powered radar satellites
+    ConstellationSpec(
+        "us-a",
+        "Q1542629",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        satellites=[
+            "COSMOS 209",
+            "COSMOS 367",
+            "COSMOS 402",
+            "COSMOS 469",
+            "COSMOS 516",
+            "COSMOS 626",
+            "COSMOS 651",
+            "COSMOS 654",
+            "COSMOS 723",
+            "COSMOS 724",
+            "COSMOS 785",
+            "COSMOS 860",
+            "COSMOS 861",
+            "COSMOS 952",
+            "COSMOS 954",
+            "COSMOS 1176",
+            "COSMOS 1266",
+            "COSMOS 1299",
+            "COSMOS 1249",
+            "COSMOS 1402",
+            "COSMOS 1372",
+            "COSMOS 1365",
+            "COSMOS 1412",
+            "COSMOS 1579",
+            "COSMOS 1607",
+            "COSMOS 1670",
+            "COSMOS 1677",
+            "COSMOS 1771",
+            "COSMOS 1736",
+            "COSMOS 1818",
+            "COSMOS 1860",
+            "COSMOS 1867",
+            "COSMOS 1900",
+            "COSMOS 1932",
+        ],
+    ),
+    # COSMOS: generic classified satellites, TODO: not all are military
+    ConstellationSpec("cosmos", "Q147802", SatelliteCategory.MILITARY, prefix="COSMOS"),
     # Rassvet- Russian commercial broadband LEO (X holding).
     ConstellationSpec(
         "rassvet", "Q124753962", SatelliteCategory.COMMUNICATIONS, prefix="RASSVET"
@@ -418,12 +526,24 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "Yamal", "Q3656794", SatelliteCategory.COMMUNICATIONS, prefix="YAMAL"
     ),
     ConstellationSpec(
-        "sputnik", "Q170413", SatelliteCategory.STATION, prefix="SPUTNIK"
+        "sputnik", "Q170413", SatelliteCategory.SCIENCE, prefix="SPUTNIK"
     ),
     ConstellationSpec(
         "soyuz", "Q579421", SatelliteCategory.MANNED_CAPSULE, prefix="SOYUZ"
     ),
-    ConstellationSpec("salyut", "Q207933", SatelliteCategory.STATION, prefix="SALYUT"),
+    ConstellationSpec(
+        "salyut", "Q207933", SatelliteCategory.STATION, prefix="SALYUT"
+    ),  # some were military, documented in individual pages (good coverage)
+    ConstellationSpec("mir", "Q48604", SatelliteCategory.STATION, prefix="MIR"),
+    ConstellationSpec(
+        "soyuz", "Q579421", SatelliteCategory.ROCKET, prefix="SL-"
+    ),  # Soyuz rocket spent stages & debris
+    ConstellationSpec(
+        "fregat", "Q1453740", SatelliteCategory.ROCKET, prefix="FREGAT"
+    ),  # Upper stages (mostly Soyuz)
+    ConstellationSpec(
+        "proton-m", "Q1756423", SatelliteCategory.ROCKET, prefix="BREEZE"
+    ),  # Proton-M rocket spent stages & debris
     # -------------------------------------------------------------------------
     # Derived from CelesTrak group membership
     # -------------------------------------------------------------------------
@@ -541,7 +661,9 @@ PREFERRED_SLUGS: tuple[str, ...] = (
 # Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is
 # preferred over these. SBAS and Argos are broad groupings that overlap with
 # more specific constellation matches.
-UNPREFERRED_SLUGS: frozenset[str] = frozenset({"sbas", "argos", "usa-classified"})
+UNPREFERRED_SLUGS: frozenset[str] = frozenset(
+    {"sbas", "argos", "usa-classified", "us-ops-classified", "cosmos"}
+)
 
 # CelesTrak groups that tag sats with a category directly, without belonging to
 # a named constellation. See https://celestrak.org/NORAD/elements/.
