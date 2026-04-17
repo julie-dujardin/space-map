@@ -83,7 +83,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("CSA", "Q212227", constellations=("iss",)),
     OperatorSpec("Italian Space Agency", "Q392953", constellations=("iride",)),
     OperatorSpec("European Space Research Organization", "Q473105", source="ESRO"),
-    OperatorSpec("ArianeGroup", "Q19951610", source="ariane"),
+    OperatorSpec("ArianeGroup", "Q19951610", constellations=("ariane",)),
     OperatorSpec(
         "EUMETSAT", "Q692163", source="EUME", constellations=("metop", "meteosat")
     ),
