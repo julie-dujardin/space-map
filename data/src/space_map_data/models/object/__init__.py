@@ -3,6 +3,7 @@
 from space_map_data.models.object.base import Base
 from space_map_data.models.object.celestrak import CelesTrak
 from space_map_data.models.object.horizons import Horizons
+from space_map_data.models.object.satcat import Satcat
 from space_map_data.models.object.main import (
     DWARF_PLANETS,
     ElementsScale,
@@ -24,4 +25,5 @@ __all__ = [
     "OrbitClass",
     "OrbitalSource",
     "SBDB",
+    "Satcat",
 ]

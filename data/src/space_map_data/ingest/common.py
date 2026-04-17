@@ -8,7 +8,13 @@ from sqlalchemy import func
 
 from space_map_data.models.object import Object
 from space_map_data.ingest.providers import iau_nomenclature
-from space_map_data.ingest.providers.objects import celestrak, horizons, sbdb, spice
+from space_map_data.ingest.providers.objects import (
+    celestrak,
+    horizons,
+    satcat,
+    sbdb,
+    spice,
+)
 from space_map_data.ingest.providers.wikidata import (
     nomenclature,
     objects,
@@ -22,6 +28,7 @@ logger = logging.getLogger(__name__)
 def ingest_objects(download_dir: Path) -> None:
     """Ingest orbital bodies: SBDB, CelesTrak, SPICE, Horizons."""
     sbdb.ingest(download_dir)
+    satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
     spice.ingest(download_dir)
     horizons.ingest(download_dir)

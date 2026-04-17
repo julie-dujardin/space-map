@@ -16,8 +16,8 @@ from space_map_data.export.objects.wikipedia import (
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.objects.celestrak import (
-    build_celestrak_global,
-    build_celestrak_localized,
+    build_satcat_global,
+    build_satcat_localized,
     merge_operator_qids,
 )
 from space_map_data.export.objects.sbdb import build_sbdb
@@ -120,8 +120,8 @@ def write_objects(
             )
             extracted = {}
 
-        ct = obj.celestrak if obj.celestrak_norad_cat_id is not None else None
-        merge_operator_qids(extracted, ct)
+        sat = obj.satcat if obj.celestrak_norad_cat_id is not None else None
+        merge_operator_qids(extracted, sat)
 
         # Global (non-localized, always written)
         global_data = _build_global(
@@ -234,8 +234,8 @@ def _build_global(
             data["sbdb"] = sbdb_data
 
     # CelesTrak enrichment
-    if obj.celestrak_norad_cat_id is not None and obj.celestrak is not None:
-        celestrak_data = build_celestrak_global(obj.celestrak)
+    if obj.celestrak_norad_cat_id is not None and obj.satcat is not None:
+        celestrak_data = build_satcat_global(obj.satcat)
         if celestrak_data:
             data["celestrak"] = celestrak_data
 
@@ -309,10 +309,10 @@ def _build_localized(
                 if ref:
                     data[claim.key] = ref
 
-    if obj.celestrak_norad_cat_id is not None and obj.celestrak is not None:
-        # CelesTrak-derived refs overwrite Wikidata-derived ones (e.g. launch_site)
+    if obj.celestrak_norad_cat_id is not None and obj.satcat is not None:
+        # SATCAT-derived refs overwrite Wikidata-derived ones (e.g. launch_site)
         # since SATCAT is the authoritative source for satellite metadata.
-        data.update(build_celestrak_localized(obj.celestrak, lang, wikidata_entities))
+        data.update(build_satcat_localized(obj.satcat, lang, wikidata_entities))
 
     if wiki_summary:
         data["wikipedia"] = wiki_summary.to_dict()

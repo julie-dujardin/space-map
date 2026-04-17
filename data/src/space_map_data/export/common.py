@@ -167,7 +167,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             # Non-SBDB zones: (zone, zoom, query)
             _earth_base = (
                 session.query(Object)
-                .options(joinedload(Object.celestrak))
+                .options(joinedload(Object.satcat))
                 .filter(
                     Object.sbdb_spkid.is_(None),
                     Object.object_type.in_(_SAT_TYPE_VALUES),
@@ -207,7 +207,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     "spacecraft",
                     0,
                     session.query(Object)
-                    .options(joinedload(Object.celestrak))
+                    .options(joinedload(Object.satcat))
                     .filter(
                         Object.sbdb_spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),

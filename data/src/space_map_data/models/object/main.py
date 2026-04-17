@@ -14,6 +14,7 @@ from space_map_data.models.object.base import Base
 if TYPE_CHECKING:
     from space_map_data.models.object.celestrak import CelesTrak
     from space_map_data.models.object.horizons import Horizons
+    from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
 
 
@@ -163,6 +164,7 @@ class Object(Base):
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
     sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")
     celestrak: Mapped["CelesTrak | None"] = relationship(back_populates="object")
+    satcat: Mapped["Satcat | None"] = relationship(back_populates="object")
 
     __table_args__ = (
         Index("idx_objects_type", "object_type"),

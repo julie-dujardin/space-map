@@ -218,7 +218,7 @@ interface GlobalObjectData {
     data_arc?: number;   // observation arc span, days
     n_obs_used?: number; // number of observations used
   };
-  celestrak?: {                       // present for CelesTrak-sourced satellites
+  celestrak?: {                       // SATCAT metadata for CelesTrak-sourced satellites
     object_type?: string;             // payload / rocket_body / debris / unknown
     ops_status?: string;              // operational / nonoperational / partial / backup / spare / extended_mission / decayed / unknown
     data_status?: string;             // no_current_elements / no_initial_elements / no_elements_available
