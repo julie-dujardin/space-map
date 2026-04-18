@@ -21,8 +21,8 @@ def collect_object_images(
     - Wikipedia pageimages from all languages — kind=photo
     - Wikidata P154 (``extracted["logo_image"]``) — kind=logo
 
-    Deduplicates by filename.  Only includes images whose thumbnail file
-    exists on disk (downloaded by CommonsDownloader).
+    Deduplicates by filename.  Only includes images whose file exists on disk
+    in ``export/v1/images/`` (downloaded there directly by CommonsDownloader).
 
     Returns None if no images are available.
     """
@@ -60,13 +60,18 @@ def collect_object_images(
 
 
 def _make_entry(filename: str, kind: str) -> dict | None:
-    """Create an image metadata entry if the thumbnail file exists on disk."""
-    thumb_path = _IMAGES_DIR / "thumb" / filename
-    if not thumb_path.exists():
+    """Create an image metadata entry if the image file exists on disk."""
+    # Prefer thumbnail, fall back to full-size
+    if (_IMAGES_DIR / "thumb" / filename).exists():
+        path = f"images/thumb/{filename}"
+    elif (_IMAGES_DIR / "full" / filename).exists():
+        path = f"images/full/{filename}"
+    else:
         logger.debug("Image not found on disk: %s", filename)
         return None
+
     return {
-        "file": f"images/thumb/{filename}",
+        "file": path,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "kind": kind,
     }

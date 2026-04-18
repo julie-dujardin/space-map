@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 AFTER_REQUEST_DELAY_SECONDS = 1
 BATCH_SIZE = 20
+# _orbit has lots of useless images too, but also some good ones we want
+EXCLUDED_IMAGE_PREFIXES = ("Орбита_астероида_",)
 
 
 def _batched(
@@ -213,6 +215,8 @@ class WikipediaDownloader(Downloader):
                     continue
                 filename = unquote(urlparse(src).path.rsplit("/", 1)[-1])
                 if not filename:
+                    continue
+                if any(filename.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES):
                     continue
                 urls[src] = self.out_dir / "images" / kind / filename
 
