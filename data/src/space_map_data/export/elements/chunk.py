@@ -39,14 +39,15 @@ def write_chunk(
     elements_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
-        if obj.wikidata_qid and (wd := chunk_entities.get(obj.wikidata_qid)):
+        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.satcat else None)
+        if qid and (wd := chunk_entities.get(qid)):
             try:
-                r = radius_km_from_claims(wd["claims"], units, qid=obj.wikidata_qid)
+                r = radius_km_from_claims(wd["claims"], units, qid=qid)
             except Exception as exc:
                 logger.error(
                     "Error extracting radius for %s (%s): %s",
                     obj.id,
-                    obj.wikidata_qid,
+                    qid,
                     exc,
                 )
                 r = None

@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -17,6 +18,7 @@ from space_map_data.constants.earth_sats.constellations import PREFIX_TO_SLUG
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
+from space_map_data.models.object.satcat import Satcat
 
 CONSTELLATION_PREFIXES: tuple[str, ...] = tuple(PREFIX_TO_SLUG.keys())
 
@@ -161,6 +163,36 @@ class WikidataIdResolver:
                 id_map[key] = mapping
         return id_map
 
+    # -- No-match CSV helpers --
+
+    def _no_match_csv_path(self, key: str) -> Path:
+        """Path to the no-match CSV for a property or 'name'."""
+        return self.ids_dir / f"no_match_{key}.csv"
+
+    def _read_no_match_csv(self, key: str) -> set[str]:
+        """Read IDs previously queried with no match."""
+        csv_path = self._no_match_csv_path(key)
+        if not csv_path.exists():
+            return set()
+        ids: set[str] = set()
+        for row in csv.reader(io.StringIO(csv_path.read_text())):
+            if row:
+                ids.add(row[0])
+        return ids
+
+    def _append_no_match_csv(self, key: str, ids: list[str]) -> None:
+        """Append IDs that had no SPARQL match, with today's date."""
+        if not ids:
+            return
+        csv_path = self._no_match_csv_path(key)
+        today = date.today().isoformat()
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        for id_ in ids:
+            writer.writerow([id_, today])
+        with open(csv_path, "a") as f:
+            f.write(buf.getvalue())
+
     # -- Metadata --
 
     def _load_ids_complete(self) -> dict[str, bool]:
@@ -194,9 +226,15 @@ class WikidataIdResolver:
 
         # Load already-resolved search terms for resumability
         already_resolved = set(self._read_ids_csv(pid).keys())
-        if already_resolved:
+        # Also skip IDs previously queried with no match
+        already_queried_no_match = self._read_no_match_csv(pid)
+        already_known = already_resolved | already_queried_no_match
+        if already_known:
             logger.info(
-                "Resuming %s — %d terms already resolved", pid, len(already_resolved)
+                "Resuming %s — %d resolved, %d no-match",
+                pid,
+                len(already_resolved),
+                len(already_queried_no_match),
             )
 
         total = 0
@@ -206,14 +244,17 @@ class WikidataIdResolver:
         with tqdm(total=count, desc=desc, unit="id") as pbar:
             for batch in query_method():
                 total += len(batch)
-                to_resolve = [id_ for id_ in batch if id_ not in already_resolved]
+                to_resolve = [id_ for id_ in batch if id_ not in already_known]
                 pbar.update(len(batch))
                 if not to_resolve:
                     continue
 
                 resolved = self._sparql_resolve(pid, to_resolve)
                 self._append_ids_csv(pid, resolved)
-                already_resolved.update(resolved.keys())
+                # Record IDs that had no match
+                no_match = [id_ for id_ in to_resolve if id_ not in resolved]
+                self._append_no_match_csv(pid, no_match)
+                already_known.update(to_resolve)
 
         self._mark_ids_complete(pid)
         logger.info("  %s: %d / %d resolved", pid, len(already_resolved), total)
@@ -221,10 +262,13 @@ class WikidataIdResolver:
     def _resolve_by_name(self, already_resolved_qids: set[str]) -> None:
         """Search Wikidata by object name for entities not found by ID."""
         already_resolved_names = set(self._read_ids_csv("name").keys())
-        if already_resolved_names:
+        already_queried_no_match = self._read_no_match_csv("name")
+        already_known = already_resolved_names | already_queried_no_match
+        if already_known:
             logger.info(
-                "Resuming name search — %d names already resolved",
+                "Resuming name search — %d resolved, %d no-match",
                 len(already_resolved_names),
+                len(already_queried_no_match),
             )
 
         resolved_count = 0
@@ -232,7 +276,7 @@ class WikidataIdResolver:
 
         for batch in self._query_names():
             total += len(batch)
-            to_resolve = [n for n in batch if n not in already_resolved_names]
+            to_resolve = [n for n in batch if n not in already_known]
             if not to_resolve:
                 continue
             resolved = self._sparql_resolve_by_name(to_resolve)
@@ -244,7 +288,10 @@ class WikidataIdResolver:
             if batch_mapping:
                 self._append_ids_csv("name", batch_mapping)
                 resolved_count += len(batch_mapping)
-                already_resolved_names.update(batch_mapping.keys())
+            # Record names that had no match (or only duplicate QIDs)
+            no_match = [n for n in to_resolve if n not in batch_mapping]
+            self._append_no_match_csv("name", no_match)
+            already_known.update(to_resolve)
         self._mark_ids_complete("name")
         logger.info(
             "  name: %d / %d resolved (excluding duplicates)", resolved_count, total
@@ -282,24 +329,53 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """NORAD catalog numbers for non-constellation satellites → P377."""
-        stmt = select(Object.celestrak_norad_cat_id, Object.name).where(
+        obj_stmt = select(Object.celestrak_norad_cat_id, Object.name).where(
             Object.celestrak_norad_cat_id.is_not(None)
+        )
+        satcat_stmt = select(Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME).where(
+            Satcat.object_id.is_(None)
         )
         if count_only:
             # Approximate — includes constellations, but close enough for progress
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+            obj_count = (
+                self.session.scalar(
+                    select(func.count()).select_from(obj_stmt.subquery())
+                )
                 or 0
             )
+            satcat_count = (
+                self.session.scalar(
+                    select(func.count()).select_from(satcat_stmt.subquery())
+                )
+                or 0
+            )
+            return obj_count + satcat_count
 
         def _generate() -> Iterator[list[str]]:
+            seen: set[str] = set()
             batch: list[str] = []
-            for norad_id, name in self.session.execute(stmt):
+            # Object-sourced NORAD IDs
+            for norad_id, name in self.session.execute(obj_stmt):
                 if name and any(
                     name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
                 ):
                     continue
-                batch.append(str(norad_id))
+                norad_str = str(norad_id)
+                seen.add(norad_str)
+                batch.append(norad_str)
+                if len(batch) >= SPARQL_BATCH_SIZE:
+                    yield batch
+                    batch = []
+            # Satcat-only NORAD IDs (entries without Object rows)
+            for norad_id, name in self.session.execute(satcat_stmt):
+                norad_str = str(norad_id)
+                if norad_str in seen:
+                    continue
+                if name and any(
+                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
+                ):
+                    continue
+                batch.append(norad_str)
                 if len(batch) >= SPARQL_BATCH_SIZE:
                     yield batch
                     batch = []
@@ -326,23 +402,53 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """COSPAR IDs for non-constellation satellites → P247."""
-        stmt = select(Object.celestrak_cospar_id, Object.name).where(
+        obj_stmt = select(Object.celestrak_cospar_id, Object.name).where(
             Object.celestrak_cospar_id.is_not(None)
         )
+        satcat_stmt = select(Satcat.COSPAR_ID, Satcat.OBJECT_NAME).where(
+            Satcat.object_id.is_(None),
+            Satcat.COSPAR_ID.is_not(None),
+        )
         if count_only:
-            return (
-                self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+            obj_count = (
+                self.session.scalar(
+                    select(func.count()).select_from(obj_stmt.subquery())
+                )
                 or 0
             )
+            satcat_count = (
+                self.session.scalar(
+                    select(func.count()).select_from(satcat_stmt.subquery())
+                )
+                or 0
+            )
+            return obj_count + satcat_count
 
         def _generate() -> Iterator[list[str]]:
+            seen: set[str] = set()
             batch: list[str] = []
-            for cospar_id, name in self.session.execute(stmt):
+            # Object-sourced COSPAR IDs
+            for cospar_id, name in self.session.execute(obj_stmt):
                 if name and any(
                     name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
                 ):
                     continue
-                batch.append(str(cospar_id))
+                cospar_str = str(cospar_id)
+                seen.add(cospar_str)
+                batch.append(cospar_str)
+                if len(batch) >= SPARQL_BATCH_SIZE:
+                    yield batch
+                    batch = []
+            # Satcat-only COSPAR IDs (entries without Object rows)
+            for cospar_id, name in self.session.execute(satcat_stmt):
+                cospar_str = str(cospar_id)
+                if cospar_str in seen:
+                    continue
+                if name and any(
+                    name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
+                ):
+                    continue
+                batch.append(cospar_str)
                 if len(batch) >= SPARQL_BATCH_SIZE:
                     yield batch
                     batch = []

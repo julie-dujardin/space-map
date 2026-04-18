@@ -54,5 +54,6 @@ class Satcat(Base):
     categories: Mapped[list[str]] = mapped_column(JSON, default=list)
     operator_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
     country_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    wikidata_qid: Mapped[str | None] = mapped_column(default=None, index=True)
 
     object: Mapped["Object | None"] = relationship(back_populates="satcat")

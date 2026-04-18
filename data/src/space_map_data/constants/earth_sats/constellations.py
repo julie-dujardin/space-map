@@ -360,7 +360,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # Titan rocket boosters, mostly military, ICBM-derived
     ConstellationSpec(
         "titan-rocket",
-        None,
+        "Q1136670",
         (SatelliteCategory.ROCKET, SatelliteCategory.MILITARY),
         prefix="TITAN",
     ),

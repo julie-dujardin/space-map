@@ -107,7 +107,10 @@ def _write_parts(
         chunk_entities = {
             qid: wikidata_entities.get_entity(qid)
             for obj in chunk
-            if (qid := obj.wikidata_qid)
+            if (
+                qid := obj.wikidata_qid
+                or (obj.satcat.wikidata_qid if obj.satcat else None)
+            )
         }
         # write_objects must come first — its return value feeds write_chunk
         object_flags = write_objects(

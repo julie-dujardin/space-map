@@ -107,17 +107,12 @@ def write_objects(
     all_flags: dict[str, dict[str, int]] = {}
 
     for obj in objects:
-        wd = chunk_entities.get(obj.wikidata_qid) if obj.wikidata_qid else None
+        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.satcat else None)
+        wd = chunk_entities.get(qid) if qid else None
         try:
-            extracted = (
-                extract_claims(wd["claims"], qid=obj.wikidata_qid)
-                if obj.wikidata_qid and wd
-                else {}
-            )
+            extracted = extract_claims(wd["claims"], qid=qid) if qid and wd else {}
         except Exception as exc:
-            logger.error(
-                "Error extracting claims for %s (%s): %s", obj.id, obj.wikidata_qid, exc
-            )
+            logger.error("Error extracting claims for %s (%s): %s", obj.id, qid, exc)
             extracted = {}
 
         sat = obj.satcat if obj.celestrak_norad_cat_id is not None else None
@@ -136,9 +131,6 @@ def write_objects(
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
         )
-
-        # Per-language (localized) — English first so flag=2 can be determined
-        qid = obj.wikidata_qid
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
 
         en_available = None

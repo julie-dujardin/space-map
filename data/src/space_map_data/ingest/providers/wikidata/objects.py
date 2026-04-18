@@ -16,6 +16,7 @@ from sqlalchemy import update
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
+from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 from tqdm import tqdm
 
@@ -195,6 +196,94 @@ def _write_ambiguous(
         )
 
 
+# Wikidata property ID → list of (Satcat column, value converter)
+PID_TO_SATCAT_COLUMNS = {
+    "P377": [(Satcat.NORAD_CAT_ID, int)],
+    "P247": [(Satcat.COSPAR_ID, str)],
+}
+
+
+def _build_satcat_mappings(
+    session, ids_dir: Path
+) -> tuple[dict[int, set[str]], dict[str, set[int]]]:
+    """Build bidirectional NORAD_CAT_ID ↔ QID mappings for Satcat rows.
+
+    Returns (norad_to_qids, qid_to_norads).
+    """
+    norad_to_qids: dict[int, set[str]] = defaultdict(set)
+    qid_to_norads: dict[str, set[int]] = defaultdict(set)
+
+    for csv_path in ids_dir.glob("P*.csv"):
+        pid = csv_path.stem
+        if pid not in PID_TO_SATCAT_COLUMNS:
+            continue
+
+        id_to_qids = _read_ids_csv(csv_path)
+
+        for column, converter in PID_TO_SATCAT_COLUMNS[pid]:
+            converted: dict = {}  # converted_value → [qids]
+            for search_term, qids in id_to_qids.items():
+                if not qids:
+                    continue
+                try:
+                    key = converter(search_term)
+                except (ValueError, TypeError):
+                    continue
+                converted.setdefault(key, []).extend(qids)
+
+            if not converted:
+                continue
+
+            # Query Satcat in batches — join via NORAD_CAT_ID
+            keys = list(converted.keys())
+            for i in range(0, len(keys), BATCH):
+                batch_keys = keys[i : i + BATCH]
+                rows = (
+                    session.query(Satcat.NORAD_CAT_ID, column)
+                    .filter(column.in_(batch_keys))
+                    .all()
+                )
+                for norad_id, col_value in rows:
+                    for qid in converted.get(col_value, []):
+                        norad_to_qids[norad_id].add(qid)
+                        qid_to_norads[qid].add(norad_id)
+
+    return dict(norad_to_qids), dict(qid_to_norads)
+
+
+def _insert_satcat_unambiguous(
+    session,
+    norad_to_qids: dict[int, set[str]],
+    qid_to_norads: dict[str, set[int]],
+) -> int:
+    """Set Satcat.wikidata_qid for strict 1-to-1 mappings. Returns update count."""
+    updated = 0
+    pending = 0
+
+    for norad_id, qids in tqdm(norad_to_qids.items(), desc="satcat wikipedia IDs"):
+        if len(qids) != 1:
+            continue
+        (qid,) = qids
+        if len(qid_to_norads.get(qid, set())) != 1:
+            continue
+
+        session.execute(
+            update(Satcat)
+            .where(Satcat.NORAD_CAT_ID == norad_id, Satcat.wikidata_qid.is_(None))
+            .values(wikidata_qid=qid)
+        )
+        updated += 1
+        pending += 1
+
+        if pending >= BATCH:
+            session.commit()
+            pending = 0
+
+    if pending:
+        session.commit()
+    return updated
+
+
 def ingest(download_dir: Path) -> None:
     ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
     if not ids_dir.exists():
@@ -214,5 +303,18 @@ def ingest(download_dir: Path) -> None:
 
     inserted = _insert_unambiguous(session, obj_to_qids, qid_to_objs)
     _write_ambiguous(ids_dir, obj_to_qids, qid_to_objs)
-
     logger.info("Wikidata ingest: %d objects updated", inserted)
+
+    # Satcat QID matching (covers all ~65k SATCAT entries)
+    session.execute(update(Satcat).values(wikidata_qid=None))
+    session.commit()
+
+    norad_to_qids, qid_to_norads = _build_satcat_mappings(session, ids_dir)
+    logger.info(
+        "Wikidata satcat mappings: %d NORAD IDs, %d QIDs",
+        len(norad_to_qids),
+        len(qid_to_norads),
+    )
+
+    satcat_inserted = _insert_satcat_unambiguous(session, norad_to_qids, qid_to_norads)
+    logger.info("Wikidata ingest: %d satcat entries updated", satcat_inserted)

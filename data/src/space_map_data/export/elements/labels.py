@@ -30,12 +30,9 @@ def write_labels(
     lines = []
     for obj in objects:
         # Name: full fallback chain so the map always shows something
+        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.satcat else None)
         name = (
-            (
-                resolve_name(obj, lang, chunk_entities.get(obj.wikidata_qid))
-                if obj.wikidata_qid
-                else None
-            )
+            (resolve_name(obj, lang, chunk_entities.get(qid)) if qid else None)
             or obj.name
             or obj.sbdb_mcp_designation
             or obj.provisional_designation

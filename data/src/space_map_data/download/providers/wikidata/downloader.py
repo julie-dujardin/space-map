@@ -118,7 +118,7 @@ class WikidataDownloader(Downloader):
         self._save_metadata(
             API_URL,
             all_count,
-            complete=limit is None or all_count <= limit,
+            complete=False,
             ids_complete=resolver.ids_complete(),
         )
 
