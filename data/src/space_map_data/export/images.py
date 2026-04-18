@@ -61,17 +61,15 @@ def collect_object_images(
 
 def _make_entry(filename: str, kind: str) -> dict | None:
     """Create an image metadata entry if the image file exists on disk."""
-    # Prefer thumbnail, fall back to full-size
-    if (_IMAGES_DIR / "thumb" / filename).exists():
-        path = f"images/thumb/{filename}"
-    elif (_IMAGES_DIR / "full" / filename).exists():
-        path = f"images/full/{filename}"
-    else:
+    has_thumb = (_IMAGES_DIR / "thumb" / filename).exists()
+    has_full = (_IMAGES_DIR / "full" / filename).exists()
+
+    if not has_thumb and not has_full:
         logger.debug("Image not found on disk: %s", filename)
         return None
 
     return {
-        "file": path,
+        "file": filename,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "kind": kind,
     }

@@ -161,7 +161,7 @@ export class SceneRenderer {
 
 		// Shadow-casting directional light (swapped in when zoomed into a sub-system)
 		this.shadowLight = new DirectionalLight(0xffffff, 0);
-		this.shadowLight.castShadow = true;
+		this.shadowLight.castShadow = false;
 		this.shadowLight.shadow.mapSize.set(4096, 4096);
 		this.shadowLight.shadow.bias = -0.00001;
 		this.scene.add(this.shadowLight);
@@ -564,7 +564,7 @@ export class SceneRenderer {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (!line) continue;
+			if (!line?.visible) continue;
 			const localPositions = line.userData.orbitLocalPositions as
 				| [number, number, number][]
 				| undefined;
@@ -707,7 +707,7 @@ export class SceneRenderer {
 		const basis = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (line) refreshOrbitLineGeometry(bo.body, line, basis);
+			if (line?.visible) refreshOrbitLineGeometry(bo.body, line, basis);
 		}
 	}
 

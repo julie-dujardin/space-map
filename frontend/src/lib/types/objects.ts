@@ -78,7 +78,9 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 	// Outer solar system — direct a ranges
 	TJN: { minA: 4.6, maxA: 5.5 },
 	CEN: { minA: 5.5, maxA: 30.1 },
-	TNO: { minA: 30.1, maxA: Infinity }
+	TNO: { minA: 30.1, maxA: Infinity },
+	// Earth satellites — LEO to GEO (~42,200 km ≈ 0.00028 AU)
+	earth: { minA: 0, maxA: 0.0003 }
 };
 
 /** Default visual radius in km for bodies with no known radius. */

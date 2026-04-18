@@ -362,11 +362,15 @@ export async function loadSystemData(
 			bo.mesh.scale.set(a * s, c * s, b * s);
 		}
 
-		// Record available tiers and load the base `low` tier. Higher tiers are
-		// loaded on-demand by the per-frame LOD update based on screen size.
+		// Record available tiers and load the base `low` tier if no texture is
+		// loaded yet. Higher tiers are loaded on-demand by the per-frame LOD
+		// update based on screen size. Skip if a tier is already loaded to avoid
+		// downgrading (e.g. high → low → re-upgrade) on repeated system visits.
 		if (bodyMeta.tiers?.length) {
 			bo.availableTiers = bodyMeta.tiers;
-			promises.push(loadBodyTextureTier(bo, 'low', textureLoader));
+			if (!bo.textureTier) {
+				promises.push(loadBodyTextureTier(bo, 'low', textureLoader));
+			}
 		}
 	}
 	await Promise.allSettled(promises);

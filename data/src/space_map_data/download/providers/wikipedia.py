@@ -209,14 +209,22 @@ class WikipediaDownloader(Downloader):
             except json.JSONDecodeError:
                 logger.warning("Skipping invalid summary file %s", summary_file)
                 continue
+            # Derive the canonical filename from the original (full-size) source
+            # so thumbnails and full images share the same name on disk.
+            orig_src = (page.get("original") or {}).get("source")
+            if not orig_src:
+                logger.warning("No original image source in %s", summary_file.name)
+                continue
+            filename = unquote(urlparse(orig_src).path.rsplit("/", 1)[-1])
+            if not filename:
+                logger.warning("Empty filename from original source URL: %s", orig_src)
+                continue
+            if any(filename.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES):
+                logger.debug("Skipping excluded image prefix: %s", filename)
+                continue
             for kind, key in (("thumb", "thumbnail"), ("full", "original")):
                 src = (page.get(key) or {}).get("source")
                 if not src or src in urls:
-                    continue
-                filename = unquote(urlparse(src).path.rsplit("/", 1)[-1])
-                if not filename:
-                    continue
-                if any(filename.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES):
                     continue
                 urls[src] = self.out_dir / "images" / kind / filename
 
