@@ -82,30 +82,6 @@ export function updateBodyVisibility(
 			if (orbitLine) orbitLine.visible = true;
 			showLabel = true;
 			isClose = false;
-		} else if (body.data.objectType === ObjectType.STAR) {
-			const full = ctx.hasFullRendering(body);
-			group.visible = true;
-			const screenR = (bo.radiusScene / dist) * projScale;
-			isClose = full && screenR >= 1;
-			showLabel = full && !isClose;
-			if (bo.starPoint) bo.starPoint.visible = screenR < 1;
-			// Hide corona/lensflare when star is occluded on screen
-			tmpV3.set(body.position[0] - fp[0], body.position[1] - fp[1], body.position[2] - fp[2]);
-			tmpV3.project(camera);
-			let starOccluded = false;
-			if (tmpV3.z <= 1) {
-				starOccluded = isScreenOccluded(
-					(tmpV3.x * 0.5 + 0.5) * screenW,
-					(-tmpV3.y * 0.5 + 0.5) * screenH,
-					dist,
-					body.data.id,
-					screenOccluders
-				);
-			}
-			bo.isOccluded = starOccluded;
-			if (starOccluded) showLabel = false;
-			if (bo.corona) bo.corona.visible = !starOccluded;
-			if (bo.lensflare) bo.lensflare.visible = !starOccluded;
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets
 			const isMoon = body.data.objectType === ObjectType.MOON;
@@ -117,6 +93,17 @@ export function updateBodyVisibility(
 			if (orbitLine) orbitLine.visible = vf.orbitVisible;
 			showLabel = vf.showLabel;
 			isClose = vf.isClose;
+		}
+
+		// Star extras: sub-pixel dot toggles with mesh size; stars always
+		// keep their group visible and derive isClose from screen size
+		// (they have no orbital semi-major axis, so the tier is always FULL).
+		if (bo.starPoint) {
+			const screenR = (bo.radiusScene / dist) * projScale;
+			bo.starPoint.visible = screenR < 1;
+			group.visible = true;
+			isClose = screenR >= 1;
+			showLabel = !isClose;
 		}
 
 		// Detach labels from hidden groups so CSS2DRenderer's recursive
@@ -150,7 +137,6 @@ export function updateBodyVisibility(
 	if (screenOccluders.length > 0) {
 		for (const bo of bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
-			if (bo.isOccluded !== undefined) continue; // stars handled above
 			const [bx, by, bz] = bo.body.position;
 			tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
 			tmpV3.project(camera);

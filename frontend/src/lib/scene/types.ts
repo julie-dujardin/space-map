@@ -42,8 +42,6 @@ export interface BodyObjects {
 	radiusScene: number;
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
-	/** Cached per-frame occlusion result (stars). */
-	isOccluded?: boolean;
 	/** Texture resolution tiers available for this body (e.g. ['low', 'medium', 'high']). */
 	availableTiers?: string[];
 	/** Currently loaded texture tier name. */

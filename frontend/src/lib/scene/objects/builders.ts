@@ -324,7 +324,7 @@ export function makeStarGlow(
 		transparent: true,
 		opacity: 0.6,
 		depthWrite: false,
-		depthTest: false
+		depthTest: true
 	});
 	const corona = new Sprite(coronaMaterial);
 	const glowSize = radius * 6;
