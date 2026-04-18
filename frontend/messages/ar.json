@@ -56,6 +56,7 @@
 	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO متتبع الأقمار الصناعية ({id})",
 	"celestrak_orbit_data": "CelesTrak بيانات المدار ({id})",
+	"mpc_database": "قاعدة بيانات MPC ({id})",
 	"type_asteroid": "كويكب",
 	"type_barycenter": "مركز ثقل",
 	"type_comet": "مذنب",

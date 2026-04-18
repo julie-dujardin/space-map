@@ -56,6 +56,7 @@
 	"nasa_science": "NASA Science",
 	"n2yo_satellite_tracker": "N2YO Satellite Tracker ({id})",
 	"celestrak_orbit_data": "CelesTrak Données Orbitales ({id})",
+	"mpc_database": "Base de données MPC ({id})",
 	"type_asteroid": "astéroïde",
 	"type_barycenter": "barycentre",
 	"type_comet": "comète",

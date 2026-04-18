@@ -15,8 +15,9 @@
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
 	let websites = $derived(global?.wikidata?.website ?? []);
 	let blogs = $derived(global?.wikidata?.blog ?? []);
-	let sbdbDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
-	let horizonsNaifId = $derived(global?.cross_refs?.naif_id);
+	let mpcDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
+	let mpcDesignationOnly = $derived(global?.cross_refs?.mpc_designation);
+	let naifId = $derived(global?.cross_refs?.naif_id);
 	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
 	let designation = $derived(
 		global?.provisional_designation ?? global?.cross_refs?.mpc_designation
@@ -34,15 +35,20 @@
 		for (const url of websites)
 			result.push({ href: url, label: new URL(url).hostname.replace(/^www\./, '') });
 		for (const url of blogs) result.push({ href: url, label: m.property_name_blog() });
-		if (horizonsNaifId)
+		if (naifId)
 			result.push({
-				href: `https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='${horizonsNaifId}'`,
-				label: m.jpl_horizons({ id: String(horizonsNaifId) })
+				href: `https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='${naifId}'`,
+				label: m.jpl_horizons({ id: String(naifId) })
 			});
-		if (sbdbDesignation)
+		if (mpcDesignation)
 			result.push({
-				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(sbdbDesignation))}`,
-				label: m.jpl_sbdb({ id: String(sbdbDesignation) })
+				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(mpcDesignation))}`,
+				label: m.jpl_sbdb({ id: String(mpcDesignation) })
+			});
+		if (mpcDesignationOnly)
+			result.push({
+				href: `https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(String(mpcDesignationOnly))}`,
+				label: m.mpc_database({ id: String(mpcDesignationOnly) })
 			});
 		if (noradCatId) {
 			result.push({
