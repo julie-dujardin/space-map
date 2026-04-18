@@ -294,6 +294,7 @@ export async function loadBodyTexture(
 	const detail = await fetchObjectDetail(bo.body.data.id, objectFileFlag);
 	if (!detail.global?.map_texture_available) return;
 	if (bo.textureTier || bo.textureLoading) return;
+	bo.availableTiers ??= ['low', 'medium', 'high'];
 	await swapBodyTexture(bo, 'low', textureLoader);
 }
 

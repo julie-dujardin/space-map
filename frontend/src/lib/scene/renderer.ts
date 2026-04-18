@@ -950,20 +950,22 @@ export class SceneRenderer {
 	 * when a higher tier loads, so at most one tier per body lives on the GPU.
 	 */
 	private updateTextureLOD(): void {
-		if (!this.ctx.activeSystemId) return;
 		const fovRad = (this.camera.fov * Math.PI) / 180;
 		const screenH = this.renderer.domElement.clientHeight;
 		const projScale = screenH / (2 * Math.tan(fovRad / 2));
+		const activeSystem = this.ctx.activeSystemId;
+		const focusedId = this.focusedBody?.data.id;
 
 		for (const bo of this.bodyObjects.values()) {
 			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
 			if (!bo.availableTiers?.length || bo.textureLoading) continue;
 			if (bo.cachedDist <= 0) continue;
-			if (
-				bo.body.data.id !== this.ctx.activeSystemId &&
-				!this.ctx.isInActiveSystem(bo.body.data.parentId)
-			)
+			const id = bo.body.data.id;
+			if (activeSystem) {
+				if (id !== activeSystem && !this.ctx.isInActiveSystem(bo.body.data.parentId)) continue;
+			} else if (id !== focusedId) {
 				continue;
+			}
 
 			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
 			const altitudeRadii = bo.cachedDist / bo.radiusScene;
