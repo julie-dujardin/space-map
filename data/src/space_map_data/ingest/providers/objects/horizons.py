@@ -18,6 +18,7 @@ from space_map_data.models.object import (
     Horizons as HorizonsRow,
     ObjectType,
     OrbitalSource,
+    Satcat,
 )
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 from space_map_data.utils.db import get_session
@@ -131,6 +132,32 @@ class HorizonsIngestor:
             len(new_objects),
         )
 
+    def _link_satcat(self) -> None:
+        """Link SATCAT rows to spacecraft Objects via COSPAR ID.
+
+        CelesTrak links SATCAT rows for active satellites it creates Objects
+        for. This catches the remaining cases: deep-space probes and other
+        spacecraft that Horizons created or matched Objects for.
+        """
+        obj_subq = (
+            select(Object.id)
+            .where(Object.celestrak_cospar_id == Satcat.COSPAR_ID)
+            .where(Object.horizons_naif_id.isnot(None))
+            .correlate(Satcat)
+        )
+        result = self.session.execute(
+            update(Satcat)
+            .where(Satcat.object_id.is_(None))
+            .where(obj_subq.exists())
+            .values(object_id=obj_subq.scalar_subquery())
+        )
+        self.session.commit()
+        if result.rowcount:
+            logger.info(
+                "Linked %d SATCAT rows to Horizons spacecraft via COSPAR",
+                result.rowcount,
+            )
+
     def insert_missing_data(self) -> None:
         """Cross-reference Horizons NAIF IDs into CelesTrak objects via COSPAR."""
         self.session.execute(
@@ -191,6 +218,7 @@ class HorizonsIngestor:
 
         self.match_spacecraft_to_bodies()
         self.insert_missing_data()
+        self._link_satcat()
 
 
 def _count_csv_rows(path: Path) -> int:
