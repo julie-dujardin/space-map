@@ -116,12 +116,14 @@ type Candidate = {
 	isSelected: boolean;
 	screenX: number;
 	screenY: number;
+	labelLeft: number;
+	labelRight: number;
 	dist: number;
 };
 
 // Reusable arrays — cleared each frame, avoids per-frame allocation
 const _candidates: Candidate[] = [];
-const _accepted: { x: number; y: number }[] = [];
+const _accepted: { left: number; right: number; y: number }[] = [];
 
 export function cullOverlappingLabels(
 	bodyObjects: Map<string, BodyObjects>,
@@ -134,8 +136,6 @@ export function cullOverlappingLabels(
 	screenOccluders: ScreenOccluder[],
 	focusTruePos: [number, number, number] = [0, 0, 0]
 ): void {
-	// Estimated label bounding box in CSS pixels
-	const LW = 90;
 	const LH = 22;
 
 	_candidates.length = 0;
@@ -144,6 +144,11 @@ export function cullOverlappingLabels(
 	for (const bo of bodyObjects.values()) {
 		const { body, label, labelHalo } = bo;
 		if (!label?.visible) continue;
+		// Lazy-measure label text width (element must be in DOM; cached forever)
+		if (bo.labelTextWidth === undefined && labelHalo) {
+			const span = labelHalo.nextElementSibling as HTMLElement | null;
+			if (span) bo.labelTextWidth = span.offsetWidth;
+		}
 		// Focus-relative position for projection (matches camera's coordinate space)
 		const [bx, by, bz] = body.position;
 		_tmpProj.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
@@ -151,6 +156,11 @@ export function cullOverlappingLabels(
 		if (_tmpProj.z > 1) continue;
 		const isFocused = body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(body.data.id);
+		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
+		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
+		// Compute actual screen AABB accounting for center.x offset
+		const rootLeft = screenX - label.center.x * 32;
+		const textWidth = bo.labelTextWidth ?? 50;
 		_candidates.push({
 			bodyId: body.data.id,
 			body,
@@ -162,8 +172,10 @@ export function cullOverlappingLabels(
 					: false,
 			isFocused,
 			isSelected: isFocused || isHovered,
-			screenX: (_tmpProj.x * 0.5 + 0.5) * screenWidth,
-			screenY: (-_tmpProj.y * 0.5 + 0.5) * screenHeight,
+			screenX,
+			screenY,
+			labelLeft: rootLeft,
+			labelRight: rootLeft + 40 + textWidth,
 			dist: bo.cachedDist
 		});
 	}
@@ -186,6 +198,8 @@ export function cullOverlappingLabels(
 		isSelected,
 		screenX,
 		screenY,
+		labelLeft,
+		labelRight,
 		dist
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
@@ -199,10 +213,10 @@ export function cullOverlappingLabels(
 			continue;
 		}
 		const overlaps = _accepted.some(
-			({ x, y }) => Math.abs(screenX - x) < LW && Math.abs(screenY - y) < LH
+			(a) => labelLeft < a.right && labelRight > a.left && Math.abs(screenY - a.y) < LH
 		);
 		if (!overlaps) {
-			_accepted.push({ x: screenX, y: screenY });
+			_accepted.push({ left: labelLeft, right: labelRight, y: screenY });
 			restoreLabel(labelHalo, nameSpan, hoveredBodyIds.has(bodyId), isFocused);
 		} else {
 			dimLabel(labelHalo, nameSpan);

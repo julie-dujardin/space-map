@@ -50,6 +50,8 @@ export interface BodyObjects {
 	textureTier?: string;
 	/** Guard: a tier upgrade is currently in flight. */
 	textureLoading?: boolean;
+	/** Cached screen-pixel width of the label name text (measured once). */
+	labelTextWidth?: number;
 	/** Cached IAU orientation (pole + spin) so the mesh can be re-oriented per frame. */
 	orientation?: Orientation;
 }
