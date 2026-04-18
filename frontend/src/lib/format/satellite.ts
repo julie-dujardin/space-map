@@ -74,10 +74,14 @@ export function formatCountry(code: string): string {
 	}
 }
 
+// Formerly-assigned ISO 3166-1 codes that don't have emoji flags.
+const NO_FLAG = new Set(['SU', 'AN', 'CS', 'YU', 'DD', 'BU', 'ZR', 'TP']);
+
 // Regional-indicator unicode flag for ISO 3166-1 alpha-2 code.
 export function countryFlag(code: string): string {
 	if (code.length !== 2) return '';
-	const base = 0x1f1e6 - 'A'.charCodeAt(0);
 	const upper = code.toUpperCase();
+	if (NO_FLAG.has(upper)) return '';
+	const base = 0x1f1e6 - 'A'.charCodeAt(0);
 	return String.fromCodePoint(upper.charCodeAt(0) + base, upper.charCodeAt(1) + base);
 }
