@@ -164,33 +164,30 @@ def extract_claims(claims: dict, qid: str) -> dict:
     return result
 
 
-_REF_NAME_SHORTEN_THRESHOLD = 15
-_REF_NAME_WARN_THRESHOLD = 20
-
-
 def resolve_entity_ref(
     qid: str,
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> dict | None:
-    """Resolve a QID to {name, wikipedia?} using downloaded entity data."""
+    """Resolve a QID to {name, short_name?, wikipedia?} using downloaded entity data."""
     wd = wikidata_entities.get_referenced(qid)
     if not wd:
         return None
     name = wd["labels"].get(lang)
     if not name:
         return None
-    if len(name) > _REF_NAME_SHORTEN_THRESHOLD:
-        name = _shortest_ref_name(name, lang, wd, qid)
     result: dict = {"name": name}
+    short = _shortest_ref_name(name, lang, wd)
+    if short:
+        result["short_name"] = short
     title = wd["sitelinks"].get(lang)
     if title:
         result["wikipedia"] = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
     return result
 
 
-def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity, qid: str) -> str:
-    """Return the shortest available name for a referenced entity.
+def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:
+    """Return the shortest available short name for a referenced entity, or None.
 
     Checks P1813 (short name) claims and aliases for the given language,
     and returns the shortest candidate that is shorter than the label.
@@ -210,10 +207,7 @@ def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity, qid: str) -> s
     if shorter:
         return min(shorter, key=len)  # type: ignore  # ty what the fuck
 
-    # TODO: export both long & short forms, let the frontend handle it
-    # if len(label) > _REF_NAME_WARN_THRESHOLD:
-    #     logger.warning("No short form for referenced entity %s (%s)", qid, label)
-    return label
+    return None
 
 
 def resolve_unit(

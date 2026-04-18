@@ -1,6 +1,5 @@
 """Tests for space_map_data.export.objects.wikidata_claims."""
 
-import logging
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -9,8 +8,6 @@ import pytest
 from space_map_data.export.wikidata import active_statements
 from space_map_data.export.objects.wikidata_claims import (
     MultipleClaimValues,
-    _REF_NAME_SHORTEN_THRESHOLD,
-    _REF_NAME_WARN_THRESHOLD,
     extract_claims,
     radius_km_from_claims,
     resolve_entity_ref,
@@ -822,22 +819,22 @@ class TestResolveEntityRef:
         )
         assert resolve_entity_ref("Q999", "en", cache) is None
 
-    def test_short_name_not_shortened(self):
-        """Names at or below the threshold are kept as-is."""
-        name = "x" * _REF_NAME_SHORTEN_THRESHOLD
+    def test_short_name_from_alias(self):
+        """A shorter alias is exported as short_name alongside the full label."""
         cache = self._mock_cache(
             {
-                "labels": {"en": name},
-                "aliases": {"en": ["shorter"]},
+                "labels": {"en": "Some Long Name"},
+                "aliases": {"en": ["SLN"]},
                 "sitelinks": {},
             }
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == name
+        assert result["name"] == "Some Long Name"
+        assert result["short_name"] == "SLN"
 
     def test_uses_p1813_short_name(self):
-        """Long label is replaced by the P1813 (short name) claim."""
+        """P1813 (short name) is exported as short_name; full label stays as name."""
         cache = self._mock_cache(
             {
                 "labels": {"en": "National Aeronautics and Space Administration"},
@@ -849,10 +846,11 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q23548", "en", cache)
         assert result is not None
-        assert result["name"] == "NASA"
+        assert result["name"] == "National Aeronautics and Space Administration"
+        assert result["short_name"] == "NASA"
 
     def test_uses_shortest_alias(self):
-        """When no P1813 exists, the shortest alias is used."""
+        """When no P1813 exists, the shortest alias is used as short_name."""
         cache = self._mock_cache(
             {
                 "labels": {"en": "Kennedy Space Center Launch Complex 39B"},
@@ -862,7 +860,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q24256506", "en", cache)
         assert result is not None
-        assert result["name"] == "LC39B"
+        assert result["name"] == "Kennedy Space Center Launch Complex 39B"
+        assert result["short_name"] == "LC39B"
 
     def test_p1813_preferred_over_longer_alias(self):
         """P1813 short name is considered alongside aliases; shortest wins."""
@@ -878,7 +877,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == "SV"
+        assert result["name"] == "Some Very Long Organization Name Here"
+        assert result["short_name"] == "SV"
 
     def test_p1813_wrong_language_ignored(self):
         """P1813 in a different language should not be used."""
@@ -894,10 +894,11 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "fr", cache)
         assert result is not None
-        assert result["name"] == "TLNO"
+        assert result["name"] == "Très long nom d'organisation spatiale"
+        assert result["short_name"] == "TLNO"
 
     def test_no_shorter_form_keeps_original(self):
-        """When all aliases are longer, the original label is kept."""
+        """When all aliases are longer, no short_name is set."""
         long_name = "A Moderately Long Name Here"
         cache = self._mock_cache(
             {
@@ -909,20 +910,20 @@ class TestResolveEntityRef:
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
         assert result["name"] == long_name
+        assert "short_name" not in result
 
-    def test_no_warning_when_no_shorter_form_under_warn_threshold(self, caplog):
-        """No warning when the name is between shorten and warn thresholds."""
-        name = "x" * (_REF_NAME_SHORTEN_THRESHOLD + 1)
-        assert len(name) <= _REF_NAME_WARN_THRESHOLD
+    def test_no_aliases_no_short_name(self):
+        """When there are no aliases or P1813, no short_name is set."""
         cache = self._mock_cache(
             {
-                "labels": {"en": name},
+                "labels": {"en": "International Space Station"},
                 "sitelinks": {},
             }
         )
-        with caplog.at_level(logging.WARNING):
-            resolve_entity_ref("Q1", "en", cache)
-        assert "No short form" not in caplog.text
+        result = resolve_entity_ref("Q1", "en", cache)
+        assert result is not None
+        assert result["name"] == "International Space Station"
+        assert "short_name" not in result
 
 
 class TestResolveUnit:

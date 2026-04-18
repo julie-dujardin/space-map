@@ -299,7 +299,7 @@ interface LocalizedObjectData {
   };
 }
 
-interface EntityRef { name: string; wikipedia?: string; }
+interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 ```
 
 ## Textures

@@ -131,6 +131,7 @@ export interface GlobalObjectData {
 
 export interface EntityRef {
 	name: string;
+	short_name?: string;
 	wikipedia?: string;
 }
 

@@ -22,6 +22,7 @@
 
 <span class="text-muted-foreground flex flex-wrap justify-end gap-x-2">
 	{#each entities as entity (entity.name)}
+		{@const display = truncated[entity.name] && entity.short_name ? entity.short_name : entity.name}
 		<Tooltip.Root disabled={!truncated[entity.name]}>
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
@@ -31,10 +32,10 @@
 								href={entity.wikipedia}
 								target="_blank"
 								rel="noopener"
-								class="underline hover:text-foreground">{entity.name}</a
+								class="underline hover:text-foreground">{display}</a
 							>
 						{:else}
-							{entity.name}
+							{display}
 						{/if}
 					</span>
 				{/snippet}

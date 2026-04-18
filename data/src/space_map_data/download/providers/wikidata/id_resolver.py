@@ -33,18 +33,18 @@ AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
 SOURCES = (
     (ID_TYPES.NAIF, "_query_naif_ids", "Natural bodies (NAIF)"),
     (ID_TYPES.SPKID, "_query_small_body_spkids", "Small bodies (SPK-ID)"),
-    (
-        ID_TYPES.MPC_DESIGNATION,
-        "_query_mpc_designations",
-        "Small bodies (MPC designation)",
-    ),
+    # (  Too many IDs
+    #     ID_TYPES.MPC_DESIGNATION,
+    #     "_query_mpc_designations",
+    #     "Small bodies (MPC designation)",
+    # ),
     (ID_TYPES.NORAD_SATCAT, "_query_norad_ids", "Satellites (NORAD)"),
     (ID_TYPES.COSPAR, "_query_cospar_ids", "Satellites (COSPAR)"),
-    (
-        ID_TYPES.PROVISIONAL_DESIGNATION,
-        "_query_provisional_designations",
-        "Provisional designations",
-    ),
+    # (
+    #     ID_TYPES.PROVISIONAL_DESIGNATION,
+    #     "_query_provisional_designations",
+    #     "Provisional designations",
+    # ),
     (ID_TYPES.IAU_FEATURE_ID, "_query_iau_feature_ids", "IAU features"),
 )
 
