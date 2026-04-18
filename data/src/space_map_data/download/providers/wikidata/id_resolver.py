@@ -360,7 +360,7 @@ class WikidataIdResolver:
                     name.startswith(prefix) for prefix in CONSTELLATION_PREFIXES
                 ):
                     continue
-                norad_str = str(norad_id)
+                norad_str = str(norad_id).zfill(5)
                 seen.add(norad_str)
                 batch.append(norad_str)
                 if len(batch) >= SPARQL_BATCH_SIZE:
@@ -368,7 +368,7 @@ class WikidataIdResolver:
                     batch = []
             # Satcat-only NORAD IDs (entries without Object rows)
             for norad_id, name in self.session.execute(satcat_stmt):
-                norad_str = str(norad_id)
+                norad_str = str(norad_id).zfill(5)
                 if norad_str in seen:
                     continue
                 if name and any(
