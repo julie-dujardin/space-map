@@ -49,7 +49,9 @@ SOURCES: tuple[SourceSpec, ...] = (
     SourceSpec("CHBZ", "China-Brazil", countries=("CN", "BR")),
     SourceSpec("CHTU", "China-Türkiye", countries=("CN", "TR")),
     SourceSpec("CHLE", "Chile", countries=("CL",)),
-    SourceSpec("CIS", "Commonwealth of Independent States (USSR)", countries=("SU",)),
+    SourceSpec(
+        "CIS", "Commonwealth of Independent States - USSR/Russia", countries=("RU",)
+    ),
     SourceSpec("COL", "Colombia", countries=("CO",)),
     SourceSpec("CRI", "Costa Rica", countries=("CR",)),
     SourceSpec("CZCH", "Czech Republic", countries=("CZ",)),
