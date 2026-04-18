@@ -15,7 +15,6 @@ from space_map_data.export.objects.wikidata_claims import (
     _all_entity_qids,
     _all_strings,
     _all_times,
-    _commons_url,
     _has_nasa_ref_url,
     _is_sourced_to,
     _parse_quantity,
@@ -551,21 +550,6 @@ class TestEntityQids:
             _single_entity_qid(claims, "P744")
 
 
-class TestCommonsUrl:
-    """_commons_url"""
-
-    def test_basic(self):
-        url = _commons_url("The Blue Marble.jpg")
-        assert url == (
-            "https://commons.wikimedia.org/wiki/Special:FilePath/"
-            "The%20Blue%20Marble.jpg?width=300"
-        )
-
-    def test_special_characters(self):
-        url = _commons_url("Image (1).png")
-        assert "Image%20%281%29.png" in url
-
-
 class TestExtractClaims:
     """extract_claims — integration."""
 
@@ -582,8 +566,7 @@ class TestExtractClaims:
     def test_extracts_image(self):
         claims = {"P18": [_stmt(_string_snak("Earth.jpg"))]}
         result = extract_claims(claims, "Q2")
-        assert len(result["image"]) == 1
-        assert "Earth.jpg" in result["image"][0]
+        assert result["image"] == ["Earth.jpg"]
 
     def test_extracts_website(self):
         claims = {"P856": [_stmt(_string_snak("https://hubble.nasa.gov/"))]}

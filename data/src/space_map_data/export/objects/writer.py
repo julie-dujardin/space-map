@@ -109,7 +109,11 @@ def write_objects(
     all_flags: dict[str, dict[str, int]] = {}
 
     for obj in objects:
-        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.celestrak_norad_cat_id is not None and obj.satcat else None)
+        qid = obj.wikidata_qid or (
+            obj.satcat.wikidata_qid
+            if obj.celestrak_norad_cat_id is not None and obj.satcat
+            else None
+        )
         wd = chunk_entities.get(qid) if qid else None
         try:
             extracted = extract_claims(wd["claims"], qid=qid) if qid and wd else {}

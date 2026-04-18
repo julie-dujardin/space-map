@@ -109,7 +109,11 @@ def _write_parts(
             for obj in chunk
             if (
                 qid := obj.wikidata_qid
-                or (obj.satcat.wikidata_qid if obj.celestrak_norad_cat_id is not None and obj.satcat else None)
+                or (
+                    obj.satcat.wikidata_qid
+                    if obj.celestrak_norad_cat_id is not None and obj.satcat
+                    else None
+                )
             )
         }
         # write_objects must come first — its return value feeds write_chunk

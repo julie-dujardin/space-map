@@ -7,20 +7,18 @@ class TestToDict:
     """WikipediaSummary.to_dict"""
 
     def test_filters_none(self):
-        s = WikipediaSummary(extract="Hello", thumbnail=None)
+        s = WikipediaSummary(extract="Hello", description=None)
         d = s.to_dict()
         assert "extract" in d
-        assert "thumbnail" not in d
+        assert "description" not in d
 
     def test_all_fields(self):
         s = WikipediaSummary(
             extract="text",
             description="desc",
-            thumbnail="thumb.jpg",
-            image="img.jpg",
             url="https://example.com",
         )
-        assert len(s.to_dict()) == 5
+        assert len(s.to_dict()) == 3
 
     def test_empty(self):
         assert WikipediaSummary().to_dict() == {}
@@ -41,8 +39,6 @@ class TestExtractWikipedia:
         assert result is not None
         assert result.extract == "Earth is a planet."
         assert result.description == "third planet from the Sun"
-        assert result.thumbnail == "thumb.jpg"
-        assert result.image == "full.jpg"
         assert result.url == "https://en.wikipedia.org/wiki/Earth"
 
     def test_missing_page(self):
@@ -55,11 +51,12 @@ class TestExtractWikipedia:
         assert result.extract is None
         assert result.url == "https://example.com"
 
-    def test_no_thumbnail(self):
+    def test_no_image_fields_on_summary(self):
         page = {"extract": "text"}
         result = _extract_wikipedia(page)
         assert result is not None
-        assert result.thumbnail is None
+        assert not hasattr(result, "thumbnail")
+        assert not hasattr(result, "image")
 
     def test_all_empty_returns_none(self):
         page = {"extract": "", "description": ""}

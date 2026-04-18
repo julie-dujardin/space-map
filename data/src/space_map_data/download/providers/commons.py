@@ -137,7 +137,8 @@ class CommonsDownloader(Downloader):
         self._save_metadata(
             "https://commons.wikimedia.org/wiki/Special:FilePath/",
             len(all_filenames),
-            complete=len(to_download) == len(all_filenames) - (len(all_filenames) - len(to_download)),
+            complete=len(to_download)
+            == len(all_filenames) - (len(all_filenames) - len(to_download)),
         )
 
     def _download_one(self, url: str, out_path: Path) -> bool:
