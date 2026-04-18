@@ -8,6 +8,7 @@ class PROVIDERS(StrEnum):
     SPICE = "spice"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
+    COMMONS = "commons"
     IAU_NOMENCLATURE = "iau_nomenclature"
 
 

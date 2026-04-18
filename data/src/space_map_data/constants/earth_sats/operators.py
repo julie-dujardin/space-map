@@ -418,7 +418,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("safir",),
     ),
     OperatorSpec(
-        "Israel Aerospace Industries",
+        "IAI - Israel Aerospace Industries",
         "Q876017",
         constellations=("shavit",),
     ),
