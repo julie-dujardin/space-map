@@ -24,14 +24,14 @@ logger = logging.getLogger(__name__)
 
 # Wikidata property ID → list of (Object column, value converter)
 PID_TO_COLUMNS = {
-    "P2956": [(Object.horizons_naif_id, int)],
-    "P716": [(Object.sbdb_spkid, int)],
+    "P2956": [(Object.naif_id, int)],
+    "P716": [(Object.spkid, int)],
     "P5736": [
-        (Object.sbdb_mcp_designation, str),
+        (Object.mpc_designation, str),
         (Object.provisional_designation, str),
     ],
-    "P377": [(Object.celestrak_norad_cat_id, int)],
-    "P247": [(Object.celestrak_cospar_id, str)],
+    "P377": [(Object.norad_cat_id, int)],
+    "P247": [(Object.cospar_id, str)],
     "P490": [(Object.provisional_designation, str)],
 }
 

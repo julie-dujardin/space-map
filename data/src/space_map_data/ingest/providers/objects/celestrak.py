@@ -77,8 +77,8 @@ class CelesTrakIngestor:
             id=object_id,
             name=name,
             object_type=object_type,
-            celestrak_norad_cat_id=norad,
-            celestrak_cospar_id=string_or_none(row["OBJECT_ID"]),
+            norad_cat_id=norad,
+            cospar_id=string_or_none(row["OBJECT_ID"]),
             epoch_jd=date_to_julian(row["EPOCH"]),
             a=a_km,
             e=float_or_none(row["ECCENTRICITY"]),
@@ -125,7 +125,7 @@ class CelesTrakIngestor:
     def _link_satcat(self, rows: list[dict]) -> None:
         """Set Satcat.object_id for satellites that now have Object rows."""
         for r in rows:
-            norad = r["object"]["celestrak_norad_cat_id"]
+            norad = r["object"]["norad_cat_id"]
             object_id = r["object"]["id"]
             self.session.execute(
                 update(Satcat)

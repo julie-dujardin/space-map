@@ -83,7 +83,7 @@ class Object(Base):
 
     id: Mapped[str] = mapped_column(
         primary_key=True
-    )  # <id_type>-<value> (e.g. spkid-2000433, naif-399, norad_satcat-25544)
+    )  # <id_type>-<value> (e.g. spkid-2000433, naif-399, norad-25544)
     name: Mapped[str | None] = mapped_column(
         default=None
     )  # best available name (IAU name, designation, or object name)
@@ -100,29 +100,29 @@ class Object(Base):
         default=None,
         index=True,
     )  # Wikidata entity ID (e.g. Q2)
-    horizons_naif_id: Mapped[int | None] = mapped_column(
+    naif_id: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True
-    )  # JPL Horizons NAIF/SPK ID
-    sbdb_spkid: Mapped[int | None] = mapped_column(
+    )  # NAIF/SPK ID (from Horizons or SPICE)
+    spkid: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True
-    )  # JPL SBDB primary SPK-ID
+    )  # SBDB primary SPK-ID
     random_int: Mapped[int] = mapped_column(
         default=lambda ctx: hash(ctx.get_current_parameters()["id"]),
         index=True,
     )  # Deterministic integer for export partitioning (hash of PK); range: [-(sys.maxsize+1), sys.maxsize], typically [-2^63, 2^63-1] on 64-bit
-    sbdb_mcp_designation: Mapped[str | None] = mapped_column(
+    mpc_designation: Mapped[str | None] = mapped_column(
         unique=False, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
-    celestrak_norad_cat_id: Mapped[int | None] = mapped_column(
+    norad_cat_id: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True
-    )  # NORAD catalog number, from CelesTrak
-    celestrak_cospar_id: Mapped[str | None] = mapped_column(
+    )  # NORAD catalog number (from CelesTrak or SATCAT)
+    cospar_id: Mapped[str | None] = mapped_column(
         unique=True, default=None, index=True
-    )  # COSPAR international designator (YYYY-NNNP), from CelesTrak
+    )  # COSPAR international designator (YYYY-NNNP)
     iau_roman_designation: Mapped[str | None] = mapped_column(
         unique=False, default=None, index=True
     )  # IAU satellite designation (planet letter + Roman numeral, e.g. JLVII)
-    horizons_naif_id_extended: Mapped[int | None] = mapped_column(
+    naif_id_extended: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True
     )  # 5-digit extended NAIF ID used by SPICE for irregular-moon kernels
 

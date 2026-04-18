@@ -63,28 +63,26 @@ class TestIsoCurrencyCode:
 
 class TestPickAttrs:
     def test_extracts_present(self):
-        obj = make_object(name="Earth", wikidata_qid="Q2", sbdb_spkid=None)
-        result = _pick_attrs(obj, ("name", "wikidata_qid", "sbdb_spkid"))
+        obj = make_object(name="Earth", wikidata_qid="Q2", spkid=None)
+        result = _pick_attrs(obj, ("name", "wikidata_qid", "spkid"))
         assert result == {"name": "Earth", "wikidata_qid": "Q2"}
 
     def test_all_none(self):
         obj = make_object(
             wikidata_qid=None,
-            sbdb_spkid=None,
-            celestrak_norad_cat_id=None,
+            spkid=None,
+            norad_cat_id=None,
         )
-        result = _pick_attrs(
-            obj, ("wikidata_qid", "sbdb_spkid", "celestrak_norad_cat_id")
-        )
+        result = _pick_attrs(obj, ("wikidata_qid", "spkid", "norad_cat_id"))
         assert result == {}
 
     def test_all_present(self):
-        obj = make_object(name="Earth", wikidata_qid="Q2", horizons_naif_id=399)
-        result = _pick_attrs(obj, ("name", "wikidata_qid", "horizons_naif_id"))
+        obj = make_object(name="Earth", wikidata_qid="Q2", naif_id=399)
+        result = _pick_attrs(obj, ("name", "wikidata_qid", "naif_id"))
         assert result == {
             "name": "Earth",
             "wikidata_qid": "Q2",
-            "horizons_naif_id": 399,
+            "naif_id": 399,
         }
 
     def test_works_on_plain_object(self):

@@ -61,11 +61,11 @@ def _iso_currency_code(
 
 _CROSS_REF_FIELDS = (
     "wikidata_qid",
-    "horizons_naif_id",
-    "sbdb_spkid",
-    "sbdb_mcp_designation",
-    "celestrak_norad_cat_id",
-    "celestrak_cospar_id",
+    "naif_id",
+    "spkid",
+    "mpc_designation",
+    "norad_cat_id",
+    "cospar_id",
 )
 
 _ORBIT_FIELDS = ("epoch_jd", "a", "e", "i", "om", "w", "ma", "n")
@@ -111,7 +111,7 @@ def write_objects(
     for obj in objects:
         qid = obj.wikidata_qid or (
             obj.satcat.wikidata_qid
-            if obj.celestrak_norad_cat_id is not None and obj.satcat
+            if obj.norad_cat_id is not None and obj.satcat
             else None
         )
         wd = chunk_entities.get(qid) if qid else None
@@ -121,7 +121,7 @@ def write_objects(
             logger.error("Error extracting claims for %s (%s): %s", obj.id, qid, exc)
             extracted = {}
 
-        sat = obj.satcat if obj.celestrak_norad_cat_id is not None else None
+        sat = obj.satcat if obj.norad_cat_id is not None else None
         merge_operator_qids(extracted, sat)
 
         # Collect image filenames from all Wikipedia languages
@@ -193,8 +193,8 @@ def _build_global(
         data["map_texture_available"] = True
     if obj.name is not None:
         data["name"] = obj.name
-    if obj.sbdb_mcp_designation is not None:
-        data["sbdb_primary_designation"] = obj.sbdb_mcp_designation
+    if obj.mpc_designation is not None:
+        data["sbdb_primary_designation"] = obj.mpc_designation
     if obj.provisional_designation is not None:
         data["provisional_designation"] = obj.provisional_designation
 
@@ -208,7 +208,7 @@ def _build_global(
         data["nasa_science_url"] = nasa_url
 
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
-    sbdb = obj.sbdb if obj.sbdb_spkid is not None else None
+    sbdb = obj.sbdb if obj.spkid is not None else None
     if sbdb is not None and sbdb.class_ == OrbitClass.PAR:
         orbit = _pick_attrs(obj, ("epoch_jd", "e", "i", "om", "w"))
         if sbdb.q is not None:
@@ -226,12 +226,12 @@ def _build_global(
         data["orbit"] = orbit
 
     # Orientation data (from SPICE PCK)
-    if obj.horizons_naif_id is not None and obj.horizons_naif_id in orientation:
-        data["orientation"] = orientation[obj.horizons_naif_id]
+    if obj.naif_id is not None and obj.naif_id in orientation:
+        data["orientation"] = orientation[obj.naif_id]
 
     # Triaxial radii (km, along body-fixed X, Y, Z) from SPICE PCK
-    if obj.horizons_naif_id is not None and obj.horizons_naif_id in radii:
-        data["radii"] = radii[obj.horizons_naif_id]
+    if obj.naif_id is not None and obj.naif_id in radii:
+        data["radii"] = radii[obj.naif_id]
 
     # SBDB extras
     if sbdb is not None:
@@ -240,7 +240,7 @@ def _build_global(
             data["sbdb"] = sbdb_data
 
     # CelesTrak enrichment
-    if obj.celestrak_norad_cat_id is not None and obj.satcat is not None:
+    if obj.norad_cat_id is not None and obj.satcat is not None:
         celestrak_data = build_satcat_global(obj.satcat)
         if celestrak_data:
             data["celestrak"] = celestrak_data
@@ -322,7 +322,7 @@ def _build_localized(
                 if ref:
                     data[claim.key] = ref
 
-    if obj.celestrak_norad_cat_id is not None and obj.satcat is not None:
+    if obj.norad_cat_id is not None and obj.satcat is not None:
         # SATCAT-derived refs overwrite Wikidata-derived ones (e.g. launch_site)
         # since SATCAT is the authoritative source for satellite metadata.
         data.update(build_satcat_localized(obj.satcat, lang, wikidata_entities))

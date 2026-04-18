@@ -15,13 +15,11 @@
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
 	let websites = $derived(global?.wikidata?.website ?? []);
 	let blogs = $derived(global?.wikidata?.blog ?? []);
-	let sbdbDesignation = $derived(
-		global?.cross_refs?.sbdb_mcp_designation ?? global?.cross_refs?.sbdb_spkid
-	);
-	let horizonsNaifId = $derived(global?.cross_refs?.horizons_naif_id);
-	let noradCatId = $derived(global?.cross_refs?.celestrak_norad_cat_id);
+	let sbdbDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
+	let horizonsNaifId = $derived(global?.cross_refs?.naif_id);
+	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
 	let designation = $derived(
-		global?.provisional_designation ?? global?.cross_refs?.sbdb_mcp_designation
+		global?.provisional_designation ?? global?.cross_refs?.mpc_designation
 	);
 
 	interface Link {

@@ -32,15 +32,15 @@ def write_labels(
         # Name: full fallback chain so the map always shows something
         qid = obj.wikidata_qid or (
             obj.satcat.wikidata_qid
-            if obj.celestrak_norad_cat_id is not None and obj.satcat
+            if obj.norad_cat_id is not None and obj.satcat
             else None
         )
         name = (
             (resolve_name(obj, lang, chunk_entities.get(qid)) if qid else None)
             or obj.name
-            or obj.sbdb_mcp_designation
+            or obj.mpc_designation
             or obj.provisional_designation
-            or obj.horizons_naif_id
+            or obj.naif_id
         )
         if not name:
             raise ValueError(f"No name found for object {obj} (id={obj.id})")

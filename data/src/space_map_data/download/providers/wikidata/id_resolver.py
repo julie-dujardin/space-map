@@ -273,9 +273,7 @@ class WikidataIdResolver:
 
     def _query_naif_ids(self, *, count_only: bool = False) -> int | Iterator[list[str]]:
         """NAIF IDs for natural bodies → P2956."""
-        stmt = select(Object.horizons_naif_id).where(
-            Object.horizons_naif_id.is_not(None)
-        )
+        stmt = select(Object.naif_id).where(Object.naif_id.is_not(None))
         if count_only:
             return (
                 self.session.scalar(select(func.count()).select_from(stmt.subquery()))
@@ -301,8 +299,8 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """NORAD catalog numbers for non-constellation satellites → P377."""
-        obj_stmt = select(Object.celestrak_norad_cat_id, Object.name).where(
-            Object.celestrak_norad_cat_id.is_not(None)
+        obj_stmt = select(Object.norad_cat_id, Object.name).where(
+            Object.norad_cat_id.is_not(None)
         )
         satcat_stmt = select(Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME).where(
             Satcat.object_id.is_(None)
@@ -360,9 +358,7 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """MPC designations for small bodies → P5736."""
-        stmt = select(Object.sbdb_mcp_designation).where(
-            Object.sbdb_mcp_designation.is_not(None)
-        )
+        stmt = select(Object.mpc_designation).where(Object.mpc_designation.is_not(None))
         if count_only:
             return (
                 self.session.scalar(select(func.count()).select_from(stmt.subquery()))
@@ -374,8 +370,8 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """COSPAR IDs for non-constellation satellites → P247."""
-        obj_stmt = select(Object.celestrak_cospar_id, Object.name).where(
-            Object.celestrak_cospar_id.is_not(None)
+        obj_stmt = select(Object.cospar_id, Object.name).where(
+            Object.cospar_id.is_not(None)
         )
         satcat_stmt = select(Satcat.COSPAR_ID, Satcat.OBJECT_NAME).where(
             Satcat.object_id.is_(None),

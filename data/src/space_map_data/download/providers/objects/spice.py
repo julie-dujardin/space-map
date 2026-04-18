@@ -118,7 +118,7 @@ class _HorizonsAlias:
     name: str | None = None
     designation: str | None = None
     iau_roman_designation: str | None = None
-    horizons_naif_id_extended: int | None = None
+    naif_id_extended: int | None = None
 
 
 _ROMAN_RE = re.compile(r"^[JSUNM][IVXLCDM]+$")
@@ -161,10 +161,8 @@ def _load_horizons_names(download_dir: Path) -> dict[int, _HorizonsAlias]:
             for token in line[59:].split() if len(line) > 59 else ():
                 if alias.iau_roman_designation is None and _ROMAN_RE.match(token):
                     alias.iau_roman_designation = token
-                elif alias.horizons_naif_id_extended is None and _EXT_NAIF_RE.match(
-                    token
-                ):
-                    alias.horizons_naif_id_extended = int(token)
+                elif alias.naif_id_extended is None and _EXT_NAIF_RE.match(token):
+                    alias.naif_id_extended = int(token)
             result[naif_id] = alias
     logger.info("Loaded %d names from Horizons major_bodies.txt", len(result))
     return result
@@ -432,7 +430,7 @@ class SpiceDownloader(Downloader):
                     object_type=obj_type,
                     designation=alias.designation,
                     iau_roman_designation=alias.iau_roman_designation,
-                    horizons_naif_id_extended=alias.horizons_naif_id_extended,
+                    naif_id_extended=alias.naif_id_extended,
                 )
             )
 
@@ -443,7 +441,7 @@ class SpiceDownloader(Downloader):
             "name",
             "provisional_designation",
             "iau_roman_designation",
-            "horizons_naif_id_extended",
+            "naif_id_extended",
             "naif_id",
             "type",
             "parent_naif_id",
@@ -471,7 +469,7 @@ class SpiceDownloader(Downloader):
                         "name": body.name,
                         "provisional_designation": body.designation,
                         "iau_roman_designation": body.iau_roman_designation,
-                        "horizons_naif_id_extended": body.horizons_naif_id_extended,
+                        "naif_id_extended": body.naif_id_extended,
                         "naif_id": body.naif_id,
                         "type": body.object_type,
                         "parent_naif_id": body.parent_naif_id,
@@ -544,7 +542,7 @@ class SpiceDownloader(Downloader):
                             "name": body.name,
                             "provisional_designation": body.designation,
                             "iau_roman_designation": body.iau_roman_designation,
-                            "horizons_naif_id_extended": body.horizons_naif_id_extended,
+                            "naif_id_extended": body.naif_id_extended,
                             "naif_id": body.naif_id,
                             "type": body.object_type,
                             "parent_naif_id": body.parent_naif_id,
@@ -613,7 +611,7 @@ class SpiceDownloader(Downloader):
                     "name": body.name,
                     "provisional_designation": body.designation,
                     "iau_roman_designation": body.iau_roman_designation,
-                    "horizons_naif_id_extended": body.horizons_naif_id_extended,
+                    "naif_id_extended": body.naif_id_extended,
                     "naif_id": body.naif_id,
                     "type": body.object_type,
                     "parent_naif_id": body.parent_naif_id,

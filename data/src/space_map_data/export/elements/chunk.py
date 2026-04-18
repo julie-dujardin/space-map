@@ -41,7 +41,7 @@ def write_chunk(
     for obj in objects:
         qid = obj.wikidata_qid or (
             obj.satcat.wikidata_qid
-            if obj.celestrak_norad_cat_id is not None and obj.satcat
+            if obj.norad_cat_id is not None and obj.satcat
             else None
         )
         if qid and (wd := chunk_entities.get(qid)):

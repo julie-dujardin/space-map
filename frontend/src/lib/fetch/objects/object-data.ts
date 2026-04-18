@@ -29,11 +29,11 @@ export interface GlobalObjectData {
 	nasa_science_url?: string;
 	cross_refs?: {
 		wikidata_qid?: string;
-		horizons_naif_id?: number;
-		sbdb_spkid?: number;
-		sbdb_mcp_designation?: string;
-		celestrak_norad_cat_id?: number;
-		celestrak_cospar_id?: string;
+		naif_id?: number;
+		spkid?: number;
+		mpc_designation?: string;
+		norad_cat_id?: number;
+		cospar_id?: string;
 	};
 	orbit?: {
 		epoch_jd: number;

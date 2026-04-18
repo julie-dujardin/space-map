@@ -89,7 +89,7 @@ class HorizonsIngestor:
         """
         spacecraft = self.session.execute(
             select(HorizonsRow, Object)
-            .outerjoin(Object, Object.celestrak_cospar_id == HorizonsRow.cospar_id)
+            .outerjoin(Object, Object.cospar_id == HorizonsRow.cospar_id)
             .where(HorizonsRow.type == ObjectType.spacecraft)
         ).all()
 
@@ -106,8 +106,8 @@ class HorizonsIngestor:
                         id=object_id,
                         name=hz.name,
                         object_type=ObjectType.spacecraft,
-                        horizons_naif_id=hz.naif_id,
-                        celestrak_cospar_id=hz.cospar_id,
+                        naif_id=hz.naif_id,
+                        cospar_id=hz.cospar_id,
                         epoch_jd=hz.JDTDB,
                         a=hz.A,
                         e=hz.EC,
@@ -141,37 +141,57 @@ class HorizonsIngestor:
         """
         obj_subq = (
             select(Object.id)
-            .where(Object.celestrak_cospar_id == Satcat.COSPAR_ID)
-            .where(Object.horizons_naif_id.isnot(None))
+            .where(Object.cospar_id == Satcat.COSPAR_ID)
+            .where(Object.naif_id.isnot(None))
             .correlate(Satcat)
         )
-        result = self.session.execute(
+        linked = self.session.execute(
             update(Satcat)
             .where(Satcat.object_id.is_(None))
             .where(obj_subq.exists())
             .values(object_id=obj_subq.scalar_subquery())
-        )
+        ).rowcount  # type: ignore[union-attr]
         self.session.commit()
-        if result.rowcount:
+        if linked:
             logger.info(
                 "Linked %d SATCAT rows to Horizons spacecraft via COSPAR",
-                result.rowcount,
+                linked,
             )
+
+        # Backfill norad_cat_id on Objects that now have a SATCAT link but
+        # lacked a NORAD ID (Horizons-created spacecraft).
+        self.session.execute(
+            update(Object)
+            .where(Object.norad_cat_id.is_(None))
+            .where(
+                select(Satcat.NORAD_CAT_ID)
+                .where(Satcat.object_id == Object.id)
+                .correlate(Object)
+                .exists()
+            )
+            .values(
+                norad_cat_id=select(Satcat.NORAD_CAT_ID)
+                .where(Satcat.object_id == Object.id)
+                .correlate(Object)
+                .scalar_subquery()
+            )
+        )
+        self.session.commit()
 
     def insert_missing_data(self) -> None:
         """Cross-reference Horizons NAIF IDs into CelesTrak objects via COSPAR."""
         self.session.execute(
             update(Object)
-            .where(Object.horizons_naif_id.is_(None))
+            .where(Object.naif_id.is_(None))
             .where(
                 select(HorizonsRow.naif_id)
-                .where(HorizonsRow.cospar_id == Object.celestrak_cospar_id)
+                .where(HorizonsRow.cospar_id == Object.cospar_id)
                 .correlate(Object)
                 .exists()
             )
             .values(
-                horizons_naif_id=select(HorizonsRow.naif_id)
-                .where(HorizonsRow.cospar_id == Object.celestrak_cospar_id)
+                naif_id=select(HorizonsRow.naif_id)
+                .where(HorizonsRow.cospar_id == Object.cospar_id)
                 .correlate(Object)
                 .scalar_subquery()
             )
@@ -184,12 +204,12 @@ class HorizonsIngestor:
         self.session.execute(
             delete(Object).where(Object.orbital_source == OrbitalSource.horizons)
         )
-        # Only clear horizons_naif_id on rows that Horizons set (via cross-referencing).
+        # Only clear naif_id on rows that Horizons set (via cross-referencing).
         # SPICE-owned rows keep their authoritative NAIF IDs.
         self.session.execute(
             update(Object)
             .where(Object.orbital_source != OrbitalSource.spice)
-            .values(horizons_naif_id=None)
+            .values(naif_id=None)
         )
         self.session.commit()
 

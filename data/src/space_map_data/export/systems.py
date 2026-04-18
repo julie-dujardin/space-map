@@ -94,26 +94,24 @@ def write_system_metadata(
         .filter(
             Object.object_type == ObjectType.barycenter.value,
             Object.parent_naif_id.in_(list(_TOP_LEVEL_NAIF_IDS)),
-            Object.horizons_naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
+            Object.naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
         )
         .all()
     )
     bary_by_naif: dict[int, str] = {}
     for b in barycenters:
-        if b.horizons_naif_id is not None:
-            bary_by_naif[b.horizons_naif_id] = b.id
+        if b.naif_id is not None:
+            bary_by_naif[b.naif_id] = b.id
 
     # Map planet/body NAIF number -> barycenter object ID (one level down)
     planet_to_bary: dict[int, str] = {}
     for bary in barycenters:
         children = (
-            session.query(Object)
-            .filter(Object.parent_naif_id == bary.horizons_naif_id)
-            .all()
+            session.query(Object).filter(Object.parent_naif_id == bary.naif_id).all()
         )
         for child in children:
-            if child.horizons_naif_id is not None:
-                planet_to_bary[child.horizons_naif_id] = bary.id
+            if child.naif_id is not None:
+                planet_to_bary[child.naif_id] = bary.id
 
     # Query all bodies that belong to planetary systems (not just textured ones)
     system_bodies = (
@@ -129,9 +127,9 @@ def write_system_metadata(
             sys_id = bary_by_naif[obj.parent_naif_id]
         elif obj.parent_naif_id in planet_to_bary:
             sys_id = planet_to_bary[obj.parent_naif_id]
-        elif obj.horizons_naif_id in bary_by_naif:
+        elif obj.naif_id in bary_by_naif:
             # The barycenter itself
-            sys_id = bary_by_naif[obj.horizons_naif_id]
+            sys_id = bary_by_naif[obj.naif_id]
         else:
             continue  # top-level or not in a system
         systems.setdefault(sys_id, []).append(obj)
@@ -158,12 +156,12 @@ def write_system_metadata(
                     )
 
             # Orientation data
-            if obj.horizons_naif_id is not None and obj.horizons_naif_id in orientation:
-                entry["orientation"] = orientation[obj.horizons_naif_id]
+            if obj.naif_id is not None and obj.naif_id in orientation:
+                entry["orientation"] = orientation[obj.naif_id]
 
             # Triaxial radii (km, along body-fixed X, Y, Z)
-            if obj.horizons_naif_id is not None and obj.horizons_naif_id in radii:
-                entry["radii"] = radii[obj.horizons_naif_id]
+            if obj.naif_id is not None and obj.naif_id in radii:
+                entry["radii"] = radii[obj.naif_id]
 
             if entry:
                 bodies[obj.id] = entry

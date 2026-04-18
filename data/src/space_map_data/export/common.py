@@ -111,7 +111,7 @@ def _write_parts(
                 qid := obj.wikidata_qid
                 or (
                     obj.satcat.wikidata_qid
-                    if obj.celestrak_norad_cat_id is not None and obj.satcat
+                    if obj.norad_cat_id is not None and obj.satcat
                     else None
                 )
             )
@@ -176,7 +176,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 session.query(Object)
                 .options(joinedload(Object.satcat))
                 .filter(
-                    Object.sbdb_spkid.is_(None),
+                    Object.spkid.is_(None),
                     Object.object_type.in_(_SAT_TYPE_VALUES),
                     Object.parent_naif_id == _EARTH_NAIF_ID,
                 )
@@ -196,7 +196,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     "moons",
                     0,
                     session.query(Object).filter(
-                        Object.sbdb_spkid.is_(None),
+                        Object.spkid.is_(None),
                         Object.object_type == ObjectType.moon.value,
                     ),
                 ),
@@ -216,7 +216,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     session.query(Object)
                     .options(joinedload(Object.satcat))
                     .filter(
-                        Object.sbdb_spkid.is_(None),
+                        Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),
                         Object.parent_naif_id != _EARTH_NAIF_ID,
                     ),

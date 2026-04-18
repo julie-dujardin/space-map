@@ -114,4 +114,4 @@ class MajorBody:
     designation: str | None = None
     extra: str | None = None
     iau_roman_designation: str | None = None
-    horizons_naif_id_extended: int | None = None
+    naif_id_extended: int | None = None

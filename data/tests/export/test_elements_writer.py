@@ -27,23 +27,23 @@ class TestParseNumericId:
     """_parse_numeric_id uses source-specific columns instead of parsing Object.id."""
 
     def test_naif_id(self):
-        obj = make_object(id="naif-399", horizons_naif_id=399)
+        obj = make_object(id="naif-399", naif_id=399)
         assert _parse_numeric_id(obj) == 399
 
-    def test_sbdb_spkid(self):
-        obj = make_object(id="spkid-2000433", sbdb_spkid=2000433)
+    def test_spkid(self):
+        obj = make_object(id="spkid-2000433", spkid=2000433)
         assert _parse_numeric_id(obj) == 2000433
 
-    def test_celestrak_norad_cat_id(self):
-        obj = make_object(id="norad_satcat-25544", celestrak_norad_cat_id=25544)
+    def test_norad_cat_id(self):
+        obj = make_object(id="norad_satcat-25544", norad_cat_id=25544)
         assert _parse_numeric_id(obj) == 25544
 
     def test_negative_naif_id(self):
-        obj = make_object(id="naif--31", horizons_naif_id=-31)
+        obj = make_object(id="naif--31", naif_id=-31)
         assert _parse_numeric_id(obj) == -31
 
     def test_missing_column_returns_sentinel(self):
-        obj = make_object(id="naif-399", horizons_naif_id=None)
+        obj = make_object(id="naif-399", naif_id=None)
         assert _parse_numeric_id(obj) == MISSING_INT32
 
     def test_unknown_id_type_returns_sentinel(self):
@@ -63,12 +63,12 @@ class TestWriteElements:
         objects = [
             make_object(
                 id="naif-399",
-                horizons_naif_id=399,
+                naif_id=399,
                 object_type=ObjectType.planet,
             ),
             make_object(
                 id="naif-299",
-                horizons_naif_id=299,
+                naif_id=299,
                 name="Venus",
                 object_type=ObjectType.planet,
                 a=0.723,
@@ -106,7 +106,7 @@ class TestWriteElements:
         obj = make_object(
             id="spkid-2000433",
             object_type=ObjectType.asteroid,
-            sbdb_spkid=2000433,
+            spkid=2000433,
         )
         obj.sbdb = sbdb
 
@@ -163,7 +163,7 @@ def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
     obj = make_object(
         id=id,
         object_type=ObjectType.comet,
-        sbdb_spkid=1000001,
+        spkid=1000001,
         e=1.0,
         # a/ma/n are meaningless for parabolic comets
         a=None,

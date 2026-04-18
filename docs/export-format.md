@@ -71,7 +71,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
-| 0 | id          | int32   | -1      | Source-specific numeric ID (`horizons_naif_id`, `sbdb_spkid`, or `celestrak_norad_cat_id`) |
+| 0 | id          | int32   | -1      | Source-specific numeric ID (`naif_id`, `spkid`, or `norad_cat_id`) |
 | 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
@@ -176,11 +176,11 @@ interface GlobalObjectData {
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   cross_refs?: {
     wikidata_qid?: string;
-    horizons_naif_id?: number;
-    sbdb_spkid?: number;
-    sbdb_mcp_designation?: string;
-    celestrak_norad_cat_id?: number;
-    celestrak_cospar_id?: string;
+    naif_id?: number;
+    spkid?: number;
+    mpc_designation?: string;
+    norad_cat_id?: number;
+    cospar_id?: string;
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
   images?: ObjectImage[];             // from Wikidata P18/P154 + all Wikipedia languages

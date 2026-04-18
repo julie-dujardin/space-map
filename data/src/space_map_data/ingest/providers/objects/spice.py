@@ -50,7 +50,7 @@ class SpiceIngestor:
 
         object_pk = make_object_id(ID_TYPES.NAIF, naif_id)
         # Link to SBDB physical data if this body has an SBDB counterpart
-        sbdb_spkid = spk_id_from_naif(naif_id, obj_type)
+        spkid = spk_id_from_naif(naif_id, obj_type)
         return {
             "id": object_pk,
             "name": string_or_none(row["name"]),
@@ -58,12 +58,10 @@ class SpiceIngestor:
                 row.get("provisional_designation")
             ),
             "iau_roman_designation": string_or_none(row.get("iau_roman_designation")),
-            "horizons_naif_id_extended": int_or_none(
-                row.get("horizons_naif_id_extended")
-            ),
+            "naif_id_extended": int_or_none(row.get("naif_id_extended")),
             "object_type": obj_type,
-            "horizons_naif_id": naif_id,
-            "sbdb_spkid": sbdb_spkid,
+            "naif_id": naif_id,
+            "spkid": spkid,
             "epoch_jd": float_or_none(row["JDTDB"]),
             "a": float_or_none(row["A"]),
             "e": float_or_none(row["EC"]),
@@ -94,14 +92,12 @@ class SpiceIngestor:
         """For rows that will claim an SBDB-sourced Object, re-point the SBDB
         physical-data row to the new SPICE Object ID, then delete the SBDB
         Object row. Preserves the physical data (diameter, rotation, etc.)."""
-        takeovers = [
-            (r["sbdb_spkid"], r["id"]) for r in rows if r.get("sbdb_spkid") is not None
-        ]
+        takeovers = [(r["spkid"], r["id"]) for r in rows if r.get("spkid") is not None]
         if not takeovers:
             return
 
-        for sbdb_spkid, new_object_id in takeovers:
-            old_object_id = make_object_id(ID_TYPES.SPKID, sbdb_spkid)
+        for spkid, new_object_id in takeovers:
+            old_object_id = make_object_id(ID_TYPES.SPKID, spkid)
             # Does an SBDB-sourced Object exist with this spkid?
             existing = self.session.execute(
                 select(Object.id).where(Object.id == old_object_id)

@@ -139,17 +139,17 @@ def write_parabolic_elements(
 
 
 _ID_TYPE_ATTR: dict[str, str] = {
-    "naif": "horizons_naif_id",
-    "spkid": "sbdb_spkid",
-    "norad_satcat": "celestrak_norad_cat_id",
+    "naif": "naif_id",
+    "spkid": "spkid",
+    "norad_satcat": "norad_cat_id",
 }
 
 
 def _parse_numeric_id(obj: Object) -> int:
     """Return the source-specific numeric ID for the binary export.
 
-    Uses the proper column (horizons_naif_id, sbdb_spkid, or
-    celestrak_norad_cat_id) based on the Object.id prefix (ID_TYPE).
+    Uses the proper column (naif_id, spkid, or
+    norad_cat_id) based on the Object.id prefix (ID_TYPE).
     """
     # ID format: "{id_type}-{value}" (built by make_object_id)
     pos = obj.id.find("-")
@@ -178,7 +178,7 @@ def _float_value(o: Object, attr: str) -> float:
     if attr in _REQUIRED_KEPLERIAN:
         val = getattr(o, attr)
         if val is None:
-            sbdb = o.sbdb if o.sbdb_spkid is not None else None
+            sbdb = o.sbdb if o.spkid is not None else None
             if sbdb and sbdb.condition_code == "9":
                 logger.warning("%s: missing required orbital element '%s'", o.id, attr)
             else:
@@ -199,7 +199,7 @@ def _required_float(o: Object, attr: str) -> float:
 
 def _required_sbdb_float(o: Object, attr: str) -> float:
     """Get a required float64 from the SBDB relation, raising ValueError if missing."""
-    sbdb = o.sbdb if o.sbdb_spkid is not None else None
+    sbdb = o.sbdb if o.spkid is not None else None
     if sbdb is None:
         raise ValueError(f"{o.id}: no SBDB data for parabolic element '{attr}'")
     val = getattr(sbdb, attr)
@@ -210,7 +210,7 @@ def _required_sbdb_float(o: Object, attr: str) -> float:
 
 def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
     """Get object radius in km from SBDB diameter or overrides."""
-    if o.sbdb_spkid is not None and o.sbdb is not None and o.sbdb.diameter is not None:
+    if o.spkid is not None and o.sbdb is not None and o.sbdb.diameter is not None:
         return o.sbdb.diameter / 2.0
     if overrides and (r := overrides.get(o.id)):
         return r
