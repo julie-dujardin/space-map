@@ -61,7 +61,8 @@ def _build_mappings(
     qid_to_objs: dict[str, set[str]] = defaultdict(set)
 
     # Process property-based CSVs
-    for csv_path in ids_dir.glob("P*.csv"):
+    matches_dir = ids_dir / "matches"
+    for csv_path in matches_dir.glob("P*.csv"):
         pid = csv_path.stem
         if pid not in PID_TO_COLUMNS:
             logger.debug("Skipping unknown PID %s", pid)
@@ -99,7 +100,7 @@ def _build_mappings(
                         qid_to_objs[qid].add(obj_id)
 
     # Process name-based CSV
-    name_csv = ids_dir / "name.csv"
+    name_csv = matches_dir / "name.csv"
     if name_csv.exists():
         name_to_qids = _read_ids_csv(name_csv)
         names = [n for n, qids in name_to_qids.items() if qids]
@@ -182,16 +183,22 @@ def _write_ambiguous(
             multi_qid_writer.writerow([obj_id, " ".join(sorted(qids))])
             multi_qid_count += 1
 
+    conflicts_dir = ids_dir / "conflicts"
+    conflicts_dir.mkdir(exist_ok=True)
     if multi_obj_count:
-        (ids_dir / "multi_objects_per_qid.csv").write_text(multi_obj_buf.getvalue())
+        (conflicts_dir / "multi_objects_per_qid.csv").write_text(
+            multi_obj_buf.getvalue()
+        )
         logger.info(
-            "%d QIDs matched multiple objects → ids/multi_objects_per_qid.csv",
+            "%d QIDs matched multiple objects → ids/conflicts/multi_objects_per_qid.csv",
             multi_obj_count,
         )
     if multi_qid_count:
-        (ids_dir / "multi_qids_per_object.csv").write_text(multi_qid_buf.getvalue())
+        (conflicts_dir / "multi_qids_per_object.csv").write_text(
+            multi_qid_buf.getvalue()
+        )
         logger.info(
-            "%d objects matched multiple QIDs → ids/multi_qids_per_object.csv",
+            "%d objects matched multiple QIDs → ids/conflicts/multi_qids_per_object.csv",
             multi_qid_count,
         )
 
@@ -213,7 +220,8 @@ def _build_satcat_mappings(
     norad_to_qids: dict[int, set[str]] = defaultdict(set)
     qid_to_norads: dict[str, set[int]] = defaultdict(set)
 
-    for csv_path in ids_dir.glob("P*.csv"):
+    matches_dir = ids_dir / "matches"
+    for csv_path in matches_dir.glob("P*.csv"):
         pid = csv_path.stem
         if pid not in PID_TO_SATCAT_COLUMNS:
             continue

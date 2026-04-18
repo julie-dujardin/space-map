@@ -17,7 +17,13 @@ BATCH = 1000
 
 
 def ingest(download_dir: Path) -> None:
-    csv_path = download_dir / PROVIDERS.WIKIDATA / "ids" / "resolved_conflicts.csv"
+    csv_path = (
+        download_dir
+        / PROVIDERS.WIKIDATA
+        / "ids"
+        / "conflicts"
+        / "resolved_conflicts.csv"
+    )
     if not csv_path.exists():
         return
 

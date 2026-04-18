@@ -52,8 +52,9 @@ SOURCES = (
 class WikidataIdResolver:
     """Resolve space-map object IDs to Wikidata QIDs.
 
-    Results are saved incrementally as CSV files in ``ids_dir``,
-    one file per Wikidata property (e.g. ``P2956.csv``).
+    Results are saved incrementally as CSV files under ``ids_dir``:
+    ``matches/<key>.csv`` for positive results, ``no_match/<key>.csv``
+    for IDs queried with no Wikidata match.
     """
 
     def __init__(
@@ -65,6 +66,8 @@ class WikidataIdResolver:
         self.client = client
         self.session = session
         self.ids_dir = ids_dir
+        self._matches_dir = ids_dir / "matches"
+        self._no_match_dir = ids_dir / "no_match"
 
     # -- Public API --
 
@@ -79,7 +82,8 @@ class WikidataIdResolver:
         IDs already present in match or no-match CSVs are skipped
         automatically, so partial runs resume where they left off.
         """
-        self.ids_dir.mkdir(exist_ok=True)
+        self._matches_dir.mkdir(parents=True, exist_ok=True)
+        self._no_match_dir.mkdir(parents=True, exist_ok=True)
 
         resolve_by_name = id_types is None or ID_TYPES.NAME in id_types
 
@@ -95,7 +99,7 @@ class WikidataIdResolver:
         # Name-based search for objects not resolved by ID
         if resolve_by_name:
             resolved_qids = set()
-            for csv_path in self.ids_dir.glob("*.csv"):
+            for csv_path in self._matches_dir.glob("*.csv"):
                 for qids in self._read_ids_csv(csv_path.stem).values():
                     resolved_qids.update(qids)
             self._resolve_by_name(resolved_qids)
@@ -114,8 +118,8 @@ class WikidataIdResolver:
     # -- CSV helpers --
 
     def _ids_csv_path(self, key: str) -> Path:
-        """Path to the CSV file for a property or 'name'."""
-        return self.ids_dir / f"{key}.csv"
+        """Path to the match CSV file for a property or 'name'."""
+        return self._matches_dir / f"{key}.csv"
 
     def _read_ids_csv(self, key: str) -> dict[str, list[str]]:
         """Read a property CSV back into a {search_term: [qids]} mapping."""
@@ -144,9 +148,9 @@ class WikidataIdResolver:
             f.write(buf.getvalue())
 
     def _load_all_ids(self) -> dict[str, dict[str, list[str]]]:
-        """Read all CSV files from ids/ into the full id_map structure."""
+        """Read all match CSV files into the full id_map structure."""
         id_map: dict[str, dict[str, list[str]]] = {}
-        for csv_path in self.ids_dir.glob("*.csv"):
+        for csv_path in self._matches_dir.glob("*.csv"):
             key = csv_path.stem
             mapping = self._read_ids_csv(key)
             if mapping:
@@ -157,7 +161,7 @@ class WikidataIdResolver:
 
     def _no_match_csv_path(self, key: str) -> Path:
         """Path to the no-match CSV for a property or 'name'."""
-        return self.ids_dir / f"no_match_{key}.csv"
+        return self._no_match_dir / f"{key}.csv"
 
     def _read_no_match_csv(self, key: str) -> set[str]:
         """Read IDs previously queried with no match."""

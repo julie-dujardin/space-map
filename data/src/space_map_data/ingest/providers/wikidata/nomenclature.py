@@ -49,7 +49,7 @@ def _read_conflict_resolution(csv_path: Path) -> dict[int, str]:
 
 def ingest(download_dir: Path) -> None:
     ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
-    csv_path = ids_dir / "P2824.csv"
+    csv_path = ids_dir / "matches" / "P2824.csv"
     if not csv_path.exists():
         logger.warning("Wikidata P2824.csv not found at %s, skipping", csv_path)
         return
