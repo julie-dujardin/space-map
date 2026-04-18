@@ -108,7 +108,7 @@ def _extract_global(
     if kind == "quantity":
         return _single_quantity(claims, pid, needs_unit=needs_unit, qid=qid)
     if kind == "image":
-        return [_commons_url(s) for s in _all_strings(claims, pid)]
+        return _all_strings(claims, pid)
     if kind == "url":
         return _all_strings(claims, pid)
     return None
@@ -496,11 +496,6 @@ def _all_entity_qids(claims: dict, prop: str) -> list[str]:
         for val in _claim_values(claims, prop)
         if isinstance(val, dict) and "id" in val
     ]
-
-
-def _commons_url(filename: str) -> str:
-    """Convert a Wikimedia Commons filename to a thumbnail URL."""
-    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}?width=300"
 
 
 def radius_km_from_claims(claims: dict, units: UnitConverter, qid: str) -> float | None:

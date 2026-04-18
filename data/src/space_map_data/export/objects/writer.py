@@ -14,7 +14,9 @@ from space_map_data.export.wikidata import (
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
+    load_wikipedia_image_filenames,
 )
+from space_map_data.export.images import collect_object_images
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
@@ -107,7 +109,7 @@ def write_objects(
     all_flags: dict[str, dict[str, int]] = {}
 
     for obj in objects:
-        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.satcat else None)
+        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.celestrak_norad_cat_id is not None and obj.satcat else None)
         wd = chunk_entities.get(qid) if qid else None
         try:
             extracted = extract_claims(wd["claims"], qid=qid) if qid and wd else {}
@@ -118,6 +120,9 @@ def write_objects(
         sat = obj.satcat if obj.celestrak_norad_cat_id is not None else None
         merge_operator_qids(extracted, sat)
 
+        # Collect image filenames from all Wikipedia languages
+        wiki_image_filenames = load_wikipedia_image_filenames(qid) if qid else []
+
         # Global (non-localized, always written)
         global_data = _build_global(
             obj,
@@ -127,6 +132,7 @@ def write_objects(
             nasa_science_urls,
             orientation,
             radii,
+            wiki_image_filenames,
         )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
             gzip.compress(orjson.dumps(global_data))
@@ -161,6 +167,9 @@ def write_objects(
     return all_flags
 
 
+_IMAGE_KEYS = {"image", "logo_image"}
+
+
 def _build_global(
     obj: Object,
     extracted: dict,
@@ -169,6 +178,7 @@ def _build_global(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    wiki_image_filenames: list[str] | None = None,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -231,7 +241,12 @@ def _build_global(
         if celestrak_data:
             data["celestrak"] = celestrak_data
 
-    # Wikidata claims (non-localized)
+    # Images (collected from Wikidata P18/P154 + Wikipedia pageimages)
+    images = collect_object_images(extracted, wiki_image_filenames or [])
+    if images:
+        data["images"] = images
+
+    # Wikidata claims (non-localized, excluding image fields handled above)
     if extracted:
         wikidata_section: dict = {}
         # Keys from GLOBAL_CLAIMS + "temperature" (routed from P2076, not a GlobalClaim)
@@ -240,6 +255,8 @@ def _build_global(
         if "radii" in data:
             wikidata_keys = [k for k in wikidata_keys if k != "radius"]
         for key in wikidata_keys:
+            if key in _IMAGE_KEYS:
+                continue
             if key in extracted:
                 val = extracted[key]
                 if isinstance(val, dict) and "unit" in val:

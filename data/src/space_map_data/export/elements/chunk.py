@@ -39,7 +39,7 @@ def write_chunk(
     elements_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
-        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.satcat else None)
+        qid = obj.wikidata_qid or (obj.satcat.wikidata_qid if obj.celestrak_norad_cat_id is not None and obj.satcat else None)
         if qid and (wd := chunk_entities.get(qid)):
             try:
                 r = radius_km_from_claims(wd["claims"], units, qid=qid)
