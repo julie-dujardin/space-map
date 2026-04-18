@@ -58,7 +58,7 @@ export function parseUrl(): MapViewState | null {
 	}
 	const id = `${urlTypeToIdPrefix(type)}-${numericId}`;
 
-	const name = page.params.name ?? '';
+	const name = decodeURIComponent(page.params.name ?? '');
 	const defaults = { ...DEFAULT_VIEW, type, id, name };
 
 	const at = page.url.searchParams.get('at');
@@ -94,7 +94,7 @@ export function serializeUrl(state: MapViewState): string {
 	const path = resolve('/[type]/[id]/[[name]]', {
 		type: state.type,
 		id: numericId,
-		name: state.name || undefined
+		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
 	return `${path}?at=${at}`;
 }
