@@ -55,13 +55,13 @@
 		{:else if sbdb?.diameter}
 			<Row label={m.diameter()} value={`${sbdb.diameter} ${formatUnit('kilometre')}`} />
 		{/if}
-		{#if wd?.length}
+		{#if wd?.length && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
 		{/if}
-		{#if wd?.width}
+		{#if wd?.width && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
 		{/if}
-		{#if sbdb?.extent}
+		{#if sbdb?.extent && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
 		{/if}
 		{#if wd?.density}
