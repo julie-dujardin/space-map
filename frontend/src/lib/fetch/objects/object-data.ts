@@ -12,11 +12,18 @@ export interface CurrencyQuantity {
 	currency: string;
 }
 
+export interface ObjectImage {
+	file: string;
+	source_url: string;
+	kind: 'photo' | 'logo';
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
 	name?: string;
 	map_texture_available?: boolean;
+	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
 	nasa_science_url?: string;
@@ -89,7 +96,6 @@ export interface GlobalObjectData {
 	wikidata?: {
 		discovery_date?: string[];
 		launch_date?: string;
-		image?: string[];
 		mass?: QuantityWithUnit;
 		radius?: QuantityWithUnit;
 		density?: QuantityWithUnit;
@@ -102,7 +108,6 @@ export interface GlobalObjectData {
 		population?: number;
 		website?: string[];
 		blog?: string[];
-		logo_image?: string[];
 		capital_cost?: CurrencyQuantity;
 		length?: QuantityWithUnit;
 		width?: QuantityWithUnit;
@@ -159,8 +164,6 @@ export interface LocalizedObjectData {
 	wikipedia?: {
 		extract?: string;
 		description?: string;
-		thumbnail?: string;
-		image?: string;
 		url?: string;
 	};
 }

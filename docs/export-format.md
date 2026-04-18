@@ -12,6 +12,8 @@ v1/
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
   objects/__global__/{id}.json.gz                global object details
   objects/{lang}/{id}.json.gz                    localized object details
+  images/thumb/{filename}                         300px thumbnail (original format)
+  images/full/{filename}                          full-size image (original format)
   textures/{id}/{tier}.webp                      tier = low | medium | high
   textures/{id}/metadata.json                    texture source + exports
   systems/{barycenter_id}.json                   per-system body metadata
@@ -181,6 +183,7 @@ interface GlobalObjectData {
     celestrak_cospar_id?: string;
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
+  images?: ObjectImage[];             // from Wikidata P18/P154 + all Wikipedia languages
   orientation?: {                     // SPICE PCK pole/spin (deg, deg/day)
     pole_ra: number; pole_dec: number; w0: number; w_rate: number;
   };
@@ -239,7 +242,6 @@ interface GlobalObjectData {
   wikidata?: {
     discovery_date?: string;  // ISO 8601
     launch_date?: string;
-    image?: string;           // URL
     mass?: QuantityWithUnit;
     radius?: QuantityWithUnit;
     density?: QuantityWithUnit;
@@ -251,13 +253,18 @@ interface GlobalObjectData {
     max_temperature?: QuantityWithUnit;
     website?: string;
     blog?: string;
-    logo_image?: string;          // URL
     capital_cost?: CurrencyQuantity;
     length?: QuantityWithUnit;
     width?: QuantityWithUnit;
   };
 }
 
+// Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
+interface ObjectImage {
+  file: string;        // relative path, e.g. "images/thumb/Foo.jpg"
+  source_url: string;  // Wikimedia Commons file page URL (for license/attribution)
+  kind: "photo" | "logo";
+}
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
 interface QuantityWithUnit { value: number; unit: string; }
 // Currencies use ISO 4217 codes (e.g. "EUR", "USD")
@@ -293,14 +300,22 @@ interface LocalizedObjectData {
   wikipedia?: {
     extract?: string;
     description?: string;
-    thumbnail?: string;  // URL
-    image?: string;      // URL
     url?: string;        // URL
   };
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 ```
+
+## Images
+
+Downloaded during the `commons` download step directly to the export directory. Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo) and Wikipedia pageimages across all supported languages.
+
+**Path:** `images/thumb/{filename}` (300px) and `images/full/{filename}` (original size)
+
+Filenames are the original Wikimedia Commons filenames (URL-decoded). The `images` array in each object's global JSON references the thumbnail path and links back to the Commons file page for license attribution.
+
+Not cleaned on re-export (same as textures) — only re-downloaded when new images are discovered.
 
 ## Textures
 

@@ -13,11 +13,9 @@
 	let { global, localized, fallbackName }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
-	let image = $derived(
-		localized?.wikipedia?.thumbnail ??
-			global?.wikidata?.image?.[0] ??
-			global?.wikidata?.logo_image?.[0]
-	);
+	let firstImage = $derived(global?.images?.[0]);
+	let imageSrc = $derived(firstImage ? `/data/v1/${firstImage.file}` : undefined);
+	let imageSourceUrl = $derived(firstImage?.source_url);
 	let celestrakBadges = $derived.by(() => {
 		const ct = global?.celestrak;
 		if (!ct) return null;
@@ -71,8 +69,10 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	{#if image}
-		<img src={image} alt={name} class="w-full max-h-48 object-cover rounded-md" />
+	{#if imageSrc}
+		<a href={imageSourceUrl} target="_blank" rel="noopener noreferrer">
+			<img src={imageSrc} alt={name} class="w-full max-h-48 object-cover rounded-md" />
+		</a>
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}
