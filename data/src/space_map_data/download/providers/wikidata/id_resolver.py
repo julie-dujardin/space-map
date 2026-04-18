@@ -2,7 +2,6 @@
 
 import csv
 import io
-import json
 import logging
 import time
 from collections.abc import Iterator
@@ -62,17 +61,10 @@ class WikidataIdResolver:
         client: httpx.Client,
         session: Session,
         ids_dir: Path,
-        metadata_file: Path,
     ) -> None:
         self.client = client
         self.session = session
         self.ids_dir = ids_dir
-        self.metadata_file = metadata_file
-        self._ids_complete = self._load_ids_complete()
-
-    def ids_complete(self) -> dict[str, bool]:
-        """Per-source completion flags."""
-        return dict(self._ids_complete)
 
     # -- Public API --
 
@@ -84,8 +76,8 @@ class WikidataIdResolver:
                 (including name-based fallback). Include ``ID_TYPES.NAME``
                 to enable the name-based search.
 
-        Skips sources already marked complete in metadata.
-        Partial CSVs from interrupted runs are resumed automatically.
+        IDs already present in match or no-match CSVs are skipped
+        automatically, so partial runs resume where they left off.
         """
         self.ids_dir.mkdir(exist_ok=True)
 
@@ -98,12 +90,10 @@ class WikidataIdResolver:
 
         for id_type, query_method_name, label in sources:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
-            if self._ids_complete.get(pid):
-                continue
             self._resolve_source(pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
-        if resolve_by_name and not self._ids_complete.get("name"):
+        if resolve_by_name:
             resolved_qids = set()
             for csv_path in self.ids_dir.glob("*.csv"):
                 for qids in self._read_ids_csv(csv_path.stem).values():
@@ -193,26 +183,6 @@ class WikidataIdResolver:
         with open(csv_path, "a") as f:
             f.write(buf.getvalue())
 
-    # -- Metadata --
-
-    def _load_ids_complete(self) -> dict[str, bool]:
-        """Load per-source completion flags from metadata."""
-        if not self.metadata_file.exists():
-            return {}
-        meta = json.loads(self.metadata_file.read_text())
-        return meta.get("ids_complete", {})
-
-    def _mark_ids_complete(self, key: str) -> None:
-        """Mark a source as fully resolved in metadata."""
-        self._ids_complete[key] = True
-        meta = (
-            json.loads(self.metadata_file.read_text())
-            if self.metadata_file.exists()
-            else {}
-        )
-        meta["ids_complete"] = self._ids_complete
-        self.metadata_file.write_text(json.dumps(meta, indent=2))
-
     # -- Resolution --
 
     def _resolve_source(
@@ -256,7 +226,6 @@ class WikidataIdResolver:
                 self._append_no_match_csv(pid, no_match)
                 already_known.update(to_resolve)
 
-        self._mark_ids_complete(pid)
         logger.info("  %s: %d / %d resolved", pid, len(already_resolved), total)
 
     def _resolve_by_name(self, already_resolved_qids: set[str]) -> None:
@@ -292,7 +261,6 @@ class WikidataIdResolver:
             no_match = [n for n in to_resolve if n not in batch_mapping]
             self._append_no_match_csv("name", no_match)
             already_known.update(to_resolve)
-        self._mark_ids_complete("name")
         logger.info(
             "  name: %d / %d resolved (excluding duplicates)", resolved_count, total
         )

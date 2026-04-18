@@ -41,7 +41,7 @@ class WikidataDownloader(Downloader):
         session = get_session()
         ids_dir = self.out_dir / "ids"
 
-        resolver = WikidataIdResolver(self.client, session, ids_dir, self.metadata_file)
+        resolver = WikidataIdResolver(self.client, session, ids_dir)
 
         # Resolve and fetch objects (all sources except IAU features)
         object_qids = resolver.resolve(self._OBJECT_ID_TYPES)
@@ -119,7 +119,6 @@ class WikidataDownloader(Downloader):
             API_URL,
             all_count,
             complete=False,
-            ids_complete=resolver.ids_complete(),
         )
 
     # -- Referenced entities --
