@@ -15,6 +15,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
+from space_map_data.export.chebyshev import write_chebyshev
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
@@ -25,6 +26,7 @@ from space_map_data.export.systems import (
     load_nut_prec_angles,
     load_orientation,
     load_radii,
+    load_texture_metadata,
     write_system_metadata,
 )
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -79,7 +81,7 @@ def _build_metadata(
 
 def _remove_old_outputs(out_dir: Path) -> None:
     """Remove all chunk output directories before a fresh export."""
-    for d in ("elements", "objects"):
+    for d in ("elements", "objects", "chebyshev"):
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
@@ -101,6 +103,7 @@ def _write_parts(
     orientation: dict[int, dict],
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
+    texture_metadata: dict[str, dict],
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -130,6 +133,7 @@ def _write_parts(
             orientation=orientation,
             radii=radii,
             nut_prec=nut_prec,
+            texture_metadata=texture_metadata,
         )
         total_bytes += write_chunk(
             chunk,
@@ -168,6 +172,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     radii = load_radii(DOWNLOAD_DIR)
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
+    texture_metadata = load_texture_metadata(out_dir)
 
     # Single global file fetched once by the frontend; bodies derive their owner
     # as `naif_id // 100` (or `naif_id` itself when < 100). Tiny — not gzipped.
@@ -266,6 +271,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     orientation,
                     radii,
                     nut_prec,
+                    texture_metadata,
                 )
                 futures[f] = (zone, zoom, len(objects))
 
@@ -310,11 +316,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     orientation,
                     radii,
                     nut_prec,
+                    texture_metadata,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
 
-        write_system_metadata(session, out_dir, orientation, radii, nut_prec)
+        write_system_metadata(
+            session, out_dir, orientation, radii, nut_prec, texture_metadata
+        )
+        chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
     for f in as_completed(futures):
         zone, zoom, count = futures[f]
@@ -328,6 +338,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     write_messages(wikidata_entities, units.used_units)
 
     metadata = _build_metadata(zone_structure, object_counts, total_bytes_map)
+    if chebyshev_manifest:
+        metadata["chebyshev"] = chebyshev_manifest
     (out_dir / "metadata.json").write_bytes(
         orjson.dumps(metadata, option=orjson.OPT_INDENT_2)
     )

@@ -4,6 +4,7 @@ import csv
 import logging
 import math
 import re
+import tomllib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -15,8 +16,10 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.naif import MajorBody, classify_object
+from space_map_data.utils.paths import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +30,15 @@ _NAIF_BASE_URL = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 #   .tpc (PCK) — physical constants: body radii, GM values, pole orientation & spin
 #   .tls (LSK) — leapseconds: UTC ↔ ephemeris time conversion
 
-# Fixed kernels that don't need version discovery.
+# Fixed kernels that don't need version discovery. Values are paths relative
+# to `_NAIF_BASE_URL`, or fully-qualified URLs (if hosted elsewhere, like JPL's
+# SSD site for the SB441 asteroid kernel).
 _FIXED_KERNELS: dict[str, str] = {
     "de440.bsp": "spk/planets/de440.bsp",  # planet + Moon ephemerides
+    # 16 largest asteroids used as perturbers in DE441 — Ceres, Vesta, Pallas,
+    # etc. Only hosted at JPL's SSD (not in NAIF's generic_kernels tree); gives
+    # us high-accuracy Chebyshev coverage for the major asteroids.
+    "sb441-n16.bsp": "https://ssd.jpl.nasa.gov/ftp/eph/small_bodies/asteroids_de441/sb441-n16.bsp",
 }
 
 # Kernels where we pick the latest version from a directory listing.
@@ -98,6 +107,20 @@ def _list_directory(client: httpx.Client, dir_path: str) -> list[str]:
 
 # AU in km
 _AU_KM = 149_597_870.7
+
+
+_CHEBYSHEV_DEFAULTS = {"start_year": 1950, "end_year": 2050, "chunk_years": 5}
+
+
+def _load_chebyshev_config() -> dict[str, int]:
+    """Read [chebyshev] settings from config.toml, falling back to defaults."""
+    if not CONFIG_FILE.exists():
+        return dict(_CHEBYSHEV_DEFAULTS)
+    with CONFIG_FILE.open("rb") as f:
+        config = tomllib.load(f)
+    section = config.get("chebyshev", {})
+    return {k: int(section.get(k, v)) for k, v in _CHEBYSHEV_DEFAULTS.items()}
+
 
 # Barycenters that don't appear in SPK but we need (0=SSB, 1-9=planet barycenters, 10=Sun)
 _EXTRA_NAIF_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -275,7 +298,11 @@ class SpiceDownloader(Downloader):
             kernels.items(), desc="SPICE kernels", unit="file"
         ):
             local = kernel_dir / filename
-            url = f"{_NAIF_BASE_URL}/{url_path}"
+            url = (
+                url_path
+                if url_path.startswith("http://") or url_path.startswith("https://")
+                else f"{_NAIF_BASE_URL}/{url_path}"
+            )
 
             if local.exists():
                 # Check size via HEAD request
@@ -506,9 +533,11 @@ class SpiceDownloader(Downloader):
         spk_ids = self._enumerate_spk_bodies(kernel_paths)
         all_ids = spk_ids | set(_EXTRA_NAIF_IDS)
 
-        # Step 4: Classify and extract elements
+        # Step 4: Classify all bodies. We keep a broad list here because the
+        # Chebyshev extractor downstream wants asteroids too (sb441-n16s); the
+        # Keplerian element extraction then filters to `_ELEMENT_TYPES` only.
         horizons_names = _load_horizons_names(self.out_dir.parent)
-        bodies: list[MajorBody] = []
+        all_bodies: list[MajorBody] = []
         for naif_id in sorted(all_ids):
             alias = _resolve_name(naif_id, horizons_names)
             try:
@@ -521,10 +550,7 @@ class SpiceDownloader(Downloader):
                 )
                 continue
 
-            if obj_type not in _ELEMENT_TYPES:
-                continue
-
-            bodies.append(
+            all_bodies.append(
                 MajorBody(
                     name=alias.name,
                     naif_id=naif_id,
@@ -536,6 +562,7 @@ class SpiceDownloader(Downloader):
                 )
             )
 
+        bodies = [b for b in all_bodies if b.object_type in _ELEMENT_TYPES]
         logger.info("Classified %d bodies for element extraction", len(bodies))
 
         # Step 5: Extract orbital elements
@@ -794,6 +821,22 @@ class SpiceDownloader(Downloader):
             writer.writerows(radii_rows)
         logger.info("Saved %d radii records -> %s", len(radii_rows), radii_file.name)
 
+        # Step 10: Extract Chebyshev polynomial ephemeris for major bodies
+        # (planets, Sun, dwarves, big-enough moons + 16 asteroids from
+        # sb441-n16). Runs here so furnshed kernels stay in memory; the
+        # extractor uses the radii we just wrote to skip irrelevant small
+        # bodies.
+        cheb_cfg = _load_chebyshev_config()
+        radii_by_naif = {row["naif_id"]: row["radius_a_km"] for row in radii_rows}
+        cheb_count = extract_chebyshev(
+            self.out_dir,
+            all_bodies,
+            kernel_paths,
+            radii_by_naif,
+            cheb_cfg["start_year"],
+            cheb_cfg["end_year"],
+        )
+
         self._save_metadata(
             _NAIF_BASE_URL,
             len(rows),
@@ -804,4 +847,8 @@ class SpiceDownloader(Downloader):
             nut_prec_body_count=len(nut_prec_coeffs),
             nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
+            chebyshev_body_count=cheb_count,
+            chebyshev_start_year=cheb_cfg["start_year"],
+            chebyshev_end_year=cheb_cfg["end_year"],
+            chebyshev_chunk_years=cheb_cfg["chunk_years"],
         )

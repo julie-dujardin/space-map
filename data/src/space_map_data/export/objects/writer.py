@@ -24,6 +24,7 @@ from space_map_data.export.objects.celestrak import (
 )
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.systems import texture_attribution
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -103,6 +104,7 @@ def write_objects(
     orientation: dict[int, dict],
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
+    texture_metadata: dict[str, dict],
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -150,6 +152,7 @@ def write_objects(
             orientation,
             radii,
             nut_prec,
+            texture_metadata,
             wiki_image_filenames,
         )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
@@ -197,6 +200,7 @@ def _build_global(
     orientation: dict[int, dict],
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
+    texture_metadata: dict[str, dict],
     wiki_image_filenames: list[str] | None = None,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
@@ -206,6 +210,13 @@ def _build_global(
     }
     if obj.map_texture_available:
         data["map_texture_available"] = True
+        meta = texture_metadata.get(obj.id)
+        if meta is not None:
+            data["texture"] = texture_attribution(meta)
+        else:
+            logger.warning(
+                "Texture metadata missing for %s; skipping attribution", obj.id
+            )
     if obj.name is not None:
         data["name"] = obj.name
     if obj.mpc_designation is not None:
