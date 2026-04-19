@@ -10,6 +10,9 @@ export default defineConfig({
 	test: {
 		include: ['src/**/*.test.ts']
 	},
+	worker: {
+		format: 'es'
+	},
 	plugins: [
 		sveltekit(),
 		tailwindcss(),
