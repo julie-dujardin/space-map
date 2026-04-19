@@ -19,6 +19,9 @@ log = logging.getLogger(__name__)
 
 RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
+# Per-texture scraped source metadata (written by the texture_sources downloader);
+# used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
+SOURCE_METADATA_PARSED_DIR = DOWNLOAD_DIR / "textures" / "source_metadata" / "parsed"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
@@ -70,6 +73,25 @@ def _open_image(path: Path) -> Image.Image:
 
 def _webp_kwargs(lossless: bool) -> dict:
     return {"lossless": True, "method": 6} if lossless else {"quality": 80}
+
+
+def _scraped_attribution(src_file_name: str) -> str | None:
+    """Look up `attribution_guess` from the per-texture scraped source metadata.
+
+    The `texture_sources` downloader writes one JSON per raw texture file
+    (keyed by file stem) to `source_metadata/parsed/`. Returns None when no
+    scrape exists for this file or the scrape has no attribution.
+    """
+    parsed = SOURCE_METADATA_PARSED_DIR / f"{Path(src_file_name).stem}.json"
+    if not parsed.exists():
+        return None
+    try:
+        data = json.loads(parsed.read_text())
+    except (OSError, json.JSONDecodeError):
+        log.warning("Failed to read scraped source metadata at %s", parsed)
+        return None
+    guess = data.get("attribution_guess")
+    return guess if isinstance(guess, str) and guess.strip() else None
 
 
 def _tier_for_size(size: int) -> str:
@@ -241,11 +263,16 @@ class TextureProcessor:
         self._global_warnings.extend(warnings)
         self._mark_texture_available(object_id)
 
+        # yaml wins when present; otherwise pull from the scraped NASA/USGS
+        # page (via the texture_sources downloader). Scraping is optional, so
+        # a missing file just means no auto-attribution — leave it None.
+        attribution = entry.get("attribution") or _scraped_attribution(src.name)
+
         metadata = {
             "id": object_id,
             "source": entry["source"],
             "organisation": entry["organisation"],
-            "attribution": entry.get("attribution"),
+            "attribution": attribution,
             "description": entry.get("description"),
             "type": entry["type"],
             "source_file": src.name,
