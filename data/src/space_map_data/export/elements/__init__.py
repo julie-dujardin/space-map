@@ -5,6 +5,7 @@ from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import (
     write_elements,
     write_parabolic_elements,
+    write_sgp4_elements,
 )
 
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     "write_chunk",
     "write_elements",
     "write_parabolic_elements",
+    "write_sgp4_elements",
     "write_labels",
 ]

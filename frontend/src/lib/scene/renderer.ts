@@ -24,6 +24,7 @@ import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
+import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
@@ -275,7 +276,7 @@ export class SceneRenderer {
 		const basis = this.pointCloudBasisPos;
 		// requestIdleCallback isn't available in Safari
 		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 0));
-		scheduleIdle(() => buildOrbitLines(this.bodyObjects, this.scene, basis));
+		scheduleIdle(() => buildOrbitLines(this.bodyObjects, this.scene, basis, this.clock.jd));
 	}
 
 	/**
@@ -633,13 +634,15 @@ export class SceneRenderer {
 			const parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 			const isParabolic = d.q != null;
 			let x: number, y: number, z: number;
-			if (d.a === 0 && !isParabolic) {
+			if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. planet at its barycenter).
 				[x, y, z] = parentPos;
 			} else {
-				const offset = isParabolic
-					? parabolicToPositionJD(d, jd)
-					: orbitalElementsToPositionJD(d, jd);
+				const offset = d.satrec
+					? sgp4PositionScene(d.satrec, jd)
+					: isParabolic
+						? parabolicToPositionJD(d, jd)
+						: orbitalElementsToPositionJD(d, jd);
 				if (!offset) return;
 				x = parentPos[0] + offset[0];
 				y = parentPos[1] + offset[1];
@@ -707,7 +710,7 @@ export class SceneRenderer {
 		const basis = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (line?.visible) refreshOrbitLineGeometry(bo.body, line, basis);
+			if (line?.visible) refreshOrbitLineGeometry(bo.body, line, basis, jd);
 		}
 	}
 
@@ -1031,7 +1034,7 @@ export class SceneRenderer {
 			(b) => this.handleFocus(b),
 			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
-		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos);
+		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
 		this.repositionAll();
 
 		// Rebuild the point cloud for this body's group so the promoted dot is removed

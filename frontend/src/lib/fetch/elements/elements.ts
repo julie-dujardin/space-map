@@ -9,6 +9,7 @@ import {
 	HEADER_SIZE,
 	FORMAT_KEPLERIAN,
 	FORMAT_PARABOLIC,
+	FORMAT_SGP4,
 	elementsBinUrl
 } from '$lib/fetch/elements/constants';
 
@@ -47,7 +48,35 @@ export interface ParabolicColumns {
 	rowCount: number;
 }
 
-export type ElementColumns = KeplerianColumns | ParabolicColumns;
+/**
+ * SGP4 columns — superset of Keplerian with the extra OMM fields that
+ * satellite.js `json2satrec` needs. Raw OMM units: `a` in km, `n` in rev/day,
+ * angles in degrees, BSTAR in 1/Earth radii, n-dot in rev/day², n-ddot in rev/day³.
+ */
+export interface SGP4Columns {
+	kind: 'sgp4';
+	id: Int32Array;
+	objectType: Uint8Array;
+	parentId: Int32Array;
+	scale: Uint8Array;
+	epochJd: Float64Array;
+	a: Float32Array;
+	e: Float32Array;
+	i: Float32Array;
+	om: Float32Array;
+	w: Float32Array;
+	ma: Float32Array;
+	n: Float32Array;
+	radiusKm: Float32Array;
+	bstar: Float32Array;
+	meanMotionDot: Float32Array;
+	meanMotionDdot: Float32Array;
+	elementSetNo: Int32Array;
+	revAtEpoch: Int32Array;
+	rowCount: number;
+}
+
+export type ElementColumns = KeplerianColumns | ParabolicColumns | SGP4Columns;
 
 /** Round up to next multiple of 8. */
 function align8(n: number): number {
@@ -111,23 +140,23 @@ function parseSharedColumns(
 	return { id, objectType, parentId, scale, offset };
 }
 
-export function parseElements(buffer: ArrayBuffer): ElementColumns {
-	const { formatType, rowCount } = parseHeader(buffer);
-
-	if (formatType === FORMAT_PARABOLIC) {
-		return parseParabolicElements(buffer, rowCount);
-	}
-	if (formatType !== FORMAT_KEPLERIAN) {
-		throw new Error(`Unknown elements format type: ${formatType}`);
-	}
-
-	const {
-		id,
-		objectType,
-		parentId,
-		scale,
-		offset: startOffset
-	} = parseSharedColumns(buffer, rowCount);
+/** Parse the common Keplerian columns 4–12. Returns the columns plus the next byte offset. */
+function parseKeplerianColumns(
+	buffer: ArrayBuffer,
+	rowCount: number,
+	startOffset: number
+): {
+	epochJd: Float64Array;
+	a: Float32Array;
+	e: Float32Array;
+	i: Float32Array;
+	om: Float32Array;
+	w: Float32Array;
+	ma: Float32Array;
+	n: Float32Array;
+	radiusKm: Float32Array;
+	offset: number;
+} {
 	let offset = startOffset;
 
 	// Column 4: epoch_jd (float64 — Julian Dates need full precision)
@@ -152,6 +181,26 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 
 	// Column 12: radius_km (float32)
 	const radiusKm = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+
+	return { epochJd, a, e, i, om, w, ma, n, radiusKm, offset };
+}
+
+export function parseElements(buffer: ArrayBuffer): ElementColumns {
+	const { formatType, rowCount } = parseHeader(buffer);
+
+	if (formatType === FORMAT_PARABOLIC) {
+		return parseParabolicElements(buffer, rowCount);
+	}
+	if (formatType === FORMAT_SGP4) {
+		return parseSGP4Elements(buffer, rowCount);
+	}
+	if (formatType !== FORMAT_KEPLERIAN) {
+		throw new Error(`Unknown elements format type: ${formatType}`);
+	}
+
+	const { id, objectType, parentId, scale, offset } = parseSharedColumns(buffer, rowCount);
+	const kepler = parseKeplerianColumns(buffer, rowCount, offset);
 
 	return {
 		kind: 'keplerian',
@@ -159,15 +208,63 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 		objectType,
 		parentId,
 		scale,
-		epochJd,
-		a,
-		e,
-		i,
-		om,
-		w,
-		ma,
-		n,
-		radiusKm,
+		epochJd: kepler.epochJd,
+		a: kepler.a,
+		e: kepler.e,
+		i: kepler.i,
+		om: kepler.om,
+		w: kepler.w,
+		ma: kepler.ma,
+		n: kepler.n,
+		radiusKm: kepler.radiusKm,
+		rowCount
+	};
+}
+
+function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number): SGP4Columns {
+	const {
+		id,
+		objectType,
+		parentId,
+		scale,
+		offset: sharedEnd
+	} = parseSharedColumns(buffer, rowCount);
+	const kepler = parseKeplerianColumns(buffer, rowCount, sharedEnd);
+	let offset = kepler.offset;
+
+	// Columns 13–15: bstar, mean_motion_dot, mean_motion_ddot (float32)
+	const bstar = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const meanMotionDot = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const meanMotionDdot = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+
+	// Columns 16–17: element_set_no, rev_at_epoch (int32)
+	const elementSetNo = new Int32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	const revAtEpoch = new Int32Array(buffer, offset, rowCount);
+
+	return {
+		kind: 'sgp4',
+		id,
+		objectType,
+		parentId,
+		scale,
+		epochJd: kepler.epochJd,
+		a: kepler.a,
+		e: kepler.e,
+		i: kepler.i,
+		om: kepler.om,
+		w: kepler.w,
+		ma: kepler.ma,
+		n: kepler.n,
+		radiusKm: kepler.radiusKm,
+		bstar,
+		meanMotionDot,
+		meanMotionDdot,
+		elementSetNo,
+		revAtEpoch,
 		rowCount
 	};
 }

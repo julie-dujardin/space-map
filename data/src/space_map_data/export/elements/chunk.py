@@ -9,6 +9,7 @@ from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import (
     write_elements,
     write_parabolic_elements,
+    write_sgp4_elements,
 )
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
@@ -57,7 +58,12 @@ def write_chunk(
                 r = None
             if r is not None:
                 radius_km_overrides[obj.id] = r
-    write_fn = write_parabolic_elements if zone == "PAR" else write_elements
+    if zone == "PAR":
+        write_fn = write_parabolic_elements
+    elif zone == "earth":
+        write_fn = write_sgp4_elements
+    else:
+        write_fn = write_elements
     write_fn(objects, elements_path, radius_km_overrides or None)
     elements_bytes = elements_path.stat().st_size
 

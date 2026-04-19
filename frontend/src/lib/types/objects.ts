@@ -1,3 +1,5 @@
+import type { SatRec } from 'satellite.js';
+
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
 	e: number; // eccentricity
@@ -27,6 +29,13 @@ export interface BodyData extends OrbitalElements {
 	radiusKm: number;
 	/** 0 = no object file, 1 = localized file exists, 2 = only English fallback file exists */
 	objectFileFlag: number;
+	/**
+	 * SGP4 satellite record from satellite.js. Populated only for Earth
+	 * satellites (SGP4 format chunks). When present, position propagation
+	 * goes through sgp4() instead of the Kepler solver, capturing J2 and drag
+	 * effects that the mean-motion Kepler step ignores.
+	 */
+	satrec?: SatRec;
 }
 
 export interface PositionedBody {

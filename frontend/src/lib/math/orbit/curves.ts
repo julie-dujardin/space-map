@@ -1,5 +1,7 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { orbitalToThreeJS } from './position';
+import { sgp4PositionScene } from './sgp4';
+import type { SatRec } from 'satellite.js';
 
 /**
  * Generate points along a parabolic trajectory for rendering orbit lines.
@@ -106,6 +108,35 @@ export function orbitalElementsToHyperbola(
 export interface OrbitCurve {
 	points: [number, number, number][];
 	isOpen: boolean;
+}
+
+/**
+ * Sample SGP4 across the orbital period ending at `jdEnd` to build a polyline
+ * that reflects the same J2/drag perturbations as the live-propagated dot.
+ *
+ * The curve spans `[jdEnd - T, jdEnd]` — i.e. the past one orbital period — so
+ * `curve[N]` is the satellite's current position and `curve[0]` is where it
+ * was one period ago. `buildOrbitTrailPoints` then walks backwards from the
+ * body's position through the curve to render the historical trail.
+ *
+ * The curve is open (not closed): drag + secular J2 drift mean one-period-ago
+ * ≠ right-now, so it intentionally does not loop.
+ */
+export function sgp4Curve(
+	satrec: SatRec,
+	jdEnd: number,
+	meanMotionRevPerDay: number,
+	numPoints = 128
+): [number, number, number][] {
+	if (!isFinite(meanMotionRevPerDay) || meanMotionRevPerDay <= 0) return [];
+	const periodDays = 1 / meanMotionRevPerDay;
+	const points: [number, number, number][] = [];
+	for (let j = 0; j <= numPoints; j++) {
+		const jd = jdEnd - periodDays + (periodDays * j) / numPoints;
+		const p = sgp4PositionScene(satrec, jd);
+		if (p) points.push(p);
+	}
+	return points;
 }
 
 /**

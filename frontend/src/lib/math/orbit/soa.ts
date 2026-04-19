@@ -1,14 +1,18 @@
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
-import { AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
+import { AU_SCALE, AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
+import { sgp4, SatRecError, type SatRec } from 'satellite.js';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
 const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
+/** Precomputed km -> scene-unit scale. */
+const KM_TO_SCENE = AU_SCALE / AU_KM;
 
 export const KIND_SKIP = 0;
 export const KIND_KEPLER = 1;
 export const KIND_PARABOLIC = 2;
+export const KIND_SGP4 = 3;
 
 /**
  * SoA view of one point-cloud group, packed for a worker to solve in a tight loop.
@@ -17,6 +21,8 @@ export const KIND_PARABOLIC = 2;
  *   0 = skip (promoted, a≈0 degenerate, etc.)
  *   1 = Keplerian: uses a, e, i, om, w, ma, n, epoch
  *   2 = Parabolic: uses e, i, om, w, epoch, q, tp
+ *   3 = SGP4: uses satrec[i] (plain JS array, structured-cloned across the
+ *       worker boundary since SatRec is pure data and not transferable)
  *
  * Arrays are length `count`. Use Float64 throughout — preserves precision for TNO
  * epochs and near-parabolic eccentricities; output positions are the only Float32.
@@ -36,6 +42,8 @@ export interface OrbitColumns {
 	epoch: Float64Array;
 	q: Float64Array;
 	tp: Float64Array;
+	/** Per-row SGP4 satrec — non-null iff kind[i] === KIND_SGP4. */
+	satrec: (SatRec | null)[];
 }
 
 /**
@@ -55,7 +63,10 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 			cols.kind[idx] = KIND_SKIP;
 			continue;
 		}
-		if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
+		if (d.satrec) {
+			cols.kind[idx] = KIND_SGP4;
+			cols.satrec[idx] = d.satrec;
+		} else if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
 			cols.kind[idx] = KIND_PARABOLIC;
 			cols.q[idx] = d.q;
 			cols.tp[idx] = d.tp;
@@ -110,7 +121,8 @@ export function allocColumns(count: number): OrbitColumns {
 		n: new Float64Array(count),
 		epoch: new Float64Array(count),
 		q: new Float64Array(count),
-		tp: new Float64Array(count)
+		tp: new Float64Array(count),
+		satrec: new Array<SatRec | null>(count).fill(null)
 	};
 }
 
@@ -138,7 +150,7 @@ export function writePositions(
 	basisZ: number,
 	out: Float32Array
 ): number {
-	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp } = cols;
+	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec } = cols;
 	const capacity = (out.length / 3) | 0;
 	let writeIdx = 0;
 
@@ -146,6 +158,33 @@ export function writePositions(
 		if (writeIdx >= capacity) break;
 		const k = kind[idx];
 		if (k === KIND_SKIP) continue;
+
+		if (k === KIND_SGP4) {
+			const sat = satrec[idx];
+			if (!sat) continue;
+			const tsince = (jd - sat.jdsatepoch) * 1440;
+			const result = sgp4(sat, tsince);
+			if (!result || sat.error !== SatRecError.None) continue;
+			const xk = result.position.x;
+			const yk = result.position.y;
+			const zk = result.position.z;
+			// km -> scene units, then TEME -> ecliptic rotation about X, then
+			// ecliptic -> Three.js basis swap (see position.ts for reference).
+			const xs = xk * KM_TO_SCENE;
+			const yk_s = yk * KM_TO_SCENE;
+			const zk_s = zk * KM_TO_SCENE;
+			const yEcl = yk_s * COS_EPS + zk_s * SIN_EPS;
+			const zEcl = -yk_s * SIN_EPS + zk_s * COS_EPS;
+			const sx = xs;
+			const sy = zEcl;
+			const sz = -yEcl;
+			if (!isFinite(sx) || !isFinite(sy) || !isFinite(sz)) continue;
+			out[writeIdx * 3] = parentX + sx - basisX;
+			out[writeIdx * 3 + 1] = parentY + sy - basisY;
+			out[writeIdx * 3 + 2] = parentZ + sz - basisZ;
+			writeIdx++;
+			continue;
+		}
 
 		let xOrb: number, yOrb: number;
 		const ei = e[idx];

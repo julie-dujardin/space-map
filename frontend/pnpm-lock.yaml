@@ -7,6 +7,9 @@ settings:
 importers:
   .:
     dependencies:
+      satellite.js:
+        specifier: ^7.0.0
+        version: 7.0.0
       three:
         specifier: ^0.183.2
         version: 0.183.2
@@ -2188,6 +2191,12 @@ packages:
       }
     engines: { node: '>=6' }
 
+  satellite.js@7.0.0:
+    resolution:
+      {
+        integrity: sha512-jrWZBytZgpzcfWpny6jsV7/StWKmie6JlDNpQ53RjbIXVDJPleQw8y+Cs/ZXaPIs720NFgQQLyvqYTbpsBTXKg==
+      }
+
   semver@7.7.4:
     resolution:
       {
@@ -3751,6 +3760,8 @@ snapshots:
   sade@1.8.1:
     dependencies:
       mri: 1.2.0
+
+  satellite.js@7.0.0: {}
 
   semver@7.7.4: {}
 

@@ -11,6 +11,7 @@ HEADER_SIZE = 16  # must be 8-byte aligned
 # Format types (uint16 at header offset 6)
 FORMAT_KEPLERIAN = 0  # Standard Keplerian elements (a, e, i, om, w, ma, n)
 FORMAT_PARABOLIC = 1  # Parabolic elements (q, e, i, om, w, tp)
+FORMAT_SGP4 = 2  # Keplerian columns + SGP4 fields (bstar, ndot, nddot, elsetno, revnum)
 
 # ObjectType → uint8 ordinal (must match frontend format.ts)
 OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {t: i for i, t in enumerate(ObjectType)}

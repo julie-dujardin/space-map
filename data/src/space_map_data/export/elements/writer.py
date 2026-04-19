@@ -8,6 +8,7 @@ from pathlib import Path
 
 from space_map_data.export.elements.format import (
     FORMAT_PARABOLIC,
+    FORMAT_SGP4,
     MISSING_FLOAT64,
     MISSING_INT32,
     MISSING_UINT8,
@@ -21,22 +22,16 @@ from space_map_data.models.object import Object
 logger = logging.getLogger(__name__)
 
 _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
+_REQUIRED_SGP4 = ("BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT")
 
 
-def write_elements(
+def _write_keplerian_columns(
+    buf: io.BytesIO,
     objects: list[Object],
-    out_file: Path,
-    radius_km_overrides: dict[str, float] | None = None,
+    radius_km_overrides: dict[str, float] | None,
 ) -> None:
-    """Write a Keplerian binary elements file (format_type=0).
-
-    Raises ValueError if a required orbital element is None — this catches
-    data issues at export time rather than producing silent NaN in the binary.
-    """
+    """Write columns 0–12 shared by the Keplerian and SGP4 formats."""
     n = len(objects)
-    buf = io.BytesIO()
-
-    buf.write(pack_header(n))
 
     # Column 0: id (int32) — type-specific ID from Object.id
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
@@ -69,8 +64,7 @@ def write_elements(
     _write_float64(buf, n, [_float_value(o, "epoch_jd") for o in objects])
 
     # Columns 5–11: float32 Keplerian orbital elements
-    float32_attrs = ["a", "e", "i", "om", "w", "ma", "n"]
-    for attr in float32_attrs:
+    for attr in ("a", "e", "i", "om", "w", "ma", "n"):
         _write_float32(
             buf,
             n,
@@ -79,6 +73,62 @@ def write_elements(
 
     # Column 12: radius_km (float32)
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+
+
+def write_elements(
+    objects: list[Object],
+    out_file: Path,
+    radius_km_overrides: dict[str, float] | None = None,
+) -> None:
+    """Write a Keplerian binary elements file (format_type=0).
+
+    Raises ValueError if a required orbital element is None — this catches
+    data issues at export time rather than producing silent NaN in the binary.
+    """
+    n = len(objects)
+    buf = io.BytesIO()
+    buf.write(pack_header(n))
+    _write_keplerian_columns(buf, objects, radius_km_overrides)
+    out_file.write_bytes(gzip.compress(buf.getvalue()))
+
+
+def write_sgp4_elements(
+    objects: list[Object],
+    out_file: Path,
+    radius_km_overrides: dict[str, float] | None = None,
+) -> None:
+    """Write an SGP4 binary elements file (format_type=2).
+
+    Columns 0–12 match the Keplerian layout; columns 13–17 carry the extra
+    TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
+    MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32).
+
+    Raises ValueError when a required SGP4 field is missing on any row — export
+    fails loudly rather than shipping silent NaN that would make satellite.js
+    produce bogus positions.
+    """
+    n = len(objects)
+    buf = io.BytesIO()
+    buf.write(pack_header(n, FORMAT_SGP4))
+    _write_keplerian_columns(buf, objects, radius_km_overrides)
+
+    # Columns 13–15: float32 SGP4 drag / rate fields from CelesTrak
+    for attr in _REQUIRED_SGP4:
+        _write_float32(buf, n, [_required_celestrak_float(o, attr) for o in objects])
+
+    # Column 16: ELEMENT_SET_NO (int32, nullable)
+    _write_int32(
+        buf,
+        n,
+        [_celestrak_int(o, "ELEMENT_SET_NO") for o in objects],
+    )
+
+    # Column 17: REV_AT_EPOCH (int32, nullable)
+    _write_int32(
+        buf,
+        n,
+        [_celestrak_int(o, "REV_AT_EPOCH") for o in objects],
+    )
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -206,6 +256,26 @@ def _required_sbdb_float(o: Object, attr: str) -> float:
     if val is None:
         raise ValueError(f"{o.id}: parabolic comet missing '{attr}'")
     return val
+
+
+def _required_celestrak_float(o: Object, attr: str) -> float:
+    """Get a required float from the CelesTrak relation, raising ValueError if missing."""
+    celestrak = o.celestrak if o.norad_cat_id is not None else None
+    if celestrak is None:
+        raise ValueError(f"{o.id}: no CelesTrak data for SGP4 field '{attr}'")
+    val = getattr(celestrak, attr)
+    if val is None:
+        raise ValueError(f"{o.id}: CelesTrak missing required SGP4 field '{attr}'")
+    return val
+
+
+def _celestrak_int(o: Object, attr: str) -> int:
+    """Get an optional int from the CelesTrak relation, returning MISSING_INT32 if absent."""
+    celestrak = o.celestrak if o.norad_cat_id is not None else None
+    if celestrak is None:
+        return MISSING_INT32
+    val = getattr(celestrak, attr)
+    return val if val is not None else MISSING_INT32
 
 
 def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:

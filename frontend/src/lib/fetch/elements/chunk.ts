@@ -1,9 +1,11 @@
 import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
+import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
 	fetchElements,
 	type KeplerianColumns,
-	type ParabolicColumns
+	type ParabolicColumns,
+	type SGP4Columns
 } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
@@ -11,6 +13,7 @@ import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './consta
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
+import { dateToJD } from '$lib/format/date';
 
 function keplerianToBody(
 	cols: KeplerianColumns,
@@ -69,6 +72,56 @@ function parabolicToBody(
 	};
 }
 
+function sgp4ToBody(
+	cols: SGP4Columns,
+	idx: number,
+	labels: Map<number, string>,
+	flags: Map<number, number>,
+	idMap: Map<number, string>
+): BodyData {
+	const name = labels.get(idx) ?? null;
+	const satrec =
+		buildSatrec(
+			{
+				noradCatId: cols.id[idx],
+				epochJd: cols.epochJd[idx],
+				meanMotion: cols.n[idx],
+				eccentricity: cols.e[idx],
+				inclination: cols.i[idx],
+				raOfAscNode: cols.om[idx],
+				argOfPericenter: cols.w[idx],
+				meanAnomaly: cols.ma[idx],
+				bstar: cols.bstar[idx],
+				meanMotionDot: cols.meanMotionDot[idx],
+				meanMotionDdot: cols.meanMotionDdot[idx],
+				elementSetNo: cols.elementSetNo[idx],
+				revAtEpoch: cols.revAtEpoch[idx]
+			},
+			name ?? undefined
+		) ?? undefined;
+	return {
+		id: idMap.get(idx)!,
+		name,
+		objectFileFlag: flags.get(idx) ?? 0,
+		objectType: cols.objectType[idx] as ObjectType,
+		parentId: `naif-${cols.parentId[idx]}`,
+		radiusKm: cols.radiusKm[idx],
+		// Keep Kepler mean elements in the canonical (AU, deg/day) units so the
+		// Kepler fallback in renderer/curve code stays consistent when satrec init fails.
+		a: cols.a[idx] / AU_KM,
+		e: cols.e[idx],
+		i: cols.i[idx],
+		om: cols.om[idx],
+		w: cols.w[idx],
+		ma: cols.ma[idx],
+		n: cols.n[idx] * 360,
+		epoch: cols.epochJd[idx],
+		// TEME frame flag still matters for the Kepler fallback path.
+		equatorial: true,
+		satrec
+	};
+}
+
 export class ChunkLoader {
 	/**
 	 * Fire-and-forget fetch of the three files for a zone/zoom/part, so the browser
@@ -103,16 +156,18 @@ export class ChunkLoader {
 
 		console.log(`Loaded: ${cols.rowCount} objects`);
 		const isParabolic = cols.kind === 'parabolic';
+		const isSGP4 = cols.kind === 'sgp4';
+		const jd = dateToJD(date);
 
 		for (let idx = 0; idx < cols.rowCount; idx++) {
 			const objType = cols.objectType[idx] as ObjectType;
 
-			// Parabolic comets always have a valid orbit; for Keplerian, skip
+			// Parabolic comets always have a valid orbit; for Keplerian/SGP4, skip
 			// degenerate a=0 bodies (except structural barycenters/Lagrange points
 			// and major bodies that orbit at their own barycenter, e.g. Mars).
 			if (
 				!isParabolic &&
-				(cols as KeplerianColumns).a[idx] === 0 &&
+				(cols as KeplerianColumns | SGP4Columns).a[idx] === 0 &&
 				objType !== ObjectType.BARYCENTER &&
 				objType !== ObjectType.LAGRANGE_POINT &&
 				!isMajorBody(objType)
@@ -128,9 +183,12 @@ export class ChunkLoader {
 
 			const body = isParabolic
 				? parabolicToBody(cols as ParabolicColumns, idx, labels, flags, idMap)
-				: keplerianToBody(cols as KeplerianColumns, idx, labels, flags, idMap);
-			const offset =
-				body.a === 0 && !isParabolic
+				: isSGP4
+					? sgp4ToBody(cols as SGP4Columns, idx, labels, flags, idMap)
+					: keplerianToBody(cols as KeplerianColumns, idx, labels, flags, idMap);
+			const offset = body.satrec
+				? sgp4PositionScene(body.satrec, jd)
+				: body.a === 0 && !isParabolic
 					? ([0, 0, 0] as [number, number, number])
 					: body.q != null
 						? parabolicToPosition(body, date)

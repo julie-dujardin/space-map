@@ -14,7 +14,8 @@ import {
 	Vector3
 } from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
-import { orbitalElementsToCurve } from '$lib/math/orbit/curves';
+import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
+import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 
 export const NUM_ORBIT_POINTS = 512;
@@ -123,15 +124,21 @@ function writeOrbitAlphas(
 export function makeOrbitLine(
 	body: PositionedBody,
 	color: string,
-	basisPos: [number, number, number] = [0, 0, 0]
+	basisPos: [number, number, number] = [0, 0, 0],
+	jd: number = dateToJD(new Date())
 ): Line {
 	const { orbitElements, orbitCenter, data } = body;
 	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
 
-	const { points: curve, isOpen: isOpenCurve } = orbitalElementsToCurve(
-		orbitElements,
-		NUM_ORBIT_POINTS
-	);
+	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
+	// period so the trail ends at the body's current position. data.n is in
+	// deg/day for SGP4 bodies (converted in chunk.ts); back-convert to rev/day.
+	const { points: curve, isOpen: isOpenCurve } = data.satrec
+		? {
+				points: sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS),
+				isOpen: true
+			}
+		: orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
 
 	const cx = orbitCenter?.[0] ?? 0;
 	const cy = orbitCenter?.[1] ?? 0;
@@ -155,9 +162,19 @@ export function makeOrbitLine(
 		return line;
 	}
 
-	const fullAlphas = new Float32Array(validPoints.length);
-	const trailAlphas = new Float32Array(validPoints.length);
-	writeOrbitAlphas(fullAlphas, trailAlphas, isOpenCurve, useTrail);
+	// Size buffers to the full curve length so refreshes that produce longer
+	// trails (e.g. body.position and curve become consistent after the first
+	// tick for SGP4 bodies) don't hit the `posAttr.count < validPoints.length`
+	// early-return in refreshOrbitLineGeometry.
+	const bufferCapacity = Math.max(validPoints.length, curve.length);
+	const fullAlphas = new Float32Array(bufferCapacity);
+	const trailAlphas = new Float32Array(bufferCapacity);
+	writeOrbitAlphas(
+		fullAlphas.subarray(0, validPoints.length) as Float32Array,
+		trailAlphas.subarray(0, validPoints.length) as Float32Array,
+		isOpenCurve,
+		useTrail
+	);
 
 	// Store vertices in basis-relative coords (world − basis). Basis tracks
 	// the focused body, so for focused bodies the vertex magnitudes stay
@@ -166,7 +183,7 @@ export function makeOrbitLine(
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],
 		bz = cz - basisPos[2];
-	const posArr = new Float32Array(validPoints.length * 3);
+	const posArr = new Float32Array(bufferCapacity * 3);
 	for (let k = 0; k < validPoints.length; k++) {
 		posArr[k * 3] = validPoints[k][0] + bx;
 		posArr[k * 3 + 1] = validPoints[k][1] + by;
@@ -177,6 +194,7 @@ export function makeOrbitLine(
 	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
+	geometry.setDrawRange(0, validPoints.length);
 
 	const material = new ShaderMaterial({
 		transparent: true,
@@ -231,13 +249,19 @@ export function makeOrbitLine(
 /**
  * Re-anchor an orbit line's trail at the body's current position. Must run
  * after the body (and its `orbitCenter`) have been updated this frame.
+ *
+ * For SGP4-backed bodies, the underlying curve is regenerated each call using
+ * `jd` so the trail always represents the past orbital period up to the sim
+ * clock — a static construction-time curve would drift out of sync under time
+ * playback (and go stale entirely under drag/J2 secular effects).
  */
 export function refreshOrbitLineGeometry(
 	body: PositionedBody,
 	line: Line,
-	basisPos: [number, number, number]
+	basisPos: [number, number, number],
+	jd: number
 ): void {
-	const curve = line.userData.orbitCurve as [number, number, number][] | undefined;
+	let curve = line.userData.orbitCurve as [number, number, number][] | undefined;
 	if (!curve) return;
 	const isOpenCurve = line.userData.isOpenCurve as boolean;
 	const useTrail = line.userData.useTrail as boolean;
@@ -246,14 +270,23 @@ export function refreshOrbitLineGeometry(
 		cy = oc.y,
 		cz = oc.z;
 
+	// SGP4 curves are a sliding window ending at the current sim jd.
+	if (body.data.satrec) {
+		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_ORBIT_POINTS);
+		line.userData.orbitCurve = curve;
+	}
+
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
 	const posAttr = line.geometry.getAttribute('position');
 	const trailAttr = line.geometry.getAttribute('trailAlpha');
 	const fullAttr = line.geometry.getAttribute('fullAlpha');
-	// Skip if buffer shrank (e.g. open curve clamped); next focus change will rebuild.
-	if (posAttr.count < validPoints.length) return;
+	// Clamp to buffer capacity rather than silently skipping — dropping a frame
+	// from a too-small buffer would freeze the trail permanently when the SGP4
+	// window grows past its construction-time size.
+	const cap = posAttr.count;
+	const n = Math.min(validPoints.length, cap);
 
 	const posArr = posAttr.array as Float32Array;
 	const trailArr = trailAttr.array as Float32Array;
@@ -261,17 +294,18 @@ export function refreshOrbitLineGeometry(
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],
 		bz = cz - basisPos[2];
-	for (let k = 0; k < validPoints.length; k++) {
+	for (let k = 0; k < n; k++) {
 		posArr[k * 3] = validPoints[k][0] + bx;
 		posArr[k * 3 + 1] = validPoints[k][1] + by;
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
 	writeOrbitAlphas(
-		fullArr.subarray(0, validPoints.length) as Float32Array,
-		trailArr.subarray(0, validPoints.length) as Float32Array,
+		fullArr.subarray(0, n) as Float32Array,
+		trailArr.subarray(0, n) as Float32Array,
 		isOpenCurve,
 		useTrail
 	);
+	line.geometry.setDrawRange(0, n);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
 	line.userData.orbitLocalPositions = validPoints;
 

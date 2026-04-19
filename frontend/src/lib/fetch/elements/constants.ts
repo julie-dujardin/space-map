@@ -10,6 +10,7 @@ export const HEADER_SIZE = 16;
 /** Format types (uint16 at header offset 6). */
 export const FORMAT_KEPLERIAN = 0;
 export const FORMAT_PARABOLIC = 1;
+export const FORMAT_SGP4 = 2;
 
 export const BASE_ELEMENT_PATH = '/data/v1/elements';
 

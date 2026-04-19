@@ -1,6 +1,6 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { dateToJD } from '$lib/format/date';
-import { AU_KM, AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
+import { AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
 
 const DEG2RAD = Math.PI / 180;
@@ -167,39 +167,4 @@ export function parabolicToPositionJD(
 	if (!isFinite(xOrb) || !isFinite(yOrb)) return null;
 
 	return orbitalToThreeJS(xOrb, yOrb, w, i, om, el.equatorial);
-}
-
-/**
- * Compute a rough position for an Earth satellite from mean elements.
- * Returns [x, y, z] in Three.js coordinates relative to Earth's position.
- *
- * Uses Kepler's third law with Earth's GM to derive semi-major axis from mean motion,
- * then standard Kepler conversion. The result is in km, then converted to AU for scene positioning.
- */
-export function satelliteToOffset(sat: {
-	meanMotion: number;
-	eccentricity: number;
-	inclination: number;
-	raan: number;
-	argOfPericenter: number;
-	meanAnomaly: number;
-}): [number, number, number] {
-	const GM_EARTH = 398600.4418; // km^3/s^2
-	const n = (sat.meanMotion * 2 * Math.PI) / 86400; // rad/s
-	const a = Math.cbrt(GM_EARTH / (n * n)); // km
-
-	const elements: OrbitalElements = {
-		a: a / AU_KM,
-		e: sat.eccentricity,
-		i: sat.inclination,
-		om: sat.raan,
-		w: sat.argOfPericenter,
-		ma: sat.meanAnomaly,
-		n: 0,
-		epoch: 0,
-		// TLE elements are defined in Earth's equatorial frame, not the ecliptic.
-		equatorial: true
-	};
-
-	return orbitalElementsToPosition(elements) ?? [0, 0, 0];
 }

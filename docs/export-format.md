@@ -61,7 +61,7 @@ Columnar binary format with zero-copy typed array support.
 |--------|--------|-----------|
 | 0      | char[4]| Magic `SMAP` |
 | 4      | uint16 | Version (2) |
-| 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic |
+| 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
 | 8      | uint32 | Row count |
 | 12     | uint32 | Reserved  |
 
@@ -106,6 +106,25 @@ The `scale` flag determines how to interpret `a` and `n`:
 | 1 (system) | AU | deg/day | Heliocentric objects, moons |
 
 To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`, `n_degday = n * 360`.
+
+### SGP4 columns (format type 2)
+
+Used for the `earth` zone. Superset of the Keplerian layout: columns 0–12 are
+identical, followed by the extra OMM fields needed to initialize a
+[satellite.js](https://github.com/shashwatak/satellite-js) `satrec` via
+`json2satrec()` and propagate with the SGP4 model. Consumers that don't do SGP4
+can ignore columns 13–17 and treat the file as Keplerian.
+
+| #  | Name             | Type    | Missing | Notes |
+|----|------------------|---------|---------|-------|
+| 13 | bstar            | float32 | —       | B\* drag term (1 / Earth radius) |
+| 14 | mean_motion_dot  | float32 | —       | First derivative of mean motion (rev/day²) |
+| 15 | mean_motion_ddot | float32 | —       | Second derivative of mean motion (rev/day³) |
+| 16 | element_set_no   | int32   | -1      | TLE element set number |
+| 17 | rev_at_epoch     | int32   | -1      | Revolution number at epoch |
+
+`a` and `n` use the planet-scale units (km, rev/day) — the raw OMM values from
+CelesTrak, which `json2satrec` expects unconverted.
 
 ### Parabolic columns (format type 1)
 

@@ -174,7 +174,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             # Non-SBDB zones: (zone, zoom, query)
             _earth_base = (
                 session.query(Object)
-                .options(joinedload(Object.satcat))
+                .options(joinedload(Object.satcat), joinedload(Object.celestrak))
                 .filter(
                     Object.spkid.is_(None),
                     Object.object_type.in_(_SAT_TYPE_VALUES),
