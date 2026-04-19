@@ -125,7 +125,9 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "RascomStar-QAF", "Q3415056", source="RASC", constellations=("rascomstar",)
     ),
-    OperatorSpec("SES", "Q333025", source="SES", constellations=("ses", "o3b")),
+    OperatorSpec(
+        "SES", "Q333025", source="SES", constellations=("ses", "o3b-gen1", "o3b-mpower")
+    ),
     # Linked only via constellation
     OperatorSpec(
         "SpaceX",

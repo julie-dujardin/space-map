@@ -731,6 +731,15 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         contains=("SUPERBIRD",),
     ),
     ConstellationSpec(
+        "o3b-gen1", "Q7072273", SatelliteCategory.COMMUNICATIONS, prefix=("O3B FM",)
+    ),
+    ConstellationSpec(
+        "o3b-mpower",
+        "Q104845067",
+        SatelliteCategory.COMMUNICATIONS,
+        prefix=("O3B MPOWER",),
+    ),
+    ConstellationSpec(
         "horizons",
         "Q5903528",
         SatelliteCategory.COMMUNICATIONS,
@@ -803,9 +812,6 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     ConstellationSpec(
         "new-ico", "Q3792482", SatelliteCategory.COMMUNICATIONS, source="NICO"
-    ),
-    ConstellationSpec(
-        "o3b", "Q3347484", SatelliteCategory.COMMUNICATIONS, source="O3B"
     ),
     ConstellationSpec(
         "rascomstar", "Q3415056", SatelliteCategory.COMMUNICATIONS, source="RASC"
