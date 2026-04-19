@@ -1,7 +1,7 @@
 import type { Group, Mesh, Line, Object3D, Points, Sprite } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import type { Orientation } from '$lib/math/orientation';
+import type { NutPrec, Orientation } from '$lib/math/orientation';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 
 // For focused objects:
@@ -52,6 +52,8 @@ export interface BodyObjects {
 	labelTextWidth?: number;
 	/** Cached IAU orientation (pole + spin) so the mesh can be re-oriented per frame. */
 	orientation?: Orientation;
+	/** Cached IAU nutation/precession sums (per-body coefficients + system-shared angles). */
+	nutPrec?: NutPrec;
 }
 
 export interface Callbacks {

@@ -59,10 +59,18 @@ export interface GlobalObjectData {
 		rev_at_epoch?: number;
 	};
 	orientation?: {
-		pole_ra: number;
-		pole_dec: number;
+		pole_ra_0: number;
+		pole_ra_1: number;
+		pole_dec_0: number;
+		pole_dec_1: number;
 		w0: number;
-		w_rate: number;
+		w1: number;
+		w2: number;
+	};
+	nut_prec?: {
+		ra: number[];
+		dec: number[];
+		pm: number[];
 	};
 	sbdb?: {
 		neo?: boolean;

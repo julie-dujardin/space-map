@@ -16,6 +16,7 @@ import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
+import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/nut-prec-angles';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { TextureLoader, type Texture } from 'three';
@@ -316,11 +317,16 @@ export async function loadBodyTextureTier(
 interface SystemBodyMeta {
 	tiers?: string[];
 	orientation?: {
-		pole_ra: number;
-		pole_dec: number;
+		pole_ra_0: number;
+		pole_ra_1: number;
+		pole_dec_0: number;
+		pole_dec_1: number;
 		w0: number;
-		w_rate: number;
+		w1: number;
+		w2: number;
 	};
+	/** Per-body IAU nutation/precession coefficients (paired with global angles). */
+	nut_prec?: { ra: number[]; dec: number[]; pm: number[] };
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). */
 	radii?: { a: number; b: number; c: number };
 }
@@ -352,7 +358,19 @@ export async function loadSystemData(
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
 			bo.orientation = bodyMeta.orientation;
-			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd);
+
+			// Resolve per-body nutation/precession by joining coefficients with the
+			// system-shared angles (one IAU table per planetary system).
+			if (bodyMeta.nut_prec) {
+				const naifMatch = bodyId.match(/^naif-(-?\d+)$/);
+				const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
+				const angles = naifId !== null ? getNutPrecAngles(ownerIdFor(naifId)) : undefined;
+				if (angles) {
+					bo.nutPrec = { ...bodyMeta.nut_prec, angles };
+				}
+			}
+
+			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.nutPrec);
 		}
 
 		// Apply triaxial flattening. applyOrientation puts the body's pole on

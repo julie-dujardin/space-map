@@ -665,7 +665,7 @@ export class SceneRenderer {
 				if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
 			}
 			if (bo.orientation && bo.mesh) {
-				applyOrientation(bo.mesh, bo.orientation, jd);
+				applyOrientation(bo.mesh, bo.orientation, jd, bo.nutPrec);
 			}
 		};
 

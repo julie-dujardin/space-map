@@ -11,12 +11,42 @@ const SIN_OBL = Math.sin(OBLIQUITY_RAD);
 
 /** J2000 epoch as Julian Date. */
 const J2000_JD = 2451545.0;
+/** Julian days per Julian century. */
+const DAYS_PER_CENTURY = 36525;
 
+/**
+ * SPICE PCK rotation polynomial for a body, equatorial J2000 frame.
+ *   α(T) = pole_ra_0 + pole_ra_1·T   (T = Julian centuries since J2000)
+ *   δ(T) = pole_dec_0 + pole_dec_1·T
+ *   W(d) = w0 + w1·d + w2·d²         (d = days since J2000)
+ * Plus optional nutation/precession sums delivered separately as `NutPrec`.
+ */
 export interface Orientation {
-	pole_ra: number; // degrees, equatorial J2000
-	pole_dec: number; // degrees, equatorial J2000
-	w0: number; // degrees, prime meridian at J2000
-	w_rate: number; // degrees/day
+	pole_ra_0: number;
+	pole_ra_1: number;
+	pole_dec_0: number;
+	pole_dec_1: number;
+	w0: number;
+	w1: number;
+	w2: number;
+}
+
+/**
+ * IAU nutation/precession sums:
+ *   α += Σ ra[i]  · sin(θ_i(T))
+ *   δ += Σ dec[i] · cos(θ_i(T))
+ *   W += Σ pm[i]  · sin(θ_i(T))
+ * with θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century).
+ *
+ * `angles` is shared across all bodies in a planetary system (SPICE convention)
+ * and arrives via /data/v1/nut_prec_angles.json, indexed by owner naif_id
+ * (`naif_id // 100` for moons/planets, `naif_id` itself when < 100).
+ */
+export interface NutPrec {
+	ra: number[];
+	dec: number[];
+	pm: number[];
+	angles: number[];
 }
 
 /**
@@ -43,11 +73,33 @@ function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
  * by USGS / Blue Marble equirectangular maps (u=0 at longitude ±180°, longitude
  * increasing east through u=0.5 at longitude 0°).
  */
-export function applyOrientation(mesh: Mesh, orientation: Orientation, currentJd: number): void {
-	const { pole_ra, pole_dec, w0, w_rate } = orientation;
+export function applyOrientation(
+	mesh: Mesh,
+	orientation: Orientation,
+	currentJd: number,
+	nutPrec?: NutPrec
+): void {
+	const dt = currentJd - J2000_JD;
+	const T = dt / DAYS_PER_CENTURY;
 
-	const ra = pole_ra * DEG2RAD;
-	const dec = pole_dec * DEG2RAD;
+	let raDeg = orientation.pole_ra_0 + orientation.pole_ra_1 * T;
+	let decDeg = orientation.pole_dec_0 + orientation.pole_dec_1 * T;
+	let wDeg = orientation.w0 + orientation.w1 * dt + orientation.w2 * dt * dt;
+
+	if (nutPrec) {
+		const { ra, dec, pm, angles } = nutPrec;
+		const n = Math.min(angles.length >> 1, Math.max(ra.length, dec.length, pm.length));
+		for (let i = 0; i < n; i++) {
+			const theta = (angles[2 * i] + angles[2 * i + 1] * T) * DEG2RAD;
+			const s = Math.sin(theta);
+			if (i < ra.length) raDeg += ra[i] * s;
+			if (i < dec.length) decDeg += dec[i] * Math.cos(theta);
+			if (i < pm.length) wDeg += pm[i] * s;
+		}
+	}
+
+	const ra = raDeg * DEG2RAD;
+	const dec = decDeg * DEG2RAD;
 	const cosDec = Math.cos(dec);
 
 	const pole = equatorialToThreeJS(
@@ -65,9 +117,6 @@ export function applyOrientation(mesh: Mesh, orientation: Orientation, currentJd
 		new Matrix4().makeBasis(node, pole, third)
 	);
 
-	const dt = currentJd - J2000_JD;
-	const spinAngle = (w0 + w_rate * dt) * DEG2RAD;
-	const spinQuat = new Quaternion().setFromAxisAngle(pole, spinAngle);
-
+	const spinQuat = new Quaternion().setFromAxisAngle(pole, wDeg * DEG2RAD);
 	mesh.quaternion.copy(spinQuat.multiply(tiltQuat));
 }

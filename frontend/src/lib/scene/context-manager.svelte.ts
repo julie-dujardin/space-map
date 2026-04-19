@@ -4,6 +4,7 @@ import { AU_KM, AU_SCALE } from '../math/units';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
 import { dateToJD } from '$lib/format/date';
 
 /*
@@ -232,6 +233,9 @@ export class ContextManager {
 			// Kick off moons + metadata fetches immediately, in parallel with major processing.
 			// Once metadata arrives, fire all chunk prefetches so they're cached before Phase 2 starts.
 			ChunkLoader.prefetch('moons', 0, 0);
+			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation.
+			// Fire-and-forget; rotation falls back to the first-order model until it lands.
+			loadNutPrecAngles();
 			const minorChunkArgsPromise = fetch('/data/v1/metadata.json')
 				.then((r) => {
 					if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
