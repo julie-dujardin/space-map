@@ -10,6 +10,7 @@ class PROVIDERS(StrEnum):
     WIKIPEDIA = "wikipedia"
     COMMONS = "commons"
     IAU_NOMENCLATURE = "iau_nomenclature"
+    TEXTURE_SOURCES = "texture_sources"
 
 
 class ID_TYPES(StrEnum):

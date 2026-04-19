@@ -1,0 +1,677 @@
+"""Scrape per-texture source metadata from USGS / NASA pages.
+
+Iterates the per-body entries in `textures/download-metadata.yaml`, fetches the
+`source:` page for each, parses the structured fields the site publishes, and
+writes one JSON per entry to `textures/source_metadata/{file_stem}.json`.
+
+The goal is troubleshooting-friendly provenance, not something the export
+pipeline consumes directly. A human (or a follow-up auto-fill step) then copies
+the relevant bits — a compact `attribution:` line — back into
+`download-metadata.yaml`.
+
+Supported sites:
+- USGS Astrogeology Science Center (`astrogeology.usgs.gov/search/map/...`)
+  — structured `<dt>/<dd>` table with authors, abstract, credits, mission,
+  instrument, latitude/longitude extent, etc.
+- NASA Photojournal (`science.nasa.gov/photojournal/...`) — labeled block
+  with Credits / Target / Mission / Instrument / Description and JSON-LD.
+- NASA Scientific Visualization Studio (`svs.gsfc.nasa.gov/<id>/...`) —
+  "Visualizations by" credit + free-text description.
+- NASA Earth Observatory (`science.nasa.gov/earth/earth-observatory/...`) —
+  loose prose; meta description + main article body.
+
+Other hosts (bjj.mmedia.is, stevealbers.net, deviantart, lpi.usra.edu, etc.)
+are left alone — their `attribution:` has already been hand-curated from the
+page content the user provided.
+"""
+
+import json
+import logging
+import re
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+import httpx
+import yaml
+from bs4 import BeautifulSoup, Tag
+
+from space_map_data.constants.providers import PROVIDERS
+from space_map_data.download.downloader import Downloader
+from space_map_data.utils.paths import DOWNLOAD_DIR
+
+logger = logging.getLogger(__name__)
+
+TEXTURES_DIR = DOWNLOAD_DIR / "textures"
+DOWNLOAD_METADATA_YAML = TEXTURES_DIR / "download-metadata.yaml"
+SOURCE_METADATA_DIR = TEXTURES_DIR / "source_metadata"
+HTML_CACHE_DIR = SOURCE_METADATA_DIR / "html"
+PARSED_DIR = SOURCE_METADATA_DIR / "parsed"
+
+REQUEST_DELAY_SECONDS = 3.0
+
+
+# ------------------------------------------------------------------ helpers --
+
+
+def _dt_dd_pairs(soup: BeautifulSoup) -> dict[str, str]:
+    """Extract <dt>/<dd> pairs into a dict. USGS pages use this heavily."""
+    out: dict[str, str] = {}
+    for dt in soup.find_all("dt"):
+        dd = dt.find_next_sibling("dd")
+        if not dd:
+            continue
+        label = dt.get_text(" ", strip=True)
+        value = dd.get_text(" ", strip=True)
+        if label and value:
+            out[label] = value
+    return out
+
+
+def _clean_main_text(soup: BeautifulSoup, selector: str = "main") -> str:
+    """Return visible text from the main content area, stripping nav/scripts/etc."""
+    main = soup.select_one(selector) or soup.find("article") or soup.body
+    if not isinstance(main, Tag):
+        return ""
+    for node in main(["script", "style", "nav", "footer", "aside", "iframe"]):
+        node.decompose()
+    return main.get_text("\n", strip=True)
+
+
+def _meta(soup: BeautifulSoup, name: str) -> str | None:
+    tag = soup.find("meta", attrs={"name": name}) or soup.find(
+        "meta", attrs={"property": name}
+    )
+    if isinstance(tag, Tag):
+        content = tag.get("content")
+        if isinstance(content, str):
+            return content.strip()
+    return None
+
+
+_MOJIBAKE_MARKERS = ("Â", "Ã", "â€")
+
+
+def _fix_mojibake_deep(obj: object) -> object:
+    """Apply _fix_mojibake to every string inside a nested dict/list structure."""
+    if isinstance(obj, str):
+        return _fix_mojibake(obj)
+    if isinstance(obj, list):
+        return [_fix_mojibake_deep(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _fix_mojibake_deep(v) for k, v in obj.items()}
+    return obj
+
+
+def _fix_mojibake_dict(d: dict) -> dict:
+    """Typed wrapper around _fix_mojibake_deep for dict-valued parser results."""
+    fixed = _fix_mojibake_deep(d)
+    assert isinstance(fixed, dict)
+    return fixed
+
+
+def _fix_mojibake(text: str | None) -> str | None:
+    """Reverse UTF-8-as-latin-1 double-encoding when we can detect it.
+
+    Some source pages (notably USGS Astrogeology) serve `°` as `Â°` etc. —
+    their bytes are UTF-8 content mis-decoded as latin-1 then re-encoded as
+    UTF-8. Running the inverse restores the intended characters.
+    """
+    if text is None or not any(m in text for m in _MOJIBAKE_MARKERS):
+        return text
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
+def _json_ld_objects(soup: BeautifulSoup) -> list[dict]:
+    """Parse all application/ld+json blocks, handling @graph lists."""
+    out: list[dict] = []
+    for s in soup.find_all("script", type="application/ld+json"):
+        if not s.string:
+            continue
+        try:
+            data = json.loads(s.string)
+        except json.JSONDecodeError:
+            logger.debug("Skipping malformed JSON-LD block")
+            continue
+        if isinstance(data, dict):
+            if "@graph" in data and isinstance(data["@graph"], list):
+                out.extend(x for x in data["@graph"] if isinstance(x, dict))
+            else:
+                out.append(data)
+        elif isinstance(data, list):
+            out.extend(x for x in data if isinstance(x, dict))
+    return out
+
+
+# --------------------------------------------------------------- USGS parser -
+
+
+def _parse_usgs(html: str, url: str) -> dict:
+    """Parse an astrogeology.usgs.gov /search/map/<id> page.
+
+    Fields (when present):
+    title, description, abstract, purpose, credits, authors, publisher,
+    mission, instrument, mission_names, target, date, edition,
+    access_constraints, use_constraints, format, native_env, theme,
+    source_title, source_online_linkage, bbox (min/max lat/lon),
+    supplemental_information, online_file_link.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    pairs = _dt_dd_pairs(soup)
+
+    title_tag = soup.find("h1") or soup.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else None
+
+    meta_desc = _meta(soup, "description")
+    # Abstract on the page is the authoritative long-form description.
+    abstract = pairs.get("Abstract")
+    purpose = pairs.get("Purpose")
+
+    authors_raw = pairs.get("Primary Authors")
+    authors = [a.strip() for a in authors_raw.split(",")] if authors_raw else []
+
+    def _multi(key: str) -> list[str]:
+        v = pairs.get(key)
+        if not v:
+            return []
+        parts = re.split(r",\s*", v)
+        return [p for p in (p.strip() for p in parts) if p]
+
+    bbox = None
+    if all(
+        k in pairs
+        for k in (
+            "Minimum Latitude",
+            "Maximum Latitude",
+            "Minimum Longitude",
+            "Maximum Longitude",
+        )
+    ):
+        try:
+            bbox = {
+                "min_lat": float(pairs["Minimum Latitude"]),
+                "max_lat": float(pairs["Maximum Latitude"]),
+                "min_lon": float(pairs["Minimum Longitude"]),
+                "max_lon": float(pairs["Maximum Longitude"]),
+            }
+        except ValueError:
+            pass
+
+    publisher = pairs.get("Publisher")
+    originator = pairs.get("Originators")
+    mission = pairs.get("Mission Names")
+    # USGS pages sometimes put the canonical NASA-style credit chain in
+    # "Primary Authors" (e.g. "NASA/JPL-Caltech/UCLA/MPS/DLR/IDA" for Vesta).
+    # When it looks like a credit chain, prefer it verbatim. Otherwise fall
+    # back to a "Courtesy <publisher>. Data: <originator> (<mission>)." line
+    # built from the other structured fields.
+    slash_credit = authors_raw if authors_raw and authors_raw.count("/") >= 2 else None
+    if slash_credit:
+        attribution = slash_credit
+    else:
+        credit_pieces = []
+        if publisher:
+            credit_pieces.append(f"Courtesy {publisher}")
+        if originator or mission:
+            data_line = []
+            if originator:
+                data_line.append(originator)
+            if mission:
+                data_line.append(f"({mission})")
+            credit_pieces.append("Data: " + " ".join(data_line))
+        attribution = ". ".join(credit_pieces) + "." if credit_pieces else None
+
+    result = {
+        "source_url": url,
+        "site": "usgs_astrogeology",
+        "title": title,
+        "description_meta": meta_desc,
+        "abstract": abstract,
+        "purpose": purpose,
+        "authors": authors,
+        "publisher": publisher,
+        "originators": originator,
+        "mission_names": _multi("Mission Names"),
+        "instrument_names": _multi("Instrument Names"),
+        "target": pairs.get("Target"),
+        "format": pairs.get("Format"),
+        "edition": pairs.get("Edition"),
+        "access_constraints": pairs.get("Access Constraints"),
+        "use_constraints": pairs.get("Use Constraints"),
+        "native_environment": pairs.get("Native Data Set Environment"),
+        "theme": pairs.get("Astrogeology Theme"),
+        "source_title": pairs.get("Source Title"),
+        "source_online_linkage": pairs.get("Source Online Linkage"),
+        "supplemental_information": pairs.get("Supplemental Information"),
+        "online_file_link": pairs.get("Online File Link"),
+        "file_size": pairs.get("External File Size"),
+        "process_description": pairs.get("Process Description"),
+        "completeness_report": pairs.get("Completeness Report"),
+        "logical_consistency": pairs.get("Logical Consistency"),
+        "update_frequency": pairs.get("Update Frequency"),
+        "progress": pairs.get("Progress"),
+        "bbox": bbox,
+        "attribution_guess": attribution,
+    }
+    return _fix_mojibake_dict(result)
+
+
+# -------------------------------------------------- NASA Photojournal parser -
+
+_NASA_PJ_LABEL_KEYS = {
+    "Credits": "credits",
+    "Image Addition Date": "image_addition_date",
+    "Target": "target",
+    "Is a satellite of": "satellite_of",
+    "Mission(s)": "missions",
+    "Mission": "missions",
+    "Spacecraft(s)": "spacecraft",
+    "Spacecraft": "spacecraft",
+    "Instrument(s)": "instruments",
+    "Instrument": "instruments",
+    "Product Size": "product_size",
+    "Produced By": "produced_by",
+}
+
+
+def _parse_label_block(lines: list[str], stop_sections: set[str]) -> dict[str, str]:
+    """Walk a list of text lines and group label-colon-followed-by-value pairs.
+
+    The NASA Photojournal body renders each field as:
+        <p>Label:</p><p>Value</p>
+    which flattens to two consecutive lines, label ending in ':'. Each value is
+    treated as a single line.
+
+    `stop_sections` terminates the block *once we've started collecting*, so
+    unrelated headings above the first label (breadcrumbs, navigation bars) are
+    ignored.
+    """
+    out: dict[str, str] = {}
+    started = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if started and stripped in stop_sections:
+            break
+        if stripped.endswith(":") and i + 1 < len(lines):
+            key = stripped[:-1].strip()
+            value = lines[i + 1].strip()
+            if value and value not in stop_sections and not value.endswith(":"):
+                out[key] = value
+                started = True
+    return out
+
+
+def _parse_nasa_photojournal(html: str, url: str) -> dict:
+    """Parse a science.nasa.gov/photojournal/<slug>/ page."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_tag = soup.find("h1") or soup.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else None
+
+    meta_desc = _meta(soup, "description")
+
+    # JSON-LD carries page-poster names and dates/keywords. The "author" field
+    # there is the NASA staffer who uploaded the page, NOT the image credit —
+    # we track it as `page_authors` to make that distinction obvious. The real
+    # image credit lives in the "Credits:" label block.
+    jsonld = _json_ld_objects(soup)
+    article = next((o for o in jsonld if o.get("@type") == "NewsArticle"), None)
+    page_authors: list[str] = []
+    keywords: list[str] = []
+    date_created = None
+    date_modified = None
+    if article:
+        raw_authors = article.get("author") or []
+        if isinstance(raw_authors, list):
+            page_authors = [
+                a["name"] if isinstance(a, dict) and "name" in a else str(a)
+                for a in raw_authors
+            ]
+        elif isinstance(raw_authors, dict):
+            page_authors = [raw_authors.get("name", "")]
+        kw = article.get("keywords")
+        if isinstance(kw, list):
+            keywords = [str(k) for k in kw]
+        date_created = article.get("dateCreated")
+        date_modified = article.get("dateModified")
+
+    main_text = _clean_main_text(soup)
+    lines = [ln for ln in main_text.split("\n") if ln.strip()]
+    photojournal_stops = {
+        "Downloads",
+        "Description",
+        "Keep Exploring",
+        "Discover More Topics",
+        "Photojournal",
+        "Feedback",
+        "Photojournal Navigation",
+    }
+    labels = _parse_label_block(lines, photojournal_stops)
+
+    # The freeform "Description" section is a big block of text after the
+    # "Description" label — capture everything up to the next section marker.
+    description = None
+    for idx, ln in enumerate(lines):
+        if ln.strip() == "Description":
+            # Accumulate lines until a known next-section anchor.
+            collected: list[str] = []
+            stop_markers = {
+                "Keep Exploring",
+                "Discover More Topics",
+                "Photojournal",
+                "Feedback",
+            }
+            for follower in lines[idx + 1 :]:
+                if any(follower.startswith(m) for m in stop_markers):
+                    break
+                collected.append(follower)
+            description = "\n".join(collected).strip() or None
+            break
+
+    def _field(key: str) -> str | None:
+        for k, mapped in _NASA_PJ_LABEL_KEYS.items():
+            if mapped == key and k in labels:
+                return labels[k]
+        return None
+
+    credits = _field("credits")
+    attribution = credits or None  # photojournal credits are short & self-contained
+
+    return {
+        "source_url": url,
+        "site": "nasa_photojournal",
+        "title": title,
+        "description_meta": meta_desc,
+        "description": description,
+        "credits": credits,
+        "target": _field("target"),
+        "satellite_of": _field("satellite_of"),
+        "missions": _field("missions"),
+        "spacecraft": _field("spacecraft"),
+        "instruments": _field("instruments"),
+        "image_addition_date": _field("image_addition_date"),
+        "produced_by": _field("produced_by"),
+        "product_size": _field("product_size"),
+        "page_authors": page_authors,
+        "keywords": keywords,
+        "date_created": date_created,
+        "date_modified": date_modified,
+        "attribution_guess": attribution,
+    }
+
+
+# ----------------------------------------------------------- NASA SVS parser -
+
+_SVS_ID_RE = re.compile(r"ID:\s*(\d+)", re.IGNORECASE)
+
+
+def _parse_nasa_svs(html: str, url: str) -> dict:
+    """Parse a svs.gsfc.nasa.gov/<id>/ visualization page.
+
+    SVS pages carry a "Visualizations by:" line, a release date, and a long
+    freeform description.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_tag = soup.find("h1") or soup.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else None
+
+    meta_desc = _meta(soup, "description")
+
+    main_text = _clean_main_text(soup)
+    lines = [ln for ln in main_text.split("\n") if ln.strip()]
+
+    svs_id = None
+    released = None
+    last_updated = None
+    visualizations_by: list[str] = []
+    description_start = None
+
+    for idx, ln in enumerate(lines):
+        stripped = ln.strip()
+        m = _SVS_ID_RE.search(stripped)
+        if m and svs_id is None:
+            svs_id = m.group(1)
+        if stripped.lower() == "released" and idx + 1 < len(lines):
+            released = lines[idx + 1].strip()
+        if stripped.lower() == "last updated" and idx + 1 < len(lines):
+            last_updated = lines[idx + 1].strip()
+        if stripped.lower() == "visualizations by:" and idx + 1 < len(lines):
+            # Each name on its own line, terminated by "View full credits".
+            j = idx + 1
+            while j < len(lines):
+                nxt = lines[j].strip()
+                if not nxt or nxt.lower().endswith(":"):
+                    break
+                if nxt.startswith("View full credits"):
+                    description_start = j + 1
+                    break
+                visualizations_by.append(nxt)
+                j += 1
+            else:
+                description_start = j
+
+    # Description: first few paragraphs after the credits block, stopping at the
+    # download/images listings (short table-of-contents lines like "Color",
+    # "Download", bare filenames like "foo.jpg [200 MB]").
+    description_lines: list[str] = []
+    if description_start is not None:
+        for ln in lines[description_start:]:
+            if ln in {"Color", "Elevation", "Download", "Images", "Related pages"}:
+                continue
+            if re.match(r"^\S+\.\S+\s", ln) or "[" in ln and "]" in ln[-20:]:
+                # Looks like "file.ext [size]" — download listing
+                continue
+            if len(ln) < 20 and len(description_lines) >= 2:
+                # Likely a section break after we've got some content
+                break
+            description_lines.append(ln)
+            if len(description_lines) >= 8:
+                break
+    description = " ".join(description_lines).strip() or None
+
+    attribution = None
+    if visualizations_by:
+        attribution = f"NASA Goddard Scientific Visualization Studio — visualizations by {', '.join(visualizations_by)}."
+
+    return {
+        "source_url": url,
+        "site": "nasa_svs",
+        "svs_id": svs_id,
+        "title": title,
+        "description_meta": meta_desc,
+        "description": description,
+        "visualizations_by": visualizations_by,
+        "released": released,
+        "last_updated": last_updated,
+        "attribution_guess": attribution,
+    }
+
+
+# ------------------------------------------- NASA Earth Observatory parser --
+
+
+def _parse_nasa_earth_observatory(html: str, url: str) -> dict:
+    """Parse a science.nasa.gov/earth/earth-observatory/<slug>/ page.
+
+    These are prose articles — we pull meta description, main body text, and
+    a conservative default attribution.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_tag = soup.find("h1") or soup.find("title")
+    title = title_tag.get_text(" ", strip=True) if title_tag else None
+
+    meta_desc = _meta(soup, "description")
+
+    jsonld = _json_ld_objects(soup)
+    article = next((o for o in jsonld if o.get("@type") == "NewsArticle"), None)
+    authors: list[str] = []
+    if article:
+        raw_authors = article.get("author") or []
+        if isinstance(raw_authors, list):
+            authors = [
+                a["name"] if isinstance(a, dict) and "name" in a else str(a)
+                for a in raw_authors
+            ]
+
+    body_text = _clean_main_text(soup)
+    body_lines = [ln for ln in body_text.split("\n") if ln.strip()]
+    # Breadcrumbs / nav / section headings at the top of the body are all short
+    # (<80 chars). Drop them to reach the first prose paragraph.
+    first_prose = next((i for i, ln in enumerate(body_lines) if len(ln) > 80), 0)
+    description = "\n".join(body_lines[first_prose : first_prose + 12]).strip()
+    description = description[:3000] or None
+
+    # JSON-LD often lists "NASA Earth Observatory" itself as the author —
+    # dedupe against the site name so we don't render "… — NASA Earth Observatory."
+    _SITE = "NASA Earth Observatory"
+    people = [a for a in authors if a and a != _SITE]
+    attribution = _SITE + (" — " + ", ".join(people) if people else "") + "."
+
+    return {
+        "source_url": url,
+        "site": "nasa_earth_observatory",
+        "title": title,
+        "description_meta": meta_desc,
+        "description": description,
+        "authors": authors,
+        "attribution_guess": attribution,
+    }
+
+
+# ------------------------------------------------------- dispatch / download -
+
+_PARSERS = {
+    "usgs_astrogeology": _parse_usgs,
+    "nasa_photojournal": _parse_nasa_photojournal,
+    "nasa_svs": _parse_nasa_svs,
+    "nasa_earth_observatory": _parse_nasa_earth_observatory,
+}
+
+
+def _site_for(url: str) -> str | None:
+    host = (urlparse(url).hostname or "").lower()
+    path = urlparse(url).path.lower()
+    if host.endswith("astrogeology.usgs.gov"):
+        return "usgs_astrogeology"
+    if host == "svs.gsfc.nasa.gov":
+        return "nasa_svs"
+    if host == "science.nasa.gov":
+        if path.startswith("/photojournal/"):
+            return "nasa_photojournal"
+        if path.startswith("/earth/"):
+            return "nasa_earth_observatory"
+    return None
+
+
+def _file_stem(file_name: str) -> str:
+    return Path(file_name).stem
+
+
+class TextureSourcesDownloader(Downloader):
+    name = PROVIDERS.TEXTURE_SOURCES
+
+    def __init__(self, client: httpx.Client) -> None:
+        # Skip the base class mkdir — we live under textures/, not a dedicated provider dir.
+        self.client = client
+        self.out_dir = SOURCE_METADATA_DIR
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        PARSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _load_entries(self) -> list[dict]:
+        if not DOWNLOAD_METADATA_YAML.exists():
+            raise FileNotFoundError(
+                f"download-metadata.yaml not found at {DOWNLOAD_METADATA_YAML}"
+            )
+        doc = yaml.safe_load(DOWNLOAD_METADATA_YAML.read_text())
+        return doc.get("bodies", [])
+
+    def _fetch_html(self, url: str, cache_path: Path, *, force: bool) -> str:
+        if cache_path.exists() and not force:
+            return cache_path.read_text(encoding="utf-8")
+        logger.info("GET %s", url)
+        resp = self.client.get(url)
+        resp.raise_for_status()
+        cache_path.write_text(resp.text, encoding="utf-8")
+        time.sleep(REQUEST_DELAY_SECONDS)
+        return resp.text
+
+    def download(
+        self,
+        limit: int | None = None,
+        *,
+        force: bool = False,
+        **kwargs: object,
+    ) -> None:
+        entries = self._load_entries()
+        if limit is not None:
+            entries = entries[:limit]
+
+        wrote = 0
+        skipped_unsupported = 0
+        errors = 0
+
+        for entry in entries:
+            source_url = entry.get("source")
+            file_name = entry.get("file")
+            if not source_url or not file_name:
+                continue
+            site = _site_for(source_url)
+            if site is None:
+                logger.debug("No parser for %s — skipping", source_url)
+                skipped_unsupported += 1
+                continue
+
+            stem = _file_stem(file_name)
+            out_json = PARSED_DIR / f"{stem}.json"
+            if out_json.exists() and not force:
+                logger.debug("Already parsed: %s", out_json.name)
+                continue
+
+            html_path = HTML_CACHE_DIR / f"{stem}.html"
+            try:
+                html = self._fetch_html(source_url, html_path, force=force)
+            except Exception:
+                logger.exception("Failed to fetch %s", source_url)
+                errors += 1
+                continue
+
+            try:
+                parsed = _PARSERS[site](html, source_url)
+            except Exception:
+                logger.exception("Failed to parse %s (%s)", source_url, site)
+                errors += 1
+                continue
+
+            parsed["fetched_at"] = datetime.now(UTC).isoformat()
+            parsed["entry_body"] = entry.get("body")
+            parsed["entry_file"] = file_name
+            out_json.write_text(
+                json.dumps(parsed, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            wrote += 1
+
+        logger.info(
+            "texture_sources: wrote %d, skipped %d (no parser), %d errors",
+            wrote,
+            skipped_unsupported,
+            errors,
+        )
+        self._save_metadata(
+            url=str(DOWNLOAD_METADATA_YAML),
+            record_count=wrote,
+            complete=True,
+            parser_sites=sorted(_PARSERS.keys()),
+        )
+
+    def is_complete(self, limit: int | None) -> bool:
+        # Always re-run; cheap since HTML is cached and per-entry JSONs are
+        # skipped when they exist. `force=True` forces a full re-scrape.
+        return False

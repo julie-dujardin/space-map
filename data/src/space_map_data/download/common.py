@@ -17,6 +17,9 @@ from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
 from space_map_data.download.providers.commons import CommonsDownloader
+from space_map_data.download.providers.metadata.texture_sources import (
+    TextureSourcesDownloader,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ PROVIDERS_CLASSES = [
     WikipediaDownloader,
     CommonsDownloader,
     IAUNomenclatureDownloader,
+    TextureSourcesDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
