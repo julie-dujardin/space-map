@@ -565,7 +565,10 @@ export class SceneRenderer {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (!line?.visible) continue;
+			// Don't gate on line.visible — newly-built lines are visible=false
+			// but will be flipped visible later this frame by updateBodyVisibility;
+			// their vertices must be rebased against the new focus before first render.
+			if (!line) continue;
 			const localPositions = line.userData.orbitLocalPositions as
 				| [number, number, number][]
 				| undefined;
@@ -707,10 +710,16 @@ export class SceneRenderer {
 		// against last frame's focus, and rendering (which uses the new focus)
 		// would shift every trail by focus-velocity * dt — visible as trails
 		// "preceding" the body along the focus's own orbit direction.
+		//
+		// Do NOT gate on `line.visible`: newly-built lines default to
+		// visible=false, and updateBodyVisibility (which flips them visible) runs
+		// *after* this step. A gate here would leave the line's vertex buffer at
+		// construction-time values (relative to the OLD focus basis), producing
+		// a ~1-AU-offset glitch for one frame after focus change.
 		const basis = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (line?.visible) refreshOrbitLineGeometry(bo.body, line, basis, jd);
+			if (line) refreshOrbitLineGeometry(bo.body, line, basis, jd);
 		}
 	}
 
