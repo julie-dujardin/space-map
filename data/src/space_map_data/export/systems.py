@@ -86,6 +86,40 @@ def load_nut_prec_angles(download_dir: Path) -> dict[int, list[float]]:
     return result
 
 
+def texture_attribution(meta: dict) -> dict:
+    """Extract the user-facing attribution subset from a texture metadata dict."""
+    result = {
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        result["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        result["description"] = meta["description"]
+    return result
+
+
+def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load all per-body texture metadata.json files from the export tree.
+
+    Returns {object_id: metadata_dict}. Only bodies with existing metadata
+    files are included — i.e. those that actually have textures exported.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, dict] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in textures_dir.iterdir():
+        if not body_dir.is_dir():
+            continue
+        meta_file = body_dir / "metadata.json"
+        if meta_file.exists():
+            result[body_dir.name] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded texture metadata for %d bodies", len(result))
+    return result
+
+
 def load_radii(download_dir: Path) -> dict[int, dict]:
     """Load triaxial radii from SPICE radii.csv.
 
@@ -114,6 +148,7 @@ def write_system_metadata(
     orientation: dict[int, dict],
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
+    texture_metadata: dict[str, dict],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -176,12 +211,12 @@ def write_system_metadata(
         for obj in objs:
             entry: dict = {}
 
-            # Texture tiers
+            # Texture tiers + attribution
             if obj.map_texture_available:
-                meta_file = out_dir / "textures" / obj.id / "metadata.json"
-                if meta_file.exists():
-                    meta = orjson.loads(meta_file.read_bytes())
+                meta = texture_metadata.get(obj.id)
+                if meta is not None:
                     entry["tiers"] = sorted(meta.get("exports", {}).keys())
+                    entry["texture"] = texture_attribution(meta)
                 else:
                     logger.warning(
                         "Texture metadata missing for %s (system %s), skipping tiers",

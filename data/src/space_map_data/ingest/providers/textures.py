@@ -244,6 +244,8 @@ class TextureProcessor:
         metadata = {
             "id": object_id,
             "source": entry["source"],
+            "organisation": entry["organisation"],
+            "attribution": entry.get("attribution"),
             "description": entry.get("description"),
             "type": entry["type"],
             "source_file": src.name,

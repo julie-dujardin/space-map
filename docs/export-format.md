@@ -11,6 +11,8 @@ v1/
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
+  chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
+  chebyshev/{zone}/{chunk}/data.id.gz            object IDs (text), same order as bin
   objects/__global__/{id}.json.gz                global object details
   objects/{lang}/{id}.json.gz                    localized object details
   images/thumb/{filename}                         300px thumbnail (original format)
@@ -34,9 +36,24 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
         "0": { "parts": 1, "object_count": 42, "avg_part_bytes": 12345 }
       }
     }
+  },
+  "chebyshev": {
+    "version": 1,
+    "zones": {
+      "major": {
+        "chunks": 20, "start_jd": 2433282.5, "end_jd": 2469807.5,
+        "chunk_years": 5, "body_count": 20, "total_bytes": 8388468
+      },
+      "moons": { "chunks": 20, "...": "..." },
+      "major_asteroids": { "chunks": 20, "...": "..." }
+    }
   }
 }
 ```
+
+`chebyshev` is only present when Chebyshev exports were produced (i.e. the
+`[chebyshev]` section in `config.toml` matched kernels present at download
+time). Clients should feature-detect it.
 
 ## Zones and zoom levels
 
@@ -163,9 +180,99 @@ All other columns are safe as float32 based on their value ranges in the databas
 | q (AU)     | 0 – 43                  | ~3 × 10⁻⁶ AU                | Parabolic comets only |
 | radius_km  | 0.001 – 70,000          | ~0.004 km at max             | |
 
+## Chebyshev ephemeris (`chebyshev/{zone}/{chunk}/`)
+
+High-accuracy polynomial ephemeris for major bodies — Sun, planets, dwarf
+planets, moons and the 16 largest asteroids (perturbers used in DE441). Each
+(zone, time-chunk) pair is one gzipped binary plus a sidecar `data.id.gz` of
+`{source}-{numeric_id}` object IDs in the same body order. Evaluate with
+Clenshaw's recursion on the Chebyshev basis.
+
+### Zones
+
+Mirrors the elements export so each pair of (elements, chebyshev) files shares
+a zone name:
+
+- `major` — Sun, planets, dwarf planets, planetary-system barycenters (small,
+  always-loaded set).
+- `moons` — natural satellites (moons). Significantly heavier — a client that
+  doesn't need sub-system precision can skip this zone.
+- `major_asteroids` — the ~15 DE441 perturber asteroids from `sb441-n16`
+  (Pallas, Vesta, Juno, Hebe, Iris, Hygiea, Eunomia, Psyche, Amphitrite,
+  Europa-asteroid, Cybele, Sylvia, Thisbe, Davida, Interamnia). Ceres is
+  reported as a dwarf planet, so it lives in `major`.
+
+### Time chunks
+
+The total covered range is split into uniform `chunk_years`-wide windows
+(default 5y). Consumers fetch only the chunks they need for the current
+simulated time. Chunk bounds are in the file header; the per-zone entry in
+`metadata.json` lists the number of chunks and overall JD bounds.
+
+### Binary layout (`data.bin.gz`, little-endian)
+
+**File header (32 bytes)**
+
+| Offset | Type    | Field |
+|--------|---------|-------|
+| 0      | char[4] | Magic `SCHB` |
+| 4      | uint16  | Version (1) |
+| 6      | uint16  | Format type: 0 = position-only Chebyshev |
+| 8      | float64 | start_jd (chunk start, JD TDB) |
+| 16     | float64 | end_jd (chunk end, JD TDB) |
+| 24     | uint32  | body_count |
+| 28     | uint32  | Reserved |
+
+**Per-body (repeats body_count times)**
+
+Each body carries its own header then a packed list of segments.
+
+| Offset | Type    | Field |
+|--------|---------|-------|
+| 0      | int32   | naif_id |
+| 4      | int32   | parent_naif_id (orbital reference body) |
+| 8      | float32 | radius_km (NaN if unknown) |
+| 12     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
+| 14     | uint16  | Reserved |
+| 16     | uint32  | segment_count |
+
+Then `segment_count` segments, each laid out as:
+
+| Type    | Field |
+|---------|-------|
+| float64 | seg_start_jd (JD TDB) |
+| float64 | seg_end_jd (JD TDB, exclusive) |
+| float32 × N | x coefficients (c₀ … c_{N-1}) |
+| float32 × N | y coefficients |
+| float32 × N | z coefficients |
+
+where N = `coeffs_per_axis`. Each segment's coefficients form a Chebyshev
+series in τ ∈ [-1, 1] giving the body's position in **km, ECLIPJ2000 frame,
+relative to `parent_naif_id`**.
+
+### Evaluating a position at time t (JD TDB)
+
+1. For a body, pick the segment with `seg_start_jd ≤ t < seg_end_jd`
+   (binary-search; segments are sorted).
+2. Normalize: `τ = 2 (t - seg_start_jd) / (seg_end_jd - seg_start_jd) - 1`.
+3. Evaluate each axis with Clenshaw's recursion on the coefficients.
+
+The returned vector is parent-relative in km. Walk up the parent chain
+(accumulating positions) to get SSB-relative or any other frame you need.
+
+### Precision
+
+Segment bounds stay float64 for JD precision (same rationale as the Keplerian
+format's `epoch_jd`). Coefficients are float32: for the time windows and
+sub-interval sizes produced by the pipeline, truncation error stays well below
+meter-level for planets and sub-km for inner moons — below visualization
+resolution in every realistic zoom.
+
 ## Object IDs file (`.id.gz`)
 
 Newline-delimited text, one ID per line, same order as the binary file. Format: `{source}-{numeric_id}`, e.g. `naif-399`, `spkid-2000433`, `norad_satcat-25544`.
+
+Used by both `elements/` and `chebyshev/` exports.
 
 ## Element labels file (`.loc.{lang}.gz`)
 
@@ -192,6 +299,13 @@ interface GlobalObjectData {
   type: string;                       // ObjectType name
   name?: string;
   map_texture_available?: boolean;    // only present if true
+  texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
+    source: string;                   // source page URL
+    organisation: string;             // short canonical label, deduplicable (e.g. "NASA", "USGS", "Björn Jónsson")
+    type: string;                     // texture kind (cylindrical, cylindrical_tile, …)
+    attribution?: string;             // long-form credit line; omitted when unavailable
+    description?: string;
+  };
   provisional_designation?: string;
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   cross_refs?: {
@@ -376,6 +490,8 @@ The size is a target, not a hard limit. Some textures go over it.
 {
   "id": "naif-499",
   "source": "https://example.com/mars.tif",
+  "organisation": "NASA",
+  "attribution": "NASA/JPL-Caltech/MSSS. …",
   "description": "Mars surface map",
   "type": "map",
   "source_file": "mars_color.tif",
@@ -388,14 +504,23 @@ The size is a target, not a hard limit. Some textures go over it.
 }
 ```
 
+- `source` — the page URL the texture was obtained from.
+- `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
+- `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
+
 ## System metadata (`systems/{barycenter_id}.json`)
 
-Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, SPICE PCK orientation (pole/spin polynomial), nutation/precession coefficients, and triaxial radii when known.
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, SPICE PCK orientation (pole/spin polynomial), nutation/precession coefficients, and triaxial radii when known.
 
 ```json
 {
   "naif-399": {
     "tiers": ["high", "low", "medium"],
+    "texture": {
+      "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/",
+      "organisation": "NASA",
+      "type": "cylindrical"
+    },
     "orientation": {
       "pole_ra_0": 0.0, "pole_ra_1": -0.641,
       "pole_dec_0": 90.0, "pole_dec_1": -0.557,
@@ -404,11 +529,11 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
-  "naif-301": { "tiers": ["low"] }
+  "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } }
 }
 ```
 
-The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, and (where `radii` differ) flattens bodies into oblate ellipsoids.
+The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
 
 ## Nutation angles (`nut_prec_angles.json`)
 
@@ -441,3 +566,8 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
 3. Combine by array index to get full body records
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
 5. Object detail files are fetched on demand using the ID and the label flag
+6. For bodies that also appear in `metadata.json → chebyshev.zones.{zone}`,
+   fetch the chunk covering the current simulated time from
+   `chebyshev/{zone}/{chunk}/data.bin.gz` + `data.id.gz`; prefer those
+   positions over the Keplerian ones and fall back to Keplerian only for
+   bodies not in the Chebyshev export.
