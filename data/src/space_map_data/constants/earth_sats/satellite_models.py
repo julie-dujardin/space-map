@@ -71,6 +71,9 @@ class SatelliteBusSpec:
     notes: str | None = None
 
 
+# AI discosure:
+# Ran deep research, then manually checked/fix QIDs & matched to satcat.csv
+# TODO: finish checking. currently checked up to next TODO
 SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     # ---------- Hughes / Boeing (spin-stabilized drums, then 3-axis) ----------
     SatelliteBusSpec(
@@ -127,7 +130,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "GALAXY 5",
             "GALAXY 6",
             "GALAXY 9",
-            "TELSTAR 3A",
+            "TELSTAR 3A",  # Telstar 301 / Arabsat-1E
             "TELSTAR 302",
             "TELSTAR 303",
             "AUSSAT 1",
@@ -152,14 +155,15 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ASIASAT 1",
             "BSAT-1A",
             "BSAT-1B",
-            "THOR II",
-            "THOR III",
+            "THOR II",  # thor 2
+            "THOR III",  # thor 3
             "SIRIUS 3",
             "BONUM-1",
             "ASTRA 2D",
             "ASTRA 3A",
             "EUTELSAT 31A",  # eBird 1 / Eurobird 3
             "ZHONGXING-7",  # ZX 7 / Chinasat-7 / HGS 2
+            "USA 67",  #  Prowler (Q14940655)
         ),
         notes="Spin-stabilized telescoping dual-cylinder drum, 2.16 m dia stowed / 6.6-8 m deployed. "
         "58 built 1980-2003. Variants: base, L (long-life), HP (high-power), W (wide). "
@@ -180,7 +184,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "LEASAT 5",
         ),
         notes="Wide-body spin-stabilized cylinder, 4.26 m dia x 4.29 m stowed. "
-        "Shuttle payload-bay only; 'Frisbee' deployment. Covered under Q545738.",
+        "Shuttle payload-bay only; 'Frisbee' deployment. Covered under Q545738 (Syncom).",
     ),
     SatelliteBusSpec(
         slug="hs-393",
@@ -231,28 +235,24 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "DIRECTV 4S",
             "ASIASAT 3S",
             "ASIASAT 4",
-            "PALAPA C1",
+            "PAKSAT 1",  # Palapa-C1, HGS-3, Anatolia-1
             "PALAPA C2",
-            "APSTAR 2",
-            "APSTAR 2R",
+            "APSTAR-2R",
             "INTELSAT 802",
-            "JCSAT 3",
-            "JCSAT 4",
-            "JCSAT 5",
+            "JCSAT-3",
+            "INTELSAT 26",  # JCSAT-4
+            "JCSAT-1B",  # JCSAT 5
+            "JCSAT-4A",
+            "JCSAT-2A",  # JCSAT-8
             "ORION 3",
-            "MEASAT 3",
-            "GALAXY IV",
-            "GALAXY VI",
-            "GALAXY VIR",
-            "GALAXY VIIIi",
-            "GALAXY IX",
-            "GALAXY X",
-            "GALAXY XI",
-            "GALAXY IR",
+            "MEASAT-3",
+            "GALAXY 3R",
+            "GALAXY 4",
+            "GALAXY 4R",
+            "GALAXY 8",
+            "GALAXY 10R",
             "SOLIDARIDAD 1",
             "SOLIDARIDAD 2",
-            "SATMEX 5",
-            "SATMEX 6",
             "ASTRA 1C",
             "ASTRA 1D",
             "ASTRA 1E",
@@ -261,21 +261,22 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ASTRA 1H",
             "ASTRA 2A",
             "ASTRA 2C",
-            "SUPERBIRD-C",
+            "SUPERBIRD-A2",  # Superbird-6
+            "SUPERBIRD-A3",  # Superbird-3, Superbird-C
             "SUPERBIRD-B2",
-            "AMSC-1",
-            "MSAT-1",
-            "UFO-1",
-            "UFO-2",
-            "UFO-3",
-            "UFO-4",
-            "UFO-5",
-            "UFO-6",
-            "UFO-7",
-            "UFO-8",
-            "UFO-9",
-            "UFO-10",
-            "UFO-11",
+            "AMSC 1",
+            "MSAT M1",
+            "UFO 1",
+            "UFO 2",
+            "UFO 3",
+            "UFO 4",
+            "UFO 5",
+            "UFO 6",
+            "UFO 7",
+            "UFO 8",
+            "UFO 9",
+            "UFO 10",
+            "UFO 11",
             "GOES 13",
             "GOES 14",
             "GOES 15",
@@ -285,8 +286,15 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "TDRS 11",
             "TDRS 12",
             "TDRS 13",
-            "ICO F2",
+            "OMNI-M1",  # ICO F2
             "SES-7",
+            "INTELSAT 2 ",
+            "INTELSAT 3R",
+            "INTELSAT 4 ",
+            "INTELSAT 5 ",
+            "INTELSAT 6B",
+            "INTELSAT 9 ",
+            "HGS 1",  # AsiaSat 3 → HGS-1 → PAS-22
         ),
         model_url="https://nasa3d.arc.nasa.gov/detail/eoss-tdrs",
         model_format="glTF",
@@ -295,6 +303,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         "76 launched 1992-2017. NASA 3D Resources TDRS model represents the 601HP variant. "
         "Sketchfab mirror: sketchfab.com/3d-models/tracking-and-data-relay-satellite-3d-printable-ae3ac90c4eff404bbe914838d7b5f29b",
     ),
+    # TODO: check following models:
     SatelliteBusSpec(
         slug="boeing-702",
         wikidata_qid="Q890161",
@@ -312,7 +321,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(1500, 6100),
         solar_span_m=40.0,
         known_satellites=(
-            "GALAXY XI",
+            "GALAXY 11",
             "PAS-1R",
             "ANIK F1",
             "ANIK F2",

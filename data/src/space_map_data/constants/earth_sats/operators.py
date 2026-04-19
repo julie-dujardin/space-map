@@ -175,6 +175,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "checkmate",
             "muos",
             "dsp",
+            "uhf-follow-on",
         ),
     ),
     OperatorSpec(
@@ -223,13 +224,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Soviet Armed Forces",
         "Q7915590",
-        constellations=("cosmos", "cis-classified"),
+        constellations=("cosmos", "cis-classified", "resurs-"),
         active_until=1991,
     ),
     OperatorSpec(
         "Russian Aerospace Forces",
         "Q21042210",
-        constellations=("cosmos", "blagovest", "cis-classified"),
+        constellations=("cosmos", "blagovest", "cis-classified", "resurs-"),
         active_from=1992,
     ),
     OperatorSpec(

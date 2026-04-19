@@ -302,6 +302,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.MILITARY),
         prefix="VANGUARD",
     ),
+    ConstellationSpec(
+        "uhf-follow-on",
+        "Q941216",
+        (SatelliteCategory.MILITARY),
+        prefix="UFO ",
+    ),
     # WGS: Wideband Global SATCOM — US DoD high-bandwidth GEO comms.
     ConstellationSpec(
         "wgs",
@@ -366,7 +372,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     # USA: classified US national-security payloads (NRO, AFSPC, etc.)
     # Kept as last-resort for sats that match nothing more specific.
-    ConstellationSpec("usa-classified", None, SatelliteCategory.MILITARY, prefix="USA"),
+    ConstellationSpec(
+        "usa-classified", None, SatelliteCategory.MILITARY, contains=("USA ",)
+    ),
     # OPS: US military, classified into US air force due to https://en.wikipedia.org/wiki/SNAP-10A and launch times (pre-1980s)
     ConstellationSpec(
         "us-ops-classified", None, SatelliteCategory.MILITARY, prefix="OPS "
@@ -430,7 +438,10 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="ELECTRON"
     ),
     ConstellationSpec(
-        "thor", "Q249534", SatelliteCategory.ROCKET, prefix=("THORAD", "THOR ABLESTAR")
+        "thor-rocket",
+        "Q249534",
+        SatelliteCategory.ROCKET,
+        prefix=("THORAD", "THOR ABLESTAR"),
     ),
     ConstellationSpec("pslv", "Q221654", SatelliteCategory.ROCKET, prefix="PSLV"),
     ConstellationSpec("pegasus", "Q478603", SatelliteCategory.ROCKET, prefix="PEGASUS"),
@@ -592,6 +603,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # -------------------------------------------------------------------------
     # Russian/Soviet (CIS) constellations
     # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "resurs-f",
+        "Q4393667",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        prefix="RESURS F-",
+    ),
     # US-A: soviet nuclear-powered radar satellites
     ConstellationSpec(
         "us-a",
@@ -677,7 +694,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),  # some were military, documented in individual pages (good coverage)
     ConstellationSpec("mir", "Q48604", SatelliteCategory.STATION, prefix="MIR"),
     ConstellationSpec(
-        "soyuz-rocket", "Q579421", SatelliteCategory.ROCKET, prefix="SL-"
+        "soyuz-rocket", "Q1299641", SatelliteCategory.ROCKET, prefix="SL-"
     ),  # Soyuz rocket spent stages & debris
     ConstellationSpec(
         "fregat", "Q1453740", SatelliteCategory.ROCKET, prefix="FREGAT"
@@ -721,7 +738,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),  # Joint venture
     ConstellationSpec(
         "dsn",
-        "Q11245057",
+        "Q18465737",
         (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
         contains=(
             "DSN-",
@@ -854,7 +871,7 @@ PREFERRED_SLUGS: tuple[str, ...] = (
 # Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is preferred over these.
 UNPREFERRED_SLUGS: frozenset[str] = frozenset(
     {
-        "thor"  # thor rocket is more specific, few entries that don't match its prefixes are thor sats
+        "thor",  # thor rocket is more specific, few entries that don't match its prefixes are thor sats
         "sbas",  # type of sat
         "argos",
         "usa-classified",
