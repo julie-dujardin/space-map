@@ -10,6 +10,12 @@ export interface OrbitalElements {
 	// Parabolic orbits (e=1): a/ma/n are not available; use q and tp instead
 	q?: number; // perihelion distance (AU) — only for parabolic orbits
 	tp?: number; // time of perihelion passage (Julian Date) — only for parabolic orbits
+	/**
+	 * True when i/om/w are referenced to Earth's mean equator of J2000 instead of
+	 * the ecliptic. TLE-sourced Earth satellites (CelesTrak) are in TEME, treated
+	 * here as equatorial; everything else (Horizons/SPICE) is ecliptic J2000.
+	 */
+	equatorial?: boolean;
 }
 
 /** Unified body data from the binary export. */

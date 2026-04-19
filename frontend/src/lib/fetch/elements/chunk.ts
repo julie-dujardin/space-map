@@ -35,7 +35,10 @@ function keplerianToBody(
 		w: cols.w[idx],
 		ma: cols.ma[idx],
 		n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
-		epoch: cols.epochJd[idx]
+		epoch: cols.epochJd[idx],
+		// Planet-scale entries come from CelesTrak TLEs, whose angles are in the
+		// Earth-equatorial (TEME) frame. System-scale entries are ecliptic J2000.
+		equatorial: isPlanetScale
 	};
 }
 

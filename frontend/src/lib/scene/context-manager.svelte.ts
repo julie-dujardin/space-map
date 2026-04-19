@@ -108,6 +108,8 @@ async function createPlaceholderBody(
 		ma: orbit.ma ?? 0,
 		n: isPlanetScale ? (orbit.n ?? 0) * 360 : (orbit.n ?? 0),
 		epoch: orbit.epoch_jd,
+		// Planet-scale means CelesTrak TLE data, which uses Earth-equatorial angles.
+		equatorial: isPlanetScale,
 		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {})
 	};
 

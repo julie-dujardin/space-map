@@ -1,20 +1,28 @@
 import type { OrbitalElements } from '$lib/types/objects';
 import { dateToJD } from '$lib/format/date';
-import { AU_KM, AU_SCALE } from '$lib/math/units';
+import { AU_KM, AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
 
 const DEG2RAD = Math.PI / 180;
+const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
+const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
 
 /**
  * Rotate orbital-plane position (xOrb, yOrb) to Three.js coordinates.
  * Shared by position computation and curve generators.
+ *
+ * When `equatorial` is true, i/om/w are interpreted in Earth's mean equator
+ * of J2000 (TEME, as used by TLEs) and the result is rotated by the obliquity
+ * onto the ecliptic — otherwise Earth-orbit satellites would align to the
+ * ecliptic's poles instead of Earth's.
  */
 export function orbitalToThreeJS(
 	xOrb: number,
 	yOrb: number,
 	w: number,
 	i: number,
-	om: number
+	om: number,
+	equatorial = false
 ): [number, number, number] {
 	const cosW = Math.cos(w * DEG2RAD);
 	const sinW = Math.sin(w * DEG2RAD);
@@ -23,17 +31,27 @@ export function orbitalToThreeJS(
 	const cosOm = Math.cos(om * DEG2RAD);
 	const sinOm = Math.sin(om * DEG2RAD);
 
-	// Rotate to ecliptic J2000 frame
-	const xEcl =
+	// Resolve the orbital plane into the reference frame of the input angles:
+	// ecliptic J2000 by default, Earth-equatorial J2000 when `equatorial`.
+	const x =
 		(cosOm * cosW - sinOm * sinW * cosI) * xOrb + (-cosOm * sinW - sinOm * cosW * cosI) * yOrb;
-	const yEcl =
+	let y =
 		(sinOm * cosW + cosOm * sinW * cosI) * xOrb + (-sinOm * sinW + cosOm * cosW * cosI) * yOrb;
-	const zEcl = sinW * sinI * xOrb + cosW * sinI * yOrb;
+	let z = sinW * sinI * xOrb + cosW * sinI * yOrb;
+
+	if (equatorial) {
+		// Rotate equatorial J2000 -> ecliptic J2000 about the shared X axis (vernal
+		// equinox) by the obliquity ε. Only y/z move; x is invariant.
+		const yEcl = y * COS_EPS + z * SIN_EPS;
+		const zEcl = -y * SIN_EPS + z * COS_EPS;
+		y = yEcl;
+		z = zEcl;
+	}
 
 	// Map ecliptic -> Three.js: ecliptic X -> X, ecliptic Z (north pole) -> Y, ecliptic Y -> -Z.
 	// The Y -> -Z flip keeps the mapping handedness-preserving (det +1), so body spin
 	// computed via the right-hand rule matches physical rotation direction.
-	return [xEcl * AU_SCALE, zEcl * AU_SCALE, -yEcl * AU_SCALE];
+	return [x * AU_SCALE, z * AU_SCALE, -y * AU_SCALE];
 }
 
 /**
@@ -117,7 +135,7 @@ export function orbitalElementsToPositionJD(
 		return null;
 	}
 
-	return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+	return orbitalToThreeJS(xOrb, yOrb, w, i, om, el.equatorial);
 }
 
 /**
@@ -148,7 +166,7 @@ export function parabolicToPositionJD(
 	const yOrb = result.r * Math.sin(result.nu);
 	if (!isFinite(xOrb) || !isFinite(yOrb)) return null;
 
-	return orbitalToThreeJS(xOrb, yOrb, w, i, om);
+	return orbitalToThreeJS(xOrb, yOrb, w, i, om, el.equatorial);
 }
 
 /**
@@ -178,7 +196,9 @@ export function satelliteToOffset(sat: {
 		w: sat.argOfPericenter,
 		ma: sat.meanAnomaly,
 		n: 0,
-		epoch: 0
+		epoch: 0,
+		// TLE elements are defined in Earth's equatorial frame, not the ecliptic.
+		equatorial: true
 	};
 
 	return orbitalElementsToPosition(elements) ?? [0, 0, 0];

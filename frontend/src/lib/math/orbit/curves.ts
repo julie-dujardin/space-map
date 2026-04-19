@@ -24,7 +24,7 @@ export function orbitalElementsToParabola(
 		const r = (2 * q) / (1 + Math.cos(nu));
 		const xOrb = r * Math.cos(nu);
 		const yOrb = r * Math.sin(nu);
-		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om));
+		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om, el.equatorial));
 	}
 	return points;
 }
@@ -62,7 +62,7 @@ export function orbitalElementsToEllipse(
 		const xOrb = r * Math.cos(nu);
 		const yOrb = r * Math.sin(nu);
 		if (!isFinite(xOrb) || !isFinite(yOrb)) continue;
-		points.push(orbitalToThreeJS(xOrb, yOrb, w, i, om));
+		points.push(orbitalToThreeJS(xOrb, yOrb, w, i, om, el.equatorial));
 	}
 	return points;
 }
@@ -98,7 +98,7 @@ export function orbitalElementsToHyperbola(
 		const r = el.a * (1 - el.e * Math.cosh(H)); // a < 0 → r > 0
 		const xOrb = r * Math.cos(nu);
 		const yOrb = r * Math.sin(nu);
-		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om));
+		points.push(orbitalToThreeJS(xOrb, yOrb, el.w, el.i, el.om, el.equatorial));
 	}
 	return points;
 }

@@ -1,8 +1,10 @@
 import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
-import { AU_SCALE } from '$lib/math/units';
+import { AU_SCALE, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
 
 const DEG2RAD = Math.PI / 180;
+const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
+const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
 
 export const KIND_SKIP = 0;
 export const KIND_KEPLER = 1;
@@ -22,6 +24,8 @@ export const KIND_PARABOLIC = 2;
 export interface OrbitColumns {
 	count: number;
 	kind: Uint8Array;
+	/** 1 when i/om/w are in Earth-equatorial J2000 (TEME) instead of ecliptic. */
+	equatorial: Uint8Array;
 	a: Float64Array;
 	e: Float64Array;
 	i: Float64Array;
@@ -69,6 +73,7 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 		cols.ma[idx] = d.ma;
 		cols.n[idx] = d.n;
 		cols.epoch[idx] = d.epoch;
+		cols.equatorial[idx] = d.equatorial ? 1 : 0;
 	}
 	return cols;
 }
@@ -77,6 +82,7 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 export function columnsTransferList(cols: OrbitColumns): Transferable[] {
 	return [
 		cols.kind.buffer,
+		cols.equatorial.buffer,
 		cols.a.buffer,
 		cols.e.buffer,
 		cols.i.buffer,
@@ -94,6 +100,7 @@ export function allocColumns(count: number): OrbitColumns {
 	return {
 		count,
 		kind: new Uint8Array(count),
+		equatorial: new Uint8Array(count),
 		a: new Float64Array(count),
 		e: new Float64Array(count),
 		i: new Float64Array(count),
@@ -131,7 +138,7 @@ export function writePositions(
 	basisZ: number,
 	out: Float32Array
 ): number {
-	const { count, kind, a, e, i, om, w, ma, n, epoch, q, tp } = cols;
+	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp } = cols;
 	const capacity = (out.length / 3) | 0;
 	let writeIdx = 0;
 
@@ -191,16 +198,25 @@ export function writePositions(
 		const cosOm = Math.cos(omi * DEG2RAD);
 		const sinOm = Math.sin(omi * DEG2RAD);
 
-		const xEcl =
+		const x =
 			(cosOm * cosW - sinOm * sinW * cosI) * xOrb + (-cosOm * sinW - sinOm * cosW * cosI) * yOrb;
-		const yEcl =
+		let y =
 			(sinOm * cosW + cosOm * sinW * cosI) * xOrb + (-sinOm * sinW + cosOm * cosW * cosI) * yOrb;
-		const zEcl = sinW * sinI * xOrb + cosW * sinI * yOrb;
+		let z = sinW * sinI * xOrb + cosW * sinI * yOrb;
+
+		if (equatorial[idx]) {
+			// TLE elements are in Earth-equatorial J2000 (TEME); rotate about X by ε
+			// to match the ecliptic frame everything else uses.
+			const yEcl = y * COS_EPS + z * SIN_EPS;
+			const zEcl = -y * SIN_EPS + z * COS_EPS;
+			y = yEcl;
+			z = zEcl;
+		}
 
 		// Three.js mapping: ecliptic X→X, Z→Y, Y→−Z. Matches orbitalToThreeJS.
-		const sx = xEcl * AU_SCALE;
-		const sy = zEcl * AU_SCALE;
-		const sz = -yEcl * AU_SCALE;
+		const sx = x * AU_SCALE;
+		const sy = z * AU_SCALE;
+		const sz = -y * AU_SCALE;
 
 		out[writeIdx * 3] = parentX + sx - basisX;
 		out[writeIdx * 3 + 1] = parentY + sy - basisY;
