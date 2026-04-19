@@ -72,33 +72,39 @@ function parabolicToBody(
 	};
 }
 
+/**
+ * Build an SGP4-backed BodyData for one earth satellite. Returns null when
+ * satrec init fails — earth sats must use SGP4, so we drop the row rather
+ * than silently falling back to Kepler (which diverges from the SGP4 curve
+ * by km and breaks trail construction).
+ */
 function sgp4ToBody(
 	cols: SGP4Columns,
 	idx: number,
 	labels: Map<number, string>,
 	flags: Map<number, number>,
 	idMap: Map<number, string>
-): BodyData {
+): BodyData | null {
 	const name = labels.get(idx) ?? null;
-	const satrec =
-		buildSatrec(
-			{
-				noradCatId: cols.id[idx],
-				epochJd: cols.epochJd[idx],
-				meanMotion: cols.n[idx],
-				eccentricity: cols.e[idx],
-				inclination: cols.i[idx],
-				raOfAscNode: cols.om[idx],
-				argOfPericenter: cols.w[idx],
-				meanAnomaly: cols.ma[idx],
-				bstar: cols.bstar[idx],
-				meanMotionDot: cols.meanMotionDot[idx],
-				meanMotionDdot: cols.meanMotionDdot[idx],
-				elementSetNo: cols.elementSetNo[idx],
-				revAtEpoch: cols.revAtEpoch[idx]
-			},
-			name ?? undefined
-		) ?? undefined;
+	const satrec = buildSatrec(
+		{
+			noradCatId: cols.id[idx],
+			epochJd: cols.epochJd[idx],
+			meanMotion: cols.n[idx],
+			eccentricity: cols.e[idx],
+			inclination: cols.i[idx],
+			raOfAscNode: cols.om[idx],
+			argOfPericenter: cols.w[idx],
+			meanAnomaly: cols.ma[idx],
+			bstar: cols.bstar[idx],
+			meanMotionDot: cols.meanMotionDot[idx],
+			meanMotionDdot: cols.meanMotionDdot[idx],
+			elementSetNo: cols.elementSetNo[idx],
+			revAtEpoch: cols.revAtEpoch[idx]
+		},
+		name ?? undefined
+	);
+	if (!satrec) return null;
 	return {
 		id: idMap.get(idx)!,
 		name,
@@ -106,8 +112,8 @@ function sgp4ToBody(
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
-		// Keep Kepler mean elements in the canonical (AU, deg/day) units so the
-		// Kepler fallback in renderer/curve code stays consistent when satrec init fails.
+		// Kepler mean elements kept in canonical (AU, deg/day) units for the
+		// orbit-period estimate used by sgp4Curve — they're not used to propagate.
 		a: cols.a[idx] / AU_KM,
 		e: cols.e[idx],
 		i: cols.i[idx],
@@ -116,7 +122,6 @@ function sgp4ToBody(
 		ma: cols.ma[idx],
 		n: cols.n[idx] * 360,
 		epoch: cols.epochJd[idx],
-		// TEME frame flag still matters for the Kepler fallback path.
 		equatorial: true,
 		satrec
 	};
@@ -186,6 +191,9 @@ export class ChunkLoader {
 				: isSGP4
 					? sgp4ToBody(cols as SGP4Columns, idx, labels, flags, idMap)
 					: keplerianToBody(cols as KeplerianColumns, idx, labels, flags, idMap);
+			// sgp4ToBody returns null when satrec init fails — drop the row to
+			// enforce SGP4-only propagation for earth sats.
+			if (!body) continue;
 			const offset = body.satrec
 				? sgp4PositionScene(body.satrec, jd)
 				: body.a === 0 && !isParabolic

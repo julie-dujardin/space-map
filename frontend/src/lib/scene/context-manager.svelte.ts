@@ -2,7 +2,9 @@ import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$l
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
 import { AU_KM, AU_SCALE } from '../math/units';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
+import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { dateToJD } from '$lib/format/date';
 
 /*
  * Visibility options:
@@ -93,6 +95,35 @@ async function createPlaceholderBody(
 	const isPlanetScale = orbit.scale === 'planet';
 	const isParabolic = orbit.q != null;
 
+	const noradCatId = global.cross_refs?.norad_cat_id;
+	const hasSGP4Fields =
+		orbit.bstar != null &&
+		orbit.mean_motion_dot != null &&
+		orbit.mean_motion_ddot != null &&
+		orbit.n != null &&
+		noradCatId != null;
+	const satrec =
+		isPlanetScale && hasSGP4Fields
+			? (buildSatrec(
+					{
+						noradCatId,
+						epochJd: orbit.epoch_jd,
+						meanMotion: orbit.n!,
+						eccentricity: orbit.e,
+						inclination: orbit.i,
+						raOfAscNode: orbit.om,
+						argOfPericenter: orbit.w,
+						meanAnomaly: orbit.ma ?? 0,
+						bstar: orbit.bstar!,
+						meanMotionDot: orbit.mean_motion_dot!,
+						meanMotionDdot: orbit.mean_motion_ddot!,
+						elementSetNo: orbit.element_set_no ?? 0,
+						revAtEpoch: orbit.rev_at_epoch ?? 0
+					},
+					global.name ?? undefined
+				) ?? undefined)
+			: undefined;
+
 	const data: BodyData = {
 		id: targetId,
 		name: global.name ?? global.sbdb_primary_designation ?? global.provisional_designation ?? null,
@@ -110,13 +141,16 @@ async function createPlaceholderBody(
 		epoch: orbit.epoch_jd,
 		// Planet-scale means CelesTrak TLE data, which uses Earth-equatorial angles.
 		equatorial: isPlanetScale,
-		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {})
+		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {}),
+		...(satrec ? { satrec } : {})
 	};
 
 	const parentPos = loader.positions.get(orbit.parent_naif_id) ?? [0, 0, 0];
-	const offset = isParabolic
-		? parabolicToPosition(data, date)
-		: orbitalElementsToPosition(data, date);
+	const offset = satrec
+		? sgp4PositionScene(satrec, dateToJD(date))
+		: isParabolic
+			? parabolicToPosition(data, date)
+			: orbitalElementsToPosition(data, date);
 	if (!offset) {
 		console.warn(`Failed to compute position for ${targetId} (e=${data.e})`);
 		return null;

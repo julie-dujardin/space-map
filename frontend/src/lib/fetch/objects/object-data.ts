@@ -51,6 +51,12 @@ export interface GlobalObjectData {
 		// Parabolic elements (e=1 comets)
 		q?: number;
 		tp?: number;
+		// SGP4 init fields (CelesTrak-sourced earth sats only)
+		bstar?: number;
+		mean_motion_dot?: number;
+		mean_motion_ddot?: number;
+		element_set_no?: number;
+		rev_at_epoch?: number;
 	};
 	orientation?: {
 		pole_ra: number;

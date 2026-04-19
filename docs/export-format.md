@@ -229,6 +229,14 @@ interface GlobalObjectData {
     a?: number; ma?: number; n?: number;
     // Parabolic (e=1 comets):
     q?: number; tp?: number;
+    // SGP4 init fields (CelesTrak-sourced earth sats only) — feed into
+    // satellite.js `json2satrec` so URL-navigated sats can build a satrec
+    // before their element chunk arrives.
+    bstar?: number;           // 1 / Earth radius
+    mean_motion_dot?: number; // rev/day²
+    mean_motion_ddot?: number; // rev/day³
+    element_set_no?: number;
+    rev_at_epoch?: number;
   };
   sbdb?: {
     neo?: boolean;   pha?: boolean;   class?: string;

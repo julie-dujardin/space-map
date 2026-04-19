@@ -76,6 +76,11 @@ _SGP4_CELESTRAK_FIELDS = (
     "ELEMENT_SET_NO",
     "REV_AT_EPOCH",
 )
+# Only earth-orbiting objects have CelesTrak rows (the earth zone query
+# eager-loads the relationship). Gating access on `parent_naif_id == 399`
+# keeps the spacecraft zone (Sun-orbiting, no CelesTrak data) from triggering
+# a cross-thread lazy load.
+_EARTH_NAIF_ID = 399
 
 
 def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
@@ -236,7 +241,11 @@ def _build_global(
         # SGP4 init fields for CelesTrak-sourced earth sats — the frontend uses
         # these to build a satellite.js satrec at load time, avoiding a Kepler
         # fallback while the element chunk is still in flight.
-        if obj.norad_cat_id is not None and obj.celestrak is not None:
+        if (
+            obj.parent_naif_id == _EARTH_NAIF_ID
+            and obj.norad_cat_id is not None
+            and obj.celestrak is not None
+        ):
             for attr in _SGP4_CELESTRAK_FIELDS:
                 val = getattr(obj.celestrak, attr)
                 if val is not None:
