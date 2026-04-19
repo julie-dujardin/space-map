@@ -23,8 +23,19 @@ export type ScreenOccluder = {
 	dist: number;
 };
 
-export function dimLabel(labelHalo: HTMLElement | null, nameSpan: HTMLElement | null): void {
-	if (labelHalo) labelHalo.style.transform = 'scale(0.3)';
+export function dimLabel(
+	labelHalo: HTMLElement | null,
+	nameSpan: HTMLElement | null,
+	clickable: boolean
+): void {
+	if (labelHalo) {
+		labelHalo.style.transform = 'scale(0.3)';
+		// Without this, hovering a dimmed halo's 32×32 root re-maximizes it and
+		// adds the body to hoveredBodyIds, stealing focus from whatever's behind.
+		if (labelHalo.parentElement) {
+			labelHalo.parentElement.style.pointerEvents = clickable ? '' : 'none';
+		}
+	}
 	if (nameSpan) {
 		nameSpan.style.display = 'none';
 		nameSpan.style.fontSize = '';
@@ -40,6 +51,8 @@ export function restoreLabel(
 	if (labelHalo) {
 		if (!isHovered) labelHalo.style.transform = '';
 		labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
+		// A label unclickable on frame N must regain clicks when it wins frame N+1.
+		if (labelHalo.parentElement) labelHalo.parentElement.style.pointerEvents = '';
 	}
 	if (nameSpan) {
 		nameSpan.style.display = '';
@@ -204,7 +217,7 @@ export function cullOverlappingLabels(
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
 		if (isCapped && !isSelected) {
-			dimLabel(labelHalo, nameSpan);
+			dimLabel(labelHalo, nameSpan, true);
 			continue;
 		}
 		// Check if behind a screen occluder (body large enough to hide labels behind it)
@@ -219,7 +232,7 @@ export function cullOverlappingLabels(
 			_accepted.push({ left: labelLeft, right: labelRight, y: screenY });
 			restoreLabel(labelHalo, nameSpan, hoveredBodyIds.has(bodyId), isFocused);
 		} else {
-			dimLabel(labelHalo, nameSpan);
+			dimLabel(labelHalo, nameSpan, false);
 		}
 	}
 
