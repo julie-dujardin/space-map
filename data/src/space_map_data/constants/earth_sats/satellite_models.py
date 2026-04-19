@@ -14,6 +14,7 @@ Where a Wikipedia article lists a satellite under a slightly different name (e.g
 "Intelsat VI F-2" vs SATCAT "INTELSAT 602"), the SATCAT/TLE spelling is preferred.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -86,8 +87,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "WESTAR 1",
             "WESTAR 2",
             "WESTAR 3",
-            "PALAPA A1",
-            "PALAPA A2",
+            "PALAPA 1",
+            "PALAPA 2",
         ),
         notes="Spin-stabilized cylinder, 1.8 m dia x 3.3 m, 300 W, 12 C-band channels. "
         "First commercial GEO commsat series; retired 1979.",
@@ -120,21 +121,20 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "PALAPA B2R",
             "PALAPA B4",
             "GALAXY 1",
-            "GALAXY 1R",
-            "GALAXY 1R2",
+            "GALAXY 1R",  # known as GALAXY 1R2 on wikipedia, 1R failed and 1R2 re-used the name in celestrack
             "GALAXY 2",
             "GALAXY 3",
             "GALAXY 5",
             "GALAXY 6",
             "GALAXY 9",
-            "TELSTAR 301",
+            "TELSTAR 3A",
             "TELSTAR 302",
             "TELSTAR 303",
-            "AUSSAT A1",
-            "AUSSAT A2",
-            "AUSSAT A3",
-            "BRASILSAT A1",
-            "BRASILSAT A2",
+            "AUSSAT 1",
+            "AUSSAT 2",
+            "AUSSAT 3",
+            "BRASILSAT 1",
+            "BRASILSAT 2",
             "BRASILSAT B1",
             "BRASILSAT B2",
             "BRASILSAT B3",
@@ -145,21 +145,21 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "MARCOPOLO 2",
             "THAICOM 1",
             "THAICOM 2",
-            "APSTAR 1",
-            "APSTAR 1A",
-            "MEASAT 1",
-            "MEASAT 2",
+            "APSTAR-1",
+            "APSTAR-1A",
+            "MEASAT-1",
+            "MEASAT-2",
             "ASIASAT 1",
-            "BSAT 1A",
-            "BSAT 1B",
-            "THOR 2",
-            "THOR 3",
+            "BSAT-1A",
+            "BSAT-1B",
+            "THOR II",
+            "THOR III",
             "SIRIUS 3",
-            "BONUM 1",
+            "BONUM-1",
             "ASTRA 2D",
             "ASTRA 3A",
-            "EBIRD 1",
-            "ZX 7",
+            "EUTELSAT 31A",  # eBird 1 / Eurobird 3
+            "ZHONGXING-7",  # ZX 7 / Chinasat-7 / HGS 2
         ),
         notes="Spin-stabilized telescoping dual-cylinder drum, 2.16 m dia stowed / 6.6-8 m deployed. "
         "58 built 1980-2003. Variants: base, L (long-life), HP (high-power), W (wide). "
@@ -180,7 +180,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "LEASAT 5",
         ),
         notes="Wide-body spin-stabilized cylinder, 4.26 m dia x 4.29 m stowed. "
-        "Shuttle payload-bay only; 'Frisbee' deployment. May be covered under Syncom article.",
+        "Shuttle payload-bay only; 'Frisbee' deployment. Covered under Q545738.",
     ),
     SatelliteBusSpec(
         slug="hs-393",
@@ -190,7 +190,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="1989",
         mass_kg_range=(1346, 2500),
         solar_span_m=10.0,
-        known_satellites=("JCSAT 1", "JCSAT 2", "SBS 6"),
+        known_satellites=("JCSAT-1", "JCSAT-2", "SBS-6"),
         notes="Scaled-up HS-376; spin-stabilized telescoping drum, 3.7 m dia x 10 m deployed. "
         "Only 3 satellites built.",
     ),
@@ -1829,6 +1829,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "YAMAL-401",
             "YAMAL-601",
             "AMOS-5",
+            "COSMOS 2520",
+            "COSMOS 2526",
+            "COSMOS 2533",
+            "COSMOS 2539",
         ),
         notes="Modern 3-axis GEO/MEO platform replacing older MSS-2500/KAUR. Li-ion, "
         "electric or chemical propulsion. Category contains 21 pages.",
@@ -2020,14 +2024,37 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
 )
 
 
-# Convenience helpers for the Space Map app
+# Precompiled word-boundary patterns for each known_satellites entry, sorted by
+# descending match length (ties broken by declaration order) so the first hit
+# during lookup is the longest — and therefore most specific — match.
+_ENTRY_PATTERNS: tuple[tuple[re.Pattern[str], SatelliteBusSpec], ...] = tuple(
+    (pat, bus)
+    for pat, _, _, bus in sorted(
+        (
+            (
+                re.compile(r"(?<![0-9A-Z])" + re.escape(sat.upper()) + r"(?![0-9A-Z])"),
+                len(sat),
+                bus_idx,
+                bus,
+            )
+            for bus_idx, bus in enumerate(SATELLITE_BUSES)
+            for sat in bus.known_satellites
+        ),
+        key=lambda e: (-e[1], e[2]),
+    )
+)
+
+
 def bus_for_satellite(object_name: str) -> SatelliteBusSpec | None:
-    """Look up the bus for a given SATCAT/TLE OBJECT_NAME (case-insensitive)."""
+    """Look up the bus for a SATCAT/TLE OBJECT_NAME.
+
+    Matches known_satellites entries as word-boundary substrings of OBJECT_NAME,
+    preferring the longest match (ties broken by declaration order).
+    """
     normalized = object_name.strip().upper()
-    for bus in SATELLITE_BUSES:
-        for sat in bus.known_satellites:
-            if sat.upper() == normalized:
-                return bus
+    for pat, bus in _ENTRY_PATTERNS:
+        if pat.search(normalized):
+            return bus
     return None
 
 

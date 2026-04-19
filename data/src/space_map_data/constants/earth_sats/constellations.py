@@ -309,6 +309,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
         prefix="WGS",
     ),
+    # Syncom IV / leasat.
+    ConstellationSpec(
+        "leasat",
+        "Q545738",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        prefix="LEASAT",
+    ),
     # AEHF: Advanced Extremely High Frequency — comms.
     ConstellationSpec(
         "aehf",
@@ -336,6 +343,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "Q1182618",
         (SatelliteCategory.MILITARY, SatelliteCategory.WEATHER),
         contains=("DMSP",),
+    ),
+    # DMP: Defense Support Program, early warning system (launches & nuke explosions)
+    ConstellationSpec(
+        "dsp",
+        "Q1182623",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        contains=("DSP ",),
     ),
     # SDA
     ConstellationSpec(
@@ -367,6 +381,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # -------------------------------------------------------------------------
     # US civilian / weather satellites
     # -------------------------------------------------------------------------
+    # Syncom 1-3, early GEO com
+    ConstellationSpec(
+        "syncom",
+        "Q545738",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.COMMUNICATIONS),
+        prefix="SYNCOM ",
+    ),
     # GOES: NOAA Geostationary Operational Environmental Satellites.
     ConstellationSpec("goes", "Q976688", SatelliteCategory.WEATHER, prefix="GOES"),
     ConstellationSpec("noaa", None, SatelliteCategory.WEATHER, prefix="NOAA"),
@@ -408,7 +429,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "electron", "Q18471030", SatelliteCategory.ROCKET, prefix="ELECTRON"
     ),
-    ConstellationSpec("thor", "Q249534", SatelliteCategory.ROCKET, prefix="THOR"),
+    ConstellationSpec(
+        "thor", "Q249534", SatelliteCategory.ROCKET, prefix=("THORAD", "THOR ABLESTAR")
+    ),
     ConstellationSpec("pslv", "Q221654", SatelliteCategory.ROCKET, prefix="PSLV"),
     ConstellationSpec("pegasus", "Q478603", SatelliteCategory.ROCKET, prefix="PEGASUS"),
     ConstellationSpec("saturn", "Q1285723", SatelliteCategory.ROCKET, prefix="SATURN"),
@@ -611,6 +634,18 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
             "COSMOS 1932",
         ],
     ),
+    # Geostationary, high bandwidth, Ekspress-2000
+    ConstellationSpec(
+        "blagovest",
+        "Q39074459",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        satellites=[
+            "COSMOS 2520",
+            "COSMOS 2526",
+            "COSMOS 2533",
+            "COSMOS 2539",
+        ],
+    ),
     # Communication sats with high eccentricity orbits, for good polar coverage
     ConstellationSpec(
         "molniya",
@@ -665,6 +700,39 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),  # include Ekspress-AT
     ConstellationSpec(
         "telesat", "Q2401935", SatelliteCategory.COMMUNICATIONS, group="telesat"
+    ),
+    ConstellationSpec(
+        "anik", "Q546687", SatelliteCategory.COMMUNICATIONS, contains=("ANIK",)
+    ),
+    ConstellationSpec(
+        "jsat", "Q11225562", SatelliteCategory.COMMUNICATIONS, contains=("JCSAT",)
+    ),
+    ConstellationSpec(
+        "superbird",
+        "Q11245057",
+        SatelliteCategory.COMMUNICATIONS,
+        contains=("SUPERBIRD",),
+    ),
+    ConstellationSpec(
+        "horizons",
+        "Q5903528",
+        SatelliteCategory.COMMUNICATIONS,
+        contains=("HORIZONS-",),
+    ),  # Joint venture
+    ConstellationSpec(
+        "dsn",
+        "Q11245057",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        contains=(
+            "DSN-",
+            "Superbird-B3",
+        ),
+    ),  # Japanese military GEO comm sats, joint venture
+    ConstellationSpec(
+        "thor",
+        "Q73877",
+        SatelliteCategory.COMMUNICATIONS,
+        contains=("THOR ", "MARCOPOLO", "INTELSAT 10-02"),
     ),
     ConstellationSpec("gps", "Q18822", SatelliteCategory.NAVIGATION, group="gps-ops"),
     ConstellationSpec(
@@ -786,6 +854,7 @@ PREFERRED_SLUGS: tuple[str, ...] = (
 # Opposite of PREFERRED_SLUGS: in case of conflict, any other candidate is preferred over these.
 UNPREFERRED_SLUGS: frozenset[str] = frozenset(
     {
+        "thor"  # thor rocket is more specific, few entries that don't match its prefixes are thor sats
         "sbas",  # type of sat
         "argos",
         "usa-classified",

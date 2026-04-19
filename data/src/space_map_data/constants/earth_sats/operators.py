@@ -109,7 +109,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("pslv", "gslv"),
     ),
     OperatorSpec(
-        "Intelsat", "Q778126", source="ITSO", constellations=("intelsat", "galaxy")
+        "Intelsat",
+        "Q778126",
+        source="ITSO",
+        constellations=("intelsat", "galaxy", "horizons"),
     ),
     OperatorSpec("North Atlantic Treaty Organization", "Q7184", source="NATO"),
     OperatorSpec(
@@ -151,12 +154,28 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("planet-flock", "planet-skysat", "planet-pelican"),
     ),
     OperatorSpec("Spire Global", "Q19877982", constellations=("spire",)),
-    OperatorSpec("Telesat", "Q2401935", constellations=("telesat",)),
+    OperatorSpec("Telesat", "Q2401935", constellations=("telesat", "anik")),
+    OperatorSpec("Space Norway", "Q19389792", constellations=("thor",)),
+    OperatorSpec("SBS", "Q7426030", prefix=("SBS ", "SBS-")),
+    OperatorSpec(
+        "JSAT Corporation",
+        "Q4355616",
+        constellations=("jsat", "superbird", "dsn", "horizons"),
+    ),
     OperatorSpec("Swarm Technologies", "Q103484515", constellations=("spacebee",)),
     OperatorSpec(
         "United States Space Force",
         "Q55088961",
-        constellations=("gps", "wgs", "aehf", "sbirs", "dmsp", "checkmate", "muos"),
+        constellations=(
+            "gps",
+            "wgs",
+            "aehf",
+            "sbirs",
+            "dmsp",
+            "checkmate",
+            "muos",
+            "dsp",
+        ),
     ),
     OperatorSpec(
         "S.P. Korolev Rocket and Space Corporation Energia - OKB-1",
@@ -210,7 +229,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Russian Aerospace Forces",
         "Q21042210",
-        constellations=("cosmos", "cis-classified"),
+        constellations=("cosmos", "blagovest", "cis-classified"),
         active_from=1992,
     ),
     OperatorSpec(
@@ -218,6 +237,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q55610347",
         constellations=("galileo",),
     ),
+    OperatorSpec("Japan Self-Defense Forces", "Q275488", constellations=("dsn",)),
     OperatorSpec(
         "NASA",
         "Q23548",
@@ -238,14 +258,20 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "pageos",
             "sts",
             "nimbus",
+            "syncom",
         ),
     ),
     OperatorSpec("US Navy", "Q11220", constellations=("transit", "vanguard")),
     OperatorSpec(
         "US Air Force",
         "Q11223",
-        constellations=("us-ops-classified", "titan-rocket"),
+        constellations=("us-ops-classified", "leasat", "titan-rocket"),
     ),
+    OperatorSpec(
+        "US DOD - Department of Defense",
+        "Q11209",
+        constellations=("leasat",),
+    ),  # Shared infra, couldn't find a more specific operator
     OperatorSpec(
         "CIA - Central Intelligence Agency",
         "Q37230",
