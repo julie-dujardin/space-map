@@ -5,7 +5,7 @@
 		LocalizedObjectData,
 		EntityRef
 	} from '$lib/fetch/objects/object-data';
-	import { formatWikidataDate } from '$lib/format/date';
+	import { formatIsoDate } from '$lib/format/date';
 	import { formatCurrency, formatNumber } from '$lib/format/quantities';
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
 	import Section from './Section.svelte';
@@ -84,10 +84,10 @@
 			<Row label={m.ops_status()} value={formatOpsStatus(ct.ops_status)} />
 		{/if}
 		{#if launchDate}
-			<Row label={m.launch_date()} value={formatWikidataDate(launchDate)} />
+			<Row label={m.launch_date()} value={formatIsoDate(launchDate)} />
 		{/if}
 		{#if decayDate}
-			<Row label={m.decay_date()} value={formatWikidataDate(decayDate)} />
+			<Row label={m.decay_date()} value={formatIsoDate(decayDate)} />
 		{/if}
 		{#if operators && operators.length > 0}
 			<Row label={m.property_name_operators()}>

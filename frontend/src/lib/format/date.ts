@@ -23,15 +23,20 @@ function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
 }
 
 /**
- * Format a Wikidata/Wikipedia ISO 8601 date string as a localized date.
- * - Strips leading '+' (e.g. "+1801-01-01T00:00:00Z")
- * - When time is midnight, returns a localized date string (e.g. "January 1, 1801")
- * - When time is non-zero, returns "<localized date> <localized time>"
+ * Format an ISO 8601 date string as a localized date. Accepts plain dates
+ * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), and Wikidata-style
+ * strings with a leading '+' ("+1801-01-01T00:00:00Z"). When the time is
+ * midnight or absent, returns just the localized date; otherwise appends the
+ * localized time.
  */
-export function formatWikidataDate(raw: string): string {
+export function formatIsoDate(raw: string): string {
 	const s = raw.startsWith('+') ? raw.slice(1) : raw;
 	const tIdx = s.indexOf('T');
-	if (tIdx === -1) return s;
+	if (tIdx === -1) {
+		const d = new Date(s + 'T00:00:00Z');
+		if (isNaN(d.getTime())) return s;
+		return formatDate(d);
+	}
 	const date = s.slice(0, tIdx);
 	const time = s.slice(tIdx + 1);
 	const d = new Date(date + 'T' + time);

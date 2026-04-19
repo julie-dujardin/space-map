@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import { formatWikidataDate } from '$lib/format/date';
+	import { formatIsoDate } from '$lib/format/date';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -30,7 +30,7 @@
 {#if hasContent}
 	<Section title={m.discovery()}>
 		{#if discoveryDate}
-			<Row label={m.first_observed()} value={formatWikidataDate(discoveryDate)} />
+			<Row label={m.first_observed()} value={formatIsoDate(discoveryDate)} />
 		{/if}
 		{#if discoverers && discoverers.length > 0}
 			<Row label={discoverers.length > 1 ? m.discoverers() : m.discoverer()}>

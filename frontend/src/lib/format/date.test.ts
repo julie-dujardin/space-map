@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$lib/paraglide/runtime.js', () => ({ getLocale: () => 'en-US' }));
 
-import { dateToJD, jdToDate, formatWikidataDate, formatJulianDate } from './date';
+import { dateToJD, jdToDate, formatIsoDate, formatJulianDate } from './date';
 
 describe('dateToJD', () => {
 	it.each([
@@ -36,28 +36,34 @@ describe('dateToJD / jdToDate round-trip', () => {
 	});
 });
 
-describe('formatWikidataDate', () => {
+describe('formatIsoDate', () => {
 	it('formats a midnight date with leading +', () => {
-		const result = formatWikidataDate('+1801-01-01T00:00:00Z');
+		const result = formatIsoDate('+1801-01-01T00:00:00Z');
 		expect(result).toContain('1801');
 		// Should not contain a time portion
 		expect(result).not.toMatch(/\d{1,2}:\d{2}/);
 	});
 
 	it('formats a non-midnight date with time', () => {
-		const result = formatWikidataDate('+2024-06-15T14:30:00Z');
+		const result = formatIsoDate('+2024-06-15T14:30:00Z');
 		expect(result).toContain('2024');
 		// Should contain a time portion
 		expect(result).toMatch(/\d{1,2}:\d{2}/);
 	});
 
 	it('handles dates without leading +', () => {
-		const result = formatWikidataDate('2024-01-01T00:00:00Z');
+		const result = formatIsoDate('2024-01-01T00:00:00Z');
 		expect(result).toContain('2024');
 	});
 
-	it('returns raw string when no T separator', () => {
-		expect(formatWikidataDate('2024-01-01')).toBe('2024-01-01');
+	it('formats a plain date without time', () => {
+		const result = formatIsoDate('2024-01-01');
+		expect(result).toContain('2024');
+		expect(result).not.toMatch(/\d{1,2}:\d{2}/);
+	});
+
+	it('returns raw string when unparseable', () => {
+		expect(formatIsoDate('not a date')).toBe('not a date');
 	});
 });
 
