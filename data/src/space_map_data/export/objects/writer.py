@@ -325,10 +325,17 @@ def _build_localized(
     """Build the per-language JSON dict for an object."""
     data: dict = {}
 
-    if wd and lang in wd["labels"]:
-        data["name"] = wd["labels"][lang]
-
     if wd:
+        labels = wd["labels"]
+        # Match resolve_name's fallback chain (used by the element label file):
+        # target lang → English → omit. Falling back to obj.name is skipped here
+        # since that's already in the global file — a localized `name` is only
+        # meaningful when it's a Wikidata-sourced long form.
+        if lang in labels:
+            data["name"] = labels[lang]
+        elif "en" in labels:
+            data["name"] = labels["en"]
+
         desc = wd["descriptions"].get(lang)
         if desc:
             data["description"] = desc

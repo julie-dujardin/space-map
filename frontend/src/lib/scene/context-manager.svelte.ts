@@ -127,7 +127,15 @@ async function createPlaceholderBody(
 
 	const data: BodyData = {
 		id: targetId,
-		name: global.name ?? global.sbdb_primary_designation ?? global.provisional_designation ?? null,
+		// Prefer the localized (Wikidata-resolved) long form so the 3D label matches
+		// what the element chunk would produce via resolve_name; global.name is the
+		// raw short form (e.g. CelesTrak "IRIDIUM 33 DEB") and only a last resort.
+		name:
+			detail.localized?.name ??
+			global.name ??
+			global.sbdb_primary_designation ??
+			global.provisional_designation ??
+			null,
 		objectType: parseObjectType(global.type),
 		parentId: `naif-${orbit.parent_naif_id}`,
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,

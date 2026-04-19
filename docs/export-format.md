@@ -314,7 +314,7 @@ Only written when Wikidata/Wikipedia data exists for the language. Entity refere
 
 ```typescript
 interface LocalizedObjectData {
-  name?: string;
+  name?: string;          // Wikidata label in the target lang, falling back to English. Omitted if no Wikidata entity.
   description?: string;
   aliases?: string[];
   instance_of?: EntityRef[];
