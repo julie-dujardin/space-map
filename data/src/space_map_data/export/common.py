@@ -21,6 +21,8 @@ from space_map_data.export.objects import write_objects
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
 from space_map_data.export.systems import (
+    load_nut_prec,
+    load_nut_prec_angles,
     load_orientation,
     load_radii,
     write_system_metadata,
@@ -98,6 +100,7 @@ def _write_parts(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
 ) -> tuple[int, int]:
     """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -126,6 +129,7 @@ def _write_parts(
             nasa_science_urls,
             orientation=orientation,
             radii=radii,
+            nut_prec=nut_prec,
         )
         total_bytes += write_chunk(
             chunk,
@@ -162,6 +166,18 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     orientation = load_orientation(DOWNLOAD_DIR)
     radii = load_radii(DOWNLOAD_DIR)
+    nut_prec = load_nut_prec(DOWNLOAD_DIR)
+    nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
+
+    # Single global file fetched once by the frontend; bodies derive their owner
+    # as `naif_id // 100` (or `naif_id` itself when < 100). Tiny — not gzipped.
+    if nut_prec_angles:
+        (out_dir / "nut_prec_angles.json").write_bytes(
+            orjson.dumps(
+                {str(owner): vals for owner, vals in sorted(nut_prec_angles.items())}
+            )
+        )
+        logger.info("Wrote nut_prec_angles.json (%d owners)", len(nut_prec_angles))
 
     zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
     object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
@@ -214,7 +230,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     "spacecraft",
                     0,
                     session.query(Object)
-                    .options(joinedload(Object.satcat))
+                    .options(joinedload(Object.satcat), joinedload(Object.celestrak))
                     .filter(
                         Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),
@@ -249,6 +265,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nasa_science_urls,
                     orientation,
                     radii,
+                    nut_prec,
                 )
                 futures[f] = (zone, zoom, len(objects))
 
@@ -292,11 +309,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nasa_science_urls,
                     orientation,
                     radii,
+                    nut_prec,
                 )
                 futures[f] = (zone, zoom, len(objects))
             # executor joins here — session still open so ORM objects remain valid
 
-        write_system_metadata(session, out_dir, orientation, radii)
+        write_system_metadata(session, out_dir, orientation, radii, nut_prec)
 
     for f in as_completed(futures):
         zone, zoom, count = futures[f]

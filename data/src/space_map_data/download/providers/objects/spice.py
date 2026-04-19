@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx
+import orjson
 import spiceypy
 from tqdm import tqdm
 
@@ -312,6 +313,12 @@ class SpiceDownloader(Downloader):
     def _extract_orientation() -> list[dict]:
         """Extract PCK orientation data for all bodies that have it.
 
+        Returns the full IAU rotation polynomial:
+          α(T) = pole_ra_0 + pole_ra_1·T   (T in Julian centuries since J2000)
+          δ(T) = pole_dec_0 + pole_dec_1·T
+          W(d) = w0 + w1·d + w2·d²         (d in days since J2000)
+
+        Nutation/precession sums are extracted separately (see _extract_nutation).
         Queries the kernel pool for all BODY*_POLE_RA variables rather than
         iterating a fixed set, so asteroids and comets with orientation data
         in the PCK are included automatically.
@@ -335,13 +342,108 @@ class SpiceDownloader(Downloader):
             rows.append(
                 {
                     "naif_id": naif_id,
-                    "pole_ra": pole_ra[0],
-                    "pole_dec": pole_dec[0],
+                    "pole_ra_0": pole_ra[0],
+                    "pole_ra_1": pole_ra[1],
+                    "pole_dec_0": pole_dec[0],
+                    "pole_dec_1": pole_dec[1],
                     "w0": pm[0],
-                    "w_rate": pm[1],
+                    "w1": pm[1],
+                    "w2": pm[2],
                 }
             )
         return rows
+
+    @staticmethod
+    def _extract_nutation() -> tuple[
+        dict[int, dict[str, list[float]]], dict[int, list[float]]
+    ]:
+        """Extract PCK nutation/precession terms for the full IAU rotation model.
+
+        Per body:
+          α += Σ ra[i]  · sin(θ_i(T))
+          δ += Σ dec[i] · cos(θ_i(T))
+          W += Σ pm[i]  · sin(θ_i(T))
+        where θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century, T = Julian centuries).
+
+        The angles array is defined once per "owner" body — typically the
+        planetary system barycenter (1..9). In pck00011 the owners are
+        BODY{1,3,4,5,6,7,8}_NUT_PREC_ANGLES; bodies derive their owner as
+        `naif_id // 100` (or `naif_id` itself when < 100).
+
+        Returns (coefficients, angles):
+          coefficients: {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}
+          angles:       {owner_naif_id: [θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]}
+        """
+        coefficients: dict[int, dict[str, list[float]]] = {}
+        for kind, key in (("ra", "RA"), ("dec", "DEC"), ("pm", "PM")):
+            matches = spiceypy.gnpool(f"BODY*_NUT_PREC_{key}", 0, 1000)
+            for var in matches:
+                m = re.match(rf"BODY(-?\d+)_NUT_PREC_{key}$", var)
+                if not m:
+                    continue
+                naif_id = int(m.group(1))
+                # dtpool returns (found, n_elements, type) — use it to size the fetch
+                n_elements, _type = spiceypy.dtpool(var)[:2]
+                if n_elements <= 0:
+                    continue
+                try:
+                    values = spiceypy.bodvrd(
+                        str(naif_id), f"NUT_PREC_{key}", n_elements
+                    )[1]
+                except spiceypy.exceptions.SpiceyError as exc:
+                    logger.warning("Failed reading %s: %s", var, exc)
+                    continue
+                # Coerce numpy.float64 → float so orjson can serialize.
+                coefficients.setdefault(naif_id, {"ra": [], "dec": [], "pm": []})[
+                    kind
+                ] = [float(v) for v in values]
+
+        angles: dict[int, list[float]] = {}
+        for var in spiceypy.gnpool("BODY*_NUT_PREC_ANGLES", 0, 1000):
+            m = re.match(r"BODY(-?\d+)_NUT_PREC_ANGLES$", var)
+            if not m:
+                continue
+            owner_id = int(m.group(1))
+            n_elements, _type = spiceypy.dtpool(var)[:2]
+            if n_elements <= 0:
+                continue
+            try:
+                values = spiceypy.bodvrd(str(owner_id), "NUT_PREC_ANGLES", n_elements)[
+                    1
+                ]
+            except spiceypy.exceptions.SpiceyError as exc:
+                logger.warning("Failed reading %s: %s", var, exc)
+                continue
+            angles[owner_id] = [float(v) for v in values]
+
+        # Sanity-check: every body with coefficients should have a resolvable owner,
+        # and per-channel arrays may not exceed the angle count (they may be shorter —
+        # bodies often use only the first few system angles).
+        for naif_id, coeffs in coefficients.items():
+            owner_id = naif_id // 100 if naif_id >= 100 else naif_id
+            if owner_id not in angles:
+                logger.warning(
+                    "NUT_PREC coefficients for body %d reference owner %d which "
+                    "has no NUT_PREC_ANGLES; rotation sums for this body will be "
+                    "ignored downstream",
+                    naif_id,
+                    owner_id,
+                )
+                continue
+            n_angles = len(angles[owner_id]) // 2
+            for kind in ("ra", "dec", "pm"):
+                if len(coeffs[kind]) > n_angles:
+                    logger.warning(
+                        "Body %d NUT_PREC_%s has %d coefficients but owner %d only "
+                        "defines %d angle pairs; extra coefficients will be ignored",
+                        naif_id,
+                        kind.upper(),
+                        len(coeffs[kind]),
+                        owner_id,
+                        n_angles,
+                    )
+
+        return coefficients, angles
 
     @staticmethod
     def _extract_radii() -> list[dict]:
@@ -633,7 +735,17 @@ class SpiceDownloader(Downloader):
         orientation_file = self.out_dir / "orientation.csv"
         with orientation_file.open("w", newline="") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["naif_id", "pole_ra", "pole_dec", "w0", "w_rate"]
+                f,
+                fieldnames=[
+                    "naif_id",
+                    "pole_ra_0",
+                    "pole_ra_1",
+                    "pole_dec_0",
+                    "pole_dec_1",
+                    "w0",
+                    "w1",
+                    "w2",
+                ],
             )
             writer.writeheader()
             writer.writerows(orientation_rows)
@@ -643,7 +755,34 @@ class SpiceDownloader(Downloader):
             orientation_file.name,
         )
 
-        # Step 8: Extract triaxial radii
+        # Step 8: Extract NUT_PREC nutation/precession terms
+        nut_prec_coeffs, nut_prec_angles = self._extract_nutation()
+        # Keys serialized as strings — orjson refuses int keys at top level
+        nut_prec_file = self.out_dir / "nut_prec.json"
+        nut_prec_file.write_bytes(
+            orjson.dumps(
+                {
+                    str(naif_id): coeffs
+                    for naif_id, coeffs in sorted(nut_prec_coeffs.items())
+                }
+            )
+        )
+        nut_prec_angles_file = self.out_dir / "nut_prec_angles.json"
+        nut_prec_angles_file.write_bytes(
+            orjson.dumps(
+                {
+                    str(owner_id): vals
+                    for owner_id, vals in sorted(nut_prec_angles.items())
+                }
+            )
+        )
+        logger.info(
+            "Saved nutation terms: %d bodies, %d angle owners",
+            len(nut_prec_coeffs),
+            len(nut_prec_angles),
+        )
+
+        # Step 9: Extract triaxial radii
         radii_rows = self._extract_radii()
         radii_file = self.out_dir / "radii.csv"
         with radii_file.open("w", newline="") as f:
@@ -662,5 +801,7 @@ class SpiceDownloader(Downloader):
             epoch=epoch.isoformat(),
             epoch_jd=f"{epoch_jd:.1f}",
             orientation_count=len(orientation_rows),
+            nut_prec_body_count=len(nut_prec_coeffs),
+            nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
         )

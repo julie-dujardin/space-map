@@ -7,6 +7,7 @@ All files are served under `/data/v1/` and are gzip-compressed unless noted.
 ```
 v1/
   metadata.json                                  (not gzipped)
+  nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
@@ -203,8 +204,17 @@ interface GlobalObjectData {
   };
   nasa_science_url?: string;          // URL to science.nasa.gov page
   images?: ObjectImage[];             // from Wikidata P18/P154 + all Wikipedia languages
-  orientation?: {                     // SPICE PCK pole/spin (deg, deg/day)
-    pole_ra: number; pole_dec: number; w0: number; w_rate: number;
+  orientation?: {                     // SPICE PCK IAU rotation polynomial
+    // α(T) = pole_ra_0 + pole_ra_1·T   (T = Julian centuries since J2000)
+    // δ(T) = pole_dec_0 + pole_dec_1·T
+    // W(d) = w0 + w1·d + w2·d²         (d = days since J2000)
+    pole_ra_0: number; pole_ra_1: number;
+    pole_dec_0: number; pole_dec_1: number;
+    w0: number; w1: number; w2: number;
+  };
+  nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with /v1/nut_prec_angles.json)
+    // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))
+    ra: number[]; dec: number[]; pm: number[];
   };
   radii?: {                           // SPICE PCK triaxial radii (km, body-fixed X/Y/Z)
     a: number; b: number; c: number;
@@ -372,20 +382,46 @@ The size is a target, not a hard limit. Some textures go over it.
 
 ## System metadata (`systems/{barycenter_id}.json`)
 
-Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, SPICE PCK orientation (pole/spin), and triaxial radii when known.
+Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, SPICE PCK orientation (pole/spin polynomial), nutation/precession coefficients, and triaxial radii when known.
 
 ```json
 {
   "naif-399": {
     "tiers": ["high", "low", "medium"],
-    "orientation": { "pole_ra": 0.0, "pole_dec": 90.0, "w0": 190.147, "w_rate": 360.9856235 },
+    "orientation": {
+      "pole_ra_0": 0.0, "pole_ra_1": -0.641,
+      "pole_dec_0": 90.0, "pole_dec_1": -0.557,
+      "w0": 190.147, "w1": 360.9856235, "w2": 0.0
+    },
+    "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
   "naif-301": { "tiers": ["low"] }
 }
 ```
 
-The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies axial tilt + spin to meshes, and (where `radii` differ) flattens bodies into oblate ellipsoids.
+The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, and (where `radii` differ) flattens bodies into oblate ellipsoids.
+
+## Nutation angles (`nut_prec_angles.json`)
+
+A single tiny top-level file fetched once at app start. Lists the IAU nutation/precession angle pairs `(θ₀, θ₁)` defined per "owner" body — typically the planetary system barycenter. Bodies derive their owner as `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`.
+
+```json
+{
+  "1": [174.791086, 4.092335, 349.582171, 8.184670],
+  "3": [125.045, -0.0529921, 250.089, -0.1059842],
+  "5": [73.32, 91472.9, 24.62, 45137.2]
+}
+```
+
+Each owner's array is a flat list of `[θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]` in degrees and degrees/century. Combined with each body's `nut_prec` coefficient arrays:
+
+```
+θ_i(T) = angles[2i] + angles[2i+1]·T          (T = Julian centuries since J2000)
+α(T)  += Σ nut_prec.ra[i]  · sin(θ_i(T))
+δ(T)  += Σ nut_prec.dec[i] · cos(θ_i(T))
+W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
+```
 
 ## Consuming the data
 

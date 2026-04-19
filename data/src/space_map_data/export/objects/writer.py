@@ -69,6 +69,13 @@ _CROSS_REF_FIELDS = (
 )
 
 _ORBIT_FIELDS = ("epoch_jd", "a", "e", "i", "om", "w", "ma", "n")
+_SGP4_CELESTRAK_FIELDS = (
+    "BSTAR",
+    "MEAN_MOTION_DOT",
+    "MEAN_MOTION_DDOT",
+    "ELEMENT_SET_NO",
+    "REV_AT_EPOCH",
+)
 
 
 def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
@@ -90,6 +97,7 @@ def write_objects(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
 ) -> dict[str, dict[str, int]]:
     """Write per-object JSON files (global + per-language).
 
@@ -136,6 +144,7 @@ def write_objects(
             nasa_science_urls,
             orientation,
             radii,
+            nut_prec,
             wiki_image_filenames,
         )
         (global_dir / f"{obj.id}.json.gz").write_bytes(
@@ -182,6 +191,7 @@ def _build_global(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
     wiki_image_filenames: list[str] | None = None,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
@@ -223,11 +233,23 @@ def _build_global(
             orbit["parent_naif_id"] = obj.parent_naif_id
         if obj.orbital_source is not None:
             orbit["source"] = obj.orbital_source
+        # SGP4 init fields for CelesTrak-sourced earth sats — the frontend uses
+        # these to build a satellite.js satrec at load time, avoiding a Kepler
+        # fallback while the element chunk is still in flight.
+        if obj.norad_cat_id is not None and obj.celestrak is not None:
+            for attr in _SGP4_CELESTRAK_FIELDS:
+                val = getattr(obj.celestrak, attr)
+                if val is not None:
+                    orbit[attr.lower()] = val
         data["orbit"] = orbit
 
     # Orientation data (from SPICE PCK)
     if obj.naif_id is not None and obj.naif_id in orientation:
         data["orientation"] = orientation[obj.naif_id]
+
+    # Nutation/precession coefficients (paired with global nut_prec_angles.json)
+    if obj.naif_id is not None and obj.naif_id in nut_prec:
+        data["nut_prec"] = nut_prec[obj.naif_id]
 
     # Triaxial radii (km, along body-fixed X, Y, Z) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in radii:

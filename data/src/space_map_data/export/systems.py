@@ -31,9 +31,9 @@ _SYSTEM_TYPES = frozenset(
 
 
 def load_orientation(download_dir: Path) -> dict[int, dict]:
-    """Load orientation data from SPICE orientation.csv.
+    """Load orientation polynomial coefficients from SPICE orientation.csv.
 
-    Returns {naif_id: {pole_ra, pole_dec, w0, w_rate}}.
+    Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
     """
     csv_path = download_dir / PROVIDERS.SPICE / "orientation.csv"
     if not csv_path.exists():
@@ -44,12 +44,45 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
         for row in csv.DictReader(f):
             naif_id = int(row["naif_id"])
             result[naif_id] = {
-                "pole_ra": float(row["pole_ra"]),
-                "pole_dec": float(row["pole_dec"]),
+                "pole_ra_0": float(row["pole_ra_0"]),
+                "pole_ra_1": float(row["pole_ra_1"]),
+                "pole_dec_0": float(row["pole_dec_0"]),
+                "pole_dec_1": float(row["pole_dec_1"]),
                 "w0": float(row["w0"]),
-                "w_rate": float(row["w_rate"]),
+                "w1": float(row["w1"]),
+                "w2": float(row["w2"]),
             }
     logger.info("Loaded %d orientation records", len(result))
+    return result
+
+
+def load_nut_prec(download_dir: Path) -> dict[int, dict[str, list[float]]]:
+    """Load NUT_PREC coefficient arrays per body.
+
+    Returns {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}.
+    """
+    json_path = download_dir / PROVIDERS.SPICE / "nut_prec.json"
+    if not json_path.exists():
+        logger.warning("No nut_prec JSON at %s", json_path)
+        return {}
+    raw = orjson.loads(json_path.read_bytes())
+    result = {int(naif_id): coeffs for naif_id, coeffs in raw.items()}
+    logger.info("Loaded NUT_PREC coefficients for %d bodies", len(result))
+    return result
+
+
+def load_nut_prec_angles(download_dir: Path) -> dict[int, list[float]]:
+    """Load NUT_PREC_ANGLES per owner (planetary system barycenter).
+
+    Returns {owner_naif_id: [θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]} (deg, deg/century).
+    """
+    json_path = download_dir / PROVIDERS.SPICE / "nut_prec_angles.json"
+    if not json_path.exists():
+        logger.warning("No nut_prec_angles JSON at %s", json_path)
+        return {}
+    raw = orjson.loads(json_path.read_bytes())
+    result = {int(owner): vals for owner, vals in raw.items()}
+    logger.info("Loaded NUT_PREC_ANGLES for %d owners", len(result))
     return result
 
 
@@ -80,6 +113,7 @@ def write_system_metadata(
     out_dir: Path,
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -158,6 +192,10 @@ def write_system_metadata(
             # Orientation data
             if obj.naif_id is not None and obj.naif_id in orientation:
                 entry["orientation"] = orientation[obj.naif_id]
+
+            # Nutation/precession coefficients (paired with global nut_prec_angles.json)
+            if obj.naif_id is not None and obj.naif_id in nut_prec:
+                entry["nut_prec"] = nut_prec[obj.naif_id]
 
             # Triaxial radii (km, along body-fixed X, Y, Z)
             if obj.naif_id is not None and obj.naif_id in radii:
