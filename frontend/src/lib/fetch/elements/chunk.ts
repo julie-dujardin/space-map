@@ -43,7 +43,8 @@ function keplerianToBody(
 		// Earth-equatorial (TEME) frame. System-scale entries are ecliptic J2000.
 		equatorial: isPlanetScale,
 		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd
+		validityEnd: cols.validityEnd,
+		orbitalSource: cols.source
 	};
 }
 
@@ -72,7 +73,8 @@ function parabolicToBody(
 		q: cols.q[idx],
 		tp: cols.tp[idx],
 		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd
+		validityEnd: cols.validityEnd,
+		orbitalSource: cols.source
 	};
 }
 
@@ -129,7 +131,8 @@ function sgp4ToBody(
 		equatorial: true,
 		satrec,
 		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd
+		validityEnd: cols.validityEnd,
+		orbitalSource: cols.source
 	};
 }
 

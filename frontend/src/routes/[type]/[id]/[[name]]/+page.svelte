@@ -9,6 +9,7 @@
 	import { parseUrl, DEFAULT_VIEW, serializeUrl } from '$lib/url-state';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
+	import AttributionBar from '../../../../components/AttributionBar.svelte';
 	import TimeControls from '../../../../components/TimeControls.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -69,7 +70,7 @@
 				/>
 			{/if}
 			<div
-				class="fixed end-4 z-10 transition-opacity duration-300 ease-in-out
+				class="fixed end-4 z-10 flex flex-col items-end gap-3 transition-opacity duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
 			>
@@ -77,6 +78,7 @@
 					onLocate={(zoom: number, lat?: number, lng?: number) =>
 						scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0}
 				/>
+				<AttributionBar />
 			</div>
 		</div>
 	</Tooltip.Provider>

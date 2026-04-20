@@ -1,4 +1,5 @@
 import type { SatRec } from 'satellite.js';
+import type { OrbitalSource } from '$lib/fetch/elements/constants';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -45,6 +46,13 @@ export interface BodyData extends OrbitalElements {
 	 */
 	validityStart: number;
 	validityEnd: number;
+	/**
+	 * Provider that produced these orbital elements — inherited from the chunk
+	 * header byte (binary format v3+). Drives the dynamic attribution bar; for
+	 * placeholder bodies built from global JSON the enum is parsed from
+	 * `global.orbit.source` instead.
+	 */
+	orbitalSource: OrbitalSource;
 }
 
 export interface PositionedBody {

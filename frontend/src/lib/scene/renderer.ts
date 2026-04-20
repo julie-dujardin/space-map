@@ -926,7 +926,7 @@ export class SceneRenderer {
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
-		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd).then(() =>
+		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd, this.ctx).then(() =>
 			this.reapplyInitialViewIfPending()
 		);
 	}

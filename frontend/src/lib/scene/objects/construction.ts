@@ -316,6 +316,14 @@ export async function loadBodyTextureTier(
 
 interface SystemBodyMeta {
 	tiers?: string[];
+	/** Attribution block — matches `export/systems.py::texture_attribution`. */
+	texture?: {
+		source: string;
+		organisation: string;
+		type: string;
+		attribution?: string;
+		description?: string;
+	};
 	orientation?: {
 		pole_ra_0: number;
 		pole_ra_1: number;
@@ -339,7 +347,8 @@ export async function loadSystemData(
 	barycenterId: string,
 	bodyObjects: Map<string, BodyObjects>,
 	textureLoader: TextureLoader,
-	currentJd: number
+	currentJd: number,
+	ctx?: ContextManager
 ): Promise<void> {
 	let meta: Record<string, SystemBodyMeta>;
 	try {
@@ -352,6 +361,17 @@ export async function loadSystemData(
 
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
+		if (ctx && bodyMeta.texture) {
+			ctx.registerTextureCredit({
+				bodyId,
+				systemId: barycenterId,
+				source: bodyMeta.texture.source,
+				organisation: bodyMeta.texture.organisation,
+				type: bodyMeta.texture.type,
+				attribution: bodyMeta.texture.attribution,
+				description: bodyMeta.texture.description
+			});
+		}
 		const bo = bodyObjects.get(bodyId);
 		if (!bo?.mesh) continue;
 

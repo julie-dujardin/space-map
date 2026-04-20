@@ -29,3 +29,17 @@ export enum Scale {
 	PLANET = 0,
 	SYSTEM = 1
 }
+
+/**
+ * Provenance of the orbital elements in a binary chunk. Ordinals must stay in
+ * sync with `SOURCE_ORDINAL` in [data/src/space_map_data/export/elements/format.py].
+ * The header stores the ordinal at offset 28; `UNKNOWN` (255) is the sentinel
+ * for chunks pre-dating the byte (kept so failed parses don't crash the UI).
+ */
+export enum OrbitalSource {
+	HORIZONS = 0,
+	SBDB = 1,
+	CELESTRAK = 2,
+	SPICE = 3,
+	UNKNOWN = 255
+}

@@ -1,5 +1,6 @@
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { OrbitalSource } from '$lib/fetch/elements/constants';
 import { AU_KM, AU_SCALE } from '../math/units';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
@@ -71,6 +72,39 @@ function computeVisibilityFromRatio(
 function parseObjectType(typeStr: string): ObjectType {
 	const key = typeStr.toUpperCase() as keyof typeof ObjectType;
 	return ObjectType[key] ?? ObjectType.UNDOCUMENTED;
+}
+
+/**
+ * Map a global JSON `orbit.source` string (the lowercase `OrbitalSource` enum
+ * value) back to the numeric ordinal — placeholder bodies created before their
+ * chunk lands have no binary header to pull from, so we parse the string.
+ * Returns `UNKNOWN` if the server sent a value the frontend doesn't know.
+ */
+const ORBIT_SOURCE_BY_NAME: Record<string, OrbitalSource> = {
+	horizons: OrbitalSource.HORIZONS,
+	sbdb: OrbitalSource.SBDB,
+	celestrak: OrbitalSource.CELESTRAK,
+	spice: OrbitalSource.SPICE
+};
+function parseOrbitalSource(name: string | undefined): OrbitalSource {
+	if (!name) return OrbitalSource.UNKNOWN;
+	return ORBIT_SOURCE_BY_NAME[name] ?? OrbitalSource.UNKNOWN;
+}
+
+/**
+ * Per-body texture attribution recorded when its system metadata loads.
+ * `systemId` is the barycenter ID the body belongs to, used by the bar to
+ * show imagery credits only for the focused system while the popover shows
+ * every loaded texture regardless of focus.
+ */
+export interface TextureCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	type: string;
+	attribution?: string;
+	description?: string;
 }
 
 /**
@@ -161,6 +195,7 @@ async function createPlaceholderBody(
 		equatorial: isPlanetScale,
 		validityStart,
 		validityEnd,
+		orbitalSource: parseOrbitalSource(orbit.source),
 		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {}),
 		...(satrec ? { satrec } : {})
 	};
@@ -200,6 +235,23 @@ export class ContextManager {
 	error = $state<string | null>(null);
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
+	/**
+	 * Providers that have contributed at least one body to the loaded scene.
+	 * Reassigned (not mutated) on new arrivals so `$derived` consumers — the
+	 * bottom-right attribution bar — recompute. `OrbitalSource.UNKNOWN` is
+	 * never added; pre-v3 chunks with no source byte stay silent rather than
+	 * showing a misleading "Unknown" label.
+	 */
+	orbitSources = $state(new Set<OrbitalSource>());
+	/**
+	 * Per-body texture credits, populated as `loadSystemData` lands each
+	 * system's `systems/{bary}.json`. Drives both the bar (dedup'd org set for
+	 * the focused system) and the popover (full list of every loaded texture
+	 * with source URL + optional description). Bump `textureCreditsVersion`
+	 * whenever a new entry lands so `$derived` consumers re-read.
+	 */
+	textureCredits = new Map<string, TextureCredit>();
+	textureCreditsVersion = $state(0);
 
 	// --- Non-reactive data (only read from renderer/construction, never from Svelte templates) ---
 	majorBodies: PositionedBody[] = [];
@@ -214,8 +266,12 @@ export class ContextManager {
 	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
 	isZoomedIn: boolean = false;
 	private lastRecomputeDist = -1;
-	/** Always set from focused body — drives moon visibility regardless of zoom. */
-	focusedSystemId: string | null = null;
+	/**
+	 * Always set from focused body — drives moon visibility regardless of zoom.
+	 * Reactive so the attribution bar can derive the active imagery credits
+	 * from whichever planetary system the camera is in.
+	 */
+	focusedSystemId = $state<string | null>(null);
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	private cameraDistThreeJS = 0;
@@ -321,6 +377,7 @@ export class ContextManager {
 				await Promise.all(
 					minorChunkArgs.map(({ zone, zoom, part }) =>
 						loader.process(zone, zoom, part, date).then((chunk) => {
+							this.recordOrbitSources(chunk);
 							for (const b of chunk) {
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
 									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
@@ -359,6 +416,33 @@ export class ContextManager {
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
 			}
 		}
+		this.recordOrbitSources(bodies);
+	}
+
+	/**
+	 * Fold each body's `orbitalSource` into the reactive set. Reassigns on new
+	 * entries so `$derived` consumers recompute; no-op when everything in the
+	 * batch is already known (keeps minor-body chunk flushes cheap).
+	 */
+	recordOrbitSources(bodies: PositionedBody[]): void {
+		let added = false;
+		for (const b of bodies) {
+			const src = b.data.orbitalSource;
+			if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) continue;
+			this.orbitSources.add(src);
+			added = true;
+		}
+		if (added) this.orbitSources = new Set(this.orbitSources);
+	}
+
+	/**
+	 * Record the texture attribution for a body. Idempotent by `bodyId` so
+	 * revisiting a system doesn't bump the version spuriously.
+	 */
+	registerTextureCredit(credit: TextureCredit): void {
+		if (this.textureCredits.has(credit.bodyId)) return;
+		this.textureCredits.set(credit.bodyId, credit);
+		this.textureCreditsVersion++;
 	}
 
 	/**
