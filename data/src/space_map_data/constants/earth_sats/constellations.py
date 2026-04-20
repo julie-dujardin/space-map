@@ -579,6 +579,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec("pageos", "Q2043671", SatelliteCategory.SCIENCE, prefix="PAGEOS"),
     ConstellationSpec("venera", "Q192144", SatelliteCategory.SCIENCE, prefix="VENERA"),
     ConstellationSpec("nimbus", "Q609455", SatelliteCategory.SCIENCE, prefix="NIMBUS"),
+    # US sigint/comint
+    ConstellationSpec(
+        "nemesis",  # Are we the baddies?
+        "Q56301465",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        contains=("USA 207", "USA 257"),
+    ),
     # US reconnaissance
     ConstellationSpec(
         "corona",
@@ -663,6 +670,19 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
             "COSMOS 2539",
         ],
     ),
+    # Soviet sats, monitored van allen belts
+    ConstellationSpec(
+        "elektron",
+        "Q1313442",
+        (SatelliteCategory.SCIENCE),
+        prefix="ELEKTRON",
+    ),
+    ConstellationSpec(
+        "proton",
+        "Q1406559",
+        (SatelliteCategory.SCIENCE),
+        prefix="PROTON",
+    ),
     # Communication sats with high eccentricity orbits, for good polar coverage
     ConstellationSpec(
         "molniya",
@@ -713,6 +733,15 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     ConstellationSpec("ses", "Q333025", SatelliteCategory.COMMUNICATIONS, group="ses"),
     ConstellationSpec(
+        "amc", "Q7389874", SatelliteCategory.COMMUNICATIONS, prefix="AMC-"
+    ),  # SES Americom, AMC fleet, acquired by SES
+    ConstellationSpec(
+        "astra", "Q15711023", SatelliteCategory.COMMUNICATIONS, prefix="ASTRA "
+    ),
+    ConstellationSpec(
+        "nss", "Q2205870", SatelliteCategory.COMMUNICATIONS, prefix="NSS"
+    ),
+    ConstellationSpec(
         "eutelsat", "Q848336", SatelliteCategory.COMMUNICATIONS, prefix="EUTELSAT"
     ),  # include Ekspress-AT
     ConstellationSpec(
@@ -760,7 +789,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         SatelliteCategory.COMMUNICATIONS,
         contains=("THOR ", "MARCOPOLO", "INTELSAT 10-02"),
     ),
-    ConstellationSpec("gps", "Q18822", SatelliteCategory.NAVIGATION, group="gps-ops"),
+    ConstellationSpec(
+        "gps",
+        "Q18822",
+        SatelliteCategory.NAVIGATION,
+        group="gps-ops",
+        prefix=("NAVSTAR",),
+    ),
     ConstellationSpec(
         "glonass", "Q486250", SatelliteCategory.NAVIGATION, group="glo-ops"
     ),

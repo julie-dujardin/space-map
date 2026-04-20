@@ -126,7 +126,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "RascomStar-QAF", "Q3415056", source="RASC", constellations=("rascomstar",)
     ),
     OperatorSpec(
-        "SES", "Q333025", source="SES", constellations=("ses", "o3b-gen1", "o3b-mpower")
+        "SES",
+        "Q333025",
+        source="SES",
+        constellations=("ses", "o3b-gen1", "o3b-mpower", "amc", "astra", "nss"),
     ),
     # Linked only via constellation
     OperatorSpec(
@@ -164,6 +167,21 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q4355616",
         constellations=("jsat", "superbird", "dsn", "horizons"),
     ),
+    OperatorSpec(
+        "B-SAT - Broadcasting Satellite System Corporation",
+        "Q922482",
+        prefix=("BSAT", "BS-3N"),
+    ),
+    OperatorSpec(
+        "Telkom Indonesia",
+        "Q2305438",
+        prefix=("TELKOM",),
+    ),
+    OperatorSpec(
+        "VNPT - Vietnam Posts and Telecommunications Group",
+        "Q7928543",
+        prefix=("VINASAT-",),
+    ),
     OperatorSpec("Swarm Technologies", "Q103484515", constellations=("spacebee",)),
     OperatorSpec(
         "United States Space Force",
@@ -189,6 +207,8 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Soviet space program",
         "Q849730",
         constellations=(
+            "elektron",
+            "proton",
             "soyuz",
             "soyuz-rocket",
             "progress",
@@ -395,7 +415,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "National Reconnaissance Office",
         "Q427818",
-        constellations=("usa-classified",),
+        constellations=("usa-classified", "nemesis"),
         url="https://en.wikipedia.org/wiki/File:Nrol-39.jpg",
     ),
     # US civilian / weather
