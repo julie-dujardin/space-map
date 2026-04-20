@@ -4,12 +4,15 @@ import gzip
 import math
 import struct
 
+import pytest
+
 from space_map_data.export.elements.format import (
     FORMAT_KEPLERIAN,
     FORMAT_PARABOLIC,
     HEADER_SIZE,
     MAGIC,
     MISSING_INT32,
+    SOURCE_ORDINAL,
     VERSION,
 )
 from space_map_data.export.elements.writer import (
@@ -17,7 +20,7 @@ from space_map_data.export.elements.writer import (
     write_elements,
     write_parabolic_elements,
 )
-from space_map_data.models.object import ObjectType
+from space_map_data.models.object import ObjectType, OrbitalSource
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import OrbitClass, SBDB
 from tests.conftest import make_object
@@ -51,11 +54,11 @@ class TestParseNumericId:
         assert _parse_numeric_id(obj) == MISSING_INT32
 
 
-def _read_header(data: bytes) -> tuple[bytes, int, int, int]:
-    magic, version, format_type, row_count, _ = struct.unpack(
-        "<4sHHII", data[:HEADER_SIZE]
+def _read_header(data: bytes) -> tuple[bytes, int, int, int, int]:
+    magic, version, format_type, row_count, source, _pad, _res = struct.unpack(
+        "<4sHHIBBH", data[:HEADER_SIZE]
     )
-    return magic, version, format_type, row_count
+    return magic, version, format_type, row_count, source
 
 
 class TestWriteElements:
@@ -75,14 +78,15 @@ class TestWriteElements:
             ),
         ]
         out = tmp_path / "elements.bin.gz"
-        write_elements(objects, out)
+        write_elements(objects, out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, row_count = _read_header(raw)
+        magic, version, format_type, row_count, source = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_KEPLERIAN
         assert row_count == 2
+        assert source == SOURCE_ORDINAL[OrbitalSource.horizons]
 
         # Read back column 0 (id, int32)
         offset = HEADER_SIZE
@@ -91,12 +95,41 @@ class TestWriteElements:
 
     def test_empty(self, tmp_path):
         out = tmp_path / "empty.bin.gz"
-        write_elements([], out)
+        write_elements([], out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, row_count = _read_header(raw)
+        _, _, _, row_count, _ = _read_header(raw)
         assert row_count == 0
         assert len(raw) == HEADER_SIZE
+
+    def test_source_mismatch_raises(self, tmp_path):
+        """Row tagged with a different source than the chunk fails loudly."""
+        objects = [
+            make_object(
+                id="naif-399",
+                naif_id=399,
+                object_type=ObjectType.planet,
+                orbital_source=OrbitalSource.celestrak,
+            ),
+        ]
+        with pytest.raises(ValueError, match="does not match chunk source"):
+            write_elements(
+                objects, tmp_path / "mismatch.bin.gz", OrbitalSource.horizons
+            )
+
+    def test_row_source_none_is_accepted(self, tmp_path):
+        """Rows with orbital_source=None inherit the chunk header source."""
+        obj = make_object(
+            id="naif-399",
+            naif_id=399,
+            object_type=ObjectType.planet,
+            orbital_source=None,
+        )
+        out = tmp_path / "none_src.bin.gz"
+        write_elements([obj], out, OrbitalSource.spice)
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, _, source = _read_header(raw)
+        assert source == SOURCE_ORDINAL[OrbitalSource.spice]
 
     def test_radius_from_sbdb_diameter(self, tmp_path):
         """Object with SBDB diameter gets radius = diameter / 2."""
@@ -111,7 +144,7 @@ class TestWriteElements:
         obj.sbdb = sbdb
 
         out = tmp_path / "radius.bin.gz"
-        write_elements([obj], out)
+        write_elements([obj], out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
         # radius_km is column 12 (last float32 column)
@@ -131,7 +164,9 @@ class TestWriteElements:
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
 
         out = tmp_path / "override.bin.gz"
-        write_elements([obj], out, radius_km_overrides={"naif-399": 6371.0})
+        write_elements(
+            [obj], out, OrbitalSource.horizons, radius_km_overrides={"naif-399": 6371.0}
+        )
 
         raw = gzip.decompress(out.read_bytes())
         offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56
@@ -143,7 +178,7 @@ class TestWriteElements:
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
 
         out = tmp_path / "missing.bin.gz"
-        write_elements([obj], out)
+        write_elements([obj], out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
         offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56
@@ -169,6 +204,7 @@ def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
         a=None,
         ma=None,
         n=None,
+        orbital_source=OrbitalSource.sbdb,
         **overrides,
     )
     obj.sbdb = sbdb
@@ -181,20 +217,21 @@ class TestWriteParabolicElements:
     def test_round_trip(self, tmp_path):
         obj = _make_parabolic_object()
         out = tmp_path / "par.bin.gz"
-        write_parabolic_elements([obj], out)
+        write_parabolic_elements([obj], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, row_count = _read_header(raw)
+        magic, version, format_type, row_count, source = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_PARABOLIC
         assert row_count == 1
+        assert source == SOURCE_ORDINAL[OrbitalSource.sbdb]
 
     def test_q_and_tp_columns(self, tmp_path):
         """q and tp are written as proper columns (not stuffed into a/ma)."""
         obj = _make_parabolic_object(sbdb_q=2.3, sbdb_tp=2460100.5)
         out = tmp_path / "par.bin.gz"
-        write_parabolic_elements([obj], out)
+        write_parabolic_elements([obj], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
         # Parabolic layout for 1 row:
@@ -217,10 +254,10 @@ class TestWriteParabolicElements:
 
     def test_empty(self, tmp_path):
         out = tmp_path / "par_empty.bin.gz"
-        write_parabolic_elements([], out)
+        write_parabolic_elements([], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, format_type, row_count = _read_header(raw)
+        _, _, format_type, row_count, _ = _read_header(raw)
         assert format_type == FORMAT_PARABOLIC
         assert row_count == 0
         assert len(raw) == HEADER_SIZE

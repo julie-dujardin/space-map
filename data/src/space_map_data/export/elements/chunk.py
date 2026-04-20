@@ -14,7 +14,7 @@ from space_map_data.export.elements.writer import (
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
-from space_map_data.models.object import Object
+from space_map_data.models.object import Object, OrbitalSource
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,13 @@ def write_chunk(
     chunk_entities: dict[str, WikidataEntity | None],
     object_flags: dict[str, dict[str, int]],
     units: UnitConverter,
+    orbital_source: OrbitalSource,
 ) -> int:
     """Write elements binary, label files, and id list for one chunk.
 
     object_flags: {obj_id: {lang: 0|1|2}} as returned by write_objects().
+    `orbital_source` is stamped in the file header; writer raises if any row
+    disagrees.
     Returns the size of the elements binary file in bytes.
     """
     elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin.gz"
@@ -64,7 +67,7 @@ def write_chunk(
         write_fn = write_sgp4_elements
     else:
         write_fn = write_elements
-    write_fn(objects, elements_path, radius_km_overrides or None)
+    write_fn(objects, elements_path, orbital_source, radius_km_overrides or None)
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:

@@ -1,4 +1,4 @@
-# Export Format (v2)
+# Export Format (v1)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -78,10 +78,14 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type   | Field     |
 |--------|--------|-----------|
 | 0      | char[4]| Magic `SMAP` |
-| 4      | uint16 | Version (2) |
+| 4      | uint16 | Version (1) |
 | 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
 | 8      | uint32 | Row count |
-| 12     | uint32 | Reserved  |
+| 12     | uint8  | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this source |
+| 13     | uint8  | Reserved  |
+| 14     | uint16 | Reserved  |
+
+One provider writes one zone/part (pipeline-enforced), so the source fits in a single file-level byte rather than per-row. Frontend must mirror the ordinal mapping.
 
 ### Keplerian columns (format type 0)
 

@@ -33,7 +33,7 @@ from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
 )
-from space_map_data.models.object import Object, ObjectType, SBDB
+from space_map_data.models.object import Object, ObjectType, OrbitalSource, SBDB
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,20 @@ def _remove_old_outputs(out_dir: Path) -> None:
             shutil.rmtree(p)
 
 
+def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSource:
+    """Pick the chunk's declared orbital source from its first tagged object.
+
+    The writer asserts every other row matches. Zone→source is effectively
+    fixed by the pipeline (horizons for majors/moons/spacecraft, celestrak for
+    earth sats, sbdb for SBDB zones), but we derive rather than hardcode so a
+    future zone reshuffle doesn't silently mis-attribute.
+    """
+    for o in chunk:
+        if o.orbital_source is not None:
+            return o.orbital_source
+    raise ValueError(f"No object in {zone!r} part {part_idx} carries an orbital_source")
+
+
 def _write_parts(
     objects: list[Object],
     out_dir: Path,
@@ -144,6 +158,7 @@ def _write_parts(
             chunk_entities,
             object_flags,
             units,
+            _chunk_source(chunk, zone, part_idx),
         )
     return num_parts, total_bytes
 

@@ -14,15 +14,32 @@ from space_map_data.export.elements.format import (
     MISSING_UINT8,
     OBJECT_TYPE_ORDINAL,
     SCALE_ORDINAL,
+    SOURCE_ORDINAL,
     align8,
     pack_header,
 )
-from space_map_data.models.object import Object
+from space_map_data.models.object import Object, OrbitalSource
 
 logger = logging.getLogger(__name__)
 
 _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
 _REQUIRED_SGP4 = ("BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT")
+
+
+def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int:
+    """Assert that every row's `orbital_source` matches (or is None) and return the ordinal.
+
+    Enforces the one-provider-per-file invariant: if an object disagrees with
+    the declared chunk source, export fails loud rather than writing a
+    mis-attributed file.
+    """
+    for o in objects:
+        if o.orbital_source is not None and o.orbital_source != orbital_source:
+            raise ValueError(
+                f"{o.id}: orbital_source {o.orbital_source!r} does not match "
+                f"chunk source {orbital_source!r}"
+            )
+    return SOURCE_ORDINAL[orbital_source]
 
 
 def _write_keplerian_columns(
@@ -78,16 +95,18 @@ def _write_keplerian_columns(
 def write_elements(
     objects: list[Object],
     out_file: Path,
+    orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
 ) -> None:
     """Write a Keplerian binary elements file (format_type=0).
 
-    Raises ValueError if a required orbital element is None — this catches
-    data issues at export time rather than producing silent NaN in the binary.
+    Raises ValueError if a required orbital element is None, or if any row's
+    `orbital_source` disagrees with the chunk source.
     """
     n = len(objects)
+    source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
-    buf.write(pack_header(n))
+    buf.write(pack_header(n, source_ordinal=source))
     _write_keplerian_columns(buf, objects, radius_km_overrides)
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -95,6 +114,7 @@ def write_elements(
 def write_sgp4_elements(
     objects: list[Object],
     out_file: Path,
+    orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
 ) -> None:
     """Write an SGP4 binary elements file (format_type=2).
@@ -103,13 +123,13 @@ def write_sgp4_elements(
     TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
     MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32).
 
-    Raises ValueError when a required SGP4 field is missing on any row — export
-    fails loudly rather than shipping silent NaN that would make satellite.js
-    produce bogus positions.
+    Raises ValueError when a required SGP4 field is missing on any row, or if
+    any row's `orbital_source` disagrees with the chunk source.
     """
     n = len(objects)
+    source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
-    buf.write(pack_header(n, FORMAT_SGP4))
+    buf.write(pack_header(n, FORMAT_SGP4, source_ordinal=source))
     _write_keplerian_columns(buf, objects, radius_km_overrides)
 
     # Columns 13–15: float32 SGP4 drag / rate fields from CelesTrak
@@ -136,17 +156,20 @@ def write_sgp4_elements(
 def write_parabolic_elements(
     objects: list[Object],
     out_file: Path,
+    orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
 ) -> None:
     """Write a parabolic binary elements file (format_type=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp, radius_km.
-    Raises ValueError if a required element (q, tp, e, i, om, w) is missing.
+    Raises ValueError if a required element (q, tp, e, i, om, w) is missing, or
+    if any row's `orbital_source` disagrees with the chunk source.
     """
     n = len(objects)
+    source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
 
-    buf.write(pack_header(n, FORMAT_PARABOLIC))
+    buf.write(pack_header(n, FORMAT_PARABOLIC, source_ordinal=source))
 
     # Columns 0–3: same as Keplerian
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
