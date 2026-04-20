@@ -75,6 +75,39 @@ def _webp_kwargs(lossless: bool) -> dict:
     return {"lossless": True, "method": 6} if lossless else {"quality": 80}
 
 
+def _refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -> None:
+    """Update yaml-sourced fields on an existing metadata.json without re-exporting the image.
+
+    Covers entries written before a field existed (e.g. `organisation`,
+    `attribution`) and any later yaml edits. Leaves image-derived fields
+    (`source_file`, `source_dimensions`, `processed_at`, `exports`) intact.
+    Silently no-ops if the file is missing — nothing to refresh.
+    """
+    meta_path = out_dir / "metadata.json"
+    if not meta_path.exists():
+        return
+    try:
+        current = json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        log.warning("Failed to read existing metadata at %s", meta_path)
+        return
+
+    attribution = entry.get("attribution") or _scraped_attribution(src_file_name)
+    desired = {
+        "id": entry["body"],
+        "source": entry["source"],
+        "organisation": entry["organisation"],
+        "attribution": attribution,
+        "description": entry.get("description"),
+        "type": entry["type"],
+    }
+    if all(current.get(k) == v for k, v in desired.items()):
+        return
+    current.update(desired)
+    meta_path.write_text(json.dumps(current, indent=2))
+    log.info("refreshed metadata from yaml: %s", meta_path.relative_to(PROCESSED_DIR))
+
+
 def _scraped_attribution(src_file_name: str) -> str | None:
     """Look up `attribution_guess` from the per-texture scraped source metadata.
 
@@ -250,6 +283,12 @@ class TextureProcessor:
             log.debug(
                 "skipping %s (already processed, use force=True to reprocess)", src.name
             )
+            # Image processing is skipped, but yaml-sourced fields (organisation,
+            # attribution, description, source, type) may have changed since the
+            # image was processed. Re-read the metadata.json, patch those fields,
+            # and write it back so the export step sees current attribution
+            # without forcing a full reprocess.
+            _refresh_metadata_from_yaml(out_dir, entry, src.name)
             self._mark_texture_available(object_id)
             return out_dir
 
