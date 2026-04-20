@@ -95,10 +95,9 @@ def _remove_old_outputs(out_dir: Path) -> None:
 def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSource:
     """Pick the chunk's declared orbital source from its first tagged object.
 
-    The writer asserts every other row matches. Zone→source is effectively
-    fixed by the pipeline (horizons for majors/moons/spacecraft, celestrak for
-    earth sats, sbdb for SBDB zones), but we derive rather than hardcode so a
-    future zone reshuffle doesn't silently mis-attribute.
+    The writer asserts every other row matches. Zone queries are single-source
+    by construction (the pipeline filters per-zone), so any object with a
+    source is representative.
     """
     for o in chunk:
         if o.orbital_source is not None:
@@ -220,13 +219,27 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             _is_constellation = or_(
                 *(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES)
             )
+            # Major bodies split by source — SPICE-sourced (planets + Pluto/Ceres)
+            # at zoom=0, SBDB-only dwarf planets (Eris, Makemake, Quaoar, …) at
+            # zoom=1. Keeps each chunk single-source so the file-level source
+            # byte is unambiguous; frontend iterates every zoom per zone.
+            _major_base = session.query(Object).options(joinedload(Object.sbdb))
             non_sbdb = [
                 (
                     "major",
                     0,
-                    session.query(Object)
-                    .options(joinedload(Object.sbdb))
-                    .filter(Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES)),
+                    _major_base.filter(
+                        Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
+                        Object.orbital_source != OrbitalSource.sbdb,
+                    ),
+                ),
+                (
+                    "major",
+                    1,
+                    _major_base.filter(
+                        Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
+                        Object.orbital_source == OrbitalSource.sbdb,
+                    ),
                 ),
                 (
                     "moons",
@@ -311,6 +324,14 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         SBDB.prefix.is_distinct_from(
                             CometPrefix.D
                         ),  # TODO: handle defunct comets - figure out last display date
+                        # Bodies whose orbit came from SPICE kernels (e.g. DE441
+                        # perturbers like Ceres) ship via the chebyshev export;
+                        # including them here would mix sources in one chunk
+                        # and violate the one-provider-per-file invariant.
+                        or_(
+                            Object.orbital_source.is_(None),
+                            Object.orbital_source == OrbitalSource.sbdb,
+                        ),
                     )
                     .order_by(Object.random_int)
                     .limit(limit_per_zone)
