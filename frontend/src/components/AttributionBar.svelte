@@ -52,22 +52,22 @@
 
 <Popover.Root>
 	<Popover.Trigger
-		class="pointer-events-auto flex cursor-pointer flex-col items-end gap-0.5 rounded-md
-			bg-black/40 px-2 py-1 text-[11px] leading-tight text-white/75 backdrop-blur-sm
-			hover:bg-black/55 hover:text-white transition-colors"
+		class="pointer-events-auto flex cursor-pointer items-center gap-3 rounded-s-sm
+			bg-black/40 px-1 py-0 text-[11px] leading-tight text-white/75 backdrop-blur-sm
+			hover:bg-black/55 hover:text-white transition-colors whitespace-nowrap"
 		aria-label={m.attribution_title()}
 	>
 		{#if orbitLabels.length > 0}
-			<div>
+			<span>
 				<span class="text-white/50">{m.attribution_orbits()}:</span>
 				{orbitLabels.join(' · ')}
-			</div>
+			</span>
 		{/if}
 		{#if textureOrgs.length > 0}
-			<div>
+			<span>
 				<span class="text-white/50">{m.attribution_imagery()}:</span>
 				{textureOrgs.join(' · ')}
-			</div>
+			</span>
 		{/if}
 	</Popover.Trigger>
 	<Popover.Content align="end" side="top" sideOffset={8} class="w-auto">

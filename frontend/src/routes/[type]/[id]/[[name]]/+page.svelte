@@ -70,14 +70,20 @@
 				/>
 			{/if}
 			<div
-				class="fixed end-4 z-10 flex flex-col items-end gap-3 transition-opacity duration-300 ease-in-out
+				class="fixed end-4 z-10 transition-opacity duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1rem);"
+				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem);"
 			>
 				<MyLocation
 					onLocate={(zoom: number, lat?: number, lng?: number) =>
 						scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0}
 				/>
+			</div>
+			<div
+				class="fixed end-0 z-10 transition-opacity duration-300 ease-in-out
+				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
+				style="bottom: {Math.min(drawerHeightDvh, 12)}dvh;"
+			>
 				<AttributionBar />
 			</div>
 		</div>

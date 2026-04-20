@@ -91,10 +91,7 @@
 		<ul class="space-y-0.5">
 			<li>{@render link('https://naif.jpl.nasa.gov/naif/', m.source_spice_pck_name())}</li>
 			<li>
-				{@render link(
-					'https://www.iau.org/WG100/WG100/Home.aspx',
-					m.source_iau_wgccre_name()
-				)}
+				{@render link('https://www.iau.org/WG100/WG100/Home.aspx', m.source_iau_wgccre_name())}
 			</li>
 		</ul>
 	</section>
