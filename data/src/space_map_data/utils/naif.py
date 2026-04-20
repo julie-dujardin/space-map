@@ -5,6 +5,63 @@ from dataclasses import dataclass
 from space_map_data.models.object import ObjectType, DWARF_PLANETS
 
 
+# Moons that get full Chebyshev treatment (named bodies with surface features —
+# visualization zooms into them and needs accurate positions). All other moons
+# fall back to the cheaper mean-elements-plus-J2-rates format.
+#
+# Names are matched case-insensitively against Horizons / SPICE labels.
+CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
+    {
+        "moon",
+        "phobos",
+        "deimos",
+        "io",
+        "europa",
+        "ganymede",
+        "callisto",
+        "amalthea",
+        "thebe",
+        "mimas",
+        "enceladus",
+        "tethys",
+        "dione",
+        "rhea",
+        "titan",
+        "hyperion",
+        "iapetus",
+        "phoebe",
+        "janus",
+        "epimetheus",
+        "miranda",
+        "ariel",
+        "umbriel",
+        "titania",
+        "oberon",
+        "puck",
+        "triton",
+        "proteus",
+        "charon",
+        "nix",
+    }
+)
+
+# Fast inner moons (co-orbital shepherds / close-in regulars). Routed to the
+# `moons/<parent>/inner` sub-zone — their Chebyshev ships at higher density
+# than the main moons and is worth separating so clients can skip it.
+CHEBYSHEV_INNER_MOON_NAIF_IDS: frozenset[int] = frozenset(
+    {
+        401,  # Phobos
+        402,  # Deimos
+        505,  # Amalthea
+        514,  # Thebe
+        610,  # Janus
+        611,  # Epimetheus
+        715,  # Puck
+        808,  # Proteus
+    }
+)
+
+
 def spk_id_from_naif(
     naif_id: int, obj_type: ObjectType | str | None = None
 ) -> int | None:

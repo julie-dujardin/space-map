@@ -8,6 +8,7 @@ order as the binary body table, matching the elements-export convention.
 
 import gzip
 import logging
+import math
 import struct
 from collections import defaultdict
 from pathlib import Path
@@ -23,18 +24,21 @@ from space_map_data.export.chebyshev.format import (
     pack_header,
 )
 from space_map_data.models.object import Object, ObjectType
-from space_map_data.utils.naif import spk_id_from_naif
+from space_map_data.utils.naif import (
+    CHEBYSHEV_INNER_MOON_NAIF_IDS,
+    spk_id_from_naif,
+)
 
 logger = logging.getLogger(__name__)
 
 _S_PER_DAY = 86400.0
 _J2000_JD = 2451545.0
 
-# Zone routing mirrors the elements export (`major` / `moons` / zone-per-class
-# for small bodies) so clients already subscribed to a zone's elements file
-# naturally discover the matching Chebyshev file. Moons live in their own zone
-# because they dominate payload size — a client that doesn't need sub-system
-# precision can skip them entirely.
+# Zone routing: core bodies + asteroids go to flat `major` / `major_asteroids`
+# zones at a coarse chunk cadence (planets + sun barely move over years).
+# Whitelisted moons get `moons/<parent>/<main|inner>` hierarchical zones at a
+# fine chunk cadence — clients only fetch them when zoomed into a planetary
+# system, and the inner/main split lets clients skip fast-orbiting shepherds.
 _ASTEROID_TYPES = frozenset(
     {
         ObjectType.asteroid,
@@ -45,6 +49,17 @@ _ASTEROID_TYPES = frozenset(
         ObjectType.asteroid_tno,
     }
 )
+_PARENT_NAMES = {
+    1: "mercury",
+    2: "venus",
+    3: "earth",
+    4: "mars",
+    5: "jupiter",
+    6: "saturn",
+    7: "uranus",
+    8: "neptune",
+    9: "pluto",
+}
 
 
 def _year_to_jd(year: int) -> float:
@@ -100,11 +115,14 @@ def _slice_segments(
     return start_jds[mask], end_jds[mask], coeffs[mask]
 
 
-def _determine_zone(object_type: ObjectType) -> str:
+def _determine_zone(object_type: ObjectType, naif_id: int, parent_naif_id: int) -> str:
+    """Route a body to its zone path. Moons nest under `moons/<parent>/<bucket>`."""
     if object_type in _ASTEROID_TYPES:
         return "major_asteroids"
     if object_type == ObjectType.moon:
-        return "moons"
+        parent_name = _PARENT_NAMES.get(parent_naif_id, f"other-{parent_naif_id}")
+        bucket = "inner" if naif_id in CHEBYSHEV_INNER_MOON_NAIF_IDS else "main"
+        return f"moons/{parent_name}/{bucket}"
     return "major"
 
 
@@ -199,20 +217,20 @@ def write_chebyshev(
     meta = orjson.loads(meta_path.read_bytes())
     start_year = int(meta.get("chebyshev_start_year", 1950))
     end_year = int(meta.get("chebyshev_end_year", 2050))
-    chunk_years = int(meta.get("chebyshev_chunk_years", 10))
+    core_chunk_years = float(meta.get("chebyshev_chunk_years", 5))
+    moon_chunk_years = float(meta.get("chebyshev_moon_chunk_years", 0.5))
     start_jd_total = _year_to_jd(start_year)
     end_jd_total = _year_to_jd(end_year)
-    n_chunks = (end_year - start_year + chunk_years - 1) // chunk_years
     logger.info(
-        "Exporting Chebyshev: %d→%d in %d-year chunks (%d chunks total)",
+        "Exporting Chebyshev: %d→%d (core %.1fy chunks, moons %.1fy chunks)",
         start_year,
         end_year,
-        chunk_years,
-        n_chunks,
+        core_chunk_years,
+        moon_chunk_years,
     )
 
-    # Group bodies by zone and retain everything in memory (data is modest —
-    # ≤50 bodies in major, ≤16 in major_asteroids).
+    # Group bodies by zone and retain everything in memory (small — ≤65 bodies
+    # across the whole export after filtering).
     zone_bodies: dict[str, list] = defaultdict(list)
     for path in sorted(cheb_dir.glob("*.npz")):
         naif_id, parent_naif_id, start_jds, end_jds, coeffs = _load_body_npz(path)
@@ -225,7 +243,7 @@ def write_chebyshev(
             )
             continue
         radius = (radii.get(naif_id) or {}).get("a")
-        zone = _determine_zone(obj.object_type)
+        zone = _determine_zone(obj.object_type, naif_id, parent_naif_id)
         zone_bodies[zone].append(
             (obj, naif_id, parent_naif_id, start_jds, end_jds, coeffs, radius)
         )
@@ -235,6 +253,11 @@ def write_chebyshev(
         # Deterministic body order inside each zone — stable by NAIF ID so
         # consumers don't have to sort.
         bodies.sort(key=lambda row: row[1])
+        # moons zones chunk at a finer cadence than the slow-moving core zones.
+        chunk_years = (
+            moon_chunk_years if zone.startswith("moons/") else core_chunk_years
+        )
+        n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
         total_bytes = 0
         for chunk_idx in range(n_chunks):
             chunk_start_jd = start_jd_total + chunk_idx * chunk_years * 365.25
@@ -278,13 +301,16 @@ def write_chebyshev(
                 chunk_bodies,
             )
             total_bytes += nbytes
-            logger.info(
-                "  %s chunk %d: %d bodies, %d KB",
-                zone,
-                chunk_idx,
-                len(chunk_bodies),
-                nbytes // 1024,
-            )
+        avg_kb = (total_bytes // n_chunks) // 1024 if n_chunks else 0
+        logger.info(
+            "  %s: %d bodies, %d chunks (%.1fy each), avg %d KB/chunk, %.1f MB total",
+            zone,
+            len(bodies),
+            n_chunks,
+            chunk_years,
+            avg_kb,
+            total_bytes / 1024 / 1024,
+        )
         manifest_zones[zone] = {
             "chunks": n_chunks,
             "start_jd": start_jd_total,

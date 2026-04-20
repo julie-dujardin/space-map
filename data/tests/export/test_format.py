@@ -1,5 +1,6 @@
 """Tests for space_map_data.export.elements.format."""
 
+import math
 import struct
 
 from space_map_data.export.elements.format import (
@@ -13,6 +14,8 @@ from space_map_data.export.elements.format import (
     OBJECT_TYPE_ORDINAL,
     SCALE_ORDINAL,
     SOURCE_ORDINAL,
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
     VERSION,
     align8,
     pack_header,
@@ -20,16 +23,24 @@ from space_map_data.export.elements.format import (
 from space_map_data.models.object import ElementsScale, ObjectType, OrbitalSource
 
 
-def _unpack(header: bytes) -> tuple[bytes, int, int, int, int]:
-    magic, version, format_type, row_count, source, _pad, _res = struct.unpack(
-        "<4sHHIBBH", header
-    )
-    return magic, version, format_type, row_count, source
+def _unpack(header: bytes) -> tuple[bytes, int, int, float, float, int, int]:
+    (
+        magic,
+        version,
+        format_type,
+        start_jd,
+        end_jd,
+        row_count,
+        source,
+        _pad,
+        _res,
+    ) = struct.unpack("<4sHHddIBBH", header)
+    return magic, version, format_type, start_jd, end_jd, row_count, source
 
 
 class TestPackHeader:
-    def test_returns_16_bytes(self):
-        assert len(pack_header(0)) == 16
+    def test_returns_32_bytes(self):
+        assert len(pack_header(0)) == 32
 
     def test_starts_with_magic(self):
         header = pack_header(0)
@@ -38,22 +49,37 @@ class TestPackHeader:
     def test_row_count_round_trips(self):
         for count in (0, 1, 42, 100_000):
             header = pack_header(count)
-            _magic, version, _fmt, row_count, _source = _unpack(header)
+            _magic, version, _fmt, _start, _end, row_count, _source = _unpack(header)
             assert row_count == count
             assert version == VERSION
 
-    def test_source_byte_lands_at_offset_12(self):
-        """Source ordinal is packed as uint8 at header offset 12."""
+    def test_source_byte_lands_at_offset_28(self):
+        """Source ordinal is packed as uint8 at header offset 28 (v3 layout)."""
         header = pack_header(
             0, FORMAT_KEPLERIAN, source_ordinal=SOURCE_ORDINAL[OrbitalSource.celestrak]
         )
-        assert header[12] == SOURCE_ORDINAL[OrbitalSource.celestrak]
+        assert header[28] == SOURCE_ORDINAL[OrbitalSource.celestrak]
 
     def test_default_source_is_missing_sentinel(self):
         """A chunk with no declared source gets MISSING_SOURCE in the header."""
         header = pack_header(0)
-        _magic, _v, _fmt, _n, source = _unpack(header)
+        _magic, _v, _fmt, _start, _end, _n, source = _unpack(header)
         assert source == MISSING_SOURCE
+
+    def test_default_validity_is_unbounded(self):
+        """A chunk with no declared window gets ±inf — consumers treat as always valid."""
+        header = pack_header(0)
+        _magic, _v, _fmt, start_jd, end_jd, _n, _source = _unpack(header)
+        assert start_jd == UNBOUNDED_START_JD
+        assert math.isinf(start_jd) and start_jd < 0
+        assert end_jd == UNBOUNDED_END_JD
+        assert math.isinf(end_jd) and end_jd > 0
+
+    def test_validity_window_round_trips(self):
+        header = pack_header(0, start_jd=2460000.5, end_jd=2460100.5)
+        _m, _v, _f, start_jd, end_jd, _n, _s = _unpack(header)
+        assert start_jd == 2460000.5
+        assert end_jd == 2460100.5
 
 
 class TestAlign8:

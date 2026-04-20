@@ -13,6 +13,8 @@ from space_map_data.export.elements.format import (
     MAGIC,
     MISSING_INT32,
     SOURCE_ORDINAL,
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
     VERSION,
 )
 from space_map_data.export.elements.writer import (
@@ -54,11 +56,21 @@ class TestParseNumericId:
         assert _parse_numeric_id(obj) == MISSING_INT32
 
 
-def _read_header(data: bytes) -> tuple[bytes, int, int, int, int]:
-    magic, version, format_type, row_count, source, _pad, _res = struct.unpack(
-        "<4sHHIBBH", data[:HEADER_SIZE]
-    )
-    return magic, version, format_type, row_count, source
+def _read_header(
+    data: bytes,
+) -> tuple[bytes, int, int, float, float, int, int]:
+    (
+        magic,
+        version,
+        format_type,
+        start_jd,
+        end_jd,
+        row_count,
+        source,
+        _pad,
+        _res,
+    ) = struct.unpack("<4sHHddIBBH", data[:HEADER_SIZE])
+    return magic, version, format_type, start_jd, end_jd, row_count, source
 
 
 class TestWriteElements:
@@ -81,12 +93,18 @@ class TestWriteElements:
         write_elements(objects, out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, row_count, source = _read_header(raw)
+        magic, version, format_type, start_jd, end_jd, row_count, source = _read_header(
+            raw
+        )
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_KEPLERIAN
         assert row_count == 2
         assert source == SOURCE_ORDINAL[OrbitalSource.horizons]
+        # Keplerian defaults to unbounded validity — the orbit is mathematical
+        # and stays valid for any jd.
+        assert start_jd == UNBOUNDED_START_JD
+        assert end_jd == UNBOUNDED_END_JD
 
         # Read back column 0 (id, int32)
         offset = HEADER_SIZE
@@ -98,9 +116,20 @@ class TestWriteElements:
         write_elements([], out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, row_count, _ = _read_header(raw)
+        _, _, _, _, _, row_count, _ = _read_header(raw)
         assert row_count == 0
         assert len(raw) == HEADER_SIZE
+
+    def test_custom_validity_window(self, tmp_path):
+        """Caller-supplied start_jd/end_jd round-trip through the header."""
+        out = tmp_path / "bounded.bin.gz"
+        write_elements(
+            [], out, OrbitalSource.horizons, start_jd=2460000.5, end_jd=2460100.5
+        )
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, start_jd, end_jd, _, _ = _read_header(raw)
+        assert start_jd == 2460000.5
+        assert end_jd == 2460100.5
 
     def test_source_mismatch_raises(self, tmp_path):
         """Row tagged with a different source than the chunk fails loudly."""
@@ -128,7 +157,7 @@ class TestWriteElements:
         out = tmp_path / "none_src.bin.gz"
         write_elements([obj], out, OrbitalSource.spice)
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, _, source = _read_header(raw)
+        _, _, _, _, _, _, source = _read_header(raw)
         assert source == SOURCE_ORDINAL[OrbitalSource.spice]
 
     def test_radius_from_sbdb_diameter(self, tmp_path):
@@ -220,7 +249,7 @@ class TestWriteParabolicElements:
         write_parabolic_elements([obj], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, row_count, source = _read_header(raw)
+        magic, version, format_type, _start, _end, row_count, source = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_PARABOLIC
@@ -257,7 +286,7 @@ class TestWriteParabolicElements:
         write_parabolic_elements([], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, format_type, row_count, _ = _read_header(raw)
+        _, _, format_type, _, _, row_count, _ = _read_header(raw)
         assert format_type == FORMAT_PARABOLIC
         assert row_count == 0
         assert len(raw) == HEADER_SIZE

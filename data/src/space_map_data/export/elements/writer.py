@@ -15,6 +15,8 @@ from space_map_data.export.elements.format import (
     OBJECT_TYPE_ORDINAL,
     SCALE_ORDINAL,
     SOURCE_ORDINAL,
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
     align8,
     pack_header,
 )
@@ -97,16 +99,20 @@ def write_elements(
     out_file: Path,
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
+    *,
+    start_jd: float = UNBOUNDED_START_JD,
+    end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
     """Write a Keplerian binary elements file (format_type=0).
 
+    `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
     `orbital_source` disagrees with the chunk source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
-    buf.write(pack_header(n, source_ordinal=source))
+    buf.write(pack_header(n, source_ordinal=source, start_jd=start_jd, end_jd=end_jd))
     _write_keplerian_columns(buf, objects, radius_km_overrides)
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -116,6 +122,9 @@ def write_sgp4_elements(
     out_file: Path,
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
+    *,
+    start_jd: float = UNBOUNDED_START_JD,
+    end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
     """Write an SGP4 binary elements file (format_type=2).
 
@@ -123,13 +132,22 @@ def write_sgp4_elements(
     TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
     MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32).
 
+    `start_jd`/`end_jd` bound the chunk's validity. TLEs lose accuracy fast
+    past their epoch and the SGP4 propagator blows up entirely a year or two
+    out, so callers should pass a tight window (typically ±14 days around the
+    epoch spread).
+
     Raises ValueError when a required SGP4 field is missing on any row, or if
     any row's `orbital_source` disagrees with the chunk source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
-    buf.write(pack_header(n, FORMAT_SGP4, source_ordinal=source))
+    buf.write(
+        pack_header(
+            n, FORMAT_SGP4, source_ordinal=source, start_jd=start_jd, end_jd=end_jd
+        )
+    )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
 
     # Columns 13–15: float32 SGP4 drag / rate fields from CelesTrak
@@ -158,10 +176,14 @@ def write_parabolic_elements(
     out_file: Path,
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
+    *,
+    start_jd: float = UNBOUNDED_START_JD,
+    end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
     """Write a parabolic binary elements file (format_type=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp, radius_km.
+    `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
     Raises ValueError if a required element (q, tp, e, i, om, w) is missing, or
     if any row's `orbital_source` disagrees with the chunk source.
     """
@@ -169,7 +191,11 @@ def write_parabolic_elements(
     source = _source_ordinal(objects, orbital_source)
     buf = io.BytesIO()
 
-    buf.write(pack_header(n, FORMAT_PARABOLIC, source_ordinal=source))
+    buf.write(
+        pack_header(
+            n, FORMAT_PARABOLIC, source_ordinal=source, start_jd=start_jd, end_jd=end_jd
+        )
+    )
 
     # Columns 0–3: same as Keplerian
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])

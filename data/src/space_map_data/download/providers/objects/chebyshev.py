@@ -21,7 +21,7 @@ from jplephem.spk import SPK
 from tqdm import tqdm
 
 from space_map_data.models.object import ObjectType
-from space_map_data.utils.naif import MajorBody
+from space_map_data.utils.naif import CHEBYSHEV_MOON_WHITELIST, MajorBody
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +31,9 @@ _J2000_JD = 2451545.0
 # Cap coefficient count per segment to keep binary packing predictable.
 _MAX_DEGREE = 20
 
-# The solar system has a long tail of tiny irregular moons (~400 in the SPK
-# set) that are invisible in any typical visualization; shipping Chebyshev for
-# them bloats the export without any benefit. We always include the core body
-# types and only include moons that (a) have a known PCK radius of at least
-# `_MIN_MOON_RADIUS_KM` km, and (b) use a native sub-interval of at least
-# `_MIN_MOON_INTLEN_S` seconds — the second cut drops Uranus/Neptune inner
-# moons whose hour-scale coefficients would otherwise dominate the payload.
+# Core body types always get Chebyshev. Moons are gated by an explicit whitelist
+# (surface-feature bodies only); everything else falls back to a cheaper
+# mean-elements-plus-rates format exported separately.
 _CORE_BODY_TYPES = frozenset(
     {
         ObjectType.star,
@@ -47,14 +43,17 @@ _CORE_BODY_TYPES = frozenset(
         ObjectType.asteroid,
     }
 )
-_MIN_MOON_RADIUS_KM = 1.0
-_MIN_MOON_INTLEN_S = 0.25 * _S_PER_DAY
+
+# Interval-length floor for moons: source kernels like mar099/nep*xl ship with
+# hour-scale native intervals (chosen for gravitational integration, not
+# visualization). For a surface-feature body the orbital period is always ≥ a
+# few hours, so a 0.5-day sub-interval still sits well below Nyquist for any
+# whitelisted moon while cutting per-chunk size 2–5×. Error stays sub-km.
+_MOON_MIN_INTLEN_S = 0.5 * _S_PER_DAY
 
 # Slow-moving bodies (planets, asteroids, barycenters) can share a kernel with
-# fast-moving ones (e.g. Mars 499 lives in mar099.bsp alongside Phobos, so the
-# kernel's native interval is a few hours — chosen for Phobos, wasteful for
-# Mars). For these types, clamp the sub-interval up to a floor that still
-# resolves their motion cleanly.
+# fast-moving ones (e.g. Mars 499 lives in mar099.bsp alongside Phobos). The
+# floor avoids inheriting those fast-sibling intervals.
 _SLOW_BODY_MIN_INTLEN_S = 8 * _S_PER_DAY
 
 
@@ -157,27 +156,23 @@ def _sample_body(
     return start_jds, end_jds, coeffs
 
 
-def _should_extract(body: MajorBody, radius_km: float | None, intlen_s: float) -> bool:
+def _should_extract(body: MajorBody) -> bool:
     """Decide whether this body is worth shipping Chebyshev for.
 
     Core body types (star, planets, dwarves, barycenters, asteroids) are always
     included — they anchor the hierarchical frame or carry named-asteroid
-    trajectories. Moons are the long tail we prune: they need a known PCK
-    radius of at least `_MIN_MOON_RADIUS_KM` AND their native sub-interval
-    length must be at least `_MIN_MOON_INTLEN_S` seconds. The second check
-    rejects Uranus/Neptune inner moons whose hour-scale native intervals would
-    blow up the payload without matching the visualization precision budget.
+    trajectories. Moons are gated by an explicit name whitelist of
+    surface-feature bodies (Io, Enceladus, Titan, …): those are the only moons
+    a user ever zooms into, and the rest get the much cheaper mean-elements
+    format exported separately.
     """
     if body.naif_id == 0:
         return False  # SSB is the coordinate origin — no orbit to describe
     if body.object_type in _CORE_BODY_TYPES:
         return True
     if body.object_type == ObjectType.moon:
-        if radius_km is None or radius_km < _MIN_MOON_RADIUS_KM:
-            return False
-        if intlen_s < _MIN_MOON_INTLEN_S:
-            return False
-        return True
+        name_lc = (body.name or "").lower()
+        return name_lc in CHEBYSHEV_MOON_WHITELIST
     return False
 
 
@@ -185,7 +180,6 @@ def extract_chebyshev(
     out_dir: Path,
     bodies: list[MajorBody],
     kernel_paths: list[Path],
-    radii_km: dict[int, float],
     start_year: int,
     end_year: int,
 ) -> int:
@@ -230,16 +224,20 @@ def extract_chebyshev(
             continue
 
         intlen_s, degree = native
-        radius_km = radii_km.get(body.naif_id)
-        if not _should_extract(body, radius_km, intlen_s):
+        if not _should_extract(body):
             skipped_filter += 1
             continue
 
-        if body.object_type in _CORE_BODY_TYPES and intlen_s < _SLOW_BODY_MIN_INTLEN_S:
+        if body.object_type in _CORE_BODY_TYPES:
             # Source kernel's fine interval was chosen for a fast sibling
             # (typical case: Mars 499 in a kernel sized for Phobos). Use the
-            # floor to avoid generating ~100× more segments than needed.
-            intlen_s = _SLOW_BODY_MIN_INTLEN_S
+            # core floor to avoid generating ~100× more segments than needed.
+            intlen_s = max(intlen_s, _SLOW_BODY_MIN_INTLEN_S)
+        elif body.object_type == ObjectType.moon:
+            # Moon whitelist members get a 0.5-day floor; native intervals as
+            # short as 0.1 d (Puck, Proteus) otherwise quadruple segment count
+            # without visible precision gain at visualization zoom.
+            intlen_s = max(intlen_s, _MOON_MIN_INTLEN_S)
         if degree > _MAX_DEGREE:
             logger.warning(
                 "%s (%d): native degree %d exceeds cap %d; clamping",

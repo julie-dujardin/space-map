@@ -1,4 +1,4 @@
-# Export Format (v1)
+# Export Format (v1 directory, binary v3)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -42,10 +42,13 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
     "zones": {
       "major": {
         "chunks": 20, "start_jd": 2433282.5, "end_jd": 2469807.5,
-        "chunk_years": 5, "body_count": 20, "total_bytes": 8388468
+        "chunk_years": 5, "body_count": 20, "total_bytes": 7653200
       },
-      "moons": { "chunks": 20, "...": "..." },
-      "major_asteroids": { "chunks": 20, "...": "..." }
+      "major_asteroids": { "chunks": 20, "chunk_years": 5, "...": "..." },
+      "moons/jupiter/main": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
+      "moons/jupiter/inner": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
+      "moons/saturn/main": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
+      "...": "..."
     }
   }
 }
@@ -73,19 +76,29 @@ Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
 
 Columnar binary format with zero-copy typed array support.
 
-### Header (16 bytes)
+### Header (32 bytes)
 
-| Offset | Type   | Field     |
-|--------|--------|-----------|
-| 0      | char[4]| Magic `SMAP` |
-| 4      | uint16 | Version (1) |
-| 6      | uint16 | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
-| 8      | uint32 | Row count |
-| 12     | uint8  | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this source |
-| 13     | uint8  | Reserved  |
-| 14     | uint16 | Reserved  |
+| Offset | Type    | Field     |
+|--------|---------|-----------|
+| 0      | char[4] | Magic `SMAP` |
+| 4      | uint16  | Version (3) |
+| 6      | uint16  | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
+| 8      | float64 | `start_jd` — chunk validity start (JD TDB), `-Infinity` = unbounded |
+| 16     | float64 | `end_jd` — chunk validity end (JD TDB, inclusive), `+Infinity` = unbounded |
+| 24     | uint32  | Row count |
+| 28     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this source |
+| 29     | uint8   | Reserved  |
+| 30     | uint16  | Reserved  |
 
 One provider writes one zone/part (pipeline-enforced), so the source fits in a single file-level byte rather than per-row. Frontend must mirror the ordinal mapping.
+
+`start_jd`/`end_jd` define the window where propagation is defined for this
+chunk. Outside it, consumers must hide every body in the file rather than call
+the propagator — SGP4 diverges beyond the TLE epoch spread, and even Kepler
+orbits fit from short observation arcs aren't trustworthy far out. Matches the
+header convention in the Chebyshev export. Writers use `±Infinity` for
+formats with no hard cutoff (Keplerian/parabolic orbits are mathematical
+solutions); SGP4 chunks bound it to `min(epoch) − 14d … max(epoch) + 14d`.
 
 ### Keplerian columns (format type 0)
 
@@ -186,32 +199,49 @@ All other columns are safe as float32 based on their value ranges in the databas
 
 ## Chebyshev ephemeris (`chebyshev/{zone}/{chunk}/`)
 
-High-accuracy polynomial ephemeris for major bodies — Sun, planets, dwarf
-planets, moons and the 16 largest asteroids (perturbers used in DE441). Each
+High-accuracy polynomial ephemeris for bodies that a user zooms in on — the
+Sun, planets, dwarf planets, planetary-system barycenters, the 16 sb441-n16
+asteroid perturbers, and ~30 whitelisted surface-feature moons. Each
 (zone, time-chunk) pair is one gzipped binary plus a sidecar `data.id.gz` of
 `{source}-{numeric_id}` object IDs in the same body order. Evaluate with
 Clenshaw's recursion on the Chebyshev basis.
 
+Non-whitelisted moons (tiny irregulars, inner shepherds without surface
+features) don't appear here — they're covered by the separate mean-elements
+format (cheap, low-accuracy, sufficient for dots-on-a-map rendering).
+
 ### Zones
 
-Mirrors the elements export so each pair of (elements, chebyshev) files shares
-a zone name:
+Two tiers, each with its own chunk cadence:
 
-- `major` — Sun, planets, dwarf planets, planetary-system barycenters (small,
-  always-loaded set).
-- `moons` — natural satellites (moons). Significantly heavier — a client that
-  doesn't need sub-system precision can skip this zone.
-- `major_asteroids` — the ~15 DE441 perturber asteroids from `sb441-n16`
-  (Pallas, Vesta, Juno, Hebe, Iris, Hygiea, Eunomia, Psyche, Amphitrite,
-  Europa-asteroid, Cybele, Sylvia, Thisbe, Davida, Interamnia). Ceres is
-  reported as a dwarf planet, so it lives in `major`.
+**Coarse, always-loaded set** (5y chunks, ~20 chunks over 100y):
+- `major` — Sun, planets, dwarf planets, planetary-system barycenters.
+- `major_asteroids` — the ~15 sb441-n16 perturber asteroids (Pallas, Vesta,
+  Juno, Hebe, Iris, Hygiea, Eunomia, Psyche, Amphitrite, Europa-asteroid,
+  Cybele, Sylvia, Thisbe, Davida, Interamnia — Ceres is in `major` as a
+  dwarf planet).
+
+**Per-system moons** (0.5y chunks, ~200 chunks over 100y):
+- `moons/{parent}/main` — the larger regular moons (Galileans, major
+  Saturnians, Uranian majors, Triton, Charon+Nix, Moon).
+- `moons/{parent}/inner` — fast inner shepherds / close-in regulars (Phobos,
+  Deimos, Amalthea, Thebe, Janus, Epimetheus, Puck, Proteus). Separated
+  because their native intervals are 5–10× shorter than the main moons; a
+  client that only wants to see big moons can skip this sub-zone.
+
+`{parent}` is one of `mercury`, `venus`, `earth`, `mars`, `jupiter`,
+`saturn`, `uranus`, `neptune`, `pluto` (only the parents that actually have
+whitelisted moons emit zones).
+
+Every zone in both tiers is under 500 KB per chunk — typical moon-sub-zone
+chunks are 50–200 KB gzipped.
 
 ### Time chunks
 
-The total covered range is split into uniform `chunk_years`-wide windows
-(default 5y). Consumers fetch only the chunks they need for the current
-simulated time. Chunk bounds are in the file header; the per-zone entry in
-`metadata.json` lists the number of chunks and overall JD bounds.
+Chunk cadence differs per tier (5y vs 0.5y, see above). Chunk bounds are in
+the file header; the per-zone entry in `metadata.json` lists the chunk count,
+overall JD bounds, and `chunk_years` so clients can convert JD → chunk index
+directly.
 
 ### Binary layout (`data.bin.gz`, little-endian)
 

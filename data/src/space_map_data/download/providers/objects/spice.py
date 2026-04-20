@@ -109,17 +109,30 @@ def _list_directory(client: httpx.Client, dir_path: str) -> list[str]:
 _AU_KM = 149_597_870.7
 
 
-_CHEBYSHEV_DEFAULTS = {"start_year": 1950, "end_year": 2050, "chunk_years": 5}
+_CHEBYSHEV_DEFAULTS: dict[str, int | float] = {
+    "start_year": 1950,
+    "end_year": 2050,
+    "chunk_years": 5,  # major / major_asteroids zones
+    "moon_chunk_years": 0.5,  # moons/<parent>/<main|inner> zones
+}
 
 
-def _load_chebyshev_config() -> dict[str, int]:
+def _load_chebyshev_config() -> dict[str, int | float]:
     """Read [chebyshev] settings from config.toml, falling back to defaults."""
     if not CONFIG_FILE.exists():
         return dict(_CHEBYSHEV_DEFAULTS)
     with CONFIG_FILE.open("rb") as f:
         config = tomllib.load(f)
     section = config.get("chebyshev", {})
-    return {k: int(section.get(k, v)) for k, v in _CHEBYSHEV_DEFAULTS.items()}
+    return {
+        # year bounds are integers; chunk lengths may be fractional
+        k: (
+            int(section.get(k, v))
+            if k in ("start_year", "end_year")
+            else float(section.get(k, v))
+        )
+        for k, v in _CHEBYSHEV_DEFAULTS.items()
+    }
 
 
 # Barycenters that don't appear in SPK but we need (0=SSB, 1-9=planet barycenters, 10=Sun)
@@ -821,18 +834,15 @@ class SpiceDownloader(Downloader):
             writer.writerows(radii_rows)
         logger.info("Saved %d radii records -> %s", len(radii_rows), radii_file.name)
 
-        # Step 10: Extract Chebyshev polynomial ephemeris for major bodies
-        # (planets, Sun, dwarves, big-enough moons + 16 asteroids from
-        # sb441-n16). Runs here so furnshed kernels stay in memory; the
-        # extractor uses the radii we just wrote to skip irrelevant small
-        # bodies.
+        # Step 10: Extract Chebyshev polynomial ephemeris for the Chebyshev
+        # body set — core bodies (planets, Sun, dwarves, barycenters) plus the
+        # 16 sb441-n16 asteroids plus the whitelisted surface-feature moons.
+        # Runs here so furnshed kernels stay in memory.
         cheb_cfg = _load_chebyshev_config()
-        radii_by_naif = {row["naif_id"]: row["radius_a_km"] for row in radii_rows}
         cheb_count = extract_chebyshev(
             self.out_dir,
             all_bodies,
             kernel_paths,
-            radii_by_naif,
             cheb_cfg["start_year"],
             cheb_cfg["end_year"],
         )
@@ -848,6 +858,7 @@ class SpiceDownloader(Downloader):
             nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
             chebyshev_body_count=cheb_count,
+            chebyshev_moon_chunk_years=cheb_cfg["moon_chunk_years"],
             chebyshev_start_year=cheb_cfg["start_year"],
             chebyshev_end_year=cheb_cfg["end_year"],
             chebyshev_chunk_years=cheb_cfg["chunk_years"],

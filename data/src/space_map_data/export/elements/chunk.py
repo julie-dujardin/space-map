@@ -5,6 +5,10 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.elements.format import (
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
+)
 from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import (
     write_elements,
@@ -19,6 +23,26 @@ from space_map_data.models.object import Object, OrbitalSource
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 10_000
+
+# Days of slack to add around the spread of TLE epochs when bounding an SGP4
+# chunk's validity window. TLE accuracy degrades quickly and the SGP4
+# propagator itself errors out a year or two past epoch — ±14d is the
+# conventional "still reasonably accurate" window for LEO.
+SGP4_VALIDITY_SLACK_DAYS = 14.0
+
+
+def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
+    """Derive [start_jd, end_jd] for an SGP4 chunk from the epoch spread.
+
+    Falls back to unbounded when no object carries an epoch (shouldn't happen
+    for valid TLEs but keeps behaviour defined).
+    """
+    epochs = [o.epoch_jd for o in objects if o.epoch_jd is not None]
+    if not epochs:
+        return UNBOUNDED_START_JD, UNBOUNDED_END_JD
+    return min(epochs) - SGP4_VALIDITY_SLACK_DAYS, max(
+        epochs
+    ) + SGP4_VALIDITY_SLACK_DAYS
 
 
 def write_chunk(
@@ -61,13 +85,27 @@ def write_chunk(
                 r = None
             if r is not None:
                 radius_km_overrides[obj.id] = r
+    # SGP4 (Earth satellites) needs a tight validity window — the propagator
+    # blows up past ~a year from epoch and spammy warnings are not useful.
+    # Kepler/parabolic orbits are mathematical solutions with no hard cutoff,
+    # so leave them unbounded.
+    start_jd: float = UNBOUNDED_START_JD
+    end_jd: float = UNBOUNDED_END_JD
     if zone == "PAR":
         write_fn = write_parabolic_elements
     elif zone == "earth":
         write_fn = write_sgp4_elements
+        start_jd, end_jd = _sgp4_validity_window(objects)
     else:
         write_fn = write_elements
-    write_fn(objects, elements_path, orbital_source, radius_km_overrides or None)
+    write_fn(
+        objects,
+        elements_path,
+        orbital_source,
+        radius_km_overrides or None,
+        start_jd=start_jd,
+        end_jd=end_jd,
+    )
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:

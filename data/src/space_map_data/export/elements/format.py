@@ -1,12 +1,19 @@
 """Binary format constants for the elements.bin export."""
 
+import math
 import struct
 
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 1
-HEADER_SIZE = 16  # must be 8-byte aligned
+VERSION = 3
+HEADER_SIZE = 32  # must be 8-byte aligned
+
+# Sentinel bounds for chunks with no hard validity window (e.g. Keplerian
+# orbits mathematically valid for any jd). Consumers compare `jd` against the
+# window — positive/negative infinity short-circuits as "always valid".
+UNBOUNDED_START_JD = -math.inf
+UNBOUNDED_END_JD = math.inf
 
 # Format types (uint16 at header offset 6)
 FORMAT_KEPLERIAN = 0  # Standard Keplerian elements (a, e, i, om, w, ma, n)
@@ -40,17 +47,23 @@ def pack_header(
     row_count: int,
     format_type: int = FORMAT_KEPLERIAN,
     source_ordinal: int = MISSING_SOURCE,
+    start_jd: float = UNBOUNDED_START_JD,
+    end_jd: float = UNBOUNDED_END_JD,
 ) -> bytes:
-    """Pack the 16-byte file header.
+    """Pack the 32-byte file header.
 
-    Layout: magic(4) · version(u16) · format_type(u16) · row_count(u32) ·
-    source(u8) · reserved(u8) · reserved(u16). Still 8-byte aligned.
+    Layout: magic(4) · version(u16) · format_type(u16) · start_jd(f64) ·
+    end_jd(f64) · row_count(u32) · source(u8) · reserved(u8) · reserved(u16).
+    Mirrors the Chebyshev header so both formats carry the same chunk-level
+    validity window; ±inf means unbounded.
     """
     return struct.pack(
-        "<4sHHIBBH",
+        "<4sHHddIBBH",
         MAGIC,
         VERSION,
         format_type,
+        start_jd,
+        end_jd,
         row_count,
         source_ordinal,
         0,  # reserved byte
