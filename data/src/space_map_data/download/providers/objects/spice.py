@@ -30,6 +30,48 @@ _NAIF_BASE_URL = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 #   .tpc (PCK) — physical constants: body radii, GM values, pole orientation & spin
 #   .tls (LSK) — leapseconds: UTC ↔ ephemeris time conversion
 
+# TODO(moons-elements-improvement): non-whitelisted moons currently ship a
+# single-epoch Keplerian row (via the standard elements export). Their Ω and ω
+# drift visibly over years from J2 precession — Phobos' nodes regress ~160°/yr,
+# inner Uranus/Neptune moons precess 30–200°/yr — and the single-epoch orbit
+# decorrelates from truth after a few years.
+#
+# The proper fix is frame-aware Chebyshev-style propagation WITHOUT shipping
+# polynomial coefficients (too big for the hundreds of skipped moons). Two
+# pieces are needed:
+#
+#  1. Extraction: augment bodies.csv (or a sibling file) with analytic J2
+#     secular rates per moon. The standard formulas,
+#         Ω̇ = -(3/2) · n · J2 · (R_eq/a)² · cos(i) / (1-e²)²
+#         ω̇ =  (3/4) · n · J2 · (R_eq/a)² · (5cos²i - 1) / (1-e²)²
+#     REQUIRE `i` to be the orbit's inclination to the parent's EQUATORIAL
+#     plane, not to the ecliptic. We extract elements in ECLIPJ2000 (ecliptic),
+#     so computing with `cos(i_ecliptic)` produces physically wrong rates —
+#     tested and found to make propagation worse than plain Kepler, worst for
+#     Uranus (98° obliquity → sign flips in cos(i)).
+#
+#  2. Frame transform: two reasonable shapes
+#     (a) Ship elements in parent-equatorial frame plus the pole orientation
+#         (already in PCK: POLE_RA/POLE_DEC/PM). Frontend rotates per-frame.
+#         Body-equatorial J2 rates plug in directly. Cleanest but changes
+#         existing-moon-elements frame semantics — touches the frontend.
+#     (b) Keep ecliptic elements; compute Ω̇/ω̇ in the body-equatorial frame,
+#         then transform the rate vector back to ecliptic with the pole.
+#         Doesn't change existing semantics but the transformation is
+#         non-trivial (the three rates — nodal, apsidal, mean-anomaly — aren't
+#         independent under a tilted-frame change; need the full osculating-
+#         element time-derivative machinery).
+#
+# J2 coefficients live in NAIF's `pck/Gravity.tpc` kernel (NOT in the standard
+# pck00011.tpc), as `BODY<n>_J2` / `BODY<n>_J3` / `BODY<n>_J4` variables.
+# Equatorial radii are in the normal PCK's `BODY<n>_RADII` (first element).
+#
+# When we pick this up: add Gravity.tpc to _FIXED_KERNELS, extract J2+R_eq +
+# the pole orientation (already extracted — see _extract_orientation) into a
+# sidecar file, rework the moons elements export to use approach (a) or (b).
+# Validate against spkezr at +1y / +5y / +20y — must beat plain Kepler by at
+# least 5× for the fast inner moons or the added complexity isn't worth it.
+
 # Fixed kernels that don't need version discovery. Values are paths relative
 # to `_NAIF_BASE_URL`, or fully-qualified URLs (if hosted elsewhere, like JPL's
 # SSD site for the SB441 asteroid kernel).
@@ -843,8 +885,8 @@ class SpiceDownloader(Downloader):
             self.out_dir,
             all_bodies,
             kernel_paths,
-            cheb_cfg["start_year"],
-            cheb_cfg["end_year"],
+            int(cheb_cfg["start_year"]),
+            int(cheb_cfg["end_year"]),
         )
 
         self._save_metadata(
