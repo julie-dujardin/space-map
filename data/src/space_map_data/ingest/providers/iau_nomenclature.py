@@ -11,7 +11,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.convert import float_or_none, string_or_none
 from space_map_data.models.feature import Feature
-from space_map_data.models.object import Object
+from space_map_data.models.object import SBDB, Object, ObjectType
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -121,17 +121,28 @@ class IAUNomenclatureIngestor:
         self._insert(batch)
 
     def _match_to_objects(self) -> int:
-        # Build a lookup from the ~50 distinct targets instead of a
-        # correlated subquery over 1.5M objects.
+        # IAU nomenclature only covers natural bodies, so exclude man-made
+        # objects to prevent e.g. the "DEIMOS" Earth-observation satellite
+        # shadowing naif-402 (the moon). Also match against SBDB.name so
+        # asteroid targets like "bennu" match objects named "101955 Bennu".
+        excluded = {ObjectType.spacecraft, ObjectType.debris, ObjectType.undocumented}
         targets = [t for (t,) in self.session.query(Feature.target).distinct().all()]
         matched = 0
         for target in targets:
             obj = (
                 self.session.query(Object.id)
-                .where(func.lower(Object.name) == target)
+                .outerjoin(SBDB, SBDB.object_id == Object.id)
+                .where(Object.object_type.notin_(excluded))
+                .where(
+                    (func.lower(Object.name) == target)
+                    | (func.lower(SBDB.name) == target)
+                )
                 .first()
             )
             if obj is None:
+                logger.warning(
+                    "IAU nomenclature target %r didn't match any object", target
+                )
                 continue
             matched += self.session.execute(
                 update(Feature)
