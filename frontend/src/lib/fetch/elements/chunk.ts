@@ -41,7 +41,9 @@ function keplerianToBody(
 		epoch: cols.epochJd[idx],
 		// Planet-scale entries come from CelesTrak TLEs, whose angles are in the
 		// Earth-equatorial (TEME) frame. System-scale entries are ecliptic J2000.
-		equatorial: isPlanetScale
+		equatorial: isPlanetScale,
+		validityStart: cols.validityStart,
+		validityEnd: cols.validityEnd
 	};
 }
 
@@ -68,7 +70,9 @@ function parabolicToBody(
 		n: 0,
 		epoch: cols.epochJd[idx],
 		q: cols.q[idx],
-		tp: cols.tp[idx]
+		tp: cols.tp[idx],
+		validityStart: cols.validityStart,
+		validityEnd: cols.validityEnd
 	};
 }
 
@@ -123,7 +127,9 @@ function sgp4ToBody(
 		n: cols.n[idx] * 360,
 		epoch: cols.epochJd[idx],
 		equatorial: true,
-		satrec
+		satrec,
+		validityStart: cols.validityStart,
+		validityEnd: cols.validityEnd
 	};
 }
 
@@ -194,13 +200,20 @@ export class ChunkLoader {
 			// sgp4ToBody returns null when satrec init fails — drop the row to
 			// enforce SGP4-only propagation for earth sats.
 			if (!body) continue;
-			const offset = body.satrec
-				? sgp4PositionScene(body.satrec, jd)
-				: body.a === 0 && !isParabolic
-					? ([0, 0, 0] as [number, number, number])
-					: body.q != null
-						? parabolicToPosition(body, date)
-						: orbitalElementsToPosition(body, date);
+			// If the load-time jd is outside the chunk's validity window (e.g.
+			// user URL-loaded a far-future date), seed with the parent position.
+			// The per-frame propagation gate keeps the body hidden until jd
+			// re-enters range.
+			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
+			const offset = !inRange
+				? ([0, 0, 0] as [number, number, number])
+				: body.satrec
+					? sgp4PositionScene(body.satrec, jd)
+					: body.a === 0 && !isParabolic
+						? ([0, 0, 0] as [number, number, number])
+						: body.q != null
+							? parabolicToPosition(body, date)
+							: orbitalElementsToPosition(body, date);
 			if (!offset) {
 				console.warn(
 					`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`

@@ -13,7 +13,18 @@ import {
 	elementsBinUrl
 } from '$lib/fetch/elements/constants';
 
-export interface KeplerianColumns {
+/**
+ * Chunk-level validity window (JD TDB). Propagation is only defined inside
+ * `[validityStart, validityEnd]`; consumers hide bodies whose current `jd` is
+ * outside the window. `-Infinity`/`+Infinity` means unbounded — Keplerian/
+ * parabolic orbits have no hard cutoff, so exporters leave them unbounded.
+ */
+export interface Validity {
+	validityStart: number;
+	validityEnd: number;
+}
+
+export interface KeplerianColumns extends Validity {
 	kind: 'keplerian';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -31,7 +42,7 @@ export interface KeplerianColumns {
 	rowCount: number;
 }
 
-export interface ParabolicColumns {
+export interface ParabolicColumns extends Validity {
 	kind: 'parabolic';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -53,7 +64,7 @@ export interface ParabolicColumns {
  * satellite.js `json2satrec` needs. Raw OMM units: `a` in km, `n` in rev/day,
  * angles in degrees, BSTAR in 1/Earth radii, n-dot in rev/day², n-ddot in rev/day³.
  */
-export interface SGP4Columns {
+export interface SGP4Columns extends Validity {
 	kind: 'sgp4';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -96,7 +107,7 @@ export async function fetchElements(
 }
 
 /** Parse header fields shared by all format types. */
-function parseHeader(buffer: ArrayBuffer): { formatType: number; rowCount: number } {
+function parseHeader(buffer: ArrayBuffer): { formatType: number; rowCount: number } & Validity {
 	const view = new DataView(buffer);
 	const magic = view.getUint32(0, true);
 	if (magic !== MAGIC) {
@@ -108,7 +119,9 @@ function parseHeader(buffer: ArrayBuffer): { formatType: number; rowCount: numbe
 	}
 	return {
 		formatType: view.getUint16(6, true),
-		rowCount: view.getUint32(8, true)
+		validityStart: view.getFloat64(8, true),
+		validityEnd: view.getFloat64(16, true),
+		rowCount: view.getUint32(24, true)
 	};
 }
 
@@ -187,13 +200,14 @@ function parseKeplerianColumns(
 }
 
 export function parseElements(buffer: ArrayBuffer): ElementColumns {
-	const { formatType, rowCount } = parseHeader(buffer);
+	const { formatType, rowCount, validityStart, validityEnd } = parseHeader(buffer);
+	const validity: Validity = { validityStart, validityEnd };
 
 	if (formatType === FORMAT_PARABOLIC) {
-		return parseParabolicElements(buffer, rowCount);
+		return parseParabolicElements(buffer, rowCount, validity);
 	}
 	if (formatType === FORMAT_SGP4) {
-		return parseSGP4Elements(buffer, rowCount);
+		return parseSGP4Elements(buffer, rowCount, validity);
 	}
 	if (formatType !== FORMAT_KEPLERIAN) {
 		throw new Error(`Unknown elements format type: ${formatType}`);
@@ -217,11 +231,12 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 		ma: kepler.ma,
 		n: kepler.n,
 		radiusKm: kepler.radiusKm,
-		rowCount
+		rowCount,
+		...validity
 	};
 }
 
-function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number): SGP4Columns {
+function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number, validity: Validity): SGP4Columns {
 	const {
 		id,
 		objectType,
@@ -265,11 +280,16 @@ function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number): SGP4Columns {
 		meanMotionDdot,
 		elementSetNo,
 		revAtEpoch,
-		rowCount
+		rowCount,
+		...validity
 	};
 }
 
-function parseParabolicElements(buffer: ArrayBuffer, rowCount: number): ParabolicColumns {
+function parseParabolicElements(
+	buffer: ArrayBuffer,
+	rowCount: number,
+	validity: Validity
+): ParabolicColumns {
 	const {
 		id,
 		objectType,
@@ -318,6 +338,7 @@ function parseParabolicElements(buffer: ArrayBuffer, rowCount: number): Paraboli
 		w,
 		tp,
 		radiusKm,
-		rowCount
+		rowCount,
+		...validity
 	};
 }

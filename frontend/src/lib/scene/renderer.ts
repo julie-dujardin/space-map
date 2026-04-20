@@ -636,6 +636,15 @@ export class SceneRenderer {
 			const d = body.data;
 			const parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 			const isParabolic = d.q != null;
+			// Respect the chunk-level validity window — propagating outside it
+			// either diverges (SGP4) or gives nonsense (parabolic). Leaving the
+			// body out of `positionMap` tells children to fall back to origin;
+			// `updateBodyVisibility` hides the mesh + orbit line via outOfRange.
+			const bo = this.bodyObjects.get(d.id);
+			if (jd < d.validityStart || jd > d.validityEnd) {
+				if (bo) bo.outOfRange = true;
+				return;
+			}
 			let x: number, y: number, z: number;
 			if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. planet at its barycenter).
@@ -651,6 +660,7 @@ export class SceneRenderer {
 				y = parentPos[1] + offset[1];
 				z = parentPos[2] + offset[2];
 			}
+			if (bo) bo.outOfRange = false;
 			body.position[0] = x;
 			body.position[1] = y;
 			body.position[2] = z;
@@ -661,7 +671,6 @@ export class SceneRenderer {
 			}
 			positionMap.set(d.id, body.position);
 
-			const bo = this.bodyObjects.get(d.id);
 			if (!bo) return;
 			if (bo.orbitLine && body.orbitCenter) {
 				const oc = bo.orbitLine.userData.orbitCenter as Vector3 | undefined;

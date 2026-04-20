@@ -125,6 +125,15 @@ async function createPlaceholderBody(
 				) ?? undefined)
 			: undefined;
 
+	// SGP4 placeholders (URL-navigated Earth sats arriving before the chunk)
+	// need a tight validity window so the per-frame propagation gate hides
+	// them when the sim time wanders far from epoch — the chunk's real window
+	// will overwrite this once it loads. Keplerian/parabolic orbits have no
+	// hard cutoff, so leave them unbounded.
+	const SGP4_VALIDITY_SLACK_DAYS = 14;
+	const validityStart = satrec ? orbit.epoch_jd - SGP4_VALIDITY_SLACK_DAYS : -Infinity;
+	const validityEnd = satrec ? orbit.epoch_jd + SGP4_VALIDITY_SLACK_DAYS : Infinity;
+
 	const data: BodyData = {
 		id: targetId,
 		// Prefer the localized (Wikidata-resolved) long form so the 3D label matches
@@ -150,6 +159,8 @@ async function createPlaceholderBody(
 		epoch: orbit.epoch_jd,
 		// Planet-scale means CelesTrak TLE data, which uses Earth-equatorial angles.
 		equatorial: isPlanetScale,
+		validityStart,
+		validityEnd,
 		...(isParabolic ? { q: orbit.q, tp: orbit.tp } : {}),
 		...(satrec ? { satrec } : {})
 	};

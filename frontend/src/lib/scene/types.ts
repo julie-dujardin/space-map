@@ -42,6 +42,14 @@ export interface BodyObjects {
 	radiusScene: number;
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
+	/**
+	 * True when the current simulation `jd` is outside this body's chunk
+	 * validity window — set by `computePosition` each frame and read by
+	 * `updateBodyVisibility` to force the group hidden. Keeps the mesh at its
+	 * last valid position instead of letting SGP4 diverge / freezing a stuck
+	 * satellite onscreen.
+	 */
+	outOfRange?: boolean;
 	/** Texture resolution tiers available for this body (e.g. ['low', 'medium', 'high']). */
 	availableTiers?: string[];
 	/** Currently loaded texture tier name. */

@@ -44,6 +44,15 @@ export interface OrbitColumns {
 	tp: Float64Array;
 	/** Per-row SGP4 satrec — non-null iff kind[i] === KIND_SGP4. */
 	satrec: (SatRec | null)[];
+	/**
+	 * Group-level validity window (JD TDB). Written once at pack time from the
+	 * widest span across bodies — bodies in a pool group always come from one
+	 * zone export so in practice they share a single chunk window. `writePositions`
+	 * early-exits (returning 0) when the tick's jd falls outside this range,
+	 * avoiding a futile SGP4 loop that would spam propagation warnings.
+	 */
+	validityStart: number;
+	validityEnd: number;
 }
 
 /**
@@ -56,6 +65,12 @@ export interface OrbitColumns {
 export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitColumns {
 	const count = bodies.length;
 	const cols = allocColumns(count);
+	// Widen the group's validity window to the union of all bodies' windows.
+	// In practice all bodies in one pool group share a single chunk window, so
+	// min/max collapses to that shared value — but the widening keeps us safe
+	// if a caller ever mixes chunks with differing windows into one group.
+	let start = Infinity;
+	let end = -Infinity;
 	for (let idx = 0; idx < count; idx++) {
 		const b = bodies[idx];
 		const d = b.data;
@@ -85,7 +100,11 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 		cols.n[idx] = d.n;
 		cols.epoch[idx] = d.epoch;
 		cols.equatorial[idx] = d.equatorial ? 1 : 0;
+		if (d.validityStart < start) start = d.validityStart;
+		if (d.validityEnd > end) end = d.validityEnd;
 	}
+	cols.validityStart = start === Infinity ? -Infinity : start;
+	cols.validityEnd = end === -Infinity ? Infinity : end;
 	return cols;
 }
 
@@ -122,7 +141,9 @@ export function allocColumns(count: number): OrbitColumns {
 		epoch: new Float64Array(count),
 		q: new Float64Array(count),
 		tp: new Float64Array(count),
-		satrec: new Array<SatRec | null>(count).fill(null)
+		satrec: new Array<SatRec | null>(count).fill(null),
+		validityStart: -Infinity,
+		validityEnd: Infinity
 	};
 }
 
@@ -150,6 +171,10 @@ export function writePositions(
 	basisZ: number,
 	out: Float32Array
 ): number {
+	// Bail on the whole group when jd sits outside the chunk's validity window
+	// — avoids a full SGP4 sweep that would error on every row and flood the
+	// console. Returning 0 hides the cloud via setDrawRange.
+	if (jd < cols.validityStart || jd > cols.validityEnd) return 0;
 	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec } = cols;
 	const capacity = (out.length / 3) | 0;
 	let writeIdx = 0;

@@ -36,6 +36,15 @@ export interface BodyData extends OrbitalElements {
 	 * effects that the mean-motion Kepler step ignores.
 	 */
 	satrec?: SatRec;
+	/**
+	 * Chunk-level validity window (JD TDB) — inherited from the chunk header.
+	 * Callers must skip propagation (and hide the body) when the current jd
+	 * falls outside `[validityStart, validityEnd]`. `±Infinity` = unbounded
+	 * (Kepler/parabolic orbits have no hard cutoff); tight windows come from
+	 * SGP4 where extrapolation past the epoch spread produces nonsense.
+	 */
+	validityStart: number;
+	validityEnd: number;
 }
 
 export interface PositionedBody {

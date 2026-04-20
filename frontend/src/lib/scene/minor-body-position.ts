@@ -25,6 +25,9 @@ export function refreshMinorBodyPosition(
 	const d = body.data;
 	const isParabolic = d.q != null;
 	if (d.a === 0 && !isParabolic && !d.satrec) return; // coincides with parent — nothing to propagate
+	// Skip when jd is outside the chunk's validity window — same gate the
+	// per-frame renderer uses; prevents SGP4 divergence warnings at pick time.
+	if (jd < d.validityStart || jd > d.validityEnd) return;
 	const offset = d.satrec
 		? sgp4PositionScene(d.satrec, jd)
 		: isParabolic

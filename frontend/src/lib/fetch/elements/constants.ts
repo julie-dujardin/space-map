@@ -4,8 +4,8 @@
  */
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 2;
-export const HEADER_SIZE = 16;
+export const VERSION = 3;
+export const HEADER_SIZE = 32;
 
 /** Format types (uint16 at header offset 6). */
 export const FORMAT_KEPLERIAN = 0;

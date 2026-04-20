@@ -95,6 +95,15 @@ export function updateBodyVisibility(
 			isClose = vf.isClose;
 		}
 
+		// Propagation was skipped this frame because jd is outside the chunk's
+		// validity window — force the whole body hidden so it doesn't linger at
+		// its last valid position.
+		if (bo.outOfRange) {
+			group.visible = false;
+			if (orbitLine) orbitLine.visible = false;
+			showLabel = false;
+		}
+
 		// Star extras: sub-pixel dot toggles with mesh size; stars always
 		// keep their group visible and derive isClose from screen size
 		// (they have no orbital semi-major axis, so the tier is always FULL).
