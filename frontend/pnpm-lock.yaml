@@ -98,6 +98,9 @@ importers:
       typescript-eslint:
         specifier: ^8.57.0
         version: 8.57.0(eslint@10.0.3(jiti@2.6.1))(typescript@5.9.3)
+      vaul-svelte:
+        specifier: 1.0.0-next.7
+        version: 1.0.0-next.7(svelte@5.53.8)
       vite:
         specifier: ^7.3.1
         version: 7.3.1(@types/node@25.4.0)(jiti@2.6.1)(lightningcss@1.31.1)
@@ -2496,6 +2499,15 @@ packages:
       }
     hasBin: true
 
+  vaul-svelte@1.0.0-next.7:
+    resolution:
+      {
+        integrity: sha512-7zN7Bi3dFQixvvbUJY9uGDe7Ws/dGZeBQR2pXdXmzQiakjrxBvWo0QrmsX3HK+VH+SZOltz378cmgmCS9f9rSg==
+      }
+    engines: { node: '>=18', pnpm: '>=8.7.0' }
+    peerDependencies:
+      svelte: ^5.0.0
+
   vite@7.3.1:
     resolution:
       {
@@ -3935,6 +3947,12 @@ snapshots:
   uuid@10.0.0: {}
 
   uuid@13.0.0: {}
+
+  vaul-svelte@1.0.0-next.7(svelte@5.53.8):
+    dependencies:
+      runed: 0.23.4(svelte@5.53.8)
+      svelte: 5.53.8
+      svelte-toolbelt: 0.7.1(svelte@5.53.8)
 
   vite@7.3.1(@types/node@25.4.0)(jiti@2.6.1)(lightningcss@1.31.1):
     dependencies:

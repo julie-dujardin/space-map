@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import { Drawer as Vaul } from 'vaul-svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -41,58 +42,12 @@
 	let loading = $state(true);
 	let isMobile = $state(false);
 
-	// Mobile bottom sheet snap points
-	// Bottom snap is measured from the handle in px; mid/top are in dvh.
-	let handleEl = $state<HTMLDivElement>();
-	let bottomSnapPx = $state(0);
-	const MID_SNAP = 30;
-	const TOP_SNAP = 95;
-	let sheetHeight = $state(0);
-	let isDragging = $state(false);
-	let dragStartY = 0;
-	let dragStartHeight = 0;
-
-	function bottomSnapDvh() {
-		return (bottomSnapPx / window.innerHeight) * 100;
-	}
-	// Snaps always reflects current viewport
-	function getSnaps(): [number, number, number] {
-		return [bottomSnapDvh(), MID_SNAP, TOP_SNAP];
-	}
-
-	$effect(() => {
-		if (!handleEl) return;
-		const update = () => {
-			bottomSnapPx = handleEl!.offsetHeight;
-			if (sheetHeight < bottomSnapDvh()) sheetHeight = bottomSnapDvh();
-		};
-		update();
-		const ro = new ResizeObserver(update);
-		ro.observe(handleEl);
-		return () => ro.disconnect();
-	});
-
-	// Velocity tracking (dvh/ms, positive = sheet moving up)
-	let velocity = 0;
-	let lastMoveY = 0;
-	let lastMoveTime = 0;
-
-	// Overscroll-to-collapse when fullscreen
-	let contentEl = $state<HTMLDivElement>();
-	let overscrolling = $state(false);
-	let overscrollStartY = 0;
-
 	$effect(() => {
 		const mq = window.matchMedia('(max-width: 768px)');
 		isMobile = mq.matches;
 		const handler = (e: MediaQueryListEvent) => (isMobile = e.matches);
 		mq.addEventListener('change', handler);
 		return () => mq.removeEventListener('change', handler);
-	});
-
-	$effect(() => {
-		void body.data.id;
-		if (isMobile) sheetHeight = bottomSnapDvh();
 	});
 
 	$effect(() => {
@@ -112,116 +67,37 @@
 			});
 	});
 
-	// Fast flick skips the middle snap; slow drag uses nearest
-	const VELOCITY_THRESHOLD = 0.2; // dvh/ms
+	// Snap points: handle-only collapsed, mid, full.
+	const SNAP_POINTS = ['56px', 0.3, 1] as const;
+	const TOP_SNAP = SNAP_POINTS[2];
+	let activeSnapPoint = $state<number | string | null>(SNAP_POINTS[0]);
+	let contentEl = $state<HTMLElement | null>(null);
+	let isAtTop = $derived(activeSnapPoint === TOP_SNAP);
 
-	function snap() {
-		const s = getSnaps();
-		if (velocity > VELOCITY_THRESHOLD) sheetHeight = s[2];
-		else if (velocity < -VELOCITY_THRESHOLD) sheetHeight = s[0];
-		else
-			sheetHeight = s.reduce((a, b) =>
-				Math.abs(a - sheetHeight) <= Math.abs(b - sheetHeight) ? a : b
-			);
-	}
-
-	function trackVelocity(clientY: number, sign: 1 | -1) {
-		const now = performance.now();
-		const dt = now - lastMoveTime;
-		if (dt > 0 && dt < 100) {
-			// sign: +1 when upward pointer drag, -1 when downward touch overscroll
-			velocity = (((sign * (lastMoveY - clientY)) / window.innerHeight) * 100) / dt;
-		}
-		lastMoveY = clientY;
-		lastMoveTime = now;
-	}
-
-	// Drag: handle always; whole sheet when not fullscreen
-	function onDragStart(e: PointerEvent) {
-		isDragging = true;
-		dragStartY = e.clientY;
-		dragStartHeight = sheetHeight;
-		velocity = 0;
-		lastMoveY = e.clientY;
-		lastMoveTime = performance.now();
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-	}
-
-	function onHandlePointerDown(e: PointerEvent) {
-		e.stopPropagation(); // prevent aside from also starting drag
-		onDragStart(e);
-	}
-
-	function onAsidePointerDown(e: PointerEvent) {
-		if (isFullscreen) return;
-		onDragStart(e);
-	}
-
-	function onDragMove(e: PointerEvent) {
-		if (!isDragging) return;
-		trackVelocity(e.clientY, 1);
-		const dy = ((dragStartY - e.clientY) / window.innerHeight) * 100;
-		const s = getSnaps();
-		sheetHeight = Math.max(s[0], Math.min(s[2], dragStartHeight + dy));
-	}
-
-	function onDragUp() {
-		if (!isDragging) return;
-		isDragging = false;
-		snap();
-	}
-
-	// Overscroll-to-collapse: needs non-passive listener to call preventDefault
-	function nonPassiveTouchMove(node: HTMLElement, handler: (e: TouchEvent) => void) {
-		node.addEventListener('touchmove', handler, { passive: false });
-		return { destroy: () => node.removeEventListener('touchmove', handler) };
-	}
-
-	let overscrollPeakVelocity = 0;
-
-	function onContentTouchStart(e: TouchEvent) {
-		overscrollStartY = e.touches[0].clientY;
-		overscrolling = false;
-		overscrollPeakVelocity = 0;
-		lastMoveY = e.touches[0].clientY;
-		lastMoveTime = performance.now();
-	}
-
-	function onContentTouchMove(e: TouchEvent) {
-		if (!contentEl || (!isFullscreen && !overscrolling)) return;
-		const dy = e.touches[0].clientY - overscrollStartY;
-		if ((contentEl.scrollTop <= 0 && dy > 0) || overscrolling) {
-			e.preventDefault();
-			overscrolling = true;
-			// Track peak velocity (finger moving down = collapsing = negative sign)
-			const now = performance.now();
-			const dt = now - lastMoveTime;
-			if (dt > 0 && dt < 100) {
-				const v = (((e.touches[0].clientY - lastMoveY) / window.innerHeight) * 100) / dt;
-				if (v > overscrollPeakVelocity) overscrollPeakVelocity = v;
-			}
-			lastMoveY = e.touches[0].clientY;
-			lastMoveTime = now;
-			const dvh = (dy / window.innerHeight) * 100;
-			sheetHeight = Math.min(TOP_SNAP, Math.max(bottomSnapDvh(), TOP_SNAP - dvh));
-		}
-	}
-
-	function onContentTouchEnd() {
-		if (overscrolling) {
-			overscrolling = false;
-			if (overscrollPeakVelocity > VELOCITY_THRESHOLD) sheetHeight = bottomSnapDvh();
-			else snap();
-		}
-	}
-
+	// Track visible drawer height continuously so the parent can slide/fade
+	// the bottom controls during drag and snap transitions. Vaul drives the
+	// sheet via CSS transform, so we poll bounding rect on every frame while
+	// mounted — cheap, and avoids coupling to vaul internals.
 	$effect(() => {
-		if (isMobile) onSheetResize?.(sheetHeight);
+		if (!isMobile || !contentEl) return;
+		let running = true;
+		let lastDvh = -1;
+		const tick = () => {
+			if (!running || !contentEl) return;
+			const rect = contentEl.getBoundingClientRect();
+			const visible = Math.max(0, window.innerHeight - rect.top);
+			const dvh = (visible / window.innerHeight) * 100;
+			if (Math.abs(dvh - lastDvh) > 0.1) {
+				lastDvh = dvh;
+				onSheetResize?.(dvh);
+			}
+			requestAnimationFrame(tick);
+		};
+		tick();
+		return () => {
+			running = false;
+		};
 	});
-
-	let isAtBottomSnap = $derived(bottomSnapPx > 0 && sheetHeight <= bottomSnapDvh() + 1);
-	let isExpanded = $derived(sheetHeight > bottomSnapDvh() + 5);
-	let isFullscreen = $derived(sheetHeight >= TOP_SNAP - 5);
 
 	let displayName = $derived(
 		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
@@ -261,53 +137,35 @@
 {/snippet}
 
 {#if isMobile}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<aside
-		class="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-xl border-t bg-background shadow-lg {!isFullscreen
-			? 'cursor-grab touch-none'
-			: ''}"
-		style="height: {isAtBottomSnap
-			? `${bottomSnapPx}px`
-			: `${sheetHeight}dvh`}; transition: {isDragging || overscrolling
-			? 'none'
-			: 'height 0.3s ease'};"
-		onpointerdown={onAsidePointerDown}
-		onpointermove={onDragMove}
-		onpointerup={onDragUp}
-		onpointercancel={onDragUp}
+	<Vaul.Root
+		open={true}
+		snapPoints={SNAP_POINTS as unknown as (number | string)[]}
+		bind:activeSnapPoint
+		modal={false}
+		shouldScaleBackground={false}
+		dismissible={false}
 	>
-		<!-- Drag handle (always draggable) -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			bind:this={handleEl}
-			class="flex flex-col items-center gap-2 px-4 pt-3 pb-2 cursor-grab touch-none"
-			onpointerdown={onHandlePointerDown}
-			onpointermove={onDragMove}
-			onpointerup={onDragUp}
-			onpointercancel={onDragUp}
-		>
-			<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
-			<div class="flex w-full items-center justify-between">
-				<span class="text-sm font-semibold truncate">{displayName}</span>
-				<Button variant="ghost" size="icon-sm" onclick={onClose}>
-					<XIcon />
-					<span class="sr-only">{m.close()}</span>
-				</Button>
-			</div>
-		</div>
-
-		{#if isExpanded}
-			<div
-				bind:this={contentEl}
-				class="flex-1 px-4 pb-4 {isFullscreen ? 'overflow-y-auto' : 'overflow-hidden'}"
-				ontouchstart={onContentTouchStart}
-				ontouchend={onContentTouchEnd}
-				use:nonPassiveTouchMove={onContentTouchMove}
+		<Vaul.Portal>
+			<Vaul.Content
+				bind:ref={contentEl}
+				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
 			>
-				{@render drawerContent()}
-			</div>
-		{/if}
-	</aside>
+				<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
+					<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
+					<div class="flex w-full items-center justify-between">
+						<span class="text-sm font-semibold truncate">{displayName}</span>
+						<Button variant="ghost" size="icon-sm" onclick={onClose}>
+							<XIcon />
+							<span class="sr-only">{m.close()}</span>
+						</Button>
+					</div>
+				</div>
+				<div class="flex-1 min-h-0 px-4 pb-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}">
+					{@render drawerContent()}
+				</div>
+			</Vaul.Content>
+		</Vaul.Portal>
+	</Vaul.Root>
 {:else}
 	<!-- Desktop: side panel -->
 	<aside
