@@ -76,32 +76,23 @@
 	// last content into view.
 	const HIDDEN_BOTTOM_DVH = typeof TOP_SNAP === 'number' ? (1 - TOP_SNAP) * 100 : 0;
 	let activeSnapPoint = $state<number | string | null>(SNAP_POINTS[0]);
-	let contentEl = $state<HTMLElement | null>(null);
 	let isAtTop = $derived(activeSnapPoint === TOP_SNAP);
 
-	// Track visible drawer height continuously so the parent can slide/fade
-	// the bottom controls during drag and snap transitions. Vaul drives the
-	// sheet via CSS transform, so we poll bounding rect on every frame while
-	// mounted — cheap, and avoids coupling to vaul internals.
+	// Report the snap target to the parent on change. We don't sample during
+	// the drag/animation — a per-frame getBoundingClientRect loop caused layout
+	// thrash that made snap transitions jank on mobile. The parent smooths the
+	// discrete jumps with its own CSS transition on `bottom`.
 	$effect(() => {
-		if (!isMobile || !contentEl) return;
-		let running = true;
-		let lastDvh = -1;
-		const tick = () => {
-			if (!running || !contentEl) return;
-			const rect = contentEl.getBoundingClientRect();
-			const visible = Math.max(0, window.innerHeight - rect.top);
-			const dvh = (visible / window.innerHeight) * 100;
-			if (Math.abs(dvh - lastDvh) > 0.1) {
-				lastDvh = dvh;
-				onSheetResize?.(dvh);
-			}
-			requestAnimationFrame(tick);
-		};
-		tick();
-		return () => {
-			running = false;
-		};
+		if (!isMobile) return;
+		const s = activeSnapPoint;
+		let dvh = 0;
+		if (typeof s === 'number') {
+			dvh = s * 100;
+		} else if (typeof s === 'string') {
+			const px = parseFloat(s);
+			if (!Number.isNaN(px)) dvh = (px / window.innerHeight) * 100;
+		}
+		onSheetResize?.(dvh);
 	});
 
 	let displayName = $derived(
@@ -152,7 +143,6 @@
 	>
 		<Vaul.Portal>
 			<Vaul.Content
-				bind:ref={contentEl}
 				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
 			>
 				<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
