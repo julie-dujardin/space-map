@@ -1,0 +1,94 @@
+{
+  "filename": "(19308)_1996_TO66_imaged_by_NTT_cut_out.jpg",
+  "fetched_at": "2026-04-21T16:49:44.249461+00:00",
+  "imageinfo": {
+    "timestamp": "2018-04-12T22:02:41Z",
+    "user": "Fæ",
+    "size": 519590,
+    "width": 1212,
+    "height": 544,
+    "url": "https://upload.wikimedia.org/wikipedia/commons/5/53/%2819308%29_1996_TO66_imaged_by_NTT_cut_out.jpg",
+    "descriptionurl": "https://commons.wikimedia.org/wiki/File:(19308)_1996_TO66_imaged_by_NTT_cut_out.jpg",
+    "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=43270268",
+    "sha1": "df3981f51e63e4bed1a42a86c35378509a457d0f",
+    "extmetadata": {
+      "DateTime": {
+        "value": "2018-04-12 22:02:41",
+        "source": "mediawiki-metadata",
+        "hidden": ""
+      },
+      "ObjectName": {
+        "value": "(19308) 1996 TO66 imaged by NTT cut out",
+        "source": "mediawiki-metadata"
+      },
+      "CommonsMetadataExtension": {
+        "value": 1.2,
+        "source": "extension",
+        "hidden": ""
+      },
+      "Categories": {
+        "value": "(19308) 1996 TO66|Extracted images|European Southern Observatory Images|NTT Solar System images",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "Assessments": {
+        "value": "",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "ImageDescription": {
+        "value": {
+          "en": "The top panel shows a composite image of the Kuiper Belt Object <a href=\"https://en.wikipedia.org/wiki/(19308)_1996_TO66\" class=\"extiw\" title=\"w:(19308) 1996 TO66\">1996 TO66</a> (round image at the center), totalling 4 hours of exposure with the EMMI multi-mode instrument at the 3.6-m New Technology Telescope (NTT) at La Silla. During the exposure, the object moved with respect to the background stars; this motion was compensated for and the KBO therefore appears as a point, while the images of background stars are trailed. The bright, nearly horizontal line that crosses the entire field is the light trail left by a geostationary satellite in orbit around the Earth, that crossed the field of view during one of the exposures. The lower panel is the composite \"light-curve\" of 1996 TO66, showing its brightness (\"red magnitude\") variations with time (in hours). The dots and the corresponding \"error bars\" represent the actual measurements from several nights and their uncertainties, while the solid line is a mathematic fit through these points. It was used to determine the rotation period of 1996 TO66 as about 6 hours and 15 minutes.",
+          "_type": "lang"
+        },
+        "source": "commons-desc-page"
+      },
+      "DateTimeOriginal": {
+        "value": "1998-11-05",
+        "source": "commons-desc-page"
+      },
+      "Credit": {
+        "value": "<ul><li><a rel=\"nofollow\" class=\"external text\" href=\"http://cdn.eso.org/images/wallpaper4/eso9851a.jpg\">image</a></li>\n<li><a rel=\"nofollow\" class=\"external text\" href=\"http://www.eso.org/public/unitedkingdom/images/eso9851a/\">image page</a></li>\n<li><a rel=\"nofollow\" class=\"external text\" href=\"http://www.eso.org/public/unitedkingdom/news/eso9851/\">ESO  — Science Release (eso9851)</a></li></ul>",
+        "source": "commons-desc-page"
+      },
+      "Artist": {
+        "value": "ESO",
+        "source": "commons-desc-page"
+      },
+      "LicenseShortName": {
+        "value": "CC BY 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "UsageTerms": {
+        "value": "Creative Commons Attribution 4.0",
+        "source": "commons-desc-page"
+      },
+      "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by/4.0",
+        "source": "commons-desc-page"
+      },
+      "Copyrighted": {
+        "value": "True",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "Restrictions": {
+        "value": "",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "License": {
+        "value": "cc-by-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+      }
+    },
+    "mime": "image/jpeg"
+  }
+}

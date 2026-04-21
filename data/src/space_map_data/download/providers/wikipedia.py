@@ -7,7 +7,6 @@ from collections import defaultdict
 from itertools import islice
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import unquote, urlparse
 
 from httpx import Response
 from space_map_data.constants.providers import LANGUAGES
@@ -21,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 AFTER_REQUEST_DELAY_SECONDS = 1
 BATCH_SIZE = 20
-# _orbit has lots of useless images too, but also some good ones we want
-EXCLUDED_IMAGE_PREFIXES = ("Орбита_астероида_",)
 
 
 def _batched(
@@ -51,7 +48,6 @@ class WikipediaDownloader(Downloader):
             return
 
         self._fetch_summaries(tasks_by_lang, limit=limit)
-        self._download_images()
 
         total = sum(len(items) for items in tasks_by_lang.values())
         self._save_metadata(
@@ -195,55 +191,3 @@ class WikipediaDownloader(Downloader):
 
             out_file = out_dir / f"{qid}.json"
             out_file.write_text(json.dumps(page, ensure_ascii=False, indent=2))
-
-    def _download_images(self) -> None:
-        """Download unique thumbnail and original images referenced by saved summaries.
-
-        Saves to ``wikipedia/images/{thumb,full}/{filename from URL}``. Dedupes by URL
-        across languages and skips files already on disk.
-        """
-        urls: dict[str, Path] = {}
-        for summary_file in self.out_dir.glob("*/Q*.json"):
-            try:
-                page = json.loads(summary_file.read_text())
-            except json.JSONDecodeError:
-                logger.warning("Skipping invalid summary file %s", summary_file)
-                continue
-            # Derive the canonical filename from the original (full-size) source
-            # so thumbnails and full images share the same name on disk.
-            orig_src = (page.get("original") or {}).get("source")
-            if not orig_src:
-                logger.warning("No original image source in %s", summary_file.name)
-                continue
-            filename = unquote(urlparse(orig_src).path.rsplit("/", 1)[-1])
-            if not filename:
-                logger.warning("Empty filename from original source URL: %s", orig_src)
-                continue
-            if any(filename.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES):
-                logger.debug("Skipping excluded image prefix: %s", filename)
-                continue
-            for kind, key in (("thumb", "thumbnail"), ("full", "original")):
-                src = (page.get(key) or {}).get("source")
-                if not src or src in urls:
-                    continue
-                urls[src] = self.out_dir / "images" / kind / filename
-
-        to_download = [(url, path) for url, path in urls.items() if not path.exists()]
-        logger.info(
-            "Wikipedia images: %s unique, %s to download",
-            f"{len(urls):,}",
-            f"{len(to_download):,}",
-        )
-        if not to_download:
-            return
-
-        for url, out_path in tqdm(to_download, desc="Wikipedia images", unit="img"):
-            try:
-                response = self._request(url)
-                response.raise_for_status()
-            except Exception:
-                logger.warning("Failed to download image %s", url)
-                continue
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(response.content)
-            time.sleep(1)

@@ -1,0 +1,90 @@
+{
+  "filename": "(127546)_2002_XU93_hst.jpg",
+  "fetched_at": "2026-04-21T16:49:44.249461+00:00",
+  "imageinfo": {
+    "timestamp": "2019-05-31T20:38:25Z",
+    "user": "Nrco0e",
+    "size": 57352,
+    "width": 256,
+    "height": 256,
+    "url": "https://upload.wikimedia.org/wikipedia/commons/7/7d/%28127546%29_2002_XU93_hst.jpg",
+    "descriptionurl": "https://commons.wikimedia.org/wiki/File:(127546)_2002_XU93_hst.jpg",
+    "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=79381957",
+    "sha1": "b50fda6fc7996ebafc520be4d17d68caa0055aac",
+    "extmetadata": {
+      "DateTime": {
+        "value": "2019-05-31 20:38:25",
+        "source": "mediawiki-metadata",
+        "hidden": ""
+      },
+      "ObjectName": {
+        "value": "(127546) 2002 XU93 hst",
+        "source": "mediawiki-metadata"
+      },
+      "CommonsMetadataExtension": {
+        "value": 1.2,
+        "source": "extension",
+        "hidden": ""
+      },
+      "Categories": {
+        "value": "PD NASA|(127546) 2002 XU93|Photos of Trans-Neptunian objects by Hubble",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "Assessments": {
+        "value": "",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "ImageDescription": {
+        "value": {
+          "en": "Hubble Space Telescope image of the trans-Neptunian object (127546) 2002 XU93, taken on 5 October 2009.",
+          "_type": "lang"
+        },
+        "source": "commons-desc-page"
+      },
+      "DateTimeOriginal": {
+        "value": "2009-10-05",
+        "source": "commons-desc-page"
+      },
+      "Credit": {
+        "value": "Image dataset <a rel=\"nofollow\" class=\"external text\" href=\"https://archive.stsci.edu/cgi-bin/mastpreview?mission=hst&amp;dataid=IB2K21A4Q\">IB2K21A4Q</a> from HST Proposal 11644 (<a rel=\"nofollow\" class=\"external free\" href=\"http://archive.stsci.edu/proposal_search.php?mission=hst&amp;id=11644\">http://archive.stsci.edu/proposal_search.php?mission=hst&amp;id=11644</a>)",
+        "source": "commons-desc-page"
+      },
+      "Artist": {
+        "value": "Hubble Space Telescope/Michael E. Brown",
+        "source": "commons-desc-page"
+      },
+      "LicenseShortName": {
+        "value": "Public domain",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "UsageTerms": {
+        "value": "Public domain",
+        "source": "commons-desc-page"
+      },
+      "AttributionRequired": {
+        "value": "false",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "Copyrighted": {
+        "value": "False",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "Restrictions": {
+        "value": "",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "License": {
+        "value": "pd",
+        "source": "commons-templates",
+        "hidden": ""
+      }
+    },
+    "mime": "image/jpeg"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "filename": "(22385)_Fujimoriboshi.png",
+  "fetched_at": "2026-04-21T16:49:44.249461+00:00",
+  "imageinfo": {
+    "timestamp": "2016-11-11T07:29:24Z",
+    "user": "神威・みーちゃん",
+    "size": 13614,
+    "width": 1344,
+    "height": 756,
+    "url": "https://upload.wikimedia.org/wikipedia/commons/1/1b/%2822385%29_Fujimoriboshi.png",
+    "descriptionurl": "https://commons.wikimedia.org/wiki/File:(22385)_Fujimoriboshi.png",
+    "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=53045900",
+    "sha1": "12cbb232b087f7ad8364a713f9099b95bebba02e",
+    "extmetadata": {
+      "DateTime": {
+        "value": "2016-11-11 07:29:24",
+        "source": "mediawiki-metadata",
+        "hidden": ""
+      },
+      "ObjectName": {
+        "value": "(22385) Fujimoriboshi",
+        "source": "mediawiki-metadata"
+      },
+      "CommonsMetadataExtension": {
+        "value": 1.2,
+        "source": "extension",
+        "hidden": ""
+      },
+      "Categories": {
+        "value": "22385 Fujimoriboshi|Self-published work|Orbits of asteroids",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "Assessments": {
+        "value": "",
+        "source": "commons-categories",
+        "hidden": ""
+      },
+      "ImageDescription": {
+        "value": {
+          "ja": "(22385) Fujimoriboshi の軌道",
+          "_type": "lang"
+        },
+        "source": "commons-desc-page"
+      },
+      "DateTimeOriginal": {
+        "value": "2016-11-11",
+        "source": "commons-desc-page"
+      },
+      "Credit": {
+        "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+        "source": "commons-desc-page"
+      },
+      "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:%E7%A5%9E%E5%A8%81%E3%83%BB%E3%81%BF%E3%83%BC%E3%81%A1%E3%82%83%E3%82%93&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:神威・みーちゃん (page does not exist)\">神威・みーちゃん</a>",
+        "source": "commons-desc-page"
+      },
+      "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+      },
+      "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+      },
+      "Copyrighted": {
+        "value": "True",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "Restrictions": {
+        "value": "",
+        "source": "commons-desc-page",
+        "hidden": ""
+      },
+      "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+      }
+    },
+    "mime": "image/png"
+  }
+}

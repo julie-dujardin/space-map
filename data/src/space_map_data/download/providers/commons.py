@@ -1,11 +1,22 @@
-"""Download Wikimedia Commons images for Wikidata P18 (image) and P154 (logo)."""
+"""Download Wikimedia Commons images and their license/description metadata.
+
+Collects image filenames from Wikidata P18/P154 claims plus Wikipedia pageimages, then
+downloads thumbnail + full-size for each and fetches rich metadata (license, author,
+description in every language) via the Commons Action API.
+
+Images hosted on a specific language wiki (ar/en/fr/ru/...) rather than on Commons are
+recorded separately and skipped — see the TODO below.
+"""
 
 import json
 import logging
 import time
+from datetime import datetime, timezone
+from itertools import batched
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 
+from httpx import Response
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
@@ -16,9 +27,30 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_PIDS = ("P18", "P154")
 AFTER_REQUEST_DELAY_SECONDS = 1
+METADATA_BATCH_SIZE = 50
+# Auto-generated orbit diagrams on ru.wiki that flood the pageimages set.
+EXCLUDED_IMAGE_PREFIXES = ("Орбита_астероида_", "Орбита_кометы_")
+
+# TODO: locally-hosted (non-Commons) images are currently recorded in
+# ``non_commons_skipped.json`` and skipped. To actually include them we'd need to hit each
+# language wiki's own Action API for imageinfo (commons.wikimedia.org returns "missing"
+# for them). Almost all of them are non-free anyway, so export filters them out — revisit
+# only if that policy changes.
 
 
-def _extract_filenames(entity: dict) -> set[str]:
+def _canonical_filename(filename: str) -> str:
+    """Normalize a Commons filename to its MediaWiki canonical form.
+
+    MediaWiki treats spaces and underscores as equivalent in page titles and
+    always stores the underscore form internally. Callers mix space-form (from
+    Wikidata claim values) and underscore-form (from parsed URL paths), which
+    previously caused duplicate downloads and duplicate API queries for the
+    same file.
+    """
+    return filename.replace(" ", "_")
+
+
+def _extract_wikidata_filenames(entity: dict) -> set[str]:
     """Extract unique image filenames from P18 and P154 claims."""
     filenames: set[str] = set()
     claims = entity.get("claims", {})
@@ -28,22 +60,29 @@ def _extract_filenames(entity: dict) -> set[str]:
                 continue
             val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
             if isinstance(val, str) and val:
-                filenames.add(val)
+                filenames.add(_canonical_filename(val))
     return filenames
 
 
-def _sanitize_filename(filename: str) -> str:
-    """Normalise a Commons filename for local storage.
+def _parse_upload_url(url: str) -> tuple[str, str] | None:
+    """Return (repo, filename) from an upload.wikimedia.org URL, or None.
 
-    Wikimedia uses underscores internally; the raw claim value may contain
-    spaces or underscores interchangeably.  We keep the original form so
-    round-tripping back to a Commons URL stays correct.
+    ``repo`` is ``"commons"`` for Commons files and a wiki code (e.g. ``"ru"``) for
+    files hosted locally on a specific wiki.
     """
-    return unquote(filename)
+    parts = urlparse(url).path.split("/")
+    # path is like /wikipedia/<repo>/<hash>/<hash>/<filename>
+    if len(parts) < 4 or parts[1] != "wikipedia":
+        return None
+    repo = parts[2]
+    filename = unquote(parts[-1])
+    if not filename:
+        return None
+    return repo, filename
 
 
 class CommonsDownloader(Downloader):
-    """Download Wikimedia Commons images (P18 + P154) for all Wikidata entities."""
+    """Download Wikimedia Commons images and their metadata."""
 
     name = PROVIDERS.COMMONS
 
@@ -58,11 +97,38 @@ class CommonsDownloader(Downloader):
         images_dir = EXPORT_DIR / "v1" / "images"
         thumb_dir = images_dir / "thumb"
         full_dir = images_dir / "full"
-        thumb_dir.mkdir(parents=True, exist_ok=True)
-        full_dir.mkdir(parents=True, exist_ok=True)
+        metadata_dir = images_dir / "metadata"
+        for d in (thumb_dir, full_dir, metadata_dir):
+            d.mkdir(parents=True, exist_ok=True)
 
-        # Collect all unique filenames from Wikidata entities
-        all_filenames: set[str] = set()
+        commons_filenames, non_commons = self._collect_filenames(wikidata_dir)
+        self._write_non_commons_skipped(non_commons)
+
+        to_process = sorted(commons_filenames)
+        if limit is not None:
+            to_process = to_process[:limit]
+
+        self._download_images(to_process, thumb_dir, full_dir)
+        self._fetch_metadata(to_process, metadata_dir)
+
+        self._save_metadata(
+            "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo",
+            len(commons_filenames),
+            complete=limit is None,
+        )
+
+    def _collect_filenames(
+        self, wikidata_dir: Path
+    ) -> tuple[set[str], dict[str, dict]]:
+        """Collect image filenames from Wikidata claims and Wikipedia summaries.
+
+        Returns ``(commons_filenames, non_commons)`` where ``non_commons`` maps filename
+        to ``{"url", "repo", "referenced_from": [lang/QID, ...]}``.
+        """
+        commons: set[str] = set()
+        non_commons: dict[str, dict] = {}
+
+        # 1) Wikidata P18/P154 claims — always Commons filenames by policy.
         entity_files = sorted(wikidata_dir.glob("Q*.json"))
         for entity_file in tqdm(
             entity_files, desc="Scanning Wikidata for images", unit="entity"
@@ -72,106 +138,219 @@ class CommonsDownloader(Downloader):
             except json.JSONDecodeError:
                 logger.warning("Skipping invalid entity file %s", entity_file)
                 continue
-            all_filenames |= _extract_filenames(entity)
+            commons |= _extract_wikidata_filenames(entity)
 
-        logger.info("Found %s unique Commons filenames", f"{len(all_filenames):,}")
-
-        # Also collect Wikipedia pageimage filenames not covered by P18/P154
+        # 2) Wikipedia pageimages — split commons vs local wiki based on URL.
         wiki_dir = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA
         if wiki_dir.exists():
-            wiki_filenames = self._collect_wikipedia_image_filenames(wiki_dir)
-            new = wiki_filenames - all_filenames
-            if new:
-                logger.info(
-                    "Found %d additional image filenames from Wikipedia pageimages",
-                    len(new),
-                )
-                all_filenames |= new
+            summary_files = list(wiki_dir.glob("*/Q*.json"))
+            for summary_file in tqdm(
+                summary_files, desc="Scanning Wikipedia for images", unit="page"
+            ):
+                try:
+                    page = json.loads(summary_file.read_text())
+                except json.JSONDecodeError:
+                    continue
+                src = (page.get("original") or {}).get("source")
+                if not src:
+                    continue
+                parsed = _parse_upload_url(src)
+                if parsed is None:
+                    logger.warning("Unrecognized image URL: %s", src)
+                    continue
+                repo, filename = parsed
+                if any(filename.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES):
+                    continue
+                ref = f"{summary_file.parent.name}/{summary_file.stem}"
+                if repo == "commons":
+                    commons.add(filename)
+                else:
+                    entry = non_commons.setdefault(
+                        filename,
+                        {"url": src, "repo": repo, "referenced_from": []},
+                    )
+                    entry["referenced_from"].append(ref)
 
-        # Determine which need downloading
-        to_download: list[str] = []
-        for filename in sorted(all_filenames):
-            safe = _sanitize_filename(filename)
-            if not (thumb_dir / safe).exists():
-                to_download.append(filename)
+        # Apply exclusion to Wikidata-sourced filenames too.
+        excluded = {
+            f for f in commons if any(f.startswith(p) for p in EXCLUDED_IMAGE_PREFIXES)
+        }
+        if excluded:
+            commons -= excluded
+            logger.info(
+                "Filtered out %d excluded-prefix image filenames", len(excluded)
+            )
 
         logger.info(
-            "Commons images: %s total, %s to download",
-            f"{len(all_filenames):,}",
-            f"{len(to_download):,}",
+            "Commons filenames: %s unique; non-Commons (local wiki): %s",
+            f"{len(commons):,}",
+            f"{len(non_commons):,}",
+        )
+        return commons, non_commons
+
+    def _write_non_commons_skipped(self, non_commons: dict[str, dict]) -> None:
+        """Record locally-hosted images that we're skipping.
+
+        Written to the downloads dir (not export) since the export pipeline doesn't
+        consume them.
+        """
+        if not non_commons:
+            return
+        out_path = self.out_dir / "non_commons_skipped.json"
+        payload = {
+            "written_at": datetime.now(timezone.utc).isoformat(),
+            "count": len(non_commons),
+            "note": (
+                "Images found in Wikipedia pageimages but hosted on a specific language "
+                "wiki rather than Commons. Metadata fetching would require per-wiki "
+                "API calls. Almost all are non-free, so export filters them out."
+            ),
+            "files": [
+                {"filename": f, **info} for f, info in sorted(non_commons.items())
+            ],
+        }
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        logger.info(
+            "Recorded %d non-Commons images -> %s", len(non_commons), out_path.name
         )
 
-        if limit is not None:
-            to_download = to_download[:limit]
-
+    def _download_images(
+        self, filenames: list[str], thumb_dir: Path, full_dir: Path
+    ) -> None:
+        """Download thumbnail + full for each filename."""
+        to_download = [f for f in filenames if not (thumb_dir / f).exists()]
+        logger.info(
+            "Commons images: %s total, %s to download",
+            f"{len(filenames):,}",
+            f"{len(to_download):,}",
+        )
         if not to_download:
-            self._save_metadata(
-                "https://commons.wikimedia.org/wiki/Special:FilePath/",
-                len(all_filenames),
-                complete=True,
-            )
             return
 
         failed = 0
         for filename in tqdm(to_download, desc="Commons images", unit="img"):
-            safe = _sanitize_filename(filename)
             encoded = quote(filename)
-
-            # Download thumbnail (300px)
             thumb_ok = self._download_one(
                 f"https://commons.wikimedia.org/wiki/Special:FilePath/{encoded}?width=300",
-                thumb_dir / safe,
+                thumb_dir / filename,
             )
-            # Download full-size
             full_ok = self._download_one(
                 f"https://commons.wikimedia.org/wiki/Special:FilePath/{encoded}",
-                full_dir / safe,
+                full_dir / filename,
             )
             if not thumb_ok and not full_ok:
                 failed += 1
             time.sleep(AFTER_REQUEST_DELAY_SECONDS)
 
         if failed:
-            logger.warning("Failed to download %d images", failed)
-
-        self._save_metadata(
-            "https://commons.wikimedia.org/wiki/Special:FilePath/",
-            len(all_filenames),
-            complete=len(to_download)
-            == len(all_filenames) - (len(all_filenames) - len(to_download)),
-        )
+            logger.error("Failed to download %d images", failed)
 
     def _download_one(self, url: str, out_path: Path) -> bool:
         """Download a single image URL to disk. Returns True on success."""
         if out_path.exists():
             return True
         try:
-            response = self.client.get(url, timeout=30.0)
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("retry-after", 60))
-                logger.warning("Commons 429 — sleeping %ds", retry_after)
-                time.sleep(retry_after)
-                response = self.client.get(url, timeout=30.0)
+            response = self._request(url)
             response.raise_for_status()
         except Exception:
-            logger.warning("Failed to download %s", url)
+            logger.error("Failed to download %s", url)
             return False
         out_path.write_bytes(response.content)
         return True
 
-    def _collect_wikipedia_image_filenames(self, wiki_dir: Path) -> set[str]:
-        """Extract original image filenames from all downloaded Wikipedia summaries."""
-        filenames: set[str] = set()
-        for summary_file in wiki_dir.glob("*/Q*.json"):
-            try:
-                page = json.loads(summary_file.read_text())
-            except json.JSONDecodeError:
+    def _request(self, url: str, **kwargs: object) -> Response:
+        """HTTP request with retry on 429 Too Many Requests."""
+        while True:
+            response = self.client.get(url, timeout=60.0, **kwargs)  # type: ignore[arg-type]
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("retry-after", 60))
+                logger.warning("Commons 429 — sleeping %ds", retry_after)
+                time.sleep(retry_after)
                 continue
-            src = (page.get("original") or {}).get("source")
-            if not src:
+            return response
+
+    def _fetch_metadata(self, filenames: list[str], metadata_dir: Path) -> None:
+        """Fetch image metadata (license, description, author, ...) from Commons.
+
+        Bulk-queries ``METADATA_BATCH_SIZE`` filenames at a time with
+        ``iiextmetadatamultilang=1`` so every language variant lands in one file. Saves
+        as ``<filename>.json``; existing files are skipped.
+        """
+        pending = [f for f in filenames if not (metadata_dir / f"{f}.json").exists()]
+        logger.info(
+            "Commons metadata: %s total, %s to fetch",
+            f"{len(filenames):,}",
+            f"{len(pending):,}",
+        )
+        if not pending:
+            return
+
+        missing_pages = 0
+        with tqdm(total=len(pending), desc="Commons metadata", unit="file") as pbar:
+            for batch in batched(pending, METADATA_BATCH_SIZE):
+                missing_pages += self._fetch_metadata_batch(list(batch), metadata_dir)
+                pbar.update(len(batch))
+                time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+
+        if missing_pages:
+            logger.warning(
+                "%d Commons metadata pages returned as missing "
+                "(image likely deleted/renamed upstream)",
+                missing_pages,
+            )
+
+    def _fetch_metadata_batch(self, filenames: list[str], metadata_dir: Path) -> int:
+        """Fetch one batch of metadata. Returns the count of missing pages."""
+        titles = "|".join(f"File:{f}" for f in filenames)
+        try:
+            response = self._request(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "prop": "imageinfo",
+                    "iiprop": "extmetadata|url|mime|size|sha1|user|timestamp",
+                    "iiextmetadatamultilang": 1,
+                    "titles": titles,
+                    "format": "json",
+                    "formatversion": 2,
+                },
+            )
+            response.raise_for_status()
+        except Exception:
+            logger.error("Failed to fetch metadata batch of %d files", len(filenames))
+            return 0
+
+        data = response.json()
+        pages = data.get("query", {}).get("pages", [])
+        # API may normalize titles (e.g. spaces <-> underscores); map back.
+        normalized = {
+            n["to"]: n["from"] for n in data.get("query", {}).get("normalized", [])
+        }
+
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        missing = 0
+        for page in pages:
+            api_title = page.get("title", "")
+            original_title = normalized.get(api_title, api_title)
+            filename = original_title.removeprefix("File:")
+
+            if page.get("missing"):
+                logger.warning("No metadata for File:%s (missing on Commons)", filename)
+                missing += 1
                 continue
-            # Extract filename from URL path
-            basename = unquote(src.rsplit("/", 1)[-1])
-            if basename:
-                filenames.add(basename)
-        return filenames
+
+            imageinfo = page.get("imageinfo") or []
+            if not imageinfo:
+                logger.warning("No imageinfo returned for File:%s", filename)
+                continue
+
+            payload = {
+                "filename": filename,
+                "fetched_at": fetched_at,
+                "imageinfo": imageinfo[0],
+            }
+            (metadata_dir / f"{filename}.json").write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2)
+            )
+
+        return missing
