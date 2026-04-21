@@ -51,7 +51,9 @@ export function resolveBodyColor(data: BodyData): string {
 	if (objectType === ObjectType.DEBRIS) return TYPE_COLOR_DEBRIS;
 	if (objectType === ObjectType.SPACECRAFT) {
 		if (parentId === 'naif-399') return TYPE_COLOR_SATELLITE;
-		if (parentId === 'naif-10') return TYPE_COLOR_PROBE;
+		// Heliocentric probes are parented to the Solar System Barycenter (naif-0)
+		// per Horizons' convention, not the Sun body (naif-10) directly.
+		if (parentId === 'naif-0' || parentId === 'naif-10') return TYPE_COLOR_PROBE;
 	}
 	return DEFAULT_BODY_COLOR;
 }

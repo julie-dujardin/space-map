@@ -43,6 +43,6 @@ export const TYPE_COLOR_COMET = '#d8ffe8';
 export const TYPE_COLOR_DEBRIS = '#e8a85c';
 export const TYPE_COLOR_MANNED = '#6ED66B';
 /** SPACECRAFT orbiting Earth. */
-export const TYPE_COLOR_SATELLITE = '#abd0d4';
+export const TYPE_COLOR_SATELLITE = '#bed4ec';
 /** SPACECRAFT orbiting the Sun. */
-export const TYPE_COLOR_PROBE = '#b69cff';
+export const TYPE_COLOR_PROBE = '#d5cfe7';
