@@ -14,7 +14,8 @@
 	let { global, localized, fallbackName }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
-	let firstImage = $derived(global?.images?.[0]);
+	let images = $derived(global?.images);
+	let firstImage = $derived(images?.[0]);
 	let imageSrc = $derived(firstImage ? `/data/v1/images/thumb/${firstImage.file}` : undefined);
 	let viewerOpen = $state(false);
 	let celestrakBadges = $derived.by(() => {
@@ -86,8 +87,8 @@
 			/>
 		</button>
 	{/if}
-	{#if viewerOpen && firstImage}
-		<ImageViewer image={firstImage} alt={name} onClose={() => (viewerOpen = false)} />
+	{#if viewerOpen && images && images.length > 0}
+		<ImageViewer {images} alt={name} onClose={() => (viewerOpen = false)} />
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}

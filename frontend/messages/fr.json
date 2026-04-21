@@ -3,6 +3,8 @@
 	"loading_data": "Chargement des données…",
 	"error_prefix": "Erreur : {error}",
 	"close": "Fermer",
+	"image_previous": "Image précédente",
+	"image_next": "Image suivante",
 	"loading": "Chargement…",
 	"show_less": "Voir moins",
 	"read_more": "Lire la suite",

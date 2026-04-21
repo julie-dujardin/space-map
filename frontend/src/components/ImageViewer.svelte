@@ -1,20 +1,37 @@
 <script lang="ts">
-	import { X } from '@lucide/svelte';
+	import { untrack } from 'svelte';
+	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { Portal } from 'bits-ui';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {
-		image: ObjectImage;
+		images: ObjectImage[];
+		initialIndex?: number;
 		alt: string;
 		onClose: () => void;
 	}
 
-	let { image, alt, onClose }: Props = $props();
+	let { images, initialIndex = 0, alt, onClose }: Props = $props();
 
-	const fullSrc = $derived(`/data/v1/images/full/${image.file}`);
-	const metadataSrc = $derived(`/data/v1/images/metadata/${encodeURIComponent(image.file)}.json`);
+	let index = $state(untrack(() => initialIndex));
+	const currentImage = $derived(images[index]);
+	const fullSrc = $derived(`/data/v1/images/full/${currentImage.file}`);
+	const metadataSrc = $derived(
+		`/data/v1/images/metadata/${encodeURIComponent(currentImage.file)}.json`
+	);
+
+	const hasMultiple = $derived(images.length > 1);
+	const hasPrev = $derived(index > 0);
+	const hasNext = $derived(index < images.length - 1);
+
+	function goPrev() {
+		if (hasPrev) index -= 1;
+	}
+	function goNext() {
+		if (hasNext) index += 1;
+	}
 
 	interface Attribution {
 		license?: string;
@@ -29,6 +46,15 @@
 	// Sticky: once we observe overflow under line-clamp, keep the toggle visible
 	// even after expansion so the user can collapse again.
 	let descriptionTruncated = $state(false);
+
+	// Reset per-image UI state on navigation so each image gets a fresh
+	// attribution fetch and description measurement.
+	$effect(() => {
+		void index;
+		attribution = null;
+		descriptionExpanded = false;
+		descriptionTruncated = false;
+	});
 
 	// Fetch attribution lazily on open — the exported metadata JSON alongside
 	// each image is the single source of truth. Not embedded in the per-object
@@ -65,8 +91,67 @@
 		return () => ro.disconnect();
 	});
 
+	// Preload neighbours so arrow/wheel navigation flips instantly.
+	$effect(() => {
+		if (!hasMultiple) return;
+		const neighbours = [index - 1, index + 1].filter((i) => i >= 0 && i < images.length);
+		for (const i of neighbours) {
+			const img = new Image();
+			img.src = `/data/v1/images/full/${images[i].file}`;
+		}
+	});
+
 	function onKeyDown(event: KeyboardEvent) {
 		if (event.key === 'Escape') onClose();
+		else if (event.key === 'ArrowLeft') goPrev();
+		else if (event.key === 'ArrowRight') goNext();
+		else if (event.key === 'Home') index = 0;
+		else if (event.key === 'End') index = images.length - 1;
+	}
+
+	// Horizontal touch-swipe navigation. Tracked via pointer events so the
+	// backdrop button below the image doesn't turn a swipe into a close-tap.
+	// Vertical movement falls through to the description scroll area.
+	const SWIPE_THRESHOLD = 50;
+	let touchStartX = 0;
+	let touchStartY = 0;
+	let swiping = false;
+	// Set on successful swipe so the synthesized click on pointerup (which the
+	// backdrop button would otherwise receive as a close) is dropped.
+	let suppressNextClick = false;
+
+	function onPointerDown(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !hasMultiple) return;
+		touchStartX = event.clientX;
+		touchStartY = event.clientY;
+		swiping = false;
+	}
+
+	function onPointerMove(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !hasMultiple) return;
+		const dx = event.clientX - touchStartX;
+		const dy = event.clientY - touchStartY;
+		if (!swiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+			swiping = true;
+		}
+	}
+
+	function onPointerUp(event: PointerEvent) {
+		if (event.pointerType !== 'touch' || !swiping) return;
+		const dx = event.clientX - touchStartX;
+		swiping = false;
+		if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+		suppressNextClick = true;
+		if (dx < 0) goNext();
+		else goPrev();
+	}
+
+	function onBackdropClick() {
+		if (suppressNextClick) {
+			suppressNextClick = false;
+			return;
+		}
+		onClose();
 	}
 
 	// --- extmetadata helpers -------------------------------------------------
@@ -143,8 +228,13 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label={alt}
+		tabindex={-1}
 		data-vaul-no-drag
-		class="fixed inset-0 z-[100] md:left-[380px] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+		onpointerdown={onPointerDown}
+		onpointermove={onPointerMove}
+		onpointerup={onPointerUp}
+		onpointercancel={() => (swiping = false)}
+		class="fixed inset-0 z-[100] md:left-[380px] flex touch-none items-center justify-center bg-black/85 backdrop-blur-sm"
 	>
 		<!-- Backdrop click area: full panel, below the image. Uses a button so the
 	     interaction is keyboard-accessible even though the Escape key is the
@@ -152,7 +242,7 @@
 		<button
 			type="button"
 			aria-label={m.close()}
-			onclick={onClose}
+			onclick={onBackdropClick}
 			class="absolute inset-0 cursor-zoom-out"
 		></button>
 
@@ -173,6 +263,43 @@
 			<X class="h-5 w-5" aria-hidden="true" />
 		</button>
 
+		{#if hasMultiple}
+			<div
+				class="absolute top-3 left-3 z-20 rounded-full bg-black/55 px-3 py-1.5
+				text-xs font-medium text-white/90 tabular-nums backdrop-blur-sm"
+				aria-live="polite"
+			>
+				{index + 1} / {images.length}
+			</div>
+
+			<button
+				type="button"
+				onclick={goPrev}
+				disabled={!hasPrev}
+				aria-label={m.image_previous()}
+				class="absolute top-1/2 left-3 z-20 flex h-10 w-10 -translate-y-1/2
+				items-center justify-center rounded-full bg-black/55 text-white/90
+				backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white
+				disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/55
+				disabled:hover:text-white/90"
+			>
+				<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				onclick={goNext}
+				disabled={!hasNext}
+				aria-label={m.image_next()}
+				class="absolute top-1/2 right-3 z-20 flex h-10 w-10 -translate-y-1/2
+				items-center justify-center rounded-full bg-black/55 text-white/90
+				backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white
+				disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/55
+				disabled:hover:text-white/90"
+			>
+				<ChevronRight class="h-6 w-6" aria-hidden="true" />
+			</button>
+		{/if}
+
 		<!-- Mobile (<md): stacked column, description on top, credits pill at bottom-right.
 		     Desktop (md+): row layout, description on the left (content-sized, capped at 50%),
 		     credits pill pushed to the right (also capped at 50%). -->
@@ -183,7 +310,7 @@
 			{#if attribution?.description}
 				<div
 					class="pointer-events-auto flex w-full max-h-[33vh] flex-col gap-1 overflow-y-auto
-					overscroll-contain bg-black/50 px-4 py-2.5 text-sm leading-snug text-white/85
+					overscroll-contain touch-pan-y bg-black/50 px-4 py-2.5 text-sm leading-snug text-white/85
 					backdrop-blur-md md:w-fit md:max-w-[50%]"
 				>
 					<p bind:this={descriptionEl} class={descriptionExpanded ? '' : 'line-clamp-2'}>
@@ -227,7 +354,7 @@
 					<span class="text-white/40" aria-hidden="true">·</span>
 				{/if}
 				<a
-					href={image.source_url}
+					href={currentImage.source_url}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="underline decoration-white/40 hover:text-white hover:decoration-white"

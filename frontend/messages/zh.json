@@ -3,6 +3,8 @@
 	"loading_data": "正在加载数据…",
 	"error_prefix": "错误：{error}",
 	"close": "关闭",
+	"image_previous": "上一张图片",
+	"image_next": "下一张图片",
 	"loading": "加载中…",
 	"show_less": "收起",
 	"read_more": "阅读更多",

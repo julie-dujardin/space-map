@@ -11,6 +11,8 @@
 	"image_credit_by": "by {artist}",
 	"image_view_on_commons": "View on Commons",
 	"image_open_viewer": "Open full-size image",
+	"image_previous": "Previous image",
+	"image_next": "Next image",
 	"loading": "Loading...",
 	"show_less": "Show less",
 	"read_more": "Read more",

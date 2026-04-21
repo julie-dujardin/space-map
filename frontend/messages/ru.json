@@ -3,6 +3,8 @@
 	"loading_data": "Загрузка данных…",
 	"error_prefix": "Ошибка: {error}",
 	"close": "Закрыть",
+	"image_previous": "Предыдущее изображение",
+	"image_next": "Следующее изображение",
 	"loading": "Загрузка…",
 	"show_less": "Свернуть",
 	"read_more": "Читать далее",

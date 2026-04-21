@@ -69,6 +69,26 @@
 			</ul>
 		</section>
 
+		<section>
+			{@render sectionHeader(m.attribution_section_metadata())}
+			<ul class="space-y-1">
+				<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
+				<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
+				<li>
+					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
+				</li>
+			</ul>
+		</section>
+
+		<section>
+			{@render sectionHeader(m.attribution_section_images())}
+			<ul class="space-y-1">
+				<li>
+					{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
+				</li>
+			</ul>
+		</section>
+
 		{#if credits.systems.length > 0}
 			<section>
 				{@render sectionHeader(m.attribution_section_imagery())}
@@ -89,25 +109,5 @@
 				{/each}
 			</section>
 		{/if}
-
-		<section>
-			{@render sectionHeader(m.attribution_section_metadata())}
-			<ul class="space-y-1">
-				<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
-				<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
-				<li>
-					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
-				</li>
-			</ul>
-		</section>
-
-		<section>
-			{@render sectionHeader(m.attribution_section_images())}
-			<ul class="space-y-1">
-				<li>
-					{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
-				</li>
-			</ul>
-		</section>
 	</div>
 </div>

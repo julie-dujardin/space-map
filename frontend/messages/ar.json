@@ -3,6 +3,8 @@
 	"loading_data": "جارٍ تحميل البيانات…",
 	"error_prefix": "خطأ: {error}",
 	"close": "إغلاق",
+	"image_previous": "الصورة السابقة",
+	"image_next": "الصورة التالية",
 	"loading": "جارٍ التحميل…",
 	"show_less": "عرض أقل",
 	"read_more": "اقرأ المزيد",
