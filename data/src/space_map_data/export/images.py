@@ -1,8 +1,6 @@
 """Collect and resolve image metadata for object export."""
 
-import html
 import logging
-import re
 from urllib.parse import quote
 
 import orjson
@@ -29,8 +27,11 @@ _DENIED_LICENSE_KEYWORDS = (
     "cc-by-nd",
 )
 
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-_WHITESPACE_RE = re.compile(r"\s+")
+# Filename prefixes we intentionally skip at download time — auto-generated
+# orbit diagrams from ru.wiki that aren't hosted on Commons. Mirrored here so
+# references to them in Wikidata claims don't produce "not on disk" warnings
+# every export run. Keep in sync with commons.py's download-side constant.
+_EXCLUDED_IMAGE_PREFIXES = ("Орбита_астероида_", "Орбита_кометы_")
 
 
 def collect_object_images(
@@ -46,9 +47,10 @@ def collect_object_images(
 
     Deduplicates by canonical (underscore-form) filename, checks the image is
     present on disk, and filters out entries whose Commons metadata license is
-    unknown or non-redistributable. Each returned entry also carries the
-    attribution fields (``artist``, ``license``, ``license_url``) needed to
-    display the image responsibly.
+    unknown or non-redistributable. Attribution fields (artist, license,
+    description, ...) are *not* emitted here — the per-image metadata JSON
+    under ``images/metadata/`` is the single source of truth and the frontend
+    loads it lazily when opening the image.
 
     Returns None if no images qualify.
     """
@@ -71,6 +73,9 @@ def _try_add(images: list[dict], seen: set[str], filename: str, kind: str) -> No
     if canonical in seen:
         return
     seen.add(canonical)
+    if any(canonical.startswith(p) for p in _EXCLUDED_IMAGE_PREFIXES):
+        logger.debug("Skipping excluded-prefix image: %s", canonical)
+        return
     entry = _make_entry(canonical, kind)
     if entry:
         images.append(entry)
@@ -82,64 +87,41 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         logger.info("Dropping image (not on disk): %s", filename)
         return None
 
-    attribution = _load_attribution(filename)
-    if attribution is None:
+    if not _license_is_servable(filename):
         return None  # reason already logged
 
     return {
         "file": filename,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "kind": kind,
-        **attribution,
     }
 
 
-def _load_attribution(filename: str) -> dict | None:
-    """Load metadata, enforce license policy, and return attribution fields.
+def _license_is_servable(filename: str) -> bool:
+    """Check that the Commons metadata exists and carries an acceptable license.
 
-    Returns ``None`` if the image must be dropped (missing/corrupt metadata, or
-    the license fails our acceptance rules). Otherwise returns a dict with
-    ``license``, ``license_url``, and ``artist`` (any of which may be missing
-    from the source, but ``license`` is always present).
+    Short-circuits to False on missing / corrupt metadata or a disallowed /
+    GFDL-only / empty ``LicenseShortName``. For multi-licensed images
+    (``LicenseShortName`` contains ``" or "``) we prefer a non-GFDL tag —
+    serving a CC side avoids the GFDL-specific obligation to ship the full
+    license text.
     """
     meta_path = _METADATA_DIR / f"{filename}.json"
     if not meta_path.exists():
         logger.info("Dropping image (no Commons metadata): %s", filename)
-        return None
+        return False
 
     try:
         meta = orjson.loads(meta_path.read_bytes())
     except orjson.JSONDecodeError:
         logger.warning("Dropping image (corrupt metadata): %s", filename)
-        return None
+        return False
 
     em = (meta.get("imageinfo") or {}).get("extmetadata") or {}
-
-    license_tag = _pick_license(em, filename)
-    if license_tag is None:
-        return None
-
-    attribution: dict = {"license": license_tag}
-    license_url = _plain_str(em.get("LicenseUrl"))
-    if license_url:
-        attribution["license_url"] = license_url
-    artist = _plain_text(em.get("Artist")) or _plain_text(em.get("Credit"))
-    if artist:
-        attribution["artist"] = artist
-    return attribution
-
-
-def _pick_license(em: dict, filename: str) -> str | None:
-    """Return the license tag to attribute under, or None to drop.
-
-    For multi-licensed images (``LicenseShortName`` contains ``" or "``) we
-    prefer a non-GFDL tag — serving a CC side avoids the GFDL-specific
-    obligation to ship the full license text.
-    """
-    short_value = _plain_str(em.get("LicenseShortName"))
-    if not short_value:
+    short_value = (em.get("LicenseShortName") or {}).get("value")
+    if not isinstance(short_value, str) or not short_value.strip():
         logger.info("Dropping image (no LicenseShortName): %s", filename)
-        return None
+        return False
 
     tags = [t.strip() for t in short_value.split(" or ") if t.strip()]
     acceptable = [t for t in tags if _is_acceptable(t)]
@@ -147,49 +129,16 @@ def _pick_license(em: dict, filename: str) -> str | None:
         logger.info(
             "Dropping image (unacceptable license %r): %s", short_value, filename
         )
-        return None
+        return False
 
     non_gfdl = [t for t in acceptable if "gfdl" not in t.lower()]
     if not non_gfdl:
         logger.info("Dropping image (GFDL-only license %r): %s", short_value, filename)
-        return None
-    return non_gfdl[0]
+        return False
+    return True
 
 
 def _is_acceptable(short_name: str) -> bool:
     """True if a single LicenseShortName tag is one we're willing to serve."""
     lower = short_name.lower()
     return not any(kw in lower for kw in _DENIED_LICENSE_KEYWORDS)
-
-
-def _plain_str(field: dict | None) -> str | None:
-    """Return the plain string value of a non-HTML extmetadata field."""
-    if not isinstance(field, dict):
-        return None
-    value = field.get("value")
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _plain_text(field: dict | None) -> str | None:
-    """Return HTML-stripped, entity-decoded text from an extmetadata field.
-
-    Handles the string form and the multilang ``{"_type": "lang", "en": ...}``
-    form the Commons API returns when ``iiextmetadatamultilang=1`` is set.
-    """
-    if not isinstance(field, dict):
-        return None
-    value = field.get("value")
-    if isinstance(value, dict):
-        # Prefer English; otherwise pick any language entry.
-        value = value.get("en") or next(
-            (v for k, v in value.items() if k != "_type" and isinstance(v, str)),
-            None,
-        )
-    if not isinstance(value, str):
-        return None
-    text = html.unescape(_HTML_TAG_RE.sub("", value))
-    text = _WHITESPACE_RE.sub(" ", text).strip()
-    return text or None
