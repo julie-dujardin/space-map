@@ -114,7 +114,7 @@ class CommonsDownloader(Downloader):
         self._save_metadata(
             "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo",
             len(commons_filenames),
-            complete=limit is None,
+            complete=False,
         )
 
     def _collect_filenames(
