@@ -118,6 +118,7 @@
 	"source_celestrak_name": "CelesTrak",
 	"source_wikidata_name": "ウィキデータ",
 	"source_wikipedia_name": "ウィキペディア",
+	"source_prefix": "出典:",
 	"source_iau_naming_name": "国際天文学連合 惑星命名",
 	"source_wikimedia_commons_name": "ウィキメディア・コモンズ",
 	"credits_page_title": "クレジット",

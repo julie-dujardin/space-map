@@ -118,6 +118,7 @@
 	"source_celestrak_name": "CelesTrak",
 	"source_wikidata_name": "Wikidata",
 	"source_wikipedia_name": "Wikipédia",
+	"source_prefix": "Source :",
 	"source_iau_naming_name": "Nomenclature planétaire de l'UAI",
 	"source_wikimedia_commons_name": "Wikimedia Commons",
 	"credits_page_title": "Crédits",

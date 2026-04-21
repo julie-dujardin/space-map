@@ -118,6 +118,7 @@
 	"source_celestrak_name": "CelesTrak",
 	"source_wikidata_name": "ويكي بيانات",
 	"source_wikipedia_name": "ويكيبيديا",
+	"source_prefix": "المصدر:",
 	"source_iau_naming_name": "تسميات الكواكب للاتحاد الفلكي الدولي",
 	"source_wikimedia_commons_name": "ويكيميديا كومنز",
 	"credits_page_title": "الاعتمادات",

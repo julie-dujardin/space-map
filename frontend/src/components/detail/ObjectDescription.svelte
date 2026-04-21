@@ -3,9 +3,10 @@
 
 	interface Props {
 		extract?: string;
+		wikipediaUrl?: string;
 	}
 
-	let { extract }: Props = $props();
+	let { extract, wikipediaUrl }: Props = $props();
 	let expanded = $state(false);
 
 	const TRUNCATE_LENGTH = 400;
@@ -21,16 +22,30 @@
 
 {#if extract}
 	<div class="flex flex-col gap-2">
-		{#each displayText.split('\n') as paragraph, i (i)}
+		{#each displayText.split('\n').filter((p) => p.trim()) as paragraph, i (i)}
 			<p class="text-sm leading-relaxed">{paragraph}</p>
 		{/each}
-		{#if needsTruncation}
-			<button
-				class="text-xs text-muted-foreground hover:text-foreground self-start"
-				onclick={() => (expanded = !expanded)}
-			>
-				{expanded ? m.show_less() : m.read_more()}
-			</button>
+		{#if needsTruncation || wikipediaUrl}
+			<div class="flex items-center gap-3 text-xs text-muted-foreground">
+				{#if needsTruncation}
+					<button class="hover:text-foreground" onclick={() => (expanded = !expanded)}>
+						{expanded ? m.show_less() : m.read_more()}
+					</button>
+				{/if}
+				{#if wikipediaUrl}
+					<span class:ml-auto={needsTruncation}>
+						{m.source_prefix()}
+						<a
+							href={wikipediaUrl}
+							target="_blank"
+							rel="noopener"
+							class="underline hover:text-foreground"
+						>
+							{m.source_wikipedia_name()}
+						</a>
+					</span>
+				{/if}
+			</div>
 		{/if}
 	</div>
 {/if}
