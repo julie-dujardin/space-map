@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { parseElements, type KeplerianColumns, type ParabolicColumns } from './elements';
-import { MAGIC, VERSION, HEADER_SIZE, FORMAT_KEPLERIAN, FORMAT_PARABOLIC } from './constants';
+import {
+	MAGIC,
+	VERSION,
+	HEADER_SIZE,
+	FORMAT_KEPLERIAN,
+	FORMAT_PARABOLIC,
+	OrbitalSource
+} from './constants';
 import { ObjectType } from '$lib/types/objects';
 import fixtures from '$lib/math/orbit/elements.fixtures.json';
 
@@ -43,8 +50,10 @@ function writeHeader(view: DataView, formatType: number, rowCount: number): void
 	view.setUint32(0, MAGIC, true);
 	view.setUint16(4, VERSION, true);
 	view.setUint16(6, formatType, true);
-	view.setUint32(8, rowCount, true);
-	view.setUint32(12, 0, true); // reserved
+	view.setFloat64(8, -Infinity, true); // validityStart
+	view.setFloat64(16, Infinity, true); // validityEnd
+	view.setUint32(24, rowCount, true);
+	view.setUint8(28, OrbitalSource.UNKNOWN); // source
 }
 
 function writeSharedColumns(
