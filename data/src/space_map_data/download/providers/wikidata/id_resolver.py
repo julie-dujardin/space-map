@@ -13,13 +13,42 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from tqdm import tqdm
 
-from space_map_data.constants.earth_sats.constellations import PREFIX_TO_SLUG
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATIONS,
+    SatelliteCategory,
+)
 from space_map_data.constants.providers import ID_TYPE_TO_WIKIDATA_PID, ID_TYPES
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, SBDB
 from space_map_data.models.object.satcat import Satcat
 
-CONSTELLATION_PREFIXES: tuple[str, ...] = tuple(PREFIX_TO_SLUG.keys())
+# Satellite constellations to exclude
+# individual constellation members don't have meaningful Wikidata entries.
+# Only included massive constellations, the smaller constellations in PREFIX_TO_SLUG can have meaningful entries
+CONSTELLATION_PREFIXES = [
+    "STARLINK",
+    "ONEWEB",
+    "IRIDIUM",
+    "KUIPER",
+    "QIANFAN",
+    "HULIANWANG DIGUI",
+    "GLOBALSTAR",
+    "ORBCOMM",
+    "FLOCK",
+    "SPACEBEE",
+    "SITRO-AIS",
+    "GEESAT",
+    "GONETS-M",
+    "TIANQI",
+    "CONNECTA IOT",
+    "TIANMU-1",
+] + [
+    prefix
+    for c in CONSTELLATIONS
+    if set(c.category) & {SatelliteCategory.DEBRIS, SatelliteCategory.ROCKET}
+    and c.prefix
+    for prefix in ((c.prefix,) if isinstance(c.prefix, str) else c.prefix)
+]
 
 logger = logging.getLogger(__name__)
 
