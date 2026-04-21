@@ -4,6 +4,7 @@
 	import { Portal } from 'bits-ui';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {
@@ -77,9 +78,11 @@
 		};
 	});
 
-	// Detect whether the clamped description actually overflows 2 lines.
-	// Skipped while expanded (line-clamp is off, so the measurement is useless).
+	// Detect whether the clamped description actually overflows 2 lines, or
+	// hides additional paragraphs that only appear on expansion. Skipped while
+	// expanded (line-clamp is off, so the visual measurement is useless then).
 	$effect(() => {
+		if (attribution?.description?.includes('\n')) descriptionTruncated = true;
 		const el = descriptionEl;
 		if (!el || descriptionExpanded) return;
 		const check = () => {
@@ -196,7 +199,9 @@
 		return '';
 	}
 
-	/** HTML-strip, entity-decode, whitespace-collapse. */
+	/** HTML-strip, entity-decode, whitespace-collapse. Block elements (p, div, li)
+	 *  and <br> are converted to newlines so paragraph structure survives for
+	 *  callers that want to render it (e.g. the image description). */
 	function plainText(field: ExtField | undefined, strictLocale = false): string | undefined {
 		if (!field?.value) return undefined;
 		const raw = pickLang(field.value, strictLocale);
@@ -205,7 +210,14 @@
 		// `.textContent` then gives us a safely-stripped plain-text version.
 		const tmp = document.createElement('div');
 		tmp.innerHTML = raw;
-		const text = (tmp.textContent ?? '').replace(/\s+/g, ' ').trim();
+		for (const br of tmp.querySelectorAll('br')) br.replaceWith('\n');
+		for (const block of tmp.querySelectorAll('p, div, li')) block.append('\n\n');
+		const text = (tmp.textContent ?? '')
+			// Collapse non-newline whitespace runs; keep newlines intact.
+			.replace(/[^\S\n]+/g, ' ')
+			// Normalize any run of 2+ newlines to exactly one blank line.
+			.replace(/\n{2,}/g, '\n\n')
+			.trim();
 		return text || undefined;
 	}
 
@@ -309,18 +321,37 @@
 		>
 			{#if attribution?.description}
 				<div
-					class="pointer-events-auto flex w-full max-h-[33vh] flex-col gap-1 overflow-y-auto
-					overscroll-contain touch-pan-y bg-black/50 px-4 py-2.5 text-sm leading-snug text-white/85
-					backdrop-blur-md md:w-fit md:max-w-[50%]"
+					class="pointer-events-auto flex w-full flex-col gap-2 bg-black/50 py-2.5
+					text-sm leading-snug text-white/85 backdrop-blur-md md:w-fit md:max-w-[50%]
+					{descriptionExpanded ? 'h-[33vh]' : ''}"
 				>
-					<p bind:this={descriptionEl} class={descriptionExpanded ? '' : 'line-clamp-2'}>
-						{attribution.description}
-					</p>
+					{#if descriptionExpanded}
+						<ScrollArea class="min-h-0 flex-1 touch-pan-y overscroll-contain">
+							<div class="flex flex-col gap-2 ps-4 pe-2">
+								{#each attribution.description.split('\n') as paragraph, i (i)}
+									{#if paragraph.trim()}
+										<p>{paragraph}</p>
+									{/if}
+								{/each}
+							</div>
+						</ScrollArea>
+					{:else}
+						<div
+							bind:this={descriptionEl}
+							class="flex max-h-[3lh] flex-col gap-2 overflow-hidden px-4"
+						>
+							{#each attribution.description.split('\n') as paragraph, i (i)}
+								{#if paragraph.trim()}
+									<p>{paragraph}</p>
+								{/if}
+							{/each}
+						</div>
+					{/if}
 					{#if descriptionTruncated}
 						<button
 							type="button"
 							onclick={() => (descriptionExpanded = !descriptionExpanded)}
-							class="self-start text-xs text-white/60 hover:text-white"
+							class="mx-4 self-start text-xs text-white/60 hover:text-white"
 						>
 							{descriptionExpanded ? m.show_less() : m.read_more()}
 						</button>
