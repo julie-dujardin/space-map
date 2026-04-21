@@ -7,6 +7,7 @@ All files are served under `/data/v1/` and are gzip-compressed unless noted.
 ```
 v1/
   metadata.json                                  (not gzipped)
+  credits.json                                   (not gzipped) aggregated attribution for the /credits page
   nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
@@ -568,6 +569,33 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
 ```
 
 The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
+
+## Credits (`credits.json`)
+
+Aggregated attribution manifest read by the standalone `/credits` page. A
+single non-gzipped JSON file so the page can render everything in one fetch
+without walking per-system or per-body files.
+
+```typescript
+interface Credits {
+  textures: Array<{
+    body_id: string;           // e.g. "naif-399"
+    name: string;              // English display name; localisation is deferred
+    source: string;            // attribution source URL
+    organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
+    type: string;              // cylindrical / cylindrical_tile / …
+    attribution?: string;      // long-form credit line when available
+    description?: string;      // optional one-liner about the dataset
+  }>;
+}
+```
+
+`textures` is sorted alphabetically by `name`. Only bodies whose texture
+metadata.json exists on disk are included — asteroids or 3D mesh assets can
+slot into sibling keys (`models`, `mesh_assets`, …) on the same file when
+those pipelines come online. Static credits (orbital providers, SPICE/IAU
+rotation kernels, Wikidata, Wikipedia, Wikimedia Commons, IAU nomenclature)
+live in the frontend page itself and don't need to be emitted here.
 
 ## Nutation angles (`nut_prec_angles.json`)
 

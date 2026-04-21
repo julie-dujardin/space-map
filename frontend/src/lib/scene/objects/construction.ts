@@ -52,7 +52,7 @@ export function buildMajorBodies(
 		const isVirtual =
 			body.data.objectType === ObjectType.BARYCENTER ||
 			body.data.objectType === ObjectType.LAGRANGE_POINT;
-		const color = resolveBodyColor(id, body.data.objectType);
+		const color = resolveBodyColor(body.data);
 		const radius = kmToScene(effectiveRadiusKm(body.data));
 		const isStar = body.data.objectType === ObjectType.STAR;
 
@@ -192,7 +192,7 @@ export function buildOrbitLines(
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
-		const color = resolveBodyColor(body.data.id, body.data.objectType);
+		const color = resolveBodyColor(body.data);
 		const line = makeOrbitLine(body, color, basisPos, jd);
 		scene.add(line);
 		bo.orbitLine = line;
@@ -218,7 +218,12 @@ export function buildPointClouds(
 	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
 		const filtered = excludePromoted(bodies, promotedIds);
 		if (filtered.length > 0) {
-			const pts = makePointCloud(filtered, circleTexture, basisPos);
+			const pts = makePointCloud(
+				filtered,
+				circleTexture,
+				resolveBodyColor(filtered[0].data),
+				basisPos
+			);
 			asteroidPoints.set(zone, pts);
 			scene.add(pts);
 		}
@@ -228,7 +233,12 @@ export function buildPointClouds(
 	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
 		const filtered = excludePromoted(bodies, promotedIds);
 		if (filtered.length === 0) continue;
-		const points = makePointCloud(filtered, circleTexture, basisPos);
+		const points = makePointCloud(
+			filtered,
+			circleTexture,
+			resolveBodyColor(filtered[0].data),
+			basisPos
+		);
 		spacecraftPoints.set(groupParentId, points);
 		scene.add(points);
 	}
@@ -243,7 +253,7 @@ export function buildPointClouds(
 		}
 	}
 	for (const [parentId, moons] of moonsByParent) {
-		const pts = makePointCloud(moons, circleTexture, basisPos);
+		const pts = makePointCloud(moons, circleTexture, resolveBodyColor(moons[0].data), basisPos);
 		(pts.material as PointsMaterial).depthTest = true;
 		pts.visible = false;
 		moonPoints.set(parentId, pts);
@@ -285,16 +295,35 @@ async function swapBodyTexture(
 /**
  * Initial low-tier texture load, used when focusing a body that may not be
  * part of a pre-declared system (the system-metadata path handles the rest).
+ * Also forwards the texture attribution to `ctx` so the bar/popover can
+ * credit standalone bodies (e.g. Bennu, Ceres) the same way it credits bodies
+ * registered via loadSystemData.
  */
 export async function loadBodyTexture(
 	bo: BodyObjects,
 	textureLoader: TextureLoader,
-	objectFileFlag = 1
+	objectFileFlag = 1,
+	ctx?: ContextManager
 ): Promise<void> {
 	if (objectFileFlag === 0) return;
 	if (bo.textureTier || bo.textureLoading) return;
 	const detail = await fetchObjectDetail(bo.body.data.id, objectFileFlag);
 	if (!detail.global?.map_texture_available) return;
+	if (ctx && detail.global.texture) {
+		// Standalones aren't tied to a planetary system barycenter; key the
+		// credit on the body itself so the bar/popover can match it against
+		// the focused body id.
+		const bodyId = bo.body.data.id;
+		ctx.registerTextureCredit({
+			bodyId,
+			systemId: bodyId,
+			source: detail.global.texture.source,
+			organisation: detail.global.texture.organisation,
+			type: detail.global.texture.type,
+			attribution: detail.global.texture.attribution,
+			description: detail.global.texture.description
+		});
+	}
 	if (bo.textureTier || bo.textureLoading) return;
 	bo.availableTiers ??= ['low', 'medium', 'high'];
 	await swapBodyTexture(bo, 'low', textureLoader);

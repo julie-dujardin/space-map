@@ -47,6 +47,9 @@
 
 	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
 
+	// Hide apogee/perigee for near-circular satellite orbits — they collapse to the altitude/semi-major axis.
+	let showApogeePerigee = $derived(orbit?.e == null || orbit.e >= 0.01);
+
 	let hasContent = $derived(
 		sbdb?.per_y ||
 			orbit?.a ||
@@ -66,8 +69,7 @@
 			isNeo ||
 			isPha ||
 			satPeriodDays != null ||
-			celestrak?.apogee != null ||
-			celestrak?.perigee != null
+			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null))
 	);
 </script>
 
@@ -161,13 +163,13 @@
 		{#if sbdb?.ad}
 			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
 		{/if}
-		{#if celestrak?.apogee != null}
+		{#if showApogeePerigee && celestrak?.apogee != null}
 			<Row
 				label={m.apogee()}
 				value={formatQuantity({ value: celestrak.apogee, unit: 'kilometre' }, true)}
 			/>
 		{/if}
-		{#if celestrak?.perigee != null}
+		{#if showApogeePerigee && celestrak?.perigee != null}
 			<Row
 				label={m.perigee()}
 				value={formatQuantity({ value: celestrak.perigee, unit: 'kilometre' }, true)}

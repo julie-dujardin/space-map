@@ -16,6 +16,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.chebyshev import write_chebyshev
+from space_map_data.export.credits import write_credits
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects import write_objects
@@ -360,6 +361,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         write_system_metadata(
             session, out_dir, orientation, radii, nut_prec, texture_metadata
         )
+        write_credits(session, out_dir, texture_metadata)
         chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
     for f in as_completed(futures):

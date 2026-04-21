@@ -395,6 +395,7 @@ const F32_MAX = 3.4028235e38;
 export function makePointCloud(
 	bodies: PositionedBody[],
 	texture: CanvasTexture,
+	color: string,
 	basisPos: [number, number, number] = [0, 0, 0]
 ): Points {
 	const valid = bodies.filter((b) => {
@@ -424,6 +425,7 @@ export function makePointCloud(
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
 	const material = new PointsMaterial({
 		map: texture,
+		color,
 		transparent: true,
 		size: 4,
 		sizeAttenuation: false,
@@ -447,13 +449,15 @@ export function makePointCloud(
 export function makePointCloudFromBuffer(
 	positions: Float32Array,
 	drawCount: number,
-	texture: CanvasTexture
+	texture: CanvasTexture,
+	color: string
 ): Points {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new BufferAttribute(positions, 3));
 	geometry.setDrawRange(0, drawCount);
 	const material = new PointsMaterial({
 		map: texture,
+		color,
 		transparent: true,
 		size: 4,
 		sizeAttenuation: false,

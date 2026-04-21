@@ -33,3 +33,16 @@ export const BODY_COLORS: Record<string, string> = {
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';
+
+/** Fallback colors by broad category, used when a body isn't in BODY_COLORS. */
+export const TYPE_COLOR_PLANET = '#e87b4a';
+export const TYPE_COLOR_MOON = '#c7ccda';
+export const TYPE_COLOR_STAR = '#ffe89e';
+export const TYPE_COLOR_ASTEROID = '#ccb49a';
+export const TYPE_COLOR_COMET = '#d8ffe8';
+export const TYPE_COLOR_DEBRIS = '#e8a85c';
+export const TYPE_COLOR_MANNED = '#6ED66B';
+/** SPACECRAFT orbiting Earth. */
+export const TYPE_COLOR_SATELLITE = '#abd0d4';
+/** SPACECRAFT orbiting the Sun. */
+export const TYPE_COLOR_PROBE = '#b69cff';

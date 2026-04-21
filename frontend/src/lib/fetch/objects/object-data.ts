@@ -18,11 +18,22 @@ export interface ObjectImage {
 	kind: 'photo' | 'logo';
 }
 
+/** Texture attribution block — mirrors `texture_attribution()` in export/systems.py. */
+export interface TextureAttribution {
+	source: string;
+	organisation: string;
+	type: string;
+	attribution?: string;
+	description?: string;
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
 	name?: string;
 	map_texture_available?: boolean;
+	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
+	texture?: TextureAttribution;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;

@@ -263,7 +263,12 @@ export class ContextManager {
 	dirtySpacecraftGroups = new Set<string>();
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
-	focusedBodyId: string = 'naif-10'; // default to sun (not set by this class)
+	/**
+	 * Currently focused body. Reactive so the attribution bar can show texture
+	 * credits for standalone bodies (asteroids like Bennu, dwarf planets like
+	 * Ceres) that aren't part of a loaded planetary system.
+	 */
+	focusedBodyId = $state<string>('naif-10');
 	isZoomedIn: boolean = false;
 	private lastRecomputeDist = -1;
 	/**
@@ -662,6 +667,18 @@ export class ContextManager {
 
 	private isInFocusedSystem(parentId: string): boolean {
 		return this.isInSystem(parentId, this.focusedSystemId);
+	}
+
+	/**
+	 * True when focused somewhere in the Earth-Moon barycenter — either on the
+	 * barycenter itself (Earth or Moon focused), on Earth directly (an Earth
+	 * satellite focused), or on the Moon directly (a lunar orbiter focused).
+	 * Used to gate CelesTrak attribution, which is only relevant when Earth
+	 * satellites are actually on screen.
+	 */
+	isFocusedOnEarthSystem(): boolean {
+		const id = this.focusedSystemId;
+		return id === 'naif-3' || id === 'naif-399' || id === 'naif-301';
 	}
 
 	/**

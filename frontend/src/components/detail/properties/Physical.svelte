@@ -15,8 +15,13 @@
 
 	let wd = $derived(global?.wikidata);
 	let sbdb = $derived(global?.sbdb);
+	let orientation = $derived(global?.orientation);
 
 	let sats = $derived(sbdb?.sats);
+
+	let rotationPeriodDays = $derived(
+		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
+	);
 
 	let hasContent = $derived(
 		wd?.mass ||
@@ -29,7 +34,7 @@
 			wd?.density ||
 			wd?.surface_gravity ||
 			sbdb?.albedo ||
-			sbdb?.rot_per ||
+			rotationPeriodDays != null ||
 			wd?.temperature ||
 			wd?.min_temperature ||
 			wd?.max_temperature ||
@@ -73,10 +78,10 @@
 		{#if sbdb?.albedo}
 			<Row label={m.albedo()} value={formatNumber(sbdb.albedo)} tooltip={m.tooltip_albedo()} />
 		{/if}
-		{#if sbdb?.rot_per}
+		{#if rotationPeriodDays != null}
 			<Row
 				label={m.rotation_period()}
-				value={formatDuration(sbdb.rot_per / 24)}
+				value={formatDuration(rotationPeriodDays)}
 				tooltip={m.tooltip_rotation_period()}
 			/>
 		{/if}

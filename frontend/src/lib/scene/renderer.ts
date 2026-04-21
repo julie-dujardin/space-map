@@ -36,6 +36,7 @@ import {
 	makeCircleTexture
 } from './objects/construction';
 import { makePointCloudFromBuffer, refreshOrbitLineGeometry } from './objects/builders';
+import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool, type GroupInput } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
@@ -317,7 +318,12 @@ export class SceneRenderer {
 				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
 			} else {
 				this.seedFrontFromBodies(front, bodies);
-				const pts = makePointCloudFromBuffer(front, bodies.length, this.circleTexture);
+				const pts = makePointCloudFromBuffer(
+					front,
+					bodies.length,
+					this.circleTexture,
+					resolveBodyColor(bodies[0].data)
+				);
 				pts.userData.frontBasis = seedBasis;
 				this.asteroidPoints.set(zone, pts);
 				this.pendingSceneAdds.push(pts);
@@ -331,7 +337,12 @@ export class SceneRenderer {
 				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
 			} else {
 				this.seedFrontFromBodies(front, bodies);
-				const pts = makePointCloudFromBuffer(front, bodies.length, this.circleTexture);
+				const pts = makePointCloudFromBuffer(
+					front,
+					bodies.length,
+					this.circleTexture,
+					resolveBodyColor(bodies[0].data)
+				);
 				pts.userData.frontBasis = seedBasis;
 				this.spacecraftPoints.set(gid, pts);
 				this.pendingSceneAdds.push(pts);
@@ -962,7 +973,7 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		loadBodyTexture(bo, this.textureLoader, body.data.objectFileFlag);
+		loadBodyTexture(bo, this.textureLoader, body.data.objectFileFlag, this.ctx);
 	}
 
 	/**

@@ -26,10 +26,14 @@
 	];
 
 	const orbitLabels = $derived.by(() => {
+		// CelesTrak only covers Earth satellites — hide its credit everywhere
+		// except the Earth-Moon system, where those bodies are actually drawn.
+		const inEarthSystem = ctx.isFocusedOnEarthSystem();
 		const seen = new Set<string>();
 		const out: string[] = [];
 		for (const src of ORBIT_ORDER) {
 			if (!ctx.orbitSources.has(src)) continue;
+			if (src === OrbitalSource.CELESTRAK && !inEarthSystem) continue;
 			const label = ORBIT_LABELS[src as Exclude<OrbitalSource, OrbitalSource.UNKNOWN>]();
 			if (seen.has(label)) continue;
 			seen.add(label);
@@ -38,13 +42,19 @@
 		return out;
 	});
 
+	// Include credits from (a) the focused planetary system — so the Jupiter
+	// system shows every textured Galilean — AND (b) the focused body itself —
+	// so standalones like Bennu or Ceres, which never get a systems/{bary}.json
+	// entry, still credit their imagery once loadBodyTexture has run.
 	const textureOrgs = $derived.by(() => {
 		void ctx.textureCreditsVersion;
 		const sysId = ctx.focusedSystemId;
-		if (!sysId) return [] as string[];
+		const bodyId = ctx.focusedBodyId;
 		const orgs = new Set<string>();
 		for (const credit of ctx.textureCredits.values()) {
-			if (credit.systemId === sysId) orgs.add(credit.organisation);
+			if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {
+				orgs.add(credit.organisation);
+			}
 		}
 		return [...orgs].sort();
 	});
@@ -58,13 +68,13 @@
 		aria-label={m.attribution_title()}
 	>
 		{#if orbitLabels.length > 0}
-			<span>
+			<span class="inline-block max-w-[50vw] truncate align-bottom">
 				<span class="text-white/50">{m.attribution_orbits()}:</span>
 				{orbitLabels.join(' · ')}
 			</span>
 		{/if}
 		{#if textureOrgs.length > 0}
-			<span>
+			<span class="inline-block max-w-[50vw] truncate align-bottom">
 				<span class="text-white/50">{m.attribution_imagery()}:</span>
 				{textureOrgs.join(' · ')}
 			</span>

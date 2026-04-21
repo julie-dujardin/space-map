@@ -39,15 +39,26 @@
 		}
 	];
 
-	const orbitEntries = $derived(
-		ORBIT_ENTRIES.filter(({ source }) => ctx.orbitSources.has(source)).map(({ entry }) => entry())
-	);
+	const orbitEntries = $derived.by(() => {
+		// CelesTrak only covers Earth satellites — suppress its credit outside
+		// the Earth-Moon system, mirroring the bar's scoping.
+		const inEarthSystem = ctx.isFocusedOnEarthSystem();
+		return ORBIT_ENTRIES.filter(
+			({ source }) =>
+				ctx.orbitSources.has(source) && (source !== OrbitalSource.CELESTRAK || inEarthSystem)
+		).map(({ entry }) => entry());
+	});
 
+	// Scoped to what's actually on screen: the focused planetary system plus
+	// the focused body itself (covers standalones like Bennu/Ceres whose
+	// credits come via loadBodyTexture, not loadSystemData).
 	const textureList = $derived.by(() => {
 		void ctx.textureCreditsVersion;
-		return [...ctx.textureCredits.values()].sort((a, b) =>
-			bodyName(a.bodyId).localeCompare(bodyName(b.bodyId))
-		);
+		const sysId = ctx.focusedSystemId;
+		const bodyId = ctx.focusedBodyId;
+		return [...ctx.textureCredits.values()]
+			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
+			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
 	function bodyName(id: string): string {
@@ -126,4 +137,11 @@
 			</li>
 		</ul>
 	</section>
+
+	<a
+		href="/credits"
+		class="text-muted-foreground hover:text-foreground hover:underline underline-offset-2 pt-1"
+	>
+		{m.credits_see_all()} →
+	</a>
 </div>

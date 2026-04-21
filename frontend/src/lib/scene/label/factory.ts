@@ -2,7 +2,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
 import './label.css';
 
-export type LabelVariant = 'major' | 'spacecraft' | 'none';
+export type LabelVariant = 'major' | 'spacecraft' | 'debris' | 'none';
 
 export function getLabelVariant(body: PositionedBody): LabelVariant {
 	const t = body.data.objectType;
@@ -16,6 +16,7 @@ export function getLabelVariant(body: PositionedBody): LabelVariant {
 	)
 		return 'major';
 	if (t === ObjectType.SPACECRAFT) return 'spacecraft';
+	if (t === ObjectType.DEBRIS) return 'debris';
 	return 'none';
 }
 
@@ -60,11 +61,13 @@ export function createLabel(
 		svg.setAttribute('stroke', color);
 		svg.setAttribute('stroke-width', '2');
 		svg.setAttribute('stroke-linejoin', 'round');
-		svg.classList.add('scene-label__halo', 'scene-label__halo--spacecraft');
+		svg.classList.add('scene-label__halo', `scene-label__halo--${variant}`);
 		const path = document.createElementNS(ns, 'path');
 		path.setAttribute(
 			'd',
-			'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'
+			variant === 'debris'
+				? 'M3 5 L21 5 L12 21 Z'
+				: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'
 		);
 		svg.appendChild(path);
 		halo = svg;

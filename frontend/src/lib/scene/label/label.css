@@ -19,7 +19,8 @@
 .scene-label__halo {
 	border-radius: 50%;
 }
-.scene-label__halo--spacecraft {
+.scene-label__halo--spacecraft,
+.scene-label__halo--debris {
 	overflow: visible;
 }
 
