@@ -323,7 +323,7 @@
 				<div
 					class="pointer-events-auto flex w-full flex-col gap-2 bg-black/50 py-2.5
 					text-sm leading-snug text-white/85 backdrop-blur-md md:w-fit md:max-w-[50%]
-					{descriptionExpanded ? 'h-[33vh]' : ''}"
+					{descriptionExpanded ? 'max-h-[33vh]' : ''}"
 				>
 					{#if descriptionExpanded}
 						<ScrollArea class="min-h-0 flex-1 touch-pan-y overscroll-contain">
