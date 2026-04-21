@@ -17,7 +17,8 @@ import {
 } from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { cartesianToSpherical, sphericalToCartesian, type MapViewState } from '$lib/url-state';
+import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
+import type { MapViewState } from '$lib/state/view';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';

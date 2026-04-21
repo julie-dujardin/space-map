@@ -4,7 +4,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
-	import type { AppState } from '$lib/app-state.svelte';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import ImageViewer from '../ImageViewer.svelte';
 
 	interface Props {

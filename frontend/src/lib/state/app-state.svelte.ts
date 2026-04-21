@@ -1,5 +1,6 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
-import { DEFAULT_VIEW, parseUrl, serializeUrl, type MapViewState } from './url-state';
+import { DEFAULT_VIEW, type MapViewState } from './view';
+import { parseUrl, serializeUrl } from './url';
 
 const WRITE_DEBOUNCE_MS = 250;
 
@@ -33,14 +34,12 @@ export class AppState {
 		const url = serializeUrl(this.view);
 		// $state.snapshot unwraps the reactive proxy — history.state must be
 		// structured-cloneable, and proxies aren't.
-
 		svelteReplaceState(url, { view: $state.snapshot(this.view) });
 	}
 
 	private pushNow() {
 		clearTimeout(this.writeTimer);
 		const url = serializeUrl(this.view);
-
 		sveltePushState(url, { view: $state.snapshot(this.view) });
 	}
 

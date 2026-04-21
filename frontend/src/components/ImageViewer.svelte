@@ -6,7 +6,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import type { AppState } from '$lib/app-state.svelte';
+	import type { AppState } from '$lib/state/app-state.svelte';
 
 	interface Props {
 		images: ObjectImage[];

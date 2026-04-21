@@ -6,8 +6,8 @@
 	import { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD } from '$lib/format/date';
 	import { type PositionedBody } from '$lib/types/objects';
-	import { DEFAULT_VIEW } from '$lib/url-state';
-	import { createAppState } from '$lib/app-state.svelte';
+	import { DEFAULT_VIEW } from '$lib/state/view';
+	import { createAppState } from '$lib/state/app-state.svelte';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import AttributionBar from '../../../../components/AttributionBar.svelte';

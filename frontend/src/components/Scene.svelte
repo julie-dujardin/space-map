@@ -5,8 +5,9 @@
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
-	import { sphericalToCartesian, parseUrl, urlTypeFromId } from '$lib/url-state';
-	import type { AppState } from '$lib/app-state.svelte';
+	import { sphericalToCartesian } from '$lib/math/spherical';
+	import { parseUrl, urlTypeFromId } from '$lib/state/url';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
 
 	interface Props {

@@ -6,7 +6,7 @@ declare global {
 		// interface Locals {}
 		// interface PageData {}
 		interface PageState {
-			view?: import('$lib/url-state').MapViewState;
+			view?: import('$lib/state/view').MapViewState;
 		}
 		// interface Platform {}
 	}
