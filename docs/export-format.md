@@ -578,24 +578,31 @@ without walking per-system or per-body files.
 
 ```typescript
 interface Credits {
-  textures: Array<{
-    body_id: string;           // e.g. "naif-399"
-    name: string;              // English display name; localisation is deferred
-    source: string;            // attribution source URL
-    organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
-    type: string;              // cylindrical / cylindrical_tile / …
-    attribution?: string;      // long-form credit line when available
-    description?: string;      // optional one-liner about the dataset
+  systems: Array<{
+    id: string | null;           // barycenter object ID ("naif-3", …) or null for the standalone bucket
+    name: string | null;         // primary-planet name ("Earth", "Jupiter", …); null for standalones
+    textures: Array<{
+      body_id: string;           // e.g. "naif-399"
+      name: string;              // English display name; localisation is deferred
+      source: string;            // attribution source URL
+      organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
+      type: string;              // cylindrical / cylindrical_tile / …
+      attribution?: string;      // long-form credit line when available
+      description?: string;      // optional one-liner about the dataset
+    }>;
   }>;
 }
 ```
 
-`textures` is sorted alphabetically by `name`. Only bodies whose texture
-metadata.json exists on disk are included — asteroids or 3D mesh assets can
-slot into sibling keys (`models`, `mesh_assets`, …) on the same file when
-those pipelines come online. Static credits (orbital providers, SPICE/IAU
-rotation kernels, Wikidata, Wikipedia, Wikimedia Commons, IAU nomenclature)
-live in the frontend page itself and don't need to be emitted here.
+Systems are ordered Mercury → Pluto by barycenter NAIF ID; a final `id: null`
+bucket collects standalones (sun-orbiting dwarf planets or asteroids such as
+Ceres and Bennu). Each system's `textures` list is alphabetised by body name.
+Only bodies whose texture metadata.json exists on disk are included —
+asteroids or 3D mesh assets can slot into sibling keys (`models`,
+`mesh_assets`, …) on the same file when those pipelines come online. Static
+credits (orbital providers, SPICE/IAU rotation kernels, Wikidata, Wikipedia,
+Wikimedia Commons, IAU nomenclature) live in the frontend page itself and
+don't need to be emitted here.
 
 ## Nutation angles (`nut_prec_angles.json`)
 
