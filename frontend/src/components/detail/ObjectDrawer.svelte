@@ -68,8 +68,13 @@
 	});
 
 	// Snap points: handle-only collapsed, mid, full.
-	const SNAP_POINTS = ['56px', 0.3, 1] as const;
+	const SNAP_POINTS = ['56px', 0.3, 0.95] as const;
 	const TOP_SNAP = SNAP_POINTS[2];
+	// The drawer is h-dvh (vaul assumes that). If the top snap is < 1 the bottom
+	// (1 - TOP_SNAP) of the drawer stays below the viewport even when expanded,
+	// so the scroll container needs that much extra bottom padding to let the
+	// last content into view.
+	const HIDDEN_BOTTOM_DVH = typeof TOP_SNAP === 'number' ? (1 - TOP_SNAP) * 100 : 0;
 	let activeSnapPoint = $state<number | string | null>(SNAP_POINTS[0]);
 	let contentEl = $state<HTMLElement | null>(null);
 	let isAtTop = $derived(activeSnapPoint === TOP_SNAP);
@@ -160,7 +165,10 @@
 						</Button>
 					</div>
 				</div>
-				<div class="flex-1 min-h-0 px-4 pb-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}">
+				<div
+					class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
+					style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
+				>
 					{@render drawerContent()}
 				</div>
 			</Vaul.Content>
