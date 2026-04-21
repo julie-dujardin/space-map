@@ -3,6 +3,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
+	import ImageViewer from '../ImageViewer.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -15,7 +16,7 @@
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let firstImage = $derived(global?.images?.[0]);
 	let imageSrc = $derived(firstImage ? `/data/v1/images/thumb/${firstImage.file}` : undefined);
-	let imageSourceUrl = $derived(firstImage?.source_url);
+	let viewerOpen = $state(false);
 	let celestrakBadges = $derived.by(() => {
 		const ct = global?.celestrak;
 		if (!ct) return null;
@@ -69,16 +70,24 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	{#if imageSrc}
-		<a href={imageSourceUrl} target="_blank" rel="noopener noreferrer">
+	{#if imageSrc && firstImage}
+		<button
+			type="button"
+			onclick={() => (viewerOpen = true)}
+			aria-label={m.image_open_viewer()}
+			class="cursor-zoom-in overflow-hidden rounded-md"
+		>
 			<img
 				src={imageSrc}
 				alt={name}
 				loading="lazy"
 				decoding="async"
-				class="w-full max-h-48 object-cover rounded-md"
+				class="w-full max-h-48 object-cover"
 			/>
-		</a>
+		</button>
+	{/if}
+	{#if viewerOpen && firstImage}
+		<ImageViewer image={firstImage} alt={name} onClose={() => (viewerOpen = false)} />
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}

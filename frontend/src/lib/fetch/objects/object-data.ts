@@ -16,6 +16,9 @@ export interface ObjectImage {
 	file: string;
 	source_url: string;
 	kind: 'photo' | 'logo';
+	license: string;
+	license_url?: string;
+	artist?: string;
 }
 
 /** Texture attribution block — mirrors `texture_attribution()` in export/systems.py. */
