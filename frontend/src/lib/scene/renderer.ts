@@ -1114,8 +1114,8 @@ export class SceneRenderer {
 			}
 		}
 		// Emit the target camera position before any focus/fly dispatch so that
-		// downstream `lastCameraPos` is fresh when `onFocusChange` fires inside
-		// `setFocusTarget` and `pushUrlState` captures the intended destination.
+		// AppState's camera fields are fresh when `onFocusChange` fires inside
+		// `setFocusTarget` and `setFocus` captures the intended destination.
 		const emitFrom = camPos ?? this.cameraTruePos();
 		const spherical = cartesianToSpherical(emitFrom, body.position, this.focusedBodyQuat(body));
 		this.callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);

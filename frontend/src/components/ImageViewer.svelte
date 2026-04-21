@@ -1,22 +1,27 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { getContext } from 'svelte';
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { Portal } from 'bits-ui';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
+	import type { AppState } from '$lib/app-state.svelte';
 
 	interface Props {
 		images: ObjectImage[];
-		initialIndex?: number;
 		alt: string;
 		onClose: () => void;
 	}
 
-	let { images, initialIndex = 0, alt, onClose }: Props = $props();
+	let { images, alt, onClose }: Props = $props();
 
-	let index = $state(untrack(() => initialIndex));
+	const appState = getContext<AppState>('appState');
+
+	// Clamp to valid range so a stale/out-of-range `img=` in the URL doesn't
+	// blow up the `images[index]` access. ObjectHeader already guards the null
+	// case (viewer isn't mounted when imageIndex is null).
+	const index = $derived(Math.min(Math.max(appState.view.imageIndex ?? 0, 0), images.length - 1));
 	const currentImage = $derived(images[index]);
 	const fullSrc = $derived(`/data/v1/images/full/${currentImage.file}`);
 	const metadataSrc = $derived(
@@ -28,10 +33,10 @@
 	const hasNext = $derived(index < images.length - 1);
 
 	function goPrev() {
-		if (hasPrev) index -= 1;
+		if (hasPrev) appState.setImage(index - 1);
 	}
 	function goNext() {
-		if (hasNext) index += 1;
+		if (hasNext) appState.setImage(index + 1);
 	}
 
 	interface Attribution {
@@ -108,8 +113,8 @@
 		if (event.key === 'Escape') onClose();
 		else if (event.key === 'ArrowLeft') goPrev();
 		else if (event.key === 'ArrowRight') goNext();
-		else if (event.key === 'Home') index = 0;
-		else if (event.key === 'End') index = images.length - 1;
+		else if (event.key === 'Home') appState.setImage(0);
+		else if (event.key === 'End') appState.setImage(images.length - 1);
 	}
 
 	// Horizontal touch-swipe navigation. Tracked via pointer events so the

@@ -1,4 +1,3 @@
-import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
 
@@ -29,6 +28,8 @@ export interface MapViewState {
 	latitude: number;
 	longitude: number;
 	zoom: number;
+	/** 0-based index into the focused object's images; null when the viewer is closed. */
+	imageIndex: number | null;
 }
 
 export const DEFAULT_VIEW: MapViewState = {
@@ -39,7 +40,8 @@ export const DEFAULT_VIEW: MapViewState = {
 	isNow: true,
 	latitude: 45,
 	longitude: 0,
-	zoom: 42.43
+	zoom: 42.43,
+	imageIndex: null
 };
 
 /** Parse current page state → MapViewState, or null */
@@ -59,7 +61,15 @@ export function parseUrl(): MapViewState | null {
 	const id = `${urlTypeToIdPrefix(type)}-${numericId}`;
 
 	const name = decodeURIComponent(page.params.name ?? '');
-	const defaults = { ...DEFAULT_VIEW, type, id, name };
+
+	const imgRaw = page.url.searchParams.get('img');
+	let imageIndex: number | null = null;
+	if (imgRaw) {
+		const n = Number(imgRaw);
+		if (Number.isInteger(n) && n >= 0) imageIndex = n;
+	}
+
+	const defaults = { ...DEFAULT_VIEW, type, id, name, imageIndex };
 
 	const at = page.url.searchParams.get('at');
 	if (!at) return defaults;
@@ -77,7 +87,7 @@ export function parseUrl(): MapViewState | null {
 	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom))
 		return { ...defaults, date, isNow };
 
-	return { type, id, name, date, isNow, latitude, longitude, zoom };
+	return { type, id, name, date, isNow, latitude, longitude, zoom, imageIndex };
 }
 
 /** Produce `/<type>/<id>/<name>?at=<date>,<lat>,<lon>,<zoom>` */
@@ -96,7 +106,11 @@ export function serializeUrl(state: MapViewState): string {
 		id: numericId,
 		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
-	return `${path}?at=${at}`;
+	const img =
+		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
+			? `&img=${state.imageIndex}`
+			: '';
+	return `${path}?at=${at}${img}`;
 }
 
 /**
@@ -176,23 +190,4 @@ export function sphericalToCartesian(
 		oz = distance * cos(latR) * cos(lonR);
 	}
 	return [target[0] + ox, target[1] + oy, target[2] + oz];
-}
-
-let writeTimer: ReturnType<typeof setTimeout> | undefined;
-const WRITE_DEBOUNCE_MS = 250;
-
-export function writeUrlState(state: MapViewState): void {
-	clearTimeout(writeTimer);
-	writeTimer = setTimeout(() => {
-		const url = serializeUrl(state);
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
-		svelteReplaceState(url, { view: state });
-	}, WRITE_DEBOUNCE_MS);
-}
-
-/** Like writeUrlState but pushes a new history entry (use when switching focus target). */
-export function pushUrlState(state: MapViewState): void {
-	const url = serializeUrl(state);
-	// eslint-disable-next-line svelte/no-navigation-without-resolve -- serializeUrl already uses resolve()
-	sveltePushState(url, { view: state });
 }

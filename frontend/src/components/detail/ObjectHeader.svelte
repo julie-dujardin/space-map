@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
+	import type { AppState } from '$lib/app-state.svelte';
 	import ImageViewer from '../ImageViewer.svelte';
 
 	interface Props {
@@ -13,11 +15,16 @@
 
 	let { global, localized, fallbackName }: Props = $props();
 
+	const appState = getContext<AppState>('appState');
+
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
 	let firstImage = $derived(images?.[0]);
 	let imageSrc = $derived(firstImage ? `/data/v1/images/thumb/${firstImage.file}` : undefined);
-	let viewerOpen = $state(false);
+	let viewerIndex = $derived(appState.view.imageIndex);
+	let viewerOpen = $derived(
+		viewerIndex !== null && !!images && images.length > 0 && viewerIndex < images.length
+	);
 	let celestrakBadges = $derived.by(() => {
 		const ct = global?.celestrak;
 		if (!ct) return null;
@@ -74,7 +81,7 @@
 	{#if imageSrc && firstImage}
 		<button
 			type="button"
-			onclick={() => (viewerOpen = true)}
+			onclick={() => appState.setImage(0)}
 			aria-label={m.image_open_viewer()}
 			class="cursor-zoom-in overflow-hidden rounded-md"
 		>
@@ -87,8 +94,8 @@
 			/>
 		</button>
 	{/if}
-	{#if viewerOpen && images && images.length > 0}
-		<ImageViewer {images} alt={name} onClose={() => (viewerOpen = false)} />
+	{#if viewerOpen && images}
+		<ImageViewer {images} alt={name} onClose={() => appState.setImage(null)} />
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}

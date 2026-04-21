@@ -1,0 +1,82 @@
+import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
+import { DEFAULT_VIEW, parseUrl, serializeUrl, type MapViewState } from './url-state';
+
+const WRITE_DEBOUNCE_MS = 250;
+
+/**
+ * Single source of truth for URL-backed app state. Components call targeted
+ * setters (setCamera / setDate / setFocus / setImage) instead of assembling a
+ * whole MapViewState and calling replaceState themselves — the setter is what
+ * knows how to merge its field(s) and sync the URL.
+ *
+ * setCamera/setDate use replaceState (frequent updates, no history entry).
+ * setFocus uses pushState (new object = new history entry, browser back works).
+ * setImage uses pushState only when opening/closing the viewer; within-viewer
+ * navigation uses replaceState so 10-image galleries don't pollute history.
+ */
+export class AppState {
+	view = $state<MapViewState>(DEFAULT_VIEW);
+
+	private writeTimer: ReturnType<typeof setTimeout> | undefined;
+
+	constructor(initial: MapViewState) {
+		this.view = initial;
+	}
+
+	private replaceDebounced() {
+		clearTimeout(this.writeTimer);
+		this.writeTimer = setTimeout(() => this.replaceNow(), WRITE_DEBOUNCE_MS);
+	}
+
+	private replaceNow() {
+		clearTimeout(this.writeTimer);
+		const url = serializeUrl(this.view);
+		// $state.snapshot unwraps the reactive proxy — history.state must be
+		// structured-cloneable, and proxies aren't.
+
+		svelteReplaceState(url, { view: $state.snapshot(this.view) });
+	}
+
+	private pushNow() {
+		clearTimeout(this.writeTimer);
+		const url = serializeUrl(this.view);
+
+		sveltePushState(url, { view: $state.snapshot(this.view) });
+	}
+
+	setCamera(cam: { latitude: number; longitude: number; zoom: number }) {
+		this.view = { ...this.view, ...cam };
+		this.replaceDebounced();
+	}
+
+	setDate(date: Date, isNow: boolean) {
+		this.view = { ...this.view, date, isNow };
+		this.replaceDebounced();
+	}
+
+	setFocus(focus: { type: string; id: string; name: string }) {
+		// New object = any previously-open image viewer is no longer meaningful.
+		this.view = { ...this.view, ...focus, imageIndex: null };
+		this.pushNow();
+	}
+
+	setImage(index: number | null) {
+		const prev = this.view.imageIndex;
+		this.view = { ...this.view, imageIndex: index };
+		// Push on open/close so browser-back toggles the viewer; replace on
+		// in-viewer navigation so each arrow-press doesn't grow history.
+		const toggled = (prev === null) !== (index === null);
+		if (toggled) this.pushNow();
+		else this.replaceNow();
+	}
+
+	/** Called by the popstate handler with the view from history.state (or a re-parse). */
+	syncFromPopState(view: MapViewState) {
+		this.view = view;
+	}
+}
+
+/** Convenience: parse the current URL once and hand back an AppState wrapping it. */
+export function createAppState(): AppState {
+	return new AppState(parseUrl() ?? DEFAULT_VIEW);
+}

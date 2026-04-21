@@ -6,7 +6,8 @@
 	import { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD } from '$lib/format/date';
 	import { type PositionedBody } from '$lib/types/objects';
-	import { parseUrl, DEFAULT_VIEW, serializeUrl } from '$lib/url-state';
+	import { DEFAULT_VIEW } from '$lib/url-state';
+	import { createAppState } from '$lib/app-state.svelte';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import AttributionBar from '../../../../components/AttributionBar.svelte';
@@ -17,19 +18,20 @@
 	const ctx = new ContextManager();
 	setContext('ctx', ctx);
 
-	const parsed = parseUrl();
-	const initialView = parsed ?? DEFAULT_VIEW;
-	const clock = new SimClock(dateToJD(initialView.date));
+	const appState = createAppState();
+	setContext('appState', appState);
+
+	const clock = new SimClock(dateToJD(appState.view.date));
 	let selectedBody = $state<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 
 	onMount(async () => {
-		await ctx.load(initialView.date, initialView.id);
-		if (parsed && !ctx.getBody(parsed.id)) {
-			toast.warning(m.object_not_found({ id: parsed.id }));
-			const defaultUrl = serializeUrl(DEFAULT_VIEW);
-			history.replaceState(history.state, '', defaultUrl);
+		const initialId = appState.view.id;
+		await ctx.load(appState.view.date, initialId);
+		if (!ctx.getBody(initialId)) {
+			toast.warning(m.object_not_found({ id: initialId }));
+			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 		}
 	});
 </script>
@@ -51,12 +53,7 @@
 {:else}
 	<Tooltip.Provider delayDuration={300}>
 		<div class="relative w-full h-screen">
-			<Scene
-				bind:this={scene}
-				{initialView}
-				{clock}
-				onFocusChange={(body) => (selectedBody = body)}
-			/>
+			<Scene bind:this={scene} {clock} onFocusChange={(body) => (selectedBody = body)} />
 			<TimeControls {clock} />
 			{#if selectedBody?.data.id}
 				<ObjectDrawer
