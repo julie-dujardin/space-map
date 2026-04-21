@@ -40,7 +40,7 @@ SOURCES = (
     # ),
     (ID_TYPES.NORAD_SATCAT, "_query_norad_ids", "Satellites (NORAD)"),
     (ID_TYPES.COSPAR, "_query_cospar_ids", "Satellites (COSPAR)"),
-    # (
+    # (  Too many IDs
     #     ID_TYPES.PROVISIONAL_DESIGNATION,
     #     "_query_provisional_designations",
     #     "Provisional designations",
@@ -97,12 +97,13 @@ class WikidataIdResolver:
             self._resolve_source(pid, query_method_name, label)
 
         # Name-based search for objects not resolved by ID
-        if resolve_by_name:
-            resolved_qids = set()
-            for csv_path in self._matches_dir.glob("*.csv"):
-                for qids in self._read_ids_csv(csv_path.stem).values():
-                    resolved_qids.update(qids)
-            self._resolve_by_name(resolved_qids)
+        # Skipped for now - too many queries, not useful enough (plenty of matches as is)
+        # if resolve_by_name:
+        #     resolved_qids = set()
+        #     for csv_path in self._matches_dir.glob("*.csv"):
+        #         for qids in self._read_ids_csv(csv_path.stem).values():
+        #             resolved_qids.update(qids)
+        #     self._resolve_by_name(resolved_qids)
 
         # Collect unique QIDs from the resolved sources
         all_qids: set[str] = set()
