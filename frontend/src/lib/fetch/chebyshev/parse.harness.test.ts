@@ -1,30 +1,33 @@
 /**
- * Integration harness: reads the real exported `major/10` chunk and evaluates
- * Earth's position at J2000. Gated on the export being present on disk so the
- * test suite still passes on a fresh clone.
+ * Integration harness: reads a real exported `major/10` chunk and evaluates
+ * Earth's position at J2000. The fixture lives in `__fixtures__/` (committed
+ * so CI can run this test on a clean checkout).
  *
  * Ground truth (via numpy.polynomial.chebyshev.chebval on the same file):
  *   Earth at JD 2451545.0  → (3543.212, 3341.165, -440.716) km, |r| ≈ 4889.99
  *   Earth at seg-0 midpoint → (4634.587, 1039.277, -405.606) km, |r| ≈ 4766.97
  */
 
-import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { resolve } from 'node:path';
-import { parseChebyshev } from './parse';
+import { parseChebyshev, type ChebyshevChunk } from './parse';
 import { chebyshevPositionKm } from './propagate';
 
-const EXPORT = resolve(
-	__dirname,
-	'../../../../../../space-map-export/v1/chebyshev/major/10/data.bin.gz'
-);
+const FIXTURE = resolve(__dirname, '__fixtures__/major-10.bin.gz');
 
-describe.skipIf(!existsSync(EXPORT))('chebyshev harness (real export)', () => {
-	const gz = readFileSync(EXPORT);
-	const raw = gunzipSync(gz);
-	const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
-	const chunk = parseChebyshev(buf);
+describe('chebyshev harness (real export)', () => {
+	let chunk: ChebyshevChunk;
+
+	// Read inside beforeAll (not at suite-body time) so a missing fixture fails
+	// loudly with the file path rather than at collection time.
+	beforeAll(() => {
+		const gz = readFileSync(FIXTURE);
+		const raw = gunzipSync(gz);
+		const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+		chunk = parseChebyshev(buf);
+	});
 
 	it('parses the major/10 chunk header', () => {
 		expect(chunk.startJd).toBeCloseTo(2451545.0, 3);
