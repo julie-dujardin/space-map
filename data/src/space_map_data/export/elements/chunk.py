@@ -58,7 +58,7 @@ def write_chunk(
 ) -> int:
     """Write elements binary, label files, and id list for one chunk.
 
-    object_flags: {obj_id: {lang: 0|1|2}} as returned by write_objects().
+    object_flags: {obj_id: {lang: 0|1|2}} as returned by build_chunk_object_data.
     `orbital_source` is stamped in the file header; writer raises if any row
     disagrees.
     Returns the size of the elements binary file in bytes.

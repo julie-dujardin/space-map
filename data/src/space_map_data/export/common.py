@@ -19,7 +19,11 @@ from space_map_data.export.chebyshev import write_chebyshev
 from space_map_data.export.credits import write_credits
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
 from space_map_data.export.elements.format import VERSION
-from space_map_data.export.objects import write_objects
+from space_map_data.export.objects.writer import (
+    ChunkObjectData,
+    build_chunk_object_data,
+    write_object_bundles,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
 from space_map_data.export.systems import (
@@ -118,8 +122,16 @@ def _write_parts(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
-) -> tuple[int, int]:
-    """Split objects into CHUNK_SIZE parts and write. Returns (num_parts, total_bytes)."""
+) -> tuple[int, int, ChunkObjectData]:
+    """Split objects into CHUNK_SIZE parts, write elements/labels/ids per chunk.
+
+    Returns `(num_parts, elements_bytes, aggregated_object_data)`. The object
+    data is accumulated across parts but NOT written here — the caller merges
+    data from all (zone, zoom) tasks and writes hash-bucketed bundles at the
+    end.
+    """
+    aggregated = ChunkObjectData()
+
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     total_bytes = 0
     for part_idx in range(num_parts):
@@ -136,10 +148,8 @@ def _write_parts(
                 )
             )
         }
-        # write_objects must come first — its return value feeds write_chunk
-        object_flags = write_objects(
+        chunk_data = build_chunk_object_data(
             chunk,
-            out_dir,
             wikidata_entities,
             chunk_entities,
             units,
@@ -149,6 +159,10 @@ def _write_parts(
             nut_prec=nut_prec,
             texture_metadata=texture_metadata,
         )
+        aggregated.global_data.update(chunk_data.global_data)
+        for lang, by_id in chunk_data.localized_data.items():
+            aggregated.localized_data[lang].update(by_id)
+        aggregated.flags.update(chunk_data.flags)
         total_bytes += write_chunk(
             chunk,
             out_dir,
@@ -156,11 +170,12 @@ def _write_parts(
             zoom,
             part_idx,
             chunk_entities,
-            object_flags,
+            chunk_data.flags,
             units,
             _chunk_source(chunk, zone, part_idx),
         )
-    return num_parts, total_bytes
+
+    return num_parts, total_bytes, aggregated
 
 
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
@@ -364,18 +379,28 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         write_credits(session, out_dir, texture_metadata)
         chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
+    all_objects = ChunkObjectData()
     for f in as_completed(futures):
         zone, zoom, count = futures[f]
-        num_parts, nbytes = f.result()
+        num_parts, nbytes, zone_data = f.result()
         object_counts[(zone, zoom)] += count
         total_bytes_map[(zone, zoom)] += nbytes
         zone_structure[zone][zoom] = num_parts
         logger.info("  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts)
+        all_objects.global_data.update(zone_data.global_data)
+        for lang, by_id in zone_data.localized_data.items():
+            all_objects.localized_data[lang].update(by_id)
+        all_objects.flags.update(zone_data.flags)
+
+    bundle_ns = write_object_bundles(
+        out_dir, all_objects.global_data, all_objects.localized_data
+    )
 
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)
 
     metadata = _build_metadata(zone_structure, object_counts, total_bytes_map)
+    metadata["object_bundles"] = bundle_ns
     if chebyshev_manifest:
         metadata["chebyshev"] = chebyshev_manifest
     (out_dir / "metadata.json").write_bytes(

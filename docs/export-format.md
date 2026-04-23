@@ -14,8 +14,8 @@ v1/
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
   chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
   chebyshev/{zone}/{chunk}/data.id.gz            object IDs (text), same order as bin
-  objects/__global__/{id}.json.gz                global object details
-  objects/{lang}/{id}.json.gz                    localized object details
+  objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
+  objects/{lang}/{bucket}.json.gz                localized details, hash-bucketed
   images/thumb/{filename}                         300px thumbnail (original format)
   images/full/{filename}                          full-size image (original format)
   textures/{id}/{tier}.webp                      tier = low | medium | high
@@ -37,6 +37,10 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
         "0": { "parts": 1, "object_count": 42, "avg_part_bytes": 12345 }
       }
     }
+  },
+  "object_bundles": {
+    "global": 1093,
+    "en": 208, "fr": 208, "ja": 208, "ar": 201, "ru": 208, "zh": 208
   },
   "chebyshev": {
     "version": 1,
@@ -318,15 +322,41 @@ One line per object, same order as the binary file. Each line:
 ```
 
 - `\x1f` = ASCII Unit Separator
-- Flag `0` = no object detail file exists
-- Flag `1` = localized detail file exists at `objects/{lang}/{id}.json.gz`
-- Flag `2` = only English fallback at `objects/en/{id}.json.gz`
+- Flag `0` = no localized entry exists — skip the localized fetch
+- Flag `1` = localized entry exists in the target language's bundle
+- Flag `2` = only English exists — fetch the English bundle instead
+
+The flag selects *which tier* to fetch; the bucket id is derived from the
+object id (see [Object detail files](#object-detail-files)).
 
 ## Object detail files
 
-### Global (`objects/__global__/{id}.json.gz`)
+Object details are grouped into **hash-bucketed bundles** to keep the file
+count manageable. The bundle count per tier (`N_global`, one `N_{lang}` per
+language) is chosen at export time so average members-per-bundle stays near
+target K (`K_global = 100`, `K_localized = 200`) regardless of DB size. The
+resulting Ns are published in `metadata.json → object_bundles` so the
+frontend can reconstruct URLs from an id alone — needed for deep links where
+no element chunk has been loaded yet.
 
-Written for every exported object. Contains cross-references, orbit source data, SBDB physical parameters, and Wikidata quantities.
+The bucket id for an object in tier T (global or a specific language) is:
+
+```
+bucket = sha256(id)[:4] as big-endian uint32, mod N_tier
+```
+
+Each bundle is a gzipped JSON object keyed by object id:
+`{ "<id>": ObjectData, ... }`. Bundles split by hash — no zone structure in
+the path, no co-location guarantee, but tight uniformity (max bundle ≈ 1.3×
+average at K=100).
+
+### Global (`objects/__global__/{bucket}.json.gz`)
+
+Written for every exported object. `bucket = sha256(id)[:4] % N_global`. Each
+bundle is a JSON object `{ "<id>": GlobalObjectData, ... }`.
+
+`GlobalObjectData` contains cross-references, orbit source data, SBDB physical
+parameters, and Wikidata quantities:
 
 ```typescript
 interface GlobalObjectData {
@@ -457,9 +487,16 @@ interface QuantityWithUnit { value: number; unit: string; }
 interface CurrencyQuantity { value: number; currency: string; }
 ```
 
-### Localized (`objects/{lang}/{id}.json.gz`)
+### Localized (`objects/{lang}/{bucket}.json.gz`)
 
-Only written when Wikidata/Wikipedia data exists for the language. Entity references link to Wikipedia where available.
+Per-language bundles. `bucket = sha256(id)[:4] % N_{lang}` where `N_{lang}`
+is that language's count in `metadata.object_bundles`. An object appears in
+the language's bundle only when Wikidata/Wikipedia data exists for that
+language (per-row `flag` in the labels file: `1` = present, `2` = fallback
+to `en` bundle, `0` = skip).
+
+Each bundle is a JSON object `{ "<id>": LocalizedObjectData, ... }`. Entity
+references link to Wikipedia where available.
 
 ```typescript
 interface LocalizedObjectData {
@@ -634,7 +671,7 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
    - `.loc.{lang}.gz` (labels) — split by newline, parse flag + name
 3. Combine by array index to get full body records
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
-5. Object detail files are fetched on demand using the ID and the label flag
+5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Then fetch `objects/__global__/{bucket}.json.gz` and (when the label flag is non-zero) `objects/{lang}/{bucket}.json.gz` — fall back to the `en` bundle when the flag is `2`. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
 6. For bodies that also appear in `metadata.json → chebyshev.zones.{zone}`,
    fetch the chunk covering the current simulated time from
    `chebyshev/{zone}/{chunk}/data.bin.gz` + `data.id.gz`; prefer those

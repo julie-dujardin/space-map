@@ -1,6 +1,20 @@
-"""Write per-object JSON files: objects/__global__/<id>.json.gz and objects/<lang>/<id>.json.gz."""
+"""Build object detail dicts and write them as hash-bucketed JSON files.
+
+Objects are grouped by `hash(id) % N`, with N picked per tier so average
+members-per-bundle hits target K: `K_GLOBAL=100` for `__global__`,
+`K_LOCALIZED=200` for per-language. Bundle files live at:
+
+  objects/__global__/{bucket}.json.gz
+  objects/{lang}/{bucket}.json.gz
+
+Each bundle file is a gzipped JSON object keyed by object id. The final N
+values are published in `metadata.json` under `object_bundles` so the
+frontend can reconstruct URLs from an id alone (needed for deep links).
+"""
 
 import gzip
+import hashlib
+import math
 import orjson
 import logging
 from pathlib import Path
@@ -37,7 +51,25 @@ from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
 
+# Target average members per bundle. N = ceil(total / K) is picked at export
+# time so per-bundle size stays constant as the DB grows. Frontend reads N
+# back from metadata.json to compute bucket ids via `hash(id) % N`.
+K_GLOBAL = 100
+K_LOCALIZED = 200
+
 _QID_CURRENCY = "Q8142"
+
+
+def hash_bucket(obj_id: str, n_buckets: int) -> int:
+    """Deterministic bucket from object id. Must mirror the frontend impl.
+
+    Takes the first 4 bytes of sha256(id) as a big-endian uint32, then mods
+    by n_buckets. sha256 is overkill for hash distribution but makes the JS
+    port trivial via SubtleCrypto.
+    """
+    return (
+        int.from_bytes(hashlib.sha256(obj_id.encode()).digest()[:4], "big") % n_buckets
+    )
 
 
 def _iso_currency_code(
@@ -94,9 +126,27 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
     return data
 
 
-def write_objects(
+class ChunkObjectData:
+    """Per-object JSON dicts built for one chunk, ready to be bundled.
+
+    `global_data[obj_id]` is always populated. `localized_data[lang][obj_id]`
+    is only populated when the object has content in that language (absent
+    when the frontend should fall back to English or skip entirely).
+    `flags[obj_id][lang]` is 0/1/2 as documented on `build_chunk_object_data`.
+    """
+
+    __slots__ = ("global_data", "localized_data", "flags")
+
+    def __init__(self):
+        self.global_data: dict[str, dict] = {}
+        self.localized_data: dict[str, dict[str, dict]] = {
+            lang: {} for lang in LANGUAGES
+        }
+        self.flags: dict[str, dict[str, int]] = {}
+
+
+def build_chunk_object_data(
     objects: list[Object],
-    out_dir: Path,
     wikidata_entities: WikidataEntityCache,
     chunk_entities: dict[str, WikidataEntity | None],
     units: UnitConverter,
@@ -105,23 +155,15 @@ def write_objects(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
-) -> dict[str, dict[str, int]]:
-    """Write per-object JSON files (global + per-language).
+) -> ChunkObjectData:
+    """Build per-object global and localized JSON dicts (no I/O).
 
-    Returns {obj_id: {lang: flag}} where flag is:
+    `flags[obj_id][lang]` values:
       0 = no file written
-      1 = localized file written for this lang
-      2 = no localized file, but English file exists (frontend should fetch en/)
+      1 = localized entry exists for this lang
+      2 = no localized entry, but English exists (frontend should fetch en bundle)
     """
-    global_dir = out_dir / "objects" / "__global__"
-    global_dir.mkdir(parents=True, exist_ok=True)
-    lang_dirs: dict[str, Path] = {}
-    for lang in LANGUAGES:
-        d = out_dir / "objects" / lang
-        d.mkdir(parents=True, exist_ok=True)
-        lang_dirs[lang] = d
-
-    all_flags: dict[str, dict[str, int]] = {}
+    out = ChunkObjectData()
 
     for obj in objects:
         qid = obj.wikidata_qid or (
@@ -139,11 +181,9 @@ def write_objects(
         sat = obj.satcat if obj.norad_cat_id is not None else None
         merge_operator_qids(extracted, sat)
 
-        # Collect image filenames from all Wikipedia languages
         wiki_image_filenames = load_wikipedia_image_filenames(qid) if qid else []
 
-        # Global (non-localized, always written)
-        global_data = _build_global(
+        out.global_data[obj.id] = _build_global(
             obj,
             extracted,
             wikidata_entities,
@@ -155,37 +195,77 @@ def write_objects(
             texture_metadata,
             wiki_image_filenames,
         )
-        (global_dir / f"{obj.id}.json.gz").write_bytes(
-            gzip.compress(orjson.dumps(global_data))
-        )
+
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
 
-        en_available = None
+        en_available = False
         obj_flags: dict[str, int] = {}
-
         for lang in LANGUAGES:
             wiki_summary = wiki_summaries.get(lang)
             lang_data = _build_localized(
                 obj, lang, wikidata_entities, wd, extracted, wiki_summary
             )
             if lang_data:
-                (lang_dirs[lang] / f"{obj.id}.json.gz").write_bytes(
-                    gzip.compress(orjson.dumps(lang_data))
-                )
+                out.localized_data[lang][obj.id] = lang_data
                 obj_flags[lang] = 1
                 if lang == "en":
                     en_available = True
             else:
                 obj_flags[lang] = 2 if en_available else 0
+        out.flags[obj.id] = obj_flags
 
-        all_flags[obj.id] = obj_flags
+    return out
+
+
+def write_object_bundles(
+    out_dir: Path,
+    global_data: dict[str, dict],
+    localized_data: dict[str, dict[str, dict]],
+) -> dict[str, int]:
+    """Hash-bucket per-object dicts and write one gzipped JSON per bucket.
+
+    Returns `{"global": N_global, lang: N_lang, ...}` for publication in
+    metadata.json so the frontend can reproduce the bucket math from an id.
+    A tier with zero entries gets N=0 and no directory.
+    """
+    bundle_ns: dict[str, int] = {}
+
+    n_global = max(1, math.ceil(len(global_data) / K_GLOBAL)) if global_data else 0
+    bundle_ns["global"] = n_global
+    if n_global:
+        _write_hashed_bundles(out_dir / "objects" / "__global__", global_data, n_global)
+
+    for lang in LANGUAGES:
+        by_id = localized_data.get(lang, {})
+        n_lang = max(1, math.ceil(len(by_id) / K_LOCALIZED)) if by_id else 0
+        bundle_ns[lang] = n_lang
+        if n_lang:
+            _write_hashed_bundles(out_dir / "objects" / lang, by_id, n_lang)
 
     logger.info(
-        "Wrote object files for %d objects (%d languages + global)",
-        len(objects),
-        len(LANGUAGES),
+        "Wrote object bundles: global N=%d (%d objects), langs: %s",
+        n_global,
+        len(global_data),
+        ", ".join(
+            f"{lang}={bundle_ns[lang]}({len(localized_data.get(lang, {}))})"
+            for lang in LANGUAGES
+        ),
     )
-    return all_flags
+    return bundle_ns
+
+
+def _write_hashed_bundles(
+    dir_path: Path, by_id: dict[str, dict], n_buckets: int
+) -> None:
+    """Group by `hash(id) % n_buckets` and write one gzipped JSON per bucket."""
+    buckets: dict[int, dict[str, dict]] = {}
+    for obj_id, data in by_id.items():
+        buckets.setdefault(hash_bucket(obj_id, n_buckets), {})[obj_id] = data
+    dir_path.mkdir(parents=True, exist_ok=True)
+    for bucket, entries in buckets.items():
+        (dir_path / f"{bucket}.json.gz").write_bytes(
+            gzip.compress(orjson.dumps(entries))
+        )
 
 
 _IMAGE_KEYS = {"image", "logo_image"}
