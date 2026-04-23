@@ -43,6 +43,10 @@ function buildOrbitTrailPoints(
 	cy: number,
 	cz: number
 ): [number, number, number][] {
+	// sgp4Curve returns [] when every sample fails (e.g. decayed satellite);
+	// callers gate on validPoints.length < 2 and draw nothing in that case.
+	if (curve.length === 0) return [];
+
 	const bodyLocal: [number, number, number] = [
 		body.position[0] - cx,
 		body.position[1] - cy,

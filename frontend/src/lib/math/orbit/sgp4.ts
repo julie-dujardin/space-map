@@ -75,6 +75,11 @@ export function buildSatrec(inputs: SGP4Inputs, name?: string): SatRec | null {
 	return satrec;
 }
 
+// Once a satrec enters an error state, every subsequent sgp4() call with that
+// satrec short-circuits with the same error — and sgp4Curve fires ~500 samples
+// per body per frame. Warn once per satrec to avoid drowning the console.
+const warnedSatrecs = new WeakSet<SatRec>();
+
 /**
  * Propagate a satellite to the given Julian Date and return its TEME position in km.
  * Returns null and logs on propagation failure (decayed sat, solver blowup).
@@ -83,9 +88,12 @@ export function sgp4PositionTEME(satrec: SatRec, jd: number): [number, number, n
 	const tsinceMin = (jd - satrec.jdsatepoch) * 1440;
 	const result = sgp4(satrec, tsinceMin);
 	if (!result || satrec.error !== SatRecError.None) {
-		console.warn(
-			`sgp4PositionTEME: propagation failed for NORAD ${satrec.satnum} (error=${satrec.error})`
-		);
+		if (!warnedSatrecs.has(satrec)) {
+			warnedSatrecs.add(satrec);
+			console.warn(
+				`sgp4PositionTEME: propagation failed for NORAD ${satrec.satnum} (error=${satrec.error})`
+			);
+		}
 		return null;
 	}
 	const { x, y, z } = result.position;
