@@ -1,5 +1,8 @@
+import json
 import logging
 import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
 
 from space_map_data.constants.earth_sats.constellations import (
     GROUP_TO_CATEGORY,
@@ -21,18 +24,33 @@ GROUPS: tuple[str, ...] = tuple({*GROUP_TO_SLUG.keys(), *GROUP_TO_CATEGORY.keys(
 class CelesTrakDownloader(Downloader):
     name = PROVIDERS.CELESTRAK
 
-    def download(self, limit: int | None = None, **kwargs: object) -> None:
-        # 1. Active GP (TLE elements)
-        gp_url = f"{GP_URL}?GROUP=active&FORMAT=csv"
-        gp_count = self._fetch_csv(gp_url, self.out_dir / "gp-active.csv", "active GP")
+    def _day_dir(self, day: date) -> Path:
+        return self.out_dir / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.day:02d}"
 
-        # 2. SATCAT (country, launch site, decay, RCS, ...)
+    def is_complete(self, limit: int | None) -> bool:
+        # GP/groups are refetched every UTC day; skip only if today is done.
+        if not self.metadata_file.exists():
+            return False
+        meta = json.loads(self.metadata_file.read_text())
+        today = datetime.now(timezone.utc).date().isoformat()
+        return meta.get("day") == today
+
+    def download(self, limit: int | None = None, **kwargs: object) -> None:
+        today = datetime.now(timezone.utc).date()
+        day_dir = self._day_dir(today)
+        day_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Active GP (TLE elements) — daily
+        gp_url = f"{GP_URL}?GROUP=active&FORMAT=csv"
+        gp_count = self._fetch_csv(gp_url, day_dir / "gp-active.csv", "active GP")
+
+        # 2. SATCAT (country, launch site, decay, RCS, ...) — not elements, top-level
         satcat_count = self._fetch_csv(
             SATCAT_URL, self.out_dir / "satcat.csv", "SATCAT"
         )
 
-        # 3. Per-constellation group memberships
-        groups_dir = self.out_dir / "groups"
+        # 3. Per-constellation group memberships — daily
+        groups_dir = day_dir / "groups"
         groups_dir.mkdir(exist_ok=True)
         group_counts: dict[str, int] = {}
         for group in GROUPS:
@@ -46,6 +64,7 @@ class CelesTrakDownloader(Downloader):
             gp_url,
             gp_count,
             complete=True,
+            day=today.isoformat(),
             satcat_records=satcat_count,
             groups=group_counts,
         )
