@@ -244,8 +244,7 @@ export async function fetchObjectDetail(
 ): Promise<ObjectDetailData> {
 	const meta = await fetchMetadata();
 
-	const localizedLang =
-		objectFileFlag === 0 ? null : objectFileFlag === 2 ? 'en' : lang;
+	const localizedLang = objectFileFlag === 0 ? null : objectFileFlag === 2 ? 'en' : lang;
 	const nLocalized = localizedLang ? meta.object_bundles[localizedLang] : 0;
 
 	const [globalBucket, localizedBucket] = await Promise.all([

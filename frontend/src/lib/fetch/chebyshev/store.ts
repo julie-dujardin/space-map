@@ -146,6 +146,20 @@ export class ChebyshevStore {
 		return this.idToZone.has(objectId);
 	}
 
+	/**
+	 * Full JD extent of the zone hosting `objectId` — union of all its chunks.
+	 * Distinguishes "jd permanently outside exported coverage" (toast-worthy)
+	 * from "chunk still loading" (transient). Returns null if the body isn't
+	 * tracked or its zone hasn't been seen yet.
+	 */
+	zoneCoverage(objectId: string): { start: number; end: number } | null {
+		const zone = this.idToZone.get(objectId);
+		if (zone === undefined) return null;
+		const meta = this.manifest.zones[zone];
+		if (!meta) return null;
+		return { start: meta.start_jd, end: meta.end_jd };
+	}
+
 	private resolve(objectId: string, jd: number): BodyLocation | null {
 		const zone = this.idToZone.get(objectId);
 		if (zone === undefined) return null;

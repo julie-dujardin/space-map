@@ -57,6 +57,7 @@ import {
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
+import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
 
 // --- SceneRenderer ---
 
@@ -648,6 +649,17 @@ export class SceneRenderer {
 		this.ctx.chebStore?.ensure(jd);
 		this.ctx.advanceTrailBuffers(jd);
 
+		// Aggregate data-unavailability across bodies for a single summary toast —
+		// per-body toasts would be spammy at chunk boundaries. Grouping by data
+		// source lets us report the relevant cutoff date per group.
+		const oorState: OutOfRangeState = {
+			jd,
+			satellites: emptyGroup(),
+			majorBodies: emptyGroup(),
+			focusedOutOfRange: false
+		};
+		const focusedId = this.focusedBody?.data.id;
+
 		// Seed positionMap with SSB at origin. Iterate ALL bodies with orbit
 		// elements (majors, moons, barycenters, promoted minor bodies). Moons'
 		// parentId is the planetary barycenter (SPICE convention: Io → naif-5),
@@ -677,6 +689,19 @@ export class SceneRenderer {
 			const bo = this.bodyObjects.get(d.id);
 			if (jd < d.validityStart || jd > d.validityEnd) {
 				if (bo) bo.outOfRange = true;
+				// SGP4 is the only source with a finite validity here (TLE epoch
+				// ± 14 days); Keplerian/parabolic elements use ±Infinity bounds
+				// and never land in this branch.
+				if (d.satrec) {
+					oorState.satellites.count++;
+					if (d.validityStart < oorState.satellites.earliestStart) {
+						oorState.satellites.earliestStart = d.validityStart;
+					}
+					if (d.validityEnd > oorState.satellites.latestEnd) {
+						oorState.satellites.latestEnd = d.validityEnd;
+					}
+					if (d.id === focusedId) oorState.focusedOutOfRange = true;
+				}
 				return;
 			}
 			let x: number, y: number, z: number;
@@ -690,6 +715,20 @@ export class SceneRenderer {
 				const chebOffset = this.ctx.chebStore!.positionScene(d.id, jd);
 				if (!chebOffset) {
 					if (bo) bo.outOfRange = true;
+					// Only count as out-of-range for the toast if jd is outside the
+					// zone's exported coverage. Inside coverage + null offset means a
+					// chunk is still loading (transient) — toasting that would flicker.
+					const coverage = this.ctx.chebStore!.zoneCoverage(d.id);
+					if (coverage && (jd < coverage.start || jd > coverage.end)) {
+						oorState.majorBodies.count++;
+						if (coverage.start < oorState.majorBodies.earliestStart) {
+							oorState.majorBodies.earliestStart = coverage.start;
+						}
+						if (coverage.end > oorState.majorBodies.latestEnd) {
+							oorState.majorBodies.latestEnd = coverage.end;
+						}
+						if (d.id === focusedId) oorState.focusedOutOfRange = true;
+					}
 					return;
 				}
 				x = parentPos[0] + chebOffset[0];
@@ -738,6 +777,8 @@ export class SceneRenderer {
 		for (const bo of this.bodyObjects.values()) {
 			if (!this.ctx.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
 		}
+
+		updateOutOfRangeToast(oorState);
 
 		// Pass 2a: now that all positions are current, lock focus onto the
 		// focused body's *new* position (unless an animation is driving it).
