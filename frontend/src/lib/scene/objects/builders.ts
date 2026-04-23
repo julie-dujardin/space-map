@@ -175,9 +175,44 @@ function makeEmptyOrbitLine(): Line {
 }
 
 /**
- * Build a chebyshev-backed orbit line. Geometry is sized to the buffer's full
- * capacity; vertices are written newest-first, so vertex 0 is always the body's
- * current position and subsequent vertices trace back along the past orbit.
+ * Write the live "head" vertex (slot 0) and the trail-buffer history (slots
+ * 1..n) into `posArr`. Returns the total drawn vertex count.
+ *
+ * Vertex 0 is always the body's exact current position in basis-relative
+ * coords, so the brightest end of the trail stays visually pinned to the
+ * body even when the buffer's newest canonical sample is up to one `stepDays`
+ * behind `jd`. This is the "point-at-object" anchor the old Kepler-curve
+ * path gave for free via `points[0] = bodyLocal`.
+ */
+function writeBufferVerticesWithLiveHead(
+	body: PositionedBody,
+	buffer: TrailBuffer,
+	posArr: Float32Array,
+	cx: number,
+	cy: number,
+	cz: number,
+	basisPos: [number, number, number]
+): number {
+	// Vertex 0: live parent-relative body position, shifted straight into the
+	// basis frame (this is equivalent to `(body.position − orbitCenter) +
+	// (orbitCenter − basis)` = `body.position − basis`).
+	posArr[0] = body.position[0] - basisPos[0];
+	posArr[1] = body.position[1] - basisPos[1];
+	posArr[2] = body.position[2] - basisPos[2];
+
+	// Vertices 1..n: buffer samples (parent-relative) shifted by
+	// (orbitCenter − basis) so they land in the same basis frame.
+	const bx = cx - basisPos[0];
+	const by = cy - basisPos[1];
+	const bz = cz - basisPos[2];
+	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz);
+	return 1 + n;
+}
+
+/**
+ * Build a chebyshev-backed orbit line. Geometry is sized to `capacity + 1` —
+ * the +1 slot holds the live body position so the brightest trail vertex
+ * always sits on the body.
  */
 function makeChebyshevOrbitLine(
 	body: PositionedBody,
@@ -196,19 +231,16 @@ function makeChebyshevOrbitLine(
 	const useTrail =
 		data.objectType === ObjectType.DWARF_PLANET || data.objectType === ObjectType.MOON;
 
-	const cap = trailBuffer.capacity;
-	const posArr = new Float32Array(cap * 3);
-	const bx = cx - basisPos[0];
-	const by = cy - basisPos[1];
-	const bz = cz - basisPos[2];
-	const n = trailBuffer.writeVertices(posArr, bx, by, bz);
+	const geomCap = trailBuffer.capacity + 1;
+	const posArr = new Float32Array(geomCap * 3);
+	const total = writeBufferVerticesWithLiveHead(body, trailBuffer, posArr, cx, cy, cz, basisPos);
 
-	const fullAlphas = new Float32Array(cap);
-	const trailAlphas = new Float32Array(cap);
-	if (n > 0) {
+	const fullAlphas = new Float32Array(geomCap);
+	const trailAlphas = new Float32Array(geomCap);
+	if (total > 0) {
 		writeOrbitAlphas(
-			fullAlphas.subarray(0, n) as Float32Array,
-			trailAlphas.subarray(0, n) as Float32Array,
+			fullAlphas.subarray(0, total) as Float32Array,
+			trailAlphas.subarray(0, total) as Float32Array,
 			true,
 			useTrail
 		);
@@ -218,7 +250,7 @@ function makeChebyshevOrbitLine(
 	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
-	geometry.setDrawRange(0, n);
+	geometry.setDrawRange(0, total);
 
 	const line = new Line(geometry, makeOrbitLineMaterial(color));
 	line.frustumCulled = false;
@@ -337,6 +369,7 @@ export function makeOrbitLine(
  * is already the source of truth, so we just read it again with the new basis.
  */
 export function refreshChebyshevOrbitLineGeometry(
+	body: PositionedBody,
 	line: Line,
 	buffer: TrailBuffer,
 	basisPos: [number, number, number]
@@ -347,22 +380,19 @@ export function refreshChebyshevOrbitLineGeometry(
 	const trailAttr = line.geometry.getAttribute('trailAlpha');
 	const fullAttr = line.geometry.getAttribute('fullAlpha');
 	const posArr = posAttr.array as Float32Array;
-	const bx = oc.x - basisPos[0];
-	const by = oc.y - basisPos[1];
-	const bz = oc.z - basisPos[2];
-	const n = buffer.writeVertices(posArr, bx, by, bz);
-	if (n < 2) {
+	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
+	if (total < 2) {
 		line.geometry.setDrawRange(0, 0);
 		posAttr.needsUpdate = true;
 		return;
 	}
 	writeOrbitAlphas(
-		(fullAttr.array as Float32Array).subarray(0, n) as Float32Array,
-		(trailAttr.array as Float32Array).subarray(0, n) as Float32Array,
+		(fullAttr.array as Float32Array).subarray(0, total) as Float32Array,
+		(trailAttr.array as Float32Array).subarray(0, total) as Float32Array,
 		true,
 		useTrail
 	);
-	line.geometry.setDrawRange(0, n);
+	line.geometry.setDrawRange(0, total);
 	posAttr.needsUpdate = true;
 	trailAttr.needsUpdate = true;
 	fullAttr.needsUpdate = true;
@@ -378,7 +408,7 @@ export function refreshOrbitLineGeometry(
 	// into the vertex buffer, shifted by (orbitCenter − basis).
 	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 	if (trailBuffer) {
-		refreshChebyshevOrbitLineGeometry(line, trailBuffer, basisPos);
+		refreshChebyshevOrbitLineGeometry(body, line, trailBuffer, basisPos);
 		return;
 	}
 

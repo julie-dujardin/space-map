@@ -591,7 +591,7 @@ export class SceneRenderer {
 			// trail buffer each time instead of from a cached Float64 list.
 			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 			if (trailBuffer) {
-				refreshChebyshevOrbitLineGeometry(line, trailBuffer, basis);
+				refreshChebyshevOrbitLineGeometry(bo.body, line, trailBuffer, basis);
 				continue;
 			}
 			const localPositions = line.userData.orbitLocalPositions as
