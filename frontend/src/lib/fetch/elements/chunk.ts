@@ -15,7 +15,28 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/chebyshev/store';
+import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
+
+/**
+ * Fill `buf` with up to `capacity` chebyshev samples ending at `centerJd`,
+ * stepping back by `buf.stepDays`. Nulls (samples outside the body's segment
+ * coverage) are skipped, so outer planets with limited chebyshev history
+ * start with a partial buffer and grow as time plays.
+ */
+export function populateTrailBuffer(
+	buf: TrailBuffer,
+	store: ChebyshevStore,
+	targetId: string,
+	centerJd: number
+): void {
+	// Oldest first so the ring buffer's internal order is past → present.
+	for (let k = buf.capacity - 1; k >= 0; k--) {
+		const t = centerJd - k * buf.stepDays;
+		const p = store.positionScene(targetId, t);
+		if (p) buf.append(t, p[0], p[1], p[2]);
+	}
+}
 
 function keplerianToBody(
 	cols: KeplerianColumns,
@@ -154,14 +175,25 @@ export class ChunkLoader {
 	positions = new Map<number, [number, number, number]>();
 	// Store barycenter orbital elements for planet orbit drawing
 	barycenters = new Map<number, OrbitalElements>();
-	// Pre-sampled chebyshev orbit curves, keyed by NAIF ID. Planets borrow their
-	// parent barycenter's entry here instead of sampling their own (tiny) wobble.
-	// TODO: remove the Keplerian `n` dependency once chebyshev ships periods per
-	// body — currently we still need the elements chunk loaded to get the
-	// orbital period for the sampling window.
-	chebCurves = new Map<number, [number, number, number][]>();
 
-	constructor(private readonly cheb?: ChebyshevStore | null) {
+	/**
+	 * Chebyshev trail buffers keyed by the body's string id. Owned by the
+	 * ContextManager (persists across `process` calls so accumulated history
+	 * survives chunk loads); the loader populates entries here when it first
+	 * sees a chebyshev-tracked body.
+	 *
+	 * Planets borrow their parent barycenter's buffer (via `bodyOwnTrailTargetId`);
+	 * moons and barycenters use their own. This mirrors the Keplerian
+	 * `barycenters` → planet-orbit wiring.
+	 *
+	 * TODO: remove the Keplerian `n` dependency once chebyshev ships periods
+	 * per body — currently we still need the elements chunk loaded to get the
+	 * orbital period for the buffer step size.
+	 */
+	constructor(
+		private readonly cheb: ChebyshevStore | null,
+		private readonly chebBuffers: Map<string, TrailBuffer>
+	) {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
 	}
 
@@ -220,9 +252,7 @@ export class ChunkLoader {
 			// the parent-relative offset straight from the store. Orbit curve is
 			// sampled later once we know this is a rendered body (not a
 			// barycenter that only acts as a reference frame).
-			const chebOffset = this.cheb?.has(body.id)
-				? this.cheb.positionScene(body.id, jd)
-				: null;
+			const chebOffset = this.cheb?.has(body.id) ? this.cheb.positionScene(body.id, jd) : null;
 			const offset = chebOffset
 				? chebOffset
 				: !inRange
@@ -248,13 +278,16 @@ export class ChunkLoader {
 
 			const id = cols.id[idx];
 
-			// Sample the body's chebyshev curve once (Keplerian `n` gives the
-			// period). Stored by NAIF ID so planets can later borrow their parent
-			// barycenter's entry — mirroring the Keplerian `barycenters` map.
-			if (chebOffset && body.n > 0) {
+			// Sample the body's chebyshev trail once (Keplerian `n` gives the
+			// period). Keyed by string id so planets can later borrow their parent
+			// barycenter's buffer — mirroring the Keplerian `barycenters` map. The
+			// `has` guard preserves already-accumulated history when the same body
+			// appears in a re-processed chunk.
+			if (chebOffset && body.n > 0 && !this.chebBuffers.has(body.id)) {
 				const period = 360 / body.n;
-				const curve = this.cheb!.sampleOrbitScene(body.id, jd, period, NUM_ORBIT_POINTS);
-				if (curve) this.chebCurves.set(id, curve);
+				const buffer = new TrailBuffer(NUM_ORBIT_POINTS, period / NUM_ORBIT_POINTS);
+				populateTrailBuffer(buffer, this.cheb!, body.id, jd);
+				this.chebBuffers.set(body.id, buffer);
 			}
 
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
@@ -269,7 +302,7 @@ export class ChunkLoader {
 					data: body,
 					position: pos,
 					orbitElements: body.a > 0 ? body : undefined,
-					orbitCurve: this.chebCurves.get(id),
+					trailBuffer: this.chebBuffers.get(body.id),
 					orbitCenter: parentPos
 				});
 				continue;
@@ -288,18 +321,19 @@ export class ChunkLoader {
 				// position, not at SSB — failing to do so leaves the trail offset
 				// from the body by parent_pos − SSB.
 				const hasBarycenter = this.barycenters.has(parentId);
-				// Chebyshev curve selection mirrors orbitElements selection: planets
-				// without a barycenter entry use their own curve; those with one
+				// Trail-buffer selection mirrors orbitElements selection: planets
+				// without a barycenter entry use their own buffer; those with one
 				// borrow the parent's (since the planet's own chebyshev is just
 				// wobble around that barycenter).
-				const chebCurve = isMoon
-					? this.chebCurves.get(id)
-					: (this.chebCurves.get(parentId) ?? this.chebCurves.get(id));
+				const parentStringId = body.parentId;
+				const trailBuffer = isMoon
+					? this.chebBuffers.get(body.id)
+					: (this.chebBuffers.get(parentStringId) ?? this.chebBuffers.get(body.id));
 				bodies.push({
 					data: body,
 					position: pos,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
-					orbitCurve: chebCurve,
+					trailBuffer,
 					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {

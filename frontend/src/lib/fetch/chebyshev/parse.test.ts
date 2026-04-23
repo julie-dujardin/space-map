@@ -121,9 +121,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 		expect(chunk.bodies).toHaveLength(2);
 
 		const b1 = chunk.bodies[0];
-		expect(b1.coeffs).toEqual(
-			new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
-		);
+		expect(b1.coeffs).toEqual(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
 
 		const b2 = chunk.bodies[1];
 		expect(b2.naifId).toBe(2);

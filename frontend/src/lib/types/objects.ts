@@ -1,5 +1,6 @@
 import type { SatRec } from 'satellite.js';
 import type { OrbitalSource } from '$lib/fetch/elements/constants';
+import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -63,12 +64,14 @@ export interface PositionedBody {
 	/** World-space center of the orbit (parent position). Defaults to origin. */
 	orbitCenter?: [number, number, number];
 	/**
-	 * Pre-sampled orbit curve in parent-relative scene coordinates. When set,
-	 * `makeOrbitLine` uses these points directly instead of reconstructing the
-	 * curve from `orbitElements`. Used for Chebyshev-backed bodies whose trail
-	 * comes straight from the sampled ephemeris.
+	 * Rolling trail of past positions for chebyshev-backed bodies, sampled in
+	 * the body's orbital-centre-relative frame. When set, the orbit line reads
+	 * its geometry from the buffer each frame instead of anchoring a static
+	 * curve — so trail shape stays consistent under time scrubbing, chunk
+	 * transitions, and focus changes. Kepler-backed bodies leave this undefined
+	 * and keep using `orbitalElementsToCurve`.
 	 */
-	orbitCurve?: [number, number, number][];
+	trailBuffer?: TrailBuffer;
 }
 
 /**

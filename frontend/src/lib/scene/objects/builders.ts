@@ -17,6 +17,7 @@ import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
 import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 
 export const NUM_ORBIT_POINTS = 512;
 
@@ -125,90 +126,8 @@ function writeOrbitAlphas(
 	}
 }
 
-export function makeOrbitLine(
-	body: PositionedBody,
-	color: string,
-	basisPos: [number, number, number] = [0, 0, 0],
-	jd: number = dateToJD(new Date())
-): Line {
-	const { orbitElements, orbitCenter, data } = body;
-
-	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
-	// period so the trail ends at the body's current position. data.n is in
-	// deg/day for SGP4 bodies (converted in chunk.ts); back-convert to rev/day.
-	// Chebyshev-backed bodies ship their curve pre-sampled as an open arc.
-	let curve: [number, number, number][];
-	let isOpenCurve: boolean;
-	if (data.satrec) {
-		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS);
-		isOpenCurve = true;
-	} else if (body.orbitCurve) {
-		curve = body.orbitCurve;
-		isOpenCurve = true;
-	} else {
-		if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
-		const result = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
-		curve = result.points;
-		isOpenCurve = result.isOpen;
-	}
-
-	const cx = orbitCenter?.[0] ?? 0;
-	const cy = orbitCenter?.[1] ?? 0;
-	const cz = orbitCenter?.[2] ?? 0;
-
-	const useTrail =
-		isOpenCurve ||
-		data.objectType === ObjectType.DWARF_PLANET ||
-		data.objectType === ObjectType.MOON ||
-		data.objectType === ObjectType.SPACECRAFT ||
-		data.objectType === ObjectType.COMET ||
-		isAsteroid(data.objectType);
-
-	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
-	if (validPoints.length < 2) {
-		const geometry = new BufferGeometry();
-		geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
-		const material = new ShaderMaterial({ transparent: true });
-		const line = new Line(geometry, material);
-		line.visible = false;
-		return line;
-	}
-
-	// Size buffers to the full curve length so refreshes that produce longer
-	// trails (e.g. body.position and curve become consistent after the first
-	// tick for SGP4 bodies) don't hit the `posAttr.count < validPoints.length`
-	// early-return in refreshOrbitLineGeometry.
-	const bufferCapacity = Math.max(validPoints.length, curve.length);
-	const fullAlphas = new Float32Array(bufferCapacity);
-	const trailAlphas = new Float32Array(bufferCapacity);
-	writeOrbitAlphas(
-		fullAlphas.subarray(0, validPoints.length) as Float32Array,
-		trailAlphas.subarray(0, validPoints.length) as Float32Array,
-		isOpenCurve,
-		useTrail
-	);
-
-	// Store vertices in basis-relative coords (world − basis). Basis tracks
-	// the focused body, so for focused bodies the vertex magnitudes stay
-	// small and the shader's (vertex + uCenterOffset) avoids catastrophic
-	// Float32 cancellation even for distant outer-solar-system bodies.
-	const bx = cx - basisPos[0],
-		by = cy - basisPos[1],
-		bz = cz - basisPos[2];
-	const posArr = new Float32Array(bufferCapacity * 3);
-	for (let k = 0; k < validPoints.length; k++) {
-		posArr[k * 3] = validPoints[k][0] + bx;
-		posArr[k * 3 + 1] = validPoints[k][1] + by;
-		posArr[k * 3 + 2] = validPoints[k][2] + bz;
-	}
-
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
-	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
-	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
-	geometry.setDrawRange(0, validPoints.length);
-
-	const material = new ShaderMaterial({
+function makeOrbitLineMaterial(color: string): ShaderMaterial {
+	return new ShaderMaterial({
 		transparent: true,
 		uniforms: {
 			uColor: { value: new Color(color) },
@@ -244,8 +163,151 @@ export function makeOrbitLine(
 			}
 		`
 	});
+}
 
+function makeEmptyOrbitLine(): Line {
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
+	const material = new ShaderMaterial({ transparent: true });
 	const line = new Line(geometry, material);
+	line.visible = false;
+	return line;
+}
+
+/**
+ * Build a chebyshev-backed orbit line. Geometry is sized to the buffer's full
+ * capacity; vertices are written newest-first, so vertex 0 is always the body's
+ * current position and subsequent vertices trace back along the past orbit.
+ */
+function makeChebyshevOrbitLine(
+	body: PositionedBody,
+	trailBuffer: TrailBuffer,
+	color: string,
+	basisPos: [number, number, number]
+): Line {
+	const { orbitCenter, data } = body;
+	const cx = orbitCenter?.[0] ?? 0;
+	const cy = orbitCenter?.[1] ?? 0;
+	const cz = orbitCenter?.[2] ?? 0;
+
+	// Moons/dwarfs get a short-fade trail (restored to full when focused);
+	// planets/stars get the 360° ramp visible all the time. Matches the
+	// existing alpha behaviour for non-chebyshev bodies.
+	const useTrail =
+		data.objectType === ObjectType.DWARF_PLANET || data.objectType === ObjectType.MOON;
+
+	const cap = trailBuffer.capacity;
+	const posArr = new Float32Array(cap * 3);
+	const bx = cx - basisPos[0];
+	const by = cy - basisPos[1];
+	const bz = cz - basisPos[2];
+	const n = trailBuffer.writeVertices(posArr, bx, by, bz);
+
+	const fullAlphas = new Float32Array(cap);
+	const trailAlphas = new Float32Array(cap);
+	if (n > 0) {
+		writeOrbitAlphas(
+			fullAlphas.subarray(0, n) as Float32Array,
+			trailAlphas.subarray(0, n) as Float32Array,
+			true,
+			useTrail
+		);
+	}
+
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
+	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
+	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
+	geometry.setDrawRange(0, n);
+
+	const line = new Line(geometry, makeOrbitLineMaterial(color));
+	line.frustumCulled = false;
+	line.visible = false;
+	line.userData.orbitCenter = new Vector3(cx, cy, cz);
+	line.userData.trailBuffer = trailBuffer;
+	line.userData.useTrail = useTrail;
+	return line;
+}
+
+export function makeOrbitLine(
+	body: PositionedBody,
+	color: string,
+	basisPos: [number, number, number] = [0, 0, 0],
+	jd: number = dateToJD(new Date())
+): Line {
+	// Chebyshev-backed: geometry is driven by the rolling trail buffer, which
+	// is populated at chunk-load time and advanced each frame by ContextManager.
+	if (body.trailBuffer) {
+		return makeChebyshevOrbitLine(body, body.trailBuffer, color, basisPos);
+	}
+
+	const { orbitElements, orbitCenter, data } = body;
+
+	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
+	// period so the trail ends at the body's current position. data.n is in
+	// deg/day for SGP4 bodies (converted in chunk.ts); back-convert to rev/day.
+	let curve: [number, number, number][];
+	let isOpenCurve: boolean;
+	if (data.satrec) {
+		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS);
+		isOpenCurve = true;
+	} else {
+		if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
+		const result = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
+		curve = result.points;
+		isOpenCurve = result.isOpen;
+	}
+
+	const cx = orbitCenter?.[0] ?? 0;
+	const cy = orbitCenter?.[1] ?? 0;
+	const cz = orbitCenter?.[2] ?? 0;
+
+	const useTrail =
+		isOpenCurve ||
+		data.objectType === ObjectType.DWARF_PLANET ||
+		data.objectType === ObjectType.MOON ||
+		data.objectType === ObjectType.SPACECRAFT ||
+		data.objectType === ObjectType.COMET ||
+		isAsteroid(data.objectType);
+
+	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
+	if (validPoints.length < 2) return makeEmptyOrbitLine();
+
+	// Size buffers to the full curve length so refreshes that produce longer
+	// trails (e.g. body.position and curve become consistent after the first
+	// tick for SGP4 bodies) don't hit the `posAttr.count < validPoints.length`
+	// early-return in refreshOrbitLineGeometry.
+	const bufferCapacity = Math.max(validPoints.length, curve.length);
+	const fullAlphas = new Float32Array(bufferCapacity);
+	const trailAlphas = new Float32Array(bufferCapacity);
+	writeOrbitAlphas(
+		fullAlphas.subarray(0, validPoints.length) as Float32Array,
+		trailAlphas.subarray(0, validPoints.length) as Float32Array,
+		isOpenCurve,
+		useTrail
+	);
+
+	// Store vertices in basis-relative coords (world − basis). Basis tracks
+	// the focused body, so for focused bodies the vertex magnitudes stay
+	// small and the shader's (vertex + uCenterOffset) avoids catastrophic
+	// Float32 cancellation even for distant outer-solar-system bodies.
+	const bx = cx - basisPos[0],
+		by = cy - basisPos[1],
+		bz = cz - basisPos[2];
+	const posArr = new Float32Array(bufferCapacity * 3);
+	for (let k = 0; k < validPoints.length; k++) {
+		posArr[k * 3] = validPoints[k][0] + bx;
+		posArr[k * 3 + 1] = validPoints[k][1] + by;
+		posArr[k * 3 + 2] = validPoints[k][2] + bz;
+	}
+
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
+	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
+	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
+	geometry.setDrawRange(0, validPoints.length);
+
+	const line = new Line(geometry, makeOrbitLineMaterial(color));
 	line.frustumCulled = false; // shader repositions geometry via uCenterOffset
 	line.visible = false; // updateBodyVisibility sets the correct state next frame; avoids a 1-frame flash when added mid-load
 	// Store Float64 orbit-local positions for rebuilding when focus changes,
@@ -267,12 +329,59 @@ export function makeOrbitLine(
  * clock — a static construction-time curve would drift out of sync under time
  * playback (and go stale entirely under drag/J2 secular effects).
  */
+/**
+ * Rewrite a chebyshev-backed orbit line's vertex buffer from its trail buffer.
+ * Called from {@link refreshOrbitLineGeometry} (per jd tick) and from
+ * `rebuildOrbitLineBasis` (after focus change without a jd tick). Unlike the
+ * Kepler/SGP4 path, there's no cached vertex list to rebase — the ring buffer
+ * is already the source of truth, so we just read it again with the new basis.
+ */
+export function refreshChebyshevOrbitLineGeometry(
+	line: Line,
+	buffer: TrailBuffer,
+	basisPos: [number, number, number]
+): void {
+	const useTrail = line.userData.useTrail as boolean;
+	const oc = line.userData.orbitCenter as Vector3;
+	const posAttr = line.geometry.getAttribute('position');
+	const trailAttr = line.geometry.getAttribute('trailAlpha');
+	const fullAttr = line.geometry.getAttribute('fullAlpha');
+	const posArr = posAttr.array as Float32Array;
+	const bx = oc.x - basisPos[0];
+	const by = oc.y - basisPos[1];
+	const bz = oc.z - basisPos[2];
+	const n = buffer.writeVertices(posArr, bx, by, bz);
+	if (n < 2) {
+		line.geometry.setDrawRange(0, 0);
+		posAttr.needsUpdate = true;
+		return;
+	}
+	writeOrbitAlphas(
+		(fullAttr.array as Float32Array).subarray(0, n) as Float32Array,
+		(trailAttr.array as Float32Array).subarray(0, n) as Float32Array,
+		true,
+		useTrail
+	);
+	line.geometry.setDrawRange(0, n);
+	posAttr.needsUpdate = true;
+	trailAttr.needsUpdate = true;
+	fullAttr.needsUpdate = true;
+}
+
 export function refreshOrbitLineGeometry(
 	body: PositionedBody,
 	line: Line,
 	basisPos: [number, number, number],
 	jd: number
 ): void {
+	// Chebyshev-backed: buffer holds live past-position samples; just copy them
+	// into the vertex buffer, shifted by (orbitCenter − basis).
+	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
+	if (trailBuffer) {
+		refreshChebyshevOrbitLineGeometry(line, trailBuffer, basisPos);
+		return;
+	}
+
 	let curve = line.userData.orbitCurve as [number, number, number][] | undefined;
 	if (!curve) return;
 	const isOpenCurve = line.userData.isOpenCurve as boolean;

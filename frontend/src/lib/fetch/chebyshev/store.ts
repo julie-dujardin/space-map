@@ -16,8 +16,7 @@
  */
 
 import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/chebyshev/fetch';
-import { chebyshevPositionKm, chebyshevPositionScene } from '$lib/fetch/chebyshev/propagate';
-import { kmToScene } from '$lib/math/units';
+import { chebyshevPositionScene } from '$lib/fetch/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/chebyshev/parse';
 
 export interface ChebyshevZoneManifest {
@@ -59,6 +58,11 @@ export class ChebyshevStore {
 	private readonly chunks = new Map<string, Map<number, FetchedChebyshev>>();
 	/** `objectId → zone` so getPosition can route without scanning zones. */
 	private readonly idToZone = new Map<string, string>();
+	/** In-flight `loadChunk` promises keyed by `zone:chunkIdx`, so concurrent
+	 * `ensure()` calls (e.g. per-frame) don't kick off duplicate fetches. */
+	private readonly inflight = new Map<string, Promise<void>>();
+	/** Last jd passed to `ensure()` — skips a full pass when nothing changed. */
+	private lastEnsuredJd: number = NaN;
 
 	constructor(manifest: ChebyshevManifest) {
 		this.manifest = manifest;
@@ -70,25 +74,61 @@ export class ChebyshevStore {
 
 	/**
 	 * Load the chunks covering `jd` (and ±NEIGHBOR_WINDOW neighbors) for every
-	 * zone in the manifest. Safe to call multiple times; already-loaded chunks
-	 * are skipped.
+	 * zone in the manifest. Idempotent, safe to call every frame.
+	 *
+	 * Returns `true` if every zone's current-chunk is already loaded (so the
+	 * caller can rely on position queries right away), `false` if a fetch was
+	 * kicked off (position queries may return `null` until it resolves).
 	 */
-	async ensure(jd: number): Promise<void> {
+	ensure(jd: number): { ready: boolean; done: Promise<void> } {
+		// Cheap skip: same jd as last call → caller already kicked ensures and
+		// the async fetches (if any) are still resolving.
+		if (jd === this.lastEnsuredJd) {
+			return { ready: this.allCurrentChunksLoaded(jd), done: Promise.resolve() };
+		}
+		this.lastEnsuredJd = jd;
 		const jobs: Promise<void>[] = [];
+		let ready = true;
 		for (const [zone, meta] of Object.entries(this.manifest.zones)) {
 			const center = chunkIndexForJd(meta, jd);
+			const zoneMap = this.chunks.get(zone);
+			if (!zoneMap?.has(center)) ready = false;
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
 				const idx = center + d;
 				if (idx < 0 || idx >= meta.chunks) continue;
-				jobs.push(this.loadChunk(zone, idx));
+				const job = this.loadChunk(zone, idx);
+				if (job) jobs.push(job);
 			}
 		}
-		await Promise.all(jobs);
+		return {
+			ready,
+			done: jobs.length > 0 ? Promise.all(jobs).then(() => undefined) : Promise.resolve()
+		};
 	}
 
-	private async loadChunk(zone: string, chunkIdx: number): Promise<void> {
+	/** True when every zone's chunk for `jd` is resident in memory. */
+	private allCurrentChunksLoaded(jd: number): boolean {
+		for (const [zone, meta] of Object.entries(this.manifest.zones)) {
+			const center = chunkIndexForJd(meta, jd);
+			if (!this.chunks.get(zone)?.has(center)) return false;
+		}
+		return true;
+	}
+
+	private loadChunk(zone: string, chunkIdx: number): Promise<void> | null {
+		const zoneMap = this.chunks.get(zone);
+		if (zoneMap?.has(chunkIdx)) return null;
+		const key = `${zone}:${chunkIdx}`;
+		const existing = this.inflight.get(key);
+		if (existing) return existing;
+		const job = this.fetchAndStore(zone, chunkIdx);
+		this.inflight.set(key, job);
+		job.finally(() => this.inflight.delete(key));
+		return job;
+	}
+
+	private async fetchAndStore(zone: string, chunkIdx: number): Promise<void> {
 		let zoneMap = this.chunks.get(zone);
-		if (zoneMap?.has(chunkIdx)) return;
 		if (!zoneMap) {
 			zoneMap = new Map();
 			this.chunks.set(zone, zoneMap);
@@ -129,38 +169,6 @@ export class ChebyshevStore {
 		if (!loc) return null;
 		return chebyshevPositionScene(loc.body, jd);
 	}
-
-	/**
-	 * Sample `pointCount` points in Three.js scene units spanning `periodDays`
-	 * centered on `jd`, evenly spaced. The returned points are parent-relative
-	 * (same frame the scene uses for orbit-line geometry).
-	 *
-	 * Returns null if the body isn't loaded. Samples outside the body's segment
-	 * coverage become NaN triples (buildOrbitTrailPoints already filters on
-	 * isFinite, so these drop out of the final curve).
-	 */
-	sampleOrbitScene(
-		objectId: string,
-		jd: number,
-		periodDays: number,
-		pointCount: number
-	): [number, number, number][] | null {
-		const loc = this.resolve(objectId, jd);
-		if (!loc) return null;
-		const pts: [number, number, number][] = new Array(pointCount);
-		const half = periodDays / 2;
-		for (let k = 0; k < pointCount; k++) {
-			const t = jd - half + (k / (pointCount - 1)) * periodDays;
-			const p = chebyshevPositionKm(loc.body, t);
-			if (!p) {
-				pts[k] = [NaN, NaN, NaN];
-				continue;
-			}
-			// ECLIPJ2000 (x, y, z) → Three.js (x, z, -y), scaled into scene units.
-			pts[k] = [kmToScene(p[0]), kmToScene(p[2]), -kmToScene(p[1])];
-		}
-		return pts;
-	}
 }
 
 /**
@@ -178,6 +186,6 @@ export async function loadChebyshevStore(
 	};
 	if (!metadata.chebyshev) return null;
 	const store = new ChebyshevStore(metadata.chebyshev);
-	await store.ensure(jd);
+	await store.ensure(jd).done;
 	return store;
 }

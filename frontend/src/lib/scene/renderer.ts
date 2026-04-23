@@ -36,7 +36,12 @@ import {
 	loadSystemData,
 	makeCircleTexture
 } from './objects/construction';
-import { makePointCloudFromBuffer, refreshOrbitLineGeometry } from './objects/builders';
+import {
+	makePointCloudFromBuffer,
+	refreshChebyshevOrbitLineGeometry,
+	refreshOrbitLineGeometry
+} from './objects/builders';
+import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool, type GroupInput } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
@@ -575,12 +580,20 @@ export class SceneRenderer {
 	 */
 	private rebuildOrbitLineBasis(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
+		const basis: Vec3 = [fx, fy, fz];
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			// Don't gate on line.visible — newly-built lines are visible=false
 			// but will be flipped visible later this frame by updateBodyVisibility;
 			// their vertices must be rebased against the new focus before first render.
 			if (!line) continue;
+			// Chebyshev-backed lines have their vertices re-read from the live
+			// trail buffer each time instead of from a cached Float64 list.
+			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
+			if (trailBuffer) {
+				refreshChebyshevOrbitLineGeometry(line, trailBuffer, basis);
+				continue;
+			}
 			const localPositions = line.userData.orbitLocalPositions as
 				| [number, number, number][]
 				| undefined;
@@ -626,6 +639,15 @@ export class SceneRenderer {
 	// --- Per-frame body position & orientation updates ---
 
 	private updatePositions(jd: number): void {
+		// Keep the chebyshev working set centred on `jd` — chunks for the
+		// current time window load in the background on boundary crossings so
+		// `positionScene` stays valid under time playback. Fire-and-forget: the
+		// frame may miss data for one or two ticks right at a boundary, during
+		// which chebyshev-tracked bodies are hidden (outOfRange) exactly like
+		// SGP4 out-of-coverage bodies.
+		this.ctx.chebStore?.ensure(jd);
+		this.ctx.advanceTrailBuffers(jd);
+
 		// Seed positionMap with SSB at origin. Iterate ALL bodies with orbit
 		// elements (majors, moons, barycenters, promoted minor bodies). Moons'
 		// parentId is the planetary barycenter (SPICE convention: Io → naif-5),
@@ -658,18 +680,24 @@ export class SceneRenderer {
 				return;
 			}
 			let x: number, y: number, z: number;
-			// Chebyshev override: the position is straight from the polynomials
-			// (parent-relative, already in scene units). Falls through to the
-			// existing propagators when the body isn't chebyshev-backed or jd is
-			// outside its coverage — which, for non-chebyshev bodies, is most of
-			// them.
-			const chebOffset = this.ctx.chebStore?.positionScene(d.id, jd);
-			if (chebOffset) {
+			// Chebyshev-tracked bodies (planets, moons) propagate strictly from
+			// the polynomials — no Kepler fallback. When a chunk boundary is
+			// being loaded or jd is outside the export's coverage, hide the body
+			// (matches SGP4 behaviour) rather than drifting into positions that
+			// break eclipse geometry.
+			const isChebTracked = this.ctx.chebStore?.has(d.id) ?? false;
+			if (isChebTracked) {
+				const chebOffset = this.ctx.chebStore!.positionScene(d.id, jd);
+				if (!chebOffset) {
+					if (bo) bo.outOfRange = true;
+					return;
+				}
 				x = parentPos[0] + chebOffset[0];
 				y = parentPos[1] + chebOffset[1];
 				z = parentPos[2] + chebOffset[2];
 			} else if (d.a === 0 && !isParabolic && !d.satrec) {
-				// Body coincides with its parent (e.g. planet at its barycenter).
+				// Body coincides with its parent (e.g. a Kepler-only barycenter
+				// placeholder, if one ever appears).
 				[x, y, z] = parentPos;
 			} else {
 				const offset = d.satrec

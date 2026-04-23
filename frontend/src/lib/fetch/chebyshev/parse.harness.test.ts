@@ -50,7 +50,9 @@ describe.skipIf(!existsSync(EXPORT))('chebyshev harness (real export)', () => {
 		// Earth wobbles ~4671 km around EMB; 4900 km is on-axis for J2000.
 		expect(r).toBeGreaterThan(4000);
 		expect(r).toBeLessThan(5500);
-		console.log(`Earth at J2000: (${p![0].toFixed(3)}, ${p![1].toFixed(3)}, ${p![2].toFixed(3)}) km, |r|=${r.toFixed(3)}`);
+		console.log(
+			`Earth at J2000: (${p![0].toFixed(3)}, ${p![1].toFixed(3)}, ${p![2].toFixed(3)}) km, |r|=${r.toFixed(3)}`
+		);
 	});
 
 	it('evaluates Earth at the first segment midpoint', () => {

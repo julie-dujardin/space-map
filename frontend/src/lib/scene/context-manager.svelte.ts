@@ -8,6 +8,8 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore, type ChebyshevManifest } from '$lib/fetch/chebyshev/store';
+import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
+import { populateTrailBuffer } from '$lib/fetch/elements/chunk';
 
 /*
  * Visibility options:
@@ -265,6 +267,14 @@ export class ContextManager {
 	 */
 	chebStore: ChebyshevStore | null = null;
 
+	/**
+	 * Rolling past-position trails for every chebyshev-tracked body, keyed by
+	 * string id. Populated during `ChunkLoader.process` (one orbital period of
+	 * initial history) and advanced every frame by `advanceTrailBuffers`.
+	 * Planets reference their barycenter's entry here via `PositionedBody.trailBuffer`.
+	 */
+	chebBuffers = new Map<string, TrailBuffer>();
+
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
@@ -294,6 +304,38 @@ export class ContextManager {
 	private fullMoonIds = new Set<string>();
 	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
+
+	/**
+	 * Advance every chebyshev trail buffer to `jd`. For each buffer, samples
+	 * chebyshev positions at step-day intervals and appends them; a big jump
+	 * (forward past one period, or any reversal) clears and re-seeds from the
+	 * new jd. Must be called after `chebStore.ensure(jd)` so the underlying
+	 * chunks are available.
+	 */
+	advanceTrailBuffers(jd: number): void {
+		const store = this.chebStore;
+		if (!store) return;
+		for (const [targetId, buffer] of this.chebBuffers) {
+			const last = buffer.newestJd;
+			const dt = jd - last;
+			// Empty buffer, time reversed, or jump > one period: re-seed.
+			if (!isFinite(last) || dt < 0 || dt > buffer.stepDays * buffer.capacity) {
+				buffer.clear();
+				populateTrailBuffer(buffer, store, targetId, jd);
+				continue;
+			}
+			if (dt < buffer.stepDays) continue;
+			// Append at canonical multiples of stepDays from `last`; bounded by
+			// capacity so one oversized frame never does more work than a full
+			// re-seed would.
+			const steps = Math.min(Math.floor(dt / buffer.stepDays), buffer.capacity);
+			for (let k = 1; k <= steps; k++) {
+				const t = last + k * buffer.stepDays;
+				const p = store.positionScene(targetId, t);
+				if (p) buffer.append(t, p[0], p[1], p[2]);
+			}
+		}
+	}
 
 	/**
 	 * Look up any body by ID. Checks the major-body index first,
@@ -350,11 +392,11 @@ export class ContextManager {
 			const chebPromise = metadataPromise.then(async (metadata) => {
 				if (!metadata.chebyshev) return null;
 				const store = new ChebyshevStore(metadata.chebyshev);
-				await store.ensure(dateToJD(date));
+				await store.ensure(dateToJD(date)).done;
 				return store;
 			});
 			this.chebStore = await chebPromise;
-			const loader = new ChunkLoader(this.chebStore);
+			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
 
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
