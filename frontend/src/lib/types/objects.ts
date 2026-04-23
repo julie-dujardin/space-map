@@ -62,6 +62,13 @@ export interface PositionedBody {
 	orbitElements?: OrbitalElements;
 	/** World-space center of the orbit (parent position). Defaults to origin. */
 	orbitCenter?: [number, number, number];
+	/**
+	 * Pre-sampled orbit curve in parent-relative scene coordinates. When set,
+	 * `makeOrbitLine` uses these points directly instead of reconstructing the
+	 * curve from `orbitElements`. Used for Chebyshev-backed bodies whose trail
+	 * comes straight from the sampled ephemeris.
+	 */
+	orbitCurve?: [number, number, number][];
 }
 
 /**

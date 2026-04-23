@@ -7,6 +7,7 @@ import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
 import { dateToJD } from '$lib/format/date';
+import { ChebyshevStore, type ChebyshevManifest } from '$lib/fetch/chebyshev/store';
 
 /*
  * Visibility options:
@@ -257,6 +258,12 @@ export class ContextManager {
 	majorBodies: PositionedBody[] = [];
 	asteroidBodiesByZone = new Map<string, PositionedBody[]>();
 	spacecraftByParent = new Map<string, PositionedBody[]>();
+	/**
+	 * Chebyshev polynomial ephemeris for SPICE-sourced major bodies. Null until
+	 * the metadata.json fetch in `load()` resolves; stays null if the export
+	 * ships no chebyshev block.
+	 */
+	chebStore: ChebyshevStore | null = null;
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
@@ -308,40 +315,46 @@ export class ContextManager {
 
 	async load(date: Date, targetId?: string): Promise<void> {
 		try {
-			const loader = new ChunkLoader();
-
 			// Kick off moons + metadata fetches immediately, in parallel with major processing.
 			// Once metadata arrives, fire all chunk prefetches so they're cached before Phase 2 starts.
 			ChunkLoader.prefetch('moons', 0, 0);
 			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation.
 			// Fire-and-forget; rotation falls back to the first-order model until it lands.
 			loadNutPrecAngles();
-			const minorChunkArgsPromise = fetch('/data/v1/metadata.json')
-				.then((r) => {
-					if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
-					return r.json();
-				})
-				.then(
-					(metadata: { zones: Record<string, { zooms: Record<string, { parts: number }> }> }) => {
-						const args: { zone: string; zoom: number; part: number }[] = [];
-						for (const [zone, zoneData] of Object.entries(metadata.zones) as [
-							string,
-							{ zooms: Record<string, { parts: number }> }
-						][]) {
-							for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms) as [
-								string,
-								{ parts: number }
-							][]) {
-								if (zone !== 'major' && zone !== 'moons')
-									for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
-										args.push({ zone, zoom: Number(zoomStr), part });
-										ChunkLoader.prefetch(zone, Number(zoomStr), part);
-									}
+			const metadataPromise = fetch('/data/v1/metadata.json').then((r) => {
+				if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
+				return r.json() as Promise<{
+					zones: Record<string, { zooms: Record<string, { parts: number }> }>;
+					chebyshev?: ChebyshevManifest;
+				}>;
+			});
+
+			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
+				const args: { zone: string; zoom: number; part: number }[] = [];
+				for (const [zone, zoneData] of Object.entries(metadata.zones)) {
+					for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
+						if (zone !== 'major' && zone !== 'moons')
+							for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
+								args.push({ zone, zoom: Number(zoomStr), part });
+								ChunkLoader.prefetch(zone, Number(zoomStr), part);
 							}
-						}
-						return args;
 					}
-				);
+				}
+				return args;
+			});
+
+			// Chebyshev must be ready before we process major/moons — those zones
+			// contain the SPICE-sourced bodies whose positions we take from the
+			// polynomials. No fallback: if the export carries a chebyshev block,
+			// we wait.
+			const chebPromise = metadataPromise.then(async (metadata) => {
+				if (!metadata.chebyshev) return null;
+				const store = new ChebyshevStore(metadata.chebyshev);
+				await store.ensure(dateToJD(date));
+				return store;
+			});
+			this.chebStore = await chebPromise;
+			const loader = new ChunkLoader(this.chebStore);
 
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];

@@ -128,17 +128,25 @@ export function makeOrbitLine(
 	jd: number = dateToJD(new Date())
 ): Line {
 	const { orbitElements, orbitCenter, data } = body;
-	if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
 
 	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
 	// period so the trail ends at the body's current position. data.n is in
 	// deg/day for SGP4 bodies (converted in chunk.ts); back-convert to rev/day.
-	const { points: curve, isOpen: isOpenCurve } = data.satrec
-		? {
-				points: sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS),
-				isOpen: true
-			}
-		: orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
+	// Chebyshev-backed bodies ship their curve pre-sampled as an open arc.
+	let curve: [number, number, number][];
+	let isOpenCurve: boolean;
+	if (data.satrec) {
+		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS);
+		isOpenCurve = true;
+	} else if (body.orbitCurve) {
+		curve = body.orbitCurve;
+		isOpenCurve = true;
+	} else {
+		if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
+		const result = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
+		curve = result.points;
+		isOpenCurve = result.isOpen;
+	}
 
 	const cx = orbitCenter?.[0] ?? 0;
 	const cy = orbitCenter?.[1] ?? 0;

@@ -14,6 +14,8 @@ import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/t
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
+import type { ChebyshevStore } from '$lib/fetch/chebyshev/store';
+import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
 
 function keplerianToBody(
 	cols: KeplerianColumns,
@@ -152,8 +154,14 @@ export class ChunkLoader {
 	positions = new Map<number, [number, number, number]>();
 	// Store barycenter orbital elements for planet orbit drawing
 	barycenters = new Map<number, OrbitalElements>();
+	// Pre-sampled chebyshev orbit curves, keyed by NAIF ID. Planets borrow their
+	// parent barycenter's entry here instead of sampling their own (tiny) wobble.
+	// TODO: remove the Keplerian `n` dependency once chebyshev ships periods per
+	// body — currently we still need the elements chunk loaded to get the
+	// orbital period for the sampling window.
+	chebCurves = new Map<number, [number, number, number][]>();
 
-	constructor() {
+	constructor(private readonly cheb?: ChebyshevStore | null) {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
 	}
 
@@ -208,15 +216,24 @@ export class ChunkLoader {
 			// The per-frame propagation gate keeps the body hidden until jd
 			// re-enters range.
 			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
-			const offset = !inRange
-				? ([0, 0, 0] as [number, number, number])
-				: body.satrec
-					? sgp4PositionScene(body.satrec, jd)
-					: body.a === 0 && !isParabolic
-						? ([0, 0, 0] as [number, number, number])
-						: body.q != null
-							? parabolicToPosition(body, date)
-							: orbitalElementsToPosition(body, date);
+			// Chebyshev override: for bodies shipped with SPICE polynomials, take
+			// the parent-relative offset straight from the store. Orbit curve is
+			// sampled later once we know this is a rendered body (not a
+			// barycenter that only acts as a reference frame).
+			const chebOffset = this.cheb?.has(body.id)
+				? this.cheb.positionScene(body.id, jd)
+				: null;
+			const offset = chebOffset
+				? chebOffset
+				: !inRange
+					? ([0, 0, 0] as [number, number, number])
+					: body.satrec
+						? sgp4PositionScene(body.satrec, jd)
+						: body.a === 0 && !isParabolic
+							? ([0, 0, 0] as [number, number, number])
+							: body.q != null
+								? parabolicToPosition(body, date)
+								: orbitalElementsToPosition(body, date);
 			if (!offset) {
 				console.warn(
 					`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`
@@ -231,6 +248,15 @@ export class ChunkLoader {
 
 			const id = cols.id[idx];
 
+			// Sample the body's chebyshev curve once (Keplerian `n` gives the
+			// period). Stored by NAIF ID so planets can later borrow their parent
+			// barycenter's entry — mirroring the Keplerian `barycenters` map.
+			if (chebOffset && body.n > 0) {
+				const period = 360 / body.n;
+				const curve = this.cheb!.sampleOrbitScene(body.id, jd, period, NUM_ORBIT_POINTS);
+				if (curve) this.chebCurves.set(id, curve);
+			}
+
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
 					// if parent is SSB, don't use it
@@ -243,6 +269,7 @@ export class ChunkLoader {
 					data: body,
 					position: pos,
 					orbitElements: body.a > 0 ? body : undefined,
+					orbitCurve: this.chebCurves.get(id),
 					orbitCenter: parentPos
 				});
 				continue;
@@ -261,10 +288,18 @@ export class ChunkLoader {
 				// position, not at SSB — failing to do so leaves the trail offset
 				// from the body by parent_pos − SSB.
 				const hasBarycenter = this.barycenters.has(parentId);
+				// Chebyshev curve selection mirrors orbitElements selection: planets
+				// without a barycenter entry use their own curve; those with one
+				// borrow the parent's (since the planet's own chebyshev is just
+				// wobble around that barycenter).
+				const chebCurve = isMoon
+					? this.chebCurves.get(id)
+					: (this.chebCurves.get(parentId) ?? this.chebCurves.get(id));
 				bodies.push({
 					data: body,
 					position: pos,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
+					orbitCurve: chebCurve,
 					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {

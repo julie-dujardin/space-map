@@ -658,7 +658,17 @@ export class SceneRenderer {
 				return;
 			}
 			let x: number, y: number, z: number;
-			if (d.a === 0 && !isParabolic && !d.satrec) {
+			// Chebyshev override: the position is straight from the polynomials
+			// (parent-relative, already in scene units). Falls through to the
+			// existing propagators when the body isn't chebyshev-backed or jd is
+			// outside its coverage — which, for non-chebyshev bodies, is most of
+			// them.
+			const chebOffset = this.ctx.chebStore?.positionScene(d.id, jd);
+			if (chebOffset) {
+				x = parentPos[0] + chebOffset[0];
+				y = parentPos[1] + chebOffset[1];
+				z = parentPos[2] + chebOffset[2];
+			} else if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. planet at its barycenter).
 				[x, y, z] = parentPos;
 			} else {
