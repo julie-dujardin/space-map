@@ -543,11 +543,23 @@ export class ContextManager {
 			const isTopLevel =
 				body.data.objectType === ObjectType.STAR ||
 				(!isSystemBarycenter && isTopLevelParent(body.data.parentId));
-			this.focusedSystemId = isSystemBarycenter
-				? body.data.id
-				: isTopLevel
-					? null
-					: body.data.parentId;
+			let sysId: string | null;
+			if (isSystemBarycenter) {
+				sysId = body.data.id;
+			} else if (isTopLevel) {
+				sysId = null;
+			} else {
+				// parentId is either the system barycenter (e.g. Earth's parent is naif-3) or
+				// a system member one level deeper (e.g. an Earth satellite's parent is naif-399,
+				// whose parent is naif-3). Satellites aren't recorded as barycenter children
+				// — too many — so resolve by walking up via bodiesById instead.
+				const parent = this.bodiesById.get(body.data.parentId);
+				sysId =
+					parent && !isTopLevelParent(parent.data.parentId)
+						? parent.data.parentId
+						: body.data.parentId;
+			}
+			this.focusedSystemId = sysId;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
 			this.lastRecomputeDist = -1; // force recompute on next updateCamera
 			this.recomputeFullMoons();
@@ -720,15 +732,13 @@ export class ContextManager {
 	}
 
 	/**
-	 * True when focused somewhere in the Earth-Moon barycenter — either on the
-	 * barycenter itself (Earth or Moon focused), on Earth directly (an Earth
-	 * satellite focused), or on the Moon directly (a lunar orbiter focused).
-	 * Used to gate CelesTrak attribution, which is only relevant when Earth
-	 * satellites are actually on screen.
+	 * True when focused somewhere in the Earth-Moon system (barycenter, Earth,
+	 * Moon, an Earth satellite, or a lunar orbiter — setFocused resolves all of
+	 * these to naif-3). Used to gate CelesTrak attribution, which is only
+	 * relevant when Earth satellites are actually on screen.
 	 */
 	isFocusedOnEarthSystem(): boolean {
-		const id = this.focusedSystemId;
-		return id === 'naif-3' || id === 'naif-399' || id === 'naif-301';
+		return this.focusedSystemId === 'naif-3';
 	}
 
 	/**
