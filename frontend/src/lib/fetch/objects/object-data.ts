@@ -1,4 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
+import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 
 // --- Global object data (non-localized) ---
 
@@ -200,42 +201,71 @@ export interface ObjectDetailData {
 	localized: LocalizedObjectData | null;
 }
 
-const cache = new Map<string, ObjectDetailData>();
+/**
+ * Bundle-level cache: one entry per fetched bundle URL, keyed by URL, holding
+ * the decompressed object-keyed map. Clicking neighbor objects that happen to
+ * hash into the same bucket becomes instant.
+ */
+const bundleCache = new Map<string, Promise<Record<string, unknown>>>();
 
-async function fetchJson<T>(url: string): Promise<T | null> {
-	const res = await fetch(url);
-	if (!res.ok) {
-		if (res.status === 404) return null;
-		throw new Error(`fetchJson: ${url} returned ${res.status} ${res.statusText}`);
+async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
+	let p = bundleCache.get(url);
+	if (!p) {
+		p = (async () => {
+			const res = await fetch(url);
+			if (!res.ok) {
+				if (res.status === 404) return {};
+				throw new Error(`fetchBundle: ${url} returned ${res.status} ${res.statusText}`);
+			}
+			const ds = new DecompressionStream('gzip');
+			return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
+		})();
+		bundleCache.set(url, p);
 	}
-	const ds = new DecompressionStream('gzip');
-	return new Response(res.body!.pipeThrough(ds)).json() as Promise<T>;
+	return p as Promise<Record<string, T>>;
 }
 
+/**
+ * Fetch the global + localized detail entries for `fileId`. Under the hood
+ * this fetches the hash-bucketed bundle containing the object (bucket count
+ * `N` per tier is read from `metadata.json → object_bundles`) and extracts
+ * the id-keyed entry. Bundles are cached, so subsequent lookups for
+ * bucket-mates are a local map lookup.
+ *
+ * `objectFileFlag` from the element label file selects the localized tier:
+ *   0 = no localized entry — skip the localized fetch entirely
+ *   1 = entry exists in `lang`
+ *   2 = fallback to the `en` bundle
+ */
 export async function fetchObjectDetail(
 	fileId: string,
 	objectFileFlag = 1,
 	lang = getLocale()
 ): Promise<ObjectDetailData> {
-	const key = `${fileId}:${lang}:${objectFileFlag}`;
-	const cached = cache.get(key);
-	if (cached) return cached;
+	const meta = await fetchMetadata();
 
-	let localizedPromise: Promise<LocalizedObjectData | null>;
-	if (objectFileFlag === 0) {
-		localizedPromise = Promise.resolve(null);
-	} else if (objectFileFlag === 2) {
-		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/en/${fileId}.json.gz`);
-	} else {
-		localizedPromise = fetchJson<LocalizedObjectData>(`/data/v1/objects/${lang}/${fileId}.json.gz`);
-	}
+	const localizedLang =
+		objectFileFlag === 0 ? null : objectFileFlag === 2 ? 'en' : lang;
+	const nLocalized = localizedLang ? meta.object_bundles[localizedLang] : 0;
 
-	const [global, localized] = await Promise.all([
-		fetchJson<GlobalObjectData>(`/data/v1/objects/__global__/${fileId}.json.gz`),
-		localizedPromise
+	const [globalBucket, localizedBucket] = await Promise.all([
+		hashBucket(fileId, meta.object_bundles.global),
+		nLocalized ? hashBucket(fileId, nLocalized) : Promise.resolve(-1)
 	]);
 
-	const result: ObjectDetailData = { global, localized };
-	cache.set(key, result);
-	return result;
+	const globalPromise = fetchBundle<GlobalObjectData>(
+		`/data/v1/objects/__global__/${globalBucket}.json.gz`
+	);
+	const localizedPromise: Promise<LocalizedObjectData | undefined> =
+		localizedLang && localizedBucket >= 0
+			? fetchBundle<LocalizedObjectData>(
+					`/data/v1/objects/${localizedLang}/${localizedBucket}.json.gz`
+				).then((b) => b[fileId])
+			: Promise.resolve(undefined);
+
+	const [globalBundle, localized] = await Promise.all([globalPromise, localizedPromise]);
+	return {
+		global: globalBundle[fileId] ?? null,
+		localized: localized ?? null
+	};
 }

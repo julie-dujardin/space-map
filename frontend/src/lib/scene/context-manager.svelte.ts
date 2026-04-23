@@ -6,8 +6,9 @@ import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
+import { fetchMetadata } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
-import { ChebyshevStore, type ChebyshevManifest } from '$lib/fetch/chebyshev/store';
+import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { populateTrailBuffer } from '$lib/fetch/elements/chunk';
 
@@ -363,13 +364,7 @@ export class ContextManager {
 			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation.
 			// Fire-and-forget; rotation falls back to the first-order model until it lands.
 			loadNutPrecAngles();
-			const metadataPromise = fetch('/data/v1/metadata.json').then((r) => {
-				if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
-				return r.json() as Promise<{
-					zones: Record<string, { zooms: Record<string, { parts: number }> }>;
-					chebyshev?: ChebyshevManifest;
-				}>;
-			});
+			const metadataPromise = fetchMetadata();
 
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
 				const args: { zone: string; zoom: number; part: number }[] = [];
