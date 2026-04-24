@@ -169,7 +169,6 @@
 	"source_iau_naming_name": "IAU planetary nomenclature",
 	"source_wikimedia_commons_name": "Wikimedia Commons",
 	"credits_page_title": "Credits",
-	"credits_page_intro": "Space Map stands on the shoulders of the teams below. Every dataset, image, and kernel on this page is someone else's work — the map just renders it.",
 	"credits_back_to_map": "Back to map",
 	"credits_failed_to_load": "Failed to load credits.",
 	"credits_see_all": "See full credits page",

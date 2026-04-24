@@ -43,7 +43,6 @@
 		</a>
 
 		<h1 class="text-2xl font-semibold">{m.credits_page_title()}</h1>
-		<p class="mt-2 text-muted-foreground">{m.credits_page_intro()}</p>
 
 		<section>
 			{@render sectionHeader(m.attribution_section_orbits())}
