@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
+	import { ZoomInIcon } from '@lucide/svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
@@ -22,10 +23,11 @@
 		body: PositionedBody;
 		clock: SimClock;
 		onClose: () => void;
+		onGoTo: () => void;
 		onSheetResize?: (heightDvh: number) => void;
 	}
 
-	let { body, clock, onClose, onSheetResize }: Props = $props();
+	let { body, clock, onClose, onGoTo, onSheetResize }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	let parentBody = $derived(ctx?.getBody(body.data.parentId));
@@ -151,10 +153,16 @@
 					<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
 					<div class="flex w-full items-center justify-between">
 						<span class="text-sm font-semibold truncate">{displayName}</span>
-						<Button variant="ghost" size="icon-sm" onclick={onClose}>
-							<XIcon />
-							<span class="sr-only">{m.close()}</span>
-						</Button>
+						<div class="flex items-center gap-1">
+							<Button variant="ghost" size="icon-sm" onclick={onGoTo}>
+								<ZoomInIcon />
+								<span class="sr-only">{m.go_to_object()}</span>
+							</Button>
+							<Button variant="ghost" size="icon-sm" onclick={onClose}>
+								<XIcon />
+								<span class="sr-only">{m.close()}</span>
+							</Button>
+						</div>
 					</div>
 				</div>
 				<div
@@ -173,10 +181,16 @@
 	>
 		<div class="flex items-center justify-between p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
-			<Button variant="ghost" size="icon-sm" onclick={onClose}>
-				<XIcon />
-				<span class="sr-only">{m.close()}</span>
-			</Button>
+			<div class="flex items-center gap-1">
+				<Button variant="ghost" size="icon-sm" onclick={onGoTo}>
+					<ZoomInIcon />
+					<span class="sr-only">{m.go_to_object()}</span>
+				</Button>
+				<Button variant="ghost" size="icon-sm" onclick={onClose}>
+					<XIcon />
+					<span class="sr-only">{m.close()}</span>
+				</Button>
+			</div>
 		</div>
 
 		<ScrollArea class="flex-1 min-h-0">

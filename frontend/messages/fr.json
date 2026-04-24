@@ -80,6 +80,7 @@
 	"out_of_range_major_bodies_before": "Planètes et lunes : aucune donnée avant le {date}",
 	"out_of_range_major_bodies_outside": "Planètes et lunes : aucune donnée à cette date",
 	"my_location": "Ma position",
+	"go_to_object": "Aller à l'objet",
 	"tooltip_extent": "Dimensions de l'ellipsoïde tri-axial",
 	"tooltip_density": "Densité moyenne",
 	"tooltip_surface_gravity": "Accélération gravitationnelle à la surface",

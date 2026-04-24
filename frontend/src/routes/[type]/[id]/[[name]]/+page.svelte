@@ -6,6 +6,7 @@
 	import { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD } from '$lib/format/date';
 	import { type PositionedBody } from '$lib/types/objects';
+	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW } from '$lib/state/view';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
@@ -62,6 +63,10 @@
 					onClose={() => {
 						selectedBody = undefined;
 						drawerHeightDvh = 0;
+					}}
+					onGoTo={() => {
+						if (!selectedBody) return;
+						scene?.focusOnBody(selectedBody.data.id, minCameraDistance(selectedBody) * 5);
 					}}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>

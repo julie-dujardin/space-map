@@ -71,6 +71,7 @@
 	"type_star": "نجم",
 	"type_undocumented": "غير موثق",
 	"my_location": "موقعي",
+	"go_to_object": "الانتقال إلى الجسم",
 	"object_not_found": "الجسم {id} غير موجود",
 	"out_of_range_title": "البيانات محدودة في هذا الوقت",
 	"out_of_range_selected": "الجسم المحدد ليس له بيانات في هذا الوقت",

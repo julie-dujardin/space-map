@@ -110,6 +110,7 @@
 	"celestrak_orbit_data": "CelesTrak Orbit Data ({id})",
 	"mpc_database": "MPC Database ({id})",
 	"my_location": "My location",
+	"go_to_object": "Go to object",
 	"object_not_found": "Object {id} not found",
 	"out_of_range_title": "Limited data at this time",
 	"out_of_range_selected": "The selected object has no data at this time",
