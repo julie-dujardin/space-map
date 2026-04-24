@@ -44,4 +44,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frontend
-          command: pages deploy --branch=${{ github.head_ref || github.ref_name }}
+          command: pages deploy --project-name=space-map --branch=${{ github.head_ref || github.ref_name }}
