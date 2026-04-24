@@ -1002,7 +1002,7 @@ export class SceneRenderer {
 			bestBody = pointHit.body;
 		}
 
-		if (bestBody && bestBody.data.id !== this.focusedBody?.data.id) {
+		if (bestBody) {
 			this.handleFocus(bestBody);
 		}
 	};
@@ -1107,7 +1107,12 @@ export class SceneRenderer {
 	}
 
 	private handleFocus(body: PositionedBody): void {
-		if (this.focusedBody?.data.id === body.data.id) return;
+		if (this.focusedBody?.data.id === body.data.id) {
+			// Same body re-clicked: skip the camera fly, but re-emit so the
+			// drawer can reopen after being dismissed.
+			this.callbacks.onFocusChange(body);
+			return;
+		}
 		this.setFocusTarget(body);
 		const camWorld = this.cameraTruePos();
 		const { latitude, longitude, distance } = cartesianToSpherical(
