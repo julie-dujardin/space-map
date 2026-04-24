@@ -140,7 +140,6 @@
 		open={true}
 		snapPoints={SNAP_POINTS as unknown as (number | string)[]}
 		bind:activeSnapPoint
-		modal={false}
 		shouldScaleBackground={false}
 		dismissible={false}
 	>
