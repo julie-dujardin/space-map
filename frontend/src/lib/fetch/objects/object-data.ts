@@ -14,10 +14,22 @@ export interface CurrencyQuantity {
 	currency: string;
 }
 
+/**
+ * Per-image thumbnail manifest emitted by the exporter.
+ *
+ * Keys are size labels (s=512px, m=1024px, xl=4096px on the longest side),
+ * values are file extensions (without a leading dot). A label is absent when
+ * the source was smaller than the bucket — we never upscale. The smallest
+ * available label always covers the source, since a source below 512px gets
+ * emitted as `s` verbatim.
+ */
+export type ImageVariants = Partial<Record<'s' | 'm' | 'xl', string>>;
+
 export interface ObjectImage {
 	file: string;
 	source_url: string;
 	kind: 'photo' | 'logo';
+	variants: ImageVariants;
 }
 
 /** Texture attribution block — mirrors `texture_attribution()` in export/systems.py. */
