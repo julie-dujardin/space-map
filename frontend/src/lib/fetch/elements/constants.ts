@@ -3,6 +3,8 @@
  * Must stay in sync with Python export/format.py.
  */
 
+import { DATA_BASE } from '../data-base';
+
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
 export const VERSION = 3;
 export const HEADER_SIZE = 32;
@@ -12,7 +14,7 @@ export const FORMAT_KEPLERIAN = 0;
 export const FORMAT_PARABOLIC = 1;
 export const FORMAT_SGP4 = 2;
 
-export const BASE_ELEMENT_PATH = '/data/v1/elements';
+export const BASE_ELEMENT_PATH = `${DATA_BASE}/v1/elements`;
 
 export const elementsBinUrl = (zone: string, zoom: number, part: number): string =>
 	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin.gz`;

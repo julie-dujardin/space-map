@@ -1,5 +1,6 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
+import { DATA_BASE } from '$lib/fetch/data-base';
 
 // --- Global object data (non-localized) ---
 
@@ -253,12 +254,12 @@ export async function fetchObjectDetail(
 	]);
 
 	const globalPromise = fetchBundle<GlobalObjectData>(
-		`/data/v1/objects/__global__/${globalBucket}.json.gz`
+		`${DATA_BASE}/v1/objects/__global__/${globalBucket}.json.gz`
 	);
 	const localizedPromise: Promise<LocalizedObjectData | undefined> =
 		localizedLang && localizedBucket >= 0
 			? fetchBundle<LocalizedObjectData>(
-					`/data/v1/objects/${localizedLang}/${localizedBucket}.json.gz`
+					`${DATA_BASE}/v1/objects/${localizedLang}/${localizedBucket}.json.gz`
 				).then((b) => b[fileId])
 			: Promise.resolve(undefined);
 

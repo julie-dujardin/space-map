@@ -5,6 +5,8 @@
  * as a plain static page (crawlable, shareable).
  */
 
+import { DATA_BASE } from '$lib/fetch/data-base';
+
 export interface TextureCredit {
 	body_id: string;
 	name: string;
@@ -35,7 +37,7 @@ export const load = async ({
 }: {
 	fetch: typeof globalThis.fetch;
 }): Promise<{ credits: Credits }> => {
-	const res = await fetch('/data/v1/credits.json');
+	const res = await fetch(`${DATA_BASE}/v1/credits.json`);
 	if (!res.ok) throw new Error(`Failed to load credits.json: ${res.status}`);
 	const credits = (await res.json()) as Credits;
 	return { credits };

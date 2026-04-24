@@ -19,6 +19,7 @@ import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/nut-prec-angles';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { DATA_BASE } from '$lib/fetch/data-base';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant } from '../label/factory';
@@ -277,7 +278,12 @@ async function swapBodyTexture(
 	bo.textureLoading = true;
 	try {
 		const texture = await new Promise<Texture>((resolve, reject) => {
-			textureLoader.load(`/data/v1/textures/${fileId}/${tier}.webp`, resolve, undefined, reject);
+			textureLoader.load(
+				`${DATA_BASE}/v1/textures/${fileId}/${tier}.webp`,
+				resolve,
+				undefined,
+				reject
+			);
 		});
 		const material = bo.mesh.material as MeshStandardMaterial;
 		material.map?.dispose();
@@ -381,7 +387,7 @@ export async function loadSystemData(
 ): Promise<void> {
 	let meta: Record<string, SystemBodyMeta>;
 	try {
-		const resp = await fetch(`/data/v1/systems/${barycenterId}.json`);
+		const resp = await fetch(`${DATA_BASE}/v1/systems/${barycenterId}.json`);
 		if (!resp.ok) return;
 		meta = await resp.json();
 	} catch {

@@ -5,6 +5,7 @@
  */
 
 import type { ChebyshevManifest } from './chebyshev/store';
+import { DATA_BASE } from './data-base';
 
 /**
  * Bucket counts for hash-bucketed object detail bundles. `global` is the
@@ -35,7 +36,7 @@ let pending: Promise<Metadata> | null = null;
 
 export function fetchMetadata(): Promise<Metadata> {
 	if (pending) return pending;
-	pending = fetch('/data/v1/metadata.json').then((r) => {
+	pending = fetch(`${DATA_BASE}/v1/metadata.json`).then((r) => {
 		if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
 		return r.json() as Promise<Metadata>;
 	});
