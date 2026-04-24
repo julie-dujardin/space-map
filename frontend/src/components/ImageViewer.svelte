@@ -252,7 +252,7 @@
 		onpointermove={onPointerMove}
 		onpointerup={onPointerUp}
 		onpointercancel={() => (swiping = false)}
-		class="fixed inset-0 z-[100] md:left-[380px] flex touch-none items-center justify-center bg-black/85 backdrop-blur-sm"
+		class="fixed inset-0 z-[100] md:left-[380px] flex touch-none pointer-events-auto items-center justify-center bg-black/85 backdrop-blur-sm"
 	>
 		<!-- Backdrop click area: full panel, below the image. Uses a button so the
 	     interaction is keyboard-accessible even though the Escape key is the
