@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import faviconLight from '$lib/assets/favicon-light.svg';
+	import faviconDark from '$lib/assets/favicon-dark.svg';
 	import { getLocale, getTextDirection } from '$lib/paraglide/runtime.js';
 	import Sonner from '$lib/components/ui/sonner/sonner.svelte';
 
@@ -14,7 +15,8 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" media="(prefers-color-scheme: dark)" href={faviconDark} />
+	<link rel="icon" media="(prefers-color-scheme: light)" href={faviconLight} />
 </svelte:head>
 
 <Sonner position="top-right" />
