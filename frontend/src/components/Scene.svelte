@@ -115,6 +115,6 @@
 </script>
 
 <div class="relative w-full h-full">
-	<canvas bind:this={canvas} class="w-full h-full block"></canvas>
+	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto"></canvas>
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
 </div>
