@@ -6,7 +6,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { DATA_BASE } from '$lib/fetch/data-base';
+	import { fetchImageMetadata, pickImageUrl, type ImageMetadata } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 
 	interface Props {
@@ -24,10 +24,23 @@
 	// case (viewer isn't mounted when imageIndex is null).
 	const index = $derived(Math.min(Math.max(appState.view.imageIndex ?? 0, 0), images.length - 1));
 	const currentImage = $derived(images[index]);
-	const fullSrc = $derived(`${DATA_BASE}/v1/images/full/${currentImage.file}`);
-	const metadataSrc = $derived(
-		`${DATA_BASE}/v1/images/metadata/${encodeURIComponent(currentImage.file)}.json`
-	);
+
+	// Track viewport + DPR so the requested variant rescales on resize / zoom
+	// (e.g. moving a laptop between a retina display and an external monitor
+	// mid-session). 100vw/vh is the viewer's upper bound; the sidebar offset on
+	// md+ is ignored — overshooting by a bucket is cheap.
+	let viewportPx = $state(0);
+	$effect(() => {
+		const update = () => {
+			const dpr = window.devicePixelRatio ?? 1;
+			viewportPx = Math.max(window.innerWidth, window.innerHeight) * dpr;
+		};
+		update();
+		window.addEventListener('resize', update);
+		return () => window.removeEventListener('resize', update);
+	});
+
+	const fullSrc = $derived(viewportPx ? pickImageUrl(currentImage, viewportPx) : undefined);
 
 	const hasMultiple = $derived(images.length > 1);
 	const hasPrev = $derived(index > 0);
@@ -68,10 +81,9 @@
 	// JSON because (a) it'd duplicate data across tens of thousands of object
 	// files, (b) the viewer is the only place that actually renders it.
 	$effect(() => {
-		const url = metadataSrc;
+		const image = currentImage;
 		let cancelled = false;
-		fetch(url)
-			.then((r) => (r.ok ? r.json() : null))
+		fetchImageMetadata(image)
 			.then((meta) => {
 				if (cancelled || !meta) return;
 				attribution = extractAttribution(meta);
@@ -100,13 +112,17 @@
 		return () => ro.disconnect();
 	});
 
-	// Preload neighbours so arrow/wheel navigation flips instantly.
+	// Preload neighbours so arrow/wheel navigation flips instantly. Using the
+	// same `pickImageUrl` the rendered <img> uses guarantees a single cache
+	// entry per neighbour across preload → display transition.
 	$effect(() => {
-		if (!hasMultiple) return;
+		if (!hasMultiple || !viewportPx) return;
 		const neighbours = [index - 1, index + 1].filter((i) => i >= 0 && i < images.length);
 		for (const i of neighbours) {
+			const src = pickImageUrl(images[i], viewportPx);
+			if (!src) continue;
 			const img = new Image();
-			img.src = `${DATA_BASE}/v1/images/full/${images[i].file}`;
+			img.src = src;
 		}
 	});
 
@@ -163,54 +179,33 @@
 		onClose();
 	}
 
-	// --- extmetadata helpers -------------------------------------------------
+	// --- metadata helpers ---------------------------------------------------
 
-	interface ExtField {
-		value?: string | Record<string, string> | null;
-	}
-
-	type ExtMeta = Record<string, ExtField | undefined>;
-
-	interface CommonsMetadata {
-		imageinfo?: { extmetadata?: ExtMeta };
-	}
-
-	function extractAttribution(meta: CommonsMetadata): Attribution {
-		const em = meta.imageinfo?.extmetadata ?? {};
+	function extractAttribution(meta: ImageMetadata): Attribution {
 		return {
-			license: plainText(em.LicenseShortName),
-			license_url: plainUrl(em.LicenseUrl),
-			artist: plainText(em.Artist) ?? plainText(em.Credit),
+			license: meta.license?.name,
+			license_url: meta.license?.url,
+			artist: plainText(meta.artist),
 			// For descriptions, a multilang fallback to an arbitrary language
 			// would be unreadable, so we only pick the user's own locale. Bare
 			// (unlocalized) strings are always shown if nothing better is available.
-			description: plainText(em.ImageDescription, true)
+			description: plainText(meta.description, true)
 		};
 	}
 
-	/** Pick the best language variant from an extmetadata field value.
-	 *  Commons returns either a bare string or `{_type: "lang", en: ..., fr: ...}`
-	 *  when we passed `iiextmetadatamultilang=1` at download time.
-	 *  With `strictLocale`, a multilang value is only returned for the user's
-	 *  current locale; bare strings are always returned regardless. */
-	function pickLang(value: string | Record<string, string>, strictLocale = false): string {
-		if (typeof value === 'string') return value;
-		const locale = getLocale();
-		if (typeof value[locale] === 'string') return value[locale];
-		if (strictLocale) return '';
-		if (typeof value.en === 'string') return value.en;
-		for (const [k, v] of Object.entries(value)) {
-			if (k !== '_type' && typeof v === 'string') return v;
-		}
-		return '';
-	}
-
-	/** HTML-strip, entity-decode, whitespace-collapse. Block elements (p, div, li)
-	 *  and <br> are converted to newlines so paragraph structure survives for
-	 *  callers that want to render it (e.g. the image description). */
-	function plainText(field: ExtField | undefined, strictLocale = false): string | undefined {
-		if (!field?.value) return undefined;
-		const raw = pickLang(field.value, strictLocale);
+	/** Resolve a trimmed multilang field to a plain-text string.
+	 *
+	 *  The exporter writes bare strings when Commons didn't return a multilang
+	 *  blob and `{<locale>: str}` dicts (restricted to supported locales) when
+	 *  it did. HTML from Commons still passes through — we strip it here.
+	 *  With `strictLocale`, a dict is only resolved for the current locale;
+	 *  bare strings are always returned regardless. */
+	function plainText(
+		value: string | Record<string, string> | undefined,
+		strictLocale = false
+	): string | undefined {
+		if (value === undefined) return undefined;
+		const raw = typeof value === 'string' ? value : pickLang(value, strictLocale);
 		if (!raw) return undefined;
 		// `innerHTML` parses but doesn't execute scripts (HTML5 spec); using
 		// `.textContent` then gives us a safely-stripped plain-text version.
@@ -227,10 +222,15 @@
 		return text || undefined;
 	}
 
-	function plainUrl(field: ExtField | undefined): string | undefined {
-		if (typeof field?.value !== 'string') return undefined;
-		const s = field.value.trim();
-		return s || undefined;
+	function pickLang(value: Record<string, string>, strictLocale: boolean): string {
+		const locale = getLocale();
+		if (typeof value[locale] === 'string') return value[locale];
+		if (strictLocale) return '';
+		if (typeof value.en === 'string') return value.en;
+		for (const v of Object.values(value)) {
+			if (typeof v === 'string') return v;
+		}
+		return '';
 	}
 </script>
 
@@ -264,11 +264,13 @@
 			class="absolute inset-0 cursor-zoom-out"
 		></button>
 
-		<img
-			src={fullSrc}
-			{alt}
-			class="relative z-10 max-h-[100vh] max-w-full object-contain pointer-events-none"
-		/>
+		{#if fullSrc}
+			<img
+				src={fullSrc}
+				{alt}
+				class="relative z-10 max-h-[100vh] max-w-full object-contain pointer-events-none"
+			/>
+		{/if}
 
 		<button
 			type="button"

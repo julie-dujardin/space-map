@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import iau_nomenclature
+from space_map_data.ingest.providers import iau_nomenclature, images
 from space_map_data.ingest.providers.objects import (
     celestrak,
     horizons,
@@ -46,6 +46,15 @@ def ingest_wikidata(download_dir: Path) -> None:
     nomenclature.ingest(download_dir)
 
 
+def ingest_images() -> None:
+    """Set ``image_available`` on every Object from downloaded Commons metadata.
+
+    Must run after ``ingest_wikidata`` so every Object's ``wikidata_qid`` is in
+    place — the availability check joins on QID.
+    """
+    images.ingest()
+
+
 def log_db_summary(start_time: float | None = None) -> None:
     """Log object counts by type, plus elapsed wall-time if start_time is given."""
     session = get_session()
@@ -68,5 +77,6 @@ def ingest(download_dir: Path) -> None:
     ingest_objects(download_dir)
     ingest_features(download_dir)
     ingest_wikidata(download_dir)
+    ingest_images()
     log_db_summary()
     logger.info("Database ready.")

@@ -32,6 +32,15 @@ SIZE_TARGETS = [
     (WEBP_MAX, "high", 6 * 1024 * 1024),
 ]
 
+# Hard file-size cap, enforced after save. Cloudflare Pages rejects individual
+# files over 25 MiB, so high-detail textures (Mercury MDIS, Bennu, Mars Viking)
+# need to shrink or re-encode at lower quality to land below this. 23 MiB
+# leaves 2 MiB of headroom for upload-wrapper overhead.
+MAX_FILE_BYTES = 24 * 1024 * 1024
+MIN_QUALITY = 60  # webp artifacts become visible on textures below this
+SHRINK_RATIO = 0.85  # how much to downscale per iteration when quality floor is hit
+MIN_DIM_AFTER_SHRINK = 4096  # stop shrinking below this — below the medium tier
+
 
 _NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
 
@@ -147,22 +156,137 @@ def _resize(img: Image.Image, max_dim: int) -> Image.Image:
     return img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
 
 
-def _save_webp(img: Image.Image, path: Path, lossless: bool) -> dict:
-    img.save(path, "webp", **_webp_kwargs(lossless))
-    size = path.stat().st_size
+def _save_webp(
+    img: Image.Image, path: Path, lossless: bool, max_bytes: int | None = MAX_FILE_BYTES
+) -> dict:
+    """Save ``img`` as WebP, honoring an optional hard size cap.
+
+    When ``max_bytes`` is set and the lossy save exceeds it, quality is dropped
+    in steps of 10 (down to ``MIN_QUALITY``); if that's still not enough the
+    image is resized down by ``SHRINK_RATIO`` and quality resets to 80.
+    Repeats until the file fits or the longest side would fall below
+    ``MIN_DIM_AFTER_SHRINK`` (at which point we give up and keep the last
+    best-effort output). Lossless saves skip the degradation loop — if a
+    lossless save overflows the cap the caller needs to downsize the source.
+    """
+    if lossless or max_bytes is None:
+        img.save(path, "webp", **_webp_kwargs(lossless))
+        size = path.stat().st_size
+        if max_bytes is not None and size > max_bytes:
+            log.warning(
+                "%s lossless exceeds cap: %.1f MiB > %.1f MiB",
+                path.name,
+                size / 1024 / 1024,
+                max_bytes / 1024 / 1024,
+            )
+        log.debug(
+            "saved %s (%dx%d, %.1f KiB)", path.name, img.width, img.height, size / 1024
+        )
+        return {
+            "file": path.name,
+            "width": img.width,
+            "height": img.height,
+            "size_bytes": size,
+            "lossless": lossless,
+        }
+
+    # Lossy with a hard cap — iteratively degrade quality then dimensions.
+    current = img
+    quality = 80
+    size = 0
+    while True:
+        current.save(path, "webp", quality=quality)
+        size = path.stat().st_size
+        if size <= max_bytes:
+            break
+        if quality > MIN_QUALITY:
+            quality -= 10
+            continue
+        # Hit the quality floor; shrink by SHRINK_RATIO and retry at q=80.
+        new_dim = int(max(current.size) * SHRINK_RATIO)
+        if new_dim < MIN_DIM_AFTER_SHRINK:
+            log.error(
+                "%s cannot fit under %.1f MiB cap (last: %.1f MiB at %dx%d q=%d)",
+                path.name,
+                max_bytes / 1024 / 1024,
+                size / 1024 / 1024,
+                current.width,
+                current.height,
+                quality,
+            )
+            break
+        log.info(
+            "%s over cap at %dx%d q=%d (%.1f MiB), shrinking to %d px",
+            path.name,
+            current.width,
+            current.height,
+            quality,
+            size / 1024 / 1024,
+            new_dim,
+        )
+        current = _resize(current, new_dim)
+        quality = 80
+
+    if current is not img:
+        log.warning(
+            "%s downsized to %dx%d q=%d to fit cap (source was %dx%d)",
+            path.name,
+            current.width,
+            current.height,
+            quality,
+            img.width,
+            img.height,
+        )
+    elif quality < 80:
+        log.info(
+            "%s re-encoded at q=%d (%.1f MiB) to fit cap",
+            path.name,
+            quality,
+            size / 1024 / 1024,
+        )
+
     log.debug(
-        "saved %s (%dx%d, %.1f KiB)", path.name, img.width, img.height, size / 1024
+        "saved %s (%dx%d, %.1f KiB)",
+        path.name,
+        current.width,
+        current.height,
+        size / 1024,
     )
-    return {
+    rec: dict = {
         "file": path.name,
-        "width": img.width,
-        "height": img.height,
+        "width": current.width,
+        "height": current.height,
         "size_bytes": size,
-        "lossless": lossless,
+        "lossless": False,
     }
+    if quality != 80:
+        rec["quality"] = quality
+    return rec
 
 
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+
+
+def _any_export_over_cap(out_dir: Path) -> bool:
+    """True if any export recorded in metadata.json exceeds MAX_FILE_BYTES.
+
+    Used to auto-reprocess stale bundles after the cap is tightened or a
+    deploy fails upload. Safe against corrupt/missing metadata: returns False
+    (falls through to the normal skip path, which will write a fresh metadata
+    via ``_refresh_metadata_from_yaml`` if needed).
+    """
+    meta_path = out_dir / "metadata.json"
+    if not meta_path.exists():
+        return False
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    exports = meta.get("exports") or {}
+    return any(
+        isinstance(rec, dict) and rec.get("size_bytes", 0) > MAX_FILE_BYTES
+        for rec in exports.values()
+    )
 
 
 class TextureProcessor:
@@ -280,17 +404,28 @@ class TextureProcessor:
         out_dir = PROCESSED_DIR / object_id
 
         if not force and (out_dir / "metadata.json").exists():
-            log.debug(
-                "skipping %s (already processed, use force=True to reprocess)", src.name
-            )
-            # Image processing is skipped, but yaml-sourced fields (organisation,
-            # attribution, description, source, type) may have changed since the
-            # image was processed. Re-read the metadata.json, patch those fields,
-            # and write it back so the export step sees current attribution
-            # without forcing a full reprocess.
-            _refresh_metadata_from_yaml(out_dir, entry, src.name)
-            self._mark_texture_available(object_id)
-            return out_dir
+            # Auto-reprocess when any export exceeds MAX_FILE_BYTES — saves the
+            # user from having to pass --force after the cap is tightened or
+            # Cloudflare rejects a deploy.
+            if _any_export_over_cap(out_dir):
+                log.info(
+                    "reprocessing %s: existing export(s) exceed %.1f MiB cap",
+                    src.name,
+                    MAX_FILE_BYTES / 1024 / 1024,
+                )
+            else:
+                log.debug(
+                    "skipping %s (already processed, use force=True to reprocess)",
+                    src.name,
+                )
+                # Image processing is skipped, but yaml-sourced fields (organisation,
+                # attribution, description, source, type) may have changed since the
+                # image was processed. Re-read the metadata.json, patch those fields,
+                # and write it back so the export step sees current attribution
+                # without forcing a full reprocess.
+                _refresh_metadata_from_yaml(out_dir, entry, src.name)
+                self._mark_texture_available(object_id)
+                return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
 
