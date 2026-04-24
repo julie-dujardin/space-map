@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
-	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
-	import { Portal } from 'bits-ui';
+	import { getContext, onMount } from 'svelte';
+	import PhotoSwipe from 'photoswipe';
+	import 'photoswipe/style.css';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
-	import { fetchImageMetadata, pickImageUrl, type ImageMetadata } from '$lib/fetch/objects/images';
+	import { fetchImageMetadata, variantUrl, type ImageMetadata } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 
 	interface Props {
@@ -19,39 +18,159 @@
 
 	const appState = getContext<AppState>('appState');
 
-	// Clamp to valid range so a stale/out-of-range `img=` in the URL doesn't
-	// blow up the `images[index]` access. ObjectHeader already guards the null
-	// case (viewer isn't mounted when imageIndex is null).
-	const index = $derived(Math.min(Math.max(appState.view.imageIndex ?? 0, 0), images.length - 1));
-	const currentImage = $derived(images[index]);
+	// Pick the largest available variant. PhotoSwipe is a zoomable fullscreen
+	// viewer, so we always want the highest-res bucket the exporter produced —
+	// leaving srcset to the browser picks the 's' variant on narrow viewports
+	// and defeats the point of opening the viewer.
+	function largestVariant(image: ObjectImage): string {
+		return variantUrl(image, 'xl') ?? variantUrl(image, 'm') ?? variantUrl(image, 's') ?? '';
+	}
 
-	// Track viewport + DPR so the requested variant rescales on resize / zoom
-	// (e.g. moving a laptop between a retina display and an external monitor
-	// mid-session). 100vw/vh is the viewer's upper bound; the sidebar offset on
-	// md+ is ignored — overshooting by a bucket is cheap.
-	let viewportPx = $state(0);
+	// Measure aspect ratio off the smallest variant so opening stays fast. The
+	// fullscreen image's true natural dimensions arrive later on `loadComplete`.
+	function measureAspect(src: string): Promise<{ w: number; h: number }> {
+		return new Promise((resolve) => {
+			const img = new Image();
+			img.onload = () => resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+			img.onerror = () => resolve({ w: 1, h: 1 });
+			img.src = src;
+		});
+	}
+
+	const SIDEBAR_WIDTH = 380;
+	const SIDEBAR_BREAKPOINT = 768;
+
+	// PhotoSwipe defaults to `documentElement.clientWidth` for its internal
+	// viewport, which ignores our CSS-shifted left edge — slides end up
+	// centered relative to the full window, leaving the image visually offset
+	// to the right. Subtracting the sidebar width here re-centers them in the
+	// visible area.
+	function viewportSize() {
+		const offset = window.innerWidth >= SIDEBAR_BREAKPOINT ? SIDEBAR_WIDTH : 0;
+		return { x: window.innerWidth - offset, y: window.innerHeight };
+	}
+
+	let pswp: PhotoSwipe | null = null;
+
+	// Keep PhotoSwipe in sync when `imageIndex` changes externally (browser
+	// back/forward, or any other path that mutates app state without going
+	// through pswp itself). The 'change' handler guards the opposite direction
+	// by reading currIndex before calling setImage.
 	$effect(() => {
-		const update = () => {
-			const dpr = window.devicePixelRatio ?? 1;
-			viewportPx = Math.max(window.innerWidth, window.innerHeight) * dpr;
-		};
-		update();
-		window.addEventListener('resize', update);
-		return () => window.removeEventListener('resize', update);
+		const target = appState.view.imageIndex;
+		if (pswp && target !== null && target !== pswp.currIndex) {
+			pswp.goTo(target);
+		}
 	});
 
-	const fullSrc = $derived(viewportPx ? pickImageUrl(currentImage, viewportPx) : undefined);
+	onMount(() => {
+		let teardown = false;
+		// Set to true when the host (Svelte) unmounts us, so the pswp 'destroy'
+		// handler doesn't bounce back into onClose and cause a double close.
+		let suppressCloseCallback = false;
 
-	const hasMultiple = $derived(images.length > 1);
-	const hasPrev = $derived(index > 0);
-	const hasNext = $derived(index < images.length - 1);
+		const initialIndex = Math.min(Math.max(appState.view.imageIndex ?? 0, 0), images.length - 1);
 
-	function goPrev() {
-		if (hasPrev) appState.setImage(index - 1);
-	}
-	function goNext() {
-		if (hasNext) appState.setImage(index + 1);
-	}
+		(async () => {
+			const dataSource = await Promise.all(
+				images.map(async (image) => {
+					const src = largestVariant(image);
+					// Open with the small variant's dimensions — display fits viewport
+					// via zoomLevels.initial, which scales to any aspect-preserving
+					// pair. loadComplete replaces these with the true natural size
+					// (and recomputes zoom) once the full-res image loads so max-zoom
+					// reveals the real pixels.
+					const measureSrc = variantUrl(image, 's') ?? src;
+					const { w, h } = await measureAspect(measureSrc);
+					return { src, width: w, height: h, alt, image };
+				})
+			);
+
+			if (teardown) return;
+
+			pswp = new PhotoSwipe({
+				dataSource,
+				index: initialIndex,
+				bgOpacity: 0.9,
+				showHideAnimationType: 'fade',
+				closeOnVerticalDrag: true,
+				wheelToZoom: true,
+				mainClass: 'pswp-space-map',
+				getViewportSizeFn: viewportSize,
+				closeTitle: m.close(),
+				arrowPrevTitle: m.image_previous(),
+				arrowNextTitle: m.image_next()
+			});
+
+			// Swap in the image's true natural size once it loads. We open with the
+			// small variant's dimensions, so without this the slide stays sized to
+			// the thumbnail (zoomLevels.initial was computed off those) and the
+			// user gets the small-variant scale even for the full-res image. We
+			// must re-run calculateSize so zoomLevels.initial reflects the new
+			// dims, and zoomAndPanToInitial re-centers to that new zoom level.
+			pswp.on('loadComplete', (e) => {
+				const content = e.content;
+				const el = content.element;
+				if (!(el instanceof HTMLImageElement)) return;
+				const nw = el.naturalWidth;
+				const nh = el.naturalHeight;
+				if (!nw || !nh) return;
+				if (content.width === nw && content.height === nh) return;
+				content.width = nw;
+				content.height = nh;
+				content.data.width = nw;
+				content.data.height = nh;
+				const slide = content.slide;
+				if (slide) {
+					slide.width = nw;
+					slide.height = nh;
+					slide.calculateSize();
+					slide.zoomAndPanToInitial();
+					slide.updateContentSize(true);
+				}
+			});
+
+			// Mark the pswp root so Vaul ignores it for drawer-drag detection.
+			// Independently, Vaul's iOS prevent-scroll walks up `getScrollParent`
+			// from the touch target and preventDefaults touchmove when it hits
+			// documentElement — which blocks the browser from synthesizing the
+			// pointermove events PhotoSwipe relies on. Marking scroll-wrap as
+			// `overflow: auto` (via CSS below) gives that walk a stopping point
+			// with zero scroll range, so Vaul bails out instead of blocking.
+			pswp.on('afterInit', () => {
+				pswp!.element?.setAttribute('data-vaul-no-drag', '');
+			});
+
+			pswp.on('uiRegister', () => {
+				pswp!.ui!.registerElement({
+					name: 'space-map-caption',
+					appendTo: 'root',
+					onInit: (rootEl) => attachCaption(rootEl, pswp!)
+				});
+			});
+
+			pswp.on('change', () => {
+				appState.setImage(pswp!.currIndex);
+			});
+
+			pswp.on('destroy', () => {
+				pswp = null;
+				if (!suppressCloseCallback) onClose();
+			});
+
+			pswp.init();
+		})();
+
+		return () => {
+			teardown = true;
+			if (pswp) {
+				suppressCloseCallback = true;
+				pswp.destroy();
+			}
+		};
+	});
+
+	// --- caption DOM -------------------------------------------------------------
 
 	interface Attribution {
 		license?: string;
@@ -60,126 +179,149 @@
 		description?: string;
 	}
 
-	let attribution = $state<Attribution | null>(null);
-	let descriptionExpanded = $state(false);
-	let descriptionEl = $state<HTMLElement | undefined>();
-	// Sticky: once we observe overflow under line-clamp, keep the toggle visible
-	// even after expansion so the user can collapse again.
-	let descriptionTruncated = $state(false);
+	const metadataCache = new Map<string, Promise<ImageMetadata | null>>();
 
-	// Reset per-image UI state on navigation so each image gets a fresh
-	// attribution fetch and description measurement.
-	$effect(() => {
-		void index;
-		attribution = null;
-		descriptionExpanded = false;
-		descriptionTruncated = false;
-	});
+	function getMetadata(image: ObjectImage): Promise<ImageMetadata | null> {
+		let p = metadataCache.get(image.file);
+		if (!p) {
+			p = fetchImageMetadata(image).catch(() => null);
+			metadataCache.set(image.file, p);
+		}
+		return p;
+	}
 
-	// Fetch attribution lazily on open — the exported metadata JSON alongside
-	// each image is the single source of truth. Not embedded in the per-object
-	// JSON because (a) it'd duplicate data across tens of thousands of object
-	// files, (b) the viewer is the only place that actually renders it.
-	$effect(() => {
-		const image = currentImage;
-		let cancelled = false;
-		fetchImageMetadata(image)
-			.then((meta) => {
-				if (cancelled || !meta) return;
-				attribution = extractAttribution(meta);
-			})
-			.catch(() => {
-				/* Missing / malformed metadata — fall back to Commons link only. */
+	// Builds the caption subtree once, then updates its contents as the user
+	// navigates. Kept imperative because PhotoSwipe owns the DOM tree it lives
+	// in — mounting a Svelte child here would fight PhotoSwipe's lifecycle.
+	function attachCaption(root: HTMLElement, pswp: PhotoSwipe) {
+		root.className = 'pswp-sm-caption-root';
+
+		const descWrap = document.createElement('div');
+		descWrap.className = 'pswp-sm-caption-desc-wrap';
+		const descBody = document.createElement('div');
+		descBody.className = 'pswp-sm-caption-desc';
+		const toggleBtn = document.createElement('button');
+		toggleBtn.type = 'button';
+		toggleBtn.className = 'pswp-sm-caption-toggle';
+		descWrap.append(descBody, toggleBtn);
+
+		const credits = document.createElement('div');
+		credits.className = 'pswp-sm-caption-credits';
+
+		root.append(descWrap, credits);
+
+		let expanded = false;
+		// Fetch token: each render bumps it, so a slow metadata fetch from a prior
+		// slide can't overwrite the caption for the slide the user is now on.
+		let fetchToken = 0;
+
+		function setExpanded(next: boolean) {
+			expanded = next;
+			descWrap.classList.toggle('is-expanded', expanded);
+			toggleBtn.textContent = expanded ? m.show_less() : m.read_more();
+		}
+
+		toggleBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			setExpanded(!expanded);
+		});
+
+		// Clamp detection: only show the toggle when the collapsed description
+		// actually overflows, or when we know there are more paragraphs hidden
+		// under the line-clamp (explicit newlines in the source).
+		const ro = new ResizeObserver(() => updateTruncation());
+		ro.observe(descBody);
+
+		let hasExplicitBreaks = false;
+
+		function updateTruncation() {
+			if (expanded) return;
+			const overflows = descBody.scrollHeight > descBody.clientHeight + 1;
+			descWrap.classList.toggle('is-truncated', overflows || hasExplicitBreaks);
+		}
+
+		function renderDescription(text: string | undefined) {
+			descBody.replaceChildren();
+			if (!text) {
+				descWrap.style.display = 'none';
+				return;
+			}
+			descWrap.style.display = '';
+			const paragraphs = text.split('\n').filter((p) => p.trim());
+			for (const p of paragraphs) {
+				const el = document.createElement('p');
+				el.textContent = p;
+				descBody.append(el);
+			}
+			hasExplicitBreaks = text.includes('\n');
+			updateTruncation();
+		}
+
+		function renderCredits(image: ObjectImage, attribution: Attribution | null) {
+			credits.replaceChildren();
+			const parts: (Node | string)[] = [];
+			if (attribution?.license) {
+				if (attribution.license_url) {
+					const a = document.createElement('a');
+					a.href = attribution.license_url;
+					a.target = '_blank';
+					a.rel = 'noopener noreferrer license';
+					a.textContent = attribution.license;
+					parts.push(a);
+				} else {
+					parts.push(attribution.license);
+				}
+			}
+			if (attribution?.artist) {
+				const span = document.createElement('span');
+				span.className = 'pswp-sm-caption-artist';
+				span.textContent = attribution.artist;
+				parts.push(span);
+			}
+			const source = document.createElement('a');
+			source.href = image.source_url;
+			source.target = '_blank';
+			source.rel = 'noopener noreferrer';
+			source.textContent = m.image_view_on_commons();
+			parts.push(source);
+
+			parts.forEach((part, i) => {
+				if (i > 0) {
+					const sep = document.createElement('span');
+					sep.className = 'pswp-sm-caption-sep';
+					sep.setAttribute('aria-hidden', 'true');
+					sep.textContent = '·';
+					credits.append(sep);
+				}
+				credits.append(part);
 			});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// Detect whether the clamped description actually overflows 2 lines, or
-	// hides additional paragraphs that only appear on expansion. Skipped while
-	// expanded (line-clamp is off, so the visual measurement is useless then).
-	$effect(() => {
-		if (attribution?.description?.includes('\n')) descriptionTruncated = true;
-		const el = descriptionEl;
-		if (!el || descriptionExpanded) return;
-		const check = () => {
-			if (el.scrollHeight > el.clientHeight + 1) descriptionTruncated = true;
-		};
-		check();
-		const ro = new ResizeObserver(check);
-		ro.observe(el);
-		return () => ro.disconnect();
-	});
-
-	// Preload neighbours so arrow/wheel navigation flips instantly. Using the
-	// same `pickImageUrl` the rendered <img> uses guarantees a single cache
-	// entry per neighbour across preload → display transition.
-	$effect(() => {
-		if (!hasMultiple || !viewportPx) return;
-		const neighbours = [index - 1, index + 1].filter((i) => i >= 0 && i < images.length);
-		for (const i of neighbours) {
-			const src = pickImageUrl(images[i], viewportPx);
-			if (!src) continue;
-			const img = new Image();
-			img.src = src;
 		}
-	});
 
-	function onKeyDown(event: KeyboardEvent) {
-		if (event.key === 'Escape') onClose();
-		else if (event.key === 'ArrowLeft') goPrev();
-		else if (event.key === 'ArrowRight') goNext();
-		else if (event.key === 'Home') appState.setImage(0);
-		else if (event.key === 'End') appState.setImage(images.length - 1);
-	}
+		async function render() {
+			const index = pswp.currIndex;
+			const image = images[index];
+			if (!image) return;
 
-	// Horizontal touch-swipe navigation. Tracked via pointer events so the
-	// backdrop button below the image doesn't turn a swipe into a close-tap.
-	// Vertical movement falls through to the description scroll area.
-	const SWIPE_THRESHOLD = 50;
-	let touchStartX = 0;
-	let touchStartY = 0;
-	let swiping = false;
-	// Set on successful swipe so the synthesized click on pointerup (which the
-	// backdrop button would otherwise receive as a close) is dropped.
-	let suppressNextClick = false;
+			setExpanded(false);
+			descWrap.classList.remove('is-truncated');
 
-	function onPointerDown(event: PointerEvent) {
-		if (event.pointerType !== 'touch' || !hasMultiple) return;
-		touchStartX = event.clientX;
-		touchStartY = event.clientY;
-		swiping = false;
-	}
+			const token = ++fetchToken;
+			const meta = await getMetadata(image);
+			if (token !== fetchToken) return;
 
-	function onPointerMove(event: PointerEvent) {
-		if (event.pointerType !== 'touch' || !hasMultiple) return;
-		const dx = event.clientX - touchStartX;
-		const dy = event.clientY - touchStartY;
-		if (!swiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-			swiping = true;
+			const attribution = meta ? extractAttribution(meta) : null;
+			renderDescription(attribution?.description);
+			renderCredits(image, attribution);
+			updateTruncation();
 		}
+
+		pswp.on('change', render);
+		render();
+
+		pswp.on('destroy', () => ro.disconnect());
 	}
 
-	function onPointerUp(event: PointerEvent) {
-		if (event.pointerType !== 'touch' || !swiping) return;
-		const dx = event.clientX - touchStartX;
-		swiping = false;
-		if (Math.abs(dx) < SWIPE_THRESHOLD) return;
-		suppressNextClick = true;
-		if (dx < 0) goNext();
-		else goPrev();
-	}
-
-	function onBackdropClick() {
-		if (suppressNextClick) {
-			suppressNextClick = false;
-			return;
-		}
-		onClose();
-	}
-
-	// --- metadata helpers ---------------------------------------------------
+	// --- metadata helpers --------------------------------------------------------
 
 	function extractAttribution(meta: ImageMetadata): Attribution {
 		return {
@@ -234,173 +376,150 @@
 	}
 </script>
 
-<svelte:window onkeydown={onKeyDown} />
+<style>
+	/* Offset the whole modal past the desktop sidebar (380px) so the detail
+	   panel stays visible. On mobile we let PhotoSwipe take the full viewport. */
+	:global(.pswp.pswp-space-map) {
+		--pswp-bg: #000;
+	}
+	@media (min-width: 768px) {
+		:global(.pswp.pswp-space-map) {
+			left: 380px;
+			right: 0;
+			width: auto;
+		}
+	}
 
-<!-- Portalled to document.body so the viewer escapes the drawer's stacking
-     context (Vaul.Content uses a CSS transform which traps child z-index).
-     Desktop: offset from the 380px left sidebar so the detail panel stays visible.
-     Mobile (<md): full viewport. Attribution overlays the image bottom; capped at
-     a third of the viewport so long credit strings don't dominate. -->
-<Portal>
-	<div
-		role="dialog"
-		aria-modal="true"
-		aria-label={alt}
-		tabindex={-1}
-		data-vaul-no-drag
-		onpointerdown={onPointerDown}
-		onpointermove={onPointerMove}
-		onpointerup={onPointerUp}
-		onpointercancel={() => (swiping = false)}
-		class="fixed inset-0 z-[100] md:left-[380px] flex touch-none items-center justify-center bg-black/85 backdrop-blur-sm"
-	>
-		<!-- Backdrop click area: full panel, below the image. Uses a button so the
-	     interaction is keyboard-accessible even though the Escape key is the
-	     primary close path. -->
-		<button
-			type="button"
-			aria-label={m.close()}
-			onclick={onBackdropClick}
-			class="absolute inset-0 cursor-zoom-out"
-		></button>
+	/* Stop Vaul's iOS prevent-scroll from hijacking touches inside the viewer.
+	   Vaul walks up `getScrollParent` from the touch target and preventDefaults
+	   the touchmove when it reaches documentElement — which also suppresses
+	   pointermove synthesis on iOS, so PhotoSwipe's swipe/pan never fires.
+	   Giving scroll-wrap `overflow: auto` (with zero scroll range since
+	   PhotoSwipe still clips its children) makes Vaul's walk stop here and
+	   short-circuit via its `bottom === 0` early return. */
+	:global(.pswp-space-map .pswp__scroll-wrap) {
+		overflow: auto;
+	}
 
-		{#if fullSrc}
-			<img
-				src={fullSrc}
-				{alt}
-				class="relative z-10 max-h-[100vh] max-w-full object-contain pointer-events-none"
-			/>
-		{/if}
+	/* Caption container: pinned to the bottom of the pswp root, above slides.
+	   Mobile stacks description over credits; desktop puts them side-by-side. */
+	:global(.pswp-space-map .pswp-sm-caption-root) {
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0;
+		z-index: 1600;
+		display: flex;
+		flex-direction: column;
+		pointer-events: none;
+	}
+	@media (min-width: 768px) {
+		:global(.pswp-space-map .pswp-sm-caption-root) {
+			flex-direction: row;
+			align-items: flex-end;
+		}
+	}
 
-		<button
-			type="button"
-			onclick={onClose}
-			aria-label={m.close()}
-			class="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center
-			rounded-full bg-black/55 text-white/90 backdrop-blur-sm
-			hover:bg-black/75 hover:text-white transition-colors"
-		>
-			<X class="h-5 w-5" aria-hidden="true" />
-		</button>
+	:global(.pswp-space-map .pswp-sm-caption-desc-wrap) {
+		pointer-events: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.625rem 0;
+		font-size: 0.875rem;
+		line-height: 1.25;
+		color: rgba(255, 255, 255, 0.85);
+		background: rgba(0, 0, 0, 0.55);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+	@media (min-width: 768px) {
+		:global(.pswp-space-map .pswp-sm-caption-desc-wrap) {
+			width: fit-content;
+			max-width: 50%;
+		}
+	}
 
-		{#if hasMultiple}
-			<div
-				class="absolute top-3 left-3 z-20 rounded-full bg-black/55 px-3 py-1.5
-				text-xs font-medium text-white/90 tabular-nums backdrop-blur-sm"
-				aria-live="polite"
-			>
-				{index + 1} / {images.length}
-			</div>
+	:global(.pswp-space-map .pswp-sm-caption-desc) {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0 1rem;
+		overflow: hidden;
+		max-height: 3lh;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-desc p) {
+		margin: 0;
+	}
 
-			<button
-				type="button"
-				onclick={goPrev}
-				disabled={!hasPrev}
-				aria-label={m.image_previous()}
-				class="absolute top-1/2 left-3 z-20 flex h-10 w-10 -translate-y-1/2
-				items-center justify-center rounded-full bg-black/55 text-white/90
-				backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white
-				disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/55
-				disabled:hover:text-white/90"
-			>
-				<ChevronLeft class="h-6 w-6" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				onclick={goNext}
-				disabled={!hasNext}
-				aria-label={m.image_next()}
-				class="absolute top-1/2 right-3 z-20 flex h-10 w-10 -translate-y-1/2
-				items-center justify-center rounded-full bg-black/55 text-white/90
-				backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white
-				disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/55
-				disabled:hover:text-white/90"
-			>
-				<ChevronRight class="h-6 w-6" aria-hidden="true" />
-			</button>
-		{/if}
+	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-expanded) {
+		max-height: 40vh;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-expanded .pswp-sm-caption-desc) {
+		max-height: none;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		touch-action: pan-y;
+		padding-right: 0.5rem;
+	}
 
-		<!-- Mobile (<md): stacked column, description on top, credits pill at bottom-right.
-		     Desktop (md+): row layout, description on the left (content-sized, capped at 50%),
-		     credits pill pushed to the right (also capped at 50%). -->
-		<div
-			class="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col
-			md:flex-row md:items-end"
-		>
-			{#if attribution?.description}
-				<div
-					class="pointer-events-auto flex w-full flex-col gap-2 bg-black/50 py-2.5
-					text-sm leading-snug text-white/85 backdrop-blur-md md:w-fit md:max-w-[50%]
-					{descriptionExpanded ? 'max-h-[33vh]' : ''}"
-				>
-					{#if descriptionExpanded}
-						<ScrollArea class="min-h-0 flex-1 touch-pan-y overscroll-contain">
-							<div class="flex flex-col gap-2 ps-4 pe-2">
-								{#each attribution.description.split('\n') as paragraph, i (i)}
-									{#if paragraph.trim()}
-										<p>{paragraph}</p>
-									{/if}
-								{/each}
-							</div>
-						</ScrollArea>
-					{:else}
-						<div
-							bind:this={descriptionEl}
-							class="flex max-h-[3lh] flex-col gap-2 overflow-hidden px-4"
-						>
-							{#each attribution.description.split('\n') as paragraph, i (i)}
-								{#if paragraph.trim()}
-									<p>{paragraph}</p>
-								{/if}
-							{/each}
-						</div>
-					{/if}
-					{#if descriptionTruncated}
-						<button
-							type="button"
-							onclick={() => (descriptionExpanded = !descriptionExpanded)}
-							class="mx-4 self-start text-xs text-white/60 hover:text-white"
-						>
-							{descriptionExpanded ? m.show_less() : m.read_more()}
-						</button>
-					{/if}
-				</div>
-			{/if}
-			<div
-				class="pointer-events-auto flex max-w-full items-center gap-1.5 self-end
-				overflow-hidden rounded-s-sm bg-black/40 px-2 py-1 text-[11px] leading-tight
-				text-white/75 whitespace-nowrap backdrop-blur-sm md:ms-auto md:max-w-[50%]"
-			>
-				{#if attribution?.license}
-					{#if attribution.license_url}
-						<a
-							href={attribution.license_url}
-							target="_blank"
-							rel="noopener noreferrer license"
-							class="underline decoration-white/40 hover:text-white hover:decoration-white"
-						>
-							{attribution.license}
-						</a>
-					{:else}
-						<span>{attribution.license}</span>
-					{/if}
-					<span class="text-white/40" aria-hidden="true">·</span>
-				{/if}
-				{#if attribution?.artist}
-					<span class="min-w-0 truncate">
-						{attribution.artist}
-					</span>
-					<span class="text-white/40" aria-hidden="true">·</span>
-				{/if}
-				<a
-					href={currentImage.source_url}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="underline decoration-white/40 hover:text-white hover:decoration-white"
-				>
-					{m.image_view_on_commons()}
-				</a>
-			</div>
-		</div>
-	</div>
-</Portal>
+	:global(.pswp-space-map .pswp-sm-caption-toggle) {
+		display: none;
+		align-self: flex-start;
+		margin: 0 1rem;
+		padding: 0;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.6);
+		background: none;
+		border: 0;
+		cursor: pointer;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-toggle:hover) {
+		color: #fff;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-truncated .pswp-sm-caption-toggle) {
+		display: block;
+	}
+
+	:global(.pswp-space-map .pswp-sm-caption-credits) {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		align-self: flex-end;
+		max-width: 100%;
+		padding: 0.25rem 0.5rem;
+		font-size: 11px;
+		line-height: 1.1;
+		color: rgba(255, 255, 255, 0.75);
+		white-space: nowrap;
+		overflow: hidden;
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		border-start-start-radius: 2px;
+	}
+	@media (min-width: 768px) {
+		:global(.pswp-space-map .pswp-sm-caption-credits) {
+			margin-inline-start: auto;
+			max-width: 50%;
+		}
+	}
+	:global(.pswp-space-map .pswp-sm-caption-credits a) {
+		color: inherit;
+		text-decoration: underline;
+		text-decoration-color: rgba(255, 255, 255, 0.4);
+	}
+	:global(.pswp-space-map .pswp-sm-caption-credits a:hover) {
+		color: #fff;
+		text-decoration-color: #fff;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-artist) {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-sep) {
+		color: rgba(255, 255, 255, 0.4);
+	}
+</style>

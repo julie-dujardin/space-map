@@ -47,6 +47,7 @@
 		"vitest": "^4.1.3"
 	},
 	"dependencies": {
+		"photoswipe": "^5.4.4",
 		"satellite.js": "^7.0.0",
 		"three": "^0.183.2"
 	}
