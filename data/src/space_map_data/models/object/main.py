@@ -159,6 +159,7 @@ class Object(Base):
     )  # which source provided the orbital elements
 
     map_texture_available: Mapped[bool] = mapped_column(default=False)
+    image_available: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")

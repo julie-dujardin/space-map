@@ -95,6 +95,13 @@ def _remove_old_outputs(out_dir: Path) -> None:
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
+    # Legacy image layout before the per-filename bundle refactor. Deleting
+    # unconditionally is safe: the new layout writes to ``images/<filename>/``
+    # dirs alongside these (never inside them), so this never hits new output.
+    for d in ("images/thumb", "images/full", "images/metadata"):
+        p = out_dir / d
+        if p.exists():
+            shutil.rmtree(p)
 
 
 def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSource:
