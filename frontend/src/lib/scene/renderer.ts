@@ -4,7 +4,7 @@ import {
 	DirectionalLight,
 	Float32BufferAttribute,
 	Mesh,
-	BasicShadowMap,
+	PCFSoftShadowMap,
 	PerspectiveCamera,
 	PointLight,
 	Points,
@@ -157,7 +157,7 @@ export class SceneRenderer {
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = BasicShadowMap;
+		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
 		// CSS2D label renderer
 		this.labelRenderer = new CSS2DRenderer({ element: labelContainer });
@@ -905,10 +905,11 @@ export class SceneRenderer {
 			if (this.sunPointLight) this.sunPointLight.intensity = 0;
 
 			// Lateral extent: tight to camera view for high texel density.
-			// Depth extent: clamped to camera vicinity so shadow-map depth
-			// precision stays high (full system extent causes banding on mobile).
+			// Depth extent: full system so off-axis casters (e.g. Moon at 60 Earth
+			// radii during an eclipse) stay inside the shadow frustum regardless
+			// of how close the camera is to the receiver.
 			const lateral = Math.max(distance * 2, 0.001);
-			const depthExtent = Math.min(this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2, lateral * 4);
+			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
 			const shadowCam = this.shadowLight.shadow.camera;
 			shadowCam.left = shadowCam.bottom = -lateral;
 			shadowCam.right = shadowCam.top = lateral;
