@@ -6,7 +6,7 @@ from pathlib import Path
 
 import orjson
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from space_map_data.export import images as images_mod
 from space_map_data.utils import commons_images as ci
@@ -23,6 +23,51 @@ def _make_source_png(width: int, height: int) -> bytes:
     img = Image.new("RGB", (width, height), color="blue")
     buf = io.BytesIO()
     img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _make_source_animated_gif(width: int, height: int, n_frames: int = 3) -> bytes:
+    # Draw a moving rectangle so Pillow doesn't dedupe identical frames down
+    # to a single-frame GIF.
+    frames = []
+    step_x = max(1, width // (n_frames + 1))
+    step_y = max(1, height // (n_frames + 1))
+    for i in range(n_frames):
+        im = Image.new("RGB", (width, height), color="white")
+        draw = ImageDraw.Draw(im)
+        x, y = i * step_x, i * step_y
+        draw.rectangle(
+            [x, y, min(x + step_x, width - 1), min(y + step_y, height - 1)],
+            fill="red",
+        )
+        frames.append(im.convert("P"))
+    buf = io.BytesIO()
+    frames[0].save(
+        buf,
+        "GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=100,
+        loop=0,
+    )
+    return buf.getvalue()
+
+
+def _make_source_mpo(width: int, height: int) -> bytes:
+    # MPO is a JPEG container with embedded secondary frames (stereoscopic
+    # pairs, camera exposure stacks). Pillow reports is_animated=True and
+    # n_frames>1 but frames aren't real animation.
+    primary = Image.new("RGB", (width, height), color="red")
+    secondary = Image.new("RGB", (width, height), color="blue")
+    buf = io.BytesIO()
+    primary.save(buf, "MPO", save_all=True, append_images=[secondary])
+    return buf.getvalue()
+
+
+def _make_source_static_gif(width: int, height: int) -> bytes:
+    img = Image.new("P", (width, height), color=5)
+    buf = io.BytesIO()
+    img.save(buf, "GIF")
     return buf.getvalue()
 
 
@@ -43,11 +88,12 @@ def _stage_download(
     d.mkdir(parents=True, exist_ok=True)
     if not missing_source:
         if bytes_ is None:
-            bytes_ = (
-                _make_source_png(width, height)
-                if ext == ".png"
-                else _make_source_jpg(width, height)
-            )
+            if ext == ".png":
+                bytes_ = _make_source_png(width, height)
+            elif ext == ".gif":
+                bytes_ = _make_source_animated_gif(width, height)
+            else:
+                bytes_ = _make_source_jpg(width, height)
         (d / f"source{ext}").write_bytes(bytes_)
     em = (
         extmetadata
@@ -168,13 +214,16 @@ class TestVariantRules:
     source file and checking dimensions / format.
     """
 
-    def _variants(self, tmp_path, filename, width, height):
-        ext = Path(filename).suffix.lower()
-        if ext == ".png":
-            data = _make_source_png(width, height)
-        else:
-            data = _make_source_jpg(width, height)
-        _stage_download(tmp_path, filename, bytes_=data)
+    def _variants(self, tmp_path, filename, width, height, *, bytes_=None):
+        if bytes_ is None:
+            ext = Path(filename).suffix.lower()
+            if ext == ".png":
+                bytes_ = _make_source_png(width, height)
+            elif ext == ".gif":
+                bytes_ = _make_source_animated_gif(width, height)
+            else:
+                bytes_ = _make_source_jpg(width, height)
+        _stage_download(tmp_path, filename, bytes_=bytes_)
         result = images_mod.collect_object_images({"image": [filename]}, [])
         assert result is not None
         return result[0]["variants"]
@@ -220,10 +269,148 @@ class TestVariantRules:
         assert variants == {"s": "webp", "m": "jpg"}
 
     def test_source_exactly_1024_png_converts_to_webp(self, tmp_path, layout):
-        # Edge case (a) for lossless sources: convert to lossless webp at the
-        # bucket match — webp beats png on size with zero quality cost.
+        # Lossless sources always go to (lossy) webp — no lossless-webp special
+        # case anymore. One lossless→lossy re-encode is equivalent to encoding
+        # from the original.
         variants = self._variants(tmp_path, "edge.png", 1024, 512)
         assert variants == {"s": "webp", "m": "webp"}
+
+    def test_source_5000_png_yields_three_webp_variants(self, tmp_path, layout):
+        variants = self._variants(tmp_path, "big.png", 5000, 2500)
+        assert variants == {"s": "webp", "m": "webp", "xl": "webp"}
+        bundle = layout["export"] / "big.png"
+        for label in ("s", "m", "xl"):
+            assert (bundle / f"{label}.webp").exists()
+
+    def test_source_2000_png_yields_xl_lossy_webp(self, tmp_path, layout):
+        # Regression: PNG under the xl bucket used to be copied verbatim,
+        # shipping 36 MiB Ganymede PNGs. Now re-encoded to lossy webp.
+        variants = self._variants(tmp_path, "med.png", 2000, 1000)
+        assert variants == {"s": "webp", "m": "webp", "xl": "webp"}
+        bundle = layout["export"] / "med.png"
+        assert not (bundle / "xl.png").exists()
+        with Image.open(bundle / "xl.webp") as xl:
+            assert max(xl.size) == 2000
+
+    def test_source_1000_png_yields_m_lossy_webp_no_xl(self, tmp_path, layout):
+        variants = self._variants(tmp_path, "small.png", 1000, 500)
+        assert variants == {"s": "webp", "m": "webp"}
+        bundle = layout["export"] / "small.png"
+        assert not (bundle / "xl.webp").exists()
+        assert not (bundle / "xl.png").exists()
+
+    def test_source_400_png_yields_only_s_webp(self, tmp_path, layout):
+        variants = self._variants(tmp_path, "tiny.png", 400, 400)
+        assert variants == {"s": "webp"}
+        bundle = layout["export"] / "tiny.png"
+        assert (bundle / "s.webp").exists()
+        assert not (bundle / "m.webp").exists()
+        assert not (bundle / "s.png").exists()
+
+    def test_animated_gif_2000_yields_avif_variants(self, tmp_path, layout):
+        variants = self._variants(tmp_path, "anim.gif", 2000, 1000)
+        assert variants == {"s": "avif", "m": "avif", "xl": "avif"}
+        bundle = layout["export"] / "anim.gif"
+        assert not (bundle / "xl.gif").exists()
+        with Image.open(bundle / "xl.avif") as xl:
+            assert getattr(xl, "is_animated", False)
+            assert getattr(xl, "n_frames", 0) == 3
+            assert max(xl.size) == 2000
+
+    def test_animated_gif_400_yields_only_s_avif(self, tmp_path, layout):
+        variants = self._variants(
+            tmp_path,
+            "tiny.gif",
+            400,
+            400,
+            bytes_=_make_source_animated_gif(400, 400, n_frames=2),
+        )
+        assert variants == {"s": "avif"}
+        bundle = layout["export"] / "tiny.gif"
+        with Image.open(bundle / "s.avif") as s:
+            assert getattr(s, "is_animated", False)
+            assert getattr(s, "n_frames", 0) == 2
+
+    def test_svg_served_verbatim_at_xl(self, tmp_path, layout):
+        # SVGs are vectors — PIL can't open them and we don't want to. Copy
+        # the source to xl.svg and let the frontend's fallback pick it up.
+        svg_bytes = (
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+            b'<rect width="10" height="10" fill="red"/></svg>'
+        )
+        _stage_download(tmp_path, "icon.svg", bytes_=svg_bytes)
+        result = images_mod.collect_object_images({"image": ["icon.svg"]}, [])
+        assert result is not None
+        assert result[0]["variants"] == {"xl": "svg"}
+        bundle = layout["export"] / "icon.svg"
+        assert (bundle / "xl.svg").read_bytes() == svg_bytes
+        assert not (bundle / "s.webp").exists()
+        assert not (bundle / "m.webp").exists()
+
+    def test_webm_served_verbatim_at_xl(self, tmp_path, layout):
+        # WebM is a video. Browsers don't render it in <img>, but we ship it
+        # verbatim so the frontend can pick it up when video support lands.
+        webm_bytes = b"\x1aE\xdf\xa3stub-webm-bytes-for-test-purposes-only"
+        _stage_download(tmp_path, "clip.webm", bytes_=webm_bytes)
+        result = images_mod.collect_object_images({"image": ["clip.webm"]}, [])
+        assert result is not None
+        assert result[0]["variants"] == {"xl": "webm"}
+        assert (layout["export"] / "clip.webm" / "xl.webm").read_bytes() == webm_bytes
+
+    def test_webm_over_size_cap_dropped(self, tmp_path, monkeypatch, layout):
+        # Oversize passthrough sources are dropped rather than breaking the
+        # Cloudflare Pages deploy.
+        monkeypatch.setattr(images_mod, "_PASSTHROUGH_MAX_BYTES", 16)
+        _stage_download(tmp_path, "big.webm", bytes_=b"x" * 128)
+        result = images_mod.collect_object_images({"image": ["big.webm"]}, [])
+        assert result is None
+        assert not (layout["export"] / "big.webm" / "xl.webm").exists()
+
+    def test_pdf_source_skipped(self, tmp_path, layout):
+        _stage_download(tmp_path, "paper.pdf", bytes_=b"%PDF-1.5\n%stub\n")
+        result = images_mod.collect_object_images({"image": ["paper.pdf"]}, [])
+        assert result is None
+        bundle = layout["export"] / "paper.pdf"
+        # No variants written and no metadata committed.
+        assert not bundle.exists() or not any(bundle.iterdir())
+
+    def test_truncated_jpeg_still_exported(self, tmp_path, layout):
+        # Trim the JPEG's trailing EOI marker so Pillow flags it as truncated.
+        # LOAD_TRUNCATED_IMAGES=True at module load must let the decode
+        # succeed anyway.
+        full = _make_source_jpg(2000, 1000)
+        truncated = full[:-2]
+        variants = self._variants(tmp_path, "chopped.jpg", 2000, 1000, bytes_=truncated)
+        assert variants == {"s": "webp", "m": "webp", "xl": "jpg"}
+
+    def test_mpo_jpeg_treated_as_static(self, tmp_path, layout):
+        # Regression: some cameras (and some Commons JPGs like
+        # Pléiades_(satellite).jpg) are actually MPO — multi-frame JPEGs.
+        # Pillow flags them is_animated=True but iterating frames raises
+        # "No data found for frame". They must go through the normal JPG
+        # path, not the animated-AVIF path.
+        variants = self._variants(
+            tmp_path, "stereo.jpg", 2000, 1000, bytes_=_make_source_mpo(2000, 1000)
+        )
+        assert variants == {"s": "webp", "m": "webp", "xl": "jpg"}
+        bundle = layout["export"] / "stereo.jpg"
+        assert (bundle / "xl.jpg").exists()
+        assert not (bundle / "xl.avif").exists()
+
+    def test_static_gif_falls_through_to_webp(self, tmp_path, layout):
+        # Single-frame GIF: the is_animated check drives AVIF, not the .gif
+        # extension. A static GIF should be treated like any lossless source.
+        variants = self._variants(
+            tmp_path,
+            "still.gif",
+            800,
+            600,
+            bytes_=_make_source_static_gif(800, 600),
+        )
+        assert variants == {"s": "webp", "m": "webp"}
+        bundle = layout["export"] / "still.gif"
+        assert not (bundle / "m.avif").exists()
+        assert not (bundle / "m.gif").exists()
 
     def test_idempotent_on_rerun(self, tmp_path, layout):
         self._variants(tmp_path, "a.jpg", 2000, 1000)
@@ -232,6 +419,25 @@ class TestVariantRules:
         result = images_mod.collect_object_images({"image": ["a.jpg"]}, [])
         assert result is not None
         assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "jpg"}
+
+    def test_stale_bundle_schema_triggers_regeneration(self, tmp_path, layout):
+        # Seed a bundle that looks like an old-schema export: stale files and a
+        # metadata.json.gz without a `schema` field (pre-v2 layout: PNGs could
+        # ship as xl.png).
+        bundle = layout["export"] / "stale.png"
+        bundle.mkdir(parents=True)
+        (bundle / "xl.png").write_bytes(b"stale png bytes")
+        (bundle / "metadata.json.gz").write_bytes(
+            gzip.compress(orjson.dumps({"variants": {"xl": "png"}}))
+        )
+        # Stage a current source so regeneration has something to work with.
+        _stage_download(tmp_path, "stale.png", width=2000, height=1000)
+
+        result = images_mod.collect_object_images({"image": ["stale.png"]}, [])
+        assert result is not None
+        assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "webp"}
+        assert not (bundle / "xl.png").exists()
+        assert (bundle / "xl.webp").exists()
 
 
 class TestMetadataTrimming:

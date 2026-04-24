@@ -4,20 +4,30 @@ Reads source images and their pre-decided license servability from the new
 ``DOWNLOAD_DIR/images/<filename>/`` layout, then writes an export-side bundle
 for each servable image::
 
-    EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px webp or verbatim source
+    EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px (webp/avif, or verbatim jpg)
     EXPORT_DIR/v1/images/<filename>/m.<ext>     # 1024px (when source is larger)
     EXPORT_DIR/v1/images/<filename>/xl.<ext>    # 4096px (when source is larger)
     EXPORT_DIR/v1/images/<filename>/metadata.json.gz
 
 Size buckets and bucket extensions follow these rules:
-- For every bucket `T` strictly smaller than `max(source_width, source_height)`,
-  emit a webp downscaled to `T`.
-- At most one bucket is "the resting place" — the first bucket whose target
-  dim is ≥ the source's largest dim. It carries the source verbatim (same
-  extension, no downscale) unless the source is a lossless format and the
-  bucket's target exactly matches `max(w, h)`, in which case we convert to
-  lossless webp (smaller file, no quality loss).
-- Buckets above the resting place are not emitted (no upscaling).
+- Passthrough sources (svg, webm) are copied verbatim to ``xl.<ext>``
+  when under the 25 MiB Cloudflare Pages per-file cap. SVG is a vector
+  that scales to any dimension; WebM is forward-compatible (the frontend
+  doesn't render video in ``<img>`` today but the file is available for
+  when it does).
+- Unshippable formats (pdf, stl, djvu) are skipped entirely — nothing
+  useful as a thumbnail and browsers can't render them as images.
+- Animated sources (GIFs with multiple frames) are encoded as animated AVIF
+  at every emitted bucket, preserving frames and timing.
+- Non-animated lossy sources (jpg/jpeg) emit lossy webp for downscaled
+  buckets and are copied verbatim at the resting bucket (re-encoding lossy
+  just degrades further).
+- Non-animated lossless sources (png, etc.) emit lossy webp at every bucket,
+  including the resting bucket — one lossless→lossy re-encode is visually
+  equivalent to encoding from the original and avoids shipping multi-MiB
+  PNGs verbatim.
+- The resting bucket is the first bucket whose target dim is ≥ the source's
+  largest dim. Buckets above it are not emitted (no upscaling).
 
 ``metadata.json.gz`` embeds the ``variants`` map (``{label: ext}``) alongside
 the license/artist/description fields and doubles as the completion marker —
@@ -33,7 +43,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import orjson
-from PIL import Image
+from PIL import Image, ImageFile, ImageSequence
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.commons_images import (
@@ -46,15 +56,39 @@ from space_map_data.utils.commons_images import (
 )
 from space_map_data.utils.paths import EXPORT_DIR
 
+# Wikimedia Commons is a curated, trusted source. Disable Pillow's
+# decompression-bomb guard so legitimate large images (e.g. 180-megapixel
+# logos on Commons) don't get dropped as "possible DoS".
+Image.MAX_IMAGE_PIXELS = None
+
+# Be permissive about mildly-malformed sources. Wikimedia Commons has a
+# handful of JPGs with missing trailing bytes and PNGs with truncated
+# chunks; rather than dropping them we accept the partial decode. Using
+# setattr because the PIL stubs type this attribute as Literal[False].
+setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+
 logger = logging.getLogger(__name__)
 
 _EXPORT_IMAGES_DIR = EXPORT_DIR / "v1" / "images"
 
 # Lossy-source formats: stay verbatim at the resting bucket (re-encoding would
 # just degrade further). Anything else we treat as lossless and re-encode to
-# webp when it exactly fills a bucket, since lossless webp usually beats the
-# source on size with zero quality cost.
+# lossy webp, including at the resting bucket — one lossless→lossy step is
+# visually equivalent to encoding from the original source and saves a lot of
+# bytes (e.g. 36 MiB PNGs that fit under the xl bucket used to ship verbatim).
 _LOSSY_EXTENSIONS = {".jpg", ".jpeg"}
+
+# Formats served verbatim at the xl label without decoding. SVG is a
+# vector (scales to any dimension). WebM is a video the frontend doesn't
+# render in <img> today but is forward-compatible when video support lands.
+# Size-capped at the Cloudflare Pages per-file limit so oversize sources
+# still get dropped rather than breaking the deploy.
+_PASSTHROUGH_EXTENSIONS = {".svg", ".webm"}
+_PASSTHROUGH_MAX_BYTES = 25 * 1024 * 1024
+
+# Formats we never ship: can't render in <img>, not useful as a thumbnail,
+# and not worth shipping just to sit in the bundle.
+_SKIP_EXTENSIONS = {".pdf", ".stl", ".djvu"}
 
 # Bucket label → max dim (in pixels, on the longest side).
 _BUCKETS: tuple[tuple[str, int], ...] = (
@@ -62,6 +96,20 @@ _BUCKETS: tuple[tuple[str, int], ...] = (
     ("m", 1024),
     ("xl", 4096),
 )
+
+_ANIMATED_AVIF_QUALITY = 55
+_ANIMATED_AVIF_SPEED = 6
+
+# Formats where multiple frames mean "animation". PIL exposes is_animated /
+# n_frames for other multi-frame formats too (MPO stereoscopic JPEGs, multi-
+# page TIFFs), but those aren't real animation and trying to iterate their
+# frames can fail with "No data found for frame".
+_ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
+
+# Bump when the variant-emission rules change (new encoder, new bucket sizes,
+# dropped/added formats). Existing bundles whose metadata.json.gz carries an
+# older schema are wiped and regenerated on the next export.
+_BUNDLE_SCHEMA = 2
 
 # Per-filename locks so two chunk-writer threads never race on the same image.
 # Serializes work on a single file (lock held across PIL save + rename) while
@@ -153,9 +201,10 @@ def _ensure_bundle(filename: str) -> dict[str, str]:
 
     Returns a ``{label: extension}`` map describing the emitted variants
     (without a leading dot — e.g. ``{"s": "webp", "m": "webp", "xl": "jpg"}``).
-    ``metadata.json.gz`` doubles as the completion marker: once it exists the
-    bundle is trusted and its embedded ``variants`` block is returned. Wipe
-    the per-image directory to force regeneration after schema changes.
+    ``metadata.json.gz`` doubles as the completion marker: once it exists
+    with a current ``schema`` the bundle is trusted and its embedded
+    ``variants`` block is returned. Bundles written under an older schema
+    are wiped and regenerated.
     """
     out_dir = _EXPORT_IMAGES_DIR / filename
     metadata_path = out_dir / "metadata.json.gz"
@@ -163,7 +212,15 @@ def _ensure_bundle(filename: str) -> dict[str, str]:
     with _file_lock(filename):
         if metadata_path.exists():
             existing = orjson.loads(gzip.decompress(metadata_path.read_bytes()))
-            return existing.get("variants") or {}
+            if existing.get("schema") == _BUNDLE_SCHEMA:
+                return existing.get("variants") or {}
+            logger.info(
+                "Regenerating stale image bundle %s (schema %s → %s)",
+                filename,
+                existing.get("schema"),
+                _BUNDLE_SCHEMA,
+            )
+            _wipe_bundle_dir(out_dir)
 
         out_dir.mkdir(parents=True, exist_ok=True)
         variants = _generate_variants(filename, out_dir)
@@ -172,10 +229,38 @@ def _ensure_bundle(filename: str) -> dict[str, str]:
         return variants
 
 
+def _wipe_bundle_dir(out_dir: Path) -> None:
+    """Remove every regular file in the per-image bundle directory."""
+    for entry in out_dir.iterdir():
+        if entry.is_file() or entry.is_symlink():
+            entry.unlink()
+
+
 def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
     """Write s/m/xl output files. Returns the {label: ext} map emitted."""
     src = source_path(filename)
     src_ext = src.suffix.lower()
+
+    if src_ext in _SKIP_EXTENSIONS:
+        logger.debug("Skipping unshippable format %s: %s", src_ext, filename)
+        return {}
+
+    if src_ext in _PASSTHROUGH_EXTENSIONS:
+        size = src.stat().st_size
+        if size > _PASSTHROUGH_MAX_BYTES:
+            logger.info(
+                "Skipping oversize %s passthrough (%d bytes > %d): %s",
+                src_ext,
+                size,
+                _PASSTHROUGH_MAX_BYTES,
+                filename,
+            )
+            return {}
+        ext = src_ext.lstrip(".")
+        target = out_dir / f"xl.{ext}"
+        if not target.exists():
+            _atomic_copy(src, target)
+        return {"xl": ext}
 
     try:
         img = Image.open(src)
@@ -185,21 +270,35 @@ def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
         return {}
 
     source_max = max(img.width, img.height)
-    lossy = src_ext in _LOSSY_EXTENSIONS
+    lossy_source = src_ext in _LOSSY_EXTENSIONS
+    animated = (
+        img.format in _ANIMATED_FORMATS
+        and getattr(img, "is_animated", False)
+        and getattr(img, "n_frames", 1) > 1
+    )
 
     variants: dict[str, str] = {}
     for label, dim in _BUCKETS:
         out_stem = out_dir / label
         if dim < source_max:
-            ext = "webp"
-            if not _output_exists(out_stem, ext):
-                _write_webp(img, dim, out_stem.with_suffix(f".{ext}"))
+            ext = "avif" if animated else "webp"
+            target = out_stem.with_suffix(f".{ext}")
+            if not target.exists():
+                if animated:
+                    _write_animated_avif(img, dim, target)
+                else:
+                    _write_webp(img, dim, target)
             variants[label] = ext
             continue
 
         # Resting bucket: source fits within this size. We stop after writing
         # it (no upscaled variants above).
-        if lossy or dim != source_max:
+        if animated:
+            ext = "avif"
+            target = out_stem.with_suffix(f".{ext}")
+            if not target.exists():
+                _write_animated_avif(img, dim, target)
+        elif lossy_source:
             ext = src_ext.lstrip(".")
             target = out_stem.with_suffix(f".{ext}")
             if not target.exists():
@@ -208,7 +307,7 @@ def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
             ext = "webp"
             target = out_stem.with_suffix(f".{ext}")
             if not target.exists():
-                _write_webp(img, dim, target, lossless=True)
+                _write_webp(img, dim, target)
         variants[label] = ext
         break
 
@@ -220,10 +319,8 @@ def _output_exists(stem: Path, ext: str) -> bool:
     return stem.with_suffix(f".{ext}").exists()
 
 
-def _write_webp(
-    img: Image.Image, max_dim: int, target: Path, *, lossless: bool = False
-) -> None:
-    """Resize (preserving aspect) to ``max_dim`` on the longest side and save as webp."""
+def _write_webp(img: Image.Image, max_dim: int, target: Path) -> None:
+    """Resize (preserving aspect) to ``max_dim`` on the longest side and save as lossy webp."""
     w, h = img.size
     if max_dim < max(w, h):
         scale = max_dim / max(w, h)
@@ -234,18 +331,45 @@ def _write_webp(
         resized = img
 
     to_save = resized.convert("RGBA") if resized.mode in ("P", "LA") else resized
-    if to_save.mode == "RGBA" and not lossless:
-        # Flatten transparency against black for lossy webp to avoid
-        # halo artifacts at low quality.
+    if to_save.mode == "RGBA":
+        # Flatten transparency against black to avoid halo artifacts at low quality.
         to_save = to_save.convert("RGB")
 
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    kwargs = {"lossless": True, "method": 6} if lossless else {"quality": 80}
-    to_save.save(tmp, "webp", **kwargs)
+    to_save.save(tmp, "webp", quality=80)
     tmp.rename(target)
 
     if resized is not img:
         resized.close()
+
+
+def _write_animated_avif(img: Image.Image, max_dim: int, target: Path) -> None:
+    """Iterate frames of an animated image, resize each, save as animated AVIF."""
+    frames: list[Image.Image] = []
+    durations: list[int] = []
+    for frame in ImageSequence.Iterator(img):
+        f = frame.convert("RGBA")
+        if max_dim < max(f.size):
+            scale = max_dim / max(f.size)
+            f = f.resize(
+                (max(1, int(f.width * scale)), max(1, int(f.height * scale))),
+                Image.Resampling.LANCZOS,
+            )
+        frames.append(f)
+        durations.append(frame.info.get("duration", 100))
+
+    tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    frames[0].save(
+        tmp,
+        "AVIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=img.info.get("loop", 0),
+        quality=_ANIMATED_AVIF_QUALITY,
+        speed=_ANIMATED_AVIF_SPEED,
+    )
+    tmp.rename(target)
 
 
 def _atomic_copy(src: Path, dst: Path) -> None:
@@ -273,6 +397,7 @@ def _write_trimmed_metadata(
     em = (raw.get("imageinfo") or {}).get("extmetadata") or {}
 
     payload: dict = {
+        "schema": _BUNDLE_SCHEMA,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "variants": variants,
     }

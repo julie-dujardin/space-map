@@ -16,8 +16,8 @@ v1/
   chebyshev/{zone}/{chunk}/data.id.gz            object IDs (text), same order as bin
   objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                localized details, hash-bucketed
-  images/thumb/{filename}                         300px thumbnail (original format)
-  images/full/{filename}                          full-size image (original format)
+  v1/images/{filename}/{label}.{ext}             thumbnail variants (label = s | m | xl)
+  v1/images/{filename}/metadata.json.gz          per-image license + variants map
   textures/{id}/{tier}.webp                      tier = low | medium | high
   textures/{id}/metadata.json                    texture source + exports
   systems/{barycenter_id}.json                   per-system body metadata
@@ -477,9 +477,10 @@ interface GlobalObjectData {
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
 interface ObjectImage {
-  file: string;        // relative path, e.g. "images/thumb/Foo.jpg"
-  source_url: string;  // Wikimedia Commons file page URL (for license/attribution)
+  file: string;           // Commons filename, used as the bundle directory name
+  source_url: string;     // Wikimedia Commons file page URL (for license/attribution)
   kind: "photo" | "logo";
+  variants: { [label in "s" | "m" | "xl"]?: string };  // label → extension
 }
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
 interface QuantityWithUnit { value: number; unit: string; }
@@ -532,13 +533,47 @@ interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 
 ## Images
 
-Downloaded during the `commons` download step directly to the export directory. Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo) and Wikipedia pageimages across all supported languages.
+Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo) and Wikipedia pageimages across all supported languages. Downloaded during the `commons` download step; the export step generates per-image thumbnail bundles.
 
-**Path:** `images/thumb/{filename}` (300px) and `images/full/{filename}` (original size)
+**Path:** `v1/images/{filename}/{label}.{ext}` + `v1/images/{filename}/metadata.json.gz`
 
-Filenames are the original Wikimedia Commons filenames (URL-decoded). The `images` array in each object's global JSON references the thumbnail path and links back to the Commons file page for license attribution.
+Each servable image is materialized as its own directory, keyed by the original Commons filename. The directory contains one or more size variants and a gzipped metadata blob.
 
-Not cleaned on re-export (same as textures) — only re-downloaded when new images are discovered.
+### Size variants
+
+| Label | Max dimension |
+|-------|---------------|
+| s     | 512 px        |
+| m     | 1024 px       |
+| xl    | 4096 px       |
+
+Which labels appear — and what extension each carries — depends on the source format:
+
+| Source                        | Downscaled buckets | Resting bucket (first ≥ source dim) |
+|-------------------------------|--------------------|-------------------------------------|
+| `.jpg` / `.jpeg`              | lossy webp         | verbatim `.jpg` (re-encoding lossy just degrades) |
+| `.png` and other lossless     | lossy webp         | lossy webp at source dim            |
+| animated `.gif` (n_frames > 1)| animated AVIF      | animated AVIF at source dim         |
+| static `.gif`                 | lossy webp         | lossy webp at source dim            |
+| `.svg`, `.webm`               | —                  | verbatim `xl.<ext>` (size-capped at 25 MiB) |
+| `.pdf`, `.stl`, `.djvu`       | — (skipped entirely — not renderable as thumbnails)       ||
+
+Buckets strictly above the resting bucket are not emitted (no upscaling). The `variants` field on each `ObjectImage` records `{label: ext}` for the emitted set.
+
+### Per-image metadata (`v1/images/{filename}/metadata.json.gz`)
+
+```typescript
+interface ImageMetadata {
+  schema: number;        // bumped when variant rules change; stale bundles are regenerated
+  source_url: string;    // Commons file page URL
+  variants: { [label: string]: string };  // mirrors ObjectImage.variants
+  license?: { name?: string; url?: string };       // from Commons extmetadata
+  artist?: string | { [lang: string]: string };    // multilang or bare string
+  description?: string | { [lang: string]: string };
+}
+```
+
+Not cleaned on re-export — bundles are reused across runs. Schema mismatches trigger per-image regeneration; to force a full rebuild, wipe `v1/images/`.
 
 ## Textures
 
