@@ -3,6 +3,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
+	import { DATA_BASE } from '$lib/fetch/data-base';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import ImageViewer from '../ImageViewer.svelte';
@@ -20,7 +21,9 @@
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
 	let firstImage = $derived(images?.[0]);
-	let imageSrc = $derived(firstImage ? `/data/v1/images/thumb/${firstImage.file}` : undefined);
+	let imageSrc = $derived(
+		firstImage ? `${DATA_BASE}/v1/images/thumb/${firstImage.file}` : undefined
+	);
 	let viewerIndex = $derived(appState.view.imageIndex);
 	let viewerOpen = $derived(
 		viewerIndex !== null && !!images && images.length > 0 && viewerIndex < images.length

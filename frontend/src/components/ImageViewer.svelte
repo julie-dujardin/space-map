@@ -6,6 +6,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
+	import { DATA_BASE } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
 
 	interface Props {
@@ -23,9 +24,9 @@
 	// case (viewer isn't mounted when imageIndex is null).
 	const index = $derived(Math.min(Math.max(appState.view.imageIndex ?? 0, 0), images.length - 1));
 	const currentImage = $derived(images[index]);
-	const fullSrc = $derived(`/data/v1/images/full/${currentImage.file}`);
+	const fullSrc = $derived(`${DATA_BASE}/v1/images/full/${currentImage.file}`);
 	const metadataSrc = $derived(
-		`/data/v1/images/metadata/${encodeURIComponent(currentImage.file)}.json`
+		`${DATA_BASE}/v1/images/metadata/${encodeURIComponent(currentImage.file)}.json`
 	);
 
 	const hasMultiple = $derived(images.length > 1);
@@ -105,7 +106,7 @@
 		const neighbours = [index - 1, index + 1].filter((i) => i >= 0 && i < images.length);
 		for (const i of neighbours) {
 			const img = new Image();
-			img.src = `/data/v1/images/full/${images[i].file}`;
+			img.src = `${DATA_BASE}/v1/images/full/${images[i].file}`;
 		}
 	});
 
