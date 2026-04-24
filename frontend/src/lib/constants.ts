@@ -46,3 +46,5 @@ export const TYPE_COLOR_MANNED = '#6ED66B';
 export const TYPE_COLOR_SATELLITE = '#bed4ec';
 /** SPACECRAFT orbiting the Sun. */
 export const TYPE_COLOR_PROBE = '#d5cfe7';
+
+export const GITHUB_REPO_URL = 'https://github.com/julie-dujardin/space-map';
