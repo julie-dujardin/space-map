@@ -97,6 +97,7 @@ class WikidataIdResolver:
         self.ids_dir = ids_dir
         self._matches_dir = ids_dir / "matches"
         self._no_match_dir = ids_dir / "no_match"
+        self._conflicts_dir = ids_dir / "conflicts"
 
     # -- Public API --
 
@@ -143,6 +144,10 @@ class WikidataIdResolver:
         if resolve_by_name:
             for qids in self._read_ids_csv("name").values():
                 all_qids.update(qids)
+
+        # Merge in manually-resolved QIDs from conflicts/resolved_conflicts.csv,
+        # filtered to entries whose object_id prefix matches the requested types.
+        all_qids.update(self._read_resolved_conflict_qids(id_types))
         return all_qids
 
     # -- CSV helpers --
@@ -186,6 +191,52 @@ class WikidataIdResolver:
             if mapping:
                 id_map[key] = mapping
         return id_map
+
+    # -- Resolved-conflict CSV --
+
+    @staticmethod
+    def _id_type_from_object_id(object_id: str) -> ID_TYPES | None:
+        """Identify the ID_TYPES prefix of an object_id like ``naif--164``.
+
+        Tolerates both the canonical ``<type>-<value>`` and a stray
+        ``<type>:<value>`` form that has shown up in the manual CSV.
+        """
+        for id_type in ID_TYPES:
+            prefix = str(id_type)
+            if object_id.startswith(f"{prefix}-") or object_id.startswith(f"{prefix}:"):
+                return id_type
+        return None
+
+    def _read_resolved_conflict_qids(self, id_types: list[ID_TYPES] | None) -> set[str]:
+        """QIDs from resolved_conflicts.csv whose object_id prefix matches id_types."""
+        csv_path = self._conflicts_dir / "resolved_conflicts.csv"
+        if not csv_path.exists():
+            return set()
+        allowed = set(id_types) if id_types is not None else None
+        qids: set[str] = set()
+        skipped = 0
+        for row in csv.reader(io.StringIO(csv_path.read_text())):
+            if not row or len(row) < 2:
+                continue
+            object_id, qid = row[0].strip(), row[1].strip()
+            if not object_id or not qid:
+                continue
+            id_type = self._id_type_from_object_id(object_id)
+            if id_type is None:
+                logger.warning(
+                    "resolved_conflicts.csv: unrecognized id_type prefix in %r",
+                    object_id,
+                )
+                skipped += 1
+                continue
+            if allowed is None or id_type in allowed:
+                qids.add(qid)
+        if skipped:
+            logger.warning(
+                "resolved_conflicts.csv: skipped %d row(s) with unknown prefix",
+                skipped,
+            )
+        return qids
 
     # -- No-match CSV helpers --
 
