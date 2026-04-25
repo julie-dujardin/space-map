@@ -75,7 +75,7 @@
 
 <div
 	class="fixed bottom-5 left-1/2 -translate-x-1/2 z-10
-		hidden md:flex items-baseline gap-2 p-2 rounded-full
+		hidden md:flex pointer-events-auto items-baseline gap-2 p-2 rounded-full
 		bg-primary-foreground/95 backdrop-blur text-primary
 		shadow-lg text-xs"
 >
