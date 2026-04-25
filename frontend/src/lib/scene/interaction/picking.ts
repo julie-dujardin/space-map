@@ -23,6 +23,7 @@ export function pickPointCloudBody(
 
 	const v = tmpV3;
 	const [fx, fy, fz] = focusTruePos;
+	const cam = camera.position;
 	let bestBody: PositionedBody | undefined;
 	let bestScreenDist = SCREEN_THRESHOLD;
 	let bestWorldDist = Infinity;
@@ -32,20 +33,28 @@ export function pickPointCloudBody(
 		// CPU copy from orbital elements at the current jd so picking matches
 		// the rendered dot even while paused.
 		refreshMinorBodyPosition(body, jd, ctx);
-		// Project body position into camera-relative coordinates
+		// Render-space position (focus sits at the scene origin, so subtracting
+		// focusTruePos puts the body in the same frame as `camera.position`).
 		v.set(body.position[0] - fx, body.position[1] - fy, body.position[2] - fz);
+		// True scene-unit distance from camera — captured *before* project()
+		// turns `v` into NDC coords. The caller compares this against the mesh
+		// raycaster's `hits[0].distance` (also scene units) to pick whichever
+		// is closer to the camera; using NDC magnitude here would always lose
+		// to nearby mesh hits and hide point clouds in front of meshes.
+		const worldDist = Math.hypot(v.x - cam.x, v.y - cam.y, v.z - cam.z);
 		v.project(camera);
-		// Behind camera
-		if (v.z < 0 || v.z > 1) return;
+		// project() flips signs for points behind the camera (negative w),
+		// pushing NDC z outside [-1, 1].
+		if (v.z < -1 || v.z > 1) return;
 		const sx = (v.x + 1) * 0.5 * canvasWidth;
 		const sy = (1 - v.y) * 0.5 * canvasHeight;
 		const screenDist = Math.hypot(sx - px, sy - py);
 		if (screenDist < bestScreenDist) {
 			bestScreenDist = screenDist;
-			bestWorldDist = v.length();
+			bestWorldDist = worldDist;
 			bestBody = body;
-		} else if (screenDist === bestScreenDist && v.length() < bestWorldDist) {
-			bestWorldDist = v.length();
+		} else if (screenDist === bestScreenDist && worldDist < bestWorldDist) {
+			bestWorldDist = worldDist;
 			bestBody = body;
 		}
 	};
