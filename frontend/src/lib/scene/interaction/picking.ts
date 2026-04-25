@@ -16,7 +16,8 @@ export function pickPointCloudBody(
 	jd: number,
 	pointerType: string
 ): { body: PositionedBody; distance: number } | null {
-	const SCREEN_THRESHOLD = pointerType === 'touch' || pointerType === 'pen' ? 16 : 12;
+	// TODO: earth still focus-steals a lot. Maybe de-prioritise very large objects?
+	const SCREEN_THRESHOLD = pointerType === 'touch' || pointerType === 'pen' ? 48 : 24;
 	// Convert NDC pointer to pixel coords
 	const px = (pointer.x + 1) * 0.5 * canvasWidth;
 	const py = (1 - pointer.y) * 0.5 * canvasHeight;
