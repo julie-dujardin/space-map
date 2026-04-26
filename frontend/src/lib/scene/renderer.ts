@@ -840,6 +840,10 @@ export class SceneRenderer {
 		this.clock.tick(performance.now());
 		if (this.clock.jd !== this.lastUpdatedJd) {
 			this.lastUpdatedJd = this.clock.jd;
+			// Lets the context manager swap CelesTrak daily snapshots in/out as
+			// jd moves. Cheap when no swap is needed; ContextManager rate-limits
+			// internally.
+			this.ctx.updateTime(this.clock.jd, this.clock.timeScale);
 			this.updatePositions(this.clock.jd);
 			this.updatePointClouds(this.clock.jd);
 			// When animating, stepFocusAnimation below does repositionAll already.

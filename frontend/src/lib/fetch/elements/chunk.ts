@@ -214,6 +214,18 @@ export class ChunkLoader {
 		]);
 		const { labels, flags } = labelData;
 
+		// Time-segmented zones (CelesTrak daily exports): the snapshot-swap
+		// machinery in ContextManager.updateTime is the freshness gate, not the
+		// chunk's ±14d window. If the loaded snapshot isn't the best for the
+		// current jd, a swap is already pending; gating here would just blink
+		// satellites off in the meantime. So relax validity to ±Infinity for
+		// these chunks — the per-frame validity check in renderer becomes a
+		// no-op and the snapshot-swap mechanism is the sole gate.
+		if (time !== null) {
+			cols.validityStart = -Infinity;
+			cols.validityEnd = Infinity;
+		}
+
 		console.log(`Loaded: ${cols.rowCount} objects`);
 		const isParabolic = cols.kind === 'parabolic';
 		const isSGP4 = cols.kind === 'sgp4';

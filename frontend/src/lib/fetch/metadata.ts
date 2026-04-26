@@ -6,6 +6,7 @@
 
 import type { ChebyshevManifest } from './chebyshev/store';
 import { DATA_BASE } from './data-base';
+import { dateToJD } from '$lib/format/date';
 
 /**
  * Bucket counts for hash-bucketed object detail bundles. `global` is the
@@ -38,20 +39,45 @@ export interface ZoneMetadata {
 }
 
 /**
- * Pick the snapshot to render for a (zone, zoom). For time-segmented zones we
- * hardcode the most recent snapshot for now — the SGP4 propagator only stays
- * accurate ±14d around the chunk's `start_jd`/`end_jd`, so picking a snapshot
- * close to the user's simulated time is a follow-up. Returned `time` is the
- * ISO date threaded into the chunk URL; `null` means the flat layout
- * (`elements/{zone}/{zoom}/{part}.*`).
+ * Pick the snapshot to render for a (zone, zoom) at simulated time `jd`. For
+ * time-segmented zones we choose the snapshot whose date is closest to `jd`
+ * — SGP4 only stays accurate ±14d around the TLE epoch, so far-from-now jds
+ * (URL-loaded future date, time-warp scrub) need a different snapshot than
+ * "today." Returned `time` is the ISO date threaded into the chunk URL; `null`
+ * means the flat layout (`elements/{zone}/{zoom}/{part}.*`).
  */
-export function selectSnapshot(entry: ZoomEntry): { stats: ChunkStats; time: string | null } {
+export function selectSnapshot(
+	entry: ZoomEntry,
+	jd: number
+): { stats: ChunkStats; time: string | null } {
 	if ('times' in entry) {
-		const isoDates = Object.keys(entry.times).sort();
-		const latest = isoDates[isoDates.length - 1];
-		return { stats: entry.times[latest], time: latest };
+		const isoDates = Object.keys(entry.times);
+		let best = isoDates[0];
+		let bestDist = Math.abs(isoDateToJd(best) - jd);
+		for (let i = 1; i < isoDates.length; i++) {
+			const d = Math.abs(isoDateToJd(isoDates[i]) - jd);
+			if (d < bestDist) {
+				best = isoDates[i];
+				bestDist = d;
+			}
+		}
+		return { stats: entry.times[best], time: best };
 	}
 	return { stats: entry, time: null };
+}
+
+// Cache the parsed JD for each ISO date so per-frame swap evaluation doesn't
+// allocate a Date per snapshot per call. Daily exports anchored to noon UTC
+// (the cron time for celestrak fetch) so the midpoint between snapshots is
+// midnight UTC — closer to a natural "use yesterday's snap until midnight" UX.
+const isoToJdCache = new Map<string, number>();
+function isoDateToJd(iso: string): number {
+	let jd = isoToJdCache.get(iso);
+	if (jd === undefined) {
+		jd = dateToJD(new Date(iso + 'T12:00:00Z'));
+		isoToJdCache.set(iso, jd);
+	}
+	return jd;
 }
 
 export interface Metadata {

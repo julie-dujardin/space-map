@@ -6,8 +6,8 @@ import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
-import { fetchMetadata, selectSnapshot } from '$lib/fetch/metadata';
-import { dateToJD } from '$lib/format/date';
+import { fetchMetadata, selectSnapshot, type Metadata } from '$lib/fetch/metadata';
+import { dateToJD, jdToDate } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { populateTrailBuffer } from '$lib/fetch/elements/chunk';
@@ -168,6 +168,12 @@ async function createPlaceholderBody(
 	// them when the sim time wanders far from epoch — the chunk's real window
 	// will overwrite this once it loads. Keplerian/parabolic orbits have no
 	// hard cutoff, so leave them unbounded.
+	// TODO: placeholders bypass the snapshot-swap mechanism — the orbit comes
+	// from `/objects/{id}.json` which is a single fixed-epoch TLE, not a
+	// per-date export. If the user URL-navigates to an Earth sat at a sim
+	// time far from the placeholder's epoch, it'll stay hidden until the
+	// real chunk lands. Acceptable for now since the chunk usually lands
+	// within a second or two; revisit if URL-loaded sats need wider coverage.
 	const SGP4_VALIDITY_SLACK_DAYS = 14;
 	const validityStart = satrec ? orbit.epoch_jd - SGP4_VALIDITY_SLACK_DAYS : -Infinity;
 	const validityEnd = satrec ? orbit.epoch_jd + SGP4_VALIDITY_SLACK_DAYS : Infinity;
@@ -228,6 +234,24 @@ function isTopLevelParent(parentId: string): boolean {
 	return parentId === 'naif-0' || parentId === 'naif-10';
 }
 
+/** Min wall-clock interval between snapshot swaps. Conservative — daily exports give us all day. */
+const MIN_SNAPSHOT_SWAP_INTERVAL_MS = 2000;
+
+/**
+ * Per-(zone, zoom) state for a time-segmented zone (currently only `earth`).
+ * `bodies` is the full PositionedBody set contributed by `currentTime`'s
+ * snapshot — kept so the next swap can remove them precisely (vs. clearing
+ * `spacecraftByParent` wholesale, which would also drop other zones' entries
+ * that share the same parent).
+ */
+interface TimeSegmentedZoneState {
+	zone: string;
+	zoom: number;
+	parts: number;
+	currentTime: string;
+	bodies: PositionedBody[];
+}
+
 export class ContextManager {
 	private readonly childrenByParent = new Map<string, Set<string>>();
 	readonly bodiesById = new Map<string, PositionedBody>();
@@ -279,6 +303,30 @@ export class ContextManager {
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
+
+	/**
+	 * Per-(zone,zoom) state for time-segmented zones (CelesTrak daily exports).
+	 * `bodies` tracks every PositionedBody contributed by the currently loaded
+	 * snapshot so a future swap can remove them atomically. Populated during
+	 * Phase 2 of `load()` and mutated on every snapshot swap thereafter.
+	 */
+	private timeSegmentedZones = new Map<string, TimeSegmentedZoneState>();
+
+	/**
+	 * Loader retained across `load()` so snapshot swaps can reuse the
+	 * `positions` / `barycenters` maps populated from majors/moons. Without
+	 * this we'd have to re-load majors on every swap to repopulate parent
+	 * positions, which is wasteful (cheb store doesn't change).
+	 */
+	private loader: ChunkLoader | null = null;
+
+	private metadata: Metadata | null = null;
+	/** True after Phase 2 finishes — gates `updateTime` to avoid racing with the initial async load. */
+	private phase2Done = false;
+	/** Single-flight: at most one snapshot swap in-flight globally. */
+	private snapshotSwapInFlight = false;
+	/** Wall-clock ms of the last swap initiation; gate the next swap by ≥2s. */
+	private lastSnapshotSwapMs = 0;
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	/**
@@ -366,15 +414,28 @@ export class ContextManager {
 			loadNutPrecAngles();
 			const metadataPromise = fetchMetadata();
 
+			const initialJd = dateToJD(date);
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
+				this.metadata = metadata;
 				const args: { zone: string; zoom: number; part: number; time: string | null }[] = [];
 				for (const [zone, zoneData] of Object.entries(metadata.zones)) {
 					if (zone === 'major' || zone === 'moons') continue;
 					for (const [zoomStr, zoomEntry] of Object.entries(zoneData.zooms)) {
-						const { stats, time } = selectSnapshot(zoomEntry);
-						for (let part = 0; part < Math.min(stats.parts, 20); part++) {
-							args.push({ zone, zoom: Number(zoomStr), part, time });
-							ChunkLoader.prefetch(zone, Number(zoomStr), part, time);
+						const { stats, time } = selectSnapshot(zoomEntry, initialJd);
+						const zoom = Number(zoomStr);
+						const cappedParts = Math.min(stats.parts, 20);
+						if (time !== null) {
+							this.timeSegmentedZones.set(`${zone}:${zoom}`, {
+								zone,
+								zoom,
+								parts: cappedParts,
+								currentTime: time,
+								bodies: []
+							});
+						}
+						for (let part = 0; part < cappedParts; part++) {
+							args.push({ zone, zoom, part, time });
+							ChunkLoader.prefetch(zone, zoom, part, time);
 						}
 					}
 				}
@@ -393,6 +454,7 @@ export class ContextManager {
 			});
 			this.chebStore = await chebPromise;
 			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
+			this.loader = loader;
 
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
@@ -434,6 +496,9 @@ export class ContextManager {
 					minorChunkArgs.map(({ zone, zoom, part, time }) =>
 						loader.process(zone, zoom, part, date, time).then((chunk) => {
 							this.recordOrbitSources(chunk);
+							const tsState =
+								time !== null ? this.timeSegmentedZones.get(`${zone}:${zoom}`) : undefined;
+							if (tsState) tsState.bodies.push(...chunk);
 							for (const b of chunk) {
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
 									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
@@ -453,11 +518,134 @@ export class ContextManager {
 			} finally {
 				clearInterval(intervalId);
 				flush();
+				this.phase2Done = true;
 			}
 		} catch (e) {
 			this.loading = false;
 			throw e;
 		}
+	}
+
+	/**
+	 * Per-frame hook from the renderer tick loop. Picks the closest snapshot
+	 * for each time-segmented zone (with a small forward-look so we start the
+	 * fetch slightly before crossing into needing it) and kicks off a swap if
+	 * the desired snapshot differs from the loaded one. Globally single-flight
+	 * with a ≥2s wall-clock floor between swap initiations — at high time-warp
+	 * we stay behind the user but the chunk's relaxed validity (set in
+	 * `chunk.ts` for time-segmented zones) keeps satellites visible.
+	 *
+	 * Cheap when there's nothing to do: returns on the first failed gate and
+	 * never allocates in the steady state.
+	 */
+	updateTime(jd: number, timeScale: number): void {
+		if (!this.phase2Done || this.snapshotSwapInFlight) return;
+		if (!this.metadata || !this.loader) return;
+		if (performance.now() - this.lastSnapshotSwapMs < MIN_SNAPSHOT_SWAP_INTERVAL_MS) return;
+
+		// Look ahead by max(0.1d, 2 wall-seconds of sim time). At real-time
+		// playback this is ~2.4 hours; at high warp it scales so we begin
+		// fetching the next snapshot ~2s before the user crosses into needing it.
+		const lookahead =
+			timeScale === 0
+				? 0
+				: Math.sign(timeScale) * Math.max(0.1, (Math.abs(timeScale) * 2) / 86400);
+		const targetJd = jd + lookahead;
+
+		for (const state of this.timeSegmentedZones.values()) {
+			const entry = this.metadata.zones[state.zone]?.zooms[state.zoom];
+			if (!entry) continue;
+			const { time } = selectSnapshot(entry, targetJd);
+			if (time !== null && time !== state.currentTime) {
+				void this.swapSnapshot(state, time, jd);
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Atomically replace one time-segmented (zone, zoom) snapshot. Loads every
+	 * part of the new snapshot in parallel, then in one synchronous pass swaps
+	 * out the old bodies and inserts the new ones. The single-flight gate in
+	 * `updateTime` ensures only one of these runs at a time.
+	 */
+	private async swapSnapshot(
+		state: TimeSegmentedZoneState,
+		newTime: string,
+		jd: number
+	): Promise<void> {
+		this.snapshotSwapInFlight = true;
+		this.lastSnapshotSwapMs = performance.now();
+		try {
+			const date = jdToDate(jd);
+			const chunks = await Promise.all(
+				Array.from({ length: state.parts }, (_, part) =>
+					this.loader!.process(state.zone, state.zoom, part, date, newTime)
+				)
+			);
+			const newBodies = chunks.flat();
+			this.replaceTimeSegmentedBodies(state, newBodies);
+			state.currentTime = newTime;
+			state.bodies = newBodies;
+			this.recordOrbitSources(newBodies);
+		} catch (e) {
+			console.warn(`Snapshot swap failed for ${state.zone}/${state.zoom} → ${newTime}:`, e);
+		} finally {
+			this.snapshotSwapInFlight = false;
+		}
+	}
+
+	/**
+	 * Splice new bodies in and the previous snapshot's bodies out. Operates on
+	 * the same `spacecraftByParent`/`asteroidBodiesByZone` shape the initial
+	 * load builds, then reassigns the maps so the `minorBodyVersion` bump
+	 * triggers `rebuildMinorPointClouds` in the renderer.
+	 */
+	private replaceTimeSegmentedBodies(
+		state: TimeSegmentedZoneState,
+		newBodies: PositionedBody[]
+	): void {
+		const dirtyParents = new Set<string>();
+		let asteroidZoneDirty = false;
+
+		for (const oldB of state.bodies) {
+			if (oldB.data.objectType === ObjectType.SPACECRAFT) {
+				const parentId = oldB.data.parentId;
+				const list = this.spacecraftByParent.get(parentId);
+				if (!list) continue;
+				const filtered = list.filter((b) => b.data.id !== oldB.data.id);
+				if (filtered.length === 0) this.spacecraftByParent.delete(parentId);
+				else this.spacecraftByParent.set(parentId, filtered);
+				dirtyParents.add(parentId);
+			} else {
+				const list = this.asteroidBodiesByZone.get(state.zone);
+				if (!list) continue;
+				const filtered = list.filter((b) => b.data.id !== oldB.data.id);
+				if (filtered.length === 0) this.asteroidBodiesByZone.delete(state.zone);
+				else this.asteroidBodiesByZone.set(state.zone, filtered);
+				asteroidZoneDirty = true;
+			}
+		}
+
+		for (const b of newBodies) {
+			if (b.data.objectType === ObjectType.SPACECRAFT) {
+				const list = this.spacecraftByParent.get(b.data.parentId) ?? [];
+				list.push(b);
+				this.spacecraftByParent.set(b.data.parentId, list);
+				dirtyParents.add(b.data.parentId);
+			} else {
+				const list = this.asteroidBodiesByZone.get(state.zone) ?? [];
+				list.push(b);
+				this.asteroidBodiesByZone.set(state.zone, list);
+				asteroidZoneDirty = true;
+			}
+		}
+
+		this.spacecraftByParent = new Map(this.spacecraftByParent);
+		if (asteroidZoneDirty) this.asteroidBodiesByZone = new Map(this.asteroidBodiesByZone);
+		for (const p of dirtyParents) this.dirtySpacecraftGroups.add(p);
+		if (asteroidZoneDirty) this.dirtyAsteroidZones.add(state.zone);
+		this.minorBodyVersion++;
 	}
 
 	addBodies(bodies: PositionedBody[]): void {
