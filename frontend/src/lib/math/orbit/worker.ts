@@ -23,6 +23,17 @@ type RewireMsg = {
 	groups: { id: string; cols: OrbitColumns }[];
 };
 
+/**
+ * Like rewire but additive — listed groups are upserted, others keep their
+ * existing cols. Used by `OrbitWorkerPool.rewireSubset` so a snapshot swap
+ * that only touches the earth zone doesn't force every other zone's cols to
+ * be re-shipped.
+ */
+type RewireMergeMsg = {
+	type: 'rewireMerge';
+	groups: { id: string; cols: OrbitColumns }[];
+};
+
 type TickMsg = {
 	type: 'tick';
 	jd: number;
@@ -35,12 +46,16 @@ type TickMsg = {
 	}[];
 };
 
-type InMsg = RewireMsg | TickMsg;
+type InMsg = RewireMsg | RewireMergeMsg | TickMsg;
 
 self.onmessage = (ev: MessageEvent<InMsg>) => {
 	const msg = ev.data;
 	if (msg.type === 'rewire') {
 		groups.clear();
+		for (const g of msg.groups) groups.set(g.id, g.cols);
+		return;
+	}
+	if (msg.type === 'rewireMerge') {
 		for (const g of msg.groups) groups.set(g.id, g.cols);
 		return;
 	}

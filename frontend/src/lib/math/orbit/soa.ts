@@ -30,18 +30,27 @@ export const KIND_SGP4 = 3;
 export interface OrbitColumns {
 	count: number;
 	kind: Uint8Array;
-	/** 1 when i/om/w are in Earth-equatorial J2000 (TEME) instead of ecliptic. */
-	equatorial: Uint8Array;
 	a: Float64Array;
 	e: Float64Array;
-	i: Float64Array;
-	om: Float64Array;
-	w: Float64Array;
 	ma: Float64Array;
 	n: Float64Array;
 	epoch: Float64Array;
 	q: Float64Array;
 	tp: Float64Array;
+	/**
+	 * Precomputed (xOrb, yOrb) → (sx, sy, sz) rotation matrix per body, in
+	 * scene units. Folds in the i/om/w rotation, the equatorial→ecliptic
+	 * rotation (when applicable), the ecliptic→Three.js axis swap, and the
+	 * AU_SCALE multiplier. Computed once at pack time so the inner tick loop
+	 * is just 6 multiplications and 4 additions per body — saves 6 trig calls
+	 * × ~250k bodies × 60 fps = ~90M trig/sec across the worker pool.
+	 */
+	m00: Float32Array;
+	m01: Float32Array;
+	m10: Float32Array;
+	m11: Float32Array;
+	m20: Float32Array;
+	m21: Float32Array;
 	/** Per-row SGP4 satrec — non-null iff kind[i] === KIND_SGP4. */
 	satrec: (SatRec | null)[];
 	/**
@@ -81,25 +90,26 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 		if (d.satrec) {
 			cols.kind[idx] = KIND_SGP4;
 			cols.satrec[idx] = d.satrec;
+			// SGP4 path computes its own scene-frame rotation from the satrec
+			// output; the precomputed orientation matrix below isn't used for
+			// these bodies.
 		} else if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
 			cols.kind[idx] = KIND_PARABOLIC;
 			cols.q[idx] = d.q;
 			cols.tp[idx] = d.tp;
+			writeOrientationMatrix(cols, idx, d.i, d.om, d.w, d.equatorial === true);
 		} else if (d.a !== 0 && isFinite(d.a)) {
 			cols.kind[idx] = KIND_KEPLER;
+			writeOrientationMatrix(cols, idx, d.i, d.om, d.w, d.equatorial === true);
 		} else {
 			cols.kind[idx] = KIND_SKIP;
 			continue;
 		}
 		cols.a[idx] = d.a;
 		cols.e[idx] = d.e;
-		cols.i[idx] = d.i;
-		cols.om[idx] = d.om;
-		cols.w[idx] = d.w;
 		cols.ma[idx] = d.ma;
 		cols.n[idx] = d.n;
 		cols.epoch[idx] = d.epoch;
-		cols.equatorial[idx] = d.equatorial ? 1 : 0;
 		if (d.validityStart < start) start = d.validityStart;
 		if (d.validityEnd > end) end = d.validityEnd;
 	}
@@ -108,21 +118,69 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 	return cols;
 }
 
+/**
+ * Compose the orbital-element rotation (Ω-i-ω), optional equatorial→ecliptic
+ * step, ecliptic→Three.js axis swap, and AU_SCALE factor into a 3×2 matrix
+ * that maps (x_orbit, y_orbit) → (sx, sy, sz) scene units. Written into
+ * `cols` at row `idx`.
+ */
+function writeOrientationMatrix(
+	cols: OrbitColumns,
+	idx: number,
+	iDeg: number,
+	omDeg: number,
+	wDeg: number,
+	equatorial: boolean
+): void {
+	const cosW = Math.cos(wDeg * DEG2RAD);
+	const sinW = Math.sin(wDeg * DEG2RAD);
+	const cosI = Math.cos(iDeg * DEG2RAD);
+	const sinI = Math.sin(iDeg * DEG2RAD);
+	const cosOm = Math.cos(omDeg * DEG2RAD);
+	const sinOm = Math.sin(omDeg * DEG2RAD);
+
+	// Orbital plane → ecliptic (or TEME if `equatorial`).
+	const a = cosOm * cosW - sinOm * sinW * cosI;
+	const b = -cosOm * sinW - sinOm * cosW * cosI;
+	const c = sinOm * cosW + cosOm * sinW * cosI;
+	const dd = -sinOm * sinW + cosOm * cosW * cosI;
+	const e = sinW * sinI;
+	const f = cosW * sinI;
+
+	cols.m00[idx] = a * AU_SCALE;
+	cols.m01[idx] = b * AU_SCALE;
+	if (equatorial) {
+		// Rotate (y, z) about scene-X by ε, then apply the Three.js axis swap
+		// (sy = z_ecl, sz = -y_ecl). Combined coefficients per row below.
+		cols.m10[idx] = (-c * SIN_EPS + e * COS_EPS) * AU_SCALE;
+		cols.m11[idx] = (-dd * SIN_EPS + f * COS_EPS) * AU_SCALE;
+		cols.m20[idx] = -(c * COS_EPS + e * SIN_EPS) * AU_SCALE;
+		cols.m21[idx] = -(dd * COS_EPS + f * SIN_EPS) * AU_SCALE;
+	} else {
+		cols.m10[idx] = e * AU_SCALE;
+		cols.m11[idx] = f * AU_SCALE;
+		cols.m20[idx] = -c * AU_SCALE;
+		cols.m21[idx] = -dd * AU_SCALE;
+	}
+}
+
 /** Buffers of OrbitColumns as a transferable list. Used when posting to a worker. */
 export function columnsTransferList(cols: OrbitColumns): Transferable[] {
 	return [
 		cols.kind.buffer,
-		cols.equatorial.buffer,
 		cols.a.buffer,
 		cols.e.buffer,
-		cols.i.buffer,
-		cols.om.buffer,
-		cols.w.buffer,
 		cols.ma.buffer,
 		cols.n.buffer,
 		cols.epoch.buffer,
 		cols.q.buffer,
-		cols.tp.buffer
+		cols.tp.buffer,
+		cols.m00.buffer,
+		cols.m01.buffer,
+		cols.m10.buffer,
+		cols.m11.buffer,
+		cols.m20.buffer,
+		cols.m21.buffer
 	] as Transferable[];
 }
 
@@ -130,17 +188,19 @@ export function allocColumns(count: number): OrbitColumns {
 	return {
 		count,
 		kind: new Uint8Array(count),
-		equatorial: new Uint8Array(count),
 		a: new Float64Array(count),
 		e: new Float64Array(count),
-		i: new Float64Array(count),
-		om: new Float64Array(count),
-		w: new Float64Array(count),
 		ma: new Float64Array(count),
 		n: new Float64Array(count),
 		epoch: new Float64Array(count),
 		q: new Float64Array(count),
 		tp: new Float64Array(count),
+		m00: new Float32Array(count),
+		m01: new Float32Array(count),
+		m10: new Float32Array(count),
+		m11: new Float32Array(count),
+		m20: new Float32Array(count),
+		m21: new Float32Array(count),
 		satrec: new Array<SatRec | null>(count).fill(null),
 		validityStart: -Infinity,
 		validityEnd: Infinity
@@ -175,7 +235,7 @@ export function writePositions(
 	// — avoids a full SGP4 sweep that would error on every row and flood the
 	// console. Returning 0 hides the cloud via setDrawRange.
 	if (jd < cols.validityStart || jd > cols.validityEnd) return 0;
-	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec } = cols;
+	const { count, kind, a, e, ma, n, epoch, q, tp, m00, m01, m10, m11, m20, m21, satrec } = cols;
 	const capacity = (out.length / 3) | 0;
 	let writeIdx = 0;
 
@@ -213,9 +273,6 @@ export function writePositions(
 
 		let xOrb: number, yOrb: number;
 		const ei = e[idx];
-		const ii = i[idx];
-		const omi = om[idx];
-		const wi = w[idx];
 
 		if (k === KIND_PARABOLIC) {
 			const result = solveBarker(q[idx], tp[idx], jd);
@@ -254,33 +311,11 @@ export function writePositions(
 
 		if (!isFinite(xOrb) || !isFinite(yOrb)) continue;
 
-		// Inline orbitalToThreeJS — avoids tuple alloc in the hot loop.
-		const cosW = Math.cos(wi * DEG2RAD);
-		const sinW = Math.sin(wi * DEG2RAD);
-		const cosI = Math.cos(ii * DEG2RAD);
-		const sinI = Math.sin(ii * DEG2RAD);
-		const cosOm = Math.cos(omi * DEG2RAD);
-		const sinOm = Math.sin(omi * DEG2RAD);
-
-		const x =
-			(cosOm * cosW - sinOm * sinW * cosI) * xOrb + (-cosOm * sinW - sinOm * cosW * cosI) * yOrb;
-		let y =
-			(sinOm * cosW + cosOm * sinW * cosI) * xOrb + (-sinOm * sinW + cosOm * cosW * cosI) * yOrb;
-		let z = sinW * sinI * xOrb + cosW * sinI * yOrb;
-
-		if (equatorial[idx]) {
-			// TLE elements are in Earth-equatorial J2000 (TEME); rotate about X by ε
-			// to match the ecliptic frame everything else uses.
-			const yEcl = y * COS_EPS + z * SIN_EPS;
-			const zEcl = -y * SIN_EPS + z * COS_EPS;
-			y = yEcl;
-			z = zEcl;
-		}
-
-		// Three.js mapping: ecliptic X→X, Z→Y, Y→−Z. Matches orbitalToThreeJS.
-		const sx = x * AU_SCALE;
-		const sy = z * AU_SCALE;
-		const sz = -y * AU_SCALE;
+		// Apply the precomputed orientation matrix (folds i/om/w rotation,
+		// equatorial→ecliptic if applicable, axis swap, and AU_SCALE).
+		const sx = m00[idx] * xOrb + m01[idx] * yOrb;
+		const sy = m10[idx] * xOrb + m11[idx] * yOrb;
+		const sz = m20[idx] * xOrb + m21[idx] * yOrb;
 
 		out[writeIdx * 3] = parentX + sx - basisX;
 		out[writeIdx * 3 + 1] = parentY + sy - basisY;
