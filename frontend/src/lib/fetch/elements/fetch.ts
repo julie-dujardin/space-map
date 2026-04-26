@@ -25,8 +25,13 @@ async function fetchTextMap(url: string): Promise<Map<number, string>> {
 	return new Map((await fetchGzText(url)).split('\n').map((v, i) => [i, v]));
 }
 
-export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<number, string>> {
-	return fetchTextMap(elementIdsUrl(zone, zoom, part));
+export function fetchIds(
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): Promise<Map<number, string>> {
+	return fetchTextMap(elementIdsUrl(zone, zoom, part, time));
 }
 
 export function parseLabels(text: string): LabelData {
@@ -46,7 +51,12 @@ export function parseLabels(text: string): LabelData {
 	return { labels, flags };
 }
 
-export async function fetchLabels(zone: string, zoom: number, part: number): Promise<LabelData> {
-	const url = elementLabelsUrl(getLocale(), zone, zoom, part);
+export async function fetchLabels(
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): Promise<LabelData> {
+	const url = elementLabelsUrl(getLocale(), zone, zoom, part, time);
 	return parseLabels(await fetchGzText(url));
 }

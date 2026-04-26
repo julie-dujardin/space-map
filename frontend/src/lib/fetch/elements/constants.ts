@@ -16,12 +16,33 @@ export const FORMAT_SGP4 = 2;
 
 export const BASE_ELEMENT_PATH = `${DATA_BASE}/v1/elements`;
 
-export const elementsBinUrl = (zone: string, zoom: number, part: number): string =>
-	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.bin.gz`;
-export const elementIdsUrl = (zone: string, zoom: number, part: number): string =>
-	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.id.gz`;
-export const elementLabelsUrl = (lang: string, zone: string, zoom: number, part: number): string =>
-	`${BASE_ELEMENT_PATH}/${zone}/${zoom}/${part}.loc.${lang}.gz`;
+/**
+ * Build the chunk directory. Time-segmented zones (earth) insert an ISO-date
+ * directory between zoom and part; flat zones (everything else, for now)
+ * skip it.
+ */
+const chunkDir = (zone: string, zoom: number, time: string | null): string =>
+	time ? `${BASE_ELEMENT_PATH}/${zone}/${zoom}/${time}` : `${BASE_ELEMENT_PATH}/${zone}/${zoom}`;
+
+export const elementsBinUrl = (
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): string => `${chunkDir(zone, zoom, time)}/${part}.bin.gz`;
+export const elementIdsUrl = (
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): string => `${chunkDir(zone, zoom, time)}/${part}.id.gz`;
+export const elementLabelsUrl = (
+	lang: string,
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): string => `${chunkDir(zone, zoom, time)}/${part}.loc.${lang}.gz`;
 
 /** Sentinel values for missing data in the binary format. */
 export const MISSING_INT32 = -1;

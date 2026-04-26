@@ -20,8 +20,38 @@ export type ObjectBundles = {
 	global: number;
 } & Record<string, number>;
 
+export interface ChunkStats {
+	parts: number;
+	object_count: number;
+	avg_part_bytes: number;
+}
+
+/**
+ * Per-zoom entry in the metadata. Most zones ship a single snapshot — the
+ * flat `ChunkStats` shape — but time-segmented zones (currently only `earth`,
+ * one snapshot per CelesTrak day-dir) ship a `times` map keyed by ISO date.
+ */
+export type ZoomEntry = ChunkStats | { times: Record<string, ChunkStats> };
+
 export interface ZoneMetadata {
-	zooms: Record<string, { parts: number; object_count: number; avg_part_bytes: number }>;
+	zooms: Record<string, ZoomEntry>;
+}
+
+/**
+ * Pick the snapshot to render for a (zone, zoom). For time-segmented zones we
+ * hardcode the most recent snapshot for now — the SGP4 propagator only stays
+ * accurate ±14d around the chunk's `start_jd`/`end_jd`, so picking a snapshot
+ * close to the user's simulated time is a follow-up. Returned `time` is the
+ * ISO date threaded into the chunk URL; `null` means the flat layout
+ * (`elements/{zone}/{zoom}/{part}.*`).
+ */
+export function selectSnapshot(entry: ZoomEntry): { stats: ChunkStats; time: string | null } {
+	if ('times' in entry) {
+		const isoDates = Object.keys(entry.times).sort();
+		const latest = isoDates[isoDates.length - 1];
+		return { stats: entry.times[latest], time: latest };
+	}
+	return { stats: entry, time: null };
 }
 
 export interface Metadata {

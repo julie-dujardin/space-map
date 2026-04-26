@@ -106,9 +106,10 @@ function align8(n: number): number {
 export async function fetchElements(
 	zone: string,
 	zoom: number,
-	part: number
+	part: number,
+	time: string | null = null
 ): Promise<ElementColumns> {
-	const res = await fetch(elementsBinUrl(zone, zoom, part));
+	const res = await fetch(elementsBinUrl(zone, zoom, part, time));
 	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
 	const ds = new DecompressionStream('gzip');
 	const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();

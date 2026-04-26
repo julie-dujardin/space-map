@@ -164,11 +164,11 @@ export class ChunkLoader {
 	 * Fire-and-forget fetch of the three files for a zone/zoom/part, so the browser
 	 * caches them before the caller needs to process them.
 	 */
-	static prefetch(zone: string, zoom: number, part: number): void {
+	static prefetch(zone: string, zoom: number, part: number, time: string | null = null): void {
 		const lang = getLocale();
-		fetch(elementsBinUrl(zone, zoom, part));
-		fetch(elementLabelsUrl(lang, zone, zoom, part));
-		fetch(elementIdsUrl(zone, zoom, part));
+		fetch(elementsBinUrl(zone, zoom, part, time));
+		fetch(elementLabelsUrl(lang, zone, zoom, part, time));
+		fetch(elementIdsUrl(zone, zoom, part, time));
 	}
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
@@ -197,14 +197,20 @@ export class ChunkLoader {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
 	}
 
-	async process(zone: string, zoom: number, part: number, date: Date): Promise<PositionedBody[]> {
+	async process(
+		zone: string,
+		zoom: number,
+		part: number,
+		date: Date,
+		time: string | null = null
+	): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 
 		const [cols, labelData, idMap] = await Promise.all([
-			fetchElements(zone, zoom, part),
-			fetchLabels(zone, zoom, part),
-			fetchIds(zone, zoom, part)
+			fetchElements(zone, zoom, part, time),
+			fetchLabels(zone, zoom, part, time),
+			fetchIds(zone, zoom, part, time)
 		]);
 		const { labels, flags } = labelData;
 
