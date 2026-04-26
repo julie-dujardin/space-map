@@ -11,8 +11,8 @@
  * ±1 is enough to avoid a fetch stall at chunk boundaries; the tail chunk is
  * evicted when we slide forward.
  *
- * Bodies are keyed by their full object id (`<source>-<numeric>`), matching
- * the sidecar `data.id.gz` and the frontend `BodyData.id` convention.
+ * Bodies are keyed by their full object id (`<prefix>-<numeric>`), built into
+ * each body header and surfaced as `ChebyshevBody.id`.
  */
 
 import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/chebyshev/fetch';

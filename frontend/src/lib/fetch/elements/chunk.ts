@@ -1,4 +1,4 @@
-import { fetchLabels, fetchIds } from '$lib/fetch/elements/fetch';
+import { fetchLabels } from '$lib/fetch/elements/fetch';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
@@ -9,7 +9,7 @@ import {
 } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { Scale, elementsBinUrl, elementIdsUrl, elementLabelsUrl } from './constants';
+import { Scale, elementsBinUrl, elementLabelsUrl } from './constants';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
@@ -161,14 +161,14 @@ function sgp4ToBody(
 
 export class ChunkLoader {
 	/**
-	 * Fire-and-forget fetch of the three files for a zone/zoom/part, so the browser
-	 * caches them before the caller needs to process them.
+	 * Fire-and-forget fetch of the two files for a zone/zoom/part, so the browser
+	 * caches them before the caller needs to process them. IDs ride inside the
+	 * binary now (header id-type byte + column 0).
 	 */
 	static prefetch(zone: string, zoom: number, part: number): void {
 		const lang = getLocale();
 		fetch(elementsBinUrl(zone, zoom, part));
 		fetch(elementLabelsUrl(lang, zone, zoom, part));
-		fetch(elementIdsUrl(zone, zoom, part));
 	}
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
@@ -201,12 +201,12 @@ export class ChunkLoader {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 
-		const [cols, labelData, idMap] = await Promise.all([
+		const [cols, labelData] = await Promise.all([
 			fetchElements(zone, zoom, part),
-			fetchLabels(zone, zoom, part),
-			fetchIds(zone, zoom, part)
+			fetchLabels(zone, zoom, part)
 		]);
 		const { labels, flags } = labelData;
+		const idMap = cols.idMap;
 
 		console.log(`Loaded: ${cols.rowCount} objects`);
 		const isParabolic = cols.kind === 'parabolic';

@@ -3,7 +3,7 @@
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { elementIdsUrl, elementLabelsUrl } from '$lib/fetch/elements/constants';
+import { elementLabelsUrl } from '$lib/fetch/elements/constants';
 
 /** ASCII Unit Separator — delimiter between flag and name in label files. */
 const US = '\x1f';
@@ -19,14 +19,6 @@ async function fetchGzText(url: string): Promise<string> {
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const ds = new DecompressionStream('gzip');
 	return new Response(res.body!.pipeThrough(ds)).text();
-}
-
-async function fetchTextMap(url: string): Promise<Map<number, string>> {
-	return new Map((await fetchGzText(url)).split('\n').map((v, i) => [i, v]));
-}
-
-export function fetchIds(zone: string, zoom: number, part: number): Promise<Map<number, string>> {
-	return fetchTextMap(elementIdsUrl(zone, zoom, part));
 }
 
 export function parseLabels(text: string): LabelData {

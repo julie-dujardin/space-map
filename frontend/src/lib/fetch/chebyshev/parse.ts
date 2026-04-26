@@ -13,8 +13,20 @@ import {
 	CHEBYSHEV_VERSION,
 	FORMAT_POSITION_ONLY
 } from '$lib/fetch/chebyshev/constants';
+import { buildObjectId, IdType } from '$lib/fetch/elements/constants';
 
 export interface ChebyshevBody {
+	/**
+	 * Full Object ID (`<prefix>-<numeric>`), reconstructed from the body
+	 * header's `id_type` + `obj_id_value`. Pluto and the perturber asteroids
+	 * ride as `spkid-…` even though `naifId` is their planetary NAIF ID, so
+	 * use this for cross-referencing with the elements export and object
+	 * detail bundles.
+	 *
+	 * Empty string when the body header carries an unknown id-type — the
+	 * consumer should drop the row rather than ship a malformed key.
+	 */
+	id: string;
 	naifId: number;
 	parentNaifId: number;
 	/** NaN if unknown in the source. */
@@ -75,10 +87,19 @@ export function parseChebyshev(buffer: ArrayBuffer): ChebyshevChunk {
 	for (let b = 0; b < bodyCount; b++) {
 		const naifId = view.getInt32(offset, true);
 		const parentNaifId = view.getInt32(offset + 4, true);
-		const radiusKm = view.getFloat32(offset + 8, true);
-		const coeffsPerAxis = view.getUint16(offset + 12, true);
-		const segmentCount = view.getUint32(offset + 16, true);
+		const objIdValue = view.getInt32(offset + 8, true);
+		const radiusKm = view.getFloat32(offset + 12, true);
+		const coeffsPerAxis = view.getUint16(offset + 16, true);
+		const idType = view.getUint8(offset + 18) as IdType;
+		const segmentCount = view.getUint32(offset + 20, true);
 		offset += CHEBYSHEV_BODY_HEADER_SIZE;
+		// Empty string when id-type is unknown — store/loaders will drop the row.
+		const id = buildObjectId(idType, objIdValue) ?? '';
+		if (!id) {
+			console.warn(
+				`chebyshev body[${b}] (naifId=${naifId}) has unknown id-type ${idType}; routing keyed lookups will skip it`
+			);
+		}
 
 		const startJds = new Float64Array(segmentCount);
 		const endJds = new Float64Array(segmentCount);
@@ -98,6 +119,7 @@ export function parseChebyshev(buffer: ArrayBuffer): ChebyshevChunk {
 		}
 
 		bodies.push({
+			id,
 			naifId,
 			parentNaifId,
 			radiusKm,

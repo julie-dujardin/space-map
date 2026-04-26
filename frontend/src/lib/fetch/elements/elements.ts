@@ -10,7 +10,9 @@ import {
 	FORMAT_KEPLERIAN,
 	FORMAT_PARABOLIC,
 	FORMAT_SGP4,
+	IdType,
 	OrbitalSource,
+	buildObjectId,
 	elementsBinUrl
 } from '$lib/fetch/elements/constants';
 
@@ -31,6 +33,11 @@ export interface Validity {
  */
 export interface ChunkMeta extends Validity {
 	source: OrbitalSource;
+	/**
+	 * `<prefix>-<numeric>` Object IDs reconstructed from the header's id-type
+	 * byte and column 0. Indexed by row.
+	 */
+	idMap: Map<number, string>;
 }
 
 export interface KeplerianColumns extends ChunkMeta {
@@ -116,7 +123,13 @@ export async function fetchElements(
 }
 
 /** Parse header fields shared by all format types. */
-function parseHeader(buffer: ArrayBuffer): { formatType: number; rowCount: number } & ChunkMeta {
+function parseHeader(buffer: ArrayBuffer): {
+	formatType: number;
+	rowCount: number;
+	idType: IdType;
+} & Validity & {
+		source: OrbitalSource;
+	} {
 	const view = new DataView(buffer);
 	const magic = view.getUint32(0, true);
 	if (magic !== MAGIC) {
@@ -131,8 +144,32 @@ function parseHeader(buffer: ArrayBuffer): { formatType: number; rowCount: numbe
 		validityStart: view.getFloat64(8, true),
 		validityEnd: view.getFloat64(16, true),
 		rowCount: view.getUint32(24, true),
-		source: view.getUint8(28) as OrbitalSource
+		source: view.getUint8(28) as OrbitalSource,
+		idType: view.getUint8(29) as IdType
 	};
+}
+
+/**
+ * Walk column 0 once and build the row-index → full-id Map. Logs (without
+ * crashing) when the chunk's id-type is unknown — the row remains numerically
+ * usable but keyed lookups against object bundles will fail, so the consumer
+ * sees the warning and the missing entry rather than a corrupted-looking ID.
+ */
+function buildIdMap(idCol: Int32Array, idType: IdType): Map<number, string> {
+	const map = new Map<number, string>();
+	if (idType === IdType.UNKNOWN) {
+		if (idCol.length > 0) {
+			console.warn(
+				`elements chunk has unknown id-type — ${idCol.length} row(s) will lack reconstructed IDs`
+			);
+		}
+		return map;
+	}
+	for (let i = 0; i < idCol.length; i++) {
+		const id = buildObjectId(idType, idCol[i]);
+		if (id !== null) map.set(i, id);
+	}
+	return map;
 }
 
 /** Parse shared columns 0–3 (id, objectType, parentId, scale). */
@@ -210,14 +247,13 @@ function parseKeplerianColumns(
 }
 
 export function parseElements(buffer: ArrayBuffer): ElementColumns {
-	const { formatType, rowCount, validityStart, validityEnd, source } = parseHeader(buffer);
-	const meta: ChunkMeta = { validityStart, validityEnd, source };
+	const { formatType, rowCount, validityStart, validityEnd, source, idType } = parseHeader(buffer);
 
 	if (formatType === FORMAT_PARABOLIC) {
-		return parseParabolicElements(buffer, rowCount, meta);
+		return parseParabolicElements(buffer, rowCount, validityStart, validityEnd, source, idType);
 	}
 	if (formatType === FORMAT_SGP4) {
-		return parseSGP4Elements(buffer, rowCount, meta);
+		return parseSGP4Elements(buffer, rowCount, validityStart, validityEnd, source, idType);
 	}
 	if (formatType !== FORMAT_KEPLERIAN) {
 		throw new Error(`Unknown elements format type: ${formatType}`);
@@ -225,6 +261,12 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 
 	const { id, objectType, parentId, scale, offset } = parseSharedColumns(buffer, rowCount);
 	const kepler = parseKeplerianColumns(buffer, rowCount, offset);
+	const meta: ChunkMeta = {
+		validityStart,
+		validityEnd,
+		source,
+		idMap: buildIdMap(id, idType)
+	};
 
 	return {
 		kind: 'keplerian',
@@ -246,7 +288,14 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	};
 }
 
-function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number, meta: ChunkMeta): SGP4Columns {
+function parseSGP4Elements(
+	buffer: ArrayBuffer,
+	rowCount: number,
+	validityStart: number,
+	validityEnd: number,
+	source: OrbitalSource,
+	idType: IdType
+): SGP4Columns {
 	const {
 		id,
 		objectType,
@@ -256,6 +305,12 @@ function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number, meta: ChunkMet
 	} = parseSharedColumns(buffer, rowCount);
 	const kepler = parseKeplerianColumns(buffer, rowCount, sharedEnd);
 	let offset = kepler.offset;
+	const meta: ChunkMeta = {
+		validityStart,
+		validityEnd,
+		source,
+		idMap: buildIdMap(id, idType)
+	};
 
 	// Columns 13–15: bstar, mean_motion_dot, mean_motion_ddot (float32)
 	const bstar = new Float32Array(buffer, offset, rowCount);
@@ -298,7 +353,10 @@ function parseSGP4Elements(buffer: ArrayBuffer, rowCount: number, meta: ChunkMet
 function parseParabolicElements(
 	buffer: ArrayBuffer,
 	rowCount: number,
-	meta: ChunkMeta
+	validityStart: number,
+	validityEnd: number,
+	source: OrbitalSource,
+	idType: IdType
 ): ParabolicColumns {
 	const {
 		id,
@@ -308,6 +366,12 @@ function parseParabolicElements(
 		offset: startOffset
 	} = parseSharedColumns(buffer, rowCount);
 	let offset = startOffset;
+	const meta: ChunkMeta = {
+		validityStart,
+		validityEnd,
+		source,
+		idMap: buildIdMap(id, idType)
+	};
 
 	// Column 4: epoch_jd (float64 — Julian Dates need full precision)
 	const epochJd = new Float64Array(buffer, offset, rowCount);
