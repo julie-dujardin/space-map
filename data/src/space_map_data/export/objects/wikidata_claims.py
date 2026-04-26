@@ -94,7 +94,10 @@ PID_TO_KEY: dict[str, str] = {
 
 
 def _extract_global(
-    claims: dict, claim: GlobalClaim, qid: str
+    claims: dict,
+    claim: GlobalClaim,
+    qid: str,
+    wikidata_entities: WikidataEntityCache | None,
 ) -> list | dict | float | str | None:
     """Dispatch a single GlobalClaim to the appropriate extractor."""
     kind, pid, multiple, needs_unit = (
@@ -104,7 +107,11 @@ def _extract_global(
         claim.needs_unit,
     )
     if kind == "time":
-        return _all_times(claims, pid) if multiple else _single_time(claims, pid)
+        if pid == "P619":
+            return _launch_date(claims, wikidata_entities)
+        if multiple:
+            return _all_times(claims, pid, wikidata_entities)
+        return _single_time(claims, pid, wikidata_entities)
     if kind == "quantity":
         return _single_quantity(claims, pid, needs_unit=needs_unit, qid=qid)
     if kind == "image":
@@ -114,7 +121,11 @@ def _extract_global(
     return None
 
 
-def extract_claims(claims: dict, qid: str) -> dict:
+def extract_claims(
+    claims: dict,
+    qid: str,
+    wikidata_entities: WikidataEntityCache | None = None,
+) -> dict:
     """Extract target properties from raw Wikidata claims.
 
     Returns a flat dict with parsed values (not the raw claim structure).
@@ -122,7 +133,7 @@ def extract_claims(claims: dict, qid: str) -> dict:
     result: dict = {}
 
     for claim in GLOBAL_CLAIMS:
-        v = _extract_global(claims, claim, qid)
+        v = _extract_global(claims, claim, qid, wikidata_entities)
         if v:
             result[claim.key] = v
 
@@ -322,29 +333,93 @@ def _all_strings(claims: dict, prop: str) -> list[str]:
     return [val for val in _claim_values(claims, prop) if isinstance(val, str) and val]
 
 
-def _all_times(claims: dict, prop: str) -> list[str]:
+def _stmt_time(stmt: dict) -> tuple[int, str] | None:
+    """Return (precision, time-string) from a statement's mainsnak, or None."""
+    val = _stmt_value(stmt)
+    if isinstance(val, dict) and "time" in val:
+        return val.get("precision", 0), val["time"]
+    return None
+
+
+def _refined_time(
+    stmt: dict, wikidata_entities: WikidataEntityCache | None
+) -> tuple[int, str] | None:
+    """Resolve a statement's P4241 (refine date) qualifier to a more precise time.
+
+    P4241 points to an event entity that may carry a more precise timestamp on
+    P585 (point in time) or P619 (date of spacecraft launch). Returns
+    (precision, time) of the more precise time, or None.
+    """
+    if wikidata_entities is None:
+        return None
+    refine_qid = _qualifier_qid(stmt, "P4241")
+    if not refine_qid:
+        return None
+    event = wikidata_entities.get_referenced(refine_qid)
+    if not event:
+        return None
+    base = _stmt_time(stmt)
+    base_precision = base[0] if base else 0
+    for prop in ("P585", "P619"):
+        for event_stmt in active_statements(event["claims"], prop):
+            t = _stmt_time(event_stmt)
+            if t and t[0] > base_precision:
+                return t
+    return None
+
+
+def _stmt_times(
+    claims: dict, prop: str, wikidata_entities: WikidataEntityCache | None
+) -> list[tuple[int, str]]:
+    """Extract (precision, time) pairs for a property, applying P4241 refinement."""
+    entries: list[tuple[int, str]] = []
+    for stmt in active_statements(claims, prop):
+        refined = _refined_time(stmt, wikidata_entities)
+        t = refined or _stmt_time(stmt)
+        if t is not None:
+            entries.append(t)
+    return entries
+
+
+def _all_times(
+    claims: dict, prop: str, wikidata_entities: WikidataEntityCache | None = None
+) -> list[str]:
     """Extract all time values, dropping less precise duplicates.
 
     Uses the Wikidata ``precision`` field (9 = year, 10 = month, 11 = day, …).
     When values at different precisions coexist, only the most precise are kept.
+    Applies P4241 (refine date) qualifier resolution when a cache is provided.
     """
-    entries = []
-    for val in _claim_values(claims, prop):
-        if isinstance(val, dict) and "time" in val:
-            entries.append((val.get("precision", 0), val["time"]))
+    entries = _stmt_times(claims, prop, wikidata_entities)
     if len(entries) <= 1:
         return [t for _, t in entries]
     max_prec = max(p for p, _ in entries)
     return [t for p, t in entries if p == max_prec]
 
 
-def _single_time(claims: dict, prop: str) -> str | None:
+def _single_time(
+    claims: dict, prop: str, wikidata_entities: WikidataEntityCache | None = None
+) -> str | None:
     """Extract the single time value from a claim as an ISO date string."""
-    vals = list(dict.fromkeys(_all_times(claims, prop)))
+    vals = list(dict.fromkeys(_all_times(claims, prop, wikidata_entities)))
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
         raise MultipleClaimValues(f"Multiple time values for {key}: {vals}")
     return vals[0] if vals else None
+
+
+def _launch_date(
+    claims: dict, wikidata_entities: WikidataEntityCache | None
+) -> str | None:
+    """Extract the launch date (P619), picking the earliest when multiple.
+
+    Each statement's P4241 (refine date) qualifier is resolved before picking,
+    so the chosen value uses the more precise time when available.
+    """
+    entries = _stmt_times(claims, "P619", wikidata_entities)
+    if not entries:
+        return None
+    return min(entries, key=lambda t: t[1])[1]
 
 
 def _parse_quantity(dv: dict) -> dict | float | None:

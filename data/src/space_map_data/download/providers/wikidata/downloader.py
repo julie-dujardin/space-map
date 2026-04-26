@@ -13,7 +13,11 @@ from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
-from space_map_data.export.objects.wikidata_claims import ENTITY_REF_CLAIMS, PID_TO_KEY
+from space_map_data.export.objects.wikidata_claims import (
+    ENTITY_REF_CLAIMS,
+    GLOBAL_CLAIMS,
+    PID_TO_KEY,
+)
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -146,6 +150,16 @@ class WikidataDownloader(Downloader):
                     dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
                     if isinstance(dv, dict) and "id" in dv:
                         referenced.add(dv["id"])
+            # P4241 (refine date) qualifier targets an event entity whose own time
+            # claim provides a more precise timestamp. It can appear on any time
+            # property (e.g. P619 launch_date, P575 discovery_date).
+            time_props = (c.pid for c in GLOBAL_CLAIMS if c.kind == "time")
+            for prop in time_props:
+                for stmt in claims.get(prop, []):
+                    for snak in stmt.get("qualifiers", {}).get("P4241", []):
+                        dv = snak.get("datavalue", {}).get("value", {})
+                        if isinstance(dv, dict) and "id" in dv:
+                            referenced.add(dv["id"])
             for prop_stmts in claims.values():
                 for stmt in prop_stmts:
                     dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})

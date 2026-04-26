@@ -578,6 +578,115 @@ class TestExtractClaims:
         result = extract_claims(claims, "Q2513")
         assert result["launch_date"] == "+1990-04-24T00:00:00Z"
 
+    def test_launch_date_picks_earliest(self):
+        """Q5100935 Tiangong: multiple P619 statements; pick the earliest."""
+        claims = {
+            "P619": [
+                _stmt(
+                    _time_snak("+2021-04-29T00:00:00Z", precision=11),
+                    qualifiers={"P518": [_entity_snak("Q5170154")]},  # Tianhe
+                ),
+                _stmt(
+                    _time_snak("+2022-07-24T00:00:00Z", precision=11),
+                    qualifiers={"P518": [_entity_snak("Q106658038")]},  # Wentian
+                ),
+            ]
+        }
+        result = extract_claims(claims, "Q5100935")
+        assert result["launch_date"] == "+2021-04-29T00:00:00Z"
+
+    def test_launch_date_uses_p4241_refine_date(self):
+        """Q5100935 Tiangong: P4241 qualifier resolves to a more precise launch time."""
+        claims = {
+            "P619": [
+                _stmt(
+                    _time_snak("+2021-04-29T00:00:00Z", precision=11),
+                    qualifiers={
+                        "P4241": [_entity_snak("Q95018095")],
+                        "P518": [_entity_snak("Q5170154")],
+                    },
+                ),
+                _stmt(
+                    _time_snak("+2022-07-24T00:00:00Z", precision=11),
+                    qualifiers={"P4241": [_entity_snak("Q95033742")]},
+                ),
+            ]
+        }
+        cache = MagicMock()
+        cache.get_referenced.return_value = {
+            "labels": {},
+            "descriptions": {},
+            "aliases": {},
+            "sitelinks": {},
+            "claims": {
+                "P619": [_stmt(_time_snak("+2021-04-29T03:23:15Z", precision=14))],
+            },
+        }
+        result = extract_claims(claims, "Q5100935", wikidata_entities=cache)
+        assert result["launch_date"] == "+2021-04-29T03:23:15Z"
+        cache.get_referenced.assert_any_call("Q95018095")
+
+    def test_launch_date_p4241_falls_back_to_p585(self):
+        """When the refine-date entity has no P619, fall back to P585."""
+        claims = {
+            "P619": [
+                _stmt(
+                    _time_snak("+2021-04-29T00:00:00Z", precision=11),
+                    qualifiers={"P4241": [_entity_snak("Q95018095")]},
+                ),
+            ]
+        }
+        cache = MagicMock()
+        cache.get_referenced.return_value = {
+            "labels": {},
+            "descriptions": {},
+            "aliases": {},
+            "sitelinks": {},
+            "claims": {
+                "P585": [_stmt(_time_snak("+2021-04-29T03:23:15Z", precision=14))],
+            },
+        }
+        result = extract_claims(claims, "Q5100935", wikidata_entities=cache)
+        assert result["launch_date"] == "+2021-04-29T03:23:15Z"
+
+    def test_launch_date_p4241_entity_missing(self):
+        """When the refine-date entity isn't in the cache, fall back to mainsnak time."""
+        claims = {
+            "P619": [
+                _stmt(
+                    _time_snak("+2021-04-29T00:00:00Z", precision=11),
+                    qualifiers={"P4241": [_entity_snak("Q95018095")]},
+                ),
+            ]
+        }
+        cache = MagicMock()
+        cache.get_referenced.return_value = None
+        result = extract_claims(claims, "Q5100935", wikidata_entities=cache)
+        assert result["launch_date"] == "+2021-04-29T00:00:00Z"
+
+    def test_launch_date_p4241_ignored_when_less_precise(self):
+        """Refine-date entity time is only used when more precise than the mainsnak."""
+        claims = {
+            "P619": [
+                _stmt(
+                    _time_snak("+2021-04-29T03:23:15Z", precision=14),
+                    qualifiers={"P4241": [_entity_snak("Q95018095")]},
+                ),
+            ]
+        }
+        cache = MagicMock()
+        cache.get_referenced.return_value = {
+            "labels": {},
+            "descriptions": {},
+            "aliases": {},
+            "sitelinks": {},
+            "claims": {
+                "P619": [_stmt(_time_snak("+2021-04-29T00:00:00Z", precision=11))],
+            },
+        }
+        result = extract_claims(claims, "Q5100935", wikidata_entities=cache)
+        assert result["launch_date"] == "+2021-04-29T03:23:15Z"
+
     def test_extracts_discovery_dates(self):
         claims = {
             "P575": [
@@ -588,6 +697,29 @@ class TestExtractClaims:
         result = extract_claims(claims, "Q3134")
         # Only the most precise should remain
         assert result["discovery_date"] == ["+1801-03-28T00:00:00Z"]
+
+    def test_discovery_date_uses_p4241_refine_date(self):
+        """P4241 (refine date) refinement applies to any time claim, not just P619."""
+        claims = {
+            "P575": [
+                _stmt(
+                    _time_snak("+2014-01-15T00:00:00Z", precision=11),
+                    qualifiers={"P4241": [_entity_snak("Q42")]},
+                ),
+            ]
+        }
+        cache = MagicMock()
+        cache.get_referenced.return_value = {
+            "labels": {},
+            "descriptions": {},
+            "aliases": {},
+            "sitelinks": {},
+            "claims": {
+                "P585": [_stmt(_time_snak("+2014-01-15T22:00:00Z", precision=14))],
+            },
+        }
+        result = extract_claims(claims, "Q1", wikidata_entities=cache)
+        assert result["discovery_date"] == ["+2014-01-15T22:00:00Z"]
 
     def test_extracts_entity_refs_multiple(self):
         claims = {

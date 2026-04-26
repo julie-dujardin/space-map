@@ -173,7 +173,13 @@ def build_chunk_object_data(
         )
         wd = chunk_entities.get(qid) if qid else None
         try:
-            extracted = extract_claims(wd["claims"], qid=qid) if qid and wd else {}
+            extracted = (
+                extract_claims(
+                    wd["claims"], qid=qid, wikidata_entities=wikidata_entities
+                )
+                if qid and wd
+                else {}
+            )
         except Exception as exc:
             logger.error("Error extracting claims for %s (%s): %s", obj.id, qid, exc)
             extracted = {}
