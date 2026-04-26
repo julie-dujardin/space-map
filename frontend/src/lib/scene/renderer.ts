@@ -154,7 +154,7 @@ export class SceneRenderer {
 
 		// Renderer
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
-		this.renderer.setPixelRatio(window.devicePixelRatio);
+		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
