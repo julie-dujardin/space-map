@@ -232,6 +232,14 @@ export class ChunkLoader {
 		const jd = dateToJD(date);
 
 		for (let idx = 0; idx < cols.rowCount; idx++) {
+			// Yield every 500 bodies — buildSatrec for SGP4 is ~50µs each, so a
+			// 10k earth-sat chunk would freeze the main thread for ~500ms without
+			// this. Initial load doesn't suffer either: chunks already run
+			// concurrently via Promise.all, and the yield gives the loading UI
+			// frames to repaint.
+			if (idx > 0 && idx % 500 === 0) {
+				await new Promise<void>((r) => setTimeout(r, 0));
+			}
 			const objType = cols.objectType[idx] as ObjectType;
 
 			// Parabolic comets always have a valid orbit; for Keplerian/SGP4, skip

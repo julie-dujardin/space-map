@@ -600,33 +600,43 @@ export class ContextManager {
 	 * the same `spacecraftByParent`/`asteroidBodiesByZone` shape the initial
 	 * load builds, then reassigns the maps so the `minorBodyVersion` bump
 	 * triggers `rebuildMinorPointClouds` in the renderer.
+	 *
+	 * Removal is bulk-by-parent (single Set lookup per body in each affected
+	 * list) — naïve `list.filter(b => b.id !== oldB.id)` per old body is
+	 * O(n²), which freezes the main thread for ~10k earth sats sharing one
+	 * parent.
 	 */
 	private replaceTimeSegmentedBodies(
 		state: TimeSegmentedZoneState,
 		newBodies: PositionedBody[]
 	): void {
 		const dirtyParents = new Set<string>();
-		let asteroidZoneDirty = false;
+		const touchedSpacecraftParents = new Set<string>();
+		let touchedAsteroidZone = false;
+		for (const b of state.bodies) {
+			if (b.data.objectType === ObjectType.SPACECRAFT) touchedSpacecraftParents.add(b.data.parentId);
+			else touchedAsteroidZone = true;
+		}
+		const oldIds = new Set(state.bodies.map((b) => b.data.id));
 
-		for (const oldB of state.bodies) {
-			if (oldB.data.objectType === ObjectType.SPACECRAFT) {
-				const parentId = oldB.data.parentId;
-				const list = this.spacecraftByParent.get(parentId);
-				if (!list) continue;
-				const filtered = list.filter((b) => b.data.id !== oldB.data.id);
-				if (filtered.length === 0) this.spacecraftByParent.delete(parentId);
-				else this.spacecraftByParent.set(parentId, filtered);
-				dirtyParents.add(parentId);
-			} else {
-				const list = this.asteroidBodiesByZone.get(state.zone);
-				if (!list) continue;
-				const filtered = list.filter((b) => b.data.id !== oldB.data.id);
+		for (const parentId of touchedSpacecraftParents) {
+			const list = this.spacecraftByParent.get(parentId);
+			if (!list) continue;
+			const filtered = list.filter((b) => !oldIds.has(b.data.id));
+			if (filtered.length === 0) this.spacecraftByParent.delete(parentId);
+			else this.spacecraftByParent.set(parentId, filtered);
+			dirtyParents.add(parentId);
+		}
+		if (touchedAsteroidZone) {
+			const list = this.asteroidBodiesByZone.get(state.zone);
+			if (list) {
+				const filtered = list.filter((b) => !oldIds.has(b.data.id));
 				if (filtered.length === 0) this.asteroidBodiesByZone.delete(state.zone);
 				else this.asteroidBodiesByZone.set(state.zone, filtered);
-				asteroidZoneDirty = true;
 			}
 		}
 
+		let asteroidZoneDirty = touchedAsteroidZone;
 		for (const b of newBodies) {
 			if (b.data.objectType === ObjectType.SPACECRAFT) {
 				const list = this.spacecraftByParent.get(b.data.parentId) ?? [];
