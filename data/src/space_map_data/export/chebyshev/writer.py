@@ -1,9 +1,11 @@
 """Export Chebyshev polynomial ephemeris as chunked binary files.
 
 Reads per-body `.npz` files produced by the SPICE download step and emits one
-(gzipped) binary per (zone, time-chunk) under `chebyshev/{zone}/{chunk}/`. A
-sidecar `data.id.gz` lists the full `<source>-<numeric>` object IDs in the same
-order as the binary body table, matching the elements-export convention.
+(gzipped) binary per (zone, time-chunk) under `chebyshev/{zone}/{chunk}/`. The
+binary's per-body header carries `id_type` + `obj_id_value` so the frontend can
+rebuild the full `<prefix>-<numeric>` Object ID — Pluto and the perturber
+asteroids ride as `spkid-…` even though their SPICE naif_id is the planetary
+ID.
 """
 
 import gzip
@@ -17,12 +19,15 @@ import numpy as np
 import orjson
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.providers import PROVIDERS
+from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.export.chebyshev.format import (
+    ID_TYPE_ORDINAL,
+    MISSING_ID_TYPE,
     VERSION,
     pack_body_header,
     pack_header,
 )
+from space_map_data.export.elements.format import MISSING_INT32
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_INNER_MOON_NAIF_IDS,
@@ -126,6 +131,31 @@ def _determine_zone(object_type: ObjectType, naif_id: int, parent_naif_id: int) 
     return "major"
 
 
+def _obj_id_parts(obj: Object) -> tuple[int, int]:
+    """Return `(id_type_ordinal, obj_id_value)` for one chebyshev body.
+
+    Pulled from `Object.id` (`<prefix>-<numeric>`) rather than the SPICE naif_id
+    so Pluto/perturber-asteroid bodies retain their `spkid-…` form across the
+    binary. Logs and falls back to sentinels rather than raising — chebyshev
+    chunks aggregate many bodies and one bad ID shouldn't take down the export.
+    """
+    pos = obj.id.find("-")
+    if pos == -1:
+        logger.warning("chebyshev: %s has no separator in object ID", obj.id)
+        return MISSING_ID_TYPE, MISSING_INT32
+    prefix, value = obj.id[:pos], obj.id[pos + 1 :]
+    try:
+        ordinal = ID_TYPE_ORDINAL[ID_TYPES(prefix)]
+    except (KeyError, ValueError):
+        logger.warning("chebyshev: %s has unsupported id type %r", obj.id, prefix)
+        return MISSING_ID_TYPE, MISSING_INT32
+    try:
+        return ordinal, int(value)
+    except ValueError:
+        logger.warning("chebyshev: %s has non-integer id value %r", obj.id, value)
+        return ordinal, MISSING_INT32
+
+
 def _write_chunk_file(
     out_dir: Path,
     zone: str,
@@ -134,14 +164,13 @@ def _write_chunk_file(
     chunk_end_jd: float,
     bodies: list[tuple[Object, int, int, np.ndarray, np.ndarray, np.ndarray, float]],
 ) -> int:
-    """Write one chunk file + sidecar id file. Returns bytes written for the bin file."""
+    """Write one chunk file. Returns bytes written for the bin file."""
     chunk_dir = out_dir / "chebyshev" / zone / str(chunk_idx)
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
     buf: list[bytes] = []
     buf.append(pack_header(chunk_start_jd, chunk_end_jd, len(bodies)))
 
-    ids_text: list[str] = []
     for (
         obj,
         naif_id,
@@ -151,15 +180,17 @@ def _write_chunk_file(
         seg_coeffs,
         radius_km,
     ) in bodies:
-        ids_text.append(obj.id)
+        id_type, obj_id_value = _obj_id_parts(obj)
         n_segments = seg_starts.shape[0]
         coeffs_per_axis = seg_coeffs.shape[2] if n_segments > 0 else 0
         buf.append(
             pack_body_header(
                 naif_id=naif_id,
                 parent_naif_id=parent_naif_id,
+                obj_id_value=obj_id_value,
                 radius_km=float(radius_km) if radius_km is not None else float("nan"),
                 coeffs_per_axis=coeffs_per_axis,
+                id_type_ordinal=id_type,
                 segment_count=n_segments,
             )
         )
@@ -181,10 +212,6 @@ def _write_chunk_file(
     with gzip.open(out_path, "wb") as f:
         f.write(data)
 
-    id_path = chunk_dir / "data.id.gz"
-    with gzip.open(id_path, "wb") as f:
-        f.write("\n".join(ids_text).encode("utf-8"))
-
     return len(data)
 
 
@@ -198,7 +225,9 @@ def write_chebyshev(
 
     Reads per-body .npz files in `download_dir/spice/chebyshev/`, links each to
     its DB Object, partitions by zone (major / major_asteroids) and time chunk,
-    and emits one binary + sidecar id file per (zone, chunk).
+    and emits one binary file per (zone, chunk). The full Object ID (e.g.
+    `naif-499`, `spkid-20134340`) is encoded inside the binary's per-body
+    header — no sidecar id file is emitted.
 
     Chunk parameters come from the SPICE download metadata so the export
     matches exactly what was extracted.

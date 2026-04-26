@@ -547,9 +547,7 @@ export class ContextManager {
 		// playback this is ~2.4 hours; at high warp it scales so we begin
 		// fetching the next snapshot ~2s before the user crosses into needing it.
 		const lookahead =
-			timeScale === 0
-				? 0
-				: Math.sign(timeScale) * Math.max(0.1, (Math.abs(timeScale) * 2) / 86400);
+			timeScale === 0 ? 0 : Math.sign(timeScale) * Math.max(0.1, (Math.abs(timeScale) * 2) / 86400);
 		const targetJd = jd + lookahead;
 
 		for (const state of this.timeSegmentedZones.values()) {
@@ -614,7 +612,8 @@ export class ContextManager {
 		const touchedSpacecraftParents = new Set<string>();
 		let touchedAsteroidZone = false;
 		for (const b of state.bodies) {
-			if (b.data.objectType === ObjectType.SPACECRAFT) touchedSpacecraftParents.add(b.data.parentId);
+			if (b.data.objectType === ObjectType.SPACECRAFT)
+				touchedSpacecraftParents.add(b.data.parentId);
 			else touchedAsteroidZone = true;
 		}
 		const oldIds = new Set(state.bodies.map((b) => b.data.id));

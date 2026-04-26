@@ -6,11 +6,14 @@ import struct
 
 import pytest
 
+from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.elements.format import (
     FORMAT_KEPLERIAN,
     FORMAT_PARABOLIC,
     HEADER_SIZE,
+    ID_TYPE_ORDINAL,
     MAGIC,
+    MISSING_ID_TYPE,
     MISSING_INT32,
     SOURCE_ORDINAL,
     UNBOUNDED_END_JD,
@@ -58,7 +61,7 @@ class TestParseNumericId:
 
 def _read_header(
     data: bytes,
-) -> tuple[bytes, int, int, float, float, int, int]:
+) -> tuple[bytes, int, int, float, float, int, int, int]:
     (
         magic,
         version,
@@ -67,10 +70,10 @@ def _read_header(
         end_jd,
         row_count,
         source,
-        _pad,
+        id_type,
         _res,
     ) = struct.unpack("<4sHHddIBBH", data[:HEADER_SIZE])
-    return magic, version, format_type, start_jd, end_jd, row_count, source
+    return magic, version, format_type, start_jd, end_jd, row_count, source, id_type
 
 
 class TestWriteElements:
@@ -93,14 +96,22 @@ class TestWriteElements:
         write_elements(objects, out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, start_jd, end_jd, row_count, source = _read_header(
-            raw
-        )
+        (
+            magic,
+            version,
+            format_type,
+            start_jd,
+            end_jd,
+            row_count,
+            source,
+            id_type,
+        ) = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_KEPLERIAN
         assert row_count == 2
         assert source == SOURCE_ORDINAL[OrbitalSource.horizons]
+        assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NAIF]
         # Keplerian defaults to unbounded validity — the orbit is mathematical
         # and stays valid for any jd.
         assert start_jd == UNBOUNDED_START_JD
@@ -116,8 +127,10 @@ class TestWriteElements:
         write_elements([], out, OrbitalSource.horizons)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, _, _, row_count, _ = _read_header(raw)
+        _, _, _, _, _, row_count, _, id_type = _read_header(raw)
         assert row_count == 0
+        # Empty chunk has nothing to derive an id type from.
+        assert id_type == MISSING_ID_TYPE
         assert len(raw) == HEADER_SIZE
 
     def test_custom_validity_window(self, tmp_path):
@@ -127,7 +140,7 @@ class TestWriteElements:
             [], out, OrbitalSource.horizons, start_jd=2460000.5, end_jd=2460100.5
         )
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, start_jd, end_jd, _, _ = _read_header(raw)
+        _, _, _, start_jd, end_jd, _, _, _ = _read_header(raw)
         assert start_jd == 2460000.5
         assert end_jd == 2460100.5
 
@@ -146,6 +159,35 @@ class TestWriteElements:
                 objects, tmp_path / "mismatch.bin.gz", OrbitalSource.horizons
             )
 
+    def test_id_type_mismatch_raises(self, tmp_path):
+        """Mixed id-type rows in one chunk fail loudly: the header carries one byte."""
+        objects = [
+            make_object(id="naif-399", naif_id=399, object_type=ObjectType.planet),
+            make_object(
+                id="spkid-2000001",
+                naif_id=None,
+                spkid=2000001,
+                object_type=ObjectType.asteroid,
+            ),
+        ]
+        with pytest.raises(ValueError, match="does not match chunk id type"):
+            write_elements(objects, tmp_path / "mixed.bin.gz", OrbitalSource.horizons)
+
+    def test_norad_id_type_in_header(self, tmp_path):
+        """An earth-satellite chunk gets the NORAD_SATCAT id-type byte."""
+        obj = make_object(
+            id="norad_satcat-25544",
+            naif_id=None,
+            norad_cat_id=25544,
+            object_type=ObjectType.spacecraft,
+            orbital_source=OrbitalSource.celestrak,
+        )
+        out = tmp_path / "sat.bin.gz"
+        write_elements([obj], out, OrbitalSource.celestrak)
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, _, _, _, _, id_type = _read_header(raw)
+        assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
+
     def test_row_source_none_is_accepted(self, tmp_path):
         """Rows with orbital_source=None inherit the chunk header source."""
         obj = make_object(
@@ -157,7 +199,7 @@ class TestWriteElements:
         out = tmp_path / "none_src.bin.gz"
         write_elements([obj], out, OrbitalSource.spice)
         raw = gzip.decompress(out.read_bytes())
-        _, _, _, _, _, _, source = _read_header(raw)
+        _, _, _, _, _, _, source, _ = _read_header(raw)
         assert source == SOURCE_ORDINAL[OrbitalSource.spice]
 
     def test_radius_from_sbdb_diameter(self, tmp_path):
@@ -249,12 +291,22 @@ class TestWriteParabolicElements:
         write_parabolic_elements([obj], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        magic, version, format_type, _start, _end, row_count, source = _read_header(raw)
+        (
+            magic,
+            version,
+            format_type,
+            _start,
+            _end,
+            row_count,
+            source,
+            id_type,
+        ) = _read_header(raw)
         assert magic == MAGIC
         assert version == VERSION
         assert format_type == FORMAT_PARABOLIC
         assert row_count == 1
         assert source == SOURCE_ORDINAL[OrbitalSource.sbdb]
+        assert id_type == ID_TYPE_ORDINAL[ID_TYPES.SPKID]
 
     def test_q_and_tp_columns(self, tmp_path):
         """q and tp are written as proper columns (not stuffed into a/ma)."""
@@ -286,7 +338,7 @@ class TestWriteParabolicElements:
         write_parabolic_elements([], out, OrbitalSource.sbdb)
 
         raw = gzip.decompress(out.read_bytes())
-        _, _, format_type, _, _, row_count, _ = _read_header(raw)
+        _, _, format_type, _, _, row_count, _, _ = _read_header(raw)
         assert format_type == FORMAT_PARABOLIC
         assert row_count == 0
         assert len(raw) == HEADER_SIZE
