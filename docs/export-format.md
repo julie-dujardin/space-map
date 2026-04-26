@@ -1,4 +1,4 @@
-# Export Format (v1 directory, binary v3)
+# Export Format (v1 directory, binary v4)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -10,13 +10,10 @@ v1/
   credits.json                                   (not gzipped) aggregated attribution for the /credits page
   nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements (single-snapshot zones)
-  elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
   elements/earth/{zoom}/{time}/{part}.bin.gz     time-segmented Earth elements (per CelesTrak day-dir)
-  elements/earth/{zoom}/{time}/{part}.id.gz      object IDs for the snapshot
   elements/earth/{zoom}/{time}/{part}.loc.{lang}.gz  localized labels for the snapshot
   chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
-  chebyshev/{zone}/{chunk}/data.id.gz            object IDs (text), same order as bin
   objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                localized details, hash-bucketed
   v1/images/{filename}/{label}.{ext}             thumbnail variants (label = s | m | xl)
@@ -111,16 +108,16 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type    | Field     |
 |--------|---------|-----------|
 | 0      | char[4] | Magic `SMAP` |
-| 4      | uint16  | Version (3) |
+| 4      | uint16  | Version (4) |
 | 6      | uint16  | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
 | 8      | float64 | `start_jd` — chunk validity start (JD TDB), `-Infinity` = unbounded |
 | 16     | float64 | `end_jd` — chunk validity end (JD TDB, inclusive), `+Infinity` = unbounded |
 | 24     | uint32  | Row count |
 | 28     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this source |
-| 29     | uint8   | Reserved  |
+| 29     | uint8   | Id type: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — every row in the file shares this prefix; combine with column 0 (numeric ID) to rebuild the full `<prefix>-<numeric>` Object ID |
 | 30     | uint16  | Reserved  |
 
-One provider writes one zone/part (pipeline-enforced), so the source fits in a single file-level byte rather than per-row. Frontend must mirror the ordinal mapping.
+One provider writes one zone/part (pipeline-enforced), so the source fits in a single file-level byte rather than per-row. The id type follows the same single-typed-chunk invariant — each (zone, zoom) query selects on the prefix-defining column, so one byte per file is enough. Frontend must mirror both ordinal mappings.
 
 `start_jd`/`end_jd` define the window where propagation is defined for this
 chunk. Outside it, consumers must hide every body in the file rather than call
@@ -136,7 +133,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
-| 0 | id          | int32   | -1      | Source-specific numeric ID (`naif_id`, `spkid`, or `norad_cat_id`) |
+| 0 | id          | int32   | -1      | Numeric portion of `Object.id`; combine with the header's id-type byte to rebuild the full `<prefix>-<numeric>` form (e.g. id-type=0 + 399 → `naif-399`). Sourced from `naif_id`, `spkid`, or `norad_cat_id` per the chunk's id type. |
 | 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
@@ -232,9 +229,10 @@ All other columns are safe as float32 based on their value ranges in the databas
 High-accuracy polynomial ephemeris for bodies that a user zooms in on — the
 Sun, planets, dwarf planets, planetary-system barycenters, the 16 sb441-n16
 asteroid perturbers, and ~30 whitelisted surface-feature moons. Each
-(zone, time-chunk) pair is one gzipped binary plus a sidecar `data.id.gz` of
-`{source}-{numeric_id}` object IDs in the same body order. Evaluate with
-Clenshaw's recursion on the Chebyshev basis.
+(zone, time-chunk) pair is one gzipped binary; the per-body header carries
+`id_type` + `obj_id_value` so consumers rebuild the full `{prefix}-{numeric}`
+Object ID (e.g. `spkid-20134340` for Pluto) without a sidecar file. Evaluate
+with Clenshaw's recursion on the Chebyshev basis.
 
 Non-whitelisted moons (tiny irregulars, inner shepherds without surface
 features) don't appear here — they're covered by the separate mean-elements
@@ -280,7 +278,7 @@ directly.
 | Offset | Type    | Field |
 |--------|---------|-------|
 | 0      | char[4] | Magic `SCHB` |
-| 4      | uint16  | Version (1) |
+| 4      | uint16  | Version (2) |
 | 6      | uint16  | Format type: 0 = position-only Chebyshev |
 | 8      | float64 | start_jd (chunk start, JD TDB) |
 | 16     | float64 | end_jd (chunk end, JD TDB) |
@@ -289,16 +287,23 @@ directly.
 
 **Per-body (repeats body_count times)**
 
-Each body carries its own header then a packed list of segments.
+Each body carries its own 24-byte header then a packed list of segments.
 
 | Offset | Type    | Field |
 |--------|---------|-------|
-| 0      | int32   | naif_id |
+| 0      | int32   | naif_id (SPICE-side identifier; used for parent linking and frame indexing) |
 | 4      | int32   | parent_naif_id (orbital reference body) |
-| 8      | float32 | radius_km (NaN if unknown) |
-| 12     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
-| 14     | uint16  | Reserved |
-| 16     | uint32  | segment_count |
+| 8      | int32   | obj_id_value (numeric portion of the full `Object.id`; equals naif_id when id_type=naif) |
+| 12     | float32 | radius_km (NaN if unknown) |
+| 16     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
+| 18     | uint8   | id_type (`0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — same ordinals as the elements header byte) |
+| 19     | uint8   | Reserved |
+| 20     | uint32  | segment_count |
+
+Combine `id_type` with `obj_id_value` to rebuild the full Object ID for
+cross-referencing with the elements export and object detail bundles. Pluto
+and the perturber asteroids ride as `spkid-…` even though their SPICE
+`naif_id` is the planetary ID, so consumers must not assume `naif-{naif_id}`.
 
 Then `segment_count` segments, each laid out as:
 
@@ -332,11 +337,17 @@ sub-interval sizes produced by the pipeline, truncation error stays well below
 meter-level for planets and sub-km for inner moons — below visualization
 resolution in every realistic zoom.
 
-## Object IDs file (`.id.gz`)
+## Object ID reconstruction
 
-Newline-delimited text, one ID per line, same order as the binary file. Format: `{source}-{numeric_id}`, e.g. `naif-399`, `spkid-2000433`, `norad_satcat-25544`.
+Object IDs (`naif-399`, `spkid-2000433`, `norad_satcat-25544`) are not shipped
+as separate files — consumers rebuild them from the binary:
 
-Used by both `elements/` and `chebyshev/` exports.
+- **Elements**: combine the file-header `id_type` byte (offset 29) with column
+  0 (`int32`) per row.
+- **Chebyshev**: combine each body header's `id_type` (offset 18) with
+  `obj_id_value` (offset 8).
+
+Both formats use the same id-type ordinal map: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown`.
 
 ## Element labels file (`.loc.{lang}.gz`)
 
@@ -725,15 +736,17 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
 ## Consuming the data
 
 1. Fetch `metadata.json` to discover available chunks
-2. For each (zone, zoom, part), fetch the three element files in parallel:
-   - `.bin.gz` — parse with the binary format above
-   - `.id.gz` (IDs) — split by newline, index matches binary row order
-   - `.loc.{lang}.gz` (labels) — split by newline, parse flag + name
+2. For each (zone, zoom, part), fetch the two element files in parallel:
+   - `.bin.gz` — parse with the binary format above; rebuild full IDs by
+     combining the header's id-type byte with column 0 per row
+   - `.loc.{lang}.gz` (labels) — split by newline, parse flag + name; index
+     matches binary row order
 3. Combine by array index to get full body records
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
 5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Then fetch `objects/__global__/{bucket}.json.gz` and (when the label flag is non-zero) `objects/{lang}/{bucket}.json.gz` — fall back to the `en` bundle when the flag is `2`. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
 6. For bodies that also appear in `metadata.json → chebyshev.zones.{zone}`,
    fetch the chunk covering the current simulated time from
-   `chebyshev/{zone}/{chunk}/data.bin.gz` + `data.id.gz`; prefer those
-   positions over the Keplerian ones and fall back to Keplerian only for
-   bodies not in the Chebyshev export.
+   `chebyshev/{zone}/{chunk}/data.bin.gz`; rebuild each body's Object ID from
+   its `id_type` + `obj_id_value` header fields. Prefer those positions over
+   the Keplerian ones and fall back to Keplerian only for bodies not in the
+   Chebyshev export.

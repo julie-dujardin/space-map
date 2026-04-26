@@ -1,6 +1,5 @@
-"""Write one (zone, zoom, part) chunk: binary elements + labels + id list."""
+"""Write one (zone, zoom, part) chunk: binary elements + labels."""
 
-import gzip
 import logging
 from pathlib import Path
 
@@ -57,11 +56,12 @@ def write_chunk(
     orbital_source: OrbitalSource,
     time: str | None = None,
 ) -> int:
-    """Write elements binary, label files, and id list for one chunk.
+    """Write elements binary and label files for one chunk.
 
     object_flags: {obj_id: {lang: 0|1|2}} as returned by build_chunk_object_data.
     `orbital_source` is stamped in the file header; writer raises if any row
-    disagrees.
+    disagrees. The chunk's id-type is also stamped in the header so the
+    frontend can rebuild full `<prefix>-<numeric>` IDs from binary column 0.
     `time` (ISO date, e.g. ``"2026-04-25"``) inserts a per-snapshot directory
     between zoom and part. Currently only the Earth zone uses it.
     Returns the size of the elements binary file in bytes.
@@ -120,8 +120,5 @@ def write_chunk(
             obj.id: object_flags.get(obj.id, {}).get(lang, 0) for obj in objects
         }
         write_labels(objects, labels_path, lang, chunk_entities, lang_flags)
-
-    ids_path = chunk_dir / f"{part}.id.gz"
-    ids_path.write_bytes(gzip.compress("\n".join(obj.id for obj in objects).encode()))
 
     return elements_bytes

@@ -6,10 +6,13 @@ import logging
 import struct
 from pathlib import Path
 
+from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.elements.format import (
     FORMAT_PARABOLIC,
     FORMAT_SGP4,
+    ID_TYPE_ORDINAL,
     MISSING_FLOAT64,
+    MISSING_ID_TYPE,
     MISSING_INT32,
     MISSING_UINT8,
     OBJECT_TYPE_ORDINAL,
@@ -44,6 +47,43 @@ def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int
     return SOURCE_ORDINAL[orbital_source]
 
 
+def _id_type_ordinal(objects: list[Object]) -> int:
+    """Pick the chunk's id-type ordinal from the first row and assert uniformity.
+
+    Each (zone, zoom) query in export/common.py is single-typed by construction
+    (the filters select on the id-type-defining column), so the prefix can ride
+    in the file header — frontend rebuilds `<prefix>-<column0>` from this byte.
+    A mixed chunk would route bundle lookups to the wrong hash bucket on the
+    frontend, so fail loud rather than ship wrong IDs.
+
+    Empty chunk → MISSING_ID_TYPE; no rows means nothing to reconstruct.
+    Unknown prefix on the first row → MISSING_ID_TYPE (preserves the existing
+    `_parse_numeric_id` warn-and-continue behaviour for ID types we don't ship).
+    """
+    if not objects:
+        return MISSING_ID_TYPE
+    first_prefix = _id_prefix(objects[0])
+    expected = ID_TYPE_ORDINAL.get(ID_TYPES(first_prefix)) if first_prefix else None
+    if expected is None:
+        return MISSING_ID_TYPE
+    for o in objects[1:]:
+        prefix = _id_prefix(o)
+        if prefix != first_prefix:
+            raise ValueError(
+                f"{o.id}: id type {prefix!r} does not match chunk id type "
+                f"{first_prefix!r} (rows in one file must share an id type)"
+            )
+    return expected
+
+
+def _id_prefix(obj: Object) -> str | None:
+    """Return the `<prefix>` portion of `Object.id`, or None on malformed IDs."""
+    pos = obj.id.find("-")
+    if pos == -1:
+        return None
+    return obj.id[:pos]
+
+
 def _write_keplerian_columns(
     buf: io.BytesIO,
     objects: list[Object],
@@ -63,6 +103,8 @@ def _write_keplerian_columns(
     )
 
     # Column 2: parent_id (int32) — NAIF ID of parent body
+    # TODO: drop naif it can be not NAIF
+    # TODO: move to header when possible (most times, need another export type)
     _write_int32(
         buf,
         n,
@@ -111,8 +153,17 @@ def write_elements(
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
+    id_type = _id_type_ordinal(objects)
     buf = io.BytesIO()
-    buf.write(pack_header(n, source_ordinal=source, start_jd=start_jd, end_jd=end_jd))
+    buf.write(
+        pack_header(
+            n,
+            source_ordinal=source,
+            id_type_ordinal=id_type,
+            start_jd=start_jd,
+            end_jd=end_jd,
+        )
+    )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -142,10 +193,16 @@ def write_sgp4_elements(
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
+    id_type = _id_type_ordinal(objects)
     buf = io.BytesIO()
     buf.write(
         pack_header(
-            n, FORMAT_SGP4, source_ordinal=source, start_jd=start_jd, end_jd=end_jd
+            n,
+            FORMAT_SGP4,
+            source_ordinal=source,
+            id_type_ordinal=id_type,
+            start_jd=start_jd,
+            end_jd=end_jd,
         )
     )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
@@ -189,11 +246,17 @@ def write_parabolic_elements(
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
+    id_type = _id_type_ordinal(objects)
     buf = io.BytesIO()
 
     buf.write(
         pack_header(
-            n, FORMAT_PARABOLIC, source_ordinal=source, start_jd=start_jd, end_jd=end_jd
+            n,
+            FORMAT_PARABOLIC,
+            source_ordinal=source,
+            id_type_ordinal=id_type,
+            start_jd=start_jd,
+            end_jd=end_jd,
         )
     )
 

@@ -3,11 +3,14 @@
 import math
 import struct
 
+from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.elements.format import (
     FORMAT_KEPLERIAN,
     HEADER_SIZE,
+    ID_TYPE_ORDINAL,
     MAGIC,
     MISSING_FLOAT64,
+    MISSING_ID_TYPE,
     MISSING_INT32,
     MISSING_SOURCE,
     MISSING_UINT8,
@@ -23,7 +26,7 @@ from space_map_data.export.elements.format import (
 from space_map_data.models.object import ElementsScale, ObjectType, OrbitalSource
 
 
-def _unpack(header: bytes) -> tuple[bytes, int, int, float, float, int, int]:
+def _unpack(header: bytes) -> tuple[bytes, int, int, float, float, int, int, int]:
     (
         magic,
         version,
@@ -32,10 +35,10 @@ def _unpack(header: bytes) -> tuple[bytes, int, int, float, float, int, int]:
         end_jd,
         row_count,
         source,
-        _pad,
+        id_type,
         _res,
     ) = struct.unpack("<4sHHddIBBH", header)
-    return magic, version, format_type, start_jd, end_jd, row_count, source
+    return magic, version, format_type, start_jd, end_jd, row_count, source, id_type
 
 
 class TestPackHeader:
@@ -49,12 +52,14 @@ class TestPackHeader:
     def test_row_count_round_trips(self):
         for count in (0, 1, 42, 100_000):
             header = pack_header(count)
-            _magic, version, _fmt, _start, _end, row_count, _source = _unpack(header)
+            _magic, version, _fmt, _start, _end, row_count, _source, _id = _unpack(
+                header
+            )
             assert row_count == count
             assert version == VERSION
 
     def test_source_byte_lands_at_offset_28(self):
-        """Source ordinal is packed as uint8 at header offset 28 (v3 layout)."""
+        """Source ordinal is packed as uint8 at header offset 28 (v4 layout)."""
         header = pack_header(
             0, FORMAT_KEPLERIAN, source_ordinal=SOURCE_ORDINAL[OrbitalSource.celestrak]
         )
@@ -63,13 +68,28 @@ class TestPackHeader:
     def test_default_source_is_missing_sentinel(self):
         """A chunk with no declared source gets MISSING_SOURCE in the header."""
         header = pack_header(0)
-        _magic, _v, _fmt, _start, _end, _n, source = _unpack(header)
+        _magic, _v, _fmt, _start, _end, _n, source, _id = _unpack(header)
         assert source == MISSING_SOURCE
+
+    def test_id_type_byte_lands_at_offset_29(self):
+        """Id-type ordinal is packed as uint8 at header offset 29 (v4 layout)."""
+        header = pack_header(
+            0,
+            FORMAT_KEPLERIAN,
+            id_type_ordinal=ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT],
+        )
+        assert header[29] == ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
+
+    def test_default_id_type_is_missing_sentinel(self):
+        """A chunk with no declared id type gets MISSING_ID_TYPE in the header."""
+        header = pack_header(0)
+        _magic, _v, _fmt, _start, _end, _n, _source, id_type = _unpack(header)
+        assert id_type == MISSING_ID_TYPE
 
     def test_default_validity_is_unbounded(self):
         """A chunk with no declared window gets ±inf — consumers treat as always valid."""
         header = pack_header(0)
-        _magic, _v, _fmt, start_jd, end_jd, _n, _source = _unpack(header)
+        _magic, _v, _fmt, start_jd, end_jd, _n, _source, _id = _unpack(header)
         assert start_jd == UNBOUNDED_START_JD
         assert math.isinf(start_jd) and start_jd < 0
         assert end_jd == UNBOUNDED_END_JD
@@ -77,7 +97,7 @@ class TestPackHeader:
 
     def test_validity_window_round_trips(self):
         header = pack_header(0, start_jd=2460000.5, end_jd=2460100.5)
-        _m, _v, _f, start_jd, end_jd, _n, _s = _unpack(header)
+        _m, _v, _f, start_jd, end_jd, _n, _s, _id = _unpack(header)
         assert start_jd == 2460000.5
         assert end_jd == 2460100.5
 
@@ -112,6 +132,17 @@ class TestConstants:
         """Frontend mirrors these ordinals — collisions would mis-attribute orbits."""
         assert len(set(SOURCE_ORDINAL.values())) == len(SOURCE_ORDINAL)
         assert MISSING_SOURCE not in SOURCE_ORDINAL.values()
+
+    def test_id_type_ordinal_values_are_unique(self):
+        """Frontend mirrors these ordinals to rebuild full IDs from numeric+flag."""
+        assert len(set(ID_TYPE_ORDINAL.values())) == len(ID_TYPE_ORDINAL)
+        assert MISSING_ID_TYPE not in ID_TYPE_ORDINAL.values()
+
+    def test_id_type_ordinal_covers_active_types(self):
+        """The three primary ID prefixes used in `Object.id` must all map."""
+        assert ID_TYPES.NAIF in ID_TYPE_ORDINAL
+        assert ID_TYPES.SPKID in ID_TYPE_ORDINAL
+        assert ID_TYPES.NORAD_SATCAT in ID_TYPE_ORDINAL
 
     def test_sentinels(self):
         assert MISSING_INT32 == -1
