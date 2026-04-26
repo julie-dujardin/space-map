@@ -6,6 +6,7 @@ import orjson
 import shutil
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,10 @@ from sqlalchemy.orm import Session, joinedload
 from space_map_data.export.chebyshev import write_chebyshev
 from space_map_data.export.credits import write_credits
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
+from space_map_data.export.elements.celestrak_source import (
+    CelesTrakElements,
+    load_all_days,
+)
 from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
@@ -61,21 +66,42 @@ _DEFAULT_ZONE_LIMIT = 10_000
 
 
 def _build_metadata(
-    zone_structure: dict[str, dict[int, int]],
-    object_counts: dict[tuple[str, int], int],
-    total_bytes: dict[tuple[str, int], int],
+    zone_structure: Mapping[str, Mapping[int, Mapping[str | None, int]]],
+    object_counts: Mapping[tuple[str, int, str | None], int],
+    total_bytes: Mapping[tuple[str, int, str | None], int],
 ) -> dict:
+    """Build the ``zones`` metadata block.
+
+    A zoom whose only key is ``None`` produces the flat
+    ``{parts, object_count, avg_part_bytes}`` shape. A zoom with one or more
+    ISO-date keys produces ``{times: {iso: {parts, object_count,
+    avg_part_bytes}}}``. Currently only ``earth`` uses the time-segmented
+    shape.
+    """
+
+    def _entry(part_count: int, count: int, nbytes: int) -> dict:
+        return {
+            "parts": part_count,
+            "object_count": count,
+            "avg_part_bytes": nbytes // part_count if part_count else 0,
+        }
+
     zones = {}
-    for zone, zoom_parts in sorted(zone_structure.items()):
+    for zone, zoom_map in sorted(zone_structure.items()):
         zooms = {}
-        for zoom, part_count in sorted(zoom_parts.items()):
-            count = object_counts.get((zone, zoom), 0)
-            nbytes = total_bytes.get((zone, zoom), 0)
-            zooms[str(zoom)] = {
-                "parts": part_count,
-                "object_count": count,
-                "avg_part_bytes": nbytes // part_count if part_count else 0,
-            }
+        for zoom, time_map in sorted(zoom_map.items()):
+            if list(time_map.keys()) == [None]:
+                part_count = time_map[None]
+                count = object_counts.get((zone, zoom, None), 0)
+                nbytes = total_bytes.get((zone, zoom, None), 0)
+                zooms[str(zoom)] = _entry(part_count, count, nbytes)
+            else:
+                times = {}
+                for t, part_count in sorted(time_map.items()):
+                    count = object_counts.get((zone, zoom, t), 0)
+                    nbytes = total_bytes.get((zone, zoom, t), 0)
+                    times[t] = _entry(part_count, count, nbytes)
+                zooms[str(zoom)] = {"times": times}
         zones[zone] = {"zooms": zooms}
     return {
         "version": VERSION,
@@ -104,6 +130,54 @@ def _remove_old_outputs(out_dir: Path) -> None:
             shutil.rmtree(p)
 
 
+def _overlay_celestrak_elements(
+    objects: list[Object],
+    elements_by_norad: dict[int, CelesTrakElements],
+) -> list[Object]:
+    """Replace each Earth Object's orbital elements with the latest from disk.
+
+    Drops objects whose NORAD ID has no row on disk — without fresh elements
+    we can't propagate them, so shipping stale DB values would just produce
+    broken positions in the frontend.
+    """
+    kept: list[Object] = []
+    dropped = 0
+    for obj in objects:
+        elements = (
+            elements_by_norad.get(obj.norad_cat_id)
+            if obj.norad_cat_id is not None
+            else None
+        )
+        if elements is None:
+            dropped += 1
+            continue
+        obj.epoch_jd = elements["epoch_jd"]
+        obj.a = elements["a"]
+        obj.e = elements["e"]
+        obj.i = elements["i"]
+        obj.om = elements["om"]
+        obj.w = elements["w"]
+        obj.ma = elements["ma"]
+        obj.n = elements["n"]
+        # Earth-zone Objects come from the CelesTrak ingest path, which inserts
+        # an Object + CelesTrak row in lockstep — the relation is invariant-
+        # non-None here, even though the schema doesn't enforce it.
+        ct = obj.celestrak
+        assert ct is not None, f"{obj.id}: missing celestrak relation"
+        ct.BSTAR = elements["BSTAR"]
+        ct.MEAN_MOTION_DOT = elements["MEAN_MOTION_DOT"]
+        ct.MEAN_MOTION_DDOT = elements["MEAN_MOTION_DDOT"]
+        ct.ELEMENT_SET_NO = elements["ELEMENT_SET_NO"]
+        ct.REV_AT_EPOCH = elements["REV_AT_EPOCH"]
+        kept.append(obj)
+    if dropped:
+        logger.info(
+            "Dropped %d Earth satellites with no matching elements on disk",
+            dropped,
+        )
+    return kept
+
+
 def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSource:
     """Pick the chunk's declared orbital source from its first tagged object.
 
@@ -129,8 +203,12 @@ def _write_parts(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    time: str | None = None,
 ) -> tuple[int, int, ChunkObjectData]:
     """Split objects into CHUNK_SIZE parts, write elements/labels/ids per chunk.
+
+    `time` (ISO date) is forwarded to ``write_chunk`` to insert a per-snapshot
+    directory between zoom and part. Currently only the Earth zone uses it.
 
     Returns `(num_parts, elements_bytes, aggregated_object_data)`. The object
     data is accumulated across parts but NOT written here — the caller merges
@@ -180,6 +258,7 @@ def _write_parts(
             chunk_data.flags,
             units,
             _chunk_source(chunk, zone, part_idx),
+            time=time,
         )
 
     return num_parts, total_bytes, aggregated
@@ -221,9 +300,44 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         logger.info("Wrote nut_prec_angles.json (%d owners)", len(nut_prec_angles))
 
-    zone_structure: defaultdict[str, dict[int, int]] = defaultdict(dict)
-    object_counts: defaultdict[tuple[str, int], int] = defaultdict(int)
-    total_bytes_map: defaultdict[tuple[str, int], int] = defaultdict(int)
+    celestrak_days = load_all_days(DOWNLOAD_DIR)
+
+    zone_structure: defaultdict[str, defaultdict[int, dict[str | None, int]]] = (
+        defaultdict(lambda: defaultdict(dict))
+    )
+    object_counts: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
+    total_bytes_map: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
+    all_objects = ChunkObjectData()
+
+    def _record(
+        zone: str,
+        zoom: int,
+        snapshot_time: str | None,
+        count: int,
+        num_parts: int,
+        nbytes: int,
+        zone_data: ChunkObjectData,
+    ) -> None:
+        object_counts[(zone, zoom, snapshot_time)] += count
+        total_bytes_map[(zone, zoom, snapshot_time)] += nbytes
+        zone_structure[zone][zoom][snapshot_time] = num_parts
+        if snapshot_time is None:
+            logger.info(
+                "  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts
+            )
+        else:
+            logger.info(
+                "  %s zoom=%d %s: %d objects, %d parts",
+                zone,
+                zoom,
+                snapshot_time,
+                count,
+                num_parts,
+            )
+        all_objects.global_data.update(zone_data.global_data)
+        for lang, by_id in zone_data.localized_data.items():
+            all_objects.localized_data[lang].update(by_id)
+        all_objects.flags.update(zone_data.flags)
 
     futures: dict = {}
 
@@ -273,16 +387,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     ),
                 ),
                 (
-                    "earth",
-                    0,
-                    _earth_base.filter(~_is_constellation),
-                ),
-                (
-                    "earth",
-                    1,
-                    _earth_base.filter(_is_constellation),
-                ),
-                (
                     "spacecraft",
                     0,
                     session.query(Object)
@@ -324,7 +428,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                 )
-                futures[f] = (zone, zoom, len(objects))
+                futures[f] = (zone, zoom, None, len(objects))
 
             # SBDB: one query per (class, zoom)
             named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
@@ -377,7 +481,52 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                 )
-                futures[f] = (zone, zoom, len(objects))
+                futures[f] = (zone, zoom, None, len(objects))
+
+            # Earth zones run inline (sequentially per day): each day mutates
+            # the same Object instances with that day's elements, so we can't
+            # ship multiple days off to threads simultaneously without cloning.
+            # Main-thread work overlaps with the executor pool for other zones.
+            for zoom_label, zoom_filter in (
+                (0, ~_is_constellation),
+                (1, _is_constellation),
+            ):
+                base_objects = (
+                    _earth_base.filter(zoom_filter)
+                    .order_by(Object.random_int)
+                    .limit(limit_per_zone)
+                    .all()
+                )
+                if not base_objects:
+                    logger.info("  earth zoom=%d: empty, skipping", zoom_label)
+                    continue
+                for date_iso, day_elements in celestrak_days.items():
+                    kept = _overlay_celestrak_elements(base_objects, day_elements)
+                    if not kept:
+                        continue
+                    num_parts, nbytes, zone_data = _write_parts(
+                        kept,
+                        out_dir,
+                        "earth",
+                        zoom_label,
+                        wikidata_entities,
+                        units,
+                        nasa_science_urls,
+                        orientation,
+                        radii,
+                        nut_prec,
+                        texture_metadata,
+                        time=date_iso,
+                    )
+                    _record(
+                        "earth",
+                        zoom_label,
+                        date_iso,
+                        len(kept),
+                        num_parts,
+                        nbytes,
+                        zone_data,
+                    )
             # executor joins here — session still open so ORM objects remain valid
 
         write_system_metadata(
@@ -386,18 +535,10 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         write_credits(session, out_dir, texture_metadata)
         chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
-    all_objects = ChunkObjectData()
     for f in as_completed(futures):
-        zone, zoom, count = futures[f]
+        zone, zoom, snapshot_time, count = futures[f]
         num_parts, nbytes, zone_data = f.result()
-        object_counts[(zone, zoom)] += count
-        total_bytes_map[(zone, zoom)] += nbytes
-        zone_structure[zone][zoom] = num_parts
-        logger.info("  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts)
-        all_objects.global_data.update(zone_data.global_data)
-        for lang, by_id in zone_data.localized_data.items():
-            all_objects.localized_data[lang].update(by_id)
-        all_objects.flags.update(zone_data.flags)
+        _record(zone, zoom, snapshot_time, count, num_parts, nbytes, zone_data)
 
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data

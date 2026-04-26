@@ -9,9 +9,12 @@ v1/
   metadata.json                                  (not gzipped)
   credits.json                                   (not gzipped) aggregated attribution for the /credits page
   nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
-  elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements
+  elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements (single-snapshot zones)
   elements/{zone}/{zoom}/{part}.id.gz            object IDs (text)
   elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
+  elements/earth/{zoom}/{time}/{part}.bin.gz     time-segmented Earth elements (per CelesTrak day-dir)
+  elements/earth/{zoom}/{time}/{part}.id.gz      object IDs for the snapshot
+  elements/earth/{zoom}/{time}/{part}.loc.{lang}.gz  localized labels for the snapshot
   chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
   chebyshev/{zone}/{chunk}/data.id.gz            object IDs (text), same order as bin
   objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
@@ -35,6 +38,16 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
     "major": {
       "zooms": {
         "0": { "parts": 1, "object_count": 42, "avg_part_bytes": 12345 }
+      }
+    },
+    "earth": {
+      "zooms": {
+        "0": {
+          "times": {
+            "2026-04-23": { "parts": 2, "object_count": 9000, "avg_part_bytes": 12345 },
+            "2026-04-25": { "parts": 2, "object_count": 9100, "avg_part_bytes": 12350 }
+          }
+        }
       }
     }
   },
@@ -76,6 +89,18 @@ time). Clients should feature-detect it.
 - Zoom 1 = unnamed objects
 
 Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
+
+### Time-segmented zones
+
+Zones whose elements come from a per-day source ship one snapshot per available
+day. Currently only `earth` (CelesTrak GP) is segmented this way; other zones
+will follow as their providers gain multi-day archives. The metadata entry for
+a segmented (zone, zoom) pair carries a `times` map keyed by ISO date instead
+of the flat `{parts, object_count, avg_part_bytes}` fields, and the chunk paths
+include a `{time}` directory between `{zoom}` and `{part}`. Clients should pick
+the snapshot whose date is closest to (or just past) their simulated time —
+SGP4 propagation accuracy degrades quickly outside `±14 days` of the chunk's
+header `start_jd`/`end_jd` window.
 
 ## Binary elements file
 

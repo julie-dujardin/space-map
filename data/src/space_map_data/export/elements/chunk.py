@@ -55,15 +55,21 @@ def write_chunk(
     object_flags: dict[str, dict[str, int]],
     units: UnitConverter,
     orbital_source: OrbitalSource,
+    time: str | None = None,
 ) -> int:
     """Write elements binary, label files, and id list for one chunk.
 
     object_flags: {obj_id: {lang: 0|1|2}} as returned by build_chunk_object_data.
     `orbital_source` is stamped in the file header; writer raises if any row
     disagrees.
+    `time` (ISO date, e.g. ``"2026-04-25"``) inserts a per-snapshot directory
+    between zoom and part. Currently only the Earth zone uses it.
     Returns the size of the elements binary file in bytes.
     """
-    elements_path = out_dir / "elements" / zone / str(zoom) / f"{part}.bin.gz"
+    chunk_dir = out_dir / "elements" / zone / str(zoom)
+    if time is not None:
+        chunk_dir = chunk_dir / time
+    elements_path = chunk_dir / f"{part}.bin.gz"
     elements_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
@@ -109,13 +115,13 @@ def write_chunk(
     elements_bytes = elements_path.stat().st_size
 
     for lang in LANGUAGES:
-        labels_path = out_dir / "elements" / zone / str(zoom) / f"{part}.loc.{lang}.gz"
+        labels_path = chunk_dir / f"{part}.loc.{lang}.gz"
         lang_flags = {
             obj.id: object_flags.get(obj.id, {}).get(lang, 0) for obj in objects
         }
         write_labels(objects, labels_path, lang, chunk_entities, lang_flags)
 
-    ids_path = out_dir / "elements" / zone / str(zoom) / f"{part}.id.gz"
+    ids_path = chunk_dir / f"{part}.id.gz"
     ids_path.write_bytes(gzip.compress("\n".join(obj.id for obj in objects).encode()))
 
     return elements_bytes
