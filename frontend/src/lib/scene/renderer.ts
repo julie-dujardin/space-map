@@ -291,72 +291,75 @@ export class SceneRenderer {
 	 * Rebuild the pool's owned group set to match the current ctx contents, and
 	 * ensure every zone/group has a Points object whose position attribute is
 	 * backed by the pool's front buffer. Called whenever the minor-body data
-	 * changes (new chunks loaded) or the promoted set changes.
+	 * changes (new chunks loaded, snapshot swap) or the promoted set changes.
+	 *
+	 * Driven by `dirtyAsteroidZones`/`dirtySpacecraftGroups` — only groups in
+	 * those sets are re-packed and shipped to workers. A snapshot swap that
+	 * touches one zone (~10k bodies) used to also re-pack the other ~24 zones
+	 * (~250k bodies) and re-init the worker pool, which on top of an already
+	 * busy worker pool was reading as constant point-cloud flicker.
 	 *
 	 * Worker ticks asynchronously refresh the positions; this method just
 	 * (re)wires the handoff between the pool and the Three.js geometries.
 	 */
 	rebuildMinorPointClouds(): void {
+		const dirtyAsteroid = this.ctx.dirtyAsteroidZones;
+		const dirtySpacecraft = this.ctx.dirtySpacecraftGroups;
+		if (dirtyAsteroid.size === 0 && dirtySpacecraft.size === 0) return;
+
 		const skip = new Set(this.bodyObjects.keys());
 		const input: GroupInput[] = [];
-		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-			input.push({ id: `asteroid:${zone}`, bodies });
+		for (const zone of dirtyAsteroid) {
+			input.push({ id: `asteroid:${zone}`, bodies: this.ctx.asteroidBodiesByZone.get(zone) ?? [] });
 		}
-		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
-			input.push({ id: `spacecraft:${gid}`, bodies });
+		for (const gid of dirtySpacecraft) {
+			input.push({ id: `spacecraft:${gid}`, bodies: this.ctx.spacecraftByParent.get(gid) ?? [] });
 		}
-		this.orbitPool.rewire(input, skip);
+		this.orbitPool.rewireSubset(input, skip);
 
 		const seedBasis: Vec3 = [
 			this.pointCloudBasisPos[0],
 			this.pointCloudBasisPos[1],
 			this.pointCloudBasisPos[2]
 		];
-		// Only seed brand-new groups from body.position. For existing groups we
-		// keep whatever the pool has (worker-computed positions) — overwriting
-		// it would clobber fresh data with stale load-time positions and cause
-		// the cloud to flicker between current and load-time locations on every
-		// rebase (rebases happen frequently at high time rates).
-		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-			const front = this.orbitPool.front(`asteroid:${zone}`);
+		// For existing groups we keep whatever the pool has (worker-computed
+		// positions) — overwriting would clobber fresh data with stale
+		// load-time positions and cause the cloud to flicker between current
+		// and load-time locations. Only seed brand-new groups. Empty groups
+		// (parent's body list became empty) are torn down.
+		for (const g of input) {
+			const isAsteroid = g.id.startsWith('asteroid:');
+			const key = g.id.slice(g.id.indexOf(':') + 1);
+			const points = isAsteroid ? this.asteroidPoints : this.spacecraftPoints;
+			if (g.bodies.length === 0) {
+				const pts = points.get(key);
+				if (pts) {
+					this.scene.remove(pts);
+					pts.geometry.dispose();
+					points.delete(key);
+				}
+				continue;
+			}
+			const front = this.orbitPool.front(g.id);
 			if (!front) continue;
-			const existing = this.asteroidPoints.get(zone);
+			const existing = points.get(key);
 			if (existing) {
 				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
 			} else {
-				this.seedFrontFromBodies(front, bodies);
+				this.seedFrontFromBodies(front, g.bodies);
 				const pts = makePointCloudFromBuffer(
 					front,
-					bodies.length,
+					g.bodies.length,
 					this.circleTexture,
-					resolveBodyColor(bodies[0].data)
+					resolveBodyColor(g.bodies[0].data)
 				);
 				pts.userData.frontBasis = seedBasis;
-				this.asteroidPoints.set(zone, pts);
+				points.set(key, pts);
 				this.pendingSceneAdds.push(pts);
 			}
 		}
-		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
-			const front = this.orbitPool.front(`spacecraft:${gid}`);
-			if (!front) continue;
-			const existing = this.spacecraftPoints.get(gid);
-			if (existing) {
-				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
-			} else {
-				this.seedFrontFromBodies(front, bodies);
-				const pts = makePointCloudFromBuffer(
-					front,
-					bodies.length,
-					this.circleTexture,
-					resolveBodyColor(bodies[0].data)
-				);
-				pts.userData.frontBasis = seedBasis;
-				this.spacecraftPoints.set(gid, pts);
-				this.pendingSceneAdds.push(pts);
-			}
-		}
-		this.ctx.dirtyAsteroidZones.clear();
-		this.ctx.dirtySpacecraftGroups.clear();
+		dirtyAsteroid.clear();
+		dirtySpacecraft.clear();
 	}
 
 	/** Fill a pool-owned Float32Array with basis-relative body positions (for the 1-2 frames before the first worker tick result arrives). */

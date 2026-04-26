@@ -86,6 +86,66 @@ export class OrbitWorkerPool {
 		return this.groups.get(id)?.front;
 	}
 
+	/**
+	 * Like {@link rewire} but only updates listed groups — groups absent from
+	 * input keep their existing pool state and worker columns. Used when only
+	 * a subset of groups changed (e.g. a CelesTrak snapshot swap touches the
+	 * earth zone but leaves all 24 outer-system zones alone) so unchanged
+	 * groups don't pay the packBodies + worker re-init cost. The renderer's
+	 * `rebuildMinorPointClouds` chooses between this and {@link rewire} based
+	 * on whether the dirty sets cover only a partial set of zones.
+	 */
+	rewireSubset(input: GroupInput[], skip: Set<string>): void {
+		const perWorker: { id: string; cols: OrbitColumns }[][] = this.workers.map(() => []);
+
+		for (const g of input) {
+			if (g.bodies.length === 0) {
+				this.groups.delete(g.id);
+				continue;
+			}
+			const prev = this.groups.get(g.id);
+			const workerIdx = prev?.workerIdx ?? this.nextWorker++ % this.workers.length;
+			const capacity = g.bodies.length;
+
+			let front: Float32Array;
+			let back: Float32Array | null;
+			if (prev && prev.capacity === capacity) {
+				front = prev.front;
+				back = prev.back;
+			} else {
+				front = new Float32Array(capacity * 3);
+				back = new Float32Array(capacity * 3);
+				if (prev) {
+					const n = Math.min(prev.front.length, front.length);
+					front.set(prev.front.subarray(0, n));
+				}
+			}
+
+			const cols = packBodies(g.bodies, skip);
+			perWorker[workerIdx].push({ id: g.id, cols });
+			const inFlight = !!prev && prev.back === null;
+			this.groups.set(g.id, {
+				workerIdx,
+				capacity,
+				front,
+				back,
+				count: prev?.count ?? capacity,
+				pendingBasis: inFlight ? prev!.pendingBasis : null,
+				pendingParent: inFlight ? prev!.pendingParent : null,
+				frontBasis: prev?.frontBasis ?? [0, 0, 0],
+				frontParent: prev?.frontParent ?? [0, 0, 0]
+			});
+		}
+
+		for (let i = 0; i < this.workers.length; i++) {
+			const groupMsgs = perWorker[i];
+			if (groupMsgs.length === 0) continue;
+			const transfers: Transferable[] = [];
+			for (const g of groupMsgs) transfers.push(...columnsTransferList(g.cols));
+			this.workers[i].postMessage({ type: 'rewireMerge', groups: groupMsgs }, transfers);
+		}
+	}
+
 	/** Bodies present in the input list are (re)registered; groups absent from input are dropped. */
 	rewire(input: GroupInput[], skip: Set<string>): void {
 		const perWorker: { id: string; cols: OrbitColumns }[][] = this.workers.map(() => []);
