@@ -7,11 +7,13 @@ services:
     container_name: space-map-data
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      # Unset channels are skipped.
+      - PUSHOVER_TOKEN=${PUSHOVER_TOKEN:-}
+      - PUSHOVER_USER=${PUSHOVER_USER:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - NOTIFY_EMAIL_FROM=${NOTIFY_EMAIL_FROM:-}
+      - NOTIFY_EMAIL_TO=${NOTIFY_EMAIL_TO:-}
     volumes:
-      # config.toml holds the operator's user_agent (with contact email).
-      # Must exist on the host as a regular, Docker silently creates a directory
-      # at this path otherwise, which produces a confusing IsADirectoryError.
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
-      # Host path holds the persistent space-map-downloads/ tree (DB + provider
-      # outputs). Override DOWNLOADS_HOST_DIR in the Portainer stack env.
       - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
