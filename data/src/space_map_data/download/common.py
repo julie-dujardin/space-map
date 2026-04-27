@@ -2,6 +2,7 @@
 
 import logging
 import tomllib
+from dataclasses import dataclass
 from datetime import date
 from typing import Any, Type
 
@@ -40,6 +41,13 @@ SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASS
 ALL_SOURCES = list(SOURCES)
 
 
+@dataclass
+class ProviderResult:
+    name: str
+    ok: bool
+    error: str | None = None
+
+
 def load_config() -> dict[str, Any]:
     """Load download configuration from config.toml."""
     if not CONFIG_FILE.exists():
@@ -54,14 +62,19 @@ def download(
     *,
     force: bool = False,
     epoch: date | None = None,
-) -> None:
-    """Download data from the given sources (default: all)."""
+) -> list[ProviderResult]:
+    """Download data from the given sources (default: all).
+
+    Each provider is tried independently; a failure is logged and recorded
+    but does not stop the loop.
+    """
     DOWNLOAD_DIR.mkdir(exist_ok=True)
     selected = list(ALL_SOURCES) if sources is None else sources
 
     config = load_config()
     user_agent = config["download"]["user_agent"]
 
+    results: list[ProviderResult] = []
     with httpx.Client(
         headers={"User-Agent": user_agent},
         follow_redirects=True,
@@ -72,5 +85,14 @@ def download(
             downloader = cls(client)
             if not force and downloader.is_complete(limit):
                 logger.info("Skipping %s (already complete)", name)
+                results.append(ProviderResult(name, ok=True))
                 continue
-            downloader.download(limit=limit, epoch=epoch)
+            try:
+                downloader.download(limit=limit, epoch=epoch)
+                results.append(ProviderResult(name, ok=True))
+            except Exception as e:
+                logger.exception("Provider %s failed", name)
+                results.append(
+                    ProviderResult(name, ok=False, error=f"{type(e).__name__}: {e}")
+                )
+    return results

@@ -14,7 +14,8 @@ import tomllib
 from datetime import datetime, timedelta, timezone
 from datetime import time as dtime
 
-from space_map_data.download.common import download
+from space_map_data.download.common import ProviderResult, download
+from space_map_data.scheduler.notify import notify_download_run
 from space_map_data.utils.db import session_scope
 from space_map_data.utils.paths import DATA_DIR
 
@@ -38,10 +39,15 @@ def run_download() -> None:
     logger.info("Running download for sources=%s", ",".join(SOURCES))
     try:
         with session_scope():
-            download(sources=list(SOURCES))
-        logger.info("Download finished")
-    except Exception:
-        logger.exception("Download failed")
+            results = download(sources=list(SOURCES))
+    except Exception as e:
+        logger.exception("Download crashed before completing")
+        notify_download_run(
+            [ProviderResult("scheduler", ok=False, error=f"{type(e).__name__}: {e}")]
+        )
+        return
+    logger.info("Download finished")
+    notify_download_run(results)
 
 
 def _stop(signum: int, _frame: object) -> None:
