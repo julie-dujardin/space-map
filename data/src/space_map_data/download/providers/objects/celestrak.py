@@ -1,6 +1,5 @@
 import json
 import logging
-import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -9,7 +8,7 @@ from space_map_data.constants.earth_sats.constellations import (
     GROUP_TO_SLUG,
 )
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.downloader import Downloader
+from space_map_data.download.downloader import DownloadError, Downloader
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +75,9 @@ class CelesTrakDownloader(Downloader):
         response = self.client.get(url)
 
         if response.status_code in (403, 404):
-            logger.error("HTTP %d — stopping (do not retry)", response.status_code)
-            sys.exit(1)
+            raise DownloadError(
+                f"HTTP {response.status_code} fetching {label} — stopping (do not retry)"
+            )
         response.raise_for_status()
 
         body = response.text
@@ -87,8 +87,7 @@ class CelesTrakDownloader(Downloader):
                 logger.warning("No data for %s (response: %r)", label, body[:80])
                 out_file.write_text("")
                 return 0
-            logger.error("Unexpected response for %s: %r", label, body[:80])
-            sys.exit(1)
+            raise DownloadError(f"Unexpected response for {label}: {body[:80]!r}")
 
         out_file.write_text(body)
         record_count = body.count("\n") - 1

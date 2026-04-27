@@ -1,0 +1,20 @@
+services:
+  download:
+    build:
+      context: ../..
+      dockerfile: infrastructure/download/Dockerfile
+    image: space-map-download:latest
+    container_name: space-map-download
+    restart: unless-stopped
+    # Run as the host owner of the downloads dir so bind-mounted files
+    # aren't root-owned. Override PUID/PGID in the Portainer stack env.
+    user: "${PUID:-1000}:${PGID:-1000}"
+    volumes:
+      # config.toml holds the operator's user_agent (with contact email) and
+      # is intentionally NOT baked into the public image. Must exist on the
+      # host as a regular file — Docker silently creates a directory at this
+      # path otherwise, which produces a confusing IsADirectoryError.
+      - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
+      # Host path holds the persistent space-map-downloads/ tree (DB + provider
+      # outputs). Override DOWNLOADS_HOST_DIR in the Portainer stack env.
+      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads

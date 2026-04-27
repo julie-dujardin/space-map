@@ -1,0 +1,9 @@
+**
+!data/pyproject.toml
+!data/uv.lock
+!data/src/**
+!data/logging.toml
+
+# Re-exclude bytecode that would sneak in via data/src/**.
+**/__pycache__
+**/*.pyc

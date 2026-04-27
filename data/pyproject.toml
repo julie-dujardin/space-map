@@ -19,6 +19,7 @@ dependencies = [
 space-map-download = "space_map_data.download.__main__:cli"
 space-map-ingest = "space_map_data.ingest.__main__:cli"
 space-map-export = "space_map_data.export.__main__:cli"
+space-map-scheduler = "space_map_data.scheduler.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

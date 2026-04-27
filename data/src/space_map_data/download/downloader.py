@@ -12,6 +12,10 @@ from space_map_data.utils.paths import DOWNLOAD_DIR
 logger = logging.getLogger(__name__)
 
 
+class DownloadError(Exception):
+    """A provider hit an unrecoverable error and should not retry this run."""
+
+
 class Downloader(ABC):
     """Base class for all data source downloaders."""
 
