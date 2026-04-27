@@ -12,6 +12,6 @@ services:
       # Must exist on the host as a regular, Docker silently creates a directory
       # at this path otherwise, which produces a confusing IsADirectoryError.
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
-      # Host path holds the persistent space-map-datas/ tree (DB + provider
+      # Host path holds the persistent space-map-downloads/ tree (DB + provider
       # outputs). Override DOWNLOADS_HOST_DIR in the Portainer stack env.
-      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-datas}:/space-map-datas
+      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
