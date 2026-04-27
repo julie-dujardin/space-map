@@ -20,7 +20,8 @@ flowchart LR
 
   subgraph hosts["Public artifact hosts"]
     direction TB
-    cfpages[("Cloudflare Pages")]
+    cfpagesfront[("Cloudflare Pages - space-map")]
+    cfpagesstatic[("Cloudflare Pages - space-map-static")]
     ghcr[("ghcr.io/.../space-map-data")]
     ghrel[("GitHub Releases")]
   end
@@ -36,7 +37,7 @@ flowchart LR
   src_data --> wf_data
   src_infra --> wf_data
 
-  wf_fe -->|"wrangler pages deploy"| cfpages
+  wf_fe -->|"wrangler pages deploy"| cfpagesfront
   wf_data -->|"docker push :version :sha :latest"| ghcr
   wf_data --> ghrel
 
@@ -45,9 +46,10 @@ flowchart LR
 
   container -->|stdout| grafana
   container -->|"HTTPS daily 12:00 UTC"| celestrak
+  container -.->|TODO| cfpagesstatic
 
-  user --> cfpages
+  user --> cfpagesfront
+  user --> cfpagesstatic
 ```
 
 - Image tags: `latest`, the version from [`data/pyproject.toml`](../data/pyproject.toml), and the full commit SHA. A matching `vX.Y.Z` GitHub Release is created on first appearance of each version.
-- `space-map-data` only donwloads for now, but it will end up building new exports & push them to cloudflare pages.
