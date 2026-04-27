@@ -1,8 +1,9 @@
 """Long-running scheduler for space-map data refreshes.
 
-Runs the download once at startup (cheap no-op if today is already done thanks
-to per-provider metadata.json) and then daily at DAILY_AT_UTC. Logs go through
-the project's logging.toml so docker logs / Grafana see everything.
+Runs daily at DAILY_AT_UTC. On startup, runs immediately only if today's
+scheduled time has already passed (otherwise it'll be picked up by the loop).
+Logs go through the project's logging.toml so docker logs / Grafana see
+everything.
 """
 
 import logging
@@ -65,7 +66,16 @@ def main() -> None:
         DAILY_AT_UTC.hour,
         DAILY_AT_UTC.minute,
     )
-    run_download()
+
+    now = datetime.now(timezone.utc)
+    today_target = now.replace(
+        hour=DAILY_AT_UTC.hour, minute=DAILY_AT_UTC.minute, second=0, microsecond=0
+    )
+    if now >= today_target:
+        logger.info("Past today's scheduled time; running now")
+        run_download()
+    else:
+        logger.info("Today's scheduled run is upcoming; skipping startup run")
 
     while True:
         now = datetime.now(timezone.utc)
