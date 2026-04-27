@@ -21,7 +21,7 @@ jobs:
   build-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # create release + tag
       packages: write
     steps:
       - uses: actions/checkout@v6
@@ -62,3 +62,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Check if release already exists
+        id: release_check
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ steps.pyproject.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        if: github.event_name == 'push' && steps.release_check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.pyproject.outputs.version }}
+          name: v${{ steps.pyproject.outputs.version }}
+          generate_release_notes: true
+          body: |
+            Container image: `ghcr.io/${{ github.repository_owner }}/space-map-data:${{ steps.pyproject.outputs.version }}`
