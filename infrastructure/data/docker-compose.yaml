@@ -1,10 +1,12 @@
 services:
-  download:
+  data:
+    image: ghcr.io/julie-dujardin/space-map-data:latest
+    # `build:` is kept for local development (`docker compose build`); in
+    # production (Portainer) the image is pulled from ghcr.
     build:
       context: ../..
-      dockerfile: infrastructure/download/Dockerfile
-    image: space-map-download:latest
-    container_name: space-map-download
+      dockerfile: infrastructure/data/Dockerfile
+    container_name: space-map-data
     restart: unless-stopped
     # Run as the host owner of the downloads dir so bind-mounted files
     # aren't root-owned. Override PUID/PGID in the Portainer stack env.
@@ -15,6 +17,6 @@ services:
       # host as a regular file — Docker silently creates a directory at this
       # path otherwise, which produces a confusing IsADirectoryError.
       - ${CONFIG_HOST_PATH:-/srv/space-map/config.toml}:/app/data/config.toml:ro
-      # Host path holds the persistent space-map-downloads/ tree (DB + provider
+      # Host path holds the persistent space-map-datas/ tree (DB + provider
       # outputs). Override DOWNLOADS_HOST_DIR in the Portainer stack env.
-      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-downloads}:/space-map-downloads
+      - ${DOWNLOADS_HOST_DIR:-/srv/space-map/space-map-datas}:/space-map-datas
