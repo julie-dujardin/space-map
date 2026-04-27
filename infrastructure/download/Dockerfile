@@ -1,13 +1,13 @@
-ARG PYTHON_VERSION=3.14
-FROM python:${PYTHON_VERSION}-slim
+FROM ghcr.io/astral-sh/uv:bookworm-slim
 
+# uv reads requires-python from data/pyproject.toml and installs the matching
+# interpreter at sync time, so Python version is driven by pyproject — no ARG.
 ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_INSTALL_DIR=/python \
     UV_PROJECT_ENVIRONMENT=/app/data/.venv \
     PATH=/app/data/.venv/bin:$PATH
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app/data
 
