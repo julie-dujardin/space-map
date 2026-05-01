@@ -8,6 +8,7 @@ import {
 	CHEBYSHEV_VERSION,
 	FORMAT_POSITION_ONLY
 } from './constants';
+import { IdType } from '$lib/fetch/elements/constants';
 
 interface SegmentSpec {
 	startJd: number;
@@ -20,6 +21,8 @@ interface SegmentSpec {
 interface BodySpec {
 	naifId: number;
 	parentNaifId: number;
+	objIdValue: number;
+	idType: IdType;
 	radiusKm: number;
 	coeffsPerAxis: number;
 	segments: SegmentSpec[];
@@ -45,10 +48,12 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 	for (const b of bodies) {
 		view.setInt32(off, b.naifId, true);
 		view.setInt32(off + 4, b.parentNaifId, true);
-		view.setFloat32(off + 8, b.radiusKm, true);
-		view.setUint16(off + 12, b.coeffsPerAxis, true);
-		view.setUint16(off + 14, 0, true);
-		view.setUint32(off + 16, b.segments.length, true);
+		view.setInt32(off + 8, b.objIdValue, true);
+		view.setFloat32(off + 12, b.radiusKm, true);
+		view.setUint16(off + 16, b.coeffsPerAxis, true);
+		view.setUint8(off + 18, b.idType);
+		view.setUint8(off + 19, 0);
+		view.setUint32(off + 20, b.segments.length, true);
 		off += CHEBYSHEV_BODY_HEADER_SIZE;
 		for (const seg of b.segments) {
 			view.setFloat64(off, seg.startJd, true);
@@ -71,6 +76,8 @@ describe('parseChebyshev — synthetic buffers', () => {
 			{
 				naifId: 399,
 				parentNaifId: 3,
+				objIdValue: 399,
+				idType: IdType.NAIF,
 				radiusKm: 6378.137,
 				coeffsPerAxis: 3,
 				segments: [{ startJd: 100, endJd: 150, cx: [1, 0, 0], cy: [0, 1, 0], cz: [0, 0, 1] }]
@@ -81,6 +88,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 		expect(chunk.endJd).toBe(200);
 		expect(chunk.bodies).toHaveLength(1);
 		const body = chunk.bodies[0];
+		expect(body.id).toBe('naif-399');
 		expect(body.naifId).toBe(399);
 		expect(body.parentNaifId).toBe(3);
 		expect(body.radiusKm).toBeCloseTo(6378.137, 2);
@@ -89,11 +97,31 @@ describe('parseChebyshev — synthetic buffers', () => {
 		expect(body.endJds).toEqual(new Float64Array([150]));
 	});
 
+	it('reconstructs spkid IDs even when the SPICE naif_id differs', () => {
+		// Pluto in chebyshev: SPICE naif_id 999, but Object.id is `spkid-20134340`.
+		const buf = buildBuffer(100, 200, [
+			{
+				naifId: 999,
+				parentNaifId: 9,
+				objIdValue: 20134340,
+				idType: IdType.SPKID,
+				radiusKm: 1188.3,
+				coeffsPerAxis: 2,
+				segments: [{ startJd: 100, endJd: 200, cx: [1, 0], cy: [0, 1], cz: [0, 0] }]
+			}
+		]);
+		const body = parseChebyshev(buf).bodies[0];
+		expect(body.id).toBe('spkid-20134340');
+		expect(body.naifId).toBe(999);
+	});
+
 	it('walks multiple bodies and multiple segments without drift', () => {
 		const buf = buildBuffer(100, 200, [
 			{
 				naifId: 1,
 				parentNaifId: 0,
+				objIdValue: 1,
+				idType: IdType.NAIF,
 				radiusKm: NaN,
 				coeffsPerAxis: 2,
 				segments: [
@@ -104,6 +132,8 @@ describe('parseChebyshev — synthetic buffers', () => {
 			{
 				naifId: 2,
 				parentNaifId: 0,
+				objIdValue: 2,
+				idType: IdType.NAIF,
 				radiusKm: 100.0,
 				coeffsPerAxis: 4,
 				segments: [
@@ -124,6 +154,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 		expect(b1.coeffs).toEqual(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]));
 
 		const b2 = chunk.bodies[1];
+		expect(b2.id).toBe('naif-2');
 		expect(b2.naifId).toBe(2);
 		expect(b2.coeffsPerAxis).toBe(4);
 		expect(b2.radiusKm).toBeCloseTo(100.0, 5);
@@ -152,6 +183,8 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 		{
 			naifId: 1,
 			parentNaifId: 0,
+			objIdValue: 1,
+			idType: IdType.NAIF,
 			radiusKm: NaN,
 			coeffsPerAxis: 3,
 			segments: [
@@ -204,6 +237,8 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 			{
 				naifId: 1,
 				parentNaifId: 0,
+				objIdValue: 1,
+				idType: IdType.NAIF,
 				radiusKm: NaN,
 				coeffsPerAxis: 1,
 				segments: [{ startJd: 0, endJd: 10, cx: [42], cy: [-7], cz: [3] }]
