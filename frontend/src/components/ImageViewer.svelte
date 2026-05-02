@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onDestroy } from 'svelte';
+	import { getContext, mount, onDestroy, unmount } from 'svelte';
 	import 'photoswipe/style.css';
 	import type PhotoSwipeT from 'photoswipe';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -7,6 +7,7 @@
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 	import { fetchImageMetadata, variantUrl, type ImageMetadata } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import ImageViewerCaption, { type Attribution } from './ImageViewerCaption.svelte';
 
 	interface Props {
 		images: ObjectImage[];
@@ -124,14 +125,7 @@
 		};
 	}
 
-	// --- caption (built inside PhotoSwipe's DOM via registerElement) -----------
-
-	interface Attribution {
-		license?: string;
-		license_url?: string;
-		artist?: string;
-		description?: string;
-	}
+	// --- caption (Svelte component mounted into PhotoSwipe's DOM) --------------
 
 	// Promise cache so swiping back to a previously-viewed slide doesn't refetch.
 	// Lifetime is tied to the component instance; PhotoSwipe is recreated per
@@ -148,136 +142,42 @@
 		return p;
 	}
 
-	/** Build the caption subtree once and update its contents on `change`.
-	 *  Imperative because PhotoSwipe owns this DOM tree — mounting a Svelte
-	 *  child here would fight PhotoSwipe's lifecycle (re-renders during
-	 *  open/close transitions, no clean teardown hook). */
 	function attachCaption(root: HTMLElement, inst: PhotoSwipeT) {
 		root.className = 'pswp-sm-caption-root pswp__hide-on-close';
 
-		const descWrap = document.createElement('div');
-		descWrap.className = 'pswp-sm-caption-desc-wrap';
-		const descBody = document.createElement('div');
-		descBody.className = 'pswp-sm-caption-desc';
-		const toggleBtn = document.createElement('button');
-		toggleBtn.type = 'button';
-		toggleBtn.className = 'pswp-sm-caption-toggle';
-		descWrap.append(descBody, toggleBtn);
+		// $state proxy so prop mutations propagate into the mounted component.
+		const captionState: { image: ObjectImage | null; attribution: Attribution | null } = $state({
+			image: null,
+			attribution: null
+		});
 
-		const credits = document.createElement('div');
-		credits.className = 'pswp-sm-caption-credits';
+		const captionApp = mount(ImageViewerCaption, {
+			target: root,
+			props: captionState
+		});
 
-		root.append(descWrap, credits);
-
-		let expanded = false;
 		// Token bumped per render so a slow metadata fetch from a prior slide
 		// can't overwrite the caption for the slide the user is now on.
 		let fetchToken = 0;
-
-		function setExpanded(next: boolean) {
-			expanded = next;
-			descWrap.classList.toggle('is-expanded', expanded);
-			toggleBtn.textContent = expanded ? m.show_less() : m.read_more();
-		}
-
-		toggleBtn.addEventListener('click', (e) => {
-			e.stopPropagation();
-			setExpanded(!expanded);
-		});
-
-		// Show the toggle only when the collapsed body actually overflows, or
-		// when we know there are more paragraphs hidden behind the line-clamp
-		// (explicit newlines in the source).
-		const ro = new ResizeObserver(() => updateTruncation());
-		ro.observe(descBody);
-
-		let hasExplicitBreaks = false;
-
-		function updateTruncation() {
-			if (expanded) return;
-			const overflows = descBody.scrollHeight > descBody.clientHeight + 1;
-			descWrap.classList.toggle('is-truncated', overflows || hasExplicitBreaks);
-		}
-
-		function renderDescription(text: string | undefined) {
-			descBody.replaceChildren();
-			if (!text) {
-				descWrap.style.display = 'none';
-				return;
-			}
-			descWrap.style.display = '';
-			const paragraphs = text.split('\n').filter((p) => p.trim());
-			for (const p of paragraphs) {
-				const el = document.createElement('p');
-				el.textContent = p;
-				descBody.append(el);
-			}
-			hasExplicitBreaks = text.includes('\n');
-			updateTruncation();
-		}
-
-		function renderCredits(image: ObjectImage, attribution: Attribution | null) {
-			credits.replaceChildren();
-			const parts: (Node | string)[] = [];
-			if (attribution?.license) {
-				if (attribution.license_url) {
-					const a = document.createElement('a');
-					a.href = attribution.license_url;
-					a.target = '_blank';
-					a.rel = 'noopener noreferrer license';
-					a.textContent = attribution.license;
-					parts.push(a);
-				} else {
-					parts.push(attribution.license);
-				}
-			}
-			if (attribution?.artist) {
-				const span = document.createElement('span');
-				span.className = 'pswp-sm-caption-artist';
-				span.textContent = attribution.artist;
-				parts.push(span);
-			}
-			const source = document.createElement('a');
-			source.href = image.source_url;
-			source.target = '_blank';
-			source.rel = 'noopener noreferrer';
-			source.textContent = m.image_view_on_commons();
-			parts.push(source);
-
-			parts.forEach((part, i) => {
-				if (i > 0) {
-					const sep = document.createElement('span');
-					sep.className = 'pswp-sm-caption-sep';
-					sep.setAttribute('aria-hidden', 'true');
-					sep.textContent = '·';
-					credits.append(sep);
-				}
-				credits.append(part);
-			});
-		}
 
 		async function render() {
 			const idx = inst.currIndex;
 			const image = images[idx];
 			if (!image) return;
-
-			setExpanded(false);
-			descWrap.classList.remove('is-truncated');
+			captionState.image = image;
+			captionState.attribution = null;
 
 			const token = ++fetchToken;
 			const meta = await getMetadata(image);
 			if (token !== fetchToken) return;
 
-			const attribution = meta ? extractAttribution(meta) : null;
-			renderDescription(attribution?.description);
-			renderCredits(image, attribution);
-			updateTruncation();
+			captionState.attribution = meta ? extractAttribution(meta) : null;
 		}
 
 		inst.on('change', render);
 		render();
 
-		inst.on('destroy', () => ro.disconnect());
+		inst.on('destroy', () => unmount(captionApp));
 	}
 
 	// --- metadata helpers -------------------------------------------------------
@@ -336,6 +236,11 @@
 </script>
 
 <style>
+	:global(.pswp) {
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
 	/* Vaul/bits-ui Dialog in modal mode sets `pointer-events: none` on a
 	   body-level wrapper to block outside-dialog interaction. PhotoSwipe is
 	   appended to body as a sibling of the drawer and inherits that none
@@ -394,31 +299,30 @@
 		}
 	}
 
+	/* max-height goes on the viewport (not the ScrollArea root) — the root has
+	   no definite height, so a percentage height on the viewport (size-full)
+	   would resolve to auto and content would spill instead of scrolling. The
+	   viewport already carries `overflow: scroll` from bits-ui, so capping its
+	   max-height directly is what activates the scrollbar. */
+	:global(.pswp-space-map .pswp-sm-caption-scroll [data-slot='scroll-area-viewport']) {
+		max-height: 3lh;
+		overscroll-behavior: contain;
+	}
+	:global(.pswp-space-map .pswp-sm-caption-scroll.is-expanded [data-slot='scroll-area-viewport']) {
+		max-height: 40vh;
+	}
+
 	:global(.pswp-space-map .pswp-sm-caption-desc) {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 0 1rem;
-		overflow: hidden;
-		max-height: 3lh;
 	}
 	:global(.pswp-space-map .pswp-sm-caption-desc p) {
 		margin: 0;
 	}
 
-	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-expanded) {
-		max-height: 40vh;
-	}
-	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-expanded .pswp-sm-caption-desc) {
-		max-height: none;
-		overflow-y: auto;
-		overscroll-behavior: contain;
-		touch-action: pan-y;
-		padding-right: 0.5rem;
-	}
-
 	:global(.pswp-space-map .pswp-sm-caption-toggle) {
-		display: none;
 		align-self: flex-start;
 		margin: 0 1rem;
 		padding: 0;
@@ -430,9 +334,6 @@
 	}
 	:global(.pswp-space-map .pswp-sm-caption-toggle:hover) {
 		color: #fff;
-	}
-	:global(.pswp-space-map .pswp-sm-caption-desc-wrap.is-truncated .pswp-sm-caption-toggle) {
-		display: block;
 	}
 
 	:global(.pswp-space-map .pswp-sm-caption-credits) {
@@ -448,6 +349,7 @@
 		color: rgba(255, 255, 255, 0.75);
 		white-space: nowrap;
 		overflow: hidden;
+		justify-content: end;
 	}
 	@media (min-width: 768px) {
 		:global(.pswp-space-map .pswp-sm-caption-credits) {
@@ -456,9 +358,9 @@
 			max-width: 50%;
 			width: auto;
 			padding: 0.25rem 0.5rem;
-			background: rgba(0, 0, 0, 0.4);
-			backdrop-filter: blur(4px);
-			-webkit-backdrop-filter: blur(4px);
+			background: rgba(0, 0, 0, 0.55);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
 			border-start-start-radius: 2px;
 		}
 	}
