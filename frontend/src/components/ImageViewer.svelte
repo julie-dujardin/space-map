@@ -348,7 +348,8 @@
 	}
 
 	/* Caption container: pinned to the bottom of pswp.element, above slides.
-	   Mobile stacks description over credits; desktop puts them side-by-side. */
+	   Mobile merges description + credits into one full-width blurred bar;
+	   desktop splits them into two pills side-by-side. */
 	:global(.pswp-space-map .pswp-sm-caption-root) {
 		position: absolute;
 		inset-inline: 0;
@@ -357,11 +358,17 @@
 		display: flex;
 		flex-direction: column;
 		pointer-events: none;
+		background: rgba(0, 0, 0, 0.55);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
 	}
 	@media (min-width: 768px) {
 		:global(.pswp-space-map .pswp-sm-caption-root) {
 			flex-direction: row;
 			align-items: flex-end;
+			background: none;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
 		}
 	}
 
@@ -371,18 +378,19 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		width: 100%;
-		padding: 0.625rem 0;
+		padding: 0.625rem 0 0;
 		font-size: 0.875rem;
 		line-height: 1.25;
 		color: rgba(255, 255, 255, 0.85);
-		background: rgba(0, 0, 0, 0.55);
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
 	}
 	@media (min-width: 768px) {
 		:global(.pswp-space-map .pswp-sm-caption-desc-wrap) {
 			width: fit-content;
 			max-width: 50%;
+			padding: 0.625rem 0;
+			background: rgba(0, 0, 0, 0.55);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
 		}
 	}
 
@@ -430,25 +438,28 @@
 	:global(.pswp-space-map .pswp-sm-caption-credits) {
 		pointer-events: auto;
 		display: flex;
+		flex-wrap: nowrap;
 		align-items: center;
 		gap: 0.375rem;
-		align-self: flex-end;
-		max-width: 100%;
-		padding: 0.25rem 0.5rem;
+		width: 100%;
+		padding: 0.5rem 1rem 0.625rem;
 		font-size: 11px;
 		line-height: 1.1;
 		color: rgba(255, 255, 255, 0.75);
 		white-space: nowrap;
 		overflow: hidden;
-		background: rgba(0, 0, 0, 0.4);
-		backdrop-filter: blur(4px);
-		-webkit-backdrop-filter: blur(4px);
-		border-start-start-radius: 2px;
 	}
 	@media (min-width: 768px) {
 		:global(.pswp-space-map .pswp-sm-caption-credits) {
+			align-self: flex-end;
 			margin-inline-start: auto;
 			max-width: 50%;
+			width: auto;
+			padding: 0.25rem 0.5rem;
+			background: rgba(0, 0, 0, 0.4);
+			backdrop-filter: blur(4px);
+			-webkit-backdrop-filter: blur(4px);
+			border-start-start-radius: 2px;
 		}
 	}
 	:global(.pswp-space-map .pswp-sm-caption-credits a) {
