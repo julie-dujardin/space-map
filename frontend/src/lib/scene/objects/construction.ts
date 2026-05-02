@@ -255,7 +255,15 @@ export function buildPointClouds(
 	}
 	for (const [parentId, moons] of moonsByParent) {
 		const pts = makePointCloud(moons, circleTexture, resolveBodyColor(moons[0].data), basisPos);
-		(pts.material as PointsMaterial).depthTest = true;
+		const mat = pts.material as PointsMaterial;
+		// Render moon dots in the opaque pass with alpha-tested cutout. Lets the
+		// body mesh occlude its own dot cleanly via depth test once the camera
+		// is close enough that the mesh fills the sprite footprint — without
+		// this, the transparent-pass dot punches through the mesh at center.
+		mat.transparent = false;
+		mat.alphaTest = 0.5;
+		mat.depthTest = true;
+		mat.depthWrite = true;
 		pts.visible = false;
 		moonPoints.set(parentId, pts);
 		scene.add(pts);
