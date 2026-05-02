@@ -81,6 +81,9 @@ _FIXED_KERNELS: dict[str, str] = {
     # etc. Only hosted at JPL's SSD (not in NAIF's generic_kernels tree); gives
     # us high-accuracy Chebyshev coverage for the major asteroids.
     "sb441-n16.bsp": "https://ssd.jpl.nasa.gov/ftp/eph/small_bodies/asteroids_de441/sb441-n16.bsp",
+    # Gravity harmonics J2/J3/J4 for the major planets — used to compute analytic
+    # secular precession rates for moons that don't get full Chebyshev coverage.
+    "Gravity.tpc": "pck/Gravity.tpc",
 }
 
 # Kernels where we pick the latest version from a directory listing.
@@ -557,6 +560,43 @@ class SpiceDownloader(Downloader):
             )
         return rows
 
+    @staticmethod
+    def _extract_gravity_field() -> list[dict]:
+        """Extract per-body gravity harmonics + equatorial radius from the PCK pool.
+
+        Reads BODY<n>_J2/J3/J4 (from `Gravity.tpc`) and the equatorial radius
+        BODY<n>_RADII[0] (from the standard PCK). Used downstream to compute
+        analytic J2 secular precession rates Ω̇ and ω̇ for moons that don't
+        get full Chebyshev coverage.
+
+        A row is emitted for every body with at least one of J2/J3/J4 defined,
+        even if the equatorial radius is missing — the consumer decides how to
+        handle a missing R_eq.
+        """
+        naif_ids: set[int] = set()
+        for key in ("J2", "J3", "J4"):
+            for var in spiceypy.gnpool(f"BODY*_{key}", 0, 1000):
+                m = re.match(rf"BODY(-?\d+)_{key}$", var)
+                if m:
+                    naif_ids.add(int(m.group(1)))
+
+        rows = []
+        for naif_id in sorted(naif_ids):
+            row: dict[str, int | float | None] = {"naif_id": naif_id}
+            for key in ("J2", "J3", "J4"):
+                try:
+                    row[key.lower()] = float(
+                        spiceypy.bodvrd(str(naif_id), key, 1)[1][0]
+                    )
+                except spiceypy.exceptions.SpiceyError:
+                    row[key.lower()] = None
+            try:
+                row["r_eq_km"] = float(spiceypy.bodvrd(str(naif_id), "RADII", 3)[1][0])
+            except spiceypy.exceptions.SpiceyError:
+                row["r_eq_km"] = None
+            rows.append(row)
+        return rows
+
     def download(
         self, limit: int | None = None, epoch: date | None = None, **kwargs: object
     ) -> None:
@@ -864,6 +904,22 @@ class SpiceDownloader(Downloader):
             len(nut_prec_angles),
         )
 
+        # Step 9a: Extract gravity harmonics (J2/J3/J4 + R_eq)
+        gravity_rows = self._extract_gravity_field()
+        gravity_file = self.out_dir / "gravity.csv"
+        with gravity_file.open("w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["naif_id", "j2", "j3", "j4", "r_eq_km"],
+            )
+            writer.writeheader()
+            writer.writerows(gravity_rows)
+        logger.info(
+            "Saved %d gravity-field records -> %s",
+            len(gravity_rows),
+            gravity_file.name,
+        )
+
         # Step 9: Extract triaxial radii
         radii_rows = self._extract_radii()
         radii_file = self.out_dir / "radii.csv"
@@ -899,6 +955,7 @@ class SpiceDownloader(Downloader):
             nut_prec_body_count=len(nut_prec_coeffs),
             nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
+            gravity_count=len(gravity_rows),
             chebyshev_body_count=cheb_count,
             chebyshev_moon_chunk_years=cheb_cfg["moon_chunk_years"],
             chebyshev_start_year=cheb_cfg["start_year"],
