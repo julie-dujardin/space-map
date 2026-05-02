@@ -20,8 +20,45 @@ export type ObjectBundles = {
 	global: number;
 } & Record<string, number>;
 
+export interface ChunkInfo {
+	parts: number;
+	object_count: number;
+	avg_part_bytes: number;
+}
+
+/**
+ * Per-zoom metadata. Flat zones expose `parts` directly; time-segmented zones
+ * (currently only `earth`) expose a `times` map keyed by ISO date — callers
+ * pick the snapshot nearest the simulated time and pass it as `time` to the
+ * URL builders.
+ */
+export type ZoomMetadata = ChunkInfo | { times: Record<string, ChunkInfo> };
+
+export function isTimeSegmented(zoom: ZoomMetadata): zoom is { times: Record<string, ChunkInfo> } {
+	return 'times' in zoom;
+}
+
 export interface ZoneMetadata {
-	zooms: Record<string, { parts: number; object_count: number; avg_part_bytes: number }>;
+	zooms: Record<string, ZoomMetadata>;
+}
+
+/**
+ * Pick the ISO-date snapshot whose date is closest to `date`. Falls back to
+ * the only available date when there's just one. Caller must ensure the map
+ * is non-empty.
+ */
+export function pickNearestSnapshot(times: Record<string, unknown>, date: Date): string {
+	const target = date.getTime();
+	let best: string | null = null;
+	let bestDiff = Infinity;
+	for (const iso of Object.keys(times)) {
+		const diff = Math.abs(new Date(`${iso}T00:00:00Z`).getTime() - target);
+		if (diff < bestDiff) {
+			bestDiff = diff;
+			best = iso;
+		}
+	}
+	return best!;
 }
 
 export interface Metadata {

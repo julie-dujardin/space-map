@@ -38,7 +38,12 @@ export function parseLabels(text: string): LabelData {
 	return { labels, flags };
 }
 
-export async function fetchLabels(zone: string, zoom: number, part: number): Promise<LabelData> {
-	const url = elementLabelsUrl(getLocale(), zone, zoom, part);
+export async function fetchLabels(
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null = null
+): Promise<LabelData> {
+	const url = elementLabelsUrl(getLocale(), zone, zoom, part, time);
 	return parseLabels(await fetchGzText(url));
 }

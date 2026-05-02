@@ -6,7 +6,7 @@ import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
-import { fetchMetadata } from '$lib/fetch/metadata';
+import { fetchMetadata, isTimeSegmented, pickNearestSnapshot } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
@@ -367,14 +367,22 @@ export class ContextManager {
 			const metadataPromise = fetchMetadata();
 
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
-				const args: { zone: string; zoom: number; part: number }[] = [];
+				const args: { zone: string; zoom: number; part: number; time: string | null }[] = [];
 				for (const [zone, zoneData] of Object.entries(metadata.zones)) {
+					if (zone === 'major' || zone === 'moons') continue;
 					for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
-						if (zone !== 'major' && zone !== 'moons')
-							for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
-								args.push({ zone, zoom: Number(zoomStr), part });
-								ChunkLoader.prefetch(zone, Number(zoomStr), part);
-							}
+						const zoom = Number(zoomStr);
+						// Time-segmented zones (earth) ship one chunk set per ISO date —
+						// pick the snapshot nearest the simulated time so SGP4's tight
+						// validity window covers it. Flat zones use a single set.
+						const time = isTimeSegmented(zoomData)
+							? pickNearestSnapshot(zoomData.times, date)
+							: null;
+						const chunkInfo = isTimeSegmented(zoomData) ? zoomData.times[time!] : zoomData;
+						for (let part = 0; part < Math.min(chunkInfo.parts, 20); part++) {
+							args.push({ zone, zoom, part, time });
+							ChunkLoader.prefetch(zone, zoom, part, time);
+						}
 					}
 				}
 				return args;
@@ -430,8 +438,8 @@ export class ContextManager {
 
 			try {
 				await Promise.all(
-					minorChunkArgs.map(({ zone, zoom, part }) =>
-						loader.process(zone, zoom, part, date).then((chunk) => {
+					minorChunkArgs.map(({ zone, zoom, part, time }) =>
+						loader.process(zone, zoom, part, date, time).then((chunk) => {
 							this.recordOrbitSources(chunk);
 							for (const b of chunk) {
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
