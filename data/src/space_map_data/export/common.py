@@ -6,8 +6,9 @@ import orjson
 import shutil
 import time
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from space_map_data.models.object.sbdb import CometPrefix
@@ -37,7 +38,7 @@ from space_map_data.export.systems import (
     load_texture_metadata,
     write_system_metadata,
 )
-from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
 )
@@ -121,12 +122,15 @@ def _remove_old_outputs(out_dir: Path) -> None:
 def _overlay_celestrak_elements(
     objects: list[Object],
     elements_by_norad: dict[int, CelesTrakElements],
+    log_dropped: bool = True,
 ) -> list[Object]:
     """Replace each Earth Object's orbital elements with the latest from disk.
 
     Drops objects whose NORAD ID has no row on disk — without fresh elements
     we can't propagate them, so shipping stale DB values would just produce
-    broken positions in the frontend.
+    broken positions in the frontend. ``log_dropped=False`` silences the
+    drop count, used during the snapshot driver's union-collection pass to
+    avoid duplicating the message on the subsequent write pass.
     """
     kept: list[Object] = []
     dropped = 0
@@ -158,7 +162,7 @@ def _overlay_celestrak_elements(
         ct.ELEMENT_SET_NO = elements["ELEMENT_SET_NO"]
         ct.REV_AT_EPOCH = elements["REV_AT_EPOCH"]
         kept.append(obj)
-    if dropped:
+    if dropped and log_dropped:
         logger.info(
             "Dropped %d Earth satellites with no matching elements on disk",
             dropped,
@@ -179,11 +183,27 @@ def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSourc
     raise ValueError(f"No object in {zone!r} part {part_idx} carries an orbital_source")
 
 
-def _write_parts(
+def _resolve_qid(obj: Object) -> str | None:
+    """Pick the wikidata QID we want for an object, falling back to satcat."""
+    return obj.wikidata_qid or (
+        obj.satcat.wikidata_qid if obj.norad_cat_id is not None and obj.satcat else None
+    )
+
+
+def _entities_for(
     objects: list[Object],
-    out_dir: Path,
-    zone: str,
-    zoom: int,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, WikidataEntity | None]:
+    """Resolve every object's QID against the cache once, into a dict."""
+    return {
+        qid: wikidata_entities.get_entity(qid)
+        for obj in objects
+        if (qid := _resolve_qid(obj))
+    }
+
+
+def _build_zone_object_data(
+    objects: list[Object],
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
     nasa_science_urls: dict[str, str],
@@ -191,65 +211,190 @@ def _write_parts(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
-    time: str | None = None,
-) -> tuple[int, int, ChunkObjectData]:
-    """Split objects into CHUNK_SIZE parts, write elements/labels/ids per chunk.
+) -> ChunkObjectData:
+    """Build globals/localized/flags for a flat zone-wide object list (no I/O).
 
-    `time` (ISO date) is forwarded to ``write_chunk`` to insert a per-snapshot
-    directory between zoom and part. Currently only the Earth zone uses it.
-
-    Returns `(num_parts, elements_bytes, aggregated_object_data)`. The object
-    data is accumulated across parts but NOT written here — the caller merges
-    data from all (zone, zoom) tasks and writes hash-bucketed bundles at the
-    end.
+    Distinct from the chunk-level write path: a single zone has one set of
+    per-object data regardless of how many time-snapshots it ships. For
+    snapshot zones the union of objects across snapshots is built once,
+    using each object's most-recent in-place state.
     """
-    aggregated = ChunkObjectData()
+    return build_chunk_object_data(
+        objects,
+        wikidata_entities,
+        _entities_for(objects, wikidata_entities),
+        units,
+        nasa_science_urls,
+        orientation=orientation,
+        radii=radii,
+        nut_prec=nut_prec,
+        texture_metadata=texture_metadata,
+    )
 
+
+def _write_element_parts(
+    objects: list[Object],
+    out_dir: Path,
+    zone: str,
+    zoom: int,
+    flags: dict[str, dict[str, int]],
+    wikidata_entities: WikidataEntityCache,
+    units: UnitConverter,
+    time: str | None,
+) -> int:
+    """Chunk and write element binaries + per-language label files.
+
+    `flags` is the prebuilt language-availability map from
+    :func:`_build_zone_object_data`; we only read each chunk's slice of it
+    here. Returns the number of parts written.
+    """
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
-    total_bytes = 0
     for part_idx in range(num_parts):
         chunk = objects[part_idx * CHUNK_SIZE : (part_idx + 1) * CHUNK_SIZE]
-        chunk_entities = {
-            qid: wikidata_entities.get_entity(qid)
-            for obj in chunk
-            if (
-                qid := obj.wikidata_qid
-                or (
-                    obj.satcat.wikidata_qid
-                    if obj.norad_cat_id is not None and obj.satcat
-                    else None
-                )
-            )
-        }
-        chunk_data = build_chunk_object_data(
-            chunk,
-            wikidata_entities,
-            chunk_entities,
-            units,
-            nasa_science_urls,
-            orientation=orientation,
-            radii=radii,
-            nut_prec=nut_prec,
-            texture_metadata=texture_metadata,
-        )
-        aggregated.global_data.update(chunk_data.global_data)
-        for lang, by_id in chunk_data.localized_data.items():
-            aggregated.localized_data[lang].update(by_id)
-        aggregated.flags.update(chunk_data.flags)
-        total_bytes += write_chunk(
+        chunk_entities = _entities_for(chunk, wikidata_entities)
+        write_chunk(
             chunk,
             out_dir,
             zone,
             zoom,
             part_idx,
             chunk_entities,
-            chunk_data.flags,
+            flags,
             units,
             _chunk_source(chunk, zone, part_idx),
             time=time,
         )
+    return num_parts
 
-    return num_parts, total_bytes, aggregated
+
+@dataclass
+class ZoneSnapshots:
+    """A zone's snapshot stream over a shared underlying object list.
+
+    `base` is the underlying list whose Object instances may be mutated
+    in-place by per-snapshot overlays (e.g. CelesTrak elements for Earth).
+    `iterate` returns a fresh iterator of ``(time_label, kept)`` pairs each
+    call, re-applying overlays from scratch — required because the snapshot
+    driver makes two passes (collect union of IDs, then write per-snapshot
+    parts). For zones without time segmentation, yield exactly one pair
+    with ``time_label=None`` and ``kept=base``.
+    """
+
+    base: list[Object]
+    iterate: Callable[[], Iterator[tuple[str | None, list[Object]]]]
+
+
+def _single_snapshot(objects: list[Object]) -> ZoneSnapshots:
+    """Snapshot stream for a zone without time segmentation."""
+    return ZoneSnapshots(base=objects, iterate=lambda: iter([(None, objects)]))
+
+
+def _earth_snapshots(
+    base: list[Object],
+    celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
+) -> ZoneSnapshots:
+    """Snapshot stream for Earth: one snapshot per CelesTrak day on disk.
+
+    The snapshot driver iterates twice (union pass, write pass); both passes
+    re-apply the same overlays. Suppress the per-day "Dropped N satellites"
+    log on pass 1 so the user only sees one entry per date.
+    """
+    pass_count = [0]
+
+    def iterate() -> Iterator[tuple[str | None, list[Object]]]:
+        pass_count[0] += 1
+        log = pass_count[0] >= 2
+        for date_iso, day_elements in celestrak_days.items():
+            kept = _overlay_celestrak_elements(base, day_elements, log_dropped=log)
+            if kept:
+                yield date_iso, kept
+
+    return ZoneSnapshots(base=base, iterate=iterate)
+
+
+@dataclass
+class SnapshotResult:
+    """Per-snapshot stats produced by :func:`_export_zone`."""
+
+    time: str | None
+    count: int
+    num_parts: int
+
+
+@dataclass
+class ZoneExportResult:
+    """Output of :func:`_export_zone`: the once-built zone data + per-snapshot stats."""
+
+    zone_data: ChunkObjectData
+    snapshots: list[SnapshotResult] = field(default_factory=list)
+
+
+def _export_zone(
+    zone: str,
+    zoom: int,
+    snapshots: ZoneSnapshots,
+    out_dir: Path,
+    wikidata_entities: WikidataEntityCache,
+    units: UnitConverter,
+    nasa_science_urls: dict[str, str],
+    orientation: dict[int, dict],
+    radii: dict[int, dict],
+    nut_prec: dict[int, dict[str, list[float]]],
+    texture_metadata: dict[str, dict],
+) -> ZoneExportResult:
+    """Build per-object data once for the zone; write element parts per snapshot.
+
+    Two-pass over `snapshots.iterate`:
+
+    1. Collect the union of object IDs across all snapshots. Overlays mutate
+       `snapshots.base` in-place; after pass 1, each surviving object reflects
+       whichever snapshot's overlay ran last on it.
+    2. Re-iterate snapshots (overlays re-apply per snapshot) and write
+       elements/labels using the prebuilt flags from the union build.
+
+    Globals built in step 2's interlude reflect the most-recent overlay state
+    of each object — the same data the previous N×-rebuild design landed on
+    after last-write-wins aggregation, but at 1× cost.
+    """
+    union_ids: set[str] = set()
+    for _t, kept in snapshots.iterate():
+        union_ids.update(o.id for o in kept)
+
+    if not union_ids:
+        return ZoneExportResult(zone_data=ChunkObjectData())
+
+    union_objs = [o for o in snapshots.base if o.id in union_ids]
+    zone_data = _build_zone_object_data(
+        union_objs,
+        wikidata_entities,
+        units,
+        nasa_science_urls,
+        orientation,
+        radii,
+        nut_prec,
+        texture_metadata,
+    )
+
+    result = ZoneExportResult(zone_data=zone_data)
+    for time_label, kept in snapshots.iterate():
+        num_parts = _write_element_parts(
+            kept,
+            out_dir,
+            zone,
+            zoom,
+            zone_data.flags,
+            wikidata_entities,
+            units,
+            time=time_label,
+        )
+        result.snapshots.append(
+            SnapshotResult(
+                time=time_label,
+                count=len(kept),
+                num_parts=num_parts,
+            )
+        )
+    return result
 
 
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
@@ -296,33 +441,31 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     object_counts: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
     all_objects = ChunkObjectData()
 
-    def _record(
-        zone: str,
-        zoom: int,
-        snapshot_time: str | None,
-        count: int,
-        num_parts: int,
-        zone_data: ChunkObjectData,
-    ) -> None:
-        object_counts[(zone, zoom, snapshot_time)] += count
-        zone_structure[zone][zoom][snapshot_time] = num_parts
-        if snapshot_time is None:
-            logger.info(
-                "  %s zoom=%d: %d objects, %d parts", zone, zoom, count, num_parts
-            )
-        else:
-            logger.info(
-                "  %s zoom=%d %s: %d objects, %d parts",
-                zone,
-                zoom,
-                snapshot_time,
-                count,
-                num_parts,
-            )
-        all_objects.global_data.update(zone_data.global_data)
-        for lang, by_id in zone_data.localized_data.items():
+    def _record(zone: str, zoom: int, result: ZoneExportResult) -> None:
+        all_objects.global_data.update(result.zone_data.global_data)
+        for lang, by_id in result.zone_data.localized_data.items():
             all_objects.localized_data[lang].update(by_id)
-        all_objects.flags.update(zone_data.flags)
+        all_objects.flags.update(result.zone_data.flags)
+        for snap in result.snapshots:
+            object_counts[(zone, zoom, snap.time)] += snap.count
+            zone_structure[zone][zoom][snap.time] = snap.num_parts
+            if snap.time is None:
+                logger.info(
+                    "  %s zoom=%d: %d objects, %d parts",
+                    zone,
+                    zoom,
+                    snap.count,
+                    snap.num_parts,
+                )
+            else:
+                logger.info(
+                    "  %s zoom=%d %s: %d objects, %d parts",
+                    zone,
+                    zoom,
+                    snap.time,
+                    snap.count,
+                    snap.num_parts,
+                )
 
     futures: dict = {}
 
@@ -400,11 +543,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
                     objects.sort(key=_major_sort_key)
                 f = executor.submit(
-                    _write_parts,
-                    objects,
-                    out_dir,
+                    _export_zone,
                     zone,
                     zoom,
+                    _single_snapshot(objects),
+                    out_dir,
                     wikidata_entities,
                     units,
                     nasa_science_urls,
@@ -413,7 +556,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                 )
-                futures[f] = (zone, zoom, None, len(objects))
+                futures[f] = (zone, zoom)
 
             # SBDB: one query per (class, zoom)
             named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
@@ -453,11 +596,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     continue
                 zone = cls.name
                 f = executor.submit(
-                    _write_parts,
-                    objects,
-                    out_dir,
+                    _export_zone,
                     zone,
                     zoom,
+                    _single_snapshot(objects),
+                    out_dir,
                     wikidata_entities,
                     units,
                     nasa_science_urls,
@@ -466,12 +609,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                 )
-                futures[f] = (zone, zoom, None, len(objects))
+                futures[f] = (zone, zoom)
 
-            # Earth zones run inline (sequentially per day): each day mutates
-            # the same Object instances with that day's elements, so we can't
-            # ship multiple days off to threads simultaneously without cloning.
-            # Main-thread work overlaps with the executor pool for other zones.
+            # Earth zones run inline: per-day overlays mutate the same Object
+            # instances in-place, so multiple days can't be shipped to threads
+            # simultaneously without cloning. Main-thread work still overlaps
+            # with the executor pool processing other zones.
             for zoom_label, zoom_filter in (
                 (0, ~_is_constellation),
                 (1, _is_constellation),
@@ -485,32 +628,20 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 if not base_objects:
                     logger.info("  earth zoom=%d: empty, skipping", zoom_label)
                     continue
-                for date_iso, day_elements in celestrak_days.items():
-                    kept = _overlay_celestrak_elements(base_objects, day_elements)
-                    if not kept:
-                        continue
-                    num_parts, _nbytes, zone_data = _write_parts(
-                        kept,
-                        out_dir,
-                        "earth",
-                        zoom_label,
-                        wikidata_entities,
-                        units,
-                        nasa_science_urls,
-                        orientation,
-                        radii,
-                        nut_prec,
-                        texture_metadata,
-                        time=date_iso,
-                    )
-                    _record(
-                        "earth",
-                        zoom_label,
-                        date_iso,
-                        len(kept),
-                        num_parts,
-                        zone_data,
-                    )
+                result = _export_zone(
+                    "earth",
+                    zoom_label,
+                    _earth_snapshots(base_objects, celestrak_days),
+                    out_dir,
+                    wikidata_entities,
+                    units,
+                    nasa_science_urls,
+                    orientation,
+                    radii,
+                    nut_prec,
+                    texture_metadata,
+                )
+                _record("earth", zoom_label, result)
             # executor joins here — session still open so ORM objects remain valid
 
         write_system_metadata(
@@ -520,9 +651,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
     for f in as_completed(futures):
-        zone, zoom, snapshot_time, count = futures[f]
-        num_parts, _nbytes, zone_data = f.result()
-        _record(zone, zoom, snapshot_time, count, num_parts, zone_data)
+        zone, zoom = futures[f]
+        _record(zone, zoom, f.result())
 
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
