@@ -420,7 +420,7 @@ export async function loadSystemData(
 
 		// Apply orientation (axial tilt + spin) and cache for per-frame re-application.
 		if (bodyMeta.orientation) {
-			bo.orientation = bodyMeta.orientation;
+			bo.body.orientation = bodyMeta.orientation;
 
 			// Resolve per-body nutation/precession by joining coefficients with the
 			// system-shared angles (one IAU table per planetary system).
@@ -429,11 +429,11 @@ export async function loadSystemData(
 				const naifId = naifMatch ? parseInt(naifMatch[1], 10) : null;
 				const angles = naifId !== null ? getNutPrecAngles(ownerIdFor(naifId)) : undefined;
 				if (angles) {
-					bo.nutPrec = { ...bodyMeta.nut_prec, angles };
+					bo.body.nutPrec = { ...bodyMeta.nut_prec, angles };
 				}
 			}
 
-			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.nutPrec);
+			applyOrientation(bo.mesh, bodyMeta.orientation, currentJd, bo.body.nutPrec);
 		}
 
 		// Apply triaxial flattening. applyOrientation puts the body's pole on

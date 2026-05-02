@@ -63,22 +63,22 @@ function equatorialToThreeJS(xEq: number, yEq: number, zEq: number): Vector3 {
 }
 
 /**
- * Apply body orientation (axial tilt + spin) to a Three.js mesh.
+ * Build the body-fixed quaternion (axial tilt + spin) for a body at the given
+ * Julian date, in Three.js scene coordinates.
  *
- * The mesh is oriented so that its local +Y axis is the body's north pole and
- * its local +X axis is the IAU ascending node Q (intersection of the body's
- * equator with the ICRF equator where the body equator crosses south→north).
- * The prime meridian (local +X after the spin) is at angle W from Q along the
- * equator, following the IAU convention. This matches the longitude system used
- * by USGS / Blue Marble equirectangular maps (u=0 at longitude ±180°, longitude
- * increasing east through u=0.5 at longitude 0°).
+ * The result orients the body so that its local +Y axis is the body's north
+ * pole and its local +X axis is the IAU ascending node Q (intersection of the
+ * body's equator with the ICRF equator where the body equator crosses
+ * south→north). The prime meridian (local +X after the spin) is at angle W
+ * from Q along the equator, following the IAU convention. This matches the
+ * longitude system used by USGS / Blue Marble equirectangular maps (u=0 at
+ * longitude ±180°, longitude increasing east through u=0.5 at longitude 0°).
  */
-export function applyOrientation(
-	mesh: Mesh,
+export function bodyQuaternion(
 	orientation: Orientation,
 	currentJd: number,
 	nutPrec?: NutPrec
-): void {
+): Quaternion {
 	const dt = currentJd - J2000_JD;
 	const T = dt / DAYS_PER_CENTURY;
 
@@ -118,5 +118,15 @@ export function applyOrientation(
 	);
 
 	const spinQuat = new Quaternion().setFromAxisAngle(pole, wDeg * DEG2RAD);
-	mesh.quaternion.copy(spinQuat.multiply(tiltQuat));
+	return spinQuat.multiply(tiltQuat);
+}
+
+/** Apply body orientation (axial tilt + spin) to a Three.js mesh. */
+export function applyOrientation(
+	mesh: Mesh,
+	orientation: Orientation,
+	currentJd: number,
+	nutPrec?: NutPrec
+): void {
+	mesh.quaternion.copy(bodyQuaternion(orientation, currentJd, nutPrec));
 }

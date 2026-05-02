@@ -9,6 +9,10 @@
 	import { formatDuration } from '$lib/format/duration';
 	import { formatJulianDate } from '$lib/format/date';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
+	import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
+	import { sgp4PositionScene, sgp4State } from '$lib/math/orbit/sgp4';
+	import { bodyQuaternion } from '$lib/math/orientation';
+	import { cartesianToSpherical } from '$lib/math/spherical';
 	import { AU_KM } from '$lib/math/units';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
@@ -50,15 +54,24 @@
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
+		body?: PositionedBody;
 		orbitElements?: OrbitalElements;
 		parentBody?: PositionedBody;
 		jd: number;
 	}
 
-	let { global, localized, orbitElements, parentBody, jd }: Props = $props();
+	let { global, localized, body, orbitElements, parentBody, jd }: Props = $props();
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
-	let currentState = $derived(orbitElements ? currentStateFromElements(orbitElements, jd) : null);
+	// SGP4 when a satrec is available — Kepler from TLE elements drifts visibly
+	// in r and v over hours due to J2/drag, even though the angular drift in
+	// lat/lon is the more obvious symptom. Falls back to Kepler for everything
+	// else (planets, moons, sun-orbiting bodies) where there's no satrec.
+	let currentState = $derived.by(() => {
+		if (!orbitElements) return null;
+		if (body?.data.satrec) return sgp4State(body.data.satrec, jd);
+		return currentStateFromElements(orbitElements, jd);
+	});
 	let showAltitude = $derived(
 		currentState != null &&
 			parentBody != null &&
@@ -68,6 +81,33 @@
 	);
 	let altitudeKm = $derived(
 		showAltitude && currentState && parentBody ? currentState.rKm - parentBody.data.radiusKm : null
+	);
+	// Sub-point: lat/lon on the parent body directly below the orbiter. Uses
+	// SGP4 when the body has a satrec (Earth sats) so J2 nodal regression and
+	// drag are accounted for — pure-Kepler propagation from a TLE drifts in
+	// phase by several degrees per day, which is highly visible in lat/lon
+	// even though it barely shifts the radial altitude. Falls back to Kepler
+	// for everything else, and rotates into the parent's body-fixed frame via
+	// its IAU pole+spin. Hidden when the parent has no orientation metadata
+	// loaded yet.
+	let orbiterRelPos = $derived.by(() => {
+		if (!showAltitude || !orbitElements) return null;
+		if (body?.data.satrec) return sgp4PositionScene(body.data.satrec, jd);
+		return orbitalElementsToPositionJD(orbitElements, jd);
+	});
+	let parentQuat = $derived(
+		showAltitude && parentBody?.orientation
+			? bodyQuaternion(parentBody.orientation, jd, parentBody.nutPrec)
+			: null
+	);
+	let subPoint = $derived(
+		orbiterRelPos && parentQuat
+			? cartesianToSpherical(
+					orbiterRelPos,
+					[0, 0, 0],
+					[parentQuat.x, parentQuat.y, parentQuat.z, parentQuat.w]
+				)
+			: null
 	);
 	let sbdb = $derived(global?.sbdb);
 	let celestrak = $derived(global?.celestrak);
@@ -226,6 +266,18 @@
 				label={m.altitude()}
 				value={formatDistance(altitudeKm / AU_KM)}
 				tooltip={m.tooltip_altitude()}
+			/>
+		{/if}
+		{#if subPoint}
+			<Row
+				label={m.latitude()}
+				value={`${formatNumber(subPoint.latitude)}°`}
+				tooltip={m.tooltip_latitude()}
+			/>
+			<Row
+				label={m.longitude()}
+				value={`${formatNumber(subPoint.longitude)}°`}
+				tooltip={m.tooltip_longitude()}
 			/>
 		{/if}
 		{#if currentState}

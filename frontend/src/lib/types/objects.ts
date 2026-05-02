@@ -1,6 +1,7 @@
 import type { SatRec } from 'satellite.js';
 import type { OrbitalSource } from '$lib/fetch/elements/constants';
 import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
+import type { NutPrec, Orientation } from '$lib/math/orientation';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -72,6 +73,15 @@ export interface PositionedBody {
 	 * and keep using `orbitalElementsToCurve`.
 	 */
 	trailBuffer?: TrailBuffer;
+	/**
+	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
+	 * planetary-system bodies (planets, moons), which the renderer uses to
+	 * orient the mesh each frame. Components read it to derive body-fixed
+	 * coordinates (e.g. sub-point lat/lon for satellites).
+	 */
+	orientation?: Orientation;
+	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
+	nutPrec?: NutPrec;
 }
 
 /**

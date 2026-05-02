@@ -786,8 +786,8 @@ export class SceneRenderer {
 				const oc = bo.orbitLine.userData.orbitCenter as Vector3 | undefined;
 				if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
 			}
-			if (bo.orientation && bo.mesh) {
-				applyOrientation(bo.mesh, bo.orientation, jd, bo.nutPrec);
+			if (body.orientation && bo.mesh) {
+				applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
 			}
 		};
 

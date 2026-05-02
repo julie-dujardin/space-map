@@ -128,3 +128,29 @@ export function sgp4PositionScene(satrec: SatRec, jd: number): [number, number, 
 	if (!teme) return null;
 	return temeKmToThreeJS(teme[0], teme[1], teme[2]);
 }
+
+/**
+ * Propagate to `jd` and return the radial distance (km from parent) and orbital
+ * speed (km/s). Mirrors `currentStateFromElements` so satellite-specific code
+ * paths can swap in SGP4-accurate values for altitude/speed displays. Frame
+ * choice doesn't matter here since both magnitudes are rotation-invariant.
+ */
+export function sgp4State(satrec: SatRec, jd: number): { rKm: number; vKms: number } | null {
+	const tsinceMin = (jd - satrec.jdsatepoch) * 1440;
+	const result = sgp4(satrec, tsinceMin);
+	if (!result || satrec.error !== SatRecError.None) {
+		if (!warnedSatrecs.has(satrec)) {
+			warnedSatrecs.add(satrec);
+			console.warn(
+				`sgp4State: propagation failed for NORAD ${satrec.satnum} (error=${satrec.error})`
+			);
+		}
+		return null;
+	}
+	const { x, y, z } = result.position;
+	const { x: vx, y: vy, z: vz } = result.velocity;
+	return {
+		rKm: Math.sqrt(x * x + y * y + z * z),
+		vKms: Math.sqrt(vx * vx + vy * vy + vz * vz)
+	};
+}

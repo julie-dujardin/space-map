@@ -24,7 +24,12 @@
 	let canvas: HTMLCanvasElement;
 	let labelContainer: HTMLDivElement;
 	let renderer: SceneRenderer | undefined;
-	let focusedBody = $state<PositionedBody | undefined>();
+	// `.raw` so the body's inner fields (position arrays, satrec internals)
+	// aren't deep-proxied — the renderer mutates `position` every frame and
+	// SGP4 mutates `satrec` internals, neither of which should trigger Svelte
+	// reactivity (and the proxy would also trip state_unsafe_mutation when
+	// SGP4 is invoked from a `$derived`, e.g. the sub-point lat/lon).
+	let focusedBody = $state.raw<PositionedBody | undefined>();
 
 	export function focusOnBody(
 		id: string,

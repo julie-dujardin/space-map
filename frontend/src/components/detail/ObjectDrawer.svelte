@@ -140,6 +140,7 @@
 			<Orbital
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
+				{body}
 				orbitElements={body.orbitElements ?? body.data}
 				{parentBody}
 				jd={sampledJd}

@@ -23,7 +23,9 @@
 	setContext('appState', appState);
 
 	const clock = new SimClock(dateToJD(appState.view.date));
-	let selectedBody = $state<PositionedBody | undefined>();
+	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
+	// proxying of position/satrec, which the renderer and SGP4 mutate).
+	let selectedBody = $state.raw<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 
