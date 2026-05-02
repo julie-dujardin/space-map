@@ -109,7 +109,7 @@ _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 # Bump when the variant-emission rules change (new encoder, new bucket sizes,
 # dropped/added formats). Existing bundles whose metadata.json.gz carries an
 # older schema are wiped and regenerated on the next export.
-_BUNDLE_SCHEMA = 2
+_BUNDLE_SCHEMA = 3
 
 # Per-filename locks so two chunk-writer threads never race on the same image.
 # Serializes work on a single file (lock held across PIL save + rename) while
@@ -181,30 +181,37 @@ def _make_entry(filename: str, kind: str) -> dict | None:
         return None  # already logged at download time and/or in ensure_bundle
 
     try:
-        variants = _ensure_bundle(filename)
+        bundle = _ensure_bundle(filename)
     except Exception as exc:
         logger.error("Failed to build export bundle for %s: %s", filename, exc)
         return None
-    if not variants:
+    if not bundle.get("variants"):
         return None
 
-    return {
+    entry: dict = {
         "file": filename,
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "kind": kind,
-        "variants": variants,
+        "variants": bundle["variants"],
     }
+    if bundle.get("width") and bundle.get("height"):
+        entry["width"] = bundle["width"]
+        entry["height"] = bundle["height"]
+    return entry
 
 
-def _ensure_bundle(filename: str) -> dict[str, str]:
+def _ensure_bundle(filename: str) -> dict:
     """Generate (if missing) and return the export bundle for an image.
 
-    Returns a ``{label: extension}`` map describing the emitted variants
-    (without a leading dot — e.g. ``{"s": "webp", "m": "webp", "xl": "jpg"}``).
-    ``metadata.json.gz`` doubles as the completion marker: once it exists
-    with a current ``schema`` the bundle is trusted and its embedded
-    ``variants`` block is returned. Bundles written under an older schema
-    are wiped and regenerated.
+    Returns a dict with ``variants`` (``{label: ext}`` of emitted size buckets)
+    and, when the source is a raster format we decoded, ``width`` and ``height``
+    (source pixel dimensions on the longest/shortest axes). Passthrough sources
+    (SVG/WebM) and skipped formats may be missing dimensions.
+
+    ``metadata.json.gz`` doubles as the completion marker: once it exists with
+    a current ``schema`` the bundle is trusted and its embedded ``variants`` /
+    dimensions are returned. Bundles written under an older schema are wiped
+    and regenerated.
     """
     out_dir = _EXPORT_IMAGES_DIR / filename
     metadata_path = out_dir / "metadata.json.gz"
@@ -213,7 +220,11 @@ def _ensure_bundle(filename: str) -> dict[str, str]:
         if metadata_path.exists():
             existing = orjson.loads(gzip.decompress(metadata_path.read_bytes()))
             if existing.get("schema") == _BUNDLE_SCHEMA:
-                return existing.get("variants") or {}
+                return {
+                    "variants": existing.get("variants") or {},
+                    "width": existing.get("width"),
+                    "height": existing.get("height"),
+                }
             logger.info(
                 "Regenerating stale image bundle %s (schema %s → %s)",
                 filename,
@@ -223,10 +234,14 @@ def _ensure_bundle(filename: str) -> dict[str, str]:
             _wipe_bundle_dir(out_dir)
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        variants = _generate_variants(filename, out_dir)
+        variants, dims = _generate_variants(filename, out_dir)
         if variants:
-            _write_trimmed_metadata(filename, out_dir, variants)
-        return variants
+            _write_trimmed_metadata(filename, out_dir, variants, dims)
+        return {
+            "variants": variants,
+            "width": dims[0] if dims else None,
+            "height": dims[1] if dims else None,
+        }
 
 
 def _wipe_bundle_dir(out_dir: Path) -> None:
@@ -236,14 +251,23 @@ def _wipe_bundle_dir(out_dir: Path) -> None:
             entry.unlink()
 
 
-def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
-    """Write s/m/xl output files. Returns the {label: ext} map emitted."""
+def _generate_variants(
+    filename: str, out_dir: Path
+) -> tuple[dict[str, str], tuple[int, int] | None]:
+    """Write s/m/xl output files.
+
+    Returns ``(variants, dims)`` where ``variants`` is the ``{label: ext}`` map
+    of emitted buckets and ``dims`` is ``(width, height)`` of the decoded source
+    raster — ``None`` for passthrough/skipped sources where we never opened a
+    raster. Dimensions match the source, not the variant; PhotoSwipe/clients
+    use them only for aspect ratio.
+    """
     src = source_path(filename)
     src_ext = src.suffix.lower()
 
     if src_ext in _SKIP_EXTENSIONS:
         logger.debug("Skipping unshippable format %s: %s", src_ext, filename)
-        return {}
+        return {}, None
 
     if src_ext in _PASSTHROUGH_EXTENSIONS:
         size = src.stat().st_size
@@ -255,21 +279,22 @@ def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
                 _PASSTHROUGH_MAX_BYTES,
                 filename,
             )
-            return {}
+            return {}, None
         ext = src_ext.lstrip(".")
         target = out_dir / f"xl.{ext}"
         if not target.exists():
             _atomic_copy(src, target)
-        return {"xl": ext}
+        return {"xl": ext}, None
 
     try:
         img = Image.open(src)
         img.load()
     except Exception as exc:
         logger.warning("Skipping unreadable image %s: %s", filename, exc)
-        return {}
+        return {}, None
 
     source_max = max(img.width, img.height)
+    dims = (img.width, img.height)
     lossy_source = src_ext in _LOSSY_EXTENSIONS
     animated = (
         img.format in _ANIMATED_FORMATS
@@ -312,7 +337,7 @@ def _generate_variants(filename: str, out_dir: Path) -> dict[str, str]:
         break
 
     img.close()
-    return variants
+    return variants, dims
 
 
 def _output_exists(stem: Path, ext: str) -> bool:
@@ -380,13 +405,18 @@ def _atomic_copy(src: Path, dst: Path) -> None:
 
 
 def _write_trimmed_metadata(
-    filename: str, out_dir: Path, variants: dict[str, str]
+    filename: str,
+    out_dir: Path,
+    variants: dict[str, str],
+    dims: tuple[int, int] | None,
 ) -> None:
     """Write the frontend-facing per-image metadata (gzipped JSON).
 
     Trimmed to the subset the frontend actually consumes:
 
     - ``variants``: ``{label: ext}`` map of emitted size buckets
+    - ``width``/``height``: source pixel dimensions when known (omitted for
+      passthrough sources that never went through PIL)
     - ``license``: ``{"name", "url"}`` from extmetadata LicenseShortName + LicenseUrl
     - ``artist``, ``description``: multilang-capable fields, restricted to
       supported locales (with bare strings passed through unchanged)
@@ -401,6 +431,8 @@ def _write_trimmed_metadata(
         "source_url": f"https://commons.wikimedia.org/wiki/File:{quote(filename)}",
         "variants": variants,
     }
+    if dims:
+        payload["width"], payload["height"] = dims
     license_block = _license_block(em)
     if license_block:
         payload["license"] = license_block

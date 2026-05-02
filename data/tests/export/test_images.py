@@ -196,7 +196,16 @@ class TestCollectObjectImages:
         _stage_download(tmp_path, "A.jpg")
         result = images_mod.collect_object_images({"image": ["A.jpg"]}, [])
         assert result is not None
-        assert set(result[0].keys()) == {"file", "source_url", "kind", "variants"}
+        assert set(result[0].keys()) == {
+            "file",
+            "source_url",
+            "kind",
+            "variants",
+            "width",
+            "height",
+        }
+        assert result[0]["width"] == 4
+        assert result[0]["height"] == 4
 
     def test_excluded_prefix_silently_dropped(self, tmp_path, layout, caplog):
         caplog.set_level("INFO", logger="space_map_data.export.images")

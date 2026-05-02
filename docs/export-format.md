@@ -522,6 +522,8 @@ interface ObjectImage {
   source_url: string;     // Wikimedia Commons file page URL (for license/attribution)
   kind: "photo" | "logo";
   variants: { [label in "s" | "m" | "xl"]?: string };  // label → extension
+  width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
+  height?: number;
 }
 // Quantities use best-fit units from Wikidata (e.g. "solar_mass", "kilometre")
 interface QuantityWithUnit { value: number; unit: string; }
@@ -608,6 +610,8 @@ interface ImageMetadata {
   schema: number;        // bumped when variant rules change; stale bundles are regenerated
   source_url: string;    // Commons file page URL
   variants: { [label: string]: string };  // mirrors ObjectImage.variants
+  width?: number;        // source pixel dimensions (omitted for SVG/WebM passthrough)
+  height?: number;
   license?: { name?: string; url?: string };       // from Commons extmetadata
   artist?: string | { [lang: string]: string };    // multilang or bare string
   description?: string | { [lang: string]: string };
