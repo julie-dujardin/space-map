@@ -6,7 +6,6 @@
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import ImageViewer from '../ImageViewer.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -25,10 +24,6 @@
 	// px to cover the highest-DPR phones with a single bucket — pickImageUrl
 	// returns `s` (512) when it exists, else the largest variant emitted.
 	let imageSrc = $derived(firstImage ? pickImageUrl(firstImage, 600) : undefined);
-	let viewerIndex = $derived(appState.view.imageIndex);
-	let viewerOpen = $derived(
-		viewerIndex !== null && !!images && images.length > 0 && viewerIndex < images.length
-	);
 	let celestrakBadges = $derived.by(() => {
 		const ct = global?.celestrak;
 		if (!ct) return null;
@@ -97,9 +92,6 @@
 				class="w-full max-h-48 object-cover"
 			/>
 		</button>
-	{/if}
-	{#if viewerOpen && images}
-		<ImageViewer {images} alt={name} onClose={() => appState.setImage(null)} />
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}

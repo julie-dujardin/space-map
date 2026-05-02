@@ -10,7 +10,9 @@
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import ObjectHeader from './ObjectHeader.svelte';
+	import ImageViewer from '../ImageViewer.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
 	import Physical from './properties/Physical.svelte';
 	import Orbital from './properties/Orbital.svelte';
@@ -30,6 +32,7 @@
 	let { body, clock, onClose, onGoTo, onSheetResize }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
+	const appState = getContext<AppState>('appState');
 	let parentBody = $derived(ctx?.getBody(body.data.parentId));
 
 	// Sample sim time at 2 Hz so speed/altitude in the description update
@@ -99,6 +102,17 @@
 
 	let displayName = $derived(
 		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
+	);
+	let viewerImages = $derived(data?.global?.images);
+	let viewerIndex = $derived(appState?.view.imageIndex);
+	// Gate the viewer mount on a valid index AND a loaded images list. The
+	// AppState's `?img=` URL parser doesn't know how many images this object
+	// has, so we belt-and-braces the bound here too.
+	let viewerActive = $derived(
+		!!viewerImages &&
+			viewerImages.length > 0 &&
+			viewerIndex != null &&
+			viewerIndex < viewerImages.length
 	);
 </script>
 
@@ -199,4 +213,12 @@
 			</div>
 		</ScrollArea>
 	</aside>
+{/if}
+
+<!-- Mounted as a sibling of the drawer/aside, not a descendant: keeps the
+     viewer's lifecycle and pointer events out of Vaul's drag detection and
+     out of the drawer's CSS transform context. PhotoSwipe additionally
+     appends its own DOM to document.body. -->
+{#if viewerActive && viewerImages}
+	<ImageViewer images={viewerImages} alt={displayName} />
 {/if}

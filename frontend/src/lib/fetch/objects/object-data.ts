@@ -30,6 +30,11 @@ export interface ObjectImage {
 	source_url: string;
 	kind: 'photo' | 'logo';
 	variants: ImageVariants;
+	/** Source pixel dimensions. Omitted for passthrough sources (SVG/WebM)
+	 *  where the exporter never decoded a raster — clients should fall back
+	 *  to measuring the loaded image. Both fields are present together. */
+	width?: number;
+	height?: number;
 }
 
 /** Texture attribution block — mirrors `texture_attribution()` in export/systems.py. */

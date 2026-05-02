@@ -7,6 +7,9 @@ settings:
 importers:
   .:
     dependencies:
+      photoswipe:
+        specifier: ^5.4.4
+        version: 5.4.4
       satellite.js:
         specifier: ^7.0.0
         version: 7.0.0
@@ -2503,6 +2506,13 @@ packages:
         integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==
       }
 
+  photoswipe@5.4.4:
+    resolution:
+      {
+        integrity: sha512-WNFHoKrkZNnvFFhbHL93WDkW3ifwVOXSW3w1UuZZelSmgXpIGiZSNlZJq37rR8YejqME2rHs9EhH9ZvlvFH2NA==
+      }
+    engines: { node: '>= 0.12.0' }
+
   picocolors@1.1.1:
     resolution:
       {
@@ -4469,6 +4479,8 @@ snapshots:
   path-to-regexp@6.3.0: {}
 
   pathe@2.0.3: {}
+
+  photoswipe@5.4.4: {}
 
   picocolors@1.1.1: {}
 
