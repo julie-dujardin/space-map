@@ -37,29 +37,29 @@ describe('dateToJD / jdToDate round-trip', () => {
 });
 
 describe('formatIsoDate', () => {
-	it('formats a midnight date with leading +', () => {
-		const result = formatIsoDate('+1801-01-01T00:00:00Z');
-		expect(result).toContain('1801');
-		// Should not contain a time portion
-		expect(result).not.toMatch(/\d{1,2}:\d{2}/);
-	});
-
-	it('formats a non-midnight date with time', () => {
-		const result = formatIsoDate('+2024-06-15T14:30:00Z');
-		expect(result).toContain('2024');
-		// Should contain a time portion
-		expect(result).toMatch(/\d{1,2}:\d{2}/);
-	});
-
-	it('handles dates without leading +', () => {
-		const result = formatIsoDate('2024-01-01T00:00:00Z');
-		expect(result).toContain('2024');
-	});
-
-	it('formats a plain date without time', () => {
-		const result = formatIsoDate('2024-01-01');
-		expect(result).toContain('2024');
-		expect(result).not.toMatch(/\d{1,2}:\d{2}/);
+	it.each([
+		{ name: 'leading + at midnight', raw: '+1801-01-01T00:00:00Z', expected: 'January 1, 1801' },
+		{
+			name: 'non-midnight with time',
+			raw: '+2024-06-15T14:30:00Z',
+			expected: 'June 15, 2024 2:30:00 PM'
+		},
+		{ name: 'unsigned ISO datetime', raw: '2024-01-01T00:00:00Z', expected: 'January 1, 2024' },
+		{ name: 'plain date without time', raw: '2024-01-01', expected: 'January 1, 2024' },
+		// Wikidata reduced precision: month=00 / day=00 mean the lower components are unknown.
+		{ name: 'year-only modern', raw: '+2024-00-00T00:00:00Z', expected: '2024' },
+		{ name: 'month-only modern', raw: '+1980-06-00T00:00:00Z', expected: 'June 1980' },
+		// BCE: ISO year 0 = 1 BCE, so -0466 renders as 467 BC, -0099 as 100 BC.
+		{
+			name: 'BCE year-only (Halley first sighting)',
+			raw: '-0466-00-00T00:00:00Z',
+			expected: '467 BC'
+		},
+		{ name: 'BCE full precision', raw: '-0099-03-15T00:00:00Z', expected: 'March 15, 100 BC' },
+		// Early-AD year-only (e.g. early Halley apparition)
+		{ name: 'early-AD year-only', raw: '+0240-00-00T00:00:00Z', expected: '240' }
+	])('$name → $expected', ({ raw, expected }) => {
+		expect(formatIsoDate(raw)).toBe(expected);
 	});
 
 	it('returns raw string when unparseable', () => {

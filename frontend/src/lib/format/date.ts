@@ -23,27 +23,38 @@ function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
 }
 
 /**
- * Format an ISO 8601 date string as a localized date. Accepts plain dates
+ * Format an ISO 8601 date string as a localized date. Handles plain dates
  * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), and Wikidata-style
- * strings with a leading '+' ("+1801-01-01T00:00:00Z"). When the time is
- * midnight or absent, returns just the localized date; otherwise appends the
- * localized time.
+ * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"). Wikidata
+ * reduced-precision values encode unknown month/day as 00; those components
+ * are omitted from the rendering. Negative years render with the locale's era.
  */
 export function formatIsoDate(raw: string): string {
-	const s = raw.startsWith('+') ? raw.slice(1) : raw;
-	const tIdx = s.indexOf('T');
-	if (tIdx === -1) {
-		const d = new Date(s + 'T00:00:00Z');
-		if (isNaN(d.getTime())) return s;
-		return formatDate(d);
+	const m = raw.match(/^([+-]?)(\d{4,})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
+	if (!m) return raw;
+	const [, sign, yearStr, monthStr, dayStr, hh, mm, ss] = m;
+	const isBCE = sign === '-';
+	const yearAbs = parseInt(yearStr, 10);
+	const month = parseInt(monthStr, 10);
+	const day = parseInt(dayStr, 10);
+
+	const d = new Date(0);
+	d.setUTCFullYear(isBCE ? -yearAbs : yearAbs, (month || 1) - 1, day || 1);
+	if (hh !== undefined) {
+		d.setUTCHours(parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10), 0);
 	}
-	const date = s.slice(0, tIdx);
-	const time = s.slice(tIdx + 1);
-	const d = new Date(date + 'T' + time);
-	const localDate = formatDate(d);
-	if (time === '00:00:00Z') return localDate;
-	const localTime = d.toLocaleTimeString(getLocale(), { timeZone: 'UTC' });
-	return `${localDate} ${localTime}`;
+	if (isNaN(d.getTime())) return raw;
+
+	const opts: Intl.DateTimeFormatOptions = { timeZone: 'UTC', year: 'numeric' };
+	if (month > 0) opts.month = 'long';
+	if (day > 0) opts.day = 'numeric';
+	if (isBCE) opts.era = 'short';
+
+	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(d);
+	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || ss !== '00');
+	if (!hasTime || month === 0 || day === 0) return dateStr;
+	const timeStr = d.toLocaleTimeString(getLocale(), { timeZone: 'UTC' });
+	return `${dateStr} ${timeStr}`;
 }
 
 /** Format a Julian Date (TDB) as a localized date string. */
