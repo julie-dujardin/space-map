@@ -15,6 +15,8 @@
 	"orbital_elements": "العناصر المدارية",
 	"diameter": "القطر",
 	"extent": "الامتداد",
+	"equatorial_radius": "نصف القطر الاستوائي",
+	"polar_radius": "نصف القطر القطبي",
 	"albedo": "البياض",
 	"rotation_period": "فترة الدوران",
 	"absolute_magnitude_h": "القدر المطلق (H)",

@@ -102,6 +102,10 @@ export interface GlobalObjectData {
 		dec: number[];
 		pm: number[];
 	};
+	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis).
+	 *  When present, this is the shape the 3D scene renders — supersedes the
+	 *  Wikidata radius and SBDB diameter as the authoritative size. */
+	radii?: { a: number; b: number; c: number };
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;

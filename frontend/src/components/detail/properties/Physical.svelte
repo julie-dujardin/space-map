@@ -16,6 +16,7 @@
 	let wd = $derived(global?.wikidata);
 	let sbdb = $derived(global?.sbdb);
 	let orientation = $derived(global?.orientation);
+	let radii = $derived(global?.radii);
 
 	let sats = $derived(sbdb?.sats);
 
@@ -23,9 +24,28 @@
 		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
 	);
 
+	// {a, b} are the equatorial radii (X, Y); c is along the spin axis. Most
+	// bodies have rotational symmetry (a==b) so the equatorial side collapses
+	// to a single value; truly triaxial bodies (Pan, Phobos, ...) keep both.
+	let radiiRows = $derived.by(() => {
+		if (!radii) return null;
+		const { a, b, c } = radii;
+		const unit = formatUnit('kilometre');
+		if (a === b && b === c) {
+			return [{ label: m.property_name_radius(), value: `${formatNumber(a)} ${unit}` }];
+		}
+		const equatorial =
+			a === b ? `${formatNumber(a)} ${unit}` : `${formatNumber(a)} × ${formatNumber(b)} ${unit}`;
+		return [
+			{ label: m.equatorial_radius(), value: equatorial },
+			{ label: m.polar_radius(), value: `${formatNumber(c)} ${unit}` }
+		];
+	});
+
 	let hasContent = $derived(
 		wd?.mass ||
 			sbdb?.mass ||
+			radii ||
 			wd?.radius ||
 			sbdb?.diameter ||
 			sbdb?.extent ||
@@ -55,18 +75,22 @@
 		{:else if sbdb?.mass}
 			<Row label={m.property_name_mass()} value={formatQuantity(sbdb.mass)} />
 		{/if}
-		{#if wd?.radius}
+		{#if radiiRows}
+			{#each radiiRows as row (row.label)}
+				<Row label={row.label} value={row.value} />
+			{/each}
+		{:else if wd?.radius}
 			<Row label={m.property_name_radius()} value={formatQuantity(wd.radius)} />
 		{:else if sbdb?.diameter}
 			<Row label={m.diameter()} value={`${sbdb.diameter} ${formatUnit('kilometre')}`} />
 		{/if}
-		{#if wd?.length && !wd?.radius && !sbdb?.diameter}
+		{#if wd?.length && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
 		{/if}
-		{#if wd?.width && !wd?.radius && !sbdb?.diameter}
+		{#if wd?.width && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
 		{/if}
-		{#if sbdb?.extent && !wd?.radius && !sbdb?.diameter}
+		{#if sbdb?.extent && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
 		{/if}
 		{#if wd?.density}

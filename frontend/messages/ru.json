@@ -15,6 +15,8 @@
 	"orbital_elements": "Элементы орбиты",
 	"diameter": "Диаметр",
 	"extent": "Размер",
+	"equatorial_radius": "Экваториальный радиус",
+	"polar_radius": "Полярный радиус",
 	"albedo": "Альбедо",
 	"rotation_period": "Период вращения",
 	"absolute_magnitude_h": "Абсолютная звёздная величина (H)",

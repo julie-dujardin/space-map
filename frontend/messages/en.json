@@ -34,6 +34,8 @@
 	"orbital_elements": "Orbital elements",
 	"diameter": "Diameter",
 	"extent": "Extent",
+	"equatorial_radius": "Equatorial radius",
+	"polar_radius": "Polar radius",
 	"albedo": "Albedo",
 	"rotation_period": "Rotation period",
 	"absolute_magnitude_h": "Absolute magnitude (H)",

@@ -15,6 +15,8 @@
 	"orbital_elements": "轨道要素",
 	"diameter": "直径",
 	"extent": "尺寸",
+	"equatorial_radius": "赤道半径",
+	"polar_radius": "极半径",
 	"albedo": "反照率",
 	"rotation_period": "自转周期",
 	"absolute_magnitude_h": "绝对星等 (H)",
