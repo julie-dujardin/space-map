@@ -61,3 +61,31 @@ export function formatIsoDate(raw: string): string {
 export function formatJulianDate(jd: number): string {
 	return formatDate(jdToDate(jd), 'short');
 }
+
+/** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */
+export function formatJulianDateRelative(jd: number, refJd: number): string {
+	const days = jd - refJd;
+	const abs = Math.abs(days);
+	let unit: Intl.RelativeTimeFormatUnit;
+	let value: number;
+	if (abs >= 365.25) {
+		unit = 'year';
+		value = days / 365.25;
+	} else if (abs >= 30.4375) {
+		unit = 'month';
+		value = days / 30.4375;
+	} else if (abs >= 1) {
+		unit = 'day';
+		value = days;
+	} else if (abs >= 1 / 24) {
+		unit = 'hour';
+		value = days * 24;
+	} else {
+		unit = 'minute';
+		value = days * 24 * 60;
+	}
+	return new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' }).format(
+		Math.round(value),
+		unit
+	);
+}

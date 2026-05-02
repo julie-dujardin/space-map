@@ -7,7 +7,7 @@
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
-	import { formatJulianDate } from '$lib/format/date';
+	import { formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 	import { sgp4PositionScene, sgp4State } from '$lib/math/orbit/sgp4';
@@ -125,6 +125,12 @@
 	let isPha = $derived(sbdb?.pha);
 
 	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
+	let epochJd = $derived(orbitElements?.epoch ?? global?.orbit?.epoch_jd ?? null);
+	let epochValue = $derived(
+		epochJd != null
+			? `${formatJulianDate(epochJd)} (${formatJulianDateRelative(epochJd, jd)})`
+			: null
+	);
 
 	// Hide apogee/perigee for near-circular satellite orbits — they collapse to the altitude/semi-major axis.
 	let showApogeePerigee = $derived(orbit?.e == null || orbit.e >= 0.01);
@@ -149,6 +155,7 @@
 			isPha ||
 			satPeriodDays != null ||
 			elementsPeriodDays != null ||
+			epochJd != null ||
 			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null))
 	);
 </script>
@@ -313,6 +320,9 @@
 		{/if}
 		{#if sbdb?.last_obs}
 			<Row label={m.last_observed()} value={sbdb.last_obs} />
+		{/if}
+		{#if epochValue}
+			<Row label={m.orbit_epoch()} value={epochValue} tooltip={m.tooltip_orbit_epoch()} />
 		{/if}
 	</Section>
 {/if}

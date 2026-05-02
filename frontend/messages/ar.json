@@ -117,6 +117,8 @@
 	"observation_arc": "قوس الرصد",
 	"observations_used": "الأرصاد المستخدمة",
 	"last_observed": "آخر رصد",
+	"orbit_epoch": "الحقبة",
+	"tooltip_orbit_epoch": "الوقت المرجعي الذي تكون عنده العناصر المدارية صالحة",
 	"comet_type": "نوع المذنب",
 	"known_satellites": "الأقمار المعروفة",
 	"launch_vehicle": "مركبة الإطلاق",

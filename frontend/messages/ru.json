@@ -117,6 +117,8 @@
 	"observation_arc": "Дуга наблюдений",
 	"observations_used": "Использованные наблюдения",
 	"last_observed": "Последнее наблюдение",
+	"orbit_epoch": "Эпоха",
+	"tooltip_orbit_epoch": "Опорный момент времени, на который заданы орбитальные элементы",
 	"comet_type": "Тип кометы",
 	"known_satellites": "Известные спутники",
 	"launch_vehicle": "Ракета-носитель",

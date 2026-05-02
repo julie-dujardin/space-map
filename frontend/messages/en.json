@@ -117,6 +117,8 @@
 	"observation_arc": "Observation arc",
 	"observations_used": "Observations used",
 	"last_observed": "Last observed",
+	"orbit_epoch": "Epoch",
+	"tooltip_orbit_epoch": "Reference time at which the orbital elements are valid",
 	"comet_type": "Comet type",
 	"known_satellites": "Known satellites",
 	"launch_vehicle": "Launch vehicle",

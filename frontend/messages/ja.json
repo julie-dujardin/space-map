@@ -117,6 +117,8 @@
 	"observation_arc": "観測アーク",
 	"observations_used": "使用観測数",
 	"last_observed": "最終観測",
+	"orbit_epoch": "元期",
+	"tooltip_orbit_epoch": "軌道要素が有効となる基準時刻",
 	"comet_type": "彗星タイプ",
 	"known_satellites": "既知の衛星",
 	"launch_vehicle": "打ち上げロケット",

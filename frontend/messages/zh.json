@@ -117,6 +117,8 @@
 	"observation_arc": "观测弧",
 	"observations_used": "观测次数",
 	"last_observed": "最后观测",
+	"orbit_epoch": "历元",
+	"tooltip_orbit_epoch": "轨道元素所对应的参考时刻",
 	"comet_type": "彗星类型",
 	"known_satellites": "已知卫星",
 	"launch_vehicle": "运载火箭",
