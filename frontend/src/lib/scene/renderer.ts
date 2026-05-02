@@ -24,6 +24,7 @@ import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
+import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
@@ -860,6 +861,7 @@ export class SceneRenderer {
 		this.clock.tick(performance.now());
 		if (this.clock.jd !== this.lastUpdatedJd) {
 			this.lastUpdatedJd = this.clock.jd;
+			this.ctx.refreshTick(jdToDate(this.clock.jd));
 			this.updatePositions(this.clock.jd);
 			this.updatePointClouds(this.clock.jd);
 			// When animating, stepFocusAnimation below does repositionAll already.

@@ -11,6 +11,7 @@ import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { populateTrailBuffer } from '$lib/fetch/elements/chunk';
+import { ZoneRefresher } from '$lib/scene/zone-refresher';
 
 /*
  * Visibility options:
@@ -287,6 +288,10 @@ export class ContextManager {
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
 
+	/** Hot-reload driver for time-segmented zones. Created at the end of load()
+	 *  once the loader and metadata are available. */
+	private refresher: ZoneRefresher | null = null;
+
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	/**
 	 * Currently focused body. Reactive so the attribution bar can show texture
@@ -499,9 +504,14 @@ export class ContextManager {
 									// here ensures the worker re-packs with the fresh satrec.
 									placeholder.data = b.data;
 									placeholder.position = b.position;
-									placeholder.orbitElements = b.orbitElements;
-									placeholder.orbitCenter = b.orbitCenter;
-									placeholder.trailBuffer = b.trailBuffer;
+									// Optional fields stay set if the chunk doesn't carry
+									// them — chunk.ts leaves orbitElements/orbitCenter unset
+									// for non-major bodies, but the placeholder's orbitCenter
+									// array is what the per-frame loop mutates to keep the
+									// focused sat's orbit line tracking parent motion.
+									if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
+									if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
+									if (b.trailBuffer !== undefined) placeholder.trailBuffer = b.trailBuffer;
 									placeholderById.delete(b.data.id);
 									if (b.data.objectType === ObjectType.SPACECRAFT) {
 										this.dirtySpacecraftGroups.add(b.data.parentId);
@@ -529,10 +539,20 @@ export class ContextManager {
 				clearInterval(intervalId);
 				flush();
 			}
+
+			// Hot-reload driver: at this point metadataPromise has already
+			// resolved (chebPromise awaited it), so this awaits a settled promise.
+			this.refresher = new ZoneRefresher(this, await metadataPromise, loader, date);
 		} catch (e) {
 			this.loading = false;
 			throw e;
 		}
+	}
+
+	/** Per-frame hook called by the renderer when sim jd advances. Drives
+	 *  hot-reload of time-segmented zones (Earth sats today). */
+	refreshTick(date: Date): void {
+		this.refresher?.tick(date);
 	}
 
 	addBodies(bodies: PositionedBody[]): void {
