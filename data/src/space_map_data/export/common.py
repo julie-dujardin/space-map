@@ -8,7 +8,6 @@ import time
 from collections import defaultdict
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 from pathlib import Path
 
 from space_map_data.models.object.sbdb import CometPrefix
@@ -23,7 +22,6 @@ from space_map_data.export.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
 )
-from space_map_data.export.elements.format import VERSION
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
@@ -67,47 +65,37 @@ _DEFAULT_ZONE_LIMIT = 10_000
 
 def _build_metadata(
     zone_structure: Mapping[str, Mapping[int, Mapping[str | None, int]]],
-    object_counts: Mapping[tuple[str, int, str | None], int],
-    total_bytes: Mapping[tuple[str, int, str | None], int],
 ) -> dict:
     """Build the ``zones`` metadata block.
 
-    A zoom whose only key is ``None`` produces the flat
-    ``{parts, object_count, avg_part_bytes}`` shape. A zoom with one or more
-    ISO-date keys produces ``{times: {iso: {parts, object_count,
-    avg_part_bytes}}}``. Currently only ``earth`` uses the time-segmented
-    shape.
+    A zoom whose only key is ``None`` produces the flat ``{parts}`` shape.
+    A zoom with one or more ISO-date keys produces
+    ``{start_date, end_date, parts}`` — clients derive the snapshot date by
+    clamping the simulated date into ``[start_date, end_date]`` and assume
+    daily contiguity. Currently only ``earth`` uses the time-segmented shape.
     """
-
-    def _entry(part_count: int, count: int, nbytes: int) -> dict:
-        return {
-            "parts": part_count,
-            "object_count": count,
-            "avg_part_bytes": nbytes // part_count if part_count else 0,
-        }
-
     zones = {}
     for zone, zoom_map in sorted(zone_structure.items()):
         zooms = {}
         for zoom, time_map in sorted(zoom_map.items()):
             if list(time_map.keys()) == [None]:
-                part_count = time_map[None]
-                count = object_counts.get((zone, zoom, None), 0)
-                nbytes = total_bytes.get((zone, zoom, None), 0)
-                zooms[str(zoom)] = _entry(part_count, count, nbytes)
+                zooms[str(zoom)] = {"parts": time_map[None]}
             else:
-                times = {}
-                for t, part_count in sorted(time_map.items()):
-                    count = object_counts.get((zone, zoom, t), 0)
-                    nbytes = total_bytes.get((zone, zoom, t), 0)
-                    times[t] = _entry(part_count, count, nbytes)
-                zooms[str(zoom)] = {"times": times}
+                dated = sorted(t for t in time_map if t is not None)
+                parts_set = {time_map[t] for t in dated}
+                if len(parts_set) != 1:
+                    raise ValueError(
+                        f"{zone} zoom={zoom} has uneven parts across dates "
+                        f"{parts_set}; the slim metadata shape assumes "
+                        f"uniform parts"
+                    )
+                zooms[str(zoom)] = {
+                    "start_date": dated[0],
+                    "end_date": dated[-1],
+                    "parts": next(iter(parts_set)),
+                }
         zones[zone] = {"zooms": zooms}
-    return {
-        "version": VERSION,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "zones": zones,
-    }
+    return {"zones": zones}
 
 
 def _remove_old_outputs(out_dir: Path) -> None:
@@ -306,7 +294,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         defaultdict(lambda: defaultdict(dict))
     )
     object_counts: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
-    total_bytes_map: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
     all_objects = ChunkObjectData()
 
     def _record(
@@ -315,11 +302,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         snapshot_time: str | None,
         count: int,
         num_parts: int,
-        nbytes: int,
         zone_data: ChunkObjectData,
     ) -> None:
         object_counts[(zone, zoom, snapshot_time)] += count
-        total_bytes_map[(zone, zoom, snapshot_time)] += nbytes
         zone_structure[zone][zoom][snapshot_time] = num_parts
         if snapshot_time is None:
             logger.info(
@@ -504,7 +489,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     kept = _overlay_celestrak_elements(base_objects, day_elements)
                     if not kept:
                         continue
-                    num_parts, nbytes, zone_data = _write_parts(
+                    num_parts, _nbytes, zone_data = _write_parts(
                         kept,
                         out_dir,
                         "earth",
@@ -524,7 +509,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         date_iso,
                         len(kept),
                         num_parts,
-                        nbytes,
                         zone_data,
                     )
             # executor joins here — session still open so ORM objects remain valid
@@ -537,8 +521,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     for f in as_completed(futures):
         zone, zoom, snapshot_time, count = futures[f]
-        num_parts, nbytes, zone_data = f.result()
-        _record(zone, zoom, snapshot_time, count, num_parts, nbytes, zone_data)
+        num_parts, _nbytes, zone_data = f.result()
+        _record(zone, zoom, snapshot_time, count, num_parts, zone_data)
 
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
@@ -547,7 +531,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)
 
-    metadata = _build_metadata(zone_structure, object_counts, total_bytes_map)
+    metadata = _build_metadata(zone_structure)
     metadata["object_bundles"] = bundle_ns
     if chebyshev_manifest:
         metadata["chebyshev"] = chebyshev_manifest

@@ -23,7 +23,6 @@ from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.export.chebyshev.format import (
     ID_TYPE_ORDINAL,
     MISSING_ID_TYPE,
-    VERSION,
     pack_body_header,
     pack_header,
 )
@@ -231,6 +230,10 @@ def write_chebyshev(
 
     Chunk parameters come from the SPICE download metadata so the export
     matches exactly what was extracted.
+
+    The manifest collapses zones into two tiers — `sun` (slow movers, coarse
+    chunks) and `moons` (fast movers, fine chunks) — sharing JD bounds at the
+    top level. Tier params are uniform across all zones in that tier.
     """
     cheb_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
     if not cheb_dir.exists():
@@ -277,16 +280,17 @@ def write_chebyshev(
             (obj, naif_id, parent_naif_id, start_jds, end_jds, coeffs, radius)
         )
 
-    manifest_zones: dict[str, dict] = {}
+    sun_zones: list[str] = []
+    moon_zones: list[str] = []
+    sun_chunks = max(1, math.ceil((end_year - start_year) / core_chunk_years))
+    moon_chunks = max(1, math.ceil((end_year - start_year) / moon_chunk_years))
     for zone, bodies in zone_bodies.items():
         # Deterministic body order inside each zone — stable by NAIF ID so
         # consumers don't have to sort.
         bodies.sort(key=lambda row: row[1])
-        # moons zones chunk at a finer cadence than the slow-moving core zones.
-        chunk_years = (
-            moon_chunk_years if zone.startswith("moons/") else core_chunk_years
-        )
-        n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
+        is_moon_tier = zone.startswith("moons/")
+        chunk_years = moon_chunk_years if is_moon_tier else core_chunk_years
+        n_chunks = moon_chunks if is_moon_tier else sun_chunks
         total_bytes = 0
         for chunk_idx in range(n_chunks):
             chunk_start_jd = start_jd_total + chunk_idx * chunk_years * 365.25
@@ -340,16 +344,21 @@ def write_chebyshev(
             avg_kb,
             total_bytes / 1024 / 1024,
         )
-        manifest_zones[zone] = {
-            "chunks": n_chunks,
-            "start_jd": start_jd_total,
-            "end_jd": end_jd_total,
-            "chunk_years": chunk_years,
-            "body_count": len(bodies),
-            "total_bytes": total_bytes,
-        }
+        (moon_zones if is_moon_tier else sun_zones).append(zone)
 
+    sun_zones.sort()
+    moon_zones.sort()
     return {
-        "version": VERSION,
-        "zones": manifest_zones,
+        "start_jd": start_jd_total,
+        "end_jd": end_jd_total,
+        "sun": {
+            "chunks": sun_chunks,
+            "chunk_years": core_chunk_years,
+            "zones": sun_zones,
+        },
+        "moons": {
+            "chunks": moon_chunks,
+            "chunk_years": moon_chunk_years,
+            "zones": moon_zones,
+        },
     }

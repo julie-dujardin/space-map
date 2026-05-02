@@ -2,9 +2,10 @@
  * Per-zone cache of Chebyshev chunks.
  *
  * The export ships per-zone, per-time-chunk binaries under
- * `/data/v1/chebyshev/{zone}/{chunkIdx}/data.bin.gz`. A zone's manifest entry
- * gives `start_jd` and `chunk_years`, so the chunk index for any JD is just
- * `floor((jd - start_jd) / (chunk_years * 365.25))`.
+ * `/data/v1/chebyshev/{zone}/{chunkIdx}/data.bin.gz`. The manifest groups zones
+ * into two tiers — `sun` (slow movers, coarse chunks) and `moons` (fast
+ * movers, fine chunks) — sharing JD bounds. A zone's chunk index for any JD is
+ * `floor((jd - start_jd) / (chunk_years * 365.25))` using its tier's params.
  *
  * For now we eager-load the chunk containing the current JD plus its two
  * neighbors across every zone. Time scrubbing advances one chunk at a time, so
@@ -19,18 +20,25 @@ import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/chebyshev/fetc
 import { chebyshevPositionScene } from '$lib/fetch/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/chebyshev/parse';
 
-export interface ChebyshevZoneManifest {
+export interface ChebyshevTier {
 	chunks: number;
-	start_jd: number;
-	end_jd: number;
 	chunk_years: number;
-	body_count: number;
-	total_bytes: number;
+	zones: string[];
 }
 
 export interface ChebyshevManifest {
-	version: number;
-	zones: Record<string, ChebyshevZoneManifest>;
+	start_jd: number;
+	end_jd: number;
+	sun: ChebyshevTier;
+	moons: ChebyshevTier;
+}
+
+/** Per-zone params used by the chunk-index math. Built from the tier shape. */
+export interface ChebyshevZoneParams {
+	chunks: number;
+	chunk_years: number;
+	start_jd: number;
+	end_jd: number;
 }
 
 const DAYS_PER_YEAR = 365.25;
@@ -40,7 +48,7 @@ const NEIGHBOR_WINDOW = 1;
  * Resolve a JD to a chunk index inside one zone, clamped to the valid range so
  * boundary JDs map onto the last chunk instead of returning -1.
  */
-export function chunkIndexForJd(zone: ChebyshevZoneManifest, jd: number): number {
+export function chunkIndexForJd(zone: ChebyshevZoneParams, jd: number): number {
 	const dt = jd - zone.start_jd;
 	const idx = Math.floor(dt / (zone.chunk_years * DAYS_PER_YEAR));
 	return Math.max(0, Math.min(zone.chunks - 1, idx));
@@ -53,7 +61,8 @@ interface BodyLocation {
 }
 
 export class ChebyshevStore {
-	private readonly manifest: ChebyshevManifest;
+	/** `zone → tier params`, flattened from the tiered manifest at construction. */
+	private readonly zoneParams = new Map<string, ChebyshevZoneParams>();
 	/** `zone → chunkIdx → parsed chunk`. */
 	private readonly chunks = new Map<string, Map<number, FetchedChebyshev>>();
 	/** `objectId → zone` so getPosition can route without scanning zones. */
@@ -65,11 +74,19 @@ export class ChebyshevStore {
 	private lastEnsuredJd: number = NaN;
 
 	constructor(manifest: ChebyshevManifest) {
-		this.manifest = manifest;
+		for (const tier of [manifest.sun, manifest.moons]) {
+			const params: ChebyshevZoneParams = {
+				chunks: tier.chunks,
+				chunk_years: tier.chunk_years,
+				start_jd: manifest.start_jd,
+				end_jd: manifest.end_jd
+			};
+			for (const zone of tier.zones) this.zoneParams.set(zone, params);
+		}
 	}
 
 	zones(): string[] {
-		return Object.keys(this.manifest.zones);
+		return Array.from(this.zoneParams.keys());
 	}
 
 	/**
@@ -89,13 +106,13 @@ export class ChebyshevStore {
 		this.lastEnsuredJd = jd;
 		const jobs: Promise<void>[] = [];
 		let ready = true;
-		for (const [zone, meta] of Object.entries(this.manifest.zones)) {
-			const center = chunkIndexForJd(meta, jd);
+		for (const [zone, params] of this.zoneParams) {
+			const center = chunkIndexForJd(params, jd);
 			const zoneMap = this.chunks.get(zone);
 			if (!zoneMap?.has(center)) ready = false;
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
 				const idx = center + d;
-				if (idx < 0 || idx >= meta.chunks) continue;
+				if (idx < 0 || idx >= params.chunks) continue;
 				const job = this.loadChunk(zone, idx);
 				if (job) jobs.push(job);
 			}
@@ -108,8 +125,8 @@ export class ChebyshevStore {
 
 	/** True when every zone's chunk for `jd` is resident in memory. */
 	private allCurrentChunksLoaded(jd: number): boolean {
-		for (const [zone, meta] of Object.entries(this.manifest.zones)) {
-			const center = chunkIndexForJd(meta, jd);
+		for (const [zone, params] of this.zoneParams) {
+			const center = chunkIndexForJd(params, jd);
 			if (!this.chunks.get(zone)?.has(center)) return false;
 		}
 		return true;
@@ -155,16 +172,17 @@ export class ChebyshevStore {
 	zoneCoverage(objectId: string): { start: number; end: number } | null {
 		const zone = this.idToZone.get(objectId);
 		if (zone === undefined) return null;
-		const meta = this.manifest.zones[zone];
-		if (!meta) return null;
-		return { start: meta.start_jd, end: meta.end_jd };
+		const params = this.zoneParams.get(zone);
+		if (!params) return null;
+		return { start: params.start_jd, end: params.end_jd };
 	}
 
 	private resolve(objectId: string, jd: number): BodyLocation | null {
 		const zone = this.idToZone.get(objectId);
 		if (zone === undefined) return null;
-		const zoneMeta = this.manifest.zones[zone];
-		const chunkIdx = chunkIndexForJd(zoneMeta, jd);
+		const params = this.zoneParams.get(zone);
+		if (!params) return null;
+		const chunkIdx = chunkIndexForJd(params, jd);
 		const zoneMap = this.chunks.get(zone);
 		const chunk = zoneMap?.get(chunkIdx);
 		if (!chunk) return null;

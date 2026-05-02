@@ -6,7 +6,7 @@ import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
-import { fetchMetadata, isTimeSegmented, pickNearestSnapshot } from '$lib/fetch/metadata';
+import { fetchMetadata, isTimeSegmented, snapshotDate } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
@@ -375,11 +375,8 @@ export class ContextManager {
 						// Time-segmented zones (earth) ship one chunk set per ISO date —
 						// pick the snapshot nearest the simulated time so SGP4's tight
 						// validity window covers it. Flat zones use a single set.
-						const time = isTimeSegmented(zoomData)
-							? pickNearestSnapshot(zoomData.times, date)
-							: null;
-						const chunkInfo = isTimeSegmented(zoomData) ? zoomData.times[time!] : zoomData;
-						for (let part = 0; part < Math.min(chunkInfo.parts, 20); part++) {
+						const time = isTimeSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
+						for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
 							args.push({ zone, zoom, part, time });
 							ChunkLoader.prefetch(zone, zoom, part, time);
 						}

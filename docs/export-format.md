@@ -29,22 +29,13 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
 
 ```json
 {
-  "version": 1,
-  "exported_at": "2025-01-01T00:00:00+00:00",
   "zones": {
     "major": {
-      "zooms": {
-        "0": { "parts": 1, "object_count": 42, "avg_part_bytes": 12345 }
-      }
+      "zooms": { "0": { "parts": 1 } }
     },
     "earth": {
       "zooms": {
-        "0": {
-          "times": {
-            "2026-04-23": { "parts": 2, "object_count": 9000, "avg_part_bytes": 12345 },
-            "2026-04-25": { "parts": 2, "object_count": 9100, "avg_part_bytes": 12350 }
-          }
-        }
+        "0": { "start_date": "2026-04-23", "end_date": "2026-04-26", "parts": 2 }
       }
     }
   },
@@ -53,17 +44,22 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
     "en": 208, "fr": 208, "ja": 208, "ar": 201, "ru": 208, "zh": 208
   },
   "chebyshev": {
-    "version": 1,
-    "zones": {
-      "major": {
-        "chunks": 20, "start_jd": 2433282.5, "end_jd": 2469807.5,
-        "chunk_years": 5, "body_count": 20, "total_bytes": 7653200
-      },
-      "major_asteroids": { "chunks": 20, "chunk_years": 5, "...": "..." },
-      "moons/jupiter/main": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
-      "moons/jupiter/inner": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
-      "moons/saturn/main": { "chunks": 200, "chunk_years": 0.5, "...": "..." },
-      "...": "..."
+    "start_jd": 2433282.5,
+    "end_jd": 2469807.5,
+    "sun": {
+      "chunks": 20,
+      "chunk_years": 5,
+      "zones": ["major", "major_asteroids"]
+    },
+    "moons": {
+      "chunks": 200,
+      "chunk_years": 0.5,
+      "zones": [
+        "moons/earth/main",
+        "moons/jupiter/main", "moons/jupiter/inner",
+        "moons/saturn/main", "moons/saturn/inner",
+        "..."
+      ]
     }
   }
 }
@@ -72,6 +68,12 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
 `chebyshev` is only present when Chebyshev exports were produced (i.e. the
 `[chebyshev]` section in `config.toml` matched kernels present at download
 time). Clients should feature-detect it.
+
+The two tiers (`sun`, `moons`) share JD bounds but use different chunk cadences
+— planets and the Sun barely move over years, while moons need fine-grained
+chunks. Tier params are uniform across all zones in that tier (same source =
+same range). Clients pick the tier from a zone path's prefix
+(`zone.startsWith("moons/")` → moons tier, otherwise sun).
 
 ## Zones and zoom levels
 
@@ -92,12 +94,14 @@ Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
 Zones whose elements come from a per-day source ship one snapshot per available
 day. Currently only `earth` (CelesTrak GP) is segmented this way; other zones
 will follow as their providers gain multi-day archives. The metadata entry for
-a segmented (zone, zoom) pair carries a `times` map keyed by ISO date instead
-of the flat `{parts, object_count, avg_part_bytes}` fields, and the chunk paths
-include a `{time}` directory between `{zoom}` and `{part}`. Clients should pick
-the snapshot whose date is closest to (or just past) their simulated time —
-SGP4 propagation accuracy degrades quickly outside `±14 days` of the chunk's
-header `start_jd`/`end_jd` window.
+a segmented (zone, zoom) pair carries `{start_date, end_date, parts}` instead
+of the flat `{parts}` field, and the chunk paths include a `{time}` directory
+between `{zoom}` and `{part}`. Snapshots are exported daily and contiguously,
+so clients clamp the simulated date into `[start_date, end_date]` and emit a
+`YYYY-MM-DD` string for the URL builder. SGP4 propagation accuracy degrades
+quickly outside `±14 days` of the chunk's header `start_jd`/`end_jd` window —
+clamp keeps the renderer at the closest available snapshot rather than asking
+for a date the export doesn't cover.
 
 ## Binary elements file
 
@@ -267,9 +271,9 @@ chunks are 50–200 KB gzipped.
 ### Time chunks
 
 Chunk cadence differs per tier (5y vs 0.5y, see above). Chunk bounds are in
-the file header; the per-zone entry in `metadata.json` lists the chunk count,
-overall JD bounds, and `chunk_years` so clients can convert JD → chunk index
-directly.
+the file header; the tier entry in `metadata.json → chebyshev.{sun|moons}`
+gives `chunks` + `chunk_years` and the top-level `start_jd`/`end_jd` provide
+overall bounds, so clients can convert JD → chunk index directly.
 
 ### Binary layout (`data.bin.gz`, little-endian)
 
@@ -744,7 +748,7 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
 3. Combine by array index to get full body records
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
 5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Then fetch `objects/__global__/{bucket}.json.gz` and (when the label flag is non-zero) `objects/{lang}/{bucket}.json.gz` — fall back to the `en` bundle when the flag is `2`. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
-6. For bodies that also appear in `metadata.json → chebyshev.zones.{zone}`,
+6. For bodies that also appear in `metadata.json → chebyshev.{sun|moons}.zones`,
    fetch the chunk covering the current simulated time from
    `chebyshev/{zone}/{chunk}/data.bin.gz`; rebuild each body's Object ID from
    its `id_type` + `obj_id_value` header fields. Prefer those positions over

@@ -20,22 +20,26 @@ export type ObjectBundles = {
 	global: number;
 } & Record<string, number>;
 
-export interface ChunkInfo {
+export interface FlatZoom {
 	parts: number;
-	object_count: number;
-	avg_part_bytes: number;
+}
+
+export interface TimeSegmentedZoom {
+	start_date: string;
+	end_date: string;
+	parts: number;
 }
 
 /**
  * Per-zoom metadata. Flat zones expose `parts` directly; time-segmented zones
- * (currently only `earth`) expose a `times` map keyed by ISO date — callers
- * pick the snapshot nearest the simulated time and pass it as `time` to the
- * URL builders.
+ * (currently only `earth`) expose `[start_date, end_date]` and assume daily
+ * contiguity — callers clamp the simulated date into the range and emit a
+ * YYYY-MM-DD string for the URL builder.
  */
-export type ZoomMetadata = ChunkInfo | { times: Record<string, ChunkInfo> };
+export type ZoomMetadata = FlatZoom | TimeSegmentedZoom;
 
-export function isTimeSegmented(zoom: ZoomMetadata): zoom is { times: Record<string, ChunkInfo> } {
-	return 'times' in zoom;
+export function isTimeSegmented(zoom: ZoomMetadata): zoom is TimeSegmentedZoom {
+	return 'start_date' in zoom;
 }
 
 export interface ZoneMetadata {
@@ -43,27 +47,19 @@ export interface ZoneMetadata {
 }
 
 /**
- * Pick the ISO-date snapshot whose date is closest to `date`. Falls back to
- * the only available date when there's just one. Caller must ensure the map
- * is non-empty.
+ * Clamp `date` into the segmented zoom's date range and return the ISO
+ * `YYYY-MM-DD` snapshot string for the URL builder. Snapshots are exported
+ * daily so the integer-day truncation lands on a real export.
  */
-export function pickNearestSnapshot(times: Record<string, unknown>, date: Date): string {
-	const target = date.getTime();
-	let best: string | null = null;
-	let bestDiff = Infinity;
-	for (const iso of Object.keys(times)) {
-		const diff = Math.abs(new Date(`${iso}T00:00:00Z`).getTime() - target);
-		if (diff < bestDiff) {
-			bestDiff = diff;
-			best = iso;
-		}
-	}
-	return best!;
+export function snapshotDate(zoom: TimeSegmentedZoom, date: Date): string {
+	const t = date.getTime();
+	const startMs = Date.parse(`${zoom.start_date}T00:00:00Z`);
+	const endMs = Date.parse(`${zoom.end_date}T00:00:00Z`);
+	const clamped = Math.min(Math.max(t, startMs), endMs);
+	return new Date(clamped).toISOString().slice(0, 10);
 }
 
 export interface Metadata {
-	version: number;
-	exported_at: string;
 	zones: Record<string, ZoneMetadata>;
 	object_bundles: ObjectBundles;
 	chebyshev?: ChebyshevManifest;
