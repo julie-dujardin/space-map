@@ -4,6 +4,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { elementLabelsUrl } from '$lib/fetch/elements/constants';
+import { LruPromiseCache } from '$lib/fetch/elements/cache';
 
 /** ASCII Unit Separator — delimiter between flag and name in label files. */
 const US = '\x1f';
@@ -38,12 +39,21 @@ export function parseLabels(text: string): LabelData {
 	return { labels, flags };
 }
 
+/** Mirrors {@link fetchElements}'s cache; locale is part of the key since
+ * labels are language-specific. */
+const LABELS_CACHE_CAPACITY = 8;
+const labelsCache = new LruPromiseCache<LabelData>(LABELS_CACHE_CAPACITY);
+
 export async function fetchLabels(
 	zone: string,
 	zoom: number,
 	part: number,
 	time: string | null = null
 ): Promise<LabelData> {
-	const url = elementLabelsUrl(getLocale(), zone, zoom, part, time);
-	return parseLabels(await fetchGzText(url));
+	const lang = getLocale();
+	const key = `${lang}:${zone}:${zoom}:${part}:${time ?? ''}`;
+	return labelsCache.getOrCompute(key, async () => {
+		const url = elementLabelsUrl(lang, zone, zoom, part, time);
+		return parseLabels(await fetchGzText(url));
+	});
 }

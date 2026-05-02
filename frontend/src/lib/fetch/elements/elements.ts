@@ -15,6 +15,7 @@ import {
 	buildObjectId,
 	elementsBinUrl
 } from '$lib/fetch/elements/constants';
+import { LruPromiseCache } from '$lib/fetch/elements/cache';
 
 /**
  * Chunk-level validity window (JD TDB). Propagation is only defined inside
@@ -110,17 +111,29 @@ function align8(n: number): number {
 	return (n + 7) & ~7;
 }
 
+/**
+ * Capacity for the parsed-elements cache. Sized to comfortably hold the
+ * Earth-sat hot-reload window (a handful of recent snapshots) plus a few
+ * other zones the user might bounce between. Each entry retains the parsed
+ * typed-array views and their ArrayBuffer — Earth's ~25K rows are ~5–10 MB.
+ */
+const PARSED_ELEMENTS_CACHE_CAPACITY = 8;
+const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_CAPACITY);
+
 export async function fetchElements(
 	zone: string,
 	zoom: number,
 	part: number,
 	time: string | null = null
 ): Promise<ElementColumns> {
-	const res = await fetch(elementsBinUrl(zone, zoom, part, time));
-	if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
-	const ds = new DecompressionStream('gzip');
-	const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
-	return parseElements(buffer);
+	const key = `${zone}:${zoom}:${part}:${time ?? ''}`;
+	return elementsCache.getOrCompute(key, async () => {
+		const res = await fetch(elementsBinUrl(zone, zoom, part, time));
+		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
+		const ds = new DecompressionStream('gzip');
+		const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
+		return parseElements(buffer);
+	});
 }
 
 /** Parse header fields shared by all format types. */
