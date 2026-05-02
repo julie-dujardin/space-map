@@ -171,56 +171,6 @@
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{/if}
-		{#if orbit?.a}
-			<Row
-				label={m.semi_major_axis()}
-				value={formatDistance(orbit.a)}
-				tooltip={m.tooltip_semi_major_axis()}
-			/>
-		{/if}
-		{#if currentState}
-			<Row
-				label={m.orbital_speed()}
-				value={formatQuantity({ value: currentState.vKms, unit: 'kilometre_per_second' }, true)}
-				tooltip={m.tooltip_orbital_speed()}
-			/>
-		{/if}
-		{#if altitudeKm != null && altitudeKm > 0}
-			<Row
-				label={m.altitude()}
-				value={formatDistance(altitudeKm / AU_KM)}
-				tooltip={m.tooltip_altitude()}
-			/>
-		{/if}
-		{#if orbit?.q}
-			<Row
-				label={m.perihelion()}
-				value={formatDistance(orbit.q)}
-				tooltip={m.tooltip_perihelion()}
-			/>
-		{/if}
-		{#if orbit?.tp != null}
-			<Row
-				label={m.perihelion_time()}
-				value={formatJulianDate(orbit.tp)}
-				tooltip={m.tooltip_perihelion_time()}
-			/>
-		{/if}
-		{#if sbdb?.ad}
-			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
-		{/if}
-		{#if showApogeePerigee && celestrak?.apogee != null}
-			<Row
-				label={m.apogee()}
-				value={formatQuantity({ value: celestrak.apogee, unit: 'kilometre' }, true)}
-			/>
-		{/if}
-		{#if showApogeePerigee && celestrak?.perigee != null}
-			<Row
-				label={m.perigee()}
-				value={formatQuantity({ value: celestrak.perigee, unit: 'kilometre' }, true)}
-			/>
-		{/if}
 		{#if orbit?.e != null}
 			<Row
 				label={m.eccentricity()}
@@ -233,6 +183,56 @@
 				label={m.inclination()}
 				value={`${formatNumber(orbit.i)}°`}
 				tooltip={m.tooltip_inclination()}
+			/>
+		{/if}
+		{#if orbit?.a}
+			<Row
+				label={m.semi_major_axis()}
+				value={formatDistance(orbit.a)}
+				tooltip={m.tooltip_semi_major_axis()}
+			/>
+		{/if}
+		{#if orbit?.q}
+			<Row
+				label={m.perihelion()}
+				value={formatDistance(orbit.q)}
+				tooltip={m.tooltip_perihelion()}
+			/>
+		{/if}
+		{#if sbdb?.ad}
+			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
+		{/if}
+		{#if showApogeePerigee && celestrak?.perigee != null}
+			<Row
+				label={m.perigee()}
+				value={formatQuantity({ value: celestrak.perigee, unit: 'kilometre' }, true)}
+			/>
+		{/if}
+		{#if showApogeePerigee && celestrak?.apogee != null}
+			<Row
+				label={m.apogee()}
+				value={formatQuantity({ value: celestrak.apogee, unit: 'kilometre' }, true)}
+			/>
+		{/if}
+		{#if orbit?.tp != null}
+			<Row
+				label={m.perihelion_time()}
+				value={formatJulianDate(orbit.tp)}
+				tooltip={m.tooltip_perihelion_time()}
+			/>
+		{/if}
+		{#if altitudeKm != null && altitudeKm > 0}
+			<Row
+				label={m.altitude()}
+				value={formatDistance(altitudeKm / AU_KM)}
+				tooltip={m.tooltip_altitude()}
+			/>
+		{/if}
+		{#if currentState}
+			<Row
+				label={m.orbital_speed()}
+				value={formatQuantity({ value: currentState.vKms, unit: 'kilometre_per_second' }, true)}
+				tooltip={m.tooltip_orbital_speed()}
 			/>
 		{/if}
 		{#if sbdb?.moid}
