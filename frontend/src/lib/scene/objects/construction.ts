@@ -443,6 +443,11 @@ export async function loadSystemData(
 			const { a, b, c } = bodyMeta.radii;
 			const s = kmToScene(1) / bo.radiusScene;
 			bo.mesh.scale.set(a * s, c * s, b * s);
+			// Replace the scalar radiusScene (sourced from SBDB/Wikidata, used
+			// for halo visibility, label placement, texture LOD and screen
+			// occlusion) with the rendered ellipsoid's largest extent so those
+			// screen-size checks match what the user sees.
+			bo.radiusScene = kmToScene(Math.max(a, b, c));
 		}
 
 		// Record available tiers and load the base `low` tier if no texture is
