@@ -72,6 +72,12 @@
 	let sbdb = $derived(global?.sbdb);
 	let celestrak = $derived(global?.celestrak);
 	let satPeriodDays = $derived(celestrak?.period != null ? celestrak.period / 1440 : null);
+	// Fallback for bodies without SBDB/CelesTrak (planets, moons, Horizons-only):
+	// derive period from mean motion. Only valid for elliptical orbits — n ≤ 0
+	// flags parabolic, e ≥ 1 is hyperbolic (no period).
+	let elementsPeriodDays = $derived(
+		orbit?.n != null && orbit.n > 0 && orbit.e != null && orbit.e < 1 ? 360 / orbit.n : null
+	);
 	let orbitClass = $derived(sbdb?.class ? orbitClassLabel(sbdb.class) : null);
 	let cometPrefix = $derived(sbdb?.prefix);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
@@ -102,6 +108,7 @@
 			isNeo ||
 			isPha ||
 			satPeriodDays != null ||
+			elementsPeriodDays != null ||
 			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null))
 	);
 </script>
@@ -155,6 +162,12 @@
 			<Row
 				label={m.orbital_period()}
 				value={formatDuration(satPeriodDays)}
+				tooltip={m.tooltip_orbital_period()}
+			/>
+		{:else if elementsPeriodDays != null}
+			<Row
+				label={m.orbital_period()}
+				value={formatDuration(elementsPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{/if}
