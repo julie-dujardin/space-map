@@ -43,7 +43,7 @@ import {
 } from './objects/builders';
 import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
-import { OrbitWorkerPool, type GroupInput } from '$lib/math/orbit/pool';
+import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
 import { DEFAULT_PROMOTED_IDS } from './default-bodies';
 import type { Vec3 } from './animation/math';
@@ -288,37 +288,44 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Rebuild the pool's owned group set to match the current ctx contents, and
-	 * ensure every zone/group has a Points object whose position attribute is
-	 * backed by the pool's front buffer. Called whenever the minor-body data
-	 * changes (new chunks loaded) or the promoted set changes.
+	 * Refresh the pool's owned group set and the matching Three.js geometries
+	 * for zones/groups marked dirty since the last rebuild. New chunks landing,
+	 * the promoted set changing, and basis rebuilds all add to the dirty markers
+	 * — this method drains them.
 	 *
 	 * Worker ticks asynchronously refresh the positions; this method just
-	 * (re)wires the handoff between the pool and the Three.js geometries.
+	 * (re)wires the handoff between the pool and the Three.js geometries for
+	 * the affected groups, and ensures brand-new zones get a Points object
+	 * seeded from `body.position`. Existing groups keep the pool's worker-
+	 * computed front buffer — overwriting would clobber fresh data with stale
+	 * load-time positions and flicker the cloud between current and load-time
+	 * locations on every rebase.
 	 */
 	rebuildMinorPointClouds(): void {
+		if (this.ctx.dirtyAsteroidZones.size === 0 && this.ctx.dirtySpacecraftGroups.size === 0) {
+			return;
+		}
 		const skip = new Set(this.bodyObjects.keys());
-		const input: GroupInput[] = [];
-		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-			input.push({ id: `asteroid:${zone}`, bodies });
-		}
-		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
-			input.push({ id: `spacecraft:${gid}`, bodies });
-		}
-		this.orbitPool.rewire(input, skip);
-
 		const seedBasis: Vec3 = [
 			this.pointCloudBasisPos[0],
 			this.pointCloudBasisPos[1],
 			this.pointCloudBasisPos[2]
 		];
-		// Only seed brand-new groups from body.position. For existing groups we
-		// keep whatever the pool has (worker-computed positions) — overwriting
-		// it would clobber fresh data with stale load-time positions and cause
-		// the cloud to flicker between current and load-time locations on every
-		// rebase (rebases happen frequently at high time rates).
-		for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-			const front = this.orbitPool.front(`asteroid:${zone}`);
+
+		for (const zone of this.ctx.dirtyAsteroidZones) {
+			const groupId = `asteroid:${zone}`;
+			const bodies = this.ctx.asteroidBodiesByZone.get(zone);
+			if (!bodies || bodies.length === 0) {
+				this.orbitPool.unwireOne(groupId);
+				const stale = this.asteroidPoints.get(zone);
+				if (stale) {
+					this.scene.remove(stale);
+					this.asteroidPoints.delete(zone);
+				}
+				continue;
+			}
+			this.orbitPool.rewireOne(groupId, bodies, skip);
+			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
 			const existing = this.asteroidPoints.get(zone);
 			if (existing) {
@@ -336,8 +343,22 @@ export class SceneRenderer {
 				this.pendingSceneAdds.push(pts);
 			}
 		}
-		for (const [gid, bodies] of this.ctx.spacecraftByParent) {
-			const front = this.orbitPool.front(`spacecraft:${gid}`);
+		this.ctx.dirtyAsteroidZones.clear();
+
+		for (const gid of this.ctx.dirtySpacecraftGroups) {
+			const groupId = `spacecraft:${gid}`;
+			const bodies = this.ctx.spacecraftByParent.get(gid);
+			if (!bodies || bodies.length === 0) {
+				this.orbitPool.unwireOne(groupId);
+				const stale = this.spacecraftPoints.get(gid);
+				if (stale) {
+					this.scene.remove(stale);
+					this.spacecraftPoints.delete(gid);
+				}
+				continue;
+			}
+			this.orbitPool.rewireOne(groupId, bodies, skip);
+			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
 			const existing = this.spacecraftPoints.get(gid);
 			if (existing) {
@@ -355,7 +376,6 @@ export class SceneRenderer {
 				this.pendingSceneAdds.push(pts);
 			}
 		}
-		this.ctx.dirtyAsteroidZones.clear();
 		this.ctx.dirtySpacecraftGroups.clear();
 	}
 

@@ -1,16 +1,16 @@
 import type { PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
 import OrbitWorker from './worker?worker';
-import { packBodies, columnsTransferList, type OrbitColumns } from './soa';
+import { packBodies, columnsTransferList } from './soa';
 
 /*
  * OrbitWorkerPool — offloads per-frame Kepler solves for asteroid zone and
  * spacecraft point clouds to a fixed-size worker pool.
  *
  * Protocol (see {@link './worker.ts'}):
- *   - rewire: ships SoA element columns for every owned group to the worker
- *     that owns it. Called whenever the minor-body set changes
- *     (ContextManager.minorBodyVersion bump) or promoted-set changes.
+ *   - rewireOne / unwireOne: ship one group's SoA element columns to its
+ *     assigned worker, or drop a group. Called per-zone whenever the
+ *     ContextManager dirty markers say a group's bodies or skip-set changed.
  *   - tick: per frame, sends the current jd, basis, and each group's parent
  *     position; the worker writes basis-relative Float32 positions into a
  *     pre-allocated back-buffer and transfers it back. On result the buffer
@@ -48,11 +48,6 @@ export type GroupResultHandler = (
 	parent: Vec3
 ) => void;
 
-export interface GroupInput {
-	id: string;
-	bodies: PositionedBody[];
-}
-
 type TickResult = {
 	type: 'tickResult';
 	groups: { id: string; count: number; buf: ArrayBufferLike }[];
@@ -86,74 +81,79 @@ export class OrbitWorkerPool {
 		return this.groups.get(id)?.front;
 	}
 
-	/** Bodies present in the input list are (re)registered; groups absent from input are dropped. */
-	rewire(input: GroupInput[], skip: Set<string>): void {
-		const perWorker: { id: string; cols: OrbitColumns }[][] = this.workers.map(() => []);
-		const nextGroups = new Map<string, GroupState>();
+	/**
+	 * Add or replace one group's SoA element columns. Empty bodies → unwire
+	 * (drops geometry binding upstream).
+	 *
+	 * Reuses the previous front buffer whenever capacity matches — even if a
+	 * tick is currently in flight (prev.back === null). Allocating a fresh
+	 * zero-filled front here would make the geometry blank out between
+	 * rewire and the next worker result, which at high time rates (frequent
+	 * rebases triggering rewires) reads as constant cloud-flicker.
+	 *
+	 * We do NOT allocate a fresh back when one is in flight: doing so would
+	 * let a new tick dispatch before the old one returns, and the old
+	 * result would then be paired with the new dispatch's pendingBasis /
+	 * pendingParent in onMessage — placing the cloud at a wrong location.
+	 * Letting back stay null defers the next dispatch until the in-flight
+	 * tick lands naturally.
+	 */
+	rewireOne(id: string, bodies: PositionedBody[], skip: Set<string>): void {
+		if (bodies.length === 0) {
+			this.unwireOne(id);
+			return;
+		}
+		const prev = this.groups.get(id);
+		const workerIdx = prev?.workerIdx ?? this.nextWorker++ % this.workers.length;
+		const capacity = bodies.length;
 
-		for (const g of input) {
-			if (g.bodies.length === 0) continue;
-			const prev = this.groups.get(g.id);
-			const workerIdx = prev?.workerIdx ?? this.nextWorker++ % this.workers.length;
-			const capacity = g.bodies.length;
-
-			// Reuse the previous front buffer whenever capacity matches — even if a
-			// tick is currently in flight (prev.back === null). Allocating a fresh
-			// zero-filled front here would make the geometry blank out between
-			// rewire and the next worker result, which at high time rates (frequent
-			// rebases triggering rewires) reads as constant cloud-flicker.
-			//
-			// We do NOT allocate a fresh back when one is in flight: doing so would
-			// let a new tick dispatch before the old one returns, and the old
-			// result would then be paired with the new dispatch's pendingBasis /
-			// pendingParent in onMessage — placing the cloud at a wrong location.
-			// Letting back stay null defers the next dispatch until the in-flight
-			// tick lands naturally.
-			let front: Float32Array;
-			let back: Float32Array | null;
-			if (prev && prev.capacity === capacity) {
-				front = prev.front;
-				back = prev.back;
-			} else {
-				front = new Float32Array(capacity * 3);
-				back = new Float32Array(capacity * 3);
-				if (prev) {
-					const n = Math.min(prev.front.length, front.length);
-					front.set(prev.front.subarray(0, n));
-				}
+		let front: Float32Array;
+		let back: Float32Array | null;
+		if (prev && prev.capacity === capacity) {
+			front = prev.front;
+			back = prev.back;
+		} else {
+			front = new Float32Array(capacity * 3);
+			back = new Float32Array(capacity * 3);
+			if (prev) {
+				const n = Math.min(prev.front.length, front.length);
+				front.set(prev.front.subarray(0, n));
 			}
-
-			const cols = packBodies(g.bodies, skip);
-			perWorker[workerIdx].push({ id: g.id, cols });
-			// If a tick is in flight (prev.back === null), preserve its pending
-			// dispatch state so the returning result is paired with the basis /
-			// parent it was actually computed under — see comment above re: back.
-			const inFlight = !!prev && prev.back === null;
-			nextGroups.set(g.id, {
-				workerIdx,
-				capacity,
-				front,
-				back,
-				count: prev?.count ?? capacity,
-				pendingBasis: inFlight ? prev!.pendingBasis : null,
-				pendingParent: inFlight ? prev!.pendingParent : null,
-				frontBasis: prev?.frontBasis ?? [0, 0, 0],
-				frontParent: prev?.frontParent ?? [0, 0, 0]
-			});
 		}
 
-		this.groups = nextGroups;
+		const cols = packBodies(bodies, skip);
+		// If a tick is in flight (prev.back === null), preserve its pending
+		// dispatch state so the returning result is paired with the basis /
+		// parent it was actually computed under — see comment above re: back.
+		const inFlight = !!prev && prev.back === null;
+		this.groups.set(id, {
+			workerIdx,
+			capacity,
+			front,
+			back,
+			count: prev?.count ?? capacity,
+			pendingBasis: inFlight ? prev!.pendingBasis : null,
+			pendingParent: inFlight ? prev!.pendingParent : null,
+			frontBasis: prev?.frontBasis ?? [0, 0, 0],
+			frontParent: prev?.frontParent ?? [0, 0, 0]
+		});
 
-		for (let i = 0; i < this.workers.length; i++) {
-			const groupMsgs = perWorker[i];
-			if (groupMsgs.length === 0) {
-				this.workers[i].postMessage({ type: 'rewire', groups: [] });
-				continue;
-			}
-			const transfers: Transferable[] = [];
-			for (const g of groupMsgs) transfers.push(...columnsTransferList(g.cols));
-			this.workers[i].postMessage({ type: 'rewire', groups: groupMsgs }, transfers);
-		}
+		this.workers[workerIdx].postMessage(
+			{ type: 'rewireDelta', set: [{ id, cols }] },
+			columnsTransferList(cols)
+		);
+	}
+
+	/** Drop one group locally and tell its worker to forget it. No-op if unknown. */
+	unwireOne(id: string): void {
+		const prev = this.groups.get(id);
+		if (!prev) return;
+		this.groups.delete(id);
+		this.workers[prev.workerIdx].postMessage({
+			type: 'rewireDelta',
+			set: [],
+			remove: [id]
+		});
 	}
 
 	/**

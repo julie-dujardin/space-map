@@ -7,7 +7,9 @@ import { writePositions, type OrbitColumns } from './soa';
  * OrbitWorkerPool on the main thread.
  *
  * Lifecycle:
- *   - 'rewire' replaces the owned group set (sent on minorBodyVersion bump).
+ *   - 'rewireDelta' adds/replaces individual groups by id and optionally
+ *     removes others (one zone got a fresh chunk, one body got promoted),
+ *     so we don't re-pack every group on every change.
  *   - 'tick' asks for fresh positions at a jd, with per-group parent position
  *     and a shared basis. Main sends one free Float32Array per group
  *     (transferred); worker writes into it and transfers it back with a count.
@@ -18,9 +20,10 @@ import { writePositions, type OrbitColumns } from './soa';
 
 const groups = new Map<string, OrbitColumns>();
 
-type RewireMsg = {
-	type: 'rewire';
-	groups: { id: string; cols: OrbitColumns }[];
+type RewireDeltaMsg = {
+	type: 'rewireDelta';
+	set: { id: string; cols: OrbitColumns }[];
+	remove?: string[];
 };
 
 type TickMsg = {
@@ -35,13 +38,13 @@ type TickMsg = {
 	}[];
 };
 
-type InMsg = RewireMsg | TickMsg;
+type InMsg = RewireDeltaMsg | TickMsg;
 
 self.onmessage = (ev: MessageEvent<InMsg>) => {
 	const msg = ev.data;
-	if (msg.type === 'rewire') {
-		groups.clear();
-		for (const g of msg.groups) groups.set(g.id, g.cols);
+	if (msg.type === 'rewireDelta') {
+		if (msg.remove) for (const id of msg.remove) groups.delete(id);
+		for (const g of msg.set) groups.set(g.id, g.cols);
 		return;
 	}
 	if (msg.type === 'tick') {
