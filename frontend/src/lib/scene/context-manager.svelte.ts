@@ -346,17 +346,35 @@ export class ContextManager {
 	}
 
 	/**
-	 * Look up any body by ID. Checks the major-body index first,
-	 * then falls back to a linear scan of asteroid/spacecraft zone maps.
+	 * Look up any body by ID.
+	 *
+	 * `zone` is an optional hint. When provided the search is restricted to
+	 * that zone — use it from per-zone iteration paths (chunk reconciliation,
+	 * picking results) where you already know which bucket the body lives in.
+	 * The zone string is the same key the body was filed under: a `naif-X`
+	 * parent id for spacecraft groups, or an OrbitClass enum name (e.g. `MBA`)
+	 * for asteroid zones; we probe both maps so callers don't have to
+	 * disambiguate.
+	 *
+	 * Without a hint: bodiesById → spacecraftByParent → asteroidBodiesByZone.
+	 * Spacecraft come before asteroid zones because there are far fewer
+	 * groups (a handful of parents vs. ~20 zones with thousands of bodies),
+	 * so the linear scan finishes faster on a miss.
 	 */
-	getBody(id: string): PositionedBody | undefined {
+	getBody(id: string, zone?: string): PositionedBody | undefined {
 		const major = this.bodiesById.get(id);
 		if (major) return major;
-		for (const bodies of this.asteroidBodiesByZone.values()) {
+		if (zone !== undefined) {
+			return (
+				this.spacecraftByParent.get(zone)?.find((b) => b.data.id === id) ??
+				this.asteroidBodiesByZone.get(zone)?.find((b) => b.data.id === id)
+			);
+		}
+		for (const bodies of this.spacecraftByParent.values()) {
 			const hit = bodies.find((b) => b.data.id === id);
 			if (hit) return hit;
 		}
-		for (const bodies of this.spacecraftByParent.values()) {
+		for (const bodies of this.asteroidBodiesByZone.values()) {
 			const hit = bodies.find((b) => b.data.id === id);
 			if (hit) return hit;
 		}
