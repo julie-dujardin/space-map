@@ -458,7 +458,8 @@ interface GlobalObjectData {
     rev_at_epoch?: number;
   };
   sbdb?: {
-    neo?: boolean;   pha?: boolean;   class?: string;
+    neo?: boolean;   pha?: boolean;
+    class?: string;  // OrbitClass enum *name* (e.g. "MBA", "APO") — same id used to name the export zone
     sats?: number;   diameter?: number;  // km
     extent?: string; albedo?: number; rot_per?: number;  // hours
     GM?: number;     // km^3/s^2

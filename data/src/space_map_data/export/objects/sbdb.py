@@ -42,11 +42,21 @@ _SBDB_FIELDS = (
 
 
 def build_sbdb(sbdb: SBDB, units: UnitConverter) -> dict:
-    """Build the SBDB extras dict, omitting None values."""
+    """Build the SBDB extras dict, omitting None values.
+
+    The orbit class is emitted as the enum *name* (e.g. ``"MBA"``) — that's
+    also the export zone id the bodies of this class go into, and is
+    locale-stable. The frontend resolves the human label via
+    ``m.orbit_class_<name>``.
+    """
     data: dict = {}
     for attr in _SBDB_FIELDS:
         val = getattr(sbdb, attr)
-        if val is not None:
+        if val is None:
+            continue
+        if attr == "class_":
+            data["class"] = val.name
+        else:
             data[attr.rstrip("_")] = val
     if sbdb.mass_kg is not None:
         converted = units.best_unit(sbdb.mass_kg, "mass")

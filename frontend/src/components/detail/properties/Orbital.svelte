@@ -14,6 +14,39 @@
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
 
+	// Maps the OrbitClass enum name (`global.sbdb.class`, e.g. "MBA") to the
+	// localized label. Mirrors the OrbitClass members in
+	// data/src/space_map_data/models/object/sbdb.py — keep in sync when adding
+	// classes there. Unknown ids fall through and render the raw id, so a new
+	// class shows up as text rather than blanking the row.
+	const ORBIT_CLASS_LABEL: Record<string, () => string> = {
+		IEO: m.orbit_class_IEO,
+		ATE: m.orbit_class_ATE,
+		APO: m.orbit_class_APO,
+		AMO: m.orbit_class_AMO,
+		MCA: m.orbit_class_MCA,
+		IMB: m.orbit_class_IMB,
+		MBA: m.orbit_class_MBA,
+		OMB: m.orbit_class_OMB,
+		TJN: m.orbit_class_TJN,
+		AST: m.orbit_class_AST,
+		CEN: m.orbit_class_CEN,
+		TNO: m.orbit_class_TNO,
+		PAA: m.orbit_class_PAA,
+		HYA: m.orbit_class_HYA,
+		ETc: m.orbit_class_ETc,
+		JFc: m.orbit_class_JFc,
+		JFC: m.orbit_class_JFC,
+		CTc: m.orbit_class_CTc,
+		HTC: m.orbit_class_HTC,
+		PAR: m.orbit_class_PAR,
+		HYP: m.orbit_class_HYP,
+		COM: m.orbit_class_COM
+	};
+	function orbitClassLabel(id: string): string {
+		return ORBIT_CLASS_LABEL[id]?.() ?? id;
+	}
+
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
@@ -39,7 +72,7 @@
 	let sbdb = $derived(global?.sbdb);
 	let celestrak = $derived(global?.celestrak);
 	let satPeriodDays = $derived(celestrak?.period != null ? celestrak.period / 1440 : null);
-	let orbitClass = $derived(sbdb?.class);
+	let orbitClass = $derived(sbdb?.class ? orbitClassLabel(sbdb.class) : null);
 	let cometPrefix = $derived(sbdb?.prefix);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 	let isNeo = $derived(sbdb?.neo);

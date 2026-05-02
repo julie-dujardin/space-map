@@ -112,14 +112,18 @@ export interface TextureCredit {
 }
 
 /**
- * Create a placeholder PositionedBody from the __global__ object file.
+ * Create a placeholder PositionedBody from the __global__ object file along
+ * with the SBDB-class zone id (e.g. `"MBA"`) for routing — null when the
+ * object has no SBDB record, in which case the caller falls back to
+ * `parentId`-based routing (spacecraft/debris) or `bodiesById` (majors).
+ *
  * Returns null if the object doesn't exist or has no orbit data.
  */
 async function createPlaceholderBody(
 	targetId: string,
 	date: Date,
 	loader: ChunkLoader
-): Promise<PositionedBody | null> {
+): Promise<{ body: PositionedBody; zone: string | null } | null> {
 	let detail: Awaited<ReturnType<typeof fetchObjectDetail>>;
 	try {
 		detail = await fetchObjectDetail(targetId);
@@ -220,7 +224,10 @@ async function createPlaceholderBody(
 		parentPos[2] + offset[2]
 	];
 
-	return { data, position, orbitElements: data, orbitCenter: parentPos };
+	return {
+		body: { data, position, orbitElements: data, orbitCenter: parentPos },
+		zone: global.sbdb?.class ?? null
+	};
 }
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
@@ -405,11 +412,46 @@ export class ContextManager {
 
 			this.addBodies(major);
 
-			// If the target body wasn't in majors/moons, resolve it from the global object file
-			// so the renderer can focus on it immediately without waiting for its element chunk.
+			const pendingAsteroids = new Map<string, PositionedBody[]>();
+			const pendingSpacecraft = new Map<string, PositionedBody[]>();
+			// Placeholders for URL-loaded targets (one per session): when the real
+			// chunk lands the entry's data/position fields are mutated in place so
+			// the BodyObject the renderer kept holds onto fresh elements without us
+			// needing to reseat references anywhere.
+			const placeholderById = new Map<string, PositionedBody>();
+
+			const flush = () => {
+				this.asteroidBodiesByZone = new Map(pendingAsteroids);
+				this.spacecraftByParent = new Map(pendingSpacecraft);
+				this.minorBodyVersion++;
+			};
+
+			// If the target body wasn't in majors/moons, resolve it from the global
+			// object file and route it into the same per-zone store its chunk will
+			// land in — keeps a single source of truth and lets phase 2 reconcile
+			// in place when the chunk arrives.
 			if (targetId && !this.getBody(targetId)) {
 				const placeholder = await createPlaceholderBody(targetId, date, loader);
-				if (placeholder) this.addBodies([placeholder]);
+				if (placeholder) {
+					const { body, zone } = placeholder;
+					const type = body.data.objectType;
+					if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
+						const key = body.data.parentId;
+						pendingSpacecraft.set(key, [...(pendingSpacecraft.get(key) ?? []), body]);
+						placeholderById.set(body.data.id, body);
+						this.dirtySpacecraftGroups.add(key);
+					} else if (zone) {
+						pendingAsteroids.set(zone, [...(pendingAsteroids.get(zone) ?? []), body]);
+						placeholderById.set(body.data.id, body);
+						this.dirtyAsteroidZones.add(zone);
+					} else {
+						// Major / undocumented / wikidata-only — no zone to route into,
+						// fall back to bodiesById so getBody() still finds it.
+						this.addBodies([body]);
+					}
+					this.recordOrbitSources([body]);
+					flush();
+				}
 			}
 
 			this.majorBodies = major.filter(
@@ -423,14 +465,6 @@ export class ContextManager {
 			// minorChunkArgsPromise has been running in parallel; files are likely cached already
 			const minorChunkArgs = await minorChunkArgsPromise;
 
-			const pendingAsteroids = new Map<string, PositionedBody[]>();
-			const pendingSpacecraft = new Map<string, PositionedBody[]>();
-
-			const flush = () => {
-				this.asteroidBodiesByZone = new Map(pendingAsteroids);
-				this.spacecraftByParent = new Map(pendingSpacecraft);
-				this.minorBodyVersion++;
-			};
 			const intervalId = setInterval(flush, 500);
 
 			try {
@@ -439,6 +473,25 @@ export class ContextManager {
 						loader.process(zone, zoom, part, date, time).then((chunk) => {
 							this.recordOrbitSources(chunk);
 							for (const b of chunk) {
+								const placeholder = placeholderById.get(b.data.id);
+								if (placeholder) {
+									// Mutate in place so the renderer's BodyObject keeps a
+									// stable PositionedBody ref. Per-zone dirty marker is
+									// already set from placeholder routing; bumping it again
+									// here ensures the worker re-packs with the fresh satrec.
+									placeholder.data = b.data;
+									placeholder.position = b.position;
+									placeholder.orbitElements = b.orbitElements;
+									placeholder.orbitCenter = b.orbitCenter;
+									placeholder.trailBuffer = b.trailBuffer;
+									placeholderById.delete(b.data.id);
+									if (b.data.objectType === ObjectType.SPACECRAFT) {
+										this.dirtySpacecraftGroups.add(b.data.parentId);
+									} else {
+										this.dirtyAsteroidZones.add(zone);
+									}
+									continue;
+								}
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
 									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
 									list.push(b);

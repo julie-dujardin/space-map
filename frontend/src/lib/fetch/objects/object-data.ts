@@ -100,6 +100,7 @@ export interface GlobalObjectData {
 	sbdb?: {
 		neo?: boolean;
 		pha?: boolean;
+		/** OrbitClass enum *name* (e.g. "MBA", "APO") — also the export zone id. */
 		class?: string;
 		sats?: number;
 		diameter?: number;
