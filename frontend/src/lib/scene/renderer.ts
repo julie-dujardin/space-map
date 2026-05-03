@@ -30,6 +30,7 @@ import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
+	loadBodyLabel,
 	buildOrbitLines,
 	buildPointClouds,
 	loadBodyTexture,
@@ -1257,6 +1258,12 @@ export class SceneRenderer {
 		);
 		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
 		this.repositionAll();
+
+		// Click-promoted minor bodies enter with no name (the global labels file
+		// only carries the curated promoted set). Fire-and-forget the detail
+		// bundle fetch so the label fills in once Wikidata arrives.
+		const bo = this.bodyObjects.get(body.data.id);
+		if (bo && !body.data.name) loadBodyLabel(bo);
 
 		// Rebuild the point cloud for this body's group so the promoted dot is removed
 		if (body.data.objectType === ObjectType.SPACECRAFT) {

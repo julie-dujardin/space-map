@@ -22,7 +22,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import { createLabel, getLabelVariant } from '../label/factory';
+import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
 import {
 	makeCircleTexture,
 	makeOrbitLine,
@@ -340,6 +340,33 @@ export async function loadBodyTexture(
 	if (bo.textureTier || bo.textureLoading) return;
 	bo.availableTiers ??= ['low', 'medium', 'high'];
 	await swapBodyTexture(bo, 'low', textureLoader);
+}
+
+/**
+ * Resolve and apply the localized display name on a click-promoted body's
+ * label. Bodies that show up in the global labels file (planets, moons, the
+ * curated extras) already carry their name through `body.data.name` from
+ * chunk parse time; this fills in the rest by lazily fetching the same
+ * detail bundle the drawer uses, so e.g. clicking a random asteroid swaps
+ * its label from blank → Wikidata name a few hundred ms later.
+ *
+ * No-op when the body already has a name, or when the label was created
+ * with `variant: 'none'` (debris, etc.).
+ */
+export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
+	if (!bo.label) return;
+	const data = bo.body.data;
+	// Already named at chunk parse time (in the global labels file) — nothing to resolve.
+	if (data.name) return;
+	const detail = await fetchObjectDetail(data.id, data.hasLocalized);
+	const resolved = detail.localized?.name ?? detail.global?.name;
+	if (!resolved) return;
+	// Don't clobber a name that arrived via another path (e.g. focus drawer
+	// already wrote it onto data.name) while the bundle was in flight.
+	data.name ??= resolved;
+	const variant = getLabelVariant(bo.body);
+	const isLarge = data.objectType === ObjectType.STAR || data.objectType === ObjectType.PLANET;
+	setLabelName(bo.label, resolved, variant, isLarge);
 }
 
 /**

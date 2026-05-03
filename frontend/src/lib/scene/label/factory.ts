@@ -4,6 +4,49 @@ import './label.css';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'debris' | 'none';
 
+/** Click handler attached to a label's name span — stashed on the root via a
+ *  WeakMap so {@link setLabelName} can re-bind it when adding the span lazily
+ *  (e.g. after a click-promoted minor body's detail bundle resolves). */
+const labelClickHandlers = new WeakMap<HTMLElement, (e: MouseEvent) => void>();
+
+function addLabelNameSpan(
+	el: HTMLElement,
+	name: string,
+	variant: LabelVariant,
+	isLarge: boolean,
+	onClick: (e: MouseEvent) => void
+): HTMLSpanElement {
+	const span = document.createElement('span');
+	span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
+	span.textContent = name;
+	span.addEventListener('click', onClick);
+	el.appendChild(span);
+	return span;
+}
+
+/** Update (or lazily create) the name span on an existing label. Used when a
+ *  click-promoted minor body's localized name resolves a few hundred ms after
+ *  the mesh + halo are rendered — we don't want to wait on Wikidata before
+ *  showing the body, so the span is filled in once the bundle arrives. No-op
+ *  when the label was created with `variant: 'none'` (e.g. debris). */
+export function setLabelName(
+	label: CSS2DObject,
+	name: string,
+	variant: LabelVariant,
+	isLarge: boolean
+): void {
+	if (variant === 'none' || !name) return;
+	const el = label.element as HTMLElement;
+	const existing = el.querySelector('.scene-label__name') as HTMLSpanElement | null;
+	if (existing) {
+		existing.textContent = name;
+		return;
+	}
+	const handler = labelClickHandlers.get(el);
+	if (!handler) return;
+	addLabelNameSpan(el, name, variant, isLarge, handler);
+}
+
 export function getLabelVariant(body: PositionedBody): LabelVariant {
 	const t = body.data.objectType;
 	if (
@@ -91,14 +134,12 @@ export function createLabel(
 		if (dx * dx + dy * dy <= 9) onClick();
 	};
 
+	// Stash the guarded-click handler so setLabelName() can re-bind it if the
+	// span gets added later (lazy-resolved name on click-promoted bodies).
+	labelClickHandlers.set(el, guardedClick);
+
 	// Name text: absolutely positioned to the right, vertically centered on indicator
-	if (name) {
-		const span = document.createElement('span');
-		span.className = `scene-label__name scene-label__name--${variant}${isLarge ? ' scene-label__name--large' : ''}`;
-		span.textContent = name;
-		span.addEventListener('click', guardedClick);
-		el.appendChild(span);
-	}
+	if (name) addLabelNameSpan(el, name, variant, isLarge, guardedClick);
 
 	el.addEventListener('click', guardedClick);
 	el.addEventListener('mouseenter', () => {
