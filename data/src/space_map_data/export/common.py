@@ -71,14 +71,24 @@ _SUN_MAJOR_TYPE_VALUES = [t.value for t in _SUN_MAJOR_TYPES]
 _DEFAULT_ZONE_LIMIT = 10_000
 
 
-def _build_metadata(
-    zone_structure: Mapping[str, Mapping[int, Mapping[str | None, "SnapshotResult"]]],
-) -> dict:
+@dataclass
+class ZoomSnapshots:
+    """All snapshots produced for one (zone, zoom). The discriminator on
+    `_build_metadata`'s output shape lives entirely in the snapshots — empty
+    means a hole, one with ``time is None`` is the static case, otherwise the
+    list is the chunk-indexed or date-segmented stream depending on
+    `SnapshotResult.chunk_years`.
+    """
+
+    snapshots: list["SnapshotResult"] = field(default_factory=list)
+
+
+def _build_metadata(zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]]) -> dict:
     """Build the ``zones`` metadata block.
 
     Three shapes per zoom, dispatched on the snapshot stream:
 
-    * Static (single ``None`` key): ``{parts}``.
+    * Static (single snapshot with ``time is None``): ``{parts}``.
     * Chunk-indexed (snapshots carry ``chunk_years``): ``{chunks, chunk_years,
       start_jd, parts}``. Clients compute ``chunk_idx = floor((jd - start_jd)
       / (chunk_years * 365.25))`` and load
@@ -98,12 +108,20 @@ def _build_metadata(
     zones = {}
     for zone, zoom_map in sorted(zone_structure.items()):
         zooms = {}
-        for zoom, time_map in sorted(zoom_map.items()):
-            keys = list(time_map.keys())
-            if keys == [None]:
-                zooms[str(zoom)] = {"parts": time_map[None].num_parts}
+        for zoom, zoom_snaps in sorted(zoom_map.items()):
+            snaps = zoom_snaps.snapshots
+            if len(snaps) == 1 and snaps[0].time is None:
+                zooms[str(zoom)] = {"parts": snaps[0].num_parts}
                 continue
-            snaps = [time_map[k] for k in keys if k is not None]
+            # Multi-snapshot zooms only carry timestamped streams. A bare
+            # `None`-time entry mixed with timed ones means the producer is
+            # confused about the zone's shape.
+            if any(s.time is None for s in snaps):
+                raise ValueError(
+                    f"{zone} zoom={zoom} mixes timed snapshots with a "
+                    f"None-time snapshot; one zoom must be all-timed or "
+                    f"single-static"
+                )
             parts_set = {s.num_parts for s in snaps}
             if len(parts_set) != 1:
                 raise ValueError(
@@ -132,7 +150,7 @@ def _build_metadata(
                 }
             else:
                 # Date-segmented: labels are ISO dates, sort lexicographically.
-                dated = sorted(k for k in keys if k is not None)
+                dated = sorted(s.time for s in snaps if s.time is not None)
                 zooms[str(zoom)] = {
                     "start_date": dated[0],
                     "end_date": dated[-1],
@@ -631,9 +649,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     celestrak_days = load_all_days(DOWNLOAD_DIR)
 
-    zone_structure: defaultdict[
-        str, defaultdict[int, dict[str | None, SnapshotResult]]
-    ] = defaultdict(lambda: defaultdict(dict))
+    zone_structure: defaultdict[str, defaultdict[int, ZoomSnapshots]] = defaultdict(
+        lambda: defaultdict(ZoomSnapshots)
+    )
     object_counts: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
     all_objects = ChunkObjectData()
 
@@ -644,7 +662,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         all_objects.flags.update(result.zone_data.flags)
         for snap in result.snapshots:
             object_counts[(zone, zoom, snap.time)] += snap.count
-            zone_structure[zone][zoom][snap.time] = snap
+            zone_structure[zone][zoom].snapshots.append(snap)
             if snap.time is None:
                 logger.info(
                     "  %s zoom=%d: %d objects, %d parts",
