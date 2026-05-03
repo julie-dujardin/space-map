@@ -72,19 +72,25 @@ interface TimeZoneState extends BaseZoneState {
 	lastLoadStartMs: number;
 }
 
+/** A neighbor chunk preload — pending while `loader.process()` is in flight,
+ *  ready once the per-part bodies are resolved. The 'ready' shape carries the
+ *  bodies inline so `tick()` can apply the swap **synchronously** in the same
+ *  frame as the boundary detection — without that, even an already-resolved
+ *  promise costs a microtask gap that lets the renderer propagate one frame
+ *  with stale Method-C elements (visible flicker on fast-precessing moons). */
+type ChunkPreload =
+	| { kind: 'pending'; promise: Promise<PositionedBody[][]> }
+	| { kind: 'ready'; bodies: PositionedBody[][] };
+
 interface ChunkZoneState extends BaseZoneState {
 	kind: 'chunk';
 	zoomData: ChunkIndexedZoom;
 	/** Index of the chunk currently resident in `ctx.bodiesById`. */
 	currentIdx: number;
-	/** Pre-resolved bodies for neighbor chunks `[currentIdx-1, currentIdx+1]`,
-	 *  keyed by chunk index. Each value is a promise that resolves to the
-	 *  per-part `PositionedBody[]` arrays returned by `loader.process()`.
-	 *  Populated at construction and after each successful swap; entries
-	 *  outside the neighbor window are pruned to bound memory. A boundary
-	 *  crossing awaits the matching entry instead of issuing a fresh
-	 *  `process()` so the swap lands in the next microtask. */
-	preloads: Map<number, Promise<PositionedBody[][]>>;
+	/** Neighbor preloads keyed by chunk index. Populated at construction and
+	 *  after each successful swap; entries outside `[currentIdx-1, currentIdx+1]`
+	 *  are pruned to bound memory (≤3 resolved chunks of bodies). */
+	preloads: Map<number, ChunkPreload>;
 }
 
 type ZoneState = TimeZoneState | ChunkZoneState;
@@ -136,12 +142,19 @@ export class ZoneRefresher {
 	}
 
 	/** Call from the renderer's per-frame loop on jd change. Cheap when nothing
-	 *  needs reloading: a couple of date ops and string/number compares. */
+	 *  needs reloading: a couple of date ops and string/number compares.
+	 *
+	 *  For chunk-indexed zones, a boundary crossing whose target preload is
+	 *  already 'ready' applies the swap synchronously here — no async, no
+	 *  microtask gap — so the same frame's `updatePositions` reads the new
+	 *  Method-C elements and never propagates with a stale chunk's drift
+	 *  rates. The async loadChunk path is reserved for the 'pending' and
+	 *  cold-miss cases. */
 	tick(date: Date): void {
 		const jd = dateToJD(date);
 		for (const state of this.zones) {
-			if (state.inFlight) continue;
 			if (state.kind === 'time') {
+				if (state.inFlight) continue;
 				const target = snapshotDate(state.zoomData, date);
 				if (target === state.currentTime) continue;
 				const nowMs = performance.now();
@@ -151,6 +164,20 @@ export class ZoneRefresher {
 					state.inFlight = null;
 				});
 			} else {
+				// Drain as many ready preloads as the user has scrubbed across in
+				// one frame. Uncommon (chunks span chunk_years of sim time) but
+				// keeps fast-scrub semantics tight.
+				while (true) {
+					const target = chunkIndexForJd(state.zoomData, jd);
+					if (target === state.currentIdx) break;
+					const preload = state.preloads.get(target);
+					if (preload?.kind !== 'ready') break;
+					const previous = state.currentIdx;
+					state.currentIdx = target;
+					this.applyChunkSwap(state, previous, target, preload.bodies);
+					this.preloadChunkNeighbors(state, date);
+				}
+				if (state.inFlight) continue;
 				const target = chunkIndexForJd(state.zoomData, jd);
 				if (target === state.currentIdx) continue;
 				state.inFlight = this.loadChunk(state, target, date).finally(() => {
@@ -252,45 +279,22 @@ export class ZoneRefresher {
 		// target as already-being-loaded and doesn't double-fire.
 		z.currentIdx = target;
 		try {
-			// Fast path: neighbor preload covers most boundary crossings; the
-			// promise is typically already resolved so the swap lands in the
-			// next microtask, before the renderer can propagate stale elements.
-			// Cold path (preload missed — e.g. user scrubbed past the neighbor
-			// window in a single frame) issues a fresh process() call.
-			let chunks = await z.preloads.get(target);
-			if (!chunks) {
+			// 'pending' preload: await the in-flight promise. 'ready' isn't
+			// reachable here — tick() applies those synchronously before
+			// dispatching loadChunk. Cold miss (no entry, e.g. user scrubbed
+			// past the neighbor window in one frame): fire a fresh process().
+			const preload = z.preloads.get(target);
+			let chunks: PositionedBody[][];
+			if (preload?.kind === 'pending') {
+				chunks = await preload.promise;
+			} else {
 				chunks = await Promise.all(
 					Array.from({ length: z.parts }, (_, part) =>
 						this.loader.process(z.zone, z.zoom, part, date, String(target))
 					)
 				);
 			}
-
-			let updated = 0;
-			let added = 0;
-			for (const chunk of chunks) {
-				this.ctx.recordOrbitSources(chunk);
-				for (const fresh of chunk) {
-					const existing = this.ctx.bodiesById.get(fresh.data.id);
-					if (!existing) {
-						// New body in this chunk — register it. Rare in practice (moons
-						// membership is stable across Method-C chunks) but cheap.
-						this.ctx.addBodies([fresh]);
-						this.ctx.majorBodies.push(fresh);
-						added++;
-						continue;
-					}
-					existing.data = fresh.data;
-					existing.position = fresh.position;
-					if (fresh.orbitElements !== undefined) existing.orbitElements = fresh.orbitElements;
-					if (fresh.orbitCenter !== undefined) existing.orbitCenter = fresh.orbitCenter;
-					updated++;
-				}
-			}
-			this.ctx.minorBodyVersion++;
-			console.log(
-				`zone-refresher: ${z.zone} chunk ${previous} → ${target} (+${added} ~${updated})`
-			);
+			this.applyChunkSwap(z, previous, target, chunks);
 			this.preloadChunkNeighbors(z, date);
 		} catch (e) {
 			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
@@ -298,13 +302,50 @@ export class ZoneRefresher {
 		}
 	}
 
+	/** Mutate `ctx.bodiesById` in place from a chunk's fresh bodies. Shared
+	 *  by the synchronous swap (preload 'ready') and the async swap (preload
+	 *  'pending' or cold miss). Caller is responsible for updating `currentIdx`
+	 *  before invoking — `applyChunkSwap` only touches body fields and the
+	 *  reactive minorBodyVersion. */
+	private applyChunkSwap(
+		z: ChunkZoneState,
+		previous: number,
+		target: number,
+		chunks: PositionedBody[][]
+	): void {
+		let updated = 0;
+		let added = 0;
+		for (const chunk of chunks) {
+			this.ctx.recordOrbitSources(chunk);
+			for (const fresh of chunk) {
+				const existing = this.ctx.bodiesById.get(fresh.data.id);
+				if (!existing) {
+					// New body in this chunk — register it. Rare in practice (moons
+					// membership is stable across Method-C chunks) but cheap.
+					this.ctx.addBodies([fresh]);
+					this.ctx.majorBodies.push(fresh);
+					added++;
+					continue;
+				}
+				existing.data = fresh.data;
+				existing.position = fresh.position;
+				if (fresh.orbitElements !== undefined) existing.orbitElements = fresh.orbitElements;
+				if (fresh.orbitCenter !== undefined) existing.orbitCenter = fresh.orbitCenter;
+				updated++;
+			}
+		}
+		this.ctx.minorBodyVersion++;
+		console.log(`zone-refresher: ${z.zone} chunk ${previous} → ${target} (+${added} ~${updated})`);
+	}
+
 	/** Pre-process bodies for chunk-indexed neighbors `[currentIdx-1, currentIdx+1]`
-	 *  (clamped). Each entry is a single in-flight `Promise.all(loader.process(...))`
-	 *  per part; idempotent on existing entries (the LRU caches in
-	 *  `fetchElements`/`fetchLabels` deduplicate repeat calls anyway, but
-	 *  storing the promise here avoids re-running the bodies-build loop).
-	 *  Out-of-window entries are pruned so the map stays bounded to ≤3
-	 *  resolved chunks of bodies. */
+	 *  (clamped). Each entry starts as 'pending' (in-flight `loader.process()`
+	 *  per part) and transitions to 'ready' on resolve so `tick()` can apply
+	 *  the swap synchronously. The LRU caches in `fetchElements`/`fetchLabels`
+	 *  dedupe the underlying fetches; storing the resolved bodies here avoids
+	 *  re-running the bodies-build loop and — critically — lets the swap
+	 *  happen without an `await` microtask. Out-of-window entries are pruned
+	 *  so the map stays bounded to ≤3 resolved chunks. */
 	private preloadChunkNeighbors(z: ChunkZoneState, date: Date): void {
 		const lo = Math.max(0, z.currentIdx - 1);
 		const hi = Math.min(z.zoomData.chunks - 1, z.currentIdx + 1);
@@ -316,13 +357,22 @@ export class ZoneRefresher {
 					this.loader.process(z.zone, z.zoom, part, date, time)
 				)
 			);
-			// Drop a failed preload from the map so a later cold-path fetch
-			// can retry instead of awaiting a permanently-rejected promise.
-			promise.catch((e) => {
-				console.warn(`zone-refresher: ${z.zone} chunk ${i} preload failed:`, e);
-				z.preloads.delete(i);
-			});
-			z.preloads.set(i, promise);
+			z.preloads.set(i, { kind: 'pending', promise });
+			promise.then(
+				(bodies) => {
+					// Only transition to 'ready' if this entry is still the live
+					// one — pruning during the fetch may have evicted it.
+					if (z.preloads.get(i)?.kind === 'pending') {
+						z.preloads.set(i, { kind: 'ready', bodies });
+					}
+				},
+				(e) => {
+					console.warn(`zone-refresher: ${z.zone} chunk ${i} preload failed:`, e);
+					// Drop the failed entry so a later cold-path fetch can retry
+					// instead of awaiting a permanently-rejected promise.
+					if (z.preloads.get(i)?.kind === 'pending') z.preloads.delete(i);
+				}
+			);
 		}
 		for (const idx of z.preloads.keys()) {
 			if (idx < lo || idx > hi) z.preloads.delete(idx);
