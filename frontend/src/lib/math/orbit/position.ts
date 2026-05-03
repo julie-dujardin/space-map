@@ -55,6 +55,26 @@ export function orbitalToThreeJS(
 }
 
 /**
+ * Return a copy of `el` with `om`/`w` advanced to `jd` using the secular
+ * drift rates. When the rates are absent or zero the input is returned as-is.
+ *
+ * Mirrors the propagation `orbitalElementsToPositionJD` does internally so
+ * curve generators (which draw a static ellipse) can render the *current*
+ * orbit plane rather than the chunk midpoint's. Curves built this way still
+ * go stale as `jd` advances — callers must re-invoke when drift accumulates.
+ */
+export function propagateOrbitAngles(el: OrbitalElements, jd: number): OrbitalElements {
+	const { omDot, wDot, om, w, epoch } = el;
+	if (!omDot && !wDot) return el;
+	const dt = jd - epoch;
+	return {
+		...el,
+		om: omDot ? om + omDot * dt : om,
+		w: wDot ? w + wDot * dt : w
+	};
+}
+
+/**
  * Convert orbital elements to Cartesian position [x, y, z] in Three.js coordinates.
  *
  * Input: elements with angles in degrees, semi-major axis in AU.
@@ -75,22 +95,20 @@ export function orbitalElementsToPositionJD(
 	el: OrbitalElements,
 	jd: number
 ): [number, number, number] | null {
-	const { a, e, i, om, w, ma, n, epoch, omDot, wDot } = el;
+	const { a, e, i, ma, n, epoch } = el;
 
 	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n)) {
 		console.warn(`NaN in orbital elements: a=${a} e=${e} ma=${ma} n=${n}`);
 		return null;
 	}
 
-	// Propagate mean anomaly from epoch to requested date
+	// Propagate mean anomaly from epoch to requested date.
 	const dt = jd - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
-	// Secular drift on the node and apsidal angles. SPICE moons get om_dot/w_dot
-	// from the Method C mean-element fit, capturing J2-driven precession that
-	// the static-angle Kepler step would miss. Other sources leave the rates
-	// undefined (or zero) so the offset reduces to no-op.
-	const omPropagated = omDot ? om + omDot * dt : om;
-	const wPropagated = wDot ? w + wDot * dt : w;
+	// Secular drift on the node and apsidal angles, shared with the orbit-curve
+	// generator. SPICE moons get om_dot/w_dot from the Method C mean-element
+	// fit; other sources leave them undefined and the helper is a no-op.
+	const { om: omPropagated, w: wPropagated } = propagateOrbitAngles(el, jd);
 
 	// Truly parabolic comets (e ≈ 1, unbound) come through parabolicToPositionJD
 	// with explicit q/tp and bypass this function. Bound orbits with e rounded
