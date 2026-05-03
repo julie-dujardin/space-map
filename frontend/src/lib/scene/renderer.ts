@@ -568,6 +568,9 @@ export class SceneRenderer {
 		for (const [parentId, moons] of this.getMoonsByParent()) {
 			const pts = this.moonPoints.get(parentId);
 			if (!pts) continue;
+			// Skip groups whose point cloud isn't shown — saves a vertex-buffer
+			// rewrite + GPU upload per parent in any non-focused system.
+			if (!this.ctx.isMoonGroupVisible(parentId)) continue;
 			const posAttr = pts.geometry.getAttribute('position');
 			const arr = posAttr.array as Float32Array;
 			const n = Math.min(moons.length, arr.length / 3);
@@ -668,7 +671,7 @@ export class SceneRenderer {
 		// which chebyshev-tracked bodies are hidden (outOfRange) exactly like
 		// SGP4 out-of-coverage bodies.
 		this.ctx.chebStore?.ensure(jd);
-		this.ctx.advanceTrailBuffers(jd);
+		this.ctx.advanceTrailBuffers(jd, this.activeTrailBuffers());
 
 		// Aggregate data-unavailability across bodies for a single summary toast —
 		// per-body toasts would be spammy at chunk boundaries. Grouping by data
@@ -794,7 +797,29 @@ export class SceneRenderer {
 		// First pass: bodies in ctx.bodiesById (barycenters → planets → moons,
 		// in dependency order). Second pass: promoted minor bodies that only
 		// live in bodyObjects, whose parents are now in positionMap.
-		for (const body of this.ctx.bodiesById.values()) computePosition(body);
+		//
+		// Skip moons outside the focused planetary system. Their meshes,
+		// orbit lines, and point-cloud groups are all gated on
+		// `isInFocusedSystem` (see context-manager.svelte.ts), so a stale
+		// position can't be visible — and switching focus pulls them back
+		// into the propagation set the same frame `focusedSystemId` flips.
+		// Non-moon bodies stay always-on: planets/barycenters parent the
+		// chained position chain, and the focused body itself is read by
+		// the focus-tracking pass below.
+		const sysId = this.ctx.focusedSystemId;
+		for (const body of this.ctx.bodiesById.values()) {
+			if (body.data.objectType === ObjectType.MOON) {
+				const inSystem = sysId !== null && body.data.parentId === sysId;
+				if (!inSystem && body.data.id !== focusedId) {
+					// Seed positionMap with the last-computed position so any
+					// child body (e.g. a sub-moon spacecraft) resolves to the
+					// stale-but-known parent location instead of origin.
+					positionMap.set(body.data.id, body.position);
+					continue;
+				}
+			}
+			computePosition(body);
+		}
 		for (const bo of this.bodyObjects.values()) {
 			if (!this.ctx.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
 		}
@@ -832,15 +857,58 @@ export class SceneRenderer {
 		// would shift every trail by focus-velocity * dt — visible as trails
 		// "preceding" the body along the focus's own orbit direction.
 		//
-		// Do NOT gate on `line.visible`: newly-built lines default to
-		// visible=false, and updateBodyVisibility (which flips them visible) runs
-		// *after* this step. A gate here would leave the line's vertex buffer at
-		// construction-time values (relative to the OLD focus basis), producing
-		// a ~1-AU-offset glitch for one frame after focus change.
+		// Skip invisible lines: GPU buffer uploads dominate this path
+		// (~6 KB × needsUpdate=true per line), and most lines are off in any
+		// view (~70+ chebyshev bodies, MAX_FULL_MOONS=20). Newly-built lines
+		// default to visible=false and would render at construction-time basis
+		// for one frame after `updateBodyVisibility` flips them on; mark them
+		// `refreshDeferred` here and {@link refreshDeferredOrbitLines} catches
+		// the transition right after visibility is updated.
 		const basis = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
-			if (line) refreshOrbitLineGeometry(bo.body, line, basis, jd);
+			if (!line) continue;
+			if (!line.visible) {
+				line.userData.refreshDeferred = true;
+				continue;
+			}
+			refreshOrbitLineGeometry(bo.body, line, basis, jd);
+			line.userData.refreshDeferred = false;
+		}
+	}
+
+	/**
+	 * Trail buffers with at least one visible orbit line consumer. Buffers are
+	 * shared between a planet and its barycenter, so the same buffer can have
+	 * two consumers — set semantics dedupe. Read by `advanceTrailBuffers` to
+	 * skip stepping idle buffers; reseed-on-large-jump in the advance loop
+	 * refills them when they next become active.
+	 */
+	private activeTrailBuffers(): Set<TrailBuffer> {
+		const active = new Set<TrailBuffer>();
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.orbitLine?.visible) continue;
+			const buf = bo.body.trailBuffer;
+			if (buf) active.add(buf);
+		}
+		return active;
+	}
+
+	/**
+	 * Catch orbit lines that were skipped by {@link updatePositions} because
+	 * they were invisible last frame but were just flipped visible by
+	 * {@link updateBodyVisibility}. Refreshes once against the current basis
+	 * + jd so the line doesn't render with a stale (or construction-time)
+	 * vertex buffer for one frame.
+	 */
+	private refreshDeferredOrbitLines(): void {
+		const basis = this.focus.focusTruePos;
+		const jd = this.lastUpdatedJd;
+		for (const bo of this.bodyObjects.values()) {
+			const line = bo.orbitLine;
+			if (!line || !line.visible || !line.userData.refreshDeferred) continue;
+			refreshOrbitLineGeometry(bo.body, line, basis, jd);
+			line.userData.refreshDeferred = false;
 		}
 	}
 
@@ -906,6 +974,11 @@ export class SceneRenderer {
 			this.renderer,
 			this._tmpV3
 		);
+
+		// Catch lines that updatePositions skipped (visible=false last frame)
+		// but updateBodyVisibility just flipped on, so they don't render at a
+		// stale basis for one frame.
+		this.refreshDeferredOrbitLines();
 
 		this.updateTextureLOD();
 

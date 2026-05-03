@@ -345,11 +345,18 @@ export class ContextManager {
 	 * (forward past one period, or any reversal) clears and re-seeds from the
 	 * new jd. Must be called after `chebStore.ensure(jd)` so the underlying
 	 * chunks are available.
+	 *
+	 * `activeBuffers` skips buffers whose body has no visible consumer this
+	 * frame (no orbit line drawn). Skipped buffers stay frozen at their last
+	 * jd; if they're skipped long enough that `dt` exceeds one period, the
+	 * existing reseed branch above will refill them when they next become
+	 * active. Pass null to advance every buffer (initial load, tests).
 	 */
-	advanceTrailBuffers(jd: number): void {
+	advanceTrailBuffers(jd: number, activeBuffers: Set<TrailBuffer> | null = null): void {
 		const store = this.chebStore;
 		if (!store) return;
 		for (const [targetId, buffer] of this.chebBuffers) {
+			if (activeBuffers && !activeBuffers.has(buffer)) continue;
 			const last = buffer.newestJd;
 			const dt = jd - last;
 			// Empty buffer, time reversed, or jump > one period: re-seed.

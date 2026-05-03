@@ -25,6 +25,7 @@ export const NUM_ORBIT_POINTS = 512;
 // Re-render the precessing-elements curve when accumulated drift on Ω or ω
 // exceeds this many degrees. At 0.01° the chord offset stays sub-body-radius
 // even for the closest Saturn moons, well below typical screen pixel scale.
+// Verified manually: 0.1 results in visible flickery offset from moons to their trails.
 const ORBIT_CURVE_REFRESH_DEG = 0.01;
 
 export function makeCircleTexture(): CanvasTexture {
