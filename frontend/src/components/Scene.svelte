@@ -68,7 +68,9 @@
 					appState.setFocus({
 						type: urlTypeFromId(body.data.id),
 						id: body.data.id,
-						name: body.data.name ?? body.data.id
+						// Empty while the localized name is still loading; the drawer
+						// fills it in via replaceFocusName once the detail bundle resolves.
+						name: body.data.name ?? ''
 					});
 				}
 			},

@@ -102,12 +102,22 @@
 		onSheetResize?.(dvh);
 	});
 
-	let displayName = $derived(
-		data?.localized?.name ??
-			data?.global?.name ??
-			body.data.name ??
-			(loading ? m.loading() : body.data.id)
-	);
+	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? body.data.name);
+	let displayName = $derived(resolvedName ?? (loading ? m.loading() : body.data.id));
+
+	// Once the detail bundle resolves, push the now-known name into the URL
+	// (and via that, the page title). On permanent failure — bundle resolved
+	// without any name — log once and fall back to the id, so the user sees
+	// *something* identifiable instead of an empty drawer header.
+	$effect(() => {
+		if (loading) return;
+		if (!resolvedName) {
+			console.warn(
+				`No name resolved for ${body.data.id} after detail fetch; using id as fallback.`
+			);
+		}
+		appState.replaceFocusName(resolvedName ?? body.data.id);
+	});
 	// Flip to the minimize button well before the maximize target distance, so
 	// that finishing a maximize fly-to lands the camera comfortably inside the
 	// minimize zone (and floating-point/animation overshoot can't leave it

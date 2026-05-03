@@ -23,12 +23,12 @@ export function parseLabels(text: string): Map<string, string> {
 	if (!text) return out;
 	for (const line of text.split('\n')) {
 		const sep = line.indexOf(US);
-		if (sep === -1) {
-			// Older/odd line — treat the whole line as an id with empty name.
-			if (line) out.set(line, '');
-		} else {
-			out.set(line.slice(0, sep), line.slice(sep + 1));
-		}
+		if (sep === -1) continue; // malformed/blank line
+		// Empty names (`{id}\x1f`) are kept on purpose: the exporter emits them
+		// for curated promoted bodies that have no Wikidata or DB name, and the
+		// renderer relies on the map's *keys* as the auto-promote set. Callers
+		// that read the value should coalesce `''` → fallback themselves.
+		out.set(line.slice(0, sep), line.slice(sep + 1));
 	}
 	return out;
 }

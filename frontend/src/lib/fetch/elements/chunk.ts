@@ -37,6 +37,17 @@ export function populateTrailBuffer(
 	}
 }
 
+/**
+ * Resolve a label to a non-empty name or null. The labels file ships
+ * `{id}\x1f` for promoted bodies with no Wikidata/DB name (the id still
+ * needs to be in the keys so the renderer auto-promotes it). Coalescing
+ * `''` to null here keeps `body.data.name` truthy-or-null, so downstream
+ * `?? fallback` chains in the drawer / page title / focus URL work.
+ */
+function pickLabel(labels: LabelMap, id: string): string | null {
+	return labels.get(id) || null;
+}
+
 function keplerianToBody(
 	cols: KeplerianColumns,
 	idx: number,
@@ -49,7 +60,7 @@ function keplerianToBody(
 	const id = idMap.get(idx)!;
 	return {
 		id,
-		name: labels.get(id) ?? null,
+		name: pickLabel(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
@@ -83,7 +94,7 @@ function parabolicToBody(
 	const id = idMap.get(idx)!;
 	return {
 		id,
-		name: labels.get(id) ?? null,
+		name: pickLabel(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
@@ -117,7 +128,7 @@ function sgp4ToBody(
 	idMap: Map<number, string>
 ): BodyData | null {
 	const id = idMap.get(idx)!;
-	const name = labels.get(id) ?? null;
+	const name = pickLabel(labels, id);
 	const satrec = buildSatrec(
 		{
 			noradCatId: cols.id[idx],

@@ -11,16 +11,17 @@ describe('parseLabels', () => {
 		expect(labels.get('naif-301')).toBe('Moon');
 	});
 
-	it('keeps an empty name when the separator is the last char', () => {
+	it('keeps empty-name entries so the id stays in the promoted set', () => {
+		// The exporter emits `{id}\x1f` for curated extras with no Wikidata/DB
+		// name; the renderer keys auto-promote on the map's keys.
 		const text = `naif--31${US}\nnaif-399${US}Earth`;
 		const labels = parseLabels(text);
 		expect(labels.get('naif--31')).toBe('');
 		expect(labels.get('naif-399')).toBe('Earth');
 	});
 
-	it('treats lines without a separator as id-only with empty name', () => {
-		const labels = parseLabels('naif-552');
-		expect(labels.get('naif-552')).toBe('');
+	it('drops lines without a separator', () => {
+		expect(parseLabels('naif-552').has('naif-552')).toBe(false);
 	});
 
 	it('returns an empty map for empty input', () => {
