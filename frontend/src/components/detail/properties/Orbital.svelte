@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
+	import { OrbitalSource } from '$lib/fetch/elements/constants';
+	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
@@ -17,6 +20,8 @@
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
+
+	const ctx = getContext<ContextManager>('ctx');
 
 	// Maps the OrbitClass enum name (`global.sbdb.class`, e.g. "MBA") to the
 	// localized label. Mirrors the OrbitClass members in
@@ -50,6 +55,16 @@
 	function orbitClassLabel(id: string): string {
 		return ORBIT_CLASS_LABEL[id]?.() ?? id;
 	}
+
+	// Localized provider names for OrbitalSource. SPICE reuses the ephemeris-kernel
+	// label (vs the PCK-orientation one) since this row describes orbits. UNKNOWN
+	// is omitted on purpose — handled by warning + null in `dataSourceLabel`.
+	const ORBIT_SOURCE_LABEL: Partial<Record<OrbitalSource, () => string>> = {
+		[OrbitalSource.HORIZONS]: m.source_horizons_name,
+		[OrbitalSource.SBDB]: m.source_sbdb_name,
+		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
+		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name
+	};
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -132,6 +147,32 @@
 			: null
 	);
 
+	let dataSourceLabel = $derived.by(() => {
+		const src = body?.data.orbitalSource;
+		if (src == null) return null;
+		const label = ORBIT_SOURCE_LABEL[src];
+		if (!label) {
+			console.warn(`[Orbital] body ${body?.data.id} has UNKNOWN orbital source`);
+			return null;
+		}
+		return label();
+	});
+
+	// Mirrors the renderer's dispatch order at renderer.ts:computePosition —
+	// Chebyshev wins over SGP4 wins over Kepler. The detail panel's altitude /
+	// orbital speed / sub-point are still derived from osculating elements (Kepler)
+	// for Chebyshev-tracked bodies, so this label can disagree with the values
+	// shown above. TODO: wire chebStore into currentState/orbiterRelPos to make
+	// the panel consistent with the scene.
+	let propagationMethodLabel = $derived.by(() => {
+		if (!orbit) return null;
+		if (body && ctx?.chebStore?.has(body.data.id)) return m.method_chebyshev();
+		if (body?.data.satrec) return m.method_sgp4();
+		if ((orbitElements?.omDot ?? 0) !== 0 || (orbitElements?.wDot ?? 0) !== 0)
+			return m.method_kepler_j2();
+		return m.method_kepler();
+	});
+
 	// Hide apogee/perigee for near-circular satellite orbits — they collapse to the altitude/semi-major axis.
 	let showApogeePerigee = $derived(orbit?.e == null || orbit.e >= 0.01);
 
@@ -156,7 +197,9 @@
 			satPeriodDays != null ||
 			elementsPeriodDays != null ||
 			epochJd != null ||
-			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null))
+			(showApogeePerigee && (celestrak?.apogee != null || celestrak?.perigee != null)) ||
+			dataSourceLabel != null ||
+			propagationMethodLabel != null
 	);
 </script>
 
@@ -323,6 +366,20 @@
 		{/if}
 		{#if epochValue}
 			<Row label={m.orbit_epoch()} value={epochValue} tooltip={m.tooltip_orbit_epoch()} />
+		{/if}
+		{#if dataSourceLabel}
+			<Row
+				label={m.orbit_data_source()}
+				value={dataSourceLabel}
+				tooltip={m.tooltip_orbit_data_source()}
+			/>
+		{/if}
+		{#if propagationMethodLabel}
+			<Row
+				label={m.propagation_method()}
+				value={propagationMethodLabel}
+				tooltip={m.tooltip_propagation_method()}
+			/>
 		{/if}
 	</Section>
 {/if}
