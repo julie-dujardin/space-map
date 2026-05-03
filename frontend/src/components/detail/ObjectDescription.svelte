@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -28,12 +30,20 @@
 		{#if needsTruncation || wikipediaUrl}
 			<div class="flex items-center gap-3 text-xs text-muted-foreground">
 				{#if needsTruncation}
-					<button class="hover:text-foreground" onclick={() => (expanded = !expanded)}>
+					<button
+						class="flex items-center gap-1 hover:text-foreground"
+						onclick={() => (expanded = !expanded)}
+					>
 						{expanded ? m.show_less() : m.read_more()}
+						{#if expanded}
+							<ChevronUpIcon class="size-3.5" />
+						{:else}
+							<ChevronDownIcon class="size-3.5" />
+						{/if}
 					</button>
 				{/if}
 				{#if wikipediaUrl}
-					<span class:ml-auto={needsTruncation}>
+					<span class="ml-auto">
 						{m.source_prefix()}
 						<a
 							href={wikipediaUrl}
