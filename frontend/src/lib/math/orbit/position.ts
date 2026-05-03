@@ -75,7 +75,7 @@ export function orbitalElementsToPositionJD(
 	el: OrbitalElements,
 	jd: number
 ): [number, number, number] | null {
-	const { a, e, i, om, w, ma, n, epoch } = el;
+	const { a, e, i, om, w, ma, n, epoch, omDot, wDot } = el;
 
 	if (!isFinite(a) || !isFinite(e) || !isFinite(ma) || !isFinite(n)) {
 		console.warn(`NaN in orbital elements: a=${a} e=${e} ma=${ma} n=${n}`);
@@ -85,6 +85,12 @@ export function orbitalElementsToPositionJD(
 	// Propagate mean anomaly from epoch to requested date
 	const dt = jd - epoch; // days since epoch
 	const M = (ma + n * dt) * DEG2RAD;
+	// Secular drift on the node and apsidal angles. SPICE moons get om_dot/w_dot
+	// from the Method C mean-element fit, capturing J2-driven precession that
+	// the static-angle Kepler step would miss. Other sources leave the rates
+	// undefined (or zero) so the offset reduces to no-op.
+	const omPropagated = omDot ? om + omDot * dt : om;
+	const wPropagated = wDot ? w + wDot * dt : w;
 
 	// Truly parabolic comets (e ≈ 1, unbound) come through parabolicToPositionJD
 	// with explicit q/tp and bypass this function. Bound orbits with e rounded
@@ -135,7 +141,7 @@ export function orbitalElementsToPositionJD(
 		return null;
 	}
 
-	return orbitalToThreeJS(xOrb, yOrb, w, i, om, el.equatorial);
+	return orbitalToThreeJS(xOrb, yOrb, wPropagated, i, omPropagated, el.equatorial);
 }
 
 /**

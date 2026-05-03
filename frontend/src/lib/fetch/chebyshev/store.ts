@@ -2,10 +2,11 @@
  * Per-zone cache of Chebyshev chunks.
  *
  * The export ships per-zone, per-time-chunk binaries under
- * `/data/v1/chebyshev/{zone}/{chunkIdx}/data.bin.gz`. The manifest groups zones
- * into two tiers — `sun` (slow movers, coarse chunks) and `moons` (fast
- * movers, fine chunks) — sharing JD bounds. A zone's chunk index for any JD is
- * `floor((jd - start_jd) / (chunk_years * 365.25))` using its tier's params.
+ * `/data/v1/chebyshev/{zone}/{chunkIdx}/data.bin.gz`. The manifest exposes
+ * `sun` (slow movers — one shared cadence across `major`/`major_asteroids`)
+ * and `moons` (per-parent zones, each with its own chunk_years). A zone's
+ * chunk index for any JD is `floor((jd - start_jd) / (chunk_years * 365.25))`
+ * using that zone's params.
  *
  * For now we eager-load the chunk containing the current JD plus its two
  * neighbors across every zone. Time scrubbing advances one chunk at a time, so
@@ -20,17 +21,30 @@ import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/chebyshev/fetc
 import { chebyshevPositionScene } from '$lib/fetch/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/chebyshev/parse';
 
-export interface ChebyshevTier {
+/** Sun tier: a flat list of zones that share one chunk cadence. */
+export interface ChebyshevSunTier {
 	chunks: number;
 	chunk_years: number;
 	zones: string[];
 }
 
+/** One per-parent moons zone. Each parent picks its own chunk cadence so a
+ * Saturn 0.125-year zone and a Pluto 2-year zone can coexist. */
+export interface ChebyshevMoonZone {
+	zone: string;
+	chunks: number;
+	chunk_years: number;
+}
+
+export interface ChebyshevMoonsTier {
+	zones: ChebyshevMoonZone[];
+}
+
 export interface ChebyshevManifest {
 	start_jd: number;
 	end_jd: number;
-	sun: ChebyshevTier;
-	moons: ChebyshevTier;
+	sun: ChebyshevSunTier;
+	moons: ChebyshevMoonsTier;
 }
 
 /** Per-zone params used by the chunk-index math. Built from the tier shape. */
@@ -74,14 +88,21 @@ export class ChebyshevStore {
 	private lastEnsuredJd: number = NaN;
 
 	constructor(manifest: ChebyshevManifest) {
-		for (const tier of [manifest.sun, manifest.moons]) {
-			const params: ChebyshevZoneParams = {
-				chunks: tier.chunks,
-				chunk_years: tier.chunk_years,
+		const sunParams: ChebyshevZoneParams = {
+			chunks: manifest.sun.chunks,
+			chunk_years: manifest.sun.chunk_years,
+			start_jd: manifest.start_jd,
+			end_jd: manifest.end_jd
+		};
+		for (const zone of manifest.sun.zones) this.zoneParams.set(zone, sunParams);
+		// Each moons zone (e.g. `moons/saturn`) carries its own cadence.
+		for (const z of manifest.moons.zones) {
+			this.zoneParams.set(z.zone, {
+				chunks: z.chunks,
+				chunk_years: z.chunk_years,
 				start_jd: manifest.start_jd,
 				end_jd: manifest.end_jd
-			};
-			for (const zone of tier.zones) this.zoneParams.set(zone, params);
+			});
 		}
 	}
 

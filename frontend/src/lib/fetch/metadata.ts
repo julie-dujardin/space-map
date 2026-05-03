@@ -31,15 +31,45 @@ export interface TimeSegmentedZoom {
 }
 
 /**
- * Per-zoom metadata. Flat zones expose `parts` directly; time-segmented zones
- * (currently only `earth`) expose `[start_date, end_date]` and assume daily
- * contiguity — callers clamp the simulated date into the range and emit a
- * YYYY-MM-DD string for the URL builder.
+ * Chunk-indexed zoom: the zone fans out as a fixed-cadence chunk grid keyed by
+ * integer index 0..chunks-1. Used for `moons` (Method C secular elements
+ * refit every `chunk_years`). The index for a JD is
+ * `floor((jd - start_jd) / (chunk_years * 365.25))`, clamped to the range.
  */
-export type ZoomMetadata = FlatZoom | TimeSegmentedZoom;
+export interface ChunkIndexedZoom {
+	chunks: number;
+	chunk_years: number;
+	start_jd: number;
+	parts: number;
+}
+
+/**
+ * Per-zoom metadata. Three shapes:
+ *   - `FlatZoom`: static elements, no time slot in the URL.
+ *   - `TimeSegmentedZoom`: ISO-date directory between zoom and part (currently
+ *     `earth`); callers emit a `YYYY-MM-DD` snapshot string.
+ *   - `ChunkIndexedZoom`: integer chunk directory between zoom and part
+ *     (currently `moons`); callers compute the index from JD.
+ */
+export type ZoomMetadata = FlatZoom | TimeSegmentedZoom | ChunkIndexedZoom;
 
 export function isTimeSegmented(zoom: ZoomMetadata): zoom is TimeSegmentedZoom {
 	return 'start_date' in zoom;
+}
+
+export function isChunkIndexed(zoom: ZoomMetadata): zoom is ChunkIndexedZoom {
+	return 'chunks' in zoom;
+}
+
+const DAYS_PER_YEAR = 365.25;
+
+/**
+ * Resolve a JD to a chunk index for a chunk-indexed zoom, clamped so boundary
+ * JDs map onto the last chunk instead of overflowing.
+ */
+export function chunkIndexForJd(zoom: ChunkIndexedZoom, jd: number): number {
+	const idx = Math.floor((jd - zoom.start_jd) / (zoom.chunk_years * DAYS_PER_YEAR));
+	return Math.max(0, Math.min(zoom.chunks - 1, idx));
 }
 
 export interface ZoneMetadata {

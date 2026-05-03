@@ -56,6 +56,10 @@ export interface KeplerianColumns extends ChunkMeta {
 	ma: Float32Array;
 	n: Float32Array;
 	radiusKm: Float32Array;
+	/** Secular drift rates (deg/day). Populated for SPICE moons via the Method C
+	 * mean-element fit; zero for sources (Horizons/SBDB) that don't fit them. */
+	omDot: Float32Array;
+	wDot: Float32Array;
 	rowCount: number;
 }
 
@@ -275,6 +279,12 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 
 	const { id, objectType, parentId, scale, offset } = parseSharedColumns(buffer, rowCount);
 	const kepler = parseKeplerianColumns(buffer, rowCount, offset);
+	let tail = kepler.offset;
+	// Columns 13–14: om_dot, w_dot (float32, deg/day). Keplerian-only — SGP4
+	// uses 13–15 for BSTAR/n-dot/n-ddot instead.
+	const omDot = new Float32Array(buffer, tail, rowCount);
+	tail += align8(rowCount * 4);
+	const wDot = new Float32Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
 		validityEnd,
@@ -297,6 +307,8 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 		ma: kepler.ma,
 		n: kepler.n,
 		radiusKm: kepler.radiusKm,
+		omDot,
+		wDot,
 		rowCount,
 		...meta
 	};

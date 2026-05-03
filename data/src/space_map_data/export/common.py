@@ -422,10 +422,10 @@ def _moons_snapshots(
 
     n_chunks = midpoints_jd.shape[0]
     # Half-width of each chunk's validity window. Uniform grid → constant.
-    half_width_jd = (
+    half_width_jd = float(
         (midpoints_jd[1] - midpoints_jd[0]) / 2 if n_chunks > 1 else 365.25 / 4
     )
-    chunk_years = (2 * float(half_width_jd)) / 365.25
+    chunk_years = (2 * half_width_jd) / 365.25
 
     # Capture each Object's untouched single-epoch elements so the iterator
     # can restore them between chunks (otherwise the previous overlay would

@@ -12,6 +12,14 @@ export interface OrbitalElements {
 	ma: number; // mean anomaly at epoch (degrees)
 	n: number; // mean motion (degrees/day)
 	epoch: number; // epoch (Julian Date)
+	/**
+	 * Secular drift rates (deg/day) applied to om and w. Populated for SPICE
+	 * moons via the Method C mean-element fit so the propagated orbit tracks
+	 * J2-driven nodal/apsidal precession. Absent (or zero) means the angles
+	 * are static — the default for Horizons/SBDB-sourced bodies.
+	 */
+	omDot?: number;
+	wDot?: number;
 	// Parabolic orbits (e=1): a/ma/n are not available; use q and tp instead
 	q?: number; // perihelion distance (AU) — only for parabolic orbits
 	tp?: number; // time of perihelion passage (Julian Date) — only for parabolic orbits

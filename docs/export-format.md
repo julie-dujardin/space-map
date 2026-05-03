@@ -94,28 +94,31 @@ Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
 
 ### Time-segmented zones
 
-Two zones segment elements over time:
+Two zones segment elements over time, with two distinct manifest shapes:
 
-- **`earth`** — one snapshot per CelesTrak day. The metadata entry carries
-  `{start_date, end_date, parts}` and the path carries a `{YYYY-MM-DD}`
-  directory between `{zoom}` and `{part}`. SGP4 accuracy degrades fast past
-  the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds it to
-  `min(epoch)−14d … max(epoch)+14d`.
+- **`earth`** — date-segmented. One snapshot per CelesTrak day. Metadata
+  entry: `{start_date, end_date, parts}`. Path:
+  `elements/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
+  past the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds
+  it to `min(epoch)−14d … max(epoch)+14d`.
 
-- **`moons`** — one snapshot per 6-month chunk over the Chebyshev coverage
-  range. Method C secular elements are re-fitted at each chunk midpoint so
-  Ω̇/ω̇/n_mean track multi-decade Kozai-Lidov-style drift on outer
-  irregulars instead of being a single linear approximation across the whole
-  range. The metadata entry carries `{start_jd, end_jd, chunks, chunk_years,
-  parts}` and the path carries a numeric `{chunk_idx}` directory between
-  `{zoom}` and `{part}`. Header `start_jd`/`end_jd` bound the chunk's
-  validity window. Whitelisted moons (those with full Chebyshev coverage)
-  ride along at every chunk with their single-epoch DB elements (constant
-  across chunks).
+- **`moons`** — chunk-indexed. One snapshot per 6-month chunk over the
+  Chebyshev coverage range. Method C secular elements are re-fitted at each
+  chunk midpoint so Ω̇/ω̇/n_mean track multi-decade Kozai-Lidov-style drift
+  on outer irregulars instead of being a single linear approximation across
+  the whole range. Metadata entry: `{chunks, chunk_years, start_jd, parts}`.
+  Path: `elements/moons/0/{chunk_idx}/{part}.bin.gz` where `chunk_idx` is a
+  decimal integer (no zero-padding needed — clients compute it numerically
+  and concatenate). Compute the chunk index from a JD with
+  `floor((jd - start_jd) / (chunk_years * 365.25))`. Header
+  `start_jd`/`end_jd` bound the chunk's validity window. Whitelisted moons
+  (those with full Chebyshev coverage) ride along at every chunk with their
+  single-epoch DB elements (constant across chunks).
 
-Clients clamp the simulated date into the zone's [start, end] window and emit
-either an ISO date or a numeric chunk index for the URL builder, depending on
-the zone.
+Clients dispatch on field presence: `chunks` ⇒ chunk-indexed,
+`start_date` ⇒ date-segmented, neither ⇒ static `{parts}`. The
+discriminator is set explicitly per zone (via the `Snapshot.chunk_years`
+field on the producer side), not inferred from label format.
 
 ## Binary elements file
 
