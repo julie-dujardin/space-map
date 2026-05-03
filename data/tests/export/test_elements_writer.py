@@ -93,7 +93,7 @@ class TestWriteElements:
             ),
         ]
         out = tmp_path / "elements.bin.gz"
-        write_elements(objects, out, OrbitalSource.horizons)
+        write_elements(objects, out, OrbitalSource.horizons, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         (
@@ -124,7 +124,7 @@ class TestWriteElements:
 
     def test_empty(self, tmp_path):
         out = tmp_path / "empty.bin.gz"
-        write_elements([], out, OrbitalSource.horizons)
+        write_elements([], out, OrbitalSource.horizons, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         _, _, _, _, _, row_count, _, id_type = _read_header(raw)
@@ -137,7 +137,12 @@ class TestWriteElements:
         """Caller-supplied start_jd/end_jd round-trip through the header."""
         out = tmp_path / "bounded.bin.gz"
         write_elements(
-            [], out, OrbitalSource.horizons, start_jd=2460000.5, end_jd=2460100.5
+            [],
+            out,
+            OrbitalSource.horizons,
+            has_localized={},
+            start_jd=2460000.5,
+            end_jd=2460100.5,
         )
         raw = gzip.decompress(out.read_bytes())
         _, _, _, start_jd, end_jd, _, _, _ = _read_header(raw)
@@ -156,7 +161,10 @@ class TestWriteElements:
         ]
         with pytest.raises(ValueError, match="does not match chunk source"):
             write_elements(
-                objects, tmp_path / "mismatch.bin.gz", OrbitalSource.horizons
+                objects,
+                tmp_path / "mismatch.bin.gz",
+                OrbitalSource.horizons,
+                has_localized={},
             )
 
     def test_id_type_mismatch_raises(self, tmp_path):
@@ -171,7 +179,12 @@ class TestWriteElements:
             ),
         ]
         with pytest.raises(ValueError, match="does not match chunk id type"):
-            write_elements(objects, tmp_path / "mixed.bin.gz", OrbitalSource.horizons)
+            write_elements(
+                objects,
+                tmp_path / "mixed.bin.gz",
+                OrbitalSource.horizons,
+                has_localized={},
+            )
 
     def test_norad_id_type_in_header(self, tmp_path):
         """An earth-satellite chunk gets the NORAD_SATCAT id-type byte."""
@@ -183,7 +196,7 @@ class TestWriteElements:
             orbital_source=OrbitalSource.celestrak,
         )
         out = tmp_path / "sat.bin.gz"
-        write_elements([obj], out, OrbitalSource.celestrak)
+        write_elements([obj], out, OrbitalSource.celestrak, has_localized={})
         raw = gzip.decompress(out.read_bytes())
         _, _, _, _, _, _, _, id_type = _read_header(raw)
         assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
@@ -197,7 +210,7 @@ class TestWriteElements:
             orbital_source=None,
         )
         out = tmp_path / "none_src.bin.gz"
-        write_elements([obj], out, OrbitalSource.spice)
+        write_elements([obj], out, OrbitalSource.spice, has_localized={})
         raw = gzip.decompress(out.read_bytes())
         _, _, _, _, _, _, source, _ = _read_header(raw)
         assert source == SOURCE_ORDINAL[OrbitalSource.spice]
@@ -215,7 +228,7 @@ class TestWriteElements:
         obj.sbdb = sbdb
 
         out = tmp_path / "radius.bin.gz"
-        write_elements([obj], out, OrbitalSource.horizons)
+        write_elements([obj], out, OrbitalSource.horizons, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         # radius_km is column 12 (last float32 column)
@@ -236,7 +249,11 @@ class TestWriteElements:
 
         out = tmp_path / "override.bin.gz"
         write_elements(
-            [obj], out, OrbitalSource.horizons, radius_km_overrides={"naif-399": 6371.0}
+            [obj],
+            out,
+            OrbitalSource.horizons,
+            radius_km_overrides={"naif-399": 6371.0},
+            has_localized={},
         )
 
         raw = gzip.decompress(out.read_bytes())
@@ -264,7 +281,7 @@ class TestWriteElements:
             orbital_source=OrbitalSource.spice,
         )
         out = tmp_path / "rates.bin.gz"
-        write_elements([moon, planet], out, OrbitalSource.spice)
+        write_elements([moon, planet], out, OrbitalSource.spice, has_localized={})
         raw = gzip.decompress(out.read_bytes())
 
         # Layout for 2 rows: cols 0-3 (8 bytes each, with padding) = 32, col 4
@@ -277,12 +294,39 @@ class TestWriteElements:
         assert om_dot_vals == pytest.approx((1.5, 0.0))
         assert w_dot_vals == pytest.approx((-0.25, 0.0))
 
+    def test_has_localized_column(self, tmp_path):
+        """The trailing has_localized uint8 column round-trips with 1 for known
+        ids and 0 for objects missing from the map."""
+        a = make_object(
+            id="naif-399",
+            naif_id=399,
+            object_type=ObjectType.planet,
+            orbital_source=OrbitalSource.horizons,
+        )
+        b = make_object(
+            id="naif-499",
+            naif_id=499,
+            object_type=ObjectType.planet,
+            orbital_source=OrbitalSource.horizons,
+        )
+        out = tmp_path / "loc.bin.gz"
+        write_elements(
+            [a, b], out, OrbitalSource.horizons, has_localized={"naif-399": True}
+        )
+        raw = gzip.decompress(out.read_bytes())
+
+        # Same Keplerian layout as the secular-drift test plus om_dot/w_dot
+        # (cols 13–14, 8 bytes each for 2 rows). has_localized is column 15.
+        offset = HEADER_SIZE + 32 + 16 + 64 + 8 + 8
+        flags = struct.unpack_from("<2B", raw, offset)
+        assert flags == (1, 0)
+
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
 
         out = tmp_path / "missing.bin.gz"
-        write_elements([obj], out, OrbitalSource.horizons)
+        write_elements([obj], out, OrbitalSource.horizons, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56
@@ -321,7 +365,7 @@ class TestWriteParabolicElements:
     def test_round_trip(self, tmp_path):
         obj = _make_parabolic_object()
         out = tmp_path / "par.bin.gz"
-        write_parabolic_elements([obj], out, OrbitalSource.sbdb)
+        write_parabolic_elements([obj], out, OrbitalSource.sbdb, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         (
@@ -345,7 +389,7 @@ class TestWriteParabolicElements:
         """q and tp are written as proper columns (not stuffed into a/ma)."""
         obj = _make_parabolic_object(sbdb_q=2.3, sbdb_tp=2460100.5)
         out = tmp_path / "par.bin.gz"
-        write_parabolic_elements([obj], out, OrbitalSource.sbdb)
+        write_parabolic_elements([obj], out, OrbitalSource.sbdb, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         # Parabolic layout for 1 row:
@@ -368,7 +412,7 @@ class TestWriteParabolicElements:
 
     def test_empty(self, tmp_path):
         out = tmp_path / "par_empty.bin.gz"
-        write_parabolic_elements([], out, OrbitalSource.sbdb)
+        write_parabolic_elements([], out, OrbitalSource.sbdb, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         _, _, format_type, _, _, row_count, _, _ = _read_header(raw)

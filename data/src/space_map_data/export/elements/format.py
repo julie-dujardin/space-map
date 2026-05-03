@@ -7,7 +7,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 5
+VERSION = 6
 HEADER_SIZE = 32  # must be 8-byte aligned
 
 # Sentinel bounds for chunks with no hard validity window (e.g. Keplerian

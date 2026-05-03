@@ -1,4 +1,4 @@
-# Export Format (v1 directory, binary v4)
+# Export Format (v1 directory, binary v6)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -10,9 +10,8 @@ v1/
   credits.json                                   (not gzipped) aggregated attribution for the /credits page
   nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
   elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements (single-snapshot zones)
-  elements/{zone}/{zoom}/{part}.loc.{lang}.gz    localized labels
   elements/earth/{zoom}/{time}/{part}.bin.gz     time-segmented Earth elements (per CelesTrak day-dir)
-  elements/earth/{zoom}/{time}/{part}.loc.{lang}.gz  localized labels for the snapshot
+  labels/{lang}.gz                               pre-interaction labels for the promoted set (one per language)
   chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
   objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                localized details, hash-bucketed
@@ -129,7 +128,7 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type    | Field     |
 |--------|---------|-----------|
 | 0      | char[4] | Magic `SMAP` |
-| 4      | uint16  | Version (5) |
+| 4      | uint16  | Version (6) |
 | 6      | uint16  | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
 | 8      | float64 | `start_jd` — chunk validity start (JD TDB), `-Infinity` = unbounded |
 | 16     | float64 | `end_jd` — chunk validity end (JD TDB, inclusive), `+Infinity` = unbounded |
@@ -169,6 +168,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 12| radius_km   | float32 | NaN     | Physical radius (km) |
 | 13| om_dot      | float32 | 0.0     | Secular drift of `om` (deg/day). Populated by SPICE for non-whitelisted moons via the Method C mean-element fit; zero for everything else |
 | 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
+| 15| has_localized | uint8 | 0       | `1` iff the object has a localized detail bundle in at least one language; `0` otherwise. Frontend gates its localized-bundle fetch on this bit so flag-0 objects don't trigger a 404 per click |
 
 Coordinate frame: ecliptic J2000.
 
@@ -216,6 +216,7 @@ don't do SGP4 can ignore columns 13–17 and treat the file as Keplerian.
 | 15 | mean_motion_ddot | float32 | —       | Second derivative of mean motion (rev/day³) |
 | 16 | element_set_no   | int32   | -1      | TLE element set number |
 | 17 | rev_at_epoch     | int32   | -1      | Revolution number at epoch |
+| 18 | has_localized    | uint8   | 0       | Same semantics as the Keplerian column 15 |
 
 `a` and `n` use the planet-scale units (km, rev/day) — the raw OMM values from
 CelesTrak, which `json2satrec` expects unconverted.
@@ -236,6 +237,7 @@ Columns 0–3 are identical to Keplerian. Julian Dates use float64; other column
 | 9 | w           | float32 | NaN     | Argument of perihelion (deg) |
 | 10| tp          | float64 | NaN     | Time of perihelion passage (Julian Date, TDB) |
 | 11| radius_km   | float32 | NaN     | Physical radius (km) |
+| 12| has_localized | uint8 | 0       | Same semantics as the Keplerian column 15 |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
 
@@ -388,21 +390,32 @@ as separate files — consumers rebuild them from the binary:
 
 Both formats use the same id-type ordinal map: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown`.
 
-## Element labels file (`.loc.{lang}.gz`)
+## Pre-interaction labels (`labels/{lang}.gz`)
 
-One line per object, same order as the binary file. Each line:
+One global file per language, listing only the *promoted* set — bodies that
+get a label rendered on first paint without waiting for the user to interact:
 
-```
-{flag}\x1f{name}
-```
+- All planets, dwarf planets, moons, stars, barycenters, and Lagrange points
+  (picked by `ObjectType`).
+- A small curated list of spacecraft / satellites / asteroids / comets in
+  [`constants/promoted.py`](../data/src/space_map_data/constants/promoted.py)
+  (Voyager 1/2, ISS, Hubble, Apophis, Halley, …).
 
-- `\x1f` = ASCII Unit Separator
-- Flag `0` = no localized entry exists — skip the localized fetch
-- Flag `1` = localized entry exists in the target language's bundle
-- Flag `2` = only English exists — fetch the English bundle instead
+The frontend fetches one of these on app start (and on locale change) and uses
+its keys as the authoritative promoted set — there's no separate frontend list.
 
-The flag selects *which tier* to fetch; the bucket id is derived from the
-object id (see [Object detail files](#object-detail-files)).
+Format: gzipped UTF-8, one `{id}\x1f{name}` line per object (`\x1f` = ASCII
+Unit Separator). Name fallback per (object, lang): localized Wikidata label →
+English Wikidata label → DB `name` → empty (the frontend then falls back to
+the id).
+
+This replaces the previous per-chunk `.loc.{lang}.gz` files. Localized detail
+bundles for clicked objects are still fetched on demand (see
+[Object detail files](#object-detail-files)) and are gated on the
+`has_localized` bit in each binary chunk row — when the bit is `0`, the
+frontend skips the fetch entirely (avoiding a 404 round-trip for objects with
+no Wikidata at all). There is no English-fallback tier: if the user's locale
+has no localized bundle for an object, no localized data is shown.
 
 ## Object detail files
 
@@ -571,8 +584,9 @@ interface CurrencyQuantity { value: number; currency: string; }
 Per-language bundles. `bucket = sha256(id)[:4] % N_{lang}` where `N_{lang}`
 is that language's count in `metadata.object_bundles`. An object appears in
 the language's bundle only when Wikidata/Wikipedia data exists for that
-language (per-row `flag` in the labels file: `1` = present, `2` = fallback
-to `en` bundle, `0` = skip).
+language. The binary `has_localized` column tells the frontend whether *any*
+language has data, gating the fetch attempt; on a 404 (locale has no bundle
+for this object) the frontend gives up — there is no English fallback tier.
 
 Each bundle is a JSON object `{ "<id>": LocalizedObjectData, ... }`. Entity
 references link to Wikipedia where available.
@@ -780,14 +794,16 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
 ## Consuming the data
 
 1. Fetch `metadata.json` to discover available chunks
-2. For each (zone, zoom, part), fetch the two element files in parallel:
-   - `.bin.gz` — parse with the binary format above; rebuild full IDs by
-     combining the header's id-type byte with column 0 per row
-   - `.loc.{lang}.gz` (labels) — split by newline, parse flag + name; index
-     matches binary row order
-3. Combine by array index to get full body records
+2. Fetch `labels/{lang}.gz` once on app start (and on locale change) to get the
+   pre-interaction label set: split by newline, parse `{id}\x1f{name}` per
+   line, build a `Map<id, name>`. The keys *are* the promoted set — there's
+   no separate frontend list.
+3. For each (zone, zoom, part), fetch `.bin.gz`; parse with the binary format
+   above and rebuild full IDs by combining the header's id-type byte with
+   column 0 per row. Read the `has_localized` byte (last column) per row to
+   know whether a localized detail bundle is worth fetching on click.
 4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
-5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Then fetch `objects/__global__/{bucket}.json.gz` and (when the label flag is non-zero) `objects/{lang}/{bucket}.json.gz` — fall back to the `en` bundle when the flag is `2`. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
+5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Always fetch `objects/__global__/{bucket}.json.gz`; additionally fetch `objects/{lang}/{bucket}.json.gz` only when the row's `has_localized` bit is `1`. On 404 (locale has no bundle for this object), give up — there's no English fallback tier. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
 6. For bodies that also appear in `metadata.json → chebyshev.{sun|moons}.zones`,
    fetch the chunk covering the current simulated time from
    `chebyshev/{zone}/{chunk}/data.bin.gz`; rebuild each body's Object ID from

@@ -1,14 +1,12 @@
-"""Write one (zone, zoom, part) chunk: binary elements + labels."""
+"""Write one (zone, zoom, part) chunk: binary elements file."""
 
 import logging
 from pathlib import Path
 
-from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.elements.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
 )
-from space_map_data.export.elements.labels import write_labels
 from space_map_data.export.elements.writer import (
     write_elements,
     write_parabolic_elements,
@@ -51,16 +49,20 @@ def write_chunk(
     zoom: int,
     part: int,
     chunk_entities: dict[str, WikidataEntity | None],
-    object_flags: dict[str, dict[str, int]],
+    has_localized: dict[str, bool],
     units: UnitConverter,
     orbital_source: OrbitalSource,
     time: str | None = None,
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> int:
-    """Write elements binary and label files for one chunk.
+    """Write the binary elements file for one chunk.
 
-    object_flags: {obj_id: {lang: 0|1|2}} as returned by build_chunk_object_data.
+    `has_localized` is keyed by object id (built once per zone by
+    :func:`build_chunk_object_data`); each row's bit goes into the binary's
+    last column so the frontend can skip detail-bundle fetches for objects
+    with no Wikidata at all.
+
     `orbital_source` is stamped in the file header; writer raises if any row
     disagrees. The chunk's id-type is also stamped in the header so the
     frontend can rebuild full `<prefix>-<numeric>` IDs from binary column 0.
@@ -116,16 +118,8 @@ def write_chunk(
         elements_path,
         orbital_source,
         radius_km_overrides or None,
+        has_localized=has_localized,
         start_jd=start_jd,
         end_jd=end_jd,
     )
-    elements_bytes = elements_path.stat().st_size
-
-    for lang in LANGUAGES:
-        labels_path = chunk_dir / f"{part}.loc.{lang}.gz"
-        lang_flags = {
-            obj.id: object_flags.get(obj.id, {}).get(lang, 0) for obj in objects
-        }
-        write_labels(objects, labels_path, lang, chunk_entities, lang_flags)
-
-    return elements_bytes
+    return elements_path.stat().st_size

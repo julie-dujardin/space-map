@@ -30,6 +30,7 @@ from space_map_data.export.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
 )
+from space_map_data.export.labels import write_global_labels
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
@@ -298,20 +299,21 @@ def _write_element_parts(
     out_dir: Path,
     zone: str,
     zoom: int,
-    flags: dict[str, dict[str, int]],
+    has_localized: dict[str, bool],
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
     time: str | None,
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> int:
-    """Chunk and write element binaries + per-language label files.
+    """Chunk and write element binary files for one (zone, zoom, snapshot).
 
-    `flags` is the prebuilt language-availability map from
-    :func:`_build_zone_object_data`; we only read each chunk's slice of it
-    here. `validity_start_jd`/`validity_end_jd` ride into the file header so
-    consumers can hide bodies outside the chunk's time window. Returns the
-    number of parts written.
+    `has_localized` is the prebuilt has-any-language-data map from
+    :func:`_build_zone_object_data`; each chunk's slice rides in the binary's
+    last column so the frontend can skip detail-bundle fetches for objects
+    with no Wikidata. `validity_start_jd`/`validity_end_jd` ride into the
+    file header so consumers can hide bodies outside the chunk's time window.
+    Returns the number of parts written.
     """
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     for part_idx in range(num_parts):
@@ -324,7 +326,7 @@ def _write_element_parts(
             zoom,
             part_idx,
             chunk_entities,
-            flags,
+            has_localized,
             units,
             _chunk_source(chunk, zone, part_idx),
             time=time,
@@ -591,7 +593,7 @@ def _export_zone(
             out_dir,
             zone,
             zoom,
-            zone_data.flags,
+            zone_data.has_localized,
             wikidata_entities,
             units,
             time=snap.label,
@@ -659,7 +661,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         all_objects.global_data.update(result.zone_data.global_data)
         for lang, by_id in result.zone_data.localized_data.items():
             all_objects.localized_data[lang].update(by_id)
-        all_objects.flags.update(result.zone_data.flags)
+        all_objects.has_localized.update(result.zone_data.has_localized)
         for snap in result.snapshots:
             object_counts[(zone, zoom, snap.time)] += snap.count
             zone_structure[zone][zoom].snapshots.append(snap)
@@ -875,6 +877,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
     )
+    write_global_labels(out_dir, all_objects)
 
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)

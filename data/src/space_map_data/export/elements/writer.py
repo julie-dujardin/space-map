@@ -89,7 +89,12 @@ def _write_keplerian_columns(
     objects: list[Object],
     radius_km_overrides: dict[str, float] | None,
 ) -> None:
-    """Write columns 0–12 shared by the Keplerian and SGP4 formats."""
+    """Write columns 0–12 shared by the Keplerian and SGP4 formats.
+
+    The trailing `has_localized` byte (last column of every format) is written
+    by the format-specific function, not here, since it sits past format-
+    specific columns.
+    """
     n = len(objects)
 
     # Column 0: id (int32) — type-specific ID from Object.id
@@ -142,6 +147,7 @@ def write_elements(
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
     *,
+    has_localized: dict[str, bool],
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
@@ -151,7 +157,9 @@ def write_elements(
     `w_dot`, float32, deg/day) carry the secular drift rates that SPICE
     populates for non-whitelisted moons via the Method C mean-element fit.
     Other sources (Horizons, SBDB) leave them as zero and the frontend's
-    Kepler propagation reduces to plain mean-anomaly drift.
+    Kepler propagation reduces to plain mean-anomaly drift. Column 15
+    (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
+    a localized object-detail bundle fetch — set when any language has data.
 
     `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
@@ -182,6 +190,8 @@ def write_elements(
             [_optional_float(o, attr) for o in objects],
         )
 
+    _write_has_localized(buf, objects, has_localized)
+
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
 
@@ -191,6 +201,7 @@ def write_sgp4_elements(
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
     *,
+    has_localized: dict[str, bool],
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
@@ -198,7 +209,8 @@ def write_sgp4_elements(
 
     Columns 0–12 match the Keplerian layout; columns 13–17 carry the extra
     TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
-    MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32).
+    MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32). Column
+    18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
 
     `start_jd`/`end_jd` bound the chunk's validity. TLEs lose accuracy fast
     past their epoch and the SGP4 propagator blows up entirely a year or two
@@ -242,6 +254,8 @@ def write_sgp4_elements(
         [_celestrak_int(o, "REV_AT_EPOCH") for o in objects],
     )
 
+    _write_has_localized(buf, objects, has_localized)
+
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
 
@@ -251,15 +265,18 @@ def write_parabolic_elements(
     orbital_source: OrbitalSource,
     radius_km_overrides: dict[str, float] | None = None,
     *,
+    has_localized: dict[str, bool],
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
     """Write a parabolic binary elements file (format_type=1).
 
-    Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp, radius_km.
-    `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
-    Raises ValueError if a required element (q, tp, e, i, om, w) is missing, or
-    if any row's `orbital_source` disagrees with the chunk source.
+    Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
+    radius_km, has_localized. `has_localized` (uint8 0/1) gates localized
+    object-detail fetches in the frontend. `start_jd`/`end_jd` bound the
+    chunk's validity; ±inf means unbounded. Raises ValueError if a required
+    element (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
+    disagrees with the chunk source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
@@ -313,6 +330,8 @@ def write_parabolic_elements(
 
     # Column 11: radius_km (float32)
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+
+    _write_has_localized(buf, objects, has_localized)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -425,6 +444,14 @@ def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
     if overrides and (r := overrides.get(o.id)):
         return r
     return MISSING_FLOAT64
+
+
+def _write_has_localized(
+    f, objects: list[Object], has_localized: dict[str, bool]
+) -> None:
+    """Write the trailing `has_localized` uint8 column (last column of every format)."""
+    n = len(objects)
+    _write_uint8(f, n, [1 if has_localized.get(o.id) else 0 for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

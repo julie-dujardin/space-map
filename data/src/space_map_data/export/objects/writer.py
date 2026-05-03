@@ -131,18 +131,20 @@ class ChunkObjectData:
 
     `global_data[obj_id]` is always populated. `localized_data[lang][obj_id]`
     is only populated when the object has content in that language (absent
-    when the frontend should fall back to English or skip entirely).
-    `flags[obj_id][lang]` is 0/1/2 as documented on `build_chunk_object_data`.
+    when the frontend should skip the localized fetch entirely).
+    `has_localized[obj_id]` is True when at least one language has data —
+    the frontend gates its localized-bundle fetch on this single bit (also
+    shipped per-row in the binary chunk).
     """
 
-    __slots__ = ("global_data", "localized_data", "flags")
+    __slots__ = ("global_data", "localized_data", "has_localized")
 
     def __init__(self):
         self.global_data: dict[str, dict] = {}
         self.localized_data: dict[str, dict[str, dict]] = {
             lang: {} for lang in LANGUAGES
         }
-        self.flags: dict[str, dict[str, int]] = {}
+        self.has_localized: dict[str, bool] = {}
 
 
 def build_chunk_object_data(
@@ -158,10 +160,9 @@ def build_chunk_object_data(
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
-    `flags[obj_id][lang]` values:
-      0 = no file written
-      1 = localized entry exists for this lang
-      2 = no localized entry, but English exists (frontend should fetch en bundle)
+    `has_localized[obj_id]` is True iff at least one language ended up with
+    a non-empty localized entry. The frontend uses this bit (shipped in the
+    binary chunk) to gate its localized-bundle fetch on click.
     """
     out = ChunkObjectData()
 
@@ -204,8 +205,7 @@ def build_chunk_object_data(
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
 
-        en_available = False
-        obj_flags: dict[str, int] = {}
+        any_localized = False
         for lang in LANGUAGES:
             wiki_summary = wiki_summaries.get(lang)
             lang_data = _build_localized(
@@ -213,12 +213,8 @@ def build_chunk_object_data(
             )
             if lang_data:
                 out.localized_data[lang][obj.id] = lang_data
-                obj_flags[lang] = 1
-                if lang == "en":
-                    en_available = True
-            else:
-                obj_flags[lang] = 2 if en_available else 0
-        out.flags[obj.id] = obj_flags
+                any_localized = True
+        out.has_localized[obj.id] = any_localized
 
     return out
 
