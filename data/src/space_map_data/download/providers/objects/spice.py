@@ -10,6 +10,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx
+import numpy as np
 import orjson
 import spiceypy
 from tqdm import tqdm
@@ -18,7 +19,11 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
 from space_map_data.models.object import ObjectType
-from space_map_data.utils.naif import MajorBody, classify_object
+from space_map_data.utils.naif import (
+    CHEBYSHEV_MOON_WHITELIST,
+    MajorBody,
+    classify_object,
+)
 from space_map_data.utils.paths import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
@@ -30,47 +35,15 @@ _NAIF_BASE_URL = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 #   .tpc (PCK) — physical constants: body radii, GM values, pole orientation & spin
 #   .tls (LSK) — leapseconds: UTC ↔ ephemeris time conversion
 
-# TODO(moons-elements-improvement): non-whitelisted moons currently ship a
-# single-epoch Keplerian row (via the standard elements export). Their Ω and ω
-# drift visibly over years from J2 precession — Phobos' nodes regress ~160°/yr,
-# inner Uranus/Neptune moons precess 30–200°/yr — and the single-epoch orbit
-# decorrelates from truth after a few years.
-#
-# The proper fix is frame-aware Chebyshev-style propagation WITHOUT shipping
-# polynomial coefficients (too big for the hundreds of skipped moons). Two
-# pieces are needed:
-#
-#  1. Extraction: augment bodies.csv (or a sibling file) with analytic J2
-#     secular rates per moon. The standard formulas,
-#         Ω̇ = -(3/2) · n · J2 · (R_eq/a)² · cos(i) / (1-e²)²
-#         ω̇ =  (3/4) · n · J2 · (R_eq/a)² · (5cos²i - 1) / (1-e²)²
-#     REQUIRE `i` to be the orbit's inclination to the parent's EQUATORIAL
-#     plane, not to the ecliptic. We extract elements in ECLIPJ2000 (ecliptic),
-#     so computing with `cos(i_ecliptic)` produces physically wrong rates —
-#     tested and found to make propagation worse than plain Kepler, worst for
-#     Uranus (98° obliquity → sign flips in cos(i)).
-#
-#  2. Frame transform: two reasonable shapes
-#     (a) Ship elements in parent-equatorial frame plus the pole orientation
-#         (already in PCK: POLE_RA/POLE_DEC/PM). Frontend rotates per-frame.
-#         Body-equatorial J2 rates plug in directly. Cleanest but changes
-#         existing-moon-elements frame semantics — touches the frontend.
-#     (b) Keep ecliptic elements; compute Ω̇/ω̇ in the body-equatorial frame,
-#         then transform the rate vector back to ecliptic with the pole.
-#         Doesn't change existing semantics but the transformation is
-#         non-trivial (the three rates — nodal, apsidal, mean-anomaly — aren't
-#         independent under a tilted-frame change; need the full osculating-
-#         element time-derivative machinery).
-#
-# J2 coefficients live in NAIF's `pck/Gravity.tpc` kernel (NOT in the standard
-# pck00011.tpc), as `BODY<n>_J2` / `BODY<n>_J3` / `BODY<n>_J4` variables.
-# Equatorial radii are in the normal PCK's `BODY<n>_RADII` (first element).
-#
-# When we pick this up: add Gravity.tpc to _FIXED_KERNELS, extract J2+R_eq +
-# the pole orientation (already extracted — see _extract_orientation) into a
-# sidecar file, rework the moons elements export to use approach (a) or (b).
-# Validate against spkezr at +1y / +5y / +20y — must beat plain Kepler by at
-# least 5× for the fast inner moons or the added complexity isn't worth it.
+# Non-whitelisted moons (those without full Chebyshev coverage) get a fitted
+# secular Keplerian model rather than an osculating snapshot — see
+# `_fit_moon_mean_elements` below. Sampling SPK over ~100 orbital periods and
+# linear-fitting Ω(t)/ω(t)/M(t) (unwrapped) automatically captures J2/J4 nodal
+# regression and apsidal precession (Phobos ~−160°/yr in equatorial frame, etc.)
+# without needing analytic Brouwer formulas. Validated as 3–13× more accurate
+# than the snapshot-Kepler baseline for outer irregulars; the close-in chaotic
+# shepherds (Pan, Atlas, Mab, …) where the linear secular model fails are
+# flagged via fit-residual warnings — those need Chebyshev to be accurate.
 
 # Fixed kernels that don't need version discovery. Values are paths relative
 # to `_NAIF_BASE_URL`, or fully-qualified URLs (if hosted elsewhere, like JPL's
@@ -81,6 +54,9 @@ _FIXED_KERNELS: dict[str, str] = {
     # etc. Only hosted at JPL's SSD (not in NAIF's generic_kernels tree); gives
     # us high-accuracy Chebyshev coverage for the major asteroids.
     "sb441-n16.bsp": "https://ssd.jpl.nasa.gov/ftp/eph/small_bodies/asteroids_de441/sb441-n16.bsp",
+    # Gravity harmonics J2/J3/J4 for the major planets — used to compute analytic
+    # secular precession rates for moons that don't get full Chebyshev coverage.
+    "Gravity.tpc": "pck/Gravity.tpc",
 }
 
 # Kernels where we pick the latest version from a directory listing.
@@ -154,8 +130,8 @@ _AU_KM = 149_597_870.7
 _CHEBYSHEV_DEFAULTS: dict[str, int | float] = {
     "start_year": 1950,
     "end_year": 2050,
-    "chunk_years": 5,  # major / major_asteroids zones
-    "moon_chunk_years": 0.5,  # moons/<parent>/<main|inner> zones
+    "chunk_years": 5,  # major / major_asteroids zones; moon zones use the
+    # per-parent cadences in `CHEBYSHEV_PARENT_CHUNK_YEARS`
 }
 
 
@@ -331,6 +307,283 @@ def _state_to_elements(
         "MA": math.degrees(m0),
         "N": n_deg_day,
     }
+
+
+# Soft threshold for "linear secular model fits this orbit". RMS angle
+# residual in arcminutes from the per-moon fit; exceeding it means the body
+# would benefit from Chebyshev coverage. The 4000′ value cleanly separates
+# the outer-irregular population (typically <2000′) from close-in chaotic
+# shepherds (>4000′, often tens of thousands) in our validation.
+_METHOD_C_RESIDUAL_WARN_ARCMIN = 4000.0
+_METHOD_C_N_ORBITS = 100
+_METHOD_C_N_SAMPLES = 200
+_METHOD_C_MAX_SPAN_S = 10 * 365.25 * 86400.0
+# Nyquist puts the alias floor at 2 samples/period; in practice `np.unwrap`
+# needs ~3-4 to reliably recover the true angle progression. Below this we
+# refuse to fit and let the caller ship plain osculating elements.
+_METHOD_C_MIN_SAMPLES_PER_PERIOD = 4.0
+
+# Time-chunked Method C config — non-whitelisted moons get one fit per
+# 6-month window centered on the chunk midpoint, so secular elements track
+# Kozai-Lidov-style multi-decade drift instead of being a single linear
+# approximation across the whole coverage range.
+_MOON_CHUNK_YEARS = 0.5
+_MOON_CHUNK_FIT_HALF_WINDOW_S = 5 * 365.25 * 86400.0  # ±5 years of samples per fit
+# Density of pre-samples for chunked fits. Coarser than the single-epoch fit
+# (5 samples/period instead of 2/period) because we slice many windows out of
+# one sample sequence, and outer irregulars have multi-hundred-day periods.
+_MOON_CHUNK_SAMPLES_PER_PERIOD = 5
+_MOON_CHUNK_MIN_SAMPLES = 200
+_MOON_CHUNK_MAX_SAMPLES = 4000
+
+_S_PER_DAY = 86400.0
+_J2000_JD_TDB = 2451545.0
+
+
+def _et_to_jd_tdb(et: float) -> float:
+    return _J2000_JD_TDB + et / _S_PER_DAY
+
+
+def _jd_to_et(jd: float) -> float:
+    return (jd - _J2000_JD_TDB) * _S_PER_DAY
+
+
+def _fit_moon_mean_elements(
+    naif_id: int, parent_naif_id: int, et: float, gm: float
+) -> tuple[dict[str, float], float] | None:
+    """Sample SPICE over ~100 orbital periods and fit secular Keplerian elements.
+
+    Returns (elements_dict, residual_rms_rad). The dict has the same keys as
+    `_state_to_elements` plus `OM_DOT` and `W_DOT` (deg/day). Mean a/e/i are
+    time-averages; (Ω₀, Ω̇), (ω₀, ω̇), (M₀, n_mean) come from a linear fit of
+    each unwrapped angle against time, automatically picking up J2/J4/etc.
+    secular drift without needing analytic formulas. The residual RMS
+    (combined Ω/ω/M fit residual, in radians) flags bodies whose orbit can't
+    be described by linear secular drift — those should be on Chebyshev.
+
+    Returns None when the fit can't be performed (degenerate orbit on any
+    sample, hyperbolic encounter, missing SPK coverage). Caller falls back to
+    a single-epoch osculating snapshot in that case.
+    """
+    period_seed = _state_to_elements(
+        list(
+            spiceypy.spkezr(
+                str(naif_id), et, "ECLIPJ2000", "NONE", str(parent_naif_id)
+            )[0]
+        ),
+        et,
+        gm,
+    )
+    if period_seed is None:
+        return None
+    a_km_seed = period_seed["A"] * _AU_KM
+    period_s = 2 * math.pi * math.sqrt(a_km_seed**3 / gm)
+    span_s = min(_METHOD_C_N_ORBITS * period_s, _METHOD_C_MAX_SPAN_S)
+
+    # Refuse to fit when the SPK sampling cadence is coarser than
+    # `_METHOD_C_MIN_SAMPLES_PER_PERIOD`. Below that, `np.unwrap` aliases full
+    # orbits down to small angle steps and the linear fit on M produces a
+    # near-zero (sometimes wrong-sign) "secular" mean motion. Caller falls
+    # through to a plain osculating snapshot with no drift, which is at least
+    # rotationally correct over short horizons. The bodies that hit this are
+    # always close-in shepherds with sub-day periods and belong on the
+    # Chebyshev whitelist anyway.
+    samples_per_period = _METHOD_C_N_SAMPLES * period_s / span_s
+    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
+        logger.warning(
+            "naif %d: %.2f samples/period below alias threshold %.0f "
+            "(period=%.3f d) — Method C disabled, falling back to osculating "
+            "snapshot. Add to CHEBYSHEV_MOON_WHITELIST for accurate tracking.",
+            naif_id,
+            samples_per_period,
+            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
+            period_s / 86400.0,
+        )
+        return None
+
+    times = np.linspace(et - span_s / 2, et + span_s / 2, _METHOD_C_N_SAMPLES)
+    a_arr = np.empty(_METHOD_C_N_SAMPLES)
+    e_arr = np.empty(_METHOD_C_N_SAMPLES)
+    i_arr = np.empty(_METHOD_C_N_SAMPLES)
+    om_arr = np.empty(_METHOD_C_N_SAMPLES)
+    w_arr = np.empty(_METHOD_C_N_SAMPLES)
+    M_arr = np.empty(_METHOD_C_N_SAMPLES)
+    for k, t in enumerate(times):
+        try:
+            st, _ = spiceypy.spkezr(
+                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_naif_id)
+            )
+            elts = spiceypy.oscelt(np.asarray(st), float(t), gm)
+        except spiceypy.exceptions.SpiceyError:
+            return None
+        rp, ecc, inc, lnode, argp, m0, _t0, _mu = elts
+        if ecc >= 1.0 or rp <= 0:
+            return None
+        a_arr[k] = rp / (1 - ecc)
+        e_arr[k] = ecc
+        i_arr[k] = inc
+        om_arr[k] = lnode
+        w_arr[k] = argp
+        M_arr[k] = m0
+
+    times_rel = times - et  # linear-fit intercept = value at et (epoch)
+    om_un = np.unwrap(om_arr)
+    w_un = np.unwrap(w_arr)
+    M_un = np.unwrap(M_arr)
+    om_dot_rad_s, om0 = np.polyfit(times_rel, om_un, 1)
+    w_dot_rad_s, w0 = np.polyfit(times_rel, w_un, 1)
+    n_rad_s, M0 = np.polyfit(times_rel, M_un, 1)
+
+    om_res = om_un - (om_dot_rad_s * times_rel + om0)
+    w_res = w_un - (w_dot_rad_s * times_rel + w0)
+    M_res = M_un - (n_rad_s * times_rel + M0)
+    res_rms = math.sqrt(
+        float(np.mean(om_res**2)) + float(np.mean(w_res**2)) + float(np.mean(M_res**2))
+    )
+
+    a_mean_km = float(np.mean(a_arr))
+    if a_mean_km <= 0 or n_rad_s <= 0:
+        return None
+
+    deg_per_day_per_rad_per_s = math.degrees(1.0) * 86400
+    return (
+        {
+            "A": a_mean_km / _AU_KM,
+            "EC": float(np.mean(e_arr)),
+            "IN": math.degrees(float(np.mean(i_arr))),
+            "OM": math.degrees(float(om0)),
+            "W": math.degrees(float(w0)),
+            "MA": math.degrees(float(M0)),
+            "N": float(n_rad_s) * deg_per_day_per_rad_per_s,
+            "OM_DOT": float(om_dot_rad_s) * deg_per_day_per_rad_per_s,
+            "W_DOT": float(w_dot_rad_s) * deg_per_day_per_rad_per_s,
+        },
+        res_rms,
+    )
+
+
+def _fit_moon_chunked_elements(
+    naif_id: int,
+    parent_naif_id: int,
+    mu: float,
+    chunk_midpoints_jd: list[float],
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Compute Method C secular elements for each chunk midpoint.
+
+    Pre-samples SPK once at high density across the full chunk range, then
+    runs a windowed linear fit at each midpoint (window =
+    `_MOON_CHUNK_FIT_HALF_WINDOW_S`). Re-using samples across chunks brings
+    the cost from ~200 spkezr calls per chunk down to ~1000 calls per body
+    total — fast enough for ~400 non-whitelisted moons.
+
+    Returns (chunk_midpoints_jd, elements_array) where elements_array has
+    shape (n_chunks, 9) with columns
+    [a_au, e, i_deg, om_deg, w_deg, ma_deg, n_deg_day, om_dot_deg_day, w_dot_deg_day].
+    Returns None if any pre-sample fails (degenerate orbit, missing coverage).
+    """
+    if not chunk_midpoints_jd:
+        return None
+    midpoints_et = [_jd_to_et(jd) for jd in chunk_midpoints_jd]
+    et_min = min(midpoints_et) - _MOON_CHUNK_FIT_HALF_WINDOW_S
+    et_max = max(midpoints_et) + _MOON_CHUNK_FIT_HALF_WINDOW_S
+
+    # Estimate orbital period from a probe sample.
+    try:
+        probe_state, _ = spiceypy.spkezr(
+            str(naif_id),
+            midpoints_et[len(midpoints_et) // 2],
+            "ECLIPJ2000",
+            "NONE",
+            str(parent_naif_id),
+        )
+    except spiceypy.exceptions.SpiceyError:
+        return None
+    probe = _state_to_elements(list(probe_state), midpoints_et[0], mu)
+    if probe is None:
+        return None
+    period_s = 2 * math.pi * math.sqrt((probe["A"] * _AU_KM) ** 3 / mu)
+
+    span_s = et_max - et_min
+    n_samples = int(
+        max(
+            _MOON_CHUNK_MIN_SAMPLES,
+            min(
+                _MOON_CHUNK_MAX_SAMPLES,
+                span_s / period_s * _MOON_CHUNK_SAMPLES_PER_PERIOD,
+            ),
+        )
+    )
+    # Same alias guard as `_fit_moon_mean_elements`. The cap at
+    # `_MOON_CHUNK_MAX_SAMPLES` means very fast moons over a 110-year span
+    # can land below Nyquist; refuse the fit so the caller ships no chunked
+    # sidecar and the body stays on its single-epoch fallback.
+    samples_per_period = n_samples * period_s / span_s
+    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
+        logger.warning(
+            "naif %d: chunked fit %.2f samples/period below alias threshold "
+            "%.0f (period=%.3f d) — skipping. Add to CHEBYSHEV_MOON_WHITELIST.",
+            naif_id,
+            samples_per_period,
+            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
+            period_s / 86400.0,
+        )
+        return None
+    times = np.linspace(et_min, et_max, n_samples)
+
+    a_arr = np.empty(n_samples)
+    e_arr = np.empty(n_samples)
+    i_arr = np.empty(n_samples)
+    om_arr = np.empty(n_samples)
+    w_arr = np.empty(n_samples)
+    M_arr = np.empty(n_samples)
+    for k, t in enumerate(times):
+        try:
+            st, _ = spiceypy.spkezr(
+                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_naif_id)
+            )
+            elts = spiceypy.oscelt(np.asarray(st), float(t), mu)
+        except spiceypy.exceptions.SpiceyError:
+            return None
+        rp, ecc, inc, lnode, argp, m0, _t0, _mu = elts
+        if ecc >= 1.0 or rp <= 0:
+            return None
+        a_arr[k] = rp / (1 - ecc)
+        e_arr[k] = ecc
+        i_arr[k] = inc
+        om_arr[k] = lnode
+        w_arr[k] = argp
+        M_arr[k] = m0
+
+    om_un = np.unwrap(om_arr)
+    w_un = np.unwrap(w_arr)
+    M_un = np.unwrap(M_arr)
+
+    deg_per_day_per_rad_per_s = math.degrees(1.0) * _S_PER_DAY
+    out = np.empty((len(midpoints_et), 9), dtype=np.float64)
+    for idx, midpoint_et in enumerate(midpoints_et):
+        mask = (times >= midpoint_et - _MOON_CHUNK_FIT_HALF_WINDOW_S) & (
+            times <= midpoint_et + _MOON_CHUNK_FIT_HALF_WINDOW_S
+        )
+        if mask.sum() < 5:
+            return None
+        t_rel = times[mask] - midpoint_et
+        om_dot, om0 = np.polyfit(t_rel, om_un[mask], 1)
+        w_dot, w0 = np.polyfit(t_rel, w_un[mask], 1)
+        n_rad_s, M0 = np.polyfit(t_rel, M_un[mask], 1)
+        a_mean_km = float(np.mean(a_arr[mask]))
+        if a_mean_km <= 0 or n_rad_s <= 0:
+            return None
+        out[idx, 0] = a_mean_km / _AU_KM
+        out[idx, 1] = float(np.mean(e_arr[mask]))
+        out[idx, 2] = math.degrees(float(np.mean(i_arr[mask])))
+        out[idx, 3] = math.degrees(float(om0))
+        out[idx, 4] = math.degrees(float(w0))
+        out[idx, 5] = math.degrees(float(M0))
+        out[idx, 6] = float(n_rad_s) * deg_per_day_per_rad_per_s
+        out[idx, 7] = float(om_dot) * deg_per_day_per_rad_per_s
+        out[idx, 8] = float(w_dot) * deg_per_day_per_rad_per_s
+
+    return np.asarray(chunk_midpoints_jd, dtype=np.float64), out
 
 
 class SpiceDownloader(Downloader):
@@ -557,6 +810,108 @@ class SpiceDownloader(Downloader):
             )
         return rows
 
+    def _extract_moon_chunks(
+        self,
+        targets: list[tuple[int, int, float]],
+        epoch_jd: float,
+        epoch: date,
+    ) -> int:
+        """Compute time-chunked Method C secular elements for non-whitelisted moons.
+
+        For each (naif_id, parent_naif_id, mu) target, fits a per-chunk linear
+        secular model on a 6-month grid spanning the configured Chebyshev
+        year range. Writes one `.npz` per moon under `moon_chunks/<naif_id>.npz`
+        with arrays `chunk_midpoints_jd` (shape (n_chunks,)) and `elements`
+        (shape (n_chunks, 9)).
+
+        Returns the per-moon chunk count (uniform across all moons).
+        """
+        cheb_cfg = _load_chebyshev_config()
+        start_year = int(cheb_cfg["start_year"])
+        end_year = int(cheb_cfg["end_year"])
+        chunk_years = _MOON_CHUNK_YEARS
+
+        n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
+        # Civil-year start as JD TDB (matches chebyshev export's `_year_to_jd`).
+        start_jd = date(start_year, 1, 1).toordinal() + 1721424.5
+        chunk_midpoints_jd = [
+            start_jd + (i + 0.5) * chunk_years * 365.25 for i in range(n_chunks)
+        ]
+
+        out_dir = self.out_dir / "moon_chunks"
+        if out_dir.exists():
+            import shutil
+
+            shutil.rmtree(out_dir)
+        out_dir.mkdir(exist_ok=True)
+
+        skipped = 0
+        for naif_id, parent_naif_id, mu in tqdm(
+            targets, desc="Moon chunks", unit="body"
+        ):
+            result = _fit_moon_chunked_elements(
+                naif_id, parent_naif_id, mu, chunk_midpoints_jd
+            )
+            if result is None:
+                skipped += 1
+                continue
+            midpoints, elements = result
+            np.savez(
+                out_dir / f"{naif_id}.npz",
+                chunk_midpoints_jd=midpoints,
+                elements=elements.astype(np.float32),
+                meta=np.array([naif_id, parent_naif_id, n_chunks], dtype=np.int64),
+            )
+
+        if skipped:
+            logger.warning(
+                "Moon chunks: %d/%d targets skipped (degenerate orbit or "
+                "missing SPK coverage in fit window)",
+                skipped,
+                len(targets),
+            )
+        # epoch_jd is unused here but kept in the signature for future
+        # chunk-grid alignment (e.g. snapping the grid to the download epoch).
+        del epoch_jd, epoch
+        return n_chunks
+
+    @staticmethod
+    def _extract_gravity_field() -> list[dict]:
+        """Extract per-body gravity harmonics + equatorial radius from the PCK pool.
+
+        Reads BODY<n>_J2/J3/J4 (from `Gravity.tpc`) and the equatorial radius
+        BODY<n>_RADII[0] (from the standard PCK). Used downstream to compute
+        analytic J2 secular precession rates Ω̇ and ω̇ for moons that don't
+        get full Chebyshev coverage.
+
+        A row is emitted for every body with at least one of J2/J3/J4 defined,
+        even if the equatorial radius is missing — the consumer decides how to
+        handle a missing R_eq.
+        """
+        naif_ids: set[int] = set()
+        for key in ("J2", "J3", "J4"):
+            for var in spiceypy.gnpool(f"BODY*_{key}", 0, 1000):
+                m = re.match(rf"BODY(-?\d+)_{key}$", var)
+                if m:
+                    naif_ids.add(int(m.group(1)))
+
+        rows = []
+        for naif_id in sorted(naif_ids):
+            row: dict[str, int | float | None] = {"naif_id": naif_id}
+            for key in ("J2", "J3", "J4"):
+                try:
+                    row[key.lower()] = float(
+                        spiceypy.bodvrd(str(naif_id), key, 1)[1][0]
+                    )
+                except spiceypy.exceptions.SpiceyError:
+                    row[key.lower()] = None
+            try:
+                row["r_eq_km"] = float(spiceypy.bodvrd(str(naif_id), "RADII", 3)[1][0])
+            except spiceypy.exceptions.SpiceyError:
+                row["r_eq_km"] = None
+            rows.append(row)
+        return rows
+
     def download(
         self, limit: int | None = None, epoch: date | None = None, **kwargs: object
     ) -> None:
@@ -637,13 +992,28 @@ class SpiceDownloader(Downloader):
             "W",
             "MA",
             "N",
+            "OM_DOT",
+            "W_DOT",
         ]
         rows: list[dict] = []
+        # Non-whitelisted moons that succeeded the single-epoch fit — collected
+        # for the time-chunked sidecar pass after bodies.csv is written.
+        moon_chunk_targets: list[tuple[int, int, float]] = []  # (naif_id, parent, mu)
 
         # Pre-fetch Sun GM — used for bodies orbiting the SSB (which has no GM)
         gm_sun = spiceypy.bodvrd("10", "GM", 1)[1][0]
 
-        _ZERO_ROW = {"A": 0, "EC": 0, "IN": 0, "OM": 0, "W": 0, "MA": 0, "N": 0}
+        _ZERO_ROW = {
+            "A": 0,
+            "EC": 0,
+            "IN": 0,
+            "OM": 0,
+            "W": 0,
+            "MA": 0,
+            "N": 0,
+            "OM_DOT": 0,
+            "W_DOT": 0,
+        }
 
         for body in tqdm(bodies, desc="SPICE elements", unit="body"):
             # SSB is the coordinate origin — no orbit to compute
@@ -764,31 +1134,63 @@ class SpiceDownloader(Downloader):
                 )
                 continue
 
-            elts = _state_to_elements(list(state), et, gm)
-            if elts is None:
-                # Planet nearly coincident with its barycenter (moons too small
-                # to shift the center of mass appreciably) — use zero elements.
-                logger.debug(
-                    "Degenerate orbit for %s (%d), using zero elements",
-                    body.name,
-                    body.naif_id,
-                )
-                elts = _ZERO_ROW
-            elif (
-                body.object_type in (ObjectType.planet, ObjectType.dwarf_planet)
+            elts: dict[str, float] | None = None
+            # For non-whitelisted moons (those that don't get full Chebyshev
+            # coverage), fit secular Keplerian elements over many orbital
+            # periods instead of taking an osculating snapshot. The fit
+            # captures J2/J4/etc. drift automatically via Ω̇/ω̇/n_mean.
+            if (
+                body.object_type == ObjectType.moon
+                and (body.name or "").lower() not in CHEBYSHEV_MOON_WHITELIST
                 and 1 <= body.parent_naif_id <= 9
-                and elts["EC"] > 0.6
             ):
-                # The single-dominant-moon mu approximation failed — likely a
-                # system with multiple comparable moons (Uranus, Jupiter) whose
-                # barycenter wobble is not well-described by a Kepler orbit.
-                logger.info(
-                    "Non-Keplerian barycenter wobble for %s (%d), zeroing (got ecc=%.3f)",
-                    body.name,
-                    body.naif_id,
-                    elts["EC"],
-                )
-                elts = _ZERO_ROW
+                fit = _fit_moon_mean_elements(body.naif_id, body.parent_naif_id, et, gm)
+                if fit is not None:
+                    elts, res_rms = fit
+                    moon_chunk_targets.append((body.naif_id, body.parent_naif_id, gm))
+                    res_arcmin = math.degrees(res_rms) * 60
+                    if res_arcmin > _METHOD_C_RESIDUAL_WARN_ARCMIN:
+                        logger.warning(
+                            "%s (%d): mean-element fit residual %.0f′ exceeds %.0f′ "
+                            "— linear secular model inadequate (likely close-in "
+                            "shepherd, co-orbital, or mean-motion resonance). "
+                            "Shipping fitted elements but ~1e5 km position error "
+                            "expected; body would benefit from Chebyshev whitelist.",
+                            body.name,
+                            body.naif_id,
+                            res_arcmin,
+                            _METHOD_C_RESIDUAL_WARN_ARCMIN,
+                        )
+                # else fall through to the snapshot path below
+
+            if elts is None:
+                snap = _state_to_elements(list(state), et, gm)
+                if snap is None:
+                    # Planet nearly coincident with its barycenter (moons too
+                    # small to shift the center of mass) — use zero elements.
+                    logger.debug(
+                        "Degenerate orbit for %s (%d), using zero elements",
+                        body.name,
+                        body.naif_id,
+                    )
+                    elts = dict(_ZERO_ROW)
+                elif (
+                    body.object_type in (ObjectType.planet, ObjectType.dwarf_planet)
+                    and 1 <= body.parent_naif_id <= 9
+                    and snap["EC"] > 0.6
+                ):
+                    # The single-dominant-moon mu approximation failed — likely
+                    # a system with multiple comparable moons (Uranus, Jupiter)
+                    # whose barycenter wobble isn't a Kepler orbit.
+                    logger.info(
+                        "Non-Keplerian barycenter wobble for %s (%d), zeroing (got ecc=%.3f)",
+                        body.name,
+                        body.naif_id,
+                        snap["EC"],
+                    )
+                    elts = dict(_ZERO_ROW)
+                else:
+                    elts = {**snap, "OM_DOT": 0.0, "W_DOT": 0.0}
 
             rows.append(
                 {
@@ -811,6 +1213,16 @@ class SpiceDownloader(Downloader):
             writer.writeheader()
             writer.writerows(rows)
         logger.info("Saved %d bodies -> %s", len(rows), out_file.name)
+
+        # Step 6b: Time-chunked Method C fits for non-whitelisted moons.
+        # One sidecar .npz per moon with per-chunk secular elements, consumed
+        # by the elements export to write per-chunk binary files.
+        chunk_count = self._extract_moon_chunks(moon_chunk_targets, epoch_jd, epoch)
+        logger.info(
+            "Time-chunked Method C fits: %d moons × ~%d chunks",
+            len(moon_chunk_targets),
+            chunk_count,
+        )
 
         # Step 7: Extract orientation data
         orientation_rows = self._extract_orientation()
@@ -864,6 +1276,22 @@ class SpiceDownloader(Downloader):
             len(nut_prec_angles),
         )
 
+        # Step 9a: Extract gravity harmonics (J2/J3/J4 + R_eq)
+        gravity_rows = self._extract_gravity_field()
+        gravity_file = self.out_dir / "gravity.csv"
+        with gravity_file.open("w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=["naif_id", "j2", "j3", "j4", "r_eq_km"],
+            )
+            writer.writeheader()
+            writer.writerows(gravity_rows)
+        logger.info(
+            "Saved %d gravity-field records -> %s",
+            len(gravity_rows),
+            gravity_file.name,
+        )
+
         # Step 9: Extract triaxial radii
         radii_rows = self._extract_radii()
         radii_file = self.out_dir / "radii.csv"
@@ -899,8 +1327,8 @@ class SpiceDownloader(Downloader):
             nut_prec_body_count=len(nut_prec_coeffs),
             nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
+            gravity_count=len(gravity_rows),
             chebyshev_body_count=cheb_count,
-            chebyshev_moon_chunk_years=cheb_cfg["moon_chunk_years"],
             chebyshev_start_year=cheb_cfg["start_year"],
             chebyshev_end_year=cheb_cfg["end_year"],
             chebyshev_chunk_years=cheb_cfg["chunk_years"],

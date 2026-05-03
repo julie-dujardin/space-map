@@ -15,11 +15,18 @@ import {
 } from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
+import { propagateOrbitAngles } from '$lib/math/orbit/position';
 import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 
 export const NUM_ORBIT_POINTS = 512;
+
+// Re-render the precessing-elements curve when accumulated drift on Ω or ω
+// exceeds this many degrees. At 0.01° the chord offset stays sub-body-radius
+// even for the closest Saturn moons, well below typical screen pixel scale.
+// Verified manually: 0.1 results in visible flickery offset from moons to their trails.
+const ORBIT_CURVE_REFRESH_DEG = 0.01;
 
 export function makeCircleTexture(): CanvasTexture {
 	const size = 32;
@@ -285,7 +292,12 @@ export function makeOrbitLine(
 		isOpenCurve = true;
 	} else {
 		if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
-		const result = orbitalElementsToCurve(orbitElements, NUM_ORBIT_POINTS);
+		// Apply secular drift on Ω/ω so the drawn ellipse matches the body's
+		// current orbit plane, not the chunk midpoint's. The curve is re-rendered
+		// from refreshOrbitLineGeometry once accumulated drift exceeds
+		// ORBIT_CURVE_REFRESH_DEG; the curveJd anchor below is its starting point.
+		const propagated = propagateOrbitAngles(orbitElements, jd);
+		const result = orbitalElementsToCurve(propagated, NUM_ORBIT_POINTS);
 		curve = result.points;
 		isOpenCurve = result.isOpen;
 	}
@@ -349,6 +361,7 @@ export function makeOrbitLine(
 	line.userData.orbitCurve = curve;
 	line.userData.isOpenCurve = isOpenCurve;
 	line.userData.useTrail = useTrail;
+	line.userData.curveJd = jd;
 	return line;
 }
 
@@ -425,6 +438,24 @@ export function refreshOrbitLineGeometry(
 	if (body.data.satrec) {
 		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_ORBIT_POINTS);
 		line.userData.orbitCurve = curve;
+	} else if (body.orbitElements) {
+		// Method-C-fit moons carry secular Ω/ω drift; the curve was built with
+		// angles current at construction time but goes stale as `jd` advances.
+		// Regenerate when the predicted angular drift since the last build
+		// exceeds ORBIT_CURVE_REFRESH_DEG — gated to avoid per-frame work for
+		// slow precessors where drift takes years to accumulate.
+		const omDot = body.orbitElements.omDot ?? 0;
+		const wDot = body.orbitElements.wDot ?? 0;
+		const maxRate = Math.max(Math.abs(omDot), Math.abs(wDot));
+		if (maxRate > 0) {
+			const curveJd = (line.userData.curveJd as number | undefined) ?? jd;
+			if (maxRate * Math.abs(jd - curveJd) > ORBIT_CURVE_REFRESH_DEG) {
+				const propagated = propagateOrbitAngles(body.orbitElements, jd);
+				curve = orbitalElementsToCurve(propagated, NUM_ORBIT_POINTS).points;
+				line.userData.orbitCurve = curve;
+				line.userData.curveJd = jd;
+			}
+		}
 	}
 
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);

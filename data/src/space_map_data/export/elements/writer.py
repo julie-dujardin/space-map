@@ -147,6 +147,12 @@ def write_elements(
 ) -> None:
     """Write a Keplerian binary elements file (format_type=0).
 
+    Columns 0–12 are the shared Keplerian layout. Columns 13–14 (`om_dot`,
+    `w_dot`, float32, deg/day) carry the secular drift rates that SPICE
+    populates for non-whitelisted moons via the Method C mean-element fit.
+    Other sources (Horizons, SBDB) leave them as zero and the frontend's
+    Kepler propagation reduces to plain mean-anomaly drift.
+
     `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
     `orbital_source` disagrees with the chunk source.
@@ -165,6 +171,17 @@ def write_elements(
         )
     )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
+
+    # Columns 13-14: float32 secular drift rates (deg/day). Sources that don't
+    # populate these (Horizons/SBDB, planets/barycenters) get a zero, which is
+    # the no-op for the frontend's `om += om_dot·dt` propagation step.
+    for attr in ("om_dot", "w_dot"):
+        _write_float32(
+            buf,
+            n,
+            [_optional_float(o, attr) for o in objects],
+        )
+
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
 
@@ -357,6 +374,17 @@ def _required_float(o: Object, attr: str) -> float:
     if val is None:
         raise ValueError(f"{o.id}: missing required element '{attr}'")
     return val
+
+
+def _optional_float(o: Object, attr: str) -> float:
+    """Get an optional float attribute, returning 0.0 when missing.
+
+    Used for secular drift columns (om_dot, w_dot) that SPICE populates only
+    for moons. Treating None as zero rather than NaN means the frontend's
+    `angle += rate·dt` step is a no-op for sources that didn't fit them.
+    """
+    val = getattr(o, attr, None)
+    return val if val is not None else 0.0
 
 
 def _required_sbdb_float(o: Object, attr: str) -> float:

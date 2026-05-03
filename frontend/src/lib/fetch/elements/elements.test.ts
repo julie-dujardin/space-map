@@ -29,6 +29,8 @@ interface KeplerianRow {
 	ma: number;
 	n: number;
 	radiusKm: number;
+	omDot?: number;
+	wDot?: number;
 }
 
 interface ParabolicRow {
@@ -88,7 +90,8 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 		align8(n) + // scale
 		n * 8 + // epochJd (f64)
 		align8(n * 4) * 7 + // a, e, i, om, w, ma, n
-		align8(n * 4); // radiusKm
+		align8(n * 4) + // radiusKm
+		align8(n * 4) * 2; // omDot, wDot
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -98,9 +101,22 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 	for (let r = 0; r < n; r++) view.setFloat64(offset + r * 8, rows[r].epochJd, true);
 	offset += n * 8;
 
-	const f32Cols: (keyof KeplerianRow)[] = ['a', 'e', 'i', 'om', 'w', 'ma', 'n', 'radiusKm'];
+	const f32Cols: (keyof KeplerianRow)[] = [
+		'a',
+		'e',
+		'i',
+		'om',
+		'w',
+		'ma',
+		'n',
+		'radiusKm',
+		'omDot',
+		'wDot'
+	];
 	for (const col of f32Cols) {
-		for (let r = 0; r < n; r++) view.setFloat32(offset + r * 4, rows[r][col] as number, true);
+		for (let r = 0; r < n; r++) {
+			view.setFloat32(offset + r * 4, (rows[r][col] as number | undefined) ?? 0, true);
+		}
 		offset += align8(n * 4);
 	}
 
@@ -271,6 +287,14 @@ describe('parseElements — Keplerian', () => {
 		expect(cols.rowCount).toBe(0);
 		expect(cols.id.length).toBe(0);
 		expect(cols.a.length).toBe(0);
+	});
+
+	it('reads secular drift rates from columns 13 and 14', () => {
+		const row: KeplerianRow = { ...PHOBOS_ROW, omDot: 0.4358, wDot: -0.4318 };
+		const buf = buildKeplerianBuffer([row]);
+		const cols = parseElements(buf) as KeplerianColumns;
+		expect(cols.omDot[0]).toBeCloseTo(0.4358, 4);
+		expect(cols.wDot[0]).toBeCloseTo(-0.4318, 4);
 	});
 });
 

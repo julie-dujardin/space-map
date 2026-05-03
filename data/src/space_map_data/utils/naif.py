@@ -5,22 +5,39 @@ from dataclasses import dataclass
 from space_map_data.models.object import ObjectType, DWARF_PLANETS
 
 
-# Moons that get full Chebyshev treatment (named bodies with surface features —
-# visualization zooms into them and needs accurate positions). All other moons
-# fall back to the cheaper mean-elements-plus-J2-rates format.
+# Moons that get full Chebyshev treatment. Two reasons a moon ends up here:
+#
+# 1. Surface-feature bodies — visualization zooms into them and the user expects
+#    pixel-accurate positions (Io, Europa, Titan, …).
+# 2. Method C (sampled mean-element fit) cannot describe their orbit because
+#    it's not Keplerian-secular: co-orbital Trojans librate around L4/L5
+#    (Helene/Polydeuces around Dione, Telesto/Calypso around Tethys) and the
+#    fit residual is hundreds of degrees. They're cheap (~38–50 KB/year) so
+#    Chebyshev pays for itself.
+#
+# Other inadequate cases (Saturn ring shepherds, inner Uranus/Neptune moons,
+# Mars/Jupiter/Saturn small inner shepherds) are flagged at extraction time
+# but not added here — each costs ~148 KB/year (0.5d floor) and ×29 of them
+# would balloon the export. They ship with Method C and accept ~1e5 km error.
 #
 # Names are matched case-insensitively against Horizons / SPICE labels.
 CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
     {
+        # Earth
         "moon",
+        # Mars
         "phobos",
         "deimos",
+        # Jupiter (regulars + inner ring shepherds)
         "io",
         "europa",
         "ganymede",
         "callisto",
         "amalthea",
         "thebe",
+        "adrastea",
+        "metis",
+        # Saturn (regulars + co-orbital Trojans + ring shepherds + Mimas-resonance)
         "mimas",
         "enceladus",
         "tethys",
@@ -32,34 +49,75 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         "phoebe",
         "janus",
         "epimetheus",
+        "helene",
+        "telesto",
+        "calypso",
+        "polydeuces",
+        "atlas",
+        "prometheus",
+        "pandora",
+        "methone",
+        "pallene",
+        "daphnis",
+        "pan",
+        "aegaeon",
+        "anthe",
+        # Uranus (regulars + close-in chaotic inner shepherds + dust-ring family).
+        # The dust-ring shepherds (Bianca..Cupid) were added after the alias
+        # guard flagged them — sub-day periods and SPK type-2 sub-intervals at
+        # the 0.5 d floor make Method C aliasing unrecoverable for them.
         "miranda",
         "ariel",
         "umbriel",
         "titania",
         "oberon",
         "puck",
+        "cordelia",
+        "ophelia",
+        "portia",
+        "belinda",
+        "bianca",
+        "cressida",
+        "desdemona",
+        "juliet",
+        "rosalind",
+        "perdita",
+        "mab",
+        "cupid",
+        # Neptune (Triton + close-in shepherds Despina/Galatea/Larissa/Hippocamp + Naiad/Thalassa)
         "triton",
         "proteus",
+        "despina",
+        "galatea",
+        "larissa",
+        "hippocamp",
+        "naiad",
+        "thalassa",
+        # Pluto small moons
         "charon",
         "nix",
+        "hydra",
+        "kerberos",
+        "styx",
     }
 )
 
-# Fast inner moons (co-orbital shepherds / close-in regulars). Routed to the
-# `moons/<parent>/inner` sub-zone — their Chebyshev ships at higher density
-# than the main moons and is worth separating so clients can skip it.
-CHEBYSHEV_INNER_MOON_NAIF_IDS: frozenset[int] = frozenset(
-    {
-        401,  # Phobos
-        402,  # Deimos
-        505,  # Amalthea
-        514,  # Thebe
-        610,  # Janus
-        611,  # Epimetheus
-        715,  # Puck
-        808,  # Proteus
-    }
-)
+# Per-parent Chebyshev chunk cadence (years). Tuned so each chunk lands at
+# roughly ~200 KB regardless of how many bodies share the parent's zone:
+# Saturn's 24 whitelisted moons are densest and need ~1.5-month chunks; Pluto's
+# five moons can comfortably pack into 2-year chunks. Earth has only the Moon
+# and inherits the slow-mover (5-year) cadence — there is nothing to chunk
+# more finely. Frontend reads this from the manifest's `moons.zones[].chunk_years`
+# so each zone can be indexed independently.
+CHEBYSHEV_PARENT_CHUNK_YEARS: dict[int, float] = {
+    3: 5.0,  # Earth (Moon only)
+    4: 0.5,  # Mars (Phobos + Deimos at 0.5d native intlen → ~149 KB/chunk)
+    5: 0.5,  # Jupiter (8 bodies, 732 KB/yr → ~366 KB/chunk)
+    6: 0.125,  # Saturn (24 bodies, ~1929 KB/yr → ~241 KB/chunk)
+    7: 0.125,  # Uranus (18 bodies, ~2034 KB/yr → ~254 KB/chunk — halved cadence to keep chunks bounded after adding 8 dust-ring shepherds)
+    8: 0.25,  # Neptune (8 bodies, 1187 KB/yr → ~297 KB/chunk)
+    9: 2.0,  # Pluto (5 bodies, 124 KB/yr → ~247 KB/chunk)
+}
 
 
 def spk_id_from_naif(

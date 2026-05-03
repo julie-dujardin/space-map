@@ -6,7 +6,13 @@ import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
-import { fetchMetadata, isTimeSegmented, snapshotDate } from '$lib/fetch/metadata';
+import {
+	chunkIndexForJd,
+	fetchMetadata,
+	isChunkIndexed,
+	isTimeSegmented,
+	snapshotDate
+} from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
 import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
@@ -288,7 +294,8 @@ export class ContextManager {
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
 
-	/** Hot-reload driver for time-segmented zones. Created at the end of load()
+	/** Hot-reload driver for time-segmented (Earth SGP4 sats) and chunk-indexed
+	 *  (moons Method-C secular elements) zones. Created at the end of load()
 	 *  once the loader and metadata are available. */
 	private refresher: ZoneRefresher | null = null;
 
@@ -324,11 +331,18 @@ export class ContextManager {
 	 * (forward past one period, or any reversal) clears and re-seeds from the
 	 * new jd. Must be called after `chebStore.ensure(jd)` so the underlying
 	 * chunks are available.
+	 *
+	 * `activeBuffers` skips buffers whose body has no visible consumer this
+	 * frame (no orbit line drawn). Skipped buffers stay frozen at their last
+	 * jd; if they're skipped long enough that `dt` exceeds one period, the
+	 * existing reseed branch above will refill them when they next become
+	 * active. Pass null to advance every buffer (initial load, tests).
 	 */
-	advanceTrailBuffers(jd: number): void {
+	advanceTrailBuffers(jd: number, activeBuffers: Set<TrailBuffer> | null = null): void {
 		const store = this.chebStore;
 		if (!store) return;
 		for (const [targetId, buffer] of this.chebBuffers) {
+			if (activeBuffers && !activeBuffers.has(buffer)) continue;
 			const last = buffer.newestJd;
 			const dt = jd - last;
 			// Empty buffer, time reversed, or jump > one period: re-seed.
@@ -388,13 +402,20 @@ export class ContextManager {
 
 	async load(date: Date, targetId?: string): Promise<void> {
 		try {
-			// Kick off moons + metadata fetches immediately, in parallel with major processing.
-			// Once metadata arrives, fire all chunk prefetches so they're cached before Phase 2 starts.
-			ChunkLoader.prefetch('moons', 0, 0);
 			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation.
 			// Fire-and-forget; rotation falls back to the first-order model until it lands.
 			loadNutPrecAngles();
+			const jd = dateToJD(date);
 			const metadataPromise = fetchMetadata();
+			// Moons prefetch is owned by ZoneRefresher (chunk-indexed branch);
+			// it warms `[idx-1, idx, idx+1]` at construction. The flat-zone case
+			// (no chunk index) is handled here as a one-shot HTTP warm.
+			metadataPromise.then((metadata) => {
+				const moonsZoom = metadata.zones.moons?.zooms[0];
+				if (moonsZoom && !isChunkIndexed(moonsZoom)) {
+					ChunkLoader.prefetch('moons', 0, 0, null);
+				}
+			});
 
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
 				const args: { zone: string; zoom: number; part: number; time: string | null }[] = [];
@@ -422,16 +443,20 @@ export class ContextManager {
 			const chebPromise = metadataPromise.then(async (metadata) => {
 				if (!metadata.chebyshev) return null;
 				const store = new ChebyshevStore(metadata.chebyshev);
-				await store.ensure(dateToJD(date)).done;
+				await store.ensure(jd).done;
 				return store;
 			});
+			const metadata = await metadataPromise;
 			this.chebStore = await chebPromise;
 			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
 
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
 			major.push(...(await loader.process('major', 0, 0, date)));
-			major.push(...(await loader.process('moons', 0, 0, date)));
+			const moonsZoom = metadata.zones.moons?.zooms[0];
+			const moonsTime =
+				moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
+			major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
 
 			this.addBodies(major);
 
@@ -550,7 +575,8 @@ export class ContextManager {
 	}
 
 	/** Per-frame hook called by the renderer when sim jd advances. Drives
-	 *  hot-reload of time-segmented zones (Earth sats today). */
+	 *  hot-reload of time-segmented zones (Earth SGP4 sats) and chunk-indexed
+	 *  zones (moons Method-C-fit elements expire each chunk). */
 	refreshTick(date: Date): void {
 		this.refresher?.tick(date);
 	}

@@ -46,6 +46,8 @@ function keplerianToBody(
 	idMap: Map<number, string>
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
+	const omDot = cols.omDot[idx];
+	const wDot = cols.wDot[idx];
 	return {
 		id: idMap.get(idx)!,
 		name: labels.get(idx) ?? null,
@@ -62,6 +64,8 @@ function keplerianToBody(
 		ma: cols.ma[idx],
 		n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
 		epoch: cols.epochJd[idx],
+		omDot: omDot !== 0 ? omDot : undefined,
+		wDot: wDot !== 0 ? wDot : undefined,
 		// Planet-scale entries come from CelesTrak TLEs, whose angles are in the
 		// Earth-equatorial (TEME) frame. System-scale entries are ecliptic J2000.
 		equatorial: isPlanetScale,
