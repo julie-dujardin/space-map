@@ -72,35 +72,71 @@ _DEFAULT_ZONE_LIMIT = 10_000
 
 
 def _build_metadata(
-    zone_structure: Mapping[str, Mapping[int, Mapping[str | None, int]]],
+    zone_structure: Mapping[str, Mapping[int, Mapping[str | None, "SnapshotResult"]]],
 ) -> dict:
     """Build the ``zones`` metadata block.
 
-    A zoom whose only key is ``None`` produces the flat ``{parts}`` shape.
-    A zoom with one or more ISO-date keys produces
-    ``{start_date, end_date, parts}`` — clients derive the snapshot date by
-    clamping the simulated date into ``[start_date, end_date]`` and assume
-    daily contiguity. Currently only ``earth`` uses the time-segmented shape.
+    Three shapes per zoom, dispatched on the snapshot stream:
+
+    * Static (single ``None`` key): ``{parts}``.
+    * Chunk-indexed (snapshots carry ``chunk_years``): ``{chunks, chunk_years,
+      start_jd, parts}``. Clients compute ``chunk_idx = floor((jd - start_jd)
+      / (chunk_years * 365.25))`` and load
+      ``elements/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz``. Used by the
+      time-chunked moons zone where Method C secular elements are re-fitted
+      per 6-month window.
+    * Date-segmented (snapshots have ISO-date labels and no ``chunk_years``):
+      ``{start_date, end_date, parts}``. Clients clamp the simulated date
+      into the window and assume daily contiguity. Used by the Earth-sat
+      zone where each snapshot is one CelesTrak GP day.
+
+    The discriminator is `Snapshot.chunk_years` — set by the producing
+    snapshot stream — not the label format. Choosing this explicitly avoids
+    fragile heuristics (e.g. zero-padding numeric labels so they sort
+    lexicographically the same as numerically).
     """
     zones = {}
     for zone, zoom_map in sorted(zone_structure.items()):
         zooms = {}
         for zoom, time_map in sorted(zoom_map.items()):
-            if list(time_map.keys()) == [None]:
-                zooms[str(zoom)] = {"parts": time_map[None]}
+            keys = list(time_map.keys())
+            if keys == [None]:
+                zooms[str(zoom)] = {"parts": time_map[None].num_parts}
+                continue
+            snaps = [time_map[k] for k in keys if k is not None]
+            parts_set = {s.num_parts for s in snaps}
+            if len(parts_set) != 1:
+                raise ValueError(
+                    f"{zone} zoom={zoom} has uneven parts across snapshots "
+                    f"{parts_set}; the slim metadata shape assumes uniform parts"
+                )
+            parts = next(iter(parts_set))
+            chunk_years_set = {s.chunk_years for s in snaps}
+            if len(chunk_years_set) > 1:
+                raise ValueError(
+                    f"{zone} zoom={zoom} mixes chunk_years values "
+                    f"{chunk_years_set}; one snapshot stream must use a single "
+                    f"cadence"
+                )
+            chunk_years = next(iter(chunk_years_set))
+            if chunk_years is not None:
+                # Chunk-indexed: derive start_jd from the earliest snapshot's
+                # validity window. Sorting by validity_start_jd avoids relying
+                # on label format.
+                snaps_sorted = sorted(snaps, key=lambda s: s.validity_start_jd)
+                zooms[str(zoom)] = {
+                    "chunks": len(snaps_sorted),
+                    "chunk_years": chunk_years,
+                    "start_jd": snaps_sorted[0].validity_start_jd,
+                    "parts": parts,
+                }
             else:
-                dated = sorted(t for t in time_map if t is not None)
-                parts_set = {time_map[t] for t in dated}
-                if len(parts_set) != 1:
-                    raise ValueError(
-                        f"{zone} zoom={zoom} has uneven parts across dates "
-                        f"{parts_set}; the slim metadata shape assumes "
-                        f"uniform parts"
-                    )
+                # Date-segmented: labels are ISO dates, sort lexicographically.
+                dated = sorted(k for k in keys if k is not None)
                 zooms[str(zoom)] = {
                     "start_date": dated[0],
                     "end_date": dated[-1],
-                    "parts": next(iter(parts_set)),
+                    "parts": parts,
                 }
         zones[zone] = {"zooms": zooms}
     return {"zones": zones}
@@ -288,12 +324,17 @@ class Snapshot:
     untimed zones, an ISO date for Earth sats, a numeric index for the
     time-chunked moons zone. `validity_start_jd` / `validity_end_jd` go into
     the binary header so consumers know when to draw and propagate.
+    `chunk_years` is set by zones that fan out as a fixed-cadence chunk grid
+    (moons) and unset for date-segmented zones (Earth) — it tells the
+    manifest builder to emit a chunk-indexed shape rather than a date-range
+    shape, regardless of label format.
     """
 
     label: str | None
     objects: list[Object]
     validity_start_jd: float = UNBOUNDED_START_JD
     validity_end_jd: float = UNBOUNDED_END_JD
+    chunk_years: float | None = None
 
 
 @dataclass
@@ -384,6 +425,7 @@ def _moons_snapshots(
     half_width_jd = (
         (midpoints_jd[1] - midpoints_jd[0]) / 2 if n_chunks > 1 else 365.25 / 4
     )
+    chunk_years = (2 * float(half_width_jd)) / 365.25
 
     # Capture each Object's untouched single-epoch elements so the iterator
     # can restore them between chunks (otherwise the previous overlay would
@@ -446,6 +488,7 @@ def _moons_snapshots(
                 objects=kept,
                 validity_start_jd=mid - half_width_jd,
                 validity_end_jd=mid + half_width_jd,
+                chunk_years=chunk_years,
             )
 
     return ZoneSnapshots(base=base, iterate=iterate)
@@ -453,11 +496,20 @@ def _moons_snapshots(
 
 @dataclass
 class SnapshotResult:
-    """Per-snapshot stats produced by :func:`_export_zone`."""
+    """Per-snapshot stats produced by :func:`_export_zone`.
+
+    `chunk_years` carries through from the source `Snapshot` so the manifest
+    builder can choose a chunk-indexed shape (`{chunks, chunk_years, …}`)
+    versus the date-segmented shape (`{start_date, end_date, …}`) without
+    parsing label strings — one explicit field, set per snapshot.
+    """
 
     time: str | None
     count: int
     num_parts: int
+    chunk_years: float | None = None
+    validity_start_jd: float = UNBOUNDED_START_JD
+    validity_end_jd: float = UNBOUNDED_END_JD
 
 
 @dataclass
@@ -533,6 +585,9 @@ def _export_zone(
                 time=snap.label,
                 count=len(snap.objects),
                 num_parts=num_parts,
+                chunk_years=snap.chunk_years,
+                validity_start_jd=snap.validity_start_jd,
+                validity_end_jd=snap.validity_end_jd,
             )
         )
     return result
@@ -576,9 +631,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     celestrak_days = load_all_days(DOWNLOAD_DIR)
 
-    zone_structure: defaultdict[str, defaultdict[int, dict[str | None, int]]] = (
-        defaultdict(lambda: defaultdict(dict))
-    )
+    zone_structure: defaultdict[
+        str, defaultdict[int, dict[str | None, SnapshotResult]]
+    ] = defaultdict(lambda: defaultdict(dict))
     object_counts: defaultdict[tuple[str, int, str | None], int] = defaultdict(int)
     all_objects = ChunkObjectData()
 
@@ -589,7 +644,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         all_objects.flags.update(result.zone_data.flags)
         for snap in result.snapshots:
             object_counts[(zone, zoom, snap.time)] += snap.count
-            zone_structure[zone][zoom][snap.time] = snap.num_parts
+            zone_structure[zone][zoom][snap.time] = snap
             if snap.time is None:
                 logger.info(
                     "  %s zoom=%d: %d objects, %d parts",
