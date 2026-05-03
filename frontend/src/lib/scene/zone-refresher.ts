@@ -1,47 +1,82 @@
 /**
- * Hot-reload driver for time-segmented zones (currently only `earth`). Watches
- * the sim clock and, when the desired snapshot date for a zone diverges from
- * the loaded one, refetches that zone's chunks and reconciles them into the
- * ContextManager's per-zone body buckets.
+ * Hot-reload driver for zones whose data is sliced by sim time. Two slicings:
+ *   - **time-segmented** (`earth` SGP4 sats): one chunk set per ISO `YYYY-MM-DD`
+ *     snapshot; the desired snapshot is chosen by clamping the sim date into
+ *     the zoom's date range.
+ *   - **chunk-indexed** (`moons` Method-C secular elements): one chunk set per
+ *     `chunk_years` window starting at `start_jd`; the desired index is
+ *     `floor((jd - start_jd) / (chunk_years * 365.25))`.
  *
- * Throttle: at most one load in flight, and at most one load *started* per
- * `MIN_LOAD_INTERVAL_MS`. Latest-target-wins is implicit — `tick()` recomputes
- * the desired snapshot every call, so whatever date the user has scrubbed to
- * by the time the slot opens is what gets loaded.
+ * On each `tick(date)`, every registered zone checks whether the desired slice
+ * has diverged from what's resident; if so, it fetches the new slice and
+ * reconciles into the ContextManager. Reconciliation differs by zone type:
+ *   - time-segmented: bucket by parentId in `spacecraftByParent` (membership
+ *     can change across snapshots — added/removed satellites).
+ *   - chunk-indexed: mutate existing bodies in `bodiesById` in place by id
+ *     (membership is stable across chunks; only the orbital elements change).
  *
- * Step 1 only handles spacecraft buckets (`spacecraftByParent`), because the
- * only time-segmented zone today is `earth` and it ships SGP4 satellites. The
- * code paths for asteroid zones are left as TODOs.
+ * Throttling/concurrency is per-zone:
+ *   - One load in flight at a time per zone (`inFlight`).
+ *   - Time-segmented zones additionally rate-limit load *starts* to
+ *     `MIN_LOAD_INTERVAL_MS` to avoid hammering during fast clock drag.
+ *   - Chunk-indexed zones aren't rate-limited beyond single-flight: stale
+ *     Method-C elements extrapolate wildly past their fit window, so any
+ *     skipped boundary crossing produces visibly broken positions until the
+ *     next load completes.
+ *
+ * Chunk-indexed zones also pre-warm the HTTP cache for `[idx-1, idx, idx+1]`
+ * at construction and after each successful swap, so a boundary crossing in
+ * either direction hits a cached binary. The fetch is still async (decompress
+ * + parse + bodies build), so a small flicker can remain — fully eliminating
+ * it would require either pre-loading the parsed bodies or gating the
+ * propagator on validity.
  */
 
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import {
+	chunkIndexForJd,
+	isChunkIndexed,
 	isTimeSegmented,
 	snapshotDate,
+	type ChunkIndexedZoom,
 	type Metadata,
 	type TimeSegmentedZoom
 } from '$lib/fetch/metadata';
-import type { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { dateToJD } from '$lib/format/date';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 
 const MIN_LOAD_INTERVAL_MS = 2000;
 
-interface ZoneState {
+interface BaseZoneState {
 	zone: string;
 	zoom: number;
 	parts: number;
+	inFlight: Promise<void> | null;
+}
+
+interface TimeZoneState extends BaseZoneState {
+	kind: 'time';
 	zoomData: TimeSegmentedZoom;
 	/** Snapshot date string of the currently loaded data. */
 	currentTime: string;
 	/** Bucket keys this zone wrote into on the last load — used to clean up
 	 *  buckets that vanish in a newer snapshot. Empty until the first refresh. */
 	knownBuckets: Set<string>;
+	lastLoadStartMs: number;
 }
+
+interface ChunkZoneState extends BaseZoneState {
+	kind: 'chunk';
+	zoomData: ChunkIndexedZoom;
+	/** Index of the chunk currently resident in `ctx.bodiesById`. */
+	currentIdx: number;
+}
+
+type ZoneState = TimeZoneState | ChunkZoneState;
 
 export class ZoneRefresher {
 	private readonly zones: ZoneState[] = [];
-	private inFlight: Promise<void> | null = null;
-	private lastLoadStartMs = -Infinity;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -49,40 +84,66 @@ export class ZoneRefresher {
 		private readonly loader: ChunkLoader,
 		initialDate: Date
 	) {
+		const initialJd = dateToJD(initialDate);
 		for (const [zone, zoneData] of Object.entries(metadata.zones)) {
 			for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
-				if (!isTimeSegmented(zoomData)) continue;
-				this.zones.push({
-					zone,
-					zoom: Number(zoomStr),
-					parts: Math.min(zoomData.parts, 20),
-					zoomData,
-					currentTime: snapshotDate(zoomData, initialDate),
-					knownBuckets: new Set()
-				});
+				const zoom = Number(zoomStr);
+				const parts = Math.min(zoomData.parts, 20);
+				if (isTimeSegmented(zoomData)) {
+					this.zones.push({
+						kind: 'time',
+						zone,
+						zoom,
+						parts,
+						zoomData,
+						currentTime: snapshotDate(zoomData, initialDate),
+						knownBuckets: new Set(),
+						inFlight: null,
+						lastLoadStartMs: -Infinity
+					});
+				} else if (isChunkIndexed(zoomData)) {
+					const state: ChunkZoneState = {
+						kind: 'chunk',
+						zone,
+						zoom,
+						parts,
+						zoomData,
+						currentIdx: chunkIndexForJd(zoomData, initialJd),
+						inFlight: null
+					};
+					this.zones.push(state);
+					this.prefetchChunkNeighbors(state, state.currentIdx);
+				}
 			}
 		}
 	}
 
 	/** Call from the renderer's per-frame loop on jd change. Cheap when nothing
-	 *  needs reloading: a couple of date ops and string compares. */
+	 *  needs reloading: a couple of date ops and string/number compares. */
 	tick(date: Date): void {
-		if (this.inFlight) return;
-		const nowMs = performance.now();
-		if (nowMs - this.lastLoadStartMs < MIN_LOAD_INTERVAL_MS) return;
-
-		for (const z of this.zones) {
-			const target = snapshotDate(z.zoomData, date);
-			if (target === z.currentTime) continue;
-			this.lastLoadStartMs = nowMs;
-			this.inFlight = this.load(z, target, date).finally(() => {
-				this.inFlight = null;
-			});
-			return;
+		const jd = dateToJD(date);
+		for (const state of this.zones) {
+			if (state.inFlight) continue;
+			if (state.kind === 'time') {
+				const target = snapshotDate(state.zoomData, date);
+				if (target === state.currentTime) continue;
+				const nowMs = performance.now();
+				if (nowMs - state.lastLoadStartMs < MIN_LOAD_INTERVAL_MS) continue;
+				state.lastLoadStartMs = nowMs;
+				state.inFlight = this.loadTime(state, target, date).finally(() => {
+					state.inFlight = null;
+				});
+			} else {
+				const target = chunkIndexForJd(state.zoomData, jd);
+				if (target === state.currentIdx) continue;
+				state.inFlight = this.loadChunk(state, target, date).finally(() => {
+					state.inFlight = null;
+				});
+			}
 		}
 	}
 
-	private async load(z: ZoneState, time: string, date: Date): Promise<void> {
+	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {
 		const fromTime = z.currentTime;
 		try {
 			const chunks = await Promise.all(
@@ -164,6 +225,66 @@ export class ZoneRefresher {
 			);
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);
+		}
+	}
+
+	private async loadChunk(z: ChunkZoneState, target: number, date: Date): Promise<void> {
+		const previous = z.currentIdx;
+		// Optimistic update so a re-entrant tick during the fetch sees this
+		// target as already-being-loaded and doesn't double-fire.
+		z.currentIdx = target;
+		const time = String(target);
+		try {
+			const chunks = await Promise.all(
+				Array.from({ length: z.parts }, (_, part) =>
+					this.loader.process(z.zone, z.zoom, part, date, time)
+				)
+			);
+
+			let updated = 0;
+			let added = 0;
+			for (const chunk of chunks) {
+				this.ctx.recordOrbitSources(chunk);
+				for (const fresh of chunk) {
+					const existing = this.ctx.bodiesById.get(fresh.data.id);
+					if (!existing) {
+						// New body in this chunk — register it. Rare in practice (moons
+						// membership is stable across Method-C chunks) but cheap.
+						this.ctx.addBodies([fresh]);
+						this.ctx.majorBodies.push(fresh);
+						added++;
+						continue;
+					}
+					existing.data = fresh.data;
+					existing.position = fresh.position;
+					if (fresh.orbitElements !== undefined) existing.orbitElements = fresh.orbitElements;
+					if (fresh.orbitCenter !== undefined) existing.orbitCenter = fresh.orbitCenter;
+					updated++;
+				}
+			}
+			this.ctx.minorBodyVersion++;
+			console.log(
+				`zone-refresher: ${z.zone} chunk ${previous} → ${target} (+${added} ~${updated})`
+			);
+			this.prefetchChunkNeighbors(z, target);
+		} catch (e) {
+			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
+			z.currentIdx = previous;
+		}
+	}
+
+	/** Warm the HTTP cache for `[idx-1, idx, idx+1]` (clamped) on a chunk-indexed
+	 *  zone so the next boundary crossing in either direction hits a cached
+	 *  binary instead of a cold fetch. Past the boundary the J2 secular drift
+	 *  extrapolates from a now-invalid epoch, so any fetch latency shows up as
+	 *  moons flying off-screen. */
+	private prefetchChunkNeighbors(z: ChunkZoneState, idx: number): void {
+		const lo = Math.max(0, idx - 1);
+		const hi = Math.min(z.zoomData.chunks - 1, idx + 1);
+		for (let i = lo; i <= hi; i++) {
+			for (let part = 0; part < z.parts; part++) {
+				ChunkLoader.prefetch(z.zone, z.zoom, part, String(i));
+			}
 		}
 	}
 }

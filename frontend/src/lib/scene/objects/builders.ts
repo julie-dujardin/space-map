@@ -450,13 +450,6 @@ export function refreshOrbitLineGeometry(
 		if (maxRate > 0) {
 			const curveJd = (line.userData.curveJd as number | undefined) ?? jd;
 			if (maxRate * Math.abs(jd - curveJd) > ORBIT_CURVE_REFRESH_DEG) {
-				console.log(
-					'Refreshing stale orbit curve for',
-					body.data.name,
-					'jd drift =',
-					jd - curveJd,
-					'days'
-				);
 				const propagated = propagateOrbitAngles(body.orbitElements, jd);
 				curve = orbitalElementsToCurve(propagated, NUM_ORBIT_POINTS).points;
 				line.userData.orbitCurve = curve;

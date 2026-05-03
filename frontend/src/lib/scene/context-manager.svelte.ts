@@ -11,8 +11,7 @@ import {
 	fetchMetadata,
 	isChunkIndexed,
 	isTimeSegmented,
-	snapshotDate,
-	type ChunkIndexedZoom
+	snapshotDate
 } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
@@ -295,23 +294,10 @@ export class ContextManager {
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
 
-	/** Hot-reload driver for time-segmented zones. Created at the end of load()
+	/** Hot-reload driver for time-segmented (Earth SGP4 sats) and chunk-indexed
+	 *  (moons Method-C secular elements) zones. Created at the end of load()
 	 *  once the loader and metadata are available. */
 	private refresher: ZoneRefresher | null = null;
-
-	/** Loader retained from `load()` so the per-frame moons-chunk hot-reload can
-	 *  refetch on chunk-boundary crossings without re-running the full pipeline. */
-	private chunkLoader: ChunkLoader | null = null;
-	/** Moons zoom-0 metadata captured at load time, used by the hot-reload tick
-	 *  to compute the desired chunk index from the current sim JD. Null when the
-	 *  manifest doesn't ship a chunk-indexed moons zone. */
-	private moonsZoom: ChunkIndexedZoom | null = null;
-	/** Chunk index of the moons elements currently resident in `bodiesById`.
-	 *  -1 means no moons chunk has been loaded yet. */
-	private moonsChunkIdx = -1;
-	/** True while a moons-chunk reload is in flight — guards against
-	 *  re-entrant kicks while the previous fetch is still resolving. */
-	private moonsReloadInFlight = false;
 
 	// --- Visibility state (plain mutable: written from useTask every frame) ---
 	/**
@@ -421,14 +407,13 @@ export class ContextManager {
 			loadNutPrecAngles();
 			const jd = dateToJD(date);
 			const metadataPromise = fetchMetadata();
-			// Once metadata arrives we know moons' chunk_years/start_jd and can
-			// resolve the chunk index for the simulated date; moons prefetch has
-			// to wait for that.
+			// Moons prefetch is owned by ZoneRefresher (chunk-indexed branch);
+			// it warms `[idx-1, idx, idx+1]` at construction. The flat-zone case
+			// (no chunk index) is handled here as a one-shot HTTP warm.
 			metadataPromise.then((metadata) => {
 				const moonsZoom = metadata.zones.moons?.zooms[0];
-				if (moonsZoom) {
-					const time = isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
-					ChunkLoader.prefetch('moons', 0, 0, time);
+				if (moonsZoom && !isChunkIndexed(moonsZoom)) {
+					ChunkLoader.prefetch('moons', 0, 0, null);
 				}
 			});
 
@@ -464,17 +449,13 @@ export class ContextManager {
 			const metadata = await metadataPromise;
 			this.chebStore = await chebPromise;
 			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
-			this.chunkLoader = loader;
 
 			// Phase 1: majors — load, register, and start rendering immediately
 			const major: PositionedBody[] = [];
 			major.push(...(await loader.process('major', 0, 0, date)));
 			const moonsZoom = metadata.zones.moons?.zooms[0];
-			if (moonsZoom && isChunkIndexed(moonsZoom)) {
-				this.moonsZoom = moonsZoom;
-				this.moonsChunkIdx = chunkIndexForJd(moonsZoom, jd);
-			}
-			const moonsTime = this.moonsZoom ? String(this.moonsChunkIdx) : null;
+			const moonsTime =
+				moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
 			major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
 
 			this.addBodies(major);
@@ -594,53 +575,10 @@ export class ContextManager {
 	}
 
 	/** Per-frame hook called by the renderer when sim jd advances. Drives
-	 *  hot-reload of time-segmented zones (Earth sats today) and moons
-	 *  chunk-boundary crossings (Method-C-fit elements expire each chunk). */
+	 *  hot-reload of time-segmented zones (Earth SGP4 sats) and chunk-indexed
+	 *  zones (moons Method-C-fit elements expire each chunk). */
 	refreshTick(date: Date): void {
 		this.refresher?.tick(date);
-		this.refreshMoonsChunk(date);
-	}
-
-	/** When the sim date crosses into a new moons chunk, refetch the new
-	 *  chunk's elements and mutate each existing moon's `data`/`position` in
-	 *  place so the renderer's references stay live. Membership is stable
-	 *  across chunks (same set of bodies, different mean elements per epoch),
-	 *  so a missing-from-fresh-chunk row is logged but not removed. */
-	private refreshMoonsChunk(date: Date): void {
-		if (!this.moonsZoom || !this.chunkLoader || this.moonsReloadInFlight) return;
-		const target = chunkIndexForJd(this.moonsZoom, dateToJD(date));
-		if (target === this.moonsChunkIdx) return;
-		this.moonsReloadInFlight = true;
-		const previous = this.moonsChunkIdx;
-		this.moonsChunkIdx = target;
-		this.chunkLoader
-			.process('moons', 0, 0, date, String(target))
-			.then((bodies) => {
-				this.recordOrbitSources(bodies);
-				for (const fresh of bodies) {
-					const existing = this.bodiesById.get(fresh.data.id);
-					if (!existing) {
-						// New body in this chunk — register it. Rare in practice
-						// (moons membership is stable) but cheap to handle.
-						this.addBodies([fresh]);
-						this.majorBodies.push(fresh);
-						continue;
-					}
-					existing.data = fresh.data;
-					existing.position = fresh.position;
-					if (fresh.orbitElements !== undefined) existing.orbitElements = fresh.orbitElements;
-					if (fresh.orbitCenter !== undefined) existing.orbitCenter = fresh.orbitCenter;
-				}
-				this.minorBodyVersion++;
-				console.log(`moons chunk ${previous} → ${target} (${bodies.length} rows)`);
-			})
-			.catch((e) => {
-				console.warn(`moons chunk reload failed (${previous} → ${target}):`, e);
-				this.moonsChunkIdx = previous;
-			})
-			.finally(() => {
-				this.moonsReloadInFlight = false;
-			});
 	}
 
 	addBodies(bodies: PositionedBody[]): void {
