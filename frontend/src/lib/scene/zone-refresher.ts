@@ -8,28 +8,34 @@
  *     `floor((jd - start_jd) / (chunk_years * 365.25))`.
  *
  * On each `tick(date)`, every registered zone checks whether the desired slice
- * has diverged from what's resident; if so, it fetches the new slice and
+ * has diverged from what's resident; if so, it loads the new slice and
  * reconciles into the ContextManager. Reconciliation differs by zone type:
  *   - time-segmented: bucket by parentId in `spacecraftByParent` (membership
  *     can change across snapshots — added/removed satellites).
  *   - chunk-indexed: mutate existing bodies in `bodiesById` in place by id
  *     (membership is stable across chunks; only the orbital elements change).
  *
- * Throttling/concurrency is per-zone:
- *   - One load in flight at a time per zone (`inFlight`).
- *   - Time-segmented zones additionally rate-limit load *starts* to
- *     `MIN_LOAD_INTERVAL_MS` to avoid hammering during fast clock drag.
- *   - Chunk-indexed zones aren't rate-limited beyond single-flight: stale
- *     Method-C elements extrapolate wildly past their fit window, so any
- *     skipped boundary crossing produces visibly broken positions until the
- *     next load completes.
+ * Pre-loading strategies (the asymmetry exists because off-window propagation
+ * behaves very differently):
+ *   - Chunk-indexed: **full preload** — `loader.process()` is fired ahead for
+ *     `[idx-1, idx+1]` and the resolved `PositionedBody[][]` is held in
+ *     `state.preloads`. On a boundary crossing the swap awaits this already-
+ *     resolved promise, so the new elements land in the same microtask and
+ *     no frame propagates with stale Method-C elements. (Stale Method-C
+ *     extrapolates ~chunk_years of secular drift in `om`/`w`, sending moons
+ *     to nonsense positions — visible as "moons disappear".)
+ *   - Time-segmented: **HTTP-cache prefetch** of `[prev-day, next-day]` only.
+ *     Earth has 20 parts × ~25K rows per snapshot; full preload would cost
+ *     ~hundreds of MB. SGP4 propagators degrade gracefully past TLE epoch
+ *     so the visible artifact is "sats lag behind" for the fetch+decode
+ *     window, not catastrophic disappearance — HTTP warm is enough to
+ *     shorten that window without holding parsed copies in memory.
  *
- * Chunk-indexed zones also pre-warm the HTTP cache for `[idx-1, idx, idx+1]`
- * at construction and after each successful swap, so a boundary crossing in
- * either direction hits a cached binary. The fetch is still async (decompress
- * + parse + bodies build), so a small flicker can remain — fully eliminating
- * it would require either pre-loading the parsed bodies or gating the
- * propagator on validity.
+ * Concurrency is per-zone (`inFlight`); zones don't block each other. Time-
+ * segmented zones additionally rate-limit load *starts* to
+ * `MIN_LOAD_INTERVAL_MS` to avoid hammering during fast clock drag. Chunk-
+ * indexed zones rely on single-flight only — preload covers most cases, and
+ * stale chunks must not be allowed to linger.
  */
 
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -71,6 +77,14 @@ interface ChunkZoneState extends BaseZoneState {
 	zoomData: ChunkIndexedZoom;
 	/** Index of the chunk currently resident in `ctx.bodiesById`. */
 	currentIdx: number;
+	/** Pre-resolved bodies for neighbor chunks `[currentIdx-1, currentIdx+1]`,
+	 *  keyed by chunk index. Each value is a promise that resolves to the
+	 *  per-part `PositionedBody[]` arrays returned by `loader.process()`.
+	 *  Populated at construction and after each successful swap; entries
+	 *  outside the neighbor window are pruned to bound memory. A boundary
+	 *  crossing awaits the matching entry instead of issuing a fresh
+	 *  `process()` so the swap lands in the next microtask. */
+	preloads: Map<number, Promise<PositionedBody[][]>>;
 }
 
 type ZoneState = TimeZoneState | ChunkZoneState;
@@ -90,7 +104,7 @@ export class ZoneRefresher {
 				const zoom = Number(zoomStr);
 				const parts = Math.min(zoomData.parts, 20);
 				if (isTimeSegmented(zoomData)) {
-					this.zones.push({
+					const state: TimeZoneState = {
 						kind: 'time',
 						zone,
 						zoom,
@@ -100,7 +114,9 @@ export class ZoneRefresher {
 						knownBuckets: new Set(),
 						inFlight: null,
 						lastLoadStartMs: -Infinity
-					});
+					};
+					this.zones.push(state);
+					this.prefetchTimeNeighbors(state, initialDate);
 				} else if (isChunkIndexed(zoomData)) {
 					const state: ChunkZoneState = {
 						kind: 'chunk',
@@ -109,10 +125,11 @@ export class ZoneRefresher {
 						parts,
 						zoomData,
 						currentIdx: chunkIndexForJd(zoomData, initialJd),
-						inFlight: null
+						inFlight: null,
+						preloads: new Map()
 					};
 					this.zones.push(state);
-					this.prefetchChunkNeighbors(state, state.currentIdx);
+					this.preloadChunkNeighbors(state, initialDate);
 				}
 			}
 		}
@@ -223,6 +240,7 @@ export class ZoneRefresher {
 			console.log(
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);
+			this.prefetchTimeNeighbors(z, date);
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);
 		}
@@ -233,13 +251,20 @@ export class ZoneRefresher {
 		// Optimistic update so a re-entrant tick during the fetch sees this
 		// target as already-being-loaded and doesn't double-fire.
 		z.currentIdx = target;
-		const time = String(target);
 		try {
-			const chunks = await Promise.all(
-				Array.from({ length: z.parts }, (_, part) =>
-					this.loader.process(z.zone, z.zoom, part, date, time)
-				)
-			);
+			// Fast path: neighbor preload covers most boundary crossings; the
+			// promise is typically already resolved so the swap lands in the
+			// next microtask, before the renderer can propagate stale elements.
+			// Cold path (preload missed — e.g. user scrubbed past the neighbor
+			// window in a single frame) issues a fresh process() call.
+			let chunks = await z.preloads.get(target);
+			if (!chunks) {
+				chunks = await Promise.all(
+					Array.from({ length: z.parts }, (_, part) =>
+						this.loader.process(z.zone, z.zoom, part, date, String(target))
+					)
+				);
+			}
 
 			let updated = 0;
 			let added = 0;
@@ -266,24 +291,58 @@ export class ZoneRefresher {
 			console.log(
 				`zone-refresher: ${z.zone} chunk ${previous} → ${target} (+${added} ~${updated})`
 			);
-			this.prefetchChunkNeighbors(z, target);
+			this.preloadChunkNeighbors(z, date);
 		} catch (e) {
 			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
 			z.currentIdx = previous;
 		}
 	}
 
-	/** Warm the HTTP cache for `[idx-1, idx, idx+1]` (clamped) on a chunk-indexed
-	 *  zone so the next boundary crossing in either direction hits a cached
-	 *  binary instead of a cold fetch. Past the boundary the J2 secular drift
-	 *  extrapolates from a now-invalid epoch, so any fetch latency shows up as
-	 *  moons flying off-screen. */
-	private prefetchChunkNeighbors(z: ChunkZoneState, idx: number): void {
-		const lo = Math.max(0, idx - 1);
-		const hi = Math.min(z.zoomData.chunks - 1, idx + 1);
+	/** Pre-process bodies for chunk-indexed neighbors `[currentIdx-1, currentIdx+1]`
+	 *  (clamped). Each entry is a single in-flight `Promise.all(loader.process(...))`
+	 *  per part; idempotent on existing entries (the LRU caches in
+	 *  `fetchElements`/`fetchLabels` deduplicate repeat calls anyway, but
+	 *  storing the promise here avoids re-running the bodies-build loop).
+	 *  Out-of-window entries are pruned so the map stays bounded to ≤3
+	 *  resolved chunks of bodies. */
+	private preloadChunkNeighbors(z: ChunkZoneState, date: Date): void {
+		const lo = Math.max(0, z.currentIdx - 1);
+		const hi = Math.min(z.zoomData.chunks - 1, z.currentIdx + 1);
 		for (let i = lo; i <= hi; i++) {
+			if (z.preloads.has(i)) continue;
+			const time = String(i);
+			const promise = Promise.all(
+				Array.from({ length: z.parts }, (_, part) =>
+					this.loader.process(z.zone, z.zoom, part, date, time)
+				)
+			);
+			// Drop a failed preload from the map so a later cold-path fetch
+			// can retry instead of awaiting a permanently-rejected promise.
+			promise.catch((e) => {
+				console.warn(`zone-refresher: ${z.zone} chunk ${i} preload failed:`, e);
+				z.preloads.delete(i);
+			});
+			z.preloads.set(i, promise);
+		}
+		for (const idx of z.preloads.keys()) {
+			if (idx < lo || idx > hi) z.preloads.delete(idx);
+		}
+	}
+
+	/** Warm the HTTP cache for the day-before and day-after snapshots on a
+	 *  time-segmented zone so a snapshot rollover in either direction hits a
+	 *  cached binary. Full preload (à la chunk-indexed) would cost ~hundreds
+	 *  of MB for Earth's 20-part / ~25K-row snapshots; SGP4 propagators
+	 *  degrade gracefully past TLE epoch, so HTTP warmth is enough to keep
+	 *  the lag-behind window short without resident copies. */
+	private prefetchTimeNeighbors(z: TimeZoneState, date: Date): void {
+		const dayMs = 86400000;
+		const before = snapshotDate(z.zoomData, new Date(date.getTime() - dayMs));
+		const after = snapshotDate(z.zoomData, new Date(date.getTime() + dayMs));
+		for (const time of new Set([before, after])) {
+			if (time === z.currentTime) continue;
 			for (let part = 0; part < z.parts; part++) {
-				ChunkLoader.prefetch(z.zone, z.zoom, part, String(i));
+				ChunkLoader.prefetch(z.zone, z.zoom, part, time);
 			}
 		}
 	}
