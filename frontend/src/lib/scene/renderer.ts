@@ -1033,6 +1033,14 @@ export class SceneRenderer {
 				const body = this.ctx.getBody(id);
 				if (!body) continue; // not in exported data, skip
 				this.pendingDefaultPromotions.delete(id);
+				// Barycenters and Lagrange points share the labels file with
+				// promoted bodies (their names are needed when the user navigates
+				// to one via URL), but they aren't shown by default.
+				if (
+					body.data.objectType === ObjectType.BARYCENTER ||
+					body.data.objectType === ObjectType.LAGRANGE_POINT
+				)
+					continue;
 				this.ensureBodyObjects(body);
 				break; // one per frame to spread GPU work
 			}
