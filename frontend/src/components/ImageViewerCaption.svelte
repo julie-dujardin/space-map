@@ -8,6 +8,8 @@
 </script>
 
 <script lang="ts">
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
@@ -83,6 +85,11 @@
 				}}
 			>
 				{expanded ? m.show_less() : m.read_more()}
+				{#if expanded}
+					<MinusIcon class="size-3.5" />
+				{:else}
+					<PlusIcon class="size-3.5" />
+				{/if}
 			</button>
 		{/if}
 	</div>

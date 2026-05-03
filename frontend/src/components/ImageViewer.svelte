@@ -324,6 +324,9 @@
 
 	:global(.pswp-space-map .pswp-sm-caption-toggle) {
 		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
 		margin: 0 1rem;
 		padding: 0;
 		font-size: 0.75rem;
