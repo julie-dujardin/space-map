@@ -40,8 +40,10 @@ import {
 } from './objects/construction';
 import {
 	makePointCloudFromBuffer,
+	rebaseOrbitLineLocals,
 	refreshChebyshevOrbitLineGeometry,
-	refreshOrbitLineGeometry
+	refreshOrbitLineGeometry,
+	setOrbitLineResolution
 } from './objects/builders';
 import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
@@ -169,6 +171,9 @@ export class SceneRenderer {
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+		// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
+		// size so the requested width reads as pixels regardless of devicePixelRatio.
+		setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = PCFSoftShadowMap;
 
@@ -636,17 +641,7 @@ export class SceneRenderer {
 				| undefined;
 			if (!localPositions) continue;
 			const oc = line.userData.orbitCenter as Vector3;
-			const ox = oc.x - fx,
-				oy = oc.y - fy,
-				oz = oc.z - fz;
-			const posAttr = line.geometry.getAttribute('position');
-			const arr = posAttr.array as Float32Array;
-			for (let i = 0; i < localPositions.length; i++) {
-				arr[i * 3] = localPositions[i][0] + ox;
-				arr[i * 3 + 1] = localPositions[i][1] + oy;
-				arr[i * 3 + 2] = localPositions[i][2] + oz;
-			}
-			posAttr.needsUpdate = true;
+			rebaseOrbitLineLocals(line, localPositions, oc.x - fx, oc.y - fy, oc.z - fz);
 		}
 	}
 
@@ -1359,6 +1354,7 @@ export class SceneRenderer {
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();
 		this.ctx.updateViewport(height);
+		setOrbitLineResolution(width, height);
 	}
 
 	dispose(): void {

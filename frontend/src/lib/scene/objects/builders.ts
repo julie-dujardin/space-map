@@ -4,13 +4,17 @@ import {
 	BufferGeometry,
 	CanvasTexture,
 	Color,
+	DoubleSide,
 	Float32BufferAttribute,
 	Line,
+	Mesh,
 	Points,
 	PointsMaterial,
 	ShaderMaterial,
 	Sprite,
 	SpriteMaterial,
+	Uint16BufferAttribute,
+	Vector2,
 	Vector3
 } from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
@@ -172,7 +176,187 @@ function makeOrbitLineMaterial(color: string): ShaderMaterial {
 	});
 }
 
-function makeEmptyOrbitLine(): Line {
+// Shared between every fat orbit-line material so resize() updates them all in
+// one place. Mutating this Vector2 propagates to every material that holds it
+// as a uniform value (Three.js compares by reference, not by snapshot).
+const ORBIT_LINE_RESOLUTION = new Vector2(1, 1);
+
+/** Update the screen resolution used by fat orbit lines for screen-space line expansion. */
+export function setOrbitLineResolution(width: number, height: number): void {
+	ORBIT_LINE_RESOLUTION.set(width, height);
+}
+
+/**
+ * Fat-line shader: same precision/alpha logic as {@link makeOrbitLineMaterial},
+ * but expands each segment to a screen-space quad of width `uLineWidth` pixels.
+ *
+ * Geometry is indexed triangles built by {@link makeFatOrbitLineGeometry}: each
+ * logical point is duplicated into a (-1, +1) side pair, and `nextPosition`
+ * carries the segment's other endpoint so the shader can compute screen-space
+ * direction without an extra draw call.
+ */
+function makeFatOrbitLineMaterial(color: string, lineWidth: number): ShaderMaterial {
+	return new ShaderMaterial({
+		transparent: true,
+		side: DoubleSide,
+		uniforms: {
+			uColor: { value: new Color(color) },
+			uCenterOffset: { value: new Vector3() },
+			uAlphaMultiplier: { value: 1.0 },
+			uAlphaMin: { value: 0.0 },
+			uShowFull: { value: 0.0 },
+			uLineWidth: { value: lineWidth },
+			uResolution: { value: ORBIT_LINE_RESOLUTION }
+		},
+		vertexShader: `
+			#include <common>
+			#include <logdepthbuf_pars_vertex>
+			uniform vec3 uCenterOffset;
+			uniform float uShowFull;
+			uniform float uLineWidth;
+			uniform vec2 uResolution;
+			attribute vec3 nextPosition;
+			attribute float side;
+			attribute float trailAlpha;
+			attribute float fullAlpha;
+			varying float vAlpha;
+			void main() {
+				vAlpha = mix(trailAlpha, fullAlpha, uShowFull);
+				vec3 currRel = position + uCenterOffset;
+				vec3 nextRel = nextPosition + uCenterOffset;
+				vec4 currClip = projectionMatrix * vec4(mat3(viewMatrix) * currRel, 1.0);
+				vec4 nextClip = projectionMatrix * vec4(mat3(viewMatrix) * nextRel, 1.0);
+				vec2 currNDC = currClip.xy / currClip.w;
+				vec2 nextNDC = nextClip.xy / nextClip.w;
+				vec2 dirPx = (nextNDC - currNDC) * uResolution * 0.5;
+				// Endpoint vertex (or zero-length segment): pick an arbitrary perpendicular
+				// so the side pair doesn't collapse onto each other and vanish.
+				if (length(dirPx) < 1e-4) dirPx = vec2(1.0, 0.0);
+				vec2 dirN = normalize(dirPx);
+				vec2 perp = vec2(-dirN.y, dirN.x) * side * uLineWidth * 0.5;
+				vec2 offsetNDC = perp / (uResolution * 0.5);
+				gl_Position = vec4((currNDC + offsetNDC) * currClip.w, currClip.zw);
+				#include <logdepthbuf_vertex>
+			}
+		`,
+		fragmentShader: `
+			#include <logdepthbuf_pars_fragment>
+			uniform vec3 uColor;
+			uniform float uAlphaMultiplier;
+			uniform float uAlphaMin;
+			varying float vAlpha;
+			void main() {
+				gl_FragColor = vec4(uColor, clamp(max(vAlpha * uAlphaMultiplier, uAlphaMin), 0.0, 1.0));
+				#include <logdepthbuf_fragment>
+			}
+		`
+	});
+}
+
+/**
+ * Build the indexed triangle geometry backing a fat orbit line. Vertices come
+ * in side pairs (one shifted to `-1`, one to `+1` perpendicular to the segment
+ * in screen space); the index buffer is pre-filled with `(capacity - 1)` quads.
+ *
+ * Refresh paths populate the per-vertex arrays via {@link writeFatOrbitVertices}
+ * and call `geometry.setDrawRange(0, 6 * (n - 1))` to control how many quads
+ * render.
+ */
+function makeFatOrbitLineGeometry(capacity: number): BufferGeometry {
+	const vertCount = 2 * capacity;
+	const positions = new Float32Array(vertCount * 3);
+	const nextPositions = new Float32Array(vertCount * 3);
+	const sides = new Float32Array(vertCount);
+	const trailAlphas = new Float32Array(vertCount);
+	const fullAlphas = new Float32Array(vertCount);
+	for (let i = 0; i < capacity; i++) {
+		sides[2 * i] = -1;
+		sides[2 * i + 1] = 1;
+	}
+	const indices = new Uint16Array(Math.max(0, 6 * (capacity - 1)));
+	for (let i = 0; i < capacity - 1; i++) {
+		const a = 2 * i;
+		const b = 2 * i + 1;
+		const c = 2 * (i + 1);
+		const d = 2 * (i + 1) + 1;
+		const o = i * 6;
+		indices[o] = a;
+		indices[o + 1] = b;
+		indices[o + 2] = c;
+		indices[o + 3] = c;
+		indices[o + 4] = b;
+		indices[o + 5] = d;
+	}
+
+	const geometry = new BufferGeometry();
+	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+	geometry.setAttribute('nextPosition', new Float32BufferAttribute(nextPositions, 3));
+	geometry.setAttribute('side', new Float32BufferAttribute(sides, 1));
+	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
+	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
+	geometry.setIndex(new Uint16BufferAttribute(indices, 1));
+	return geometry;
+}
+
+/**
+ * Populate a fat orbit line's vertex arrays from `n` logical points + alpha
+ * ramps. Each point is duplicated into a (-1, +1) side pair; `nextPosition`
+ * for the last point falls back to itself so the shader's degenerate-segment
+ * branch picks a stable perpendicular.
+ */
+function writeFatOrbitVertices(
+	geometry: BufferGeometry,
+	posSrc: Float32Array,
+	trailSrc: Float32Array,
+	fullSrc: Float32Array,
+	n: number
+): void {
+	const posAttr = geometry.getAttribute('position');
+	const nextAttr = geometry.getAttribute('nextPosition');
+	const trailAttr = geometry.getAttribute('trailAlpha');
+	const fullAttr = geometry.getAttribute('fullAlpha');
+	const posArr = posAttr.array as Float32Array;
+	const nextArr = nextAttr.array as Float32Array;
+	const trailArr = trailAttr.array as Float32Array;
+	const fullArr = fullAttr.array as Float32Array;
+	const cap = trailArr.length / 2;
+	const m = Math.min(n, cap);
+	for (let i = 0; i < m; i++) {
+		const px = posSrc[i * 3];
+		const py = posSrc[i * 3 + 1];
+		const pz = posSrc[i * 3 + 2];
+		const nextI = i < m - 1 ? i + 1 : i;
+		const nx = posSrc[nextI * 3];
+		const ny = posSrc[nextI * 3 + 1];
+		const nz = posSrc[nextI * 3 + 2];
+		const baseA = 2 * i * 3;
+		posArr[baseA] = px;
+		posArr[baseA + 1] = py;
+		posArr[baseA + 2] = pz;
+		posArr[baseA + 3] = px;
+		posArr[baseA + 4] = py;
+		posArr[baseA + 5] = pz;
+		nextArr[baseA] = nx;
+		nextArr[baseA + 1] = ny;
+		nextArr[baseA + 2] = nz;
+		nextArr[baseA + 3] = nx;
+		nextArr[baseA + 4] = ny;
+		nextArr[baseA + 5] = nz;
+		const tA = trailSrc[i];
+		const fA = fullSrc[i];
+		trailArr[2 * i] = tA;
+		trailArr[2 * i + 1] = tA;
+		fullArr[2 * i] = fA;
+		fullArr[2 * i + 1] = fA;
+	}
+	posAttr.needsUpdate = true;
+	nextAttr.needsUpdate = true;
+	trailAttr.needsUpdate = true;
+	fullAttr.needsUpdate = true;
+	geometry.setDrawRange(0, Math.max(0, 6 * (m - 1)));
+}
+
+function makeEmptyOrbitLine(): Line | Mesh {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
 	const material = new ShaderMaterial({ transparent: true });
@@ -220,13 +404,19 @@ function writeBufferVerticesWithLiveHead(
  * Build a chebyshev-backed orbit line. Geometry is sized to `capacity + 1` —
  * the +1 slot holds the live body position so the brightest trail vertex
  * always sits on the body.
+ *
+ * When `lineWidth > 1`, the returned object is a `Mesh` of expanded quads
+ * instead of a `Line`. The thin position/alpha working arrays still live on
+ * `userData` so the per-frame refresh path stays a single shared codepath; the
+ * fat geometry is re-derived from them after each update.
  */
 function makeChebyshevOrbitLine(
 	body: PositionedBody,
 	trailBuffer: TrailBuffer,
 	color: string,
-	basisPos: [number, number, number]
-): Line {
+	basisPos: [number, number, number],
+	lineWidth: number
+): Line | Mesh {
 	const { orbitCenter, data } = body;
 	const cx = orbitCenter?.[0] ?? 0;
 	const cy = orbitCenter?.[1] ?? 0;
@@ -253,31 +443,67 @@ function makeChebyshevOrbitLine(
 		);
 	}
 
+	const isFat = lineWidth > 1;
+	const obj = isFat
+		? buildFatLineFromThin(geomCap, posArr, trailAlphas, fullAlphas, total, color, lineWidth)
+		: buildThinLineFromArrays(posArr, trailAlphas, fullAlphas, total, color);
+
+	obj.frustumCulled = false;
+	obj.visible = false;
+	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
+	obj.userData.trailBuffer = trailBuffer;
+	obj.userData.useTrail = useTrail;
+	if (isFat) {
+		obj.userData.isFatLine = true;
+		obj.userData.thinPositions = posArr;
+		obj.userData.thinTrailAlphas = trailAlphas;
+		obj.userData.thinFullAlphas = fullAlphas;
+	}
+	return obj;
+}
+
+/** Wrap pre-computed thin arrays into a `Line` with a shared orbit-line material. */
+function buildThinLineFromArrays(
+	posArr: Float32Array,
+	trailAlphas: Float32Array,
+	fullAlphas: Float32Array,
+	total: number,
+	color: string
+): Line {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
 	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
 	geometry.setDrawRange(0, total);
+	return new Line(geometry, makeOrbitLineMaterial(color));
+}
 
-	const line = new Line(geometry, makeOrbitLineMaterial(color));
-	line.frustumCulled = false;
-	line.visible = false;
-	line.userData.orbitCenter = new Vector3(cx, cy, cz);
-	line.userData.trailBuffer = trailBuffer;
-	line.userData.useTrail = useTrail;
-	return line;
+/** Wrap pre-computed thin arrays into a fat-line `Mesh`. */
+function buildFatLineFromThin(
+	capacity: number,
+	posArr: Float32Array,
+	trailAlphas: Float32Array,
+	fullAlphas: Float32Array,
+	total: number,
+	color: string,
+	lineWidth: number
+): Mesh {
+	const geometry = makeFatOrbitLineGeometry(capacity);
+	writeFatOrbitVertices(geometry, posArr, trailAlphas, fullAlphas, total);
+	return new Mesh(geometry, makeFatOrbitLineMaterial(color, lineWidth));
 }
 
 export function makeOrbitLine(
 	body: PositionedBody,
 	color: string,
 	basisPos: [number, number, number] = [0, 0, 0],
-	jd: number = dateToJD(new Date())
-): Line {
+	jd: number = dateToJD(new Date()),
+	lineWidth: number = 1
+): Line | Mesh {
 	// Chebyshev-backed: geometry is driven by the rolling trail buffer, which
 	// is populated at chunk-load time and advanced each frame by ContextManager.
 	if (body.trailBuffer) {
-		return makeChebyshevOrbitLine(body, body.trailBuffer, color, basisPos);
+		return makeChebyshevOrbitLine(body, body.trailBuffer, color, basisPos, lineWidth);
 	}
 
 	const { orbitElements, orbitCenter, data } = body;
@@ -345,24 +571,35 @@ export function makeOrbitLine(
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
 
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(posArr, 3));
-	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
-	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
-	geometry.setDrawRange(0, validPoints.length);
-
-	const line = new Line(geometry, makeOrbitLineMaterial(color));
-	line.frustumCulled = false; // shader repositions geometry via uCenterOffset
-	line.visible = false; // updateBodyVisibility sets the correct state next frame; avoids a 1-frame flash when added mid-load
+	const isFat = lineWidth > 1;
+	const obj = isFat
+		? buildFatLineFromThin(
+				bufferCapacity,
+				posArr,
+				trailAlphas,
+				fullAlphas,
+				validPoints.length,
+				color,
+				lineWidth
+			)
+		: buildThinLineFromArrays(posArr, trailAlphas, fullAlphas, validPoints.length, color);
+	obj.frustumCulled = false; // shader repositions geometry via uCenterOffset
+	obj.visible = false; // updateBodyVisibility sets the correct state next frame; avoids a 1-frame flash when added mid-load
 	// Store Float64 orbit-local positions for rebuilding when focus changes,
 	// and the static curve + flags for per-frame trail refresh while time plays.
-	line.userData.orbitCenter = new Vector3(cx, cy, cz);
-	line.userData.orbitLocalPositions = validPoints;
-	line.userData.orbitCurve = curve;
-	line.userData.isOpenCurve = isOpenCurve;
-	line.userData.useTrail = useTrail;
-	line.userData.curveJd = jd;
-	return line;
+	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
+	obj.userData.orbitLocalPositions = validPoints;
+	obj.userData.orbitCurve = curve;
+	obj.userData.isOpenCurve = isOpenCurve;
+	obj.userData.useTrail = useTrail;
+	obj.userData.curveJd = jd;
+	if (isFat) {
+		obj.userData.isFatLine = true;
+		obj.userData.thinPositions = posArr;
+		obj.userData.thinTrailAlphas = trailAlphas;
+		obj.userData.thinFullAlphas = fullAlphas;
+	}
+	return obj;
 }
 
 /**
@@ -383,12 +620,35 @@ export function makeOrbitLine(
  */
 export function refreshChebyshevOrbitLineGeometry(
 	body: PositionedBody,
-	line: Line,
+	line: Line | Mesh,
 	buffer: TrailBuffer,
 	basisPos: [number, number, number]
 ): void {
 	const useTrail = line.userData.useTrail as boolean;
 	const oc = line.userData.orbitCenter as Vector3;
+
+	if (line.userData.isFatLine) {
+		// Fat path: write samples + alphas into the thin scratch buffers, then
+		// expand into the duplicated/indexed fat geometry. Keeps the buffer
+		// read and alpha math identical to the thin path.
+		const posArr = line.userData.thinPositions as Float32Array;
+		const trailArr = line.userData.thinTrailAlphas as Float32Array;
+		const fullArr = line.userData.thinFullAlphas as Float32Array;
+		const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
+		if (total < 2) {
+			line.geometry.setDrawRange(0, 0);
+			return;
+		}
+		writeOrbitAlphas(
+			fullArr.subarray(0, total) as Float32Array,
+			trailArr.subarray(0, total) as Float32Array,
+			true,
+			useTrail
+		);
+		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, total);
+		return;
+	}
+
 	const posAttr = line.geometry.getAttribute('position');
 	const trailAttr = line.geometry.getAttribute('trailAlpha');
 	const fullAttr = line.geometry.getAttribute('fullAlpha');
@@ -411,9 +671,49 @@ export function refreshChebyshevOrbitLineGeometry(
 	fullAttr.needsUpdate = true;
 }
 
+/**
+ * Rewrite an orbit line's vertex buffer from cached orbit-local positions and
+ * a fresh basis offset, without any curve recompute. Used by the focus-change
+ * path, which needs every line rebased before the first render against the new
+ * basis but does not advance jd.
+ *
+ * Handles both thin `Line` orbit lines (write to position attribute directly)
+ * and fat `Mesh` orbit lines (refresh thin scratch arrays then re-expand).
+ */
+export function rebaseOrbitLineLocals(
+	line: Line | Mesh,
+	localPositions: [number, number, number][],
+	ox: number,
+	oy: number,
+	oz: number
+): void {
+	if (line.userData.isFatLine) {
+		const posArr = line.userData.thinPositions as Float32Array;
+		const trailArr = line.userData.thinTrailAlphas as Float32Array;
+		const fullArr = line.userData.thinFullAlphas as Float32Array;
+		const cap = posArr.length / 3;
+		const n = Math.min(localPositions.length, cap);
+		for (let i = 0; i < n; i++) {
+			posArr[i * 3] = localPositions[i][0] + ox;
+			posArr[i * 3 + 1] = localPositions[i][1] + oy;
+			posArr[i * 3 + 2] = localPositions[i][2] + oz;
+		}
+		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
+		return;
+	}
+	const posAttr = line.geometry.getAttribute('position');
+	const arr = posAttr.array as Float32Array;
+	for (let i = 0; i < localPositions.length; i++) {
+		arr[i * 3] = localPositions[i][0] + ox;
+		arr[i * 3 + 1] = localPositions[i][1] + oy;
+		arr[i * 3 + 2] = localPositions[i][2] + oz;
+	}
+	posAttr.needsUpdate = true;
+}
+
 export function refreshOrbitLineGeometry(
 	body: PositionedBody,
-	line: Line,
+	line: Line | Mesh,
 	basisPos: [number, number, number],
 	jd: number
 ): void {
@@ -461,6 +761,35 @@ export function refreshOrbitLineGeometry(
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
+	const isFat = line.userData.isFatLine === true;
+	const bx = cx - basisPos[0],
+		by = cy - basisPos[1],
+		bz = cz - basisPos[2];
+
+	if (isFat) {
+		// Fat path: write into the thin scratch arrays carried in userData, then
+		// expand into the duplicated/indexed fat geometry.
+		const posArr = line.userData.thinPositions as Float32Array;
+		const trailArr = line.userData.thinTrailAlphas as Float32Array;
+		const fullArr = line.userData.thinFullAlphas as Float32Array;
+		const cap = posArr.length / 3;
+		const n = Math.min(validPoints.length, cap);
+		for (let k = 0; k < n; k++) {
+			posArr[k * 3] = validPoints[k][0] + bx;
+			posArr[k * 3 + 1] = validPoints[k][1] + by;
+			posArr[k * 3 + 2] = validPoints[k][2] + bz;
+		}
+		writeOrbitAlphas(
+			fullArr.subarray(0, n) as Float32Array,
+			trailArr.subarray(0, n) as Float32Array,
+			isOpenCurve,
+			useTrail
+		);
+		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
+		line.userData.orbitLocalPositions = validPoints;
+		return;
+	}
+
 	const posAttr = line.geometry.getAttribute('position');
 	const trailAttr = line.geometry.getAttribute('trailAlpha');
 	const fullAttr = line.geometry.getAttribute('fullAlpha');
@@ -473,9 +802,6 @@ export function refreshOrbitLineGeometry(
 	const posArr = posAttr.array as Float32Array;
 	const trailArr = trailAttr.array as Float32Array;
 	const fullArr = fullAttr.array as Float32Array;
-	const bx = cx - basisPos[0],
-		by = cy - basisPos[1],
-		bz = cz - basisPos[2];
 	for (let k = 0; k < n; k++) {
 		posArr[k * 3] = validPoints[k][0] + bx;
 		posArr[k * 3 + 1] = validPoints[k][1] + by;

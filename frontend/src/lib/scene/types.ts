@@ -1,4 +1,4 @@
-import type { Group, Mesh, Line, Object3D, Points, Sprite } from 'three';
+import type { Group, Line, Mesh, Object3D, Points, Sprite } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -37,7 +37,8 @@ export interface BodyObjects {
 	lensflare: Lensflare | null;
 	/** Fixed-size star dot shown when the mesh is sub-pixel. */
 	starPoint: Points | null;
-	orbitLine: Line | null;
+	/** Thin orbit lines are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */
+	orbitLine: Line | Mesh | null;
 	radiusScene: number;
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;

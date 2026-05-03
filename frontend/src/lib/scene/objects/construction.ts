@@ -14,6 +14,7 @@ import {
 } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
+import { BODY_COLORS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/nut-prec-angles';
@@ -183,6 +184,23 @@ export function buildMajorBodies(
 	}
 }
 
+/**
+ * Per-body orbit-line width in pixels. Planets get a chunky 5px line so they
+ * read at a glance against the busier minor-body field; named moons (those
+ * with a colour entry in {@link BODY_COLORS}) get 2px to stand out from the
+ * mass of unnamed satellites without overwhelming the planet they orbit.
+ */
+function orbitLineWidthFor(body: PositionedBody): number {
+	if (body.data.objectType === ObjectType.PLANET) return 4;
+	if (
+		(body.data.objectType === ObjectType.MOON ||
+			body.data.objectType === ObjectType.DWARF_PLANET) &&
+		BODY_COLORS[body.data.id]
+	)
+		return 3;
+	return 1;
+}
+
 export function buildOrbitLines(
 	bodyObjects: Map<string, BodyObjects>,
 	scene: Scene,
@@ -194,7 +212,7 @@ export function buildOrbitLines(
 		const { body } = bo;
 		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
 		const color = resolveBodyColor(body.data);
-		const line = makeOrbitLine(body, color, basisPos, jd);
+		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
 		scene.add(line);
 		bo.orbitLine = line;
 	}
