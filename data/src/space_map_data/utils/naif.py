@@ -5,22 +5,37 @@ from dataclasses import dataclass
 from space_map_data.models.object import ObjectType, DWARF_PLANETS
 
 
-# Moons that get full Chebyshev treatment (named bodies with surface features —
-# visualization zooms into them and needs accurate positions). All other moons
-# fall back to the cheaper mean-elements-plus-J2-rates format.
+# Moons that get full Chebyshev treatment. Two reasons a moon ends up here:
+#
+# 1. Surface-feature bodies — visualization zooms into them and the user expects
+#    pixel-accurate positions (Io, Europa, Titan, …).
+# 2. Method C (sampled mean-element fit) cannot describe their orbit because
+#    it's not Keplerian-secular: co-orbital Trojans librate around L4/L5
+#    (Helene/Polydeuces around Dione, Telesto/Calypso around Tethys) and the
+#    fit residual is hundreds of degrees. They're cheap (~38–50 KB/year) so
+#    Chebyshev pays for itself.
+#
+# Other inadequate cases (Saturn ring shepherds, inner Uranus/Neptune moons,
+# Mars/Jupiter/Saturn small inner shepherds) are flagged at extraction time
+# but not added here — each costs ~148 KB/year (0.5d floor) and ×29 of them
+# would balloon the export. They ship with Method C and accept ~1e5 km error.
 #
 # Names are matched case-insensitively against Horizons / SPICE labels.
 CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
     {
+        # Earth
         "moon",
+        # Mars
         "phobos",
         "deimos",
+        # Jupiter
         "io",
         "europa",
         "ganymede",
         "callisto",
         "amalthea",
         "thebe",
+        # Saturn (regulars + co-orbital Trojans + ring shepherds + Mimas-resonance)
         "mimas",
         "enceladus",
         "tethys",
@@ -32,34 +47,58 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         "phoebe",
         "janus",
         "epimetheus",
+        "helene",
+        "telesto",
+        "calypso",
+        "polydeuces",
+        "atlas",
+        "prometheus",
+        "pandora",
+        "methone",
+        "pallene",
+        "daphnis",
+        # Uranus (regulars + close-in chaotic inner shepherds)
         "miranda",
         "ariel",
         "umbriel",
         "titania",
         "oberon",
         "puck",
+        "cordelia",
+        "ophelia",
+        "portia",
+        "belinda",
+        # Neptune (Triton + close-in shepherds Despina/Galatea/Larissa/Hippocamp)
         "triton",
         "proteus",
+        "despina",
+        "galatea",
+        "larissa",
+        "hippocamp",
+        # Pluto small moons
         "charon",
         "nix",
+        "kerberos",
+        "styx",
     }
 )
 
-# Fast inner moons (co-orbital shepherds / close-in regulars). Routed to the
-# `moons/<parent>/inner` sub-zone — their Chebyshev ships at higher density
-# than the main moons and is worth separating so clients can skip it.
-CHEBYSHEV_INNER_MOON_NAIF_IDS: frozenset[int] = frozenset(
-    {
-        401,  # Phobos
-        402,  # Deimos
-        505,  # Amalthea
-        514,  # Thebe
-        610,  # Janus
-        611,  # Epimetheus
-        715,  # Puck
-        808,  # Proteus
-    }
-)
+# Per-parent Chebyshev chunk cadence (years). Tuned so each chunk lands at
+# roughly ~200 KB regardless of how many bodies share the parent's zone:
+# Saturn's 21 whitelisted moons are densest and need ~1.5-month chunks; Pluto's
+# four moons can comfortably pack into 2-year chunks. Earth has only the Moon
+# and inherits the slow-mover (5-year) cadence — there is nothing to chunk
+# more finely. Frontend reads this from the manifest's `moons.zones[].chunk_years`
+# so each zone can be indexed independently.
+CHEBYSHEV_PARENT_CHUNK_YEARS: dict[int, float] = {
+    3: 5.0,  # Earth (Moon only)
+    4: 0.5,  # Mars (Phobos + Deimos at 0.5d native intlen → ~149 KB/chunk)
+    5: 0.5,  # Jupiter (6 bodies, 444 KB/yr → ~222 KB/chunk)
+    6: 0.125,  # Saturn (21 bodies, 1583 KB/yr → ~198 KB/chunk)
+    7: 0.25,  # Uranus (10 bodies, 846 KB/yr → ~212 KB/chunk)
+    8: 0.25,  # Neptune (6 bodies, 891 KB/yr → ~223 KB/chunk)
+    9: 2.0,  # Pluto (4 bodies, 99 KB/yr → ~198 KB/chunk)
+}
 
 
 def spk_id_from_naif(

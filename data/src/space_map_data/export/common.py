@@ -5,12 +5,15 @@ import math
 import orjson
 import shutil
 import time
+
+import numpy as np
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object.sbdb import CometPrefix
 from sqlalchemy import case, or_
 from sqlalchemy.engine import Engine
@@ -19,6 +22,10 @@ from sqlalchemy.orm import Session, joinedload
 from space_map_data.export.chebyshev import write_chebyshev
 from space_map_data.export.credits import write_credits
 from space_map_data.export.elements import CHUNK_SIZE, write_chunk
+from space_map_data.export.elements.format import (
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
+)
 from space_map_data.export.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
@@ -241,12 +248,16 @@ def _write_element_parts(
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
     time: str | None,
+    validity_start_jd: float = UNBOUNDED_START_JD,
+    validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> int:
     """Chunk and write element binaries + per-language label files.
 
     `flags` is the prebuilt language-availability map from
     :func:`_build_zone_object_data`; we only read each chunk's slice of it
-    here. Returns the number of parts written.
+    here. `validity_start_jd`/`validity_end_jd` ride into the file header so
+    consumers can hide bodies outside the chunk's time window. Returns the
+    number of parts written.
     """
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
     for part_idx in range(num_parts):
@@ -263,8 +274,26 @@ def _write_element_parts(
             units,
             _chunk_source(chunk, zone, part_idx),
             time=time,
+            validity_start_jd=validity_start_jd,
+            validity_end_jd=validity_end_jd,
         )
     return num_parts
+
+
+@dataclass
+class Snapshot:
+    """One emission from a zone's snapshot stream.
+
+    `label` is the path component inserted between zoom and part — None for
+    untimed zones, an ISO date for Earth sats, a numeric index for the
+    time-chunked moons zone. `validity_start_jd` / `validity_end_jd` go into
+    the binary header so consumers know when to draw and propagate.
+    """
+
+    label: str | None
+    objects: list[Object]
+    validity_start_jd: float = UNBOUNDED_START_JD
+    validity_end_jd: float = UNBOUNDED_END_JD
 
 
 @dataclass
@@ -272,21 +301,22 @@ class ZoneSnapshots:
     """A zone's snapshot stream over a shared underlying object list.
 
     `base` is the underlying list whose Object instances may be mutated
-    in-place by per-snapshot overlays (e.g. CelesTrak elements for Earth).
-    `iterate` returns a fresh iterator of ``(time_label, kept)`` pairs each
-    call, re-applying overlays from scratch — required because the snapshot
-    driver makes two passes (collect union of IDs, then write per-snapshot
-    parts). For zones without time segmentation, yield exactly one pair
-    with ``time_label=None`` and ``kept=base``.
+    in-place by per-snapshot overlays (e.g. CelesTrak elements for Earth or
+    per-chunk Method C fits for moons). `iterate` returns a fresh iterator of
+    `Snapshot` records each call — required because the snapshot driver makes
+    two passes (collect union of IDs, then write per-snapshot parts).
     """
 
     base: list[Object]
-    iterate: Callable[[], Iterator[tuple[str | None, list[Object]]]]
+    iterate: Callable[[], Iterator[Snapshot]]
 
 
 def _single_snapshot(objects: list[Object]) -> ZoneSnapshots:
     """Snapshot stream for a zone without time segmentation."""
-    return ZoneSnapshots(base=objects, iterate=lambda: iter([(None, objects)]))
+    return ZoneSnapshots(
+        base=objects,
+        iterate=lambda: iter([Snapshot(label=None, objects=objects)]),
+    )
 
 
 def _earth_snapshots(
@@ -301,13 +331,122 @@ def _earth_snapshots(
     """
     pass_count = [0]
 
-    def iterate() -> Iterator[tuple[str | None, list[Object]]]:
+    def iterate() -> Iterator[Snapshot]:
         pass_count[0] += 1
         log = pass_count[0] >= 2
         for date_iso, day_elements in celestrak_days.items():
             kept = _overlay_celestrak_elements(base, day_elements, log_dropped=log)
             if kept:
-                yield date_iso, kept
+                # Validity window comes from the SGP4 epoch spread inside the
+                # chunk writer, so we don't pre-compute it here.
+                yield Snapshot(label=date_iso, objects=kept)
+
+    return ZoneSnapshots(base=base, iterate=iterate)
+
+
+def _moons_snapshots(
+    base: list[Object],
+    download_dir: Path,
+) -> ZoneSnapshots:
+    """Snapshot stream for moons: one snapshot per Method C time chunk.
+
+    Reads pre-computed `moon_chunks/<naif_id>.npz` sidecars from the SPICE
+    download directory and applies each chunk's secular elements as an
+    overlay before the chunk is written. Whitelisted moons (those without a
+    sidecar — they're covered by Chebyshev) keep their single-epoch DB
+    elements unchanged across all chunks; the overlay is a no-op for them.
+
+    Chunk grid is read from the first .npz file's `chunk_midpoints_jd`; all
+    moons share the same grid (built in `_extract_moon_chunks`).
+    """
+    cheb_dir = download_dir / PROVIDERS.SPICE / "moon_chunks"
+    if not cheb_dir.exists():
+        logger.info(
+            "No moon_chunks dir at %s; falling back to single snapshot", cheb_dir
+        )
+        return _single_snapshot(base)
+
+    overlays: dict[int, np.ndarray] = {}
+    midpoints_jd: np.ndarray | None = None
+    for path in cheb_dir.glob("*.npz"):
+        data = np.load(path)
+        meta = data["meta"]
+        naif_id = int(meta[0])
+        overlays[naif_id] = np.asarray(data["elements"], dtype=np.float64)
+        if midpoints_jd is None:
+            midpoints_jd = np.asarray(data["chunk_midpoints_jd"], dtype=np.float64)
+    if midpoints_jd is None or not overlays:
+        logger.info("No moon_chunks sidecars found; falling back to single snapshot")
+        return _single_snapshot(base)
+
+    n_chunks = midpoints_jd.shape[0]
+    # Half-width of each chunk's validity window. Uniform grid → constant.
+    half_width_jd = (
+        (midpoints_jd[1] - midpoints_jd[0]) / 2 if n_chunks > 1 else 365.25 / 4
+    )
+
+    # Capture each Object's untouched single-epoch elements so the iterator
+    # can restore them between chunks (otherwise the previous overlay would
+    # bleed into the next iteration).
+    base_by_naif: dict[int, Object] = {
+        o.naif_id: o for o in base if o.naif_id is not None
+    }
+    base_snapshot: dict[int, dict[str, float | None]] = {
+        nid: {
+            "epoch_jd": o.epoch_jd,
+            "a": o.a,
+            "e": o.e,
+            "i": o.i,
+            "om": o.om,
+            "w": o.w,
+            "ma": o.ma,
+            "n": o.n,
+            "om_dot": o.om_dot,
+            "w_dot": o.w_dot,
+        }
+        for nid, o in base_by_naif.items()
+    }
+
+    def apply_overlay(chunk_idx: int) -> list[Object]:
+        for nid, o in base_by_naif.items():
+            row = overlays.get(nid)
+            if row is None:
+                # Whitelisted moon — keep DB single-epoch elements as-is.
+                snap = base_snapshot[nid]
+                o.epoch_jd = snap["epoch_jd"]
+                o.a = snap["a"]
+                o.e = snap["e"]
+                o.i = snap["i"]
+                o.om = snap["om"]
+                o.w = snap["w"]
+                o.ma = snap["ma"]
+                o.n = snap["n"]
+                o.om_dot = snap["om_dot"]
+                o.w_dot = snap["w_dot"]
+                continue
+            elements = row[chunk_idx]
+            o.epoch_jd = float(midpoints_jd[chunk_idx])
+            o.a = float(elements[0])
+            o.e = float(elements[1])
+            o.i = float(elements[2])
+            o.om = float(elements[3])
+            o.w = float(elements[4])
+            o.ma = float(elements[5])
+            o.n = float(elements[6])
+            o.om_dot = float(elements[7])
+            o.w_dot = float(elements[8])
+        return list(base_by_naif.values())
+
+    def iterate() -> Iterator[Snapshot]:
+        for chunk_idx in range(n_chunks):
+            kept = apply_overlay(chunk_idx)
+            mid = float(midpoints_jd[chunk_idx])
+            yield Snapshot(
+                label=str(chunk_idx),
+                objects=kept,
+                validity_start_jd=mid - half_width_jd,
+                validity_end_jd=mid + half_width_jd,
+            )
 
     return ZoneSnapshots(base=base, iterate=iterate)
 
@@ -357,8 +496,8 @@ def _export_zone(
     after last-write-wins aggregation, but at 1× cost.
     """
     union_ids: set[str] = set()
-    for _t, kept in snapshots.iterate():
-        union_ids.update(o.id for o in kept)
+    for snap in snapshots.iterate():
+        union_ids.update(o.id for o in snap.objects)
 
     if not union_ids:
         return ZoneExportResult(zone_data=ChunkObjectData())
@@ -376,21 +515,23 @@ def _export_zone(
     )
 
     result = ZoneExportResult(zone_data=zone_data)
-    for time_label, kept in snapshots.iterate():
+    for snap in snapshots.iterate():
         num_parts = _write_element_parts(
-            kept,
+            snap.objects,
             out_dir,
             zone,
             zoom,
             zone_data.flags,
             wikidata_entities,
             units,
-            time=time_label,
+            time=snap.label,
+            validity_start_jd=snap.validity_start_jd,
+            validity_end_jd=snap.validity_end_jd,
         )
         result.snapshots.append(
             SnapshotResult(
-                time=time_label,
-                count=len(kept),
+                time=snap.label,
+                count=len(snap.objects),
                 num_parts=num_parts,
             )
         )
@@ -542,11 +683,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         return 2
 
                     objects.sort(key=_major_sort_key)
+                if zone == "moons":
+                    snapshots = _moons_snapshots(objects, DOWNLOAD_DIR)
+                else:
+                    snapshots = _single_snapshot(objects)
                 f = executor.submit(
                     _export_zone,
                     zone,
                     zoom,
-                    _single_snapshot(objects),
+                    snapshots,
                     out_dir,
                     wikidata_entities,
                     units,

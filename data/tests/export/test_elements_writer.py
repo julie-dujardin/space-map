@@ -244,6 +244,39 @@ class TestWriteElements:
         (radius,) = struct.unpack_from("<f", raw, offset)
         assert radius == 6371.0
 
+    def test_secular_drift_columns_round_trip(self, tmp_path):
+        """om_dot/w_dot columns appended after radius round-trip as float32."""
+        moon = make_object(
+            id="naif-555",
+            naif_id=555,
+            object_type=ObjectType.moon,
+            orbital_source=OrbitalSource.spice,
+            om_dot=1.5,
+            w_dot=-0.25,
+        )
+        # A row that doesn't populate the rates (e.g. a planet from SPICE
+        # without a fitted secular model) must serialize as zero, not NaN —
+        # that keeps the frontend's `om += om_dot·dt` step a no-op.
+        planet = make_object(
+            id="naif-399",
+            naif_id=399,
+            object_type=ObjectType.planet,
+            orbital_source=OrbitalSource.spice,
+        )
+        out = tmp_path / "rates.bin.gz"
+        write_elements([moon, planet], out, OrbitalSource.spice)
+        raw = gzip.decompress(out.read_bytes())
+
+        # Layout for 2 rows: cols 0-3 (8 bytes each, with padding) = 32, col 4
+        # epoch_jd float64 = 16, cols 5-12 (8 float32 cols × 8 bytes) = 64.
+        # om_dot (col 13) starts at HEADER_SIZE + 32 + 16 + 64 = HEADER_SIZE + 112.
+        om_dot_offset = HEADER_SIZE + 32 + 16 + 64
+        w_dot_offset = om_dot_offset + 8
+        om_dot_vals = struct.unpack_from("<2f", raw, om_dot_offset)
+        w_dot_vals = struct.unpack_from("<2f", raw, w_dot_offset)
+        assert om_dot_vals == pytest.approx((1.5, 0.0))
+        assert w_dot_vals == pytest.approx((-0.25, 0.0))
+
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)

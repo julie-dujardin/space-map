@@ -16,21 +16,21 @@ def string_or_none(val: str | None) -> str | None:
     return val.strip()
 
 
-def float_or_none(val: str) -> float | None:
+def float_or_none(val: str | None) -> float | None:
     if not val or not val.strip():
         return None
     return float(val)
 
 
-def bool_or_none(val: str) -> bool | None:
+def bool_or_none(val: str | None) -> bool | None:
     """Convert Y/N flag to bool."""
-    v = val.strip().upper() if val else ""
-    if v.lower() in ("y", "t", "true", "yes"):
-        return True
-    if v.lower() in ("n", "f", "false", "no"):
-        return False
-    if v is None or v == "":
+    if not val or not val.strip():
         return None
+    v = val.strip().lower()
+    if v in ("y", "t", "true", "yes"):
+        return True
+    if v in ("n", "f", "false", "no"):
+        return False
     raise ValueError(f"Cannot convert '{val}' to bool")
 
 

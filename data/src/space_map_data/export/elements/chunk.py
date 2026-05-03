@@ -55,6 +55,8 @@ def write_chunk(
     units: UnitConverter,
     orbital_source: OrbitalSource,
     time: str | None = None,
+    validity_start_jd: float = UNBOUNDED_START_JD,
+    validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> int:
     """Write elements binary and label files for one chunk.
 
@@ -62,8 +64,12 @@ def write_chunk(
     `orbital_source` is stamped in the file header; writer raises if any row
     disagrees. The chunk's id-type is also stamped in the header so the
     frontend can rebuild full `<prefix>-<numeric>` IDs from binary column 0.
-    `time` (ISO date, e.g. ``"2026-04-25"``) inserts a per-snapshot directory
-    between zoom and part. Currently only the Earth zone uses it.
+    `time` is the per-snapshot directory between zoom and part — ISO date
+    (Earth) or a numeric chunk index (time-chunked moons).
+    `validity_start_jd`/`validity_end_jd` go into the binary header so
+    consumers know when the chunk's elements are accurate. Earth zone
+    overrides them with the SGP4-specific epoch-spread window (those need a
+    tighter bound than 6 months); moons keep the chunk's [start, end].
     Returns the size of the elements binary file in bytes.
     """
     chunk_dir = out_dir / "elements" / zone / str(zoom)
@@ -94,9 +100,10 @@ def write_chunk(
     # SGP4 (Earth satellites) needs a tight validity window — the propagator
     # blows up past ~a year from epoch and spammy warnings are not useful.
     # Kepler/parabolic orbits are mathematical solutions with no hard cutoff,
-    # so leave them unbounded.
-    start_jd: float = UNBOUNDED_START_JD
-    end_jd: float = UNBOUNDED_END_JD
+    # so they default to whatever the caller passed (unbounded for static
+    # zones, the time-chunk's [start, end] for time-chunked moons).
+    start_jd = validity_start_jd
+    end_jd = validity_end_jd
     if zone == "PAR":
         write_fn = write_parabolic_elements
     elif zone == "earth":

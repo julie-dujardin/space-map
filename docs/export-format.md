@@ -52,13 +52,14 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
       "zones": ["major", "major_asteroids"]
     },
     "moons": {
-      "chunks": 200,
-      "chunk_years": 0.5,
       "zones": [
-        "moons/earth/main",
-        "moons/jupiter/main", "moons/jupiter/inner",
-        "moons/saturn/main", "moons/saturn/inner",
-        "..."
+        {"zone": "moons/earth", "chunks": 20, "chunk_years": 5.0},
+        {"zone": "moons/mars", "chunks": 200, "chunk_years": 0.5},
+        {"zone": "moons/jupiter", "chunks": 200, "chunk_years": 0.5},
+        {"zone": "moons/saturn", "chunks": 800, "chunk_years": 0.125},
+        {"zone": "moons/uranus", "chunks": 400, "chunk_years": 0.25},
+        {"zone": "moons/neptune", "chunks": 400, "chunk_years": 0.25},
+        {"zone": "moons/pluto", "chunks": 50, "chunk_years": 2.0}
       ]
     }
   }
@@ -69,11 +70,13 @@ Entry point. Lists all available chunks so the consumer knows what to fetch.
 `[chebyshev]` section in `config.toml` matched kernels present at download
 time). Clients should feature-detect it.
 
-The two tiers (`sun`, `moons`) share JD bounds but use different chunk cadences
-— planets and the Sun barely move over years, while moons need fine-grained
-chunks. Tier params are uniform across all zones in that tier (same source =
-same range). Clients pick the tier from a zone path's prefix
-(`zone.startsWith("moons/")` → moons tier, otherwise sun).
+The `sun` tier uses uniform `chunks`/`chunk_years` across its zones (planets +
+Sun barely move over years). The `moons` tier ships per-zone chunk cadence:
+each parent's zone is tuned to ~200 KB/chunk, so Saturn's 21 whitelisted moons
+ride 0.125y chunks while Pluto's four moons fit comfortably in 2y chunks. The
+previous `moons/{parent}/{main,inner}` split was dropped — uniform per-parent
+zones replace it. Clients index per-zone:
+`chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`.
 
 ## Zones and zoom levels
 
@@ -91,17 +94,28 @@ Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
 
 ### Time-segmented zones
 
-Zones whose elements come from a per-day source ship one snapshot per available
-day. Currently only `earth` (CelesTrak GP) is segmented this way; other zones
-will follow as their providers gain multi-day archives. The metadata entry for
-a segmented (zone, zoom) pair carries `{start_date, end_date, parts}` instead
-of the flat `{parts}` field, and the chunk paths include a `{time}` directory
-between `{zoom}` and `{part}`. Snapshots are exported daily and contiguously,
-so clients clamp the simulated date into `[start_date, end_date]` and emit a
-`YYYY-MM-DD` string for the URL builder. SGP4 propagation accuracy degrades
-quickly outside `±14 days` of the chunk's header `start_jd`/`end_jd` window —
-clamp keeps the renderer at the closest available snapshot rather than asking
-for a date the export doesn't cover.
+Two zones segment elements over time:
+
+- **`earth`** — one snapshot per CelesTrak day. The metadata entry carries
+  `{start_date, end_date, parts}` and the path carries a `{YYYY-MM-DD}`
+  directory between `{zoom}` and `{part}`. SGP4 accuracy degrades fast past
+  the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds it to
+  `min(epoch)−14d … max(epoch)+14d`.
+
+- **`moons`** — one snapshot per 6-month chunk over the Chebyshev coverage
+  range. Method C secular elements are re-fitted at each chunk midpoint so
+  Ω̇/ω̇/n_mean track multi-decade Kozai-Lidov-style drift on outer
+  irregulars instead of being a single linear approximation across the whole
+  range. The metadata entry carries `{start_jd, end_jd, chunks, chunk_years,
+  parts}` and the path carries a numeric `{chunk_idx}` directory between
+  `{zoom}` and `{part}`. Header `start_jd`/`end_jd` bound the chunk's
+  validity window. Whitelisted moons (those with full Chebyshev coverage)
+  ride along at every chunk with their single-epoch DB elements (constant
+  across chunks).
+
+Clients clamp the simulated date into the zone's [start, end] window and emit
+either an ISO date or a numeric chunk index for the URL builder, depending on
+the zone.
 
 ## Binary elements file
 
@@ -112,7 +126,7 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type    | Field     |
 |--------|---------|-----------|
 | 0      | char[4] | Magic `SMAP` |
-| 4      | uint16  | Version (4) |
+| 4      | uint16  | Version (5) |
 | 6      | uint16  | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
 | 8      | float64 | `start_jd` — chunk validity start (JD TDB), `-Infinity` = unbounded |
 | 16     | float64 | `end_jd` — chunk validity end (JD TDB, inclusive), `+Infinity` = unbounded |
@@ -150,8 +164,18 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 10| ma          | float32 | NaN     | Mean anomaly (deg) |
 | 11| n           | float32 | NaN     | Mean motion: **rev/day** if planet-scale, **deg/day** if system-scale |
 | 12| radius_km   | float32 | NaN     | Physical radius (km) |
+| 13| om_dot      | float32 | 0.0     | Secular drift of `om` (deg/day). Populated by SPICE for non-whitelisted moons via the Method C mean-element fit; zero for everything else |
+| 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
 
 Coordinate frame: ecliptic J2000.
+
+Propagation with secular rates: `om(t) = om + om_dot · (jd − epoch_jd)`,
+`w(t) = w + w_dot · (jd − epoch_jd)`. Sources that don't fit secular drift
+(Horizons/SBDB/CelesTrak, plus SPICE rows for planets/dwarves/whitelisted
+moons) write zeros, making the rate term a no-op. This captures J2/J4
+nodal regression and apsidal precession on small moons (Phobos' ~−160°/yr,
+inner Saturn/Neptune moons up to ~−300°/yr) without shipping per-frame
+Chebyshev coefficients.
 
 ### ObjectType ordinals
 
@@ -175,11 +199,12 @@ To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`,
 
 ### SGP4 columns (format type 2)
 
-Used for the `earth` zone. Superset of the Keplerian layout: columns 0–12 are
-identical, followed by the extra OMM fields needed to initialize a
-[satellite.js](https://github.com/shashwatak/satellite-js) `satrec` via
-`json2satrec()` and propagate with the SGP4 model. Consumers that don't do SGP4
-can ignore columns 13–17 and treat the file as Keplerian.
+Used for the `earth` zone. Shares columns 0–12 with the Keplerian layout
+(SGP4 omits the secular rate columns 13–14 since the SGP4 propagator
+already models J2 drag/drift internally), followed by the extra OMM fields
+needed to initialize a [satellite.js](https://github.com/shashwatak/satellite-js)
+`satrec` via `json2satrec()` and propagate with the SGP4 model. Consumers that
+don't do SGP4 can ignore columns 13–17 and treat the file as Keplerian.
 
 | #  | Name             | Type    | Missing | Notes |
 |----|------------------|---------|---------|-------|
@@ -225,6 +250,7 @@ All other columns are safe as float32 based on their value ranges in the databas
 | i, om, w, ma | 0 – 360              | ~2 × 10⁻⁵ deg ≈ 0.08 arcsec | |
 | n (deg/d)  | 0 – 1,225               | ~7 × 10⁻⁵ deg/d             | |
 | n (rev/d)  | 0.07 – 16.4             | ~1 × 10⁻⁶ rev/d             | Earth-orbiting satellites |
+| om_dot, w_dot (deg/d) | -1.0 – 1.0   | ~6 × 10⁻⁸ deg/d             | Phobos' ~−160°/yr ≈ 0.44°/d sets the upper magnitude |
 | q (AU)     | 0 – 43                  | ~3 × 10⁻⁶ AU                | Parabolic comets only |
 | radius_km  | 0.001 – 70,000          | ~0.004 km at max             | |
 
@@ -239,12 +265,16 @@ Object ID (e.g. `spkid-20134340` for Pluto) without a sidecar file. Evaluate
 with Clenshaw's recursion on the Chebyshev basis.
 
 Non-whitelisted moons (tiny irregulars, inner shepherds without surface
-features) don't appear here — they're covered by the separate mean-elements
-format (cheap, low-accuracy, sufficient for dots-on-a-map rendering).
+features) don't appear here — they're covered by the standard Keplerian
+elements format with secular drift columns (om_dot, w_dot), populated via a
+numerical mean-element fit at extraction time so the orbit captures J2/J4
+secular precession without shipping per-frame Chebyshev coefficients.
 
 ### Zones
 
-Two tiers, each with its own chunk cadence:
+Two tiers; the `sun` tier shares chunk cadence across its zones, the `moons`
+tier ships per-zone (per-parent) cadence so each chunk lands at ~200 KB
+regardless of body density.
 
 **Coarse, always-loaded set** (5y chunks, ~20 chunks over 100y):
 - `major` — Sun, planets, dwarf planets, planetary-system barycenters.
@@ -253,27 +283,29 @@ Two tiers, each with its own chunk cadence:
   Cybele, Sylvia, Thisbe, Davida, Interamnia — Ceres is in `major` as a
   dwarf planet).
 
-**Per-system moons** (0.5y chunks, ~200 chunks over 100y):
-- `moons/{parent}/main` — the larger regular moons (Galileans, major
-  Saturnians, Uranian majors, Triton, Charon+Nix, Moon).
-- `moons/{parent}/inner` — fast inner shepherds / close-in regulars (Phobos,
-  Deimos, Amalthea, Thebe, Janus, Epimetheus, Puck, Proteus). Separated
-  because their native intervals are 5–10× shorter than the main moons; a
-  client that only wants to see big moons can skip this sub-zone.
+**Per-system moons** — one zone per parent, each with its own `chunk_years`:
+- `moons/earth` — the Moon (5y chunks).
+- `moons/mars` — Phobos, Deimos (0.5y chunks).
+- `moons/jupiter` — Galileans + Amalthea, Thebe (0.5y chunks).
+- `moons/saturn` — 21 named bodies including ring shepherds and co-orbital
+  Trojans (0.125y chunks; densest population).
+- `moons/uranus` — 5 majors + 4 close-in chaotic shepherds (0.25y chunks).
+- `moons/neptune` — Triton, Proteus + 4 close-in shepherds (0.25y chunks).
+- `moons/pluto` — Charon, Nix, Kerberos, Styx (2y chunks).
 
-`{parent}` is one of `mercury`, `venus`, `earth`, `mars`, `jupiter`,
-`saturn`, `uranus`, `neptune`, `pluto` (only the parents that actually have
-whitelisted moons emit zones).
-
-Every zone in both tiers is under 500 KB per chunk — typical moon-sub-zone
-chunks are 50–200 KB gzipped.
+The previous `moons/{parent}/{main,inner}` split was dropped; clients that
+want to throttle network requests at high time-warp speeds should fall back
+to the elements-format Kepler propagator (see Time-segmented zones above)
+rather than skipping a Chebyshev sub-zone — accuracy loss at >1 week/second
+is not visible at the resolutions where time-warp is used.
 
 ### Time chunks
 
-Chunk cadence differs per tier (5y vs 0.5y, see above). Chunk bounds are in
-the file header; the tier entry in `metadata.json → chebyshev.{sun|moons}`
-gives `chunks` + `chunk_years` and the top-level `start_jd`/`end_jd` provide
-overall bounds, so clients can convert JD → chunk index directly.
+Per-zone chunk cadence (`chunk_years`) is in the manifest. Chunk bounds are
+in each file's header, so clients can convert JD → chunk index by reading
+the per-zone entry from `metadata.json → chebyshev.{sun,moons}.zones[…]`
+and computing `chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`
+against the top-level `start_jd`.
 
 ### Binary layout (`data.bin.gz`, little-endian)
 

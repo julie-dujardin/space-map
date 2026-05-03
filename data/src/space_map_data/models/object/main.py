@@ -145,6 +145,12 @@ class Object(Base):
     n: Mapped[float | None] = mapped_column(
         default=None
     )  # mean motion [deg/d scale=system, rev/d scale=planet]
+    # Secular drift rates [deg/d]. Populated only for non-whitelisted moons
+    # (whose orbit is fitted over many periods to capture J2/J4/etc. drift);
+    # all other rows leave these as zero / null. Frontend adds om_dot·dt and
+    # w_dot·dt to the propagated angles before solving Kepler.
+    om_dot: Mapped[float | None] = mapped_column(default=None)
+    w_dot: Mapped[float | None] = mapped_column(default=None)
 
     # scale
     scale: Mapped[ElementsScale] = mapped_column(

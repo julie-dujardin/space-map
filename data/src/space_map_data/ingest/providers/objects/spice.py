@@ -70,6 +70,8 @@ class SpiceIngestor:
             "w": float_or_none(row["W"]),
             "ma": float_or_none(row["MA"]),
             "n": float_or_none(row["N"]),
+            "om_dot": float_or_none(row.get("OM_DOT")),
+            "w_dot": float_or_none(row.get("W_DOT")),
             "scale": ElementsScale.system,
             "parent_naif_id": int_or_none(row["parent_naif_id"]),
             "orbital_source": OrbitalSource.spice,
