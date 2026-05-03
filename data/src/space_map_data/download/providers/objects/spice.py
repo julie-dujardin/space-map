@@ -318,6 +318,10 @@ _METHOD_C_RESIDUAL_WARN_ARCMIN = 4000.0
 _METHOD_C_N_ORBITS = 100
 _METHOD_C_N_SAMPLES = 200
 _METHOD_C_MAX_SPAN_S = 10 * 365.25 * 86400.0
+# Nyquist puts the alias floor at 2 samples/period; in practice `np.unwrap`
+# needs ~3-4 to reliably recover the true angle progression. Below this we
+# refuse to fit and let the caller ship plain osculating elements.
+_METHOD_C_MIN_SAMPLES_PER_PERIOD = 4.0
 
 # Time-chunked Method C config — non-whitelisted moons get one fit per
 # 6-month window centered on the chunk midpoint, so secular elements track
@@ -375,6 +379,27 @@ def _fit_moon_mean_elements(
     a_km_seed = period_seed["A"] * _AU_KM
     period_s = 2 * math.pi * math.sqrt(a_km_seed**3 / gm)
     span_s = min(_METHOD_C_N_ORBITS * period_s, _METHOD_C_MAX_SPAN_S)
+
+    # Refuse to fit when the SPK sampling cadence is coarser than
+    # `_METHOD_C_MIN_SAMPLES_PER_PERIOD`. Below that, `np.unwrap` aliases full
+    # orbits down to small angle steps and the linear fit on M produces a
+    # near-zero (sometimes wrong-sign) "secular" mean motion. Caller falls
+    # through to a plain osculating snapshot with no drift, which is at least
+    # rotationally correct over short horizons. The bodies that hit this are
+    # always close-in shepherds with sub-day periods and belong on the
+    # Chebyshev whitelist anyway.
+    samples_per_period = _METHOD_C_N_SAMPLES * period_s / span_s
+    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
+        logger.warning(
+            "naif %d: %.2f samples/period below alias threshold %.0f "
+            "(period=%.3f d) — Method C disabled, falling back to osculating "
+            "snapshot. Add to CHEBYSHEV_MOON_WHITELIST for accurate tracking.",
+            naif_id,
+            samples_per_period,
+            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
+            period_s / 86400.0,
+        )
+        return None
 
     times = np.linspace(et - span_s / 2, et + span_s / 2, _METHOD_C_N_SAMPLES)
     a_arr = np.empty(_METHOD_C_N_SAMPLES)
@@ -488,6 +513,21 @@ def _fit_moon_chunked_elements(
             ),
         )
     )
+    # Same alias guard as `_fit_moon_mean_elements`. The cap at
+    # `_MOON_CHUNK_MAX_SAMPLES` means very fast moons over a 110-year span
+    # can land below Nyquist; refuse the fit so the caller ships no chunked
+    # sidecar and the body stays on its single-epoch fallback.
+    samples_per_period = n_samples * period_s / span_s
+    if samples_per_period < _METHOD_C_MIN_SAMPLES_PER_PERIOD:
+        logger.warning(
+            "naif %d: chunked fit %.2f samples/period below alias threshold "
+            "%.0f (period=%.3f d) — skipping. Add to CHEBYSHEV_MOON_WHITELIST.",
+            naif_id,
+            samples_per_period,
+            _METHOD_C_MIN_SAMPLES_PER_PERIOD,
+            period_s / 86400.0,
+        )
+        return None
     times = np.linspace(et_min, et_max, n_samples)
 
     a_arr = np.empty(n_samples)

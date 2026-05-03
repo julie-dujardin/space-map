@@ -28,13 +28,15 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         # Mars
         "phobos",
         "deimos",
-        # Jupiter
+        # Jupiter (regulars + inner ring shepherds)
         "io",
         "europa",
         "ganymede",
         "callisto",
         "amalthea",
         "thebe",
+        "adrastea",
+        "metis",
         # Saturn (regulars + co-orbital Trojans + ring shepherds + Mimas-resonance)
         "mimas",
         "enceladus",
@@ -57,7 +59,13 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         "methone",
         "pallene",
         "daphnis",
-        # Uranus (regulars + close-in chaotic inner shepherds)
+        "pan",
+        "aegaeon",
+        "anthe",
+        # Uranus (regulars + close-in chaotic inner shepherds + dust-ring family).
+        # The dust-ring shepherds (Bianca..Cupid) were added after the alias
+        # guard flagged them — sub-day periods and SPK type-2 sub-intervals at
+        # the 0.5 d floor make Method C aliasing unrecoverable for them.
         "miranda",
         "ariel",
         "umbriel",
@@ -68,16 +76,27 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
         "ophelia",
         "portia",
         "belinda",
-        # Neptune (Triton + close-in shepherds Despina/Galatea/Larissa/Hippocamp)
+        "bianca",
+        "cressida",
+        "desdemona",
+        "juliet",
+        "rosalind",
+        "perdita",
+        "mab",
+        "cupid",
+        # Neptune (Triton + close-in shepherds Despina/Galatea/Larissa/Hippocamp + Naiad/Thalassa)
         "triton",
         "proteus",
         "despina",
         "galatea",
         "larissa",
         "hippocamp",
+        "naiad",
+        "thalassa",
         # Pluto small moons
         "charon",
         "nix",
+        "hydra",
         "kerberos",
         "styx",
     }
@@ -85,19 +104,19 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
 
 # Per-parent Chebyshev chunk cadence (years). Tuned so each chunk lands at
 # roughly ~200 KB regardless of how many bodies share the parent's zone:
-# Saturn's 21 whitelisted moons are densest and need ~1.5-month chunks; Pluto's
-# four moons can comfortably pack into 2-year chunks. Earth has only the Moon
+# Saturn's 24 whitelisted moons are densest and need ~1.5-month chunks; Pluto's
+# five moons can comfortably pack into 2-year chunks. Earth has only the Moon
 # and inherits the slow-mover (5-year) cadence — there is nothing to chunk
 # more finely. Frontend reads this from the manifest's `moons.zones[].chunk_years`
 # so each zone can be indexed independently.
 CHEBYSHEV_PARENT_CHUNK_YEARS: dict[int, float] = {
     3: 5.0,  # Earth (Moon only)
     4: 0.5,  # Mars (Phobos + Deimos at 0.5d native intlen → ~149 KB/chunk)
-    5: 0.5,  # Jupiter (6 bodies, 444 KB/yr → ~222 KB/chunk)
-    6: 0.125,  # Saturn (21 bodies, 1583 KB/yr → ~198 KB/chunk)
-    7: 0.25,  # Uranus (10 bodies, 846 KB/yr → ~212 KB/chunk)
-    8: 0.25,  # Neptune (6 bodies, 891 KB/yr → ~223 KB/chunk)
-    9: 2.0,  # Pluto (4 bodies, 99 KB/yr → ~198 KB/chunk)
+    5: 0.5,  # Jupiter (8 bodies, 732 KB/yr → ~366 KB/chunk)
+    6: 0.125,  # Saturn (24 bodies, ~1929 KB/yr → ~241 KB/chunk)
+    7: 0.125,  # Uranus (18 bodies, ~2034 KB/yr → ~254 KB/chunk — halved cadence to keep chunks bounded after adding 8 dust-ring shepherds)
+    8: 0.25,  # Neptune (8 bodies, 1187 KB/yr → ~297 KB/chunk)
+    9: 2.0,  # Pluto (5 bodies, 124 KB/yr → ~247 KB/chunk)
 }
 
 
