@@ -143,6 +143,7 @@
 	"mpc_database": "Base de données MPC ({id})",
 	"my_location": "Ma position",
 	"go_to_object": "Aller à l'objet",
+	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {id} introuvable",
 	"out_of_range_title": "Données limitées à cette date",
 	"out_of_range_selected": "L'objet sélectionné n'a pas de données à cette date",

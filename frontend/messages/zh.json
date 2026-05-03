@@ -143,6 +143,7 @@
 	"mpc_database": "MPC 数据库 ({id})",
 	"my_location": "我的位置",
 	"go_to_object": "前往该对象",
+	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {id}",
 	"out_of_range_title": "此时段数据有限",
 	"out_of_range_selected": "所选对象在此时段没有数据",

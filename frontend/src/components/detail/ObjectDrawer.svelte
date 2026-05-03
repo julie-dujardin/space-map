@@ -5,10 +5,11 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { ZoomInIcon } from '@lucide/svelte';
+	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
+	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import ObjectHeader from './ObjectHeader.svelte';
@@ -25,11 +26,12 @@
 		body: PositionedBody;
 		clock: SimClock;
 		onClose: () => void;
-		onGoTo: () => void;
+		onMaximize: () => void;
+		onMinimize: () => void;
 		onSheetResize?: (heightDvh: number) => void;
 	}
 
-	let { body, clock, onClose, onGoTo, onSheetResize }: Props = $props();
+	let { body, clock, onClose, onMaximize, onMinimize, onSheetResize }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -103,6 +105,11 @@
 	let displayName = $derived(
 		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
 	);
+	// Flip to the minimize button well before the maximize target distance, so
+	// that finishing a maximize fly-to lands the camera comfortably inside the
+	// minimize zone (and floating-point/animation overshoot can't leave it
+	// stuck on the maximize side of an exact threshold).
+	let isMinimized = $derived(appState ? appState.view.zoom <= minCameraDistance(body) * 20 : false);
 	let viewerImages = $derived(data?.global?.images);
 	let viewerIndex = $derived(appState?.view.imageIndex);
 	// Gate the viewer mount on a valid index AND a loaded images list. The
@@ -169,10 +176,17 @@
 					<div class="flex w-full items-center justify-between">
 						<span class="text-sm font-semibold truncate">{displayName}</span>
 						<div class="flex items-center gap-1">
-							<Button variant="ghost" size="icon-sm" onclick={onGoTo}>
-								<ZoomInIcon />
-								<span class="sr-only">{m.go_to_object()}</span>
-							</Button>
+							{#if isMinimized}
+								<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
+									<MinimizeIcon />
+									<span class="sr-only">{m.zoom_out_to_system()}</span>
+								</Button>
+							{:else}
+								<Button variant="ghost" size="icon-sm" onclick={onMaximize}>
+									<MaximizeIcon />
+									<span class="sr-only">{m.go_to_object()}</span>
+								</Button>
+							{/if}
 							<Button variant="ghost" size="icon-sm" onclick={onClose}>
 								<XIcon />
 								<span class="sr-only">{m.close()}</span>
@@ -197,10 +211,17 @@
 		<div class="flex items-center justify-between p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
 			<div class="flex items-center gap-1">
-				<Button variant="ghost" size="icon-sm" onclick={onGoTo}>
-					<ZoomInIcon />
-					<span class="sr-only">{m.go_to_object()}</span>
-				</Button>
+				{#if isMinimized}
+					<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
+						<MinimizeIcon />
+						<span class="sr-only">{m.zoom_out_to_system()}</span>
+					</Button>
+				{:else}
+					<Button variant="ghost" size="icon-sm" onclick={onMaximize}>
+						<MaximizeIcon />
+						<span class="sr-only">{m.go_to_object()}</span>
+					</Button>
+				{/if}
 				<Button variant="ghost" size="icon-sm" onclick={onClose}>
 					<XIcon />
 					<span class="sr-only">{m.close()}</span>

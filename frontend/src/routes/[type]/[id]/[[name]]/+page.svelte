@@ -5,7 +5,7 @@
 	import { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD } from '$lib/format/date';
-	import { type PositionedBody } from '$lib/types/objects';
+	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW } from '$lib/state/view';
 	import { createAppState } from '$lib/state/app-state.svelte';
@@ -66,9 +66,25 @@
 						selectedBody = undefined;
 						drawerHeightDvh = 0;
 					}}
-					onGoTo={() => {
+					onMaximize={() => {
 						if (!selectedBody) return;
 						scene?.focusOnBody(selectedBody.data.id, minCameraDistance(selectedBody) * 5);
+					}}
+					onMinimize={() => {
+						if (!selectedBody) return;
+						// Pulls the camera back without changing focus — focusOnBody on the
+						// already-focused id just runs the fly-to-camera path. Planets and
+						// dwarf planets nominally orbit their planetary barycenter, but
+						// treat them as sun-orbiters here so the minimize framing is the
+						// whole solar system instead of just the planet's own subsystem.
+						const { parentId, objectType } = selectedBody.data;
+						const isSunOrbiter =
+							parentId === 'naif-0' ||
+							parentId === 'naif-10' ||
+							objectType === ObjectType.PLANET ||
+							objectType === ObjectType.DWARF_PLANET;
+						const distance = isSunOrbiter ? DEFAULT_VIEW.zoom : 0.005;
+						scene?.focusOnBody(selectedBody.data.id, distance);
 					}}
 					onSheetResize={(h) => (drawerHeightDvh = h)}
 				/>
