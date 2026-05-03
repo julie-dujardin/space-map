@@ -6,7 +6,7 @@
 import { DATA_BASE } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 5;
+export const VERSION = 6;
 export const HEADER_SIZE = 32;
 
 /** Format types (uint16 at header offset 6). */
@@ -30,13 +30,11 @@ export const elementsBinUrl = (
 	part: number,
 	time: string | null = null
 ): string => `${chunkDir(zone, zoom, time)}/${part}.bin.gz`;
-export const elementLabelsUrl = (
-	lang: string,
-	zone: string,
-	zoom: number,
-	part: number,
-	time: string | null = null
-): string => `${chunkDir(zone, zoom, time)}/${part}.loc.${lang}.gz`;
+
+/** Pre-interaction labels file: one global gzipped index per language listing
+ *  every promoted body's display name. The frontend's promoted set is exactly
+ *  this file's keys — there is no separate hardcoded list. */
+export const labelsUrl = (lang: string): string => `${DATA_BASE}/v1/labels/${lang}.gz`;
 
 /** Sentinel values for missing data in the binary format. */
 export const MISSING_INT32 = -1;

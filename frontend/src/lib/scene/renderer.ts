@@ -46,7 +46,7 @@ import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
-import { DEFAULT_PROMOTED_IDS } from './default-bodies';
+import { fetchLabels } from '$lib/fetch/elements/fetch';
 import type { Vec3 } from './animation/math';
 import {
 	type FocusState,
@@ -86,7 +86,11 @@ export class SceneRenderer {
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
 	private pendingSceneAdds: Points[] = [];
-	private pendingDefaultPromotions = new Set(DEFAULT_PROMOTED_IDS);
+	/** Bodies to auto-promote from point clouds to individual meshes on initial
+	 *  load. Populated asynchronously from the global labels file (whose keys
+	 *  *are* the promoted set). The auto-promote loop is a no-op until labels
+	 *  resolve a few hundred ms after construction. */
+	private pendingDefaultPromotions: Set<string> = new Set();
 	private hoveredBodyIds = new Set<string>();
 	private cullFrameCounter = 0;
 
@@ -152,6 +156,13 @@ export class SceneRenderer {
 		this.ctx = ctx;
 		this.clock = clock;
 		this.callbacks = callbacks;
+
+		// Promoted set is exactly the keys of the global per-language labels file.
+		// Fire-and-forget: the auto-promote loop reads the set every frame and is
+		// a no-op until labels resolve a few hundred ms later.
+		fetchLabels().then((labels) => {
+			for (const id of labels.keys()) this.pendingDefaultPromotions.add(id);
+		});
 
 		// Renderer
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
@@ -1149,7 +1160,7 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		loadBodyTexture(bo, this.textureLoader, body.data.objectFileFlag, this.ctx);
+		loadBodyTexture(bo, this.textureLoader, body.data.hasLocalized, this.ctx);
 	}
 
 	/**

@@ -38,8 +38,11 @@ export interface BodyData extends OrbitalElements {
 	objectType: ObjectType;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	radiusKm: number;
-	/** 0 = no object file, 1 = localized file exists, 2 = only English fallback file exists */
-	objectFileFlag: number;
+	/** True iff the object has a localized detail bundle in at least one
+	 *  language. Sourced from the `has_localized` uint8 column on the binary
+	 *  chunk. Frontend uses this to gate the localized bundle fetch — a
+	 *  detail-bundle fetch for `false` rows would 404. */
+	hasLocalized: boolean;
 	/**
 	 * SGP4 satellite record from satellite.js. Populated only for Earth
 	 * satellites (SGP4 format chunks). When present, position propagation

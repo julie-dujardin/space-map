@@ -31,6 +31,7 @@ interface KeplerianRow {
 	radiusKm: number;
 	omDot?: number;
 	wDot?: number;
+	hasLocalized?: number;
 }
 
 interface ParabolicRow {
@@ -46,6 +47,7 @@ interface ParabolicRow {
 	w: number;
 	tp: number;
 	radiusKm: number;
+	hasLocalized?: number;
 }
 
 function writeHeader(view: DataView, formatType: number, rowCount: number): void {
@@ -91,7 +93,8 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 		n * 8 + // epochJd (f64)
 		align8(n * 4) * 7 + // a, e, i, om, w, ma, n
 		align8(n * 4) + // radiusKm
-		align8(n * 4) * 2; // omDot, wDot
+		align8(n * 4) * 2 + // omDot, wDot
+		align8(n); // hasLocalized
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -120,6 +123,8 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 		offset += align8(n * 4);
 	}
 
+	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].hasLocalized ?? 0);
+
 	return buf;
 }
 
@@ -132,10 +137,10 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 		align8(n * 4) + // parentId
 		align8(n) + // scale
 		n * 8 + // epochJd (f64)
-		align8(n * 4) * 4 + // q, e, i, om (wait — 5: q, e, i, om, w)
-		align8(n * 4) + // w
+		align8(n * 4) * 5 + // q, e, i, om, w
 		n * 8 + // tp (f64)
-		align8(n * 4); // radiusKm
+		align8(n * 4) + // radiusKm
+		align8(n); // hasLocalized
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -155,6 +160,9 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 	offset += n * 8;
 
 	for (let r = 0; r < n; r++) view.setFloat32(offset + r * 4, rows[r].radiusKm, true);
+	offset += align8(n * 4);
+
+	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].hasLocalized ?? 0);
 
 	return buf;
 }

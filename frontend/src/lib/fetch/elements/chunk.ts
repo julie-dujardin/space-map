@@ -1,4 +1,4 @@
-import { fetchLabels } from '$lib/fetch/elements/fetch';
+import { fetchLabels, type LabelMap } from '$lib/fetch/elements/fetch';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
@@ -9,9 +9,8 @@ import {
 } from '$lib/fetch/elements/elements';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { Scale, elementsBinUrl, elementLabelsUrl } from './constants';
+import { Scale, elementsBinUrl } from './constants';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
-import { getLocale } from '$lib/paraglide/runtime.js';
 import { AU_KM } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/chebyshev/store';
@@ -41,17 +40,17 @@ export function populateTrailBuffer(
 function keplerianToBody(
 	cols: KeplerianColumns,
 	idx: number,
-	labels: Map<number, string>,
-	flags: Map<number, number>,
+	labels: LabelMap,
 	idMap: Map<number, string>
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 	const omDot = cols.omDot[idx];
 	const wDot = cols.wDot[idx];
+	const id = idMap.get(idx)!;
 	return {
-		id: idMap.get(idx)!,
-		name: labels.get(idx) ?? null,
-		objectFileFlag: flags.get(idx) ?? 0,
+		id,
+		name: labels.get(id) ?? null,
+		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
@@ -78,14 +77,14 @@ function keplerianToBody(
 function parabolicToBody(
 	cols: ParabolicColumns,
 	idx: number,
-	labels: Map<number, string>,
-	flags: Map<number, number>,
+	labels: LabelMap,
 	idMap: Map<number, string>
 ): BodyData {
+	const id = idMap.get(idx)!;
 	return {
-		id: idMap.get(idx)!,
-		name: labels.get(idx) ?? null,
-		objectFileFlag: flags.get(idx) ?? 0,
+		id,
+		name: labels.get(id) ?? null,
+		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
@@ -114,11 +113,11 @@ function parabolicToBody(
 function sgp4ToBody(
 	cols: SGP4Columns,
 	idx: number,
-	labels: Map<number, string>,
-	flags: Map<number, number>,
+	labels: LabelMap,
 	idMap: Map<number, string>
 ): BodyData | null {
-	const name = labels.get(idx) ?? null;
+	const id = idMap.get(idx)!;
+	const name = labels.get(id) ?? null;
 	const satrec = buildSatrec(
 		{
 			noradCatId: cols.id[idx],
@@ -139,9 +138,9 @@ function sgp4ToBody(
 	);
 	if (!satrec) return null;
 	return {
-		id: idMap.get(idx)!,
+		id,
 		name,
-		objectFileFlag: flags.get(idx) ?? 0,
+		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
@@ -165,14 +164,13 @@ function sgp4ToBody(
 
 export class ChunkLoader {
 	/**
-	 * Fire-and-forget fetch of the two files for a zone/zoom/part, so the browser
-	 * caches them before the caller needs to process them. IDs ride inside the
-	 * binary now (header id-type byte + column 0).
+	 * Fire-and-forget fetch of the elements binary for a zone/zoom/part so the
+	 * browser caches it before the caller needs to process it. IDs ride inside
+	 * the binary (header id-type byte + column 0). Labels live in one global
+	 * file per language, prefetched once on app start by {@link fetchLabels}.
 	 */
 	static prefetch(zone: string, zoom: number, part: number, time: string | null = null): void {
-		const lang = getLocale();
 		fetch(elementsBinUrl(zone, zoom, part, time));
-		fetch(elementLabelsUrl(lang, zone, zoom, part, time));
 	}
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
@@ -211,11 +209,10 @@ export class ChunkLoader {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
 
-		const [cols, labelData] = await Promise.all([
+		const [cols, labels] = await Promise.all([
 			fetchElements(zone, zoom, part, time),
-			fetchLabels(zone, zoom, part, time)
+			fetchLabels()
 		]);
-		const { labels, flags } = labelData;
 		const idMap = cols.idMap;
 
 		console.log(`Loaded: ${cols.rowCount} objects`);
@@ -246,10 +243,10 @@ export class ChunkLoader {
 			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
 
 			const body = isParabolic
-				? parabolicToBody(cols as ParabolicColumns, idx, labels, flags, idMap)
+				? parabolicToBody(cols as ParabolicColumns, idx, labels, idMap)
 				: isSGP4
-					? sgp4ToBody(cols as SGP4Columns, idx, labels, flags, idMap)
-					: keplerianToBody(cols as KeplerianColumns, idx, labels, flags, idMap);
+					? sgp4ToBody(cols as SGP4Columns, idx, labels, idMap)
+					: keplerianToBody(cols as KeplerianColumns, idx, labels, idMap);
 			// sgp4ToBody returns null when satrec init fails — drop the row to
 			// enforce SGP4-only propagation for earth sats.
 			if (!body) continue;

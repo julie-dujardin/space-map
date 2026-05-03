@@ -61,7 +61,7 @@
 		const id = body.data.id;
 		loading = true;
 		data = null;
-		fetchObjectDetail(id, body.data.objectFileFlag)
+		fetchObjectDetail(id, body.data.hasLocalized)
 			.then((result) => {
 				if (body.data.id === id) {
 					data = result;
@@ -103,7 +103,10 @@
 	});
 
 	let displayName = $derived(
-		data?.localized?.name ?? data?.global?.name ?? body.data.name ?? m.loading()
+		data?.localized?.name ??
+			data?.global?.name ??
+			body.data.name ??
+			(loading ? m.loading() : body.data.id)
 	);
 	// Flip to the minimize button well before the maximize target distance, so
 	// that finishing a maximize fly-to lands the camera comfortably inside the

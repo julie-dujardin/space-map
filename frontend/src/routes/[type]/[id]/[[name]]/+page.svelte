@@ -41,8 +41,8 @@
 
 <svelte:head>
 	<title
-		>{selectedBody?.data.name
-			? `${selectedBody.data.name} - ${m.page_title()}`
+		>{selectedBody
+			? `${selectedBody.data.name ?? selectedBody.data.id} - ${m.page_title()}`
 			: m.page_title()}</title
 	>
 </svelte:head>

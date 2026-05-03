@@ -53,6 +53,18 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "naif--21",  # SOHO
         "naif--78",  # DSCOVR
         "naif--55",  # Ulysses
+        # Retired
+        # 'naif--79', # Spitzer Space Telescope
+        # 'naif--203', # Dawn
+        # Mars/moon/... probes - TODO
+        # 'naif--41', # Mars Express
+        # 'naif--53', # Mars Odyssey
+        # 'naif--74', # Mars Reconnaissance Orbiter
+        # 'naif--76', # Mars Science Laboratory (Curiosity)
+        # 'naif--143', # ExoMars16 TGO
+        # 'naif--189', # InSight
+        # 'naif--85', # LRO
+        # 'naif--61', # Juno
         # Earth-orbiting (NORAD/CelesTrak TLEs)
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)

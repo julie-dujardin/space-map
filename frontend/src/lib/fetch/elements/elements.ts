@@ -41,7 +41,14 @@ export interface ChunkMeta extends Validity {
 	idMap: Map<number, string>;
 }
 
-export interface KeplerianColumns extends ChunkMeta {
+/** Last column on every format: 1 iff the object has a localized detail
+ *  bundle in at least one language. Frontend gates its localized fetch on
+ *  this so flag-0 rows don't trigger a 404 per click. */
+export interface HasLocalizedColumn {
+	hasLocalized: Uint8Array;
+}
+
+export interface KeplerianColumns extends ChunkMeta, HasLocalizedColumn {
 	kind: 'keplerian';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -63,7 +70,7 @@ export interface KeplerianColumns extends ChunkMeta {
 	rowCount: number;
 }
 
-export interface ParabolicColumns extends ChunkMeta {
+export interface ParabolicColumns extends ChunkMeta, HasLocalizedColumn {
 	kind: 'parabolic';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -85,7 +92,7 @@ export interface ParabolicColumns extends ChunkMeta {
  * satellite.js `json2satrec` needs. Raw OMM units: `a` in km, `n` in rev/day,
  * angles in degrees, BSTAR in 1/Earth radii, n-dot in rev/day², n-ddot in rev/day³.
  */
-export interface SGP4Columns extends ChunkMeta {
+export interface SGP4Columns extends ChunkMeta, HasLocalizedColumn {
 	kind: 'sgp4';
 	id: Int32Array;
 	objectType: Uint8Array;
@@ -285,6 +292,9 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	const omDot = new Float32Array(buffer, tail, rowCount);
 	tail += align8(rowCount * 4);
 	const wDot = new Float32Array(buffer, tail, rowCount);
+	tail += align8(rowCount * 4);
+	// Column 15: has_localized (uint8) — last column on every format.
+	const hasLocalized = new Uint8Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
 		validityEnd,
@@ -309,6 +319,7 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 		radiusKm: kepler.radiusKm,
 		omDot,
 		wDot,
+		hasLocalized,
 		rowCount,
 		...meta
 	};
@@ -350,6 +361,9 @@ function parseSGP4Elements(
 	const elementSetNo = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
 	const revAtEpoch = new Int32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	// Column 18: has_localized (uint8) — last column on every format.
+	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'sgp4',
@@ -371,6 +385,7 @@ function parseSGP4Elements(
 		meanMotionDdot,
 		elementSetNo,
 		revAtEpoch,
+		hasLocalized,
 		rowCount,
 		...meta
 	};
@@ -423,6 +438,9 @@ function parseParabolicElements(
 
 	// Column 11: radius_km (float32)
 	const radiusKm = new Float32Array(buffer, offset, rowCount);
+	offset += align8(rowCount * 4);
+	// Column 12: has_localized (uint8) — last column on every format.
+	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'parabolic',
@@ -438,6 +456,7 @@ function parseParabolicElements(
 		w,
 		tp,
 		radiusKm,
+		hasLocalized,
 		rowCount,
 		...meta
 	};

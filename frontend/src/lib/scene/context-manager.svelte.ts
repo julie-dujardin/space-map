@@ -197,7 +197,7 @@ async function createPlaceholderBody(
 		objectType: parseObjectType(global.type),
 		parentId: `naif-${orbit.parent_naif_id}`,
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
-		objectFileFlag: detail.localized ? 1 : 0,
+		hasLocalized: detail.localized != null,
 		a: isPlanetScale ? (orbit.a ?? 0) / AU_KM : (orbit.a ?? 0),
 		e: orbit.e,
 		i: orbit.i,

@@ -316,12 +316,11 @@ async function swapBodyTexture(
 export async function loadBodyTexture(
 	bo: BodyObjects,
 	textureLoader: TextureLoader,
-	objectFileFlag = 1,
+	hasLocalized = true,
 	ctx?: ContextManager
 ): Promise<void> {
-	if (objectFileFlag === 0) return;
 	if (bo.textureTier || bo.textureLoading) return;
-	const detail = await fetchObjectDetail(bo.body.data.id, objectFileFlag);
+	const detail = await fetchObjectDetail(bo.body.data.id, hasLocalized);
 	if (!detail.global?.map_texture_available) return;
 	if (ctx && detail.global.texture) {
 		// Standalones aren't tied to a planetary system barycenter; key the

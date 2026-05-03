@@ -68,7 +68,7 @@
 					appState.setFocus({
 						type: urlTypeFromId(body.data.id),
 						id: body.data.id,
-						name: body.data.name ?? ''
+						name: body.data.name ?? body.data.id
 					});
 				}
 			},

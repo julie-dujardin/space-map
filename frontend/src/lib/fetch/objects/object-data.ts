@@ -255,20 +255,20 @@ async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
  * the id-keyed entry. Bundles are cached, so subsequent lookups for
  * bucket-mates are a local map lookup.
  *
- * `objectFileFlag` from the element label file selects the localized tier:
- *   0 = no localized entry — skip the localized fetch entirely
- *   1 = entry exists in `lang`
- *   2 = fallback to the `en` bundle
+ * `hasLocalized` is the per-row bit on the binary chunk: when `false`, the
+ * object has no Wikidata in any language and the localized fetch is skipped
+ * entirely (otherwise we'd 404 on every click for flag-0 bodies). On 404 the
+ * locale's bundle is missing for this object — give up; there is no English
+ * fallback tier.
  */
 export async function fetchObjectDetail(
 	fileId: string,
-	objectFileFlag = 1,
+	hasLocalized = true,
 	lang = getLocale()
 ): Promise<ObjectDetailData> {
 	const meta = await fetchMetadata();
 
-	const localizedLang = objectFileFlag === 0 ? null : objectFileFlag === 2 ? 'en' : lang;
-	const nLocalized = localizedLang ? meta.object_bundles[localizedLang] : 0;
+	const nLocalized = hasLocalized ? meta.object_bundles[lang] : 0;
 
 	const [globalBucket, localizedBucket] = await Promise.all([
 		hashBucket(fileId, meta.object_bundles.global),
@@ -279,9 +279,9 @@ export async function fetchObjectDetail(
 		`${DATA_BASE}/v1/objects/__global__/${globalBucket}.json.gz`
 	);
 	const localizedPromise: Promise<LocalizedObjectData | undefined> =
-		localizedLang && localizedBucket >= 0
+		hasLocalized && localizedBucket >= 0
 			? fetchBundle<LocalizedObjectData>(
-					`${DATA_BASE}/v1/objects/${localizedLang}/${localizedBucket}.json.gz`
+					`${DATA_BASE}/v1/objects/${lang}/${localizedBucket}.json.gz`
 				).then((b) => b[fileId])
 			: Promise.resolve(undefined);
 
