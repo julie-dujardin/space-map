@@ -86,6 +86,7 @@
 					{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
 				</li>
 			</ul>
+			<p class="text-xs text-muted-foreground mt-2">{m.credits_images_individual_note()}</p>
 		</section>
 
 		{#if credits.systems.length > 0}
