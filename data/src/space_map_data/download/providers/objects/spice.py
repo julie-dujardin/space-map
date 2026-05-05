@@ -72,6 +72,24 @@ _LATEST_VERSION_KERNELS: list[tuple[str, str]] = [
 _SATELLITE_PREFIXES = ("mar", "jup", "sat", "ura", "nep", "plu")
 
 
+def _local_subdir(filename: str, url_path: str) -> str:
+    """Pick the on-disk subdir under `kernels/` for a generic kernel.
+
+    Mirrors NAIF's own `generic_kernels/` layout: `lsk/`, `pck/`,
+    `spk/planets/`, `spk/satellites/`, `spk/asteroids/`. Mission-trajectory
+    kernels are out of scope here — they go through the per-mission
+    downloader and live in `missions/<MISSION>/`.
+    """
+    if url_path.startswith("http://") or url_path.startswith("https://"):
+        # Full URL — fall back to filename heuristic for the kernels we serve
+        # ourselves (SB441 asteroid kernel is the only one today).
+        if filename.lower().startswith("sb441"):
+            return "spk/asteroids"
+        return ""
+    head, _, _ = url_path.rpartition("/")
+    return head
+
+
 def _resolve_kernels(client: httpx.Client) -> dict[str, str]:
     """Fetch NAIF directory listings and resolve all needed kernels.
 
@@ -597,7 +615,12 @@ class SpiceDownloader(Downloader):
         return resolved
 
     def _download_kernels(self, kernels: dict[str, str]) -> list[Path]:
-        """Download SPICE kernels, skipping files that already exist with correct size."""
+        """Download SPICE kernels, skipping files that already exist with correct size.
+
+        Each kernel lands under `kernels/<subdir>/<filename>` where `<subdir>`
+        mirrors NAIF's generic_kernels layout (lsk/pck/spk/...). Categorization
+        happens in `_local_subdir`.
+        """
         kernel_dir = self.out_dir / "kernels"
         kernel_dir.mkdir(exist_ok=True)
         paths: list[Path] = []
@@ -605,7 +628,10 @@ class SpiceDownloader(Downloader):
         for filename, url_path in tqdm(
             kernels.items(), desc="SPICE kernels", unit="file"
         ):
-            local = kernel_dir / filename
+            subdir = _local_subdir(filename, url_path)
+            local_dir = kernel_dir / subdir if subdir else kernel_dir
+            local_dir.mkdir(parents=True, exist_ok=True)
+            local = local_dir / filename
             url = (
                 url_path
                 if url_path.startswith("http://") or url_path.startswith("https://")
