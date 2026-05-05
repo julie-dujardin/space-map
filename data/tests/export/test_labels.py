@@ -67,7 +67,10 @@ class TestWriteGlobalLabels:
     def test_empty_name_when_neither_localized_nor_global_has_one(self, tmp_path):
         all_objs = ChunkObjectData()
         # Curated extra with no Wikidata and no DB name (e.g. a probe with only
-        # a NAIF id) — frontend will fall back to the id.
+        # a NAIF id). The empty-name line still ships because the id needs to
+        # appear in the keys for the frontend's auto-promote set; downstream
+        # name coalescing turns the empty value into a null and the drawer
+        # walks its fallback chain (loading → id) from there.
         all_objs.global_data["naif--31"] = {"type": ObjectType.spacecraft}
 
         write_global_labels(tmp_path, all_objs)

@@ -39,6 +39,13 @@ def write_global_labels(out_dir: Path, all_objects: ChunkObjectData) -> None:
     ``name`` (``obj.name`` from the DB). When neither exists the line ships
     just ``{id}{US}`` and the frontend falls back to the id.
     """
+    missing_extras = sorted(PROMOTED_EXTRA_IDS - all_objects.global_data.keys())
+    if missing_extras:
+        logger.warning(
+            "PROMOTED_EXTRA_IDS not found in exported objects (typo or filtered out upstream): %s",
+            missing_extras,
+        )
+
     promoted_ids = sorted(
         obj_id
         for obj_id, glob in all_objects.global_data.items()
