@@ -11,7 +11,7 @@
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { labelsUrl } from '$lib/fetch/elements/constants';
+import { labelsUrl } from '$lib/fetch/position/format';
 
 /** ASCII Unit Separator — delimiter between id and name in label files. */
 const US = '\x1f';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
-	import { OrbitalSource } from '$lib/fetch/elements/constants';
+	import { OrbitalSource } from '$lib/fetch/position/format';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const ctx = getContext<ContextManager>('ctx');

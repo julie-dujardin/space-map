@@ -1,4 +1,10 @@
-"""Write the elements.bin.gz binary file (gzip-compressed)."""
+"""Write a position file with the elements columnar payload.
+
+The 32-byte header (common 24 + elements extension 8) is written first; then
+columns 0–N follow exactly as in v6, with no other on-disk change. The format
+byte at offset 6 is `FORMAT_ELEMENTS`; the sub_format at offset 24 picks
+Keplerian / Parabolic / SGP4 column layouts.
+"""
 
 import gzip
 import io
@@ -7,9 +13,7 @@ import struct
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES
-from space_map_data.export.elements.format import (
-    FORMAT_PARABOLIC,
-    FORMAT_SGP4,
+from space_map_data.export.position.format import (
     ID_TYPE_ORDINAL,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
@@ -18,10 +22,12 @@ from space_map_data.export.elements.format import (
     OBJECT_TYPE_ORDINAL,
     SCALE_ORDINAL,
     SOURCE_ORDINAL,
+    SUBFORMAT_PARABOLIC,
+    SUBFORMAT_SGP4,
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
     align8,
-    pack_header,
+    pack_elements_header,
 )
 from space_map_data.models.object import Object, OrbitalSource
 
@@ -35,28 +41,28 @@ def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int
     """Assert that every row's `orbital_source` matches (or is None) and return the ordinal.
 
     Enforces the one-provider-per-file invariant: if an object disagrees with
-    the declared chunk source, export fails loud rather than writing a
+    the declared file source, export fails loud rather than writing a
     mis-attributed file.
     """
     for o in objects:
         if o.orbital_source is not None and o.orbital_source != orbital_source:
             raise ValueError(
                 f"{o.id}: orbital_source {o.orbital_source!r} does not match "
-                f"chunk source {orbital_source!r}"
+                f"file source {orbital_source!r}"
             )
     return SOURCE_ORDINAL[orbital_source]
 
 
 def _id_type_ordinal(objects: list[Object]) -> int:
-    """Pick the chunk's id-type ordinal from the first row and assert uniformity.
+    """Pick the file's id-type ordinal from the first row and assert uniformity.
 
     Each (zone, zoom) query in export/common.py is single-typed by construction
     (the filters select on the id-type-defining column), so the prefix can ride
     in the file header — frontend rebuilds `<prefix>-<column0>` from this byte.
-    A mixed chunk would route bundle lookups to the wrong hash bucket on the
+    A mixed file would route bundle lookups to the wrong hash bucket on the
     frontend, so fail loud rather than ship wrong IDs.
 
-    Empty chunk → MISSING_ID_TYPE; no rows means nothing to reconstruct.
+    Empty file → MISSING_ID_TYPE; no rows means nothing to reconstruct.
     Unknown prefix on the first row → MISSING_ID_TYPE (preserves the existing
     `_parse_numeric_id` warn-and-continue behaviour for ID types we don't ship).
     """
@@ -70,7 +76,7 @@ def _id_type_ordinal(objects: list[Object]) -> int:
         prefix = _id_prefix(o)
         if prefix != first_prefix:
             raise ValueError(
-                f"{o.id}: id type {prefix!r} does not match chunk id type "
+                f"{o.id}: id type {prefix!r} does not match file id type "
                 f"{first_prefix!r} (rows in one file must share an id type)"
             )
     return expected
@@ -89,25 +95,22 @@ def _write_keplerian_columns(
     objects: list[Object],
     radius_km_overrides: dict[str, float] | None,
 ) -> None:
-    """Write columns 0–12 shared by the Keplerian and SGP4 formats.
+    """Write columns 0–12 shared by the Keplerian and SGP4 sub-formats.
 
-    The trailing `has_localized` byte (last column of every format) is written
-    by the format-specific function, not here, since it sits past format-
-    specific columns.
+    The trailing `has_localized` byte (last column of every sub-format) is
+    written by the format-specific function, not here, since it sits past
+    sub-format-specific columns.
     """
     n = len(objects)
 
-    # Column 0: id (int32) — type-specific ID from Object.id
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
 
-    # Column 1: object_type (uint8)
     _write_uint8(
         buf,
         n,
         [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
     )
 
-    # Column 2: parent_id (int32) — NAIF ID of parent body
     # TODO: drop naif it can be not NAIF
     # TODO: move to header when possible (most times, need another export type)
     _write_int32(
@@ -119,17 +122,14 @@ def _write_keplerian_columns(
         ],
     )
 
-    # Column 3: scale (uint8)
     _write_uint8(
         buf,
         n,
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    # Column 4: epoch_jd (float64 — Julian Dates need full precision)
     _write_float64(buf, n, [_float_value(o, "epoch_jd") for o in objects])
 
-    # Columns 5–11: float32 Keplerian orbital elements
     for attr in ("a", "e", "i", "om", "w", "ma", "n"):
         _write_float32(
             buf,
@@ -137,7 +137,6 @@ def _write_keplerian_columns(
             [_float_value(o, attr) for o in objects],
         )
 
-    # Column 12: radius_km (float32)
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
 
@@ -151,7 +150,7 @@ def write_elements(
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
-    """Write a Keplerian binary elements file (format_type=0).
+    """Write a Keplerian elements file (sub_format=0).
 
     Columns 0–12 are the shared Keplerian layout. Columns 13–14 (`om_dot`,
     `w_dot`, float32, deg/day) carry the secular drift rates that SPICE
@@ -161,16 +160,16 @@ def write_elements(
     (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
     a localized object-detail bundle fetch — set when any language has data.
 
-    `start_jd`/`end_jd` bound the chunk's validity; ±inf means unbounded.
+    `start_jd`/`end_jd` bound the file's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
-    `orbital_source` disagrees with the chunk source.
+    `orbital_source` disagrees with the file source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
     id_type = _id_type_ordinal(objects)
     buf = io.BytesIO()
     buf.write(
-        pack_header(
+        pack_elements_header(
             n,
             source_ordinal=source,
             id_type_ordinal=id_type,
@@ -180,9 +179,6 @@ def write_elements(
     )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
 
-    # Columns 13-14: float32 secular drift rates (deg/day). Sources that don't
-    # populate these (Horizons/SBDB, planets/barycenters) get a zero, which is
-    # the no-op for the frontend's `om += om_dot·dt` propagation step.
     for attr in ("om_dot", "w_dot"):
         _write_float32(
             buf,
@@ -205,29 +201,29 @@ def write_sgp4_elements(
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
-    """Write an SGP4 binary elements file (format_type=2).
+    """Write an SGP4 elements file (sub_format=2).
 
     Columns 0–12 match the Keplerian layout; columns 13–17 carry the extra
     TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
     MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32). Column
     18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
 
-    `start_jd`/`end_jd` bound the chunk's validity. TLEs lose accuracy fast
+    `start_jd`/`end_jd` bound the file's validity. TLEs lose accuracy fast
     past their epoch and the SGP4 propagator blows up entirely a year or two
     out, so callers should pass a tight window (typically ±14 days around the
     epoch spread).
 
     Raises ValueError when a required SGP4 field is missing on any row, or if
-    any row's `orbital_source` disagrees with the chunk source.
+    any row's `orbital_source` disagrees with the file source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
     id_type = _id_type_ordinal(objects)
     buf = io.BytesIO()
     buf.write(
-        pack_header(
+        pack_elements_header(
             n,
-            FORMAT_SGP4,
+            SUBFORMAT_SGP4,
             source_ordinal=source,
             id_type_ordinal=id_type,
             start_jd=start_jd,
@@ -236,18 +232,15 @@ def write_sgp4_elements(
     )
     _write_keplerian_columns(buf, objects, radius_km_overrides)
 
-    # Columns 13–15: float32 SGP4 drag / rate fields from CelesTrak
     for attr in _REQUIRED_SGP4:
         _write_float32(buf, n, [_required_celestrak_float(o, attr) for o in objects])
 
-    # Column 16: ELEMENT_SET_NO (int32, nullable)
     _write_int32(
         buf,
         n,
         [_celestrak_int(o, "ELEMENT_SET_NO") for o in objects],
     )
 
-    # Column 17: REV_AT_EPOCH (int32, nullable)
     _write_int32(
         buf,
         n,
@@ -269,14 +262,14 @@ def write_parabolic_elements(
     start_jd: float = UNBOUNDED_START_JD,
     end_jd: float = UNBOUNDED_END_JD,
 ) -> None:
-    """Write a parabolic binary elements file (format_type=1).
+    """Write a parabolic elements file (sub_format=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
     radius_km, has_localized. `has_localized` (uint8 0/1) gates localized
     object-detail fetches in the frontend. `start_jd`/`end_jd` bound the
-    chunk's validity; ±inf means unbounded. Raises ValueError if a required
+    file's validity; ±inf means unbounded. Raises ValueError if a required
     element (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
-    disagrees with the chunk source.
+    disagrees with the file source.
     """
     n = len(objects)
     source = _source_ordinal(objects, orbital_source)
@@ -284,9 +277,9 @@ def write_parabolic_elements(
     buf = io.BytesIO()
 
     buf.write(
-        pack_header(
+        pack_elements_header(
             n,
-            FORMAT_PARABOLIC,
+            SUBFORMAT_PARABOLIC,
             source_ordinal=source,
             id_type_ordinal=id_type,
             start_jd=start_jd,
@@ -294,7 +287,6 @@ def write_parabolic_elements(
         )
     )
 
-    # Columns 0–3: same as Keplerian
     _write_int32(buf, n, [_parse_numeric_id(o) for o in objects])
     _write_uint8(
         buf,
@@ -315,20 +307,15 @@ def write_parabolic_elements(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    # Column 4: epoch_jd (float64 — Julian Date needs full precision)
     _write_float64(buf, n, [_required_float(o, "epoch_jd") for o in objects])
 
-    # Column 5: q (float32, perihelion distance AU) — from SBDB
     _write_float32(buf, n, [_required_sbdb_float(o, "q") for o in objects])
 
-    # Columns 6–9: e, i, om, w (float32)
     for attr in ("e", "i", "om", "w"):
         _write_float32(buf, n, [_required_float(o, attr) for o in objects])
 
-    # Column 10: tp (float64 — Julian Date needs full precision) — from SBDB
     _write_float64(buf, n, [_required_sbdb_float(o, "tp") for o in objects])
 
-    # Column 11: radius_km (float32)
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
     _write_has_localized(buf, objects, has_localized)
@@ -346,10 +333,9 @@ _ID_TYPE_ATTR: dict[str, str] = {
 def _parse_numeric_id(obj: Object) -> int:
     """Return the source-specific numeric ID for the binary export.
 
-    Uses the proper column (naif_id, spkid, or
-    norad_cat_id) based on the Object.id prefix (ID_TYPE).
+    Uses the proper column (naif_id, spkid, or norad_cat_id) based on the
+    Object.id prefix (ID_TYPE).
     """
-    # ID format: "{id_type}-{value}" (built by make_object_id)
     pos = obj.id.find("-")
     if pos == -1:
         logger.warning("%s: no separator in object ID", obj.id)
@@ -449,7 +435,7 @@ def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
 def _write_has_localized(
     f, objects: list[Object], has_localized: dict[str, bool]
 ) -> None:
-    """Write the trailing `has_localized` uint8 column (last column of every format)."""
+    """Write the trailing `has_localized` uint8 column (last column of every sub-format)."""
     n = len(objects)
     _write_uint8(f, n, [1 if has_localized.get(o.id) else 0 for o in objects])
 
@@ -471,7 +457,6 @@ def _write_float32(f, n: int, values: list[float]) -> None:
 
 def _write_float64(f, n: int, values: list[float]) -> None:
     f.write(struct.pack(f"<{n}d", *values))
-    # float64 columns are always 8-byte aligned, no padding needed
 
 
 def _pad8(f, written: int) -> None:

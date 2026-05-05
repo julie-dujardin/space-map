@@ -1,4 +1,4 @@
-# Export Format (v1 directory, binary v6)
+# Export Format (v1 directory, position binary v7)
 
 All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
@@ -6,84 +6,131 @@ All files are served under `/data/v1/` and are gzip-compressed unless noted.
 
 ```
 v1/
-  metadata.json                                  (not gzipped)
-  credits.json                                   (not gzipped) aggregated attribution for the /credits page
-  nut_prec_angles.json                           (not gzipped) IAU nutation angles, by owner naif_id
-  elements/{zone}/{zoom}/{part}.bin.gz           binary orbital elements (single-snapshot zones)
-  elements/earth/{zoom}/{time}/{part}.bin.gz     time-segmented Earth elements (per CelesTrak day-dir)
-  labels/{lang}.gz                               pre-interaction labels for the promoted set (one per language)
-  chebyshev/{zone}/{chunk}/data.bin.gz           binary Chebyshev polynomial ephemeris
-  objects/__global__/{bucket}.json.gz            global object details, hash-bucketed
-  objects/{lang}/{bucket}.json.gz                localized details, hash-bucketed
-  v1/images/{filename}/{label}.{ext}             thumbnail variants (label = s | m | xl)
-  v1/images/{filename}/metadata.json.gz          per-image license + variants map
-  textures/{id}/{tier}.webp                      tier = low | medium | high
-  textures/{id}/metadata.json                    texture source + exports
-  systems/{barycenter_id}.json                   per-system body metadata
+  metadata.json                                   (not gzipped)
+  credits.json                                    (not gzipped) aggregated attribution for the /credits page
+  labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
+  position/
+    nut_prec_angles.json                          (not gzipped) IAU nutation angles, by owner naif_id
+    {zone}/{zoom}/{part}.bin.gz                   static parted        — most SBDB zones, spacecraft
+    {zone}/{zoom}/{label}/{part}.bin.gz           time-chunked + parted — earth (date label), moons (chunk-idx label)
+    {zone}/{zoom}/{chunk}.bin.gz                  time-chunked, unparted — chebyshev zones
+  objects/__global__/{bucket}.json.gz             global object details, hash-bucketed
+  objects/{lang}/{bucket}.json.gz                 localized details, hash-bucketed
+  v1/images/{filename}/{label}.{ext}              thumbnail variants (label = s | m | xl)
+  v1/images/{filename}/metadata.json.gz           per-image license + variants map
+  textures/{id}/{tier}.webp                       tier = low | medium | high
+  textures/{id}/metadata.json                     texture source + exports
+  systems/{barycenter_id}.json                    per-system body metadata
 ```
+
+Every file under `position/` shares one binary format (`SMAP` v7, common 24-byte
+header + 8-byte format-specific extension); the format byte at offset 6 of the
+header dispatches between the columnar **elements** payload (Keplerian /
+Parabolic / SGP4) and the per-body **chebyshev** segments. One file carries
+exactly one payload kind — bodies covered by chebyshev are excluded from
+elements files entirely (no ride-along), since the frontend can derive
+osculating Kepler elements from chebyshev positions when it needs to.
 
 ## metadata.json
 
-Entry point. Lists all available chunks so the consumer knows what to fetch.
+Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
+`shape` discriminator that tells the URL builder which path template to use:
 
-```json
+```jsonc
 {
-  "zones": {
-    "major": {
-      "zooms": { "0": { "parts": 1 } }
-    },
-    "earth": {
-      "zooms": {
-        "0": { "start_date": "2026-04-23", "end_date": "2026-04-26", "parts": 2 }
+  "position": {
+    "zones": {
+      "MBA": {
+        "zooms": {
+          "0": { "shape": "parted", "parts": 12 },
+          "1": { "shape": "parted", "parts": 47 }
+        }
+      },
+      "earth": {
+        "zooms": {
+          "0": {
+            "shape": "chunked-parted",
+            "label": "date",
+            "start_date": "2026-04-23",
+            "end_date": "2026-04-26",
+            "parts": 2
+          }
+        }
+      },
+      "moons": {
+        "zooms": {
+          "0": {
+            "shape": "chunked-parted",
+            "label": "index",
+            "chunks": 200,
+            "chunk_years": 0.5,
+            "start_jd": 2433282.5,
+            "parts": 1
+          }
+        }
+      },
+      "major": {
+        "zooms": {
+          "0": {
+            "shape": "chunked",
+            "chunks": 20,
+            "chunk_years": 5.0,
+            "start_jd": 2433282.5,
+            "end_jd": 2469807.5
+          },
+          "1": { "shape": "parted", "parts": 1 }
+        }
+      },
+      "moons/jupiter": {
+        "zooms": {
+          "0": {
+            "shape": "chunked",
+            "chunks": 200,
+            "chunk_years": 0.5,
+            "start_jd": 2433282.5,
+            "end_jd": 2469807.5
+          }
+        }
       }
     }
   },
   "object_bundles": {
     "global": 1093,
     "en": 208, "fr": 208, "ja": 208, "ar": 201, "ru": 208, "zh": 208
-  },
-  "chebyshev": {
-    "start_jd": 2433282.5,
-    "end_jd": 2469807.5,
-    "sun": {
-      "chunks": 20,
-      "chunk_years": 5,
-      "zones": ["major", "major_asteroids"]
-    },
-    "moons": {
-      "zones": [
-        {"zone": "moons/earth", "chunks": 20, "chunk_years": 5.0},
-        {"zone": "moons/mars", "chunks": 200, "chunk_years": 0.5},
-        {"zone": "moons/jupiter", "chunks": 200, "chunk_years": 0.5},
-        {"zone": "moons/saturn", "chunks": 800, "chunk_years": 0.125},
-        {"zone": "moons/uranus", "chunks": 400, "chunk_years": 0.25},
-        {"zone": "moons/neptune", "chunks": 400, "chunk_years": 0.25},
-        {"zone": "moons/pluto", "chunks": 50, "chunk_years": 2.0}
-      ]
-    }
   }
 }
 ```
 
-`chebyshev` is only present when Chebyshev exports were produced (i.e. the
-`[chebyshev]` section in `config.toml` matched kernels present at download
-time). Clients should feature-detect it.
+### Shape → URL
 
-The `sun` tier uses uniform `chunks`/`chunk_years` across its zones (planets +
-Sun barely move over years). The `moons` tier ships per-zone chunk cadence:
-each parent's zone is tuned to ~200 KB/chunk, so Saturn's 21 whitelisted moons
-ride 0.125y chunks while Pluto's four moons fit comfortably in 2y chunks. The
-previous `moons/{parent}/{main,inner}` split was dropped — uniform per-parent
-zones replace it. Clients index per-zone:
-`chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`.
+| `shape`           | URL                                              | Used by                              |
+|-------------------|--------------------------------------------------|--------------------------------------|
+| `parted`          | `position/{zone}/{zoom}/{part}.bin.gz`           | most SBDB zones, spacecraft, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
+| `chunked-parted`  | `position/{zone}/{zoom}/{label}/{part}.bin.gz`   | `earth` (label = ISO date), `moons` (label = chunk index) |
+| `chunked`         | `position/{zone}/{zoom}/{chunk}.bin.gz`          | every chebyshev zone (`major`, `major_asteroids`, `moons/{parent}`) |
+
+`chunked-parted` carries an extra `label` discriminator: `"date"` for ISO
+dates (`earth`), `"index"` for numeric chunk indices (`moons` Method-C secular
+elements). Clients dispatch on `label` to format the path segment.
+
+The `chunked` shape carries `chunks` and `chunk_years`; clients compute
+`chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`. There's no
+parts axis on chebyshev — files are tuned to ~200 KB by adjusting
+`chunk_years` per zone.
 
 ## Zones and zoom levels
 
-**Non-SBDB zones** (always zoom 0):
-- `major` — Sun, planets, dwarf planets, barycenters, Lagrange points
-- `moons` — natural satellites
-- `earth` — spacecraft/debris orbiting Earth
-- `spacecraft` — spacecraft/debris orbiting other bodies
+**Non-SBDB zones** (zoom 0 unless noted):
+- `major` zoom 0 — chebyshev for Sun, planets, Pluto, Ceres (shape `chunked`).
+- `major` zoom 1 — horizons-sourced majors not in any SPK kernel; in practice
+  dwarf planets with Horizons ephemerides but no chebyshev coverage.
+- `major` zoom 2 — SBDB-only dwarves (Eris, Makemake, Quaoar, …) that aren't
+  in any SPK kernel and still need a Kepler propagator.
+- `major_asteroids` — the ~15 sb441-n16 perturber asteroids (chebyshev only).
+- `moons` — non-whitelisted moons with Method-C secular elements (chunk-indexed).
+- `moons/{parent}` — whitelisted moons under each parent body, chebyshev coverage.
+- `earth` — Earth-orbiting spacecraft/debris (SGP4, date-segmented).
+- `spacecraft` — spacecraft/debris orbiting other bodies.
 
 **SBDB zones** — named after [orbit class](../data/src/space_map_data/models/object/sbdb.py) (e.g. `APO`, `MBA`, `TJN`):
 - Zoom 0 = named objects
@@ -93,67 +140,76 @@ Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
 
 ### Time-segmented zones
 
-Two zones segment elements over time, with two distinct manifest shapes:
+Two zones segment elements over time, distinguished by `label` in the
+manifest:
 
-- **`earth`** — date-segmented. One snapshot per CelesTrak day. Metadata
-  entry: `{start_date, end_date, parts}`. Path:
-  `elements/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
-  past the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds
-  it to `min(epoch)−14d … max(epoch)+14d`.
+- **`earth`** — date-segmented (`label: "date"`). One snapshot per CelesTrak
+  day. Path: `position/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy
+  degrades fast past the TLE epoch, so each snapshot's header
+  `start_jd`/`end_jd` bounds it to `min(epoch)−14d … max(epoch)+14d`.
 
-- **`moons`** — chunk-indexed. One snapshot per 6-month chunk over the
-  Chebyshev coverage range. Method C secular elements are re-fitted at each
-  chunk midpoint so Ω̇/ω̇/n_mean track multi-decade Kozai-Lidov-style drift
-  on outer irregulars instead of being a single linear approximation across
-  the whole range. Metadata entry: `{chunks, chunk_years, start_jd, parts}`.
-  Path: `elements/moons/0/{chunk_idx}/{part}.bin.gz` where `chunk_idx` is a
-  decimal integer (no zero-padding needed — clients compute it numerically
-  and concatenate). Compute the chunk index from a JD with
-  `floor((jd - start_jd) / (chunk_years * 365.25))`. Header
+- **`moons`** — chunk-indexed (`label: "index"`). One snapshot per 6-month
+  chunk over the Chebyshev coverage range. Method C secular elements are
+  re-fitted at each chunk midpoint so Ω̇/ω̇/n_mean track multi-decade
+  Kozai-Lidov-style drift on outer irregulars instead of being a single
+  linear approximation across the whole range. Path:
+  `position/moons/0/{chunk_idx}/{part}.bin.gz`. Compute the chunk index from
+  a JD with `floor((jd - start_jd) / (chunk_years * 365.25))`. Header
   `start_jd`/`end_jd` bound the chunk's validity window. Whitelisted moons
-  (those with full Chebyshev coverage) ride along at every chunk with their
-  single-epoch DB elements (constant across chunks).
+  are absent from `moons` — they ride in their parent's chebyshev zone
+  instead.
 
-Clients dispatch on field presence: `chunks` ⇒ chunk-indexed,
-`start_date` ⇒ date-segmented, neither ⇒ static `{parts}`. The
-discriminator is set explicitly per zone (via the `Snapshot.chunk_years`
-field on the producer side), not inferred from label format.
+## Binary format — common header
 
-## Binary elements file
+Every file under `position/` starts with the same 24-byte common header,
+followed by an 8-byte format-specific extension (32 bytes total before the
+payload).
+
+### Common header (24 bytes, 8-aligned)
+
+| Offset | Type    | Field |
+|--------|---------|-------|
+| 0      | char[4] | Magic `SMAP` |
+| 4      | uint16  | Version (7) |
+| 6      | uint8   | Format: `0 = elements, 1 = chebyshev` |
+| 7      | uint8   | Reserved |
+| 8      | float64 | `start_jd` — file validity start (JD TDB), `-Infinity` = unbounded |
+| 16     | float64 | `end_jd` — file validity end (JD TDB), `+Infinity` = unbounded |
+
+`start_jd`/`end_jd` define the window where propagation is defined for this
+file. Outside it, consumers must hide every body in the file rather than call
+the propagator — SGP4 diverges beyond the TLE epoch spread, and even Kepler
+orbits fit from short observation arcs aren't trustworthy far out. Writers
+use `±Infinity` for formats with no hard cutoff (Keplerian/parabolic orbits
+are mathematical solutions); SGP4 files bound it to `min(epoch) − 14d …
+max(epoch) + 14d`.
+
+## Elements payload (format byte = 0)
 
 Columnar binary format with zero-copy typed array support.
 
-### Header (32 bytes)
+### Elements extension (8 bytes, offsets 24..31)
 
-| Offset | Type    | Field     |
-|--------|---------|-----------|
-| 0      | char[4] | Magic `SMAP` |
-| 4      | uint16  | Version (6) |
-| 6      | uint16  | Format type: 0 = Keplerian, 1 = Parabolic, 2 = SGP4 |
-| 8      | float64 | `start_jd` — chunk validity start (JD TDB), `-Infinity` = unbounded |
-| 16     | float64 | `end_jd` — chunk validity end (JD TDB, inclusive), `+Infinity` = unbounded |
-| 24     | uint32  | Row count |
-| 28     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this source |
-| 29     | uint8   | Id type: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — every row in the file shares this prefix; combine with column 0 (numeric ID) to rebuild the full `<prefix>-<numeric>` Object ID |
-| 30     | uint16  | Reserved  |
+| Offset | Type    | Field |
+|--------|---------|-------|
+| 24     | uint16  | Sub-format: `0 = Keplerian, 1 = Parabolic, 2 = SGP4` |
+| 26     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this provider |
+| 27     | uint8   | Id type: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — every row in the file shares this prefix; combine with column 0 (numeric ID) to rebuild the full `<prefix>-<numeric>` Object ID |
+| 28     | uint32  | Row count |
 
-One provider writes one zone/part (pipeline-enforced), so the source fits in a single file-level byte rather than per-row. The id type follows the same single-typed-chunk invariant — each (zone, zoom) query selects on the prefix-defining column, so one byte per file is enough. Frontend must mirror both ordinal mappings.
+One provider writes one zone/part (pipeline-enforced), so the source fits in
+a single file-level byte rather than per-row. The id type follows the same
+single-typed-file invariant — each (zone, zoom) query selects on the prefix-
+defining column, so one byte per file is enough. Frontend must mirror both
+ordinal mappings.
 
-`start_jd`/`end_jd` define the window where propagation is defined for this
-chunk. Outside it, consumers must hide every body in the file rather than call
-the propagator — SGP4 diverges beyond the TLE epoch spread, and even Kepler
-orbits fit from short observation arcs aren't trustworthy far out. Matches the
-header convention in the Chebyshev export. Writers use `±Infinity` for
-formats with no hard cutoff (Keplerian/parabolic orbits are mathematical
-solutions); SGP4 chunks bound it to `min(epoch) − 14d … max(epoch) + 14d`.
-
-### Keplerian columns (format type 0)
+### Keplerian columns (sub-format = 0)
 
 Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day precision; other numeric columns use float32 (~7 significant digits). See [Precision rationale](#precision-rationale) below.
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
-| 0 | id          | int32   | -1      | Numeric portion of `Object.id`; combine with the header's id-type byte to rebuild the full `<prefix>-<numeric>` form (e.g. id-type=0 + 399 → `naif-399`). Sourced from `naif_id`, `spkid`, or `norad_cat_id` per the chunk's id type. |
+| 0 | id          | int32   | -1      | Numeric portion of `Object.id`; combine with the elements extension's id-type byte to rebuild the full `<prefix>-<numeric>` form (e.g. id-type=0 + 399 → `naif-399`). Sourced from `naif_id`, `spkid`, or `norad_cat_id` per the file's id type. |
 | 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
 | 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
@@ -174,11 +230,10 @@ Coordinate frame: ecliptic J2000.
 
 Propagation with secular rates: `om(t) = om + om_dot · (jd − epoch_jd)`,
 `w(t) = w + w_dot · (jd − epoch_jd)`. Sources that don't fit secular drift
-(Horizons/SBDB/CelesTrak, plus SPICE rows for planets/dwarves/whitelisted
-moons) write zeros, making the rate term a no-op. This captures J2/J4
-nodal regression and apsidal precession on small moons (Phobos' ~−160°/yr,
-inner Saturn/Neptune moons up to ~−300°/yr) without shipping per-frame
-Chebyshev coefficients.
+(Horizons/SBDB/CelesTrak) write zeros, making the rate term a no-op. This
+captures J2/J4 nodal regression and apsidal precession on small moons
+(Phobos' ~−160°/yr, inner Saturn/Neptune moons up to ~−300°/yr) without
+shipping per-frame Chebyshev coefficients.
 
 ### ObjectType ordinals
 
@@ -200,7 +255,7 @@ The `scale` flag determines how to interpret `a` and `n`:
 
 To consume uniformly, normalize planet-scale values: `a_au = a / 149_597_870.7`, `n_degday = n * 360`.
 
-### SGP4 columns (format type 2)
+### SGP4 columns (sub-format = 2)
 
 Used for the `earth` zone. Shares columns 0–12 with the Keplerian layout
 (SGP4 omits the secular rate columns 13–14 since the SGP4 propagator
@@ -221,7 +276,7 @@ don't do SGP4 can ignore columns 13–17 and treat the file as Keplerian.
 `a` and `n` use the planet-scale units (km, rev/day) — the raw OMM values from
 CelesTrak, which `json2satrec` expects unconverted.
 
-### Parabolic columns (format type 1)
+### Parabolic columns (sub-format = 1)
 
 Used for the `PAR` zone. Parabolic comets (`e = 1`) lack a semi-major axis and mean motion; they use perihelion distance and time of perihelion instead.
 
@@ -259,27 +314,28 @@ All other columns are safe as float32 based on their value ranges in the databas
 | q (AU)     | 0 – 43                  | ~3 × 10⁻⁶ AU                | Parabolic comets only |
 | radius_km  | 0.001 – 70,000          | ~0.004 km at max             | |
 
-## Chebyshev ephemeris (`chebyshev/{zone}/{chunk}/`)
+## Chebyshev payload (format byte = 1)
 
 High-accuracy polynomial ephemeris for bodies that a user zooms in on — the
 Sun, planets, dwarf planets, planetary-system barycenters, the 16 sb441-n16
 asteroid perturbers, and ~30 whitelisted surface-feature moons. Each
-(zone, time-chunk) pair is one gzipped binary; the per-body header carries
-`id_type` + `obj_id_value` so consumers rebuild the full `{prefix}-{numeric}`
-Object ID (e.g. `spkid-20134340` for Pluto) without a sidecar file. Evaluate
-with Clenshaw's recursion on the Chebyshev basis.
+(zone, time-chunk) pair is one gzipped binary at
+`position/{zone}/0/{chunk}.bin.gz`; the per-body header carries `id_type` +
+`obj_id_value` so consumers rebuild the full `{prefix}-{numeric}` Object ID
+(e.g. `spkid-20134340` for Pluto) without a sidecar file. Evaluate with
+Clenshaw's recursion on the Chebyshev basis.
 
 Non-whitelisted moons (tiny irregulars, inner shepherds without surface
-features) don't appear here — they're covered by the standard Keplerian
-elements format with secular drift columns (om_dot, w_dot), populated via a
-numerical mean-element fit at extraction time so the orbit captures J2/J4
-secular precession without shipping per-frame Chebyshev coefficients.
+features) don't appear here — they're covered by the `moons` elements zone
+with secular drift columns (`om_dot`, `w_dot`), populated via a numerical
+mean-element fit at extraction time so the orbit captures J2/J4 secular
+precession without shipping per-frame Chebyshev coefficients.
 
 ### Zones
 
-Two tiers; the `sun` tier shares chunk cadence across its zones, the `moons`
-tier ships per-zone (per-parent) cadence so each chunk lands at ~200 KB
-regardless of body density.
+Two tiers; the coarse set shares chunk cadence across zones, while moons
+ship per-zone (per-parent) cadence so each chunk lands at ~200 KB regardless
+of body density.
 
 **Coarse, always-loaded set** (5y chunks, ~20 chunks over 100y):
 - `major` — Sun, planets, dwarf planets, planetary-system barycenters.
@@ -298,37 +354,18 @@ regardless of body density.
 - `moons/neptune` — Triton, Proteus + 4 close-in shepherds (0.25y chunks).
 - `moons/pluto` — Charon, Nix, Kerberos, Styx (2y chunks).
 
-The previous `moons/{parent}/{main,inner}` split was dropped; clients that
-want to throttle network requests at high time-warp speeds should fall back
-to the elements-format Kepler propagator (see Time-segmented zones above)
-rather than skipping a Chebyshev sub-zone — accuracy loss at >1 week/second
-is not visible at the resolutions where time-warp is used.
+Per-zone chunk cadence (`chunks`, `chunk_years`, `start_jd`, `end_jd`) lives
+under each zone's `position.zones[zone].zooms[0]` entry with
+`shape: "chunked"`.
 
-### Time chunks
-
-Per-zone chunk cadence (`chunk_years`) is in the manifest. Chunk bounds are
-in each file's header, so clients can convert JD → chunk index by reading
-the per-zone entry from `metadata.json → chebyshev.{sun,moons}.zones[…]`
-and computing `chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`
-against the top-level `start_jd`.
-
-### Binary layout (`data.bin.gz`, little-endian)
-
-**File header (32 bytes)**
+### Chebyshev extension (8 bytes, offsets 24..31)
 
 | Offset | Type    | Field |
 |--------|---------|-------|
-| 0      | char[4] | Magic `SCHB` |
-| 4      | uint16  | Version (2) |
-| 6      | uint16  | Format type: 0 = position-only Chebyshev |
-| 8      | float64 | start_jd (chunk start, JD TDB) |
-| 16     | float64 | end_jd (chunk end, JD TDB) |
 | 24     | uint32  | body_count |
-| 28     | uint32  | Reserved |
+| 28     | uint32  | Reserved (zero) |
 
-**Per-body (repeats body_count times)**
-
-Each body carries its own 24-byte header then a packed list of segments.
+### Per-body header (24 bytes, repeats body_count times)
 
 | Offset | Type    | Field |
 |--------|---------|-------|
@@ -337,14 +374,22 @@ Each body carries its own 24-byte header then a packed list of segments.
 | 8      | int32   | obj_id_value (numeric portion of the full `Object.id`; equals naif_id when id_type=naif) |
 | 12     | float32 | radius_km (NaN if unknown) |
 | 16     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
-| 18     | uint8   | id_type (`0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — same ordinals as the elements header byte) |
-| 19     | uint8   | Reserved |
-| 20     | uint32  | segment_count |
+| 18     | uint8   | id_type (`0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — same ordinals as the elements extension byte) |
+| 19     | uint8   | has_localized (1 iff the body has a localized detail bundle in at least one language) |
+| 20     | uint8   | object_type (`ObjectType` ordinal — same map as the elements `objectType` column) |
+| 21     | uint8   | Reserved |
+| 22     | uint16  | segment_count |
 
 Combine `id_type` with `obj_id_value` to rebuild the full Object ID for
 cross-referencing with the elements export and object detail bundles. Pluto
 and the perturber asteroids ride as `spkid-…` even though their SPICE
 `naif_id` is the planetary ID, so consumers must not assume `naif-{naif_id}`.
+
+`object_type` lets the frontend construct full body records (with the right
+rendering style) from chebyshev alone, since cheb-covered bodies don't ship
+in any elements file.
+
+### Per-segment layout
 
 Then `segment_count` segments, each laid out as:
 
@@ -372,20 +417,20 @@ The returned vector is parent-relative in km. Walk up the parent chain
 
 ### Precision
 
-Segment bounds stay float64 for JD precision (same rationale as the Keplerian
+Segment bounds stay float64 for JD precision (same rationale as the elements
 format's `epoch_jd`). Coefficients are float32: for the time windows and
-sub-interval sizes produced by the pipeline, truncation error stays well below
-meter-level for planets and sub-km for inner moons — below visualization
-resolution in every realistic zoom.
+sub-interval sizes produced by the pipeline, truncation error stays well
+below meter-level for planets and sub-km for inner moons — below
+visualization resolution in every realistic zoom.
 
 ## Object ID reconstruction
 
 Object IDs (`naif-399`, `spkid-2000433`, `norad_satcat-25544`) are not shipped
 as separate files — consumers rebuild them from the binary:
 
-- **Elements**: combine the file-header `id_type` byte (offset 29) with column
-  0 (`int32`) per row.
-- **Chebyshev**: combine each body header's `id_type` (offset 18) with
+- **Elements**: combine the elements extension's `id_type` byte (offset 27)
+  with column 0 (`int32`) per row.
+- **Chebyshev**: combine each per-body header's `id_type` (offset 18) with
   `obj_id_value` (offset 8).
 
 Both formats use the same id-type ordinal map: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown`.
@@ -409,10 +454,9 @@ Unit Separator). Name fallback per (object, lang): localized Wikidata label →
 English Wikidata label → DB `name` → empty (the frontend then falls back to
 the id).
 
-This replaces the previous per-chunk `.loc.{lang}.gz` files. Localized detail
-bundles for clicked objects are still fetched on demand (see
+Localized detail bundles for clicked objects are still fetched on demand (see
 [Object detail files](#object-detail-files)) and are gated on the
-`has_localized` bit in each binary chunk row — when the bit is `0`, the
+`has_localized` bit in each binary file's row/body — when the bit is `0`, the
 frontend skips the fetch entirely (avoiding a 404 round-trip for objects with
 no Wikidata at all). There is no English-fallback tier: if the user's locale
 has no localized bundle for an object, no localized data is shown.
@@ -425,7 +469,7 @@ language) is chosen at export time so average members-per-bundle stays near
 target K (`K_global = 100`, `K_localized = 200`) regardless of DB size. The
 resulting Ns are published in `metadata.json → object_bundles` so the
 frontend can reconstruct URLs from an id alone — needed for deep links where
-no element chunk has been loaded yet.
+no element file has been loaded yet.
 
 The bucket id for an object in tier T (global or a specific language) is:
 
@@ -479,7 +523,7 @@ interface GlobalObjectData {
     pole_dec_0: number; pole_dec_1: number;
     w0: number; w1: number; w2: number;
   };
-  nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with /v1/nut_prec_angles.json)
+  nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with /v1/position/nut_prec_angles.json)
     // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))
     ra: number[]; dec: number[]; pm: number[];
   };
@@ -498,7 +542,7 @@ interface GlobalObjectData {
     q?: number; tp?: number;
     // SGP4 init fields (CelesTrak-sourced earth sats only) — feed into
     // satellite.js `json2satrec` so URL-navigated sats can build a satrec
-    // before their element chunk arrives.
+    // before their element file arrives.
     bstar?: number;           // 1 / Earth radius
     mean_motion_dot?: number; // rev/day²
     mean_motion_ddot?: number; // rev/day³
@@ -584,9 +628,10 @@ interface CurrencyQuantity { value: number; currency: string; }
 Per-language bundles. `bucket = sha256(id)[:4] % N_{lang}` where `N_{lang}`
 is that language's count in `metadata.object_bundles`. An object appears in
 the language's bundle only when Wikidata/Wikipedia data exists for that
-language. The binary `has_localized` column tells the frontend whether *any*
-language has data, gating the fetch attempt; on a 404 (locale has no bundle
-for this object) the frontend gives up — there is no English fallback tier.
+language. The binary `has_localized` column/byte tells the frontend whether
+*any* language has data, gating the fetch attempt; on a 404 (locale has no
+bundle for this object) the frontend gives up — there is no English fallback
+tier.
 
 Each bundle is a JSON object `{ "<id>": LocalizedObjectData, ... }`. Entity
 references link to Wikipedia where available.
@@ -770,7 +815,7 @@ credits (orbital providers, SPICE/IAU rotation kernels, Wikidata, Wikipedia,
 Wikimedia Commons, IAU nomenclature) live in the frontend page itself and
 don't need to be emitted here.
 
-## Nutation angles (`nut_prec_angles.json`)
+## Nutation angles (`position/nut_prec_angles.json`)
 
 A single tiny top-level file fetched once at app start. Lists the IAU nutation/precession angle pairs `(θ₀, θ₁)` defined per "owner" body — typically the planetary system barycenter. Bodies derive their owner as `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`.
 
@@ -793,20 +838,29 @@ W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
 
 ## Consuming the data
 
-1. Fetch `metadata.json` to discover available chunks
-2. Fetch `labels/{lang}.gz` once on app start (and on locale change) to get the
-   pre-interaction label set: split by newline, parse `{id}\x1f{name}` per
-   line, build a `Map<id, name>`. The keys *are* the promoted set — there's
-   no separate frontend list.
-3. For each (zone, zoom, part), fetch `.bin.gz`; parse with the binary format
-   above and rebuild full IDs by combining the header's id-type byte with
-   column 0 per row. Read the `has_localized` byte (last column) per row to
-   know whether a localized detail bundle is worth fetching on click.
-4. Compute 3D positions from orbital elements using Kepler's equation at your target date (or Barker's equation for format type 1 / parabolic files)
-5. Object detail bundles are fetched on demand by hashing the id: `bucket = sha256(id)[:4] % N`, where `N` comes from `metadata.object_bundles.global` (global) or `metadata.object_bundles.{lang}` (localized). Always fetch `objects/__global__/{bucket}.json.gz`; additionally fetch `objects/{lang}/{bucket}.json.gz` only when the row's `has_localized` bit is `1`. On 404 (locale has no bundle for this object), give up — there's no English fallback tier. Extract the entry by object id from the returned dict; cache the whole bundle to amortize neighbor lookups.
-6. For bodies that also appear in `metadata.json → chebyshev.{sun|moons}.zones`,
-   fetch the chunk covering the current simulated time from
-   `chebyshev/{zone}/{chunk}/data.bin.gz`; rebuild each body's Object ID from
-   its `id_type` + `obj_id_value` header fields. Prefer those positions over
-   the Keplerian ones and fall back to Keplerian only for bodies not in the
-   Chebyshev export.
+1. Fetch `metadata.json` to discover available zones and shapes.
+2. Fetch `labels/{lang}.gz` once on app start (and on locale change) to get
+   the pre-interaction label set: split by newline, parse `{id}\x1f{name}`
+   per line, build a `Map<id, name>`. The keys *are* the promoted set —
+   there's no separate frontend list.
+3. For each (zone, zoom), dispatch on `shape`:
+   - `parted` → fetch `position/{zone}/{zoom}/{part}.bin.gz`
+   - `chunked-parted` → pick a label (date for `earth`, chunk index for
+     `moons`) then fetch `position/{zone}/{zoom}/{label}/{part}.bin.gz`
+   - `chunked` (chebyshev) → compute the chunk index from JD and fetch
+     `position/{zone}/{zoom}/{chunk}.bin.gz`
+4. Parse the file: read the common header, dispatch on the format byte at
+   offset 6 to either the elements columnar reader or the chebyshev per-body
+   reader. Rebuild full IDs from the id-type byte (elements) or the per-body
+   `id_type` (chebyshev).
+5. For elements rows, propagate at the target date with Kepler's equation
+   (or Barker's for parabolic, or `json2satrec` + SGP4 for SGP4). For
+   chebyshev bodies, evaluate the segment covering the target JD via
+   Clenshaw's recursion to get a parent-relative position in km, then walk
+   up the parent chain to your reference frame.
+6. Read `has_localized` (last column on elements, byte 19 of the chebyshev
+   per-body header) to gate localized object-detail fetches. Always fetch
+   `objects/__global__/{bucket}.json.gz` where
+   `bucket = sha256(id)[:4] % N_global`; only fetch
+   `objects/{lang}/{bucket}.json.gz` when `has_localized` is `1`. On a 404,
+   give up — there's no English fallback tier.

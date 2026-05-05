@@ -1,11 +1,15 @@
-"""Export Chebyshev polynomial ephemeris as chunked binary files.
+"""Export Chebyshev polynomial ephemeris as chunked position files.
 
 Reads per-body `.npz` files produced by the SPICE download step and emits one
-(gzipped) binary per (zone, time-chunk) under `chebyshev/{zone}/{chunk}/`. The
-binary's per-body header carries `id_type` + `obj_id_value` so the frontend can
-rebuild the full `<prefix>-<numeric>` Object ID — Pluto and the perturber
-asteroids ride as `spkid-…` even though their SPICE naif_id is the planetary
-ID.
+gzipped position file per (zone, time-chunk) at
+`position/{zone}/0/{chunk}.bin.gz`. The binary's per-body header carries
+`id_type` + `obj_id_value` so the frontend can rebuild the full
+`<prefix>-<numeric>` Object ID — Pluto and the perturber asteroids ride as
+`spkid-…` even though their SPICE naif_id is the planetary ID.
+
+The chebyshev payload always sits at zoom 0 (most accurate tier for the most
+important bodies). Less-accurate Kepler-based fallbacks would live at zoom 1+
+in a different zone, not in the same file.
 """
 
 import gzip
@@ -20,13 +24,15 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from space_map_data.export.chebyshev.format import (
+from space_map_data.export.position.format import (
     ID_TYPE_ORDINAL,
     MISSING_ID_TYPE,
+    MISSING_INT32,
+    MISSING_UINT8,
+    OBJECT_TYPE_ORDINAL,
     pack_body_header,
-    pack_header,
+    pack_chebyshev_header,
 )
-from space_map_data.export.elements.format import MISSING_INT32
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_PARENT_CHUNK_YEARS,
@@ -41,9 +47,7 @@ _J2000_JD = 2451545.0
 # Zone routing: core bodies + asteroids go to flat `major` / `major_asteroids`
 # zones at a coarse chunk cadence (planets + sun barely move over years).
 # Whitelisted moons get one `moons/<parent>` zone per parent at a per-parent
-# chunk cadence (`CHEBYSHEV_PARENT_CHUNK_YEARS`). The previous inner/main split
-# was dropped — chunks are now uniformly ~200 KB regardless of body density,
-# achieved by varying chunk_years per parent rather than per-body bucket.
+# chunk cadence (`CHEBYSHEV_PARENT_CHUNK_YEARS`).
 _ASTEROID_TYPES = frozenset(
     {
         ObjectType.asteroid,
@@ -69,8 +73,6 @@ _PARENT_NAMES = {
 
 def _year_to_jd(year: int) -> float:
     """Civil year start (Jan 1) → Julian Date TDB (approximate, good to seconds)."""
-    # Gregorian → JD at 00:00 UT, Jan 1 of `year`.
-    # Good enough for chunk bounds; we're not doing sub-second work here.
     import datetime
 
     d = datetime.date(year, 1, 1)
@@ -115,7 +117,6 @@ def _slice_segments(
     chunk_end_jd: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the subset of segments overlapping [chunk_start, chunk_end)."""
-    # Overlap condition: seg.end > chunk_start AND seg.start < chunk_end
     mask = (end_jds > chunk_start_jd) & (start_jds < chunk_end_jd)
     return start_jds[mask], end_jds[mask], coeffs[mask]
 
@@ -147,7 +148,7 @@ def _obj_id_parts(obj: Object) -> tuple[int, int]:
     Pulled from `Object.id` (`<prefix>-<numeric>`) rather than the SPICE naif_id
     so Pluto/perturber-asteroid bodies retain their `spkid-…` form across the
     binary. Logs and falls back to sentinels rather than raising — chebyshev
-    chunks aggregate many bodies and one bad ID shouldn't take down the export.
+    files aggregate many bodies and one bad ID shouldn't take down the export.
     """
     pos = obj.id.find("-")
     if pos == -1:
@@ -172,14 +173,19 @@ def _write_chunk_file(
     chunk_idx: int,
     chunk_start_jd: float,
     chunk_end_jd: float,
-    bodies: list[tuple[Object, int, int, np.ndarray, np.ndarray, np.ndarray, float]],
+    bodies: list[
+        tuple[Object, int, int, np.ndarray, np.ndarray, np.ndarray, float, bool]
+    ],
 ) -> int:
-    """Write one chunk file. Returns bytes written for the bin file."""
-    chunk_dir = out_dir / "chebyshev" / zone / str(chunk_idx)
+    """Write one chunk file at `position/{zone}/0/{chunk_idx}.bin.gz`.
+
+    Returns bytes written for the bin file.
+    """
+    chunk_dir = out_dir / "position" / zone / "0"
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
     buf: list[bytes] = []
-    buf.append(pack_header(chunk_start_jd, chunk_end_jd, len(bodies)))
+    buf.append(pack_chebyshev_header(chunk_start_jd, chunk_end_jd, len(bodies)))
 
     for (
         obj,
@@ -189,6 +195,7 @@ def _write_chunk_file(
         seg_ends,
         seg_coeffs,
         radius_km,
+        has_loc,
     ) in bodies:
         id_type, obj_id_value = _obj_id_parts(obj)
         n_segments = seg_starts.shape[0]
@@ -201,24 +208,24 @@ def _write_chunk_file(
                 radius_km=float(radius_km) if radius_km is not None else float("nan"),
                 coeffs_per_axis=coeffs_per_axis,
                 id_type_ordinal=id_type,
+                has_localized=has_loc,
+                object_type_ordinal=OBJECT_TYPE_ORDINAL.get(
+                    obj.object_type, MISSING_UINT8
+                ),
                 segment_count=n_segments,
             )
         )
-        # Segment bodies: (start_jd, end_jd, x-coeffs, y-coeffs, z-coeffs) packed per segment.
-        # Float64 bounds then contiguous float32 coefficient triples.
         if n_segments == 0:
             continue
         starts_f64 = np.ascontiguousarray(seg_starts, dtype=np.float64)
         ends_f64 = np.ascontiguousarray(seg_ends, dtype=np.float64)
         coeffs_f32 = np.ascontiguousarray(seg_coeffs, dtype=np.float32)
-        # Interleave per segment: we want [start, end, cx[0..N], cy[0..N], cz[0..N]] × segments
-        # rather than separate arrays, so consumers can scan sequentially.
         for i in range(n_segments):
             buf.append(struct.pack("<dd", float(starts_f64[i]), float(ends_f64[i])))
             buf.append(coeffs_f32[i].tobytes(order="C"))
 
     data = b"".join(buf)
-    out_path = chunk_dir / "data.bin.gz"
+    out_path = chunk_dir / f"{chunk_idx}.bin.gz"
     with gzip.open(out_path, "wb") as f:
         f.write(data)
 
@@ -230,21 +237,24 @@ def write_chebyshev(
     download_dir: Path,
     out_dir: Path,
     radii: dict[int, dict],
-) -> dict:
-    """Write Chebyshev exports. Returns manifest entry for metadata.json.
+    has_localized: dict[str, bool],
+) -> dict[str, dict]:
+    """Write Chebyshev exports. Returns a per-zone manifest fragment.
 
     Reads per-body .npz files in `download_dir/spice/chebyshev/`, links each to
-    its DB Object, partitions by zone (major / major_asteroids) and time chunk,
-    and emits one binary file per (zone, chunk). The full Object ID (e.g.
-    `naif-499`, `spkid-20134340`) is encoded inside the binary's per-body
-    header — no sidecar id file is emitted.
+    its DB Object, partitions by zone (major / major_asteroids / moons/<parent>)
+    and time chunk, and emits one position file per (zone, chunk_idx) at zoom 0.
+    The full Object ID (e.g. `naif-499`, `spkid-20134340`) is encoded inside
+    the binary's per-body header. `has_localized` (built once during the export
+    pass, keyed by Object.id) drops one bit per body into the body header so
+    the frontend can skip detail-bundle fetches for objects with no Wikidata.
 
     Chunk parameters come from the SPICE download metadata so the export
     matches exactly what was extracted.
 
-    The manifest collapses zones into two tiers — `sun` (slow movers, coarse
-    chunks) and `moons` (fast movers, fine chunks) — sharing JD bounds at the
-    top level. Tier params are uniform across all zones in that tier.
+    Returns a dict mapping zone → `{chunks, chunk_years, start_jd, end_jd}`.
+    The caller folds these per-zone into the unified position manifest with
+    `shape="chunked"`. Returns `{}` when there's nothing to export.
     """
     cheb_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
     if not cheb_dir.exists():
@@ -285,13 +295,12 @@ def write_chebyshev(
             continue
         radius = (radii.get(naif_id) or {}).get("a")
         zone = _determine_zone(obj.object_type, naif_id, parent_naif_id)
+        has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(
-            (obj, naif_id, parent_naif_id, start_jds, end_jds, coeffs, radius)
+            (obj, naif_id, parent_naif_id, start_jds, end_jds, coeffs, radius, has_loc)
         )
 
-    sun_zones: list[str] = []
-    moon_zone_entries: list[dict] = []
-    sun_chunks = max(1, math.ceil((end_year - start_year) / core_chunk_years))
+    zone_manifest: dict[str, dict] = {}
     for zone, bodies in zone_bodies.items():
         # Deterministic body order inside each zone — stable by NAIF ID so
         # consumers don't have to sort.
@@ -318,6 +327,7 @@ def write_chebyshev(
                 end_jds,
                 coeffs,
                 radius,
+                has_loc,
             ) in bodies:
                 seg_starts, seg_ends, seg_coeffs = _slice_segments(
                     start_jds, end_jds, coeffs, chunk_start_jd, chunk_end_jd
@@ -333,6 +343,7 @@ def write_chebyshev(
                         seg_ends,
                         seg_coeffs,
                         radius,
+                        has_loc,
                     )
                 )
             if not chunk_bodies:
@@ -356,27 +367,11 @@ def write_chebyshev(
             avg_kb,
             total_bytes / 1024 / 1024,
         )
-        if is_moon_tier:
-            moon_zone_entries.append(
-                {"zone": zone, "chunks": n_chunks, "chunk_years": chunk_years}
-            )
-        else:
-            sun_zones.append(zone)
+        zone_manifest[zone] = {
+            "chunks": n_chunks,
+            "chunk_years": chunk_years,
+            "start_jd": start_jd_total,
+            "end_jd": end_jd_total,
+        }
 
-    sun_zones.sort()
-    moon_zone_entries.sort(key=lambda e: e["zone"])
-    return {
-        "start_jd": start_jd_total,
-        "end_jd": end_jd_total,
-        "sun": {
-            "chunks": sun_chunks,
-            "chunk_years": core_chunk_years,
-            "zones": sun_zones,
-        },
-        "moons": {
-            # Each zone carries its own (chunks, chunk_years) — Saturn ships
-            # 0.125y chunks while Pluto ships 2y, etc. Frontend indexes per-zone:
-            # `chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`.
-            "zones": moon_zone_entries,
-        },
-    }
+    return zone_manifest

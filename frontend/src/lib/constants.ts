@@ -35,7 +35,7 @@ export const BODY_COLORS: Record<string, string> = {
 export const DEFAULT_BODY_COLOR = '#cccccc';
 
 /** Fallback colors by broad category, used when a body isn't in BODY_COLORS. */
-export const TYPE_COLOR_PLANET = '#e87b4a';
+export const TYPE_COLOR_PLANET = '#fcb493';
 export const TYPE_COLOR_MOON = '#c7ccda';
 export const TYPE_COLOR_STAR = '#ffe89e';
 export const TYPE_COLOR_ASTEROID = '#ccb49a';

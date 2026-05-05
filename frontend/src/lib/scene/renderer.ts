@@ -45,11 +45,11 @@ import {
 	refreshOrbitLineGeometry,
 	setOrbitLineResolution
 } from './objects/builders';
-import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
+import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
-import { fetchLabels } from '$lib/fetch/elements/fetch';
+import { fetchLabels } from '$lib/fetch/position/labels';
 import type { Vec3 } from './animation/math';
 import {
 	type FocusState,

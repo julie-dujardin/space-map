@@ -1,6 +1,6 @@
 import type { SatRec } from 'satellite.js';
-import type { OrbitalSource } from '$lib/fetch/elements/constants';
-import type { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
+import type { OrbitalSource } from '$lib/fetch/position/format';
+import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { NutPrec, Orientation } from '$lib/math/orientation';
 
 export interface OrbitalElements {

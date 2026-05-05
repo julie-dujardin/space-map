@@ -1,24 +1,20 @@
 /**
- * Binary reader for elements.bin — the columnar orbital elements file.
+ * Binary reader for the elements payload of a position file.
  * Creates zero-copy typed array views over the fetched ArrayBuffer.
  */
 
 import {
-	MAGIC,
-	VERSION,
 	HEADER_SIZE,
-	FORMAT_KEPLERIAN,
-	FORMAT_PARABOLIC,
-	FORMAT_SGP4,
 	IdType,
 	OrbitalSource,
-	buildObjectId,
-	elementsBinUrl
-} from '$lib/fetch/elements/constants';
-import { LruPromiseCache } from '$lib/fetch/elements/cache';
+	SUBFORMAT_KEPLERIAN,
+	SUBFORMAT_PARABOLIC,
+	SUBFORMAT_SGP4,
+	buildObjectId
+} from '$lib/fetch/position/format';
 
 /**
- * Chunk-level validity window (JD TDB). Propagation is only defined inside
+ * File-level validity window (JD TDB). Propagation is only defined inside
  * `[validityStart, validityEnd]`; consumers hide bodies whose current `jd` is
  * outside the window. `-Infinity`/`+Infinity` means unbounded — Keplerian/
  * parabolic orbits have no hard cutoff, so exporters leave them unbounded.
@@ -29,19 +25,19 @@ export interface Validity {
 }
 
 /**
- * Chunk-level metadata shared by every row in the file — validity window plus
- * the provider that produced the elements.
+ * File-level metadata shared by every row in the elements payload — validity
+ * window plus the provider that produced the elements.
  */
 export interface ChunkMeta extends Validity {
 	source: OrbitalSource;
 	/**
-	 * `<prefix>-<numeric>` Object IDs reconstructed from the header's id-type
-	 * byte and column 0. Indexed by row.
+	 * `<prefix>-<numeric>` Object IDs reconstructed from the file header's
+	 * id-type byte and column 0. Indexed by row.
 	 */
 	idMap: Map<number, string>;
 }
 
-/** Last column on every format: 1 iff the object has a localized detail
+/** Last column on every sub-format: 1 iff the object has a localized detail
  *  bundle in at least one language. Frontend gates its localized fetch on
  *  this so flag-0 rows don't trigger a 404 per click. */
 export interface HasLocalizedColumn {
@@ -123,60 +119,27 @@ function align8(n: number): number {
 }
 
 /**
- * Capacity for the parsed-elements cache. Sized to comfortably hold the
- * Earth-sat hot-reload window (a handful of recent snapshots) plus a few
- * other zones the user might bounce between. Each entry retains the parsed
- * typed-array views and their ArrayBuffer — Earth's ~25K rows are ~5–10 MB.
+ * Parse the elements extension fields (offsets 24..31). Caller has already
+ * validated the magic, version, and format byte and seeded `validityStart`/
+ * `validityEnd` from the common header.
  */
-const PARSED_ELEMENTS_CACHE_CAPACITY = 8;
-const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_CAPACITY);
-
-export async function fetchElements(
-	zone: string,
-	zoom: number,
-	part: number,
-	time: string | null = null
-): Promise<ElementColumns> {
-	const key = `${zone}:${zoom}:${part}:${time ?? ''}`;
-	return elementsCache.getOrCompute(key, async () => {
-		const res = await fetch(elementsBinUrl(zone, zoom, part, time));
-		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
-		const ds = new DecompressionStream('gzip');
-		const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
-		return parseElements(buffer);
-	});
-}
-
-/** Parse header fields shared by all format types. */
-function parseHeader(buffer: ArrayBuffer): {
-	formatType: number;
+function parseExtension(view: DataView): {
+	subFormat: number;
 	rowCount: number;
 	idType: IdType;
-} & Validity & {
-		source: OrbitalSource;
-	} {
-	const view = new DataView(buffer);
-	const magic = view.getUint32(0, true);
-	if (magic !== MAGIC) {
-		throw new Error(`Invalid elements file: bad magic 0x${magic.toString(16)}`);
-	}
-	const version = view.getUint16(4, true);
-	if (version !== VERSION) {
-		throw new Error(`Unsupported elements version: ${version}`);
-	}
+	source: OrbitalSource;
+} {
 	return {
-		formatType: view.getUint16(6, true),
-		validityStart: view.getFloat64(8, true),
-		validityEnd: view.getFloat64(16, true),
-		rowCount: view.getUint32(24, true),
-		source: view.getUint8(28) as OrbitalSource,
-		idType: view.getUint8(29) as IdType
+		subFormat: view.getUint16(24, true),
+		source: view.getUint8(26) as OrbitalSource,
+		idType: view.getUint8(27) as IdType,
+		rowCount: view.getUint32(28, true)
 	};
 }
 
 /**
  * Walk column 0 once and build the row-index → full-id Map. Logs (without
- * crashing) when the chunk's id-type is unknown — the row remains numerically
+ * crashing) when the file's id-type is unknown — the row remains numerically
  * usable but keyed lookups against object bundles will fail, so the consumer
  * sees the warning and the missing entry rather than a corrupted-looking ID.
  */
@@ -185,7 +148,7 @@ function buildIdMap(idCol: Int32Array, idType: IdType): Map<number, string> {
 	if (idType === IdType.UNKNOWN) {
 		if (idCol.length > 0) {
 			console.warn(
-				`elements chunk has unknown id-type — ${idCol.length} row(s) will lack reconstructed IDs`
+				`elements payload has unknown id-type — ${idCol.length} row(s) will lack reconstructed IDs`
 			);
 		}
 		return map;
@@ -271,17 +234,28 @@ function parseKeplerianColumns(
 	return { epochJd, a, e, i, om, w, ma, n, radiusKm, offset };
 }
 
-export function parseElements(buffer: ArrayBuffer): ElementColumns {
-	const { formatType, rowCount, validityStart, validityEnd, source, idType } = parseHeader(buffer);
+/**
+ * Parse the elements payload of a position file. The caller has already
+ * verified the magic and version and confirmed the format byte selects
+ * `FORMAT_ELEMENTS`. `validityStart`/`validityEnd` come from the common
+ * header and apply to the whole file.
+ */
+export function parseElementsPayload(
+	buffer: ArrayBuffer,
+	validityStart: number,
+	validityEnd: number
+): ElementColumns {
+	const view = new DataView(buffer);
+	const { subFormat, rowCount, source, idType } = parseExtension(view);
 
-	if (formatType === FORMAT_PARABOLIC) {
+	if (subFormat === SUBFORMAT_PARABOLIC) {
 		return parseParabolicElements(buffer, rowCount, validityStart, validityEnd, source, idType);
 	}
-	if (formatType === FORMAT_SGP4) {
+	if (subFormat === SUBFORMAT_SGP4) {
 		return parseSGP4Elements(buffer, rowCount, validityStart, validityEnd, source, idType);
 	}
-	if (formatType !== FORMAT_KEPLERIAN) {
-		throw new Error(`Unknown elements format type: ${formatType}`);
+	if (subFormat !== SUBFORMAT_KEPLERIAN) {
+		throw new Error(`Unknown elements sub-format: ${subFormat}`);
 	}
 
 	const { id, objectType, parentId, scale, offset } = parseSharedColumns(buffer, rowCount);
@@ -293,7 +267,7 @@ export function parseElements(buffer: ArrayBuffer): ElementColumns {
 	tail += align8(rowCount * 4);
 	const wDot = new Float32Array(buffer, tail, rowCount);
 	tail += align8(rowCount * 4);
-	// Column 15: has_localized (uint8) — last column on every format.
+	// Column 15: has_localized (uint8) — last column on every sub-format.
 	const hasLocalized = new Uint8Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
@@ -362,7 +336,7 @@ function parseSGP4Elements(
 	offset += align8(rowCount * 4);
 	const revAtEpoch = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
-	// Column 18: has_localized (uint8) — last column on every format.
+	// Column 18: has_localized (uint8) — last column on every sub-format.
 	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
 
 	return {
@@ -439,7 +413,7 @@ function parseParabolicElements(
 	// Column 11: radius_km (float32)
 	const radiusKm = new Float32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
-	// Column 12: has_localized (uint8) — last column on every format.
+	// Column 12: has_localized (uint8) — last column on every sub-format.
 	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
 
 	return {

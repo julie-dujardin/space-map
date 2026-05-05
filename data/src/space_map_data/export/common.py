@@ -15,20 +15,20 @@ from pathlib import Path
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object.sbdb import CometPrefix
-from sqlalchemy import case, or_
+from sqlalchemy import case, or_, true as sa_true
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
-from space_map_data.export.chebyshev import write_chebyshev
 from space_map_data.export.credits import write_credits
-from space_map_data.export.elements import CHUNK_SIZE, write_chunk
-from space_map_data.export.elements.format import (
-    UNBOUNDED_END_JD,
-    UNBOUNDED_START_JD,
-)
-from space_map_data.export.elements.celestrak_source import (
+from space_map_data.export.position import CHUNK_SIZE, write_chebyshev, write_chunk
+from space_map_data.export.position.chebyshev.writer import _object_for_naif_id
+from space_map_data.export.position.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
+)
+from space_map_data.export.position.format import (
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
 )
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.objects.writer import (
@@ -75,7 +75,7 @@ _DEFAULT_ZONE_LIMIT = 10_000
 @dataclass
 class ZoomSnapshots:
     """All snapshots produced for one (zone, zoom). The discriminator on
-    `_build_metadata`'s output shape lives entirely in the snapshots — empty
+    `_build_position_metadata`'s output shape lives entirely in the snapshots — empty
     means a hole, one with ``time is None`` is the static case, otherwise the
     list is the chunk-indexed or date-segmented stream depending on
     `SnapshotResult.chunk_years`.
@@ -84,86 +84,116 @@ class ZoomSnapshots:
     snapshots: list["SnapshotResult"] = field(default_factory=list)
 
 
-def _build_metadata(zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]]) -> dict:
-    """Build the ``zones`` metadata block.
+def _build_position_zoom(snaps: list["SnapshotResult"], zone: str, zoom: int) -> dict:
+    """Build one position/zones/{zone}/zooms/{zoom} entry from its snapshots.
 
-    Three shapes per zoom, dispatched on the snapshot stream:
+    Three shapes, dispatched on the snapshot stream:
 
-    * Static (single snapshot with ``time is None``): ``{parts}``.
-    * Chunk-indexed (snapshots carry ``chunk_years``): ``{chunks, chunk_years,
-      start_jd, parts}``. Clients compute ``chunk_idx = floor((jd - start_jd)
-      / (chunk_years * 365.25))`` and load
-      ``elements/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz``. Used by the
-      time-chunked moons zone where Method C secular elements are re-fitted
-      per 6-month window.
-    * Date-segmented (snapshots have ISO-date labels and no ``chunk_years``):
-      ``{start_date, end_date, parts}``. Clients clamp the simulated date
-      into the window and assume daily contiguity. Used by the Earth-sat
-      zone where each snapshot is one CelesTrak GP day.
+    * ``parted`` — single snapshot with ``time is None``. URL:
+      ``position/{zone}/{zoom}/{part}.bin.gz``. Entry: ``{shape, parts}``.
+    * ``chunked-parted`` with ``label="index"`` — chunk-indexed elements
+      (the moons elements zone). URL:
+      ``position/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz``. Entry:
+      ``{shape, label, chunks, chunk_years, start_jd, parts}``.
+    * ``chunked-parted`` with ``label="date"`` — date-segmented elements
+      (the earth zone). URL: ``position/{zone}/{zoom}/{date}/{part}.bin.gz``.
+      Entry: ``{shape, label, start_date, end_date, parts}``.
 
-    The discriminator is `Snapshot.chunk_years` — set by the producing
-    snapshot stream — not the label format. Choosing this explicitly avoids
-    fragile heuristics (e.g. zero-padding numeric labels so they sort
-    lexicographically the same as numerically).
+    The chebyshev-only shape (``chunked``, no parts axis) is folded in
+    separately by the caller — it doesn't go through the snapshot pipeline.
     """
-    zones = {}
-    for zone, zoom_map in sorted(zone_structure.items()):
-        zooms = {}
-        for zoom, zoom_snaps in sorted(zoom_map.items()):
-            snaps = zoom_snaps.snapshots
-            if len(snaps) == 1 and snaps[0].time is None:
-                zooms[str(zoom)] = {"parts": snaps[0].num_parts}
-                continue
-            # Multi-snapshot zooms only carry timestamped streams. A bare
-            # `None`-time entry mixed with timed ones means the producer is
-            # confused about the zone's shape.
-            if any(s.time is None for s in snaps):
-                raise ValueError(
-                    f"{zone} zoom={zoom} mixes timed snapshots with a "
-                    f"None-time snapshot; one zoom must be all-timed or "
-                    f"single-static"
-                )
-            parts_set = {s.num_parts for s in snaps}
-            if len(parts_set) != 1:
-                raise ValueError(
-                    f"{zone} zoom={zoom} has uneven parts across snapshots "
-                    f"{parts_set}; the slim metadata shape assumes uniform parts"
-                )
-            parts = next(iter(parts_set))
-            chunk_years_set = {s.chunk_years for s in snaps}
-            if len(chunk_years_set) > 1:
-                raise ValueError(
-                    f"{zone} zoom={zoom} mixes chunk_years values "
-                    f"{chunk_years_set}; one snapshot stream must use a single "
-                    f"cadence"
-                )
-            chunk_years = next(iter(chunk_years_set))
-            if chunk_years is not None:
-                # Chunk-indexed: derive start_jd from the earliest snapshot's
-                # validity window. Sorting by validity_start_jd avoids relying
-                # on label format.
-                snaps_sorted = sorted(snaps, key=lambda s: s.validity_start_jd)
-                zooms[str(zoom)] = {
-                    "chunks": len(snaps_sorted),
-                    "chunk_years": chunk_years,
-                    "start_jd": snaps_sorted[0].validity_start_jd,
-                    "parts": parts,
-                }
-            else:
-                # Date-segmented: labels are ISO dates, sort lexicographically.
-                dated = sorted(s.time for s in snaps if s.time is not None)
-                zooms[str(zoom)] = {
-                    "start_date": dated[0],
-                    "end_date": dated[-1],
-                    "parts": parts,
-                }
-        zones[zone] = {"zooms": zooms}
-    return {"zones": zones}
+    if len(snaps) == 1 and snaps[0].time is None:
+        return {"shape": "parted", "parts": snaps[0].num_parts}
+    # Multi-snapshot zooms only carry timestamped streams. A bare `None`-time
+    # entry mixed with timed ones means the producer is confused about shape.
+    if any(s.time is None for s in snaps):
+        raise ValueError(
+            f"{zone} zoom={zoom} mixes timed snapshots with a None-time "
+            f"snapshot; one zoom must be all-timed or single-static"
+        )
+    parts_set = {s.num_parts for s in snaps}
+    if len(parts_set) != 1:
+        raise ValueError(
+            f"{zone} zoom={zoom} has uneven parts across snapshots "
+            f"{parts_set}; the slim metadata shape assumes uniform parts"
+        )
+    parts = next(iter(parts_set))
+    chunk_years_set = {s.chunk_years for s in snaps}
+    if len(chunk_years_set) > 1:
+        raise ValueError(
+            f"{zone} zoom={zoom} mixes chunk_years values "
+            f"{chunk_years_set}; one snapshot stream must use a single cadence"
+        )
+    chunk_years = next(iter(chunk_years_set))
+    if chunk_years is not None:
+        # Chunk-indexed: derive start_jd from the earliest snapshot's
+        # validity window. Sorting by validity_start_jd avoids relying on
+        # label format.
+        snaps_sorted = sorted(snaps, key=lambda s: s.validity_start_jd)
+        return {
+            "shape": "chunked-parted",
+            "label": "index",
+            "chunks": len(snaps_sorted),
+            "chunk_years": chunk_years,
+            "start_jd": snaps_sorted[0].validity_start_jd,
+            "parts": parts,
+        }
+    # Date-segmented: labels are ISO dates, sort lexicographically.
+    dated = sorted(s.time for s in snaps if s.time is not None)
+    return {
+        "shape": "chunked-parted",
+        "label": "date",
+        "start_date": dated[0],
+        "end_date": dated[-1],
+        "parts": parts,
+    }
+
+
+def _build_position_metadata(
+    zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
+    chebyshev_zones: Mapping[str, dict],
+) -> dict:
+    """Build the unified ``position.zones`` metadata block.
+
+    Folds the elements-side `zone_structure` (one entry per zone+zoom that
+    emitted snapshots) and the chebyshev-side `chebyshev_zones` (one entry
+    per zone that emitted chebyshev chunks; always at zoom 0) into a single
+    map keyed by zone name. Each zoom carries a `shape` discriminator so
+    consumers can build URLs without sniffing field presence:
+
+    * ``parted`` — `{zone}/{zoom}/{part}.bin.gz`
+    * ``chunked-parted`` — `{zone}/{zoom}/{label}/{part}.bin.gz`
+    * ``chunked`` — `{zone}/{zoom}/{chunk}.bin.gz` (chebyshev)
+    """
+    zones: dict[str, dict] = {}
+    for zone, zoom_map in zone_structure.items():
+        zooms: dict[str, dict] = {}
+        for zoom, zoom_snaps in zoom_map.items():
+            zooms[str(zoom)] = _build_position_zoom(zoom_snaps.snapshots, zone, zoom)
+        if zooms:
+            zones[zone] = {"zooms": zooms}
+    for zone, params in chebyshev_zones.items():
+        # Chebyshev always sits at zoom 0; nothing else can land at the same
+        # zone+zoom, so there's no collision to resolve.
+        zone_entry = zones.setdefault(zone, {"zooms": {}})
+        if "0" in zone_entry["zooms"]:
+            raise ValueError(
+                f"{zone}: chebyshev tried to claim zoom 0 but elements already "
+                f"emitted there; one format per zone+zoom"
+            )
+        zone_entry["zooms"]["0"] = {
+            "shape": "chunked",
+            "chunks": params["chunks"],
+            "chunk_years": params["chunk_years"],
+            "start_jd": params["start_jd"],
+            "end_jd": params["end_jd"],
+        }
+    return {"zones": dict(sorted(zones.items()))}
 
 
 def _remove_old_outputs(out_dir: Path) -> None:
     """Remove all chunk output directories before a fresh export."""
-    for d in ("elements", "objects", "chebyshev"):
+    for d in ("position", "objects"):
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
@@ -613,6 +643,36 @@ def _export_zone(
     return result
 
 
+def _chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
+    """Object IDs covered by the chebyshev export.
+
+    Used to filter cheb-covered bodies out of the elements zones so the same
+    body's positions don't ship in two formats. The frontend can derive
+    osculating Kepler elements from chebyshev positions when needed, so a
+    duplicated kepler row is just dead bytes.
+
+    Walks `download_dir/spice/chebyshev/*.npz` and resolves each file's
+    `naif_id` against the DB (with the SPK-ID fallback used by the cheb
+    writer). Returns a set of `Object.id` strings (e.g. `naif-499`,
+    `spkid-20134340`) so callers can filter on the prefixed form.
+    """
+    cheb_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
+    if not cheb_dir.exists():
+        return set()
+    ids: set[str] = set()
+    for path in sorted(cheb_dir.glob("*.npz")):
+        try:
+            data = np.load(path)
+            naif_id = int(data["meta"][0])
+        except Exception as exc:
+            logger.warning("Couldn't read cheb npz %s: %s", path, exc)
+            continue
+        obj = _object_for_naif_id(session, naif_id)
+        if obj is not None:
+            ids.add(obj.id)
+    return ids
+
+
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
@@ -639,10 +699,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
 
+    position_dir = out_dir / "position"
+    position_dir.mkdir(parents=True, exist_ok=True)
     # Single global file fetched once by the frontend; bodies derive their owner
     # as `naif_id // 100` (or `naif_id` itself when < 100). Tiny — not gzipped.
     if nut_prec_angles:
-        (out_dir / "nut_prec_angles.json").write_bytes(
+        (position_dir / "nut_prec_angles.json").write_bytes(
             orjson.dumps(
                 {str(owner): vals for owner, vals in sorted(nut_prec_angles.items())}
             )
@@ -686,6 +748,17 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     futures: dict = {}
 
     with Session(engine) as session:
+        # Bodies covered by chebyshev (Sun/planets/dwarves, perturber asteroids,
+        # whitelisted moons) are excluded from the elements zones. Two-format
+        # ride-along would just bloat the export — the frontend can derive
+        # osculating elements from chebyshev positions if it needs them.
+        cheb_covered_ids = _chebyshev_coverage(session, DOWNLOAD_DIR)
+        if cheb_covered_ids:
+            logger.info(
+                "Chebyshev covers %d bodies; dropping them from elements zones",
+                len(cheb_covered_ids),
+            )
+
         with ThreadPoolExecutor() as executor:
             # Non-SBDB zones: (zone, zoom, query)
             _earth_base = (
@@ -700,23 +773,31 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             _is_constellation = or_(
                 *(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES)
             )
-            # Major bodies split by source — SPICE-sourced (planets + Pluto/Ceres)
-            # at zoom=0, SBDB-only dwarf planets (Eris, Makemake, Quaoar, …) at
-            # zoom=1. Keeps each chunk single-source so the file-level source
-            # byte is unambiguous; frontend iterates every zoom per zone.
+            # Major bodies — chebyshev claims zoom 0 (Sun, planets, Pluto,
+            # Ceres), so kepler fallbacks live at higher zooms. Split by
+            # source to keep each file single-provider (the file-level source
+            # byte forbids mixed origins):
+            #   zoom 1 = horizons-sourced majors not covered by chebyshev —
+            #            in practice this catches dwarf planets that have
+            #            Horizons ephemerides but no SPK kernel.
+            #   zoom 2 = SBDB-only dwarves (Eris, Makemake, Quaoar, …) that
+            #            aren't in any SPK kernel either
             _major_base = session.query(Object).options(joinedload(Object.sbdb))
             non_sbdb = [
                 (
                     "major",
-                    0,
+                    1,
                     _major_base.filter(
                         Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
                         Object.orbital_source != OrbitalSource.sbdb,
+                        Object.id.notin_(cheb_covered_ids)
+                        if cheb_covered_ids
+                        else sa_true(),
                     ),
                 ),
                 (
                     "major",
-                    1,
+                    2,
                     _major_base.filter(
                         Object.object_type.in_(_SUN_MAJOR_TYPE_VALUES),
                         Object.orbital_source == OrbitalSource.sbdb,
@@ -728,6 +809,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     session.query(Object).filter(
                         Object.spkid.is_(None),
                         Object.object_type == ObjectType.moon.value,
+                        Object.id.notin_(cheb_covered_ids)
+                        if cheb_covered_ids
+                        else sa_true(),
                     ),
                 ),
                 (
@@ -739,6 +823,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),
                         Object.parent_naif_id != _EARTH_NAIF_ID,
+                        Object.id.notin_(cheb_covered_ids)
+                        if cheb_covered_ids
+                        else sa_true(),
                     ),
                 ),
             ]
@@ -788,7 +875,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             for cls, named in sbdb_combos:
                 zoom = 0 if named else 1
                 name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
-                objects = (
+                # SPICE-sourced bodies (DE441 perturbers like Ceres, Pallas, …)
+                # ship via the chebyshev export and are filtered out here both
+                # to enforce the one-provider-per-file invariant and to avoid
+                # shipping duplicate position data for bodies that already
+                # appear in a chebyshev zone.
+                sbdb_q = (
                     session.query(Object)
                     .options(joinedload(Object.sbdb))
                     .join(Object.sbdb)
@@ -799,19 +891,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                         SBDB.prefix.is_distinct_from(
                             CometPrefix.D
                         ),  # TODO: handle defunct comets - figure out last display date
-                        # Bodies whose orbit came from SPICE kernels (e.g. DE441
-                        # perturbers like Ceres) ship via the chebyshev export;
-                        # including them here would mix sources in one chunk
-                        # and violate the one-provider-per-file invariant.
                         or_(
                             Object.orbital_source.is_(None),
                             Object.orbital_source == OrbitalSource.sbdb,
                         ),
                     )
-                    .order_by(Object.random_int)
-                    .limit(limit_per_zone)
-                    .all()
                 )
+                if cheb_covered_ids:
+                    sbdb_q = sbdb_q.filter(Object.id.notin_(cheb_covered_ids))
+                objects = sbdb_q.order_by(Object.random_int).limit(limit_per_zone).all()
                 if not objects:
                     continue
                 zone = cls.name
@@ -868,24 +956,63 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             session, out_dir, orientation, radii, nut_prec, texture_metadata
         )
         write_credits(session, out_dir, texture_metadata)
-        chebyshev_manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii)
 
-    for f in as_completed(futures):
-        zone, zoom = futures[f]
-        _record(zone, zoom, f.result())
+        # Aggregate has_localized from elements futures before writing chebyshev
+        # — the cheb body header carries one bit per body, gated on the same
+        # union map the elements files use.
+        for f in as_completed(futures):
+            zone, zoom = futures[f]
+            _record(zone, zoom, f.result())
+
+        # Chebyshev-covered bodies are excluded from the elements zones (no
+        # double-shipping), so they never run through `_export_zone` and their
+        # per-object metadata never lands in `all_objects`. Build it explicitly
+        # here so they show up in object bundles, labels, and trigger the
+        # large-scale unit ladder entries (solar_mass, earth_mass, …) that
+        # only get pulled in via `units.convert` on those bodies' values.
+        if cheb_covered_ids:
+            cheb_objs = (
+                session.query(Object)
+                .options(
+                    joinedload(Object.sbdb),
+                    joinedload(Object.satcat),
+                    joinedload(Object.celestrak),
+                )
+                .filter(Object.id.in_(cheb_covered_ids))
+                .all()
+            )
+            cheb_data = _build_zone_object_data(
+                cheb_objs,
+                wikidata_entities,
+                units,
+                nasa_science_urls,
+                orientation,
+                radii,
+                nut_prec,
+                texture_metadata,
+            )
+            all_objects.global_data.update(cheb_data.global_data)
+            for lang, by_id in cheb_data.localized_data.items():
+                all_objects.localized_data[lang].update(by_id)
+            all_objects.has_localized.update(cheb_data.has_localized)
+            logger.info(
+                "Built object data for %d chebyshev-covered bodies", len(cheb_objs)
+            )
+
+        chebyshev_zones = write_chebyshev(
+            session, DOWNLOAD_DIR, out_dir, radii, all_objects.has_localized
+        )
 
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
     )
-    write_global_labels(out_dir, all_objects)
+    write_global_labels(out_dir, all_objects, cheb_covered_ids)
 
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)
 
-    metadata = _build_metadata(zone_structure)
-    metadata["object_bundles"] = bundle_ns
-    if chebyshev_manifest:
-        metadata["chebyshev"] = chebyshev_manifest
+    position_metadata = _build_position_metadata(zone_structure, chebyshev_zones)
+    metadata = {"position": position_metadata, "object_bundles": bundle_ns}
     (out_dir / "metadata.json").write_bytes(
         orjson.dumps(metadata, option=orjson.OPT_INDENT_2)
     )

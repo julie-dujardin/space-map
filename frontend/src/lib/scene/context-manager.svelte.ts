@@ -1,22 +1,25 @@
 import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
-import { ChunkLoader } from '$lib/fetch/elements/chunk';
-import { OrbitalSource } from '$lib/fetch/elements/constants';
+import { ChunkLoader } from '$lib/fetch/position/chunk';
+import { fetchLabels } from '$lib/fetch/position/labels';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_KM, AU_SCALE } from '../math/units';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
 import {
+	chebyshevZoneParams,
 	chunkIndexForJd,
 	fetchMetadata,
 	isChunkIndexed,
-	isTimeSegmented,
+	isDateSegmented,
+	isParted,
 	snapshotDate
 } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
-import { ChebyshevStore } from '$lib/fetch/chebyshev/store';
-import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
-import { populateTrailBuffer } from '$lib/fetch/elements/chunk';
+import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
+import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import { populateTrailBuffer } from '$lib/fetch/position/chunk';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 
 /*
@@ -411,22 +414,25 @@ export class ContextManager {
 			// it warms `[idx-1, idx, idx+1]` at construction. The flat-zone case
 			// (no chunk index) is handled here as a one-shot HTTP warm.
 			metadataPromise.then((metadata) => {
-				const moonsZoom = metadata.zones.moons?.zooms[0];
-				if (moonsZoom && !isChunkIndexed(moonsZoom)) {
+				const moonsZoom = metadata.position.zones.moons?.zooms[0];
+				if (moonsZoom && isParted(moonsZoom)) {
 					ChunkLoader.prefetch('moons', 0, 0, null);
 				}
 			});
 
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
 				const args: { zone: string; zoom: number; part: number; time: string | null }[] = [];
-				for (const [zone, zoneData] of Object.entries(metadata.zones)) {
+				for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 					if (zone === 'major' || zone === 'moons') continue;
 					for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 						const zoom = Number(zoomStr);
-						// Time-segmented zones (earth) ship one chunk set per ISO date —
+						// Chebyshev zones (`shape: chunked`) load through ChebyshevStore,
+						// not through ChunkLoader — skip them here.
+						if (zoomData.shape === 'chunked') continue;
+						// Date-segmented zones (earth) ship one chunk set per ISO date —
 						// pick the snapshot nearest the simulated time so SGP4's tight
-						// validity window covers it. Flat zones use a single set.
-						const time = isTimeSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
+						// validity window covers it. Static-parted zones use a single set.
+						const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
 						for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
 							args.push({ zone, zoom, part, time });
 							ChunkLoader.prefetch(zone, zoom, part, time);
@@ -436,13 +442,15 @@ export class ContextManager {
 				return args;
 			});
 
-			// Chebyshev must be ready before we process major/moons — those zones
-			// contain the SPICE-sourced bodies whose positions we take from the
-			// polynomials. No fallback: if the export carries a chebyshev block,
-			// we wait.
+			// Chebyshev must be ready before we process major/moons — the zones
+			// it covers (Sun/planets/dwarves at major, perturbers at
+			// major_asteroids, whitelisted moons at moons/<parent>) supply the
+			// only positions for those bodies. No fallback: if the export
+			// carries chebyshev zones, we wait.
 			const chebPromise = metadataPromise.then(async (metadata) => {
-				if (!metadata.chebyshev) return null;
-				const store = new ChebyshevStore(metadata.chebyshev);
+				const params = chebyshevZoneParams(metadata);
+				if (params.size === 0) return null;
+				const store = new ChebyshevStore(params);
 				await store.ensure(jd).done;
 				return store;
 			});
@@ -450,13 +458,43 @@ export class ContextManager {
 			this.chebStore = await chebPromise;
 			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
 
-			// Phase 1: majors — load, register, and start rendering immediately
+			// Phase 1: majors — load, register, and start rendering immediately.
+			//
+			// Bodies arrive from four sources, in dependency order:
+			//   - Chebyshev (`ChunkLoader.processChebyshev`): Sun, planets/
+			//     dwarves with SPK kernels, perturber asteroids, whitelisted
+			//     moons. Runs first so its barycenters/Sun land in
+			//     `loader.positions` before kepler-fallback dwarves (which
+			//     parent on those barycenters) try to resolve.
+			//   - major/1 elements: horizons-sourced majors not in chebyshev
+			//     — in practice this catches dwarf planets with Horizons
+			//     ephemerides but no SPK kernel.
+			//   - major/2 elements: SBDB-only dwarves (Eris, Makemake,
+			//     Quaoar, …) that aren't in any SPK kernel either.
+			//   - moons elements: non-whitelisted moons (Method-C secular
+			//     elements, chunk-indexed).
+			//
+			// Zoom 0 is reserved for chebyshev — kepler fallbacks live at
+			// higher zooms so the per-zoom shape stays single-payload.
 			const major: PositionedBody[] = [];
-			major.push(...(await loader.process('major', 0, 0, date)));
-			const moonsZoom = metadata.zones.moons?.zooms[0];
+			if (this.chebStore) {
+				const labels = await fetchLabels();
+				major.push(...loader.processChebyshev(date, labels));
+			}
+			for (const zoom of [1, 2] as const) {
+				const zoomData = metadata.position.zones.major?.zooms[String(zoom)];
+				if (zoomData && isParted(zoomData)) {
+					for (let p = 0; p < zoomData.parts; p++) {
+						major.push(...(await loader.process('major', zoom, p, date)));
+					}
+				}
+			}
+			const moonsZoom = metadata.position.zones.moons?.zooms[0];
 			const moonsTime =
 				moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
-			major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
+			if (moonsZoom) {
+				major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
+			}
 
 			this.addBodies(major);
 
