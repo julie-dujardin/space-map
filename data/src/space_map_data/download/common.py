@@ -17,7 +17,10 @@ from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDo
 from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
-from space_map_data.download.providers.commons import CommonsDownloader
+from space_map_data.download.providers.images.commons import CommonsDownloader
+from space_map_data.download.providers.images.earth_clouds import (
+    EarthCloudsDownloader,
+)
 from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
@@ -33,6 +36,7 @@ PROVIDERS_CLASSES = [
     WikidataDownloader,
     WikipediaDownloader,
     CommonsDownloader,
+    EarthCloudsDownloader,
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
 ]

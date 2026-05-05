@@ -1,7 +1,7 @@
 """Shared helpers for Commons-hosted image files.
 
 Used by:
-- download/providers/commons.py — decide what to download, write metadata
+- download/providers/images/commons.py — decide what to download, write metadata
 - ingest/providers/images.py — set ``Object.image_available``
 - export/images.py — emit per-object image lists and generate thumbnails
 
