@@ -789,6 +789,11 @@ export class SceneRenderer {
 				body.orbitCenter[1] = parentPos[1];
 				body.orbitCenter[2] = parentPos[2];
 			}
+			if (body.trailHead) {
+				body.trailHead[0] = parentPos[0];
+				body.trailHead[1] = parentPos[1];
+				body.trailHead[2] = parentPos[2];
+			}
 			positionMap.set(d.id, body.position);
 
 			if (!bo) return;

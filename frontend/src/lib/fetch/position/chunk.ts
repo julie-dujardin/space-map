@@ -388,6 +388,12 @@ export class ChunkLoader {
 					data,
 					position: pos,
 					orbitCenter: borrowedFromParent ? undefined : parentPos,
+					// When borrowing the barycenter's SSB-relative buffer, pin the
+					// trail's live head to the barycenter (parentPos) instead of
+					// the body's own offset position — otherwise the brightest
+					// vertex sits on the body and kinks away from the trail
+					// (very visible in Pluto).
+					trailHead: borrowedFromParent ? parentPos : undefined,
 					trailBuffer
 				});
 			} else {

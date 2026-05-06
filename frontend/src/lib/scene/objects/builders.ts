@@ -384,12 +384,15 @@ function writeBufferVerticesWithLiveHead(
 	cz: number,
 	basisPos: [number, number, number]
 ): number {
-	// Vertex 0: live parent-relative body position, shifted straight into the
-	// basis frame (this is equivalent to `(body.position − orbitCenter) +
-	// (orbitCenter − basis)` = `body.position − basis`).
-	posArr[0] = body.position[0] - basisPos[0];
-	posArr[1] = body.position[1] - basisPos[1];
-	posArr[2] = body.position[2] - basisPos[2];
+	// Vertex 0: live position of whatever the buffer's samples trace, shifted
+	// into the basis frame. Falls back to `body.position` for the common case
+	// where the body owns its trail; uses `trailHead` (the parent barycenter's
+	// position) when the buffer was borrowed from the parent — otherwise the
+	// brightest vertex lands on the body and kinks off the barycenter's path.
+	const head = body.trailHead ?? body.position;
+	posArr[0] = head[0] - basisPos[0];
+	posArr[1] = head[1] - basisPos[1];
+	posArr[2] = head[2] - basisPos[2];
 
 	// Vertices 1..n: buffer samples (parent-relative) shifted by
 	// (orbitCenter − basis) so they land in the same basis frame.

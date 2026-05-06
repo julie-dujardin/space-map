@@ -85,6 +85,14 @@ export interface PositionedBody {
 	 */
 	trailBuffer?: TrailBuffer;
 	/**
+	 * World-space position to use as the trail's live head when it differs from
+	 * `position`. Set when a body borrows its parent barycenter's trail buffer
+	 * (e.g. Pluto using Pluto-Barycenter's SSB-relative samples) so the brightest
+	 * trail vertex lands on the barycenter the trail actually traces, not on the
+	 * body's own offset position.
+	 */
+	trailHead?: [number, number, number];
+	/**
 	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
 	 * planetary-system bodies (planets, moons), which the renderer uses to
 	 * orient the mesh each frame. Components read it to derive body-fixed
