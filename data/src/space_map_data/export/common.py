@@ -39,12 +39,14 @@ from space_map_data.export.objects.writer import (
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.localization import write_messages
 from space_map_data.export.systems import (
+    load_gms,
     load_nut_prec,
     load_nut_prec_angles,
     load_orientation,
     load_radii,
     load_texture_metadata,
     write_system_metadata,
+    write_systems_global,
 )
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
@@ -301,6 +303,7 @@ def _build_zone_object_data(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
 ) -> ChunkObjectData:
@@ -319,6 +322,7 @@ def _build_zone_object_data(
         nasa_science_urls,
         orientation=orientation,
         radii=radii,
+        gms=gms,
         nut_prec=nut_prec,
         texture_metadata=texture_metadata,
     )
@@ -580,6 +584,7 @@ def _export_zone(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
 ) -> ZoneExportResult:
@@ -612,6 +617,7 @@ def _export_zone(
         nasa_science_urls,
         orientation,
         radii,
+        gms,
         nut_prec,
         texture_metadata,
     )
@@ -695,21 +701,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
     orientation = load_orientation(DOWNLOAD_DIR)
     radii = load_radii(DOWNLOAD_DIR)
+    gms = load_gms(DOWNLOAD_DIR)
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
 
-    position_dir = out_dir / "position"
-    position_dir.mkdir(parents=True, exist_ok=True)
-    # Single global file fetched once by the frontend; bodies derive their owner
-    # as `naif_id // 100` (or `naif_id` itself when < 100). Tiny — not gzipped.
-    if nut_prec_angles:
-        (position_dir / "nut_prec_angles.json").write_bytes(
-            orjson.dumps(
-                {str(owner): vals for owner, vals in sorted(nut_prec_angles.items())}
-            )
-        )
-        logger.info("Wrote nut_prec_angles.json (%d owners)", len(nut_prec_angles))
+    write_systems_global(out_dir, gms, nut_prec_angles)
 
     celestrak_days = load_all_days(DOWNLOAD_DIR)
 
@@ -860,6 +857,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nasa_science_urls,
                     orientation,
                     radii,
+                    gms,
                     nut_prec,
                     texture_metadata,
                 )
@@ -914,6 +912,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nasa_science_urls,
                     orientation,
                     radii,
+                    gms,
                     nut_prec,
                     texture_metadata,
                 )
@@ -946,6 +945,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nasa_science_urls,
                     orientation,
                     radii,
+                    gms,
                     nut_prec,
                     texture_metadata,
                 )
@@ -988,6 +988,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 nasa_science_urls,
                 orientation,
                 radii,
+                gms,
                 nut_prec,
                 texture_metadata,
             )

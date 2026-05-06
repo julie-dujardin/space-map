@@ -10,7 +10,6 @@ v1/
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
-    nut_prec_angles.json                          (not gzipped) IAU nutation angles, by owner naif_id
     {zone}/{zoom}/{part}.bin.gz                   static parted        — most SBDB zones, spacecraft
     {zone}/{zoom}/{label}/{part}.bin.gz           time-chunked + parted — earth (date label), moons (chunk-idx label)
     {zone}/{zoom}/{chunk}.bin.gz                  time-chunked, unparted — chebyshev zones
@@ -20,7 +19,8 @@ v1/
   v1/images/{filename}/metadata.json.gz           per-image license + variants map
   textures/{id}/{tier}.webp                       tier = low | medium | high
   textures/{id}/metadata.json                     texture source + exports
-  systems/{barycenter_id}.json                    per-system body metadata
+  systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
+  systems/{barycenter_id}.json                    per-system body metadata, loaded on system entry
 ```
 
 Every file under `position/` shares one binary format (`SMAP` v7, common 24-byte
@@ -523,13 +523,14 @@ interface GlobalObjectData {
     pole_dec_0: number; pole_dec_1: number;
     w0: number; w1: number; w2: number;
   };
-  nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with /v1/position/nut_prec_angles.json)
+  nut_prec?: {                        // SPICE PCK nutation/precession sums (paired with `nut_prec_angles` in /v1/systems/global.json)
     // α += Σ ra[i]  · sin(θ_i(T)),  δ += Σ dec[i] · cos(θ_i(T)),  W += Σ pm[i] · sin(θ_i(T))
     ra: number[]; dec: number[]; pm: number[];
   };
   radii?: {                           // SPICE PCK triaxial radii (km, body-fixed X/Y/Z)
     a: number; b: number; c: number;
   };
+  gm?: number;                        // SPICE PCK gravitational parameter (km^3/s^2)
   orbit?: {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;
@@ -754,6 +755,37 @@ The size is a target, not a hard limit. Some textures go over it.
 - `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
 - `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
 
+## Systems global (`systems/global.json`)
+
+A single tiny top-level file fetched once at app start, paired with the per-system files below. Holds context-independent lookups the frontend needs regardless of which system the user is viewing.
+
+```json
+{
+  "gm": {
+    "0": 1.32712440041e11,
+    "10": 1.32712440041e11,
+    "3": 4.0350323562548e5,
+    "399": 3.98600435507e5,
+    "5": 1.267127641e8
+  },
+  "nut_prec_angles": {
+    "1": [174.791086, 4.092335, 349.582171, 8.184670],
+    "3": [125.045, -0.0529921, 250.089, -0.1059842],
+    "5": [73.32, 91472.9, 24.62, 45137.2]
+  }
+}
+```
+
+- **`gm`** — gravitational parameters (km³/s²) per body NAIF id, sourced from SPICE PCK (`gm_de440.tpc`). Includes a synthesized SSB row (`"0"`) reusing the Sun's GM so chebyshev-only bodies that orbit SSB resolve correctly. Used by the chebyshev trail-buffer sizing path to estimate orbital periods via Kepler's third law (`n = √(GM/a³)`) for any parent NAIF id.
+- **`nut_prec_angles`** — IAU nutation/precession angle pairs `(θ₀, θ₁)` per "owner" body — typically the planetary system barycenter. Bodies derive their owner as `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`. Each owner's array is a flat `[θ₀_1, θ₁_1, θ₀_2, θ₁_2, …]` in degrees and degrees/century. Combined with each body's `nut_prec` coefficient arrays:
+
+  ```
+  θ_i(T) = angles[2i] + angles[2i+1]·T          (T = Julian centuries since J2000)
+  α(T)  += Σ nut_prec.ra[i]  · sin(θ_i(T))
+  δ(T)  += Σ nut_prec.dec[i] · cos(θ_i(T))
+  W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
+  ```
+
 ## System metadata (`systems/{barycenter_id}.json`)
 
 Generated during export (not ingest). One file per planetary system, keyed by barycenter ID (e.g. `naif-3` for Earth-Moon, `naif-5` for Jupiter). Per-body entries carry available texture tiers, texture attribution, SPICE PCK orientation (pole/spin polynomial), nutation/precession coefficients, and triaxial radii when known.
@@ -814,27 +846,6 @@ asteroids or 3D mesh assets can slot into sibling keys (`models`,
 credits (orbital providers, SPICE/IAU rotation kernels, Wikidata, Wikipedia,
 Wikimedia Commons, IAU nomenclature) live in the frontend page itself and
 don't need to be emitted here.
-
-## Nutation angles (`position/nut_prec_angles.json`)
-
-A single tiny top-level file fetched once at app start. Lists the IAU nutation/precession angle pairs `(θ₀, θ₁)` defined per "owner" body — typically the planetary system barycenter. Bodies derive their owner as `naif_id // 100` if `naif_id ≥ 100`, else `naif_id`.
-
-```json
-{
-  "1": [174.791086, 4.092335, 349.582171, 8.184670],
-  "3": [125.045, -0.0529921, 250.089, -0.1059842],
-  "5": [73.32, 91472.9, 24.62, 45137.2]
-}
-```
-
-Each owner's array is a flat list of `[θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]` in degrees and degrees/century. Combined with each body's `nut_prec` coefficient arrays:
-
-```
-θ_i(T) = angles[2i] + angles[2i+1]·T          (T = Julian centuries since J2000)
-α(T)  += Σ nut_prec.ra[i]  · sin(θ_i(T))
-δ(T)  += Σ nut_prec.dec[i] · cos(θ_i(T))
-W(d)  += Σ nut_prec.pm[i]  · sin(θ_i(T))
-```
 
 ## Consuming the data
 

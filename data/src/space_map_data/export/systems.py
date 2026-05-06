@@ -142,6 +142,60 @@ def load_radii(download_dir: Path) -> dict[int, dict]:
     return result
 
 
+def load_gms(download_dir: Path) -> dict[int, float]:
+    """Load gravitational parameters (km^3/s^2) from SPICE gm.csv.
+
+    Returns {naif_id: gm_km3_s2}. The CSV includes a synthesized SSB row
+    (naif_id 0) reusing the Sun's GM — see `_extract_gms` in the SPICE
+    download module.
+    """
+    csv_path = download_dir / PROVIDERS.SPICE / "gm.csv"
+    if not csv_path.exists():
+        logger.warning("No GM CSV at %s", csv_path)
+        return {}
+    result: dict[int, float] = {}
+    with csv_path.open(newline="") as f:
+        for row in csv.DictReader(f):
+            result[int(row["naif_id"])] = float(row["gm_km3_s2"])
+    logger.info("Loaded %d GM records", len(result))
+    return result
+
+
+def write_systems_global(
+    out_dir: Path,
+    gms: dict[int, float],
+    nut_prec_angles: dict[int, list[float]],
+) -> None:
+    """Write the always-loaded `systems/global.json` lookup file.
+
+    Holds context-independent data the frontend needs upfront regardless of
+    which planetary system the user is viewing:
+
+    - `gm`: full per-body GM table (km^3/s^2). Used by chebyshev trail-buffer
+      sizing to estimate orbital periods via Kepler's third law for any
+      parent NAIF id encountered.
+    - `nut_prec_angles`: NUT_PREC_ANGLES coefficients per planetary-system
+      owner. Paired with per-body `nut_prec` arrays in the per-system files.
+    """
+    if not gms and not nut_prec_angles:
+        return
+    systems_dir = out_dir / "systems"
+    systems_dir.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, dict] = {}
+    if gms:
+        payload["gm"] = {str(naif_id): gm for naif_id, gm in sorted(gms.items())}
+    if nut_prec_angles:
+        payload["nut_prec_angles"] = {
+            str(owner): vals for owner, vals in sorted(nut_prec_angles.items())
+        }
+    (systems_dir / "global.json").write_bytes(orjson.dumps(payload))
+    logger.info(
+        "Wrote systems/global.json (%d GMs, %d nut_prec_angles owners)",
+        len(gms),
+        len(nut_prec_angles),
+    )
+
+
 def write_system_metadata(
     session: Session,
     out_dir: Path,

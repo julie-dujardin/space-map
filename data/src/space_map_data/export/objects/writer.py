@@ -155,6 +155,7 @@ def build_chunk_object_data(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
 ) -> ChunkObjectData:
@@ -198,6 +199,7 @@ def build_chunk_object_data(
             nasa_science_urls,
             orientation,
             radii,
+            gms,
             nut_prec,
             texture_metadata,
             wiki_image_filenames,
@@ -281,6 +283,7 @@ def _build_global(
     nasa_science_urls: dict[str, str],
     orientation: dict[int, dict],
     radii: dict[int, dict],
+    gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     wiki_image_filenames: list[str] | None = None,
@@ -356,6 +359,10 @@ def _build_global(
     # Triaxial radii (km, along body-fixed X, Y, Z) from SPICE PCK
     if obj.naif_id is not None and obj.naif_id in radii:
         data["radii"] = radii[obj.naif_id]
+
+    # Gravitational parameter (km^3/s^2) from SPICE PCK
+    if obj.naif_id is not None and obj.naif_id in gms:
+        data["gm"] = gms[obj.naif_id]
 
     # SBDB extras
     if sbdb is not None:

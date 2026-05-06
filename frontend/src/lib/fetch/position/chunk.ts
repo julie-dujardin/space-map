@@ -13,11 +13,30 @@ import { ObjectType } from '$lib/types/objects';
 import { OrbitalSource, Scale, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
-import { AU_KM, AU_SCALE } from '$lib/math/units';
+import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2 } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
+import { getGmKm3s2 } from '$lib/fetch/systems-global';
+
+/**
+ * Mean motion in deg/day from semi-major axis (AU) + parent NAIF, via
+ * Kepler's third law (n = sqrt(GM/a^3)). Returns 0 when the parent has no
+ * GM entry (e.g. systems/global.json hasn't landed yet, or the parent isn't
+ * in SPICE) or `a` is non-positive — caller skips trail-buffer construction
+ * in that case. The estimate is approximate (assumes a circular orbit
+ * around a point mass) but only used to size the rolling trail buffer's
+ * step, not to propagate positions.
+ */
+function estimateMeanMotionDegPerDay(aAU: number, parentNaifId: number): number {
+	const gmKm3s2 = getGmKm3s2(parentNaifId);
+	if (!gmKm3s2 || aAU <= 0) return 0;
+	const gmAuDay = gmKm3s2 * KM3_S2_TO_AU3_DAY2;
+	const nRadPerDay = Math.sqrt(gmAuDay / (aAU * aAU * aAU));
+	return nRadPerDay * (180 / Math.PI);
+}
 
 /**
  * Fill `buf` with up to `capacity` chebyshev samples ending at `centerJd`,
@@ -306,6 +325,7 @@ export class ChunkLoader {
 			// so dividing by AU_SCALE recovers the same AU-magnitude semantics
 			// the elements path produces from `body.data.a`.
 			const aAU = Math.hypot(offset[0], offset[1], offset[2]) / AU_SCALE;
+			const n = estimateMeanMotionDegPerDay(aAU, body.parentNaifId);
 			const objType = body.objectType as ObjectType;
 			const data: BodyData = {
 				id: body.id,
@@ -320,7 +340,7 @@ export class ChunkLoader {
 				om: 0,
 				w: 0,
 				ma: 0,
-				n: 0,
+				n,
 				epoch: 0,
 				equatorial: false,
 				validityStart: startJd,
@@ -328,22 +348,50 @@ export class ChunkLoader {
 				orbitalSource: OrbitalSource.SPICE
 			};
 			if (writePositions) this.positions.set(body.naifId, pos);
-			// Trail buffer is owned by the ContextManager — set it up later when
-			// it knows the rendering period; here we just emit the body.
-			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
-				result.push({ data, position: pos, orbitCenter: parentPos });
-				continue;
+			// Build (or reuse) a rolling trail buffer for this body. The buffer
+			// is keyed on string id so planets can later borrow their
+			// barycenter's history below — without elements ride-along, this
+			// chebyshev-driven trail is the only orbit visualization for these
+			// bodies. Skip when the period estimate can't be made (Sun-relative
+			// motion at SSB, planet body at its own barycenter, …) — those
+			// either don't need a trail or borrow from a parent that does.
+			if (n > 0 && !this.chebBuffers.has(body.id)) {
+				const period = 360 / n;
+				const buffer = new TrailBuffer(NUM_ORBIT_POINTS, period / NUM_ORBIT_POINTS);
+				populateTrailBuffer(buffer, this.cheb, body.id, jd);
+				this.chebBuffers.set(body.id, buffer);
 			}
-			if (isMajorBody(objType)) {
-				const isMoon = objType === ObjectType.MOON;
+			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				result.push({
 					data,
 					position: pos,
 					orbitCenter: parentPos,
-					...(isMoon ? {} : {})
+					trailBuffer: this.chebBuffers.get(body.id)
+				});
+				continue;
+			}
+			if (isMajorBody(objType)) {
+				// Trail-buffer borrowing mirrors the elements path: planets use
+				// their parent barycenter's trail (the planet's own chebyshev
+				// is just wobble around that barycenter), moons use their own.
+				// When borrowing the barycenter's buffer, leave `orbitCenter`
+				// undefined — the buffer holds SSB-relative positions, so the
+				// trail must be drawn at scene origin, not at the parent's
+				// current position (which is roughly the body itself and would
+				// place the heliocentric ellipse on top of the planet).
+				const isMoon = objType === ObjectType.MOON;
+				const parentBuf = this.chebBuffers.get(data.parentId);
+				const ownBuf = this.chebBuffers.get(body.id);
+				const borrowedFromParent = !isMoon && parentBuf !== undefined;
+				const trailBuffer = isMoon ? ownBuf : (parentBuf ?? ownBuf);
+				result.push({
+					data,
+					position: pos,
+					orbitCenter: borrowedFromParent ? undefined : parentPos,
+					trailBuffer
 				});
 			} else {
-				result.push({ data, position: pos });
+				result.push({ data, position: pos, trailBuffer: this.chebBuffers.get(body.id) });
 			}
 		}
 		return result;
