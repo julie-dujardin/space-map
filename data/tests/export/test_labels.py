@@ -39,7 +39,7 @@ class TestWriteGlobalLabels:
             "name": "Random",
         }
 
-        write_global_labels(tmp_path, all_objs)
+        write_global_labels(tmp_path, all_objs, set())
 
         names = _parse(tmp_path / "labels" / "en.gz")
         assert set(names) == {"naif-399", "naif-301", "naif--31"}
@@ -48,7 +48,7 @@ class TestWriteGlobalLabels:
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
 
-        write_global_labels(tmp_path, all_objs)
+        write_global_labels(tmp_path, all_objs, set())
 
         for lang in LANGUAGES:
             assert (tmp_path / "labels" / f"{lang}.gz").exists()
@@ -58,7 +58,7 @@ class TestWriteGlobalLabels:
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
         all_objs.localized_data["fr"]["naif-399"] = {"name": "Terre"}
 
-        write_global_labels(tmp_path, all_objs)
+        write_global_labels(tmp_path, all_objs, set())
 
         assert _parse(tmp_path / "labels" / "fr.gz")["naif-399"] == "Terre"
         # No localized override for English → fall through to global obj.name
@@ -73,6 +73,34 @@ class TestWriteGlobalLabels:
         # walks its fallback chain (loading → id) from there.
         all_objs.global_data["naif--31"] = {"type": ObjectType.spacecraft}
 
-        write_global_labels(tmp_path, all_objs)
+        write_global_labels(tmp_path, all_objs, set())
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"naif--31": ""}
+
+    def test_chebyshev_covered_bodies_are_auto_promoted(self, tmp_path):
+        """DE441 perturber asteroids ride in chebyshev but aren't in
+        PROMOTED_EXTRA_IDS; they're rendered as individual meshes anyway, so
+        they belong in the labels set."""
+        all_objs = ChunkObjectData()
+        all_objs.global_data["spkid-20000052"] = {
+            "type": ObjectType.asteroid_main_belt,
+            "name": "52 Europa",
+        }
+
+        write_global_labels(tmp_path, all_objs, {"spkid-20000052"})
+
+        assert _parse(tmp_path / "labels" / "en.gz") == {"spkid-20000052": "52 Europa"}
+
+    def test_falls_back_to_provisional_designation(self, tmp_path):
+        """SPICE-only minor moons (e.g. naif-551) have no Wikidata and no DB
+        ``name``, but they do carry a provisional designation. Use that as the
+        last fallback so the promoted entry shows something meaningful."""
+        all_objs = ChunkObjectData()
+        all_objs.global_data["naif-551"] = {
+            "type": ObjectType.moon,
+            "provisional_designation": "2010J1",
+        }
+
+        write_global_labels(tmp_path, all_objs, set())
+
+        assert _parse(tmp_path / "labels" / "en.gz") == {"naif-551": "2010J1"}

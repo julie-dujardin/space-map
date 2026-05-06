@@ -10,14 +10,19 @@
 import { describe, expect, it } from 'vitest';
 import {
 	chunkIndexForJd,
+	isChebyshev,
 	isChunkIndexed,
-	isTimeSegmented,
+	isDateSegmented,
+	isParted,
+	type ChebyshevZoom,
 	type ChunkIndexedZoom,
-	type FlatZoom,
-	type TimeSegmentedZoom
+	type DateSegmentedZoom,
+	type PartedZoom
 } from './metadata';
 
 const ZOOM: ChunkIndexedZoom = {
+	shape: 'chunked-parted',
+	label: 'index',
 	chunks: 200,
 	chunk_years: 0.5,
 	start_jd: 2433282.5,
@@ -68,6 +73,8 @@ describe('chunkIndexForJd', () => {
 
 	it('handles a single-chunk zoom', () => {
 		const single: ChunkIndexedZoom = {
+			shape: 'chunked-parted',
+			label: 'index',
 			chunks: 1,
 			chunk_years: 5.0,
 			start_jd: 2400000.0,
@@ -80,30 +87,61 @@ describe('chunkIndexForJd', () => {
 });
 
 describe('zoom-shape discriminators', () => {
-	const flat: FlatZoom = { parts: 1 };
-	const dated: TimeSegmentedZoom = {
+	const flat: PartedZoom = { shape: 'parted', parts: 1 };
+	const dated: DateSegmentedZoom = {
+		shape: 'chunked-parted',
+		label: 'date',
 		start_date: '2026-04-23',
 		end_date: '2026-04-27',
 		parts: 1
 	};
+	const cheb: ChebyshevZoom = {
+		shape: 'chunked',
+		chunks: 20,
+		chunk_years: 5.0,
+		start_jd: 2433282.5,
+		end_jd: 2469807.5
+	};
 
-	it('isChunkIndexed picks only the chunked shape', () => {
+	it('isChunkIndexed picks only the chunked-parted/index shape', () => {
 		expect(isChunkIndexed(flat)).toBe(false);
 		expect(isChunkIndexed(dated)).toBe(false);
+		expect(isChunkIndexed(cheb)).toBe(false);
 		expect(isChunkIndexed(ZOOM)).toBe(true);
 	});
 
-	it('isTimeSegmented picks only the dated shape', () => {
-		expect(isTimeSegmented(flat)).toBe(false);
-		expect(isTimeSegmented(dated)).toBe(true);
-		expect(isTimeSegmented(ZOOM)).toBe(false);
+	it('isDateSegmented picks only the chunked-parted/date shape', () => {
+		expect(isDateSegmented(flat)).toBe(false);
+		expect(isDateSegmented(dated)).toBe(true);
+		expect(isDateSegmented(cheb)).toBe(false);
+		expect(isDateSegmented(ZOOM)).toBe(false);
 	});
 
-	it('the two shape predicates are mutually exclusive', () => {
-		// The export emits one shape per zoom; if both predicates fire on the
-		// same zoom the manifest reader's dispatch is ambiguous.
-		for (const zoom of [flat, dated, ZOOM]) {
-			expect(isChunkIndexed(zoom) && isTimeSegmented(zoom)).toBe(false);
+	it('isParted picks only the static parted shape', () => {
+		expect(isParted(flat)).toBe(true);
+		expect(isParted(dated)).toBe(false);
+		expect(isParted(cheb)).toBe(false);
+		expect(isParted(ZOOM)).toBe(false);
+	});
+
+	it('isChebyshev picks only the chebyshev shape', () => {
+		expect(isChebyshev(flat)).toBe(false);
+		expect(isChebyshev(dated)).toBe(false);
+		expect(isChebyshev(cheb)).toBe(true);
+		expect(isChebyshev(ZOOM)).toBe(false);
+	});
+
+	it('shape predicates are mutually exclusive', () => {
+		// The export emits one shape per zoom; if multiple predicates fire on
+		// the same zoom the manifest reader's dispatch is ambiguous.
+		for (const zoom of [flat, dated, ZOOM, cheb]) {
+			const matches = [
+				isParted(zoom),
+				isDateSegmented(zoom),
+				isChunkIndexed(zoom),
+				isChebyshev(zoom)
+			].filter(Boolean).length;
+			expect(matches).toBe(1);
 		}
 	});
 });

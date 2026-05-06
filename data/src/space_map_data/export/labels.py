@@ -27,17 +27,32 @@ logger = logging.getLogger(__name__)
 _US = "\x1f"  # ASCII Unit Separator — delimiter between id and name
 
 
-def _is_promoted(obj_id: str, global_data: dict) -> bool:
-    return global_data.get("type") in PROMOTED_TYPES or obj_id in PROMOTED_EXTRA_IDS
+def _is_promoted(obj_id: str, global_data: dict, cheb_covered_ids: set[str]) -> bool:
+    return (
+        global_data.get("type") in PROMOTED_TYPES
+        or obj_id in PROMOTED_EXTRA_IDS
+        or obj_id in cheb_covered_ids
+    )
 
 
-def write_global_labels(out_dir: Path, all_objects: ChunkObjectData) -> None:
+def write_global_labels(
+    out_dir: Path,
+    all_objects: ChunkObjectData,
+    cheb_covered_ids: set[str],
+) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
 
     Name fallback per (object, lang): localized Wikidata label (already with
     its own lang→en fallback inside ``_build_localized``) → object's global
-    ``name`` (``obj.name`` from the DB). When neither exists the line ships
+    ``name`` (``obj.name`` from the DB) → provisional designation (catches
+    SPICE-only minor moons like ``naif-551``/``2010J1`` that never got an
+    IAU name and have no Wikidata entry). When none exists the line ships
     just ``{id}{US}`` and the frontend falls back to the id.
+
+    Bodies with chebyshev coverage are auto-promoted regardless of type:
+    they're rendered as individual meshes by virtue of their precise
+    ephemerides, so they always belong in the labels set (catches the DE441
+    perturber asteroids that aren't in :data:`PROMOTED_EXTRA_IDS`).
     """
     missing_extras = sorted(PROMOTED_EXTRA_IDS - all_objects.global_data.keys())
     if missing_extras:
@@ -49,7 +64,7 @@ def write_global_labels(out_dir: Path, all_objects: ChunkObjectData) -> None:
     promoted_ids = sorted(
         obj_id
         for obj_id, glob in all_objects.global_data.items()
-        if _is_promoted(obj_id, glob)
+        if _is_promoted(obj_id, glob, cheb_covered_ids)
     )
 
     labels_dir = out_dir / "labels"
@@ -62,7 +77,12 @@ def write_global_labels(out_dir: Path, all_objects: ChunkObjectData) -> None:
         for obj_id in promoted_ids:
             loc = lang_data.get(obj_id)
             glob = all_objects.global_data.get(obj_id, {})
-            name = (loc and loc.get("name")) or glob.get("name") or ""
+            name = (
+                (loc and loc.get("name"))
+                or glob.get("name")
+                or glob.get("provisional_designation")
+                or ""
+            )
             if name:
                 named += 1
             lines.append(f"{obj_id}{_US}{name}")

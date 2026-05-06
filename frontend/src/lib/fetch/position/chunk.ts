@@ -1,21 +1,23 @@
-import { fetchLabels, type LabelMap } from '$lib/fetch/elements/fetch';
+import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
-	fetchElements,
 	type KeplerianColumns,
 	type ParabolicColumns,
-	type SGP4Columns
-} from '$lib/fetch/elements/elements';
+	type SGP4Columns,
+	type ElementColumns
+} from '$lib/fetch/position/elements/parse';
+import { LruPromiseCache } from '$lib/fetch/position/cache';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
-import { Scale, elementsBinUrl } from './constants';
+import { OrbitalSource, Scale, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
+import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
-import { AU_KM } from '$lib/math/units';
+import { AU_KM, AU_SCALE } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
-import type { ChebyshevStore } from '$lib/fetch/chebyshev/store';
-import { TrailBuffer } from '$lib/fetch/chebyshev/trail-buffer';
-import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
+import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
+import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
+import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 /**
  * Fill `buf` with up to `capacity` chebyshev samples ending at `centerJd`,
@@ -173,15 +175,56 @@ function sgp4ToBody(
 	};
 }
 
+/**
+ * Build the URL for an elements-payload position file. Static parted zones
+ * (most SBDB zones, spacecraft) skip the time component; chunked-parted zones
+ * (earth date-segmented, moons chunk-indexed) inject it as a path segment.
+ *
+ * Chebyshev zones don't go through this loader — they're handled by the
+ * `ChebyshevStore`'s own URL builder (`chunkedUrl`) and don't carry parts.
+ */
+function elementsUrl(zone: string, zoom: number, part: number, time: string | null): string {
+	return time ? chunkedPartedUrl(zone, zoom, time, part) : partedUrl(zone, zoom, part);
+}
+
+/**
+ * Capacity for the parsed-elements cache. Sized to comfortably hold the
+ * Earth-sat hot-reload window (a handful of recent snapshots) plus a few
+ * other zones the user might bounce between. Each entry retains the parsed
+ * typed-array views and their ArrayBuffer — Earth's ~25K rows are ~5–10 MB.
+ */
+const PARSED_ELEMENTS_CACHE_CAPACITY = 8;
+const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_CAPACITY);
+
+async function fetchElements(
+	zone: string,
+	zoom: number,
+	part: number,
+	time: string | null
+): Promise<ElementColumns> {
+	const key = `${zone}:${zoom}:${part}:${time ?? ''}`;
+	return elementsCache.getOrCompute(key, async () => {
+		const res = await fetch(elementsUrl(zone, zoom, part, time));
+		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
+		const ds = new DecompressionStream('gzip');
+		const buffer = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
+		const parsed = parsePosition(buffer);
+		if (parsed.kind !== 'elements') {
+			throw new Error(`Expected elements payload at ${zone}/${zoom}/${part}, got ${parsed.kind}`);
+		}
+		return parsed.columns;
+	});
+}
+
 export class ChunkLoader {
 	/**
-	 * Fire-and-forget fetch of the elements binary for a zone/zoom/part so the
+	 * Fire-and-forget fetch of the position file for a zone/zoom/part so the
 	 * browser caches it before the caller needs to process it. IDs ride inside
 	 * the binary (header id-type byte + column 0). Labels live in one global
 	 * file per language, prefetched once on app start by {@link fetchLabels}.
 	 */
 	static prefetch(zone: string, zoom: number, part: number, time: string | null = null): void {
-		fetch(elementsBinUrl(zone, zoom, part, time));
+		fetch(elementsUrl(zone, zoom, part, time));
 	}
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
@@ -192,22 +235,118 @@ export class ChunkLoader {
 	/**
 	 * Chebyshev trail buffers keyed by the body's string id. Owned by the
 	 * ContextManager (persists across `process` calls so accumulated history
-	 * survives chunk loads); the loader populates entries here when it first
-	 * sees a chebyshev-tracked body.
-	 *
-	 * Planets borrow their parent barycenter's buffer (via `bodyOwnTrailTargetId`);
-	 * moons and barycenters use their own. This mirrors the Keplerian
-	 * `barycenters` → planet-orbit wiring.
-	 *
-	 * TODO: remove the Keplerian `n` dependency once chebyshev ships periods
-	 * per body — currently we still need the elements chunk loaded to get the
-	 * orbital period for the buffer step size.
+	 * survives chunk loads).
 	 */
 	constructor(
 		private readonly cheb: ChebyshevStore | null,
 		private readonly chebBuffers: Map<string, TrailBuffer>
 	) {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
+	}
+
+	/**
+	 * Build PositionedBody[] for every body in the chebyshev store covered by
+	 * `date`. Skipped zones (chunk not loaded yet) drop their bodies — callers
+	 * must `await store.ensure(jd).done` first.
+	 *
+	 * Walks bodies in two passes so children find their parents in `positions`:
+	 *
+	 *   1. Sort bodies so barycenters (object_type=BARYCENTER, naif_id < 100)
+	 *      land before everything else — Earth-Moon barycenter (naif-3) is
+	 *      Earth's parent, Sun (naif-10) is the parent of the planet
+	 *      barycenters, SSB (naif-0) is the implicit root at scene origin.
+	 *   2. For each body, evaluate its parent-relative chebyshev position,
+	 *      shift by the parent's world position, and emit a PositionedBody.
+	 *
+	 * `a` (semi-major axis) is approximated by the position-vector magnitude at
+	 * `jd` so the visibility-ratio code (`getMoonVisibility`,
+	 * `getPlanetVisibility`) has a meaningful number without us having to ship
+	 * Kepler elements alongside the chebyshev coefficients. The exact value
+	 * matters for threshold ratios, not for propagation — the position itself
+	 * comes from the polynomials.
+	 */
+	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
+		if (!this.cheb) return [];
+		const jd = dateToJD(date);
+		const writePositions = this.barycenters.size === 0;
+		const result: PositionedBody[] = [];
+
+		// Order bodies so parents resolve before children. Barycenters
+		// (object_type=0) and stars (object_type=2) come first, then planets
+		// (object_type=3) and dwarves (4), then moons (5+). Within a tier,
+		// stable by naif_id so the major bodies appear in a deterministic order.
+		const all = Array.from(this.cheb.bodiesAt(jd));
+		all.sort((a, b) => {
+			const tierA =
+				a.body.objectType === ObjectType.BARYCENTER
+					? 0
+					: a.body.objectType === ObjectType.STAR
+						? 1
+						: 2;
+			const tierB =
+				b.body.objectType === ObjectType.BARYCENTER
+					? 0
+					: b.body.objectType === ObjectType.STAR
+						? 1
+						: 2;
+			return tierA - tierB || a.body.naifId - b.body.naifId;
+		});
+
+		for (const { body, startJd, endJd } of all) {
+			const offset = chebyshevPositionScene(body, jd);
+			if (!offset) continue;
+			const parentPos = this.positions.get(body.parentNaifId) ?? this.positions.get(0)!;
+			const pos: [number, number, number] = [
+				parentPos[0] + offset[0],
+				parentPos[1] + offset[1],
+				parentPos[2] + offset[2]
+			];
+			// Position-magnitude proxy for the visibility-ratio code (camera
+			// distance / a). Cheb gives parent-relative offsets in scene units,
+			// so dividing by AU_SCALE recovers the same AU-magnitude semantics
+			// the elements path produces from `body.data.a`.
+			const aAU = Math.hypot(offset[0], offset[1], offset[2]) / AU_SCALE;
+			const objType = body.objectType as ObjectType;
+			const data: BodyData = {
+				id: body.id,
+				name: pickLabel(labels, body.id),
+				hasLocalized: body.hasLocalized,
+				objectType: objType,
+				parentId: `naif-${body.parentNaifId}`,
+				radiusKm: body.radiusKm,
+				a: aAU,
+				e: 0,
+				i: 0,
+				om: 0,
+				w: 0,
+				ma: 0,
+				n: 0,
+				epoch: 0,
+				equatorial: false,
+				validityStart: startJd,
+				validityEnd: endJd,
+				orbitalSource: OrbitalSource.SPICE
+			};
+			if (writePositions) this.positions.set(body.naifId, pos);
+			// Trail buffer is owned by the ContextManager — set it up later when
+			// it knows the rendering period; here we just emit the body.
+			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+				result.push({ data, position: pos, orbitCenter: parentPos });
+				continue;
+			}
+			if (isMajorBody(objType)) {
+				const isMoon = objType === ObjectType.MOON;
+				result.push({
+					data,
+					position: pos,
+					orbitCenter: parentPos,
+					...(isMoon ? {} : {})
+				});
+			} else {
+				result.push({ data, position: pos });
+			}
+		}
+		return result;
 	}
 
 	async process(
@@ -266,22 +405,15 @@ export class ChunkLoader {
 			// The per-frame propagation gate keeps the body hidden until jd
 			// re-enters range.
 			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
-			// Chebyshev override: for bodies shipped with SPICE polynomials, take
-			// the parent-relative offset straight from the store. Orbit curve is
-			// sampled later once we know this is a rendered body (not a
-			// barycenter that only acts as a reference frame).
-			const chebOffset = this.cheb?.has(body.id) ? this.cheb.positionScene(body.id, jd) : null;
-			const offset = chebOffset
-				? chebOffset
-				: !inRange
-					? ([0, 0, 0] as [number, number, number])
-					: body.satrec
-						? sgp4PositionScene(body.satrec, jd)
-						: body.a === 0 && !isParabolic
-							? ([0, 0, 0] as [number, number, number])
-							: body.q != null
-								? parabolicToPosition(body, date)
-								: orbitalElementsToPosition(body, date);
+			const offset = !inRange
+				? ([0, 0, 0] as [number, number, number])
+				: body.satrec
+					? sgp4PositionScene(body.satrec, jd)
+					: body.a === 0 && !isParabolic
+						? ([0, 0, 0] as [number, number, number])
+						: body.q != null
+							? parabolicToPosition(body, date)
+							: orbitalElementsToPosition(body, date);
 			if (!offset) {
 				console.warn(
 					`Failed to compute position for body id=${body.id} name=${body.name} (e=${body.e})`
@@ -296,18 +428,6 @@ export class ChunkLoader {
 
 			const id = cols.id[idx];
 
-			// Sample the body's chebyshev trail once (Keplerian `n` gives the
-			// period). Keyed by string id so planets can later borrow their parent
-			// barycenter's buffer — mirroring the Keplerian `barycenters` map. The
-			// `has` guard preserves already-accumulated history when the same body
-			// appears in a re-processed chunk.
-			if (chebOffset && body.n > 0 && !this.chebBuffers.has(body.id)) {
-				const period = 360 / body.n;
-				const buffer = new TrailBuffer(NUM_ORBIT_POINTS, period / NUM_ORBIT_POINTS);
-				populateTrailBuffer(buffer, this.cheb!, body.id, jd);
-				this.chebBuffers.set(body.id, buffer);
-			}
-
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
 					// if parent is SSB, don't use it
@@ -320,7 +440,6 @@ export class ChunkLoader {
 					data: body,
 					position: pos,
 					orbitElements: body.a > 0 ? body : undefined,
-					trailBuffer: this.chebBuffers.get(body.id),
 					orbitCenter: parentPos
 				});
 				continue;
@@ -339,19 +458,10 @@ export class ChunkLoader {
 				// position, not at SSB — failing to do so leaves the trail offset
 				// from the body by parent_pos − SSB.
 				const hasBarycenter = this.barycenters.has(parentId);
-				// Trail-buffer selection mirrors orbitElements selection: planets
-				// without a barycenter entry use their own buffer; those with one
-				// borrow the parent's (since the planet's own chebyshev is just
-				// wobble around that barycenter).
-				const parentStringId = body.parentId;
-				const trailBuffer = isMoon
-					? this.chebBuffers.get(body.id)
-					: (this.chebBuffers.get(parentStringId) ?? this.chebBuffers.get(body.id));
 				bodies.push({
 					data: body,
 					position: pos,
 					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
-					trailBuffer,
 					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {

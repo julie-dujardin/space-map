@@ -4,7 +4,7 @@
  * shares the same fetch.
  */
 
-import type { ChebyshevManifest } from './chebyshev/store';
+import type { ChebyshevZoneParams } from './position/chebyshev/store';
 import { DATA_BASE } from './data-base';
 
 /**
@@ -20,45 +20,60 @@ export type ObjectBundles = {
 	global: number;
 } & Record<string, number>;
 
-export interface FlatZoom {
+/** Static parted zone: `position/{zone}/{zoom}/{part}.bin.gz`. */
+export interface PartedZoom {
+	shape: 'parted';
 	parts: number;
 }
 
-export interface TimeSegmentedZoom {
+/** Time-chunked + parted, ISO-date label (currently `earth`):
+ *  `position/{zone}/{zoom}/{YYYY-MM-DD}/{part}.bin.gz`. */
+export interface DateSegmentedZoom {
+	shape: 'chunked-parted';
+	label: 'date';
 	start_date: string;
 	end_date: string;
 	parts: number;
 }
 
-/**
- * Chunk-indexed zoom: the zone fans out as a fixed-cadence chunk grid keyed by
- * integer index 0..chunks-1. Used for `moons` (Method C secular elements
- * refit every `chunk_years`). The index for a JD is
- * `floor((jd - start_jd) / (chunk_years * 365.25))`, clamped to the range.
- */
+/** Time-chunked + parted, integer chunk-idx label (currently `moons`):
+ *  `position/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz`. */
 export interface ChunkIndexedZoom {
+	shape: 'chunked-parted';
+	label: 'index';
 	chunks: number;
 	chunk_years: number;
 	start_jd: number;
 	parts: number;
 }
 
-/**
- * Per-zoom metadata. Three shapes:
- *   - `FlatZoom`: static elements, no time slot in the URL.
- *   - `TimeSegmentedZoom`: ISO-date directory between zoom and part (currently
- *     `earth`); callers emit a `YYYY-MM-DD` snapshot string.
- *   - `ChunkIndexedZoom`: integer chunk directory between zoom and part
- *     (currently `moons`); callers compute the index from JD.
- */
-export type ZoomMetadata = FlatZoom | TimeSegmentedZoom | ChunkIndexedZoom;
+/** Chebyshev-only zone, no parts axis:
+ *  `position/{zone}/{zoom}/{chunk_idx}.bin.gz`. */
+export interface ChebyshevZoom {
+	shape: 'chunked';
+	chunks: number;
+	chunk_years: number;
+	start_jd: number;
+	end_jd: number;
+}
 
-export function isTimeSegmented(zoom: ZoomMetadata): zoom is TimeSegmentedZoom {
-	return 'start_date' in zoom;
+/** Per-zoom metadata. Tagged union dispatched on the `shape` field. */
+export type ZoomMetadata = PartedZoom | DateSegmentedZoom | ChunkIndexedZoom | ChebyshevZoom;
+
+export function isParted(zoom: ZoomMetadata): zoom is PartedZoom {
+	return zoom.shape === 'parted';
+}
+
+export function isDateSegmented(zoom: ZoomMetadata): zoom is DateSegmentedZoom {
+	return zoom.shape === 'chunked-parted' && zoom.label === 'date';
 }
 
 export function isChunkIndexed(zoom: ZoomMetadata): zoom is ChunkIndexedZoom {
-	return 'chunks' in zoom;
+	return zoom.shape === 'chunked-parted' && zoom.label === 'index';
+}
+
+export function isChebyshev(zoom: ZoomMetadata): zoom is ChebyshevZoom {
+	return zoom.shape === 'chunked';
 }
 
 const DAYS_PER_YEAR = 365.25;
@@ -81,7 +96,7 @@ export interface ZoneMetadata {
  * `YYYY-MM-DD` snapshot string for the URL builder. Snapshots are exported
  * daily so the integer-day truncation lands on a real export.
  */
-export function snapshotDate(zoom: TimeSegmentedZoom, date: Date): string {
+export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 	const t = date.getTime();
 	const startMs = Date.parse(`${zoom.start_date}T00:00:00Z`);
 	const endMs = Date.parse(`${zoom.end_date}T00:00:00Z`);
@@ -89,10 +104,13 @@ export function snapshotDate(zoom: TimeSegmentedZoom, date: Date): string {
 	return new Date(clamped).toISOString().slice(0, 10);
 }
 
-export interface Metadata {
+export interface PositionMetadata {
 	zones: Record<string, ZoneMetadata>;
+}
+
+export interface Metadata {
+	position: PositionMetadata;
 	object_bundles: ObjectBundles;
-	chebyshev?: ChebyshevManifest;
 }
 
 let pending: Promise<Metadata> | null = null;
@@ -104,6 +122,27 @@ export function fetchMetadata(): Promise<Metadata> {
 		return r.json() as Promise<Metadata>;
 	});
 	return pending;
+}
+
+/**
+ * Walk `metadata.position.zones` and pick out the chebyshev zones (those whose
+ * zoom-0 has `shape: "chunked"`), folding them into the per-zone params map
+ * the `ChebyshevStore` consumes. Returns an empty map when no chebyshev zones
+ * exist; callers gate construction on `size > 0`.
+ */
+export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZoneParams> {
+	const out = new Map<string, ChebyshevZoneParams>();
+	for (const [zone, zoneData] of Object.entries(meta.position.zones)) {
+		const zoom0 = zoneData.zooms['0'];
+		if (!zoom0 || zoom0.shape !== 'chunked') continue;
+		out.set(zone, {
+			chunks: zoom0.chunks,
+			chunk_years: zoom0.chunk_years,
+			start_jd: zoom0.start_jd,
+			end_jd: zoom0.end_jd
+		});
+	}
+	return out;
 }
 
 /**

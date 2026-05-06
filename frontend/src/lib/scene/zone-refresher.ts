@@ -42,13 +42,13 @@ import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import {
 	chunkIndexForJd,
 	isChunkIndexed,
-	isTimeSegmented,
+	isDateSegmented,
 	snapshotDate,
 	type ChunkIndexedZoom,
-	type Metadata,
-	type TimeSegmentedZoom
+	type DateSegmentedZoom,
+	type Metadata
 } from '$lib/fetch/metadata';
-import { ChunkLoader } from '$lib/fetch/elements/chunk';
+import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { dateToJD } from '$lib/format/date';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 
@@ -63,7 +63,7 @@ interface BaseZoneState {
 
 interface TimeZoneState extends BaseZoneState {
 	kind: 'time';
-	zoomData: TimeSegmentedZoom;
+	zoomData: DateSegmentedZoom;
 	/** Snapshot date string of the currently loaded data. */
 	currentTime: string;
 	/** Bucket keys this zone wrote into on the last load — used to clean up
@@ -105,11 +105,15 @@ export class ZoneRefresher {
 		initialDate: Date
 	) {
 		const initialJd = dateToJD(initialDate);
-		for (const [zone, zoneData] of Object.entries(metadata.zones)) {
+		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 			for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 				const zoom = Number(zoomStr);
+				// Chebyshev zones (`shape: chunked`) are driven by the
+				// ChebyshevStore, not this refresher; static-parted zones don't
+				// fan out over time, so they don't need a refresher entry either.
+				if (zoomData.shape === 'chunked' || zoomData.shape === 'parted') continue;
 				const parts = Math.min(zoomData.parts, 20);
-				if (isTimeSegmented(zoomData)) {
+				if (isDateSegmented(zoomData)) {
 					const state: TimeZoneState = {
 						kind: 'time',
 						zone,

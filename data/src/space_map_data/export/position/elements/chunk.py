@@ -1,16 +1,16 @@
-"""Write one (zone, zoom, part) chunk: binary elements file."""
+"""Write one (zone, zoom, part) chunk: position file with elements payload."""
 
 import logging
 from pathlib import Path
 
-from space_map_data.export.elements.format import (
-    UNBOUNDED_END_JD,
-    UNBOUNDED_START_JD,
-)
-from space_map_data.export.elements.writer import (
+from space_map_data.export.position.elements.writer import (
     write_elements,
     write_parabolic_elements,
     write_sgp4_elements,
+)
+from space_map_data.export.position.format import (
+    UNBOUNDED_END_JD,
+    UNBOUNDED_START_JD,
 )
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 10_000
 
 # Days of slack to add around the spread of TLE epochs when bounding an SGP4
-# chunk's validity window. TLE accuracy degrades quickly and the SGP4
+# file's validity window. TLE accuracy degrades quickly and the SGP4
 # propagator itself errors out a year or two past epoch — ±14d is the
 # conventional "still reasonably accurate" window for LEO.
 SGP4_VALIDITY_SLACK_DAYS = 14.0
 
 
 def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
-    """Derive [start_jd, end_jd] for an SGP4 chunk from the epoch spread.
+    """Derive [start_jd, end_jd] for an SGP4 file from the epoch spread.
 
     Falls back to unbounded when no object carries an epoch (shouldn't happen
     for valid TLEs but keeps behaviour defined).
@@ -56,7 +56,7 @@ def write_chunk(
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> int:
-    """Write the binary elements file for one chunk.
+    """Write the position file for one (zone, zoom, part[, time]) chunk.
 
     `has_localized` is keyed by object id (built once per zone by
     :func:`build_chunk_object_data`); each row's bit goes into the binary's
@@ -64,21 +64,21 @@ def write_chunk(
     with no Wikidata at all.
 
     `orbital_source` is stamped in the file header; writer raises if any row
-    disagrees. The chunk's id-type is also stamped in the header so the
+    disagrees. The file's id-type is also stamped in the header so the
     frontend can rebuild full `<prefix>-<numeric>` IDs from binary column 0.
     `time` is the per-snapshot directory between zoom and part — ISO date
     (Earth) or a numeric chunk index (time-chunked moons).
     `validity_start_jd`/`validity_end_jd` go into the binary header so
-    consumers know when the chunk's elements are accurate. Earth zone
+    consumers know when the file's elements are accurate. Earth zone
     overrides them with the SGP4-specific epoch-spread window (those need a
     tighter bound than 6 months); moons keep the chunk's [start, end].
-    Returns the size of the elements binary file in bytes.
+    Returns the size of the binary file in bytes.
     """
-    chunk_dir = out_dir / "elements" / zone / str(zoom)
+    chunk_dir = out_dir / "position" / zone / str(zoom)
     if time is not None:
         chunk_dir = chunk_dir / time
-    elements_path = chunk_dir / f"{part}.bin.gz"
-    elements_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = chunk_dir / f"{part}.bin.gz"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     radius_km_overrides: dict[str, float] = {}
     for obj in objects:
         qid = obj.wikidata_qid or (
@@ -115,11 +115,11 @@ def write_chunk(
         write_fn = write_elements
     write_fn(
         objects,
-        elements_path,
+        out_path,
         orbital_source,
         radius_km_overrides or None,
         has_localized=has_localized,
         start_jd=start_jd,
         end_jd=end_jd,
     )
-    return elements_path.stat().st_size
+    return out_path.stat().st_size

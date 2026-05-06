@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { parseChebyshev } from './parse';
+import { parseChebyshevPayload } from './parse';
 import { chebyshevPositionKm } from './propagate';
 import {
 	CHEBYSHEV_BODY_HEADER_SIZE,
-	CHEBYSHEV_HEADER_SIZE,
-	CHEBYSHEV_MAGIC,
-	CHEBYSHEV_VERSION,
-	FORMAT_POSITION_ONLY
-} from './constants';
-import { IdType } from '$lib/fetch/elements/constants';
+	FORMAT_CHEBYSHEV,
+	HEADER_SIZE,
+	IdType,
+	MAGIC,
+	VERSION
+} from '$lib/fetch/position/format';
 
 interface SegmentSpec {
 	startJd: number;
@@ -28,23 +28,30 @@ interface BodySpec {
 	segments: SegmentSpec[];
 }
 
+/**
+ * Build a chebyshev-payload position file. The 32-byte unified header is
+ * common(24) + chebyshev extension(8 = body_count + reserved); each body
+ * record uses the v7 layout where segment_count shrank to uint16 to make
+ * room for object_type and a reserved byte.
+ */
 function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): ArrayBuffer {
-	let size = CHEBYSHEV_HEADER_SIZE;
+	let size = HEADER_SIZE;
 	for (const b of bodies) {
 		size += CHEBYSHEV_BODY_HEADER_SIZE;
 		size += b.segments.length * (16 + 12 * b.coeffsPerAxis);
 	}
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
-	view.setUint32(0, CHEBYSHEV_MAGIC, true);
-	view.setUint16(4, CHEBYSHEV_VERSION, true);
-	view.setUint16(6, FORMAT_POSITION_ONLY, true);
+	view.setUint32(0, MAGIC, true);
+	view.setUint16(4, VERSION, true);
+	view.setUint8(6, FORMAT_CHEBYSHEV);
+	view.setUint8(7, 0);
 	view.setFloat64(8, chunkStart, true);
 	view.setFloat64(16, chunkEnd, true);
-	view.setUint32(24, bodies.length, true);
-	view.setUint32(28, 0, true);
+	view.setUint32(24, bodies.length, true); // body_count
+	view.setUint32(28, 0, true); // reserved
 
-	let off = CHEBYSHEV_HEADER_SIZE;
+	let off = HEADER_SIZE;
 	for (const b of bodies) {
 		view.setInt32(off, b.naifId, true);
 		view.setInt32(off + 4, b.parentNaifId, true);
@@ -52,8 +59,10 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 		view.setFloat32(off + 12, b.radiusKm, true);
 		view.setUint16(off + 16, b.coeffsPerAxis, true);
 		view.setUint8(off + 18, b.idType);
-		view.setUint8(off + 19, 0);
-		view.setUint32(off + 20, b.segments.length, true);
+		view.setUint8(off + 19, 0); // has_localized
+		view.setUint8(off + 20, 0); // object_type
+		view.setUint8(off + 21, 0); // reserved
+		view.setUint16(off + 22, b.segments.length, true); // segment_count (uint16)
 		off += CHEBYSHEV_BODY_HEADER_SIZE;
 		for (const seg of b.segments) {
 			view.setFloat64(off, seg.startJd, true);
@@ -70,7 +79,15 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 	return buf;
 }
 
-describe('parseChebyshev — synthetic buffers', () => {
+function parse(buf: ArrayBuffer) {
+	return parseChebyshevPayload(
+		buf,
+		new DataView(buf).getFloat64(8, true),
+		new DataView(buf).getFloat64(16, true)
+	);
+}
+
+describe('parseChebyshevPayload — synthetic buffers', () => {
 	it('parses header and body metadata', () => {
 		const buf = buildBuffer(100, 200, [
 			{
@@ -83,7 +100,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 				segments: [{ startJd: 100, endJd: 150, cx: [1, 0, 0], cy: [0, 1, 0], cz: [0, 0, 1] }]
 			}
 		]);
-		const chunk = parseChebyshev(buf);
+		const chunk = parse(buf);
 		expect(chunk.startJd).toBe(100);
 		expect(chunk.endJd).toBe(200);
 		expect(chunk.bodies).toHaveLength(1);
@@ -110,7 +127,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 				segments: [{ startJd: 100, endJd: 200, cx: [1, 0], cy: [0, 1], cz: [0, 0] }]
 			}
 		]);
-		const body = parseChebyshev(buf).bodies[0];
+		const body = parse(buf).bodies[0];
 		expect(body.id).toBe('spkid-20134340');
 		expect(body.naifId).toBe(999);
 	});
@@ -147,7 +164,7 @@ describe('parseChebyshev — synthetic buffers', () => {
 				]
 			}
 		]);
-		const chunk = parseChebyshev(buf);
+		const chunk = parse(buf);
 		expect(chunk.bodies).toHaveLength(2);
 
 		const b1 = chunk.bodies[0];
@@ -159,20 +176,6 @@ describe('parseChebyshev — synthetic buffers', () => {
 		expect(b2.coeffsPerAxis).toBe(4);
 		expect(b2.radiusKm).toBeCloseTo(100.0, 5);
 		expect(b2.coeffs).toEqual(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]));
-	});
-
-	it('rejects a file with bad magic', () => {
-		const buf = new ArrayBuffer(CHEBYSHEV_HEADER_SIZE);
-		new DataView(buf).setUint32(0, 0xdeadbeef, true);
-		expect(() => parseChebyshev(buf)).toThrow(/bad magic/);
-	});
-
-	it('rejects an unsupported version', () => {
-		const buf = new ArrayBuffer(CHEBYSHEV_HEADER_SIZE);
-		const v = new DataView(buf);
-		v.setUint32(0, CHEBYSHEV_MAGIC, true);
-		v.setUint16(4, 99, true);
-		expect(() => parseChebyshev(buf)).toThrow(/Unsupported chebyshev version/);
 	});
 });
 
@@ -193,7 +196,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 			]
 		}
 	]);
-	const body = parseChebyshev(buf).bodies[0];
+	const body = parse(buf).bodies[0];
 
 	it('returns null when jd is before the covered range', () => {
 		expect(chebyshevPositionKm(body, -1)).toBeNull();
@@ -244,7 +247,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 				segments: [{ startJd: 0, endJd: 10, cx: [42], cy: [-7], cz: [3] }]
 			}
 		]);
-		const b = parseChebyshev(constBuf).bodies[0];
+		const b = parse(constBuf).bodies[0];
 		const p = chebyshevPositionKm(b, 5);
 		expect(p).toEqual([42, -7, 3]);
 	});

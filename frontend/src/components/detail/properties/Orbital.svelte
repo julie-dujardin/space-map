@@ -5,7 +5,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
-	import { OrbitalSource } from '$lib/fetch/elements/constants';
+	import { OrbitalSource } from '$lib/fetch/position/format';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';

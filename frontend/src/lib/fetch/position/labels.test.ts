@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseLabels } from './fetch';
+import { parseLabels } from './labels';
 
 const US = '\x1f';
 

@@ -1,5 +1,5 @@
 /**
- * Binary reader for chebyshev data.bin — position polynomial segments.
+ * Binary reader for the chebyshev payload of a position file.
  *
  * One body per record; each body holds segment-wise Chebyshev coefficients for
  * ECLIPJ2000 parent-relative position in km. Segment starts/ends are float64
@@ -8,12 +8,10 @@
 
 import {
 	CHEBYSHEV_BODY_HEADER_SIZE,
-	CHEBYSHEV_HEADER_SIZE,
-	CHEBYSHEV_MAGIC,
-	CHEBYSHEV_VERSION,
-	FORMAT_POSITION_ONLY
-} from '$lib/fetch/chebyshev/constants';
-import { buildObjectId, IdType } from '$lib/fetch/elements/constants';
+	HEADER_SIZE,
+	IdType,
+	buildObjectId
+} from '$lib/fetch/position/format';
 
 export interface ChebyshevBody {
 	/**
@@ -29,6 +27,10 @@ export interface ChebyshevBody {
 	id: string;
 	naifId: number;
 	parentNaifId: number;
+	/** 1 iff the body has a localized detail bundle in at least one language. */
+	hasLocalized: boolean;
+	/** ObjectType ordinal (same map as the elements `objectType` column). */
+	objectType: number;
 	/** NaN if unknown in the source. */
 	radiusKm: number;
 	/** Polynomial degree + 1 per axis. */
@@ -51,38 +53,22 @@ export interface ChebyshevChunk {
 	bodies: ChebyshevBody[];
 }
 
-function parseHeader(view: DataView): {
-	formatType: number;
-	startJd: number;
-	endJd: number;
-	bodyCount: number;
-} {
-	const magic = view.getUint32(0, true);
-	if (magic !== CHEBYSHEV_MAGIC) {
-		throw new Error(`Invalid chebyshev file: bad magic 0x${magic.toString(16)}`);
-	}
-	const version = view.getUint16(4, true);
-	if (version !== CHEBYSHEV_VERSION) {
-		throw new Error(`Unsupported chebyshev version: ${version}`);
-	}
-	const formatType = view.getUint16(6, true);
-	if (formatType !== FORMAT_POSITION_ONLY) {
-		throw new Error(`Unknown chebyshev format type: ${formatType}`);
-	}
-	return {
-		formatType,
-		startJd: view.getFloat64(8, true),
-		endJd: view.getFloat64(16, true),
-		bodyCount: view.getUint32(24, true)
-	};
-}
-
-export function parseChebyshev(buffer: ArrayBuffer): ChebyshevChunk {
+/**
+ * Parse the chebyshev payload of a position file. The caller has already
+ * verified the magic and version and confirmed the format byte selects
+ * `FORMAT_CHEBYSHEV`. `startJd`/`endJd` come from the common header and bound
+ * the whole file's coverage.
+ */
+export function parseChebyshevPayload(
+	buffer: ArrayBuffer,
+	startJd: number,
+	endJd: number
+): ChebyshevChunk {
 	const view = new DataView(buffer);
-	const { startJd, endJd, bodyCount } = parseHeader(view);
+	const bodyCount = view.getUint32(24, true);
 
 	const bodies: ChebyshevBody[] = [];
-	let offset = CHEBYSHEV_HEADER_SIZE;
+	let offset = HEADER_SIZE;
 
 	for (let b = 0; b < bodyCount; b++) {
 		const naifId = view.getInt32(offset, true);
@@ -91,7 +77,10 @@ export function parseChebyshev(buffer: ArrayBuffer): ChebyshevChunk {
 		const radiusKm = view.getFloat32(offset + 12, true);
 		const coeffsPerAxis = view.getUint16(offset + 16, true);
 		const idType = view.getUint8(offset + 18) as IdType;
-		const segmentCount = view.getUint32(offset + 20, true);
+		const hasLocalized = view.getUint8(offset + 19) === 1;
+		const objectType = view.getUint8(offset + 20);
+		// offset 21 reserved
+		const segmentCount = view.getUint16(offset + 22, true);
 		offset += CHEBYSHEV_BODY_HEADER_SIZE;
 		// Empty string when id-type is unknown — store/loaders will drop the row.
 		const id = buildObjectId(idType, objIdValue) ?? '';
@@ -122,6 +111,8 @@ export function parseChebyshev(buffer: ArrayBuffer): ChebyshevChunk {
 			id,
 			naifId,
 			parentNaifId,
+			hasLocalized,
+			objectType,
 			radiusKm,
 			coeffsPerAxis,
 			startJds,

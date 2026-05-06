@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { parseElements, type KeplerianColumns, type ParabolicColumns } from './elements';
+import { parseElementsPayload, type KeplerianColumns, type ParabolicColumns } from './parse';
+import { parsePosition } from '$lib/fetch/position/parse';
 import {
-	MAGIC,
-	VERSION,
+	FORMAT_CHEBYSHEV,
+	FORMAT_ELEMENTS,
 	HEADER_SIZE,
-	FORMAT_KEPLERIAN,
-	FORMAT_PARABOLIC,
-	OrbitalSource
-} from './constants';
+	MAGIC,
+	OrbitalSource,
+	SUBFORMAT_KEPLERIAN,
+	SUBFORMAT_PARABOLIC,
+	VERSION
+} from '$lib/fetch/position/format';
 import { ObjectType } from '$lib/types/objects';
 import fixtures from '$lib/math/orbit/elements.fixtures.json';
 
@@ -50,14 +53,21 @@ interface ParabolicRow {
 	hasLocalized?: number;
 }
 
-function writeHeader(view: DataView, formatType: number, rowCount: number): void {
+/**
+ * Write the v7 unified header for an elements payload. Common header (24
+ * bytes) + elements extension (8 bytes) — sub_format/source/id_type/row_count.
+ */
+function writeHeader(view: DataView, subFormat: number, rowCount: number): void {
 	view.setUint32(0, MAGIC, true);
 	view.setUint16(4, VERSION, true);
-	view.setUint16(6, formatType, true);
+	view.setUint8(6, FORMAT_ELEMENTS);
+	view.setUint8(7, 0);
 	view.setFloat64(8, -Infinity, true); // validityStart
 	view.setFloat64(16, Infinity, true); // validityEnd
-	view.setUint32(24, rowCount, true);
-	view.setUint8(28, OrbitalSource.UNKNOWN); // source
+	view.setUint16(24, subFormat, true);
+	view.setUint8(26, OrbitalSource.UNKNOWN); // source
+	view.setUint8(27, 0xff); // id_type (UNKNOWN)
+	view.setUint32(28, rowCount, true);
 }
 
 function writeSharedColumns(
@@ -98,7 +108,7 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
-	writeHeader(view, FORMAT_KEPLERIAN, n);
+	writeHeader(view, SUBFORMAT_KEPLERIAN, n);
 	let offset = writeSharedColumns(view, rows);
 
 	for (let r = 0; r < n; r++) view.setFloat64(offset + r * 8, rows[r].epochJd, true);
@@ -144,7 +154,7 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
-	writeHeader(view, FORMAT_PARABOLIC, n);
+	writeHeader(view, SUBFORMAT_PARABOLIC, n);
 	let offset = writeSharedColumns(view, rows);
 
 	for (let r = 0; r < n; r++) view.setFloat64(offset + r * 8, rows[r].epochJd, true);
@@ -165,6 +175,14 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].hasLocalized ?? 0);
 
 	return buf;
+}
+
+function parse(buf: ArrayBuffer) {
+	return parseElementsPayload(
+		buf,
+		new DataView(buf).getFloat64(8, true),
+		new DataView(buf).getFloat64(16, true)
+	);
 }
 
 // --- Test data ---
@@ -244,10 +262,10 @@ const HYPERBOLIC_COMET: ParabolicRow = {
 
 // --- Tests ---
 
-describe('parseElements — Keplerian', () => {
+describe('parseElementsPayload — Keplerian', () => {
 	it('parses a single row with correct values', () => {
 		const buf = buildKeplerianBuffer([CERES_ROW]);
-		const cols = parseElements(buf) as KeplerianColumns;
+		const cols = parse(buf) as KeplerianColumns;
 
 		expect(cols.kind).toBe('keplerian');
 		expect(cols.rowCount).toBe(1);
@@ -269,7 +287,7 @@ describe('parseElements — Keplerian', () => {
 	it('parses multiple rows with correct columnar indexing', () => {
 		const rows = [CERES_ROW, HALLEY_ROW, PHOBOS_ROW];
 		const buf = buildKeplerianBuffer(rows);
-		const cols = parseElements(buf) as KeplerianColumns;
+		const cols = parse(buf) as KeplerianColumns;
 
 		expect(cols.rowCount).toBe(3);
 		expect(cols.id.length).toBe(3);
@@ -289,7 +307,7 @@ describe('parseElements — Keplerian', () => {
 
 	it('handles zero rows', () => {
 		const buf = buildKeplerianBuffer([]);
-		const cols = parseElements(buf) as KeplerianColumns;
+		const cols = parse(buf) as KeplerianColumns;
 
 		expect(cols.kind).toBe('keplerian');
 		expect(cols.rowCount).toBe(0);
@@ -300,16 +318,16 @@ describe('parseElements — Keplerian', () => {
 	it('reads secular drift rates from columns 13 and 14', () => {
 		const row: KeplerianRow = { ...PHOBOS_ROW, omDot: 0.4358, wDot: -0.4318 };
 		const buf = buildKeplerianBuffer([row]);
-		const cols = parseElements(buf) as KeplerianColumns;
+		const cols = parse(buf) as KeplerianColumns;
 		expect(cols.omDot[0]).toBeCloseTo(0.4358, 4);
 		expect(cols.wDot[0]).toBeCloseTo(-0.4318, 4);
 	});
 });
 
-describe('parseElements — Parabolic', () => {
+describe('parseElementsPayload — Parabolic', () => {
 	it('parses a single parabolic row', () => {
 		const buf = buildParabolicBuffer([PARABOLIC_COMET]);
-		const cols = parseElements(buf) as ParabolicColumns;
+		const cols = parse(buf) as ParabolicColumns;
 
 		expect(cols.kind).toBe('parabolic');
 		expect(cols.rowCount).toBe(1);
@@ -325,9 +343,8 @@ describe('parseElements — Parabolic', () => {
 
 	it('preserves Float64 precision for tp', () => {
 		const buf = buildParabolicBuffer([PARABOLIC_COMET]);
-		const cols = parseElements(buf) as ParabolicColumns;
+		const cols = parse(buf) as ParabolicColumns;
 
-		// Float64 should preserve the full Julian Date value
 		expect(cols.tp[0]).toBe(PARABOLIC_COMET.tp);
 		expect(cols.epochJd[0]).toBe(PARABOLIC_COMET.epochJd);
 	});
@@ -335,7 +352,7 @@ describe('parseElements — Parabolic', () => {
 	it('parses multiple parabolic rows', () => {
 		const rows = [PARABOLIC_COMET, HYPERBOLIC_COMET];
 		const buf = buildParabolicBuffer(rows);
-		const cols = parseElements(buf) as ParabolicColumns;
+		const cols = parse(buf) as ParabolicColumns;
 
 		expect(cols.rowCount).toBe(2);
 		for (let idx = 0; idx < rows.length; idx++) {
@@ -347,23 +364,22 @@ describe('parseElements — Parabolic', () => {
 
 	it('handles zero rows', () => {
 		const buf = buildParabolicBuffer([]);
-		const cols = parseElements(buf) as ParabolicColumns;
+		const cols = parse(buf) as ParabolicColumns;
 
 		expect(cols.kind).toBe('parabolic');
 		expect(cols.rowCount).toBe(0);
 	});
 });
 
-describe('parseElements — error cases', () => {
+describe('parsePosition — error cases', () => {
 	it('throws on bad magic', () => {
 		const buf = new ArrayBuffer(HEADER_SIZE);
 		const view = new DataView(buf);
 		view.setUint32(0, 0xdeadbeef, true);
 		view.setUint16(4, VERSION, true);
-		view.setUint16(6, FORMAT_KEPLERIAN, true);
-		view.setUint32(8, 0, true);
+		view.setUint8(6, FORMAT_ELEMENTS);
 
-		expect(() => parseElements(buf)).toThrow(/bad magic/);
+		expect(() => parsePosition(buf)).toThrow(/bad magic/);
 	});
 
 	it('throws on unsupported version', () => {
@@ -371,20 +387,34 @@ describe('parseElements — error cases', () => {
 		const view = new DataView(buf);
 		view.setUint32(0, MAGIC, true);
 		view.setUint16(4, 99, true);
-		view.setUint16(6, FORMAT_KEPLERIAN, true);
-		view.setUint32(8, 0, true);
+		view.setUint8(6, FORMAT_ELEMENTS);
 
-		expect(() => parseElements(buf)).toThrow(/Unsupported.*version/);
+		expect(() => parsePosition(buf)).toThrow(/Unsupported.*version/);
 	});
 
-	it('throws on unknown format type', () => {
+	it('throws on unknown format byte', () => {
 		const buf = new ArrayBuffer(HEADER_SIZE);
 		const view = new DataView(buf);
 		view.setUint32(0, MAGIC, true);
 		view.setUint16(4, VERSION, true);
-		view.setUint16(6, 99, true);
-		view.setUint32(8, 0, true);
+		view.setUint8(6, 99);
 
-		expect(() => parseElements(buf)).toThrow(/Unknown.*format type/);
+		expect(() => parsePosition(buf)).toThrow(/Unknown.*format/);
+	});
+
+	it('dispatches between elements and chebyshev payloads', () => {
+		const elementsBuf = buildKeplerianBuffer([]);
+		const elements = parsePosition(elementsBuf);
+		expect(elements.kind).toBe('elements');
+
+		// Minimal cheb buffer: header + body_count=0
+		const chebBuf = new ArrayBuffer(HEADER_SIZE);
+		const cv = new DataView(chebBuf);
+		cv.setUint32(0, MAGIC, true);
+		cv.setUint16(4, VERSION, true);
+		cv.setUint8(6, FORMAT_CHEBYSHEV);
+		cv.setUint32(24, 0, true);
+		const cheb = parsePosition(chebBuf);
+		expect(cheb.kind).toBe('chebyshev');
 	});
 });

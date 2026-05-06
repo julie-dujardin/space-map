@@ -7,7 +7,7 @@
  */
 
 import { kmToScene } from '$lib/math/units';
-import type { ChebyshevBody } from '$lib/fetch/chebyshev/parse';
+import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 
 /**
  * Largest `i` with `starts[i] <= jd < ends[i]`, or -1 if `jd` falls outside the

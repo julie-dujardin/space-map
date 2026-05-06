@@ -2,11 +2,11 @@
  * Per-zone cache of Chebyshev chunks.
  *
  * The export ships per-zone, per-time-chunk binaries under
- * `/data/v1/chebyshev/{zone}/{chunkIdx}/data.bin.gz`. The manifest exposes
- * `sun` (slow movers — one shared cadence across `major`/`major_asteroids`)
- * and `moons` (per-parent zones, each with its own chunk_years). A zone's
- * chunk index for any JD is `floor((jd - start_jd) / (chunk_years * 365.25))`
- * using that zone's params.
+ * `/data/v1/position/{zone}/0/{chunkIdx}.bin.gz`. Each chebyshev zone in
+ * `metadata.position.zones` (those with `shape: "chunked"`) declares its
+ * own `chunks`, `chunk_years`, and `start_jd` — Saturn's 0.125-year cadence
+ * and Pluto's 2-year cadence coexist with no global tier metadata. A zone's
+ * chunk index for any JD is `floor((jd - start_jd) / (chunk_years * 365.25))`.
  *
  * For now we eager-load the chunk containing the current JD plus its two
  * neighbors across every zone. Time scrubbing advances one chunk at a time, so
@@ -17,37 +17,23 @@
  * each body header and surfaced as `ChebyshevBody.id`.
  */
 
-import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/chebyshev/fetch';
-import { chebyshevPositionScene } from '$lib/fetch/chebyshev/propagate';
-import type { ChebyshevBody } from '$lib/fetch/chebyshev/parse';
+import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/chebyshev/fetch';
+import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
+import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 
-/** Sun tier: a flat list of zones that share one chunk cadence. */
-export interface ChebyshevSunTier {
-	chunks: number;
-	chunk_years: number;
-	zones: string[];
-}
-
-/** One per-parent moons zone. Each parent picks its own chunk cadence so a
- * Saturn 0.125-year zone and a Pluto 2-year zone can coexist. */
-export interface ChebyshevMoonZone {
+/** Walk the chunk for jd in every loaded zone and yield each body alongside
+ *  the chunk's validity window (used by callers that build PositionedBody).
+ *  Bodies whose chunk hasn't loaded yet are skipped — caller is responsible
+ *  for awaiting `ensure(jd).done` first. */
+export interface BodyWithWindow {
 	zone: string;
-	chunks: number;
-	chunk_years: number;
+	body: ChebyshevBody;
+	startJd: number;
+	endJd: number;
 }
 
-export interface ChebyshevMoonsTier {
-	zones: ChebyshevMoonZone[];
-}
-
-export interface ChebyshevManifest {
-	start_jd: number;
-	end_jd: number;
-	sun: ChebyshevSunTier;
-	moons: ChebyshevMoonsTier;
-}
-
-/** Per-zone params used by the chunk-index math. Built from the tier shape. */
+/** Per-zone chebyshev params, lifted from `metadata.position.zones[zone].zooms[0]`
+ *  when the entry's `shape` is `"chunked"`. */
 export interface ChebyshevZoneParams {
 	chunks: number;
 	chunk_years: number;
@@ -75,8 +61,8 @@ interface BodyLocation {
 }
 
 export class ChebyshevStore {
-	/** `zone → tier params`, flattened from the tiered manifest at construction. */
-	private readonly zoneParams = new Map<string, ChebyshevZoneParams>();
+	/** `zone → tier params`, populated at construction from the per-zone manifest. */
+	private readonly zoneParams: Map<string, ChebyshevZoneParams>;
 	/** `zone → chunkIdx → parsed chunk`. */
 	private readonly chunks = new Map<string, Map<number, FetchedChebyshev>>();
 	/** `objectId → zone` so getPosition can route without scanning zones. */
@@ -87,23 +73,8 @@ export class ChebyshevStore {
 	/** Last jd passed to `ensure()` — skips a full pass when nothing changed. */
 	private lastEnsuredJd: number = NaN;
 
-	constructor(manifest: ChebyshevManifest) {
-		const sunParams: ChebyshevZoneParams = {
-			chunks: manifest.sun.chunks,
-			chunk_years: manifest.sun.chunk_years,
-			start_jd: manifest.start_jd,
-			end_jd: manifest.end_jd
-		};
-		for (const zone of manifest.sun.zones) this.zoneParams.set(zone, sunParams);
-		// Each moons zone (e.g. `moons/saturn`) carries its own cadence.
-		for (const z of manifest.moons.zones) {
-			this.zoneParams.set(z.zone, {
-				chunks: z.chunks,
-				chunk_years: z.chunk_years,
-				start_jd: manifest.start_jd,
-				end_jd: manifest.end_jd
-			});
-		}
+	constructor(zoneParams: Map<string, ChebyshevZoneParams>) {
+		this.zoneParams = zoneParams;
 	}
 
 	zones(): string[] {
@@ -213,6 +184,34 @@ export class ChebyshevStore {
 	}
 
 	/**
+	 * Look up the parsed body record for `objectId` at `jd` — used by code
+	 * paths that need the body header (`hasLocalized`, `radiusKm`, …) in
+	 * addition to the position.
+	 */
+	body(objectId: string, jd: number): ChebyshevBody | null {
+		return this.resolve(objectId, jd)?.body ?? null;
+	}
+
+	/**
+	 * Iterate every chebyshev body covered by `jd` across every zone. Skips
+	 * zones whose chunk for `jd` isn't loaded yet (callers must await
+	 * `ensure(jd).done` to guarantee full coverage). Used by the scene loader
+	 * to construct the major-body list — every Sun/planet/dwarf/perturber/
+	 * whitelisted moon comes through here, since dropping the elements
+	 * ride-along left chebyshev as the only source for these bodies.
+	 */
+	*bodiesAt(jd: number): IterableIterator<BodyWithWindow> {
+		for (const [zone, params] of this.zoneParams) {
+			const chunkIdx = chunkIndexForJd(params, jd);
+			const chunk = this.chunks.get(zone)?.get(chunkIdx);
+			if (!chunk) continue;
+			for (const body of chunk.bodies) {
+				yield { zone, body, startJd: chunk.startJd, endJd: chunk.endJd };
+			}
+		}
+	}
+
+	/**
 	 * Parent-relative position in Three.js scene units at `jd`. Returns null if
 	 * the body isn't chebyshev-backed, its chunk isn't loaded, or `jd` is
 	 * outside segment coverage.
@@ -222,23 +221,4 @@ export class ChebyshevStore {
 		if (!loc) return null;
 		return chebyshevPositionScene(loc.body, jd);
 	}
-}
-
-/**
- * Fetch `/data/v1/metadata.json` and, if it carries a `chebyshev` block,
- * eager-load the chunks around `jd`.
- */
-export async function loadChebyshevStore(
-	metadataUrl: string,
-	jd: number
-): Promise<ChebyshevStore | null> {
-	const res = await fetch(metadataUrl);
-	if (!res.ok) return null;
-	const metadata = (await res.json()) as {
-		chebyshev?: ChebyshevManifest;
-	};
-	if (!metadata.chebyshev) return null;
-	const store = new ChebyshevStore(metadata.chebyshev);
-	await store.ensure(jd).done;
-	return store;
 }
