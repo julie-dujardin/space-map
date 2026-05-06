@@ -836,6 +836,47 @@ class SpiceDownloader(Downloader):
             )
         return rows
 
+    @staticmethod
+    def _extract_gms() -> list[dict]:
+        """Extract PCK gravitational parameters (GM, km^3/s^2) for every body.
+
+        Sourced from `gm_de440.tpc`. SPICE has no GM for the SSB (naif 0), but
+        downstream consumers walk the parent chain through it for chebyshev-only
+        bodies — so we synthesize a row for naif 0 reusing the Sun's GM (the
+        SSB-relative motion of bodies orbiting the Sun is what matters there).
+        """
+        matches = spiceypy.gnpool("BODY*_GM", 0, 5000)
+        naif_ids: set[int] = set()
+        for var in matches:
+            m = re.match(r"BODY(-?\d+)_GM", var)
+            if m:
+                naif_ids.add(int(m.group(1)))
+
+        rows: list[dict] = []
+        skipped: list[int] = []
+        for naif_id in sorted(naif_ids):
+            try:
+                gm = spiceypy.bodvrd(str(naif_id), "GM", 1)[1][0]
+            except spiceypy.exceptions.SpiceyError:
+                skipped.append(naif_id)
+                continue
+            rows.append({"naif_id": naif_id, "gm_km3_s2": gm})
+
+        if skipped:
+            logger.warning(
+                "GM extraction skipped %d bodies (bodvrd failed): %s",
+                len(skipped),
+                skipped,
+            )
+
+        try:
+            gm_sun = spiceypy.bodvrd("10", "GM", 1)[1][0]
+            rows.insert(0, {"naif_id": 0, "gm_km3_s2": gm_sun})
+        except spiceypy.exceptions.SpiceyError:
+            logger.warning("Could not read Sun GM; SSB row not synthesized")
+
+        return rows
+
     def _extract_moon_chunks(
         self,
         targets: list[tuple[int, int, float]],
@@ -1330,6 +1371,15 @@ class SpiceDownloader(Downloader):
             writer.writerows(radii_rows)
         logger.info("Saved %d radii records -> %s", len(radii_rows), radii_file.name)
 
+        # Step 9b: Extract GMs (km^3/s^2) for every body in the PCK pool
+        gm_rows = self._extract_gms()
+        gm_file = self.out_dir / "gm.csv"
+        with gm_file.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["naif_id", "gm_km3_s2"])
+            writer.writeheader()
+            writer.writerows(gm_rows)
+        logger.info("Saved %d GM records -> %s", len(gm_rows), gm_file.name)
+
         # Step 10: Extract Chebyshev polynomial ephemeris for the Chebyshev
         # body set — core bodies (planets, Sun, dwarves, barycenters) plus the
         # 16 sb441-n16 asteroids plus the whitelisted surface-feature moons.
@@ -1353,6 +1403,7 @@ class SpiceDownloader(Downloader):
             nut_prec_body_count=len(nut_prec_coeffs),
             nut_prec_angle_owner_count=len(nut_prec_angles),
             radii_count=len(radii_rows),
+            gm_count=len(gm_rows),
             gravity_count=len(gravity_rows),
             chebyshev_body_count=cheb_count,
             chebyshev_start_year=cheb_cfg["start_year"],

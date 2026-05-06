@@ -39,8 +39,9 @@ export interface Orientation {
  * with θ_i(T) = angles[2i] + angles[2i+1]·T (degrees, deg/century).
  *
  * `angles` is shared across all bodies in a planetary system (SPICE convention)
- * and arrives via /data/v1/nut_prec_angles.json, indexed by owner naif_id
- * (`naif_id // 100` for moons/planets, `naif_id` itself when < 100).
+ * and arrives via /data/v1/systems/global.json (in the `nut_prec_angles` field),
+ * indexed by owner naif_id (`naif_id // 100` for moons/planets, `naif_id`
+ * itself when < 100).
  */
 export interface NutPrec {
 	ra: number[];

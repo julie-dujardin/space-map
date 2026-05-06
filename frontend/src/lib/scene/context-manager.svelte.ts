@@ -6,7 +6,7 @@ import { AU_KM, AU_SCALE } from '../math/units';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { loadNutPrecAngles } from '$lib/fetch/nut-prec-angles';
+import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import {
 	chebyshevZoneParams,
 	chunkIndexForJd,
@@ -405,9 +405,11 @@ export class ContextManager {
 
 	async load(date: Date, targetId?: string): Promise<void> {
 		try {
-			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation.
-			// Fire-and-forget; rotation falls back to the first-order model until it lands.
-			loadNutPrecAngles();
+			// Tiny one-shot fetch — IAU nutation/precession angles for body rotation
+			// + per-body GMs used by chebyshev trail-buffer sizing. Fire-and-forget;
+			// rotation falls back to the first-order model and trail buffers stay
+			// uninitialized until it lands.
+			loadSystemsGlobal();
 			const jd = dateToJD(date);
 			const metadataPromise = fetchMetadata();
 			// Moons prefetch is owned by ZoneRefresher (chunk-indexed branch);

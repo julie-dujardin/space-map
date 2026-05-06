@@ -17,7 +17,7 @@ import { resolveBodyColor } from '$lib/utils';
 import { BODY_COLORS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
-import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/nut-prec-angles';
+import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
@@ -210,7 +210,12 @@ export function buildOrbitLines(
 	for (const [, bo] of bodyObjects) {
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
-		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
+		// Two ways to draw an orbit: Kepler ellipse from `orbitElements`, or a
+		// rolling trail driven by `trailBuffer` (chebyshev-backed bodies, which
+		// don't ship Kepler elements). Need at least one. STAR is the Sun —
+		// no orbit line for it regardless of source.
+		if ((!body.orbitElements && !body.trailBuffer) || body.data.objectType === ObjectType.STAR)
+			continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
 		scene.add(line);
