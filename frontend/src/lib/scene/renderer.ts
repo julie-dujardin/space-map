@@ -713,12 +713,15 @@ export class SceneRenderer {
 			const d = body.data;
 			const parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 			const isParabolic = d.q != null;
-			// Respect the chunk-level validity window — propagating outside it
-			// either diverges (SGP4) or gives nonsense (parabolic). Leaving the
-			// body out of `positionMap` tells children to fall back to origin;
-			// `updateBodyVisibility` hides the mesh + orbit line via outOfRange.
+			// Validity gate: hide bodies whose elements would diverge (SGP4) or
+			// produce nonsense (parabolic) outside their stated window. Skipped
+			// for chebyshev bodies — their validityStart/End is the startup
+			// chunk's window (not the full segment range), so this gate would
+			// wrongly hide them on any time jump past that chunk. The cheb
+			// branch below uses `positionScene` as the authoritative gate.
 			const bo = this.bodyObjects.get(d.id);
-			if (jd < d.validityStart || jd > d.validityEnd) {
+			const isChebTracked = this.ctx.chebStore?.has(d.id) ?? false;
+			if (!isChebTracked && (jd < d.validityStart || jd > d.validityEnd)) {
 				if (bo) bo.outOfRange = true;
 				// SGP4 is the only source with a finite validity here (TLE epoch
 				// ± 14 days); Keplerian/parabolic elements use ±Infinity bounds
@@ -741,7 +744,6 @@ export class SceneRenderer {
 			// being loaded or jd is outside the export's coverage, hide the body
 			// (matches SGP4 behaviour) rather than drifting into positions that
 			// break eclipse geometry.
-			const isChebTracked = this.ctx.chebStore?.has(d.id) ?? false;
 			if (isChebTracked) {
 				const chebOffset = this.ctx.chebStore!.positionScene(d.id, jd);
 				if (!chebOffset) {
