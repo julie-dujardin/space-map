@@ -611,14 +611,75 @@ export function makeOrbitLine(
 }
 
 /**
- * Re-anchor an orbit line's trail at the body's current position. Must run
- * after the body (and its `orbitCenter`) have been updated this frame.
- *
- * For SGP4-backed bodies, the underlying curve is regenerated each call using
- * `jd` so the trail always represents the past orbital period up to the sim
- * clock — a static construction-time curve would drift out of sync under time
- * playback (and go stale entirely under drag/J2 secular effects).
+ * Working arrays for the per-frame trail refresh. For thin `Line` objects this
+ * is the live geometry attribute backing storage; for fat `Mesh` objects it is
+ * the userData scratch that {@link writeFatOrbitVertices} later expands into
+ * the duplicated/indexed geometry. `capacity` is logical points (the fat
+ * geometry has 2× that many vertices, but the writer accepts logical counts).
  */
+function getOrbitWorkingArrays(line: Line | Mesh): {
+	posArr: Float32Array;
+	trailArr: Float32Array;
+	fullArr: Float32Array;
+	capacity: number;
+} {
+	if (line.userData.isFatLine) {
+		const posArr = line.userData.thinPositions as Float32Array;
+		return {
+			posArr,
+			trailArr: line.userData.thinTrailAlphas as Float32Array,
+			fullArr: line.userData.thinFullAlphas as Float32Array,
+			capacity: posArr.length / 3
+		};
+	}
+	const posAttr = line.geometry.getAttribute('position');
+	return {
+		posArr: posAttr.array as Float32Array,
+		trailArr: line.geometry.getAttribute('trailAlpha').array as Float32Array,
+		fullArr: line.geometry.getAttribute('fullAlpha').array as Float32Array,
+		capacity: posAttr.count
+	};
+}
+
+/**
+ * Finish a trail refresh: compute alpha ramps, then either expand into the
+ * fat-line geometry or mark the thin-line attrs dirty and set the draw range.
+ * `n < 2` collapses the line to draw nothing. Both refresh paths (chebyshev
+ * buffer, Kepler/SGP4 curve) populate `posArr` with their own logic and call
+ * this to commit the frame's geometry update.
+ */
+function commitOrbitTrail(
+	line: Line | Mesh,
+	posArr: Float32Array,
+	trailArr: Float32Array,
+	fullArr: Float32Array,
+	n: number,
+	isOpenCurve: boolean,
+	useTrail: boolean
+): void {
+	if (n < 2) {
+		line.geometry.setDrawRange(0, 0);
+		if (!line.userData.isFatLine) {
+			line.geometry.getAttribute('position').needsUpdate = true;
+		}
+		return;
+	}
+	writeOrbitAlphas(
+		fullArr.subarray(0, n) as Float32Array,
+		trailArr.subarray(0, n) as Float32Array,
+		isOpenCurve,
+		useTrail
+	);
+	if (line.userData.isFatLine) {
+		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
+		return;
+	}
+	line.geometry.setDrawRange(0, n);
+	line.geometry.getAttribute('position').needsUpdate = true;
+	line.geometry.getAttribute('trailAlpha').needsUpdate = true;
+	line.geometry.getAttribute('fullAlpha').needsUpdate = true;
+}
+
 /**
  * Rewrite a chebyshev-backed orbit line's vertex buffer from its trail buffer.
  * Called from {@link refreshOrbitLineGeometry} (per jd tick) and from
@@ -634,49 +695,9 @@ export function refreshChebyshevOrbitLineGeometry(
 ): void {
 	const useTrail = line.userData.useTrail as boolean;
 	const oc = line.userData.orbitCenter as Vector3;
-
-	if (line.userData.isFatLine) {
-		// Fat path: write samples + alphas into the thin scratch buffers, then
-		// expand into the duplicated/indexed fat geometry. Keeps the buffer
-		// read and alpha math identical to the thin path.
-		const posArr = line.userData.thinPositions as Float32Array;
-		const trailArr = line.userData.thinTrailAlphas as Float32Array;
-		const fullArr = line.userData.thinFullAlphas as Float32Array;
-		const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
-		if (total < 2) {
-			line.geometry.setDrawRange(0, 0);
-			return;
-		}
-		writeOrbitAlphas(
-			fullArr.subarray(0, total) as Float32Array,
-			trailArr.subarray(0, total) as Float32Array,
-			true,
-			useTrail
-		);
-		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, total);
-		return;
-	}
-
-	const posAttr = line.geometry.getAttribute('position');
-	const trailAttr = line.geometry.getAttribute('trailAlpha');
-	const fullAttr = line.geometry.getAttribute('fullAlpha');
-	const posArr = posAttr.array as Float32Array;
+	const { posArr, trailArr, fullArr } = getOrbitWorkingArrays(line);
 	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
-	if (total < 2) {
-		line.geometry.setDrawRange(0, 0);
-		posAttr.needsUpdate = true;
-		return;
-	}
-	writeOrbitAlphas(
-		(fullAttr.array as Float32Array).subarray(0, total) as Float32Array,
-		(trailAttr.array as Float32Array).subarray(0, total) as Float32Array,
-		true,
-		useTrail
-	);
-	line.geometry.setDrawRange(0, total);
-	posAttr.needsUpdate = true;
-	trailAttr.needsUpdate = true;
-	fullAttr.needsUpdate = true;
+	commitOrbitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
 }
 
 /**
@@ -684,9 +705,6 @@ export function refreshChebyshevOrbitLineGeometry(
  * a fresh basis offset, without any curve recompute. Used by the focus-change
  * path, which needs every line rebased before the first render against the new
  * basis but does not advance jd.
- *
- * Handles both thin `Line` orbit lines (write to position attribute directly)
- * and fat `Mesh` orbit lines (refresh thin scratch arrays then re-expand).
  */
 export function rebaseOrbitLineLocals(
 	line: Line | Mesh,
@@ -695,30 +713,29 @@ export function rebaseOrbitLineLocals(
 	oy: number,
 	oz: number
 ): void {
+	const { posArr, trailArr, fullArr, capacity } = getOrbitWorkingArrays(line);
+	const n = Math.min(localPositions.length, capacity);
+	for (let i = 0; i < n; i++) {
+		posArr[i * 3] = localPositions[i][0] + ox;
+		posArr[i * 3 + 1] = localPositions[i][1] + oy;
+		posArr[i * 3 + 2] = localPositions[i][2] + oz;
+	}
 	if (line.userData.isFatLine) {
-		const posArr = line.userData.thinPositions as Float32Array;
-		const trailArr = line.userData.thinTrailAlphas as Float32Array;
-		const fullArr = line.userData.thinFullAlphas as Float32Array;
-		const cap = posArr.length / 3;
-		const n = Math.min(localPositions.length, cap);
-		for (let i = 0; i < n; i++) {
-			posArr[i * 3] = localPositions[i][0] + ox;
-			posArr[i * 3 + 1] = localPositions[i][1] + oy;
-			posArr[i * 3 + 2] = localPositions[i][2] + oz;
-		}
 		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
 		return;
 	}
-	const posAttr = line.geometry.getAttribute('position');
-	const arr = posAttr.array as Float32Array;
-	for (let i = 0; i < localPositions.length; i++) {
-		arr[i * 3] = localPositions[i][0] + ox;
-		arr[i * 3 + 1] = localPositions[i][1] + oy;
-		arr[i * 3 + 2] = localPositions[i][2] + oz;
-	}
-	posAttr.needsUpdate = true;
+	line.geometry.getAttribute('position').needsUpdate = true;
 }
 
+/**
+ * Re-anchor an orbit line's trail at the body's current position. Must run
+ * after the body (and its `orbitCenter`) have been updated this frame.
+ *
+ * For SGP4-backed bodies, the underlying curve is regenerated each call using
+ * `jd` so the trail always represents the past orbital period up to the sim
+ * clock — a static construction-time curve would drift out of sync under time
+ * playback (and go stale entirely under drag/J2 secular effects).
+ */
 export function refreshOrbitLineGeometry(
 	body: PositionedBody,
 	line: Line | Mesh,
@@ -769,65 +786,22 @@ export function refreshOrbitLineGeometry(
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
-	const isFat = line.userData.isFatLine === true;
+	// Clamp to working-array capacity rather than silently skipping — dropping
+	// a frame from a too-small buffer would freeze the trail permanently when
+	// the SGP4 window grows past its construction-time size.
+	const { posArr, trailArr, fullArr, capacity } = getOrbitWorkingArrays(line);
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],
 		bz = cz - basisPos[2];
-
-	if (isFat) {
-		// Fat path: write into the thin scratch arrays carried in userData, then
-		// expand into the duplicated/indexed fat geometry.
-		const posArr = line.userData.thinPositions as Float32Array;
-		const trailArr = line.userData.thinTrailAlphas as Float32Array;
-		const fullArr = line.userData.thinFullAlphas as Float32Array;
-		const cap = posArr.length / 3;
-		const n = Math.min(validPoints.length, cap);
-		for (let k = 0; k < n; k++) {
-			posArr[k * 3] = validPoints[k][0] + bx;
-			posArr[k * 3 + 1] = validPoints[k][1] + by;
-			posArr[k * 3 + 2] = validPoints[k][2] + bz;
-		}
-		writeOrbitAlphas(
-			fullArr.subarray(0, n) as Float32Array,
-			trailArr.subarray(0, n) as Float32Array,
-			isOpenCurve,
-			useTrail
-		);
-		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
-		line.userData.orbitLocalPositions = validPoints;
-		return;
-	}
-
-	const posAttr = line.geometry.getAttribute('position');
-	const trailAttr = line.geometry.getAttribute('trailAlpha');
-	const fullAttr = line.geometry.getAttribute('fullAlpha');
-	// Clamp to buffer capacity rather than silently skipping — dropping a frame
-	// from a too-small buffer would freeze the trail permanently when the SGP4
-	// window grows past its construction-time size.
-	const cap = posAttr.count;
-	const n = Math.min(validPoints.length, cap);
-
-	const posArr = posAttr.array as Float32Array;
-	const trailArr = trailAttr.array as Float32Array;
-	const fullArr = fullAttr.array as Float32Array;
+	const n = Math.min(validPoints.length, capacity);
 	for (let k = 0; k < n; k++) {
 		posArr[k * 3] = validPoints[k][0] + bx;
 		posArr[k * 3 + 1] = validPoints[k][1] + by;
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
-	writeOrbitAlphas(
-		fullArr.subarray(0, n) as Float32Array,
-		trailArr.subarray(0, n) as Float32Array,
-		isOpenCurve,
-		useTrail
-	);
-	line.geometry.setDrawRange(0, n);
+	commitOrbitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
 	line.userData.orbitLocalPositions = validPoints;
-
-	posAttr.needsUpdate = true;
-	trailAttr.needsUpdate = true;
-	fullAttr.needsUpdate = true;
 }
 
 /** Create a radial gradient canvas texture for the star corona glow. */
