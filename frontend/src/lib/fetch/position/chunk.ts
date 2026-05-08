@@ -29,14 +29,10 @@ const KM_DAY_TO_AU_DAY = 1 / AU_KM;
  * hole or pre-load timing on `systems/global.json`), the chebyshev sample
  * misses, or the resulting state degenerates (radial / parabolic). The
  * snapshot drives the orbit-line curve through the same kepler path as
- * SBDB-sourced bodies — see `processChebyshev` below.
- *
- * TODO: refresh sub-chunk. Osculating elements are an instantaneous snapshot
- * at chunk-load time; for bodies with non-trivial perturbations (Earth's Moon,
- * J2-driven moons) the drawn ellipse drifts visibly across a chunk's window.
- * Re-derive periodically (or when accumulated drift exceeds a threshold) — the
- * existing `ORBIT_CURVE_REFRESH_DEG` gate in `refreshOrbitLineGeometry` only
- * fires for elements that carry `omDot`/`wDot`, which we don't attach here.
+ * SBDB-sourced bodies — see `processChebyshev` below. The orbit-line refresh
+ * path re-invokes this periodically via `PositionedBody.rederiveElements` to
+ * keep the ellipse aligned with the actual chebyshev path as time advances
+ * within a chunk.
  */
 function chebyshevOsculatingElements(
 	body: ChebyshevBody,
@@ -288,6 +284,10 @@ export class ChunkLoader {
 		const jd = dateToJD(date);
 		const writePositions = this.barycenters.size === 0;
 		const result: PositionedBody[] = [];
+		// Look up chebyshev body by NAIF so borrowed bodies (planets) can attach
+		// a rederive callback that points at the *parent's* chebyshev — the
+		// barycenter whose orbit the planet visually shares.
+		const chebBodiesByNaif = new Map<number, ChebyshevBody>();
 
 		// Order bodies so parents resolve before children. Barycenters
 		// (object_type=0) and stars (object_type=2) come first, then planets
@@ -310,9 +310,11 @@ export class ChunkLoader {
 			return tierA - tierB || a.body.naifId - b.body.naifId;
 		});
 
+		const cheb = this.cheb;
 		for (const { body, startJd, endJd } of all) {
 			const offset = chebyshevPositionScene(body, jd);
 			if (!offset) continue;
+			chebBodiesByNaif.set(body.naifId, body);
 			const parentPos = this.positions.get(body.parentNaifId) ?? this.positions.get(0)!;
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
@@ -326,6 +328,18 @@ export class ChunkLoader {
 			// state is degenerate; the body still gets a position-only entry
 			// so it can render, just without an orbit curve.
 			const elements = chebyshevOsculatingElements(body, body.parentNaifId, jd);
+			// Re-derive callback used by the orbit-line refresh path. We can't
+			// close over the `ChebyshevBody` reference here — those records
+			// are *per-chunk*, so by the time the user crosses a chunk boundary
+			// the captured ref no longer covers the new jd and rederive would
+			// silently return null. Look up the live body each call via its
+			// stable string id so the callback follows chunk transitions.
+			const ownId = body.id;
+			const ownRederive = (newJd: number): OrbitalElements | null => {
+				const fresh = cheb.body(ownId, newJd);
+				if (!fresh) return null;
+				return chebyshevOsculatingElements(fresh, fresh.parentNaifId, newJd);
+			};
 			// Position-magnitude proxy for visibility-ratio code when elements
 			// are unavailable. Cheb gives parent-relative offsets in scene units,
 			// so dividing by AU_SCALE recovers AU magnitude. Otherwise prefer
@@ -360,7 +374,8 @@ export class ChunkLoader {
 					data,
 					position: pos,
 					orbitElements: elements ?? undefined,
-					orbitCenter: parentPos
+					orbitCenter: parentPos,
+					rederiveElements: ownRederive
 				});
 				continue;
 			}
@@ -374,6 +389,20 @@ export class ChunkLoader {
 				const parentElements = this.barycenters.get(body.parentNaifId);
 				const orbitElements = isMoon ? elements : (parentElements ?? elements);
 				const borrowedFromParent = !isMoon && parentElements !== undefined;
+				// Borrowed bodies must re-derive against the *parent's* chebyshev,
+				// since `orbitElements` traces the parent barycenter's orbit, not
+				// the planet's wobble. Capture the parent's stable string id (not
+				// the per-chunk body record — see `ownRederive` above) so the
+				// callback resolves the live record each call.
+				const parentChebId = chebBodiesByNaif.get(body.parentNaifId)?.id;
+				const rederiveElements =
+					borrowedFromParent && parentChebId
+						? (newJd: number): OrbitalElements | null => {
+								const fresh = cheb.body(parentChebId, newJd);
+								if (!fresh) return null;
+								return chebyshevOsculatingElements(fresh, fresh.parentNaifId, newJd);
+							}
+						: ownRederive;
 				result.push({
 					data,
 					position: pos,
@@ -383,14 +412,16 @@ export class ChunkLoader {
 					// trail's bright end belongs on the barycenter. Fresh array
 					// (not the shared `parentPos` ref) so the per-frame mutator
 					// can update it independently from the parent's own object.
-					trailAnchor: borrowedFromParent ? [parentPos[0], parentPos[1], parentPos[2]] : undefined
+					trailAnchor: borrowedFromParent ? [parentPos[0], parentPos[1], parentPos[2]] : undefined,
+					rederiveElements
 				});
 			} else {
 				result.push({
 					data,
 					position: pos,
 					orbitElements: elements ?? undefined,
-					orbitCenter: parentPos
+					orbitCenter: parentPos,
+					rederiveElements: ownRederive
 				});
 			}
 		}

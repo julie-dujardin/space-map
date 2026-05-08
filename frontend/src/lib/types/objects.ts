@@ -85,6 +85,17 @@ export interface PositionedBody {
 	 */
 	trailAnchor?: [number, number, number];
 	/**
+	 * Re-derive `orbitElements` at a new `jd`. Set for chebyshev-source bodies
+	 * so the orbit-line refresh path can periodically re-snapshot the
+	 * osculating elements as the body progresses through its chunk — keeping
+	 * the drawn ellipse aligned with the actual chebyshev path instead of
+	 * frozen at the chunk-load snapshot. Returns null on the same conditions
+	 * the construction-time derivation does (missing GM, sample miss,
+	 * degenerate state); callers leave the existing elements alone in that
+	 * case.
+	 */
+	rederiveElements?: (jd: number) => OrbitalElements | null;
+	/**
 	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
 	 * planetary-system bodies (planets, moons), which the renderer uses to
 	 * orient the mesh each frame. Components read it to derive body-fixed

@@ -31,6 +31,12 @@ export const NUM_ORBIT_POINTS = 512;
 // Verified manually: 0.1 results in visible flickery offset from moons to their trails.
 const ORBIT_CURVE_REFRESH_DEG = 0.01;
 
+// Re-snapshot chebyshev-derived osculating elements after sim jd has advanced
+// by this fraction of the orbit's period. Bounds the body-on-curve drift that
+// accumulates when the static snapshot ages — Earth's Moon (period ~28 d)
+// re-derives every ~0.28 d of sim time, Pluto every ~2.5 yr.
+const CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION = 1 / 100;
+
 export function makeCircleTexture(): CanvasTexture {
 	const size = 32;
 	const canvas = document.createElement('canvas');
@@ -495,6 +501,11 @@ export function makeOrbitLine(
 	obj.userData.isOpenCurve = isOpenCurve;
 	obj.userData.useTrail = useTrail;
 	obj.userData.curveJd = jd;
+	// Last jd at which `body.orbitElements` was snapshot — read by the
+	// chebyshev re-derive gate in {@link refreshOrbitLineGeometry}. Defaults
+	// to the elements' own epoch (chebyshev callers set epoch to derive-jd);
+	// non-rederive bodies don't read it.
+	obj.userData.elementsJd = orbitElements?.epoch ?? jd;
 	if (isFat) {
 		obj.userData.isFatLine = true;
 		obj.userData.thinPositions = posArr;
@@ -630,11 +641,36 @@ export function refreshOrbitLineGeometry(
 		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_ORBIT_POINTS);
 		line.userData.orbitCurve = curve;
 	} else if (body.orbitElements) {
+		// Chebyshev-derived osculating elements: re-snapshot periodically so
+		// the static ellipse stays aligned with the body's actual chebyshev
+		// path. Mutates `body.orbitElements` in place so other PositionedBodies
+		// sharing the ref (e.g. a planet borrowing its barycenter's elements)
+		// see the update too.
+		if (body.rederiveElements) {
+			const elementsJd = (line.userData.elementsJd as number | undefined) ?? jd;
+			const n = body.orbitElements.n;
+			const period = n > 0 ? 360 / n : Infinity;
+			const dt = Math.abs(jd - elementsJd);
+			if (dt > period * CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION) {
+				const fresh = body.rederiveElements(jd);
+				// Null fresh = jd out of chebyshev coverage; the body's
+				// out-of-range toast already surfaces that, so we silently
+				// keep the stale snapshot rather than warn-spamming per frame.
+				if (fresh) {
+					Object.assign(body.orbitElements, fresh);
+					curve = orbitalElementsToCurve(body.orbitElements, NUM_ORBIT_POINTS).points;
+					line.userData.orbitCurve = curve;
+					line.userData.curveJd = jd;
+					line.userData.elementsJd = jd;
+				}
+			}
+		}
 		// Method-C-fit moons carry secular Ω/ω drift; the curve was built with
 		// angles current at construction time but goes stale as `jd` advances.
 		// Regenerate when the predicted angular drift since the last build
 		// exceeds ORBIT_CURVE_REFRESH_DEG — gated to avoid per-frame work for
-		// slow precessors where drift takes years to accumulate.
+		// slow precessors where drift takes years to accumulate. No-op for
+		// chebyshev-derived elements since those don't carry omDot/wDot.
 		const omDot = body.orbitElements.omDot ?? 0;
 		const wDot = body.orbitElements.wDot ?? 0;
 		const maxRate = Math.max(Math.abs(omDot), Math.abs(wDot));
