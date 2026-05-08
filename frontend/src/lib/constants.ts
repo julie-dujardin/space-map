@@ -50,12 +50,18 @@ export const TYPE_COLOR_PROBE = '#d5cfe7';
 export const GITHUB_REPO_URL = 'https://github.com/julie-dujardin/space-map';
 
 /**
- * Asteroids rendered as halos but with no label or trail by default — label
+ * Bodies rendered as halos but with no label or trail by default — label
  * appears on hover (alongside the existing halo scale), trail draws as usual
  * when the body is selected (focused). Curated to keep the inner system from
- * getting too busy while still surfacing main-belt giants and notable Trojans.
+ * getting too busy while still surfacing main-belt giants and notable Trojans,
+ * plus the few barycenters that visibly differ from their primary at close
+ * zoom (the Sun wobbles around the SSB; Pluto-Charon's barycenter sits between
+ * the two). Those barycenters stay hidden at wide zoom — see
+ * {@link BARYCENTER_PRIMARY}.
  */
 export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
+	'naif-0', // Solar System Barycenter
+	'naif-9', // Pluto-Charon Barycenter
 	'spkid-20000002', // 2 Pallas
 	'spkid-20000003', // 3 Juno
 	'spkid-20000007', // 7 Iris
@@ -70,4 +76,15 @@ export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'spkid-20000588', // 588 Achilles
 	'spkid-20000704', // 704 Interamnia
 	'spkid-20001862' // 1862 Apollo
+]);
+
+/**
+ * Barycenters whose halo overlaps a single dominant body when zoomed out, and
+ * should only render once the camera is close enough to see the offset.
+ * Maps barycenter id → primary body id; the visibility update hides the
+ * barycenter until the projected pixel separation exceeds one halo diameter.
+ */
+export const BARYCENTER_PRIMARY: ReadonlyMap<string, string> = new Map([
+	['naif-0', 'naif-10'], // Solar System Barycenter ↔ Sun
+	['naif-9', 'naif-999'] // Pluto-Charon Barycenter ↔ Pluto
 ]);

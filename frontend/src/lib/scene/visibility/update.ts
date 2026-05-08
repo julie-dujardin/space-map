@@ -1,5 +1,6 @@
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
+import { BARYCENTER_PRIMARY } from '$lib/constants';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import {
 	applyLabelDisplay,
@@ -77,10 +78,24 @@ export function updateBodyVisibility(
 			body.data.objectType === ObjectType.BARYCENTER ||
 			body.data.objectType === ObjectType.LAGRANGE_POINT
 		) {
-			// Virtual bodies promoted via URL navigation: always visible once built
-			group.visible = true;
-			if (orbitLine) orbitLine.visible = true;
-			showLabel = true;
+			// Virtual bodies promoted via URL navigation: always visible once built.
+			// Exception: barycenters that visually overlap a primary body (SSB/Sun,
+			// Pluto-BC/Pluto) hide until the camera is close enough that the offset
+			// projects to at least one halo diameter on screen.
+			let visible = true;
+			const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
+			if (primaryId) {
+				const primaryBo = bodyObjects.get(primaryId);
+				if (primaryBo) {
+					const sepWorld = f64dist(body.position, primaryBo.body.position);
+					const camToPrimary = f64dist(camTrue, primaryBo.body.position);
+					const pxSep = (sepWorld / camToPrimary) * projScale;
+					if (pxSep < HALO_RADIUS_PX) visible = false;
+				}
+			}
+			group.visible = visible;
+			if (orbitLine) orbitLine.visible = visible;
+			showLabel = visible;
 			isClose = false;
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets

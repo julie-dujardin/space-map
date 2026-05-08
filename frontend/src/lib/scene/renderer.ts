@@ -1019,10 +1019,13 @@ export class SceneRenderer {
 				this.pendingDefaultPromotions.delete(id);
 				// Barycenters and Lagrange points share the labels file with
 				// promoted bodies (their names are needed when the user navigates
-				// to one via URL), but they aren't shown by default.
+				// to one via URL), but they aren't shown by default — except
+				// those listed in MINOR_PROMOTED_IDS, which render as collapsed
+				// halos so the user sees the SSB / Pluto-Charon offset.
 				if (
-					body.data.objectType === ObjectType.BARYCENTER ||
-					body.data.objectType === ObjectType.LAGRANGE_POINT
+					(body.data.objectType === ObjectType.BARYCENTER ||
+						body.data.objectType === ObjectType.LAGRANGE_POINT) &&
+					!MINOR_PROMOTED_IDS.has(id)
 				)
 					continue;
 				this.ensureBodyObjects(body);

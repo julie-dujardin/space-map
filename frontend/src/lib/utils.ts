@@ -37,7 +37,7 @@ export function resolveBodyColor(data: BodyData): string {
 	const { objectType, parentId } = data;
 	if (objectType === ObjectType.BARYCENTER) {
 		if (data.id === 'naif-0') return BODY_COLORS['naif-10']; // Solar System Barycenter inherits Sun's color
-		if (data.id === 'naif-9') return BODY_COLORS['spkid-20134340']; // Pluto's barycenter inherits Pluto's color
+		if (data.id === 'naif-9') return BODY_COLORS['naif-999']; // Pluto's barycenter inherits Pluto's color
 		const num = data.id.replace('naif-', '');
 		const planetId = `naif-${num}99`;
 		if (BODY_COLORS[planetId]) return BODY_COLORS[planetId];
