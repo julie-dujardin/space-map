@@ -80,7 +80,8 @@ export function createLabel(
 	variant: LabelVariant,
 	onClick: () => void,
 	isLarge = false,
-	onHoverChange?: (hovered: boolean) => void
+	onHoverChange?: (hovered: boolean) => void,
+	isMinor = false
 ): CSS2DObject | null {
 	if (variant === 'none') return null;
 
@@ -141,6 +142,11 @@ export function createLabel(
 	// Name text: absolutely positioned to the right, vertically centered on indicator
 	if (name) addLabelNameSpan(el, name, variant, isLarge, guardedClick);
 
+	// Minor halos collapse to the same scale as occluded/dimmed labels by
+	// default; on hover they grow to the regular hover size, on mouseleave
+	// they revert to the collapsed scale (instead of the no-transform default).
+	if (isMinor) halo.style.transform = 'scale(0.3)';
+
 	el.addEventListener('click', guardedClick);
 	el.addEventListener('mouseenter', () => {
 		halo.style.transform = 'scale(1.15)';
@@ -148,7 +154,7 @@ export function createLabel(
 		onHoverChange?.(true);
 	});
 	el.addEventListener('mouseleave', () => {
-		halo.style.transform = '';
+		halo.style.transform = isMinor ? 'scale(0.3)' : '';
 		document.body.style.cursor = '';
 		onHoverChange?.(false);
 	});

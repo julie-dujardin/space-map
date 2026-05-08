@@ -48,3 +48,26 @@ export const TYPE_COLOR_SATELLITE = '#bed4ec';
 export const TYPE_COLOR_PROBE = '#d5cfe7';
 
 export const GITHUB_REPO_URL = 'https://github.com/julie-dujardin/space-map';
+
+/**
+ * Asteroids rendered as halos but with no label or trail by default — label
+ * appears on hover (alongside the existing halo scale), trail draws as usual
+ * when the body is selected (focused). Curated to keep the inner system from
+ * getting too busy while still surfacing main-belt giants and notable Trojans.
+ */
+export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
+	'spkid-20000002', // 2 Pallas
+	'spkid-20000003', // 3 Juno
+	'spkid-20000007', // 7 Iris
+	'spkid-20000010', // 10 Hygiea
+	'spkid-20000015', // 15 Eunomia
+	'spkid-20000031', // 31 Euphrosyne
+	'spkid-20000052', // 52 Europa
+	'spkid-20000065', // 65 Cybele
+	'spkid-20000088', // 88 Thisbe
+	'spkid-20000107', // 107 Camilla
+	'spkid-20000511', // 511 Davida
+	'spkid-20000588', // 588 Achilles
+	'spkid-20000704', // 704 Interamnia
+	'spkid-20001862' // 1862 Apollo
+]);

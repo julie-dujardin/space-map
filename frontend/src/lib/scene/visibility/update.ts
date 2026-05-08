@@ -115,6 +115,13 @@ export function updateBodyVisibility(
 			showLabel = !isClose;
 		}
 
+		// Minor-promoted halos: ring stays (label.visible left alone so the DOM
+		// element keeps rendering), but the trail draws only on focus. The name
+		// span and halo scale are handled in cullOverlappingLabels.
+		if (bo.isMinor && !isFocused && orbitLine) {
+			orbitLine.visible = false;
+		}
+
 		// Detach labels from hidden groups so CSS2DRenderer's recursive
 		// renderObject() doesn't visit them and write display:'none' every frame.
 		// Re-attach when the group becomes visible — CSS2DRenderer re-appends

@@ -58,6 +58,12 @@ export interface BodyObjects {
 	textureLoading?: boolean;
 	/** Cached screen-pixel width of the label name text (measured once). */
 	labelTextWidth?: number;
+	/**
+	 * Minor-promoted halo: rendered as a small ring (no name, no trail) by
+	 * default; expands and reveals its label on hover; trail draws on focus.
+	 * Membership is fixed at construction from {@link MINOR_PROMOTED_IDS}.
+	 */
+	isMinor: boolean;
 }
 
 export interface Callbacks {

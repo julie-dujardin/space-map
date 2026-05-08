@@ -14,7 +14,7 @@ import {
 } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
-import { BODY_COLORS } from '$lib/constants';
+import { BODY_COLORS, MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
@@ -105,13 +105,15 @@ export function buildMajorBodies(
 		// CSS2D label
 		const variant = getLabelVariant(body);
 		const isLarge = isStar || body.data.objectType === ObjectType.PLANET;
+		const isMinor = MINOR_PROMOTED_IDS.has(id);
 		const label = createLabel(
 			color,
 			body.data.name ?? '',
 			variant,
 			() => handleFocus(body),
 			isLarge,
-			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined
+			onHoverChange ? (hovered) => onHoverChange(id, hovered) : undefined,
+			isMinor
 		);
 		if (label) {
 			// Forward wheel events so OrbitControls zoom still works when hovering a label
@@ -179,7 +181,8 @@ export function buildMajorBodies(
 			starPoint,
 			orbitLine,
 			radiusScene: radius,
-			cachedDist: 0
+			cachedDist: 0,
+			isMinor
 		});
 	}
 }

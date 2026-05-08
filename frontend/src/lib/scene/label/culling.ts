@@ -26,10 +26,11 @@ export type ScreenOccluder = {
 export function dimLabel(
 	labelHalo: HTMLElement | null,
 	nameSpan: HTMLElement | null,
-	clickable: boolean
+	clickable: boolean,
+	scale = 0.3
 ): void {
 	if (labelHalo) {
-		labelHalo.style.transform = 'scale(0.3)';
+		labelHalo.style.transform = `scale(${scale})`;
 		// Without this, hovering a dimmed halo's 32×32 root re-maximizes it and
 		// adds the body to hoveredBodyIds, stealing focus from whatever's behind.
 		if (labelHalo.parentElement) {
@@ -125,6 +126,7 @@ type Candidate = {
 	label: NonNullable<BodyObjects['label']>;
 	labelHalo: HTMLElement | null;
 	isCapped: boolean;
+	isMinor: boolean;
 	isFocused: boolean;
 	isSelected: boolean;
 	screenX: number;
@@ -183,6 +185,7 @@ export function cullOverlappingLabels(
 				body.data.objectType === ObjectType.MOON
 					? ctx.getMoonVisibility(body) === VISIBILITY.CAPPED
 					: false,
+			isMinor: bo.isMinor,
 			isFocused,
 			isSelected: isFocused || isHovered,
 			screenX,
@@ -207,6 +210,7 @@ export function cullOverlappingLabels(
 		label,
 		labelHalo,
 		isCapped,
+		isMinor,
 		isFocused,
 		isSelected,
 		screenX,
@@ -216,6 +220,14 @@ export function cullOverlappingLabels(
 		dist
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
+		// Minor-promoted: collapse to scale 0.3 (same as occluded) and hide the
+		// name text. On hover/focus the candidate is "selected" and falls through
+		// to the normal restoreLabel path so the halo grows back and the name
+		// appears. `dimLabel` already produces the exact desired visual.
+		if (isMinor && !isSelected) {
+			dimLabel(labelHalo, nameSpan, true, 0.5);
+			continue;
+		}
 		if (isCapped && !isSelected) {
 			dimLabel(labelHalo, nameSpan, true);
 			continue;

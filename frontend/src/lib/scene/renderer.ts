@@ -50,6 +50,7 @@ import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
 import { fetchLabels } from '$lib/fetch/position/labels';
+import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import type { Vec3 } from './animation/math';
 import {
 	type FocusState,
@@ -165,6 +166,10 @@ export class SceneRenderer {
 		// a no-op until labels resolve a few hundred ms later.
 		fetchLabels().then((labels) => {
 			for (const id of labels.keys()) this.pendingDefaultPromotions.add(id);
+			// Minor-promoted bodies still need to be built as halos. They may or
+			// may not be in the labels file (cheb-covered ones are) — adding here
+			// is idempotent and covers those that aren't.
+			for (const id of MINOR_PROMOTED_IDS) this.pendingDefaultPromotions.add(id);
 		});
 
 		// Renderer
