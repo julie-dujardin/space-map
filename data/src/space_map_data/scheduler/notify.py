@@ -84,7 +84,7 @@ def _send_email(title: str, body: str) -> None:
 def notify_download_run(results: list[ProviderResult]) -> None:
     """Send pushover + email summary. Pushover priority 1 if any failure, else 0."""
     title, body = _format(results)
-    priority = 1 if any(not r.ok for r in results) else 0
+    priority = 1 if any(not r.ok for r in results) else -2
     _send_pushover(title, body, priority=priority)
     _send_email(title, body)
 
