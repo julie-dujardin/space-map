@@ -112,6 +112,11 @@ function buildOrbitTrailPoints(
  * Fill `fullArr` with the full-orbit alpha ramp (fades along the whole curve)
  * and `trailArr` with the partial-trail ramp (fade from the body over ~1/3 of
  * the orbit). For non-trail bodies the trail ramp is a copy of the full ramp.
+ *
+ * `isOpenCurve` controls only the full-ramp endpoint: open curves (SGP4 sliding
+ * window, chebyshev time-ordered buffer) fade to 0 since the oldest sample is
+ * the tail tip; closed curves (Kepler ellipse) fade to a non-zero floor so the
+ * loop seam doesn't pop. The partial-trail ramp is the same shape regardless.
  */
 function writeOrbitAlphas(
 	fullArr: Float32Array,
@@ -125,7 +130,7 @@ function writeOrbitAlphas(
 	for (let k = 0; k < fullArr.length; k++) {
 		fullArr[k] = fullMax - (last > 0 ? k / last : 0) * (fullMax - fullMin);
 	}
-	if (useTrail && !isOpenCurve) {
+	if (useTrail) {
 		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
 		const trailMax = 0.6;
 		trailArr.fill(0);
