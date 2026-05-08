@@ -29,7 +29,7 @@ export const BODY_COLORS: Record<string, string> = {
 	'naif-705': '#625252', // Miranda
 	'naif-899': '#3f54ba', // Neptune
 	'naif-801': '#7c757c', // Triton
-	'naif-999': '#6c4d41' // Pluto
+	'naif-999': '#b48977' // Pluto
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';

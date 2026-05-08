@@ -213,12 +213,8 @@ export function buildOrbitLines(
 	for (const [, bo] of bodyObjects) {
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
-		// Two ways to draw an orbit: Kepler ellipse from `orbitElements`, or a
-		// rolling trail driven by `trailBuffer` (chebyshev-backed bodies, which
-		// don't ship Kepler elements). Need at least one. STAR is the Sun —
-		// no orbit line for it regardless of source.
-		if ((!body.orbitElements && !body.trailBuffer) || body.data.objectType === ObjectType.STAR)
-			continue;
+		// Need orbit elements to draw a curve. STAR is the Sun — no orbit line.
+		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
 		scene.add(line);

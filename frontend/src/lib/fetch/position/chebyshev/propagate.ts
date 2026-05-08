@@ -87,3 +87,66 @@ export function chebyshevPositionScene(
 	if (km === null) return null;
 	return [kmToScene(km[0]), kmToScene(km[2]), -kmToScene(km[1])];
 }
+
+/**
+ * Parent-relative state vector at `jd`: position (km) and velocity (km/day) in
+ * ECLIPJ2000. Returns null when `jd` is outside the body's segment coverage.
+ *
+ * Velocity is the analytic derivative of the Chebyshev sum:
+ *   P(τ) = Σ c_k T_k(τ),  P'(τ) = Σ c_k k U_{k−1}(τ),  dτ/dt = 2 / (end − start).
+ * The U_n sum is evaluated by Clenshaw on the modified coefficients d_j =
+ * c_{j+1}(j+1), exploiting that U_n shares the recurrence U_n = 2τU_{n−1} − U_{n−2}
+ * with T_n (just different initial values, hence S = b_0 instead of T's
+ * c_0 + τb_1 − b_2).
+ */
+export function chebyshevStateKm(
+	body: ChebyshevBody,
+	jd: number
+): { position: [number, number, number]; velocity: [number, number, number] } | null {
+	const idx = findSegmentIndex(body.startJds, body.endJds, jd);
+	if (idx < 0) return null;
+
+	const start = body.startJds[idx];
+	const end = body.endJds[idx];
+	const tau = (2 * (jd - start)) / (end - start) - 1;
+	const dTauDt = 2 / (end - start);
+
+	const N = body.coeffsPerAxis;
+	const coeffs = body.coeffs;
+	const base = idx * 3 * N;
+	const position: [number, number, number] = [0, 0, 0];
+	const velocity: [number, number, number] = [0, 0, 0];
+	const twoTau = 2 * tau;
+
+	for (let axis = 0; axis < 3; axis++) {
+		const aBase = base + axis * N;
+		if (N === 1) {
+			position[axis] = coeffs[aBase];
+			velocity[axis] = 0;
+			continue;
+		}
+
+		// Position via standard T_n Clenshaw.
+		let bkp1 = 0;
+		let bkp2 = 0;
+		for (let k = N - 1; k >= 1; k--) {
+			const bk = coeffs[aBase + k] + twoTau * bkp1 - bkp2;
+			bkp2 = bkp1;
+			bkp1 = bk;
+		}
+		position[axis] = coeffs[aBase] + tau * bkp1 - bkp2;
+
+		// Velocity via U_n Clenshaw with d_j = c_{j+1}(j+1) for j = 0..N-2.
+		let dkp1 = 0;
+		let dkp2 = 0;
+		for (let j = N - 2; j >= 0; j--) {
+			const dj = coeffs[aBase + j + 1] * (j + 1);
+			const dk = dj + twoTau * dkp1 - dkp2;
+			dkp2 = dkp1;
+			dkp1 = dk;
+		}
+		velocity[axis] = dkp1 * dTauDt;
+	}
+
+	return { position, velocity };
+}

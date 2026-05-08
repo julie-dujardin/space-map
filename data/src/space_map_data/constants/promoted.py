@@ -89,6 +89,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-20002060",  # 2060 Chiron
         "spkid-20004179",  # 4179 Toutatis
         "spkid-20025143",  # 25143 Itokawa
+        "spkid-20065803",  # 65803 Didymos
         "spkid-20099942",  # 99942 Apophis
         "spkid-20101955",  # 101955 Bennu
         "spkid-20162173",  # 162173 Ryugu

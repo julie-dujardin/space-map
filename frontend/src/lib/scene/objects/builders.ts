@@ -22,7 +22,6 @@ import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
 import { propagateOrbitAngles } from '$lib/math/orbit/position';
 import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
-import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 export const NUM_ORBIT_POINTS = 512;
 
@@ -59,11 +58,12 @@ function buildOrbitTrailPoints(
 	// callers gate on validPoints.length < 2 and draw nothing in that case.
 	if (curve.length === 0) return [];
 
-	const bodyLocal: [number, number, number] = [
-		body.position[0] - cx,
-		body.position[1] - cy,
-		body.position[2] - cz
-	];
+	// Anchor at `trailAnchor` when set — borrowed-barycenter bodies need the
+	// trail's bright end to sit on the barycenter the curve actually traces,
+	// not on the body's own offset position (which would kink the line into
+	// the curve). Falls back to `body.position` for everyone else.
+	const anchor = body.trailAnchor ?? body.position;
+	const bodyLocal: [number, number, number] = [anchor[0] - cx, anchor[1] - cy, anchor[2] - cz];
 
 	let nearest = 0;
 	let best = Infinity;
@@ -370,106 +370,6 @@ function makeEmptyOrbitLine(): Line | Mesh {
 	return line;
 }
 
-/**
- * Write the live "head" vertex (slot 0) and the trail-buffer history (slots
- * 1..n) into `posArr`. Returns the total drawn vertex count.
- *
- * Vertex 0 is always the body's exact current position in basis-relative
- * coords, so the brightest end of the trail stays visually pinned to the
- * body even when the buffer's newest canonical sample is up to one `stepDays`
- * behind `jd`. This is the "point-at-object" anchor the old Kepler-curve
- * path gave for free via `points[0] = bodyLocal`.
- */
-function writeBufferVerticesWithLiveHead(
-	body: PositionedBody,
-	buffer: TrailBuffer,
-	posArr: Float32Array,
-	cx: number,
-	cy: number,
-	cz: number,
-	basisPos: [number, number, number]
-): number {
-	// Vertex 0: live position of whatever the buffer's samples trace, shifted
-	// into the basis frame. Falls back to `body.position` for the common case
-	// where the body owns its trail; uses `trailHead` (the parent barycenter's
-	// position) when the buffer was borrowed from the parent — otherwise the
-	// brightest vertex lands on the body and kinks off the barycenter's path.
-	const head = body.trailHead ?? body.position;
-	posArr[0] = head[0] - basisPos[0];
-	posArr[1] = head[1] - basisPos[1];
-	posArr[2] = head[2] - basisPos[2];
-
-	// Vertices 1..n: buffer samples (parent-relative) shifted by
-	// (orbitCenter − basis) so they land in the same basis frame.
-	const bx = cx - basisPos[0];
-	const by = cy - basisPos[1];
-	const bz = cz - basisPos[2];
-	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz);
-	return 1 + n;
-}
-
-/**
- * Build a chebyshev-backed orbit line. Geometry is sized to `capacity + 1` —
- * the +1 slot holds the live body position so the brightest trail vertex
- * always sits on the body.
- *
- * When `lineWidth > 1`, the returned object is a `Mesh` of expanded quads
- * instead of a `Line`. The thin position/alpha working arrays still live on
- * `userData` so the per-frame refresh path stays a single shared codepath; the
- * fat geometry is re-derived from them after each update.
- */
-function makeChebyshevOrbitLine(
-	body: PositionedBody,
-	trailBuffer: TrailBuffer,
-	color: string,
-	basisPos: [number, number, number],
-	lineWidth: number
-): Line | Mesh {
-	const { orbitCenter, data } = body;
-	const cx = orbitCenter?.[0] ?? 0;
-	const cy = orbitCenter?.[1] ?? 0;
-	const cz = orbitCenter?.[2] ?? 0;
-
-	// Moons/dwarfs get a short-fade trail (restored to full when focused);
-	// planets/stars get the 360° ramp visible all the time. Matches the
-	// existing alpha behaviour for non-chebyshev bodies.
-	const useTrail =
-		data.objectType === ObjectType.DWARF_PLANET || data.objectType === ObjectType.MOON;
-
-	const geomCap = trailBuffer.capacity + 1;
-	const posArr = new Float32Array(geomCap * 3);
-	const total = writeBufferVerticesWithLiveHead(body, trailBuffer, posArr, cx, cy, cz, basisPos);
-
-	const fullAlphas = new Float32Array(geomCap);
-	const trailAlphas = new Float32Array(geomCap);
-	if (total > 0) {
-		writeOrbitAlphas(
-			fullAlphas.subarray(0, total) as Float32Array,
-			trailAlphas.subarray(0, total) as Float32Array,
-			true,
-			useTrail
-		);
-	}
-
-	const isFat = lineWidth > 1;
-	const obj = isFat
-		? buildFatLineFromThin(geomCap, posArr, trailAlphas, fullAlphas, total, color, lineWidth)
-		: buildThinLineFromArrays(posArr, trailAlphas, fullAlphas, total, color);
-
-	obj.frustumCulled = false;
-	obj.visible = false;
-	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
-	obj.userData.trailBuffer = trailBuffer;
-	obj.userData.useTrail = useTrail;
-	if (isFat) {
-		obj.userData.isFatLine = true;
-		obj.userData.thinPositions = posArr;
-		obj.userData.thinTrailAlphas = trailAlphas;
-		obj.userData.thinFullAlphas = fullAlphas;
-	}
-	return obj;
-}
-
 /** Wrap pre-computed thin arrays into a `Line` with a shared orbit-line material. */
 function buildThinLineFromArrays(
 	posArr: Float32Array,
@@ -508,12 +408,6 @@ export function makeOrbitLine(
 	jd: number = dateToJD(new Date()),
 	lineWidth: number = 1
 ): Line | Mesh {
-	// Chebyshev-backed: geometry is driven by the rolling trail buffer, which
-	// is populated at chunk-load time and advanced each frame by ContextManager.
-	if (body.trailBuffer) {
-		return makeChebyshevOrbitLine(body, body.trailBuffer, color, basisPos, lineWidth);
-	}
-
 	const { orbitElements, orbitCenter, data } = body;
 
 	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
@@ -681,26 +575,6 @@ function commitOrbitTrail(
 }
 
 /**
- * Rewrite a chebyshev-backed orbit line's vertex buffer from its trail buffer.
- * Called from {@link refreshOrbitLineGeometry} (per jd tick) and from
- * `rebuildOrbitLineBasis` (after focus change without a jd tick). Unlike the
- * Kepler/SGP4 path, there's no cached vertex list to rebase — the ring buffer
- * is already the source of truth, so we just read it again with the new basis.
- */
-export function refreshChebyshevOrbitLineGeometry(
-	body: PositionedBody,
-	line: Line | Mesh,
-	buffer: TrailBuffer,
-	basisPos: [number, number, number]
-): void {
-	const useTrail = line.userData.useTrail as boolean;
-	const oc = line.userData.orbitCenter as Vector3;
-	const { posArr, trailArr, fullArr } = getOrbitWorkingArrays(line);
-	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
-	commitOrbitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
-}
-
-/**
  * Rewrite an orbit line's vertex buffer from cached orbit-local positions and
  * a fresh basis offset, without any curve recompute. Used by the focus-change
  * path, which needs every line rebased before the first render against the new
@@ -742,14 +616,6 @@ export function refreshOrbitLineGeometry(
 	basisPos: [number, number, number],
 	jd: number
 ): void {
-	// Chebyshev-backed: buffer holds live past-position samples; just copy them
-	// into the vertex buffer, shifted by (orbitCenter − basis).
-	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
-	if (trailBuffer) {
-		refreshChebyshevOrbitLineGeometry(body, line, trailBuffer, basisPos);
-		return;
-	}
-
 	let curve = line.userData.orbitCurve as [number, number, number][] | undefined;
 	if (!curve) return;
 	const isOpenCurve = line.userData.isOpenCurve as boolean;

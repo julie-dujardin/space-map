@@ -41,11 +41,9 @@ import {
 import {
 	makePointCloudFromBuffer,
 	rebaseOrbitLineLocals,
-	refreshChebyshevOrbitLineGeometry,
 	refreshOrbitLineGeometry,
 	setOrbitLineResolution
 } from './objects/builders';
-import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
@@ -627,20 +625,12 @@ export class SceneRenderer {
 	 */
 	private rebuildOrbitLineBasis(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const basis: Vec3 = [fx, fy, fz];
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			// Don't gate on line.visible — newly-built lines are visible=false
 			// but will be flipped visible later this frame by updateBodyVisibility;
 			// their vertices must be rebased against the new focus before first render.
 			if (!line) continue;
-			// Chebyshev-backed lines have their vertices re-read from the live
-			// trail buffer each time instead of from a cached Float64 list.
-			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
-			if (trailBuffer) {
-				refreshChebyshevOrbitLineGeometry(bo.body, line, trailBuffer, basis);
-				continue;
-			}
 			const localPositions = line.userData.orbitLocalPositions as
 				| [number, number, number][]
 				| undefined;
@@ -683,7 +673,6 @@ export class SceneRenderer {
 		// which chebyshev-tracked bodies are hidden (outOfRange) exactly like
 		// SGP4 out-of-coverage bodies.
 		this.ctx.chebStore?.ensure(jd);
-		this.ctx.advanceTrailBuffers(jd, this.activeTrailBuffers());
 
 		// Aggregate data-unavailability across bodies for a single summary toast —
 		// per-body toasts would be spammy at chunk boundaries. Grouping by data
@@ -796,10 +785,10 @@ export class SceneRenderer {
 				body.orbitCenter[1] = parentPos[1];
 				body.orbitCenter[2] = parentPos[2];
 			}
-			if (body.trailHead) {
-				body.trailHead[0] = parentPos[0];
-				body.trailHead[1] = parentPos[1];
-				body.trailHead[2] = parentPos[2];
+			if (body.trailAnchor) {
+				body.trailAnchor[0] = parentPos[0];
+				body.trailAnchor[1] = parentPos[1];
+				body.trailAnchor[2] = parentPos[2];
 			}
 			positionMap.set(d.id, body.position);
 
@@ -894,23 +883,6 @@ export class SceneRenderer {
 			refreshOrbitLineGeometry(bo.body, line, basis, jd);
 			line.userData.refreshDeferred = false;
 		}
-	}
-
-	/**
-	 * Trail buffers with at least one visible orbit line consumer. Buffers are
-	 * shared between a planet and its barycenter, so the same buffer can have
-	 * two consumers — set semantics dedupe. Read by `advanceTrailBuffers` to
-	 * skip stepping idle buffers; reseed-on-large-jump in the advance loop
-	 * refills them when they next become active.
-	 */
-	private activeTrailBuffers(): Set<TrailBuffer> {
-		const active = new Set<TrailBuffer>();
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.orbitLine?.visible) continue;
-			const buf = bo.body.trailBuffer;
-			if (buf) active.add(buf);
-		}
-		return active;
 	}
 
 	/**

@@ -16,46 +16,49 @@ import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/t
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2 } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
-import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
-import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
+import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
+import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
+import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 
-/**
- * Mean motion in deg/day from semi-major axis (AU) + parent NAIF, via
- * Kepler's third law (n = sqrt(GM/a^3)). Returns 0 when the parent has no
- * GM entry (e.g. systems/global.json hasn't landed yet, or the parent isn't
- * in SPICE) or `a` is non-positive — caller skips trail-buffer construction
- * in that case. The estimate is approximate (assumes a circular orbit
- * around a point mass) but only used to size the rolling trail buffer's
- * step, not to propagate positions.
- */
-function estimateMeanMotionDegPerDay(aAU: number, parentNaifId: number): number {
-	const gmKm3s2 = getGmKm3s2(parentNaifId);
-	if (!gmKm3s2 || aAU <= 0) return 0;
-	const gmAuDay = gmKm3s2 * KM3_S2_TO_AU3_DAY2;
-	const nRadPerDay = Math.sqrt(gmAuDay / (aAU * aAU * aAU));
-	return nRadPerDay * (180 / Math.PI);
-}
+const KM_DAY_TO_AU_DAY = 1 / AU_KM;
 
 /**
- * Fill `buf` with up to `capacity` chebyshev samples ending at `centerJd`,
- * stepping back by `buf.stepDays`. Nulls (samples outside the body's segment
- * coverage) are skipped, so outer planets with limited chebyshev history
- * start with a partial buffer and grow as time plays.
+ * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
+ * the parent's GM. Returns null when the parent has no GM (SPICE coverage
+ * hole or pre-load timing on `systems/global.json`), the chebyshev sample
+ * misses, or the resulting state degenerates (radial / parabolic). The
+ * snapshot drives the orbit-line curve through the same kepler path as
+ * SBDB-sourced bodies — see `processChebyshev` below.
+ *
+ * TODO: refresh sub-chunk. Osculating elements are an instantaneous snapshot
+ * at chunk-load time; for bodies with non-trivial perturbations (Earth's Moon,
+ * J2-driven moons) the drawn ellipse drifts visibly across a chunk's window.
+ * Re-derive periodically (or when accumulated drift exceeds a threshold) — the
+ * existing `ORBIT_CURVE_REFRESH_DEG` gate in `refreshOrbitLineGeometry` only
+ * fires for elements that carry `omDot`/`wDot`, which we don't attach here.
  */
-export function populateTrailBuffer(
-	buf: TrailBuffer,
-	store: ChebyshevStore,
-	targetId: string,
-	centerJd: number
-): void {
-	// Oldest first so the ring buffer's internal order is past → present.
-	for (let k = buf.capacity - 1; k >= 0; k--) {
-		const t = centerJd - k * buf.stepDays;
-		const p = store.positionScene(targetId, t);
-		if (p) buf.append(t, p[0], p[1], p[2]);
-	}
+function chebyshevOsculatingElements(
+	body: ChebyshevBody,
+	parentNaifId: number,
+	jd: number
+): OrbitalElements | null {
+	const gmKm3s2 = getGmKm3s2(parentNaifId);
+	if (!gmKm3s2) return null;
+	const state = chebyshevStateKm(body, jd);
+	if (!state) return null;
+	const muAuDay2 = gmKm3s2 * KM3_S2_TO_AU3_DAY2;
+	const r: [number, number, number] = [
+		state.position[0] / AU_KM,
+		state.position[1] / AU_KM,
+		state.position[2] / AU_KM
+	];
+	const v: [number, number, number] = [
+		state.velocity[0] * KM_DAY_TO_AU_DAY,
+		state.velocity[1] * KM_DAY_TO_AU_DAY,
+		state.velocity[2] * KM_DAY_TO_AU_DAY
+	];
+	return stateVectorToElements(r, v, muAuDay2, jd);
 }
 
 /**
@@ -248,18 +251,14 @@ export class ChunkLoader {
 
 	// Track positions by ID for parent lookups (not reactive — local computation only)
 	positions = new Map<number, [number, number, number]>();
-	// Store barycenter orbital elements for planet orbit drawing
+	// Store barycenter orbital elements for planet orbit drawing. Populated by
+	// both `processChebyshev` (osculating elements derived from the polynomial
+	// state) and `process` (elements ride-along from the binary chunks); the
+	// chebyshev pass runs first so `process` sees barycenter elements when it
+	// resolves a planet's parent.
 	barycenters = new Map<number, OrbitalElements>();
 
-	/**
-	 * Chebyshev trail buffers keyed by the body's string id. Owned by the
-	 * ContextManager (persists across `process` calls so accumulated history
-	 * survives chunk loads).
-	 */
-	constructor(
-		private readonly cheb: ChebyshevStore | null,
-		private readonly chebBuffers: Map<string, TrailBuffer>
-	) {
+	constructor(private readonly cheb: ChebyshevStore | null) {
 		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
 	}
 
@@ -277,12 +276,12 @@ export class ChunkLoader {
 	 *   2. For each body, evaluate its parent-relative chebyshev position,
 	 *      shift by the parent's world position, and emit a PositionedBody.
 	 *
-	 * `a` (semi-major axis) is approximated by the position-vector magnitude at
-	 * `jd` so the visibility-ratio code (`getMoonVisibility`,
-	 * `getPlanetVisibility`) has a meaningful number without us having to ship
-	 * Kepler elements alongside the chebyshev coefficients. The exact value
-	 * matters for threshold ratios, not for propagation — the position itself
-	 * comes from the polynomials.
+	 * The body's `data` carries osculating Keplerian elements derived from the
+	 * Chebyshev state (position + velocity) at `jd` plus the parent's GM. This
+	 * is the same shape the SBDB/Horizons elements path produces, so the
+	 * orbit-line builder draws a closed kepler curve through the unified path
+	 * in {@link makeOrbitLine}. `a` from the derivation also serves the
+	 * visibility-ratio code (`getMoonVisibility`, `getPlanetVisibility`).
 	 */
 	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
 		if (!this.cheb) return [];
@@ -320,13 +319,18 @@ export class ChunkLoader {
 				parentPos[1] + offset[1],
 				parentPos[2] + offset[2]
 			];
-			// Position-magnitude proxy for the visibility-ratio code (camera
-			// distance / a). Cheb gives parent-relative offsets in scene units,
-			// so dividing by AU_SCALE recovers the same AU-magnitude semantics
-			// the elements path produces from `body.data.a`.
-			const aAU = Math.hypot(offset[0], offset[1], offset[2]) / AU_SCALE;
-			const n = estimateMeanMotionDegPerDay(aAU, body.parentNaifId);
 			const objType = body.objectType as ObjectType;
+			// Osculating elements snapshot: position + velocity from the
+			// polynomial, parent GM from the global systems file. Returns null
+			// when the parent has no GM (out-of-coverage in SPICE) or the
+			// state is degenerate; the body still gets a position-only entry
+			// so it can render, just without an orbit curve.
+			const elements = chebyshevOsculatingElements(body, body.parentNaifId, jd);
+			// Position-magnitude proxy for visibility-ratio code when elements
+			// are unavailable. Cheb gives parent-relative offsets in scene units,
+			// so dividing by AU_SCALE recovers AU magnitude. Otherwise prefer
+			// the derived |a| so high-e snapshots don't read as small-orbit.
+			const fallbackA = Math.hypot(offset[0], offset[1], offset[2]) / AU_SCALE;
 			const data: BodyData = {
 				id: body.id,
 				name: pickLabel(labels, body.id),
@@ -334,70 +338,60 @@ export class ChunkLoader {
 				objectType: objType,
 				parentId: `naif-${body.parentNaifId}`,
 				radiusKm: body.radiusKm,
-				a: aAU,
-				e: 0,
-				i: 0,
-				om: 0,
-				w: 0,
-				ma: 0,
-				n,
-				epoch: 0,
+				a: elements ? Math.abs(elements.a) : fallbackA,
+				e: elements?.e ?? 0,
+				i: elements?.i ?? 0,
+				om: elements?.om ?? 0,
+				w: elements?.w ?? 0,
+				ma: elements?.ma ?? 0,
+				n: elements?.n ?? 0,
+				epoch: elements?.epoch ?? 0,
 				equatorial: false,
 				validityStart: startJd,
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE
 			};
 			if (writePositions) this.positions.set(body.naifId, pos);
-			// Build (or reuse) a rolling trail buffer for this body. The buffer
-			// is keyed on string id so planets can later borrow their
-			// barycenter's history below — without elements ride-along, this
-			// chebyshev-driven trail is the only orbit visualization for these
-			// bodies. Skip when the period estimate can't be made (Sun-relative
-			// motion at SSB, planet body at its own barycenter, …) — those
-			// either don't need a trail or borrow from a parent that does.
-			if (n > 0 && !this.chebBuffers.has(body.id)) {
-				const period = 360 / n;
-				const buffer = new TrailBuffer(NUM_ORBIT_POINTS, period / NUM_ORBIT_POINTS);
-				populateTrailBuffer(buffer, this.cheb, body.id, jd);
-				this.chebBuffers.set(body.id, buffer);
-			}
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
+				if (writePositions && elements && elements.a > 0 && elements.e < 1) {
+					this.barycenters.set(body.naifId, elements);
+				}
 				result.push({
 					data,
 					position: pos,
-					orbitCenter: parentPos,
-					trailBuffer: this.chebBuffers.get(body.id)
+					orbitElements: elements ?? undefined,
+					orbitCenter: parentPos
 				});
 				continue;
 			}
 			if (isMajorBody(objType)) {
-				// Trail-buffer borrowing mirrors the elements path: planets use
-				// their parent barycenter's trail (the planet's own chebyshev
-				// is just wobble around that barycenter), moons use their own.
-				// When borrowing the barycenter's buffer, leave `orbitCenter`
-				// undefined — the buffer holds SSB-relative positions, so the
-				// trail must be drawn at scene origin, not at the parent's
-				// current position (which is roughly the body itself and would
-				// place the heliocentric ellipse on top of the planet).
+				// Mirror the elements path: planets use the parent barycenter's
+				// orbit (the planet's own offset is just wobble); moons use
+				// their own. When borrowing barycenter elements, leave
+				// `orbitCenter` undefined so the curve is drawn at SSB —
+				// otherwise the heliocentric ellipse would land on the planet.
 				const isMoon = objType === ObjectType.MOON;
-				const parentBuf = this.chebBuffers.get(data.parentId);
-				const ownBuf = this.chebBuffers.get(body.id);
-				const borrowedFromParent = !isMoon && parentBuf !== undefined;
-				const trailBuffer = isMoon ? ownBuf : (parentBuf ?? ownBuf);
+				const parentElements = this.barycenters.get(body.parentNaifId);
+				const orbitElements = isMoon ? elements : (parentElements ?? elements);
+				const borrowedFromParent = !isMoon && parentElements !== undefined;
 				result.push({
 					data,
 					position: pos,
+					orbitElements: orbitElements ?? undefined,
 					orbitCenter: borrowedFromParent ? undefined : parentPos,
-					// When borrowing the barycenter's SSB-relative buffer, pin the
-					// trail's live head to the barycenter (parentPos) instead of
-					// the body's own offset position — otherwise the brightest
-					// vertex sits on the body and kinks away from the trail
-					// (very visible in Pluto).
-					trailHead: borrowedFromParent ? parentPos : undefined,
-					trailBuffer
+					// The borrowed curve traces the *barycenter*'s orbit, so the
+					// trail's bright end belongs on the barycenter. Fresh array
+					// (not the shared `parentPos` ref) so the per-frame mutator
+					// can update it independently from the parent's own object.
+					trailAnchor: borrowedFromParent ? [parentPos[0], parentPos[1], parentPos[2]] : undefined
 				});
 			} else {
-				result.push({ data, position: pos, trailBuffer: this.chebBuffers.get(body.id) });
+				result.push({
+					data,
+					position: pos,
+					orbitElements: elements ?? undefined,
+					orbitCenter: parentPos
+				});
 			}
 		}
 		return result;

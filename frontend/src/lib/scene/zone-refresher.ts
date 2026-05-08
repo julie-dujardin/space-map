@@ -239,7 +239,6 @@ export class ZoneRefresher {
 						// motion and syncs the orbit line via that reference.
 						if (b.orbitElements !== undefined) e.orbitElements = b.orbitElements;
 						if (b.orbitCenter !== undefined) e.orbitCenter = b.orbitCenter;
-						if (b.trailBuffer !== undefined) e.trailBuffer = b.trailBuffer;
 						merged.push(e);
 						existingById.delete(b.data.id);
 						updated++;

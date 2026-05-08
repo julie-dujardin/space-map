@@ -18,8 +18,6 @@ import {
 } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
-import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { populateTrailBuffer } from '$lib/fetch/position/chunk';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 
 /*
@@ -285,14 +283,6 @@ export class ContextManager {
 	 */
 	chebStore: ChebyshevStore | null = null;
 
-	/**
-	 * Rolling past-position trails for every chebyshev-tracked body, keyed by
-	 * string id. Populated during `ChunkLoader.process` (one orbital period of
-	 * initial history) and advanced every frame by `advanceTrailBuffers`.
-	 * Planets reference their barycenter's entry here via `PositionedBody.trailBuffer`.
-	 */
-	chebBuffers = new Map<string, TrailBuffer>();
-
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
@@ -327,45 +317,6 @@ export class ContextManager {
 	private fullMoonIds = new Set<string>();
 	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
-
-	/**
-	 * Advance every chebyshev trail buffer to `jd`. For each buffer, samples
-	 * chebyshev positions at step-day intervals and appends them; a big jump
-	 * (forward past one period, or any reversal) clears and re-seeds from the
-	 * new jd. Must be called after `chebStore.ensure(jd)` so the underlying
-	 * chunks are available.
-	 *
-	 * `activeBuffers` skips buffers whose body has no visible consumer this
-	 * frame (no orbit line drawn). Skipped buffers stay frozen at their last
-	 * jd; if they're skipped long enough that `dt` exceeds one period, the
-	 * existing reseed branch above will refill them when they next become
-	 * active. Pass null to advance every buffer (initial load, tests).
-	 */
-	advanceTrailBuffers(jd: number, activeBuffers: Set<TrailBuffer> | null = null): void {
-		const store = this.chebStore;
-		if (!store) return;
-		for (const [targetId, buffer] of this.chebBuffers) {
-			if (activeBuffers && !activeBuffers.has(buffer)) continue;
-			const last = buffer.newestJd;
-			const dt = jd - last;
-			// Empty buffer, time reversed, or jump > one period: re-seed.
-			if (!isFinite(last) || dt < 0 || dt > buffer.stepDays * buffer.capacity) {
-				buffer.clear();
-				populateTrailBuffer(buffer, store, targetId, jd);
-				continue;
-			}
-			if (dt < buffer.stepDays) continue;
-			// Append at canonical multiples of stepDays from `last`; bounded by
-			// capacity so one oversized frame never does more work than a full
-			// re-seed would.
-			const steps = Math.min(Math.floor(dt / buffer.stepDays), buffer.capacity);
-			for (let k = 1; k <= steps; k++) {
-				const t = last + k * buffer.stepDays;
-				const p = store.positionScene(targetId, t);
-				if (p) buffer.append(t, p[0], p[1], p[2]);
-			}
-		}
-	}
 
 	/**
 	 * Look up any body by ID.
@@ -458,7 +409,7 @@ export class ContextManager {
 			});
 			const metadata = await metadataPromise;
 			this.chebStore = await chebPromise;
-			const loader = new ChunkLoader(this.chebStore, this.chebBuffers);
+			const loader = new ChunkLoader(this.chebStore);
 
 			// Phase 1: majors — load, register, and start rendering immediately.
 			//
@@ -576,7 +527,6 @@ export class ContextManager {
 									// focused sat's orbit line tracking parent motion.
 									if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
 									if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
-									if (b.trailBuffer !== undefined) placeholder.trailBuffer = b.trailBuffer;
 									placeholderById.delete(b.data.id);
 									if (b.data.objectType === ObjectType.SPACECRAFT) {
 										this.dirtySpacecraftGroups.add(b.data.parentId);

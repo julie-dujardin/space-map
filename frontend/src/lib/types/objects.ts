@@ -1,6 +1,5 @@
 import type { SatRec } from 'satellite.js';
 import type { OrbitalSource } from '$lib/fetch/position/format';
-import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import type { NutPrec, Orientation } from '$lib/math/orientation';
 
 export interface OrbitalElements {
@@ -76,22 +75,15 @@ export interface PositionedBody {
 	/** World-space center of the orbit (parent position). Defaults to origin. */
 	orbitCenter?: [number, number, number];
 	/**
-	 * Rolling trail of past positions for chebyshev-backed bodies, sampled in
-	 * the body's orbital-centre-relative frame. When set, the orbit line reads
-	 * its geometry from the buffer each frame instead of anchoring a static
-	 * curve — so trail shape stays consistent under time scrubbing, chunk
-	 * transitions, and focus changes. Kepler-backed bodies leave this undefined
-	 * and keep using `orbitalElementsToCurve`.
+	 * World-space point the trail's brightest end should sit on, when it
+	 * differs from `position`. Set for bodies that draw the orbit using a
+	 * *parent's* elements (planets borrowing their barycenter's heliocentric
+	 * orbit): the curve passes through the barycenter's location, so the
+	 * trail head must too — anchoring at the body itself produces a kink
+	 * between the body's offset position and the curve. Mutated each frame
+	 * by `updatePositions` to track the parent's live position.
 	 */
-	trailBuffer?: TrailBuffer;
-	/**
-	 * World-space position to use as the trail's live head when it differs from
-	 * `position`. Set when a body borrows its parent barycenter's trail buffer
-	 * (e.g. Pluto using Pluto-Barycenter's SSB-relative samples) so the brightest
-	 * trail vertex lands on the barycenter the trail actually traces, not on the
-	 * body's own offset position.
-	 */
-	trailHead?: [number, number, number];
+	trailAnchor?: [number, number, number];
 	/**
 	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
 	 * planetary-system bodies (planets, moons), which the renderer uses to
