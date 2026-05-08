@@ -10,6 +10,7 @@
 <script lang="ts">
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
@@ -99,8 +100,12 @@
 	<div class="pswp-sm-caption-credits">
 		{#if attribution?.license}
 			{#if attribution.license_url}
-				<a href={attribution.license_url} target="_blank" rel="noopener noreferrer license"
-					>{attribution.license}</a
+				<a
+					href={attribution.license_url}
+					target="_blank"
+					rel="noopener noreferrer license"
+					class="inline-flex items-center gap-1"
+					>{attribution.license}<ExternalLinkIcon class="size-3 shrink-0" /></a
 				>
 			{:else}
 				{attribution.license}
@@ -111,8 +116,12 @@
 			<span class="pswp-sm-caption-artist">{attribution.artist}</span>
 			<span class="pswp-sm-caption-sep" aria-hidden="true">·</span>
 		{/if}
-		<a href={image.source_url} target="_blank" rel="noopener noreferrer"
-			>{m.image_view_on_commons()}</a
+		<a
+			href={image.source_url}
+			target="_blank"
+			rel="noopener noreferrer"
+			class="inline-flex items-center gap-1"
+			>{m.image_view_on_commons()}<ExternalLinkIcon class="size-3 shrink-0" /></a
 		>
 	</div>
 {/if}

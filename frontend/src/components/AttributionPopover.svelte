@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import * as m from '$lib/paraglide/messages.js';
@@ -77,9 +78,12 @@
 		{href}
 		target="_blank"
 		rel="noopener noreferrer"
-		class="text-foreground hover:underline underline-offset-2"
+		class="text-foreground hover:underline underline-offset-2 inline-flex items-baseline gap-1"
 	>
-		{label}{#if sub}<span class="text-muted-foreground"> — {sub}</span>{/if}
+		<span>
+			{label}{#if sub}<span class="text-muted-foreground"> — {sub}</span>{/if}
+		</span>
+		<ExternalLinkIcon class="size-3 shrink-0 self-center" />
 	</a>
 {/snippet}
 

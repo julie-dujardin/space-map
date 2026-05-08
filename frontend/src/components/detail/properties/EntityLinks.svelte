@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 
@@ -49,7 +50,8 @@
 								href={entity.wikipedia}
 								target="_blank"
 								rel="noopener"
-								class="underline hover:text-foreground">{display}</a
+								class="underline hover:text-foreground inline-flex items-center gap-1"
+								>{display}<ExternalLinkIcon class="size-3 shrink-0" /></a
 							>
 						{:else}
 							{display}
