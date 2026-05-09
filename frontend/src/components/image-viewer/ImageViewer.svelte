@@ -39,6 +39,12 @@
 			const inst = pswp;
 			pswp = null;
 			inst.close();
+		} else if (idx !== null && pswp && idx !== pswp.currIndex) {
+			// Gallery click (or any external setImage) while the viewer is
+			// already open: slide PhotoSwipe to the requested index. The
+			// `change` listener will fire setImage(idx) back, which is a
+			// no-op since we just set it.
+			pswp.goTo(idx);
 		}
 	});
 

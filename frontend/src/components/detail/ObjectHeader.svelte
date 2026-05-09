@@ -1,21 +1,18 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 	import { formatCategory, formatObjectType } from '$lib/format/satellite';
-	import type { AppState } from '$lib/state/app-state.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
 		localized: LocalizedObjectData | null;
 		fallbackName: string | null;
+		onShowGallery: () => void;
 	}
 
-	let { global, localized, fallbackName }: Props = $props();
-
-	const appState = getContext<AppState>('appState');
+	let { global, localized, fallbackName, onShowGallery }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
@@ -80,7 +77,7 @@
 	{#if imageSrc && firstImage}
 		<button
 			type="button"
-			onclick={() => appState.setImage(0)}
+			onclick={onShowGallery}
 			aria-label={m.image_open_viewer()}
 			class="cursor-zoom-in overflow-hidden rounded-md"
 		>

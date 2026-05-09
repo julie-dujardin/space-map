@@ -22,6 +22,8 @@
 	"image_open_viewer": "Open full-size image",
 	"image_previous": "Previous image",
 	"image_next": "Next image",
+	"tab_properties": "Properties",
+	"tab_images": "Images",
 	"loading": "Loading...",
 	"show_less": "Show less",
 	"read_more": "Read more",

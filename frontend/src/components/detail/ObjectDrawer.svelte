@@ -3,7 +3,9 @@
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
 	import type { PositionedBody } from '$lib/types/objects';
@@ -14,6 +16,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
+	import ImageGallery from './ImageGallery.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
 	import Physical from './properties/Physical.svelte';
 	import Orbital from './properties/Orbital.svelte';
@@ -134,9 +137,17 @@
 			viewerIndex != null &&
 			viewerIndex < viewerImages.length
 	);
+
+	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
+	let activeTab = $state<'properties' | 'images'>('properties');
+	// Switching to an object that has no images while we're sitting on the
+	// images tab would leave the panel empty — fall back to properties.
+	$effect(() => {
+		if (!hasImages && activeTab === 'images') activeTab = 'properties';
+	});
 </script>
 
-{#snippet drawerContent()}
+{#snippet propertiesPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
 			<Skeleton class="w-full h-36 rounded-md" />
@@ -151,6 +162,10 @@
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
 				fallbackName={body.data.name}
+				onShowGallery={() => {
+					activeTab = 'images';
+					appState.setImage(0);
+				}}
 			/>
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
@@ -170,6 +185,28 @@
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
 	{/if}
+{/snippet}
+
+{#snippet imagesPanel()}
+	{#if viewerImages && viewerImages.length}
+		<ImageGallery images={viewerImages} alt={displayName} />
+	{/if}
+{/snippet}
+
+{#snippet tabsBar()}
+	<div class="border-b px-2">
+		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
+			<Tabs.Trigger value="properties" class="px-2">{m.tab_properties()}</Tabs.Trigger>
+			{#if hasImages}
+				<Tabs.Trigger value="images" class="px-2">
+					{m.tab_images()}
+					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+						{viewerImages?.length}
+					</Badge>
+				</Tabs.Trigger>
+			{/if}
+		</Tabs.List>
+	</div>
 {/snippet}
 
 {#if isMobile}
@@ -207,12 +244,20 @@
 						</div>
 					</div>
 				</div>
-				<div
-					class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-					style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
-				>
-					{@render drawerContent()}
-				</div>
+				<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
+					{@render tabsBar()}
+					<div
+						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
+						style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
+					>
+						<Tabs.Content value="properties">
+							{@render propertiesPanel()}
+						</Tabs.Content>
+						<Tabs.Content value="images" class="pt-3">
+							{@render imagesPanel()}
+						</Tabs.Content>
+					</div>
+				</Tabs.Root>
 			</Vaul.Content>
 		</Vaul.Portal>
 	</Vaul.Root>
@@ -242,11 +287,17 @@
 			</div>
 		</div>
 
-		<ScrollArea class="flex-1 min-h-0">
-			<div class="px-4 pb-4">
-				{@render drawerContent()}
-			</div>
-		</ScrollArea>
+		<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
+			{@render tabsBar()}
+			<ScrollArea class="flex-1 min-h-0">
+				<Tabs.Content value="properties" class="px-4 pb-4">
+					{@render propertiesPanel()}
+				</Tabs.Content>
+				<Tabs.Content value="images" class="px-4 pt-3 pb-4">
+					{@render imagesPanel()}
+				</Tabs.Content>
+			</ScrollArea>
+		</Tabs.Root>
 	</aside>
 {/if}
 
