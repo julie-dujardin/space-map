@@ -21,8 +21,6 @@
 	/** Above this reported accuracy (in meters) we warn the user — geo-IP
 	 *  sources love to claim ~25 km accuracy when they're really off by 100s. */
 	const INACCURATE_THRESHOLD_M = 5_000;
-	/** Reuse a cached fix up to this old (10 min) before re-querying. */
-	const MAX_AGE_MS = 10 * 60 * 1000;
 
 	function flyAndWait(latitude?: number, longitude?: number) {
 		const zoom = latitude !== undefined ? CLOSE_VIEW_DISTANCE : EARTH_VIEW_DISTANCE;
@@ -52,7 +50,7 @@
 				toast.error(m.my_location_error(), { description: err.message });
 				flyAndWait();
 			},
-			{ timeout: 5000, enableHighAccuracy: true, maximumAge: MAX_AGE_MS }
+			{ timeout: 5000, enableHighAccuracy: true }
 		);
 	}
 </script>
