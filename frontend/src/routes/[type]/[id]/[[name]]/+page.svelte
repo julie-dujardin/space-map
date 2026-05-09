@@ -12,6 +12,8 @@
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import ClearPromoted from '../../../../components/ClearPromoted.svelte';
+	import CompassNorthSelector from '../../../../components/CompassNorthSelector.svelte';
+	import { getNorthChoices } from '$lib/scene/north-reference';
 	import AttributionBar from '../../../../components/attribution/AttributionBar.svelte';
 	import TimeControls from '../../../../components/time/TimeControls.svelte';
 	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';
@@ -28,9 +30,24 @@
 	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
 	// proxying of position/satrec, which the renderer and SGP4 mutate).
 	let selectedBody = $state.raw<PositionedBody | undefined>();
+	// Camera-truth focus: stays set after the drawer closes, since the renderer
+	// is still tracking that body. Drives compass-north choices, which would
+	// otherwise drop to "Solar System only" the moment the drawer is dismissed.
+	let cameraFocus = $state.raw<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
 	let userPromotedCount = $state(0);
+	let northRefId = $state<string | null>(null);
+
+	const northChoices = $derived.by(() => {
+		void ctx.orientationVersion; // re-run when system data lands orientation
+		return getNorthChoices(cameraFocus, ctx);
+	});
+
+	$effect(() => {
+		if (northRefId === null) return;
+		if (!northChoices.some((c) => c.id === northRefId)) northRefId = null;
+	});
 
 	onMount(async () => {
 		const initialId = appState.view.id;
@@ -62,7 +79,11 @@
 			<Scene
 				bind:this={scene}
 				{clock}
-				onFocusChange={(body) => (selectedBody = body)}
+				{northRefId}
+				onFocusChange={(body) => {
+					cameraFocus = body;
+					selectedBody = body;
+				}}
 				onUserPromotedChange={(count) => (userPromotedCount = count)}
 			/>
 			<TimeControls {clock} />
@@ -110,6 +131,13 @@
 				/>
 				{#if userPromotedCount > 0}
 					<ClearPromoted onClear={() => scene?.clearUserPromoted()} />
+				{/if}
+				{#if northChoices.length > 1}
+					<CompassNorthSelector
+						choices={northChoices}
+						selectedId={northRefId}
+						onSelect={(id) => (northRefId = id)}
+					/>
 				{/if}
 				<div class="md:hidden pointer-events-auto">
 					<MobileTimeControls {clock} />

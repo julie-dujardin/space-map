@@ -8,6 +8,7 @@ import {
 	PerspectiveCamera,
 	PointLight,
 	Points,
+	Quaternion,
 	Raycaster,
 	Scene,
 	TextureLoader,
@@ -24,6 +25,7 @@ import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
+import { bodyNorthVector } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
@@ -113,6 +115,17 @@ export class SceneRenderer {
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
 	private readonly _tmpUserLoc = new Vector3();
+
+	/** Body whose IAU pole drives camera.up. null = ecliptic Y (scene frame). */
+	private northRefId: string | null = null;
+	private readonly upStartVec = new Vector3(0, 1, 0);
+	private readonly upTargetVec = new Vector3(0, 1, 0);
+	private readonly upCurrentVec = new Vector3(0, 1, 0);
+	private upAnimStartTime = -Infinity;
+	private static readonly UP_ANIM_DURATION_MS = 400;
+	private readonly _upQuatA = new Quaternion();
+	private readonly _upQuatB = new Quaternion();
+	private static readonly _upRef = new Vector3(0, 1, 0);
 
 	// Focus/fly animation state (mutated by animation module)
 	private readonly focus: FocusState = {
@@ -938,6 +951,12 @@ export class SceneRenderer {
 	private tick = (): void => {
 		this.rafId = requestAnimationFrame(this.tick);
 
+		// Apply chosen north → camera.up before any controls.update() / lookAt
+		// downstream consumes it (focus animation reads camera.up directly,
+		// and OrbitControls re-derives its azimuth quat from camera.up each
+		// update() call).
+		this.updateCameraUp();
+
 		// Snap controls target on first frame
 		if (this.firstFrame) {
 			this.firstFrame = false;
@@ -1148,8 +1167,11 @@ export class SceneRenderer {
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
-		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd, this.ctx).then(() =>
-			this.reapplyInitialViewIfPending()
+		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd, this.ctx).then(
+			() => {
+				this.reapplyInitialViewIfPending();
+				this.ctx.orientationVersion++;
+			}
 		);
 	}
 
@@ -1465,6 +1487,40 @@ export class SceneRenderer {
 
 	getFocusedBody(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	/**
+	 * Set which body's IAU north pole drives `camera.up`. `null` reverts to
+	 * ecliptic Y (scene frame). Triggers a slerp from the currently-applied up
+	 * vector to the new target over `UP_ANIM_DURATION_MS`. The target is
+	 * recomputed each frame inside {@link updateCameraUp} so it tracks the
+	 * (slow) drift of the body's pole over time.
+	 */
+	setNorthReference(id: string | null): void {
+		if (id === this.northRefId) return;
+		this.northRefId = id;
+		this.upStartVec.copy(this.upCurrentVec);
+		this.upAnimStartTime = performance.now();
+	}
+
+	private updateCameraUp(): void {
+		const refBody = this.northRefId ? this.ctx.getBody(this.northRefId) : undefined;
+		if (refBody) bodyNorthVector(refBody, this.clock.jd, this.upTargetVec);
+		else this.upTargetVec.copy(SceneRenderer._upRef);
+
+		const elapsed = performance.now() - this.upAnimStartTime;
+		if (elapsed >= SceneRenderer.UP_ANIM_DURATION_MS) {
+			this.upCurrentVec.copy(this.upTargetVec);
+		} else {
+			const t = Math.max(0, elapsed / SceneRenderer.UP_ANIM_DURATION_MS);
+			const s = t * t * (3 - 2 * t);
+			// Slerp via the rotation quaternions that map ecliptic Y → start/target.
+			this._upQuatA.setFromUnitVectors(SceneRenderer._upRef, this.upStartVec);
+			this._upQuatB.setFromUnitVectors(SceneRenderer._upRef, this.upTargetVec);
+			this._upQuatA.slerp(this._upQuatB, s);
+			this.upCurrentVec.copy(SceneRenderer._upRef).applyQuaternion(this._upQuatA);
+		}
+		this.camera.up.copy(this.upCurrentVec);
 	}
 
 	/**

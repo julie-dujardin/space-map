@@ -271,6 +271,12 @@ export class ContextManager {
 	 */
 	textureCredits = new Map<string, TextureCredit>();
 	textureCreditsVersion = $state(0);
+	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
+	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
+	 *  consumers — currently the compass-north choice list — recompute as
+	 *  pole data arrives, since orientation is a property mutation on the
+	 *  existing `$state.raw` body and wouldn't otherwise re-trigger derived. */
+	orientationVersion = $state(0);
 
 	// --- Non-reactive data (only read from renderer/construction, never from Svelte templates) ---
 	majorBodies: PositionedBody[] = [];

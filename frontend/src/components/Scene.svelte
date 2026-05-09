@@ -12,11 +12,12 @@
 
 	interface Props {
 		clock: SimClock;
+		northRefId?: string | null;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
 		onUserPromotedChange?: (count: number) => void;
 	}
 
-	let { clock, onFocusChange, onUserPromotedChange }: Props = $props();
+	let { clock, northRefId = null, onFocusChange, onUserPromotedChange }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -126,6 +127,10 @@
 	$effect(() => {
 		void ctx.minorBodyVersion; // reactive dependency — re-runs on each flush
 		renderer?.rebuildMinorPointClouds();
+	});
+
+	$effect(() => {
+		renderer?.setNorthReference(northRefId);
 	});
 
 	onDestroy(() => {
