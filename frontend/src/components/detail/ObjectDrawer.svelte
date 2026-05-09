@@ -147,12 +147,29 @@
 	});
 </script>
 
+{#snippet tabsBar()}
+	<div class="border-b -mx-1 px-1">
+		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
+			<Tabs.Trigger value="properties" class="px-2">{m.tab_properties()}</Tabs.Trigger>
+			{#if hasImages}
+				<Tabs.Trigger value="images" class="px-2">
+					{m.tab_images()}
+					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+						{viewerImages?.length}
+					</Badge>
+				</Tabs.Trigger>
+			{/if}
+		</Tabs.List>
+	</div>
+{/snippet}
+
 {#snippet propertiesPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
 			<Skeleton class="w-full h-36 rounded-md" />
 			<Skeleton class="w-3/4 h-6" />
 			<Skeleton class="w-1/2 h-4" />
+			{@render tabsBar()}
 			<Skeleton class="w-full h-20" />
 			<Skeleton class="w-full h-32" />
 		</div>
@@ -167,6 +184,7 @@
 					appState.setImage(0);
 				}}
 			/>
+			{@render tabsBar()}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
@@ -188,24 +206,11 @@
 {/snippet}
 
 {#snippet imagesPanel()}
-	{#if viewerImages && viewerImages.length}
-		<ImageGallery images={viewerImages} alt={displayName} />
-	{/if}
-{/snippet}
-
-{#snippet tabsBar()}
-	<div class="border-b px-2">
-		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
-			<Tabs.Trigger value="properties" class="px-2">{m.tab_properties()}</Tabs.Trigger>
-			{#if hasImages}
-				<Tabs.Trigger value="images" class="px-2">
-					{m.tab_images()}
-					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
-						{viewerImages?.length}
-					</Badge>
-				</Tabs.Trigger>
-			{/if}
-		</Tabs.List>
+	<div class="flex flex-col gap-3 p-1">
+		{@render tabsBar()}
+		{#if viewerImages && viewerImages.length}
+			<ImageGallery images={viewerImages} alt={displayName} />
+		{/if}
 	</div>
 {/snippet}
 
@@ -245,7 +250,6 @@
 					</div>
 				</div>
 				<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
-					{@render tabsBar()}
 					<div
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
 						style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
@@ -253,7 +257,7 @@
 						<Tabs.Content value="properties">
 							{@render propertiesPanel()}
 						</Tabs.Content>
-						<Tabs.Content value="images" class="pt-3">
+						<Tabs.Content value="images">
 							{@render imagesPanel()}
 						</Tabs.Content>
 					</div>
@@ -288,12 +292,11 @@
 		</div>
 
 		<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
-			{@render tabsBar()}
 			<ScrollArea class="flex-1 min-h-0">
 				<Tabs.Content value="properties" class="px-4 pb-4">
 					{@render propertiesPanel()}
 				</Tabs.Content>
-				<Tabs.Content value="images" class="px-4 pt-3 pb-4">
+				<Tabs.Content value="images" class="px-4 pb-4">
 					{@render imagesPanel()}
 				</Tabs.Content>
 			</ScrollArea>

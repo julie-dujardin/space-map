@@ -31,7 +31,6 @@
 	});
 	let types = $derived(localized?.instance_of?.length ? localized.instance_of : null);
 	let description = $derived(localized?.description ?? localized?.wikipedia?.description);
-	let aliases = $derived(localized?.aliases);
 	let fallbackType = $derived(global?.type ? objectTypeLabel(global.type) : m.object());
 
 	function ucfirst(s: string): string {
@@ -105,8 +104,5 @@
 	</div>
 	{#if description}
 		<p class="text-sm text-muted-foreground">{ucfirst(description)}</p>
-	{/if}
-	{#if aliases && aliases.length > 0}
-		<p class="text-xs text-muted-foreground">{m.also_known_as({ aliases: aliases.join(', ') })}</p>
 	{/if}
 </div>
