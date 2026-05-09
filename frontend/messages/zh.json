@@ -220,6 +220,8 @@
 	"credits_see_all": "查看完整鸣谢",
 	"credits_other_bodies": "其他天体",
 	"credits_images_individual_note": "请查看各图片以获取署名和许可信息",
+	"min_temperature": "最低气温",
+	"max_temperature": "最高气温",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "視星等",
 	"property_name_asteroid_family": "asteroid family",

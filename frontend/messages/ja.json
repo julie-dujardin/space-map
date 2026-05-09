@@ -220,6 +220,8 @@
 	"credits_see_all": "クレジットをすべて見る",
 	"credits_other_bodies": "その他の天体",
 	"credits_images_individual_note": "クレジットとライセンスは各画像をご覧ください",
+	"min_temperature": "最低気温",
+	"max_temperature": "最高気温",
 	"property_name_absolute_magnitude": "絶対等級",
 	"property_name_apparent_magnitude": "実視等級",
 	"property_name_asteroid_family": "小惑星族",

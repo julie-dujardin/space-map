@@ -113,16 +113,10 @@
 			<Row label={m.property_name_temperature()} value={formatTemperature(wd.temperature)} />
 		{/if}
 		{#if wd?.min_temperature}
-			<Row
-				label={m.property_name_min_temperature()}
-				value={formatTemperature(wd.min_temperature)}
-			/>
+			<Row label={m.min_temperature()} value={formatTemperature(wd.min_temperature)} />
 		{/if}
 		{#if wd?.max_temperature}
-			<Row
-				label={m.property_name_max_temperature()}
-				value={formatTemperature(wd.max_temperature)}
-			/>
+			<Row label={m.max_temperature()} value={formatTemperature(wd.max_temperature)} />
 		{/if}
 		{#if wd?.population}
 			<Row label={m.property_name_population()} value={formatNumber(wd.population)} />

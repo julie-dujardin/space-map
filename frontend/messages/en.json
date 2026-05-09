@@ -220,6 +220,8 @@
 	"credits_see_all": "See full credits",
 	"credits_other_bodies": "Other bodies",
 	"credits_images_individual_note": "See individual images for credits & licence",
+	"min_temperature": "min temperature",
+	"max_temperature": "max temperature",
 	"property_name_absolute_magnitude": "absolute magnitude",
 	"property_name_apparent_magnitude": "apparent magnitude",
 	"property_name_asteroid_family": "asteroid family",

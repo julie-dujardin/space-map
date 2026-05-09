@@ -220,6 +220,8 @@
 	"credits_see_all": "Посмотреть все авторы",
 	"credits_other_bodies": "Другие тела",
 	"credits_images_individual_note": "Авторство и лицензию смотрите у каждого изображения отдельно",
+	"min_temperature": "мин. температура",
+	"max_temperature": "макс. температура",
 	"property_name_absolute_magnitude": "абсолютная звёздная величина",
 	"property_name_apparent_magnitude": "видимая звёздная величина",
 	"property_name_asteroid_family": "семейство астероидов",

@@ -220,6 +220,8 @@
 	"credits_see_all": "عرض الاعتمادات الكاملة",
 	"credits_other_bodies": "أجسام أخرى",
 	"credits_images_individual_note": "راجع كل صورة على حدة للاطلاع على الاعتمادات والترخيص",
+	"min_temperature": "أدنى درجة حرارة",
+	"max_temperature": "أقصى درجة حرارة",
 	"property_name_absolute_magnitude": "القدر المطلق",
 	"property_name_apparent_magnitude": "القدر الظاهري",
 	"property_name_asteroid_family": "عائلة الكويكبات",
