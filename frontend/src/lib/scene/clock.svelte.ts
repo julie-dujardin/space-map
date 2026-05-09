@@ -13,6 +13,7 @@ const MS_PER_DAY = 86_400_000;
 export class SimClock {
 	jd = $state(0);
 	timeScale = $state(1);
+	direction = $state<1 | -1>(1);
 	private lastRealMs = 0;
 	private prevScale = 1;
 
@@ -30,10 +31,19 @@ export class SimClock {
 		}
 	}
 
-	setTimeScale(s: number): void {
-		if (s !== 0) this.prevScale = s;
-		this.timeScale = s;
+	/** Caller passes the unsigned magnitude; direction is applied here. */
+	setTimeScale(magnitude: number): void {
+		const signed = magnitude * this.direction;
+		if (signed !== 0) this.prevScale = signed;
+		this.timeScale = signed;
 		// Reset timer so scale changes don't cause a large jump from accumulated delta.
+		this.lastRealMs = performance.now();
+	}
+
+	toggleDirection(): void {
+		this.direction = this.direction === 1 ? -1 : 1;
+		this.timeScale = -this.timeScale;
+		this.prevScale = -this.prevScale;
 		this.lastRealMs = performance.now();
 	}
 

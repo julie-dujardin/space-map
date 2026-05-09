@@ -3,6 +3,7 @@
 	"loading_data": "Loading data...",
 	"time_play": "Play",
 	"time_pause": "Pause",
+	"time_reverse": "Reverse time",
 	"time_now": "Now",
 	"time_now_tooltip": "Jump to current wall-clock time",
 	"time_pick_date": "Pick a date",

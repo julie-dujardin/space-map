@@ -3,6 +3,7 @@
 	"loading_data": "جارٍ تحميل البيانات…",
 	"time_play": "تشغيل",
 	"time_pause": "إيقاف مؤقت",
+	"time_reverse": "عكس الزمن",
 	"time_now": "الآن",
 	"time_now_tooltip": "الانتقال إلى الوقت الحالي",
 	"time_pick_date": "اختر تاريخًا",

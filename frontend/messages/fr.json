@@ -3,6 +3,7 @@
 	"loading_data": "Chargement des données…",
 	"time_play": "Lecture",
 	"time_pause": "Pause",
+	"time_reverse": "Inverser le temps",
 	"time_now": "Maintenant",
 	"time_now_tooltip": "Aller à l'heure actuelle",
 	"time_pick_date": "Choisir une date",

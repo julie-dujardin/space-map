@@ -3,6 +3,7 @@
 	"loading_data": "正在加载数据…",
 	"time_play": "播放",
 	"time_pause": "暂停",
+	"time_reverse": "时间倒流",
 	"time_now": "现在",
 	"time_now_tooltip": "跳转到当前时间",
 	"time_pick_date": "选择日期",

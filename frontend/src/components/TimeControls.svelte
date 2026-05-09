@@ -1,5 +1,6 @@
 <script lang="ts">
 	import PauseIcon from '@lucide/svelte/icons/pause';
+	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -115,6 +116,17 @@
 	<button
 		type="button"
 		class="inline-flex items-center justify-center self-center h-8 px-2 rounded-md transition-colors cursor-pointer
+			{clock.direction === -1 ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10'}"
+		onclick={() => clock.toggleDirection()}
+		aria-label={m.time_reverse()}
+		title={m.time_reverse()}
+	>
+		<RewindIcon class="size-4" />
+	</button>
+
+	<button
+		type="button"
+		class="inline-flex items-center justify-center self-center h-8 px-2 rounded-md transition-colors cursor-pointer
 			{clock.playing ? 'hover:bg-primary/10' : 'bg-primary text-primary-foreground'}"
 		onclick={() => (clock.playing ? clock.pause() : clock.play())}
 		aria-label={clock.playing ? m.time_pause() : m.time_play()}
@@ -127,7 +139,9 @@
 		<button
 			type="button"
 			class="inline-flex items-center justify-center h-8 px-2 rounded-md transition-colors cursor-pointer
-				{clock.timeScale === value ? 'bg-primary text-primary-foreground' : 'hover:bg-primary/10'}"
+				{Math.abs(clock.timeScale) === value
+				? 'bg-primary text-primary-foreground'
+				: 'hover:bg-primary/10'}"
 			onclick={() => clock.setTimeScale(value)}
 		>
 			{label}

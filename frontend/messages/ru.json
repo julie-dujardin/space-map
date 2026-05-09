@@ -3,6 +3,7 @@
 	"loading_data": "Загрузка данных…",
 	"time_play": "Воспроизвести",
 	"time_pause": "Пауза",
+	"time_reverse": "Обратное время",
 	"time_now": "Сейчас",
 	"time_now_tooltip": "Перейти к текущему времени",
 	"time_pick_date": "Выбрать дату",
