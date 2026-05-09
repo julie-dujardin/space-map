@@ -1,5 +1,4 @@
 <script lang="ts">
-	import PlayIcon from '@lucide/svelte/icons/play';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
@@ -81,17 +80,13 @@
 >
 	<button
 		type="button"
-		class="inline-flex items-center justify-center self-center h-8 px-2 rounded-md
-			hover:bg-primary/10 transition-colors cursor-pointer"
+		class="inline-flex items-center justify-center self-center h-8 px-2 rounded-md transition-colors cursor-pointer
+			{clock.playing ? 'hover:bg-primary/10' : 'bg-primary text-primary-foreground'}"
 		onclick={() => (clock.playing ? clock.pause() : clock.play())}
 		aria-label={clock.playing ? m.time_pause() : m.time_play()}
 		title={clock.playing ? m.time_pause() : m.time_play()}
 	>
-		{#if clock.playing}
-			<PauseIcon class="size-4" />
-		{:else}
-			<PlayIcon class="size-4" />
-		{/if}
+		<PauseIcon class="size-4" />
 	</button>
 
 	{#each SCALES as { label, value } (value)}
