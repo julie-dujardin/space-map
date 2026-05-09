@@ -28,7 +28,7 @@ import { AppState } from './app-state.svelte';
 import type { MapViewState } from './view';
 
 const initialView: MapViewState = {
-	type: 'body',
+	type: 'b',
 	id: 'naif-10',
 	name: 'Sun',
 	date: new Date('2026-01-15T12:00:00Z'),
@@ -102,7 +102,7 @@ describe('AppState.setDate', () => {
 describe('AppState.setFocus', () => {
 	it('updates focus fields and clears imageIndex', () => {
 		const s = new AppState({ ...initialView, imageIndex: 3 });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		expect(s.view.id).toBe('naif-399');
 		expect(s.view.name).toBe('Earth');
 		expect(s.view.imageIndex).toBeNull();
@@ -110,7 +110,7 @@ describe('AppState.setFocus', () => {
 
 	it('preserves camera and date', () => {
 		const s = new AppState({ ...initialView, latitude: 12, longitude: 34, zoom: 5 });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		expect(s.view.latitude).toBe(12);
 		expect(s.view.longitude).toBe(34);
 		expect(s.view.zoom).toBe(5);
@@ -118,7 +118,7 @@ describe('AppState.setFocus', () => {
 
 	it('pushes a new history entry immediately (no debounce)', () => {
 		const s = new AppState({ ...initialView });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		expect(pushStateSpy).toHaveBeenCalledOnce();
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 	});
@@ -128,7 +128,7 @@ describe('AppState.setFocus', () => {
 	it('cancels a pending replaceState debounce', () => {
 		const s = new AppState({ ...initialView });
 		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		vi.advanceTimersByTime(250);
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 		expect(pushStateSpy).toHaveBeenCalledOnce();
@@ -187,7 +187,7 @@ describe('AppState.syncFromPopState', () => {
 describe('history.state payload is structured-cloneable', () => {
 	it('pushState receives plain data (setFocus)', () => {
 		const s = new AppState({ ...initialView });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		const [, state] = pushStateSpy.mock.calls[0];
 		expect(() => structuredClone(state)).not.toThrow();
 	});
@@ -204,10 +204,10 @@ describe('history.state payload is structured-cloneable', () => {
 	// setter mutation could retroactively rewrite past history entries.
 	it('snapshot is detached from the live reactive view', () => {
 		const s = new AppState({ ...initialView });
-		s.setFocus({ type: 'body', id: 'naif-399', name: 'Earth' });
+		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
 		const [, snapshot] = pushStateSpy.mock.calls[0];
 		const idAtPushTime = snapshot.view.id;
-		s.setFocus({ type: 'body', id: 'naif-499', name: 'Mars' });
+		s.setFocus({ type: 'b', id: 'naif-499', name: 'Mars' });
 		expect(snapshot.view.id).toBe(idAtPushTime);
 	});
 });

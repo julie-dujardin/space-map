@@ -16,7 +16,7 @@ import { serializeUrl } from './url';
 import type { MapViewState } from './view';
 
 const baseView: MapViewState = {
-	type: 'body',
+	type: 'b',
 	id: 'naif-10',
 	name: 'Sun',
 	date: new Date('2026-01-15T12:00:00Z'),
@@ -30,7 +30,7 @@ const baseView: MapViewState = {
 describe('serializeUrl', () => {
 	it('drops the name segment when name is empty', () => {
 		expect(serializeUrl({ ...baseView, name: '' })).toBe(
-			'/body/10?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
+			'/b/10?at=2026-01-15T12:00:00.000Z,45.00000,0.00000,42.430'
 		);
 	});
 
@@ -40,13 +40,13 @@ describe('serializeUrl', () => {
 	});
 
 	it('uses the spkid- URL prefix for small bodies', () => {
-		const url = serializeUrl({ ...baseView, type: 'sb', id: 'spkid-20134340', name: 'Bennu' });
-		expect(url.startsWith('/sb/20134340/Bennu?at=')).toBe(true);
+		const url = serializeUrl({ ...baseView, type: 's', id: 'spkid-20134340', name: 'Bennu' });
+		expect(url.startsWith('/s/20134340/Bennu?at=')).toBe(true);
 	});
 
 	it('uses the norad_satcat- URL prefix for satellites', () => {
-		const url = serializeUrl({ ...baseView, type: 'sat', id: 'norad_satcat-25544', name: 'ISS' });
-		expect(url.startsWith('/sat/25544/ISS?at=')).toBe(true);
+		const url = serializeUrl({ ...baseView, type: 'e', id: 'norad_satcat-25544', name: 'ISS' });
+		expect(url.startsWith('/e/25544/ISS?at=')).toBe(true);
 	});
 
 	describe('imageIndex serialization', () => {
