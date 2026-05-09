@@ -1,4 +1,4 @@
-import { formatQuantity } from './quantities';
+import { formatQuantityParts, type QuantityParts } from './quantities';
 import { AU_KM } from '$lib/math/units';
 
 type DistanceUnit = 'astronomical_unit' | 'kilometre';
@@ -15,6 +15,6 @@ export function convertDistance(au: number): { value: number; unit: DistanceUnit
 	return { value: unit === 'kilometre' ? au * AU_KM : au, unit };
 }
 
-export function formatDistance(au: number): string {
-	return formatQuantity(convertDistance(au), true);
+export function formatDistance(au: number): QuantityParts {
+	return formatQuantityParts(convertDistance(au));
 }

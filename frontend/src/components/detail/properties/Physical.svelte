@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
+	import { formatNumber, formatQuantityParts } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
 	import { formatDuration } from '$lib/format/duration';
 	import Section from './Section.svelte';
@@ -30,15 +30,13 @@
 	let radiiRows = $derived.by(() => {
 		if (!radii) return null;
 		const { a, b, c } = radii;
-		const unit = formatUnit('kilometre');
 		if (a === b && b === c) {
-			return [{ label: m.property_name_radius(), value: `${formatNumber(a)} ${unit}` }];
+			return [{ label: m.property_name_radius(), value: formatNumber(a), unit: 'kilometre' }];
 		}
-		const equatorial =
-			a === b ? `${formatNumber(a)} ${unit}` : `${formatNumber(a)} × ${formatNumber(b)} ${unit}`;
+		const equatorial = a === b ? formatNumber(a) : `${formatNumber(a)} × ${formatNumber(b)}`;
 		return [
-			{ label: m.equatorial_radius(), value: equatorial },
-			{ label: m.polar_radius(), value: `${formatNumber(c)} ${unit}` }
+			{ label: m.equatorial_radius(), value: equatorial, unit: 'kilometre' },
+			{ label: m.polar_radius(), value: formatNumber(c), unit: 'kilometre' }
 		];
 	});
 
@@ -71,33 +69,33 @@
 {#if hasContent}
 	<Section title={m.physical_properties()}>
 		{#if wd?.mass}
-			<Row label={m.property_name_mass()} value={formatQuantity(wd.mass)} />
+			<Row label={m.property_name_mass()} {...formatQuantityParts(wd.mass)} />
 		{:else if sbdb?.mass}
-			<Row label={m.property_name_mass()} value={formatQuantity(sbdb.mass)} />
+			<Row label={m.property_name_mass()} {...formatQuantityParts(sbdb.mass)} />
 		{/if}
 		{#if radiiRows}
 			{#each radiiRows as row (row.label)}
-				<Row label={row.label} value={row.value} />
+				<Row label={row.label} value={row.value} unit={row.unit} />
 			{/each}
 		{:else if wd?.radius}
-			<Row label={m.property_name_radius()} value={formatQuantity(wd.radius)} />
+			<Row label={m.property_name_radius()} {...formatQuantityParts(wd.radius)} />
 		{:else if sbdb?.diameter}
-			<Row label={m.diameter()} value={`${sbdb.diameter} ${formatUnit('kilometre')}`} />
+			<Row label={m.diameter()} value={String(sbdb.diameter)} unit="kilometre" />
 		{/if}
 		{#if wd?.length && !radii && !wd?.radius && !sbdb?.diameter}
-			<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
+			<Row label={m.property_name_length()} {...formatQuantityParts(wd.length)} />
 		{/if}
 		{#if wd?.width && !radii && !wd?.radius && !sbdb?.diameter}
-			<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
+			<Row label={m.property_name_width()} {...formatQuantityParts(wd.width)} />
 		{/if}
 		{#if sbdb?.extent && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
 		{/if}
 		{#if wd?.density}
-			<Row label={m.property_name_density()} value={formatQuantity(wd.density)} />
+			<Row label={m.property_name_density()} {...formatQuantityParts(wd.density)} />
 		{/if}
 		{#if wd?.surface_gravity}
-			<Row label={m.property_name_surface_gravity()} value={formatQuantity(wd.surface_gravity)} />
+			<Row label={m.property_name_surface_gravity()} {...formatQuantityParts(wd.surface_gravity)} />
 		{/if}
 		{#if sbdb?.albedo}
 			<Row label={m.albedo()} value={formatNumber(sbdb.albedo)} tooltip={m.tooltip_albedo()} />
@@ -105,24 +103,18 @@
 		{#if rotationPeriodDays != null}
 			<Row
 				label={m.rotation_period()}
-				value={formatDuration(rotationPeriodDays)}
+				{...formatDuration(rotationPeriodDays)}
 				tooltip={m.tooltip_rotation_period()}
 			/>
 		{/if}
 		{#if wd?.temperature}
-			<Row label={m.property_name_temperature()} value={formatTemperature(wd.temperature)} />
+			<Row label={m.property_name_temperature()} {...formatTemperature(wd.temperature)} />
 		{/if}
 		{#if wd?.min_temperature}
-			<Row
-				label={m.property_name_min_temperature()}
-				value={formatTemperature(wd.min_temperature)}
-			/>
+			<Row label={m.property_name_min_temperature()} {...formatTemperature(wd.min_temperature)} />
 		{/if}
 		{#if wd?.max_temperature}
-			<Row
-				label={m.property_name_max_temperature()}
-				value={formatTemperature(wd.max_temperature)}
-			/>
+			<Row label={m.property_name_max_temperature()} {...formatTemperature(wd.max_temperature)} />
 		{/if}
 		{#if wd?.population}
 			<Row label={m.property_name_population()} value={formatNumber(wd.population)} />

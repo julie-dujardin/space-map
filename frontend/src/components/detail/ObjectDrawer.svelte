@@ -156,17 +156,19 @@
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
 			/>
-			<Physical global={data?.global ?? null} />
-			<Orbital
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-				{body}
-				orbitElements={body.orbitElements ?? body.data}
-				{parentBody}
-				jd={sampledJd}
-			/>
-			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
-			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			<div class="grid grid-cols-[auto_1fr_auto] gap-y-5">
+				<Physical global={data?.global ?? null} />
+				<Orbital
+					global={data?.global ?? null}
+					localized={data?.localized ?? null}
+					{body}
+					orbitElements={body.orbitElements ?? body.data}
+					{parentBody}
+					jd={sampledJd}
+				/>
+				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
+				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			</div>
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
 	{/if}

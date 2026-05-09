@@ -29,6 +29,10 @@ _ALWAYS_INCLUDE_UNITS: set[str] = {
     "astronomical_unit",  # system scale orbital elements
     "hour",  # sbdb rot_per - rotation period
     "year",  # sbdb per_y - orbital period
+    "day",  # short orbital periods (LEO satellites)
+    "minute",  # very short orbital periods
+    "degree",  # inclination, latitude, longitude
+    "square_metre",  # CelesTrak RCS
     "jupiter_radius",  # exoplanet radii
     "kilometre_per_second",  # orbital speed readout
 }

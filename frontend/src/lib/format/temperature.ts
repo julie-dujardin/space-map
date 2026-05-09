@@ -1,4 +1,4 @@
-import { formatQuantity } from './quantities';
+import { formatQuantityParts, type QuantityParts } from './quantities';
 
 export type TemperatureUnit = 'kelvin' | 'degree_celsius' | 'degree_fahrenheit';
 
@@ -63,6 +63,6 @@ export function convertTemperature(q: { value: number; unit: string }): {
 	return { value: roundToPrecision(converted, precision), unit: target };
 }
 
-export function formatTemperature(q: { value: number; unit: string }): string {
-	return formatQuantity(convertTemperature(q), true);
+export function formatTemperature(q: { value: number; unit: string }): QuantityParts {
+	return formatQuantityParts(convertTemperature(q));
 }

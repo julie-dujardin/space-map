@@ -138,7 +138,12 @@
 			<Row label={m.property_name_capital_cost()} value={formatCurrency(capitalCost)} />
 		{/if}
 		{#if ct?.rcs != null}
-			<Row label={m.rcs()} value={`${formatNumber(ct.rcs)} m²`} tooltip={m.tooltip_rcs()} />
+			<Row
+				label={m.rcs()}
+				value={formatNumber(ct.rcs)}
+				unit="square_metre"
+				tooltip={m.tooltip_rcs()}
+			/>
 		{/if}
 		{#if countries.length > 0}
 			<Row label={countries.length === 1 ? m.country() : m.countries()}>

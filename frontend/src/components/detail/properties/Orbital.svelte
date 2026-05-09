@@ -7,7 +7,7 @@
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
-	import { formatNumber, formatQuantity } from '$lib/format/quantities';
+	import { formatNumber, formatQuantityParts } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
 	import { formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
@@ -139,8 +139,14 @@
 	let isNeo = $derived(sbdb?.neo);
 	let isPha = $derived(sbdb?.pha);
 
-	let dataArcValue = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
-	let epochJd = $derived(orbitElements?.epoch ?? global?.orbit?.epoch_jd ?? null);
+	let dataArc = $derived(sbdb?.data_arc != null ? formatDuration(sbdb.data_arc) : null);
+	// Chebyshev-tracked bodies get osculating Kepler elements computed at an
+	// arbitrary reference epoch just to drive the trail/sub-point math — that
+	// epoch isn't a real observational epoch, so showing it is misleading.
+	let isChebyshev = $derived(body != null && ctx?.chebStore?.has(body.data.id) === true);
+	let epochJd = $derived(
+		isChebyshev ? null : (orbitElements?.epoch ?? global?.orbit?.epoch_jd ?? null)
+	);
 	let epochValue = $derived(
 		epochJd != null
 			? `${formatJulianDate(epochJd)} (${formatJulianDateRelative(epochJd, jd)})`
@@ -245,19 +251,19 @@
 		{#if sbdb?.per_y}
 			<Row
 				label={m.orbital_period()}
-				value={formatDuration(sbdb.per_y * 365.25)}
+				{...formatDuration(sbdb.per_y * 365.25)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{:else if satPeriodDays != null}
 			<Row
 				label={m.orbital_period()}
-				value={formatDuration(satPeriodDays)}
+				{...formatDuration(satPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{:else if elementsPeriodDays != null}
 			<Row
 				label={m.orbital_period()}
-				value={formatDuration(elementsPeriodDays)}
+				{...formatDuration(elementsPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
 		{/if}
@@ -271,37 +277,34 @@
 		{#if orbit?.i != null}
 			<Row
 				label={m.inclination()}
-				value={`${formatNumber(orbit.i)}°`}
+				value={formatNumber(orbit.i)}
+				unit="degree"
 				tooltip={m.tooltip_inclination()}
 			/>
 		{/if}
 		{#if orbit?.a}
 			<Row
 				label={m.semi_major_axis()}
-				value={formatDistance(orbit.a)}
+				{...formatDistance(orbit.a)}
 				tooltip={m.tooltip_semi_major_axis()}
 			/>
 		{/if}
 		{#if orbit?.q}
-			<Row
-				label={m.perihelion()}
-				value={formatDistance(orbit.q)}
-				tooltip={m.tooltip_perihelion()}
-			/>
+			<Row label={m.perihelion()} {...formatDistance(orbit.q)} tooltip={m.tooltip_perihelion()} />
 		{/if}
 		{#if sbdb?.ad}
-			<Row label={m.aphelion()} value={formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
+			<Row label={m.aphelion()} {...formatDistance(sbdb.ad)} tooltip={m.tooltip_aphelion()} />
 		{/if}
 		{#if showApogeePerigee && celestrak?.perigee != null}
 			<Row
 				label={m.perigee()}
-				value={formatQuantity({ value: celestrak.perigee, unit: 'kilometre' }, true)}
+				{...formatQuantityParts({ value: celestrak.perigee, unit: 'kilometre' })}
 			/>
 		{/if}
 		{#if showApogeePerigee && celestrak?.apogee != null}
 			<Row
 				label={m.apogee()}
-				value={formatQuantity({ value: celestrak.apogee, unit: 'kilometre' }, true)}
+				{...formatQuantityParts({ value: celestrak.apogee, unit: 'kilometre' })}
 			/>
 		{/if}
 		{#if orbit?.tp != null}
@@ -314,35 +317,33 @@
 		{#if altitudeKm != null && altitudeKm > 0}
 			<Row
 				label={m.altitude()}
-				value={formatDistance(altitudeKm / AU_KM)}
+				{...formatDistance(altitudeKm / AU_KM)}
 				tooltip={m.tooltip_altitude()}
 			/>
 		{/if}
 		{#if subPoint}
 			<Row
 				label={m.latitude()}
-				value={`${formatNumber(subPoint.latitude)}°`}
+				value={formatNumber(subPoint.latitude)}
+				unit="degree"
 				tooltip={m.tooltip_latitude()}
 			/>
 			<Row
 				label={m.longitude()}
-				value={`${formatNumber(subPoint.longitude)}°`}
+				value={formatNumber(subPoint.longitude)}
+				unit="degree"
 				tooltip={m.tooltip_longitude()}
 			/>
 		{/if}
 		{#if currentState}
 			<Row
 				label={m.orbital_speed()}
-				value={formatQuantity({ value: currentState.vKms, unit: 'kilometre_per_second' }, true)}
+				{...formatQuantityParts({ value: currentState.vKms, unit: 'kilometre_per_second' })}
 				tooltip={m.tooltip_orbital_speed()}
 			/>
 		{/if}
 		{#if sbdb?.moid}
-			<Row
-				label={m.earth_moid()}
-				value={formatDistance(sbdb.moid)}
-				tooltip={m.tooltip_earth_moid()}
-			/>
+			<Row label={m.earth_moid()} {...formatDistance(sbdb.moid)} tooltip={m.tooltip_earth_moid()} />
 		{/if}
 		{#if sbdb?.condition_code != null}
 			<Row
@@ -351,8 +352,8 @@
 				tooltip={m.tooltip_condition_code()}
 			/>
 		{/if}
-		{#if dataArcValue}
-			<Row label={m.observation_arc()} value={dataArcValue} tooltip={m.tooltip_observation_arc()} />
+		{#if dataArc}
+			<Row label={m.observation_arc()} {...dataArc} tooltip={m.tooltip_observation_arc()} />
 		{/if}
 		{#if sbdb?.n_obs_used != null}
 			<Row
