@@ -34,8 +34,14 @@ class CelesTrakIngestor:
     def __init__(self, download_dir: Path):
         self.session = get_session()
         self.provider_dir = download_dir / PROVIDERS.CELESTRAK
-        self.csv_path = self.provider_dir / "gp-active.csv"
-        self.groups_dir = self.provider_dir / "groups"
+        # The downloader writes daily snapshots under <year>/<month>/<day>/.
+        # Ingest from the most-recent day so DB-side queries (object lists,
+        # names, SGP4 extras) reflect the freshest element set; the export
+        # reads every day's snapshot directly off disk for time-sliced
+        # overlays so what's ingested here only matters outside the export.
+        latest_day = _latest_day_dir(self.provider_dir)
+        self.csv_path = latest_day / "gp-active.csv"
+        self.groups_dir = latest_day / "groups"
         self.total_rows = 0
         self.missing_satcat = 0
         # Pre-loaded from the satcat DB table (ingested earlier).
@@ -204,6 +210,30 @@ class CelesTrakIngestor:
                 self.missing_satcat,
                 self.total_rows,
             )
+
+
+def _latest_day_dir(provider_dir: Path) -> Path:
+    """Find the newest <year>/<month>/<day>/ snapshot under the celestrak dir.
+
+    Falls back to the provider dir itself when no day-tiered snapshot exists,
+    so existing run_path handling (``csv_path.exists()`` skip) keeps working.
+    """
+    if not provider_dir.exists():
+        return provider_dir
+    latest: tuple[int, int, int, Path] | None = None
+    for year_dir in provider_dir.iterdir():
+        if not (year_dir.is_dir() and year_dir.name.isdigit()):
+            continue
+        for month_dir in year_dir.iterdir():
+            if not (month_dir.is_dir() and month_dir.name.isdigit()):
+                continue
+            for day_dir in month_dir.iterdir():
+                if not (day_dir.is_dir() and day_dir.name.isdigit()):
+                    continue
+                key = (int(year_dir.name), int(month_dir.name), int(day_dir.name))
+                if latest is None or key > latest[:3]:
+                    latest = (*key, day_dir)
+    return latest[3] if latest is not None else provider_dir
 
 
 def _count_csv_rows(path: Path) -> int:
