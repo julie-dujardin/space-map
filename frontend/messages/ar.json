@@ -156,6 +156,8 @@
 	"celestrak_orbit_data": "CelesTrak بيانات المدار ({id})",
 	"mpc_database": "قاعدة بيانات MPC ({id})",
 	"my_location": "موقعي",
+	"my_location_inaccurate": "الدقة المُبلَّغ عنها {km} كم — قد يختلف الموقع الفعلي",
+	"my_location_error": "تعذّر تحديد موقعك",
 	"go_to_object": "الانتقال إلى الجسم",
 	"zoom_out_to_system": "التصغير إلى النظام",
 	"object_not_found": "الجسم {id} غير موجود",

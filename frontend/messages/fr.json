@@ -156,6 +156,8 @@
 	"celestrak_orbit_data": "CelesTrak Données Orbitales ({id})",
 	"mpc_database": "Base de données MPC ({id})",
 	"my_location": "Ma position",
+	"my_location_inaccurate": "Précision rapportée : {km} km — la position réelle peut différer",
+	"my_location_error": "Impossible d'obtenir votre position",
 	"go_to_object": "Aller à l'objet",
 	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {id} introuvable",

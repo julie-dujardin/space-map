@@ -156,6 +156,8 @@
 	"celestrak_orbit_data": "CelesTrak 轨道数据 ({id})",
 	"mpc_database": "MPC 数据库 ({id})",
 	"my_location": "我的位置",
+	"my_location_inaccurate": "报告精度为 {km} 公里 — 实际位置可能不同",
+	"my_location_error": "无法获取您的位置",
 	"go_to_object": "前往该对象",
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {id}",
