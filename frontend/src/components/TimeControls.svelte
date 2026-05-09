@@ -49,15 +49,60 @@
 		{ label: '1 y/s', value: 31_557_600 }
 	];
 
-	let dateLabel = $derived.by(() => {
-		const d = jdToDate(clock.jd);
-		return d.toLocaleString(getLocale(), {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
+	const DATE_OPTS: Intl.DateTimeFormatOptions = {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	};
+
+	// Width fixtures: cover the variants that change rendered length —
+	// month-abbreviation outliers, meridiem/hour boundaries, and day digit count.
+	// Char counting underestimates RTL/CJK/diacritics, so we measure actual
+	// pixel width instead (see effect below).
+	const WIDTH_FIXTURES = [
+		// month-abbreviation outliers
+		new Date(Date.UTC(2026, 8, 30, 23, 59)), // Sep — often longest ("sept.", "syys", "сент.")
+		new Date(Date.UTC(2026, 10, 30, 23, 59)), // Nov — longer than Sep in fi/some Slavic locales
+		new Date(Date.UTC(2026, 9, 30, 23, 59)), // Oct — long in cs ("říj.")
+		new Date(Date.UTC(2026, 1, 28, 23, 59)), // Feb — accented in fr/es ("févr.")
+		// meridiem / hour boundaries (12h locales)
+		new Date(Date.UTC(2026, 8, 30, 0, 0)), // 12:00 AM
+		new Date(Date.UTC(2026, 8, 30, 12, 0)), // 12:00 PM
+		new Date(Date.UTC(2026, 8, 30, 1, 5)),
+		// 1-digit day
+		new Date(Date.UTC(2026, 8, 9, 23, 59))
+	];
+
+	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), DATE_OPTS));
+
+	// Measure the widest fixture against an off-screen span that mirrors the
+	// trigger's typography + padding, then pin the trigger's min-width to it.
+	// Pixel measurement handles non-Latin scripts and proportional fonts
+	// correctly; char counting does not.
+	// TODO: recompute when the language switcher lands.
+	let dateMinPx = $state(0);
+
+	$effect(() => {
+		const loc = getLocale();
+		const el = document.createElement('span');
+		el.className =
+			'inline-flex items-center h-8 px-2 font-mono tabular-nums whitespace-nowrap text-xs';
+		el.style.cssText =
+			'position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none;';
+		document.body.appendChild(el);
+		try {
+			let max = 0;
+			for (const d of WIDTH_FIXTURES) {
+				el.textContent = d.toLocaleString(loc, DATE_OPTS);
+				const w = el.getBoundingClientRect().width;
+				if (w > max) max = w;
+			}
+			dateMinPx = Math.ceil(max);
+		} finally {
+			el.remove();
+		}
 	});
 </script>
 
@@ -93,8 +138,9 @@
 
 	<Popover.Root bind:open={pickerOpen}>
 		<Popover.Trigger
-			class="inline-flex items-center h-8 px-2 font-mono tabular-nums
+			class="inline-flex items-center justify-center h-8 px-2 font-mono tabular-nums
 				rounded-md hover:bg-primary/10 transition-colors cursor-pointer"
+			style={dateMinPx ? `min-width: ${dateMinPx}px` : undefined}
 			title={m.time_pick_date()}
 		>
 			{dateLabel}
