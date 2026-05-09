@@ -45,7 +45,7 @@
 	onclick={locate}
 	disabled={state === 'loading'}
 	class="pointer-events-auto flex items-center justify-center
-		w-15 h-15 md:w-10 md:h-10 rounded-full
+		w-12 h-12 md:w-10 md:h-10 rounded-full
 		bg-primary-foreground hover:bg-primary-foreground/80
 		text-primary transition-colors cursor-pointer
 		disabled:opacity-50 disabled:cursor-wait"
