@@ -11,9 +11,9 @@
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
-	import AttributionBar from '../../../../components/AttributionBar.svelte';
-	import TimeControls from '../../../../components/TimeControls.svelte';
-	import MobileTimeControls from '../../../../components/MobileTimeControls.svelte';
+	import AttributionBar from '../../../../components/attribution/AttributionBar.svelte';
+	import TimeControls from '../../../../components/time/TimeControls.svelte';
+	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 

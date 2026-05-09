@@ -13,7 +13,7 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import ObjectHeader from './ObjectHeader.svelte';
-	import ImageViewer from '../ImageViewer.svelte';
+	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
 	import Physical from './properties/Physical.svelte';
 	import Orbital from './properties/Orbital.svelte';
