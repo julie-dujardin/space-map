@@ -21,7 +21,7 @@
 
 	function jdToCalendarDate(jd: number): CalendarDate {
 		const d = jdToDate(jd);
-		return new CalendarDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+		return new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
 	}
 
 	$effect(() => {
@@ -34,18 +34,8 @@
 
 	function handleDateChange(v: DateValue | undefined) {
 		if (!v) return;
-		const cur = jdToDate(clock.jd);
-		const next = new Date(
-			Date.UTC(
-				v.year,
-				v.month - 1,
-				v.day,
-				cur.getUTCHours(),
-				cur.getUTCMinutes(),
-				cur.getUTCSeconds(),
-				cur.getUTCMilliseconds()
-			)
-		);
+		const next = jdToDate(clock.jd);
+		next.setFullYear(v.year, v.month - 1, v.day);
 		clock.setJD(dateToJD(next));
 	}
 
@@ -62,7 +52,6 @@
 	let dateLabel = $derived.by(() => {
 		const d = jdToDate(clock.jd);
 		return d.toLocaleString(getLocale(), {
-			timeZone: 'UTC',
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric',

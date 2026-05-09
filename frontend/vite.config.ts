@@ -8,7 +8,9 @@ const dataTarget = process.env.DATA_SERVER_URL ?? 'http://localhost:8080';
 
 export default defineConfig({
 	test: {
-		include: ['src/**/*.test.ts']
+		include: ['src/**/*.test.ts'],
+		// Lock TZ so date formatting tests are deterministic across machines.
+		env: { TZ: 'UTC' }
 	},
 	worker: {
 		format: 'es'

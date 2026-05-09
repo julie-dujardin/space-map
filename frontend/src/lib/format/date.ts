@@ -15,7 +15,6 @@ export function jdToDate(jd: number): Date {
 
 function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
 	return d.toLocaleDateString(getLocale(), {
-		timeZone: 'UTC',
 		year: 'numeric',
 		month,
 		day: 'numeric'
@@ -45,15 +44,19 @@ export function formatIsoDate(raw: string): string {
 	}
 	if (isNaN(d.getTime())) return raw;
 
-	const opts: Intl.DateTimeFormatOptions = { timeZone: 'UTC', year: 'numeric' };
+	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || ss !== '00');
+	const opts: Intl.DateTimeFormatOptions = { year: 'numeric' };
 	if (month > 0) opts.month = 'long';
 	if (day > 0) opts.day = 'numeric';
 	if (isBCE) opts.era = 'short';
+	// Calendar-only inputs (no time component) are anchored to UTC midnight by
+	// convention; render them in UTC so the encoded date isn't shifted by the
+	// browser's offset. Time-bearing inputs are real instants and use local TZ.
+	if (!hasTime) opts.timeZone = 'UTC';
 
 	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(d);
-	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || ss !== '00');
 	if (!hasTime || month === 0 || day === 0) return dateStr;
-	const timeStr = d.toLocaleTimeString(getLocale(), { timeZone: 'UTC' });
+	const timeStr = d.toLocaleTimeString(getLocale());
 	return `${dateStr} ${timeStr}`;
 }
 
