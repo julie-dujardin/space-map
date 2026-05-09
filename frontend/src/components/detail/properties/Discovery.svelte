@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
-	import { formatIsoDate } from '$lib/format/date';
+	import { formatIsoDate, parseIsoDate } from '$lib/format/date';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -14,7 +14,15 @@
 	let { global, localized }: Props = $props();
 
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
-	let discoveryDate = $derived(global?.wikidata?.discovery_date?.[0] ?? global?.sbdb?.first_obs);
+	let discoveryDate = $derived(
+		[...(global?.wikidata?.discovery_date ?? []), global?.sbdb?.first_obs]
+			.filter((d): d is string => !!d)
+			.sort((a, b) => {
+				const ta = parseIsoDate(a)?.date.getTime() ?? Infinity;
+				const tb = parseIsoDate(b)?.date.getTime() ?? Infinity;
+				return ta - tb;
+			})[0]
+	);
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
 	let asteroidFamily = $derived(localized?.asteroid_family);

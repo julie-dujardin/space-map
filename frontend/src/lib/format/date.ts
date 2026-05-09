@@ -21,30 +21,50 @@ function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
 	});
 }
 
+interface ParsedIsoDate {
+	date: Date;
+	month: number;
+	day: number;
+	isBCE: boolean;
+	hasTime: boolean;
+}
+
 /**
- * Format an ISO 8601 date string as a localized date. Handles plain dates
+ * Parse an ISO 8601 date string into its components. Handles plain dates
  * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), and Wikidata-style
  * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"). Wikidata
- * reduced-precision values encode unknown month/day as 00; those components
- * are omitted from the rendering. Negative years render with the locale's era.
+ * reduced-precision values encode unknown month/day as 00.
  */
-export function formatIsoDate(raw: string): string {
+export function parseIsoDate(raw: string): ParsedIsoDate | null {
 	const m = raw.match(/^([+-]?)(\d{4,})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
-	if (!m) return raw;
+	if (!m) return null;
 	const [, sign, yearStr, monthStr, dayStr, hh, mm, ss] = m;
 	const isBCE = sign === '-';
 	const yearAbs = parseInt(yearStr, 10);
 	const month = parseInt(monthStr, 10);
 	const day = parseInt(dayStr, 10);
 
-	const d = new Date(0);
-	d.setUTCFullYear(isBCE ? -yearAbs : yearAbs, (month || 1) - 1, day || 1);
+	const date = new Date(0);
+	date.setUTCFullYear(isBCE ? -yearAbs : yearAbs, (month || 1) - 1, day || 1);
 	if (hh !== undefined) {
-		d.setUTCHours(parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10), 0);
+		date.setUTCHours(parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10), 0);
 	}
-	if (isNaN(d.getTime())) return raw;
+	if (isNaN(date.getTime())) return null;
 
 	const hasTime = hh !== undefined && (hh !== '00' || mm !== '00' || ss !== '00');
+	return { date, month, day, isBCE, hasTime };
+}
+
+/**
+ * Format an ISO 8601 date string as a localized date. See {@link parseIsoDate}
+ * for accepted formats. Reduced-precision month/day (00) are omitted from
+ * rendering; negative years render with the locale's era.
+ */
+export function formatIsoDate(raw: string): string {
+	const parsed = parseIsoDate(raw);
+	if (!parsed) return raw;
+	const { date, month, day, isBCE, hasTime } = parsed;
+
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric' };
 	if (month > 0) opts.month = 'long';
 	if (day > 0) opts.day = 'numeric';
@@ -54,9 +74,9 @@ export function formatIsoDate(raw: string): string {
 	// browser's offset. Time-bearing inputs are real instants and use local TZ.
 	if (!hasTime) opts.timeZone = 'UTC';
 
-	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(d);
+	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(date);
 	if (!hasTime || month === 0 || day === 0) return dateStr;
-	const timeStr = d.toLocaleTimeString(getLocale());
+	const timeStr = date.toLocaleTimeString(getLocale());
 	return `${dateStr} ${timeStr}`;
 }
 
