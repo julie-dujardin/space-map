@@ -61,6 +61,8 @@ import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
+import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
+import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // --- SceneRenderer ---
 
@@ -101,6 +103,7 @@ export class SceneRenderer {
 
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
+	private readonly _tmpUserLoc = new Vector3();
 
 	// Focus/fly animation state (mutated by animation module)
 	private readonly focus: FocusState = {
@@ -146,6 +149,8 @@ export class SceneRenderer {
 	private readonly textureLoader = new TextureLoader();
 	private readonly shadowLight: DirectionalLight;
 	private sunPointLight: PointLight | undefined;
+	/** Pinned user-location dot on Earth's surface (Google-Maps-style). */
+	private userLocationMarker: CSS2DObject | null = null;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -971,6 +976,9 @@ export class SceneRenderer {
 		// stale basis for one frame.
 		this.refreshDeferredOrbitLines();
 
+		// Hide the user-location dot when it rotates around to Earth's far side.
+		this.updateUserLocationOcclusion();
+
 		this.updateTextureLOD();
 
 		// Shadow light: swap between PointLight (solar system) and DirectionalLight (sub-system)
@@ -1341,6 +1349,57 @@ export class SceneRenderer {
 
 	getFocusedBody(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	/**
+	 * Drop a "you are here" pin at lat/lon on Earth. Re-pins if already set.
+	 * Parented to Earth's mesh, so it inherits Earth's rotation and the dot
+	 * stays glued to the same ground point as the planet spins.
+	 */
+	setUserLocation(latitude: number, longitude: number): void {
+		const earth = this.bodyObjects.get('naif-399');
+		if (!earth?.mesh) return;
+		if (this.userLocationMarker) removeUserLocationMarker(this.userLocationMarker);
+		this.userLocationMarker = createUserLocationMarker(
+			earth.mesh,
+			earth.radiusScene,
+			latitude,
+			longitude
+		);
+	}
+
+	clearUserLocation(): void {
+		if (this.userLocationMarker) {
+			removeUserLocationMarker(this.userLocationMarker);
+			this.userLocationMarker = null;
+		}
+	}
+
+	/**
+	 * Hide the user-location dot when it's on Earth's far hemisphere from the
+	 * camera. The marker sits exactly on the surface (|earthToMarker| = R), so
+	 * the tangent-plane visibility check reduces to `earthToMarker · earthToCamera > R²`.
+	 * If the camera is inside Earth (e.g., debug zoom-through), keep it visible.
+	 */
+	private updateUserLocationOcclusion(): void {
+		const marker = this.userLocationMarker;
+		if (!marker) return;
+		const earth = this.bodyObjects.get('naif-399');
+		if (!earth?.mesh) return;
+		// Earth-center → marker, in scene-frame coords (focus-relative).
+		this._tmpUserLoc.copy(marker.position).applyQuaternion(earth.mesh.quaternion);
+		const ex = this._tmpUserLoc.x;
+		const ey = this._tmpUserLoc.y;
+		const ez = this._tmpUserLoc.z;
+		// Earth-center → camera. mesh.position holds Earth's focus-relative pos.
+		const ep = earth.mesh.position;
+		const cx = this.camera.position.x - ep.x;
+		const cy = this.camera.position.y - ep.y;
+		const cz = this.camera.position.z - ep.z;
+		const r = earth.radiusScene;
+		const r2 = r * r;
+		const camDist2 = cx * cx + cy * cy + cz * cz;
+		marker.visible = camDist2 <= r2 || ex * cx + ey * cy + ez * cz > r2;
 	}
 
 	resize(width: number, height: number): void {

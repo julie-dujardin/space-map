@@ -96,8 +96,10 @@
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem);"
 			>
 				<MyLocation
-					onLocate={(zoom: number, lat?: number, lng?: number) =>
-						scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0}
+					onLocate={(zoom: number, lat?: number, lng?: number) => {
+						if (lat !== undefined && lng !== undefined) scene?.setUserLocation(lat, lng);
+						return scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
+					}}
 				/>
 				<div class="md:hidden pointer-events-auto">
 					<MobileTimeControls {clock} />

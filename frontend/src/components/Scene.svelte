@@ -40,6 +40,10 @@
 		return renderer?.focusOnBody(id, zoom, latitude, longitude) ?? 0;
 	}
 
+	export function setUserLocation(latitude: number, longitude: number): void {
+		renderer?.setUserLocation(latitude, longitude);
+	}
+
 	function isLive(): boolean {
 		const jd = clock.jd;
 		const wallJd = dateToJD(new Date());

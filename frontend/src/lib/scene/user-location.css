@@ -1,0 +1,9 @@
+.user-location-marker {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #1a73e8;
+	border: 2px solid #fff;
+	box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+	pointer-events: none;
+}
