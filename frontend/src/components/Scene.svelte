@@ -13,9 +13,10 @@
 	interface Props {
 		clock: SimClock;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
+		onUserPromotedChange?: (count: number) => void;
 	}
 
-	let { clock, onFocusChange }: Props = $props();
+	let { clock, onFocusChange, onUserPromotedChange }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -42,6 +43,10 @@
 
 	export function setUserLocation(latitude: number, longitude: number): void {
 		renderer?.setUserLocation(latitude, longitude);
+	}
+
+	export function clearUserPromoted(): void {
+		renderer?.clearUserPromoted();
 	}
 
 	function isLive(): boolean {
@@ -78,7 +83,10 @@
 					});
 				}
 			},
-			onCameraPosition: syncCameraToUrl
+			onCameraPosition: syncCameraToUrl,
+			onUserPromotedChange(count) {
+				onUserPromotedChange?.(count);
+			}
 		});
 
 		const ro = new ResizeObserver(() => {

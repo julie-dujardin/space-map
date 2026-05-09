@@ -95,6 +95,15 @@ export class SceneRenderer {
 	 *  *are* the promoted set). The auto-promote loop is a no-op until labels
 	 *  resolve a few hundred ms after construction. */
 	private pendingDefaultPromotions: Set<string> = new Set();
+	/** Stable copy of the curated default-promoted set (labels keys ∪
+	 *  MINOR_PROMOTED_IDS). Unlike {@link pendingDefaultPromotions} this is
+	 *  never drained — it's the "exempt from clear" set queried at clear time
+	 *  and at promotion time to decide whether a body counts as user-promoted. */
+	private defaultPromotedIds: Set<string> = new Set();
+	/** Bodies the user promoted by clicking or by URL navigation (not part of
+	 *  the curated default set, not built at scene construction). These can be
+	 *  reverted to point-cloud dots via {@link clearUserPromoted}. */
+	private userPromotedIds: Set<string> = new Set();
 	private hoveredBodyIds = new Set<string>();
 	private cullFrameCounter = 0;
 
@@ -168,11 +177,27 @@ export class SceneRenderer {
 		// Fire-and-forget: the auto-promote loop reads the set every frame and is
 		// a no-op until labels resolve a few hundred ms later.
 		fetchLabels().then((labels) => {
-			for (const id of labels.keys()) this.pendingDefaultPromotions.add(id);
+			for (const id of labels.keys()) {
+				this.pendingDefaultPromotions.add(id);
+				this.defaultPromotedIds.add(id);
+			}
 			// Minor-promoted bodies still need to be built as halos. They may or
 			// may not be in the labels file (cheb-covered ones are) — adding here
 			// is idempotent and covers those that aren't.
-			for (const id of MINOR_PROMOTED_IDS) this.pendingDefaultPromotions.add(id);
+			for (const id of MINOR_PROMOTED_IDS) {
+				this.pendingDefaultPromotions.add(id);
+				this.defaultPromotedIds.add(id);
+			}
+			// URL-navigation that landed before labels resolved may have flagged a
+			// curated body as user-promoted; reconcile now that the truth is known.
+			let pruned = false;
+			for (const id of this.userPromotedIds) {
+				if (this.defaultPromotedIds.has(id)) {
+					this.userPromotedIds.delete(id);
+					pruned = true;
+				}
+			}
+			if (pruned) this.emitUserPromotedCount();
 		});
 
 		// Renderer
@@ -1275,6 +1300,94 @@ export class SceneRenderer {
 			}
 		}
 		this.rebuildMinorPointClouds();
+
+		// Track click/URL-promoted bodies (not the auto-promoted curated set) so
+		// the user can revert them in one shot via {@link clearUserPromoted}.
+		if (!this.defaultPromotedIds.has(body.data.id)) {
+			this.userPromotedIds.add(body.data.id);
+			this.emitUserPromotedCount();
+		}
+	}
+
+	/** Emit the count of user-promoted bodies that can currently be cleared.
+	 *  Excludes the focused body — clearing it would leave the camera pointing
+	 *  at a torn-down mesh, so by design it's spared. */
+	private emitUserPromotedCount(): void {
+		if (!this.callbacks.onUserPromotedChange) return;
+		const focusedId = this.focusedBody?.data.id;
+		let count = this.userPromotedIds.size;
+		if (focusedId && this.userPromotedIds.has(focusedId)) count--;
+		this.callbacks.onUserPromotedChange(count);
+	}
+
+	/** Tear down every user-promoted body except the currently focused one,
+	 *  reverting them to point-cloud dots. */
+	clearUserPromoted(): void {
+		const focusedId = this.focusedBody?.data.id;
+		const dirtySpacecraftParents = new Set<string>();
+		const dirtyAsteroidZones = new Set<string>();
+
+		for (const id of [...this.userPromotedIds]) {
+			if (id === focusedId) continue;
+			const bo = this.bodyObjects.get(id);
+			if (!bo) {
+				this.userPromotedIds.delete(id);
+				continue;
+			}
+
+			// Group is added to scene; label is its Three.js child but its DOM
+			// element lives in the CSS2D label container — CSS2DRenderer does not
+			// remove the DOM node when its object leaves the scene graph, so it'd
+			// stay clickable in place. Detach the element manually.
+			if (bo.label) {
+				bo.label.element.remove();
+				bo.label.removeFromParent();
+			}
+			this.scene.remove(bo.group);
+			// Mesh + (for stars) corona/lensflare/etc. are added to scene directly.
+			for (const obj of bo.extraObjects) this.scene.remove(obj);
+			if (bo.orbitLine) this.scene.remove(bo.orbitLine);
+
+			if (bo.mesh) {
+				bo.mesh.geometry.dispose();
+				const mat = bo.mesh.material;
+				if (Array.isArray(mat)) for (const m of mat) m.dispose();
+				else mat.dispose();
+				const idx = this.clickables.indexOf(bo.mesh);
+				if (idx >= 0) this.clickables.splice(idx, 1);
+				this.meshToBody.delete(bo.mesh);
+			}
+			if (bo.orbitLine) {
+				bo.orbitLine.geometry.dispose();
+				const mat = bo.orbitLine.material;
+				if (Array.isArray(mat)) for (const m of mat) m.dispose();
+				else mat.dispose();
+			}
+
+			// Mark the body's point-cloud group dirty so the dot reappears.
+			const objectType = bo.body.data.objectType;
+			if (objectType === ObjectType.SPACECRAFT) {
+				dirtySpacecraftParents.add(bo.body.data.parentId);
+			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
+				for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
+					if (bodies.some((b) => b.data.id === id)) {
+						dirtyAsteroidZones.add(zone);
+						break;
+					}
+				}
+			}
+
+			this.bodyObjects.delete(id);
+			this.userPromotedIds.delete(id);
+		}
+
+		for (const p of dirtySpacecraftParents) this.ctx.dirtySpacecraftGroups.add(p);
+		for (const z of dirtyAsteroidZones) this.ctx.dirtyAsteroidZones.add(z);
+		if (dirtySpacecraftParents.size > 0 || dirtyAsteroidZones.size > 0) {
+			this.rebuildMinorPointClouds();
+		}
+
+		this.emitUserPromotedCount();
 	}
 
 	// --- Public API ---
@@ -1345,6 +1458,9 @@ export class SceneRenderer {
 		this.maybeLoadTexture(body);
 		this.maybeLoadSystemData();
 		prepareFocusTarget(this.focus, [...body.position], this.camera, this.cameraTruePos(), camPos);
+		// Focus moved on/off a user-promoted body — re-emit so the clear button's
+		// visibility (which excludes the focused body) stays in sync.
+		this.emitUserPromotedCount();
 	}
 
 	getFocusedBody(): PositionedBody | undefined {

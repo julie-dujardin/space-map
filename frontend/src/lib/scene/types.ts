@@ -69,4 +69,7 @@ export interface BodyObjects {
 export interface Callbacks {
 	onFocusChange(body: PositionedBody | undefined): void;
 	onCameraPosition?(latitude: number, longitude: number, zoom: number): void;
+	/** Number of user-promoted bodies that can be cleared (excludes the focused
+	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */
+	onUserPromotedChange?(count: number): void;
 }

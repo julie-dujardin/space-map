@@ -11,6 +11,7 @@
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import ObjectDrawer from '../../../../components/detail/ObjectDrawer.svelte';
 	import MyLocation from '../../../../components/MyLocation.svelte';
+	import ClearPromoted from '../../../../components/ClearPromoted.svelte';
 	import AttributionBar from '../../../../components/attribution/AttributionBar.svelte';
 	import TimeControls from '../../../../components/time/TimeControls.svelte';
 	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';
@@ -29,6 +30,7 @@
 	let selectedBody = $state.raw<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
+	let userPromotedCount = $state(0);
 
 	onMount(async () => {
 		const initialId = appState.view.id;
@@ -57,7 +59,12 @@
 {:else}
 	<Tooltip.Provider delayDuration={300}>
 		<div class="relative w-full h-screen">
-			<Scene bind:this={scene} {clock} onFocusChange={(body) => (selectedBody = body)} />
+			<Scene
+				bind:this={scene}
+				{clock}
+				onFocusChange={(body) => (selectedBody = body)}
+				onUserPromotedChange={(count) => (userPromotedCount = count)}
+			/>
 			<TimeControls {clock} />
 			{#if selectedBody?.data.id}
 				<ObjectDrawer
@@ -101,6 +108,9 @@
 						return scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
 					}}
 				/>
+				{#if userPromotedCount > 0}
+					<ClearPromoted onClear={() => scene?.clearUserPromoted()} />
+				{/if}
 				<div class="md:hidden pointer-events-auto">
 					<MobileTimeControls {clock} />
 				</div>
