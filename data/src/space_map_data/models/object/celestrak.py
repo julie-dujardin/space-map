@@ -14,7 +14,17 @@ if TYPE_CHECKING:
 
 
 class CelesTrak(Base):
-    """TLE/GP orbital elements from CelesTrak gp-active.csv + group CSVs."""
+    """SGP4-extra fields and metadata from CelesTrak gp-active.csv + group CSVs.
+
+    Orbital elements proper (epoch, mean motion, eccentricity, inclination,
+    RAAN, arg-of-pericenter, mean anomaly) live in the daily snapshot files on
+    disk and are read fresh at export time by ``celestrak_source.load_all_days``.
+    Persisting them in the DB would just stale-bait consumers, so this table
+    only stores the fields that can't be re-derived per snapshot: classification
+    metadata and the SGP4 extras (BSTAR, MEAN_MOTION_DOT/DDOT, ELEMENT_SET_NO,
+    REV_AT_EPOCH) that the SGP4 writer reads. The export overlay overwrites
+    those too with the per-day snapshot values before writing.
+    """
 
     __tablename__ = "celestrak"
 
@@ -25,23 +35,6 @@ class CelesTrak(Base):
     TRAK_OBJECT_ID: Mapped[str | None] = mapped_column(
         default=None
     )  # international designator / COSPAR ID (YYYY-NNNP)
-    EPOCH: Mapped[str | None] = mapped_column(
-        default=None
-    )  # element set epoch [ISO 8601 UTC]
-    MEAN_MOTION: Mapped[float | None] = mapped_column(
-        default=None
-    )  # mean motion [rev/d]
-    ECCENTRICITY: Mapped[float | None] = mapped_column(default=None)  # eccentricity
-    INCLINATION: Mapped[float | None] = mapped_column(default=None)  # inclination [deg]
-    RA_OF_ASC_NODE: Mapped[float | None] = mapped_column(
-        default=None
-    )  # right ascension of ascending node [deg]
-    ARG_OF_PERICENTER: Mapped[float | None] = mapped_column(
-        default=None
-    )  # argument of perigee [deg]
-    MEAN_ANOMALY: Mapped[float | None] = mapped_column(
-        default=None
-    )  # mean anomaly [deg]
     EPHEMERIS_TYPE: Mapped[int | None] = mapped_column(
         default=None
     )  # ephemeris type (0=SGP4)

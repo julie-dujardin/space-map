@@ -31,10 +31,17 @@ SGP4_VALIDITY_SLACK_DAYS = 14.0
 def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
     """Derive [start_jd, end_jd] for an SGP4 file from the epoch spread.
 
-    Falls back to unbounded when no object carries an epoch (shouldn't happen
-    for valid TLEs but keeps behaviour defined).
+    Earth satellites are celestrak-source — kepler elements (including
+    epoch_jd) are attached as a transient ``_daily_kepler`` dict by the
+    overlay. Falls back to unbounded when no object carries an epoch
+    (shouldn't happen for valid TLEs but keeps behaviour defined).
     """
-    epochs = [o.epoch_jd for o in objects if o.epoch_jd is not None]
+    epochs: list[float] = []
+    for o in objects:
+        daily = getattr(o, "_daily_kepler", None)
+        epoch = daily["epoch_jd"] if daily is not None else None
+        if epoch is not None:
+            epochs.append(epoch)
     if not epochs:
         return UNBOUNDED_START_JD, UNBOUNDED_END_JD
     return min(epochs) - SGP4_VALIDITY_SLACK_DAYS, max(

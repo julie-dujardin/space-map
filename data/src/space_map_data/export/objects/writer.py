@@ -46,7 +46,7 @@ from space_map_data.export.objects.wikidata_claims import (
     resolve_entity_ref,
     resolve_unit,
 )
-from space_map_data.models.object import Object
+from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,30 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
         if val is not None:
             data[attr] = val
     return data
+
+
+def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
+    """Pick unified-name kepler elements from the right sub-table.
+
+    Dispatches on ``orbital_source``: horizons/spice rows read from the
+    Horizons sub-table (which exposes unified-name properties over its
+    native column names); SBDB rows read from the SBDB sub-table directly;
+    celestrak rows read from the transient ``_daily_kepler`` overlay attached
+    by the Earth-zone overlay (celestrak doesn't persist these). Returns an
+    empty dict when the relevant source isn't available — same behaviour as
+    the previous main-table read.
+    """
+    src = obj.orbital_source
+    if src == OrbitalSource.celestrak:
+        daily = getattr(obj, "_daily_kepler", None)
+        if daily is None:
+            return {}
+        return {a: daily[a] for a in attrs if daily.get(a) is not None}
+    if src == OrbitalSource.sbdb:
+        return _pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
+    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+        return _pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
+    return {}
 
 
 class ChunkObjectData:
@@ -321,13 +345,13 @@ def _build_global(
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
     sbdb = obj.sbdb if obj.spkid is not None else None
     if sbdb is not None and sbdb.class_ == OrbitClass.PAR:
-        orbit = _pick_attrs(obj, ("epoch_jd", "e", "i", "om", "w"))
+        orbit = _orbit_elements(obj, ("epoch_jd", "e", "i", "om", "w"))
         if sbdb.q is not None:
             orbit["q"] = sbdb.q
         if sbdb.tp is not None:
             orbit["tp"] = sbdb.tp
     else:
-        orbit = _pick_attrs(obj, _ORBIT_FIELDS)
+        orbit = _orbit_elements(obj, _ORBIT_FIELDS)
     if orbit:
         orbit["scale"] = obj.scale
         if obj.parent_naif_id is not None:

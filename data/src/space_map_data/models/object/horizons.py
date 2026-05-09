@@ -14,7 +14,14 @@ if TYPE_CHECKING:
 
 
 class Horizons(Base):
-    """Full mirror of horizons/bodies.csv."""
+    """NAIF-keyed kepler element store.
+
+    Mirrors horizons/bodies.csv at ingest, then SPICE ingest overwrites the
+    rows for major bodies and moons (planets, moons, etc.) with values from
+    spice/bodies.csv, including the secular drift rates `om_dot`/`w_dot` that
+    SPICE computes for non-whitelisted moons. Horizons-source and SPICE-source
+    Object rows both join here for orbital elements.
+    """
 
     __tablename__ = "horizons"
 
@@ -66,5 +73,43 @@ class Horizons(Base):
     PR: Mapped[float | None] = mapped_column(
         default=None
     )  # sidereal orbital period [s]
+    # Secular drift rates [deg/d] from SPICE Method C mean-element fit.
+    # Populated only for non-whitelisted moons; horizons-only rows leave them null.
+    om_dot: Mapped[float | None] = mapped_column(default=None)
+    w_dot: Mapped[float | None] = mapped_column(default=None)
 
     object: Mapped["Object"] = relationship(back_populates="horizons")
+
+    # Unified-name aliases so consumers can read kepler elements by the same
+    # attribute names regardless of which sub-table they joined.
+    @property
+    def epoch_jd(self) -> float | None:
+        return self.JDTDB
+
+    @property
+    def a(self) -> float | None:
+        return self.A
+
+    @property
+    def e(self) -> float | None:
+        return self.EC
+
+    @property
+    def i(self) -> float | None:
+        return self.IN_
+
+    @property
+    def om(self) -> float | None:
+        return self.OM
+
+    @property
+    def w(self) -> float | None:
+        return self.W
+
+    @property
+    def ma(self) -> float | None:
+        return self.MA
+
+    @property
+    def n(self) -> float | None:
+        return self.N

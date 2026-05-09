@@ -290,3 +290,10 @@ class SBDB(Base):
     )  # non-grav. perihelion-maximum offset (1-σ) [d]
 
     object: Mapped["Object"] = relationship(back_populates="sbdb")
+
+    # Unified-name alias so consumers can read kepler elements by the same
+    # attribute names regardless of which sub-table they joined. SBDB's
+    # other element columns (a, e, i, om, w, ma, n) already match unified.
+    @property
+    def epoch_jd(self) -> float | None:
+        return self.epoch

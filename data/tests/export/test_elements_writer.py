@@ -346,6 +346,13 @@ def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
         spkid="1000001",
         object_id=id,
         class_=OrbitClass.PAR,
+        epoch=overrides.pop("sbdb_epoch", 2460000.5),
+        # a/ma/n are meaningless for parabolic comets; e=1.0 by definition.
+        # i/om/w are required by the writer — pick benign placeholders.
+        e=1.0,
+        i=10.0,
+        om=20.0,
+        w=30.0,
         q=overrides.pop("sbdb_q", 1.5),
         tp=overrides.pop("sbdb_tp", 2460000.5),
     )
@@ -353,11 +360,6 @@ def _make_parabolic_object(id: str = "spkid-1000001", **overrides) -> Object:
         id=id,
         object_type=ObjectType.comet,
         spkid=1000001,
-        e=1.0,
-        # a/ma/n are meaningless for parabolic comets
-        a=None,
-        ma=None,
-        n=None,
         orbital_source=OrbitalSource.sbdb,
         **overrides,
     )

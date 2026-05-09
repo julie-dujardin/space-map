@@ -52,7 +52,13 @@ from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
 )
-from space_map_data.models.object import Object, ObjectType, OrbitalSource, SBDB
+from space_map_data.models.object import (
+    Horizons,
+    Object,
+    ObjectType,
+    OrbitalSource,
+    SBDB,
+)
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logger = logging.getLogger(__name__)
@@ -225,6 +231,14 @@ def _overlay_celestrak_elements(
     broken positions in the frontend. ``log_dropped=False`` silences the
     drop count, used during the snapshot driver's union-collection pass to
     avoid duplicating the message on the subsequent write pass.
+
+    Kepler elements (epoch_jd, a, e, i, om, w, ma, n) are attached as a
+    transient ``_daily_kepler`` dict on the Object — celestrak-source objects
+    don't persist these fields anywhere (the daily snapshot is authoritative),
+    so the writer reads them off this attribute. SGP4 extras (BSTAR,
+    MEAN_MOTION_DOT/DDOT, ELEMENT_SET_NO, REV_AT_EPOCH) overwrite the
+    CelesTrak sub-table row in-place since the writer reads them through that
+    relation.
     """
     kept: list[Object] = []
     dropped = 0
@@ -237,14 +251,7 @@ def _overlay_celestrak_elements(
         if elements is None:
             dropped += 1
             continue
-        obj.epoch_jd = elements["epoch_jd"]
-        obj.a = elements["a"]
-        obj.e = elements["e"]
-        obj.i = elements["i"]
-        obj.om = elements["om"]
-        obj.w = elements["w"]
-        obj.ma = elements["ma"]
-        obj.n = elements["n"]
+        obj._daily_kepler = elements  # type: ignore[attr-defined]
         # Earth-zone Objects come from the CelesTrak ingest path, which inserts
         # an Object + CelesTrak row in lockstep — the relation is invariant-
         # non-None here, even though the schema doesn't enforce it.
@@ -481,57 +488,63 @@ def _moons_snapshots(
     )
     chunk_years = (2 * half_width_jd) / 365.25
 
-    # Capture each Object's untouched single-epoch elements so the iterator
-    # can restore them between chunks (otherwise the previous overlay would
-    # bleed into the next iteration).
-    base_by_naif: dict[int, Object] = {
-        o.naif_id: o for o in base if o.naif_id is not None
-    }
+    # Moons are spice/horizons-source — kepler elements live on the Horizons
+    # sub-table, so the overlay mutates ``h.*`` in place. The query path
+    # eager-loads ``Object.horizons`` for the moons zone; if a row somehow
+    # has no horizons relation we'd silently render at the SSB instead of
+    # the parent body, so raise loud rather than swallow.
+    base_by_naif: dict[int, tuple[Object, Horizons]] = {}
+    for o in base:
+        if o.naif_id is None:
+            continue
+        if o.horizons is None:
+            raise ValueError(f"{o.id}: missing horizons relation for moon overlay")
+        base_by_naif[o.naif_id] = (o, o.horizons)
     base_snapshot: dict[int, dict[str, float | None]] = {
         nid: {
-            "epoch_jd": o.epoch_jd,
-            "a": o.a,
-            "e": o.e,
-            "i": o.i,
-            "om": o.om,
-            "w": o.w,
-            "ma": o.ma,
-            "n": o.n,
-            "om_dot": o.om_dot,
-            "w_dot": o.w_dot,
+            "JDTDB": h.JDTDB,
+            "A": h.A,
+            "EC": h.EC,
+            "IN_": h.IN_,
+            "OM": h.OM,
+            "W": h.W,
+            "MA": h.MA,
+            "N": h.N,
+            "om_dot": h.om_dot,
+            "w_dot": h.w_dot,
         }
-        for nid, o in base_by_naif.items()
+        for nid, (_o, h) in base_by_naif.items()
     }
 
     def apply_overlay(chunk_idx: int) -> list[Object]:
-        for nid, o in base_by_naif.items():
+        for nid, (_o, h) in base_by_naif.items():
             row = overlays.get(nid)
             if row is None:
                 # Whitelisted moon — keep DB single-epoch elements as-is.
                 snap = base_snapshot[nid]
-                o.epoch_jd = snap["epoch_jd"]
-                o.a = snap["a"]
-                o.e = snap["e"]
-                o.i = snap["i"]
-                o.om = snap["om"]
-                o.w = snap["w"]
-                o.ma = snap["ma"]
-                o.n = snap["n"]
-                o.om_dot = snap["om_dot"]
-                o.w_dot = snap["w_dot"]
+                h.JDTDB = snap["JDTDB"]
+                h.A = snap["A"]
+                h.EC = snap["EC"]
+                h.IN_ = snap["IN_"]
+                h.OM = snap["OM"]
+                h.W = snap["W"]
+                h.MA = snap["MA"]
+                h.N = snap["N"]
+                h.om_dot = snap["om_dot"]
+                h.w_dot = snap["w_dot"]
                 continue
             elements = row[chunk_idx]
-            o.epoch_jd = float(midpoints_jd[chunk_idx])
-            o.a = float(elements[0])
-            o.e = float(elements[1])
-            o.i = float(elements[2])
-            o.om = float(elements[3])
-            o.w = float(elements[4])
-            o.ma = float(elements[5])
-            o.n = float(elements[6])
-            o.om_dot = float(elements[7])
-            o.w_dot = float(elements[8])
-        return list(base_by_naif.values())
+            h.JDTDB = float(midpoints_jd[chunk_idx])
+            h.A = float(elements[0])
+            h.EC = float(elements[1])
+            h.IN_ = float(elements[2])
+            h.OM = float(elements[3])
+            h.W = float(elements[4])
+            h.MA = float(elements[5])
+            h.N = float(elements[6])
+            h.om_dot = float(elements[7])
+            h.w_dot = float(elements[8])
+        return [o for o, _h in base_by_naif.values()]
 
     def iterate() -> Iterator[Snapshot]:
         for chunk_idx in range(n_chunks):
@@ -779,7 +792,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             #            Horizons ephemerides but no SPK kernel.
             #   zoom 2 = SBDB-only dwarves (Eris, Makemake, Quaoar, …) that
             #            aren't in any SPK kernel either
-            _major_base = session.query(Object).options(joinedload(Object.sbdb))
+            # Major bodies + moons + deep-space spacecraft are horizons- or
+            # spice-source, so eager-load Object.horizons (kepler elements
+            # live there). SBDB-source majors join sbdb instead.
+            _major_base = session.query(Object).options(
+                joinedload(Object.sbdb), joinedload(Object.horizons)
+            )
             non_sbdb = [
                 (
                     "major",
@@ -803,7 +821,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 (
                     "moons",
                     0,
-                    session.query(Object).filter(
+                    session.query(Object)
+                    .options(joinedload(Object.horizons))
+                    .filter(
                         Object.spkid.is_(None),
                         Object.object_type == ObjectType.moon.value,
                         Object.id.notin_(cheb_covered_ids)
@@ -815,7 +835,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     "spacecraft",
                     0,
                     session.query(Object)
-                    .options(joinedload(Object.satcat))
+                    .options(joinedload(Object.satcat), joinedload(Object.horizons))
                     .filter(
                         Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),

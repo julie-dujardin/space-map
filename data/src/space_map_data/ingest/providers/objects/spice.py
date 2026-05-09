@@ -5,12 +5,13 @@ import logging
 from pathlib import Path
 
 from sqlalchemy import delete, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 from space_map_data.models.object import (
-    ElementsScale,
+    Horizons as HorizonsRow,
     Object,
     ObjectType,
     OrbitalSource,
@@ -51,7 +52,7 @@ class SpiceIngestor:
         object_pk = make_object_id(ID_TYPES.NAIF, naif_id)
         # Link to SBDB physical data if this body has an SBDB counterpart
         spkid = spk_id_from_naif(naif_id, obj_type)
-        return {
+        obj = {
             "id": object_pk,
             "name": string_or_none(row["name"]),
             "provisional_designation": string_or_none(
@@ -62,29 +63,63 @@ class SpiceIngestor:
             "object_type": obj_type,
             "naif_id": naif_id,
             "spkid": spkid,
-            "epoch_jd": float_or_none(row["JDTDB"]),
-            "a": float_or_none(row["A"]),
-            "e": float_or_none(row["EC"]),
-            "i": float_or_none(row["IN"]),
-            "om": float_or_none(row["OM"]),
-            "w": float_or_none(row["W"]),
-            "ma": float_or_none(row["MA"]),
-            "n": float_or_none(row["N"]),
-            "om_dot": float_or_none(row.get("OM_DOT")),
-            "w_dot": float_or_none(row.get("W_DOT")),
-            "scale": ElementsScale.system,
             "parent_naif_id": int_or_none(row["parent_naif_id"]),
             "orbital_source": OrbitalSource.spice,
         }
+        # Kepler elements + SPICE-fitted secular drift rates land on the
+        # Horizons sub-table — SPICE-source rows join there for elements.
+        # Horizons ingest just ran and either pre-populated this naif_id
+        # from horizons/bodies.csv (we'll overwrite the element fields) or
+        # didn't (we'll insert a fresh row).
+        horizons_upsert = {
+            "naif_id": naif_id,
+            "object_id": object_pk,
+            "JDTDB": float_or_none(row["JDTDB"]),
+            "A": float_or_none(row["A"]),
+            "EC": float_or_none(row["EC"]),
+            "IN": float_or_none(row["IN"]),
+            "OM": float_or_none(row["OM"]),
+            "W": float_or_none(row["W"]),
+            "MA": float_or_none(row["MA"]),
+            "N": float_or_none(row["N"]),
+            "om_dot": float_or_none(row.get("OM_DOT")),
+            "w_dot": float_or_none(row.get("W_DOT")),
+        }
+        return {"object": obj, "horizons": horizons_upsert}
 
     def _insert(self, rows: list[dict]) -> None:
         if not rows:
             return
         self._takeover_sbdb_objects(rows)
-        self.session.execute(insert(Object), rows)
+        self.session.execute(insert(Object), [r["object"] for r in rows])
+        # Upsert Horizons sub-table rows (overwrite kepler fields + drift
+        # rates + object_id; preserve any pre-existing metadata not listed
+        # in `set_`).
+        for r in rows:
+            stmt = sqlite_insert(HorizonsRow).values(**r["horizons"])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[HorizonsRow.naif_id],
+                set_={k: stmt.excluded[k] for k in r["horizons"] if k != "naif_id"},
+            )
+            self.session.execute(stmt)
         self.session.commit()
 
     def _clear(self) -> None:
+        # Reset SPICE-set fields on Horizons rows whose Object was spice-sourced
+        # so a re-run without re-running Horizons doesn't leave stale values.
+        spice_naif_ids = list(
+            self.session.execute(
+                select(Object.naif_id)
+                .where(Object.orbital_source == OrbitalSource.spice)
+                .where(Object.naif_id.is_not(None))
+            ).scalars()
+        )
+        if spice_naif_ids:
+            self.session.execute(
+                update(HorizonsRow)
+                .where(HorizonsRow.naif_id.in_(spice_naif_ids))
+                .values(om_dot=None, w_dot=None)
+            )
         self.session.execute(
             delete(Object).where(Object.orbital_source == OrbitalSource.spice)
         )
@@ -94,7 +129,11 @@ class SpiceIngestor:
         """For rows that will claim an SBDB-sourced Object, re-point the SBDB
         physical-data row to the new SPICE Object ID, then delete the SBDB
         Object row. Preserves the physical data (diameter, rotation, etc.)."""
-        takeovers = [(r["spkid"], r["id"]) for r in rows if r.get("spkid") is not None]
+        takeovers = [
+            (r["object"]["spkid"], r["object"]["id"])
+            for r in rows
+            if r["object"].get("spkid") is not None
+        ]
         if not takeovers:
             return
 

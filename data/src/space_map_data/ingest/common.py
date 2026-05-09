@@ -26,12 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_objects(download_dir: Path) -> None:
-    """Ingest orbital bodies: SBDB, CelesTrak, SPICE, Horizons."""
+    """Ingest orbital bodies: SBDB, CelesTrak, Horizons, SPICE.
+
+    Horizons runs before SPICE so SPICE can upsert orbital elements and
+    secular drift rates onto the Horizons sub-table for major bodies and
+    moons (Horizons sub-table is the canonical kepler element store for
+    NAIF-keyed bodies; SPICE-source rows join it for elements).
+    """
     sbdb.ingest(download_dir)
     satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
-    spice.ingest(download_dir)
     horizons.ingest(download_dir)
+    spice.ingest(download_dir)
 
 
 def ingest_features(download_dir: Path) -> None:

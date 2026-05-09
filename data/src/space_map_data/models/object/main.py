@@ -130,33 +130,8 @@ class Object(Base):
         unique=True, default=None, index=True
     )  # 5-digit extended NAIF ID used by SPICE for irregular-moon kernels
 
-    # Keplerian elements (osculating, from best available source)
-    epoch_jd: Mapped[float | None] = mapped_column(
-        default=None
-    )  # epoch of osculation [Julian Date, TDB]
-    a: Mapped[float | None] = mapped_column(
-        default=None
-    )  # semi-major axis [AU scale=system, km scale=planet]
-    e: Mapped[float | None] = mapped_column(default=None)  # eccentricity
-    i: Mapped[float | None] = mapped_column(default=None)  # inclination [deg]
-    om: Mapped[float | None] = mapped_column(
-        default=None
-    )  # longitude of the ascending node [deg]
-    w: Mapped[float | None] = mapped_column(
-        default=None
-    )  # argument of perihelion [deg]
-    ma: Mapped[float | None] = mapped_column(default=None)  # mean anomaly [deg]
-    n: Mapped[float | None] = mapped_column(
-        default=None
-    )  # mean motion [deg/d scale=system, rev/d scale=planet]
-    # Secular drift rates [deg/d]. Populated only for non-whitelisted moons
-    # (whose orbit is fitted over many periods to capture J2/J4/etc. drift);
-    # all other rows leave these as zero / null. Frontend adds om_dot·dt and
-    # w_dot·dt to the propagated angles before solving Kepler.
-    om_dot: Mapped[float | None] = mapped_column(default=None)
-    w_dot: Mapped[float | None] = mapped_column(default=None)
-
-    # scale
+    # Orbital element scale + central body. Kepler elements themselves live
+    # on the sub-tables (Horizons / SBDB / CelesTrak); join via orbital_source.
     scale: Mapped[ElementsScale] = mapped_column(
         String, default=ElementsScale.system
     )  # element scale
@@ -166,7 +141,7 @@ class Object(Base):
 
     orbital_source: Mapped[OrbitalSource | None] = mapped_column(
         default=None
-    )  # which source provided the orbital elements
+    )  # which source provided the orbital elements (= which sub-table to join)
 
     map_texture_available: Mapped[bool] = mapped_column(default=False)
     image_available: Mapped[bool] = mapped_column(default=False)
@@ -179,6 +154,5 @@ class Object(Base):
 
     __table_args__ = (
         Index("idx_objects_type", "object_type"),
-        Index("idx_objects_a", "a"),
         Index("idx_objects_parent", "parent_naif_id"),
     )

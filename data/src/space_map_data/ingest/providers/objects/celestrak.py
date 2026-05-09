@@ -10,7 +10,6 @@ from tqdm import tqdm
 from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.ingest.convert import (
-    mean_motion_to_a_km,
     float_or_none,
     int_or_none,
     string_or_none,
@@ -24,7 +23,6 @@ from space_map_data.models.object import (
     OrbitalSource,
     Satcat,
 )
-from space_map_data.utils.convert import date_to_julian
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -54,9 +52,6 @@ class CelesTrakIngestor:
         )
 
     def _parse_row(self, row: dict) -> dict:
-        mean_motion = float_or_none(row["MEAN_MOTION"])
-        a_km = mean_motion_to_a_km(mean_motion) if mean_motion else None
-
         object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
         norad = int(row["NORAD_CAT_ID"])
         name = string_or_none(row["OBJECT_NAME"])
@@ -79,29 +74,19 @@ class CelesTrakIngestor:
             object_type=object_type,
             norad_cat_id=norad,
             cospar_id=string_or_none(row["OBJECT_ID"]),
-            epoch_jd=date_to_julian(row["EPOCH"]),
-            a=a_km,
-            e=float_or_none(row["ECCENTRICITY"]),
-            i=float_or_none(row["INCLINATION"]),
-            om=float_or_none(row["RA_OF_ASC_NODE"]),
-            w=float_or_none(row["ARG_OF_PERICENTER"]),
-            ma=float_or_none(row["MEAN_ANOMALY"]),
-            n=mean_motion,
             scale=ElementsScale.planet,
             parent_naif_id=399,
             orbital_source=OrbitalSource.celestrak,
         )
+        # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are
+        # not persisted: the export reads fresh values from the daily snapshot
+        # files. Keep only metadata + SGP4 extras the writer reads at export
+        # time (those get overwritten per-day too, but ingest seeds them so
+        # consumers querying the DB outside export still see something).
         ct = dict(
             object_id=object_id,
             OBJECT_NAME=row["OBJECT_NAME"],
             TRAK_OBJECT_ID=row["OBJECT_ID"],
-            EPOCH=row["EPOCH"],
-            MEAN_MOTION=mean_motion,
-            ECCENTRICITY=float_or_none(row["ECCENTRICITY"]),
-            INCLINATION=float_or_none(row["INCLINATION"]),
-            RA_OF_ASC_NODE=float_or_none(row["RA_OF_ASC_NODE"]),
-            ARG_OF_PERICENTER=float_or_none(row["ARG_OF_PERICENTER"]),
-            MEAN_ANOMALY=float_or_none(row["MEAN_ANOMALY"]),
             EPHEMERIS_TYPE=int_or_none(row["EPHEMERIS_TYPE"]),
             CLASSIFICATION_TYPE=string_or_none(row["CLASSIFICATION_TYPE"]),
             NORAD_CAT_ID=norad,

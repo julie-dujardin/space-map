@@ -37,6 +37,42 @@ _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
 _REQUIRED_SGP4 = ("BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT")
 
 
+def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | None:
+    """Read a unified-name kepler element off the right sub-table.
+
+    Kepler elements live on the sub-tables; ``orbital_source`` says which to
+    join. Horizons sub-table exposes unified-name properties (a, e, i, om, w,
+    ma, n, epoch_jd) over its native column names; SBDB columns already match
+    unified except for ``epoch`` (aliased to ``epoch_jd``). Celestrak-source
+    rows don't persist elements — the daily overlay attaches them as a
+    transient ``_daily_kepler`` dict at export time.
+
+    Rows with ``orbital_source is None`` inherit the file source — that
+    matches the assertion in :func:`_source_ordinal` (None rows are accepted
+    and treated as the file's declared source).
+    """
+    src = o.orbital_source or file_source
+    if src == OrbitalSource.celestrak:
+        daily = getattr(o, "_daily_kepler", None)
+        return daily[attr] if daily is not None else None
+    if src == OrbitalSource.sbdb:
+        return getattr(o.sbdb, attr, None) if o.sbdb is not None else None
+    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+        return getattr(o.horizons, attr, None) if o.horizons is not None else None
+    return None
+
+
+def _drift_rate(o: Object, attr: str, file_source: OrbitalSource) -> float | None:
+    """Read om_dot/w_dot off the Horizons sub-table (where SPICE writes them).
+
+    Other sources don't fit secular drift, so they read as None.
+    """
+    src = o.orbital_source or file_source
+    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+        return getattr(o.horizons, attr, None) if o.horizons is not None else None
+    return None
+
+
 def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int:
     """Assert that every row's `orbital_source` matches (or is None) and return the ordinal.
 
@@ -94,6 +130,7 @@ def _write_keplerian_columns(
     buf: io.BytesIO,
     objects: list[Object],
     radius_km_overrides: dict[str, float] | None,
+    file_source: OrbitalSource,
 ) -> None:
     """Write columns 0–12 shared by the Keplerian and SGP4 sub-formats.
 
@@ -128,13 +165,13 @@ def _write_keplerian_columns(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    _write_float64(buf, n, [_float_value(o, "epoch_jd") for o in objects])
+    _write_float64(buf, n, [_float_value(o, "epoch_jd", file_source) for o in objects])
 
     for attr in ("a", "e", "i", "om", "w", "ma", "n"):
         _write_float32(
             buf,
             n,
-            [_float_value(o, attr) for o in objects],
+            [_float_value(o, attr, file_source) for o in objects],
         )
 
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
@@ -177,13 +214,13 @@ def write_elements(
             end_jd=end_jd,
         )
     )
-    _write_keplerian_columns(buf, objects, radius_km_overrides)
+    _write_keplerian_columns(buf, objects, radius_km_overrides, orbital_source)
 
     for attr in ("om_dot", "w_dot"):
         _write_float32(
             buf,
             n,
-            [_optional_float(o, attr) for o in objects],
+            [_optional_float(o, attr, orbital_source) for o in objects],
         )
 
     _write_has_localized(buf, objects, has_localized)
@@ -230,7 +267,7 @@ def write_sgp4_elements(
             end_jd=end_jd,
         )
     )
-    _write_keplerian_columns(buf, objects, radius_km_overrides)
+    _write_keplerian_columns(buf, objects, radius_km_overrides, orbital_source)
 
     for attr in _REQUIRED_SGP4:
         _write_float32(buf, n, [_required_celestrak_float(o, attr) for o in objects])
@@ -307,12 +344,16 @@ def write_parabolic_elements(
         [SCALE_ORDINAL.get(o.scale, MISSING_UINT8) for o in objects],
     )
 
-    _write_float64(buf, n, [_required_float(o, "epoch_jd") for o in objects])
+    _write_float64(
+        buf, n, [_required_float(o, "epoch_jd", orbital_source) for o in objects]
+    )
 
     _write_float32(buf, n, [_required_sbdb_float(o, "q") for o in objects])
 
     for attr in ("e", "i", "om", "w"):
-        _write_float32(buf, n, [_required_float(o, attr) for o in objects])
+        _write_float32(
+            buf, n, [_required_float(o, attr, orbital_source) for o in objects]
+        )
 
     _write_float64(buf, n, [_required_sbdb_float(o, "tp") for o in objects])
 
@@ -353,42 +394,41 @@ def _parse_numeric_id(obj: Object) -> int:
     return MISSING_INT32
 
 
-def _float_value(o: Object, attr: str) -> float:
+def _float_value(o: Object, attr: str, file_source: OrbitalSource) -> float:
     """Get the float64 value for a Keplerian column.
 
-    Raises ValueError if a required element is missing, unless the orbit
-    quality is known-bad (condition_code 9).
+    Reads from the per-source sub-table (or transient daily-overlay for
+    celestrak). Raises ValueError if a required element is missing, unless
+    the orbit quality is known-bad (condition_code 9).
     """
-    if attr in _REQUIRED_KEPLERIAN:
-        val = getattr(o, attr)
-        if val is None:
-            sbdb = o.sbdb if o.spkid is not None else None
-            if sbdb and sbdb.condition_code == "9":
-                logger.warning("%s: missing required orbital element '%s'", o.id, attr)
-            else:
-                raise ValueError(f"{o.id}: missing required orbital element '{attr}'")
-            return MISSING_FLOAT64
-        return val
-    val = getattr(o, attr)
+    val = _kepler_attr(o, attr, file_source)
+    if attr in _REQUIRED_KEPLERIAN and val is None:
+        sbdb = o.sbdb if o.spkid is not None else None
+        if sbdb and sbdb.condition_code == "9":
+            logger.warning("%s: missing required orbital element '%s'", o.id, attr)
+        else:
+            raise ValueError(f"{o.id}: missing required orbital element '{attr}'")
+        return MISSING_FLOAT64
     return val if val is not None else MISSING_FLOAT64
 
 
-def _required_float(o: Object, attr: str) -> float:
-    """Get a required float64 attribute, raising ValueError if missing."""
-    val = getattr(o, attr)
+def _required_float(o: Object, attr: str, file_source: OrbitalSource) -> float:
+    """Get a required float64 element from the appropriate sub-table."""
+    val = _kepler_attr(o, attr, file_source)
     if val is None:
         raise ValueError(f"{o.id}: missing required element '{attr}'")
     return val
 
 
-def _optional_float(o: Object, attr: str) -> float:
-    """Get an optional float attribute, returning 0.0 when missing.
+def _optional_float(o: Object, attr: str, file_source: OrbitalSource) -> float:
+    """Get an optional secular drift rate (om_dot/w_dot), returning 0.0 when missing.
 
-    Used for secular drift columns (om_dot, w_dot) that SPICE populates only
-    for moons. Treating None as zero rather than NaN means the frontend's
-    `angle += rate·dt` step is a no-op for sources that didn't fit them.
+    SPICE populates these on the Horizons sub-table for non-whitelisted moons;
+    other sources don't fit them. Treating None as zero rather than NaN means
+    the frontend's `angle += rate·dt` step is a no-op for sources that didn't
+    fit them.
     """
-    val = getattr(o, attr, None)
+    val = _drift_rate(o, attr, file_source)
     return val if val is not None else 0.0
 
 

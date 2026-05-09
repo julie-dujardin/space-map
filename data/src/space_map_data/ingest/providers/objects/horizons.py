@@ -14,7 +14,6 @@ from tqdm import tqdm
 
 from space_map_data.models.object import (
     Object,
-    ElementsScale,
     Horizons as HorizonsRow,
     ObjectType,
     OrbitalSource,
@@ -108,15 +107,6 @@ class HorizonsIngestor:
                         object_type=ObjectType.spacecraft,
                         naif_id=hz.naif_id,
                         cospar_id=hz.cospar_id,
-                        epoch_jd=hz.JDTDB,
-                        a=hz.A,
-                        e=hz.EC,
-                        i=hz.IN_,
-                        om=hz.OM,
-                        w=hz.W,
-                        ma=hz.MA,
-                        n=hz.N,
-                        scale=ElementsScale.system,
                         parent_naif_id=hz.parent_naif_id,
                         orbital_source=OrbitalSource.horizons,
                     )
