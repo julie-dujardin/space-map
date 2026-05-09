@@ -40,14 +40,14 @@
 		clock.setJD(dateToJD(next));
 	}
 
-	const SCALES: { label: string; value: number }[] = [
-		{ label: '1×', value: 1 },
-		{ label: '1 min/s', value: 60 },
-		{ label: '1 h/s', value: 3600 },
-		{ label: '1 d/s', value: 86400 },
-		{ label: '1 w/s', value: 604800 },
-		{ label: '1 mo/s', value: 2_592_000 },
-		{ label: '1 y/s', value: 31_557_600 }
+	const SCALES: { label: () => string; value: number }[] = [
+		{ label: () => m.time_scale_realtime(), value: 1 },
+		{ label: () => m.time_scale_min_per_sec(), value: 60 },
+		{ label: () => m.time_scale_hour_per_sec(), value: 3600 },
+		{ label: () => m.time_scale_day_per_sec(), value: 86400 },
+		{ label: () => m.time_scale_week_per_sec(), value: 604800 },
+		{ label: () => m.time_scale_month_per_sec(), value: 2_592_000 },
+		{ label: () => m.time_scale_year_per_sec(), value: 31_557_600 }
 	];
 
 	const DATE_OPTS: Intl.DateTimeFormatOptions = {
@@ -138,13 +138,13 @@
 	{#each SCALES as { label, value } (value)}
 		<button
 			type="button"
-			class="inline-flex items-center justify-center h-8 px-2 rounded-md transition-colors cursor-pointer
+			class="inline-flex items-center justify-center h-8 px-2 rounded-md whitespace-nowrap transition-colors cursor-pointer
 				{Math.abs(clock.timeScale) === value
 				? 'bg-primary text-primary-foreground'
 				: 'hover:bg-primary/10'}"
 			onclick={() => clock.setTimeScale(value)}
 		>
-			{label}
+			{label()}
 		</button>
 	{/each}
 
