@@ -67,7 +67,17 @@
 				mainClass: 'pswp-space-map',
 				closeTitle: m.close(),
 				arrowPrevTitle: m.image_previous(),
-				arrowNextTitle: m.image_next()
+				arrowNextTitle: m.image_next(),
+				// Desktop reserves the left 380px for the object sidebar (matches
+				// ObjectDrawer's `w-[380px]` aside on the same `(min-width: 768px)`
+				// breakpoint). Tell PhotoSwipe the inset width so its image fit
+				// math doesn't oversize past the visible viewer area.
+				getViewportSizeFn: () => ({
+					x: window.matchMedia('(min-width: 768px)').matches
+						? Math.max(0, window.innerWidth - 380)
+						: window.innerWidth,
+					y: window.innerHeight
+				})
 			});
 
 			inst.on('uiRegister', () => {
@@ -250,6 +260,19 @@
 	   explicit override of its own. */
 	:global(.pswp.pswp-space-map) {
 		pointer-events: auto;
+	}
+
+	/* Desktop: leave the left 380px clear for the object sidebar (the gallery
+	   controls live there). PhotoSwipe is body-level and otherwise fullscreen;
+	   we shift the start edge in and drop its `width: 100%` so the end edge
+	   stays at the viewport's right (otherwise the overlay overflows by 380px).
+	   Width matches ObjectDrawer's `w-[380px]` aside under the same breakpoint. */
+	@media (min-width: 768px) {
+		:global(.pswp.pswp-space-map) {
+			inset-inline-start: 380px;
+			inset-inline-end: 0;
+			width: auto;
+		}
 	}
 
 	/* Caption container: pinned to the bottom of pswp.element, above slides.
