@@ -1,6 +1,8 @@
 {
 	"page_title": "太空地图",
 	"loading_data": "正在加载数据…",
+	"time_header": "时间",
+	"time_speed_label": "速度",
 	"time_play": "播放",
 	"time_pause": "暂停",
 	"time_reverse": "时间倒流",

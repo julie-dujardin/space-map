@@ -1,0 +1,176 @@
+<script lang="ts">
+	import { Drawer as Vaul } from 'vaul-svelte';
+	import ClockIcon from '@lucide/svelte/icons/clock';
+	import CalendarIcon from '@lucide/svelte/icons/calendar';
+	import PauseIcon from '@lucide/svelte/icons/pause';
+	import RewindIcon from '@lucide/svelte/icons/rewind';
+	import XIcon from '@lucide/svelte/icons/x';
+	import { Calendar } from '$lib/components/ui/calendar';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { CalendarDate, type DateValue } from '@internationalized/date';
+	import { dateToJD, jdToDate } from '$lib/format/date';
+	import { getLocale } from '$lib/paraglide/runtime.js';
+	import * as m from '$lib/paraglide/messages.js';
+	import { TIME_DATE_OPTS, TIME_SCALES } from '$lib/scene/time-scales';
+	import type { SimClock } from '$lib/scene/clock.svelte';
+	import { untrack } from 'svelte';
+
+	interface Props {
+		clock: SimClock;
+	}
+
+	let { clock }: Props = $props();
+
+	let open = $state(false);
+	let showCalendar = $state(false);
+	let pickerValue = $state<DateValue | undefined>(undefined);
+	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
+
+	function jdToCalendarDate(jd: number): CalendarDate {
+		const d = jdToDate(jd);
+		return new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+	}
+
+	$effect(() => {
+		if (showCalendar) {
+			const cd = untrack(() => jdToCalendarDate(clock.jd));
+			pickerValue = cd;
+			pickerPlaceholder = cd;
+		}
+	});
+
+	$effect(() => {
+		if (!open) showCalendar = false;
+	});
+
+	function handleDateChange(v: DateValue | undefined) {
+		if (!v) return;
+		const next = jdToDate(clock.jd);
+		next.setFullYear(v.year, v.month - 1, v.day);
+		clock.setJD(dateToJD(next));
+	}
+
+	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
+	let activeScale = $derived(
+		TIME_SCALES.find((s) => s.value === Math.abs(clock.timeScale)) ?? TIME_SCALES[0]
+	);
+</script>
+
+<button
+	type="button"
+	onclick={() => (open = true)}
+	class="pointer-events-auto flex items-center justify-center
+		w-12 h-12 rounded-full
+		bg-primary-foreground hover:bg-primary-foreground/80
+		text-primary transition-colors cursor-pointer"
+	title={m.time_header()}
+	aria-label={m.time_header()}
+>
+	<ClockIcon class="size-7" />
+</button>
+
+<Vaul.Root bind:open shouldScaleBackground={false}>
+	<Vaul.Portal>
+		<Vaul.Overlay class="fixed inset-0 z-[60] bg-black/40" />
+		<Vaul.Content
+			class="fixed inset-x-0 bottom-0 z-[61] flex flex-col rounded-t-xl border-t bg-background shadow-lg outline-none max-h-[90dvh]"
+		>
+			<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
+				<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
+				<div class="flex w-full items-center justify-between">
+					<Vaul.Title class="text-sm font-semibold">{m.time_header()}</Vaul.Title>
+					<Button variant="ghost" size="icon-sm" onclick={() => (open = false)}>
+						<XIcon />
+						<span class="sr-only">{m.close()}</span>
+					</Button>
+				</div>
+			</div>
+
+			<div class="flex flex-col gap-4 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+				<button
+					type="button"
+					class="inline-flex items-center gap-2 self-start rounded-md px-2 py-1 -ml-2
+						font-mono tabular-nums text-base hover:bg-primary/10 transition-colors cursor-pointer"
+					onclick={() => (showCalendar = !showCalendar)}
+					title={m.time_pick_date()}
+					aria-expanded={showCalendar}
+				>
+					<CalendarIcon class="size-4 opacity-70" />
+					<span>{dateLabel}</span>
+				</button>
+
+				{#if showCalendar}
+					<div class="rounded-md border bg-background self-center">
+						<Calendar
+							type="single"
+							bind:value={pickerValue}
+							bind:placeholder={pickerPlaceholder}
+							onValueChange={handleDateChange}
+							captionLayout="label"
+						/>
+					</div>
+				{/if}
+
+				<div class="flex items-center gap-3">
+					<button
+						type="button"
+						class="inline-flex items-center justify-center w-11 h-11 rounded-full transition-colors cursor-pointer
+							{clock.direction === -1
+							? 'bg-primary text-primary-foreground'
+							: 'bg-primary/10 hover:bg-primary/20 text-primary'}"
+						onclick={() => clock.toggleDirection()}
+						aria-label={m.time_reverse()}
+						title={m.time_reverse()}
+					>
+						<RewindIcon class="size-5" />
+					</button>
+
+					<button
+						type="button"
+						class="inline-flex items-center justify-center w-11 h-11 rounded-full transition-colors cursor-pointer
+							{clock.playing
+							? 'bg-primary/10 hover:bg-primary/20 text-primary'
+							: 'bg-primary text-primary-foreground'}"
+						onclick={() => (clock.playing ? clock.pause() : clock.play())}
+						aria-label={clock.playing ? m.time_pause() : m.time_play()}
+						title={clock.playing ? m.time_pause() : m.time_play()}
+					>
+						<PauseIcon class="size-5" />
+					</button>
+
+					<button
+						type="button"
+						class="inline-flex items-center justify-center h-11 px-4 rounded-full
+							bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors cursor-pointer"
+						onclick={() => clock.now()}
+						title={m.time_now_tooltip()}
+					>
+						{m.time_now()}
+					</button>
+				</div>
+
+				<div class="flex items-center justify-between">
+					<span class="text-sm text-muted-foreground">{m.time_speed_label()}</span>
+					<span class="text-sm tabular-nums">{activeScale.label()}</span>
+				</div>
+
+				<div class="-mx-4 overflow-x-auto">
+					<div class="flex items-center gap-2 px-4 pb-1">
+						{#each TIME_SCALES as { label, value } (value)}
+							<button
+								type="button"
+								class="inline-flex items-center justify-center h-9 px-3 rounded-full whitespace-nowrap text-sm transition-colors cursor-pointer
+									{Math.abs(clock.timeScale) === value
+									? 'bg-primary text-primary-foreground'
+									: 'bg-primary/10 hover:bg-primary/20 text-primary'}"
+								onclick={() => clock.setTimeScale(value)}
+							>
+								{label()}
+							</button>
+						{/each}
+					</div>
+				</div>
+			</div>
+		</Vaul.Content>
+	</Vaul.Portal>
+</Vaul.Root>

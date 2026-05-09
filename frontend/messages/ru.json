@@ -1,6 +1,8 @@
 {
 	"page_title": "Карта космоса",
 	"loading_data": "Загрузка данных…",
+	"time_header": "Время",
+	"time_speed_label": "Скорость",
 	"time_play": "Воспроизвести",
 	"time_pause": "Пауза",
 	"time_reverse": "Обратное время",

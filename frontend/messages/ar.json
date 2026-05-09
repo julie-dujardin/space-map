@@ -1,6 +1,8 @@
 {
 	"page_title": "خريطة الفضاء",
 	"loading_data": "جارٍ تحميل البيانات…",
+	"time_header": "الوقت",
+	"time_speed_label": "السرعة",
 	"time_play": "تشغيل",
 	"time_pause": "إيقاف مؤقت",
 	"time_reverse": "عكس الزمن",

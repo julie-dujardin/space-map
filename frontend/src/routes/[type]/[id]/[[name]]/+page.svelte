@@ -13,6 +13,7 @@
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import AttributionBar from '../../../../components/AttributionBar.svelte';
 	import TimeControls from '../../../../components/TimeControls.svelte';
+	import MobileTimeControls from '../../../../components/MobileTimeControls.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -90,7 +91,7 @@
 				/>
 			{/if}
 			<div
-				class="fixed end-4 z-10 transition-[opacity,bottom] duration-300 ease-in-out
+				class="fixed end-4 z-10 flex flex-col-reverse items-end gap-3 transition-[opacity,bottom] duration-300 ease-in-out
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem);"
 			>
@@ -98,6 +99,9 @@
 					onLocate={(zoom: number, lat?: number, lng?: number) =>
 						scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0}
 				/>
+				<div class="md:hidden pointer-events-auto">
+					<MobileTimeControls {clock} />
+				</div>
 			</div>
 			<div
 				class="fixed end-0 z-10 transition-opacity duration-300 ease-in-out

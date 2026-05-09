@@ -1,6 +1,8 @@
 {
 	"page_title": "Space Map",
 	"loading_data": "Loading data...",
+	"time_header": "Time",
+	"time_speed_label": "Speed",
 	"time_play": "Play",
 	"time_pause": "Pause",
 	"time_reverse": "Reverse time",

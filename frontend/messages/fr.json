@@ -1,6 +1,8 @@
 {
 	"page_title": "Carte de l'espace",
 	"loading_data": "Chargement des données…",
+	"time_header": "Temps",
+	"time_speed_label": "Vitesse",
 	"time_play": "Lecture",
 	"time_pause": "Pause",
 	"time_reverse": "Inverser le temps",

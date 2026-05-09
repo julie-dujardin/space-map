@@ -9,6 +9,7 @@
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { CalendarDate, type DateValue } from '@internationalized/date';
 	import { untrack } from 'svelte';
+	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/scene/time-scales';
 
 	interface Props {
 		clock: SimClock;
@@ -40,24 +41,6 @@
 		clock.setJD(dateToJD(next));
 	}
 
-	const SCALES: { label: () => string; value: number }[] = [
-		{ label: () => m.time_scale_realtime(), value: 1 },
-		{ label: () => m.time_scale_min_per_sec(), value: 60 },
-		{ label: () => m.time_scale_hour_per_sec(), value: 3600 },
-		{ label: () => m.time_scale_day_per_sec(), value: 86400 },
-		{ label: () => m.time_scale_week_per_sec(), value: 604800 },
-		{ label: () => m.time_scale_month_per_sec(), value: 2_592_000 },
-		{ label: () => m.time_scale_year_per_sec(), value: 31_557_600 }
-	];
-
-	const DATE_OPTS: Intl.DateTimeFormatOptions = {
-		year: 'numeric',
-		month: 'short',
-		day: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit'
-	};
-
 	// Width fixtures: cover the variants that change rendered length —
 	// month-abbreviation outliers, meridiem/hour boundaries, and day digit count.
 	// Char counting underestimates RTL/CJK/diacritics, so we measure actual
@@ -76,7 +59,7 @@
 		new Date(Date.UTC(2026, 8, 9, 23, 59))
 	];
 
-	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), DATE_OPTS));
+	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
 
 	// Measure the widest fixture against an off-screen span that mirrors the
 	// trigger's typography + padding, then pin the trigger's min-width to it.
@@ -96,7 +79,7 @@
 		try {
 			let max = 0;
 			for (const d of WIDTH_FIXTURES) {
-				el.textContent = d.toLocaleString(loc, DATE_OPTS);
+				el.textContent = d.toLocaleString(loc, TIME_DATE_OPTS);
 				const w = el.getBoundingClientRect().width;
 				if (w > max) max = w;
 			}
@@ -135,7 +118,7 @@
 		<PauseIcon class="size-4" />
 	</button>
 
-	{#each SCALES as { label, value } (value)}
+	{#each TIME_SCALES as { label, value } (value)}
 		<button
 			type="button"
 			class="inline-flex items-center justify-center h-8 px-2 rounded-md whitespace-nowrap transition-colors cursor-pointer
