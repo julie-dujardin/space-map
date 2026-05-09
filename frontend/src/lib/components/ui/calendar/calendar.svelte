@@ -24,7 +24,7 @@
 		...restProps
 	}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> & {
 		buttonVariant?: ButtonVariant;
-		captionLayout?: 'dropdown' | 'dropdown-months' | 'dropdown-years' | 'label';
+		captionLayout?: 'dropdown' | 'dropdown-inline' | 'dropdown-months' | 'dropdown-years' | 'label';
 		months?: CalendarPrimitive.MonthSelectProps['months'];
 		years?: CalendarPrimitive.YearSelectProps['years'];
 		monthFormat?: CalendarPrimitive.MonthSelectProps['monthFormat'];

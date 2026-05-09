@@ -3,6 +3,8 @@
 	import type Calendar from './calendar.svelte';
 	import CalendarMonthSelect from './calendar-month-select.svelte';
 	import CalendarYearSelect from './calendar-year-select.svelte';
+	import CalendarMonthSelectInline from './calendar-month-select-inline.svelte';
+	import CalendarYearSelectInline from './calendar-year-select-inline.svelte';
 	import { DateFormatter, getLocalTimeZone, type DateValue } from '@internationalized/date';
 
 	let {
@@ -58,9 +60,33 @@
 	<CalendarYearSelect {years} {yearFormat} value={month.year} />
 {/snippet}
 
+{#snippet MonthSelectInline()}
+	<CalendarMonthSelectInline
+		months={months as number[] | undefined}
+		{monthFormat}
+		{locale}
+		{placeholder}
+		{monthIndex}
+		onSelect={(next) => (placeholder = next)}
+	/>
+{/snippet}
+
+{#snippet YearSelectInline()}
+	<CalendarYearSelectInline
+		years={years as number[] | undefined}
+		{yearFormat}
+		{locale}
+		{placeholder}
+		onSelect={(next) => (placeholder = next)}
+	/>
+{/snippet}
+
 {#if captionLayout === 'dropdown'}
 	{@render MonthSelect()}
 	{@render YearSelect()}
+{:else if captionLayout === 'dropdown-inline'}
+	{@render MonthSelectInline()}
+	{@render YearSelectInline()}
 {:else if captionLayout === 'dropdown-months'}
 	{@render MonthSelect()}
 	{#if placeholder}

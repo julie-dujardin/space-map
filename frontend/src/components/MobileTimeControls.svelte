@@ -106,7 +106,7 @@
 							bind:value={pickerValue}
 							bind:placeholder={pickerPlaceholder}
 							onValueChange={handleDateChange}
-							captionLayout="label"
+							captionLayout="dropdown-inline"
 						/>
 					</div>
 				{/if}
