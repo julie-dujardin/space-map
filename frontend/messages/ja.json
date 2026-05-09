@@ -18,6 +18,8 @@
 	"time_scale_year_per_sec": "1年/秒",
 	"error_prefix": "エラー: {error}",
 	"close": "閉じる",
+	"share": "共有",
+	"link_copied": "リンクをコピーしました",
 	"image_view_on_commons": "Commons で表示",
 	"image_open_viewer": "原寸画像を開く",
 	"image_previous": "前の画像",

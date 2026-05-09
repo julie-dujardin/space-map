@@ -18,6 +18,8 @@
 	"time_scale_year_per_sec": "1年/秒",
 	"error_prefix": "错误：{error}",
 	"close": "关闭",
+	"share": "分享",
+	"link_copied": "链接已复制",
 	"image_view_on_commons": "在 Commons 查看",
 	"image_open_viewer": "打开原图",
 	"image_previous": "上一张图片",

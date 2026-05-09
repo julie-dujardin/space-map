@@ -18,6 +18,8 @@
 	"time_scale_year_per_sec": "1 an/s",
 	"error_prefix": "Erreur : {error}",
 	"close": "Fermer",
+	"share": "Partager",
+	"link_copied": "Lien copié",
 	"image_view_on_commons": "Voir sur Commons",
 	"image_open_viewer": "Ouvrir l'image en taille réelle",
 	"image_previous": "Image précédente",

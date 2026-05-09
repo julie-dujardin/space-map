@@ -18,6 +18,8 @@
 	"time_scale_year_per_sec": "1 سنة/ث",
 	"error_prefix": "خطأ: {error}",
 	"close": "إغلاق",
+	"share": "مشاركة",
+	"link_copied": "تم نسخ الرابط",
 	"image_view_on_commons": "عرض في كومنز",
 	"image_open_viewer": "فتح الصورة بالحجم الكامل",
 	"image_previous": "الصورة السابقة",

@@ -18,6 +18,8 @@
 	"time_scale_year_per_sec": "1 г/с",
 	"error_prefix": "Ошибка: {error}",
 	"close": "Закрыть",
+	"share": "Поделиться",
+	"link_copied": "Ссылка скопирована",
 	"image_view_on_commons": "Открыть в Commons",
 	"image_open_viewer": "Открыть в полном размере",
 	"image_previous": "Предыдущее изображение",

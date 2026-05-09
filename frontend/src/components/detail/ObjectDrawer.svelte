@@ -7,7 +7,9 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
+	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
+	import { toast } from 'svelte-sonner';
 	import type { PositionedBody } from '$lib/types/objects';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
@@ -138,6 +140,26 @@
 			viewerIndex < viewerImages.length
 	);
 
+	async function handleShare() {
+		const url = window.location.href;
+		if (navigator.share) {
+			try {
+				await navigator.share({ url, title: displayName });
+				return;
+			} catch (err) {
+				// User dismissed the native share sheet — nothing to do.
+				if ((err as DOMException).name === 'AbortError') return;
+				// Other failures fall through to the clipboard fallback below.
+			}
+		}
+		try {
+			await navigator.clipboard.writeText(url);
+			toast.success(m.link_copied());
+		} catch (err) {
+			console.warn('Share failed:', err);
+		}
+	}
+
 	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
 	let activeTab = $state<'properties' | 'images'>('properties');
 	// Switching to an object that has no images while we're sitting on the
@@ -231,6 +253,10 @@
 					<div class="flex w-full items-center justify-between">
 						<span class="text-sm font-semibold truncate">{displayName}</span>
 						<div class="flex items-center gap-1">
+							<Button variant="ghost" size="icon-sm" onclick={handleShare}>
+								<Share2Icon />
+								<span class="sr-only">{m.share()}</span>
+							</Button>
 							{#if isMinimized}
 								<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
 									<MinimizeIcon />
@@ -273,6 +299,10 @@
 		<div class="flex items-center justify-between p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
 			<div class="flex items-center gap-1">
+				<Button variant="ghost" size="icon-sm" onclick={handleShare}>
+					<Share2Icon />
+					<span class="sr-only">{m.share()}</span>
+				</Button>
 				{#if isMinimized}
 					<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
 						<MinimizeIcon />
