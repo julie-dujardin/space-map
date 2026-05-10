@@ -59,7 +59,6 @@ from space_map_data.models.object import (
     ObjectType,
     OrbitalSource,
     SBDB,
-    SBDBMoon,
 )
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -80,12 +79,6 @@ _SUN_MAJOR_TYPES = {
 _SUN_MAJOR_TYPE_VALUES = [t.value for t in _SUN_MAJOR_TYPES]
 
 _DEFAULT_ZONE_LIMIT = 10_000
-
-# Columns the Keplerian elements writer hard-requires (it raises on None).
-# SBDB-moon rows where any of these is null can't be propagated as a Kepler
-# orbit, so they're filtered out of the small_body_moons zone and instead
-# fall into the orbitless bucket (still get an object-detail bundle).
-_SBDBMOON_KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
 
 
 @dataclass
@@ -897,13 +890,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     0,
                     session.query(Object)
                     .options(joinedload(Object.sbdb_moon))
-                    .join(Object.sbdb_moon)
                     .filter(
                         Object.orbital_source == OrbitalSource.sbdb_moon,
-                        *(
-                            getattr(SBDBMoon, c).is_not(None)
-                            for c in _SBDBMOON_KEPLER_REQUIRED
-                        ),
+                        Object.has_position == True,  # noqa: E712
                     ),
                 ),
                 (
@@ -1103,20 +1092,18 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
 
         # SBDB satellites whose Kepler set isn't complete (publication
         # placeholders with no orbit at all — ~95% of rows — plus the smaller
-        # group with `a_km` set but other elements missing, which the
-        # elements writer can't propagate). They never appear in the
+        # group missing some elements). They never appear in the
         # small_body_moons position zone, so build their object data here so
-        # they still show up in bundles + labels and the frontend can navigate
-        # to a detail page even without a 3D position.
+        # they still show up in bundles and the frontend can navigate to a
+        # detail page even without a 3D position. (They are excluded from
+        # the labels file by `has_position` to avoid the renderer's
+        # auto-promote loop retrying an unfindable getBody every frame.)
         orbitless_moons = (
             session.query(Object)
             .options(joinedload(Object.sbdb_moon))
-            .join(Object.sbdb_moon)
             .filter(
                 Object.orbital_source == OrbitalSource.sbdb_moon,
-                or_(
-                    *(getattr(SBDBMoon, c).is_(None) for c in _SBDBMOON_KEPLER_REQUIRED)
-                ),
+                Object.has_position == False,  # noqa: E712
             )
             .all()
         )
@@ -1145,10 +1132,21 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             session, DOWNLOAD_DIR, out_dir, radii, all_objects.has_localized
         )
 
+        # Bodies that ship in some position file — used to gate the labels
+        # file's auto-promotion. Sourced from the DB column rather than a
+        # runtime accumulator so the per-source ingest is the single writer
+        # of "is this row renderable in 3D".
+        rendered_ids = {
+            oid
+            for (oid,) in session.query(Object.id)
+            .filter(Object.has_position == True)  # noqa: E712
+            .all()
+        }
+
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
     )
-    write_global_labels(out_dir, all_objects, cheb_covered_ids)
+    write_global_labels(out_dir, all_objects, cheb_covered_ids, rendered_ids)
 
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)

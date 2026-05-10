@@ -31,7 +31,20 @@ logger = logging.getLogger(__name__)
 _US = "\x1f"  # ASCII Unit Separator — delimiter between fields
 
 
-def _is_promoted(obj_id: str, global_data: dict, cheb_covered_ids: set[str]) -> bool:
+def _is_promoted(
+    obj_id: str,
+    global_data: dict,
+    cheb_covered_ids: set[str],
+    rendered_ids: set[str],
+) -> bool:
+    """A body is promoted if it'd be rendered as an individual mesh on first
+    paint. Type/curated/cheb membership is the *intent* check; ``rendered_ids``
+    is the *capability* check — bodies absent from every position file can't
+    render in 3D, so promoting them just makes the renderer's pending-promotion
+    loop retry an unfindable ``getBody`` every frame.
+    """
+    if obj_id not in rendered_ids and obj_id not in cheb_covered_ids:
+        return False
     return (
         global_data.get("type") in PROMOTED_TYPES
         or obj_id in PROMOTED_EXTRA_IDS
@@ -66,6 +79,7 @@ def write_global_labels(
     out_dir: Path,
     all_objects: ChunkObjectData,
     cheb_covered_ids: set[str],
+    rendered_ids: set[str],
 ) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
 
@@ -73,6 +87,12 @@ def write_global_labels(
     they're rendered as individual meshes by virtue of their precise
     ephemerides, so they always belong in the labels set (catches the DE441
     perturber asteroids that aren't in :data:`PROMOTED_EXTRA_IDS`).
+
+    ``rendered_ids`` is the union of object IDs that ship in any elements
+    position file. Bodies present only in object bundles (e.g. orbit-less
+    SBDB satellites added for navigation) are excluded — promoting them
+    would make the frontend's pending-promotion loop retry an unfindable
+    ``getBody`` every frame.
     """
     missing_extras = sorted(PROMOTED_EXTRA_IDS - all_objects.global_data.keys())
     if missing_extras:
@@ -84,7 +104,7 @@ def write_global_labels(
     promoted_ids = sorted(
         obj_id
         for obj_id, glob in all_objects.global_data.items()
-        if _is_promoted(obj_id, glob, cheb_covered_ids)
+        if _is_promoted(obj_id, glob, cheb_covered_ids, rendered_ids)
     )
 
     labels_dir = out_dir / "labels"

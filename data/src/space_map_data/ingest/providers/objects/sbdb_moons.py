@@ -65,6 +65,11 @@ _ELEMENT_SIGMA_COLS = {
     "tp": "sigma_tp",
 }
 
+# SBDBMoon columns the Keplerian writer hard-requires. A row missing any
+# of these can't ship in the small_body_moons position file; the ingest
+# sets ``Object.has_position`` accordingly.
+_KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
+
 
 def _coerce_int(val: int | str | None) -> int | None:
     """Year/iau_num/oid arrive as int or numeric string. Empty → None."""
@@ -240,12 +245,18 @@ class SBDBMoonsIngestor:
         sat_id: str,
         sat: dict,
         tree_parent_object_id: str | None,
+        sat_row: dict,
     ) -> dict:
         fullname = string_or_none(sat.get("fullname"))
         iau_name = string_or_none(sat.get("iau_name"))
         prov_des = string_or_none(sat.get("prov_des"))
         # Prefer IAU name, fall back to fullname, then provisional designation.
         display_name = iau_name or fullname or prov_des
+        # Most SBDB satellite payloads are publication placeholders with no
+        # orbit at all; tag whether this row carries the full Keplerian set
+        # the elements writer needs so export queries can route orbit-less
+        # rows into the bundle-only path without re-checking each column.
+        has_position = all(sat_row.get(c) is not None for c in _KEPLER_REQUIRED)
         return dict(
             id=sat_id,
             name=display_name,
@@ -254,6 +265,7 @@ class SBDBMoonsIngestor:
             scale=ElementsScale.system,
             parent_id=tree_parent_object_id,
             orbital_source=OrbitalSource.sbdb_moon.value,
+            has_position=has_position,
         )
 
     def _flush(self, objects: list[dict], sats: list[dict]) -> None:
@@ -350,9 +362,6 @@ class SBDBMoonsIngestor:
                     )
                 else:
                     sat_id = make_object_id(ID_TYPES.SBDB_MOON, f"{parent_spkid}-{idx}")
-                    obj_row = self._build_new_object_row(
-                        sat_id, sat, tree_parent_object_id
-                    )
                     sat_row = self._build_sat_row(
                         sat_id,
                         parent_object_id,
@@ -360,6 +369,9 @@ class SBDBMoonsIngestor:
                         idx,
                         sat,
                         include_orbit=True,
+                    )
+                    obj_row = self._build_new_object_row(
+                        sat_id, sat, tree_parent_object_id, sat_row
                     )
                     objects.append(obj_row)
                     sats.append(sat_row)

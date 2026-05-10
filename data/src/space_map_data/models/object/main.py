@@ -148,6 +148,13 @@ class Object(Base):
     map_texture_available: Mapped[bool] = mapped_column(default=False)
     image_available: Mapped[bool] = mapped_column(default=False)
     has_rings: Mapped[bool] = mapped_column(default=False)
+    # True when this row carries the orbital elements needed to ship in a
+    # position file (Keplerian/SGP4/parabolic). Computed at ingest from the
+    # source-specific required-element set; consumed by export queries to
+    # gate the per-source position-zone selects and by the labels writer to
+    # gate auto-promotion (label-only entries make the renderer's pending-
+    # promotion loop retry an unfindable getBody every frame).
+    has_position: Mapped[bool] = mapped_column(default=False, index=True)
 
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")

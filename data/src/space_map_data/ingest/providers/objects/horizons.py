@@ -115,6 +115,9 @@ class HorizonsIngestor:
                         cospar_id=hz.cospar_id,
                         parent_id=parent_object_id,
                         orbital_source=OrbitalSource.horizons,
+                        # Horizons spacecraft come from a CSV that always
+                        # carries the Keplerian solution we ship.
+                        has_position=True,
                     )
                 )
                 hz.object_id = object_id

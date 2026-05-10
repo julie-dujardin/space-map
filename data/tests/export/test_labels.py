@@ -45,7 +45,7 @@ class TestWriteGlobalLabels:
             "name": "Random",
         }
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         names = _parse(tmp_path / "labels" / "en.gz")
         assert set(names) == {"naif-399", "naif-301", "naif--31"}
@@ -54,7 +54,7 @@ class TestWriteGlobalLabels:
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         for lang in LANGUAGES:
             assert (tmp_path / "labels" / f"{lang}.gz").exists()
@@ -64,7 +64,7 @@ class TestWriteGlobalLabels:
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
         all_objs.localized_data["fr"]["naif-399"] = {"name": "Terre"}
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         assert _parse(tmp_path / "labels" / "fr.gz")["naif-399"] == "Terre"
         # No localized override for English → fall through to global obj.name
@@ -79,7 +79,7 @@ class TestWriteGlobalLabels:
         # walks its fallback chain (loading → id) from there.
         all_objs.global_data["naif--31"] = {"type": ObjectType.spacecraft}
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"naif--31": ""}
 
@@ -93,7 +93,9 @@ class TestWriteGlobalLabels:
             "name": "52 Europa",
         }
 
-        write_global_labels(tmp_path, all_objs, {"spkid-20000052"})
+        write_global_labels(
+            tmp_path, all_objs, {"spkid-20000052"}, set(all_objs.global_data.keys())
+        )
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"spkid-20000052": "52 Europa"}
 
@@ -108,7 +110,7 @@ class TestWriteGlobalLabels:
             "provisional_designation": "2010J1",
         }
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         assert _parse_with_flags(tmp_path / "labels" / "en.gz") == {
             "naif-551": ("2010J1", "m"),
@@ -143,7 +145,7 @@ class TestWriteGlobalLabels:
             "provisional_designation": "S2010 J5",
         }
 
-        write_global_labels(tmp_path, all_objs, set())
+        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         flags = {
             obj_id: f

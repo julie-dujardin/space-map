@@ -70,6 +70,10 @@ class SpiceIngestor:
                 else None
             ),
             "orbital_source": OrbitalSource.spice,
+            # Planets/moons/barycenters from SPICE always carry kepler
+            # elements (re-fit from kernels) plus secular drift rates for
+            # non-whitelisted moons.
+            "has_position": True,
         }
         # Kepler elements + SPICE-fitted secular drift rates land on the
         # Horizons sub-table — SPICE-source rows join there for elements.

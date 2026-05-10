@@ -331,6 +331,10 @@ def _parse_chunk(
                         "mpc_designation": pdes,
                         "orbital_source": OrbitalSource.sbdb.value,
                         "parent_id": "naif-10",  # SBDB is heliocentric, parent is the Sun
+                        # SBDB rows always carry orbital elements (the bulk
+                        # CSV is the orbit catalog); condition_code=9 cases
+                        # ship as MISSING_FLOAT64 in the binary, not dropped.
+                        "has_position": True,
                     },
                 }
             )

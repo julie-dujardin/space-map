@@ -86,6 +86,9 @@ class CelesTrakIngestor:
             scale=ElementsScale.planet,
             parent_id="naif-399",
             orbital_source=OrbitalSource.celestrak,
+            # Earth sats live in the daily TLE snapshots; rows with no
+            # current TLE are dropped at overlay time, not here.
+            has_position=True,
         )
         # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are
         # not persisted: the export reads fresh values from the daily snapshot
