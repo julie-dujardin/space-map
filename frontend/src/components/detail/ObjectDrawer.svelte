@@ -189,18 +189,18 @@
 	}
 
 	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
-	let activeTab = $state<'properties' | 'images'>('properties');
+	let activeTab = $state<'overview' | 'images'>('overview');
 	// Switching to an object that has no images while we're sitting on the
-	// images tab would leave the panel empty — fall back to properties.
+	// images tab would leave the panel empty — fall back to overview.
 	$effect(() => {
-		if (!hasImages && activeTab === 'images') activeTab = 'properties';
+		if (!hasImages && activeTab === 'images') activeTab = 'overview';
 	});
 </script>
 
 {#snippet tabsBar()}
 	<div class="border-b -mx-1 px-1">
 		<Tabs.List variant="line" class="h-9 gap-2 -mb-px">
-			<Tabs.Trigger value="properties" class="px-2">{m.tab_properties()}</Tabs.Trigger>
+			<Tabs.Trigger value="overview" class="px-2">{m.tab_overview()}</Tabs.Trigger>
 			{#if hasImages}
 				<Tabs.Trigger value="images" class="px-2">
 					{m.tab_images()}
@@ -213,7 +213,7 @@
 	</div>
 {/snippet}
 
-{#snippet propertiesPanel()}
+{#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
 			<Skeleton class="w-full h-36 rounded-md" />
@@ -308,8 +308,8 @@
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
 						style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
 					>
-						<Tabs.Content value="properties">
-							{@render propertiesPanel()}
+						<Tabs.Content value="overview">
+							{@render overviewPanel()}
 						</Tabs.Content>
 						<Tabs.Content value="images">
 							{@render imagesPanel()}
@@ -351,8 +351,8 @@
 
 		<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
 			<ScrollArea class="flex-1 min-h-0">
-				<Tabs.Content value="properties" class="px-4 pb-4">
-					{@render propertiesPanel()}
+				<Tabs.Content value="overview" class="px-4 pb-4">
+					{@render overviewPanel()}
 				</Tabs.Content>
 				<Tabs.Content value="images" class="px-4 pb-4">
 					{@render imagesPanel()}
