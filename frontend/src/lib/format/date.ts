@@ -14,11 +14,10 @@ export function jdToDate(jd: number): Date {
 }
 
 function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
-	return d.toLocaleDateString(getLocale(), {
-		year: 'numeric',
-		month,
-		day: 'numeric'
-	});
+	const opts: Intl.DateTimeFormatOptions = { year: 'numeric', month, day: 'numeric' };
+	// JS Date has no year 0; getUTCFullYear() < 1 means BCE (proleptic Gregorian).
+	if (d.getUTCFullYear() < 1) opts.era = 'short';
+	return d.toLocaleDateString(getLocale(), opts);
 }
 
 interface ParsedIsoDate {
@@ -37,7 +36,7 @@ interface ParsedIsoDate {
  * unknown precision — equivalent to the Wikidata "00" placeholder.
  */
 export function parseIsoDate(raw: string): ParsedIsoDate | null {
-	const m = raw.match(/^([+-]?)(\d{4,})(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
+	const m = raw.match(/^([+-]?)(\d+)(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
 	if (!m) return null;
 	const [, sign, yearStr, monthStr = '00', dayStr = '00', hh, mm, ss] = m;
 	const isBCE = sign === '-';

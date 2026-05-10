@@ -10,7 +10,7 @@
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
-	import { formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
+	import { formatIsoDate, formatJulianDate, formatJulianDateRelative } from '$lib/format/date';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { orbitalElementsToPositionJD } from '$lib/math/orbit/position';
 	import { sgp4PositionScene, sgp4State } from '$lib/math/orbit/sgp4';
@@ -367,7 +367,7 @@
 			/>
 		{/if}
 		{#if sbdb?.last_obs}
-			<Row label={m.last_observed()} value={sbdb.last_obs} />
+			<Row label={m.last_observed()} value={formatIsoDate(sbdb.last_obs)} />
 		{/if}
 		{#if epochValue}
 			<Row label={m.orbit_epoch()} value={epochValue} tooltip={m.tooltip_orbit_epoch()} />

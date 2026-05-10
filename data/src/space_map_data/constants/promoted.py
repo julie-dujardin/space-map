@@ -107,6 +107,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-1000107",  # 81P/Wild 2
         "spkid-1000041",  # 103P/Hartley 2
         "spkid-1000132",  # C/1995 O1 (Hale-Bopp)
+        "spkid-1000742",  # Great Comet of 1811
         "spkid-1003667",  # C/2020 F3 (NEOWISE)
         "spkid-1003913",  # C/2023 A3 (Tsuchinshan-ATLAS)
     }
