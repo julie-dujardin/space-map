@@ -61,7 +61,11 @@ describe('formatIsoDate', () => {
 		// Truncated forms (Commons-image dates from the data exporter)
 		{ name: 'truncated year', raw: '2009', expected: '2009' },
 		{ name: 'truncated year-month', raw: '2009-10', expected: 'October 2009' },
-		{ name: 'signed truncated year', raw: '+2009', expected: '2009' }
+		{ name: 'signed truncated year', raw: '+2009', expected: '2009' },
+		// SBDB stores ancient observation dates with 3-digit unpadded years
+		// (e.g. C/568 O1 → "568-11-05"); parser must accept <4-digit years.
+		{ name: '3-digit-year SBDB date', raw: '568-11-05', expected: 'November 5, 568' },
+		{ name: '3-digit-year BCE SBDB date', raw: '-43-05-30', expected: 'May 30, 44 BC' }
 	])('$name → $expected', ({ raw, expected }) => {
 		expect(formatIsoDate(raw)).toBe(expected);
 	});
@@ -75,5 +79,14 @@ describe('formatJulianDate', () => {
 	it('formats J2000 as a readable date', () => {
 		const result = formatJulianDate(2451545.0);
 		expect(result).toContain('2000');
+	});
+
+	// BCE Julian dates (e.g. orbit epoch for C/-43 K1) must include the era
+	// marker — otherwise "44 BC" renders as a bare "44" indistinguishable from AD.
+	it('formats a BCE Julian date with era', () => {
+		// JD 1705532.5 = -0043-06-26 (proleptic Gregorian) = 44 BC.
+		const result = formatJulianDate(1705532.5);
+		expect(result).toContain('44');
+		expect(result).toContain('BC');
 	});
 });
