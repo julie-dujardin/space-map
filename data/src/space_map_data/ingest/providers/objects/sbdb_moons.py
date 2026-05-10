@@ -104,21 +104,25 @@ def _coerce_bool(val: str | None) -> bool | None:
     return None
 
 
-def _resolve_parent_naif(parent_naif_id: int | None) -> int | None:
+def _resolve_parent_object_id(parent_object_id: str | None) -> str | None:
     """Apply the Horizons-convention barycenter swap.
 
-    Horizons-sourced moons have ``parent_id`` set to the system barycenter
-    (e.g. Charon's parent is NAIF 9, the Pluto barycenter, not 999). For
-    SBDB satellites of a body with the same convention — naif id in
-    100..999 ending in 99 — we mirror it so the tree shape matches.
-    Other parents (asteroids, dwarf planets in 2M+ range) have no
-    barycenter and are used as-is.
+    Horizons-sourced moons have ``parent_id`` set to the system barycenter's
+    Object.id (e.g. Charon's parent is "naif-9", the Pluto barycenter, not
+    "naif-999"). For SBDB satellites of a body with the same convention —
+    a NAIF body ending in 99 in 100..999 — we mirror it so the tree shape
+    matches. Other parents (asteroids, dwarf planets) have no barycenter
+    and are returned unchanged.
     """
-    if parent_naif_id is None:
+    if parent_object_id is None:
         return None
-    if 100 <= parent_naif_id <= 999 and parent_naif_id % 100 == 99:
-        return parent_naif_id // 100
-    return parent_naif_id
+    prefix, _, value = parent_object_id.partition("-")
+    if prefix != "naif" or not value.isdigit():
+        return parent_object_id
+    naif = int(value)
+    if 100 <= naif <= 999 and naif % 100 == 99:
+        return f"naif-{naif // 100}"
+    return parent_object_id
 
 
 def _parse_orbit(orbit: dict | None) -> dict:
@@ -175,17 +179,15 @@ class SBDBMoonsIngestor:
         )
         self.session.commit()
 
-    def _load_parent_index(self) -> dict[int, tuple[str, int | None]]:
-        """Map parent SPK-ID -> (object_id, naif_id) for parents in DB."""
+    def _load_parent_index(self) -> dict[int, str]:
+        """Map parent SPK-ID -> Object.id for parents in DB."""
         rows = self.session.execute(
-            select(Object.id, Object.spkid, Object.naif_id).where(
-                Object.spkid.is_not(None)
-            )
+            select(Object.id, Object.spkid).where(Object.spkid.is_not(None))
         ).all()
-        return {spkid: (oid, naif) for oid, spkid, naif in rows}
+        return {spkid: oid for oid, spkid in rows}
 
-    def _load_moon_index(self) -> dict[tuple[int, str], str]:
-        """Map (parent_naif_id, lowercased name) -> Object.id for existing moons.
+    def _load_moon_index(self) -> dict[tuple[str, str], str]:
+        """Map (parent Object.id, lowercased name) -> Object.id for existing moons.
 
         Used to detect that an SBDB satellite is the same body as one already
         in the DB from Horizons or SPICE (e.g. Pluto's Charon). When matched,
@@ -237,7 +239,7 @@ class SBDBMoonsIngestor:
         self,
         sat_id: str,
         sat: dict,
-        tree_parent_naif: int | None,
+        tree_parent_object_id: str | None,
     ) -> dict:
         fullname = string_or_none(sat.get("fullname"))
         iau_name = string_or_none(sat.get("iau_name"))
@@ -250,7 +252,7 @@ class SBDBMoonsIngestor:
             object_type=ObjectType.moon,
             provisional_designation=prov_des,
             scale=ElementsScale.planet,
-            parent_id=tree_parent_naif,
+            parent_id=tree_parent_object_id,
             orbital_source=OrbitalSource.sbdb_moon.value,
         )
 
@@ -297,8 +299,8 @@ class SBDBMoonsIngestor:
                 logger.warning("%s: filename is not an SPK-ID, skipping", path.name)
                 continue
 
-            parent = parent_index.get(parent_spkid)
-            if parent is None:
+            parent_object_id = parent_index.get(parent_spkid)
+            if parent_object_id is None:
                 self.no_parent_files += 1
                 logger.warning(
                     "%s: parent spkid %d not in objects table, skipping",
@@ -306,8 +308,7 @@ class SBDBMoonsIngestor:
                     parent_spkid,
                 )
                 continue
-            parent_object_id, parent_naif_id = parent
-            tree_parent_naif = _resolve_parent_naif(parent_naif_id)
+            tree_parent_object_id = _resolve_parent_object_id(parent_object_id)
 
             sat_array = payload.get("sat") or []
             for idx, sat in enumerate(sat_array):
@@ -324,8 +325,10 @@ class SBDBMoonsIngestor:
 
                 iau_name = string_or_none(sat.get("iau_name"))
                 existing_id: str | None = None
-                if iau_name and tree_parent_naif is not None:
-                    existing_id = moon_index.get((tree_parent_naif, iau_name.lower()))
+                if iau_name and tree_parent_object_id is not None:
+                    existing_id = moon_index.get(
+                        (tree_parent_object_id, iau_name.lower())
+                    )
 
                 if existing_id is not None:
                     sat_row = self._build_sat_row(
@@ -347,7 +350,9 @@ class SBDBMoonsIngestor:
                     )
                 else:
                     sat_id = make_object_id(ID_TYPES.SBDB_MOON, f"{parent_spkid}-{idx}")
-                    obj_row = self._build_new_object_row(sat_id, sat, tree_parent_naif)
+                    obj_row = self._build_new_object_row(
+                        sat_id, sat, tree_parent_object_id
+                    )
                     sat_row = self._build_sat_row(
                         sat_id,
                         parent_object_id,

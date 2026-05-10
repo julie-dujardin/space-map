@@ -148,12 +148,11 @@ def _write_keplerian_columns(
         [OBJECT_TYPE_ORDINAL.get(o.object_type, MISSING_UINT8) for o in objects],
     )
 
-    # TODO: drop naif it can be not NAIF
     # TODO: move to header when possible (most times, need another export type)
     _write_int32(
         buf,
         n,
-        [o.parent_id if o.parent_id is not None else MISSING_INT32 for o in objects],
+        [_parent_numeric_id(o) for o in objects],
     )
 
     _write_uint8(
@@ -330,7 +329,7 @@ def write_parabolic_elements(
     _write_int32(
         buf,
         n,
-        [o.parent_id if o.parent_id is not None else MISSING_INT32 for o in objects],
+        [_parent_numeric_id(o) for o in objects],
     )
     _write_uint8(
         buf,
@@ -386,6 +385,27 @@ def _parse_numeric_id(obj: Object) -> int:
     else:
         logger.warning("%s: unknown ID type '%s' for numeric ID", obj.id, id_type)
     return MISSING_INT32
+
+
+def _parent_numeric_id(obj: Object) -> int:
+    """Extract the numeric portion of the parent's Object.id for col 2.
+
+    The parent id-type is uniform per zone (currently always ``naif`` —
+    a per-zone parent_id_type override is planned). Frontend rebuilds the
+    parent's full Object.id from this column plus the zone's parent id-type.
+    """
+    if obj.parent_id is None:
+        return MISSING_INT32
+    pos = obj.parent_id.rfind("-")
+    if pos == -1:
+        logger.warning("%s: no separator in parent_id %r", obj.id, obj.parent_id)
+        return MISSING_INT32
+    tail = obj.parent_id[pos + 1 :]
+    try:
+        return int(tail)
+    except ValueError:
+        logger.warning("%s: non-numeric parent_id tail %r", obj.id, tail)
+        return MISSING_INT32
 
 
 def _float_value(o: Object, attr: str, file_source: OrbitalSource) -> float:

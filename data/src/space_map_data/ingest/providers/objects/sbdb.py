@@ -330,7 +330,7 @@ def _parse_chunk(
                         "naif_id": naif_id_from_spk(spkid, object_type),
                         "mpc_designation": pdes,
                         "orbital_source": OrbitalSource.sbdb.value,
-                        "parent_id": 10,  # SBDB is heliocentric, parent is Sun (NAIF ID 10)
+                        "parent_id": "naif-10",  # SBDB is heliocentric, parent is the Sun
                     },
                 }
             )

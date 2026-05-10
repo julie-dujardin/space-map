@@ -101,6 +101,11 @@ class HorizonsIngestor:
             else:
                 # No match — create a new Object for this probe
                 object_id = make_object_id(ID_TYPES.NAIF, hz.naif_id)
+                parent_object_id = (
+                    make_object_id(ID_TYPES.NAIF, hz.parent_id)
+                    if hz.parent_id is not None
+                    else None
+                )
                 new_objects.append(
                     Object(
                         id=object_id,
@@ -108,7 +113,7 @@ class HorizonsIngestor:
                         object_type=ObjectType.spacecraft,
                         naif_id=hz.naif_id,
                         cospar_id=hz.cospar_id,
-                        parent_id=hz.parent_id,
+                        parent_id=parent_object_id,
                         orbital_source=OrbitalSource.horizons,
                     )
                 )

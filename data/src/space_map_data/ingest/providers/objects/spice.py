@@ -52,6 +52,7 @@ class SpiceIngestor:
         object_pk = make_object_id(ID_TYPES.NAIF, naif_id)
         # Link to SBDB physical data if this body has an SBDB counterpart
         spkid = spk_id_from_naif(naif_id, obj_type)
+        parent_naif = int_or_none(row["parent_id"])
         obj = {
             "id": object_pk,
             "name": string_or_none(row["name"]),
@@ -63,7 +64,11 @@ class SpiceIngestor:
             "object_type": obj_type,
             "naif_id": naif_id,
             "spkid": spkid,
-            "parent_id": int_or_none(row["parent_id"]),
+            "parent_id": (
+                make_object_id(ID_TYPES.NAIF, parent_naif)
+                if parent_naif is not None
+                else None
+            ),
             "orbital_source": OrbitalSource.spice,
         }
         # Kepler elements + SPICE-fitted secular drift rates land on the

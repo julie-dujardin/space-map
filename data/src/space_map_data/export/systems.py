@@ -211,28 +211,27 @@ def write_system_metadata(
 
     Returns the orientation lookup for use by object detail export.
     """
-    # Build barycenter NAIF number -> barycenter object ID mapping
+    # Build barycenter Object.id set (planetary system barycenters parented
+    # directly on SSB / Sun).
+    top_level_ids = [f"naif-{n}" for n in _TOP_LEVEL_NAIF_IDS]
     barycenters = (
         session.query(Object)
         .filter(
             Object.object_type == ObjectType.barycenter.value,
-            Object.parent_id.in_(list(_TOP_LEVEL_NAIF_IDS)),
+            Object.parent_id.in_(top_level_ids),
             Object.naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
         )
         .all()
     )
-    bary_by_naif: dict[int, str] = {}
-    for b in barycenters:
-        if b.naif_id is not None:
-            bary_by_naif[b.naif_id] = b.id
+    bary_ids: set[str] = {b.id for b in barycenters}
 
-    # Map planet/body NAIF number -> barycenter object ID (one level down)
-    planet_to_bary: dict[int, str] = {}
+    # Map child Object.id -> barycenter Object.id (one level down — e.g.
+    # naif-399 (Earth) → naif-3 (EMB)).
+    child_to_bary: dict[str, str] = {}
     for bary in barycenters:
-        children = session.query(Object).filter(Object.parent_id == bary.naif_id).all()
+        children = session.query(Object).filter(Object.parent_id == bary.id).all()
         for child in children:
-            if child.naif_id is not None:
-                planet_to_bary[child.naif_id] = bary.id
+            child_to_bary[child.id] = bary.id
 
     # Query all bodies that belong to planetary systems (not just textured ones)
     system_bodies = (
@@ -244,15 +243,16 @@ def write_system_metadata(
     # Group by system barycenter
     systems: dict[str, list[Object]] = {}
     for obj in system_bodies:
-        if obj.parent_id in bary_by_naif:
-            sys_id = bary_by_naif[obj.parent_id]
-        elif obj.parent_id in planet_to_bary:
-            sys_id = planet_to_bary[obj.parent_id]
-        elif obj.naif_id in bary_by_naif:
+        if obj.parent_id in bary_ids:
+            sys_id = obj.parent_id
+        elif obj.parent_id in child_to_bary:
+            sys_id = child_to_bary[obj.parent_id]
+        elif obj.id in bary_ids:
             # The barycenter itself
-            sys_id = bary_by_naif[obj.naif_id]
+            sys_id = obj.id
         else:
             continue  # top-level or not in a system
+        assert sys_id is not None
         systems.setdefault(sys_id, []).append(obj)
 
     # Write one JSON file per system

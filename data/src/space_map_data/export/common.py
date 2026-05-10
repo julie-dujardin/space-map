@@ -63,7 +63,7 @@ from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 logger = logging.getLogger(__name__)
 
-_EARTH_NAIF_ID = 399
+_EARTH_OBJECT_ID = "naif-399"
 
 _SAT_CONTEXT_TYPES = {ObjectType.spacecraft, ObjectType.debris}
 _SAT_TYPE_VALUES = [t.value for t in _SAT_CONTEXT_TYPES]
@@ -777,7 +777,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 .filter(
                     Object.spkid.is_(None),
                     Object.object_type.in_(_SAT_TYPE_VALUES),
-                    Object.parent_id == _EARTH_NAIF_ID,
+                    Object.parent_id == _EARTH_OBJECT_ID,
                 )
             )
             _is_constellation = or_(
@@ -839,7 +839,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     .filter(
                         Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),
-                        Object.parent_id != _EARTH_NAIF_ID,
+                        Object.parent_id != _EARTH_OBJECT_ID,
                         Object.id.notin_(cheb_covered_ids)
                         if cheb_covered_ids
                         else sa_true(),

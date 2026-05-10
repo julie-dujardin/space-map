@@ -40,69 +40,71 @@ def _body_name(obj: Object) -> str:
 
 def _load_system_lookup(
     session: Session,
-) -> tuple[dict[int, str], dict[int, str], dict[str, str], dict[str, int]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, int]]:
     """Build the mappings needed to group a textured body under a system.
 
     Returns:
-      * `bary_by_naif` — `{bary_naif_id: bary_obj_id}` (e.g. `3 → "naif-3"`).
-      * `planet_to_bary` — `{child_naif_id: bary_obj_id}` for direct children
-        of a barycenter, so a body parented on Earth (naif-399) routes to
-        the Earth–Moon barycenter.
+      * `bary_by_id` — `{bary_obj_id: bary_obj_id}` (e.g. `"naif-3" → "naif-3"`).
+        Identity map; lookups use `obj.parent_id in bary_by_id`.
+      * `child_to_bary` — `{child_obj_id: bary_obj_id}` for direct children
+        of a barycenter, so a body parented on Earth (`naif-399`) routes to
+        the Earth–Moon barycenter (`naif-3`).
       * `system_name_by_id` — `{bary_obj_id: display_name}` using the primary
         planet's name (e.g. `"naif-3" → "Earth"`) rather than the cluttered
         `"Earth-Moon Barycenter"` DB label.
       * `system_order_by_id` — `{bary_obj_id: bary_naif_id}` so the output
         can render Mercury → Pluto by natural ordinal.
     """
+    top_level_ids = [f"naif-{n}" for n in _TOP_LEVEL_NAIF_IDS]
     barycenters = (
         session.query(Object)
         .filter(
             Object.object_type == ObjectType.barycenter.value,
-            Object.parent_id.in_(list(_TOP_LEVEL_NAIF_IDS)),
+            Object.parent_id.in_(top_level_ids),
             Object.naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
         )
         .all()
     )
 
-    bary_by_naif: dict[int, str] = {}
+    bary_by_id: dict[str, str] = {}
     system_order_by_id: dict[str, int] = {}
     for b in barycenters:
         if b.naif_id is not None:
-            bary_by_naif[b.naif_id] = b.id
+            bary_by_id[b.id] = b.id
             system_order_by_id[b.id] = b.naif_id
 
-    planet_to_bary: dict[int, str] = {}
+    child_to_bary: dict[str, str] = {}
     for bary in barycenters:
-        children = session.query(Object).filter(Object.parent_id == bary.naif_id).all()
+        children = session.query(Object).filter(Object.parent_id == bary.id).all()
         for child in children:
-            if child.naif_id is not None:
-                planet_to_bary[child.naif_id] = bary.id
+            child_to_bary[child.id] = bary.id
 
     # Prefer the primary planet's name as the system label (naif-X99 for
     # barycenter naif-X) — "Earth" reads better than "Earth-Moon Barycenter".
     system_name_by_id: dict[str, str] = {}
     primary_naif_ids = [
-        (bary_naif or 0) * 100 + 99 for bary_naif in bary_by_naif.keys()
+        (b.naif_id or 0) * 100 + 99 for b in barycenters if b.naif_id is not None
     ]
     primaries = session.query(Object).filter(Object.naif_id.in_(primary_naif_ids)).all()
     primary_by_naif = {p.naif_id: p for p in primaries}
-    for bary_naif, bary_id in bary_by_naif.items():
-        primary = primary_by_naif.get(bary_naif * 100 + 99)
+    for bary in barycenters:
+        if bary.naif_id is None:
+            continue
+        primary = primary_by_naif.get(bary.naif_id * 100 + 99)
         if primary and primary.name:
-            system_name_by_id[bary_id] = primary.name
+            system_name_by_id[bary.id] = primary.name
         else:
             # Fallback: strip the redundant "Barycenter" suffix.
-            bary_obj = next((b for b in barycenters if b.id == bary_id), None)
-            name = (bary_obj.name if bary_obj else None) or bary_id
-            system_name_by_id[bary_id] = name.replace(" Barycenter", "").strip()
+            name = bary.name or bary.id
+            system_name_by_id[bary.id] = name.replace(" Barycenter", "").strip()
 
-    return bary_by_naif, planet_to_bary, system_name_by_id, system_order_by_id
+    return bary_by_id, child_to_bary, system_name_by_id, system_order_by_id
 
 
 def _resolve_system_id(
     obj: Object,
-    bary_by_naif: dict[int, str],
-    planet_to_bary: dict[int, str],
+    bary_by_id: dict[str, str],
+    child_to_bary: dict[str, str],
 ) -> str | None:
     """Return the barycenter ID that textually owns *obj*, or None for standalones.
 
@@ -111,12 +113,12 @@ def _resolve_system_id(
     an Earth satellite routing up to Earth-Moon), or being a barycenter
     itself, all count as "inside" that system.
     """
-    if obj.parent_id in bary_by_naif:
-        return bary_by_naif[obj.parent_id]
-    if obj.parent_id in planet_to_bary:
-        return planet_to_bary[obj.parent_id]
-    if obj.naif_id in bary_by_naif:
-        return bary_by_naif[obj.naif_id]
+    if obj.parent_id in bary_by_id:
+        return bary_by_id[obj.parent_id]
+    if obj.parent_id in child_to_bary:
+        return child_to_bary[obj.parent_id]
+    if obj.id in bary_by_id:
+        return bary_by_id[obj.id]
     return None
 
 
@@ -138,7 +140,7 @@ def write_credits(
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
 
-    bary_by_naif, planet_to_bary, system_name_by_id, system_order_by_id = (
+    bary_by_id, child_to_bary, system_name_by_id, system_order_by_id = (
         _load_system_lookup(session)
     )
 
@@ -159,7 +161,7 @@ def write_credits(
             "name": _body_name(obj),
             **texture_attribution(meta),
         }
-        sys_id = _resolve_system_id(obj, bary_by_naif, planet_to_bary)
+        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
         grouped.setdefault(sys_id, []).append(entry)
 
     for entries in grouped.values():

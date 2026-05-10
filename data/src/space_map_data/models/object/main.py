@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from space_map_data.constants.providers import PROVIDERS
@@ -137,9 +137,9 @@ class Object(Base):
     scale: Mapped[ElementsScale] = mapped_column(
         String, default=ElementsScale.system
     )  # element scale
-    parent_id: Mapped[int | None] = mapped_column(
-        default=None
-    )  # NAIF ID of central body (0=SSB, 399=Earth)
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("objects.id"), default=None
+    )  # Object.id of the central body (e.g. "naif-399" for Earth)
 
     orbital_source: Mapped[OrbitalSource | None] = mapped_column(
         default=None
