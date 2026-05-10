@@ -34,6 +34,13 @@ export interface OrbitalElements {
 export interface BodyData extends OrbitalElements {
 	id: string; // prefixed ID, e.g. "naif-499", "spkid-20134340" — matches backend Object.id and /data/v1/objects/ filenames
 	name: string | null;
+	/**
+	 * `true` for promoted bodies the data side flagged as minor — currently
+	 * designation-only moons (e.g. `naif-65289`/`S2020 S48`). Renders as a
+	 * collapsed halo by default; expands and shows the label on hover. Set
+	 * from the labels file's `m` flag at chunk parse time, alongside `name`.
+	 */
+	isMinor?: boolean;
 	objectType: ObjectType;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	radiusKm: number;

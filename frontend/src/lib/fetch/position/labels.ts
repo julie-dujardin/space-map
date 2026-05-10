@@ -1,34 +1,41 @@
 /**
- * Global per-language labels fetcher.
+ * Per-language promoted-set fetcher. The map's keys are the auto-promote
+ * set; values carry the display name and per-body flags.
  *
- * Replaces the previous per-chunk `.loc.{lang}.gz` files: there's now one
- * `/v1/labels/{lang}.gz` per language listing only the *promoted* set —
- * planets, dwarf planets, moons, stars, barycenters, Lagrange points, plus
- * the curated extras in `data/src/space_map_data/constants/promoted.py`.
- *
- * The frontend's promoted set is exactly this file's keys; there is no
- * separate hardcoded list.
+ * Line format: `{id}\x1f{name}\x1f{flags}`. Flags is a single-character
+ * set; `m` marks a body as *minor* (collapsed halo by default).
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { labelsUrl } from '$lib/fetch/position/format';
 
-/** ASCII Unit Separator — delimiter between id and name in label files. */
+/** ASCII Unit Separator — delimiter between fields in label files. */
 const US = '\x1f';
 
-export type LabelMap = ReadonlyMap<string, string>;
+export interface LabelEntry {
+	name: string;
+	/** True for designation-only moons — render as a collapsed halo by default. */
+	isMinor: boolean;
+}
 
-export function parseLabels(text: string): Map<string, string> {
-	const out = new Map<string, string>();
+export type LabelMap = ReadonlyMap<string, LabelEntry>;
+
+export function parseLabels(text: string): Map<string, LabelEntry> {
+	const out = new Map<string, LabelEntry>();
 	if (!text) return out;
 	for (const line of text.split('\n')) {
-		const sep = line.indexOf(US);
-		if (sep === -1) continue; // malformed/blank line
-		// Empty names (`{id}\x1f`) are kept on purpose: the exporter emits them
-		// for curated promoted bodies that have no Wikidata or DB name, and the
-		// renderer relies on the map's *keys* as the auto-promote set. Callers
-		// that read the value should coalesce `''` → fallback themselves.
-		out.set(line.slice(0, sep), line.slice(sep + 1));
+		const sep1 = line.indexOf(US);
+		if (sep1 === -1) continue; // malformed/blank line
+		const id = line.slice(0, sep1);
+		const rest = line.slice(sep1 + 1);
+		// Empty names (`{id}\x1f\x1f{flags}`) are kept on purpose: the exporter
+		// emits them for curated promoted bodies that have no Wikidata or DB
+		// name, and the renderer keys auto-promote on the map. Callers that
+		// read `name` should coalesce `''` → fallback themselves.
+		const sep2 = rest.indexOf(US);
+		const name = sep2 === -1 ? rest : rest.slice(0, sep2);
+		const flags = sep2 === -1 ? '' : rest.slice(sep2 + 1);
+		out.set(id, { name, isMinor: flags.includes('m') });
 	}
 	return out;
 }

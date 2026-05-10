@@ -72,6 +72,7 @@ export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'spkid-20000065', // 65 Cybele
 	'spkid-20000088', // 88 Thisbe
 	'spkid-20000107', // 107 Camilla
+	'spkid-20000130', // 130 Elektra
 	'spkid-20000511', // 511 Davida
 	'spkid-20000588', // 588 Achilles
 	'spkid-20000704', // 704 Interamnia

@@ -5,7 +5,10 @@ One ``/v1/labels/{lang}.gz`` is emitted per supported language, listing only
 paint (planets, dwarf planets, moons, stars, barycenters, Lagrange points,
 plus the curated extras in :mod:`space_map_data.constants.promoted`).
 
-Format: gzipped UTF-8, one ``{id}\\x1f{name}`` line per object. The frontend
+Format: gzipped UTF-8, one ``{id}\\x1f{name}\\x1f{flags}`` line per object.
+``flags`` is a single-character set; currently the only flag is ``m`` for
+*minor* (rendered as a collapsed halo by default, expands on hover) — set
+for moons whose label fell back to the provisional designation. The frontend
 fetches one file at app start (or on locale change) and uses its keys as the
 authoritative promoted set.
 
@@ -21,10 +24,11 @@ from pathlib import Path
 from space_map_data.constants.promoted import PROMOTED_EXTRA_IDS, PROMOTED_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.objects.writer import ChunkObjectData
+from space_map_data.models.object import ObjectType
 
 logger = logging.getLogger(__name__)
 
-_US = "\x1f"  # ASCII Unit Separator — delimiter between id and name
+_US = "\x1f"  # ASCII Unit Separator — delimiter between fields
 
 
 def _is_promoted(obj_id: str, global_data: dict, cheb_covered_ids: set[str]) -> bool:
@@ -35,19 +39,35 @@ def _is_promoted(obj_id: str, global_data: dict, cheb_covered_ids: set[str]) -> 
     )
 
 
+def _resolve_label(loc: dict | None, glob: dict) -> tuple[str, str]:
+    """Return ``(name, flags)`` for one (object, lang) pair.
+
+    Name precedence: localized Wikidata label → DB ``name`` → provisional
+    designation → empty string. Flags is ``"m"`` when the chosen name is a
+    moon's provisional designation (no real name in either Wikidata or the
+    DB), otherwise empty — the frontend renders flagged labels as collapsed
+    halos that expand on hover, so e.g. Saturn's ``naif-65289``/``S2020 S48``
+    doesn't crowd the inner Saturn system at first paint.
+    """
+    loc_name = loc.get("name") if loc else None
+    db_name = glob.get("name")
+    designation = glob.get("provisional_designation")
+    name = loc_name or db_name or designation or ""
+    is_minor_moon = (
+        glob.get("type") == ObjectType.moon
+        and not loc_name
+        and (not db_name or db_name == designation)
+        and bool(designation)
+    )
+    return name, "m" if is_minor_moon else ""
+
+
 def write_global_labels(
     out_dir: Path,
     all_objects: ChunkObjectData,
     cheb_covered_ids: set[str],
 ) -> None:
     """Write ``/v1/labels/{lang}.gz`` for every supported language.
-
-    Name fallback per (object, lang): localized Wikidata label (already with
-    its own lang→en fallback inside ``_build_localized``) → object's global
-    ``name`` (``obj.name`` from the DB) → provisional designation (catches
-    SPICE-only minor moons like ``naif-551``/``2010J1`` that never got an
-    IAU name and have no Wikidata entry). When none exists the line ships
-    just ``{id}{US}`` and the frontend falls back to the id.
 
     Bodies with chebyshev coverage are auto-promoted regardless of type:
     they're rendered as individual meshes by virtue of their precise
@@ -74,18 +94,22 @@ def write_global_labels(
         lang_data = all_objects.localized_data.get(lang, {})
         lines = []
         named = 0
+        minor = 0
         for obj_id in promoted_ids:
             loc = lang_data.get(obj_id)
             glob = all_objects.global_data.get(obj_id, {})
-            name = (
-                (loc and loc.get("name"))
-                or glob.get("name")
-                or glob.get("provisional_designation")
-                or ""
-            )
+            name, flags = _resolve_label(loc, glob)
             if name:
                 named += 1
-            lines.append(f"{obj_id}{_US}{name}")
+            if flags:
+                minor += 1
+            lines.append(f"{obj_id}{_US}{name}{_US}{flags}")
         out_file = labels_dir / f"{lang}.gz"
         out_file.write_bytes(gzip.compress("\n".join(lines).encode()))
-        logger.info("Wrote %d/%d labels to %s", named, len(promoted_ids), out_file)
+        logger.info(
+            "Wrote %d/%d labels (%d minor) to %s",
+            named,
+            len(promoted_ids),
+            minor,
+            out_file,
+        )

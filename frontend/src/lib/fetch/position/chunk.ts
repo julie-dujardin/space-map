@@ -59,13 +59,18 @@ function chebyshevOsculatingElements(
 
 /**
  * Resolve a label to a non-empty name or null. The labels file ships
- * `{id}\x1f` for promoted bodies with no Wikidata/DB name (the id still
- * needs to be in the keys so the renderer auto-promotes it). Coalescing
- * `''` to null here keeps `body.data.name` truthy-or-null, so downstream
- * `?? fallback` chains in the drawer / page title / focus URL work.
+ * `{id}\x1f\x1f` for promoted bodies with no Wikidata/DB name (the id
+ * still needs to be in the keys so the renderer auto-promotes it).
+ * Coalescing `''` to null here keeps `body.data.name` truthy-or-null,
+ * so downstream `?? fallback` chains in the drawer / page title / focus
+ * URL work.
  */
 function pickLabel(labels: LabelMap, id: string): string | null {
-	return labels.get(id) || null;
+	return labels.get(id)?.name || null;
+}
+
+function pickIsMinor(labels: LabelMap, id: string): boolean {
+	return labels.get(id)?.isMinor ?? false;
 }
 
 function keplerianToBody(
@@ -81,6 +86,7 @@ function keplerianToBody(
 	return {
 		id,
 		name: pickLabel(labels, id),
+		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
@@ -115,6 +121,7 @@ function parabolicToBody(
 	return {
 		id,
 		name: pickLabel(labels, id),
+		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
@@ -171,6 +178,7 @@ function sgp4ToBody(
 	return {
 		id,
 		name,
+		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
 		parentId: `naif-${cols.parentId[idx]}`,
@@ -348,6 +356,7 @@ export class ChunkLoader {
 			const data: BodyData = {
 				id: body.id,
 				name: pickLabel(labels, body.id),
+				isMinor: pickIsMinor(labels, body.id),
 				hasLocalized: body.hasLocalized,
 				objectType: objType,
 				parentId: `naif-${body.parentNaifId}`,

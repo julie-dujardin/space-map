@@ -105,7 +105,11 @@ export function buildMajorBodies(
 		// CSS2D label
 		const variant = getLabelVariant(body);
 		const isLarge = isStar || body.data.objectType === ObjectType.PLANET;
-		const isMinor = MINOR_PROMOTED_IDS.has(id);
+		// Two minor sources: the curated barycenter/asteroid list (frontend-only),
+		// and the data-driven `m` flag the labels file ships for designation-only
+		// moons (e.g. naif-65289/S2020 S48). Both render the same way — collapsed
+		// halo by default, expand-and-name on hover.
+		const isMinor = MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(
 			color,
 			body.data.name ?? '',

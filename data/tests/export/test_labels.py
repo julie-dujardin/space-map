@@ -9,14 +9,20 @@ from space_map_data.models.object import ObjectType
 
 
 def _parse(path):
-    """Parse a gzipped labels file → {id: name}."""
+    """Parse a gzipped labels file → {id: name}, dropping the flags column."""
+    return {obj_id: name for obj_id, (name, _) in _parse_with_flags(path).items()}
+
+
+def _parse_with_flags(path):
+    """Parse a gzipped labels file → {id: (name, flags)}."""
     text = gzip.decompress(path.read_bytes()).decode()
     if not text:
         return {}
     out = {}
     for line in text.split("\n"):
-        sep = line.index("\x1f")
-        out[line[:sep]] = line[sep + 1 :]
+        parts = line.split("\x1f")
+        assert len(parts) == 3, f"expected id<US>name<US>flags, got {parts!r}"
+        out[parts[0]] = (parts[1], parts[2])
     return out
 
 
@@ -94,7 +100,8 @@ class TestWriteGlobalLabels:
     def test_falls_back_to_provisional_designation(self, tmp_path):
         """SPICE-only minor moons (e.g. naif-551) have no Wikidata and no DB
         ``name``, but they do carry a provisional designation. Use that as the
-        last fallback so the promoted entry shows something meaningful."""
+        last fallback so the promoted entry shows something meaningful, and
+        flag the line as minor so the frontend renders it as a collapsed halo."""
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-551"] = {
             "type": ObjectType.moon,
@@ -103,4 +110,50 @@ class TestWriteGlobalLabels:
 
         write_global_labels(tmp_path, all_objs, set())
 
-        assert _parse(tmp_path / "labels" / "en.gz") == {"naif-551": "2010J1"}
+        assert _parse_with_flags(tmp_path / "labels" / "en.gz") == {
+            "naif-551": ("2010J1", "m"),
+        }
+
+    def test_minor_flag_only_set_for_designation_only_moons(self, tmp_path):
+        """Only moons whose label fell back to the designation get ``m``;
+        named moons and moons with a Wikidata localized name stay unflagged."""
+        all_objs = ChunkObjectData()
+        # Moon with DB name → not minor, even though designation exists
+        all_objs.global_data["naif-301"] = {
+            "type": ObjectType.moon,
+            "name": "Moon",
+            "provisional_designation": "S0001",
+        }
+        # Moon with Wikidata localized name overriding the designation → not minor
+        all_objs.global_data["naif-557"] = {
+            "type": ObjectType.moon,
+            "provisional_designation": "S2003J5",
+        }
+        all_objs.localized_data["en"]["naif-557"] = {"name": "Eirene"}
+        # Designation-only moon → minor
+        all_objs.global_data["naif-65289"] = {
+            "type": ObjectType.moon,
+            "provisional_designation": "S2020 S48",
+        }
+        # Moon whose DB name was filled from the designation by SPICE bodc2n →
+        # still effectively designation-only, so it should also be flagged.
+        all_objs.global_data["naif-55533"] = {
+            "type": ObjectType.moon,
+            "name": "S2010 J5",
+            "provisional_designation": "S2010 J5",
+        }
+
+        write_global_labels(tmp_path, all_objs, set())
+
+        flags = {
+            obj_id: f
+            for obj_id, (_, f) in _parse_with_flags(
+                tmp_path / "labels" / "en.gz"
+            ).items()
+        }
+        assert flags == {
+            "naif-301": "",
+            "naif-557": "",
+            "naif-65289": "m",
+            "naif-55533": "m",
+        }
