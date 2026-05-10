@@ -18,14 +18,30 @@ export interface TextureCredit {
 }
 
 /**
- * Textures grouped by planetary system. `id`/`name` are null for the
- * standalone bucket (sun-orbiting bodies like Bennu or Ceres that don't
- * belong to any planetary system).
+ * Per-body planetary-ring credit — sibling to {@link TextureCredit} minus
+ * the `type` field (ring profiles are radial-only, the array name is the
+ * disambiguator).
+ */
+export interface RingCredit {
+	body_id: string;
+	name: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
+ * Credit-worthy bodies grouped by planetary system. `id`/`name` are null for
+ * the standalone bucket (sun-orbiting bodies like Bennu or Ceres that don't
+ * belong to any planetary system). `textures` and `rings` are both optional;
+ * a system bucket lands here as soon as it has at least one of either.
  */
 export interface SystemGroup {
 	id: string | null;
 	name: string | null;
-	textures: TextureCredit[];
+	textures?: TextureCredit[];
+	rings?: RingCredit[];
 }
 
 export interface Credits {

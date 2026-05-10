@@ -2,6 +2,7 @@ import type { Group, Line, Mesh, Object3D, Points, Sprite } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import type { RingNode } from './objects/rings';
 
 // For focused objects:
 // Body/halo size ratio at which the label should be hidden
@@ -64,6 +65,13 @@ export interface BodyObjects {
 	 * Membership is fixed at construction from {@link MINOR_PROMOTED_IDS}.
 	 */
 	isMinor: boolean;
+	/**
+	 * Planetary-ring annulus mesh + shader, populated by `loadSystemData` when
+	 * the body's system metadata carries a `rings` block. The renderer keeps
+	 * its position synced with the body and its orientation aligned with the
+	 * body's pole each frame; `material.uniforms.uSunDir` is updated alongside.
+	 */
+	rings: RingNode | null;
 }
 
 export interface Callbacks {

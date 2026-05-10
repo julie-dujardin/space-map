@@ -89,23 +89,48 @@
 			<p class="text-xs text-muted-foreground mt-2">{m.credits_images_individual_note()}</p>
 		</section>
 
-		{#if credits.systems.length > 0}
+		{#if credits.systems.some((g) => g.textures && g.textures.length > 0)}
 			<section>
 				{@render sectionHeader(m.attribution_section_imagery())}
 				{#each credits.systems as group (group.id ?? '__standalone__')}
-					<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-						{group.name ?? m.credits_other_bodies()}
-					</h3>
-					<ul class="space-y-1">
-						{#each group.textures as t (t.body_id)}
-							<li>
-								{@render link(t.source, t.name, t.organisation)}
-								{#if t.attribution}
-									<div class="text-xs text-muted-foreground mt-0.5">{t.attribution}</div>
-								{/if}
-							</li>
-						{/each}
-					</ul>
+					{#if group.textures && group.textures.length > 0}
+						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
+							{group.name ?? m.credits_other_bodies()}
+						</h3>
+						<ul class="space-y-1">
+							{#each group.textures as t (t.body_id)}
+								<li>
+									{@render link(t.source, t.name, t.organisation)}
+									{#if t.attribution}
+										<div class="text-xs text-muted-foreground mt-0.5">{t.attribution}</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/each}
+			</section>
+		{/if}
+
+		{#if credits.systems.some((g) => g.rings && g.rings.length > 0)}
+			<section>
+				{@render sectionHeader(m.attribution_section_rings())}
+				{#each credits.systems as group (group.id ?? '__standalone__')}
+					{#if group.rings && group.rings.length > 0}
+						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
+							{group.name ?? m.credits_other_bodies()}
+						</h3>
+						<ul class="space-y-1">
+							{#each group.rings as r (r.body_id)}
+								<li>
+									{@render link(r.source, r.name, r.organisation)}
+									{#if r.attribution}
+										<div class="text-xs text-muted-foreground mt-0.5">{r.attribution}</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				{/each}
 			</section>
 		{/if}

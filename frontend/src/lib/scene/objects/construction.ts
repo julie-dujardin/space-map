@@ -1,6 +1,7 @@
 import {
 	CanvasTexture,
 	Group,
+	type Material,
 	Mesh,
 	MeshBasicMaterial,
 	MeshStandardMaterial,
@@ -31,6 +32,7 @@ import {
 	makeStarGlow,
 	makeStarPoint
 } from './builders';
+import { loadRingNode, type RingMeta } from './rings';
 import type { BodyObjects } from '../types';
 
 function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
@@ -186,7 +188,8 @@ export function buildMajorBodies(
 			orbitLine,
 			radiusScene: radius,
 			cachedDist: 0,
-			isMinor
+			isMinor,
+			rings: null
 		});
 	}
 }
@@ -432,15 +435,23 @@ interface SystemBodyMeta {
 	nut_prec?: { ra: number[]; dec: number[]; pm: number[] };
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis). */
 	radii?: { a: number; b: number; c: number };
+	/**
+	 * Planetary ring profile bundle — present only on bodies whose ingest
+	 * produced one (e.g. Saturn). The renderer composes per-channel URLs as
+	 * `/v1/rings/{body_id}/{channels[name]}`.
+	 */
+	rings?: RingMeta;
 }
 
 /**
- * Fetch system metadata (textures + orientation) and apply to all bodies in that system.
- * The metadata file is keyed by barycenter ID (e.g. naif-3, naif-5).
+ * Fetch system metadata (textures + orientation + rings) and apply to all
+ * bodies in that system. The metadata file is keyed by barycenter ID
+ * (e.g. naif-3, naif-5).
  */
 export async function loadSystemData(
 	barycenterId: string,
 	bodyObjects: Map<string, BodyObjects>,
+	scene: Scene,
 	textureLoader: TextureLoader,
 	currentJd: number,
 	ctx?: ContextManager
@@ -511,6 +522,36 @@ export async function loadSystemData(
 			if (!bo.textureTier) {
 				promises.push(loadBodyTextureTier(bo, 'low', textureLoader));
 			}
+		}
+
+		// Ring annulus — only present for ringed bodies (Saturn today). Idempotent:
+		// re-entering the system with `bo.rings` already set is a no-op.
+		if (bodyMeta.rings && !bo.rings) {
+			if (ctx) {
+				ctx.registerRingCredit({
+					bodyId,
+					systemId: barycenterId,
+					source: bodyMeta.rings.source,
+					organisation: bodyMeta.rings.organisation,
+					attribution: bodyMeta.rings.attribution,
+					description: bodyMeta.rings.description
+				});
+			}
+			const ringMeta = bodyMeta.rings;
+			promises.push(
+				loadRingNode(bodyId, ringMeta, textureLoader).then((node) => {
+					if (!node) return;
+					if (bo.rings) {
+						// A concurrent system reload finished first — drop ours.
+						node.mesh.geometry.dispose();
+						(node.mesh.material as Material).dispose();
+						return;
+					}
+					bo.rings = node;
+					scene.add(node.mesh);
+					bo.extraObjects.push(node.mesh);
+				})
+			);
 		}
 	}
 	await Promise.allSettled(promises);

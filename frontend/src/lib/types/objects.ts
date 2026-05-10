@@ -168,7 +168,7 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005
 };
-const DEFAULT_FALLBACK_RADIUS_KM = 10;
+const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
 
 /** Effective radius in km, using a fallback when the data has no known positive value. */
 export function effectiveRadiusKm(data: BodyData): number {

@@ -121,6 +121,22 @@ export interface TextureCredit {
 }
 
 /**
+ * Per-body planetary-ring attribution recorded when its system metadata
+ * loads. Sibling to {@link TextureCredit} — same scoping rules apply (bar
+ * filters by focused system / focused body, popover surfaces all loaded).
+ * No `type` field: textures distinguish projections (cylindrical, …), but
+ * ring profiles are radial-only, so the qualifier is implicit.
+ */
+export interface RingCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Create a placeholder PositionedBody from the __global__ object file along
  * with the SBDB-class zone id (e.g. `"MBA"`) for routing — null when the
  * object has no SBDB record, in which case the caller falls back to
@@ -272,6 +288,14 @@ export class ContextManager {
 	 */
 	textureCredits = new Map<string, TextureCredit>();
 	textureCreditsVersion = $state(0);
+	/**
+	 * Per-body planetary-ring credits, populated alongside `textureCredits`
+	 * by `loadSystemData`. Today only Saturn lands here; the bar mixes ring
+	 * organisations into the imagery list, and the popover + credits page
+	 * surface them under their own "Rings" section.
+	 */
+	ringCredits = new Map<string, RingCredit>();
+	ringCreditsVersion = $state(0);
 	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
 	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
 	 *  consumers — currently the compass-north choice list — recompute as
@@ -624,6 +648,16 @@ export class ContextManager {
 		if (this.textureCredits.has(credit.bodyId)) return;
 		this.textureCredits.set(credit.bodyId, credit);
 		this.textureCreditsVersion++;
+	}
+
+	/**
+	 * Record the planetary-ring attribution for a body. Idempotent by
+	 * `bodyId` — same shape as {@link registerTextureCredit}.
+	 */
+	registerRingCredit(credit: RingCredit): void {
+		if (this.ringCredits.has(credit.bodyId)) return;
+		this.ringCredits.set(credit.bodyId, credit);
+		this.ringCreditsVersion++;
 	}
 
 	/**

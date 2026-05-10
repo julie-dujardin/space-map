@@ -62,6 +62,15 @@
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
+	const ringList = $derived.by(() => {
+		void ctx.ringCreditsVersion;
+		const sysId = ctx.focusedSystemId;
+		const bodyId = ctx.focusedBodyId;
+		return [...ctx.ringCredits.values()]
+			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
+			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+	});
+
 	function bodyName(id: string): string {
 		return ctx.getBody(id)?.data.name ?? id;
 	}
@@ -117,6 +126,17 @@
 			<ul class="space-y-0.5">
 				{#each textureList as t (t.bodyId)}
 					<li>{@render link(t.source, bodyName(t.bodyId), t.organisation)}</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if ringList.length > 0}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_rings())}
+			<ul class="space-y-0.5">
+				{#each ringList as r (r.bodyId)}
+					<li>{@render link(r.source, bodyName(r.bodyId), r.organisation)}</li>
 				{/each}
 			</ul>
 		</section>

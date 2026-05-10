@@ -843,6 +843,12 @@ export class SceneRenderer {
 			if (body.orientation && bo.mesh) {
 				applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
 			}
+			// Rings inherit the body's pole orientation (their geometry is
+			// pre-rotated so local +Y is the pole). Re-apply each frame so
+			// nutation/precession/spin all stay in sync with the planet.
+			if (body.orientation && bo.rings) {
+				applyOrientation(bo.rings.mesh, body.orientation, jd, body.nutPrec);
+			}
 		};
 
 		// First pass: bodies in ctx.bodiesById (barycenters → planets → moons,
@@ -1016,6 +1022,8 @@ export class SceneRenderer {
 		// stale basis for one frame.
 		this.refreshDeferredOrbitLines();
 
+		this.updateRingShaders();
+
 		// Hide the user-location dot when it rotates around to Earth's far side.
 		this.updateUserLocationOcclusion();
 
@@ -1163,12 +1171,17 @@ export class SceneRenderer {
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
 		this.lastSystemTextureBarycenter = baryId;
-		loadSystemData(baryId, this.bodyObjects, this.textureLoader, this.clock.jd, this.ctx).then(
-			() => {
-				this.reapplyInitialViewIfPending();
-				this.ctx.orientationVersion++;
-			}
-		);
+		loadSystemData(
+			baryId,
+			this.bodyObjects,
+			this.scene,
+			this.textureLoader,
+			this.clock.jd,
+			this.ctx
+		).then(() => {
+			this.reapplyInitialViewIfPending();
+			this.ctx.orientationVersion++;
+		});
 	}
 
 	/**
@@ -1203,6 +1216,28 @@ export class SceneRenderer {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
 		loadBodyTexture(bo, this.textureLoader, body.data.hasLocalized, this.ctx);
+	}
+
+	/**
+	 * Refresh `uSunDir` on every active ring shader. The lit/unlit branch in
+	 * the ring fragment shader compares this direction against the ring's
+	 * world-space normal (the body's pole), so it must track the body's
+	 * heliocentric vector as the planet orbits the sun.
+	 *
+	 * Computed in true (non-focus-relative) coordinates: the difference
+	 * `sunPos − bodyPos` is identical in scene coords because both points
+	 * receive the same focus offset, and using true positions lets us read
+	 * directly from `body.position` without subtracting the focus basis.
+	 */
+	private updateRingShaders(): void {
+		const sunPos = this.bodyObjects.get('naif-10')?.body.position;
+		if (!sunPos) return;
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.rings) continue;
+			const dir = bo.rings.material.uniforms.uSunDir.value as Vector3;
+			const [bx, by, bz] = bo.body.position;
+			dir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
+		}
 	}
 
 	/**

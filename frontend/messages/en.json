@@ -210,6 +210,7 @@
 	"attribution_section_orbits": "Orbital elements",
 	"attribution_section_rotation": "Rotation, orientation & radii",
 	"attribution_section_imagery": "Surface imagery",
+	"attribution_section_rings": "Planetary rings",
 	"attribution_section_metadata": "Object metadata & names",
 	"attribution_section_images": "Images",
 	"source_horizons_name": "NASA JPL Horizons",
