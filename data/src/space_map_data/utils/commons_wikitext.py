@@ -82,7 +82,10 @@ def parse_wikitext(wikitext: str) -> tuple[list[str], list[str]]:
         for filename in _FILE_LINK_RE.findall(value):
             other_versions.append(canonical_filename(_clean_filename(filename)))
 
-    return _dedupe(derived_from), _dedupe(other_versions)
+    return (
+        _dedupe([f for f in derived_from if _looks_like_filename(f)]),
+        _dedupe([f for f in other_versions if _looks_like_filename(f)]),
+    )
 
 
 def _find_template_calls(wikitext: str, template_name: str) -> list[list[str]]:
@@ -303,3 +306,19 @@ def _dedupe(items: list[str]) -> list[str]:
         seen.add(item)
         out.append(item)
     return out
+
+
+_FILE_EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]{2,5}$")
+
+
+def _looks_like_filename(name: str) -> bool:
+    """Heuristic: real Commons filenames end in ``.<ext>`` (jpg, svg, webm, ...).
+
+    Filters out template args that are display labels or descriptions
+    rather than filenames — e.g. ``cropped_from_original``,
+    ``Apollo_landing_sites``, ``low_resolution_vectorized_version``. These
+    sneak in as positional args of ``{{derived from|...}}`` or as stale
+    wikilinks in ``other_versions=`` and would otherwise cause spurious
+    ``missing on Commons`` API calls during graph expansion.
+    """
+    return bool(_FILE_EXTENSION_RE.search(name))

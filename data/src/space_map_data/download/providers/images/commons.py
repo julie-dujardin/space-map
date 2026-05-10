@@ -73,13 +73,19 @@ class CommonsDownloader(Downloader):
         commons_filenames, non_commons = self._collect_filenames(wikidata_dir)
         self._write_non_commons_skipped(non_commons)
 
-        to_process = sorted(commons_filenames)
+        discovered = sorted(commons_filenames)
         if limit is not None:
-            to_process = to_process[:limit]
+            discovered = discovered[:limit]
 
-        self._download_images(to_process)
-        self._fetch_metadata(to_process)
-        self._fetch_sdc(to_process)
+        # Metadata first: it's cheap and tells us the derivative graph. We
+        # transitively follow ``derived_from`` and ``other_versions`` so the
+        # graph covers an image's parents and siblings — different language
+        # wikis pick different hero images, and merging their descriptions
+        # gives the original richer coverage. Source bytes only get
+        # downloaded after, for the original discovery set.
+        graph = self._fetch_metadata(discovered)
+        self._fetch_sdc(sorted(graph))
+        self._download_images(discovered)
 
         self._save_metadata(
             "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo",
@@ -233,50 +239,98 @@ class CommonsDownloader(Downloader):
                 continue
             return response
 
-    def _fetch_metadata(self, filenames: list[str]) -> None:
-        """Fetch image metadata (license, description, author, ...) from Commons.
+    def _fetch_metadata(self, filenames: list[str]) -> set[str]:
+        """Fetch metadata for ``filenames`` and follow derivative links transitively.
 
         Bulk-queries ``METADATA_BATCH_SIZE`` filenames at a time with
-        ``iiextmetadatamultilang=1`` so every language variant lands in one file.
-        Writes ``metadata.json`` under each image's dir with the ``license_servable``
-        flag precomputed.
+        ``iiextmetadatamultilang=1`` so every language variant lands in one
+        file. Writes ``metadata.json`` under each image's dir with the
+        ``license_servable`` flag precomputed.
 
-        Existing files are skipped unless they pre-date the ``wikitext`` field
-        (added together with derivative-of / other-versions parsing) — those
-        get re-fetched so the metadata schema converges across the corpus.
-        ``missing: true`` stubs stay skipped: the file is gone upstream, no
-        amount of re-fetching brings it back.
+        After each batch, parsed ``derived_from`` (parents) and
+        ``other_versions`` (siblings/children) join the BFS frontier so we
+        end up with a connected derivative graph — useful for the export
+        step, which can later merge richer descriptions/categories from
+        derivatives back into the original.
+
+        Existing files are skipped unless they pre-date the ``wikitext``
+        field (added together with derivative-of parsing) — those get
+        re-fetched so the schema converges. ``missing: true`` stubs stay
+        skipped: the file is gone upstream.
+
+        Returns the full set of filenames whose metadata is now on disk
+        (initial discovery set ∪ everything we descended into).
         """
-        pending = [f for f in filenames if _needs_metadata_refresh(f)]
-        logger.info(
-            "Commons metadata: %s total, %s to fetch",
-            f"{len(filenames):,}",
-            f"{len(pending):,}",
-        )
-        if not pending:
-            return
+        graph: set[str] = set()
+        frontier: set[str] = {f for f in filenames if not is_excluded(f)}
+        iteration = 0
+        total_missing = 0
 
-        missing_pages = 0
-        with tqdm(total=len(pending), desc="Commons metadata", unit="file") as pbar:
-            for batch in batched(pending, METADATA_BATCH_SIZE):
-                missing_pages += self._fetch_metadata_batch(list(batch))
-                pbar.update(len(batch))
-                time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+        while frontier:
+            iteration += 1
+            graph |= frontier
 
-        if missing_pages:
+            to_fetch = sorted(f for f in frontier if _needs_metadata_refresh(f))
+            already_have = sorted(f for f in frontier if not _needs_metadata_refresh(f))
+
+            logger.info(
+                "Commons metadata iter %d: frontier=%s, to_fetch=%s (graph total=%s)",
+                iteration,
+                f"{len(frontier):,}",
+                f"{len(to_fetch):,}",
+                f"{len(graph):,}",
+            )
+
+            new_links: set[str] = set()
+
+            if to_fetch:
+                desc = (
+                    "Commons metadata"
+                    if iteration == 1
+                    else f"Commons metadata iter {iteration}"
+                )
+                with tqdm(total=len(to_fetch), desc=desc, unit="file") as pbar:
+                    for batch in batched(to_fetch, METADATA_BATCH_SIZE):
+                        missing, links = self._fetch_metadata_batch(list(batch))
+                        total_missing += missing
+                        new_links |= links
+                        pbar.update(len(batch))
+                        time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+
+            # Pick up graph links from files that were already on disk so
+            # re-runs keep expanding the graph instead of plateauing on the
+            # initial discovery set.
+            for f in already_have:
+                meta = read_download_metadata(f)
+                if not meta:
+                    continue
+                new_links.update(meta.get("derived_from") or ())
+                new_links.update(meta.get("other_versions") or ())
+
+            # Advance: drop excluded filenames and anything we've already seen.
+            frontier = {
+                f for f in new_links if f and f not in graph and not is_excluded(f)
+            }
+
+        if total_missing:
             logger.warning(
                 "%d Commons metadata pages returned as missing "
                 "(image likely deleted/renamed upstream)",
-                missing_pages,
+                total_missing,
             )
+        return graph
 
-    def _fetch_metadata_batch(self, filenames: list[str]) -> int:
-        """Fetch one batch of metadata. Returns the count of missing pages.
+    def _fetch_metadata_batch(self, filenames: list[str]) -> tuple[int, set[str]]:
+        """Fetch one batch of metadata.
 
         Asks for ``imageinfo`` (license, dimensions, EXIF-derived dates) and
         ``revisions`` (raw wikitext) in the same call — the API supports both
         in a single ``query`` action. Wikitext gives us derivative-of and
         other-versions links that no structured field exposes.
+
+        Returns ``(missing_count, links)`` where ``links`` is the union of
+        ``derived_from`` (parents) and ``other_versions`` (siblings/children)
+        across the batch — feeds the BFS expansion in :meth:`_fetch_metadata`.
         """
         titles = "|".join(f"File:{f}" for f in filenames)
         try:
@@ -297,7 +351,7 @@ class CommonsDownloader(Downloader):
             response.raise_for_status()
         except Exception:
             logger.error("Failed to fetch metadata batch of %d files", len(filenames))
-            return 0
+            return 0, set()
 
         data = response.json()
         pages = data.get("query", {}).get("pages", [])
@@ -308,6 +362,7 @@ class CommonsDownloader(Downloader):
 
         fetched_at = datetime.now(timezone.utc).isoformat()
         missing = 0
+        links: set[str] = set()
         for page in pages:
             api_title = page.get("title", "")
             original_title = normalized.get(api_title, api_title)
@@ -347,6 +402,8 @@ class CommonsDownloader(Downloader):
 
             wikitext = _extract_wikitext(page)
             derived_from, other_versions = parse_wikitext(wikitext or "")
+            links.update(derived_from)
+            links.update(other_versions)
 
             image_dir(filename).mkdir(parents=True, exist_ok=True)
             # ``pageid`` (and the ``M<pageid>`` MediaInfo form) survive Commons
@@ -368,7 +425,7 @@ class CommonsDownloader(Downloader):
                 },
             )
 
-        return missing
+        return missing, links
 
     def _fetch_sdc(self, filenames: list[str]) -> None:
         """Fetch Structured Data on Commons (SDC) for each downloaded file.

@@ -153,3 +153,20 @@ class TestParseWikitextEdgeCases:
 """
         _, others = cw.parse_wikitext(wikitext)
         assert others == ["A.jpg", "B.jpg"]
+
+    def test_extension_required_drops_descriptive_args(self):
+        """Non-filename text in template args (display labels, stale links) is dropped.
+
+        Real Commons usage: people sometimes put descriptions in {{derived from}}
+        or [[:File:...]] links that point at non-existent pages. These match the
+        regex but aren't filenames and would cause spurious "missing on Commons"
+        API calls during graph expansion.
+        """
+        wikitext = (
+            "{{derived from|File:Real.jpg|cropped_from_original|low_res_version}}"
+            "{{Information|other_versions=[[:File:Apollo_landing_sites]]"
+            " also [[:File:Real_sibling.png]]}}"
+        )
+        derived, others = cw.parse_wikitext(wikitext)
+        assert derived == ["Real.jpg"]
+        assert others == ["Real_sibling.png"]
