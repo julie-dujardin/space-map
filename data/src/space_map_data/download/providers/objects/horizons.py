@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import json
 import logging
 import re
@@ -33,32 +34,61 @@ _ELEMENT_FIELDS = ("EC", "QR", "IN", "OM", "W", "Tp", "N", "MA", "TA", "A", "AD"
 class HorizonsDownloader(Downloader):
     name = PROVIDERS.HORIZONS
 
-    def _fetch_horizons_bodies(self) -> str:
-        """Fetch the list of major bodies from Horizons, using a cached file if available."""
+    def _previous_mb_hash(self) -> str | None:
+        """Read the last-fetched major_bodies.txt sha256 from metadata."""
+        if not self.metadata_file.exists():
+            return None
+        try:
+            meta = json.loads(self.metadata_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+        return meta.get("major_bodies_sha256")
+
+    def _fetch_horizons_bodies(self) -> tuple[str, str, bool]:
+        """Re-fetch the major bodies list every run; signal whether it changed.
+
+        Returns ``(text, sha256, changed)``. The on-disk cache is overwritten
+        only when the hash differs from the previous run, so the file's mtime
+        tracks actual upstream changes.
+        """
         cache_file = self.out_dir / "major_bodies.txt"
-        if cache_file.exists():
-            logger.info("Using cached body list from %s", cache_file.name)
-            text = cache_file.read_text()
-        else:
-            response = self.client.get(
-                URL,
-                params={
-                    "format": "json",
-                    "COMMAND": "'MB'",
-                    "OBJ_DATA": "YES",
-                    "MAKE_EPHEM": "NO",
-                },
-            )
-            response.raise_for_status()
-            text = response.json()["result"]
+        response = self.client.get(
+            URL,
+            params={
+                "format": "json",
+                "COMMAND": "'MB'",
+                "OBJ_DATA": "YES",
+                "MAKE_EPHEM": "NO",
+            },
+        )
+        response.raise_for_status()
+        text: str = response.json()["result"]
+        new_hash = hashlib.sha256(text.encode()).hexdigest()
+        prev_hash = self._previous_mb_hash()
+        changed = prev_hash != new_hash
+
+        if changed:
             cache_file.write_text(text)
-            logger.info("Cached body list -> %s", cache_file.name)
-        return text
+            if prev_hash is None:
+                logger.info(
+                    "Fetched body list -> %s (sha256=%s)",
+                    cache_file.name,
+                    new_hash[:12],
+                )
+            else:
+                logger.info(
+                    "Body list changed -> %s (sha256 %s -> %s)",
+                    cache_file.name,
+                    prev_hash[:12],
+                    new_hash[:12],
+                )
+        else:
+            logger.info("Body list unchanged (sha256=%s)", new_hash[:12])
 
-    def _fetch_body_list(self) -> list[MajorBody]:
-        """Return all major bodies"""
-        text = self._fetch_horizons_bodies()
+        return text, new_hash, changed
 
+    def _parse_body_list(self, text: str) -> list[MajorBody]:
+        """Parse the major bodies list text into MajorBody objects."""
         # Find column boundaries from the dashed header line
         #   ID#      Name                               Designation  IAU/aliases/other
         #   -------  ---------------------------------- -----------  -------------------
@@ -107,9 +137,10 @@ class HorizonsDownloader(Downloader):
 
         return bodies
 
-    def get_bodies(self, limit: int | None = None) -> tuple[list[MajorBody], int]:
-        logger.info("Fetching body list...")
-        available_bodies = self._fetch_body_list()
+    def get_bodies(
+        self, text: str, limit: int | None = None
+    ) -> tuple[list[MajorBody], int]:
+        available_bodies = self._parse_body_list(text)
         total_available = len(available_bodies)
         logger.info("%d major bodies found", total_available)
 
@@ -168,7 +199,14 @@ class HorizonsDownloader(Downloader):
 
         out_file = self.out_dir / "bodies.csv"
 
-        available_bodies, total_available = self.get_bodies(limit=limit)
+        text, mb_hash, mb_changed = self._fetch_horizons_bodies()
+        available_bodies, total_available = self.get_bodies(text, limit=limit)
+
+        # Upstream body list changed (new ID, rename, retired ID): drop the
+        # cached per-body elements so renames refill on this pass.
+        if mb_changed and out_file.exists():
+            logger.info("Body list changed; dropping %s for full refill", out_file.name)
+            out_file.unlink()
 
         meta_fields = (
             "name",
@@ -277,7 +315,8 @@ class HorizonsDownloader(Downloader):
         self._save_metadata(
             URL,
             len(rows),
-            complete=len(rows) == total_available,
+            complete=False,
             epoch=epoch.isoformat(),
             epoch_jd=epoch_jd,
+            major_bodies_sha256=mb_hash,
         )
