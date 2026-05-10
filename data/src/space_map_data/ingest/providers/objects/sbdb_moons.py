@@ -159,6 +159,11 @@ def _parse_orbit(orbit: dict | None) -> dict:
         elem = elem_map.get(api_name)
         if elem is not None:
             out[col] = _coerce_float(elem.get("sigma"))
+    # SBDB satellite orbits ship `per` (hours) reliably but never `n` (deg/day).
+    # Derive n = 360°/period when missing so the Keplerian writer's hard-required
+    # element set can be satisfied for moons that otherwise carry full a,e,i,Ω,ω,M.
+    if out.get("n") is None and out.get("per_h"):
+        out["n"] = 8640.0 / out["per_h"]
     return out
 
 
