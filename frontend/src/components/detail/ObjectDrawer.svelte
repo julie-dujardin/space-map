@@ -79,16 +79,44 @@
 			});
 	});
 
-	// Snap points: handle-only collapsed, mid, full.
-	const SNAP_POINTS = ['56px', 0.3, 0.95] as const;
-	const TOP_SNAP = SNAP_POINTS[2];
-	// The drawer is h-dvh (vaul assumes that). If the top snap is < 1 the bottom
-	// (1 - TOP_SNAP) of the drawer stays below the viewport even when expanded,
-	// so the scroll container needs that much extra bottom padding to let the
-	// last content into view.
-	const HIDDEN_BOTTOM_DVH = typeof TOP_SNAP === 'number' ? (1 - TOP_SNAP) * 100 : 0;
-	let activeSnapPoint = $state<number | string | null>(SNAP_POINTS[0]);
+	// Snap points: chrome-only collapsed (measured at runtime so it tracks the
+	// real header height — buttons, fonts, locale length all affect it), mid,
+	// full.
+	const TOP_SNAP = 0.95;
+	const MID_SNAP = 0.3;
+	// The drawer is h-dvh. If the top snap is < 1 the bottom (1 - TOP_SNAP)
+	// of the drawer stays below the viewport even when expanded, so the
+	// scroll container needs that much extra bottom padding to let the last
+	// content into view.
+	const HIDDEN_BOTTOM_DVH = (1 - TOP_SNAP) * 100;
+
+	let headerEl = $state<HTMLDivElement | null>(null);
+	// Initial guess close to the rendered size (icon-lg row + handle + paddings)
+	// so the drawer opens at a sensible height before the first measurement.
+	let headerHeightPx = $state(68);
+	let collapsedSnap = $derived(`${headerHeightPx}px`);
+	let snapPoints = $derived([collapsedSnap, MID_SNAP, TOP_SNAP]);
+	let activeSnapPoint = $state<number | string | null>('68px');
 	let isAtTop = $derived(activeSnapPoint === TOP_SNAP);
+
+	$effect(() => {
+		const el = headerEl;
+		if (!el) return;
+		const measure = () => {
+			const h = Math.ceil(el.getBoundingClientRect().height);
+			if (h === headerHeightPx) return;
+			// If the user is parked on the collapsed snap, follow the new height
+			// so vaul doesn't end up with a stale activeSnapPoint that no longer
+			// matches any entry in snapPoints.
+			const wasCollapsed = activeSnapPoint === collapsedSnap;
+			headerHeightPx = h;
+			if (wasCollapsed) activeSnapPoint = `${h}px`;
+		};
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 
 	// Report the snap target to the parent on change. We don't sample during
 	// the drag/animation — a per-frame getBoundingClientRect loop caused layout
@@ -239,7 +267,7 @@
 {#if isMobile}
 	<Vaul.Root
 		open={true}
-		snapPoints={SNAP_POINTS as unknown as (number | string)[]}
+		{snapPoints}
 		bind:activeSnapPoint
 		shouldScaleBackground={false}
 		dismissible={false}
@@ -248,27 +276,27 @@
 			<Vaul.Content
 				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
 			>
-				<div class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
+				<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 					<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
-					<div class="flex w-full items-center justify-between">
+					<div class="flex w-full items-center justify-between gap-2">
 						<span class="text-sm font-semibold truncate">{displayName}</span>
-						<div class="flex items-center gap-1">
-							<Button variant="ghost" size="icon-sm" onclick={handleShare}>
+						<div class="flex items-center gap-1.5">
+							<Button variant="secondary" size="icon-lg" onclick={handleShare}>
 								<Share2Icon />
 								<span class="sr-only">{m.share()}</span>
 							</Button>
 							{#if isMinimized}
-								<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
+								<Button variant="secondary" size="icon-lg" onclick={onMinimize}>
 									<MinimizeIcon />
 									<span class="sr-only">{m.zoom_out_to_system()}</span>
 								</Button>
 							{:else}
-								<Button variant="ghost" size="icon-sm" onclick={onMaximize}>
+								<Button variant="secondary" size="icon-lg" onclick={onMaximize}>
 									<MaximizeIcon />
 									<span class="sr-only">{m.go_to_object()}</span>
 								</Button>
 							{/if}
-							<Button variant="ghost" size="icon-sm" onclick={onClose}>
+							<Button variant="secondary" size="icon-lg" onclick={onClose}>
 								<XIcon />
 								<span class="sr-only">{m.close()}</span>
 							</Button>
@@ -296,25 +324,25 @@
 	<aside
 		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
-		<div class="flex items-center justify-between p-2 px-4">
+		<div class="flex items-center justify-between gap-2 p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
-			<div class="flex items-center gap-1">
-				<Button variant="ghost" size="icon-sm" onclick={handleShare}>
+			<div class="flex items-center gap-1.5">
+				<Button variant="secondary" size="icon-lg" onclick={handleShare}>
 					<Share2Icon />
 					<span class="sr-only">{m.share()}</span>
 				</Button>
 				{#if isMinimized}
-					<Button variant="ghost" size="icon-sm" onclick={onMinimize}>
+					<Button variant="secondary" size="icon-lg" onclick={onMinimize}>
 						<MinimizeIcon />
 						<span class="sr-only">{m.zoom_out_to_system()}</span>
 					</Button>
 				{:else}
-					<Button variant="ghost" size="icon-sm" onclick={onMaximize}>
+					<Button variant="secondary" size="icon-lg" onclick={onMaximize}>
 						<MaximizeIcon />
 						<span class="sr-only">{m.go_to_object()}</span>
 					</Button>
 				{/if}
-				<Button variant="ghost" size="icon-sm" onclick={onClose}>
+				<Button variant="secondary" size="icon-lg" onclick={onClose}>
 					<XIcon />
 					<span class="sr-only">{m.close()}</span>
 				</Button>
