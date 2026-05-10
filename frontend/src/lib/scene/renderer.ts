@@ -1046,19 +1046,11 @@ export class SceneRenderer {
 			this.shadowLight.intensity = 2;
 			if (this.sunPointLight) this.sunPointLight.intensity = 0;
 
-			// Lateral extent: tight to camera view for high texel density,
-			// floored by the largest ring outer radius in the focused system
-			// so the planet's shadow on the rings (the *other* direction —
-			// rings receive into the shadow map) stays on-screen when the
-			// camera is zoomed in close to the planet.
-			let ringFloor = 0;
-			for (const bo of this.bodyObjects.values()) {
-				if (!bo.rings) continue;
-				if (bo.body.data.parentId !== sysId && bo.body.data.id !== sysId) continue;
-				if (bo.rings.outerScene > ringFloor) ringFloor = bo.rings.outerScene;
-			}
-			// 1.05× pad so the ring's outermost edge isn't clipped by texel rounding.
-			const lateral = Math.max(distance * 2, ringFloor * 1.05, 0.001);
+			// Lateral extent: tight to camera view for high texel density.
+			// Rings no longer receive into the shadow map (their own shader
+			// ray-marches the planet's oblate spheroid analytically), so the
+			// frustum can stay sized to the camera view without a ring floor.
+			const lateral = Math.max(distance * 2, 0.001);
 			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
 			const shadowCam = this.shadowLight.shadow.camera;
 			shadowCam.left = shadowCam.bottom = -lateral;
@@ -1247,20 +1239,21 @@ export class SceneRenderer {
 			const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
 			ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
 
-			// Planet-side ring-shadow uniforms — only present once
-			// `attachRingShadowToPlanet` has run for this body.
+			// Planet center and pole are shared across both ray-marches:
+			// the ring's planet-shadow path (`planetShadowOnRing`, always
+			// present) and the planet's ring-shadow path (`planetShadow`,
+			// present once `attachRingShadowToPlanet` has run).
+			const psOnRing = bo.rings.planetShadowOnRing;
+			psOnRing.uPlanetCenter.value.set(bx - fx, by - fy, bz - fz);
+			if (bo.mesh) {
+				psOnRing.uPlanetPoleDir.value.set(0, 1, 0).applyQuaternion(bo.mesh.quaternion);
+			}
+
 			const ps = bo.rings.planetShadow;
 			if (!ps) continue;
 			ps.uRingShadowSunDir.value.copy(ringSunDir);
-			// Pole direction = body's quaternion applied to +Y. `bo.mesh`
-			// always carries that quaternion via `applyOrientation`.
-			if (bo.mesh) {
-				ps.uRingShadowPoleDir.value.set(0, 1, 0).applyQuaternion(bo.mesh.quaternion);
-			}
-			// Planet center in scene (focus-relative) world coords. The
-			// `vRingShadowWorldPos` varying is also focus-relative, so the
-			// subtraction inside the shader stays consistent.
-			ps.uRingShadowCenter.value.set(bx - fx, by - fy, bz - fz);
+			ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
+			ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);
 		}
 	}
 

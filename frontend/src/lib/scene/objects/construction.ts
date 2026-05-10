@@ -563,6 +563,16 @@ export async function loadSystemData(
 							node.transparency
 						);
 					}
+					// Reverse direction: configure the ring's own analytical
+					// planet-shadow with the planet's oblate-spheroid extent.
+					// Saturn is essentially biaxial (a ≈ b), so collapsing the
+					// two equatorial axes to their mean is exact enough for the
+					// limb of the cast shadow.
+					if (bodyMeta.radii) {
+						const { a, b, c } = bodyMeta.radii;
+						node.planetShadowOnRing.uPlanetEquatorialScene.value = kmToScene((a + b) / 2);
+						node.planetShadowOnRing.uPlanetPolarScene.value = kmToScene(c);
+					}
 				})
 			);
 		}

@@ -35,8 +35,6 @@ import {
 	SRGBColorSpace,
 	type Texture,
 	type TextureLoader,
-	UniformsLib,
-	UniformsUtils,
 	Vector3
 } from 'three';
 import { kmToScene } from '$lib/math/units';
@@ -70,15 +68,36 @@ export interface RingNode {
 	/** Inner ring radius in scene units. Used by the planet's ring-shadow
 	 *  ray-march to clip intersections to the actual annulus. */
 	innerScene: number;
-	/** Outer ring radius in scene units. Used by the renderer to grow the
-	 *  shadow-camera frustum so the planet's shadow on the rings stays
-	 *  on-screen even when the camera is zoomed in close to the planet,
-	 *  and also by the ray-march clipping. */
+	/** Outer ring radius in scene units. Used by the ray-march clipping. */
 	outerScene: number;
 	/** Live per-frame uniforms on the planet material's ring-shadow path —
 	 *  null until {@link attachRingShadowToPlanet} runs. The renderer mutates
 	 *  the contained Vector3 values in place each frame. */
 	planetShadow: PlanetRingShadowUniforms | null;
+	/** Live per-frame uniforms on the ring material's planet-shadow
+	 *  ray-march. The radii are set once by the caller of `loadRingNode`
+	 *  (which knows the planet's oblate-spheroid extent); the renderer
+	 *  mutates the Vector3 values in place each frame. */
+	planetShadowOnRing: PlanetShadowOnRingUniforms;
+}
+
+/**
+ * Per-frame uniforms driving the planet-shadow ray-march inside the ring's
+ * own ShaderMaterial. The ring fragment shader traces from each fragment
+ * toward the sun and tests against the planet's oblate spheroid, so the
+ * shadow stays crisp per-pixel instead of relying on the directional shadow
+ * map (which stair-steps the planet terminator across the rings when the
+ * camera is zoomed close).
+ */
+export interface PlanetShadowOnRingUniforms {
+	/** World-space (focus-relative) position of the planet's center. */
+	uPlanetCenter: { value: Vector3 };
+	/** World-space unit vector along the planet's spin axis. */
+	uPlanetPoleDir: { value: Vector3 };
+	/** Planet equatorial radius in scene units; 0 disables the shadow. */
+	uPlanetEquatorialScene: { value: number };
+	/** Planet polar radius in scene units. */
+	uPlanetPolarScene: { value: number };
 }
 
 const RING_ANGULAR_SEGMENTS = 256;
@@ -111,7 +130,6 @@ function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise
 
 const VERTEX_SHADER = `
 	#include <common>
-	#include <shadowmap_pars_vertex>
 	#include <logdepthbuf_pars_vertex>
 
 	varying vec3 vLocalPos;
@@ -120,17 +138,10 @@ const VERTEX_SHADER = `
 
 	void main() {
 		vLocalPos = position;
-		// shadowmap_vertex reads \`worldPosition\` (vec4) and \`transformedNormal\`
-		// (view-space normal) to compute the per-light shadow-coord varyings.
-		// Passing the world normal as transformedNormal is fine here: the only
-		// downstream use is a normal-bias offset, which we leave at default 0,
-		// so the bias multiplication zeros out regardless of frame.
 		vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-		vec3 transformedNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
 		vWorldPos = worldPosition.xyz;
-		vWorldNormal = transformedNormal;
+		vWorldNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
 		gl_Position = projectionMatrix * viewMatrix * worldPosition;
-		#include <shadowmap_vertex>
 		#include <logdepthbuf_vertex>
 	}
 `;
@@ -166,11 +177,14 @@ const VERTEX_SHADER = `
  *
  * Transparency convention follows BJJ: profile value = 1 → empty space
  * (transparent), 0 → opaque ring material. Alpha is therefore `1 - profile`.
+ *
+ * Planet shadow: from each fragment we trace toward the sun and test
+ * intersection with the planet's oblate spheroid. Per-pixel analytic test —
+ * no shadow-map resolution to worry about, so the terminator stays crisp
+ * at any zoom and there's no blocky stair-stepping on the ring strips.
  */
 const FRAGMENT_SHADER = `
 	#include <common>
-	#include <packing>
-	#include <shadowmap_pars_fragment>
 	#include <logdepthbuf_pars_fragment>
 
 	uniform sampler2D uBackscattered;
@@ -181,6 +195,10 @@ const FRAGMENT_SHADER = `
 	uniform float uInnerScene;
 	uniform float uOuterScene;
 	uniform vec3 uSunDir;
+	uniform vec3 uPlanetCenter;
+	uniform vec3 uPlanetPoleDir;
+	uniform float uPlanetEquatorialScene;
+	uniform float uPlanetPolarScene;
 
 	varying vec3 vLocalPos;
 	varying vec3 vWorldPos;
@@ -196,6 +214,33 @@ const FRAGMENT_SHADER = `
 	// branch, matching BJJ's "becoming slightly redder" observation as
 	// phase angle climbs.
 	const vec3 FORWARD_TINT_BIAS = vec3(1.02, 0.99, 0.97);
+
+	// Saturn's shadow on the rings: ray-march from the fragment toward the
+	// sun against the planet's oblate spheroid. Working in the pole-aligned
+	// frame, apply the affine warp (eq⁻¹, pol⁻¹, eq⁻¹) so the spheroid
+	// becomes a unit sphere, then test the scaled ray against it. Smooth
+	// edge via fwidth — closestSq is screen-stable so a 1-texel feather
+	// gives a clean limb without softening the whole shadow.
+	float planetShadow() {
+		if (uPlanetEquatorialScene <= 0.0) return 1.0;
+		vec3 originRel = vWorldPos - uPlanetCenter;
+		float originAxial = dot(originRel, uPlanetPoleDir);
+		vec3 originRadial = originRel - originAxial * uPlanetPoleDir;
+		float dirAxial = dot(uSunDir, uPlanetPoleDir);
+		vec3 dirRadial = uSunDir - dirAxial * uPlanetPoleDir;
+		float invEq = 1.0 / uPlanetEquatorialScene;
+		float invPol = 1.0 / uPlanetPolarScene;
+		vec3 oScaled = originRadial * invEq + uPlanetPoleDir * (originAxial * invPol);
+		vec3 dScaled = dirRadial * invEq + uPlanetPoleDir * (dirAxial * invPol);
+		float a = dot(dScaled, dScaled);
+		float b = dot(oScaled, dScaled);
+		// b > 0 → closest approach is behind the fragment along the sun ray,
+		// so the planet can't occlude the sun from here.
+		if (b > 0.0) return 1.0;
+		float closest = sqrt(max(dot(oScaled, oScaled) - b * b / a, 0.0));
+		float w = max(fwidth(closest), 1e-5);
+		return smoothstep(1.0 - w, 1.0 + w, closest);
+	}
 
 	void main() {
 		float radius = length(vLocalPos.xz);
@@ -256,25 +301,10 @@ const FRAGMENT_SHADER = `
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
 		float alpha = 1.0 - texture2D(uTransparency, uv).r;
 
-		// Saturn's shadow on the rings: sample the directional shadow map
-		// (the same one the planet meshes cast into) and modulate the lit
-		// contribution. The unlit-side appearance comes from sunlight
-		// transmitting through the material — also blocked when the planet
-		// occludes the sun — so the shadow factor multiplies both branches.
-		// Falls back to a no-op when the renderer is in solar-system view
-		// (NUM_DIR_LIGHT_SHADOWS = 0, e.g. PointLight active).
-		float shadow = 1.0;
-		#if NUM_DIR_LIGHT_SHADOWS > 0
-			DirectionalLightShadow ds = directionalLightShadows[0];
-			shadow = getShadow(
-				directionalShadowMap[0],
-				ds.shadowMapSize,
-				ds.shadowIntensity,
-				ds.shadowBias,
-				ds.shadowRadius,
-				vDirectionalShadowCoord[0]
-			);
-		#endif
+		// Planet shadow modulates both branches: the lit-side reflection
+		// from blocked direct sunlight, and the unlit-side transmission
+		// (sunlight filters through the rings only where the sun is unblocked).
+		float shadow = planetShadow();
 
 		gl_FragColor = vec4(finalAlbedo * shadow, alpha);
 		#include <logdepthbuf_fragment>
@@ -423,46 +453,28 @@ export async function loadRingNode(
 		return null;
 	}
 
-	// Merge Three's light/shadow uniforms (directionalShadowMap[],
-	// directionalShadowMatrix[], DirectionalLightShadow struct array) so the
-	// `<shadowmap_pars_*>` chunks find what they need. `lights: true` tells
-	// the WebGLRenderer to populate those uniforms with the scene's actual
-	// shadow data each frame.
 	const material = new ShaderMaterial({
-		uniforms: UniformsUtils.merge([
-			UniformsLib.lights,
-			{
-				uBackscattered: { value: backscattered },
-				uForwardscattered: { value: forwardscattered },
-				uUnlitside: { value: unlitside },
-				uTransparency: { value: transparency },
-				uColor: { value: color },
-				uInnerScene: { value: innerScene },
-				uOuterScene: { value: outerScene },
-				uSunDir: { value: new Vector3(1, 0, 0) }
-			}
-		]),
+		uniforms: {
+			uBackscattered: { value: backscattered },
+			uForwardscattered: { value: forwardscattered },
+			uUnlitside: { value: unlitside },
+			uTransparency: { value: transparency },
+			uColor: { value: color },
+			uInnerScene: { value: innerScene },
+			uOuterScene: { value: outerScene },
+			uSunDir: { value: new Vector3(1, 0, 0) },
+			uPlanetCenter: { value: new Vector3() },
+			uPlanetPoleDir: { value: new Vector3(0, 1, 0) },
+			uPlanetEquatorialScene: { value: 0 },
+			uPlanetPolarScene: { value: 0 }
+		},
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
 		transparent: true,
 		depthWrite: false,
 		blending: NormalBlending,
-		side: DoubleSide,
-		lights: true
+		side: DoubleSide
 	});
-
-	// UniformsUtils.merge deep-clones values via toJSON/fromJSON, which strips
-	// the live Texture / Vector3 references and replaces them with plain objects.
-	// Re-pin our own uniforms after the merge so the shader actually samples the
-	// loaded WebPs and the per-frame `uSunDir` mutation propagates.
-	material.uniforms.uBackscattered.value = backscattered;
-	material.uniforms.uForwardscattered.value = forwardscattered;
-	material.uniforms.uUnlitside.value = unlitside;
-	material.uniforms.uTransparency.value = transparency;
-	material.uniforms.uColor.value = color;
-	material.uniforms.uInnerScene.value = innerScene;
-	material.uniforms.uOuterScene.value = outerScene;
-	material.uniforms.uSunDir.value = new Vector3(1, 0, 0);
 
 	// RingGeometry lies in the XY plane with normals +Z; rotate to XZ plane
 	// (normals +Y) so applyOrientation's pole-to-+Y mapping puts the ring on
@@ -473,13 +485,28 @@ export async function loadRingNode(
 	const mesh = new Mesh(geometry, material);
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
 	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
-	mesh.receiveShadow = true; // planet shadow on rings
 	mesh.userData.isRingMesh = true;
-	// Ring → planet shadow is handled by an analytical ray-march in the
-	// planet's own material (see `attachRingShadowToPlanet`), so the ring
-	// doesn't cast into the shadow map.
+	// Both shadow directions are handled by per-pixel analytical ray-marches —
+	// ring → planet inside the planet's own MeshStandardMaterial (see
+	// `attachRingShadowToPlanet`), planet → ring inside this material's
+	// fragment shader. Neither needs the directional shadow map.
 
-	return { mesh, material, transparency, innerScene, outerScene, planetShadow: null };
+	const planetShadowOnRing: PlanetShadowOnRingUniforms = {
+		uPlanetCenter: material.uniforms.uPlanetCenter as { value: Vector3 },
+		uPlanetPoleDir: material.uniforms.uPlanetPoleDir as { value: Vector3 },
+		uPlanetEquatorialScene: material.uniforms.uPlanetEquatorialScene as { value: number },
+		uPlanetPolarScene: material.uniforms.uPlanetPolarScene as { value: number }
+	};
+
+	return {
+		mesh,
+		material,
+		transparency,
+		innerScene,
+		outerScene,
+		planetShadow: null,
+		planetShadowOnRing
+	};
 }
 
 /** Dispose all GPU resources owned by a ring node. */
