@@ -63,7 +63,8 @@
 		[OrbitalSource.HORIZONS]: m.source_horizons_name,
 		[OrbitalSource.SBDB]: m.source_sbdb_name,
 		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
-		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name
+		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name,
+		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name
 	};
 
 	interface Props {

@@ -96,7 +96,8 @@ const ORBIT_SOURCE_BY_NAME: Record<string, OrbitalSource> = {
 	horizons: OrbitalSource.HORIZONS,
 	sbdb: OrbitalSource.SBDB,
 	celestrak: OrbitalSource.CELESTRAK,
-	spice: OrbitalSource.SPICE
+	spice: OrbitalSource.SPICE,
+	sbdb_moons: OrbitalSource.SBDB_MOON
 };
 function parseOrbitalSource(name: string | undefined): OrbitalSource {
 	if (!name) return OrbitalSource.UNKNOWN;
@@ -196,7 +197,7 @@ async function createPlaceholderBody(
 			global.provisional_designation ??
 			null,
 		objectType: parseObjectType(global.type),
-		parentId: `naif-${orbit.parent_id}`,
+		parentId: orbit.parent_id,
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
 		hasLocalized: detail.localized != null,
 		a: isPlanetScale ? (orbit.a ?? 0) / AU_KM : (orbit.a ?? 0),
@@ -380,9 +381,16 @@ export class ContextManager {
 			});
 
 			const minorChunkArgsPromise = metadataPromise.then((metadata) => {
-				const args: { zone: string; zoom: number; part: number; time: string | null }[] = [];
+				const args: {
+					zone: string;
+					zoom: number;
+					part: number;
+					time: string | null;
+					parentIdType: string;
+				}[] = [];
 				for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 					if (zone === 'major' || zone === 'moons') continue;
+					const parentIdType = zoneData.parent_id_type ?? 'naif';
 					for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 						const zoom = Number(zoomStr);
 						// Chebyshev zones (`shape: chunked`) load through ChebyshevStore,
@@ -393,7 +401,7 @@ export class ContextManager {
 						// validity window covers it. Static-parted zones use a single set.
 						const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
 						for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
-							args.push({ zone, zoom, part, time });
+							args.push({ zone, zoom, part, time, parentIdType });
 							ChunkLoader.prefetch(zone, zoom, part, time);
 						}
 					}
@@ -514,8 +522,8 @@ export class ContextManager {
 
 			try {
 				await Promise.all(
-					minorChunkArgs.map(({ zone, zoom, part, time }) =>
-						loader.process(zone, zoom, part, date, time).then((chunk) => {
+					minorChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+						loader.process(zone, zoom, part, date, time, parentIdType).then((chunk) => {
 							this.recordOrbitSources(chunk);
 							for (const b of chunk) {
 								const placeholder = placeholderById.get(b.data.id);

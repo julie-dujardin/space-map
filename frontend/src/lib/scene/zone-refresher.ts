@@ -58,6 +58,7 @@ interface BaseZoneState {
 	zone: string;
 	zoom: number;
 	parts: number;
+	parentIdType: string;
 	inFlight: Promise<void> | null;
 }
 
@@ -113,12 +114,14 @@ export class ZoneRefresher {
 				// fan out over time, so they don't need a refresher entry either.
 				if (zoomData.shape === 'chunked' || zoomData.shape === 'parted') continue;
 				const parts = Math.min(zoomData.parts, 20);
+				const parentIdType = zoneData.parent_id_type ?? 'naif';
 				if (isDateSegmented(zoomData)) {
 					const state: TimeZoneState = {
 						kind: 'time',
 						zone,
 						zoom,
 						parts,
+						parentIdType,
 						zoomData,
 						currentTime: snapshotDate(zoomData, initialDate),
 						knownBuckets: new Set(),
@@ -133,6 +136,7 @@ export class ZoneRefresher {
 						zone,
 						zoom,
 						parts,
+						parentIdType,
 						zoomData,
 						currentIdx: chunkIndexForJd(zoomData, initialJd),
 						inFlight: null,
@@ -196,7 +200,7 @@ export class ZoneRefresher {
 		try {
 			const chunks = await Promise.all(
 				Array.from({ length: z.parts }, (_, part) =>
-					this.loader.process(z.zone, z.zoom, part, date, time)
+					this.loader.process(z.zone, z.zoom, part, date, time, z.parentIdType)
 				)
 			);
 
@@ -293,7 +297,7 @@ export class ZoneRefresher {
 			} else {
 				chunks = await Promise.all(
 					Array.from({ length: z.parts }, (_, part) =>
-						this.loader.process(z.zone, z.zoom, part, date, String(target))
+						this.loader.process(z.zone, z.zoom, part, date, String(target), z.parentIdType)
 					)
 				);
 			}
@@ -357,7 +361,7 @@ export class ZoneRefresher {
 			const time = String(i);
 			const promise = Promise.all(
 				Array.from({ length: z.parts }, (_, part) =>
-					this.loader.process(z.zone, z.zoom, part, date, time)
+					this.loader.process(z.zone, z.zoom, part, date, time, z.parentIdType)
 				)
 			);
 			z.preloads.set(i, { kind: 'pending', promise });

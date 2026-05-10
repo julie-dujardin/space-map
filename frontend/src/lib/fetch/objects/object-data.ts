@@ -72,7 +72,7 @@ export interface GlobalObjectData {
 		om: number;
 		w: number;
 		scale: string;
-		parent_id: number;
+		parent_id: string;
 		source: string;
 		// Keplerian elements (standard orbits)
 		a?: number;

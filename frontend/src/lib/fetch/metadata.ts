@@ -89,6 +89,10 @@ export function chunkIndexForJd(zoom: ChunkIndexedZoom, jd: number): number {
 
 export interface ZoneMetadata {
 	zooms: Record<string, ZoomMetadata>;
+	/** ID-type prefix for col-2 (parent) numeric values across this zone's
+	 *  files. The frontend rebuilds full parent ids as `${prefix}-${col2}`.
+	 *  Defaults to `"naif"` when absent (legacy zones predate the field). */
+	parent_id_type?: string;
 }
 
 /**

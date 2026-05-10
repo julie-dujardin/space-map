@@ -77,7 +77,8 @@ function keplerianToBody(
 	cols: KeplerianColumns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>
+	idMap: Map<number, string>,
+	parentIdType: string
 ): BodyData {
 	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
 	const omDot = cols.omDot[idx];
@@ -89,7 +90,7 @@ function keplerianToBody(
 		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `naif-${cols.parentId[idx]}`,
+		parentId: `${parentIdType}-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
 		// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
 		a: isPlanetScale ? cols.a[idx] / AU_KM : cols.a[idx],
@@ -115,7 +116,8 @@ function parabolicToBody(
 	cols: ParabolicColumns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>
+	idMap: Map<number, string>,
+	parentIdType: string
 ): BodyData {
 	const id = idMap.get(idx)!;
 	return {
@@ -124,7 +126,7 @@ function parabolicToBody(
 		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `naif-${cols.parentId[idx]}`,
+		parentId: `${parentIdType}-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
 		a: 0,
 		e: cols.e[idx],
@@ -152,7 +154,8 @@ function sgp4ToBody(
 	cols: SGP4Columns,
 	idx: number,
 	labels: LabelMap,
-	idMap: Map<number, string>
+	idMap: Map<number, string>,
+	parentIdType: string
 ): BodyData | null {
 	const id = idMap.get(idx)!;
 	const name = pickLabel(labels, id);
@@ -181,7 +184,7 @@ function sgp4ToBody(
 		isMinor: pickIsMinor(labels, id),
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `naif-${cols.parentId[idx]}`,
+		parentId: `${parentIdType}-${cols.parentId[idx]}`,
 		radiusKm: cols.radiusKm[idx],
 		// Kepler mean elements kept in canonical (AU, deg/day) units for the
 		// orbit-period estimate used by sgp4Curve — they're not used to propagate.
@@ -253,17 +256,20 @@ export class ChunkLoader {
 		fetch(elementsUrl(zone, zoom, part, time));
 	}
 
-	// Track positions by ID for parent lookups (not reactive — local computation only)
-	positions = new Map<number, [number, number, number]>();
+	// Track positions by full Object.id (e.g. "naif-399", "spkid-2000004") for
+	// parent lookups (not reactive — local computation only). String-keyed so
+	// zones with different parent prefixes (small_body_moons under spkid, moons
+	// under naif, …) don't collide on the numeric portion.
+	positions = new Map<string, [number, number, number]>();
 	// Store barycenter orbital elements for planet orbit drawing. Populated by
 	// both `processChebyshev` (osculating elements derived from the polynomial
 	// state) and `process` (elements ride-along from the binary chunks); the
 	// chebyshev pass runs first so `process` sees barycenter elements when it
 	// resolves a planet's parent.
-	barycenters = new Map<number, OrbitalElements>();
+	barycenters = new Map<string, OrbitalElements>();
 
 	constructor(private readonly cheb: ChebyshevStore | null) {
-		this.positions.set(0, [0, 0, 0]); // Solar System Barycenter
+		this.positions.set('naif-0', [0, 0, 0]); // Solar System Barycenter
 	}
 
 	/**
@@ -323,7 +329,8 @@ export class ChunkLoader {
 			const offset = chebyshevPositionScene(body, jd);
 			if (!offset) continue;
 			chebBodiesByNaif.set(body.naifId, body);
-			const parentPos = this.positions.get(body.parentId) ?? this.positions.get(0)!;
+			const parentKey = `naif-${body.parentId}`;
+			const parentPos = this.positions.get(parentKey) ?? this.positions.get('naif-0')!;
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
 				parentPos[1] + offset[1],
@@ -374,10 +381,10 @@ export class ChunkLoader {
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE
 			};
-			if (writePositions) this.positions.set(body.naifId, pos);
+			if (writePositions) this.positions.set(body.id, pos);
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions && elements && elements.a > 0 && elements.e < 1) {
-					this.barycenters.set(body.naifId, elements);
+					this.barycenters.set(body.id, elements);
 				}
 				result.push({
 					data,
@@ -395,7 +402,7 @@ export class ChunkLoader {
 				// `orbitCenter` undefined so the curve is drawn at SSB —
 				// otherwise the heliocentric ellipse would land on the planet.
 				const isMoon = objType === ObjectType.MOON;
-				const parentElements = this.barycenters.get(body.parentId);
+				const parentElements = this.barycenters.get(parentKey);
 				const orbitElements = isMoon ? elements : (parentElements ?? elements);
 				const borrowedFromParent = !isMoon && parentElements !== undefined;
 				// Borrowed bodies must re-derive against the *parent's* chebyshev,
@@ -442,7 +449,8 @@ export class ChunkLoader {
 		zoom: number,
 		part: number,
 		date: Date,
-		time: string | null = null
+		time: string | null = null,
+		parentIdType: string = 'naif'
 	): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
@@ -474,17 +482,17 @@ export class ChunkLoader {
 				continue;
 			}
 
-			const parentId = cols.parentId[idx];
-			if (!this.positions.has(parentId)) {
-				console.warn(`Parent position not found for parentId=${parentId}, falling back to origin`);
+			const parentKey = `${parentIdType}-${cols.parentId[idx]}`;
+			if (!this.positions.has(parentKey)) {
+				console.warn(`Parent position not found for ${parentKey}, falling back to origin`);
 			}
-			const parentPos = this.positions.get(parentId) ?? this.positions.get(0)!;
+			const parentPos = this.positions.get(parentKey) ?? this.positions.get('naif-0')!;
 
 			const body = isParabolic
-				? parabolicToBody(cols as ParabolicColumns, idx, labels, idMap)
+				? parabolicToBody(cols as ParabolicColumns, idx, labels, idMap, parentIdType)
 				: isSGP4
-					? sgp4ToBody(cols as SGP4Columns, idx, labels, idMap)
-					: keplerianToBody(cols as KeplerianColumns, idx, labels, idMap);
+					? sgp4ToBody(cols as SGP4Columns, idx, labels, idMap, parentIdType)
+					: keplerianToBody(cols as KeplerianColumns, idx, labels, idMap, parentIdType);
 			// sgp4ToBody returns null when satrec init fails — drop the row to
 			// enforce SGP4-only propagation for earth sats.
 			if (!body) continue;
@@ -514,15 +522,13 @@ export class ChunkLoader {
 				parentPos[2] + offset[2]
 			];
 
-			const id = cols.id[idx];
-
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
 					// if parent is SSB, don't use it
 					if (body.a > 0 && body.e < 1) {
-						this.barycenters.set(id, body);
+						this.barycenters.set(body.id, body);
 					}
-					this.positions.set(id, pos);
+					this.positions.set(body.id, pos);
 				}
 				bodies.push({
 					data: body,
@@ -534,7 +540,7 @@ export class ChunkLoader {
 			}
 
 			if (writePositions && isMajorBody(objType)) {
-				this.positions.set(id, pos);
+				this.positions.set(body.id, pos);
 			}
 
 			if (isMajorBody(objType)) {
@@ -545,11 +551,11 @@ export class ChunkLoader {
 				// so the orbit must be drawn centered on the parent's actual
 				// position, not at SSB — failing to do so leaves the trail offset
 				// from the body by parent_pos − SSB.
-				const hasBarycenter = this.barycenters.has(parentId);
+				const hasBarycenter = this.barycenters.has(parentKey);
 				bodies.push({
 					data: body,
 					position: pos,
-					orbitElements: isMoon ? body : (this.barycenters.get(parentId) ?? body),
+					orbitElements: isMoon ? body : (this.barycenters.get(parentKey) ?? body),
 					orbitCenter: isMoon || !hasBarycenter ? parentPos : undefined
 				});
 			} else {
