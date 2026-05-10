@@ -81,9 +81,11 @@ class CommonsDownloader(Downloader):
         # transitively follow ``derived_from`` and ``other_versions`` so the
         # graph covers an image's parents and siblings — different language
         # wikis pick different hero images, and merging their descriptions
-        # gives the original richer coverage. Source bytes only get
-        # downloaded after, for the original discovery set.
+        # gives the original richer coverage. Globalusage and SDC each get
+        # their own pass (different APIs / pagination needs). Source bytes
+        # only get downloaded after, for the original discovery set.
         graph = self._fetch_metadata(discovered)
+        self._fetch_globalusage(sorted(graph))
         self._fetch_sdc(sorted(graph))
         self._download_images(discovered)
 
@@ -406,12 +408,15 @@ class CommonsDownloader(Downloader):
             links.update(other_versions)
 
             image_dir(filename).mkdir(parents=True, exist_ok=True)
-            # ``pageid`` (and the ``M<pageid>`` MediaInfo form) survive Commons
-            # renames where filenames do not; ``sha1`` content-addresses the
-            # file bytes. Wikitext is kept raw so we can re-parse it later if
-            # the parser improves, without re-fetching the whole batch.
-            write_download_metadata(
-                filename,
+            # Read-merge-write so ``sdc`` and ``globalusage`` from later
+            # steps (each in its own pass) survive a metadata refresh.
+            # ``pageid`` (and the ``M<pageid>`` MediaInfo form) survive
+            # Commons renames where filenames do not; ``sha1`` content-
+            # addresses the file bytes. Wikitext is kept raw so we can
+            # re-parse it later without re-fetching the whole batch.
+            existing = read_download_metadata(filename) or {}
+            existing.pop("missing", None)  # file is reachable now
+            existing.update(
                 {
                     "filename": filename,
                     "pageid": page.get("pageid"),
@@ -422,10 +427,99 @@ class CommonsDownloader(Downloader):
                     "wikitext": wikitext,
                     "derived_from": derived_from,
                     "other_versions": other_versions,
-                },
+                }
             )
+            write_download_metadata(filename, existing)
 
         return missing, links
+
+    def _fetch_globalusage(self, filenames: list[str]) -> None:
+        """Fetch globalusage (cross-wiki page references) per file.
+
+        ``gulimit`` is a TOTAL cap across all titles in a query, not
+        per-title — so popular files (e.g. Earth.jpg) saturate the budget
+        and the rest of the batch comes back empty. We work around this
+        with ``gucontinue`` pagination: keep calling until every title is
+        exhausted, accumulating entries per filename across pages.
+
+        Persists the raw list under ``metadata["globalusage"]``. Downstream
+        can derive total count, distinct-wiki count, namespace filtering,
+        etc. Files already on disk with the field are skipped — resumable.
+        """
+        targets: list[str] = []
+        for f in filenames:
+            meta = read_download_metadata(f) or {}
+            if meta.get("missing"):
+                continue
+            if "globalusage" in meta:
+                continue
+            targets.append(f)
+        logger.info(
+            "Commons globalusage: %s total, %s to fetch",
+            f"{len(filenames):,}",
+            f"{len(targets):,}",
+        )
+        if not targets:
+            return
+
+        with tqdm(total=len(targets), desc="Commons globalusage", unit="file") as pbar:
+            for batch in batched(targets, METADATA_BATCH_SIZE):
+                self._fetch_globalusage_batch(list(batch))
+                pbar.update(len(batch))
+                time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+
+    def _fetch_globalusage_batch(self, filenames: list[str]) -> None:
+        """Paginate ``globalusage`` for one batch and merge into metadata.json."""
+        titles = "|".join(f"File:{f}" for f in filenames)
+        params: dict[str, object] = {
+            "action": "query",
+            "prop": "globalusage",
+            "gulimit": "max",
+            "titles": titles,
+            "format": "json",
+            "formatversion": 2,
+        }
+        # Accumulate across continuation pages: filename -> list of entries.
+        accumulated: dict[str, list[dict]] = {f: [] for f in filenames}
+        normalized_map: dict[str, str] = {}
+
+        while True:
+            try:
+                response = self._request(
+                    "https://commons.wikimedia.org/w/api.php", params=params
+                )
+                response.raise_for_status()
+            except Exception:
+                logger.error(
+                    "Failed to fetch globalusage batch of %d files", len(filenames)
+                )
+                return
+
+            data = response.json()
+            for n in data.get("query", {}).get("normalized", []) or []:
+                normalized_map[n["to"]] = n["from"]
+            for page in data.get("query", {}).get("pages", []) or []:
+                api_title = page.get("title", "")
+                original = normalized_map.get(api_title, api_title)
+                filename = canonical_filename(original.removeprefix("File:"))
+                if filename not in accumulated:
+                    continue
+                for entry in page.get("globalusage") or []:
+                    accumulated[filename].append(entry)
+
+            cont = data.get("continue")
+            if not cont:
+                break
+            # Carry continuation tokens forward; replace any prior values.
+            params = {**params, **cont}
+            time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+
+        for filename, entries in accumulated.items():
+            meta = read_download_metadata(filename)
+            if meta is None:
+                continue
+            meta["globalusage"] = entries
+            write_download_metadata(filename, meta)
 
     def _fetch_sdc(self, filenames: list[str]) -> None:
         """Fetch Structured Data on Commons (SDC) for each downloaded file.
