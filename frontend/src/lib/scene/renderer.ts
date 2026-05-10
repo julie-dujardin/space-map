@@ -231,7 +231,7 @@ export class SceneRenderer {
 
 		// Scene + lights
 		this.scene = new Scene();
-		this.scene.add(new AmbientLight(0xffffff, 0.05));
+		this.scene.add(new AmbientLight(0xffffff, 0.01));
 
 		// Directional sun light for sub-system view (swapped in when zoomed
 		// into a planet's moon system; PointLight at the Sun handles
