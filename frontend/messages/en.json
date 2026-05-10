@@ -162,6 +162,8 @@
 	"cleared_n_promoted": "Cleared {count} pinned object(s)",
 	"north_reference": "North reference",
 	"north_solar_system": "Solar system",
+	"north_solar_system_desc": "J2000 ecliptic plane",
+	"north_body_desc": "Body rotation axis",
 	"go_to_object": "Go to object",
 	"zoom_out_to_system": "Zoom out to system",
 	"object_not_found": "Object {id} not found",

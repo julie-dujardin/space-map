@@ -35,7 +35,7 @@
 				<li>
 					<button
 						type="button"
-						class="w-full text-start px-3 py-2 rounded text-sm cursor-pointer
+						class="w-full text-start px-3 py-2 rounded cursor-pointer
 							hover:bg-accent hover:text-accent-foreground transition-colors
 							{active ? 'bg-accent text-accent-foreground font-medium' : ''}"
 						onclick={() => {
@@ -43,7 +43,12 @@
 							open = false;
 						}}
 					>
-						{choice.id === null ? m.north_solar_system() : (choice.name ?? choice.id)}
+						<div class="text-sm">
+							{choice.id === null ? m.north_solar_system() : (choice.name ?? choice.id)}
+						</div>
+						<div class="text-xs text-muted-foreground">
+							{choice.id === null ? m.north_solar_system_desc() : m.north_body_desc()}
+						</div>
 					</button>
 				</li>
 			{/each}

@@ -162,6 +162,8 @@
 	"cleared_n_promoted": "Очищено закреплённых объектов: {count}",
 	"north_reference": "Северное направление",
 	"north_solar_system": "Солнечная система",
+	"north_solar_system_desc": "Плоскость эклиптики J2000",
+	"north_body_desc": "Ось вращения тела",
 	"go_to_object": "Перейти к объекту",
 	"zoom_out_to_system": "Отдалить до системы",
 	"object_not_found": "Объект {id} не найден",

@@ -162,6 +162,8 @@
 	"cleared_n_promoted": "تم مسح {count} من الأجسام المُثبَّتة",
 	"north_reference": "المرجع الشمالي",
 	"north_solar_system": "النظام الشمسي",
+	"north_solar_system_desc": "مستوى مسار الشمس J2000",
+	"north_body_desc": "محور دوران الجسم",
 	"go_to_object": "الانتقال إلى الجسم",
 	"zoom_out_to_system": "التصغير إلى النظام",
 	"object_not_found": "الجسم {id} غير موجود",

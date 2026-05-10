@@ -162,6 +162,8 @@
 	"cleared_n_promoted": "已清除 {count} 个已固定的对象",
 	"north_reference": "北方参考",
 	"north_solar_system": "太阳系",
+	"north_solar_system_desc": "J2000 黄道面",
+	"north_body_desc": "天体自转轴",
 	"go_to_object": "前往该对象",
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {id}",

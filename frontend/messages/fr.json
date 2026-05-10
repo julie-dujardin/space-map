@@ -162,6 +162,8 @@
 	"cleared_n_promoted": "{count} objet(s) épinglé(s) effacé(s)",
 	"north_reference": "Référence du nord",
 	"north_solar_system": "Système solaire",
+	"north_solar_system_desc": "Plan de l'écliptique J2000",
+	"north_body_desc": "Axe de rotation du corps",
 	"go_to_object": "Aller à l'objet",
 	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {id} introuvable",
