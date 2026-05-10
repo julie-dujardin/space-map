@@ -1,7 +1,8 @@
-"""Ingest Horizons bodies.csv — spacecraft only.
+"""Ingest Horizons bodies.csv — spacecraft + SSB only.
 
 Planets, moons, barycenters come from SPICE; asteroids/comets from SBDB.
-Horizons' remaining role is spacecraft discovery and NAIF ID cross-referencing.
+Horizons' remaining role is spacecraft discovery and NAIF ID cross-referencing
+(via the cached major_bodies.txt that SPICE reads for names/aliases).
 """
 
 import csv

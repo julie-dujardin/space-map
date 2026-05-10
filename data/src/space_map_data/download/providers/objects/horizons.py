@@ -218,7 +218,8 @@ class HorizonsDownloader(Downloader):
             "extra",
         )
 
-        # Load already-downloaded bodies from a previous (possibly partial) run
+        # Load already-downloaded bodies from a previous (possibly partial) run.
+        # Drop pre-existing non-spacecraft rows left over from older runs.
         existing: dict[str, dict] = {}
         fieldnames: list[str] | None = None
         if out_file.exists():
@@ -226,18 +227,28 @@ class HorizonsDownloader(Downloader):
                 reader = csv.DictReader(f)
                 fieldnames = list(reader.fieldnames) if reader.fieldnames else None
                 for row in reader:
-                    existing[row["naif_id"]] = row
+                    if (
+                        row.get("type") == ObjectType.spacecraft
+                        or row.get("naif_id") == "0"
+                    ):
+                        existing[row["naif_id"]] = row
             if existing:
                 logger.info("Loaded %d already-downloaded bodies", len(existing))
 
         new_rows: dict[str, dict] = {}
         skipped = 0
 
+        # Spacecraft only: planets, moons, barycenters, asteroids/comets, and
+        # lagrange points are sourced elsewhere (SPICE / SBDB) and don't need
+        # Horizons osculating elements.
+        spacecraft_bodies = [
+            b
+            for b in available_bodies
+            if b.object_type == ObjectType.spacecraft or b.naif_id == 0
+        ]
         for body in tqdm(
-            available_bodies, desc="Horizons", unit="body", dynamic_ncols=True
+            spacecraft_bodies, desc="Horizons", unit="body", dynamic_ncols=True
         ):
-            if body.object_type == ObjectType.lagrange_point:
-                continue
             if body.naif_id == 0:
                 # SSB is the coordinate origin — synthesize a zero-filled row, no API call needed
                 row = {

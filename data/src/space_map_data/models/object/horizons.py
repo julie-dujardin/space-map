@@ -16,11 +16,12 @@ if TYPE_CHECKING:
 class Horizons(Base):
     """NAIF-keyed kepler element store.
 
-    Mirrors horizons/bodies.csv at ingest, then SPICE ingest overwrites the
-    rows for major bodies and moons (planets, moons, etc.) with values from
-    spice/bodies.csv, including the secular drift rates `om_dot`/`w_dot` that
-    SPICE computes for non-whitelisted moons. Horizons-source and SPICE-source
-    Object rows both join here for orbital elements.
+    Spacecraft + SSB rows come from horizons/bodies.csv. Planet/moon/barycenter
+    rows are inserted by SPICE ingest from spice/bodies.csv with kepler
+    elements + secular drift rates (`om_dot`/`w_dot`); their Horizons-only
+    columns (QR/Tp/TA/AD/PR, name/designation/type/center/parent_naif_id/
+    extra) stay null. Horizons-source and SPICE-source Object rows both join
+    here for orbital elements.
     """
 
     __tablename__ = "horizons"

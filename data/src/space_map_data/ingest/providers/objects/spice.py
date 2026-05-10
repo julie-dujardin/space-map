@@ -68,9 +68,8 @@ class SpiceIngestor:
         }
         # Kepler elements + SPICE-fitted secular drift rates land on the
         # Horizons sub-table — SPICE-source rows join there for elements.
-        # Horizons ingest just ran and either pre-populated this naif_id
-        # from horizons/bodies.csv (we'll overwrite the element fields) or
-        # didn't (we'll insert a fresh row).
+        # Horizons ingest only writes spacecraft + SSB rows now, so for
+        # planets/moons/barycenters this is a fresh insert.
         horizons_upsert = {
             "naif_id": naif_id,
             "object_id": object_pk,
