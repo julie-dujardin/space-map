@@ -27,6 +27,7 @@ from space_map_data.download.providers.images.earth_clouds import (
 from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
+from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ PROVIDERS_CLASSES = [
     EarthCloudsDownloader,
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
+    BJJRingsDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
@@ -54,6 +56,7 @@ class ProviderResult:
     name: str
     ok: bool
     error: str | None = None
+    skipped: bool = False
 
 
 def load_config() -> dict[str, Any]:
@@ -93,7 +96,7 @@ def download(
             downloader = cls(client)
             if not force and downloader.is_complete(limit):
                 logger.info("Skipping %s (already complete)", name)
-                results.append(ProviderResult(name, ok=True))
+                results.append(ProviderResult(name, ok=True, skipped=True))
                 continue
             try:
                 downloader.download(limit=limit, epoch=epoch)

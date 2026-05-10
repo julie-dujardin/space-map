@@ -13,6 +13,7 @@ class PROVIDERS(StrEnum):
     EARTH_CLOUDS = "earth_clouds"
     IAU_NOMENCLATURE = "iau_nomenclature"
     TEXTURE_SOURCES = "texture_sources"
+    BJJ_RINGS = "bjj_rings"
 
 
 class ID_TYPES(StrEnum):
