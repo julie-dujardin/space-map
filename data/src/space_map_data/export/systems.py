@@ -156,9 +156,7 @@ def ring_block(meta: dict) -> dict:
         "outer_radius_km": float(meta["outer_radius_km"]),
         "sample_count": int(meta["sample_count"]),
         "color_space": meta.get("color_space", "srgb"),
-        "channels": {
-            name: rec["file"] for name, rec in meta["channels"].items()
-        },
+        "channels": {name: rec["file"] for name, rec in meta["channels"].items()},
     }
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]
