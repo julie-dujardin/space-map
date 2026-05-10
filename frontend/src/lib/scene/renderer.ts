@@ -235,7 +235,12 @@ export class SceneRenderer {
 		// Shadow-casting directional light (swapped in when zoomed into a sub-system)
 		this.shadowLight = new DirectionalLight(0xffffff, 0);
 		this.shadowLight.castShadow = true;
-		this.shadowLight.shadow.mapSize.set(4096, 4096);
+		// 8192² fits the directional shadow well within typical WebGL texture
+		// limits (max texture size is 16384 on desktop GPUs, 4096–8192 on
+		// mobile). Pushes ring-shadow texel density on Saturn from ~70 km/texel
+		// at 4k to ~35 km/texel — the difference between blocky shadow bands
+		// and recognisable ring structure (Cassini division, A/B/C boundaries).
+		this.shadowLight.shadow.mapSize.set(8192, 8192);
 		this.shadowLight.shadow.bias = -0.00001;
 		this.scene.add(this.shadowLight);
 		this.scene.add(this.shadowLight.target);

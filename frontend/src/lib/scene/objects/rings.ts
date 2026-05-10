@@ -17,7 +17,9 @@ import {
 	LinearFilter,
 	type Material,
 	Mesh,
+	MeshDepthMaterial,
 	NormalBlending,
+	RGBADepthPacking,
 	RingGeometry,
 	ShaderMaterial,
 	SRGBColorSpace,
@@ -59,6 +61,14 @@ export interface RingNode {
 }
 
 const RING_ANGULAR_SEGMENTS = 256;
+
+/**
+ * Alpha threshold for shadow casting. Fragments where the ring is more
+ * transparent than this don't write to the shadow map — keeps the
+ * Cassini division and other gaps clearly visible in Saturn's projected
+ * ring shadow instead of a solid disc.
+ */
+const RING_SHADOW_ALPHA_THRESHOLD = 0.35;
 
 function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise<Texture> {
 	return new Promise((resolve, reject) => {
@@ -200,6 +210,62 @@ const FRAGMENT_SHADER = `
 	}
 `;
 
+/**
+ * Custom depth material for the shadow-casting pass. Three's default
+ * MeshDepthMaterial writes a solid disc — fine for an opaque sphere, but a
+ * ring is mostly empty space. We patch the depth shader to sample the
+ * transparency profile and discard fragments where the ring is more empty
+ * than {@link RING_SHADOW_ALPHA_THRESHOLD}, so the projected shadow on
+ * Saturn shows the ring banding (Cassini division, A/B/C boundaries) instead
+ * of an opaque disc.
+ *
+ * `depthPacking: RGBADepthPacking` matches what `WebGLShadowMap` expects when
+ * the renderer hasn't been configured for depth textures — same packing the
+ * stock `MeshDepthMaterial` uses on receiveShadow surfaces.
+ */
+function makeRingDepthMaterial(
+	transparency: Texture,
+	innerScene: number,
+	outerScene: number
+): MeshDepthMaterial {
+	const material = new MeshDepthMaterial({
+		depthPacking: RGBADepthPacking,
+		side: DoubleSide
+	});
+	material.onBeforeCompile = (shader) => {
+		shader.uniforms.uTransparency = { value: transparency };
+		shader.uniforms.uInnerScene = { value: innerScene };
+		shader.uniforms.uOuterScene = { value: outerScene };
+		shader.uniforms.uAlphaThreshold = { value: RING_SHADOW_ALPHA_THRESHOLD };
+
+		shader.vertexShader = shader.vertexShader
+			.replace('#include <common>', '#include <common>\nvarying vec3 vRingLocalPos;')
+			.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRingLocalPos = position;');
+
+		shader.fragmentShader = shader.fragmentShader
+			.replace(
+				'#include <common>',
+				`#include <common>
+				uniform sampler2D uTransparency;
+				uniform float uInnerScene;
+				uniform float uOuterScene;
+				uniform float uAlphaThreshold;
+				varying vec3 vRingLocalPos;`
+			)
+			.replace(
+				'void main() {',
+				`void main() {
+					float ringRadius = length(vRingLocalPos.xz);
+					float ringT = (ringRadius - uInnerScene) / (uOuterScene - uInnerScene);
+					if (ringT < 0.0 || ringT > 1.0) discard;
+					float ringAlpha = 1.0 - texture2D(uTransparency, vec2(clamp(ringT, 0.0, 1.0), 0.5)).r;
+					if (ringAlpha < uAlphaThreshold) discard;
+				`
+			);
+	};
+	return material;
+}
+
 export async function loadRingNode(
 	bodyId: string,
 	meta: RingMeta,
@@ -274,6 +340,8 @@ export async function loadRingNode(
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
 	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
 	mesh.receiveShadow = true; // planet shadow on rings
+	mesh.castShadow = true; // ring shadow on planet (depth-only pass uses customDepthMaterial)
+	mesh.customDepthMaterial = makeRingDepthMaterial(transparency, innerScene, outerScene);
 	mesh.userData.isRingMesh = true;
 
 	return { mesh, material, outerScene };
@@ -288,4 +356,5 @@ export function disposeRingNode(ring: RingNode): void {
 		tex?.dispose();
 	}
 	(ring.mesh.material as Material).dispose();
+	(ring.mesh.customDepthMaterial as Material | undefined)?.dispose();
 }
