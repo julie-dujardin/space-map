@@ -39,6 +39,7 @@ import logging
 import shutil
 import threading
 import uuid
+from collections import deque
 from pathlib import Path
 from urllib.parse import quote
 
@@ -49,9 +50,9 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.commons_images import (
     IMAGES_DIR as DOWNLOADS_IMAGES_DIR,
     canonical_filename,
-    download_metadata_path,
     is_excluded,
     is_servable_on_disk,
+    read_download_metadata,
     source_path,
 )
 from space_map_data.utils.paths import EXPORT_DIR
@@ -424,12 +425,19 @@ def _write_trimmed_metadata(
       passthrough sources that never went through PIL)
     - ``license``: ``{"name", "url"}`` from extmetadata LicenseShortName + LicenseUrl
     - ``artist``, ``description``: multilang-capable fields, restricted to
-      supported locales (with bare strings passed through unchanged)
+      supported locales (with bare strings passed through unchanged). Both
+      are aggregated across the chosen file's derivative tree — the chosen
+      file's value is the default, and tree members fill in missing entries
+      (per-locale for multilang dicts), so a French derivative's French
+      description survives when the English original lacked one.
     - ``source_url``: Commons page URL (constructible client-side, but cheap
       to include here)
+
+    License stays tied to the chosen file: it describes the bytes we
+    actually serve, so a derivative's license can't substitute.
     """
-    raw = orjson.loads(download_metadata_path(filename).read_bytes())
-    em = (raw.get("imageinfo") or {}).get("extmetadata") or {}
+    base = read_download_metadata(filename) or {}
+    base_em = (base.get("imageinfo") or {}).get("extmetadata") or {}
 
     payload: dict = {
         "schema": _BUNDLE_SCHEMA,
@@ -438,13 +446,13 @@ def _write_trimmed_metadata(
     }
     if dims:
         payload["width"], payload["height"] = dims
-    license_block = _license_block(em)
+    license_block = _license_block(base_em)
     if license_block:
         payload["license"] = license_block
-    artist = _locale_field(em.get("Artist") or em.get("Credit"))
+
+    artist, description = _aggregate_locale_fields(filename, base)
     if artist:
         payload["artist"] = artist
-    description = _locale_field(em.get("ImageDescription"))
     if description:
         payload["description"] = description
 
@@ -452,6 +460,83 @@ def _write_trimmed_metadata(
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_bytes(gzip.compress(orjson.dumps(payload)))
     tmp.rename(target)
+
+
+def _aggregate_locale_fields(
+    filename: str, base_meta: dict
+) -> tuple[str | dict[str, str] | None, str | dict[str, str] | None]:
+    """Return ``(artist, description)`` merged across the chosen file's tree.
+
+    The chosen file's value is the default; tree members reachable via
+    ``derived_from`` / ``other_versions`` provide fallbacks (per-locale for
+    multilang dicts). BFS from the chosen file means closer derivatives are
+    visited first and win the fallback race over distant ones.
+    """
+    artist: str | dict[str, str] | None = None
+    description: str | dict[str, str] | None = None
+    for idx, name in enumerate(_walk_tree(filename)):
+        meta = base_meta if idx == 0 else read_download_metadata(name)
+        if not meta:
+            continue
+        em = (meta.get("imageinfo") or {}).get("extmetadata") or {}
+        artist = _merge_locale_field(
+            artist, _locale_field(em.get("Artist") or em.get("Credit"))
+        )
+        description = _merge_locale_field(
+            description, _locale_field(em.get("ImageDescription"))
+        )
+    return artist, description
+
+
+def _walk_tree(filename: str) -> list[str]:
+    """BFS over ``derived_from`` / ``other_versions`` starting at ``filename``.
+
+    Returns the BFS order with ``filename`` first. Missing tree members
+    (no metadata.json on disk) are silently skipped, but their already-
+    queued neighbours still get visited.
+    """
+    seen: set[str] = set()
+    order: list[str] = []
+    queue: deque[str] = deque([filename])
+    while queue:
+        node = queue.popleft()
+        if node in seen:
+            continue
+        seen.add(node)
+        order.append(node)
+        meta = read_download_metadata(node)
+        if not meta:
+            continue
+        related = list(meta.get("derived_from") or ()) + list(
+            meta.get("other_versions") or ()
+        )
+        for nb in related:
+            if nb not in seen:
+                queue.append(nb)
+    return order
+
+
+def _merge_locale_field(
+    base: str | dict[str, str] | None,
+    fallback: str | dict[str, str] | None,
+) -> str | dict[str, str] | None:
+    """Default to ``base``; fill missing dict locales from ``fallback``.
+
+    - ``base`` None → use ``fallback`` outright.
+    - ``base`` is a bare string → keep it (no per-locale info to merge into).
+    - ``base`` is a dict → merge per-locale, base entries winning. A
+      bare-string ``fallback`` against a dict base is ignored (we'd lose
+      the locale tagging if we tried to splat it across all locales).
+    """
+    if base is None:
+        return fallback
+    if fallback is None or isinstance(base, str):
+        return base
+    if isinstance(fallback, str):
+        return base
+    merged = dict(fallback)
+    merged.update(base)
+    return merged
 
 
 def _license_block(em: dict) -> dict | None:

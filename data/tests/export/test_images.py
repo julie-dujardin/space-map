@@ -88,6 +88,8 @@ def _stage_download(
     license_servable: bool = True,
     extmetadata: dict | None = None,
     missing_source: bool = False,
+    derived_from: list[str] | None = None,
+    other_versions: list[str] | None = None,
 ) -> None:
     """Populate a fake ``DOWNLOAD_DIR/commons/images/<filename>/`` entry."""
     ext = Path(filename).suffix.lower()
@@ -110,12 +112,16 @@ def _stage_download(
             "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
         }
     )
-    payload = {
+    payload: dict = {
         "filename": filename,
         "fetched_at": "2026-04-24T00:00:00+00:00",
         "imageinfo": {"extmetadata": em},
         "license_servable": license_servable,
     }
+    if derived_from is not None:
+        payload["derived_from"] = derived_from
+    if other_versions is not None:
+        payload["other_versions"] = other_versions
     (d / "metadata.json").write_bytes(orjson.dumps(payload))
 
 
@@ -517,3 +523,208 @@ class TestMetadataTrimming:
         _stage_download(tmp_path, "solo.jpg")
         _collect("solo.jpg")
         assert not (layout["export"] / "solo.jpg" / "variants.json").exists()
+
+
+class TestTreeMetadataAggregation:
+    """Aggregation of artist/description across the chosen file's tree.
+
+    The chosen file's metadata is the default; tree members reachable via
+    ``derived_from``/``other_versions`` provide fallbacks (per-locale for
+    multilang dicts). License stays tied to the chosen file because it
+    describes the bytes we serve.
+    """
+
+    def _read_metadata(self, layout, filename: str) -> dict:
+        path = layout["export"] / filename / "metadata.json.gz"
+        return orjson.loads(gzip.decompress(path.read_bytes()))
+
+    def test_description_per_locale_fallback(self, tmp_path, layout):
+        # Chosen image has English; derivative has French. Both should land
+        # in the merged description.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "en": "English desc"}},
+            },
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {
+                    "value": {"_type": "lang", "fr": "Description française"}
+                },
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["description"] == {
+            "en": "English desc",
+            "fr": "Description française",
+        }
+
+    def test_chosen_file_wins_per_locale(self, tmp_path, layout):
+        # Both have an English description — the chosen file's value wins.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "en": "Chosen desc"}},
+            },
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {
+                    "value": {"_type": "lang", "en": "Crop desc", "fr": "Crop fr"}
+                },
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["description"] == {"en": "Chosen desc", "fr": "Crop fr"}
+
+    def test_artist_falls_back_when_chosen_missing(self, tmp_path, layout):
+        # Chosen file has no Artist/Credit; derivative does — use the derivative.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={"LicenseShortName": {"value": "CC BY-SA 4.0"}},
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "Artist": {"value": "Jane Doe"},
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["artist"] == "Jane Doe"
+
+    def test_chosen_artist_wins_over_fallback(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "Artist": {"value": "Jane Doe"},
+            },
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "Artist": {"value": "John Smith"},
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["artist"] == "Jane Doe"
+
+    def test_license_does_not_aggregate(self, tmp_path, layout):
+        # License describes the bytes we serve; a derivative's license must
+        # not bleed onto the chosen file.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={"LicenseShortName": {"value": "CC BY-SA 4.0"}},
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "Public domain"},
+                "Artist": {"value": "Someone"},
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["license"]["name"] == "CC BY-SA 4.0"
+
+    def test_walks_via_other_versions(self, tmp_path, layout):
+        # Sibling reached via other_versions (not derived_from) still
+        # contributes its description.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "en": "Eng"}},
+            },
+            other_versions=["Sibling.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Sibling.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "fr": "Fra"}},
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["description"] == {"en": "Eng", "fr": "Fra"}
+
+    def test_closer_derivative_wins_over_distant(self, tmp_path, layout):
+        # BFS order: Original -> Near (depth 1) -> Far (depth 2). When both
+        # Near and Far have a French description that the chosen file lacks,
+        # Near should win.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "en": "Eng"}},
+            },
+            derived_from=["Near.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Near.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "fr": "Near fr"}},
+            },
+            derived_from=["Far.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Far.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "fr": "Far fr"}},
+            },
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["description"] == {"en": "Eng", "fr": "Near fr"}
+
+    def test_missing_tree_member_metadata_skipped(self, tmp_path, layout):
+        # Tree references a file we never downloaded. Don't crash; just
+        # use what we have.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "ImageDescription": {"value": {"_type": "lang", "en": "Eng"}},
+            },
+            derived_from=["NeverDownloaded.jpg"],
+        )
+        _collect("Original.jpg")
+        meta = self._read_metadata(layout, "Original.jpg")
+        assert meta["description"] == {"en": "Eng"}
