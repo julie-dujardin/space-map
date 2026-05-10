@@ -33,6 +33,7 @@ import {
 	makeStarPoint
 } from './builders';
 import { attachRingShadowToPlanet, loadRingNode, type RingMeta } from './rings';
+import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
 import type { BodyObjects } from '../types';
 
 function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
@@ -68,6 +69,7 @@ export function buildMajorBodies(
 		let starPoint: Points | null = null;
 		let coronaSprite: Sprite | null = null;
 		let lensflareObj: Lensflare | null = null;
+		let eclipseShadow: EclipseSelfUniforms | null = null;
 		const extraObjects: Object3D[] = [];
 		if (!isVirtual) {
 			if (isStar) {
@@ -90,12 +92,11 @@ export function buildMajorBodies(
 				: new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
 			if (!isStar) {
-				mesh.receiveShadow = true;
-				const canCast =
-					body.data.objectType === ObjectType.PLANET ||
-					body.data.objectType === ObjectType.DWARF_PLANET ||
-					body.data.objectType === ObjectType.MOON;
-				mesh.castShadow = canCast;
+				// Body-on-body shadows are computed analytically by the
+				// eclipse-shadow path inside this material's fragment shader,
+				// so the directional shadow map isn't involved — no cast/receive
+				// flags needed.
+				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 			}
 			scene.add(mesh);
 			extraObjects.push(mesh);
@@ -189,7 +190,8 @@ export function buildMajorBodies(
 			radiusScene: radius,
 			cachedDist: 0,
 			isMinor,
-			rings: null
+			rings: null,
+			eclipseShadow
 		});
 	}
 }

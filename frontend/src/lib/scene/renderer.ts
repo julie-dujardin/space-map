@@ -46,6 +46,7 @@ import {
 	refreshOrbitLineGeometry,
 	setOrbitLineResolution
 } from './objects/builders';
+import { getEclipseSceneUniforms, MAX_OCCLUDERS } from './objects/eclipse-shadow';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
@@ -232,11 +233,13 @@ export class SceneRenderer {
 		this.scene = new Scene();
 		this.scene.add(new AmbientLight(0xffffff, 0.05));
 
-		// Shadow-casting directional light (swapped in when zoomed into a sub-system)
+		// Directional sun light for sub-system view (swapped in when zoomed
+		// into a planet's moon system; PointLight at the Sun handles
+		// solar-system view). Body-on-body shadows are computed analytically
+		// per-fragment (see `attachEclipseShadowToBody` and
+		// `attachRingShadowToPlanet`), so no shadow map is needed.
 		this.shadowLight = new DirectionalLight(0xffffff, 0);
-		this.shadowLight.castShadow = true;
-		this.shadowLight.shadow.mapSize.set(4096, 4096);
-		this.shadowLight.shadow.bias = -0.00001;
+		this.shadowLight.castShadow = false;
 		this.scene.add(this.shadowLight);
 		this.scene.add(this.shadowLight.target);
 
@@ -1023,6 +1026,7 @@ export class SceneRenderer {
 		this.refreshDeferredOrbitLines();
 
 		this.updateRingShaders();
+		this.updateEclipseUniforms();
 
 		// Hide the user-location dot when it rotates around to Earth's far side.
 		this.updateUserLocationOcclusion();
@@ -1254,6 +1258,64 @@ export class SceneRenderer {
 			ps.uRingShadowSunDir.value.copy(ringSunDir);
 			ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
 			ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);
+		}
+	}
+
+	/**
+	 * Refresh per-frame eclipse uniforms — sun position/radius, the
+	 * occluder list, and each receiver's self-position. Occluder
+	 * eligibility is gated on a measured (real) `radiusKm`: the data layer
+	 * fills in a fallback radius for bodies whose physical size is
+	 * unknown, and using those for shadow casting would draw wrong-sized
+	 * shadows. Stars are excluded since the Sun *is* the light source.
+	 *
+	 * If the system has more than {@link MAX_OCCLUDERS} eligible bodies we
+	 * keep the largest by scene radius — those dominate the shadow budget
+	 * and the smaller ones contribute negligible obscuration anyway.
+	 */
+	private updateEclipseUniforms(): void {
+		const eclipse = getEclipseSceneUniforms();
+		const sunBo = this.bodyObjects.get('naif-10');
+		if (!sunBo) {
+			eclipse.uSunRadiusScene.value = 0;
+			eclipse.uOccluderCount.value = 0;
+			return;
+		}
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const sunPos = sunBo.body.position;
+		eclipse.uSunPos.value.set(sunPos[0] - fx, sunPos[1] - fy, sunPos[2] - fz);
+		eclipse.uSunRadiusScene.value = sunBo.radiusScene;
+
+		// Collect eligible occluders (non-star bodies with a measured
+		// radius) and sort by scene radius descending so that if there are
+		// more than MAX_OCCLUDERS we keep the dominant ones.
+		const candidates: BodyObjects[] = [];
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.body.data.objectType === ObjectType.STAR) continue;
+			const km = bo.body.data.radiusKm;
+			if (!Number.isFinite(km) || km <= 0) continue;
+			if (bo.radiusScene <= 0) continue;
+			candidates.push(bo);
+		}
+		if (candidates.length > MAX_OCCLUDERS) {
+			candidates.sort((a, b) => b.radiusScene - a.radiusScene);
+			candidates.length = MAX_OCCLUDERS;
+		}
+		const slots = eclipse.uOccluders.value;
+		for (let i = 0; i < candidates.length; i++) {
+			const bo = candidates[i];
+			const [bx, by, bz] = bo.body.position;
+			slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
+		}
+		eclipse.uOccluderCount.value = candidates.length;
+
+		// Receivers: every non-star body that got an eclipse handler at
+		// construction time. Mirror its focus-relative center so the
+		// shader can skip its own slot in the occluder loop.
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.eclipseShadow) continue;
+			const [bx, by, bz] = bo.body.position;
+			bo.eclipseShadow.uEclipseSelfPos.value.set(bx - fx, by - fy, bz - fz);
 		}
 	}
 

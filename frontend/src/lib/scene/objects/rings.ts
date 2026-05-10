@@ -359,7 +359,9 @@ export function attachRingShadowToPlanet(
 		uRingShadowCenter: { value: new Vector3(0, 0, 0) }
 	};
 
-	planetMaterial.onBeforeCompile = (shader) => {
+	const prev = planetMaterial.onBeforeCompile;
+	planetMaterial.onBeforeCompile = (shader, renderer) => {
+		prev?.(shader, renderer);
 		Object.assign(shader.uniforms, uniforms);
 
 		// Expose the fragment's world-space position to the fragment shader.

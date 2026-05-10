@@ -3,6 +3,7 @@ import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { RingNode } from './objects/rings';
+import type { EclipseSelfUniforms } from './objects/eclipse-shadow';
 
 // For focused objects:
 // Body/halo size ratio at which the label should be hidden
@@ -72,6 +73,13 @@ export interface BodyObjects {
 	 * body's pole each frame; `material.uniforms.uSunDir` is updated alongside.
 	 */
 	rings: RingNode | null;
+	/**
+	 * Per-body eclipse-shadow uniforms — present on every non-star body,
+	 * `null` on stars and barycenters. The renderer mutates
+	 * `uEclipseSelfPos` each frame so the body's fragment shader can skip
+	 * self-occlusion when scanning the scene-wide occluder array.
+	 */
+	eclipseShadow: EclipseSelfUniforms | null;
 }
 
 export interface Callbacks {
