@@ -1,4 +1,11 @@
-"""Tests for space_map_data.export.images."""
+"""Tests for space_map_data.export.images.
+
+Discovery and best-of-tree selection live in
+:mod:`space_map_data.ingest.providers.image_selection` and have their own
+tests; here we only exercise the bundle/render side: given a pre-selected
+``object_images.json`` entry, does the export produce the right thumbnails
+and metadata?
+"""
 
 import gzip
 import io
@@ -82,7 +89,7 @@ def _stage_download(
     extmetadata: dict | None = None,
     missing_source: bool = False,
 ) -> None:
-    """Populate a fake DOWNLOAD_DIR/images/<filename>/ entry."""
+    """Populate a fake ``DOWNLOAD_DIR/commons/images/<filename>/`` entry."""
     ext = Path(filename).suffix.lower()
     d = tmp_path / "downloads" / "images" / filename
     d.mkdir(parents=True, exist_ok=True)
@@ -126,75 +133,70 @@ def layout(tmp_path, monkeypatch):
     return {"downloads": downloads_images, "export": export_images}
 
 
+def _collect(entries: list[dict] | str, kind: str = "photo") -> list[dict] | None:
+    """Seed the object-images cache and call :func:`collect_object_images`.
+
+    Pass a single filename for the common one-image case, or a list of
+    ``{"file", "kind"}`` dicts for the multi-image cases.
+    """
+    if isinstance(entries, str):
+        entries = [{"file": entries, "kind": kind}]
+    images_mod._OBJECT_IMAGES_CACHE = {"test-obj": entries}
+    return images_mod.collect_object_images("test-obj")
+
+
 class TestCollectObjectImages:
-    """collect_object_images — dedup, kind assignment, license gating."""
+    """collect_object_images — bundle assembly given a cached selection.
 
-    def test_canonicalizes_wikidata_space_form_to_underscore(self, tmp_path, layout):
-        _stage_download(tmp_path, "Foo_bar.jpg")
-        result = images_mod.collect_object_images({"image": ["Foo bar.jpg"]}, [])
-        assert result is not None and result[0]["file"] == "Foo_bar.jpg"
-
-    def test_dedupes_across_p18_and_wikipedia_sources(self, tmp_path, layout):
-        _stage_download(tmp_path, "A.jpg")
-        result = images_mod.collect_object_images({"image": ["A.jpg"]}, ["A.jpg"])
-        assert result is not None and len(result) == 1
-
-    def test_dedupes_space_and_underscore_variants(self, tmp_path, layout):
-        _stage_download(tmp_path, "A_b.jpg")
-        result = images_mod.collect_object_images({"image": ["A b.jpg", "A_b.jpg"]}, [])
-        assert result is not None and len(result) == 1
+    Selection-side concerns (canonicalization, dedup across sources, kind
+    assignment from P18/P154/pageimages) are tested in the image_selection
+    ingest module; this class only checks render-time filtering.
+    """
 
     def test_drops_when_source_missing(self, tmp_path, layout):
         _stage_download(tmp_path, "A.jpg", missing_source=True)
-        assert images_mod.collect_object_images({"image": ["A.jpg"]}, []) is None
+        assert _collect("A.jpg") is None
 
     def test_drops_when_download_metadata_missing(self, tmp_path, layout):
         # Stage only source.jpg, no metadata.json.
         d = layout["downloads"] / "A.jpg"
         d.mkdir(parents=True)
         (d / "source.jpg").write_bytes(_make_source_jpg(4, 4))
-        assert images_mod.collect_object_images({"image": ["A.jpg"]}, []) is None
+        assert _collect("A.jpg") is None
 
     def test_drops_non_servable(self, tmp_path, layout):
         _stage_download(tmp_path, "A.jpg", license_servable=False)
-        assert images_mod.collect_object_images({"image": ["A.jpg"]}, []) is None
+        assert _collect("A.jpg") is None
 
-    def test_logo_kind_assigned_to_p154(self, tmp_path, layout):
-        _stage_download(tmp_path, "Logo.png")
-        result = images_mod.collect_object_images({"logo_image": ["Logo.png"]}, [])
-        assert result is not None and result[0]["kind"] == "logo"
-
-    def test_photo_kind_assigned_to_p18_and_pageimage(self, tmp_path, layout):
-        _stage_download(tmp_path, "A.jpg")
-        _stage_download(tmp_path, "B.jpg")
-        result = images_mod.collect_object_images({"image": ["A.jpg"]}, ["B.jpg"])
-        assert result is not None
-        assert {e["file"]: e["kind"] for e in result} == {
-            "A.jpg": "photo",
-            "B.jpg": "photo",
-        }
-
-    def test_keeps_acceptable_and_drops_rest_in_same_call(self, tmp_path, layout):
+    def test_keeps_servable_drops_non_servable_in_same_call(self, tmp_path, layout):
         _stage_download(tmp_path, "bad.jpg", license_servable=False)
         _stage_download(tmp_path, "good.jpg", license_servable=True)
-        result = images_mod.collect_object_images(
-            {"image": ["bad.jpg", "good.jpg"]}, []
+        result = _collect(
+            [
+                {"file": "bad.jpg", "kind": "photo"},
+                {"file": "good.jpg", "kind": "photo"},
+            ]
         )
         assert result is not None
         assert [e["file"] for e in result] == ["good.jpg"]
 
     def test_encodes_source_url(self, tmp_path, layout):
         _stage_download(tmp_path, "A_(crop).jpg")
-        result = images_mod.collect_object_images({"image": ["A_(crop).jpg"]}, [])
+        result = _collect("A_(crop).jpg")
         assert result is not None
         assert (
             result[0]["source_url"]
             == "https://commons.wikimedia.org/wiki/File:A_%28crop%29.jpg"
         )
 
+    def test_kind_passes_through_from_cache_entry(self, tmp_path, layout):
+        _stage_download(tmp_path, "Logo.png")
+        result = _collect("Logo.png", kind="logo")
+        assert result is not None and result[0]["kind"] == "logo"
+
     def test_entry_has_expected_keys(self, tmp_path, layout):
         _stage_download(tmp_path, "A.jpg")
-        result = images_mod.collect_object_images({"image": ["A.jpg"]}, [])
+        result = _collect("A.jpg")
         assert result is not None
         assert set(result[0].keys()) == {
             "file",
@@ -208,9 +210,14 @@ class TestCollectObjectImages:
         assert result[0]["height"] == 4
 
     def test_excluded_prefix_silently_dropped(self, tmp_path, layout, caplog):
+        # Defensive: even if an excluded-prefix filename leaks into the cache,
+        # the render side filters it out without noisy logging.
         caplog.set_level("INFO", logger="space_map_data.export.images")
-        result = images_mod.collect_object_images(
-            {"image": ["Орбита_астероида_1234.png", "Орбита_кометы_175P.jpg"]}, []
+        result = _collect(
+            [
+                {"file": "Орбита_астероида_1234.png", "kind": "photo"},
+                {"file": "Орбита_кометы_175P.jpg", "kind": "photo"},
+            ]
         )
         assert result is None
         assert caplog.records == []
@@ -233,7 +240,7 @@ class TestVariantRules:
             else:
                 bytes_ = _make_source_jpg(width, height)
         _stage_download(tmp_path, filename, bytes_=bytes_)
-        result = images_mod.collect_object_images({"image": [filename]}, [])
+        result = _collect(filename)
         assert result is not None
         return result[0]["variants"]
 
@@ -348,7 +355,7 @@ class TestVariantRules:
             b'<rect width="10" height="10" fill="red"/></svg>'
         )
         _stage_download(tmp_path, "icon.svg", bytes_=svg_bytes)
-        result = images_mod.collect_object_images({"image": ["icon.svg"]}, [])
+        result = _collect("icon.svg")
         assert result is not None
         assert result[0]["variants"] == {"xl": "svg"}
         bundle = layout["export"] / "icon.svg"
@@ -361,7 +368,7 @@ class TestVariantRules:
         # verbatim so the frontend can pick it up when video support lands.
         webm_bytes = b"\x1aE\xdf\xa3stub-webm-bytes-for-test-purposes-only"
         _stage_download(tmp_path, "clip.webm", bytes_=webm_bytes)
-        result = images_mod.collect_object_images({"image": ["clip.webm"]}, [])
+        result = _collect("clip.webm")
         assert result is not None
         assert result[0]["variants"] == {"xl": "webm"}
         assert (layout["export"] / "clip.webm" / "xl.webm").read_bytes() == webm_bytes
@@ -371,13 +378,13 @@ class TestVariantRules:
         # Cloudflare Pages deploy.
         monkeypatch.setattr(images_mod, "_PASSTHROUGH_MAX_BYTES", 16)
         _stage_download(tmp_path, "big.webm", bytes_=b"x" * 128)
-        result = images_mod.collect_object_images({"image": ["big.webm"]}, [])
+        result = _collect("big.webm")
         assert result is None
         assert not (layout["export"] / "big.webm" / "xl.webm").exists()
 
     def test_pdf_source_skipped(self, tmp_path, layout):
         _stage_download(tmp_path, "paper.pdf", bytes_=b"%PDF-1.5\n%stub\n")
-        result = images_mod.collect_object_images({"image": ["paper.pdf"]}, [])
+        result = _collect("paper.pdf")
         assert result is None
         bundle = layout["export"] / "paper.pdf"
         # No variants written and no metadata committed.
@@ -425,7 +432,7 @@ class TestVariantRules:
         self._variants(tmp_path, "a.jpg", 2000, 1000)
         # metadata.json.gz is the skip marker: second call reads variants from it.
         images_mod.clear_export_cache()
-        result = images_mod.collect_object_images({"image": ["a.jpg"]}, [])
+        result = _collect("a.jpg")
         assert result is not None
         assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "jpg"}
 
@@ -442,7 +449,7 @@ class TestVariantRules:
         # Stage a current source so regeneration has something to work with.
         _stage_download(tmp_path, "stale.png", width=2000, height=1000)
 
-        result = images_mod.collect_object_images({"image": ["stale.png"]}, [])
+        result = _collect("stale.png")
         assert result is not None
         assert result[0]["variants"] == {"s": "webp", "m": "webp", "xl": "webp"}
         assert not (bundle / "xl.png").exists()
@@ -476,7 +483,7 @@ class TestMetadataTrimming:
                 "DateTime": {"value": "2024-01-01"},  # frontend doesn't use — dropped
             },
         )
-        images_mod.collect_object_images({"image": ["img.jpg"]}, [])
+        _collect("img.jpg")
         meta_path = layout["export"] / "img.jpg" / "metadata.json.gz"
         assert meta_path.exists()
         return orjson.loads(gzip.decompress(meta_path.read_bytes()))
@@ -508,5 +515,5 @@ class TestMetadataTrimming:
 
     def test_no_separate_variants_file(self, tmp_path, layout):
         _stage_download(tmp_path, "solo.jpg")
-        images_mod.collect_object_images({"image": ["solo.jpg"]}, [])
+        _collect("solo.jpg")
         assert not (layout["export"] / "solo.jpg" / "variants.json").exists()

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import iau_nomenclature, images
+from space_map_data.ingest.providers import iau_nomenclature, image_selection
 from space_map_data.ingest.providers.objects import (
     celestrak,
     horizons,
@@ -53,12 +53,18 @@ def ingest_wikidata(download_dir: Path) -> None:
 
 
 def ingest_images() -> None:
-    """Set ``image_available`` on every Object from downloaded Commons metadata.
+    """Compute the per-object best Commons image and set ``image_available``.
 
-    Must run after ``ingest_wikidata`` so every Object's ``wikidata_qid`` is in
-    place — the availability check joins on QID.
+    Writes ``DOWNLOAD_DIR/commons/object_images.json`` keyed by ``Object.id``,
+    with at most one filename per derivative-tree component (best by
+    assessment > pageimage frequency > globalusage). Sets
+    ``Object.image_available`` based on whether any image survives the
+    selection.
+
+    Must run after ``ingest_wikidata`` so every Object's ``wikidata_qid`` is
+    in place — discovery joins on QID.
     """
-    images.ingest()
+    image_selection.ingest()
 
 
 def log_db_summary(start_time: float | None = None) -> None:

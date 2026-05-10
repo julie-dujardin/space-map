@@ -3,7 +3,6 @@
 import orjson
 import logging
 from dataclasses import dataclass
-from urllib.parse import unquote
 
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.utils.paths import DOWNLOAD_DIR
@@ -33,31 +32,6 @@ def load_wikipedia_summaries_for_qid(qid: str) -> dict[str, WikipediaSummary]:
         summary = _extract_wikipedia(page)
         if summary:
             result[lang] = summary
-    return result
-
-
-def load_wikipedia_image_filenames(qid: str) -> list[str]:
-    """Collect unique original image filenames from all language Wikipedia summaries.
-
-    Returns bare Commons filenames (URL-decoded) from the ``original.source`` field.
-    """
-    wiki_dir = DOWNLOAD_DIR / "wikipedia"
-    seen: set[str] = set()
-    result: list[str] = []
-    for lang in LANGUAGES:
-        path = wiki_dir / lang / f"{qid}.json"
-        if not path.exists():
-            continue
-        page = orjson.loads(path.read_bytes())
-        if page.get("missing"):
-            continue
-        src = (page.get("original") or {}).get("source")
-        if not src:
-            continue
-        basename = unquote(src.rsplit("/", 1)[-1])
-        if basename and basename not in seen:
-            seen.add(basename)
-            result.append(basename)
     return result
 
 

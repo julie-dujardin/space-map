@@ -28,7 +28,6 @@ from space_map_data.export.wikidata import (
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
     load_wikipedia_summaries_for_qid,
-    load_wikipedia_image_filenames,
 )
 from space_map_data.export.images import collect_object_images
 from space_map_data.export.objects.celestrak import (
@@ -213,8 +212,6 @@ def build_chunk_object_data(
         sat = obj.satcat if obj.norad_cat_id is not None else None
         merge_operator_qids(extracted, sat)
 
-        wiki_image_filenames = load_wikipedia_image_filenames(qid) if qid else []
-
         out.global_data[obj.id] = _build_global(
             obj,
             extracted,
@@ -226,7 +223,6 @@ def build_chunk_object_data(
             gms,
             nut_prec,
             texture_metadata,
-            wiki_image_filenames,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -310,7 +306,6 @@ def _build_global(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
-    wiki_image_filenames: list[str] | None = None,
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -400,8 +395,8 @@ def _build_global(
         if celestrak_data:
             data["celestrak"] = celestrak_data
 
-    # Images (collected from Wikidata P18/P154 + Wikipedia pageimages)
-    images = collect_object_images(extracted, wiki_image_filenames or [])
+    # Images: pre-selected at ingest time (best per derivative tree).
+    images = collect_object_images(obj.id)
     if images:
         data["images"] = images
 

@@ -128,48 +128,53 @@ def _file_lock(filename: str) -> threading.Lock:
         return lock
 
 
-def collect_object_images(
-    extracted: dict,
-    wiki_image_filenames: list[str],
-) -> list[dict] | None:
+def collect_object_images(object_id: str) -> list[dict] | None:
     """Build the ``images`` array for a single object's global JSON.
 
-    Collects images from:
-    - Wikidata P18 (``extracted["image"]``) — kind=photo
-    - Wikipedia pageimages from all languages — kind=photo
-    - Wikidata P154 (``extracted["logo_image"]``) — kind=logo
+    Reads the pre-computed selection from
+    ``DOWNLOAD_DIR/commons/object_images.json`` (written by the
+    ``image_selection`` ingest provider) and turns each entry into an
+    export bundle with thumbnails. Discovery, derivative-tree expansion,
+    and best-of-tree scoring all happen at ingest time — this function
+    just renders.
 
-    Deduplicates by canonical (underscore-form) filename, filters out images
-    whose license isn't servable (decided at download time), and as a side
-    effect ensures the per-image thumbnail/metadata bundle exists under
-    ``EXPORT_DIR/v1/images/<filename>/``. Returns ``None`` if no images
-    qualify.
+    Returns ``None`` when the cache has no entries for ``object_id`` (or
+    has not been generated). Excluded-prefix names, missing source bytes,
+    and non-servable licenses are filtered defensively.
     """
-    seen: set[str] = set()
-    images: list[dict] = []
+    selections = _object_images_cache().get(object_id) or []
+    out: list[dict] = []
+    for entry in selections:
+        name = canonical_filename(entry["file"])
+        if is_excluded(name):
+            logger.debug("Skipping excluded-prefix image: %s", name)
+            continue
+        bundle_entry = _make_entry(name, entry.get("kind", "photo"))
+        if bundle_entry:
+            out.append(bundle_entry)
+    return out or None
 
-    for filename in extracted.get("image", []):
-        _try_add(images, seen, filename, "photo")
-    for filename in wiki_image_filenames:
-        _try_add(images, seen, filename, "photo")
-    for filename in extracted.get("logo_image", []):
-        _try_add(images, seen, filename, "logo")
 
-    return images or None
+def _object_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``object_images.json`` for the export run."""
+    global _OBJECT_IMAGES_CACHE
+    if _OBJECT_IMAGES_CACHE is None:
+        # Imported here to avoid pulling the ingest package at module load
+        # (export is otherwise independent of ingest).
+        from space_map_data.ingest.providers.image_selection import (
+            read_object_images,
+        )
+
+        _OBJECT_IMAGES_CACHE = read_object_images()
+        if not _OBJECT_IMAGES_CACHE:
+            logger.warning(
+                "object_images.json missing or empty — run `space-map-ingest "
+                "--targets images` first; export will emit no images"
+            )
+    return _OBJECT_IMAGES_CACHE
 
 
-def _try_add(images: list[dict], seen: set[str], filename: str, kind: str) -> None:
-    """Canonicalize, dedupe, and append a qualifying image entry."""
-    name = canonical_filename(filename)
-    if name in seen:
-        return
-    seen.add(name)
-    if is_excluded(name):
-        logger.debug("Skipping excluded-prefix image: %s", name)
-        return
-    entry = _make_entry(name, kind)
-    if entry:
-        images.append(entry)
+_OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
 def _make_entry(filename: str, kind: str) -> dict | None:
@@ -485,7 +490,9 @@ def _locale_field(field: dict | None) -> str | dict[str, str] | None:
 
 
 def clear_export_cache() -> None:
-    """Reset the per-filename lock registry. For tests that monkeypatch paths."""
+    """Reset per-export caches. For tests that monkeypatch paths."""
+    global _OBJECT_IMAGES_CACHE
+    _OBJECT_IMAGES_CACHE = None
     with _FILE_LOCKS_GUARD:
         _FILE_LOCKS.clear()
 

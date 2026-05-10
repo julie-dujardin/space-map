@@ -2,7 +2,7 @@
 
 Used by:
 - download/providers/images/commons.py — decide what to download, write metadata
-- ingest/providers/images.py — set ``Object.image_available``
+- ingest/providers/image_selection.py — pick best per object, set ``image_available``
 - export/images.py — emit per-object image lists and generate thumbnails
 
 The on-disk layout after download is::
