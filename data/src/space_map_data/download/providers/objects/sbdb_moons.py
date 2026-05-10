@@ -24,8 +24,8 @@ OBJECT_URL = "https://ssd-api.jpl.nasa.gov/sbdb.api"
 PER_REQUEST_DELAY_SECONDS = 1
 
 
-class SBDBSatellitesDownloader(Downloader):
-    name = PROVIDERS.SBDB_SATELLITES
+class SBDBMoonsDownloader(Downloader):
+    name = PROVIDERS.SBDB_MOONS
 
     def _list_parents(self) -> list[str]:
         """Return SPK-IDs of all small bodies that have known satellites."""

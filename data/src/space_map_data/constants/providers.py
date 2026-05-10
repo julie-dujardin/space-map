@@ -5,7 +5,7 @@ class PROVIDERS(StrEnum):
     HORIZONS = "horizons"
     CELESTRAK = "celestrak"
     SBDB = "sbdb"
-    SBDB_SATELLITES = "sbdb_satellites"
+    SBDB_MOONS = "sbdb_moons"
     SPICE = "spice"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
@@ -18,7 +18,7 @@ class PROVIDERS(StrEnum):
 class ID_TYPES(StrEnum):
     NAIF = "naif"
     SPKID = "spkid"
-    SBDB_SATELLITE = "sbdb_satellite"
+    SBDB_MOON = "sbdb_moon"
     MPC_DESIGNATION = "mpc_designation"
     NORAD_SATCAT = "norad_satcat"
     COSPAR = "cospar"

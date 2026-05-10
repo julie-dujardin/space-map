@@ -12,7 +12,7 @@ from space_map_data.models.object.main import (
     OrbitalSource,
 )
 from space_map_data.models.object.sbdb import CometPrefix, OrbitClass, SBDB
-from space_map_data.models.object.sbdb_satellite import SBDBSatellite
+from space_map_data.models.object.sbdb_moon import SBDBMoon
 
 __all__ = [
     "Base",
@@ -26,6 +26,6 @@ __all__ = [
     "OrbitClass",
     "OrbitalSource",
     "SBDB",
-    "SBDBSatellite",
+    "SBDBMoon",
     "Satcat",
 ]

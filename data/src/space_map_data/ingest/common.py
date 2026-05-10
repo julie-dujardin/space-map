@@ -13,7 +13,7 @@ from space_map_data.ingest.providers.objects import (
     horizons,
     satcat,
     sbdb,
-    sbdb_satellites,
+    sbdb_moons,
     spice,
 )
 from space_map_data.ingest.providers.wikidata import (
@@ -42,7 +42,7 @@ def ingest_objects(download_dir: Path) -> None:
     # Runs last so the name-match against Horizons/SPICE moons can find
     # existing rows (e.g. Pluto's Charon) and merge SBDB metadata onto
     # them instead of producing duplicate Object rows.
-    sbdb_satellites.ingest(download_dir)
+    sbdb_moons.ingest(download_dir)
 
 
 def ingest_features(download_dir: Path) -> None:

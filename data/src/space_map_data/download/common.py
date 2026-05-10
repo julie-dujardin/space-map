@@ -15,8 +15,8 @@ from space_map_data.download.providers.objects.horizons import HorizonsDownloade
 from space_map_data.download.providers.objects.spice import SpiceDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.objects.sbdb import SBDBDownloader
-from space_map_data.download.providers.objects.sbdb_satellites import (
-    SBDBSatellitesDownloader,
+from space_map_data.download.providers.objects.sbdb_moons import (
+    SBDBMoonsDownloader,
 )
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 PROVIDERS_CLASSES = [
     CelesTrakDownloader,
     SBDBDownloader,
-    SBDBSatellitesDownloader,
+    SBDBMoonsDownloader,
     SpiceDownloader,
     HorizonsDownloader,
     WikidataDownloader,

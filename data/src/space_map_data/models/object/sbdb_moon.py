@@ -1,7 +1,5 @@
 """SQLAlchemy ORM model for SBDB satellite (asteroid moon) data."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey
@@ -13,7 +11,7 @@ if TYPE_CHECKING:
     from space_map_data.models.object.main import Object
 
 
-class SBDBSatellite(Base):
+class SBDBMoon(Base):
     """One row per known satellite of a small body, sourced from the SBDB
     per-object API (`sbdb.api?spk=<id>&sat=1`).
 
@@ -32,7 +30,7 @@ class SBDBSatellite(Base):
         dn_dt               — deg/year²
     """
 
-    __tablename__ = "sbdb_satellite"
+    __tablename__ = "sbdb_moon"
 
     object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), primary_key=True)
     parent_object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), index=True)
@@ -82,9 +80,9 @@ class SBDBSatellite(Base):
     sigma_tp: Mapped[float | None] = mapped_column(default=None)
 
     object: Mapped["Object"] = relationship(
-        foreign_keys=[object_id], back_populates="sbdb_satellite"
+        foreign_keys=[object_id], back_populates="sbdb_moon"
     )
     parent: Mapped["Object"] = relationship(
         foreign_keys=[parent_object_id],
-        back_populates="sbdb_satellites",
+        back_populates="sbdb_moons",
     )

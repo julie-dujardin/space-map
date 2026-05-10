@@ -1,16 +1,16 @@
 """Ingest SBDB per-object satellite payloads (asteroid moons).
 
-Reads the per-parent JSON files written by `SBDBSatellitesDownloader`
-(`space-map-downloads/sbdb_satellites/{parent_spkid}.json`) and writes:
+Reads the per-parent JSON files written by `SBDBMoonsDownloader`
+(`space-map-downloads/sbdb_moons/{parent_spkid}.json`) and writes:
 
   - One ``Object`` row per *new* satellite, keyed
-    ``sbdb_satellite-<parent_spkid>-<sat_index>``.
-  - One ``SBDBSatellite`` row per satellite, holding identity + orbital
+    ``sbdb_moon-<parent_spkid>-<sat_index>``.
+  - One ``SBDBMoon`` row per satellite, holding identity + orbital
     elements + uncertainties + provenance.
 
 Some SBDB satellites duplicate moons that already exist from Horizons /
 SPICE (e.g. Pluto's Charon, Nix, Hydra, Kerberos, Styx). For those we
-*merge*: the SBDBSatellite metadata row is attached to the existing
+*merge*: the SBDBMoon metadata row is attached to the existing
 Object row by name match, no new Object is created, and the SBDB orbit
 data is dropped (Horizons/SPICE Chebyshev kernels are higher accuracy).
 
@@ -33,13 +33,13 @@ from space_map_data.models.object import (
     Object,
     ObjectType,
     OrbitalSource,
-    SBDBSatellite,
+    SBDBMoon,
 )
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
-# SBDB element name -> column name on SBDBSatellite for value/sigma extraction.
+# SBDB element name -> column name on SBDBMoon for value/sigma extraction.
 _ELEMENT_VALUE_COLS = {
     "a": "a_km",
     "q": "q_km",
@@ -122,7 +122,7 @@ def _resolve_parent_naif(parent_naif_id: int | None) -> int | None:
 
 
 def _parse_orbit(orbit: dict | None) -> dict:
-    """Flatten the first orbit solution into SBDBSatellite columns.
+    """Flatten the first orbit solution into SBDBMoon columns.
 
     SBDB returns ``orbit`` as ``{"0": {...}, "1": {...}}``. 99% have just
     one key; for the 3 with two solutions we keep the first (sorted) and
@@ -153,25 +153,25 @@ def _parse_orbit(orbit: dict | None) -> dict:
     return out
 
 
-class SBDBSatellitesIngestor:
+class SBDBMoonsIngestor:
     BATCH = 5_000
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.dir = download_dir / PROVIDERS.SBDB_SATELLITES
+        self.dir = download_dir / PROVIDERS.SBDB_MOONS
         self.new_objects = 0
         self.merged_count = 0
         self.no_parent_files = 0
         self.alt_orbits_dropped = 0
 
     def _clear(self) -> None:
-        # Clears all SBDBSatellite rows (including ones merge-attached to
+        # Clears all SBDBMoon rows (including ones merge-attached to
         # Horizons/SPICE moons in a previous run) plus only the Object rows
         # that this ingestor itself created — Horizons/SPICE-sourced rows
         # we merge into are left untouched.
-        self.session.execute(delete(SBDBSatellite))
+        self.session.execute(delete(SBDBMoon))
         self.session.execute(
-            delete(Object).where(Object.orbital_source == OrbitalSource.sbdb_satellite)
+            delete(Object).where(Object.orbital_source == OrbitalSource.sbdb_moon)
         )
         self.session.commit()
 
@@ -210,7 +210,7 @@ class SBDBSatellitesIngestor:
         sat: dict,
         include_orbit: bool,
     ) -> dict:
-        """Build a SBDBSatellite row. Identity-only when ``include_orbit`` is
+        """Build a SBDBMoon row. Identity-only when ``include_orbit`` is
         False (used for merges into existing Horizons/SPICE rows — their orbit
         data is canonical and SBDB's lower-accuracy Keplerian fit is dropped).
         """
@@ -251,7 +251,7 @@ class SBDBSatellitesIngestor:
             provisional_designation=prov_des,
             scale=ElementsScale.planet,
             parent_id=tree_parent_naif,
-            orbital_source=OrbitalSource.sbdb_satellite.value,
+            orbital_source=OrbitalSource.sbdb_moon.value,
         )
 
     def _flush(self, objects: list[dict], sats: list[dict]) -> None:
@@ -260,7 +260,7 @@ class SBDBSatellitesIngestor:
         if objects:
             self.session.execute(insert(Object), objects)
         if sats:
-            self.session.execute(insert(SBDBSatellite), sats)
+            self.session.execute(insert(SBDBMoon), sats)
         self.session.commit()
 
     def run(self) -> None:
@@ -346,9 +346,7 @@ class SBDBSatellitesIngestor:
                         existing_id,
                     )
                 else:
-                    sat_id = make_object_id(
-                        ID_TYPES.SBDB_SATELLITE, f"{parent_spkid}-{idx}"
-                    )
+                    sat_id = make_object_id(ID_TYPES.SBDB_MOON, f"{parent_spkid}-{idx}")
                     obj_row = self._build_new_object_row(sat_id, sat, tree_parent_naif)
                     sat_row = self._build_sat_row(
                         sat_id,
@@ -389,4 +387,4 @@ class SBDBSatellitesIngestor:
 
 
 def ingest(download_dir: Path) -> None:
-    SBDBSatellitesIngestor(download_dir).run()
+    SBDBMoonsIngestor(download_dir).run()
