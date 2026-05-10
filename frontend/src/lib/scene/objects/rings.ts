@@ -9,11 +9,23 @@
  * frame in step with the body, then writes per-frame `uSunDir` so the
  * fragment shader can pick lit-side vs unlit-side at the right cadence and
  * compute the phase-angle blend between back/unlit/forward scatter.
+ *
+ * References:
+ *  - Björn Jónsson's source page documents the channel meanings, the
+ *    transparency convention (1 = empty, 0 = opaque), the warning that the
+ *    color profile is calibrated against backscatter only, and the warm
+ *    near-white tint suggestion for the unlit branch:
+ *    https://bjj.mmedia.is/data/s_rings/index.html
+ *  - John Spencer's ring-render notes (SwRI) describe the radial-profile
+ *    rendering recipe and the Beer–Lambert-with-slant-correction shadow
+ *    formulation used by {@link attachRingShadowToPlanet}:
+ *    https://www2.boulder.swri.edu/~spencer/ringrender.html
  */
 
 import {
 	DoubleSide,
 	LinearFilter,
+	LinearMipmapLinearFilter,
 	type Material,
 	Mesh,
 	type MeshStandardMaterial,
@@ -77,12 +89,17 @@ function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise
 			url,
 			(tex) => {
 				if (srgb) tex.colorSpace = SRGBColorSpace;
-				// Sharp 1-D profile — bilinear over a 1×N strip is the expected
-				// look; mip generation costs extra GPU memory for no gain since
-				// the texel-to-pixel ratio is set by camera distance, not mip LOD.
-				tex.minFilter = LinearFilter;
+				// 1×13177 radial profile: at distance many radial samples fall in
+				// one pixel and a single nearest/linear tap aliases into sparkle,
+				// while at grazing angles the U-gradient across the screen is far
+				// higher than the V-gradient (V is constant) — exactly the case
+				// anisotropic filtering is designed for. Trilinear + max anisotropy
+				// addresses both. Three.js silently clamps anisotropy to whatever
+				// the GPU advertises, so 16 is safe without poking the renderer.
+				tex.minFilter = LinearMipmapLinearFilter;
 				tex.magFilter = LinearFilter;
-				tex.generateMipmaps = false;
+				tex.generateMipmaps = true;
+				tex.anisotropy = 16;
 				tex.needsUpdate = true;
 				resolve(tex);
 			},
