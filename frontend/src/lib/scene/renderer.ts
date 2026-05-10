@@ -1063,16 +1063,7 @@ export class SceneRenderer {
 					continue;
 				}
 				const body = this.ctx.getBody(id);
-				if (!body) {
-					// Promoted via the labels file but not in any position zone:
-					// drop from the queue so we don't re-run the (linear) zone-
-					// scanning getBody on it every frame for the rest of the
-					// session. The export filter normally keeps these out, but
-					// stale exports or future label-only entries shouldn't melt
-					// CPU on the main thread.
-					this.pendingDefaultPromotions.delete(id);
-					continue;
-				}
+				if (!body) continue; // not loaded yet — retry on a later frame
 				this.pendingDefaultPromotions.delete(id);
 				// Barycenters and Lagrange points share the labels file with
 				// promoted bodies (their names are needed when the user navigates
