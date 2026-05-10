@@ -1,7 +1,7 @@
 """Per-object image list + thumbnail/metadata generation for export.
 
-Reads source images and their pre-decided license servability from the new
-``DOWNLOAD_DIR/images/<filename>/`` layout, then writes an export-side bundle
+Reads source images and their pre-decided license servability from the
+``DOWNLOAD_DIR/commons/images/<filename>/`` layout, then writes an export-side bundle
 for each servable image::
 
     EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px (webp/avif, or verbatim jpg)

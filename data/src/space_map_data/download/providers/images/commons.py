@@ -7,8 +7,8 @@ download time and persisted into the metadata file so later phases don't re-deci
 
 On-disk layout (see :mod:`space_map_data.utils.commons_images`)::
 
-    DOWNLOAD_DIR/images/<filename>/source.<ext>
-    DOWNLOAD_DIR/images/<filename>/metadata.json
+    DOWNLOAD_DIR/commons/images/<filename>/source.<ext>
+    DOWNLOAD_DIR/commons/images/<filename>/metadata.json
 
 Images hosted on a specific language wiki (ar/en/fr/ru/...) rather than on Commons are
 recorded separately and skipped — see the TODO below.

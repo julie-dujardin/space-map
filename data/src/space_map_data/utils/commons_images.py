@@ -7,8 +7,8 @@ Used by:
 
 The on-disk layout after download is::
 
-    DOWNLOAD_DIR/images/<filename>/source.<ext>    # the source image bytes
-    DOWNLOAD_DIR/images/<filename>/metadata.json   # Commons imageinfo + license_servable
+    DOWNLOAD_DIR/commons/images/<filename>/source.<ext>    # the source image bytes
+    DOWNLOAD_DIR/commons/images/<filename>/metadata.json   # Commons imageinfo + license_servable
 
 ``<filename>`` is the full canonical Commons filename (underscore form, including
 extension) — it is the stable Commons identity.
@@ -27,7 +27,7 @@ from space_map_data.utils.paths import DOWNLOAD_DIR
 logger = logging.getLogger(__name__)
 
 
-IMAGES_DIR = DOWNLOAD_DIR / "images"
+IMAGES_DIR = DOWNLOAD_DIR / "commons" / "images"
 
 _WIKIDATA_IMAGE_PIDS = ("P18", "P154")
 # Auto-generated orbit diagrams on ru.wiki that flood the pageimages set.
@@ -64,7 +64,7 @@ def is_excluded(filename: str) -> bool:
 
 
 def image_dir(filename: str) -> Path:
-    """Per-image directory under DOWNLOAD_DIR/images/."""
+    """Per-image directory under DOWNLOAD_DIR/commons/images/."""
     return IMAGES_DIR / filename
 
 
