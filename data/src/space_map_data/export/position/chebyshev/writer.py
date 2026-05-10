@@ -82,14 +82,14 @@ def _year_to_jd(year: int) -> float:
 def _load_body_npz(
     path: Path,
 ) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray]:
-    """Load one per-body .npz. Returns (naif_id, parent_naif_id, start_jds, end_jds, coeffs)."""
+    """Load one per-body .npz. Returns (naif_id, parent_id, start_jds, end_jds, coeffs)."""
     data = np.load(path)
     meta = data["meta"]
     naif_id = int(meta[0])
-    parent_naif_id = int(meta[1])
+    parent_id = int(meta[1])
     return (
         naif_id,
-        parent_naif_id,
+        parent_id,
         data["start_jds"],
         data["end_jds"],
         data["coeffs"],
@@ -121,17 +121,17 @@ def _slice_segments(
     return start_jds[mask], end_jds[mask], coeffs[mask]
 
 
-def _determine_zone(object_type: ObjectType, naif_id: int, parent_naif_id: int) -> str:
+def _determine_zone(object_type: ObjectType, naif_id: int, parent_id: int) -> str:
     """Route a body to its zone path. Moons go to `moons/<parent>`."""
     if object_type in _ASTEROID_TYPES:
         return "major_asteroids"
     if object_type == ObjectType.moon:
-        parent_name = _PARENT_NAMES.get(parent_naif_id, f"other-{parent_naif_id}")
+        parent_name = _PARENT_NAMES.get(parent_id, f"other-{parent_id}")
         return f"moons/{parent_name}"
     return "major"
 
 
-def _moon_parent_naif_id(zone: str) -> int | None:
+def _moon_parent_id(zone: str) -> int | None:
     """Reverse `moons/<parent>` zone path → parent NAIF ID for chunk-cadence lookup."""
     if not zone.startswith("moons/"):
         return None
@@ -190,7 +190,7 @@ def _write_chunk_file(
     for (
         obj,
         naif_id,
-        parent_naif_id,
+        parent_id,
         seg_starts,
         seg_ends,
         seg_coeffs,
@@ -203,7 +203,7 @@ def _write_chunk_file(
         buf.append(
             pack_body_header(
                 naif_id=naif_id,
-                parent_naif_id=parent_naif_id,
+                parent_id=parent_id,
                 obj_id_value=obj_id_value,
                 radius_km=float(radius_km) if radius_km is not None else float("nan"),
                 coeffs_per_axis=coeffs_per_axis,
@@ -284,7 +284,7 @@ def write_chebyshev(
     # across the whole export after filtering).
     zone_bodies: dict[str, list] = defaultdict(list)
     for path in sorted(cheb_dir.glob("*.npz")):
-        naif_id, parent_naif_id, start_jds, end_jds, coeffs = _load_body_npz(path)
+        naif_id, parent_id, start_jds, end_jds, coeffs = _load_body_npz(path)
         obj = _object_for_naif_id(session, naif_id)
         if obj is None:
             logger.warning(
@@ -294,10 +294,10 @@ def write_chebyshev(
             )
             continue
         radius = (radii.get(naif_id) or {}).get("a")
-        zone = _determine_zone(obj.object_type, naif_id, parent_naif_id)
+        zone = _determine_zone(obj.object_type, naif_id, parent_id)
         has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(
-            (obj, naif_id, parent_naif_id, start_jds, end_jds, coeffs, radius, has_loc)
+            (obj, naif_id, parent_id, start_jds, end_jds, coeffs, radius, has_loc)
         )
 
     zone_manifest: dict[str, dict] = {}
@@ -307,7 +307,7 @@ def write_chebyshev(
         bodies.sort(key=lambda row: row[1])
         is_moon_tier = zone.startswith("moons/")
         if is_moon_tier:
-            parent_id = _moon_parent_naif_id(zone)
+            parent_id = _moon_parent_id(zone)
             chunk_years = CHEBYSHEV_PARENT_CHUNK_YEARS.get(parent_id or 0, 0.5)
         else:
             chunk_years = core_chunk_years
@@ -322,7 +322,7 @@ def write_chebyshev(
             for (
                 obj,
                 naif_id,
-                parent_naif_id,
+                parent_id,
                 start_jds,
                 end_jds,
                 coeffs,
@@ -338,7 +338,7 @@ def write_chebyshev(
                     (
                         obj,
                         naif_id,
-                        parent_naif_id,
+                        parent_id,
                         seg_starts,
                         seg_ends,
                         seg_coeffs,

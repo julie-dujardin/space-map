@@ -59,15 +59,15 @@ S_PER_DAY = 86400.0
 # ---------------------------------------------------------------------------
 
 
-def _pole_body_id(parent_naif_id: int) -> int:
+def _pole_body_id(parent_id: int) -> int:
     """Map a planetary barycenter ID (1..9) to the planet ID (199..999) that
     actually has POLE_RA in the PCK. Pass-through for other IDs (e.g. 301)."""
-    if 1 <= parent_naif_id <= 9:
-        return parent_naif_id * 100 + 99
-    return parent_naif_id
+    if 1 <= parent_id <= 9:
+        return parent_id * 100 + 99
+    return parent_id
 
 
-def parent_equatorial_rot(parent_naif_id: int, et: float) -> np.ndarray:
+def parent_equatorial_rot(parent_id: int, et: float) -> np.ndarray:
     """3x3 rotation matrix ECLIPJ2000 → parent-equatorial-J2000-inertial.
 
     Pole RA/Dec are evaluated at `et` from the PCK rotation polynomial. The
@@ -78,7 +78,7 @@ def parent_equatorial_rot(parent_naif_id: int, et: float) -> np.ndarray:
     Z × X. The frame's X is the ascending node of the parent equator on the
     ecliptic.
     """
-    pole_body = _pole_body_id(parent_naif_id)
+    pole_body = _pole_body_id(parent_id)
     pole_ra = spiceypy.bodvrd(str(pole_body), "POLE_RA", 3)[1]
     pole_dec = spiceypy.bodvrd(str(pole_body), "POLE_DEC", 3)[1]
     T = et / (100 * 365.25 * S_PER_DAY)  # Julian centuries past J2000
@@ -216,7 +216,7 @@ def furnish_all() -> list[Path]:
 
 
 def enumerate_moons(kernel_paths: list[Path]) -> list[tuple[int, int, str]]:
-    """Return (naif_id, parent_naif_id, name) for every moon in any SPK."""
+    """Return (naif_id, parent_id, name) for every moon in any SPK."""
     seen: dict[int, tuple[int, str]] = {}
     for p in kernel_paths:
         if p.suffix != ".bsp":
@@ -239,14 +239,14 @@ def enumerate_moons(kernel_paths: list[Path]) -> list[tuple[int, int, str]]:
     return [(nid, p, n) for nid, (p, n) in sorted(seen.items())]
 
 
-def parent_j2_r_eq(parent_naif_id: int) -> tuple[float, float] | None:
+def parent_j2_r_eq(parent_id: int) -> tuple[float, float] | None:
     """Look up J2 and equatorial radius for a planet barycenter (1..9).
 
     Tries BODY{n}_J2 first (system-bary entry), then BODY{n*100+99}_J2 (planet
     itself). Equatorial radius from the planet's RADII.
     """
     j2 = None
-    for nid in (parent_naif_id, parent_naif_id * 100 + 99):
+    for nid in (parent_id, parent_id * 100 + 99):
         try:
             j2 = float(spiceypy.bodvrd(str(nid), "J2", 1)[1][0])
             break
@@ -255,15 +255,15 @@ def parent_j2_r_eq(parent_naif_id: int) -> tuple[float, float] | None:
     if j2 is None:
         return None
     try:
-        r_eq = float(spiceypy.bodvrd(str(parent_naif_id * 100 + 99), "RADII", 3)[1][0])
+        r_eq = float(spiceypy.bodvrd(str(parent_id * 100 + 99), "RADII", 3)[1][0])
     except spiceypy.exceptions.SpiceyError:
         return None
     return j2, r_eq
 
 
-def parent_mu(parent_naif_id: int) -> float | None:
+def parent_mu(parent_id: int) -> float | None:
     try:
-        return float(spiceypy.bodvrd(str(parent_naif_id), "GM", 1)[1][0])
+        return float(spiceypy.bodvrd(str(parent_id), "GM", 1)[1][0])
     except spiceypy.exceptions.SpiceyError:
         return None
 
@@ -288,7 +288,7 @@ def cheb_size_kb_per_year(naif_id: int, kernel_paths: list[Path]) -> float | Non
 
 def fit_mean_elements(
     naif_id: int,
-    parent_naif_id: int,
+    parent_id: int,
     et_center: float,
     mu: float,
     n_orbits: int = 100,
@@ -311,7 +311,7 @@ def fit_mean_elements(
     """
     try:
         st0, _ = spiceypy.spkezr(
-            str(naif_id), et_center, "ECLIPJ2000", "NONE", str(parent_naif_id)
+            str(naif_id), et_center, "ECLIPJ2000", "NONE", str(parent_id)
         )
     except spiceypy.exceptions.SpiceyError:
         return None
@@ -331,7 +331,7 @@ def fit_mean_elements(
     for k, t in enumerate(times):
         try:
             st, _ = spiceypy.spkezr(
-                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_naif_id)
+                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_id)
             )
         except spiceypy.exceptions.SpiceyError:
             return None

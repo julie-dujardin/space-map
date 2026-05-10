@@ -777,7 +777,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 .filter(
                     Object.spkid.is_(None),
                     Object.object_type.in_(_SAT_TYPE_VALUES),
-                    Object.parent_naif_id == _EARTH_NAIF_ID,
+                    Object.parent_id == _EARTH_NAIF_ID,
                 )
             )
             _is_constellation = or_(
@@ -839,7 +839,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     .filter(
                         Object.spkid.is_(None),
                         Object.object_type.in_(_SAT_TYPE_VALUES),
-                        Object.parent_naif_id != _EARTH_NAIF_ID,
+                        Object.parent_id != _EARTH_NAIF_ID,
                         Object.id.notin_(cheb_covered_ids)
                         if cheb_covered_ids
                         else sa_true(),

@@ -196,7 +196,7 @@ async function createPlaceholderBody(
 			global.provisional_designation ??
 			null,
 		objectType: parseObjectType(global.type),
-		parentId: `naif-${orbit.parent_naif_id}`,
+		parentId: `naif-${orbit.parent_id}`,
 		radiusKm: global.sbdb?.diameter ? global.sbdb.diameter / 2 : NaN,
 		hasLocalized: detail.localized != null,
 		a: isPlanetScale ? (orbit.a ?? 0) / AU_KM : (orbit.a ?? 0),
@@ -216,7 +216,7 @@ async function createPlaceholderBody(
 		...(satrec ? { satrec } : {})
 	};
 
-	const parentPos = loader.positions.get(orbit.parent_naif_id) ?? [0, 0, 0];
+	const parentPos = loader.positions.get(orbit.parent_id) ?? [0, 0, 0];
 	const offset = satrec
 		? sgp4PositionScene(satrec, dateToJD(date))
 		: isParabolic

@@ -137,7 +137,7 @@ class Object(Base):
     scale: Mapped[ElementsScale] = mapped_column(
         String, default=ElementsScale.system
     )  # element scale
-    parent_naif_id: Mapped[int | None] = mapped_column(
+    parent_id: Mapped[int | None] = mapped_column(
         default=None
     )  # NAIF ID of central body (0=SSB, 399=Earth)
 
@@ -162,5 +162,5 @@ class Object(Base):
 
     __table_args__ = (
         Index("idx_objects_type", "object_type"),
-        Index("idx_objects_parent", "parent_naif_id"),
+        Index("idx_objects_parent", "parent_id"),
     )

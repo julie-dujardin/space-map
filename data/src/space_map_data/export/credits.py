@@ -58,7 +58,7 @@ def _load_system_lookup(
         session.query(Object)
         .filter(
             Object.object_type == ObjectType.barycenter.value,
-            Object.parent_naif_id.in_(list(_TOP_LEVEL_NAIF_IDS)),
+            Object.parent_id.in_(list(_TOP_LEVEL_NAIF_IDS)),
             Object.naif_id.not_in(list(_TOP_LEVEL_NAIF_IDS)),
         )
         .all()
@@ -73,9 +73,7 @@ def _load_system_lookup(
 
     planet_to_bary: dict[int, str] = {}
     for bary in barycenters:
-        children = (
-            session.query(Object).filter(Object.parent_naif_id == bary.naif_id).all()
-        )
+        children = session.query(Object).filter(Object.parent_id == bary.naif_id).all()
         for child in children:
             if child.naif_id is not None:
                 planet_to_bary[child.naif_id] = bary.id
@@ -113,10 +111,10 @@ def _resolve_system_id(
     an Earth satellite routing up to Earth-Moon), or being a barycenter
     itself, all count as "inside" that system.
     """
-    if obj.parent_naif_id in bary_by_naif:
-        return bary_by_naif[obj.parent_naif_id]
-    if obj.parent_naif_id in planet_to_bary:
-        return planet_to_bary[obj.parent_naif_id]
+    if obj.parent_id in bary_by_naif:
+        return bary_by_naif[obj.parent_id]
+    if obj.parent_id in planet_to_bary:
+        return planet_to_bary[obj.parent_id]
     if obj.naif_id in bary_by_naif:
         return bary_by_naif[obj.naif_id]
     return None

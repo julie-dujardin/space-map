@@ -98,7 +98,7 @@ def _native_params(
 
 def _sample_body(
     naif_id: int,
-    parent_naif_id: int,
+    parent_id: int,
     start_et: float,
     end_et: float,
     intlen_s: float,
@@ -128,7 +128,7 @@ def _sample_body(
     coeffs = np.empty((n_intervals, 3, n_nodes), dtype=np.float32)
 
     target_str = str(naif_id)
-    parent_str = str(parent_naif_id)
+    parent_str = str(parent_id)
 
     for i in range(n_intervals):
         seg_start_et = start_et + i * intlen_s
@@ -251,7 +251,7 @@ def extract_chebyshev(
         try:
             start_jds, end_jds, coeffs = _sample_body(
                 body.naif_id,
-                body.parent_naif_id,
+                body.parent_id,
                 start_et,
                 end_et,
                 intlen_s,
@@ -273,7 +273,7 @@ def extract_chebyshev(
             end_jds=end_jds,
             coeffs=coeffs,
             meta=np.array(
-                [body.naif_id, body.parent_naif_id, degree],
+                [body.naif_id, body.parent_id, degree],
                 dtype=np.int64,
             ),
         )

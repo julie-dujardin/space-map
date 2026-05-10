@@ -367,7 +367,7 @@ def _jd_to_et(jd: float) -> float:
 
 
 def _fit_moon_mean_elements(
-    naif_id: int, parent_naif_id: int, et: float, gm: float
+    naif_id: int, parent_id: int, et: float, gm: float
 ) -> tuple[dict[str, float], float] | None:
     """Sample SPICE over ~100 orbital periods and fit secular Keplerian elements.
 
@@ -385,9 +385,7 @@ def _fit_moon_mean_elements(
     """
     period_seed = _state_to_elements(
         list(
-            spiceypy.spkezr(
-                str(naif_id), et, "ECLIPJ2000", "NONE", str(parent_naif_id)
-            )[0]
+            spiceypy.spkezr(str(naif_id), et, "ECLIPJ2000", "NONE", str(parent_id))[0]
         ),
         et,
         gm,
@@ -429,7 +427,7 @@ def _fit_moon_mean_elements(
     for k, t in enumerate(times):
         try:
             st, _ = spiceypy.spkezr(
-                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_naif_id)
+                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_id)
             )
             elts = spiceypy.oscelt(np.asarray(st), float(t), gm)
         except spiceypy.exceptions.SpiceyError:
@@ -482,7 +480,7 @@ def _fit_moon_mean_elements(
 
 def _fit_moon_chunked_elements(
     naif_id: int,
-    parent_naif_id: int,
+    parent_id: int,
     mu: float,
     chunk_midpoints_jd: list[float],
 ) -> tuple[np.ndarray, np.ndarray] | None:
@@ -512,7 +510,7 @@ def _fit_moon_chunked_elements(
             midpoints_et[len(midpoints_et) // 2],
             "ECLIPJ2000",
             "NONE",
-            str(parent_naif_id),
+            str(parent_id),
         )
     except spiceypy.exceptions.SpiceyError:
         return None
@@ -557,7 +555,7 @@ def _fit_moon_chunked_elements(
     for k, t in enumerate(times):
         try:
             st, _ = spiceypy.spkezr(
-                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_naif_id)
+                str(naif_id), float(t), "ECLIPJ2000", "NONE", str(parent_id)
             )
             elts = spiceypy.oscelt(np.asarray(st), float(t), mu)
         except spiceypy.exceptions.SpiceyError:
@@ -885,7 +883,7 @@ class SpiceDownloader(Downloader):
     ) -> int:
         """Compute time-chunked Method C secular elements for non-whitelisted moons.
 
-        For each (naif_id, parent_naif_id, mu) target, fits a per-chunk linear
+        For each (naif_id, parent_id, mu) target, fits a per-chunk linear
         secular model on a 6-month grid spanning the configured Chebyshev
         year range. Writes one `.npz` per moon under `moon_chunks/<naif_id>.npz`
         with arrays `chunk_midpoints_jd` (shape (n_chunks,)) and `elements`
@@ -913,11 +911,9 @@ class SpiceDownloader(Downloader):
         out_dir.mkdir(exist_ok=True)
 
         skipped = 0
-        for naif_id, parent_naif_id, mu in tqdm(
-            targets, desc="Moon chunks", unit="body"
-        ):
+        for naif_id, parent_id, mu in tqdm(targets, desc="Moon chunks", unit="body"):
             result = _fit_moon_chunked_elements(
-                naif_id, parent_naif_id, mu, chunk_midpoints_jd
+                naif_id, parent_id, mu, chunk_midpoints_jd
             )
             if result is None:
                 skipped += 1
@@ -927,7 +923,7 @@ class SpiceDownloader(Downloader):
                 out_dir / f"{naif_id}.npz",
                 chunk_midpoints_jd=midpoints,
                 elements=elements.astype(np.float32),
-                meta=np.array([naif_id, parent_naif_id, n_chunks], dtype=np.int64),
+                meta=np.array([naif_id, parent_id, n_chunks], dtype=np.int64),
             )
 
         if skipped:
@@ -1031,7 +1027,7 @@ class SpiceDownloader(Downloader):
                 MajorBody(
                     name=alias.name,
                     naif_id=naif_id,
-                    parent_naif_id=parent_id,
+                    parent_id=parent_id,
                     object_type=obj_type,
                     designation=alias.designation,
                     iau_roman_designation=alias.iau_roman_designation,
@@ -1050,7 +1046,7 @@ class SpiceDownloader(Downloader):
             "naif_id_extended",
             "naif_id",
             "type",
-            "parent_naif_id",
+            "parent_id",
             "JDTDB",
             "A",
             "EC",
@@ -1093,7 +1089,7 @@ class SpiceDownloader(Downloader):
                         "naif_id_extended": body.naif_id_extended,
                         "naif_id": body.naif_id,
                         "type": body.object_type,
-                        "parent_naif_id": body.parent_naif_id,
+                        "parent_id": body.parent_id,
                         "JDTDB": f"{epoch_jd:.1f}",
                         **_ZERO_ROW,
                     }
@@ -1114,7 +1110,7 @@ class SpiceDownloader(Downloader):
                 )
                 if gm is None:
                     gm = gm_sun
-            elif body.parent_naif_id == 0:
+            elif body.parent_id == 0:
                 if body.object_type == ObjectType.barycenter and 1 <= body.naif_id <= 9:
                     # Planetary-system barycenter around SSB: lighter partner
                     # of the Sun in a two-body reduction, giving
@@ -1128,7 +1124,7 @@ class SpiceDownloader(Downloader):
                 else:
                     gm = gm_sun
             elif body.object_type in (ObjectType.planet, ObjectType.dwarf_planet) and (
-                1 <= body.parent_naif_id <= 9
+                1 <= body.parent_id <= 9
             ):
                 # Planet orbiting its own system barycenter: it's the heavier
                 # member of a two-body dance with its dominant moon, not an
@@ -1142,9 +1138,7 @@ class SpiceDownloader(Downloader):
                     gm_planet = None
                 moon_candidates = [
                     n
-                    for n in range(
-                        body.parent_naif_id * 100 + 1, body.parent_naif_id * 100 + 99
-                    )
+                    for n in range(body.parent_id * 100 + 1, body.parent_id * 100 + 99)
                     if n != body.naif_id
                 ]
                 gm = (
@@ -1166,7 +1160,7 @@ class SpiceDownloader(Downloader):
                             "naif_id_extended": body.naif_id_extended,
                             "naif_id": body.naif_id,
                             "type": body.object_type,
-                            "parent_naif_id": body.parent_naif_id,
+                            "parent_id": body.parent_id,
                             "JDTDB": f"{epoch_jd:.1f}",
                             **_ZERO_ROW,
                         }
@@ -1174,11 +1168,11 @@ class SpiceDownloader(Downloader):
                     continue
             else:
                 try:
-                    gm = spiceypy.bodvrd(str(body.parent_naif_id), "GM", 1)[1][0]
+                    gm = spiceypy.bodvrd(str(body.parent_id), "GM", 1)[1][0]
                 except spiceypy.exceptions.SpiceyError:
                     logger.warning(
                         "No GM for parent %d of %s (%d), skipping",
-                        body.parent_naif_id,
+                        body.parent_id,
                         body.name,
                         body.naif_id,
                     )
@@ -1191,7 +1185,7 @@ class SpiceDownloader(Downloader):
                     et,
                     "ECLIPJ2000",
                     "NONE",
-                    str(body.parent_naif_id),
+                    str(body.parent_id),
                 )
             except spiceypy.exceptions.SpiceyError:
                 logger.warning(
@@ -1209,12 +1203,12 @@ class SpiceDownloader(Downloader):
             if (
                 body.object_type == ObjectType.moon
                 and (body.name or "").lower() not in CHEBYSHEV_MOON_WHITELIST
-                and 1 <= body.parent_naif_id <= 9
+                and 1 <= body.parent_id <= 9
             ):
-                fit = _fit_moon_mean_elements(body.naif_id, body.parent_naif_id, et, gm)
+                fit = _fit_moon_mean_elements(body.naif_id, body.parent_id, et, gm)
                 if fit is not None:
                     elts, res_rms = fit
-                    moon_chunk_targets.append((body.naif_id, body.parent_naif_id, gm))
+                    moon_chunk_targets.append((body.naif_id, body.parent_id, gm))
                     res_arcmin = math.degrees(res_rms) * 60
                     if res_arcmin > _METHOD_C_RESIDUAL_WARN_ARCMIN:
                         logger.warning(
@@ -1243,7 +1237,7 @@ class SpiceDownloader(Downloader):
                     elts = dict(_ZERO_ROW)
                 elif (
                     body.object_type in (ObjectType.planet, ObjectType.dwarf_planet)
-                    and 1 <= body.parent_naif_id <= 9
+                    and 1 <= body.parent_id <= 9
                     and snap["EC"] > 0.6
                 ):
                     # The single-dominant-moon mu approximation failed — likely
@@ -1267,7 +1261,7 @@ class SpiceDownloader(Downloader):
                     "naif_id_extended": body.naif_id_extended,
                     "naif_id": body.naif_id,
                     "type": body.object_type,
-                    "parent_naif_id": body.parent_naif_id,
+                    "parent_id": body.parent_id,
                     "JDTDB": f"{epoch_jd:.1f}",
                     **elts,
                 }

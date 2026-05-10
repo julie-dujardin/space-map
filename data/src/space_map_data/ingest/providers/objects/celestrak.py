@@ -84,7 +84,7 @@ class CelesTrakIngestor:
             norad_cat_id=norad,
             cospar_id=string_or_none(row["OBJECT_ID"]),
             scale=ElementsScale.planet,
-            parent_naif_id=399,
+            parent_id=399,
             orbital_source=OrbitalSource.celestrak,
         )
         # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are

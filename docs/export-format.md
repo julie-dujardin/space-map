@@ -370,7 +370,7 @@ under each zone's `position.zones[zone].zooms[0]` entry with
 | Offset | Type    | Field |
 |--------|---------|-------|
 | 0      | int32   | naif_id (SPICE-side identifier; used for parent linking and frame indexing) |
-| 4      | int32   | parent_naif_id (orbital reference body) |
+| 4      | int32   | parent_id (orbital reference body) |
 | 8      | int32   | obj_id_value (numeric portion of the full `Object.id`; equals naif_id when id_type=naif) |
 | 12     | float32 | radius_km (NaN if unknown) |
 | 16     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
@@ -403,7 +403,7 @@ Then `segment_count` segments, each laid out as:
 
 where N = `coeffs_per_axis`. Each segment's coefficients form a Chebyshev
 series in τ ∈ [-1, 1] giving the body's position in **km, ECLIPJ2000 frame,
-relative to `parent_naif_id`**.
+relative to `parent_id`**.
 
 ### Evaluating a position at time t (JD TDB)
 
@@ -535,7 +535,7 @@ interface GlobalObjectData {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;
     scale: "planet" | "system";
-    parent_naif_id: number;
+    parent_id: number;
     source: "horizons" | "sbdb" | "celestrak";
     // Keplerian (standard orbits):
     a?: number; ma?: number; n?: number;

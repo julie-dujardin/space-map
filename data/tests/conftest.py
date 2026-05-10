@@ -49,7 +49,7 @@ def make_object(**overrides) -> Object:
         "name": "Earth",
         "object_type": ObjectType.planet,
         "scale": ElementsScale.system,
-        "parent_naif_id": 0,
+        "parent_id": 0,
         "orbital_source": OrbitalSource.horizons,
     }
     defaults.update(overrides)

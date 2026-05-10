@@ -58,7 +58,7 @@ class HorizonsIngestor:
             "naif_id": naif_id,
             "type": obj_type,
             "center": string_or_none(row.get("center")),
-            "parent_naif_id": int_or_none(row["parent_naif_id"]),
+            "parent_id": int_or_none(row["parent_id"]),
             "designation": string_or_none(row["designation"]),
             "extra": string_or_none(row.get("extra")),
             "JDTDB": float_or_none(row["JDTDB"]),
@@ -108,7 +108,7 @@ class HorizonsIngestor:
                         object_type=ObjectType.spacecraft,
                         naif_id=hz.naif_id,
                         cospar_id=hz.cospar_id,
-                        parent_naif_id=hz.parent_naif_id,
+                        parent_id=hz.parent_id,
                         orbital_source=OrbitalSource.horizons,
                     )
                 )

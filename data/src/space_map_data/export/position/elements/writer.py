@@ -153,10 +153,7 @@ def _write_keplerian_columns(
     _write_int32(
         buf,
         n,
-        [
-            o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
-            for o in objects
-        ],
+        [o.parent_id if o.parent_id is not None else MISSING_INT32 for o in objects],
     )
 
     _write_uint8(
@@ -333,10 +330,7 @@ def write_parabolic_elements(
     _write_int32(
         buf,
         n,
-        [
-            o.parent_naif_id if o.parent_naif_id is not None else MISSING_INT32
-            for o in objects
-        ],
+        [o.parent_id if o.parent_id is not None else MISSING_INT32 for o in objects],
     )
     _write_uint8(
         buf,

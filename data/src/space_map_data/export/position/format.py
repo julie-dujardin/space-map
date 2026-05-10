@@ -129,7 +129,7 @@ def pack_chebyshev_header(
 #
 # Offset  Type     Field
 # 0       int32    naif_id
-# 4       int32    parent_naif_id
+# 4       int32    parent_id
 # 8       int32    obj_id_value
 # 12      float32  radius_km
 # 16      uint16   coeffs_per_axis
@@ -145,7 +145,7 @@ assert _BODY_HEADER_STRUCT.size == BODY_HEADER_SIZE
 
 def pack_body_header(
     naif_id: int,
-    parent_naif_id: int,
+    parent_id: int,
     obj_id_value: int,
     radius_km: float,
     coeffs_per_axis: int,
@@ -156,7 +156,7 @@ def pack_body_header(
 ) -> bytes:
     return _BODY_HEADER_STRUCT.pack(
         naif_id,
-        parent_naif_id,
+        parent_id,
         obj_id_value,
         radius_km,
         coeffs_per_axis,

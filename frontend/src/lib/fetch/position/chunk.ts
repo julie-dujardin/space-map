@@ -36,10 +36,10 @@ const KM_DAY_TO_AU_DAY = 1 / AU_KM;
  */
 function chebyshevOsculatingElements(
 	body: ChebyshevBody,
-	parentNaifId: number,
+	parentId: number,
 	jd: number
 ): OrbitalElements | null {
-	const gmKm3s2 = getGmKm3s2(parentNaifId);
+	const gmKm3s2 = getGmKm3s2(parentId);
 	if (!gmKm3s2) return null;
 	const state = chebyshevStateKm(body, jd);
 	if (!state) return null;
@@ -323,7 +323,7 @@ export class ChunkLoader {
 			const offset = chebyshevPositionScene(body, jd);
 			if (!offset) continue;
 			chebBodiesByNaif.set(body.naifId, body);
-			const parentPos = this.positions.get(body.parentNaifId) ?? this.positions.get(0)!;
+			const parentPos = this.positions.get(body.parentId) ?? this.positions.get(0)!;
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
 				parentPos[1] + offset[1],
@@ -335,7 +335,7 @@ export class ChunkLoader {
 			// when the parent has no GM (out-of-coverage in SPICE) or the
 			// state is degenerate; the body still gets a position-only entry
 			// so it can render, just without an orbit curve.
-			const elements = chebyshevOsculatingElements(body, body.parentNaifId, jd);
+			const elements = chebyshevOsculatingElements(body, body.parentId, jd);
 			// Re-derive callback used by the orbit-line refresh path. We can't
 			// close over the `ChebyshevBody` reference here — those records
 			// are *per-chunk*, so by the time the user crosses a chunk boundary
@@ -346,7 +346,7 @@ export class ChunkLoader {
 			const ownRederive = (newJd: number): OrbitalElements | null => {
 				const fresh = cheb.body(ownId, newJd);
 				if (!fresh) return null;
-				return chebyshevOsculatingElements(fresh, fresh.parentNaifId, newJd);
+				return chebyshevOsculatingElements(fresh, fresh.parentId, newJd);
 			};
 			// Position-magnitude proxy for visibility-ratio code when elements
 			// are unavailable. Cheb gives parent-relative offsets in scene units,
@@ -359,7 +359,7 @@ export class ChunkLoader {
 				isMinor: pickIsMinor(labels, body.id),
 				hasLocalized: body.hasLocalized,
 				objectType: objType,
-				parentId: `naif-${body.parentNaifId}`,
+				parentId: `naif-${body.parentId}`,
 				radiusKm: body.radiusKm,
 				a: elements ? Math.abs(elements.a) : fallbackA,
 				e: elements?.e ?? 0,
@@ -395,7 +395,7 @@ export class ChunkLoader {
 				// `orbitCenter` undefined so the curve is drawn at SSB —
 				// otherwise the heliocentric ellipse would land on the planet.
 				const isMoon = objType === ObjectType.MOON;
-				const parentElements = this.barycenters.get(body.parentNaifId);
+				const parentElements = this.barycenters.get(body.parentId);
 				const orbitElements = isMoon ? elements : (parentElements ?? elements);
 				const borrowedFromParent = !isMoon && parentElements !== undefined;
 				// Borrowed bodies must re-derive against the *parent's* chebyshev,
@@ -403,13 +403,13 @@ export class ChunkLoader {
 				// the planet's wobble. Capture the parent's stable string id (not
 				// the per-chunk body record — see `ownRederive` above) so the
 				// callback resolves the live record each call.
-				const parentChebId = chebBodiesByNaif.get(body.parentNaifId)?.id;
+				const parentChebId = chebBodiesByNaif.get(body.parentId)?.id;
 				const rederiveElements =
 					borrowedFromParent && parentChebId
 						? (newJd: number): OrbitalElements | null => {
 								const fresh = cheb.body(parentChebId, newJd);
 								if (!fresh) return null;
-								return chebyshevOsculatingElements(fresh, fresh.parentNaifId, newJd);
+								return chebyshevOsculatingElements(fresh, fresh.parentId, newJd);
 							}
 						: ownRederive;
 				result.push({

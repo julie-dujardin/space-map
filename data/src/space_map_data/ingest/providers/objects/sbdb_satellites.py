@@ -160,7 +160,7 @@ class SBDBSatellitesIngestor:
         self,
         parent_spkid: int,
         parent_object_id: str,
-        parent_naif_id: int | None,
+        parent_id: int | None,
         sat_index: int,
         sat: dict,
     ) -> tuple[dict, dict]:
@@ -180,7 +180,7 @@ class SBDBSatellitesIngestor:
             object_type=ObjectType.moon,
             provisional_designation=prov_des,
             scale=ElementsScale.planet,
-            parent_naif_id=parent_naif_id,
+            parent_id=parent_id,
             orbital_source=OrbitalSource.sbdb_satellite.value,
         )
         sat_row = dict(
@@ -250,7 +250,7 @@ class SBDBSatellitesIngestor:
                     parent_spkid,
                 )
                 continue
-            parent_object_id, parent_naif_id = parent
+            parent_object_id, parent_id = parent
 
             sat_array = payload.get("sat") or []
             for idx, sat in enumerate(sat_array):
@@ -268,7 +268,7 @@ class SBDBSatellitesIngestor:
                 obj_row, sat_row = self._build_rows(
                     parent_spkid,
                     parent_object_id,
-                    parent_naif_id,
+                    parent_id,
                     idx,
                     sat,
                 )

@@ -22,7 +22,7 @@ def _make_row(**overrides) -> dict:
         "naif_id": "399",
         "type": "planet",
         "center": "",
-        "parent_naif_id": "0",
+        "parent_id": "0",
         "designation": "",
         "extra": "",
         "JDTDB": "2461110.5",

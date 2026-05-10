@@ -20,7 +20,7 @@ interface SegmentSpec {
 
 interface BodySpec {
 	naifId: number;
-	parentNaifId: number;
+	parentId: number;
 	objIdValue: number;
 	idType: IdType;
 	radiusKm: number;
@@ -54,7 +54,7 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 	let off = HEADER_SIZE;
 	for (const b of bodies) {
 		view.setInt32(off, b.naifId, true);
-		view.setInt32(off + 4, b.parentNaifId, true);
+		view.setInt32(off + 4, b.parentId, true);
 		view.setInt32(off + 8, b.objIdValue, true);
 		view.setFloat32(off + 12, b.radiusKm, true);
 		view.setUint16(off + 16, b.coeffsPerAxis, true);
@@ -92,7 +92,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		const buf = buildBuffer(100, 200, [
 			{
 				naifId: 399,
-				parentNaifId: 3,
+				parentId: 3,
 				objIdValue: 399,
 				idType: IdType.NAIF,
 				radiusKm: 6378.137,
@@ -107,7 +107,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		const body = chunk.bodies[0];
 		expect(body.id).toBe('naif-399');
 		expect(body.naifId).toBe(399);
-		expect(body.parentNaifId).toBe(3);
+		expect(body.parentId).toBe(3);
 		expect(body.radiusKm).toBeCloseTo(6378.137, 2);
 		expect(body.coeffsPerAxis).toBe(3);
 		expect(body.startJds).toEqual(new Float64Array([100]));
@@ -119,7 +119,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		const buf = buildBuffer(100, 200, [
 			{
 				naifId: 999,
-				parentNaifId: 9,
+				parentId: 9,
 				objIdValue: 20134340,
 				idType: IdType.SPKID,
 				radiusKm: 1188.3,
@@ -136,7 +136,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		const buf = buildBuffer(100, 200, [
 			{
 				naifId: 1,
-				parentNaifId: 0,
+				parentId: 0,
 				objIdValue: 1,
 				idType: IdType.NAIF,
 				radiusKm: NaN,
@@ -148,7 +148,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 			},
 			{
 				naifId: 2,
-				parentNaifId: 0,
+				parentId: 0,
 				objIdValue: 2,
 				idType: IdType.NAIF,
 				radiusKm: 100.0,
@@ -185,7 +185,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 	const buf = buildBuffer(0, 10, [
 		{
 			naifId: 1,
-			parentNaifId: 0,
+			parentId: 0,
 			objIdValue: 1,
 			idType: IdType.NAIF,
 			radiusKm: NaN,
@@ -239,7 +239,7 @@ describe('chebyshevPositionKm — Chebyshev evaluation', () => {
 		const constBuf = buildBuffer(0, 10, [
 			{
 				naifId: 1,
-				parentNaifId: 0,
+				parentId: 0,
 				objIdValue: 1,
 				idType: IdType.NAIF,
 				radiusKm: NaN,

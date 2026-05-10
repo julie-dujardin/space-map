@@ -19,7 +19,7 @@ class Horizons(Base):
     Spacecraft + SSB rows come from horizons/bodies.csv. Planet/moon/barycenter
     rows are inserted by SPICE ingest from spice/bodies.csv with kepler
     elements + secular drift rates (`om_dot`/`w_dot`); their Horizons-only
-    columns (QR/Tp/TA/AD/PR, name/designation/type/center/parent_naif_id/
+    columns (QR/Tp/TA/AD/PR, name/designation/type/center/parent_id/
     extra) stay null. Horizons-source and SPICE-source Object rows both join
     here for orbital elements.
     """
@@ -39,7 +39,7 @@ class Horizons(Base):
         default=None
     )  # object type (star, planet, moon, ...)
     center: Mapped[str | None] = mapped_column(default=None)  # coordinate center name
-    parent_naif_id: Mapped[int | None] = mapped_column(
+    parent_id: Mapped[int | None] = mapped_column(
         default=None
     )  # NAIF ID of parent body (0 = SSB)
     designation: Mapped[str | None] = mapped_column(default=None)  # IAU designation

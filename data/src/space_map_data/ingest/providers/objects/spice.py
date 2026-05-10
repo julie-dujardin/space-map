@@ -63,7 +63,7 @@ class SpiceIngestor:
             "object_type": obj_type,
             "naif_id": naif_id,
             "spkid": spkid,
-            "parent_naif_id": int_or_none(row["parent_naif_id"]),
+            "parent_id": int_or_none(row["parent_id"]),
             "orbital_source": OrbitalSource.spice,
         }
         # Kepler elements + SPICE-fitted secular drift rates land on the

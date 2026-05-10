@@ -151,7 +151,7 @@ class HorizonsDownloader(Downloader):
                     {
                         "name": b.name,
                         "naif_id": b.naif_id,
-                        "parent_naif_id": b.parent_naif_id,
+                        "parent_id": b.parent_id,
                         "type": b.object_type,
                         "designation": b.designation,
                         "extra": b.extra,
@@ -213,7 +213,7 @@ class HorizonsDownloader(Downloader):
             "naif_id",
             "type",
             "center",
-            "parent_naif_id",
+            "parent_id",
             "designation",
             "extra",
         )
@@ -256,7 +256,7 @@ class HorizonsDownloader(Downloader):
                     "naif_id": "0",
                     "type": str(body.object_type),
                     "center": "",
-                    "parent_naif_id": "0",
+                    "parent_id": "0",
                     "designation": body.designation or "",
                     "extra": body.extra or "",
                     "JDTDB": epoch_jd,
@@ -280,7 +280,7 @@ class HorizonsDownloader(Downloader):
                 params={
                     **_BASE_PARAMS,
                     "TLIST": epoch_jd,
-                    "CENTER": f"500@{body.parent_naif_id}",
+                    "CENTER": f"500@{body.parent_id}",
                     "COMMAND": f"'{body.naif_id}'",
                 },
             )
@@ -293,7 +293,7 @@ class HorizonsDownloader(Downloader):
 
             row = self._parse_elements(payload["result"], body.name, str(body.naif_id))
             row["type"] = body.object_type
-            row["parent_naif_id"] = str(body.parent_naif_id)
+            row["parent_id"] = str(body.parent_id)
             row["designation"] = body.designation
             row["extra"] = body.extra
 

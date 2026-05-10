@@ -165,7 +165,7 @@ def classify_object(
 ) -> tuple[ObjectType, int]:
     """Classify a body by its NAIF ID and name.
 
-    Returns (body_type, parent_naif_id) where parent is the NAIF ID of the
+    Returns (body_type, parent_id) where parent is the NAIF ID of the
     body this object orbits (0 = SSB).
 
     NAIF ID ranges (https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/naif_ids.html):
@@ -243,7 +243,7 @@ def classify_object(
 class MajorBody:
     name: str | None
     naif_id: int
-    parent_naif_id: int
+    parent_id: int
     object_type: ObjectType
     designation: str | None = None
     extra: str | None = None

@@ -26,7 +26,7 @@ export interface ChebyshevBody {
 	 */
 	id: string;
 	naifId: number;
-	parentNaifId: number;
+	parentId: number;
 	/** 1 iff the body has a localized detail bundle in at least one language. */
 	hasLocalized: boolean;
 	/** ObjectType ordinal (same map as the elements `objectType` column). */
@@ -72,7 +72,7 @@ export function parseChebyshevPayload(
 
 	for (let b = 0; b < bodyCount; b++) {
 		const naifId = view.getInt32(offset, true);
-		const parentNaifId = view.getInt32(offset + 4, true);
+		const parentId = view.getInt32(offset + 4, true);
 		const objIdValue = view.getInt32(offset + 8, true);
 		const radiusKm = view.getFloat32(offset + 12, true);
 		const coeffsPerAxis = view.getUint16(offset + 16, true);
@@ -110,7 +110,7 @@ export function parseChebyshevPayload(
 		bodies.push({
 			id,
 			naifId,
-			parentNaifId,
+			parentId,
 			hasLocalized,
 			objectType,
 			radiusKm,
