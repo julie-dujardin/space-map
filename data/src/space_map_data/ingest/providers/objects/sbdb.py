@@ -26,6 +26,7 @@ from space_map_data.ingest.convert import (
     string_or_none,
 )
 from space_map_data.utils.db import get_session
+from space_map_data.utils.naif import naif_id_from_spk
 
 logger = logging.getLogger(__name__)
 
@@ -207,23 +208,6 @@ SBDB_CLASS_MAP: dict[str, ObjectType] = {
 }
 
 
-def _compute_naif_id(spk_id: int, obj_type: ObjectType) -> int | None:
-    """Compute the Horizons NAIF ID corresponding to an SBDB SPK ID.
-
-    JPL uses different numbering conventions across Horizons and SBDB:
-    - Pluto: SBDB spkid 20134340 ↔ Horizons naif 999
-    - Numbered asteroids: SBDB 20_000_000+n ↔ Horizons 2_000_000+n (offset 18M)
-    - Comets: same scheme in both systems
-    """
-    if spk_id == 20134340:
-        return 999  # Pluto
-    if 20_000_000 <= spk_id <= 20_999_999:
-        return spk_id - 18_000_000  # numbered asteroids
-    if obj_type == ObjectType.comet:
-        return spk_id  # comets share the same numbering
-    return None
-
-
 def _object_type(row: dict[str, str]) -> ObjectType:
     cls = string_or_none(row["class"])
     prefix = string_or_none(row["prefix"])
@@ -343,7 +327,7 @@ def _parse_chunk(
                         "object_type": object_type,
                         "provisional_designation": provisional_designation,
                         "spkid": spkid,
-                        "naif_id": _compute_naif_id(spkid, object_type),
+                        "naif_id": naif_id_from_spk(spkid, object_type),
                         "mpc_designation": pdes,
                         "orbital_source": OrbitalSource.sbdb.value,
                         "parent_naif_id": 10,  # SBDB is heliocentric, parent is Sun (NAIF ID 10)

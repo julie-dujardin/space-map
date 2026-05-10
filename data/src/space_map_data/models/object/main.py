@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from space_map_data.models.object.horizons import Horizons
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
+    from space_map_data.models.object.sbdb_satellite import SBDBSatellite
 
 
 # IAU-recognized dwarf planets
@@ -78,6 +79,7 @@ class ElementsScale(StrEnum):
 class OrbitalSource(StrEnum):
     horizons = PROVIDERS.HORIZONS
     sbdb = PROVIDERS.SBDB
+    sbdb_satellite = PROVIDERS.SBDB_SATELLITES
     celestrak = PROVIDERS.CELESTRAK
     spice = PROVIDERS.SPICE
 
@@ -151,6 +153,12 @@ class Object(Base):
     sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")
     celestrak: Mapped["CelesTrak | None"] = relationship(back_populates="object")
     satcat: Mapped["Satcat | None"] = relationship(back_populates="object")
+    sbdb_satellite: Mapped["SBDBSatellite | None"] = relationship(
+        foreign_keys="SBDBSatellite.object_id", back_populates="object"
+    )
+    sbdb_satellites: Mapped[list["SBDBSatellite"]] = relationship(
+        foreign_keys="SBDBSatellite.parent_object_id", back_populates="parent"
+    )
 
     __table_args__ = (
         Index("idx_objects_type", "object_type"),

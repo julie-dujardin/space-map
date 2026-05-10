@@ -77,6 +77,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-20000004",  # 4 Vesta
         "spkid-20000010",  # 10 Hygiea
         "spkid-20000016",  # 16 Psyche
+        "spkid-20000130",  # 130 Elektra - 3 moons
         "spkid-20000243",  # 243 Ida
         "spkid-20000253",  # 253 Mathilde
         "spkid-20000433",  # 433 Eros
@@ -90,6 +91,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-20004179",  # 4179 Toutatis
         "spkid-20010199",  # 10199 Chariklo
         "spkid-20025143",  # 25143 Itokawa
+        "spkid-20047171",  # 47171 Lempo
         "spkid-20065803",  # 65803 Didymos
         "spkid-20099942",  # 99942 Apophis
         "spkid-20101955",  # 101955 Bennu

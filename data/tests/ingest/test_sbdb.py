@@ -4,7 +4,6 @@ import pytest
 
 from space_map_data.ingest.providers.objects.sbdb import (
     SBDB_CLASS_MAP,
-    _compute_naif_id,
     _display_name,
     _object_type,
     _provisional_designation,
@@ -13,6 +12,7 @@ from space_map_data.ingest.providers.objects.sbdb import (
     _G_KM3_PER_KG_S2,
 )
 from space_map_data.models.object import ObjectType
+from space_map_data.utils.naif import naif_id_from_spk
 
 
 def _make_row(**overrides) -> dict[str, str]:
@@ -87,18 +87,18 @@ class TestComputeNaifId:
     """Tests for NAIF ID computation from SBDB SPK ID + type."""
 
     def test_pluto_special_case(self):
-        assert _compute_naif_id(20134340, ObjectType.dwarf_planet) == 999
+        assert naif_id_from_spk(20134340, ObjectType.dwarf_planet) == 999
 
     def test_numbered_asteroid(self):
         """SPK IDs 20_000_000–20_999_999 map back to 2M range."""
-        assert _compute_naif_id(20000001, ObjectType.asteroid_main_belt) == 2000001
+        assert naif_id_from_spk(20000001, ObjectType.asteroid_main_belt) == 2000001
 
     def test_comet_spk_equals_naif(self):
-        assert _compute_naif_id(1000012, ObjectType.comet) == 1000012
+        assert naif_id_from_spk(1000012, ObjectType.comet) == 1000012
 
     def test_unmappable_asteroid_returns_none(self):
         """Unnumbered asteroids in the 3M+ range have no Horizons counterpart."""
-        assert _compute_naif_id(3000001, ObjectType.asteroid) is None
+        assert naif_id_from_spk(3000001, ObjectType.asteroid) is None
 
 
 class TestDisplayName:

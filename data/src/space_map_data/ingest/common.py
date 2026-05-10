@@ -13,6 +13,7 @@ from space_map_data.ingest.providers.objects import (
     horizons,
     satcat,
     sbdb,
+    sbdb_satellites,
     spice,
 )
 from space_map_data.ingest.providers.wikidata import (
@@ -34,6 +35,7 @@ def ingest_objects(download_dir: Path) -> None:
     NAIF-keyed bodies; SPICE-source rows join it for elements).
     """
     sbdb.ingest(download_dir)
+    sbdb_satellites.ingest(download_dir)
     satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
     horizons.ingest(download_dir)

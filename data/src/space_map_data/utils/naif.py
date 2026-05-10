@@ -123,7 +123,7 @@ CHEBYSHEV_PARENT_CHUNK_YEARS: dict[int, float] = {
 def spk_id_from_naif(
     naif_id: int, obj_type: ObjectType | str | None = None
 ) -> int | None:
-    """Inverse of the SBDB `_compute_naif_id` mapping.
+    """Inverse of `naif_id_from_spk`.
 
     Returns the SBDB SPK ID corresponding to a Horizons/SPICE NAIF ID, or None
     if there is no SBDB counterpart.
@@ -138,6 +138,25 @@ def spk_id_from_naif(
         return naif_id - 900_000_000  # binary asteroid primaries
     if obj_type == ObjectType.comet:
         return naif_id  # comets share the same numbering
+    return None
+
+
+def naif_id_from_spk(
+    spk_id: int, obj_type: ObjectType | str | None = None
+) -> int | None:
+    """Compute the Horizons NAIF ID corresponding to an SBDB SPK ID.
+
+    JPL uses different numbering conventions across Horizons and SBDB:
+    - Pluto: SBDB spkid 20134340 ↔ Horizons naif 999
+    - Numbered asteroids: SBDB 20_000_000+n ↔ Horizons 2_000_000+n (offset 18M)
+    - Comets: same scheme in both systems
+    """
+    if spk_id == 20134340:
+        return 999  # Pluto
+    if 20_000_000 <= spk_id <= 20_999_999:
+        return spk_id - 18_000_000  # numbered asteroids
+    if obj_type == ObjectType.comet:
+        return spk_id  # comets share the same numbering
     return None
 
 
