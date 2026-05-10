@@ -3,10 +3,16 @@
 Reads the per-parent JSON files written by `SBDBSatellitesDownloader`
 (`space-map-downloads/sbdb_satellites/{parent_spkid}.json`) and writes:
 
-  - One ``Object`` row per satellite, keyed
+  - One ``Object`` row per *new* satellite, keyed
     ``sbdb_satellite-<parent_spkid>-<sat_index>``.
   - One ``SBDBSatellite`` row per satellite, holding identity + orbital
     elements + uncertainties + provenance.
+
+Some SBDB satellites duplicate moons that already exist from Horizons /
+SPICE (e.g. Pluto's Charon, Nix, Hydra, Kerberos, Styx). For those we
+*merge*: the SBDBSatellite metadata row is attached to the existing
+Object row by name match, no new Object is created, and the SBDB orbit
+data is dropped (Horizons/SPICE Chebyshev kernels are higher accuracy).
 
 Many satellite entries are sparse — discovery-paper placeholders with no
 name and no orbit. We persist them all per the catalog policy: presence in
@@ -98,6 +104,23 @@ def _coerce_bool(val: str | None) -> bool | None:
     return None
 
 
+def _resolve_parent_naif(parent_naif_id: int | None) -> int | None:
+    """Apply the Horizons-convention barycenter swap.
+
+    Horizons-sourced moons have ``parent_id`` set to the system barycenter
+    (e.g. Charon's parent is NAIF 9, the Pluto barycenter, not 999). For
+    SBDB satellites of a body with the same convention — naif id in
+    100..999 ending in 99 — we mirror it so the tree shape matches.
+    Other parents (asteroids, dwarf planets in 2M+ range) have no
+    barycenter and are used as-is.
+    """
+    if parent_naif_id is None:
+        return None
+    if 100 <= parent_naif_id <= 999 and parent_naif_id % 100 == 99:
+        return parent_naif_id // 100
+    return parent_naif_id
+
+
 def _parse_orbit(orbit: dict | None) -> dict:
     """Flatten the first orbit solution into SBDBSatellite columns.
 
@@ -136,11 +159,16 @@ class SBDBSatellitesIngestor:
     def __init__(self, download_dir: Path):
         self.session = get_session()
         self.dir = download_dir / PROVIDERS.SBDB_SATELLITES
-        self.total_rows = 0
+        self.new_objects = 0
+        self.merged_count = 0
         self.no_parent_files = 0
         self.alt_orbits_dropped = 0
 
     def _clear(self) -> None:
+        # Clears all SBDBSatellite rows (including ones merge-attached to
+        # Horizons/SPICE moons in a previous run) plus only the Object rows
+        # that this ingestor itself created — Horizons/SPICE-sourced rows
+        # we merge into are left untouched.
         self.session.execute(delete(SBDBSatellite))
         self.session.execute(
             delete(Object).where(Object.orbital_source == OrbitalSource.sbdb_satellite)
@@ -156,56 +184,83 @@ class SBDBSatellitesIngestor:
         ).all()
         return {spkid: (oid, naif) for oid, spkid, naif in rows}
 
-    def _build_rows(
+    def _load_moon_index(self) -> dict[tuple[int, str], str]:
+        """Map (parent_naif_id, lowercased name) -> Object.id for existing moons.
+
+        Used to detect that an SBDB satellite is the same body as one already
+        in the DB from Horizons or SPICE (e.g. Pluto's Charon). When matched,
+        SBDB metadata gets attached to the existing row instead of creating
+        a duplicate Object.
+        """
+        rows = self.session.execute(
+            select(Object.id, Object.parent_id, Object.name).where(
+                Object.object_type == ObjectType.moon,
+                Object.parent_id.is_not(None),
+                Object.name.is_not(None),
+            )
+        ).all()
+        return {(parent_id, name.lower()): oid for oid, parent_id, name in rows}
+
+    def _build_sat_row(
         self,
-        parent_spkid: int,
+        sat_object_id: str,
         parent_object_id: str,
-        parent_id: int | None,
+        parent_spkid: int,
         sat_index: int,
         sat: dict,
-    ) -> tuple[dict, dict]:
-        sat_id = make_object_id(ID_TYPES.SBDB_SATELLITE, f"{parent_spkid}-{sat_index}")
-
-        fullname = string_or_none(sat.get("fullname"))
-        iau_name = string_or_none(sat.get("iau_name"))
-        prov_des = string_or_none(sat.get("prov_des"))
-        # Prefer IAU name, fall back to fullname, then provisional designation.
-        display_name = iau_name or fullname or prov_des
-
-        elements = _parse_orbit(sat.get("orbit"))
-
-        obj_row = dict(
-            id=sat_id,
-            name=display_name,
-            object_type=ObjectType.moon,
-            provisional_designation=prov_des,
-            scale=ElementsScale.planet,
-            parent_id=parent_id,
-            orbital_source=OrbitalSource.sbdb_satellite.value,
-        )
+        include_orbit: bool,
+    ) -> dict:
+        """Build a SBDBSatellite row. Identity-only when ``include_orbit`` is
+        False (used for merges into existing Horizons/SPICE rows — their orbit
+        data is canonical and SBDB's lower-accuracy Keplerian fit is dropped).
+        """
         sat_row = dict(
-            object_id=sat_id,
+            object_id=sat_object_id,
             parent_object_id=parent_object_id,
             parent_spkid=parent_spkid,
             sat_index=sat_index,
-            fullname=fullname,
+            fullname=string_or_none(sat.get("fullname")),
             iau_num=_coerce_int(sat.get("iau_num")),
-            iau_name=iau_name,
-            prov_des=prov_des,
+            iau_name=string_or_none(sat.get("iau_name")),
+            prov_des=string_or_none(sat.get("prov_des")),
             oid=_coerce_int(sat.get("oid")),
             year=_coerce_int(sat.get("year")),
             confirmed=_coerce_bool(sat.get("confirmed")),
             discovery_ref=string_or_none(sat.get("ref")),
             notes=string_or_none(sat.get("notes")),
-            **elements,
         )
-        return obj_row, sat_row
+        if include_orbit:
+            sat_row.update(_parse_orbit(sat.get("orbit")))
+        return sat_row
+
+    def _build_new_object_row(
+        self,
+        sat_id: str,
+        sat: dict,
+        tree_parent_naif: int | None,
+    ) -> dict:
+        fullname = string_or_none(sat.get("fullname"))
+        iau_name = string_or_none(sat.get("iau_name"))
+        prov_des = string_or_none(sat.get("prov_des"))
+        # Prefer IAU name, fall back to fullname, then provisional designation.
+        display_name = iau_name or fullname or prov_des
+        return dict(
+            id=sat_id,
+            name=display_name,
+            object_type=ObjectType.moon,
+            provisional_designation=prov_des,
+            scale=ElementsScale.planet,
+            parent_id=tree_parent_naif,
+            orbital_source=OrbitalSource.sbdb_satellite.value,
+        )
 
     def _flush(self, objects: list[dict], sats: list[dict]) -> None:
-        if not objects:
+        if not objects and not sats:
             return
-        self.session.execute(insert(Object), objects)
-        self.session.execute(insert(SBDBSatellite), sats)
+        if objects:
+            self.session.execute(insert(Object), objects)
+        if sats:
+            self.session.execute(insert(SBDBSatellite), sats)
         self.session.commit()
 
     def run(self) -> None:
@@ -220,6 +275,7 @@ class SBDBSatellitesIngestor:
 
         self._clear()
         parent_index = self._load_parent_index()
+        moon_index = self._load_moon_index()
 
         objects: list[dict] = []
         sats: list[dict] = []
@@ -250,7 +306,8 @@ class SBDBSatellitesIngestor:
                     parent_spkid,
                 )
                 continue
-            parent_object_id, parent_id = parent
+            parent_object_id, parent_naif_id = parent
+            tree_parent_naif = _resolve_parent_naif(parent_naif_id)
 
             sat_array = payload.get("sat") or []
             for idx, sat in enumerate(sat_array):
@@ -265,28 +322,57 @@ class SBDBSatellitesIngestor:
                         extras,
                     )
 
-                obj_row, sat_row = self._build_rows(
-                    parent_spkid,
-                    parent_object_id,
-                    parent_id,
-                    idx,
-                    sat,
-                )
-                objects.append(obj_row)
-                sats.append(sat_row)
+                iau_name = string_or_none(sat.get("iau_name"))
+                existing_id: str | None = None
+                if iau_name and tree_parent_naif is not None:
+                    existing_id = moon_index.get((tree_parent_naif, iau_name.lower()))
 
-                if len(objects) >= self.BATCH:
+                if existing_id is not None:
+                    sat_row = self._build_sat_row(
+                        existing_id,
+                        parent_object_id,
+                        parent_spkid,
+                        idx,
+                        sat,
+                        include_orbit=False,
+                    )
+                    sats.append(sat_row)
+                    self.merged_count += 1
+                    logger.info(
+                        "%s sat %d: merged %r into existing object %s",
+                        path.name,
+                        idx,
+                        iau_name,
+                        existing_id,
+                    )
+                else:
+                    sat_id = make_object_id(
+                        ID_TYPES.SBDB_SATELLITE, f"{parent_spkid}-{idx}"
+                    )
+                    obj_row = self._build_new_object_row(sat_id, sat, tree_parent_naif)
+                    sat_row = self._build_sat_row(
+                        sat_id,
+                        parent_object_id,
+                        parent_spkid,
+                        idx,
+                        sat,
+                        include_orbit=True,
+                    )
+                    objects.append(obj_row)
+                    sats.append(sat_row)
+                    self.new_objects += 1
+
+                if len(sats) >= self.BATCH:
                     self._flush(objects, sats)
-                    self.total_rows += len(objects)
                     objects.clear()
                     sats.clear()
 
         self._flush(objects, sats)
-        self.total_rows += len(objects)
 
         logger.info(
-            "Ingested %d SBDB satellites across %d parents",
-            self.total_rows,
+            "Ingested %d new SBDB satellite objects (+%d merged into existing rows) across %d parents",
+            self.new_objects,
+            self.merged_count,
             len(files) - self.no_parent_files,
         )
         if self.no_parent_files:

@@ -35,11 +35,14 @@ def ingest_objects(download_dir: Path) -> None:
     NAIF-keyed bodies; SPICE-source rows join it for elements).
     """
     sbdb.ingest(download_dir)
-    sbdb_satellites.ingest(download_dir)
     satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
     horizons.ingest(download_dir)
     spice.ingest(download_dir)
+    # Runs last so the name-match against Horizons/SPICE moons can find
+    # existing rows (e.g. Pluto's Charon) and merge SBDB metadata onto
+    # them instead of producing duplicate Object rows.
+    sbdb_satellites.ingest(download_dir)
 
 
 def ingest_features(download_dir: Path) -> None:
