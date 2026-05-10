@@ -951,10 +951,6 @@ export class SceneRenderer {
 	private tick = (): void => {
 		this.rafId = requestAnimationFrame(this.tick);
 
-		// Apply chosen north → camera.up before any controls.update() / lookAt
-		// downstream consumes it (focus animation reads camera.up directly,
-		// and OrbitControls re-derives its azimuth quat from camera.up each
-		// update() call).
 		this.updateCameraUp();
 
 		// Snap controls target on first frame
@@ -1521,6 +1517,11 @@ export class SceneRenderer {
 			this.upCurrentVec.copy(SceneRenderer._upRef).applyQuaternion(this._upQuatA);
 		}
 		this.camera.up.copy(this.upCurrentVec);
+
+		// OrbitControls caches its up→Y quat at construction and never refreshes it.
+		const ctrls = this.controls as unknown as { _quat: Quaternion; _quatInverse: Quaternion };
+		ctrls._quat.setFromUnitVectors(this.upCurrentVec, SceneRenderer._upRef);
+		ctrls._quatInverse.copy(ctrls._quat).invert();
 	}
 
 	/**
