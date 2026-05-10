@@ -45,6 +45,12 @@ export interface BodyObjects {
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
 	/**
+	 * Width/height segment count of the mesh's current `SphereGeometry`. The
+	 * per-frame sphere LOD pass swaps the geometry when the desired count
+	 * changes; `undefined` for virtual bodies (no mesh).
+	 */
+	currentSegments?: number;
+	/**
 	 * True when the current simulation `jd` is outside this body's chunk
 	 * validity window — set by `computePosition` each frame and read by
 	 * `updateBodyVisibility` to force the group hidden. Keeps the mesh at its

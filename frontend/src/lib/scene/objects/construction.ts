@@ -189,6 +189,7 @@ export function buildMajorBodies(
 			orbitLine,
 			radiusScene: radius,
 			cachedDist: 0,
+			currentSegments: isVirtual ? undefined : isStar ? 96 : 64,
 			isMinor,
 			rings: null,
 			eclipseShadow

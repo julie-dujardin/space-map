@@ -10,6 +10,7 @@ import {
 	Quaternion,
 	Raycaster,
 	Scene,
+	SphereGeometry,
 	TextureLoader,
 	Vector2,
 	Vector3,
@@ -19,7 +20,7 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
-import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
@@ -65,6 +66,49 @@ import { pickPointCloudBody } from './interaction/picking';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/**
+ * Sphere-LOD tiers, sorted by descending pixel-radius threshold. The first
+ * tier whose `up` is met (screenR ≥ up) sets the target segment count. Down-
+ * steps are gated by 15% hysteresis (see {@link desiredSphereSegments}) so a
+ * body sitting on a threshold doesn't flap geometry counts every frame as the
+ * camera jitters.
+ */
+const SPHERE_LOD_TIERS = [
+	{ up: 150, segs: 128 },
+	{ up: 40, segs: 64 },
+	{ up: 0, segs: 32 }
+];
+
+/**
+ * Cap for bodies outside the active planetary system (and not the sun): they
+ * never fill enough screen for higher counts to matter, so we skip the ladder
+ * entirely and stay cheap.
+ */
+const OUT_OF_SYSTEM_SPHERE_SEGMENTS = 24;
+
+function desiredSphereSegments(
+	screenR: number,
+	isStar: boolean,
+	inSystem: boolean,
+	current: number
+): number {
+	if (!inSystem && !isStar) return OUT_OF_SYSTEM_SPHERE_SEGMENTS;
+	let target = SPHERE_LOD_TIERS[SPHERE_LOD_TIERS.length - 1].segs;
+	for (const t of SPHERE_LOD_TIERS) {
+		if (screenR >= t.up) {
+			target = t.segs;
+			break;
+		}
+	}
+	// Hysteresis: only step *down* if we've fallen well below the current
+	// tier's up-threshold. Up-steps are immediate.
+	if (target < current) {
+		const currentTier = SPHERE_LOD_TIERS.find((t) => t.segs === current);
+		if (currentTier && screenR >= currentTier.up * 0.85) return current;
+	}
+	return target;
+}
 
 // --- SceneRenderer ---
 
@@ -1031,6 +1075,7 @@ export class SceneRenderer {
 		this.updateUserLocationOcclusion();
 
 		this.updateTextureLOD();
+		this.updateSphereLOD();
 
 		// Shadow light: swap between PointLight (solar system) and DirectionalLight (sub-system)
 		const sysId = this.ctx.activeSystemId;
@@ -1337,6 +1382,40 @@ export class SceneRenderer {
 	 * its screen-space radius. One-way upgrade — the prior texture is disposed
 	 * when a higher tier loads, so at most one tier per body lives on the GPU.
 	 */
+	/**
+	 * Per-frame sphere-geometry LOD: pick a segment count from {@link SPHERE_LOD_TIERS}
+	 * based on each body's screen-space pixel radius and swap `mesh.geometry`
+	 * when it changes. Bodies outside the active system (and not the sun) are
+	 * capped at {@link OUT_OF_SYSTEM_SPHERE_SEGMENTS} since they never fill
+	 * enough screen for facets to read at viewing scale. Hysteresis on the
+	 * down-step prevents thrash when zooming across a threshold.
+	 */
+	private updateSphereLOD(): void {
+		const fovRad = (this.camera.fov * Math.PI) / 180;
+		const screenH = this.renderer.domElement.clientHeight;
+		const projScale = screenH / (2 * Math.tan(fovRad / 2));
+		const activeSystem = this.ctx.activeSystemId;
+		const focusedId = this.focusedBody?.data.id;
+
+		for (const bo of this.bodyObjects.values()) {
+			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
+			if (bo.cachedDist <= 0) continue;
+			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
+			const isStar = bo.body.data.objectType === ObjectType.STAR;
+			const id = bo.body.data.id;
+			const inSystem = activeSystem
+				? id === activeSystem || this.ctx.isInActiveSystem(bo.body.data.parentId)
+				: id === focusedId;
+			const desired = desiredSphereSegments(screenR, isStar, inSystem, bo.currentSegments ?? 64);
+			if (desired === bo.currentSegments) continue;
+			const radius = kmToScene(effectiveRadiusKm(bo.body.data));
+			const old = bo.mesh.geometry;
+			bo.mesh.geometry = new SphereGeometry(radius, desired, desired);
+			old.dispose();
+			bo.currentSegments = desired;
+		}
+	}
+
 	private updateTextureLOD(): void {
 		const fovRad = (this.camera.fov * Math.PI) / 180;
 		const screenH = this.renderer.domElement.clientHeight;
