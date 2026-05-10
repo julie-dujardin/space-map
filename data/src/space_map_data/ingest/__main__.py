@@ -15,9 +15,10 @@ from space_map_data.ingest.common import (
     ingest_images,
     log_db_summary,
 )
+from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
 
-ALL_TARGETS = ["objects", "features", "wikidata", "images", "textures"]
+ALL_TARGETS = ["objects", "features", "wikidata", "images", "textures", "rings"]
 
 
 def cli():
@@ -33,7 +34,7 @@ def cli():
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Reprocess even if output already exists (textures)",
+        help="Reprocess even if output already exists (textures, rings)",
     )
     args = parser.parse_args()
 
@@ -62,6 +63,8 @@ def cli():
             log_db_summary(start_time=start_time)
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
+        if "rings" in selected:
+            RingProcessor().process_all(force=args.force)
 
 
 if __name__ == "__main__":

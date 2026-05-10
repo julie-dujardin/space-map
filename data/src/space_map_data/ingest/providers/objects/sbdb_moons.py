@@ -251,7 +251,7 @@ class SBDBMoonsIngestor:
             name=display_name,
             object_type=ObjectType.moon,
             provisional_designation=prov_des,
-            scale=ElementsScale.planet,
+            scale=ElementsScale.system,
             parent_id=tree_parent_object_id,
             orbital_source=OrbitalSource.sbdb_moon.value,
         )

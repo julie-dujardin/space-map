@@ -147,6 +147,7 @@ class Object(Base):
 
     map_texture_available: Mapped[bool] = mapped_column(default=False)
     image_available: Mapped[bool] = mapped_column(default=False)
+    has_rings: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
