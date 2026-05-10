@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 WIKI_DIR = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA
 
+# SQLite caps bind parameters per statement (default 32766; ~999 on older
+# builds). Chunk well below either ceiling.
+_UPDATE_CHUNK = 500
+
 
 def ingest() -> None:
     """Reset ``has_wikipedia_description`` then mark Objects with a usable summary."""
@@ -39,10 +43,12 @@ def ingest() -> None:
             available_ids.add(obj_id)
 
     session.query(Object).update({Object.has_wikipedia_description: False})
-    if available_ids:
+    ids_list = list(available_ids)
+    for start in range(0, len(ids_list), _UPDATE_CHUNK):
+        chunk = ids_list[start : start + _UPDATE_CHUNK]
         session.execute(
             update(Object)
-            .where(Object.id.in_(list(available_ids)))
+            .where(Object.id.in_(chunk))
             .values(has_wikipedia_description=True)
         )
     session.commit()
