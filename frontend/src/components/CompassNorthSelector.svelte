@@ -2,6 +2,8 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
 	import CompassIcon from '@lucide/svelte/icons/compass';
+	import EarthIcon from '@lucide/svelte/icons/earth';
+	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import type { NorthChoice } from '$lib/scene/north-reference';
 
 	interface Props {
@@ -16,7 +18,7 @@
 
 <Popover.Root bind:open>
 	<Popover.Trigger
-		class="pointer-events-auto flex items-center justify-center
+		class="pointer-events-auto relative flex items-center justify-center
 			w-10 h-10 md:w-8 md:h-8 rounded-full
 			bg-primary-foreground hover:bg-primary-foreground/80
 			text-primary transition-colors cursor-pointer"
@@ -24,6 +26,18 @@
 		aria-label={m.north_reference()}
 	>
 		<CompassIcon class="size-5 md:size-4" />
+		<span
+			class="absolute -bottom-0.5 -end-0.5 size-5 md:size-4.5 rounded-full
+				bg-primary text-primary-foreground
+				flex items-center justify-center pointer-events-none"
+			aria-hidden="true"
+		>
+			{#if selectedId === null}
+				<OrbitIcon class="size-3.5" />
+			{:else}
+				<EarthIcon class="size-3.5" />
+			{/if}
+		</span>
 	</Popover.Trigger>
 	<Popover.Content side="left" align="end" sideOffset={8} class="w-48 p-1">
 		<div class="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
