@@ -147,6 +147,7 @@ class Object(Base):
 
     map_texture_available: Mapped[bool] = mapped_column(default=False)
     image_available: Mapped[bool] = mapped_column(default=False)
+    has_wikipedia_description: Mapped[bool] = mapped_column(default=False)
     has_rings: Mapped[bool] = mapped_column(default=False)
     # True when this row carries the orbital elements needed to ship in a
     # position file (Keplerian/SGP4/parabolic). Computed at ingest from the

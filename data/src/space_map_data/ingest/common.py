@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import func
 
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import iau_nomenclature, image_selection
+from space_map_data.ingest.providers import iau_nomenclature, image_selection, wikipedia
 from space_map_data.ingest.providers.objects import (
     celestrak,
     horizons,
@@ -72,6 +72,15 @@ def ingest_images() -> None:
     image_selection.ingest()
 
 
+def ingest_wikipedia() -> None:
+    """Set ``Object.has_wikipedia_description`` from downloaded summaries.
+
+    Must run after ``ingest_wikidata`` so every Object's ``wikidata_qid`` is
+    in place — the lookup is keyed on QID.
+    """
+    wikipedia.ingest()
+
+
 def log_db_summary(start_time: float | None = None) -> None:
     """Log object counts by type, plus elapsed wall-time if start_time is given."""
     session = get_session()
@@ -95,5 +104,6 @@ def ingest(download_dir: Path) -> None:
     ingest_features(download_dir)
     ingest_wikidata(download_dir)
     ingest_images()
+    ingest_wikipedia()
     log_db_summary()
     logger.info("Database ready.")

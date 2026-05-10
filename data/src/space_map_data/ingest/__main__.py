@@ -13,12 +13,21 @@ from space_map_data.ingest.common import (
     ingest_features,
     ingest_wikidata,
     ingest_images,
+    ingest_wikipedia,
     log_db_summary,
 )
 from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
 
-ALL_TARGETS = ["objects", "features", "wikidata", "images", "textures", "rings"]
+ALL_TARGETS = [
+    "objects",
+    "features",
+    "wikidata",
+    "images",
+    "wikipedia",
+    "textures",
+    "rings",
+]
 
 
 def cli():
@@ -59,7 +68,12 @@ def cli():
             ingest_wikidata(DOWNLOAD_DIR)
         if "images" in selected:
             ingest_images()
-        if any(t in selected for t in ("objects", "features", "wikidata", "images")):
+        if "wikipedia" in selected:
+            ingest_wikipedia()
+        if any(
+            t in selected
+            for t in ("objects", "features", "wikidata", "images", "wikipedia")
+        ):
             log_db_summary(start_time=start_time)
         if "textures" in selected:
             TextureProcessor().process_all(force=args.force)
