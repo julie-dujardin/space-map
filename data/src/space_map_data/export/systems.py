@@ -120,6 +120,53 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     return result
 
 
+def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load all per-body ring metadata.json files from the export tree.
+
+    Returns {object_id: metadata_dict}. Only bodies whose ring bundle was
+    successfully ingested are included.
+    """
+    rings_dir = out_dir / "rings"
+    result: dict[str, dict] = {}
+    if not rings_dir.exists():
+        return result
+    for body_dir in rings_dir.iterdir():
+        if not body_dir.is_dir():
+            continue
+        meta_file = body_dir / "metadata.json"
+        if meta_file.exists():
+            result[body_dir.name] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded ring metadata for %d bodies", len(result))
+    return result
+
+
+def ring_block(meta: dict) -> dict:
+    """Build the per-body `rings` block emitted into systems/{bary}.json and
+    the global object detail.
+
+    Carries the geometry constants the renderer needs (inner/outer radius,
+    sample count, color space) plus credit fields and a flat channel→file
+    map; the frontend composes URLs as
+    ``/v1/rings/{body_id}/{channels[name]}``.
+    """
+    block = {
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "inner_radius_km": float(meta["inner_radius_km"]),
+        "outer_radius_km": float(meta["outer_radius_km"]),
+        "sample_count": int(meta["sample_count"]),
+        "color_space": meta.get("color_space", "srgb"),
+        "channels": {
+            name: rec["file"] for name, rec in meta["channels"].items()
+        },
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
+
+
 def load_radii(download_dir: Path) -> dict[int, dict]:
     """Load triaxial radii from SPICE radii.csv.
 
@@ -203,6 +250,7 @@ def write_system_metadata(
     radii: dict[int, dict],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    ring_metadata: dict[str, dict],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -287,6 +335,18 @@ def write_system_metadata(
             # Triaxial radii (km, along body-fixed X, Y, Z)
             if obj.naif_id is not None and obj.naif_id in radii:
                 entry["radii"] = radii[obj.naif_id]
+
+            # Ring profile bundle (only on bodies whose ingest produced one).
+            if obj.has_rings:
+                meta = ring_metadata.get(obj.id)
+                if meta is not None:
+                    entry["rings"] = ring_block(meta)
+                else:
+                    logger.warning(
+                        "Ring metadata missing for %s (system %s), skipping",
+                        obj.id,
+                        sys_id,
+                    )
 
             if entry:
                 bodies[obj.id] = entry
