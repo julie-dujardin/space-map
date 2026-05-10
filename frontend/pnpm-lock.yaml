@@ -1719,10 +1719,10 @@ packages:
       }
     engines: { node: '>=8' }
 
-  devalue@5.6.3:
+  devalue@5.8.0:
     resolution:
       {
-        integrity: sha512-nc7XjUU/2Lb+SvEFVGcWLiKkzfw8+qHI7zn8WYXKkLMgfGSHbgCEaR6bJpev8Cm6Rmrb19Gfd/tZvGqx9is3wg==
+        integrity: sha512-2zA9pFEsnp7vWBZbXF5JAgAq0fsUIt/1XPbRiAmRV3lp/2C3upzH+sADiyy66aFCihoLEsrQHxNM5w1gIDfsBg==
       }
 
   enhanced-resolve@5.20.0:
@@ -3697,7 +3697,7 @@ snapshots:
       '@types/cookie': 0.6.0
       acorn: 8.16.0
       cookie: 0.6.0
-      devalue: 5.6.3
+      devalue: 5.8.0
       esm-env: 1.2.2
       kleur: 4.1.5
       magic-string: 0.30.21
@@ -4057,7 +4057,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  devalue@5.6.3: {}
+  devalue@5.8.0: {}
 
   enhanced-resolve@5.20.0:
     dependencies:
@@ -4713,7 +4713,7 @@ snapshots:
       aria-query: 5.3.1
       axobject-query: 4.1.0
       clsx: 2.1.1
-      devalue: 5.6.3
+      devalue: 5.8.0
       esm-env: 1.2.2
       esrap: 2.2.3
       is-reference: 3.0.3
