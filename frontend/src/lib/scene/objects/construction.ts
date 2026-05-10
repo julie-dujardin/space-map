@@ -32,7 +32,7 @@ import {
 	makeStarGlow,
 	makeStarPoint
 } from './builders';
-import { loadRingNode, type RingMeta } from './rings';
+import { attachRingShadowToPlanet, loadRingNode, type RingMeta } from './rings';
 import type { BodyObjects } from '../types';
 
 function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
@@ -550,6 +550,19 @@ export async function loadSystemData(
 					bo.rings = node;
 					scene.add(node.mesh);
 					bo.extraObjects.push(node.mesh);
+					// Analytical ring shadow on the planet itself. The planet
+					// material is built as a MeshStandardMaterial in
+					// `buildMajorBodies`; this swaps in an onBeforeCompile that
+					// adds a ray-march to the ring plane after the standard
+					// lighting calc.
+					if (bo.mesh) {
+						node.planetShadow = attachRingShadowToPlanet(
+							bo.mesh.material as MeshStandardMaterial,
+							node.innerScene,
+							node.outerScene,
+							node.transparency
+						);
+					}
 				})
 			);
 		}

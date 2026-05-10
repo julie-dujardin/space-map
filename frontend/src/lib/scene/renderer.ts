@@ -235,12 +235,7 @@ export class SceneRenderer {
 		// Shadow-casting directional light (swapped in when zoomed into a sub-system)
 		this.shadowLight = new DirectionalLight(0xffffff, 0);
 		this.shadowLight.castShadow = true;
-		// 8192² fits the directional shadow well within typical WebGL texture
-		// limits (max texture size is 16384 on desktop GPUs, 4096–8192 on
-		// mobile). Pushes ring-shadow texel density on Saturn from ~70 km/texel
-		// at 4k to ~35 km/texel — the difference between blocky shadow bands
-		// and recognisable ring structure (Cassini division, A/B/C boundaries).
-		this.shadowLight.shadow.mapSize.set(8192, 8192);
+		this.shadowLight.shadow.mapSize.set(4096, 4096);
 		this.shadowLight.shadow.bias = -0.00001;
 		this.scene.add(this.shadowLight);
 		this.scene.add(this.shadowLight.target);
@@ -1052,10 +1047,10 @@ export class SceneRenderer {
 			if (this.sunPointLight) this.sunPointLight.intensity = 0;
 
 			// Lateral extent: tight to camera view for high texel density,
-			// floored by the largest ring outer radius in the focused system so
-			// Saturn's shadow on the rings stays on-screen when the camera is
-			// zoomed in close to the planet (otherwise the rings sit outside
-			// the shadow map and render unshadowed).
+			// floored by the largest ring outer radius in the focused system
+			// so the planet's shadow on the rings (the *other* direction —
+			// rings receive into the shadow map) stays on-screen when the
+			// camera is zoomed in close to the planet.
 			let ringFloor = 0;
 			for (const bo of this.bodyObjects.values()) {
 				if (!bo.rings) continue;
@@ -1232,24 +1227,40 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Refresh `uSunDir` on every active ring shader. The lit/unlit branch in
-	 * the ring fragment shader compares this direction against the ring's
-	 * world-space normal (the body's pole), so it must track the body's
-	 * heliocentric vector as the planet orbits the sun.
-	 *
-	 * Computed in true (non-focus-relative) coordinates: the difference
-	 * `sunPos − bodyPos` is identical in scene coords because both points
-	 * receive the same focus offset, and using true positions lets us read
-	 * directly from `body.position` without subtracting the focus basis.
+	 * Refresh per-frame ring uniforms — both the ring material's lit/unlit
+	 * sun direction, and the planet material's analytical ring-shadow inputs
+	 * (sun direction, pole direction, planet center). The shadow ray-march
+	 * runs entirely in world space, so all three vectors need updating as the
+	 * body orbits, spins, and the focus basis shifts.
 	 */
 	private updateRingShaders(): void {
 		const sunPos = this.bodyObjects.get('naif-10')?.body.position;
 		if (!sunPos) return;
+		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
 			if (!bo.rings) continue;
-			const dir = bo.rings.material.uniforms.uSunDir.value as Vector3;
 			const [bx, by, bz] = bo.body.position;
-			dir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
+
+			// uSunDir on the ring material — direction body → sun in true
+			// world coords. Same in scene/focus-relative coords because the
+			// focus offset cancels.
+			const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
+			ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
+
+			// Planet-side ring-shadow uniforms — only present once
+			// `attachRingShadowToPlanet` has run for this body.
+			const ps = bo.rings.planetShadow;
+			if (!ps) continue;
+			ps.uRingShadowSunDir.value.copy(ringSunDir);
+			// Pole direction = body's quaternion applied to +Y. `bo.mesh`
+			// always carries that quaternion via `applyOrientation`.
+			if (bo.mesh) {
+				ps.uRingShadowPoleDir.value.set(0, 1, 0).applyQuaternion(bo.mesh.quaternion);
+			}
+			// Planet center in scene (focus-relative) world coords. The
+			// `vRingShadowWorldPos` varying is also focus-relative, so the
+			// subtraction inside the shader stays consistent.
+			ps.uRingShadowCenter.value.set(bx - fx, by - fy, bz - fz);
 		}
 	}
 

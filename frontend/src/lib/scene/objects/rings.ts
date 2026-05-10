@@ -17,9 +17,8 @@ import {
 	LinearFilter,
 	type Material,
 	Mesh,
-	MeshDepthMaterial,
+	type MeshStandardMaterial,
 	NormalBlending,
-	RGBADepthPacking,
 	RingGeometry,
 	ShaderMaterial,
 	SRGBColorSpace,
@@ -54,21 +53,24 @@ export interface RingMeta {
 export interface RingNode {
 	mesh: Mesh;
 	material: ShaderMaterial;
+	/** Transparency profile texture — shared with the planet's ray-march
+	 *  ring-shadow path so we don't load it twice. */
+	transparency: Texture;
+	/** Inner ring radius in scene units. Used by the planet's ring-shadow
+	 *  ray-march to clip intersections to the actual annulus. */
+	innerScene: number;
 	/** Outer ring radius in scene units. Used by the renderer to grow the
 	 *  shadow-camera frustum so the planet's shadow on the rings stays
-	 *  on-screen even when the camera is zoomed in close to the planet. */
+	 *  on-screen even when the camera is zoomed in close to the planet,
+	 *  and also by the ray-march clipping. */
 	outerScene: number;
+	/** Live per-frame uniforms on the planet material's ring-shadow path —
+	 *  null until {@link attachRingShadowToPlanet} runs. The renderer mutates
+	 *  the contained Vector3 values in place each frame. */
+	planetShadow: PlanetRingShadowUniforms | null;
 }
 
 const RING_ANGULAR_SEGMENTS = 256;
-
-/**
- * Alpha threshold for shadow casting. Fragments where the ring is more
- * transparent than this don't write to the shadow map — keeps the
- * Cassini division and other gaps clearly visible in Saturn's projected
- * ring shadow instead of a solid disc.
- */
-const RING_SHADOW_ALPHA_THRESHOLD = 0.35;
 
 function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise<Texture> {
 	return new Promise((resolve, reject) => {
@@ -211,59 +213,118 @@ const FRAGMENT_SHADER = `
 `;
 
 /**
- * Custom depth material for the shadow-casting pass. Three's default
- * MeshDepthMaterial writes a solid disc — fine for an opaque sphere, but a
- * ring is mostly empty space. We patch the depth shader to sample the
- * transparency profile and discard fragments where the ring is more empty
- * than {@link RING_SHADOW_ALPHA_THRESHOLD}, so the projected shadow on
- * Saturn shows the ring banding (Cassini division, A/B/C boundaries) instead
- * of an opaque disc.
- *
- * `depthPacking: RGBADepthPacking` matches what `WebGLShadowMap` expects when
- * the renderer hasn't been configured for depth textures — same packing the
- * stock `MeshDepthMaterial` uses on receiveShadow surfaces.
+ * Per-frame uniforms driving the ring-shadow ray-march inside the planet's
+ * MeshStandardMaterial — see {@link attachRingShadowToPlanet}. The renderer
+ * updates each Vector3 in place each frame; the texture and radii are
+ * loaded once.
  */
-function makeRingDepthMaterial(
-	transparency: Texture,
-	innerScene: number,
-	outerScene: number
-): MeshDepthMaterial {
-	const material = new MeshDepthMaterial({
-		depthPacking: RGBADepthPacking,
-		side: DoubleSide
-	});
-	material.onBeforeCompile = (shader) => {
-		shader.uniforms.uTransparency = { value: transparency };
-		shader.uniforms.uInnerScene = { value: innerScene };
-		shader.uniforms.uOuterScene = { value: outerScene };
-		shader.uniforms.uAlphaThreshold = { value: RING_SHADOW_ALPHA_THRESHOLD };
+export interface PlanetRingShadowUniforms {
+	uRingShadowTransparency: { value: Texture };
+	uRingShadowInnerScene: { value: number };
+	uRingShadowOuterScene: { value: number };
+	/** World-space unit vector pointing from the planet toward the sun. */
+	uRingShadowSunDir: { value: Vector3 };
+	/** World-space unit vector along the planet's spin axis (= ring plane normal). */
+	uRingShadowPoleDir: { value: Vector3 };
+	/** World-space (focus-relative) position of the planet's center. */
+	uRingShadowCenter: { value: Vector3 };
+}
 
+/**
+ * Attach an analytical ring-shadow ray-march to the planet's standard
+ * material. For each lit fragment we trace from the surface toward the sun,
+ * intersect the ring plane, sample the transparency profile at the
+ * intersection radius, and apply Beer–Lambert (with slant correction for
+ * grazing solar elevation) to attenuate the direct light.
+ *
+ * Beats a shadow-map cast for transparent ring profiles: no rasterization
+ * resolution, no dither artifacts, partial transparency comes out for free
+ * via `pow(transparency, 1 / sin(elevation))`.
+ *
+ * `material.onBeforeCompile` triggers a one-shot recompile (we set
+ * `needsUpdate`); the returned uniforms object is the live reference the
+ * renderer mutates each frame.
+ */
+export function attachRingShadowToPlanet(
+	planetMaterial: MeshStandardMaterial,
+	innerScene: number,
+	outerScene: number,
+	transparency: Texture
+): PlanetRingShadowUniforms {
+	const uniforms: PlanetRingShadowUniforms = {
+		uRingShadowTransparency: { value: transparency },
+		uRingShadowInnerScene: { value: innerScene },
+		uRingShadowOuterScene: { value: outerScene },
+		uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
+		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
+		uRingShadowCenter: { value: new Vector3(0, 0, 0) }
+	};
+
+	planetMaterial.onBeforeCompile = (shader) => {
+		Object.assign(shader.uniforms, uniforms);
+
+		// Expose the fragment's world-space position to the fragment shader.
+		// MeshStandardMaterial doesn't ship `vWorldPosition` to fragments by
+		// default; we add our own varying so the ray-march can compute the
+		// vector from surface → ring plane.
 		shader.vertexShader = shader.vertexShader
-			.replace('#include <common>', '#include <common>\nvarying vec3 vRingLocalPos;')
-			.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRingLocalPos = position;');
+			.replace(
+				'#include <common>',
+				'#include <common>\nvarying vec3 vRingShadowWorldPos;'
+			)
+			.replace(
+				'#include <begin_vertex>',
+				'#include <begin_vertex>\nvRingShadowWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;'
+			);
 
 		shader.fragmentShader = shader.fragmentShader
 			.replace(
 				'#include <common>',
 				`#include <common>
-				uniform sampler2D uTransparency;
-				uniform float uInnerScene;
-				uniform float uOuterScene;
-				uniform float uAlphaThreshold;
-				varying vec3 vRingLocalPos;`
+				uniform sampler2D uRingShadowTransparency;
+				uniform float uRingShadowInnerScene;
+				uniform float uRingShadowOuterScene;
+				uniform vec3 uRingShadowSunDir;
+				uniform vec3 uRingShadowPoleDir;
+				uniform vec3 uRingShadowCenter;
+				varying vec3 vRingShadowWorldPos;
+
+				float ringShadowFactor() {
+					// Ray-plane intersect: starting from the lit surface, march
+					// along the sun direction. The ring plane passes through the
+					// planet's center with normal = pole direction.
+					float denom = dot(uRingShadowSunDir, uRingShadowPoleDir);
+					if (abs(denom) < 1e-6) return 1.0; // sun grazing the ring plane
+					vec3 rel = vRingShadowWorldPos - uRingShadowCenter;
+					float t = -dot(rel, uRingShadowPoleDir) / denom;
+					if (t < 0.0) return 1.0; // ring is behind the sun from this surface point
+					vec3 hit = rel + t * uRingShadowSunDir;
+					// Radial distance in the ring plane (subtract out-of-plane component).
+					vec3 hitPerp = hit - dot(hit, uRingShadowPoleDir) * uRingShadowPoleDir;
+					float r = length(hitPerp);
+					if (r < uRingShadowInnerScene || r > uRingShadowOuterScene) return 1.0;
+					float u = (r - uRingShadowInnerScene) / (uRingShadowOuterScene - uRingShadowInnerScene);
+					float trans = texture2D(uRingShadowTransparency, vec2(clamp(u, 0.0, 1.0), 0.5)).r;
+					// Beer–Lambert with slant correction: ray traverses 1/sin(B)
+					// times the normal optical depth where B is the sun's
+					// elevation above the ring plane. transparency stored on
+					// disk is exp(-tau_normal), so slant transmittance is
+					// pow(transparency, 1/sin(B)). Clamp sinB to avoid blow-up
+					// when the sun lies almost in the ring plane.
+					float sinB = abs(denom);
+					return pow(max(trans, 1e-4), 1.0 / max(sinB, 0.02));
+				}`
 			)
 			.replace(
-				'void main() {',
-				`void main() {
-					float ringRadius = length(vRingLocalPos.xz);
-					float ringT = (ringRadius - uInnerScene) / (uOuterScene - uInnerScene);
-					if (ringT < 0.0 || ringT > 1.0) discard;
-					float ringAlpha = 1.0 - texture2D(uTransparency, vec2(clamp(ringT, 0.0, 1.0), 0.5)).r;
-					if (ringAlpha < uAlphaThreshold) discard;
-				`
+				'#include <lights_fragment_end>',
+				`#include <lights_fragment_end>
+				float ringShadow = ringShadowFactor();
+				reflectedLight.directDiffuse *= ringShadow;
+				reflectedLight.directSpecular *= ringShadow;`
 			);
 	};
-	return material;
+	planetMaterial.needsUpdate = true;
+	return uniforms;
 }
 
 export async function loadRingNode(
@@ -340,11 +401,12 @@ export async function loadRingNode(
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
 	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
 	mesh.receiveShadow = true; // planet shadow on rings
-	mesh.castShadow = true; // ring shadow on planet (depth-only pass uses customDepthMaterial)
-	mesh.customDepthMaterial = makeRingDepthMaterial(transparency, innerScene, outerScene);
 	mesh.userData.isRingMesh = true;
+	// Ring → planet shadow is handled by an analytical ray-march in the
+	// planet's own material (see `attachRingShadowToPlanet`), so the ring
+	// doesn't cast into the shadow map.
 
-	return { mesh, material, outerScene };
+	return { mesh, material, transparency, innerScene, outerScene, planetShadow: null };
 }
 
 /** Dispose all GPU resources owned by a ring node. */
@@ -356,5 +418,4 @@ export function disposeRingNode(ring: RingNode): void {
 		tex?.dispose();
 	}
 	(ring.mesh.material as Material).dispose();
-	(ring.mesh.customDepthMaterial as Material | undefined)?.dispose();
 }
