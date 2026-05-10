@@ -136,23 +136,29 @@ const VERTEX_SHADER = `
 `;
 
 /**
- * Phase-angle-aware fragment shader. Three sample sources per ring strip:
- *  - `backscattered`: lit-side appearance at low phase (sun ~behind viewer).
- *    Tinted by the Cassini-derived `color` profile, which BJJ explicitly
- *    calibrates against backscattered light only.
- *  - `forwardscattered`: high-phase appearance, where sunlight diffracts
- *    through the icy particles toward the camera (camera roughly opposite
- *    the sun across the ring). Used as the high-phase mix on the unlit side.
- *  - `unlitside`: low-phase view of the unlit face. Diffuse light transmitted
- *    through the ring material; spectrally distinct from backscatter, so we
- *    use a fixed warm-white tint instead of the color profile.
+ * Phase-angle-aware fragment shader. Three sample sources per ring strip,
+ * picked by ring-plane side and phase angle per BJJ's documentation:
  *
- * Geometry: phase angle α is the sun-ring-camera angle. cos(α) = dot(sunDir,
- * viewDir) where both are unit vectors from the surface point. Lit side
- * (sun and camera on the same face) corresponds to α ∈ [0°, 90°), unlit
- * side to α ∈ (90°, 180°]. We blend forward in as α → 180° on the unlit
- * side; the lit side stays pure backscatter (forward scatter on the lit
- * side is not what BJJ's forward channel is calibrated for).
+ *  - **Lit side** (observer and sun on the same side of the ring plane):
+ *    blend between `backscattered` (low phase, color-tinted) and
+ *    `forwardscattered` (high phase, warm-white tint) based on phase angle.
+ *    Per BJJ, backscattered is "the appearance at phase angle 0°" and
+ *    forwardscattered was "captured at phase angle 139°"; the blend lets
+ *    the rings dim and shift toward forward as the camera moves to the
+ *    far-azimuth side of the sun.
+ *  - **Unlit side** (observer and sun on opposite sides of the ring plane):
+ *    use the `unlitside` profile — this *is* the forward / transmitted
+ *    appearance for opposite-side viewing per BJJ ("how well sunlight
+ *    filters through the rings"). No phase blend on this side.
+ *
+ * The Cassini-derived `color` profile is calibrated against backscatter
+ * only, so it's applied only to the backscattered branch; the forward and
+ * unlit branches use a fixed warm-white tint per BJJ's recommendation.
+ *
+ * Geometry: side is decided by `dot(uSunDir, N) > 0` where N is the outward
+ * normal of the face being viewed (gl_FrontFacing-flipped). Phase angle α
+ * uses `cos α = dot(sunDir, viewDir)` against the auto-injected
+ * `cameraPosition`.
  *
  * Radial sampling: vertices are pre-rotated so the ring sits in the local XZ
  * plane; the radial coordinate is `length(localPos.xz)`, normalised to
@@ -160,10 +166,6 @@ const VERTEX_SHADER = `
  *
  * Transparency convention follows BJJ: profile value = 1 → empty space
  * (transparent), 0 → opaque ring material. Alpha is therefore `1 - profile`.
- *
- * Side detection: a single DoubleSide draw uses `gl_FrontFacing` to know
- * which face this fragment belongs to, then flips the world-space normal so
- * the lit/unlit test sees the *outward* normal regardless of side.
  */
 const FRAGMENT_SHADER = `
 	#include <common>
@@ -190,6 +192,11 @@ const FRAGMENT_SHADER = `
 	// that's what BJJ recommends.
 	const vec3 UNLIT_TINT = vec3(1.0, 0.97075, 0.952);
 
+	// Slight red bias on top of the color profile for the forward-scatter
+	// branch, matching BJJ's "becoming slightly redder" observation as
+	// phase angle climbs.
+	const vec3 FORWARD_TINT_BIAS = vec3(1.02, 0.99, 0.97);
+
 	void main() {
 		float radius = length(vLocalPos.xz);
 		float t = (radius - uInnerScene) / (uOuterScene - uInnerScene);
@@ -207,29 +214,44 @@ const FRAGMENT_SHADER = `
 		// Lit if the sun is on the same side of the ring plane as this face.
 		bool lit = dot(uSunDir, N) > 0.0;
 
-		// cosAlpha = cos(phase angle). +1 = sun aligned with view (low phase,
-		// pure backscatter); -1 = sun directly opposite view (high phase,
-		// forward scatter). cameraPosition is auto-injected by three.js.
+		// cosAlpha = cos(phase angle). +1 = sun aligned with view (low phase),
+		// -1 = sun directly opposite view (high phase). cameraPosition is
+		// auto-injected by three.js.
 		vec3 viewDir = normalize(cameraPosition - vWorldPos);
 		float cosAlpha = dot(uSunDir, viewDir);
 
-		vec3 albedo;
-		vec3 tint;
+		vec3 finalAlbedo;
 		if (lit) {
-			// Lit side stays pure backscatter — geometrically α < 90° here, so
-			// forward scatter doesn't physically apply.
-			albedo = texture2D(uBackscattered, uv).rgb;
-			tint = texture2D(uColor, uv).rgb;
+			// Sun and observer on the same side of the ring plane. Blend
+			// backscatter → forward scatter with phase angle. smoothstep
+			// across the full [-1, 1] cosAlpha range gives a sigmoidal
+			// transition centered on edge-on viewing (α = 90°) — at α = 139°
+			// (BJJ's reference forward image), wForward ≈ 0.87, mostly
+			// forward. Pure backscatter at α = 0°, pure forward at α → 180°
+			// (which lit-side viewing can approach when the sun grazes the
+			// ring plane and the camera sits on the far azimuthal side).
+			//
+			// Both branches share the Cassini-derived color profile: BJJ
+			// notes it's photometrically calibrated against backscatter only,
+			// but forward-scattered Cassini imagery (e.g. "In Saturn's
+			// Shadow") clearly keeps the ring's tan/gold hue with a slight
+			// red shift, so dropping color entirely (pure grayscale) is
+			// visibly wrong. Using the same tint plus a small red bias on
+			// the forward branch matches BJJ's "becoming slightly redder"
+			// description while preserving the radial color variation.
+			vec3 colorTint = texture2D(uColor, uv).rgb;
+			vec3 forwardTint = colorTint * FORWARD_TINT_BIAS;
+			vec3 back = texture2D(uBackscattered, uv).rgb * colorTint;
+			vec3 forward = texture2D(uForwardscattered, uv).rgb * forwardTint;
+			float wForward = 1.0 - smoothstep(-1.0, 1.0, cosAlpha);
+			finalAlbedo = mix(back, forward, wForward);
 		} else {
-			// Unlit side: blend unlit (α ≈ 90°, cosAlpha ≈ 0) → forward
-			// (α ≈ 180°, cosAlpha ≈ -1). smoothstep on -cosAlpha gives a soft
-			// rolloff so the transition through edge-on viewing isn't a hard
-			// seam.
-			float wForward = smoothstep(0.1, 0.9, -cosAlpha);
-			vec3 unlitSample = texture2D(uUnlitside, uv).rgb;
-			vec3 forwardSample = texture2D(uForwardscattered, uv).rgb;
-			albedo = mix(unlitSample, forwardSample, wForward);
-			tint = UNLIT_TINT;
+			// Sun and observer on opposite sides of the ring plane. BJJ's
+			// unlitside profile *is* the transmitted-light appearance for
+			// this geometry and doesn't get a separate phase-angle blend —
+			// dense regions read dark, transparent regions glow brighter as
+			// sunlight filters through.
+			finalAlbedo = texture2D(uUnlitside, uv).rgb * UNLIT_TINT;
 		}
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
 		float alpha = 1.0 - texture2D(uTransparency, uv).r;
@@ -254,7 +276,7 @@ const FRAGMENT_SHADER = `
 			);
 		#endif
 
-		gl_FragColor = vec4(albedo * tint * shadow, alpha);
+		gl_FragColor = vec4(finalAlbedo * shadow, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
