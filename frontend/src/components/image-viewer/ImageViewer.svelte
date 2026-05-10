@@ -254,8 +254,8 @@
 
 <style>
 	:global(.pswp) {
-		backdrop-filter: blur(10px);
 		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
 	}
 
 	/* Vaul/bits-ui Dialog in modal mode sets `pointer-events: none` on a
@@ -294,16 +294,16 @@
 		flex-direction: column;
 		pointer-events: none;
 		background: rgba(0, 0, 0, 0.55);
-		backdrop-filter: blur(10px);
 		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
 	}
 	@media (min-width: 768px) {
 		:global(.pswp-space-map .pswp-sm-caption-root) {
 			flex-direction: row;
 			align-items: flex-end;
 			background: none;
-			backdrop-filter: none;
 			-webkit-backdrop-filter: none;
+			backdrop-filter: none;
 		}
 	}
 
@@ -324,8 +324,8 @@
 			max-width: 50%;
 			padding: 0.625rem 0;
 			background: rgba(0, 0, 0, 0.55);
-			backdrop-filter: blur(10px);
 			-webkit-backdrop-filter: blur(10px);
+			backdrop-filter: blur(10px);
 		}
 	}
 
@@ -392,8 +392,8 @@
 			width: auto;
 			padding: 0.25rem 0.5rem;
 			background: rgba(0, 0, 0, 0.55);
-			backdrop-filter: blur(10px);
 			-webkit-backdrop-filter: blur(10px);
+			backdrop-filter: blur(10px);
 			border-start-start-radius: 2px;
 		}
 	}
