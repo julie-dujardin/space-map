@@ -962,9 +962,11 @@ UNPREFERRED_SLUGS: frozenset[str] = frozenset(
         "thor",  # thor rocket is more specific, few entries that don't match its prefixes are thor sats
         "sbas",  # type of sat
         "argos",
-        "usa-classified",
         "us-ops-classified",
         "cosmos",
+        "ses",
+        "telesat",
+        "intelsat",
         "tdrss",  # secondary use of some sats (iss)
         "intelsat",  # Multiple constellations
         *CLASSIFIED_BY_OWNER.values(),
