@@ -4,7 +4,6 @@ import {
 	DirectionalLight,
 	Float32BufferAttribute,
 	Mesh,
-	PCFSoftShadowMap,
 	PerspectiveCamera,
 	PointLight,
 	Points,
@@ -221,8 +220,8 @@ export class SceneRenderer {
 		// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
 		// size so the requested width reads as pixels regardless of devicePixelRatio.
 		setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
-		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = PCFSoftShadowMap;
+		// Shadow map is unused — body-on-body shadows are computed
+		// analytically per-fragment by the eclipse / ring-shadow paths.
 
 		// CSS2D label renderer
 		this.labelRenderer = new CSS2DRenderer({ element: labelContainer });
@@ -1277,14 +1276,28 @@ export class SceneRenderer {
 		const eclipse = getEclipseSceneUniforms();
 		const sunBo = this.bodyObjects.get('naif-10');
 		if (!sunBo) {
-			eclipse.uSunRadiusScene.value = 0;
+			eclipse.uSunAngularRadius.value = 0;
 			eclipse.uOccluderCount.value = 0;
 			return;
 		}
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const sunPos = sunBo.body.position;
-		eclipse.uSunPos.value.set(sunPos[0] - fx, sunPos[1] - fy, sunPos[2] - fz);
-		eclipse.uSunRadiusScene.value = sunBo.radiusScene;
+		// Sun→focus vector is huge in scene units (~1 AU), so do the
+		// magnitude work here in float64 and ship the shader a unit
+		// direction + a precomputed angular radius. Variation in either
+		// across a body is ~r/AU ≈ 1e-5, well below the Sun's own
+		// angular size, so per-fragment recomputation in float32 would
+		// just inject quantisation banding for no physical gain.
+		const sx = sunPos[0] - fx;
+		const sy = sunPos[1] - fy;
+		const sz = sunPos[2] - fz;
+		const sunDist = Math.hypot(sx, sy, sz);
+		if (sunDist > 0) {
+			eclipse.uSunDir.value.set(sx / sunDist, sy / sunDist, sz / sunDist);
+			eclipse.uSunAngularRadius.value = Math.asin(Math.min(sunBo.radiusScene / sunDist, 1));
+		} else {
+			eclipse.uSunAngularRadius.value = 0;
+		}
 
 		// Collect eligible occluders (non-star bodies with a measured
 		// radius) and sort by scene radius descending so that if there are

@@ -25,13 +25,25 @@ import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
 export const MAX_OCCLUDERS = 32;
 
 /** Scene-wide eclipse uniforms — a single instance shared by every body's
- *  fragment shader, mutated in place by the renderer once per frame. */
+ *  fragment shader, mutated in place by the renderer once per frame.
+ *
+ *  Why `uSunDir` + `uSunAngularRadius` rather than `uSunPos` + `uSunRadius`:
+ *  in scene units the Sun sits ~1 AU away while a receiver fragment is at
+ *  most a body-radius from the focus origin, so `uSunPos - vWorldPos` is
+ *  dominated by `uSunPos` and float32 snaps the tiny per-fragment offset
+ *  to a handful of quantised directions. Doing one normalise on the CPU
+ *  in float64 keeps the direction smooth across the whole body, which the
+ *  angle math in the fragment shader depends on for clean penumbra
+ *  gradients (otherwise the gradient bands into stripes). The same
+ *  approximation also collapses the per-fragment `dSun` (variation across
+ *  a body is ~r/AU ≈ 1e-5, far below the Sun's angular size) so we can
+ *  precompute `asin(R_sun / dSun)` once per frame too. */
 export interface EclipseSceneUniforms {
-	/** Sun position in focus-relative world coords (matches the receiver's
-	 *  `vEclipseWorldPos`). */
-	uSunPos: { value: Vector3 };
-	/** Sun radius in scene units. 0 disables the eclipse factor entirely. */
-	uSunRadiusScene: { value: number };
+	/** Unit vector from the focus origin toward the Sun. */
+	uSunDir: { value: Vector3 };
+	/** Sun's angular radius in radians, computed from the focus origin.
+	 *  0 disables the eclipse factor entirely. */
+	uSunAngularRadius: { value: number };
 	/** Number of populated entries in `uOccluders`. */
 	uOccluderCount: { value: number };
 	/** Pre-allocated occluder slots: `.xyz` = focus-relative center,
@@ -41,8 +53,8 @@ export interface EclipseSceneUniforms {
 }
 
 const SHARED: EclipseSceneUniforms = {
-	uSunPos: { value: new Vector3() },
-	uSunRadiusScene: { value: 0 },
+	uSunDir: { value: new Vector3(1, 0, 0) },
+	uSunAngularRadius: { value: 0 },
 	uOccluderCount: { value: 0 },
 	uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new Vector4()) }
 };
@@ -92,27 +104,36 @@ export function attachEclipseShadowToBody(material: MeshStandardMaterial): Eclip
 				'#include <common>',
 				`#include <common>
 				#define ECLIPSE_MAX_OCCLUDERS ${MAX_OCCLUDERS}
-				uniform vec3 uSunPos;
-				uniform float uSunRadiusScene;
+				uniform vec3 uSunDir;
+				uniform float uSunAngularRadius;
 				uniform int uOccluderCount;
 				uniform vec4 uOccluders[ECLIPSE_MAX_OCCLUDERS];
 				uniform vec3 uEclipseSelfPos;
 				varying vec3 vEclipseWorldPos;
 
-				// Closed-form Sun-disc obscuration: the Sun and each occluder are
-				// modelled as discs at their respective angular radii from the
-				// receiver fragment. Returns 1.0 (lit) down to 0.0 (umbra) by
-				// summing the lens-shaped intersection areas of each occluder
-				// disc with the Sun disc, normalised by Sun-disc area. Multiple
-				// occluders compose multiplicatively — close enough when their
-				// silhouettes don't overlap, which is the common case.
+				// Closed-form Sun-disc obscuration. Two regimes:
+				//
+				//  (1) Comparable angular sizes (e.g. solar eclipse on Earth:
+				//      aSun ≈ aMoon): use the standard two-circle intersection
+				//      (lens-area) formula. Numerically stable in this regime
+				//      because no term dominates by orders of magnitude.
+				//
+				//  (2) Occluder much larger than the Sun (e.g. ISS in LEO sees
+				//      Earth at aOc ≈ 1.2 rad against aSun ≈ 0.005 rad — ratio
+				//      ~250): the lens formula's b²·acos((c-x)/b) and c·y
+				//      terms are each O(b·aSun) but cancel to O(aSun²). Tiny
+				//      per-fragment perturbations in sep (down to ~1e-7 rad
+				//      from float32 vEclipseWorldPos quantisation) amplify
+				//      through that cancellation by b/aSun, producing the
+				//      blocky shading the LEO satellite placeholders showed.
+				//      Switch to the chord approximation — the occluder limb
+				//      is locally straight at sun-disc scale (relative error
+				//      O((aSun/sin(aOc))²) ≈ 1e-5 when aOc > 10·aSun) so the
+				//      covered fraction is just the area of the Sun disc on
+				//      one side of a chord at signed distance (aOc − sep).
 				float eclipseFactor() {
-					if (uSunRadiusScene <= 0.0) return 1.0;
-					vec3 P = vEclipseWorldPos;
-					vec3 toSun = uSunPos - P;
-					float dSun = length(toSun);
-					if (dSun < 1e-5) return 1.0;
-					float aSun = asin(min(uSunRadiusScene / dSun, 1.0));
+					if (uSunAngularRadius <= 0.0) return 1.0;
+					float aSun = uSunAngularRadius;
 					float result = 1.0;
 					for (int i = 0; i < ECLIPSE_MAX_OCCLUDERS; i++) {
 						if (i >= uOccluderCount) break;
@@ -123,18 +144,29 @@ export function attachEclipseShadowToBody(material: MeshStandardMaterial): Eclip
 						// overlap, so any occluder closer than its own radius
 						// to the receiver center IS the receiver.
 						if (length(oc.xyz - uEclipseSelfPos) < r * 0.5) continue;
-						vec3 toOc = oc.xyz - P;
+						vec3 toOc = oc.xyz - vEclipseWorldPos;
 						float dOc = length(toOc);
 						if (dOc < 1e-5) continue;
 						float aOc = asin(min(r / dOc, 1.0));
-						float sep = acos(clamp(dot(toSun, toOc) / (dSun * dOc), -1.0, 1.0));
+						float sep = acos(clamp(dot(uSunDir, toOc) / dOc, -1.0, 1.0));
+
+						if (aOc > 10.0 * aSun) {
+							// Regime (2): chord approximation.
+							float t = (aOc - sep) / aSun;
+							if (t >= 1.0) { result = 0.0; break; }    // sun fully behind
+							if (t <= -1.0) continue;                  // no overlap
+							float covered = (acos(-t) + t * sqrt(max(1.0 - t * t, 0.0))) / PI;
+							result *= 1.0 - covered;
+							continue;
+						}
+
+						// Regime (1): lens formula.
 						if (sep >= aSun + aOc) continue;                  // no overlap
 						if (sep + aSun <= aOc) { result = 0.0; break; }   // total
 						if (sep + aOc <= aSun) {                          // annular
 							result *= 1.0 - (aOc * aOc) / (aSun * aSun);
 							continue;
 						}
-						// Partial: lens-shaped intersection of two discs.
 						float a = aSun, b = aOc, c = sep;
 						float x = (c * c + a * a - b * b) / (2.0 * c);
 						float y = sqrt(max(a * a - x * x, 0.0));
