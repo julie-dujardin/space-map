@@ -30,6 +30,7 @@ from space_map_data.utils.commons_images import (
     is_servable_on_disk,
     parse_upload_url,
     read_download_metadata,
+    read_manual_extras,
 )
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import DOWNLOAD_DIR
@@ -62,6 +63,8 @@ def ingest() -> None:
             qid_cache[qid] = selected
         if selected:
             selections[obj_id] = selected
+
+    _merge_manual_extras(selections)
 
     _write_cache(selections)
     _update_image_available_flag(session, set(selections))
@@ -213,6 +216,35 @@ class _MetadataView:
         meta = read_download_metadata(filename)
         self._cache[filename] = meta
         return meta
+
+
+def _merge_manual_extras(selections: dict[str, list[dict]]) -> None:
+    """Append manual-extra entries to the per-object selections in place.
+
+    Files not yet on disk or with a non-servable license are dropped with a
+    warning — the downloader is responsible for fetching them, so absence
+    here means the manual entry was added without re-running download, or
+    the upstream license disqualifies it.
+    """
+    for obj_id, entries in read_manual_extras().items():
+        existing = selections.setdefault(obj_id, [])
+        existing_files = {e["file"] for e in existing}
+        for entry in entries:
+            file = entry["file"]
+            if file in existing_files:
+                continue
+            if not is_servable_on_disk(file):
+                logger.warning(
+                    "Manual-extra image %s for %s not servable (download missing "
+                    "or non-servable license); skipping",
+                    file,
+                    obj_id,
+                )
+                continue
+            existing.append(entry)
+            existing_files.add(file)
+        if not existing:
+            selections.pop(obj_id, None)
 
 
 def _write_cache(selections: dict[str, list[dict]]) -> None:

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 IMAGES_DIR = DOWNLOAD_DIR / "commons" / "images"
+MANUAL_EXTRA_PATH = DOWNLOAD_DIR / "commons" / "manual-extra.json"
 
 _WIKIDATA_IMAGE_PIDS = ("P18", "P154")
 # Auto-generated orbit diagrams on ru.wiki that flood the pageimages set.
@@ -230,6 +231,37 @@ def read_download_metadata(filename: str) -> dict | None:
     except orjson.JSONDecodeError:
         logger.warning("Corrupt download metadata: %s", path)
         return None
+
+
+def read_manual_extras() -> dict[str, list[dict]]:
+    """Read manually-curated extra images keyed by ``Object.id``.
+
+    Lets us inject Commons images for objects whose Wikidata/Wikipedia
+    discovery missed them. Same on-disk shape as ``object_images.json``:
+    ``{object_id: [{"file": ..., "kind": ...}, ...]}``. Filenames are
+    normalised to canonical (underscore) form on read.
+    """
+    if not MANUAL_EXTRA_PATH.exists():
+        return {}
+    try:
+        data = orjson.loads(MANUAL_EXTRA_PATH.read_bytes())
+    except orjson.JSONDecodeError:
+        logger.warning("Corrupt %s; ignoring", MANUAL_EXTRA_PATH)
+        return {}
+    out: dict[str, list[dict]] = {}
+    for obj_id, entries in data.items():
+        normalised: list[dict] = []
+        for entry in entries:
+            file = entry.get("file")
+            if not isinstance(file, str) or not file:
+                logger.warning("Skipping manual-extra entry with no file: %r", entry)
+                continue
+            normalised.append(
+                {"file": canonical_filename(file), "kind": entry.get("kind", "photo")}
+            )
+        if normalised:
+            out[obj_id] = normalised
+    return out
 
 
 def is_servable_on_disk(filename: str) -> bool:

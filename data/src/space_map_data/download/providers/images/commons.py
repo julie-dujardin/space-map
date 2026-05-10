@@ -37,6 +37,7 @@ from space_map_data.utils.commons_images import (
     license_is_servable,
     parse_upload_url,
     read_download_metadata,
+    read_manual_extras,
     source_path,
     write_download_metadata,
 )
@@ -157,6 +158,19 @@ class CommonsDownloader(Downloader):
             logger.info(
                 "Filtered out %d excluded-prefix image filenames", len(excluded)
             )
+
+        # 3) Manually-curated extras keyed by Object.id. Only the filenames
+        # matter here — the per-object mapping is consumed downstream by
+        # ``image_selection`` to merge them into ``object_images.json``.
+        manual_files: set[str] = set()
+        for entries in read_manual_extras().values():
+            for entry in entries:
+                manual_files.add(entry["file"])
+        manual_files = {f for f in manual_files if not is_excluded(f)}
+        new_manual = manual_files - commons
+        commons |= manual_files
+        if new_manual:
+            logger.info("Added %d filename(s) from manual-extra.json", len(new_manual))
 
         logger.info(
             "Commons filenames: %s unique; non-Commons (local wiki): %s",
