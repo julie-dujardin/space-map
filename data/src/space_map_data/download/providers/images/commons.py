@@ -36,9 +36,11 @@ from space_map_data.utils.commons_images import (
     is_excluded,
     license_is_servable,
     parse_upload_url,
+    read_download_metadata,
     source_path,
     write_download_metadata,
 )
+from space_map_data.utils.commons_wikitext import parse_wikitext
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,7 @@ class CommonsDownloader(Downloader):
 
         self._download_images(to_process)
         self._fetch_metadata(to_process)
+        self._fetch_sdc(to_process)
 
         self._save_metadata(
             "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo",
@@ -236,9 +239,15 @@ class CommonsDownloader(Downloader):
         Bulk-queries ``METADATA_BATCH_SIZE`` filenames at a time with
         ``iiextmetadatamultilang=1`` so every language variant lands in one file.
         Writes ``metadata.json`` under each image's dir with the ``license_servable``
-        flag precomputed. Existing files are skipped.
+        flag precomputed.
+
+        Existing files are skipped unless they pre-date the ``wikitext`` field
+        (added together with derivative-of / other-versions parsing) — those
+        get re-fetched so the metadata schema converges across the corpus.
+        ``missing: true`` stubs stay skipped: the file is gone upstream, no
+        amount of re-fetching brings it back.
         """
-        pending = [f for f in filenames if not download_metadata_path(f).exists()]
+        pending = [f for f in filenames if _needs_metadata_refresh(f)]
         logger.info(
             "Commons metadata: %s total, %s to fetch",
             f"{len(filenames):,}",
@@ -262,16 +271,24 @@ class CommonsDownloader(Downloader):
             )
 
     def _fetch_metadata_batch(self, filenames: list[str]) -> int:
-        """Fetch one batch of metadata. Returns the count of missing pages."""
+        """Fetch one batch of metadata. Returns the count of missing pages.
+
+        Asks for ``imageinfo`` (license, dimensions, EXIF-derived dates) and
+        ``revisions`` (raw wikitext) in the same call — the API supports both
+        in a single ``query`` action. Wikitext gives us derivative-of and
+        other-versions links that no structured field exposes.
+        """
         titles = "|".join(f"File:{f}" for f in filenames)
         try:
             response = self._request(
                 "https://commons.wikimedia.org/w/api.php",
                 params={
                     "action": "query",
-                    "prop": "imageinfo",
+                    "prop": "imageinfo|revisions",
                     "iiprop": "extmetadata|url|mime|size|sha1|user|timestamp",
                     "iiextmetadatamultilang": 1,
+                    "rvprop": "content",
+                    "rvslots": "main",
                     "titles": titles,
                     "format": "json",
                     "formatversion": 2,
@@ -328,10 +345,14 @@ class CommonsDownloader(Downloader):
                     reason or "license check failed",
                 )
 
+            wikitext = _extract_wikitext(page)
+            derived_from, other_versions = parse_wikitext(wikitext or "")
+
             image_dir(filename).mkdir(parents=True, exist_ok=True)
             # ``pageid`` (and the ``M<pageid>`` MediaInfo form) survive Commons
             # renames where filenames do not; ``sha1`` content-addresses the
-            # file bytes. Captured for future use — nothing reads them yet.
+            # file bytes. Wikitext is kept raw so we can re-parse it later if
+            # the parser improves, without re-fetching the whole batch.
             write_download_metadata(
                 filename,
                 {
@@ -341,7 +362,127 @@ class CommonsDownloader(Downloader):
                     "fetched_at": fetched_at,
                     "imageinfo": info,
                     "license_servable": servable,
+                    "wikitext": wikitext,
+                    "derived_from": derived_from,
+                    "other_versions": other_versions,
                 },
             )
 
         return missing
+
+    def _fetch_sdc(self, filenames: list[str]) -> None:
+        """Fetch Structured Data on Commons (SDC) for each downloaded file.
+
+        Uses the Wikibase API on the Commons MediaInfo entity ``M<pageid>``
+        to retrieve labels, descriptions, and statements (depicts P180,
+        creator P170, inception P571, copyright status P6216, based on P144,
+        derivative work P4969, ...). The raw entity is merged into the
+        existing ``metadata.json`` so the structured fields complement the
+        wikitext we already saved.
+
+        Files whose ``metadata.json`` already has an ``sdc`` key (success or
+        explicit ``null``) are skipped so the step is resumable.
+        """
+        targets: list[tuple[str, int]] = []
+        for filename in filenames:
+            meta = read_download_metadata(filename)
+            if not meta:
+                continue
+            if "sdc" in meta:
+                continue
+            pageid = meta.get("pageid")
+            if not isinstance(pageid, int):
+                continue
+            targets.append((filename, pageid))
+
+        logger.info(
+            "Commons SDC: %s total, %s to fetch",
+            f"{len(filenames):,}",
+            f"{len(targets):,}",
+        )
+        if not targets:
+            return
+
+        with tqdm(total=len(targets), desc="Commons SDC", unit="file") as pbar:
+            for batch in batched(targets, METADATA_BATCH_SIZE):
+                self._fetch_sdc_batch(list(batch))
+                pbar.update(len(batch))
+                time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+
+    def _fetch_sdc_batch(self, batch: list[tuple[str, int]]) -> None:
+        """Fetch one batch of SDC entities and merge each into its metadata.json."""
+        ids = "|".join(f"M{pageid}" for _, pageid in batch)
+        try:
+            response = self._request(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "wbgetentities",
+                    "ids": ids,
+                    # ``claims`` is the legacy prop name; the response calls
+                    # the field ``statements`` for MediaInfo entities.
+                    "props": "labels|descriptions|claims",
+                    "format": "json",
+                    "formatversion": 2,
+                },
+            )
+            response.raise_for_status()
+        except Exception:
+            logger.error("Failed to fetch SDC batch of %d files", len(batch))
+            return
+
+        data = response.json()
+        entities = data.get("entities") or {}
+
+        for filename, pageid in batch:
+            entity = entities.get(f"M{pageid}")
+            sdc: dict | None
+            if entity is None:
+                logger.warning("No SDC entity for %s (M%d)", filename, pageid)
+                sdc = None
+            elif entity.get("missing") is not None:
+                # MediaInfo entity simply hasn't been created yet — every
+                # Commons file gets one lazily. Persist as null so the next
+                # run doesn't keep retrying.
+                sdc = None
+            else:
+                sdc = entity
+
+            meta = read_download_metadata(filename)
+            if meta is None:
+                # imageinfo step didn't produce a file (deleted/renamed).
+                continue
+            meta["sdc"] = sdc
+            write_download_metadata(filename, meta)
+
+
+def _needs_metadata_refresh(filename: str) -> bool:
+    """True if a file's metadata.json should be (re-)fetched.
+
+    Returns True when the file is absent, corrupt, or pre-dates the
+    ``wikitext`` schema addition. Returns False for ``missing: true`` stubs
+    (image gone upstream) and for entries that already have wikitext.
+    """
+    path = download_metadata_path(filename)
+    if not path.exists():
+        return True
+    meta = read_download_metadata(filename)
+    if meta is None:
+        return True
+    if meta.get("missing"):
+        return False
+    return "wikitext" not in meta
+
+
+def _extract_wikitext(page: dict) -> str | None:
+    """Pluck the main-slot wikitext from a ``query`` API page object.
+
+    Returns ``None`` if revisions/slots/content aren't present (e.g. the file
+    has no current revision, or the API omitted them for any reason).
+    """
+    revisions = page.get("revisions") or []
+    if not revisions:
+        return None
+    slots = revisions[0].get("slots") or {}
+    main = slots.get("main") or {}
+    content = main.get("content")
+    return content if isinstance(content, str) else None
