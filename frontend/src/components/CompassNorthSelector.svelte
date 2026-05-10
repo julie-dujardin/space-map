@@ -17,13 +17,13 @@
 <Popover.Root bind:open>
 	<Popover.Trigger
 		class="pointer-events-auto flex items-center justify-center
-			w-12 h-12 md:w-10 md:h-10 rounded-full
+			w-10 h-10 md:w-8 md:h-8 rounded-full
 			bg-primary-foreground hover:bg-primary-foreground/80
 			text-primary transition-colors cursor-pointer"
 		title={m.north_reference()}
 		aria-label={m.north_reference()}
 	>
-		<CompassIcon class="size-7 md:size-5" />
+		<CompassIcon class="size-5 md:size-4" />
 	</Popover.Trigger>
 	<Popover.Content side="left" align="end" sideOffset={8} class="w-48 p-1">
 		<div class="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">

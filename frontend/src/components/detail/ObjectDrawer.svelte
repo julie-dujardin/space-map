@@ -281,22 +281,32 @@
 					<div class="flex w-full items-center justify-between gap-2">
 						<span class="text-sm font-semibold truncate">{displayName}</span>
 						<div class="flex items-center gap-1.5">
-							<Button variant="secondary" size="icon-lg" onclick={handleShare}>
+							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 								<Share2Icon />
 								<span class="sr-only">{m.share()}</span>
 							</Button>
 							{#if isMinimized}
-								<Button variant="secondary" size="icon-lg" onclick={onMinimize}>
+								<Button
+									variant="secondary"
+									size="icon-lg"
+									class="rounded-full"
+									onclick={onMinimize}
+								>
 									<MinimizeIcon />
 									<span class="sr-only">{m.zoom_out_to_system()}</span>
 								</Button>
 							{:else}
-								<Button variant="secondary" size="icon-lg" onclick={onMaximize}>
+								<Button
+									variant="secondary"
+									size="icon-lg"
+									class="rounded-full"
+									onclick={onMaximize}
+								>
 									<MaximizeIcon />
 									<span class="sr-only">{m.go_to_object()}</span>
 								</Button>
 							{/if}
-							<Button variant="secondary" size="icon-lg" onclick={onClose}>
+							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 								<XIcon />
 								<span class="sr-only">{m.close()}</span>
 							</Button>
@@ -327,22 +337,22 @@
 		<div class="flex items-center justify-between gap-2 p-2 px-4">
 			<span class="text-sm font-semibold truncate">{displayName}</span>
 			<div class="flex items-center gap-1.5">
-				<Button variant="secondary" size="icon-lg" onclick={handleShare}>
+				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 					<Share2Icon />
 					<span class="sr-only">{m.share()}</span>
 				</Button>
 				{#if isMinimized}
-					<Button variant="secondary" size="icon-lg" onclick={onMinimize}>
+					<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMinimize}>
 						<MinimizeIcon />
 						<span class="sr-only">{m.zoom_out_to_system()}</span>
 					</Button>
 				{:else}
-					<Button variant="secondary" size="icon-lg" onclick={onMaximize}>
+					<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMaximize}>
 						<MaximizeIcon />
 						<span class="sr-only">{m.go_to_object()}</span>
 					</Button>
 				{/if}
-				<Button variant="secondary" size="icon-lg" onclick={onClose}>
+				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 					<XIcon />
 					<span class="sr-only">{m.close()}</span>
 				</Button>

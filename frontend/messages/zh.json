@@ -159,6 +159,7 @@
 	"my_location_inaccurate": "报告精度为 {km} 公里 — 实际位置可能不同",
 	"my_location_error": "无法获取您的位置",
 	"clear_promoted": "清除已固定的对象",
+	"cleared_n_promoted": "已清除 {count} 个已固定的对象",
 	"north_reference": "北方参考",
 	"north_solar_system": "太阳系",
 	"go_to_object": "前往该对象",

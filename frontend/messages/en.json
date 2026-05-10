@@ -159,6 +159,7 @@
 	"my_location_inaccurate": "Reported accuracy is {km} km — actual location may differ",
 	"my_location_error": "Could not get your location",
 	"clear_promoted": "Clear pinned objects",
+	"cleared_n_promoted": "Cleared {count} pinned object(s)",
 	"north_reference": "North reference",
 	"north_solar_system": "Solar system",
 	"go_to_object": "Go to object",

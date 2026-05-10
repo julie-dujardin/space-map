@@ -159,6 +159,7 @@
 	"my_location_inaccurate": "報告された精度は {km} km — 実際の位置と異なる場合があります",
 	"my_location_error": "現在地を取得できませんでした",
 	"clear_promoted": "ピン留めしたオブジェクトをクリア",
+	"cleared_n_promoted": "{count} 件のピン留めオブジェクトをクリアしました",
 	"north_reference": "北の基準",
 	"north_solar_system": "太陽系",
 	"go_to_object": "オブジェクトに移動",

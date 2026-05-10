@@ -123,15 +123,15 @@
 				{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
 				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem);"
 			>
+				<div class="md:hidden pointer-events-auto">
+					<MobileTimeControls {clock} />
+				</div>
 				<MyLocation
 					onLocate={(zoom: number, lat?: number, lng?: number) => {
 						if (lat !== undefined && lng !== undefined) scene?.setUserLocation(lat, lng);
 						return scene?.focusOnBody('naif-399', zoom, lat, lng) ?? 0;
 					}}
 				/>
-				{#if userPromotedCount > 0}
-					<ClearPromoted onClear={() => scene?.clearUserPromoted()} />
-				{/if}
 				{#if northChoices.length > 1}
 					<CompassNorthSelector
 						choices={northChoices}
@@ -139,9 +139,9 @@
 						onSelect={(id) => (northRefId = id)}
 					/>
 				{/if}
-				<div class="md:hidden pointer-events-auto">
-					<MobileTimeControls {clock} />
-				</div>
+				{#if userPromotedCount > 0}
+					<ClearPromoted count={userPromotedCount} onClear={() => scene?.clearUserPromoted()} />
+				{/if}
 			</div>
 			<div
 				class="fixed end-0 z-10 transition-opacity duration-300 ease-in-out

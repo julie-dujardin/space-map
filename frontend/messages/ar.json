@@ -159,6 +159,7 @@
 	"my_location_inaccurate": "الدقة المُبلَّغ عنها {km} كم — قد يختلف الموقع الفعلي",
 	"my_location_error": "تعذّر تحديد موقعك",
 	"clear_promoted": "مسح الأجسام المُثبَّتة",
+	"cleared_n_promoted": "تم مسح {count} من الأجسام المُثبَّتة",
 	"north_reference": "المرجع الشمالي",
 	"north_solar_system": "النظام الشمسي",
 	"go_to_object": "الانتقال إلى الجسم",
