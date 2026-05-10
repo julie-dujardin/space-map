@@ -1,15 +1,14 @@
 /**
  * Ring annulus node: a flat disc whose albedo is sampled from 1-D radial
- * profile WebPs (`backscattered`, `unlitside`, `transparency`, `color`)
- * shipped per body under `v1/rings/{id}/`. The 5th channel
- * (`forwardscattered`) is exported but unused for now — the simpler lit/unlit
- * blend ignores it.
+ * profile WebPs (`backscattered`, `forwardscattered`, `unlitside`,
+ * `transparency`, `color`) shipped per body under `v1/rings/{id}/`.
  *
  * The mesh is added directly to the scene as a sibling of the body's mesh
  * (not a child) so the planet's triaxial-flattening scale doesn't distort the
  * circular profile; the renderer reapplies its position and orientation each
  * frame in step with the body, then writes per-frame `uSunDir` so the
- * fragment shader can pick lit-side vs unlit-side at the right cadence.
+ * fragment shader can pick lit-side vs unlit-side at the right cadence and
+ * compute the phase-angle blend between back/unlit/forward scatter.
  */
 
 import {
@@ -99,6 +98,7 @@ const VERTEX_SHADER = `
 	#include <logdepthbuf_pars_vertex>
 
 	varying vec3 vLocalPos;
+	varying vec3 vWorldPos;
 	varying vec3 vWorldNormal;
 
 	void main() {
@@ -110,6 +110,7 @@ const VERTEX_SHADER = `
 		// so the bias multiplication zeros out regardless of frame.
 		vec4 worldPosition = modelMatrix * vec4(position, 1.0);
 		vec3 transformedNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
+		vWorldPos = worldPosition.xyz;
 		vWorldNormal = transformedNormal;
 		gl_Position = projectionMatrix * viewMatrix * worldPosition;
 		#include <shadowmap_vertex>
@@ -118,13 +119,23 @@ const VERTEX_SHADER = `
 `;
 
 /**
- * Lit/unlit-only fragment shader. The lit face of the ring (the one whose
- * outward normal points toward the sun) samples `backscattered` and tints by
- * the Cassini-derived `color` profile; the unlit face samples `unlitside`
- * and tints by a fixed warm-white constant — the BJJ color profile is
- * calibrated against backscattered light only, so reusing it on the unlit
- * side would distort the gap-vs-material contrast. Forward-scattering is
- * intentionally skipped for v1.
+ * Phase-angle-aware fragment shader. Three sample sources per ring strip:
+ *  - `backscattered`: lit-side appearance at low phase (sun ~behind viewer).
+ *    Tinted by the Cassini-derived `color` profile, which BJJ explicitly
+ *    calibrates against backscattered light only.
+ *  - `forwardscattered`: high-phase appearance, where sunlight diffracts
+ *    through the icy particles toward the camera (camera roughly opposite
+ *    the sun across the ring). Used as the high-phase mix on the unlit side.
+ *  - `unlitside`: low-phase view of the unlit face. Diffuse light transmitted
+ *    through the ring material; spectrally distinct from backscatter, so we
+ *    use a fixed warm-white tint instead of the color profile.
+ *
+ * Geometry: phase angle α is the sun-ring-camera angle. cos(α) = dot(sunDir,
+ * viewDir) where both are unit vectors from the surface point. Lit side
+ * (sun and camera on the same face) corresponds to α ∈ [0°, 90°), unlit
+ * side to α ∈ (90°, 180°]. We blend forward in as α → 180° on the unlit
+ * side; the lit side stays pure backscatter (forward scatter on the lit
+ * side is not what BJJ's forward channel is calibrated for).
  *
  * Radial sampling: vertices are pre-rotated so the ring sits in the local XZ
  * plane; the radial coordinate is `length(localPos.xz)`, normalised to
@@ -144,6 +155,7 @@ const FRAGMENT_SHADER = `
 	#include <logdepthbuf_pars_fragment>
 
 	uniform sampler2D uBackscattered;
+	uniform sampler2D uForwardscattered;
 	uniform sampler2D uUnlitside;
 	uniform sampler2D uTransparency;
 	uniform sampler2D uColor;
@@ -152,10 +164,13 @@ const FRAGMENT_SHADER = `
 	uniform vec3 uSunDir;
 
 	varying vec3 vLocalPos;
+	varying vec3 vWorldPos;
 	varying vec3 vWorldNormal;
 
 	// Per BJJ: the Cassini-derived color profile only fits backscattered
-	// light. For the unlit side they suggest a warm near-white tint.
+	// light. For the unlit / forward branches we tint by a near-white
+	// constant — slightly warm for the diffuse unlit transmission, since
+	// that's what BJJ recommends.
 	const vec3 UNLIT_TINT = vec3(1.0, 0.97075, 0.952);
 
 	void main() {
@@ -175,13 +190,28 @@ const FRAGMENT_SHADER = `
 		// Lit if the sun is on the same side of the ring plane as this face.
 		bool lit = dot(uSunDir, N) > 0.0;
 
+		// cosAlpha = cos(phase angle). +1 = sun aligned with view (low phase,
+		// pure backscatter); -1 = sun directly opposite view (high phase,
+		// forward scatter). cameraPosition is auto-injected by three.js.
+		vec3 viewDir = normalize(cameraPosition - vWorldPos);
+		float cosAlpha = dot(uSunDir, viewDir);
+
 		vec3 albedo;
 		vec3 tint;
 		if (lit) {
+			// Lit side stays pure backscatter — geometrically α < 90° here, so
+			// forward scatter doesn't physically apply.
 			albedo = texture2D(uBackscattered, uv).rgb;
 			tint = texture2D(uColor, uv).rgb;
 		} else {
-			albedo = texture2D(uUnlitside, uv).rgb;
+			// Unlit side: blend unlit (α ≈ 90°, cosAlpha ≈ 0) → forward
+			// (α ≈ 180°, cosAlpha ≈ -1). smoothstep on -cosAlpha gives a soft
+			// rolloff so the transition through edge-on viewing isn't a hard
+			// seam.
+			float wForward = smoothstep(0.1, 0.9, -cosAlpha);
+			vec3 unlitSample = texture2D(uUnlitside, uv).rgb;
+			vec3 forwardSample = texture2D(uForwardscattered, uv).rgb;
+			albedo = mix(unlitSample, forwardSample, wForward);
 			tint = UNLIT_TINT;
 		}
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
@@ -268,10 +298,7 @@ export function attachRingShadowToPlanet(
 		// default; we add our own varying so the ray-march can compute the
 		// vector from surface → ring plane.
 		shader.vertexShader = shader.vertexShader
-			.replace(
-				'#include <common>',
-				'#include <common>\nvarying vec3 vRingShadowWorldPos;'
-			)
+			.replace('#include <common>', '#include <common>\nvarying vec3 vRingShadowWorldPos;')
 			.replace(
 				'#include <begin_vertex>',
 				'#include <begin_vertex>\nvRingShadowWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;'
@@ -339,10 +366,15 @@ export async function loadRingNode(
 	// linear (packed uint8 luminance, not gamma-encoded).
 	const baseUrl = `${DATA_BASE}/v1/rings/${bodyId}`;
 	const ch = meta.channels;
-	let backscattered: Texture, unlitside: Texture, transparency: Texture, color: Texture;
+	let backscattered: Texture,
+		forwardscattered: Texture,
+		unlitside: Texture,
+		transparency: Texture,
+		color: Texture;
 	try {
-		[backscattered, unlitside, transparency, color] = await Promise.all([
+		[backscattered, forwardscattered, unlitside, transparency, color] = await Promise.all([
 			loadTexture(textureLoader, `${baseUrl}/${ch.backscattered}`, false),
+			loadTexture(textureLoader, `${baseUrl}/${ch.forwardscattered}`, false),
 			loadTexture(textureLoader, `${baseUrl}/${ch.unlitside}`, false),
 			loadTexture(textureLoader, `${baseUrl}/${ch.transparency}`, false),
 			loadTexture(textureLoader, `${baseUrl}/${ch.color}`, true)
@@ -362,6 +394,7 @@ export async function loadRingNode(
 			UniformsLib.lights,
 			{
 				uBackscattered: { value: backscattered },
+				uForwardscattered: { value: forwardscattered },
 				uUnlitside: { value: unlitside },
 				uTransparency: { value: transparency },
 				uColor: { value: color },
@@ -384,6 +417,7 @@ export async function loadRingNode(
 	// Re-pin our own uniforms after the merge so the shader actually samples the
 	// loaded WebPs and the per-frame `uSunDir` mutation propagates.
 	material.uniforms.uBackscattered.value = backscattered;
+	material.uniforms.uForwardscattered.value = forwardscattered;
 	material.uniforms.uUnlitside.value = unlitside;
 	material.uniforms.uTransparency.value = transparency;
 	material.uniforms.uColor.value = color;
@@ -413,7 +447,13 @@ export async function loadRingNode(
 export function disposeRingNode(ring: RingNode): void {
 	ring.mesh.geometry.dispose();
 	const uniforms = ring.material.uniforms as Record<string, { value: Texture | unknown }>;
-	for (const key of ['uBackscattered', 'uUnlitside', 'uTransparency', 'uColor']) {
+	for (const key of [
+		'uBackscattered',
+		'uForwardscattered',
+		'uUnlitside',
+		'uTransparency',
+		'uColor'
+	]) {
 		const tex = uniforms[key]?.value as Texture | undefined;
 		tex?.dispose();
 	}
