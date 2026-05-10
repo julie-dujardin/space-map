@@ -17,17 +17,25 @@ from space_map_data.download.common import ProviderResult
 logger = logging.getLogger(__name__)
 
 
+def _status(r: ProviderResult) -> str:
+    if not r.ok:
+        return "FAIL"
+    if r.skipped:
+        return "SKIP"
+    return "OK  "
+
+
 def _format(results: list[ProviderResult]) -> tuple[str, str]:
     failed = [r for r in results if not r.ok]
+    skipped = [r for r in results if r.ok and r.skipped]
+    done = [r for r in results if r.ok and not r.skipped]
     n_total = len(results)
-    n_ok = n_total - len(failed)
     if failed:
         title = f"space-map download: {len(failed)}/{n_total} failed"
     else:
-        title = f"space-map download: {n_ok}/{n_total} OK"
+        title = f"space-map download: {len(done)}/{n_total} OK ({len(skipped)} skipped)"
     lines = [
-        f"{'OK  ' if r.ok else 'FAIL'} {r.name}" + (f": {r.error}" if r.error else "")
-        for r in results
+        f"{_status(r)} {r.name}" + (f": {r.error}" if r.error else "") for r in results
     ]
     return title, "\n".join(lines)
 
@@ -82,9 +90,20 @@ def _send_email(title: str, body: str) -> None:
 
 
 def notify_download_run(results: list[ProviderResult]) -> None:
-    """Send pushover + email summary. Pushover priority 1 if any failure, else 0."""
+    """Send pushover + email summary. Pushover priority 1 if any failure, else -2.
+
+    No-op when every provider was skipped (already complete) — we only notify
+    on actual work or failures, not on idle wake-ups.
+    """
+    any_failed = any(not r.ok for r in results)
+    any_work = any(r.ok and not r.skipped for r in results)
+    if not any_failed and not any_work:
+        logger.info(
+            "All %d provider(s) already complete; skipping notification", len(results)
+        )
+        return
     title, body = _format(results)
-    priority = 1 if any(not r.ok for r in results) else -2
+    priority = 1 if any_failed else -2
     _send_pushover(title, body, priority=priority)
     _send_email(title, body)
 
