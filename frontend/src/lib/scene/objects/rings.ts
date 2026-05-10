@@ -23,6 +23,8 @@ import {
 	SRGBColorSpace,
 	type Texture,
 	type TextureLoader,
+	UniformsLib,
+	UniformsUtils,
 	Vector3
 } from 'three';
 import { kmToScene } from '$lib/math/units';
@@ -50,6 +52,10 @@ export interface RingMeta {
 export interface RingNode {
 	mesh: Mesh;
 	material: ShaderMaterial;
+	/** Outer ring radius in scene units. Used by the renderer to grow the
+	 *  shadow-camera frustum so the planet's shadow on the rings stays
+	 *  on-screen even when the camera is zoomed in close to the planet. */
+	outerScene: number;
 }
 
 const RING_ANGULAR_SEGMENTS = 256;
@@ -77,6 +83,7 @@ function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise
 
 const VERTEX_SHADER = `
 	#include <common>
+	#include <shadowmap_pars_vertex>
 	#include <logdepthbuf_pars_vertex>
 
 	varying vec3 vLocalPos;
@@ -84,12 +91,16 @@ const VERTEX_SHADER = `
 
 	void main() {
 		vLocalPos = position;
-		vec4 worldPos = modelMatrix * vec4(position, 1.0);
-		// The ring lies in local XZ with normal +Y (geometry pre-rotated).
-		// Pass the rotated +Y as the world-space normal — same on both faces;
-		// the fragment shader flips it itself based on gl_FrontFacing.
-		vWorldNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
-		gl_Position = projectionMatrix * viewMatrix * worldPos;
+		// shadowmap_vertex reads \`worldPosition\` (vec4) and \`transformedNormal\`
+		// (view-space normal) to compute the per-light shadow-coord varyings.
+		// Passing the world normal as transformedNormal is fine here: the only
+		// downstream use is a normal-bias offset, which we leave at default 0,
+		// so the bias multiplication zeros out regardless of frame.
+		vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+		vec3 transformedNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
+		vWorldNormal = transformedNormal;
+		gl_Position = projectionMatrix * viewMatrix * worldPosition;
+		#include <shadowmap_vertex>
 		#include <logdepthbuf_vertex>
 	}
 `;
@@ -116,6 +127,8 @@ const VERTEX_SHADER = `
  */
 const FRAGMENT_SHADER = `
 	#include <common>
+	#include <packing>
+	#include <shadowmap_pars_fragment>
 	#include <logdepthbuf_pars_fragment>
 
 	uniform sampler2D uBackscattered;
@@ -162,7 +175,27 @@ const FRAGMENT_SHADER = `
 		// BJJ transparency: 1.0 = empty space, 0.0 = opaque material.
 		float alpha = 1.0 - texture2D(uTransparency, uv).r;
 
-		gl_FragColor = vec4(albedo * tint, alpha);
+		// Saturn's shadow on the rings: sample the directional shadow map
+		// (the same one the planet meshes cast into) and modulate the lit
+		// contribution. The unlit-side appearance comes from sunlight
+		// transmitting through the material — also blocked when the planet
+		// occludes the sun — so the shadow factor multiplies both branches.
+		// Falls back to a no-op when the renderer is in solar-system view
+		// (NUM_DIR_LIGHT_SHADOWS = 0, e.g. PointLight active).
+		float shadow = 1.0;
+		#if NUM_DIR_LIGHT_SHADOWS > 0
+			DirectionalLightShadow ds = directionalLightShadows[0];
+			shadow = getShadow(
+				directionalShadowMap[0],
+				ds.shadowMapSize,
+				ds.shadowIntensity,
+				ds.shadowBias,
+				ds.shadowRadius,
+				vDirectionalShadowCoord[0]
+			);
+		#endif
+
+		gl_FragColor = vec4(albedo * tint * shadow, alpha);
 		#include <logdepthbuf_fragment>
 	}
 `;
@@ -192,23 +225,44 @@ export async function loadRingNode(
 		return null;
 	}
 
+	// Merge Three's light/shadow uniforms (directionalShadowMap[],
+	// directionalShadowMatrix[], DirectionalLightShadow struct array) so the
+	// `<shadowmap_pars_*>` chunks find what they need. `lights: true` tells
+	// the WebGLRenderer to populate those uniforms with the scene's actual
+	// shadow data each frame.
 	const material = new ShaderMaterial({
-		uniforms: {
-			uBackscattered: { value: backscattered },
-			uUnlitside: { value: unlitside },
-			uTransparency: { value: transparency },
-			uColor: { value: color },
-			uInnerScene: { value: innerScene },
-			uOuterScene: { value: outerScene },
-			uSunDir: { value: new Vector3(1, 0, 0) }
-		},
+		uniforms: UniformsUtils.merge([
+			UniformsLib.lights,
+			{
+				uBackscattered: { value: backscattered },
+				uUnlitside: { value: unlitside },
+				uTransparency: { value: transparency },
+				uColor: { value: color },
+				uInnerScene: { value: innerScene },
+				uOuterScene: { value: outerScene },
+				uSunDir: { value: new Vector3(1, 0, 0) }
+			}
+		]),
 		vertexShader: VERTEX_SHADER,
 		fragmentShader: FRAGMENT_SHADER,
 		transparent: true,
 		depthWrite: false,
 		blending: NormalBlending,
-		side: DoubleSide
+		side: DoubleSide,
+		lights: true
 	});
+
+	// UniformsUtils.merge deep-clones values via toJSON/fromJSON, which strips
+	// the live Texture / Vector3 references and replaces them with plain objects.
+	// Re-pin our own uniforms after the merge so the shader actually samples the
+	// loaded WebPs and the per-frame `uSunDir` mutation propagates.
+	material.uniforms.uBackscattered.value = backscattered;
+	material.uniforms.uUnlitside.value = unlitside;
+	material.uniforms.uTransparency.value = transparency;
+	material.uniforms.uColor.value = color;
+	material.uniforms.uInnerScene.value = innerScene;
+	material.uniforms.uOuterScene.value = outerScene;
+	material.uniforms.uSunDir.value = new Vector3(1, 0, 0);
 
 	// RingGeometry lies in the XY plane with normals +Z; rotate to XZ plane
 	// (normals +Y) so applyOrientation's pole-to-+Y mapping puts the ring on
@@ -219,9 +273,10 @@ export async function loadRingNode(
 	const mesh = new Mesh(geometry, material);
 	mesh.frustumCulled = false; // repositioned by the renderer each frame
 	mesh.renderOrder = 1; // draw after opaque planet so transparent alpha composites cleanly
+	mesh.receiveShadow = true; // planet shadow on rings
 	mesh.userData.isRingMesh = true;
 
-	return { mesh, material };
+	return { mesh, material, outerScene };
 }
 
 /** Dispose all GPU resources owned by a ring node. */

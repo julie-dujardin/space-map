@@ -1046,11 +1046,19 @@ export class SceneRenderer {
 			this.shadowLight.intensity = 2;
 			if (this.sunPointLight) this.sunPointLight.intensity = 0;
 
-			// Lateral extent: tight to camera view for high texel density.
-			// Depth extent: full system so off-axis casters (e.g. Moon at 60 Earth
-			// radii during an eclipse) stay inside the shadow frustum regardless
-			// of how close the camera is to the receiver.
-			const lateral = Math.max(distance * 2, 0.001);
+			// Lateral extent: tight to camera view for high texel density,
+			// floored by the largest ring outer radius in the focused system so
+			// Saturn's shadow on the rings stays on-screen when the camera is
+			// zoomed in close to the planet (otherwise the rings sit outside
+			// the shadow map and render unshadowed).
+			let ringFloor = 0;
+			for (const bo of this.bodyObjects.values()) {
+				if (!bo.rings) continue;
+				if (bo.body.data.parentId !== sysId && bo.body.data.id !== sysId) continue;
+				if (bo.rings.outerScene > ringFloor) ringFloor = bo.rings.outerScene;
+			}
+			// 1.05× pad so the ring's outermost edge isn't clipped by texel rounding.
+			const lateral = Math.max(distance * 2, ringFloor * 1.05, 0.001);
 			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
 			const shadowCam = this.shadowLight.shadow.camera;
 			shadowCam.left = shadowCam.bottom = -lateral;
