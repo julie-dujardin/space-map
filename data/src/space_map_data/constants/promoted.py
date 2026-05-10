@@ -97,8 +97,8 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-20486958",  # 486958 Arrokoth
         # Interstellar objects
         "spkid-3788040",  # 1I/ʻOumuamua
-        "spkid-1003639"  # C/2019 Q4 (Borisov)
-        "spkid-1004083"  # C/2025 N1 (ATLAS)
+        "spkid-1003639",  # C/2019 Q4 (Borisov)
+        "spkid-1004083",  # C/2025 N1 (ATLAS)
         # Comets
         "spkid-1000036",  # 1P/Halley
         "spkid-1000025",  # 2P/Encke
