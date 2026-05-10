@@ -57,7 +57,11 @@ describe('formatIsoDate', () => {
 		},
 		{ name: 'BCE full precision', raw: '-0099-03-15T00:00:00Z', expected: 'March 15, 100 BC' },
 		// Early-AD year-only (e.g. early Halley apparition)
-		{ name: 'early-AD year-only', raw: '+0240-00-00T00:00:00Z', expected: '240' }
+		{ name: 'early-AD year-only', raw: '+0240-00-00T00:00:00Z', expected: '240' },
+		// Truncated forms (Commons-image dates from the data exporter)
+		{ name: 'truncated year', raw: '2009', expected: '2009' },
+		{ name: 'truncated year-month', raw: '2009-10', expected: 'October 2009' },
+		{ name: 'signed truncated year', raw: '+2009', expected: '2009' }
 	])('$name → $expected', ({ raw, expected }) => {
 		expect(formatIsoDate(raw)).toBe(expected);
 	});

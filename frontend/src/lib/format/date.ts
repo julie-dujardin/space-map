@@ -31,14 +31,15 @@ interface ParsedIsoDate {
 
 /**
  * Parse an ISO 8601 date string into its components. Handles plain dates
- * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), and Wikidata-style
- * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"). Wikidata
- * reduced-precision values encode unknown month/day as 00.
+ * ("2024-01-15"), ISO datetimes ("2024-01-15T00:00:00Z"), Wikidata-style
+ * signed strings ("+1801-01-01T00:00:00Z", "-0466-00-00T00:00:00Z"), and
+ * truncated forms ("2024", "2024-06") where omitted components signal
+ * unknown precision — equivalent to the Wikidata "00" placeholder.
  */
 export function parseIsoDate(raw: string): ParsedIsoDate | null {
-	const m = raw.match(/^([+-]?)(\d{4,})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
+	const m = raw.match(/^([+-]?)(\d{4,})(?:-(\d{2})(?:-(\d{2}))?)?(?:T(\d{2}):(\d{2}):(\d{2})Z)?$/);
 	if (!m) return null;
-	const [, sign, yearStr, monthStr, dayStr, hh, mm, ss] = m;
+	const [, sign, yearStr, monthStr = '00', dayStr = '00', hh, mm, ss] = m;
 	const isBCE = sign === '-';
 	const yearAbs = parseInt(yearStr, 10);
 	const month = parseInt(monthStr, 10);

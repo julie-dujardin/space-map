@@ -4,6 +4,8 @@
 		license_url?: string;
 		artist?: string;
 		description?: string;
+		/** ISO-truncated creation date from Commons (P571 / DateTimeOriginal). */
+		date?: string;
 	}
 </script>
 
@@ -13,6 +15,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { formatIsoDate } from '$lib/format/date';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {
@@ -114,6 +117,10 @@
 		{/if}
 		{#if attribution?.artist}
 			<span class="pswp-sm-caption-artist">{attribution.artist}</span>
+			<span class="pswp-sm-caption-sep" aria-hidden="true">·</span>
+		{/if}
+		{#if attribution?.date}
+			<span class="pswp-sm-caption-date">{formatIsoDate(attribution.date)}</span>
 			<span class="pswp-sm-caption-sep" aria-hidden="true">·</span>
 		{/if}
 		<a

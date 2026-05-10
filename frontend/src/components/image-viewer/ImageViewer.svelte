@@ -206,7 +206,8 @@
 			// For descriptions, a multilang fallback to an arbitrary language
 			// would be unreadable, so we only pick the user's own locale. Bare
 			// (unlocalized) strings are always shown if nothing better is available.
-			description: plainText(meta.description, true)
+			description: plainText(meta.description, true),
+			date: meta.date
 		};
 	}
 

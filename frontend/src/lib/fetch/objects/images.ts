@@ -71,4 +71,8 @@ export interface ImageMetadata {
 	license?: { name?: string; url?: string };
 	artist?: string | Record<string, string>;
 	description?: string | Record<string, string>;
+	/** ISO-truncated creation date: "YYYY-MM-DD" / "YYYY-MM" / "YYYY". */
+	date?: string;
+	/** Wikidata QIDs from Commons SDC P180 ("depicts"). */
+	depicts?: string[];
 }
