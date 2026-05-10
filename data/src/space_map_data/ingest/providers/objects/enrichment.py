@@ -59,6 +59,30 @@ class GroupData:
         self.group_only_rows: dict[int, dict[str, str]] = {}
 
 
+def latest_day_dir(provider_dir: Path) -> Path:
+    """Find the newest <year>/<month>/<day>/ snapshot under a download dir.
+
+    Falls back to the provider dir itself when no day-tiered snapshot exists,
+    so existing run_path handling (``csv_path.exists()`` skip) keeps working.
+    """
+    if not provider_dir.exists():
+        return provider_dir
+    latest: tuple[int, int, int, Path] | None = None
+    for year_dir in provider_dir.iterdir():
+        if not (year_dir.is_dir() and year_dir.name.isdigit()):
+            continue
+        for month_dir in year_dir.iterdir():
+            if not (month_dir.is_dir() and month_dir.name.isdigit()):
+                continue
+            for day_dir in month_dir.iterdir():
+                if not (day_dir.is_dir() and day_dir.name.isdigit()):
+                    continue
+                key = (int(year_dir.name), int(month_dir.name), int(day_dir.name))
+                if latest is None or key > latest[:3]:
+                    latest = (*key, day_dir)
+    return latest[3] if latest is not None else provider_dir
+
+
 def load_groups(groups_dir: Path) -> GroupData:
     """Parse group CSVs and return membership + TLE-fallback data."""
     data = GroupData()
