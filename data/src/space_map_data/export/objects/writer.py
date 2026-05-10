@@ -125,6 +125,9 @@ def _pick_attrs(obj: object, attrs: tuple[str, ...]) -> dict:
     return data
 
 
+_AU_KM = 149_597_870.7
+
+
 def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table.
 
@@ -132,9 +135,11 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     Horizons sub-table (which exposes unified-name properties over its
     native column names); SBDB rows read from the SBDB sub-table directly;
     celestrak rows read from the transient ``_daily_kepler`` overlay attached
-    by the Earth-zone overlay (celestrak doesn't persist these). Returns an
-    empty dict when the relevant source isn't available — same behaviour as
-    the previous main-table read.
+    by the Earth-zone overlay (celestrak doesn't persist these). SBDB
+    satellites store ``a`` natively in km (``a_km``); we convert to AU on
+    read so the bundle ships the same units the position writer does.
+    Returns an empty dict when the relevant source isn't available — same
+    behaviour as the previous main-table read.
     """
     src = obj.orbital_source
     if src == OrbitalSource.celestrak:
@@ -144,6 +149,20 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
         return {a: daily[a] for a in attrs if daily.get(a) is not None}
     if src == OrbitalSource.sbdb:
         return _pick_attrs(obj.sbdb, attrs) if obj.sbdb is not None else {}
+    if src == OrbitalSource.sbdb_moon:
+        if obj.sbdb_moon is None:
+            return {}
+        out: dict = {}
+        for attr in attrs:
+            if attr == "a":
+                a_km = obj.sbdb_moon.a_km
+                if a_km is not None:
+                    out["a"] = a_km / _AU_KM
+                continue
+            val = getattr(obj.sbdb_moon, attr, None)
+            if val is not None:
+                out[attr] = val
+        return out
     if src in (OrbitalSource.horizons, OrbitalSource.spice):
         return _pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
     return {}
@@ -321,6 +340,8 @@ def _build_global(
             logger.warning(
                 "Texture metadata missing for %s; skipping attribution", obj.id
             )
+    if obj.has_rings:
+        data["has_rings"] = True
     if obj.name is not None:
         data["name"] = obj.name
     if obj.mpc_designation is not None:

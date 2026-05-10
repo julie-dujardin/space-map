@@ -44,6 +44,7 @@ from space_map_data.export.systems import (
     load_nut_prec_angles,
     load_orientation,
     load_radii,
+    load_ring_metadata,
     load_texture_metadata,
     write_system_metadata,
     write_systems_global,
@@ -58,6 +59,7 @@ from space_map_data.models.object import (
     ObjectType,
     OrbitalSource,
     SBDB,
+    SBDBMoon,
 )
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -79,6 +81,12 @@ _SUN_MAJOR_TYPE_VALUES = [t.value for t in _SUN_MAJOR_TYPES]
 
 _DEFAULT_ZONE_LIMIT = 10_000
 
+# Columns the Keplerian elements writer hard-requires (it raises on None).
+# SBDB-moon rows where any of these is null can't be propagated as a Kepler
+# orbit, so they're filtered out of the small_body_moons zone and instead
+# fall into the orbitless bucket (still get an object-detail bundle).
+_SBDBMOON_KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
+
 
 @dataclass
 class ZoomSnapshots:
@@ -90,6 +98,7 @@ class ZoomSnapshots:
     """
 
     snapshots: list["SnapshotResult"] = field(default_factory=list)
+    parent_id_type: str | None = None  # ID_TYPES value of col-2 ids in this zoom
 
 
 def _build_position_zoom(snaps: list["SnapshotResult"], zone: str, zoom: int) -> dict:
@@ -172,14 +181,32 @@ def _build_position_metadata(
     * ``parted`` — `{zone}/{zoom}/{part}.bin.gz`
     * ``chunked-parted`` — `{zone}/{zoom}/{label}/{part}.bin.gz`
     * ``chunked`` — `{zone}/{zoom}/{chunk}.bin.gz` (chebyshev)
+
+    Each zone also carries `parent_id_type` (e.g. ``"naif"``, ``"spkid"``)
+    naming the prefix the frontend should apply to col-2 numeric parent ids
+    when rebuilding full ``Object.id`` strings. Chebyshev zones are always
+    NAIF-keyed.
     """
     zones: dict[str, dict] = {}
     for zone, zoom_map in zone_structure.items():
         zooms: dict[str, dict] = {}
+        parent_id_type: str | None = None
         for zoom, zoom_snaps in zoom_map.items():
             zooms[str(zoom)] = _build_position_zoom(zoom_snaps.snapshots, zone, zoom)
+            if zoom_snaps.parent_id_type is not None:
+                if parent_id_type is None:
+                    parent_id_type = zoom_snaps.parent_id_type
+                elif parent_id_type != zoom_snaps.parent_id_type:
+                    raise ValueError(
+                        f"{zone}: zooms disagree on parent_id_type "
+                        f"({parent_id_type!r} vs {zoom_snaps.parent_id_type!r}) — "
+                        f"the manifest emits one value per zone"
+                    )
         if zooms:
-            zones[zone] = {"zooms": zooms}
+            entry: dict = {"zooms": zooms}
+            if parent_id_type is not None:
+                entry["parent_id_type"] = parent_id_type
+            zones[zone] = entry
     for zone, params in chebyshev_zones.items():
         # Chebyshev always sits at zoom 0; nothing else can land at the same
         # zone+zoom, so there's no collision to resolve.
@@ -196,6 +223,7 @@ def _build_position_metadata(
             "start_jd": params["start_jd"],
             "end_jd": params["end_jd"],
         }
+        zone_entry.setdefault("parent_id_type", "naif")
     return {"zones": dict(sorted(zones.items()))}
 
 
@@ -585,6 +613,33 @@ class ZoneExportResult:
 
     zone_data: ChunkObjectData
     snapshots: list[SnapshotResult] = field(default_factory=list)
+    parent_id_type: str | None = None
+
+
+def _derive_parent_id_type(zone: str, objects: list[Object]) -> str | None:
+    """Pick the col-2 parent prefix for ``zone``, asserting uniformity.
+
+    Frontend rebuilds parent ids as ``f"{prefix}-{col2}"`` per zone, so a
+    mixed-prefix zone would route some parents to the wrong bucket. Returns
+    None when no object has a parent (zones containing only the SSB itself —
+    not currently a thing, but the reader treats None as legacy ``"naif"``).
+    """
+    first: str | None = None
+    for o in objects:
+        if o.parent_id is None:
+            continue
+        pos = o.parent_id.find("-")
+        prefix = o.parent_id[:pos] if pos != -1 else None
+        if prefix is None:
+            continue
+        if first is None:
+            first = prefix
+        elif prefix != first:
+            raise ValueError(
+                f"{zone}: mixed parent id-types ({first!r} vs {prefix!r} "
+                f"on {o.id!r}); each zone must have a single parent prefix"
+            )
+    return first
 
 
 def _export_zone(
@@ -635,7 +690,10 @@ def _export_zone(
         texture_metadata,
     )
 
-    result = ZoneExportResult(zone_data=zone_data)
+    result = ZoneExportResult(
+        zone_data=zone_data,
+        parent_id_type=_derive_parent_id_type(zone, union_objs),
+    )
     for snap in snapshots.iterate():
         num_parts = _write_element_parts(
             snap.objects,
@@ -718,6 +776,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     nut_prec = load_nut_prec(DOWNLOAD_DIR)
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
+    ring_metadata = load_ring_metadata(out_dir)
 
     write_systems_global(out_dir, gms, nut_prec_angles)
 
@@ -734,6 +793,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         for lang, by_id in result.zone_data.localized_data.items():
             all_objects.localized_data[lang].update(by_id)
         all_objects.has_localized.update(result.zone_data.has_localized)
+        zone_structure[zone][zoom].parent_id_type = result.parent_id_type
         for snap in result.snapshots:
             object_counts[(zone, zoom, snap.time)] += snap.count
             zone_structure[zone][zoom].snapshots.append(snap)
@@ -826,9 +886,24 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     .filter(
                         Object.spkid.is_(None),
                         Object.object_type == ObjectType.moon.value,
+                        Object.orbital_source.is_distinct_from(OrbitalSource.sbdb_moon),
                         Object.id.notin_(cheb_covered_ids)
                         if cheb_covered_ids
                         else sa_true(),
+                    ),
+                ),
+                (
+                    "small_body_moons",
+                    0,
+                    session.query(Object)
+                    .options(joinedload(Object.sbdb_moon))
+                    .join(Object.sbdb_moon)
+                    .filter(
+                        Object.orbital_source == OrbitalSource.sbdb_moon,
+                        *(
+                            getattr(SBDBMoon, c).is_not(None)
+                            for c in _SBDBMOON_KEPLER_REQUIRED
+                        ),
                     ),
                 ),
                 (
@@ -973,9 +1048,15 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             # executor joins here — session still open so ORM objects remain valid
 
         write_system_metadata(
-            session, out_dir, orientation, radii, nut_prec, texture_metadata
+            session,
+            out_dir,
+            orientation,
+            radii,
+            nut_prec,
+            texture_metadata,
+            ring_metadata,
         )
-        write_credits(session, out_dir, texture_metadata)
+        write_credits(session, out_dir, texture_metadata, ring_metadata)
 
         # Aggregate has_localized from elements futures before writing chebyshev
         # — the cheb body header carries one bit per body, gated on the same
@@ -1018,6 +1099,46 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             all_objects.has_localized.update(cheb_data.has_localized)
             logger.info(
                 "Built object data for %d chebyshev-covered bodies", len(cheb_objs)
+            )
+
+        # SBDB satellites whose Kepler set isn't complete (publication
+        # placeholders with no orbit at all — ~95% of rows — plus the smaller
+        # group with `a_km` set but other elements missing, which the
+        # elements writer can't propagate). They never appear in the
+        # small_body_moons position zone, so build their object data here so
+        # they still show up in bundles + labels and the frontend can navigate
+        # to a detail page even without a 3D position.
+        orbitless_moons = (
+            session.query(Object)
+            .options(joinedload(Object.sbdb_moon))
+            .join(Object.sbdb_moon)
+            .filter(
+                Object.orbital_source == OrbitalSource.sbdb_moon,
+                or_(
+                    *(getattr(SBDBMoon, c).is_(None) for c in _SBDBMOON_KEPLER_REQUIRED)
+                ),
+            )
+            .all()
+        )
+        if orbitless_moons:
+            orbitless_data = _build_zone_object_data(
+                orbitless_moons,
+                wikidata_entities,
+                units,
+                nasa_science_urls,
+                orientation,
+                radii,
+                gms,
+                nut_prec,
+                texture_metadata,
+            )
+            all_objects.global_data.update(orbitless_data.global_data)
+            for lang, by_id in orbitless_data.localized_data.items():
+                all_objects.localized_data[lang].update(by_id)
+            all_objects.has_localized.update(orbitless_data.has_localized)
+            logger.info(
+                "Built object data for %d orbit-less SBDB satellites",
+                len(orbitless_moons),
             )
 
         chebyshev_zones = write_chebyshev(

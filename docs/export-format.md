@@ -19,6 +19,8 @@ v1/
   v1/images/{filename}/metadata.json.gz           per-image license + variants map
   textures/{id}/{tier}.webp                       tier = low | medium | high
   textures/{id}/metadata.json                     texture source + exports
+  rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
+  rings/{id}/metadata.json                        ring source + geometry + per-channel files
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
   systems/{barycenter_id}.json                    per-system body metadata, loaded on system entry
 ```
@@ -44,7 +46,14 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
         "zooms": {
           "0": { "shape": "parted", "parts": 12 },
           "1": { "shape": "parted", "parts": 47 }
-        }
+        },
+        "parent_id_type": "naif"
+      },
+      "small_body_moons": {
+        "zooms": {
+          "0": { "shape": "parted", "parts": 1 }
+        },
+        "parent_id_type": "spkid"
       },
       "earth": {
         "zooms": {
@@ -127,8 +136,17 @@ parts axis on chebyshev — files are tuned to ~200 KB by adjusting
 - `major` zoom 2 — SBDB-only dwarves (Eris, Makemake, Quaoar, …) that aren't
   in any SPK kernel and still need a Kepler propagator.
 - `major_asteroids` — the ~15 sb441-n16 perturber asteroids (chebyshev only).
-- `moons` — non-whitelisted moons with Method-C secular elements (chunk-indexed).
+- `moons` — non-whitelisted moons of planets with Method-C secular elements
+  (chunk-indexed). Excludes SBDB-discovered satellites of small bodies — those
+  ride in `small_body_moons`.
 - `moons/{parent}` — whitelisted moons under each parent body, chebyshev coverage.
+- `small_body_moons` — moons of asteroids/comets discovered via SBDB's
+  per-object satellite payload (e.g. Dactyl around Ida, Linus around Kalliope).
+  Static-parted, system-scale Keplerian. Only orbit-bearing rows ship here;
+  publication-placeholder rows (no orbit) appear in object bundles for
+  navigation but not in this position file. Parent ids are SPK-IDs (small
+  bodies don't have NAIF IDs), surfaced in the manifest via `parent_id_type:
+  "spkid"`.
 - `earth` — Earth-orbiting spacecraft/debris (SGP4, date-segmented).
 - `spacecraft` — spacecraft/debris orbiting other bodies.
 
@@ -193,8 +211,8 @@ Columnar binary format with zero-copy typed array support.
 | Offset | Type    | Field |
 |--------|---------|-------|
 | 24     | uint16  | Sub-format: `0 = Keplerian, 1 = Parabolic, 2 = SGP4` |
-| 26     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 255 unknown` — every row in the file shares this provider |
-| 27     | uint8   | Id type: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — every row in the file shares this prefix; combine with column 0 (numeric ID) to rebuild the full `<prefix>-<numeric>` Object ID |
+| 26     | uint8   | Source: `0 horizons, 1 sbdb, 2 celestrak, 3 spice, 4 sbdb_moon, 255 unknown` — every row in the file shares this provider |
+| 27     | uint8   | Id type: `0 naif, 1 spkid, 2 norad_satcat, 3 sbdb_moon, 255 unknown` — every row in the file shares this prefix; combine with column 0 (numeric ID) to rebuild the full `<prefix>-<numeric>` Object ID. For `sbdb_moon` (compound id `sbdb_moon-<parent_spkid>-<sat_index>`), col 0 carries `sat_index` and the parent SPK-ID rides in col 2 — combine both with the zone's `parent_id_type` (`"spkid"`) to rebuild the id |
 | 28     | uint32  | Row count |
 
 One provider writes one zone/part (pipeline-enforced), so the source fits in
@@ -209,9 +227,9 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 
 | # | Name        | Type    | Missing | Notes |
 |---|-------------|---------|---------|-------|
-| 0 | id          | int32   | -1      | Numeric portion of `Object.id`; combine with the elements extension's id-type byte to rebuild the full `<prefix>-<numeric>` form (e.g. id-type=0 + 399 → `naif-399`). Sourced from `naif_id`, `spkid`, or `norad_cat_id` per the file's id type. |
+| 0 | id          | int32   | -1      | Numeric portion of `Object.id`; combine with the elements extension's id-type byte to rebuild the full `<prefix>-<numeric>` form (e.g. id-type=0 + 399 → `naif-399`). Sourced from `naif_id`, `spkid`, or `norad_cat_id` per the file's id type. For `sbdb_moon` files this is the per-parent `sat_index` (0-based); the parent SPK-ID in col 2 supplies the rest of the compound id. |
 | 1 | object_type | uint8   | 255     | `ObjectType` ordinal (see below) |
-| 2 | parent_id   | int32   | -1      | NAIF ID of central body (0 = SSB) |
+| 2 | parent_id   | int32   | -1      | Numeric portion of the parent's `Object.id`. Combine with the zone-level `parent_id_type` from `metadata.json` (default `"naif"` when absent) to rebuild `<parent_id_type>-<col2>`. Examples: `naif-3` (Earth-Moon barycenter), `spkid-2000004` (Vesta) |
 | 3 | scale       | uint8   | 255     | 0 = planet, 1 = system |
 | 4 | epoch_jd    | float64 | NaN     | Epoch, Julian Date TDB |
 | 5 | a           | float32 | NaN     | Semi-major axis: **km** if planet-scale, **AU** if system-scale |
@@ -433,7 +451,19 @@ as separate files — consumers rebuild them from the binary:
 - **Chebyshev**: combine each per-body header's `id_type` (offset 18) with
   `obj_id_value` (offset 8).
 
-Both formats use the same id-type ordinal map: `0 naif, 1 spkid, 2 norad_satcat, 255 unknown`.
+Both formats use the same id-type ordinal map: `0 naif, 1 spkid, 2 norad_satcat, 3 sbdb_moon, 255 unknown`.
+
+For col 2 (parent), elements files don't carry a per-row id-type byte — every
+row's parent in a given zone shares the same prefix (the SQL queries are
+single-typed by construction). The prefix lives at the zone level in
+`metadata.json` as `parent_id_type` (e.g. `"naif"`, `"spkid"`); rebuild parent
+ids as `${parent_id_type}-${col 2}`. Older zones may omit the field — treat
+`undefined` as `"naif"`.
+
+`sbdb_moon` is a compound id (`sbdb_moon-<parent_spkid>-<sat_index>`): col 0
+ships the `sat_index`, col 2 ships the parent SPK-ID, and the elements
+extension's id-type byte = 3 picks the prefix. Frontends rebuild as
+`sbdb_moon-${col2}-${col0}`.
 
 ## Pre-interaction labels (`labels/{lang}.gz`)
 
@@ -503,6 +533,7 @@ interface GlobalObjectData {
     attribution?: string;             // long-form credit line; omitted when unavailable
     description?: string;
   };
+  has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   provisional_designation?: string;
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   cross_refs?: {
@@ -535,8 +566,9 @@ interface GlobalObjectData {
     epoch_jd: number; e: number; i: number;
     om: number; w: number;
     scale: "planet" | "system";
-    parent_id: number;
-    source: "horizons" | "sbdb" | "celestrak";
+    /** Full parent `Object.id` (e.g. `"naif-399"`, `"spkid-2000004"`). */
+    parent_id: string;
+    source: "horizons" | "sbdb" | "celestrak" | "spice" | "sbdb_moons";
     // Keplerian (standard orbits):
     a?: number; ma?: number; n?: number;
     // Parabolic (e=1 comets):
@@ -759,6 +791,52 @@ The size is a target, not a hard limit. Some textures go over it.
 - `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
 - `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
 
+## Rings
+
+Generated during ingest (not export) and written directly to the export directory. Each ringed body's `has_rings` flag in its global JSON signals that a ring bundle exists; the per-system metadata (below) carries the renderer-facing block with channel URLs and geometry constants.
+
+**Path:** `rings/{id}/{channel}.webp`
+
+Each channel is a 1-D radial profile rendered as a 1×N lossless WebP image. Channels are sampled uniformly between `inner_radius_km` and `outer_radius_km`; `sample_count` (= image width) is fixed per source dataset. Pillow promotes single-channel inputs to RGB on save, so consumers should sample `.r` for scalar channels and `.rgb` for `color`.
+
+| Channel            | Type   | Meaning                                                      |
+|--------------------|--------|--------------------------------------------------------------|
+| `backscattered`    | scalar | Brightness on the sun-lit side (phase angle ≈ 0°).            |
+| `forwardscattered` | scalar | Brightness at high phase (≈ 139°).                            |
+| `unlitside`        | scalar | Brightness on the un-lit side (back-lit transmission).        |
+| `transparency`     | scalar | Per-radius opacity (1 = transparent, 0 = opaque).             |
+| `color`            | RGB    | Color tint (multiplied with the brightness channel).          |
+
+The renderer blends `backscattered`/`forwardscattered` by phase angle, swaps in `unlitside` when the sun-side ray to a fragment is occluded by the host body, multiplies by `color`, and uses `transparency` for the alpha component (and for the host body's surface shader, which samples the same channel along the sun ray to project a ring shadow onto the planet).
+
+### Ring metadata (`rings/{id}/metadata.json`)
+
+```json
+{
+  "id": "naif-699",
+  "source": "https://bjj.mmedia.is/data/s_rings/index.html",
+  "organisation": "Björn Jónsson",
+  "attribution": "Saturn ring profiles created by Björn Jónsson …",
+  "description": "1-D radial profiles of Saturn's main rings: …",
+  "inner_radius_km": 74510.0,
+  "outer_radius_km": 140390.0,
+  "sample_count": 13177,
+  "color_space": "srgb",
+  "processed_at": "2026-05-10T16:31:15+00:00",
+  "channels": {
+    "backscattered":   { "file": "backscattered.webp",   "width": 13177, "height": 1, "size_bytes": 2588 },
+    "forwardscattered":{ "file": "forwardscattered.webp","width": 13177, "height": 1, "size_bytes": 1850 },
+    "unlitside":       { "file": "unlitside.webp",       "width": 13177, "height": 1, "size_bytes": 2616 },
+    "transparency":    { "file": "transparency.webp",    "width": 13177, "height": 1, "size_bytes": 8788 },
+    "color":           { "file": "color.webp",           "width": 13177, "height": 1, "size_bytes": 2508 }
+  }
+}
+```
+
+- `inner_radius_km` / `outer_radius_km` — radial domain (km from the host body's centre) the profile spans. Samples are uniformly distributed across the closed interval.
+- `color_space` — color space for the `color` channel; `"srgb"` today.
+- `attribution` / `description` — optional; when present they propagate to `systems/{bary}.json` and `credits.json`.
+
 ## Systems global (`systems/global.json`)
 
 A single tiny top-level file fetched once at app start, paired with the per-system files below. Holds context-independent lookups the frontend needs regardless of which system the user is viewing.
@@ -811,11 +889,31 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
-  "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } }
+  "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } },
+  "naif-699": {
+    "rings": {
+      "source": "https://bjj.mmedia.is/data/s_rings/index.html",
+      "organisation": "Björn Jónsson",
+      "attribution": "Saturn ring profiles created by Björn Jónsson …",
+      "inner_radius_km": 74510.0,
+      "outer_radius_km": 140390.0,
+      "sample_count": 13177,
+      "color_space": "srgb",
+      "channels": {
+        "backscattered":    "backscattered.webp",
+        "forwardscattered": "forwardscattered.webp",
+        "unlitside":        "unlitside.webp",
+        "transparency":     "transparency.webp",
+        "color":            "color.webp"
+      }
+    }
+  }
 }
 ```
 
 The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
+
+When a body carries a `rings` block, the frontend builds an annulus aligned to its IAU pole, fetches `${DATA_BASE}/v1/rings/{body_id}/{channels[name]}` for each channel, and routes the credit fields through the same per-organisation attribution path as textures. The `channels` map is flat (channel → filename) rather than tier-nested because rings ship at a single resolution.
 
 ## Credits (`credits.json`)
 
@@ -828,7 +926,7 @@ interface Credits {
   systems: Array<{
     id: string | null;           // barycenter object ID ("naif-3", …) or null for the standalone bucket
     name: string | null;         // primary-planet name ("Earth", "Jupiter", …); null for standalones
-    textures: Array<{
+    textures?: Array<{
       body_id: string;           // e.g. "naif-399"
       name: string;              // English display name; localisation is deferred
       source: string;            // attribution source URL
@@ -837,19 +935,28 @@ interface Credits {
       attribution?: string;      // long-form credit line when available
       description?: string;      // optional one-liner about the dataset
     }>;
+    rings?: Array<{
+      body_id: string;           // real Object.id of the ringed host (e.g. "naif-699"); the array name is the disambiguator, not a synthetic "-rings" suffix
+      name: string;              // English display name of the host body
+      source: string;
+      organisation: string;
+      attribution?: string;
+      description?: string;
+    }>;
   }>;
 }
 ```
 
 Systems are ordered Mercury → Pluto by barycenter NAIF ID; a final `id: null`
 bucket collects standalones (sun-orbiting dwarf planets or asteroids such as
-Ceres and Bennu). Each system's `textures` list is alphabetised by body name.
-Only bodies whose texture metadata.json exists on disk are included —
-asteroids or 3D mesh assets can slot into sibling keys (`models`,
-`mesh_assets`, …) on the same file when those pipelines come online. Static
-credits (orbital providers, SPICE/IAU rotation kernels, Wikidata, Wikipedia,
-Wikimedia Commons, IAU nomenclature) live in the frontend page itself and
-don't need to be emitted here.
+Ceres and Bennu). Each system's `textures` and `rings` lists are alphabetised
+by body name; either array is omitted entirely when no entries exist for
+that bucket. Only bodies whose `metadata.json` exists on disk (under
+`textures/` or `rings/`) are included — asteroids or 3D mesh assets can slot
+into further sibling keys (`models`, `mesh_assets`, …) on the same file when
+those pipelines come online. Static credits (orbital providers, SPICE/IAU
+rotation kernels, Wikidata, Wikipedia, Wikimedia Commons, IAU nomenclature)
+live in the frontend page itself and don't need to be emitted here.
 
 ## Consuming the data
 

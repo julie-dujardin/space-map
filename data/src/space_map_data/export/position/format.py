@@ -73,12 +73,14 @@ SOURCE_ORDINAL: dict[OrbitalSource, int] = {
     OrbitalSource.sbdb: 1,
     OrbitalSource.celestrak: 2,
     OrbitalSource.spice: 3,
+    OrbitalSource.sbdb_moon: 4,
 }
 
 ID_TYPE_ORDINAL: dict[ID_TYPES, int] = {
     ID_TYPES.NAIF: 0,
     ID_TYPES.SPKID: 1,
     ID_TYPES.NORAD_SATCAT: 2,
+    ID_TYPES.SBDB_MOON: 3,
 }
 
 MISSING_INT32 = -1

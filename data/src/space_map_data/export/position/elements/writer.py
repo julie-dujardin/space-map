@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 _REQUIRED_KEPLERIAN = {"epoch_jd", "a", "e", "i", "om", "w", "ma", "n"}
 _REQUIRED_SGP4 = ("BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT")
 
+_AU_KM = 149_597_870.7
+
 
 def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | None:
     """Read a unified-name kepler element off the right sub-table.
@@ -45,7 +47,9 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
     ma, n, epoch_jd) over its native column names; SBDB columns already match
     unified except for ``epoch`` (aliased to ``epoch_jd``). Celestrak-source
     rows don't persist elements — the daily overlay attaches them as a
-    transient ``_daily_kepler`` dict at export time.
+    transient ``_daily_kepler`` dict at export time. SBDBMoon stores ``a`` in
+    km natively (``a_km``); we convert to AU on read so the small_body_moons
+    zone ships system-scale values in the same units as the moons zone.
 
     Rows with ``orbital_source is None`` inherit the file source — that
     matches the assertion in :func:`_source_ordinal` (None rows are accepted
@@ -57,6 +61,13 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
         return daily[attr] if daily is not None else None
     if src == OrbitalSource.sbdb:
         return getattr(o.sbdb, attr, None) if o.sbdb is not None else None
+    if src == OrbitalSource.sbdb_moon:
+        if o.sbdb_moon is None:
+            return None
+        if attr == "a":
+            a_km = o.sbdb_moon.a_km
+            return a_km / _AU_KM if a_km is not None else None
+        return getattr(o.sbdb_moon, attr, None)
     if src in (OrbitalSource.horizons, OrbitalSource.spice):
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None
@@ -368,13 +379,21 @@ def _parse_numeric_id(obj: Object) -> int:
     """Return the source-specific numeric ID for the binary export.
 
     Uses the proper column (naif_id, spkid, or norad_cat_id) based on the
-    Object.id prefix (ID_TYPE).
+    Object.id prefix (ID_TYPE). For the ``sbdb_moon`` prefix we ship the
+    sat_index (per-parent ordinal) rather than the compound id tail — the
+    frontend rebuilds the full id from parent_id + sat_index.
     """
     pos = obj.id.find("-")
     if pos == -1:
         logger.warning("%s: no separator in object ID", obj.id)
         return MISSING_INT32
     id_type = obj.id[:pos]
+
+    if id_type == "sbdb_moon":
+        if obj.sbdb_moon is None:
+            logger.warning("%s: missing sbdb_moon relation for binary export", obj.id)
+            return MISSING_INT32
+        return obj.sbdb_moon.sat_index
 
     attr = _ID_TYPE_ATTR.get(id_type)
     if attr is not None:
