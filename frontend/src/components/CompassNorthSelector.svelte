@@ -20,15 +20,15 @@
 	<Popover.Trigger
 		class="pointer-events-auto relative flex items-center justify-center
 			w-10 h-10 md:w-8 md:h-8 rounded-full
-			bg-primary-foreground hover:bg-primary-foreground/80
-			text-primary transition-colors cursor-pointer"
+			bg-black/40 backdrop-blur-md hover:bg-black/55
+			text-white transition-colors cursor-pointer"
 		title={m.north_reference()}
 		aria-label={m.north_reference()}
 	>
 		<CompassIcon class="size-5 md:size-4" />
 		<span
 			class="absolute -bottom-0.5 -end-0.5 size-5 md:size-4.5 rounded-full
-				bg-primary text-primary-foreground
+				bg-white text-black
 				flex items-center justify-center pointer-events-none"
 			aria-hidden="true"
 		>
