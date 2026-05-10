@@ -36,6 +36,7 @@ no separate variants.json is written.
 
 import gzip
 import logging
+import re
 import shutil
 import threading
 import uuid
@@ -108,9 +109,21 @@ _ANIMATED_AVIF_SPEED = 6
 _ANIMATED_FORMATS = {"GIF", "WEBP", "PNG"}
 
 # Bump when the variant-emission rules change (new encoder, new bucket sizes,
-# dropped/added formats). Existing bundles whose metadata.json.gz carries an
-# older schema are wiped and regenerated on the next export.
-_BUNDLE_SCHEMA = 3
+# dropped/added formats) OR the metadata payload gains/drops fields. Existing
+# bundles whose metadata.json.gz carries an older schema are wiped and
+# regenerated on the next export.
+_BUNDLE_SCHEMA = 4
+
+# P571 inception precision codes we accept. Wikidata uses the WikibaseTime
+# precision enum: 11=day, 10=month, 9=year, lower=decade/century/millennium
+# etc. Anything coarser than year isn't useful for an image creation date.
+_TIME_PRECISION_DAY = 11
+_TIME_PRECISION_MONTH = 10
+_TIME_PRECISION_YEAR = 9
+
+# Matches a leading date in extmetadata DateTimeOriginal: "2009-10-05",
+# "2012-09-23 16:26:36", "1999". The trailing time (if any) is dropped.
+_DATETIME_ORIGINAL_RE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?")
 
 # Per-filename locks so two chunk-writer threads never race on the same image.
 # Serializes work on a single file (lock held across PIL save + rename) while
@@ -430,6 +443,13 @@ def _write_trimmed_metadata(
       file's value is the default, and tree members fill in missing entries
       (per-locale for multilang dicts), so a French derivative's French
       description survives when the English original lacked one.
+    - ``date``: ISO-truncated creation date (``YYYY-MM-DD`` / ``YYYY-MM`` /
+      ``YYYY``). Prefers SDC P571 ``inception`` (truncated by precision) and
+      falls back to extmetadata ``DateTimeOriginal`` text. Tree-aggregated
+      with chosen-file priority.
+    - ``depicts``: list of Wikidata QIDs from SDC P180. Tree-aggregated only
+      when the chosen file has no depicts of its own — derivatives can have
+      different framing, so we don't merge.
     - ``source_url``: Commons page URL (constructible client-side, but cheap
       to include here)
 
@@ -450,11 +470,15 @@ def _write_trimmed_metadata(
     if license_block:
         payload["license"] = license_block
 
-    artist, description = _aggregate_locale_fields(filename, base)
+    artist, description, date, depicts = _aggregate_tree_metadata(filename, base)
     if artist:
         payload["artist"] = artist
     if description:
         payload["description"] = description
+    if date:
+        payload["date"] = date
+    if depicts:
+        payload["depicts"] = depicts
 
     target = out_dir / "metadata.json.gz"
     tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
@@ -462,18 +486,28 @@ def _write_trimmed_metadata(
     tmp.rename(target)
 
 
-def _aggregate_locale_fields(
+def _aggregate_tree_metadata(
     filename: str, base_meta: dict
-) -> tuple[str | dict[str, str] | None, str | dict[str, str] | None]:
-    """Return ``(artist, description)`` merged across the chosen file's tree.
+) -> tuple[
+    str | dict[str, str] | None,
+    str | dict[str, str] | None,
+    str | None,
+    list[str],
+]:
+    """Walk the derivative tree once and aggregate the fields we export.
 
-    The chosen file's value is the default; tree members reachable via
-    ``derived_from`` / ``other_versions`` provide fallbacks (per-locale for
-    multilang dicts). BFS from the chosen file means closer derivatives are
+    Returns ``(artist, description, date, depicts)``. Chosen-file values
+    take precedence; tree members reachable via ``derived_from`` /
+    ``other_versions`` provide fallbacks. ``artist`` and ``description``
+    fall back per-locale on multilang dicts; ``date`` and ``depicts`` use
+    whole-value fallback (the chosen file wins outright if it has any
+    value at all). BFS from the chosen file means closer derivatives are
     visited first and win the fallback race over distant ones.
     """
     artist: str | dict[str, str] | None = None
     description: str | dict[str, str] | None = None
+    date: str | None = None
+    depicts: list[str] = []
     for idx, name in enumerate(_walk_tree(filename)):
         meta = base_meta if idx == 0 else read_download_metadata(name)
         if not meta:
@@ -485,7 +519,95 @@ def _aggregate_locale_fields(
         description = _merge_locale_field(
             description, _locale_field(em.get("ImageDescription"))
         )
-    return artist, description
+        if date is None:
+            date = _extract_date(meta, em)
+        if not depicts:
+            depicts = _extract_depicts(meta)
+    return artist, description, date, depicts
+
+
+def _extract_date(meta: dict, em: dict) -> str | None:
+    """Best-available creation date for an image, ISO-truncated to known precision.
+
+    Prefers SDC P571 (structured time + precision) so we don't dress up a
+    year-only inception as a fake day. Falls back to extmetadata
+    ``DateTimeOriginal``, which is free-form text but usually starts with a
+    parseable ISO-ish date.
+    """
+    for stmt in _sdc_statements(meta, "P571"):
+        snak = stmt.get("mainsnak") or {}
+        if snak.get("snaktype") != "value":
+            continue
+        value = (snak.get("datavalue") or {}).get("value") or {}
+        time_str = value.get("time")
+        precision = value.get("precision")
+        if not isinstance(time_str, str) or not isinstance(precision, int):
+            continue
+        truncated = _truncate_wikibase_time(time_str, precision)
+        if truncated:
+            return truncated
+    raw = (em.get("DateTimeOriginal") or {}).get("value")
+    if isinstance(raw, str):
+        match = _DATETIME_ORIGINAL_RE.match(raw.strip())
+        if match:
+            year, month, day = match.groups()
+            if day:
+                return f"{year}-{month}-{day}"
+            if month:
+                return f"{year}-{month}"
+            return year
+    return None
+
+
+def _truncate_wikibase_time(time_str: str, precision: int) -> str | None:
+    """Truncate a Wikibase time string to its declared precision.
+
+    Wikibase times look like ``+2009-10-05T00:00:00Z`` (negative leading
+    sign for BCE). A day-precision stamp gives ``"2009-10-05"``,
+    month-precision ``"2009-10"``, year-precision ``"2009"``. Anything
+    coarser than year (decade/century/...) we drop — for image creation
+    dates "circa the 2000s" isn't a useful signal.
+    """
+    if not time_str.startswith(("+", "-")):
+        return None
+    sign = "" if time_str[0] == "+" else "-"
+    body = time_str[1:]
+    head = body.split("T", 1)[0]  # YYYY-MM-DD
+    parts = head.split("-")
+    if len(parts) != 3:
+        return None
+    year, month, day = parts
+    if precision >= _TIME_PRECISION_DAY:
+        return f"{sign}{year}-{month}-{day}"
+    if precision == _TIME_PRECISION_MONTH:
+        return f"{sign}{year}-{month}"
+    if precision == _TIME_PRECISION_YEAR:
+        return f"{sign}{year}"
+    return None
+
+
+def _extract_depicts(meta: dict) -> list[str]:
+    """Wikidata QIDs from SDC P180 statements (deduplicated, deprecated dropped)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for stmt in _sdc_statements(meta, "P180"):
+        if stmt.get("rank") == "deprecated":
+            continue
+        snak = stmt.get("mainsnak") or {}
+        if snak.get("snaktype") != "value":
+            continue
+        value = (snak.get("datavalue") or {}).get("value") or {}
+        qid = value.get("id")
+        if isinstance(qid, str) and qid not in seen:
+            seen.add(qid)
+            out.append(qid)
+    return out
+
+
+def _sdc_statements(meta: dict, pid: str) -> list[dict]:
+    """Look up an SDC statement list by property id, returning ``[]`` if absent."""
+    sdc = meta.get("sdc") or {}
+    return (sdc.get("statements") or {}).get(pid) or []
 
 
 def _walk_tree(filename: str) -> list[str]:

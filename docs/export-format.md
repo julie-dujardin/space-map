@@ -702,7 +702,7 @@ Buckets strictly above the resting bucket are not emitted (no upscaling). The `v
 
 ```typescript
 interface ImageMetadata {
-  schema: number;        // bumped when variant rules change; stale bundles are regenerated
+  schema: number;        // bumped when variant rules or payload fields change; stale bundles are regenerated
   source_url: string;    // Commons file page URL
   variants: { [label: string]: string };  // mirrors ObjectImage.variants
   width?: number;        // source pixel dimensions (omitted for SVG/WebM passthrough)
@@ -710,8 +710,12 @@ interface ImageMetadata {
   license?: { name?: string; url?: string };       // from Commons extmetadata
   artist?: string | { [lang: string]: string };    // multilang or bare string
   description?: string | { [lang: string]: string };
+  date?: string;         // ISO-truncated creation date: "YYYY-MM-DD" | "YYYY-MM" | "YYYY"
+  depicts?: string[];    // Wikidata QIDs from Commons SDC P180 ("depicts")
 }
 ```
+
+`artist` and `description` are aggregated across the chosen image's derivative tree (chosen-file values win; tree members reachable via Commons `{{derived from}}` / `{{Other versions}}` fill in missing entries — per-locale for multilang dicts). `date` and `depicts` are also tree-aware but use whole-value fallback: the chosen file wins outright if it has any value, otherwise the closest tree member with one supplies it. `date` prefers the structured SDC P571 inception (truncated to its declared precision) and falls back to free-form `DateTimeOriginal`.
 
 Not cleaned on re-export — bundles are reused across runs. Schema mismatches trigger per-image regeneration; to force a full rebuild, wipe `v1/images/`.
 

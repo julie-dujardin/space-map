@@ -90,6 +90,7 @@ def _stage_download(
     missing_source: bool = False,
     derived_from: list[str] | None = None,
     other_versions: list[str] | None = None,
+    sdc_statements: dict | None = None,
 ) -> None:
     """Populate a fake ``DOWNLOAD_DIR/commons/images/<filename>/`` entry."""
     ext = Path(filename).suffix.lower()
@@ -122,7 +123,41 @@ def _stage_download(
         payload["derived_from"] = derived_from
     if other_versions is not None:
         payload["other_versions"] = other_versions
+    if sdc_statements is not None:
+        payload["sdc"] = {"statements": sdc_statements}
     (d / "metadata.json").write_bytes(orjson.dumps(payload))
+
+
+def _p571(time_str: str, precision: int, *, rank: str = "normal") -> dict:
+    """Build a fake SDC P571 (inception) statement."""
+    return {
+        "mainsnak": {
+            "snaktype": "value",
+            "property": "P571",
+            "datavalue": {
+                "value": {"time": time_str, "precision": precision},
+                "type": "time",
+            },
+        },
+        "type": "statement",
+        "rank": rank,
+    }
+
+
+def _p180(qid: str, *, rank: str = "normal") -> dict:
+    """Build a fake SDC P180 (depicts) statement."""
+    return {
+        "mainsnak": {
+            "snaktype": "value",
+            "property": "P180",
+            "datavalue": {
+                "value": {"entity-type": "item", "id": qid},
+                "type": "wikibase-entityid",
+            },
+        },
+        "type": "statement",
+        "rank": rank,
+    }
 
 
 @pytest.fixture
@@ -728,3 +763,188 @@ class TestTreeMetadataAggregation:
         _collect("Original.jpg")
         meta = self._read_metadata(layout, "Original.jpg")
         assert meta["description"] == {"en": "Eng"}
+
+
+class TestDateExtraction:
+    """Date is sourced from SDC P571 (precision-aware) with extmetadata fallback."""
+
+    def _read_metadata(self, layout, filename: str) -> dict:
+        path = layout["export"] / filename / "metadata.json.gz"
+        return orjson.loads(gzip.decompress(path.read_bytes()))
+
+    def test_p571_day_precision(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P571": [_p571("+2009-10-05T00:00:00Z", 11)]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "2009-10-05"
+
+    def test_p571_month_precision_truncates(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P571": [_p571("+2009-10-05T00:00:00Z", 10)]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "2009-10"
+
+    def test_p571_year_precision_truncates(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P571": [_p571("+2009-10-05T00:00:00Z", 9)]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "2009"
+
+    def test_p571_decade_precision_falls_back_to_datetime_original(
+        self, tmp_path, layout
+    ):
+        # P571 at decade precision isn't useful as a date string, so we
+        # treat it as absent and let the more granular DateTimeOriginal
+        # win — EXIF dates are typically far more precise than a hand-
+        # tagged "1960s"-ish SDC entry.
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P571": [_p571("+2000-01-01T00:00:00Z", 8)]},
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "DateTimeOriginal": {"value": "2009-10-05"},
+            },
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "2009-10-05"
+
+    def test_p571_decade_precision_alone_drops_date(self, tmp_path, layout):
+        # P571 too coarse and no DateTimeOriginal fallback: emit no date.
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P571": [_p571("+2000-01-01T00:00:00Z", 8)]},
+        )
+        _collect("img.jpg")
+        assert "date" not in self._read_metadata(layout, "img.jpg")
+
+    def test_falls_back_to_datetime_original(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "DateTimeOriginal": {"value": "2012-09-23 16:26:36"},
+            },
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "2012-09-23"
+
+    def test_datetime_original_year_only(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            extmetadata={
+                "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                "DateTimeOriginal": {"value": "1999"},
+            },
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["date"] == "1999"
+
+    def test_no_date_when_neither_source_available(self, tmp_path, layout):
+        _stage_download(tmp_path, "img.jpg")
+        _collect("img.jpg")
+        assert "date" not in self._read_metadata(layout, "img.jpg")
+
+    def test_tree_fallback_when_chosen_lacks_date(self, tmp_path, layout):
+        _stage_download(tmp_path, "Original.jpg", derived_from=["Crop.jpg"])
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            sdc_statements={"P571": [_p571("+2008-01-30T00:00:00Z", 11)]},
+        )
+        _collect("Original.jpg")
+        assert self._read_metadata(layout, "Original.jpg")["date"] == "2008-01-30"
+
+    def test_chosen_date_wins_over_tree(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            sdc_statements={"P571": [_p571("+2008-01-30T00:00:00Z", 11)]},
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            sdc_statements={"P571": [_p571("+2020-06-01T00:00:00Z", 11)]},
+        )
+        _collect("Original.jpg")
+        assert self._read_metadata(layout, "Original.jpg")["date"] == "2008-01-30"
+
+
+class TestDepictsExtraction:
+    """Depicts is a list of QIDs from SDC P180."""
+
+    def _read_metadata(self, layout, filename: str) -> dict:
+        path = layout["export"] / filename / "metadata.json.gz"
+        return orjson.loads(gzip.decompress(path.read_bytes()))
+
+    def test_depicts_qids_extracted(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P180": [_p180("Q405"), _p180("Q111")]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["depicts"] == ["Q405", "Q111"]
+
+    def test_depicts_dedupes(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P180": [_p180("Q405"), _p180("Q405")]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["depicts"] == ["Q405"]
+
+    def test_depicts_skips_deprecated(self, tmp_path, layout):
+        _stage_download(
+            tmp_path,
+            "img.jpg",
+            sdc_statements={"P180": [_p180("Q405", rank="deprecated"), _p180("Q111")]},
+        )
+        _collect("img.jpg")
+        assert self._read_metadata(layout, "img.jpg")["depicts"] == ["Q111"]
+
+    def test_no_depicts_when_absent(self, tmp_path, layout):
+        _stage_download(tmp_path, "img.jpg")
+        _collect("img.jpg")
+        assert "depicts" not in self._read_metadata(layout, "img.jpg")
+
+    def test_chosen_depicts_wins_over_tree(self, tmp_path, layout):
+        # A crop may have its own framing; once the chosen file declares
+        # depicts at all, we don't merge in the derivative's list.
+        _stage_download(
+            tmp_path,
+            "Original.jpg",
+            sdc_statements={"P180": [_p180("Q405")]},
+            derived_from=["Crop.jpg"],
+        )
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            sdc_statements={"P180": [_p180("Q111"), _p180("Q525")]},
+        )
+        _collect("Original.jpg")
+        assert self._read_metadata(layout, "Original.jpg")["depicts"] == ["Q405"]
+
+    def test_tree_depicts_fills_when_chosen_empty(self, tmp_path, layout):
+        _stage_download(tmp_path, "Original.jpg", derived_from=["Crop.jpg"])
+        _stage_download(
+            tmp_path,
+            "Crop.jpg",
+            sdc_statements={"P180": [_p180("Q111")]},
+        )
+        _collect("Original.jpg")
+        assert self._read_metadata(layout, "Original.jpg")["depicts"] == ["Q111"]
