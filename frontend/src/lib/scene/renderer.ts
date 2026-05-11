@@ -42,6 +42,7 @@ import {
 	textureFrameForJd,
 	unloadSystemTextures
 } from './objects/construction';
+import { loadCloudTier } from './objects/clouds';
 import {
 	makePointCloudFromBuffer,
 	rebaseOrbitLineLocals,
@@ -1505,6 +1506,10 @@ export class SceneRenderer {
 			}
 			if (!target) continue;
 			loadBodyTextureTier(bo, target, desiredFrame, this.textureLoader);
+			// Clouds track the surface tier — bump them alongside. `loadCloudTier`
+			// early-outs if already at `target` or in flight, so re-firing on the
+			// same frame is harmless.
+			if (bo.clouds) loadCloudTier(bo.clouds, target, this.textureLoader);
 		}
 	}
 

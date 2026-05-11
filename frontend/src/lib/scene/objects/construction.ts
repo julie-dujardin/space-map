@@ -34,6 +34,7 @@ import {
 	makeStarPoint
 } from './builders';
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
+import { disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
 import type { BodyObjects } from '../types';
 
@@ -193,6 +194,7 @@ export function buildMajorBodies(
 			currentSegments: isVirtual ? undefined : isStar ? 96 : 64,
 			isMinor,
 			rings: null,
+			clouds: null,
 			eclipseShadow
 		});
 	}
@@ -466,6 +468,11 @@ export function unloadSystemTextures(
 			disposeRingNode(ring);
 			bo.rings = null;
 		}
+		const cloud = bo.clouds;
+		if (cloud) {
+			disposeCloudNode(cloud);
+			bo.clouds = null;
+		}
 	}
 }
 
@@ -517,6 +524,12 @@ interface SystemBodyMeta {
 	 * `/v1/rings/{body_id}/{channels[name]}`.
 	 */
 	rings?: RingMeta;
+	/**
+	 * Cloud-overlay bundle — present only on bodies whose ingest produced one
+	 * (Earth today). The renderer composes per-tier URLs as
+	 * `/v1/textures/{clouds.id}/{tier}.webp` (id ends in `_clouds`).
+	 */
+	clouds?: CloudMeta;
 }
 
 /**
@@ -601,6 +614,37 @@ export async function loadSystemData(
 				const frame = textureFrameForJd(currentJd, bo.availableFrames);
 				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));
 			}
+		}
+
+		// Cloud overlay — second sphere parented to the body's mesh, lit by the
+		// same scene lights. Idempotent: re-entering with `bo.clouds` set skips.
+		if (bodyMeta.clouds && !bo.clouds && bo.mesh) {
+			if (ctx) {
+				ctx.registerCloudCredit({
+					bodyId,
+					systemId: barycenterId,
+					source: bodyMeta.clouds.source,
+					organisation: bodyMeta.clouds.organisation,
+					attribution: bodyMeta.clouds.attribution,
+					description: bodyMeta.clouds.description
+				});
+			}
+			const cloudMeta = bodyMeta.clouds;
+			const parentMesh = bo.mesh;
+			promises.push(
+				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, textureLoader).then((node) => {
+					if (!node) return;
+					if (bo.clouds) {
+						// A concurrent system reload finished first — drop ours.
+						node.mesh.geometry.dispose();
+						node.material.map?.dispose();
+						node.material.dispose();
+						parentMesh.remove(node.mesh);
+						return;
+					}
+					bo.clouds = node;
+				})
+			);
 		}
 
 		// Ring annulus — only present for ringed bodies (Saturn today). Idempotent:

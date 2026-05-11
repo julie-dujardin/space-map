@@ -3,6 +3,7 @@ import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { RingNode } from './objects/rings';
+import type { CloudNode } from './objects/clouds';
 import type { EclipseSelfUniforms } from './objects/eclipse-shadow';
 
 // For focused objects:
@@ -87,6 +88,13 @@ export interface BodyObjects {
 	 * body's pole each frame; `material.uniforms.uSunDir` is updated alongside.
 	 */
 	rings: RingNode | null;
+	/**
+	 * Cloud-overlay sphere, populated by `loadSystemData` when the body's
+	 * system metadata carries a `clouds` block. Parented to `mesh`, so it
+	 * inherits the body's flattening + IAU rotation automatically. Tier swaps
+	 * are driven by the same LOD pass that upgrades the surface texture.
+	 */
+	clouds: CloudNode | null;
 	/**
 	 * Per-body eclipse-shadow uniforms — present on every non-star body,
 	 * `null` on stars and barycenters. The renderer mutates

@@ -137,6 +137,21 @@ export interface RingCredit {
 }
 
 /**
+ * Per-body cloud-overlay attribution recorded when its system metadata
+ * loads. Sibling to {@link TextureCredit} / {@link RingCredit} — same
+ * scoping rules apply. Earth is the only producer today; the credits page
+ * surfaces these under their own "Clouds" section.
+ */
+export interface CloudCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Create a placeholder PositionedBody from the __global__ object file along
  * with the SBDB-class zone id (e.g. `"MBA"`) for routing — null when the
  * object has no SBDB record, in which case the caller falls back to
@@ -296,6 +311,12 @@ export class ContextManager {
 	 */
 	ringCredits = new Map<string, RingCredit>();
 	ringCreditsVersion = $state(0);
+	/**
+	 * Per-body cloud-overlay credits, populated alongside `textureCredits` /
+	 * `ringCredits` by `loadSystemData`. Earth is the only producer today.
+	 */
+	cloudCredits = new Map<string, CloudCredit>();
+	cloudCreditsVersion = $state(0);
 	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
 	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
 	 *  consumers — currently the compass-north choice list — recompute as
@@ -658,6 +679,16 @@ export class ContextManager {
 		if (this.ringCredits.has(credit.bodyId)) return;
 		this.ringCredits.set(credit.bodyId, credit);
 		this.ringCreditsVersion++;
+	}
+
+	/**
+	 * Record the cloud-overlay attribution for a body. Idempotent by
+	 * `bodyId` — same shape as {@link registerRingCredit}.
+	 */
+	registerCloudCredit(credit: CloudCredit): void {
+		if (this.cloudCredits.has(credit.bodyId)) return;
+		this.cloudCredits.set(credit.bodyId, credit);
+		this.cloudCreditsVersion++;
 	}
 
 	/**
