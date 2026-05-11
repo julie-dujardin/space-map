@@ -44,6 +44,8 @@ export interface TextureAttribution {
 	type: string;
 	attribution?: string;
 	description?: string;
+	/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
+	frames?: number;
 }
 
 export interface GlobalObjectData {

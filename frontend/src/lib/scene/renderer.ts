@@ -39,6 +39,7 @@ import {
 	loadBodyTextureTier,
 	loadSystemData,
 	makeCircleTexture,
+	textureFrameForJd,
 	unloadSystemTextures
 } from './objects/construction';
 import {
@@ -1300,7 +1301,7 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		loadBodyTexture(bo, this.textureLoader, body.data.hasLocalized, this.ctx);
+		loadBodyTexture(bo, this.textureLoader, this.clock.jd, body.data.hasLocalized, this.ctx);
 	}
 
 	/**
@@ -1482,19 +1483,28 @@ export class SceneRenderer {
 			const currentRank = bo.textureTier
 				? (TIER_RANK[bo.textureTier as keyof typeof TIER_RANK] ?? -1)
 				: -1;
-			if (TIER_RANK[desired] <= currentRank) continue;
+			const desiredFrame = textureFrameForJd(this.clock.jd, bo.availableFrames);
+			const frameChanged = desiredFrame !== bo.textureFrame;
+			const wantsUpgrade = TIER_RANK[desired] > currentRank;
+			if (!wantsUpgrade && !frameChanged) continue;
 
-			// Clamp desired down to the highest available tier we haven't loaded.
+			// For a tier upgrade, hop to the highest available tier ≤ desired we
+			// haven't loaded yet. For a frame-only swap (monthly month rollover),
+			// reload the tier we're already on.
 			let target: string | undefined;
-			for (let r = TIER_RANK[desired]; r > currentRank; r--) {
-				const name = (['low', 'medium', 'high'] as const)[r];
-				if (bo.availableTiers.includes(name)) {
-					target = name;
-					break;
+			if (wantsUpgrade) {
+				for (let r = TIER_RANK[desired]; r > currentRank; r--) {
+					const name = (['low', 'medium', 'high'] as const)[r];
+					if (bo.availableTiers.includes(name)) {
+						target = name;
+						break;
+					}
 				}
+			} else {
+				target = bo.textureTier;
 			}
 			if (!target) continue;
-			loadBodyTextureTier(bo, target, this.textureLoader);
+			loadBodyTextureTier(bo, target, desiredFrame, this.textureLoader);
 		}
 	}
 

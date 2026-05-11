@@ -22,6 +22,7 @@ import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
+import { jdToDate } from '$lib/format/date';
 import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
@@ -305,12 +306,37 @@ export function buildPointClouds(
 }
 
 /**
- * Load a texture tier and swap it onto the body's material, disposing the
- * prior map. Sets `textureLoading` while in flight and `textureTier` on success.
+ * URL for a body's texture at a given tier/frame. Single-frame bodies use
+ * `{tier}.webp`; monthly bodies append a 1-based zero-padded frame suffix
+ * (`{tier}_NN.webp`, `NN` = 01..frames). Mirrors the export-tree convention
+ * documented in docs/export-format.md.
+ */
+function textureUrlFor(id: string, tier: string, frame: number | undefined): string {
+	if (frame === undefined) return `${DATA_BASE}/v1/textures/${id}/${tier}.webp`;
+	return `${DATA_BASE}/v1/textures/${id}/${tier}_${String(frame).padStart(2, '0')}.webp`;
+}
+
+/**
+ * Resolve which frame of a multi-frame texture should be shown for `jd`. The
+ * only case we support today is 12 — one tile per calendar month — so the
+ * answer is just the UTC month. Returns undefined when the body has no frame
+ * dimension (single-frame texture).
+ */
+export function textureFrameForJd(jd: number, frames: number | undefined): number | undefined {
+	if (!frames || frames < 2) return undefined;
+	if (frames === 12) return jdToDate(jd).getUTCMonth() + 1;
+	return 1;
+}
+
+/**
+ * Load a texture tier/frame and swap it onto the body's material, disposing
+ * the prior map. Sets `textureLoading` while in flight and `textureTier` /
+ * `textureFrame` on success.
  */
 async function swapBodyTexture(
 	bo: BodyObjects,
 	tier: string,
+	frame: number | undefined,
 	textureLoader: TextureLoader
 ): Promise<void> {
 	if (!bo.mesh) return;
@@ -318,12 +344,7 @@ async function swapBodyTexture(
 	bo.textureLoading = true;
 	try {
 		const texture = await new Promise<Texture>((resolve, reject) => {
-			textureLoader.load(
-				`${DATA_BASE}/v1/textures/${fileId}/${tier}.webp`,
-				resolve,
-				undefined,
-				reject
-			);
+			textureLoader.load(textureUrlFor(fileId, tier, frame), resolve, undefined, reject);
 		});
 		const material = bo.mesh.material as MeshStandardMaterial;
 		material.map?.dispose();
@@ -331,6 +352,7 @@ async function swapBodyTexture(
 		material.color.set(0xffffff);
 		material.needsUpdate = true;
 		bo.textureTier = tier;
+		bo.textureFrame = frame;
 	} catch (err) {
 		console.warn(`Failed to load ${tier} texture for ${fileId}:`, err);
 	} finally {
@@ -348,6 +370,7 @@ async function swapBodyTexture(
 export async function loadBodyTexture(
 	bo: BodyObjects,
 	textureLoader: TextureLoader,
+	currentJd: number,
 	hasLocalized = true,
 	ctx?: ContextManager
 ): Promise<void> {
@@ -371,7 +394,8 @@ export async function loadBodyTexture(
 	}
 	if (bo.textureTier || bo.textureLoading) return;
 	bo.availableTiers ??= ['low', 'medium', 'high'];
-	await swapBodyTexture(bo, 'low', textureLoader);
+	bo.availableFrames = detail.global.texture?.frames;
+	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);
 }
 
 /**
@@ -446,17 +470,20 @@ export function unloadSystemTextures(
 }
 
 /**
- * Load a specific texture tier for a body and swap it onto its material.
- * No-op if the tier is already loaded, unavailable, or another load is in flight.
+ * Load a specific texture tier (and monthly frame, if applicable) for a body
+ * and swap it onto its material. No-op if the exact (tier, frame) pair is
+ * already loaded, the tier is unavailable, or another load is in flight.
  */
 export async function loadBodyTextureTier(
 	bo: BodyObjects,
 	tier: string,
+	frame: number | undefined,
 	textureLoader: TextureLoader
 ): Promise<void> {
-	if (bo.textureTier === tier || bo.textureLoading) return;
+	if (bo.textureLoading) return;
 	if (!bo.availableTiers?.includes(tier)) return;
-	await swapBodyTexture(bo, tier, textureLoader);
+	if (bo.textureTier === tier && bo.textureFrame === frame) return;
+	await swapBodyTexture(bo, tier, frame, textureLoader);
 }
 
 interface SystemBodyMeta {
@@ -468,6 +495,8 @@ interface SystemBodyMeta {
 		type: string;
 		attribution?: string;
 		description?: string;
+		/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
+		frames?: number;
 	};
 	orientation?: {
 		pole_ra_0: number;
@@ -567,8 +596,10 @@ export async function loadSystemData(
 		// downgrading (e.g. high → low → re-upgrade) on repeated system visits.
 		if (bodyMeta.tiers?.length) {
 			bo.availableTiers = bodyMeta.tiers;
+			bo.availableFrames = bodyMeta.texture?.frames;
 			if (!bo.textureTier) {
-				promises.push(loadBodyTextureTier(bo, 'low', textureLoader));
+				const frame = textureFrameForJd(currentJd, bo.availableFrames);
+				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));
 			}
 		}
 

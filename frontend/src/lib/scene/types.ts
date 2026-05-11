@@ -62,7 +62,15 @@ export interface BodyObjects {
 	availableTiers?: string[];
 	/** Currently loaded texture tier name. */
 	textureTier?: string;
-	/** Guard: a tier upgrade is currently in flight. */
+	/**
+	 * Frame count for `cylindrical_monthly` textures (12 today). Undefined for
+	 * single-frame bodies. The renderer reloads the texture when the simulation
+	 * date crosses into the next frame's slot.
+	 */
+	availableFrames?: number;
+	/** Currently loaded 1-based frame index for monthly textures (1..availableFrames). */
+	textureFrame?: number;
+	/** Guard: a tier or frame swap is currently in flight. */
 	textureLoading?: boolean;
 	/** Cached screen-pixel width of the label name text (measured once). */
 	labelTextWidth?: number;
