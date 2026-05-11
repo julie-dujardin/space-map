@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 _TOP_LEVEL_NAIF_IDS = {0, 10}  # SSB and Sun
 
+# Bodies whose texture directory name ends with this carry a cloud-overlay
+# bundle rather than a regular surface texture. The host body id is the
+# directory name minus this suffix.
+_CLOUDS_SUFFIX = "_clouds"
+
 # Object types that belong in planetary systems
 _SYSTEM_TYPES = frozenset(
     {
@@ -118,23 +123,71 @@ def _tiers_from_meta(meta: dict) -> list[str]:
 
 
 def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load all per-body texture metadata.json files from the export tree.
+    """Load all per-body surface texture metadata.json files from the export tree.
 
-    Returns {object_id: metadata_dict}. Only bodies with existing metadata
-    files are included — i.e. those that actually have textures exported.
+    Returns {object_id: metadata_dict}. Cloud-overlay bundles (directory
+    names ending in ``_clouds``) are filtered out; use
+    ``load_clouds_metadata`` for those.
     """
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
         return result
     for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir():
+        if not body_dir.is_dir() or body_dir.name.endswith(_CLOUDS_SUFFIX):
             continue
         meta_file = body_dir / "metadata.json"
         if meta_file.exists():
             result[body_dir.name] = orjson.loads(meta_file.read_bytes())
     logger.info("Loaded texture metadata for %d bodies", len(result))
     return result
+
+
+def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load per-body cloud-overlay metadata.json files from the export tree.
+
+    Returns {host_object_id: metadata_dict} — the directory's ``_clouds``
+    suffix is stripped so callers can look up by the surface body's id
+    (e.g. ``naif-399`` for Earth's clouds at ``textures/naif-399_clouds/``).
+    The full export id (``naif-399_clouds``) is preserved in the metadata's
+    own ``id`` field for URL composition.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, dict] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in textures_dir.iterdir():
+        if not body_dir.is_dir() or not body_dir.name.endswith(_CLOUDS_SUFFIX):
+            continue
+        meta_file = body_dir / "metadata.json"
+        if meta_file.exists():
+            host_id = body_dir.name.removesuffix(_CLOUDS_SUFFIX)
+            result[host_id] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded cloud-overlay metadata for %d bodies", len(result))
+    return result
+
+
+def clouds_block(meta: dict) -> dict:
+    """Build the per-body ``clouds`` block emitted into systems/{bary}.json,
+    the global object detail file, and credits.json.
+
+    Carries everything the renderer needs to fetch and credit a cloud
+    overlay: the export's own id (its directory, parallel to the surface
+    texture), the tier list, and attribution fields. The frontend composes
+    URLs as ``/v1/textures/{clouds.id}/{tier}.webp``.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "tiers": _tiers_from_meta(meta),
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
 
 
 def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
@@ -266,6 +319,7 @@ def write_system_metadata(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -362,6 +416,11 @@ def write_system_metadata(
                         obj.id,
                         sys_id,
                     )
+
+            # Cloud overlay (separate texture bundle parallel to the surface).
+            clouds_meta = clouds_metadata.get(obj.id)
+            if clouds_meta is not None:
+                entry["clouds"] = clouds_block(clouds_meta)
 
             if entry:
                 bodies[obj.id] = entry

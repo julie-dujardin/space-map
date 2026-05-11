@@ -122,10 +122,11 @@ def _resolve_system_id(
     return None
 
 
-def _ring_credit_entry(body_id: str, name: str, meta: dict) -> dict:
-    """Shape a ring-credit entry. Mirrors a texture entry minus the `type`
-    field; the array name (`rings`) does the disambiguation, so no synthetic
-    body id like `naif-699-rings` is needed.
+def _sibling_credit_entry(body_id: str, name: str, meta: dict) -> dict:
+    """Shape a non-texture credit entry (rings, clouds, …).
+
+    Mirrors a texture entry minus the ``type`` field; the array name does the
+    disambiguation, so no synthetic body id like ``naif-699-rings`` is needed.
     """
     entry: dict = {
         "body_id": body_id,
@@ -145,6 +146,7 @@ def write_credits(
     out_dir: Path,
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> None:
     """Emit `v1/credits.json` summarising every credit-worthy data source.
 
@@ -152,14 +154,17 @@ def write_credits(
     Jupiter, …) so the frontend can render sections instead of a flat
     alphabetical list. A final null-id group collects standalones (sun-
     orbiting asteroids and dwarf planets like Bennu or Ceres) that don't
-    belong to a system. Each system bucket carries sibling `textures` and
-    `rings` arrays — both are optional; only populated arrays are emitted.
+    belong to a system. Each system bucket carries sibling `textures`,
+    `rings`, and `clouds` arrays — all optional; only populated arrays are
+    emitted.
     """
-    if not texture_metadata and not ring_metadata:
-        logger.info("No texture or ring metadata available; skipping credits.json")
+    if not texture_metadata and not ring_metadata and not clouds_metadata:
+        logger.info(
+            "No texture, ring, or cloud metadata available; skipping credits.json"
+        )
         return
 
-    body_ids = set(texture_metadata) | set(ring_metadata)
+    body_ids = set(texture_metadata) | set(ring_metadata) | set(clouds_metadata)
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
 
@@ -198,16 +203,34 @@ def write_credits(
             continue
         sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
         rings_grouped.setdefault(sys_id, []).append(
-            _ring_credit_entry(body_id, _body_name(obj), meta)
+            _sibling_credit_entry(body_id, _body_name(obj), meta)
+        )
+
+    clouds_grouped: dict[str | None, list[dict]] = {}
+    for body_id, meta in clouds_metadata.items():
+        obj = by_id.get(body_id)
+        if obj is None:
+            logger.warning(
+                "Cloud metadata for %s has no matching Object row; skipping",
+                body_id,
+            )
+            continue
+        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        clouds_grouped.setdefault(sys_id, []).append(
+            _sibling_credit_entry(body_id, _body_name(obj), meta)
         )
 
     for entries in textures_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
     for entries in rings_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
+    for entries in clouds_grouped.values():
+        entries.sort(key=lambda e: e["name"].lower())
 
     # Systems first, in Mercury → Pluto order; standalones last.
-    sys_ids: set[str | None] = set(textures_grouped) | set(rings_grouped)
+    sys_ids: set[str | None] = (
+        set(textures_grouped) | set(rings_grouped) | set(clouds_grouped)
+    )
     systems_out: list[dict] = []
     for sys_id in sorted(
         (s for s in sys_ids if s is not None),
@@ -221,6 +244,8 @@ def write_credits(
             bucket["textures"] = textures_grouped[sys_id]
         if sys_id in rings_grouped:
             bucket["rings"] = rings_grouped[sys_id]
+        if sys_id in clouds_grouped:
+            bucket["clouds"] = clouds_grouped[sys_id]
         systems_out.append(bucket)
     if None in sys_ids:
         bucket = {"id": None, "name": None}
@@ -228,6 +253,8 @@ def write_credits(
             bucket["textures"] = textures_grouped[None]
         if None in rings_grouped:
             bucket["rings"] = rings_grouped[None]
+        if None in clouds_grouped:
+            bucket["clouds"] = clouds_grouped[None]
         systems_out.append(bucket)
 
     payload = {"systems": systems_out}
@@ -236,9 +263,11 @@ def write_credits(
     )
     n_textures = sum(len(g) for g in textures_grouped.values())
     n_rings = sum(len(g) for g in rings_grouped.values())
+    n_clouds = sum(len(g) for g in clouds_grouped.values())
     logger.info(
-        "Wrote credits.json (%d systems, %d textured bodies, %d ringed bodies)",
+        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies)",
         len(systems_out),
         n_textures,
         n_rings,
+        n_clouds,
     )

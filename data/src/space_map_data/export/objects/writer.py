@@ -37,7 +37,7 @@ from space_map_data.export.objects.celestrak import (
 )
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.systems import texture_attribution
+from space_map_data.export.systems import clouds_block, texture_attribution
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -200,6 +200,7 @@ def build_chunk_object_data(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -242,6 +243,7 @@ def build_chunk_object_data(
             gms,
             nut_prec,
             texture_metadata,
+            clouds_metadata,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -325,6 +327,7 @@ def _build_global(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -340,6 +343,9 @@ def _build_global(
             logger.warning(
                 "Texture metadata missing for %s; skipping attribution", obj.id
             )
+    clouds_meta = clouds_metadata.get(obj.id)
+    if clouds_meta is not None:
+        data["clouds"] = clouds_block(clouds_meta)
     if obj.has_rings:
         data["has_rings"] = True
     if obj.name is not None:

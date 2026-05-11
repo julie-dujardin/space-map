@@ -20,6 +20,8 @@ v1/
   textures/{id}/{tier}.webp                       tier = low | medium | high (single-frame)
   textures/{id}/{tier}_{NN}.webp                  monthly frames (type = cylindrical_monthly), NN = 01..frames
   textures/{id}/metadata.json                     texture source + exports
+  textures/{id}_clouds/{tier}.webp                cloud-overlay tiers (type = clouds_overlay)
+  textures/{id}_clouds/metadata.json              cloud-overlay source + exports
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
@@ -536,6 +538,15 @@ interface GlobalObjectData {
     description?: string;
   };
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
+  clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json
+    id: string;                       // export bundle id, e.g. "naif-399_clouds" — used to compose /v1/textures/{id}/{tier}.webp
+    tiers: string[];                  // sorted tier names (low | medium | high)
+    source: string;
+    organisation: string;
+    type: string;                     // always "clouds_overlay" today
+    attribution?: string;
+    description?: string;
+  };
   provisional_designation?: string;
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   cross_refs?: {
@@ -775,6 +786,7 @@ The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credi
 
 - **`cylindrical`** — single equirectangular frame; one `{tier}.webp` per tier.
 - **`cylindrical_monthly`** — twelve-frame seasonal cycle. Files are suffixed with the 1-based month (`{tier}_{NN}.webp`, `NN` = `01`..`frames`); the metadata's `exports` map is nested `{frame: {tier: rec}}`. Earth ships under this type; the renderer picks the frame by calendar month of the simulation date.
+- **`clouds_overlay`** — single-frame cloud-cover overlay, ingested as a separate bundle from the surface texture and refreshed from a real-time source (Earth's case: EUMETSAT-derived snapshot, 3h cadence). The bundle lives at `textures/{host_id}_clouds/` so it can be served and credited independently; the renderer composites it on top of the surface texture. The `_clouds` directory-name suffix is the export-tree convention — in the systems/credits/object payloads the bundle is exposed under its own `clouds` key on the host body (`naif-399`), keyed by host id rather than the suffixed export id.
 
 ### Texture metadata (`textures/{id}/metadata.json`)
 
@@ -826,6 +838,26 @@ Monthly (`type: cylindrical_monthly`):
 - `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
 - `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
 - `frames` — only on `cylindrical_monthly`; the number of monthly composites (always 12 today). Mirrored into the `systems/{bary}.json` texture block.
+
+Cloud overlay (`type: clouds_overlay`): same shape as single-frame `cylindrical`, only the `type` and `id` differ. The `id` carries the `_clouds` suffix so the frontend can compose URLs as `/v1/textures/{clouds.id}/{tier}.webp`.
+
+```json
+{
+  "id": "naif-399_clouds",
+  "source": "https://clouds.matteason.co.uk/images/8192x4096/clouds-alpha.png",
+  "organisation": "EUMETSAT",
+  "attribution": "Contains modified EUMETSAT data",
+  "description": "Near-real-time cloud-cover overlay (3-hour cadence).",
+  "type": "clouds_overlay",
+  "source_file": "2026/05/05/18.png",
+  "source_dimensions": [8192, 4096],
+  "processed_at": "2026-05-11T00:00:00+00:00",
+  "exports": {
+    "low":    { "file": "low.webp",    "width": 2048, "height": 1024, "size_bytes": 120000, "lossless": false },
+    "medium": { "file": "medium.webp", "width": 8192, "height": 4096, "size_bytes": 1200000, "lossless": false }
+  }
+}
+```
 
 ## Rings
 
@@ -926,6 +958,18 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
+  "naif-399_with_clouds_example": {
+    "tiers": ["low", "medium"],
+    "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical_monthly", "frames": 12 },
+    "clouds": {
+      "id": "naif-399_clouds",
+      "tiers": ["low", "medium"],
+      "source": "https://clouds.matteason.co.uk/images/8192x4096/clouds-alpha.png",
+      "organisation": "EUMETSAT",
+      "type": "clouds_overlay",
+      "attribution": "Contains modified EUMETSAT data"
+    }
+  },
   "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } },
   "naif-699": {
     "rings": {
@@ -975,6 +1019,14 @@ interface Credits {
     }>;
     rings?: Array<{
       body_id: string;           // real Object.id of the ringed host (e.g. "naif-699"); the array name is the disambiguator, not a synthetic "-rings" suffix
+      name: string;              // English display name of the host body
+      source: string;
+      organisation: string;
+      attribution?: string;
+      description?: string;
+    }>;
+    clouds?: Array<{
+      body_id: string;           // host body id (e.g. "naif-399"), NOT the "_clouds"-suffixed export id; same disambiguation as rings
       name: string;              // English display name of the host body
       source: string;
       organisation: string;

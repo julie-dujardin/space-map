@@ -44,6 +44,7 @@ from space_map_data.export.systems import (
     load_nut_prec_angles,
     load_orientation,
     load_radii,
+    load_clouds_metadata,
     load_ring_metadata,
     load_texture_metadata,
     write_system_metadata,
@@ -334,6 +335,7 @@ def _build_zone_object_data(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> ChunkObjectData:
     """Build globals/localized/flags for a flat zone-wide object list (no I/O).
 
@@ -353,6 +355,7 @@ def _build_zone_object_data(
         gms=gms,
         nut_prec=nut_prec,
         texture_metadata=texture_metadata,
+        clouds_metadata=clouds_metadata,
     )
 
 
@@ -648,6 +651,7 @@ def _export_zone(
     gms: dict[int, float],
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
+    clouds_metadata: dict[str, dict],
 ) -> ZoneExportResult:
     """Build per-object data once for the zone; write element parts per snapshot.
 
@@ -681,6 +685,7 @@ def _export_zone(
         gms,
         nut_prec,
         texture_metadata,
+        clouds_metadata,
     )
 
     result = ZoneExportResult(
@@ -770,6 +775,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     nut_prec_angles = load_nut_prec_angles(DOWNLOAD_DIR)
     texture_metadata = load_texture_metadata(out_dir)
     ring_metadata = load_ring_metadata(out_dir)
+    clouds_metadata = load_clouds_metadata(out_dir)
 
     write_systems_global(out_dir, gms, nut_prec_angles)
 
@@ -944,6 +950,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     gms,
                     nut_prec,
                     texture_metadata,
+                    clouds_metadata,
                 )
                 futures[f] = (zone, zoom)
 
@@ -999,6 +1006,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     gms,
                     nut_prec,
                     texture_metadata,
+                    clouds_metadata,
                 )
                 futures[f] = (zone, zoom)
 
@@ -1032,6 +1040,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     gms,
                     nut_prec,
                     texture_metadata,
+                    clouds_metadata,
                 )
                 _record("earth", zoom_label, result)
             # executor joins here — session still open so ORM objects remain valid
@@ -1044,8 +1053,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             nut_prec,
             texture_metadata,
             ring_metadata,
+            clouds_metadata,
         )
-        write_credits(session, out_dir, texture_metadata, ring_metadata)
+        write_credits(
+            session, out_dir, texture_metadata, ring_metadata, clouds_metadata
+        )
 
         # Aggregate has_localized from elements futures before writing chebyshev
         # — the cheb body header carries one bit per body, gated on the same
@@ -1081,6 +1093,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 gms,
                 nut_prec,
                 texture_metadata,
+                clouds_metadata,
             )
             all_objects.global_data.update(cheb_data.global_data)
             for lang, by_id in cheb_data.localized_data.items():
@@ -1118,6 +1131,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 gms,
                 nut_prec,
                 texture_metadata,
+                clouds_metadata,
             )
             all_objects.global_data.update(orbitless_data.global_data)
             for lang, by_id in orbitless_data.localized_data.items():
