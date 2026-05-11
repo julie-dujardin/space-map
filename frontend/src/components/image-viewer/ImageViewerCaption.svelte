@@ -68,6 +68,20 @@
 		measure();
 		return () => ro.disconnect();
 	});
+
+	// PhotoSwipe's wheelToZoom listens on the viewer container, so wheel events
+	// bubbling out of the description's scroll viewport get hijacked into zoom.
+	// overscroll-behavior: contain only stops scroll-chaining at the boundary,
+	// not the bubble. Stop propagation while we're inside the scrollable range.
+	$effect(() => {
+		const el = viewportRef;
+		if (!el) return;
+		const onWheel = (e: WheelEvent) => {
+			e.stopPropagation();
+		};
+		el.addEventListener('wheel', onWheel, { passive: true });
+		return () => el.removeEventListener('wheel', onWheel);
+	});
 </script>
 
 {#if paragraphs.length}
