@@ -1,4 +1,4 @@
-import type { Group, Line, Mesh, Object3D, Points, Sprite } from 'three';
+import type { Group, Line, Mesh, Object3D, Points, Sprite, Texture } from 'three';
 import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -95,6 +95,14 @@ export interface BodyObjects {
 	 * are driven by the same LOD pass that upgrades the surface texture.
 	 */
 	clouds: CloudNode | null;
+	/**
+	 * Loaded specular/roughness map, populated by `loadSystemData` when the
+	 * body's system metadata carries a `specular` block. Bound to the body's
+	 * material as a `roughnessMap` with a shader patch that inverts the
+	 * sampled value — held here for disposal on system unload. Stays at the
+	 * low tier today; the binary mask doesn't benefit from LOD upgrades.
+	 */
+	specularMap: Texture | null;
 	/**
 	 * Per-body eclipse-shadow uniforms — present on every non-star body,
 	 * `null` on stars and barycenters. The renderer mutates

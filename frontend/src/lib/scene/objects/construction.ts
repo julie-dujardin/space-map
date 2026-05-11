@@ -36,6 +36,7 @@ import {
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
 import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
+import { attachSpecularMap, disposeSpecularFromMaterial, type SpecularMeta } from './specular';
 import type { BodyObjects } from '../types';
 
 function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
@@ -195,6 +196,7 @@ export function buildMajorBodies(
 			isMinor,
 			rings: null,
 			clouds: null,
+			specularMap: null,
 			eclipseShadow
 		});
 	}
@@ -486,6 +488,10 @@ export function unloadSystemTextures(
 	for (const bo of bodyObjects.values()) {
 		if (!ctx.isBodyInSystem(bo.body, barycenterId)) continue;
 		unloadBodyTexture(bo);
+		if (bo.specularMap && bo.mesh) {
+			disposeSpecularFromMaterial(bo.mesh.material as MeshStandardMaterial);
+			bo.specularMap = null;
+		}
 		const ring = bo.rings;
 		if (ring) {
 			ring.planetShadow?.detach();
@@ -557,6 +563,12 @@ interface SystemBodyMeta {
 	 * `/v1/textures/{clouds.id}/{tier}.webp` (id ends in `_clouds`).
 	 */
 	clouds?: CloudMeta;
+	/**
+	 * Specular/roughness-map sibling bundle — present only on bodies whose
+	 * ingest produced one (Earth today). Single-frame; the renderer composes
+	 * URLs as `/v1/textures/{specular.id}/{tier}.webp` (id ends in `_specular`).
+	 */
+	specular?: SpecularMeta;
 }
 
 /**
@@ -641,6 +653,26 @@ export async function loadSystemData(
 				const frame = textureFrameForJd(currentJd, bo.availableFrames);
 				promises.push(loadBodyTextureTier(bo, 'low', frame, textureLoader));
 			}
+		}
+
+		// Specular/roughness sibling — patches the body's material so ocean
+		// pixels lower roughness while land keeps the base value. Idempotent
+		// on the hook side; we still gate the texture load on `bo.specularMap`
+		// to avoid refetching on every system reload.
+		if (bodyMeta.specular && !bo.specularMap && bo.mesh) {
+			const specMeta = bodyMeta.specular;
+			const material = bo.mesh.material as MeshStandardMaterial;
+			promises.push(
+				attachSpecularMap(material, specMeta, 'low', textureLoader).then((tex) => {
+					if (!tex) return;
+					if (bo.specularMap) {
+						// A concurrent reload finished first — drop ours.
+						tex.dispose();
+						return;
+					}
+					bo.specularMap = tex;
+				})
+			);
 		}
 
 		// Cloud overlay — second sphere parented to the body's mesh, lit by the

@@ -22,6 +22,8 @@ v1/
   textures/{id}/metadata.json                     texture source + exports
   textures/{id}_clouds/{tier}_{YYYYMMDDHH}.webp   cloud-overlay snapshots (type = clouds_overlay)
   textures/{id}_clouds/metadata.json              cloud-overlay source + tier/frame inventory
+  textures/{id}_specular/{tier}.webp              specular/roughness map (type = cylindrical_specular)
+  textures/{id}_specular/metadata.json            specular source + exports
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
@@ -788,6 +790,7 @@ The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credi
 - **`cylindrical`** — single equirectangular frame; one `{tier}.webp` per tier.
 - **`cylindrical_monthly`** — twelve-frame seasonal cycle. Files are suffixed with the 1-based month (`{tier}_{NN}.webp`, `NN` = `01`..`frames`); the metadata's `exports` map is nested `{frame: {tier: rec}}`. Earth ships under this type; the renderer picks the frame by calendar month of the simulation date.
 - **`clouds_overlay`** — multi-frame cloud-cover overlay, ingested as a separate bundle from the surface texture and refreshed from a real-time source (Earth's case: EUMETSAT-derived snapshot, 3h cadence). Every snapshot the downloader has on disk is exported; files carry a sortable `YYYYMMDDHH` frame suffix (`{tier}_{frame}.webp`). The bundle lives at `textures/{host_id}_clouds/` so it can be served and credited independently; the renderer composites it on top of the surface texture and picks a frame by simulation time. The `_clouds` directory-name suffix is the export-tree convention — in the systems/credits/object payloads the bundle is exposed under its own `clouds` key on the host body (`naif-399`), keyed by host id rather than the suffixed export id.
+- **`cylindrical_specular`** — single-frame specular/roughness mask for the host body, derived from a bathymetry or land/water source (Earth's case: GEBCO bathymetry → binary ocean mask, land=0 / ocean=255). Ships as a sibling bundle at `textures/{host_id}_specular/{tier}.webp` so it can be served and credited independently from the surface texture; the renderer routes it into whichever material slot (roughness, specular intensity) it sees fit. In the systems payload it surfaces as a `specular` key on the host body, keyed by host id.
 
 ### Texture metadata (`textures/{id}/metadata.json`)
 
@@ -853,6 +856,27 @@ Cloud overlay (`type: clouds_overlay`): one bundle per host body covering every 
   "tiers": ["low", "medium"],
   "frames": ["2026050100", "2026050103", "2026050106", "..."],
   "processed_at": "2026-05-11T00:00:00+00:00"
+}
+```
+
+Specular (`type: cylindrical_specular`): single-frame mask sibling to the surface texture. The `id` carries the `_specular` suffix and the frontend composes URLs as `/v1/textures/{specular.id}/{tier}.webp`. Layout matches the single-frame `cylindrical` shape; only the directory naming and the `specular` key in the systems payload distinguish it.
+
+```json
+{
+  "id": "naif-399_specular",
+  "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/",
+  "organisation": "NASA",
+  "attribution": "NASA Earth Observatory — Blue Marble: Next Generation topography/bathymetry maps. Bathymetry derived from GEBCO.",
+  "description": "Ocean specular mask derived from GEBCO bathymetry — bright over water, matte over land.",
+  "type": "cylindrical_specular",
+  "source_file": "gebco_08_rev_bath_21600x10800.tif",
+  "source_dimensions": [21600, 10800],
+  "processed_at": "2026-05-12T00:00:00+00:00",
+  "exports": {
+    "low":    { "file": "low.webp",    "width": 2048,  "height": 1024, "size_bytes": 10000,  "lossless": false },
+    "medium": { "file": "medium.webp", "width": 8192,  "height": 4096, "size_bytes": 80000,  "lossless": false },
+    "high":   { "file": "high.webp",   "width": 16383, "height": 8191, "size_bytes": 250000, "lossless": false }
+  }
 }
 ```
 
@@ -955,6 +979,14 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
       "organisation": "EUMETSAT",
       "type": "clouds_overlay",
       "attribution": "Contains modified EUMETSAT data"
+    },
+    "specular": {
+      "id": "naif-399_specular",
+      "tiers": ["low", "medium", "high"],
+      "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/topography-bathymetry-maps/",
+      "organisation": "NASA",
+      "type": "cylindrical_specular",
+      "attribution": "NASA Earth Observatory — Blue Marble: Next Generation topography/bathymetry maps. Bathymetry derived from GEBCO."
     },
     "orientation": {
       "pole_ra_0": 0.0, "pole_ra_1": -0.641,
