@@ -307,6 +307,33 @@ export function buildPointClouds(
 	return { asteroidPoints, spacecraftPoints, moonPoints };
 }
 
+/** Ordered tier names: lower → higher resolution. Index = rank. */
+export const TIER_NAMES = ['low', 'medium', 'high'] as const;
+export type TierName = (typeof TIER_NAMES)[number];
+
+/** Numeric rank for `tier` (0=low … 2=high), or -1 if unrecognised. */
+export function tierRank(tier: string | undefined): number {
+	if (tier === undefined) return -1;
+	const r = TIER_NAMES.indexOf(tier as TierName);
+	return r;
+}
+
+/**
+ * Highest tier in `available` whose rank is ≤ `maxRank`. Returns undefined
+ * when no tier ≤ `maxRank` is exported. Shared by the per-frame texture LOD
+ * pass for both surface and cloud bundles: the surface caller uses it to
+ * step from the current tier up to the screen-size target; the cloud caller
+ * uses it to clamp the surface's current tier down to whatever the cloud
+ * bundle actually ships (which may stop short of `high`).
+ */
+export function highestAvailableTier(maxRank: number, available: string[]): TierName | undefined {
+	for (let r = maxRank; r >= 0; r--) {
+		const name = TIER_NAMES[r];
+		if (available.includes(name)) return name;
+	}
+	return undefined;
+}
+
 /**
  * URL for a body's texture at a given tier/frame. Single-frame bodies use
  * `{tier}.webp`; monthly bodies append a 1-based zero-padded frame suffix

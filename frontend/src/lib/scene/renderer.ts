@@ -40,6 +40,8 @@ import {
 	loadSystemData,
 	makeCircleTexture,
 	textureFrameForJd,
+	tierRank,
+	highestAvailableTier,
 	unloadSystemTextures
 } from './objects/construction';
 import { loadCloudTier } from './objects/clouds';
@@ -1464,7 +1466,7 @@ export class SceneRenderer {
 
 		for (const bo of this.bodyObjects.values()) {
 			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
-			if (!bo.availableTiers?.length || bo.textureLoading) continue;
+			if (!bo.availableTiers?.length) continue;
 			if (bo.cachedDist <= 0) continue;
 			const id = bo.body.data.id;
 			if (activeSystem) {
@@ -1480,36 +1482,31 @@ export class SceneRenderer {
 			else if (screenR < 1024 && altitudeRadii > 2) desired = 'medium';
 			else desired = 'high';
 
-			const TIER_RANK = { low: 0, medium: 1, high: 2 } as const;
-			const currentRank = bo.textureTier
-				? (TIER_RANK[bo.textureTier as keyof typeof TIER_RANK] ?? -1)
-				: -1;
+			const currentRank = tierRank(bo.textureTier);
+			const desiredRank = tierRank(desired);
 			const desiredFrame = textureFrameForJd(this.clock.jd, bo.availableFrames);
 			const frameChanged = desiredFrame !== bo.textureFrame;
-			const wantsUpgrade = TIER_RANK[desired] > currentRank;
-			if (!wantsUpgrade && !frameChanged) continue;
+			const wantsUpgrade = desiredRank > currentRank;
 
-			// For a tier upgrade, hop to the highest available tier ≤ desired we
-			// haven't loaded yet. For a frame-only swap (monthly month rollover),
-			// reload the tier we're already on.
-			let target: string | undefined;
-			if (wantsUpgrade) {
-				for (let r = TIER_RANK[desired]; r > currentRank; r--) {
-					const name = (['low', 'medium', 'high'] as const)[r];
-					if (bo.availableTiers.includes(name)) {
-						target = name;
-						break;
-					}
-				}
-			} else {
-				target = bo.textureTier;
+			// The cloud nudge below sits outside this gate so direct-load at
+			// high zoom doesn't strand clouds at low while their initial fetch
+			// is still resolving.
+			if (!bo.textureLoading && (wantsUpgrade || frameChanged)) {
+				const target = wantsUpgrade
+					? highestAvailableTier(desiredRank, bo.availableTiers)
+					: bo.textureTier;
+				if (target) loadBodyTextureTier(bo, target, desiredFrame, this.textureLoader);
 			}
-			if (!target) continue;
-			loadBodyTextureTier(bo, target, desiredFrame, this.textureLoader);
-			// Clouds track the surface tier — bump them alongside. `loadCloudTier`
-			// early-outs if already at `target` or in flight, so re-firing on the
-			// same frame is harmless.
-			if (bo.clouds) loadCloudTier(bo.clouds, target, this.textureLoader);
+
+			// Clamp to whatever the cloud bundle actually exports — it may
+			// top out below the surface's tier (silent no-op otherwise).
+			if (bo.clouds && bo.textureTier) {
+				const cloudTarget = highestAvailableTier(
+					tierRank(bo.textureTier),
+					bo.clouds.availableTiers
+				);
+				if (cloudTarget) loadCloudTier(bo.clouds, cloudTarget, this.textureLoader);
+			}
 		}
 	}
 
