@@ -97,7 +97,24 @@ def texture_attribution(meta: dict) -> dict:
         result["attribution"] = meta["attribution"]
     if meta.get("description") is not None:
         result["description"] = meta["description"]
+    if meta.get("frames") is not None:
+        result["frames"] = meta["frames"]
     return result
+
+
+def _tiers_from_meta(meta: dict) -> list[str]:
+    """Return the sorted tier names available for a textured body.
+
+    Single-frame metadata stores ``exports = {tier: rec}``; monthly metadata
+    stores ``exports = {frame: {tier: rec}}``. We expose the per-tier
+    enumeration in either case so the frontend's URL builder doesn't have to
+    care about the layout.
+    """
+    exports = meta.get("exports") or {}
+    if meta.get("type") == "cylindrical_monthly":
+        first_frame = next(iter(exports.values()), {})
+        return sorted(first_frame.keys())
+    return sorted(exports.keys())
 
 
 def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
@@ -313,7 +330,7 @@ def write_system_metadata(
             if obj.map_texture_available:
                 meta = texture_metadata.get(obj.id)
                 if meta is not None:
-                    entry["tiers"] = sorted(meta.get("exports", {}).keys())
+                    entry["tiers"] = _tiers_from_meta(meta)
                     entry["texture"] = texture_attribution(meta)
                 else:
                     logger.warning(

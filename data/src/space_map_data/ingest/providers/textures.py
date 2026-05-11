@@ -3,6 +3,7 @@ import logging
 import math
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, TypedDict, cast
 
 import numpy as np
 import tifffile
@@ -267,13 +268,28 @@ def _save_webp(
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 
+def _expand_entry_files(entry: dict) -> list[str]:
+    """Resolve an entry's ``file`` field into the concrete raw filenames it covers.
+
+    Single-frame entries return ``[entry["file"]]``. ``cylindrical_monthly``
+    entries python-format ``{month:02d}`` (and the unpadded ``{month}``) for
+    ``range(1, months+1)``.
+    """
+    if entry.get("type") == "cylindrical_monthly":
+        months = entry.get("months", 12)
+        return [entry["file"].format(month=m) for m in range(1, months + 1)]
+    return [entry["file"]]
+
+
 def _any_export_over_cap(out_dir: Path) -> bool:
     """True if any export recorded in metadata.json exceeds MAX_FILE_BYTES.
 
     Used to auto-reprocess stale bundles after the cap is tightened or a
-    deploy fails upload. Safe against corrupt/missing metadata: returns False
-    (falls through to the normal skip path, which will write a fresh metadata
-    via ``_refresh_metadata_from_yaml`` if needed).
+    deploy fails upload. Walks the ``exports`` tree so it works on both the
+    flat (``{tier: rec}``) and frame-nested (``{frame: {tier: rec}}``) shapes.
+    Safe against corrupt/missing metadata: returns False (falls through to
+    the normal skip path, which will write a fresh metadata via
+    ``_refresh_metadata_from_yaml`` if needed).
     """
     meta_path = out_dir / "metadata.json"
     if not meta_path.exists():
@@ -282,11 +298,20 @@ def _any_export_over_cap(out_dir: Path) -> bool:
         meta = json.loads(meta_path.read_text())
     except (OSError, json.JSONDecodeError):
         return False
-    exports = meta.get("exports") or {}
-    return any(
-        isinstance(rec, dict) and rec.get("size_bytes", 0) > MAX_FILE_BYTES
-        for rec in exports.values()
-    )
+
+    class _MaybeSized(TypedDict, total=False):
+        size_bytes: int
+
+    def _walk(node: Any) -> bool:
+        if not isinstance(node, dict):
+            return False
+        entry = cast("_MaybeSized", node)
+        size = entry.get("size_bytes")
+        if size is not None:
+            return size > MAX_FILE_BYTES
+        return any(_walk(v) for v in node.values())
+
+    return _walk(meta.get("exports") or {})
 
 
 class TextureProcessor:
@@ -309,9 +334,18 @@ class TextureProcessor:
         session.commit()
 
     def _export(
-        self, img: Image.Image, object_id: str, out_dir: Path
+        self,
+        img: Image.Image,
+        object_id: str,
+        out_dir: Path,
+        filename_suffix: str = "",
     ) -> tuple[dict[str, dict], list[str]]:
-        """Export image at applicable sizes; promotes largest to lossless high if source is below the high tier."""
+        """Export image at applicable sizes; promotes largest to lossless high if source is below the high tier.
+
+        ``filename_suffix`` is appended to each tier name in the on-disk file
+        (e.g. ``"_01"`` → ``low_01.webp``); the returned dict is still keyed
+        by bare tier name so callers can nest under a frame key.
+        """
         w, h = img.size
         capped = min(max(w, h), WEBP_MAX)
         # Sizes to export: all EXPORT_SIZES that fit below the cap, plus the cap itself
@@ -324,12 +358,14 @@ class TextureProcessor:
         for size in sizes:
             tier = _tier_for_size(size)
             resized = _resize(img, size)
-            rec = _save_webp(resized, out_dir / f"{tier}.webp", lossless=False)
+            rec = _save_webp(
+                resized, out_dir / f"{tier}{filename_suffix}.webp", lossless=False
+            )
             exports[tier] = rec
 
             target = _size_target(size)
             if target and rec["size_bytes"] > target:
-                msg = f"{object_id}/{tier}.webp: {rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
+                msg = f"{object_id}/{tier}{filename_suffix}.webp: {rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
                 log.warning(msg)
                 warnings.append(msg)
 
@@ -340,11 +376,94 @@ class TextureProcessor:
             if largest_rec["size_bytes"] < 300 * 1024:
                 exports["high"] = _save_webp(
                     _resize(img, largest_rec["width"]),
-                    out_dir / "high.webp",
+                    out_dir / f"high{filename_suffix}.webp",
                     lossless=True,
                 )
 
         return exports, warnings
+
+    def _try_skip(
+        self,
+        out_dir: Path,
+        entry: dict,
+        *,
+        attribution_file: str,
+        label: str,
+    ) -> bool:
+        """Refresh yaml fields and return True if processing can be skipped.
+
+        Returns False when metadata is missing, the yaml entry's shape has
+        diverged from the on-disk metadata (monthly only), or any export
+        exceeds the file cap. In all other cases yaml-sourced fields are
+        patched into the existing metadata.json and the texture is marked
+        available.
+        """
+        meta_path = out_dir / "metadata.json"
+        if not meta_path.exists():
+            return False
+
+        if entry.get("type") == "cylindrical_monthly":
+            try:
+                existing = json.loads(meta_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                existing = {}
+            # yaml-side structural change (frame count or template) forces a
+            # full reprocess so stale .webp frames don't linger.
+            if (
+                existing.get("type") != entry["type"]
+                or existing.get("frames") != entry.get("months", 12)
+                or existing.get("source_file") != entry["file"]
+            ):
+                log.info("reprocessing %s: yaml entry shape changed", label)
+                return False
+
+        if _any_export_over_cap(out_dir):
+            log.info(
+                "reprocessing %s: existing export(s) exceed %.1f MiB cap",
+                label,
+                MAX_FILE_BYTES / 1024 / 1024,
+            )
+            return False
+
+        log.debug("skipping %s (already processed, use force=True to reprocess)", label)
+        _refresh_metadata_from_yaml(out_dir, entry, attribution_file)
+        self._mark_texture_available(entry["body"])
+        return True
+
+    def _write_metadata(
+        self,
+        out_dir: Path,
+        entry: dict,
+        *,
+        source_file: str,
+        attribution_file: str,
+        source_dims: list[int] | None,
+        exports: dict,
+        extra_fields: dict | None = None,
+    ) -> None:
+        """Build and write metadata.json; mark the texture available.
+
+        ``source_file`` is what gets recorded in metadata (the literal raw
+        filename or the monthly template); ``attribution_file`` is the
+        concrete filename used to look up scraped attribution (the first
+        frame for monthly entries).
+        """
+        self._mark_texture_available(entry["body"])
+        attribution = entry.get("attribution") or _scraped_attribution(attribution_file)
+        metadata: dict = {
+            "id": entry["body"],
+            "source": entry["source"],
+            "organisation": entry["organisation"],
+            "attribution": attribution,
+            "description": entry.get("description"),
+            "type": entry["type"],
+            **(extra_fields or {}),
+            "source_file": source_file,
+            "source_dimensions": source_dims,
+            "processed_at": datetime.now(UTC).isoformat(),
+            "exports": exports,
+        }
+        (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
     def process_all(self, force: bool = False) -> None:
         """Process all textures listed in download-metadata.yaml.
@@ -354,10 +473,15 @@ class TextureProcessor:
         """
         self._global_warnings = []
         self._reset_texture_available()
-        known_files = {entry["file"] for entry in self._raw_meta}
+        known_files: set[str] = set()
+        for entry in self._raw_meta:
+            known_files.update(_expand_entry_files(entry))
 
         for entry in self._raw_meta:
             if entry.get("skip"):
+                continue
+            if entry.get("type") == "cylindrical_monthly":
+                self._process_monthly(entry, force=force)
                 continue
             src = RAW_DIR / entry["file"]
             if not src.exists():
@@ -403,61 +527,111 @@ class TextureProcessor:
         object_id = entry["body"]
         out_dir = PROCESSED_DIR / object_id
 
-        if not force and (out_dir / "metadata.json").exists():
-            # Auto-reprocess when any export exceeds MAX_FILE_BYTES — saves the
-            # user from having to pass --force after the cap is tightened or
-            # Cloudflare rejects a deploy.
-            if _any_export_over_cap(out_dir):
-                log.info(
-                    "reprocessing %s: existing export(s) exceed %.1f MiB cap",
-                    src.name,
-                    MAX_FILE_BYTES / 1024 / 1024,
-                )
-            else:
-                log.debug(
-                    "skipping %s (already processed, use force=True to reprocess)",
-                    src.name,
-                )
-                # Image processing is skipped, but yaml-sourced fields (organisation,
-                # attribution, description, source, type) may have changed since the
-                # image was processed. Re-read the metadata.json, patch those fields,
-                # and write it back so the export step sees current attribution
-                # without forcing a full reprocess.
-                _refresh_metadata_from_yaml(out_dir, entry, src.name)
-                self._mark_texture_available(object_id)
-                return out_dir
+        if not force and self._try_skip(
+            out_dir, entry, attribution_file=src.name, label=src.name
+        ):
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img = _open_image(src)
+        exports, warnings = self._export(img, object_id, out_dir)
+        self._global_warnings.extend(warnings)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=src.name,
+            attribution_file=src.name,
+            source_dims=[img.width, img.height],
+            exports=exports,
+        )
+        log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
+        return out_dir
+
+    def _process_monthly(self, entry: dict, force: bool = False) -> Path:
+        """Process a ``cylindrical_monthly`` entry: one body, ``months`` frames.
+
+        Each frame's tier files land as ``{tier}_{NN}.webp`` in the body's
+        directory; one ``metadata.json`` records all of them with ``exports``
+        keyed by zero-padded month string.
+
+        Skip semantics mirror ``process()``: if metadata exists and no export
+        exceeds the file cap, the image work is skipped and only the
+        yaml-sourced fields are refreshed. Use ``force=True`` to redo the
+        webp encoding (e.g. after changing tier sizes).
+        """
+        object_id = entry["body"]
+        out_dir = PROCESSED_DIR / object_id
+        months = entry.get("months", 12)
+        file_template = entry["file"]
+        expected_files = _expand_entry_files(entry)
+
+        missing = [f for f in expected_files if not (RAW_DIR / f).exists()]
+        if missing:
+            for f in missing:
+                msg = f"monthly source missing: {f}"
+                log.warning(msg)
+                self._global_warnings.append(msg)
+            if len(missing) == months:
+                # Nothing to process at all; bail before touching out_dir.
+                return PROCESSED_DIR
+
+        if not force and self._try_skip(
+            out_dir,
+            entry,
+            attribution_file=expected_files[0],
+            label=f"{object_id} monthly",
+        ):
+            return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        img = _open_image(src)
-        w, h = img.size
+        # Strip prior flat-layout outputs (low/medium/high.webp) when migrating
+        # a body from a single-frame entry to a monthly one. Leaving them
+        # around would ship stale assets the renderer might pick up.
+        for stale in ("low.webp", "medium.webp", "high.webp"):
+            stale_path = out_dir / stale
+            if stale_path.exists():
+                stale_path.unlink()
+                log.info("removed stale single-frame export %s", stale_path.name)
 
-        exports, warnings = self._export(img, object_id, out_dir)
+        all_exports: dict[str, dict[str, dict]] = {}
+        source_dims: list[int] | None = None
 
-        self._global_warnings.extend(warnings)
-        self._mark_texture_available(object_id)
+        for m in range(1, months + 1):
+            fname = file_template.format(month=m)
+            src = RAW_DIR / fname
+            if not src.exists():
+                continue
+            img = _open_image(src)
+            if source_dims is None:
+                source_dims = [img.width, img.height]
+            suffix = f"_{m:02d}"
+            exports, warnings = self._export(img, object_id, out_dir, suffix)
+            all_exports[f"{m:02d}"] = exports
+            self._global_warnings.extend(warnings)
 
-        # yaml wins when present; otherwise pull from the scraped NASA/USGS
-        # page (via the texture_sources downloader). Scraping is optional, so
-        # a missing file just means no auto-attribution — leave it None.
-        attribution = entry.get("attribution") or _scraped_attribution(src.name)
+        if not all_exports:
+            # Every source was missing — we logged per-file warnings above.
+            return out_dir
 
-        metadata = {
-            "id": object_id,
-            "source": entry["source"],
-            "organisation": entry["organisation"],
-            "attribution": attribution,
-            "description": entry.get("description"),
-            "type": entry["type"],
-            "source_file": src.name,
-            "source_dimensions": [w, h],
-            "processed_at": datetime.now(UTC).isoformat(),
-            "exports": exports,
-        }
-
-        (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
-        log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
-
+        tier_count = len(next(iter(all_exports.values())))
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=file_template,
+            attribution_file=expected_files[0],
+            source_dims=source_dims,
+            exports=all_exports,
+            extra_fields={"frames": months},
+        )
+        log.info(
+            "processed %s → %s monthly (%d frames × %d tiers)",
+            file_template,
+            object_id,
+            len(all_exports),
+            tier_count,
+        )
         return out_dir
 
 

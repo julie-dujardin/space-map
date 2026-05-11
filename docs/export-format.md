@@ -17,7 +17,8 @@ v1/
   objects/{lang}/{bucket}.json.gz                 localized details, hash-bucketed
   v1/images/{filename}/{label}.{ext}              thumbnail variants (label = s | m | xl)
   v1/images/{filename}/metadata.json.gz           per-image license + variants map
-  textures/{id}/{tier}.webp                       tier = low | medium | high
+  textures/{id}/{tier}.webp                       tier = low | medium | high (single-frame)
+  textures/{id}/{tier}_{NN}.webp                  monthly frames (type = cylindrical_monthly), NN = 01..frames
   textures/{id}/metadata.json                     texture source + exports
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
@@ -529,7 +530,8 @@ interface GlobalObjectData {
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
     source: string;                   // source page URL
     organisation: string;             // short canonical label, deduplicable (e.g. "NASA", "USGS", "Björn Jónsson")
-    type: string;                     // texture kind (cylindrical, cylindrical_tile, …)
+    type: string;                     // texture kind (cylindrical, cylindrical_monthly, cylindrical_tile, …)
+    frames?: number;                  // only on cylindrical_monthly; frame count (1-based, files end in _01..frames)
     attribution?: string;             // long-form credit line; omitted when unavailable
     description?: string;
   };
@@ -755,7 +757,7 @@ Not cleaned on re-export — bundles are reused across runs. Schema mismatches t
 
 Generated during ingest (not export) and written directly to the export directory. An object's `map_texture_available` flag in its global JSON signals whether a texture exists.
 
-**Path:** `textures/{id}/{tier}.webp`
+**Path:** `textures/{id}/{tier}.webp` (single-frame, default) or `textures/{id}/{tier}_{NN}.webp` (monthly).
 
 | Tier   | Max dimension | Size target | Quality                              | Condition        |
 |--------|---------------|-------------|--------------------------------------|------------------|
@@ -767,7 +769,16 @@ Generated during ingest (not export) and written directly to the export director
 
 The size is a target, not a hard limit. Some textures go over it.
 
+### Texture type
+
+The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credits.json`) discriminates how the renderer should consume the export bundle:
+
+- **`cylindrical`** — single equirectangular frame; one `{tier}.webp` per tier.
+- **`cylindrical_monthly`** — twelve-frame seasonal cycle. Files are suffixed with the 1-based month (`{tier}_{NN}.webp`, `NN` = `01`..`frames`); the metadata's `exports` map is nested `{frame: {tier: rec}}`. Earth ships under this type; the renderer picks the frame by calendar month of the simulation date.
+
 ### Texture metadata (`textures/{id}/metadata.json`)
+
+Single-frame (`type: cylindrical`):
 
 ```json
 {
@@ -776,7 +787,7 @@ The size is a target, not a hard limit. Some textures go over it.
   "organisation": "NASA",
   "attribution": "NASA/JPL-Caltech/MSSS. …",
   "description": "Mars surface map",
-  "type": "map",
+  "type": "cylindrical",
   "source_file": "mars_color.tif",
   "source_dimensions": [8192, 4096],
   "processed_at": "2025-01-01T00:00:00+00:00",
@@ -787,9 +798,34 @@ The size is a target, not a hard limit. Some textures go over it.
 }
 ```
 
+Monthly (`type: cylindrical_monthly`):
+
+```json
+{
+  "id": "naif-399",
+  "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/",
+  "organisation": "NASA",
+  "attribution": "NASA Earth Observatory — Blue Marble: Next Generation monthly composites (2004).",
+  "type": "cylindrical_monthly",
+  "frames": 12,
+  "source_file": "world.2004{month:02d}.3x21600x10800_geo.tif",
+  "source_dimensions": [21600, 10800],
+  "processed_at": "2026-05-11T00:00:00+00:00",
+  "exports": {
+    "01": {
+      "low":    { "file": "low_01.webp",    "width": 2048,  "height": 1024, "size_bytes": 134000, "lossless": false },
+      "medium": { "file": "medium_01.webp", "width": 8192,  "height": 4096, "size_bytes": 1550000, "lossless": false },
+      "high":   { "file": "high_01.webp",   "width": 16383, "height": 8191, "size_bytes": 5300000, "lossless": false }
+    },
+    "02": { "...": "..." }
+  }
+}
+```
+
 - `source` — the page URL the texture was obtained from.
 - `organisation` — short canonical label used for deduplicated UI attribution (e.g. `"NASA"`, `"USGS"`, `"ESA/DLR/FU Berlin"`, `"The Planetary Society"`, `"Björn Jónsson"`).
 - `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
+- `frames` — only on `cylindrical_monthly`; the number of monthly composites (always 12 today). Mirrored into the `systems/{bary}.json` texture block.
 
 ## Rings
 
@@ -879,7 +915,8 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "texture": {
       "source": "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/",
       "organisation": "NASA",
-      "type": "cylindrical"
+      "type": "cylindrical_monthly",
+      "frames": 12
     },
     "orientation": {
       "pole_ra_0": 0.0, "pole_ra_1": -0.641,
@@ -931,7 +968,8 @@ interface Credits {
       name: string;              // English display name; localisation is deferred
       source: string;            // attribution source URL
       organisation: string;      // short label, deduplicable (e.g. "NASA", "USGS")
-      type: string;              // cylindrical / cylindrical_tile / …
+      type: string;              // cylindrical / cylindrical_monthly / cylindrical_tile / …
+      frames?: number;           // only on cylindrical_monthly; frame count
       attribution?: string;      // long-form credit line when available
       description?: string;      // optional one-liner about the dataset
     }>;

@@ -9,7 +9,9 @@ from space_map_data.ingest.providers import textures
 from space_map_data.ingest.providers.textures import (
     MAX_FILE_BYTES,
     MIN_QUALITY,
+    TextureProcessor,
     _any_export_over_cap,
+    _expand_entry_files,
     _save_webp,
 )
 
@@ -146,3 +148,195 @@ class TestAnyExportOverCap:
     def test_corrupt_metadata_returns_false(self, tmp_path):
         (tmp_path / "metadata.json").write_text("{not json")
         assert _any_export_over_cap(tmp_path) is False
+
+    def test_nested_monthly_exports_detected_over_cap(self, tmp_path):
+        """Monthly metadata nests records one level deeper (frame → tier → rec).
+
+        The recursive walk must spot a single over-cap record anywhere in the
+        tree, otherwise stale monthly bundles never trigger auto-reprocess.
+        """
+        (tmp_path / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "type": "cylindrical_monthly",
+                    "exports": {
+                        "01": {
+                            "low": {"size_bytes": 1000},
+                            "high": {"size_bytes": 1000},
+                        },
+                        "07": {
+                            "low": {"size_bytes": 1000},
+                            "high": {"size_bytes": MAX_FILE_BYTES + 1},
+                        },
+                    },
+                }
+            )
+        )
+        assert _any_export_over_cap(tmp_path) is True
+
+
+class TestExpandEntryFiles:
+    """_expand_entry_files turns a yaml entry into concrete raw filenames."""
+
+    def test_single_frame_identity(self):
+        entry = {"file": "mars.tif", "type": "cylindrical"}
+        assert _expand_entry_files(entry) == ["mars.tif"]
+
+    def test_monthly_template_expands(self):
+        entry = {
+            "file": "world.2004{month:02d}.tif",
+            "type": "cylindrical_monthly",
+            "months": 12,
+        }
+        result = _expand_entry_files(entry)
+        assert len(result) == 12
+        assert result[0] == "world.200401.tif"
+        assert result[5] == "world.200406.tif"
+        assert result[11] == "world.200412.tif"
+
+    def test_monthly_default_months_is_twelve(self):
+        """`months` defaults to 12 when omitted — matches the Blue Marble cycle."""
+        entry = {
+            "file": "x.{month}.tif",
+            "type": "cylindrical_monthly",
+        }
+        assert len(_expand_entry_files(entry)) == 12
+
+
+class TestProcessMonthly:
+    """End-to-end ingest of a small synthetic monthly series.
+
+    Uses a tmp DOWNLOAD/EXPORT layout via monkeypatch; bypasses the DB-touching
+    helpers so the test doesn't need a session.
+    """
+
+    @staticmethod
+    def _make_processor(monkeypatch, tmp_path, entry: dict) -> TextureProcessor:
+        raw = tmp_path / "raw"
+        processed = tmp_path / "processed"
+        raw.mkdir()
+        processed.mkdir()
+        monkeypatch.setattr(textures, "RAW_DIR", raw)
+        monkeypatch.setattr(textures, "PROCESSED_DIR", processed)
+        proc = TextureProcessor.__new__(TextureProcessor)
+        proc._raw_meta = [entry]
+        proc._global_warnings = []
+        # Skip the DB writes; the texture-availability flag is exercised by the
+        # full ingest harness, not this unit test.
+        proc._mark_texture_available = lambda object_id: None  # noqa: ARG005
+        proc._reset_texture_available = lambda: None
+        return proc
+
+    def _seed_frames(self, raw_dir, template: str, months: int) -> None:
+        for m in range(1, months + 1):
+            img = Image.new("RGB", (256, 128), color=(20 * m, 100, 200))
+            img.save(raw_dir / template.format(month=m))
+
+    def test_emits_per_frame_tier_files_and_nested_metadata(
+        self, tmp_path, monkeypatch
+    ):
+        entry = {
+            "body": "naif-399",
+            "body_name": "earth",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "attribution": "Test attribution",
+            "file": "world.{month:02d}.tif",
+            "type": "cylindrical_monthly",
+            "months": 3,
+        }
+        proc = self._make_processor(monkeypatch, tmp_path, entry)
+        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
+
+        proc._process_monthly(entry)
+
+        body_dir = textures.PROCESSED_DIR / "naif-399"
+        meta = json.loads((body_dir / "metadata.json").read_text())
+        assert meta["type"] == "cylindrical_monthly"
+        assert meta["frames"] == 3
+        assert meta["source_file"] == entry["file"]
+        assert sorted(meta["exports"].keys()) == ["01", "02", "03"]
+        for frame, tier_recs in meta["exports"].items():
+            for tier, rec in tier_recs.items():
+                assert rec["file"] == f"{tier}_{frame}.webp"
+                assert (body_dir / rec["file"]).exists()
+
+    def test_strips_stale_single_frame_outputs(self, tmp_path, monkeypatch):
+        """Bodies migrating from `cylindrical` to `cylindrical_monthly` shouldn't
+        ship the old flat-layout webps alongside the new per-month ones."""
+        entry = {
+            "body": "naif-399",
+            "body_name": "earth",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "file": "w.{month:02d}.tif",
+            "type": "cylindrical_monthly",
+            "months": 2,
+        }
+        proc = self._make_processor(monkeypatch, tmp_path, entry)
+        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
+        body_dir = textures.PROCESSED_DIR / "naif-399"
+        body_dir.mkdir()
+        for stale in ("low.webp", "medium.webp", "high.webp"):
+            (body_dir / stale).write_bytes(b"stale")
+
+        proc._process_monthly(entry)
+
+        for stale in ("low.webp", "medium.webp", "high.webp"):
+            assert not (body_dir / stale).exists()
+
+    def test_missing_source_logs_warning_and_skips_frame(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        caplog.set_level("WARNING", logger="space_map_data.ingest.providers.textures")
+        entry = {
+            "body": "naif-399",
+            "body_name": "earth",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "file": "m.{month:02d}.tif",
+            "type": "cylindrical_monthly",
+            "months": 3,
+        }
+        proc = self._make_processor(monkeypatch, tmp_path, entry)
+        # Seed only months 1 and 3; 2 is missing.
+        for m in (1, 3):
+            img = Image.new("RGB", (128, 64), color="blue")
+            img.save(textures.RAW_DIR / entry["file"].format(month=m))
+
+        proc._process_monthly(entry)
+
+        meta = json.loads(
+            (textures.PROCESSED_DIR / "naif-399" / "metadata.json").read_text()
+        )
+        assert sorted(meta["exports"].keys()) == ["01", "03"]
+        assert any("monthly source missing" in r.message for r in caplog.records)
+        assert any("m.02.tif" in w for w in proc._global_warnings)
+
+    def test_reprocess_when_yaml_shape_changes(self, tmp_path, monkeypatch):
+        """If the yaml entry switches `months` or template, the body must
+        reprocess even without force — otherwise stale frame files linger."""
+        entry = {
+            "body": "naif-399",
+            "body_name": "earth",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "file": "m.{month:02d}.tif",
+            "type": "cylindrical_monthly",
+            "months": 2,
+        }
+        proc = self._make_processor(monkeypatch, tmp_path, entry)
+        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
+        proc._process_monthly(entry)
+
+        body_dir = textures.PROCESSED_DIR / "naif-399"
+        # Mutate yaml to claim 3 frames; add a 3rd source so the processor can
+        # produce it.
+        img = Image.new("RGB", (128, 64), color="green")
+        img.save(textures.RAW_DIR / entry["file"].format(month=3))
+        new_entry = {**entry, "months": 3}
+
+        proc._process_monthly(new_entry)
+        meta = json.loads((body_dir / "metadata.json").read_text())
+        assert meta["frames"] == 3
+        assert sorted(meta["exports"].keys()) == ["01", "02", "03"]
