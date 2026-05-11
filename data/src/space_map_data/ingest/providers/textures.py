@@ -20,6 +20,11 @@ Image.MAX_IMAGE_PIXELS = None
 log = logging.getLogger(__name__)
 
 RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
+# Per-asset subdirs under `misc/` carry their own download-metadata.yaml; used
+# for manually downloaded files (e.g. GEBCO bathymetry) that don't flow through
+# the auto-downloader. TextureProcessor merges every misc/*/download-metadata.yaml
+# into the main bodies list at startup.
+MISC_DIR = DOWNLOAD_DIR / "textures" / "misc"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 # Per-texture scraped source metadata (written by the texture_sources downloader);
 # used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
@@ -28,6 +33,9 @@ SOURCE_METADATA_PARSED_DIR = DOWNLOAD_DIR / "textures" / "source_metadata" / "pa
 EARTH_CLOUDS_DIR = DOWNLOAD_DIR / "textures" / "earth_clouds"
 # Parallel to the Earth surface texture; the renderer layers it on top of naif-399.
 EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
+# Suffix on the export directory holding a body's specular/roughness bundle —
+# sibling of the surface texture, mirrors the `_clouds` convention.
+SPECULAR_SUFFIX = "_specular"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
@@ -84,6 +92,24 @@ def _open_image(path: Path) -> Image.Image:
 
     arr = (arr * 255.0).astype(np.uint8)
     return Image.fromarray(arr, mode="RGB")
+
+
+def _open_specular_source(src: Path) -> Image.Image:
+    """Derive a binary ocean mask from a bathymetry TIFF.
+
+    GEBCO's bathymetry stores land as 255 (the nodata mask) and ocean as
+    grayscale by depth. The output is a single-channel mask with land at 0
+    (matte) and ocean at 255 (full specular). Any pixel within a couple of
+    levels of pure white is treated as land so antialiased coastlines don't
+    leak into the ocean mask.
+    """
+    img = Image.open(src).convert("L")
+    arr = np.asarray(img)
+    mask = np.where(arr >= 254, 0, 255).astype(np.uint8)
+    # WebP saves don't support single-channel mode in Pillow; promote to RGB.
+    # The triplicated payload still compresses to near-zero (the mask is flat
+    # binary), so the size growth is negligible.
+    return Image.fromarray(mask, mode="L").convert("RGB")
 
 
 def _webp_kwargs(lossless: bool) -> dict:
@@ -365,9 +391,27 @@ def _any_export_over_cap(out_dir: Path) -> bool:
 
 class TextureProcessor:
     def __init__(self) -> None:
-        self._raw_meta: list[dict] = yaml.safe_load(
-            (DOWNLOAD_DIR / "textures" / "download-metadata.yaml").read_text()
-        )["bodies"]
+        main_yaml = DOWNLOAD_DIR / "textures" / "download-metadata.yaml"
+        bodies: list[dict] = yaml.safe_load(main_yaml.read_text())["bodies"]
+        for entry in bodies:
+            entry["_source_dir"] = RAW_DIR
+
+        # Each misc/<asset>/ may carry its own download-metadata.yaml with the
+        # same schema; entries get stamped with `_source_dir` pointing at the
+        # subdir so the processor finds the file without a global `raw/` move.
+        if MISC_DIR.is_dir():
+            for sub in sorted(MISC_DIR.iterdir()):
+                if not sub.is_dir():
+                    continue
+                sub_yaml = sub / "download-metadata.yaml"
+                if not sub_yaml.is_file():
+                    continue
+                data = yaml.safe_load(sub_yaml.read_text()) or {}
+                for entry in data.get("bodies") or []:
+                    entry["_source_dir"] = sub
+                    bodies.append(entry)
+
+        self._raw_meta: list[dict] = bodies
         self._global_warnings: list[str] = []
 
     def _reset_texture_available(self) -> None:
@@ -518,9 +562,13 @@ class TextureProcessor:
         """
         self._global_warnings = []
         self._reset_texture_available()
+        # `known_files` only gates the RAW_DIR untracked-files check below, so
+        # we restrict it to entries actually sourced from raw/. misc/ entries
+        # have their own per-subdir manifests and aren't expected in raw/.
         known_files: set[str] = set()
         for entry in self._raw_meta:
-            known_files.update(_expand_entry_files(entry))
+            if entry.get("_source_dir", RAW_DIR) == RAW_DIR:
+                known_files.update(_expand_entry_files(entry))
 
         for entry in self._raw_meta:
             if entry.get("skip"):
@@ -528,7 +576,10 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_monthly":
                 self._process_monthly(entry, force=force)
                 continue
-            src = RAW_DIR / entry["file"]
+            if entry.get("type") == "cylindrical_specular":
+                self._process_specular(entry, force=force)
+                continue
+            src = entry.get("_source_dir", RAW_DIR) / entry["file"]
             if not src.exists():
                 msg = f"listed in metadata but not found: {entry['file']}"
                 log.warning(msg)
@@ -595,6 +646,54 @@ class TextureProcessor:
         log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
         return out_dir
 
+    def _process_specular(self, entry: dict, force: bool = False) -> Path:
+        """Process a `cylindrical_specular` entry from a bathymetry source.
+
+        Output goes to ``{body}_specular/`` — a sibling of the surface texture
+        and ``_clouds`` bundle. The exported WebP is a single-channel ocean
+        mask (land=0, ocean=255); the renderer routes it into whichever
+        material slot (roughness, specular intensity) it sees fit.
+        """
+        src = entry.get("_source_dir", RAW_DIR) / entry["file"]
+        if not src.exists():
+            msg = f"specular source missing: {entry['file']}"
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            return PROCESSED_DIR
+
+        object_id = f"{entry['body']}{SPECULAR_SUFFIX}"
+        out_dir = PROCESSED_DIR / object_id
+
+        # Helpers (`_try_skip`, `_write_metadata`, `_mark_texture_available`)
+        # all key off entry["body"]. Override it to the suffixed export id so
+        # the on-disk metadata.json's `id` matches the directory — same
+        # convention `_process_clouds` uses for `naif-399_clouds`. The DB
+        # update for `naif-399_specular` is a harmless no-op (no such row).
+        entry = {**entry, "body": object_id}
+
+        if not force and self._try_skip(
+            out_dir, entry, attribution_file=src.name, label=object_id
+        ):
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img = _open_specular_source(src)
+        exports, warnings = self._export(img, object_id, out_dir)
+        self._global_warnings.extend(warnings)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=src.name,
+            attribution_file=src.name,
+            source_dims=[img.width, img.height],
+            exports=exports,
+        )
+        log.info(
+            "processed specular %s → %s (%d exports)", src.name, object_id, len(exports)
+        )
+        return out_dir
+
     def _process_monthly(self, entry: dict, force: bool = False) -> Path:
         """Process a ``cylindrical_monthly`` entry: one body, ``months`` frames.
 
@@ -612,8 +711,9 @@ class TextureProcessor:
         months = entry.get("months", 12)
         file_template = entry["file"]
         expected_files = _expand_entry_files(entry)
+        source_dir: Path = entry.get("_source_dir", RAW_DIR)
 
-        missing = [f for f in expected_files if not (RAW_DIR / f).exists()]
+        missing = [f for f in expected_files if not (source_dir / f).exists()]
         if missing:
             for f in missing:
                 msg = f"monthly source missing: {f}"
@@ -647,7 +747,7 @@ class TextureProcessor:
 
         for m in range(1, months + 1):
             fname = file_template.format(month=m)
-            src = RAW_DIR / fname
+            src = source_dir / fname
             if not src.exists():
                 continue
             img = _open_image(src)

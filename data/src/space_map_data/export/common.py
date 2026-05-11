@@ -46,6 +46,7 @@ from space_map_data.export.systems import (
     load_radii,
     load_clouds_metadata,
     load_ring_metadata,
+    load_specular_metadata,
     load_texture_metadata,
     write_system_metadata,
     write_systems_global,
@@ -776,6 +777,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     texture_metadata = load_texture_metadata(out_dir)
     ring_metadata = load_ring_metadata(out_dir)
     clouds_metadata = load_clouds_metadata(out_dir)
+    specular_metadata = load_specular_metadata(out_dir)
 
     write_systems_global(out_dir, gms, nut_prec_angles)
 
@@ -1054,6 +1056,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             texture_metadata,
             ring_metadata,
             clouds_metadata,
+            specular_metadata,
         )
         write_credits(
             session, out_dir, texture_metadata, ring_metadata, clouds_metadata

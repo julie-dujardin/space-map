@@ -22,6 +22,9 @@ _TOP_LEVEL_NAIF_IDS = {0, 10}  # SSB and Sun
 # bundle rather than a regular surface texture. The host body id is the
 # directory name minus this suffix.
 _CLOUDS_SUFFIX = "_clouds"
+# Sibling bundle holding a specular/roughness map for the host body
+# (e.g. naif-399_specular carries Earth's ocean mask).
+_SPECULAR_SUFFIX = "_specular"
 
 # Object types that belong in planetary systems
 _SYSTEM_TYPES = frozenset(
@@ -128,16 +131,18 @@ def _tiers_from_meta(meta: dict) -> list[str]:
 def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     """Load all per-body surface texture metadata.json files from the export tree.
 
-    Returns {object_id: metadata_dict}. Cloud-overlay bundles (directory
-    names ending in ``_clouds``) are filtered out; use
-    ``load_clouds_metadata`` for those.
+    Returns {object_id: metadata_dict}. Sibling bundles whose directory ends
+    in ``_clouds`` or ``_specular`` are filtered out; use the dedicated
+    loaders for those.
     """
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
     if not textures_dir.exists():
         return result
     for body_dir in textures_dir.iterdir():
-        if not body_dir.is_dir() or body_dir.name.endswith(_CLOUDS_SUFFIX):
+        if not body_dir.is_dir() or body_dir.name.endswith(
+            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX)
+        ):
             continue
         meta_file = body_dir / "metadata.json"
         if meta_file.exists():
@@ -184,6 +189,50 @@ def clouds_block(meta: dict) -> dict:
         "id": meta["id"],
         "tiers": _tiers_from_meta(meta),
         "frames": list(meta.get("frames") or []),
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
+
+
+def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load per-body specular-map metadata.json files from the export tree.
+
+    Returns {host_object_id: metadata_dict} keyed by the surface body's id
+    (e.g. ``naif-399`` for ``textures/naif-399_specular/``). The full export
+    id is preserved in the metadata's own ``id`` field for URL composition.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, dict] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in textures_dir.iterdir():
+        if not body_dir.is_dir() or not body_dir.name.endswith(_SPECULAR_SUFFIX):
+            continue
+        meta_file = body_dir / "metadata.json"
+        if meta_file.exists():
+            host_id = body_dir.name.removesuffix(_SPECULAR_SUFFIX)
+            result[host_id] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded specular metadata for %d bodies", len(result))
+    return result
+
+
+def specular_block(meta: dict) -> dict:
+    """Build the per-body ``specular`` block emitted into systems/{bary}.json.
+
+    Carries the export's own id (sibling directory of the surface texture),
+    the available tier list, and attribution. The frontend composes URLs as
+    ``/v1/textures/{specular.id}/{tier}.webp`` — single-frame, no per-frame
+    suffix.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "tiers": _tiers_from_meta(meta),
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],
@@ -325,6 +374,7 @@ def write_system_metadata(
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    specular_metadata: dict[str, dict],
 ) -> dict[int, dict]:
     """Generate one metadata file per planetary system.
 
@@ -426,6 +476,12 @@ def write_system_metadata(
             clouds_meta = clouds_metadata.get(obj.id)
             if clouds_meta is not None:
                 entry["clouds"] = clouds_block(clouds_meta)
+
+            # Specular/roughness map (separate single-frame bundle parallel
+            # to the surface; e.g. naif-399 → Earth's ocean mask).
+            spec_meta = specular_metadata.get(obj.id)
+            if spec_meta is not None:
+                entry["specular"] = specular_block(spec_meta)
 
             if entry:
                 bodies[obj.id] = entry
