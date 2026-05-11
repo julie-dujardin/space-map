@@ -168,8 +168,8 @@ def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def clouds_block(meta: dict) -> dict:
-    """Build the per-body ``clouds`` block emitted into systems/{bary}.json,
-    the global object detail file, and credits.json.
+    """Build the per-body ``clouds`` block emitted into systems/{bary}.json
+    and the global object detail file.
 
     Carries everything the renderer needs to fetch and credit a cloud
     overlay: the export's own id (its directory, parallel to the surface

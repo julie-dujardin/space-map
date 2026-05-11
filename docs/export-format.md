@@ -950,17 +950,6 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
       "type": "cylindrical_monthly",
       "frames": 12
     },
-    "orientation": {
-      "pole_ra_0": 0.0, "pole_ra_1": -0.641,
-      "pole_dec_0": 90.0, "pole_dec_1": -0.557,
-      "w0": 190.147, "w1": 360.9856235, "w2": 0.0
-    },
-    "nut_prec": { "ra": [], "dec": [], "pm": [] },
-    "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
-  },
-  "naif-399_with_clouds_example": {
-    "tiers": ["low", "medium"],
-    "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical_monthly", "frames": 12 },
     "clouds": {
       "id": "naif-399_clouds",
       "tiers": ["low", "medium"],
@@ -968,7 +957,14 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
       "organisation": "EUMETSAT",
       "type": "clouds_overlay",
       "attribution": "Contains modified EUMETSAT data"
-    }
+    },
+    "orientation": {
+      "pole_ra_0": 0.0, "pole_ra_1": -0.641,
+      "pole_dec_0": 90.0, "pole_dec_1": -0.557,
+      "w0": 190.147, "w1": 360.9856235, "w2": 0.0
+    },
+    "nut_prec": { "ra": [], "dec": [], "pm": [] },
+    "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
   "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } },
   "naif-699": {
