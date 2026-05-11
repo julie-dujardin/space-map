@@ -887,6 +887,11 @@ export class ContextManager {
 		return this.isInSystem(parentId, this.activeSystemId);
 	}
 
+	/** True if `body` (the body itself or by parentage) belongs to `sysId`. */
+	isBodyInSystem(body: PositionedBody, sysId: string): boolean {
+		return body.data.id === sysId || this.isInSystem(body.data.parentId, sysId);
+	}
+
 	private isInFocusedSystem(parentId: string): boolean {
 		return this.isInSystem(parentId, this.focusedSystemId);
 	}

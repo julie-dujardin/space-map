@@ -38,7 +38,8 @@ import {
 	loadBodyTexture,
 	loadBodyTextureTier,
 	loadSystemData,
-	makeCircleTexture
+	makeCircleTexture,
+	unloadSystemTextures
 } from './objects/construction';
 import {
 	makePointCloudFromBuffer,
@@ -131,6 +132,12 @@ export class SceneRenderer {
 	private orbitPool = new OrbitWorkerPool();
 	private asteroidPoints = new Map<string, Points>();
 	private lastSystemTextureBarycenter: string | null = null;
+	/** Barycenters whose textures should be released once the in-flight focus
+	 *  animation settles. Populated by {@link maybeLoadSystemData} on each
+	 *  system switch, drained in the tick loop. Holding the disposal until
+	 *  fly-settle avoids thrash when the user rapidly clicks between systems —
+	 *  re-entering before the fly completes removes the entry from this set. */
+	private pendingUnloadBaryIds = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
@@ -1042,6 +1049,20 @@ export class SceneRenderer {
 			this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 		}
 
+		// Once the most recent focus animation has run its course, release the
+		// textures of any system the user navigated away from. Deferred (rather
+		// than disposed at click time) so a fly that gets reversed mid-way
+		// doesn't thrash the GPU.
+		if (
+			this.pendingUnloadBaryIds.size > 0 &&
+			performance.now() - this.focus.focusStartTime >= this.focus.focusDurationMs
+		) {
+			for (const baryId of this.pendingUnloadBaryIds) {
+				unloadSystemTextures(baryId, this.bodyObjects, this.scene, this.ctx);
+			}
+			this.pendingUnloadBaryIds.clear();
+		}
+
 		// Camera state → visibility decisions
 		const { distance } = this.getCameraState();
 		this.ctx.updateCamera(distance);
@@ -1212,12 +1233,27 @@ export class SceneRenderer {
 	/** Load system metadata (textures + orientation) for the focused system (if changed). */
 	private maybeLoadSystemData(): void {
 		const sysId = this.ctx.focusedSystemId;
-		if (!sysId) return;
+		if (!sysId) {
+			// Standalone focus (Sun, Ceres, comet…) — no system to load, but if a
+			// system was loaded before, queue it for unload so leaving e.g. Jupiter
+			// to focus the Sun still releases Jupiter's textures.
+			if (this.lastSystemTextureBarycenter) {
+				this.pendingUnloadBaryIds.add(this.lastSystemTextureBarycenter);
+				this.lastSystemTextureBarycenter = null;
+			}
+			return;
+		}
 		// Resolve to barycenter: if sysId is a planet (e.g. naif-599), its parent is the barycenter
 		const body = this.ctx.getBody(sysId);
 		const baryId =
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastSystemTextureBarycenter) return;
+		// Queue the prior system for release, then drop the new one out of the
+		// pending set in case the user is re-entering it mid-fly.
+		if (this.lastSystemTextureBarycenter) {
+			this.pendingUnloadBaryIds.add(this.lastSystemTextureBarycenter);
+		}
+		this.pendingUnloadBaryIds.delete(baryId);
 		this.lastSystemTextureBarycenter = baryId;
 		loadSystemData(
 			baryId,

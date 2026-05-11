@@ -355,6 +355,11 @@ export interface PlanetRingShadowUniforms {
 	uRingShadowPoleDir: { value: Vector3 };
 	/** World-space (focus-relative) position of the planet's center. */
 	uRingShadowCenter: { value: Vector3 };
+	/** Restore the planet material's `onBeforeCompile` to its pre-attachment
+	 *  state and force a recompile, dropping the ring-shadow ray-march from the
+	 *  fragment shader. Idempotent and safe to call after a subsequent attach
+	 *  has replaced the hook (the new hook stays). */
+	detach: () => void;
 }
 
 /**
@@ -378,17 +383,24 @@ export function attachRingShadowToPlanet(
 	outerScene: number,
 	transparency: Texture
 ): PlanetRingShadowUniforms {
+	const prev = planetMaterial.onBeforeCompile;
 	const uniforms: PlanetRingShadowUniforms = {
 		uRingShadowTransparency: { value: transparency },
 		uRingShadowInnerScene: { value: innerScene },
 		uRingShadowOuterScene: { value: outerScene },
 		uRingShadowSunDir: { value: new Vector3(1, 0, 0) },
 		uRingShadowPoleDir: { value: new Vector3(0, 1, 0) },
-		uRingShadowCenter: { value: new Vector3(0, 0, 0) }
+		uRingShadowCenter: { value: new Vector3(0, 0, 0) },
+		detach: () => {
+			// Only restore if our hook is still the active one — a subsequent
+			// reattach replaced it and owns the slot now.
+			if (planetMaterial.onBeforeCompile === hook) {
+				planetMaterial.onBeforeCompile = prev;
+				planetMaterial.needsUpdate = true;
+			}
+		}
 	};
-
-	const prev = planetMaterial.onBeforeCompile;
-	planetMaterial.onBeforeCompile = (shader, renderer) => {
+	const hook: MeshStandardMaterial['onBeforeCompile'] = (shader, renderer) => {
 		prev?.(shader, renderer);
 		Object.assign(shader.uniforms, uniforms);
 
@@ -449,6 +461,7 @@ export function attachRingShadowToPlanet(
 				reflectedLight.directSpecular *= ringShadow;`
 			);
 	};
+	planetMaterial.onBeforeCompile = hook;
 	planetMaterial.needsUpdate = true;
 	return uniforms;
 }

@@ -32,7 +32,7 @@ import {
 	makeStarGlow,
 	makeStarPoint
 } from './builders';
-import { attachRingShadowToPlanet, loadRingNode, type RingMeta } from './rings';
+import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
 import type { BodyObjects } from '../types';
 
@@ -399,6 +399,50 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 	const variant = getLabelVariant(bo.body);
 	const isLarge = data.objectType === ObjectType.STAR || data.objectType === ObjectType.PLANET;
 	setLabelName(bo.label, resolved, variant, isLarge);
+}
+
+/**
+ * Drop a body's loaded texture and revert its material to its base tint. The
+ * material/geometry/mesh stay so the body keeps rendering as a flat-shaded
+ * sphere; only the GPU texture is released. No-op if nothing is loaded.
+ */
+export function unloadBodyTexture(bo: BodyObjects): void {
+	if (!bo.mesh) return;
+	const material = bo.mesh.material as MeshStandardMaterial | MeshBasicMaterial;
+	if (!material.map) return;
+	material.map.dispose();
+	material.map = null;
+	material.color.set(resolveBodyColor(bo.body.data));
+	material.needsUpdate = true;
+	bo.textureTier = undefined;
+}
+
+/**
+ * Drop GPU textures (and ring nodes) for every body that belongs to
+ * `barycenterId`. Geometry, materials, and meshes stay in place so the bodies
+ * still render — only textures are released. Counterpart to
+ * {@link loadSystemData}; called when the user navigates away from a system
+ * so unfocused systems don't keep their high-tier textures pinned on the GPU.
+ */
+export function unloadSystemTextures(
+	barycenterId: string,
+	bodyObjects: Map<string, BodyObjects>,
+	scene: Scene,
+	ctx: ContextManager
+): void {
+	for (const bo of bodyObjects.values()) {
+		if (!ctx.isBodyInSystem(bo.body, barycenterId)) continue;
+		unloadBodyTexture(bo);
+		const ring = bo.rings;
+		if (ring) {
+			ring.planetShadow?.detach();
+			scene.remove(ring.mesh);
+			const idx = bo.extraObjects.indexOf(ring.mesh);
+			if (idx >= 0) bo.extraObjects.splice(idx, 1);
+			disposeRingNode(ring);
+			bo.rings = null;
+		}
+	}
 }
 
 /**
