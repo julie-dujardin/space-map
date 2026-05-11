@@ -669,6 +669,12 @@ export async function loadSystemData(
 						parentMesh.remove(node.mesh);
 						return;
 					}
+					// Cloud sits at the same center as the body, so the eclipse
+					// self-skip uniform can be shared — that also avoids a second
+					// per-frame write in the renderer.
+					if (bo.eclipseShadow) {
+						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
+					}
 					bo.clouds = node;
 				})
 			);

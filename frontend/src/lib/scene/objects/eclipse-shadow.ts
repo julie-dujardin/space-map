@@ -82,9 +82,16 @@ export interface EclipseSelfUniforms {
  * the resolved direct light contribution. Indirect (ambient/env) light is
  * left alone — the umbra stays softly lit by ambient light, matching real
  * eclipses where the lunar/Earth umbra never goes pitch black.
+ *
+ * `selfUniforms` lets a sibling material (e.g. the cloud overlay above a
+ * body's surface) reuse the body's self-position so its self-occlusion
+ * skip targets the same center the renderer updates each frame.
  */
-export function attachEclipseShadowToBody(material: MeshStandardMaterial): EclipseSelfUniforms {
-	const self: EclipseSelfUniforms = {
+export function attachEclipseShadowToBody(
+	material: MeshStandardMaterial,
+	selfUniforms?: EclipseSelfUniforms
+): EclipseSelfUniforms {
+	const self: EclipseSelfUniforms = selfUniforms ?? {
 		uEclipseSelfPos: { value: new Vector3() }
 	};
 	const prev = material.onBeforeCompile;
