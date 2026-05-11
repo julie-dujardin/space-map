@@ -20,8 +20,8 @@ v1/
   textures/{id}/{tier}.webp                       tier = low | medium | high (single-frame)
   textures/{id}/{tier}_{NN}.webp                  monthly frames (type = cylindrical_monthly), NN = 01..frames
   textures/{id}/metadata.json                     texture source + exports
-  textures/{id}_clouds/{tier}.webp                cloud-overlay tiers (type = clouds_overlay)
-  textures/{id}_clouds/metadata.json              cloud-overlay source + exports
+  textures/{id}_clouds/{tier}_{YYYYMMDDHH}.webp   cloud-overlay snapshots (type = clouds_overlay)
+  textures/{id}_clouds/metadata.json              cloud-overlay source + tier/frame inventory
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
@@ -539,8 +539,9 @@ interface GlobalObjectData {
   };
   has_rings?: boolean;                // only present if true; full ring metadata (channels, geometry, attribution) lives in systems/{bary}.json
   clouds?: {                          // only when a cloud overlay was ingested for this body; mirrors systems/{bary}.json
-    id: string;                       // export bundle id, e.g. "naif-399_clouds" — used to compose /v1/textures/{id}/{tier}.webp
+    id: string;                       // export bundle id, e.g. "naif-399_clouds" — used to compose /v1/textures/{id}/{tier}_{frame}.webp
     tiers: string[];                  // sorted tier names (low | medium | high)
+    frames: string[];                 // available snapshot ids (YYYYMMDDHH, sorted ascending); frontend picks the closest to simulation time
     source: string;
     organisation: string;
     type: string;                     // always "clouds_overlay" today
@@ -786,7 +787,7 @@ The `type` field in the metadata (and mirrored to `systems/{bary}.json` / `credi
 
 - **`cylindrical`** — single equirectangular frame; one `{tier}.webp` per tier.
 - **`cylindrical_monthly`** — twelve-frame seasonal cycle. Files are suffixed with the 1-based month (`{tier}_{NN}.webp`, `NN` = `01`..`frames`); the metadata's `exports` map is nested `{frame: {tier: rec}}`. Earth ships under this type; the renderer picks the frame by calendar month of the simulation date.
-- **`clouds_overlay`** — single-frame cloud-cover overlay, ingested as a separate bundle from the surface texture and refreshed from a real-time source (Earth's case: EUMETSAT-derived snapshot, 3h cadence). The bundle lives at `textures/{host_id}_clouds/` so it can be served and credited independently; the renderer composites it on top of the surface texture. The `_clouds` directory-name suffix is the export-tree convention — in the systems/credits/object payloads the bundle is exposed under its own `clouds` key on the host body (`naif-399`), keyed by host id rather than the suffixed export id.
+- **`clouds_overlay`** — multi-frame cloud-cover overlay, ingested as a separate bundle from the surface texture and refreshed from a real-time source (Earth's case: EUMETSAT-derived snapshot, 3h cadence). Every snapshot the downloader has on disk is exported; files carry a sortable `YYYYMMDDHH` frame suffix (`{tier}_{frame}.webp`). The bundle lives at `textures/{host_id}_clouds/` so it can be served and credited independently; the renderer composites it on top of the surface texture and picks a frame by simulation time. The `_clouds` directory-name suffix is the export-tree convention — in the systems/credits/object payloads the bundle is exposed under its own `clouds` key on the host body (`naif-399`), keyed by host id rather than the suffixed export id.
 
 ### Texture metadata (`textures/{id}/metadata.json`)
 
@@ -839,7 +840,7 @@ Monthly (`type: cylindrical_monthly`):
 - `attribution` — optional long-form credit string. Populated from `download-metadata.yaml` where provided; for NASA/USGS-hosted textures this is expected to be auto-filled from the source page at ingest time. Omitted entirely when unavailable.
 - `frames` — only on `cylindrical_monthly`; the number of monthly composites (always 12 today). Mirrored into the `systems/{bary}.json` texture block.
 
-Cloud overlay (`type: clouds_overlay`): same shape as single-frame `cylindrical`, only the `type` and `id` differ. The `id` carries the `_clouds` suffix so the frontend can compose URLs as `/v1/textures/{clouds.id}/{tier}.webp`.
+Cloud overlay (`type: clouds_overlay`): one bundle per host body covering every snapshot the downloader has on disk. The `id` carries the `_clouds` suffix and the frontend composes URLs as `/v1/textures/{clouds.id}/{tier}_{frame}.webp`. Per-frame `size_bytes` / `source_file` / `exports` records are intentionally omitted — the snapshot count grows over time (one per ~3 h) and the tier set is identical across frames, so a flat `tiers` + `frames` pair is the useful summary.
 
 ```json
 {
@@ -849,13 +850,9 @@ Cloud overlay (`type: clouds_overlay`): same shape as single-frame `cylindrical`
   "attribution": "Contains modified EUMETSAT data",
   "description": "Near-real-time cloud-cover overlay (3-hour cadence).",
   "type": "clouds_overlay",
-  "source_file": "2026/05/05/18.png",
-  "source_dimensions": [8192, 4096],
-  "processed_at": "2026-05-11T00:00:00+00:00",
-  "exports": {
-    "low":    { "file": "low.webp",    "width": 2048, "height": 1024, "size_bytes": 120000, "lossless": false },
-    "medium": { "file": "medium.webp", "width": 8192, "height": 4096, "size_bytes": 1200000, "lossless": false }
-  }
+  "tiers": ["low", "medium"],
+  "frames": ["2026050100", "2026050103", "2026050106", "..."],
+  "processed_at": "2026-05-11T00:00:00+00:00"
 }
 ```
 
@@ -953,6 +950,7 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "clouds": {
       "id": "naif-399_clouds",
       "tiers": ["low", "medium"],
+      "frames": ["2026050100", "2026050103", "..."],
       "source": "https://clouds.matteason.co.uk/images/8192x4096/clouds-alpha.png",
       "organisation": "EUMETSAT",
       "type": "clouds_overlay",

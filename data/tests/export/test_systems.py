@@ -82,20 +82,19 @@ class TestTiersFromMeta:
 class TestCloudsBlock:
     """clouds_block carries the export id, tiers, and attribution fields."""
 
-    def test_carries_export_id_tiers_and_required_fields(self):
+    def test_carries_export_id_tiers_frames_and_required_fields(self):
         meta = {
             "id": "naif-399_clouds",
             "source": "https://example.com/clouds.png",
             "organisation": "EUMETSAT",
             "type": "clouds_overlay",
-            "exports": {
-                "low": {"size_bytes": 1},
-                "medium": {"size_bytes": 1},
-            },
+            "tiers": ["low", "medium"],
+            "frames": ["2026050100", "2026050103"],
         }
         block = clouds_block(meta)
         assert block["id"] == "naif-399_clouds"
         assert block["tiers"] == ["low", "medium"]
+        assert block["frames"] == ["2026050100", "2026050103"]
         assert block["source"] == "https://example.com/clouds.png"
         assert block["organisation"] == "EUMETSAT"
         assert block["type"] == "clouds_overlay"
@@ -111,7 +110,8 @@ class TestCloudsBlock:
                 "type": "clouds_overlay",
                 "attribution": "Contains modified EUMETSAT data",
                 "description": "3-hour cadence overlay.",
-                "exports": {"low": {}},
+                "tiers": ["low"],
+                "frames": ["2026050100"],
             }
         )
         assert block["attribution"] == "Contains modified EUMETSAT data"

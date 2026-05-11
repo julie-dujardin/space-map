@@ -389,11 +389,11 @@ class TestProcessClouds:
             )
         )
 
-    def test_picks_latest_snapshot_and_writes_metadata(self, tmp_path, monkeypatch):
+    def test_exports_every_snapshot_and_writes_metadata(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
         self._seed_metadata(textures.EARTH_CLOUDS_DIR)
         self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
-        latest = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
 
         proc._process_clouds()
 
@@ -401,30 +401,54 @@ class TestProcessClouds:
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["id"] == textures.EARTH_CLOUDS_OBJECT_ID
         assert meta["type"] == "clouds_overlay"
-        assert meta["source_file"] == latest
         assert meta["attribution"] == "Contains modified EUMETSAT data"
         assert meta["source"] == "https://example.com/clouds.png"
-        # At least one tier export must be on disk.
-        assert any(out_dir.glob("*.webp"))
+        assert meta["frames"] == ["2026050500", "2026050518"]
+        assert meta["tiers"] == sorted(meta["tiers"])
+        assert meta["tiers"]
+        # Per-frame size_bytes / source_file are intentionally dropped.
+        assert "source_file" not in meta
+        # Each frame has at least the low tier on disk.
+        for fid in meta["frames"]:
+            assert (out_dir / f"low_{fid}.webp").exists()
 
-    def test_reprocesses_when_new_snapshot_arrives(self, tmp_path, monkeypatch):
+    def test_incrementally_adds_new_snapshot(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
         self._seed_metadata(textures.EARTH_CLOUDS_DIR)
-        first = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
         proc._process_clouds()
 
         out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
-        assert (
-            json.loads((out_dir / "metadata.json").read_text())["source_file"] == first
-        )
+        assert json.loads((out_dir / "metadata.json").read_text())["frames"] == [
+            "2026050500"
+        ]
 
-        later = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
         proc._process_clouds()
-        assert (
-            json.loads((out_dir / "metadata.json").read_text())["source_file"] == later
-        )
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["frames"] == ["2026050500", "2026050518"]
+        # Both the pre-existing and the newly added frame are on disk.
+        assert (out_dir / "low_2026050500.webp").exists()
+        assert (out_dir / "low_2026050518.webp").exists()
 
-    def test_skips_when_snapshot_unchanged(self, tmp_path, monkeypatch):
+    def test_purges_outputs_for_vanished_snapshots(self, tmp_path, monkeypatch):
+        proc = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        proc._process_clouds()
+
+        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        assert (out_dir / "low_2026050500.webp").exists()
+
+        # Delete the older snapshot and reprocess; its outputs must go too.
+        (textures.EARTH_CLOUDS_DIR / "2026" / "05" / "05" / "00.png").unlink()
+        proc._process_clouds()
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["frames"] == ["2026050518"]
+        assert not (out_dir / "low_2026050500.webp").exists()
+
+    def test_skips_when_frame_inventory_unchanged(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
         self._seed_metadata(textures.EARTH_CLOUDS_DIR)
         self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))

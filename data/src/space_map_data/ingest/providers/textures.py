@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -271,6 +272,29 @@ def _save_webp(
 
 _IMAGE_EXTS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
+# Matches an export file from the cloud bundle: `{tier}_{YYYYMMDDHH}.webp`.
+# Used to identify outputs whose source snapshot has vanished from disk so
+# the bundle doesn't accumulate ghost frames on subsequent runs.
+_CLOUD_OUTPUT_RE = re.compile(r"^([a-z]+)_(\d{10})\.webp$")
+
+
+def _cloud_frame_id(path: Path) -> str | None:
+    """Derive a sortable frame id from a date-partitioned snapshot path.
+
+    ``yyyy/mm/dd/HH.png`` → ``YYYYMMDDHH``. Returns None if the path
+    doesn't fit that layout (so the caller can warn instead of silently
+    grouping unrelated snapshots).
+    """
+    try:
+        rel = path.relative_to(EARTH_CLOUDS_DIR).with_suffix("")
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return None
+    yyyy, mm, dd, hh = parts
+    return f"{yyyy}{mm}{dd}{hh}"
+
 
 def _expand_entry_files(entry: dict) -> list[str]:
     """Resolve an entry's ``file`` field into the concrete raw filenames it covers.
@@ -288,10 +312,12 @@ def _expand_entry_files(entry: dict) -> list[str]:
 def _stale_metadata_reason(existing: dict, entry: dict) -> str | None:
     """Return a reason string if on-disk metadata is structurally stale.
 
-    Used by ``_try_skip`` to force a reprocess when the yaml entry shape
-    (monthly only) or the latest snapshot (clouds only) has diverged from
-    the last export. Returns None for single-frame entries — their skip
-    is driven by file existence and the per-export size cap.
+    Used by ``_try_skip`` to force a reprocess when a monthly entry's
+    shape (frame count / template) has diverged from the last export.
+    Returns None for single-frame entries — their skip is driven by
+    file existence and the per-export size cap. Cloud overlays don't
+    flow through ``_try_skip`` (own snapshot-set comparison), so they
+    aren't handled here.
     """
     type_ = entry.get("type")
     if type_ == "cylindrical_monthly":
@@ -301,9 +327,6 @@ def _stale_metadata_reason(existing: dict, entry: dict) -> str | None:
             or existing.get("source_file") != entry["file"]
         ):
             return "yaml entry shape changed"
-    elif type_ == "clouds_overlay":
-        if existing.get("source_file") != entry["file"]:
-            return f"new snapshot {entry['file']}"
     return None
 
 
@@ -659,18 +682,21 @@ class TextureProcessor:
         return out_dir
 
     def _process_clouds(self, force: bool = False) -> Path:
-        """Process the latest Earth cloud-cover snapshot into WebP exports.
+        """Process every Earth cloud-cover snapshot into per-frame WebP exports.
 
-        Reads PNGs from ``EARTH_CLOUDS_DIR`` (date tree written by the
-        earth_clouds downloader at 3h cadence), picks the most recent one,
-        and exports under ``PROCESSED_DIR/<EARTH_CLOUDS_OBJECT_ID>/``. The
-        export sits alongside the Earth surface texture so the renderer can
-        layer it on top of naif-399.
+        Walks every PNG under ``EARTH_CLOUDS_DIR`` (date tree written by the
+        earth_clouds downloader at 3h cadence), derives a sortable
+        ``YYYYMMDDHH`` frame id from each path, and exports as
+        ``{tier}_{frame_id}.webp`` alongside the Earth surface texture. A
+        single top-level metadata.json carries the union of frames; per-frame
+        ``size_bytes`` / ``source_file`` are intentionally omitted — they'd
+        just repeat across thousands of snapshots.
 
-        Skip semantics mirror ``process()``: an existing export is kept
-        when its recorded ``source_file`` matches the latest snapshot and
-        no export busts the file cap; otherwise the latest snapshot is
-        re-exported. ``force=True`` always reprocesses.
+        Skip semantics: if the existing metadata's ``frames`` list matches
+        the on-disk PNG inventory, the image work is a no-op. Otherwise,
+        only frames whose low-tier output is missing are re-encoded and
+        outputs for vanished snapshots are deleted. ``force=True``
+        re-encodes every frame.
         """
         if not EARTH_CLOUDS_DIR.exists():
             log.debug("clouds: %s does not exist, skipping", EARTH_CLOUDS_DIR)
@@ -683,8 +709,23 @@ class TextureProcessor:
             self._global_warnings.append(msg)
             return PROCESSED_DIR
 
-        src = pngs[-1]
-        rel_src = src.relative_to(EARTH_CLOUDS_DIR).as_posix()
+        inputs: list[tuple[str, Path]] = []
+        seen: set[str] = set()
+        for p in pngs:
+            fid = _cloud_frame_id(p)
+            if fid is None:
+                msg = f"cloud snapshot at unexpected path: {p.relative_to(EARTH_CLOUDS_DIR).as_posix()}"
+                log.warning(msg)
+                self._global_warnings.append(msg)
+                continue
+            if fid in seen:
+                continue
+            seen.add(fid)
+            inputs.append((fid, p))
+        target_frames = [fid for fid, _ in inputs]
+
+        out_dir = PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
+        meta_path = out_dir / "metadata.json"
 
         download_meta_path = EARTH_CLOUDS_DIR / "metadata.json"
         download_meta: dict = {}
@@ -696,43 +737,76 @@ class TextureProcessor:
                     "failed to read earth_clouds metadata at %s", download_meta_path
                 )
 
-        entry = {
-            "body": EARTH_CLOUDS_OBJECT_ID,
+        if not force and meta_path.exists():
+            try:
+                existing = json.loads(meta_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                existing = {}
+            if existing.get("frames") == target_frames:
+                log.debug(
+                    "skipping clouds (already processed %d frames, use force=True to reprocess)",
+                    len(target_frames),
+                )
+                self._mark_texture_available(EARTH_CLOUDS_OBJECT_ID)
+                return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Drop outputs for frames the downloader no longer has on disk so
+        # the bundle doesn't accumulate ghost snapshots.
+        target_set = set(target_frames)
+        for f in out_dir.glob("*.webp"):
+            m = _CLOUD_OUTPUT_RE.match(f.name)
+            if not m:
+                continue
+            if m.group(2) not in target_set:
+                f.unlink()
+                log.info("removed stale cloud frame %s", f.name)
+
+        tiers: list[str] = []
+        for fid, src in inputs:
+            suffix = f"_{fid}"
+            if not force and (out_dir / f"low{suffix}.webp").exists():
+                # Existing output covers this frame; tier discovery falls to
+                # any frame we actually encode (they share dims, so tiers
+                # match), or the post-loop fallback below.
+                continue
+            img = _open_image(src)
+            exports, warnings = self._export(
+                img, EARTH_CLOUDS_OBJECT_ID, out_dir, suffix
+            )
+            self._global_warnings.extend(warnings)
+            if not tiers:
+                tiers = sorted(exports.keys())
+
+        # Every frame was already on disk — recover the tier list from one
+        # of the existing outputs so the metadata stays accurate.
+        if not tiers and target_frames:
+            first_fid = target_frames[0]
+            tiers = sorted(
+                t
+                for t in ("low", "medium", "high")
+                if (out_dir / f"{t}_{first_fid}.webp").exists()
+            )
+
+        self._mark_texture_available(EARTH_CLOUDS_OBJECT_ID)
+        metadata: dict = {
+            "id": EARTH_CLOUDS_OBJECT_ID,
             "source": download_meta.get("source_url", ""),
             "organisation": "EUMETSAT",
             "attribution": download_meta.get("attribution"),
             "description": "Near-real-time cloud-cover overlay (3-hour cadence).",
             "type": "clouds_overlay",
-            "file": rel_src,
+            "tiers": tiers,
+            "frames": target_frames,
+            "processed_at": datetime.now(UTC).isoformat(),
         }
-        out_dir = PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
-
-        if not force and self._try_skip(
-            out_dir,
-            entry,
-            attribution_file=src.name,
-            label=EARTH_CLOUDS_OBJECT_ID,
-        ):
-            return out_dir
-
-        out_dir.mkdir(parents=True, exist_ok=True)
-        img = _open_image(src)
-        exports, warnings = self._export(img, EARTH_CLOUDS_OBJECT_ID, out_dir)
-        self._global_warnings.extend(warnings)
-
-        self._write_metadata(
-            out_dir,
-            entry,
-            source_file=rel_src,
-            attribution_file=src.name,
-            source_dims=[img.width, img.height],
-            exports=exports,
-        )
+        meta_path.write_text(json.dumps(metadata, indent=2))
         log.info(
-            "processed clouds %s → %s (%d exports)",
-            rel_src,
+            "processed clouds → %s (%d frames × %d tiers)",
             EARTH_CLOUDS_OBJECT_ID,
-            len(exports),
+            len(target_frames),
+            len(tiers),
         )
         return out_dir
 

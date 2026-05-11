@@ -111,10 +111,13 @@ def _tiers_from_meta(meta: dict) -> list[str]:
     """Return the sorted tier names available for a textured body.
 
     Single-frame metadata stores ``exports = {tier: rec}``; monthly metadata
-    stores ``exports = {frame: {tier: rec}}``. We expose the per-tier
-    enumeration in either case so the frontend's URL builder doesn't have to
-    care about the layout.
+    stores ``exports = {frame: {tier: rec}}``; cloud-overlay metadata skips
+    per-frame export records entirely and lists tiers explicitly. We expose
+    the per-tier enumeration in any case so the frontend's URL builder
+    doesn't have to care about the layout.
     """
+    if meta.get("type") == "clouds_overlay":
+        return sorted(meta.get("tiers") or [])
     exports = meta.get("exports") or {}
     if meta.get("type") == "cylindrical_monthly":
         first_frame = next(iter(exports.values()), {})
@@ -173,12 +176,14 @@ def clouds_block(meta: dict) -> dict:
 
     Carries everything the renderer needs to fetch and credit a cloud
     overlay: the export's own id (its directory, parallel to the surface
-    texture), the tier list, and attribution fields. The frontend composes
-    URLs as ``/v1/textures/{clouds.id}/{tier}.webp``.
+    texture), the tier list, the available snapshot frame ids, and
+    attribution fields. The frontend composes URLs as
+    ``/v1/textures/{clouds.id}/{tier}_{frame}.webp``.
     """
     block: dict = {
         "id": meta["id"],
         "tiers": _tiers_from_meta(meta),
+        "frames": list(meta.get("frames") or []),
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],
