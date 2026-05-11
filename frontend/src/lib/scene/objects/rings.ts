@@ -23,6 +23,7 @@
  */
 
 import {
+	CanvasTexture,
 	DoubleSide,
 	LinearFilter,
 	LinearMipmapLinearFilter,
@@ -34,7 +35,6 @@ import {
 	ShaderMaterial,
 	SRGBColorSpace,
 	type Texture,
-	type TextureLoader,
 	Vector3
 } from 'three';
 import { kmToScene } from '$lib/math/units';
@@ -102,30 +102,58 @@ export interface PlanetShadowOnRingUniforms {
 
 const RING_ANGULAR_SEGMENTS = 256;
 
-function loadTexture(loader: TextureLoader, url: string, srgb: boolean): Promise<Texture> {
-	return new Promise((resolve, reject) => {
-		loader.load(
-			url,
-			(tex) => {
-				if (srgb) tex.colorSpace = SRGBColorSpace;
-				// 1×13177 radial profile: at distance many radial samples fall in
-				// one pixel and a single nearest/linear tap aliases into sparkle,
-				// while at grazing angles the U-gradient across the screen is far
-				// higher than the V-gradient (V is constant) — exactly the case
-				// anisotropic filtering is designed for. Trilinear + max anisotropy
-				// addresses both. Three.js silently clamps anisotropy to whatever
-				// the GPU advertises, so 16 is safe without poking the renderer.
-				tex.minFilter = LinearMipmapLinearFilter;
-				tex.magFilter = LinearFilter;
-				tex.generateMipmaps = true;
-				tex.anisotropy = 16;
-				tex.needsUpdate = true;
-				resolve(tex);
-			},
-			undefined,
-			reject
+async function loadTexture(url: string, srgb: boolean, maxTextureSize: number): Promise<Texture> {
+	// We decode via fetch + createImageBitmap + a 2-tall canvas (rather than
+	// three.js's TextureLoader/HTMLImageElement path) so we can both
+	// (a) sidestep an Android-Chrome bug where the HTMLImageElement →
+	//     texImage2D path produces all-zero samples for these 1-pixel-tall
+	//     VP8L WebPs, and
+	// (b) downscale when the radial profile (~13177 px wide on Saturn) would
+	//     exceed the device's GL MAX_TEXTURE_SIZE. On smaller-cap GPUs
+	//     (Adreno 5xx is 4096) an over-cap upload is silently "incomplete"
+	//     and every sample returns vec4(0,0,0,1), painting the rings solid
+	//     black with an opaque black shadow.
+	// The 2-tall canvas also dodges the 1-tall mipmap-chain edge case
+	// reported in the wild; the shader samples at v = 0.5 so the doubled row
+	// is transparent to it.
+	const response = await fetch(url);
+	if (!response.ok) {
+		throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);
+	}
+	const blob = await response.blob();
+	const bitmap = await createImageBitmap(blob);
+	const targetWidth = Math.min(bitmap.width, maxTextureSize);
+	if (targetWidth < bitmap.width) {
+		console.info(
+			`Ring texture ${url}: downscaling ${bitmap.width}px → ${targetWidth}px to fit GL MAX_TEXTURE_SIZE.`
 		);
-	});
+	}
+	const canvas = document.createElement('canvas');
+	canvas.width = targetWidth;
+	canvas.height = 2;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error(`Failed to acquire 2D context for ring texture ${url}`);
+	ctx.imageSmoothingEnabled = true;
+	ctx.imageSmoothingQuality = 'high';
+	ctx.drawImage(bitmap, 0, 0, targetWidth, 1);
+	ctx.drawImage(bitmap, 0, 1, targetWidth, 1);
+	bitmap.close();
+
+	const tex = new CanvasTexture(canvas);
+	if (srgb) tex.colorSpace = SRGBColorSpace;
+	// 1×13177 radial profile: at distance many radial samples fall in one
+	// pixel and a single nearest/linear tap aliases into sparkle, while at
+	// grazing angles the U-gradient across the screen is far higher than the
+	// V-gradient (V is constant) — exactly the case anisotropic filtering is
+	// designed for. Trilinear + max anisotropy addresses both. Three.js
+	// silently clamps anisotropy to whatever the GPU advertises, so 16 is
+	// safe without poking the renderer.
+	tex.minFilter = LinearMipmapLinearFilter;
+	tex.magFilter = LinearFilter;
+	tex.generateMipmaps = true;
+	tex.anisotropy = 16;
+	tex.needsUpdate = true;
+	return tex;
 }
 
 const VERTEX_SHADER = `
@@ -428,7 +456,7 @@ export function attachRingShadowToPlanet(
 export async function loadRingNode(
 	bodyId: string,
 	meta: RingMeta,
-	textureLoader: TextureLoader
+	maxTextureSize: number
 ): Promise<RingNode | null> {
 	const innerScene = kmToScene(meta.inner_radius_km);
 	const outerScene = kmToScene(meta.outer_radius_km);
@@ -444,11 +472,11 @@ export async function loadRingNode(
 		color: Texture;
 	try {
 		[backscattered, forwardscattered, unlitside, transparency, color] = await Promise.all([
-			loadTexture(textureLoader, `${baseUrl}/${ch.backscattered}`, false),
-			loadTexture(textureLoader, `${baseUrl}/${ch.forwardscattered}`, false),
-			loadTexture(textureLoader, `${baseUrl}/${ch.unlitside}`, false),
-			loadTexture(textureLoader, `${baseUrl}/${ch.transparency}`, false),
-			loadTexture(textureLoader, `${baseUrl}/${ch.color}`, true)
+			loadTexture(`${baseUrl}/${ch.backscattered}`, false, maxTextureSize),
+			loadTexture(`${baseUrl}/${ch.forwardscattered}`, false, maxTextureSize),
+			loadTexture(`${baseUrl}/${ch.unlitside}`, false, maxTextureSize),
+			loadTexture(`${baseUrl}/${ch.transparency}`, false, maxTextureSize),
+			loadTexture(`${baseUrl}/${ch.color}`, true, maxTextureSize)
 		]);
 	} catch (err) {
 		console.warn(`Failed to load ring textures for ${bodyId}:`, err);

@@ -457,6 +457,7 @@ export async function loadSystemData(
 	scene: Scene,
 	textureLoader: TextureLoader,
 	currentJd: number,
+	maxTextureSize: number,
 	ctx?: ContextManager
 ): Promise<void> {
 	let meta: Record<string, SystemBodyMeta>;
@@ -542,7 +543,7 @@ export async function loadSystemData(
 			}
 			const ringMeta = bodyMeta.rings;
 			promises.push(
-				loadRingNode(bodyId, ringMeta, textureLoader).then((node) => {
+				loadRingNode(bodyId, ringMeta, maxTextureSize).then((node) => {
 					if (!node) return;
 					if (bo.rings) {
 						// A concurrent system reload finished first — drop ours.

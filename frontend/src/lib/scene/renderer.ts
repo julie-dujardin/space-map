@@ -1225,6 +1225,7 @@ export class SceneRenderer {
 			this.scene,
 			this.textureLoader,
 			this.clock.jd,
+			this.renderer.capabilities.maxTextureSize,
 			this.ctx
 		).then(() => {
 			this.reapplyInitialViewIfPending();
