@@ -71,6 +71,15 @@
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
+	const cloudList = $derived.by(() => {
+		void ctx.cloudCreditsVersion;
+		const sysId = ctx.focusedSystemId;
+		const bodyId = ctx.focusedBodyId;
+		return [...ctx.cloudCredits.values()]
+			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
+			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+	});
+
 	function bodyName(id: string): string {
 		return ctx.getBody(id)?.data.name ?? id;
 	}
@@ -120,23 +129,34 @@
 		</ul>
 	</section>
 
-	{#if textureList.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_imagery())}
-			<ul class="space-y-0.5">
-				{#each textureList as t (t.bodyId)}
-					<li>{@render link(t.source, bodyName(t.bodyId), t.organisation)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
 	{#if ringList.length > 0}
 		<section class="space-y-1">
 			{@render sectionHeader(m.attribution_section_rings())}
 			<ul class="space-y-0.5">
 				{#each ringList as r (r.bodyId)}
 					<li>{@render link(r.source, bodyName(r.bodyId), r.organisation)}</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if cloudList.length > 0}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_clouds())}
+			<ul class="space-y-0.5">
+				{#each cloudList as c (c.bodyId)}
+					<li>{@render link(c.source, bodyName(c.bodyId), c.organisation)}</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if textureList.length > 0}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_imagery())}
+			<ul class="space-y-0.5">
+				{#each textureList as t (t.bodyId)}
+					<li>{@render link(t.source, bodyName(t.bodyId), t.organisation)}</li>
 				{/each}
 			</ul>
 		</section>

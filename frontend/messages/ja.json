@@ -211,6 +211,7 @@
 	"attribution_section_rotation": "自転・向き・半径",
 	"attribution_section_imagery": "表面画像",
 	"attribution_section_rings": "惑星の環",
+	"attribution_section_clouds": "雲量",
 	"attribution_section_metadata": "天体メタデータと名前",
 	"attribution_section_images": "画像",
 	"source_horizons_name": "NASA JPL Horizons",

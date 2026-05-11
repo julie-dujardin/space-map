@@ -32,16 +32,30 @@ export interface RingCredit {
 }
 
 /**
+ * Per-body cloud-overlay credit — same shape as {@link RingCredit}; the
+ * array name disambiguates it from surface imagery.
+ */
+export interface CloudCredit {
+	body_id: string;
+	name: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Credit-worthy bodies grouped by planetary system. `id`/`name` are null for
  * the standalone bucket (sun-orbiting bodies like Bennu or Ceres that don't
- * belong to any planetary system). `textures` and `rings` are both optional;
- * a system bucket lands here as soon as it has at least one of either.
+ * belong to any planetary system). `textures`, `rings`, and `clouds` are all
+ * optional; a system bucket lands here as soon as it has at least one.
  */
 export interface SystemGroup {
 	id: string | null;
 	name: string | null;
 	textures?: TextureCredit[];
 	rings?: RingCredit[];
+	clouds?: CloudCredit[];
 }
 
 export interface Credits {

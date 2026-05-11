@@ -211,6 +211,7 @@
 	"attribution_section_rotation": "自转、指向与半径",
 	"attribution_section_imagery": "表面影像",
 	"attribution_section_rings": "行星环",
+	"attribution_section_clouds": "云层覆盖",
 	"attribution_section_metadata": "天体元数据与名称",
 	"attribution_section_images": "图像",
 	"source_horizons_name": "NASA JPL Horizons",

@@ -50,22 +50,21 @@
 	// system shows every textured Galilean — AND (b) the focused body itself —
 	// so standalones like Bennu or Ceres, which never get a systems/{bary}.json
 	// entry, still credit their imagery once loadBodyTexture has run. Rings
-	// share the imagery chip in the bar (per-source attribution gets its own
-	// section in the popover and on the credits page).
+	// and clouds share the imagery chip in the bar (per-source attribution
+	// gets its own section in the popover and on the credits page).
 	const textureOrgs = $derived.by(() => {
 		void ctx.textureCreditsVersion;
 		void ctx.ringCreditsVersion;
+		void ctx.cloudCreditsVersion;
 		const sysId = ctx.focusedSystemId;
 		const bodyId = ctx.focusedBodyId;
 		const orgs = new Set<string>();
-		for (const credit of ctx.textureCredits.values()) {
-			if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {
-				orgs.add(credit.organisation);
-			}
-		}
-		for (const credit of ctx.ringCredits.values()) {
-			if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {
-				orgs.add(credit.organisation);
+		const sources = [ctx.textureCredits, ctx.ringCredits, ctx.cloudCredits];
+		for (const credits of sources) {
+			for (const credit of credits.values()) {
+				if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {
+					orgs.add(credit.organisation);
+				}
 			}
 		}
 		return [...orgs].sort();
