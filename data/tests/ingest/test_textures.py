@@ -340,3 +340,118 @@ class TestProcessMonthly:
         meta = json.loads((body_dir / "metadata.json").read_text())
         assert meta["frames"] == 3
         assert sorted(meta["exports"].keys()) == ["01", "02", "03"]
+
+
+class TestProcessClouds:
+    """End-to-end ingest of a synthetic earth_clouds snapshot tree.
+
+    Uses a tmp DOWNLOAD/EXPORT layout via monkeypatch; bypasses the DB-touching
+    helpers so the test doesn't need a session.
+    """
+
+    @staticmethod
+    def _make_processor(monkeypatch, tmp_path) -> TextureProcessor:
+        clouds = tmp_path / "earth_clouds"
+        processed = tmp_path / "processed"
+        clouds.mkdir()
+        processed.mkdir()
+        monkeypatch.setattr(textures, "EARTH_CLOUDS_DIR", clouds)
+        monkeypatch.setattr(textures, "PROCESSED_DIR", processed)
+        proc = TextureProcessor.__new__(TextureProcessor)
+        proc._raw_meta = []
+        proc._global_warnings = []
+        proc._mark_texture_available = lambda _object_id: None  # type: ignore[method-assign]
+        proc._reset_texture_available = lambda: None  # type: ignore[method-assign]
+        return proc
+
+    @staticmethod
+    def _seed_snapshot(clouds_dir, when: tuple[int, int, int, int]) -> str:
+        year, month, day, hour = when
+        path = (
+            clouds_dir
+            / f"{year:04d}"
+            / f"{month:02d}"
+            / f"{day:02d}"
+            / f"{hour:02d}.png"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (256, 128), color=(255, 255, 255, 128)).save(path)
+        return path.relative_to(clouds_dir).as_posix()
+
+    @staticmethod
+    def _seed_metadata(clouds_dir) -> None:
+        (clouds_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "source_url": "https://example.com/clouds.png",
+                    "attribution": "Contains modified EUMETSAT data",
+                }
+            )
+        )
+
+    def test_picks_latest_snapshot_and_writes_metadata(self, tmp_path, monkeypatch):
+        proc = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        latest = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+
+        proc._process_clouds()
+
+        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        meta = json.loads((out_dir / "metadata.json").read_text())
+        assert meta["id"] == textures.EARTH_CLOUDS_OBJECT_ID
+        assert meta["type"] == "clouds_overlay"
+        assert meta["source_file"] == latest
+        assert meta["attribution"] == "Contains modified EUMETSAT data"
+        assert meta["source"] == "https://example.com/clouds.png"
+        # At least one tier export must be on disk.
+        assert any(out_dir.glob("*.webp"))
+
+    def test_reprocesses_when_new_snapshot_arrives(self, tmp_path, monkeypatch):
+        proc = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+        first = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        proc._process_clouds()
+
+        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        assert (
+            json.loads((out_dir / "metadata.json").read_text())["source_file"] == first
+        )
+
+        later = self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        proc._process_clouds()
+        assert (
+            json.loads((out_dir / "metadata.json").read_text())["source_file"] == later
+        )
+
+    def test_skips_when_snapshot_unchanged(self, tmp_path, monkeypatch):
+        proc = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        proc._process_clouds()
+
+        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        first_ts = json.loads((out_dir / "metadata.json").read_text())["processed_at"]
+
+        proc._process_clouds()
+        second_ts = json.loads((out_dir / "metadata.json").read_text())["processed_at"]
+        assert first_ts == second_ts
+
+    def test_no_snapshots_warns_and_skips(self, tmp_path, monkeypatch, caplog):
+        caplog.set_level("WARNING", logger="space_map_data.ingest.providers.textures")
+        proc = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+
+        result = proc._process_clouds()
+        assert result == textures.PROCESSED_DIR
+        assert any("no earth_clouds snapshots" in r.message for r in caplog.records)
+        assert any("no earth_clouds snapshots" in w for w in proc._global_warnings)
+
+    def test_missing_clouds_dir_is_silent_noop(self, tmp_path, monkeypatch):
+        proc = self._make_processor(monkeypatch, tmp_path)
+        # Remove the dir created by _make_processor.
+        textures.EARTH_CLOUDS_DIR.rmdir()
+
+        result = proc._process_clouds()
+        assert result == textures.PROCESSED_DIR
+        assert proc._global_warnings == []

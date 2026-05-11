@@ -23,6 +23,10 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 # Per-texture scraped source metadata (written by the texture_sources downloader);
 # used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
 SOURCE_METADATA_PARSED_DIR = DOWNLOAD_DIR / "textures" / "source_metadata" / "parsed"
+# Date-partitioned snapshots written by the earth_clouds downloader at 3h cadence.
+EARTH_CLOUDS_DIR = DOWNLOAD_DIR / "textures" / "earth_clouds"
+# Parallel to the Earth surface texture; the renderer layers it on top of naif-399.
+EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
 WEBP_MAX = 16383  # WebP hard limit per dimension
 EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
@@ -281,6 +285,28 @@ def _expand_entry_files(entry: dict) -> list[str]:
     return [entry["file"]]
 
 
+def _stale_metadata_reason(existing: dict, entry: dict) -> str | None:
+    """Return a reason string if on-disk metadata is structurally stale.
+
+    Used by ``_try_skip`` to force a reprocess when the yaml entry shape
+    (monthly only) or the latest snapshot (clouds only) has diverged from
+    the last export. Returns None for single-frame entries — their skip
+    is driven by file existence and the per-export size cap.
+    """
+    type_ = entry.get("type")
+    if type_ == "cylindrical_monthly":
+        if (
+            existing.get("type") != type_
+            or existing.get("frames") != entry.get("months", 12)
+            or existing.get("source_file") != entry["file"]
+        ):
+            return "yaml entry shape changed"
+    elif type_ == "clouds_overlay":
+        if existing.get("source_file") != entry["file"]:
+            return f"new snapshot {entry['file']}"
+    return None
+
+
 def _any_export_over_cap(out_dir: Path) -> bool:
     """True if any export recorded in metadata.json exceeds MAX_FILE_BYTES.
 
@@ -392,8 +418,9 @@ class TextureProcessor:
     ) -> bool:
         """Refresh yaml fields and return True if processing can be skipped.
 
-        Returns False when metadata is missing, the yaml entry's shape has
-        diverged from the on-disk metadata (monthly only), or any export
+        Returns False when metadata is missing, the entry's shape has
+        diverged from the on-disk metadata (monthly frame-count/template
+        change, or a fresher clouds snapshot on disk), or any export
         exceeds the file cap. In all other cases yaml-sourced fields are
         patched into the existing metadata.json and the texture is marked
         available.
@@ -402,20 +429,15 @@ class TextureProcessor:
         if not meta_path.exists():
             return False
 
-        if entry.get("type") == "cylindrical_monthly":
-            try:
-                existing = json.loads(meta_path.read_text())
-            except (OSError, json.JSONDecodeError):
-                existing = {}
-            # yaml-side structural change (frame count or template) forces a
-            # full reprocess so stale .webp frames don't linger.
-            if (
-                existing.get("type") != entry["type"]
-                or existing.get("frames") != entry.get("months", 12)
-                or existing.get("source_file") != entry["file"]
-            ):
-                log.info("reprocessing %s: yaml entry shape changed", label)
-                return False
+        try:
+            existing = json.loads(meta_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+
+        reason = _stale_metadata_reason(existing, entry)
+        if reason:
+            log.info("reprocessing %s: %s", label, reason)
+            return False
 
         if _any_export_over_cap(out_dir):
             log.info(
@@ -490,6 +512,8 @@ class TextureProcessor:
                 self._global_warnings.append(msg)
                 continue
             self.process(src, force=force)
+
+        self._process_clouds(force=force)
 
         for f in sorted(RAW_DIR.iterdir()):
             if f.suffix.lower() in _IMAGE_EXTS and f.name not in known_files:
@@ -631,6 +655,84 @@ class TextureProcessor:
             object_id,
             len(all_exports),
             tier_count,
+        )
+        return out_dir
+
+    def _process_clouds(self, force: bool = False) -> Path:
+        """Process the latest Earth cloud-cover snapshot into WebP exports.
+
+        Reads PNGs from ``EARTH_CLOUDS_DIR`` (date tree written by the
+        earth_clouds downloader at 3h cadence), picks the most recent one,
+        and exports under ``PROCESSED_DIR/<EARTH_CLOUDS_OBJECT_ID>/``. The
+        export sits alongside the Earth surface texture so the renderer can
+        layer it on top of naif-399.
+
+        Skip semantics mirror ``process()``: an existing export is kept
+        when its recorded ``source_file`` matches the latest snapshot and
+        no export busts the file cap; otherwise the latest snapshot is
+        re-exported. ``force=True`` always reprocesses.
+        """
+        if not EARTH_CLOUDS_DIR.exists():
+            log.debug("clouds: %s does not exist, skipping", EARTH_CLOUDS_DIR)
+            return PROCESSED_DIR
+
+        pngs = sorted(EARTH_CLOUDS_DIR.rglob("*.png"))
+        if not pngs:
+            msg = f"no earth_clouds snapshots in {EARTH_CLOUDS_DIR}"
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            return PROCESSED_DIR
+
+        src = pngs[-1]
+        rel_src = src.relative_to(EARTH_CLOUDS_DIR).as_posix()
+
+        download_meta_path = EARTH_CLOUDS_DIR / "metadata.json"
+        download_meta: dict = {}
+        if download_meta_path.exists():
+            try:
+                download_meta = json.loads(download_meta_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                log.warning(
+                    "failed to read earth_clouds metadata at %s", download_meta_path
+                )
+
+        entry = {
+            "body": EARTH_CLOUDS_OBJECT_ID,
+            "source": download_meta.get("source_url", ""),
+            "organisation": "EUMETSAT",
+            "attribution": download_meta.get("attribution"),
+            "description": "Near-real-time cloud-cover overlay (3-hour cadence).",
+            "type": "clouds_overlay",
+            "file": rel_src,
+        }
+        out_dir = PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
+
+        if not force and self._try_skip(
+            out_dir,
+            entry,
+            attribution_file=src.name,
+            label=EARTH_CLOUDS_OBJECT_ID,
+        ):
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img = _open_image(src)
+        exports, warnings = self._export(img, EARTH_CLOUDS_OBJECT_ID, out_dir)
+        self._global_warnings.extend(warnings)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=rel_src,
+            attribution_file=src.name,
+            source_dims=[img.width, img.height],
+            exports=exports,
+        )
+        log.info(
+            "processed clouds %s → %s (%d exports)",
+            rel_src,
+            EARTH_CLOUDS_OBJECT_ID,
+            len(exports),
         )
         return out_dir
 
