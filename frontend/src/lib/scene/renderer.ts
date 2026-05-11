@@ -44,7 +44,7 @@ import {
 	highestAvailableTier,
 	unloadSystemTextures
 } from './objects/construction';
-import { loadCloudTier } from './objects/clouds';
+import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
 import {
 	makePointCloudFromBuffer,
 	rebaseOrbitLineLocals,
@@ -1499,13 +1499,18 @@ export class SceneRenderer {
 			}
 
 			// Clamp to whatever the cloud bundle actually exports — it may
-			// top out below the surface's tier (silent no-op otherwise).
+			// top out below the surface's tier (silent no-op otherwise). The
+			// frame slides separately with sim time, picking the closest
+			// snapshot from the exported set.
 			if (bo.clouds && bo.textureTier) {
 				const cloudTarget = highestAvailableTier(
 					tierRank(bo.textureTier),
 					bo.clouds.availableTiers
 				);
-				if (cloudTarget) loadCloudTier(bo.clouds, cloudTarget, this.textureLoader);
+				const cloudFrame = cloudFrameForJd(this.clock.jd, bo.clouds.availableFrames);
+				if (cloudTarget && cloudFrame) {
+					loadCloudTexture(bo.clouds, cloudTarget, cloudFrame, this.textureLoader);
+				}
 			}
 		}
 	}

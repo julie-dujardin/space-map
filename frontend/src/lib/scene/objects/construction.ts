@@ -34,7 +34,7 @@ import {
 	makeStarPoint
 } from './builders';
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
-import { disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
+import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
 import type { BodyObjects } from '../types';
 
@@ -658,25 +658,33 @@ export async function loadSystemData(
 			}
 			const cloudMeta = bodyMeta.clouds;
 			const parentMesh = bo.mesh;
+			const initialFrame = cloudFrameForJd(currentJd, cloudMeta.frames);
+			if (!initialFrame) {
+				// No snapshots exported for this body yet — skip the load
+				// entirely so the renderer doesn't park a frameless node.
+				continue;
+			}
 			promises.push(
-				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, textureLoader).then((node) => {
-					if (!node) return;
-					if (bo.clouds) {
-						// A concurrent system reload finished first — drop ours.
-						node.mesh.geometry.dispose();
-						node.material.map?.dispose();
-						node.material.dispose();
-						parentMesh.remove(node.mesh);
-						return;
+				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, initialFrame, textureLoader).then(
+					(node) => {
+						if (!node) return;
+						if (bo.clouds) {
+							// A concurrent system reload finished first — drop ours.
+							node.mesh.geometry.dispose();
+							node.material.map?.dispose();
+							node.material.dispose();
+							parentMesh.remove(node.mesh);
+							return;
+						}
+						// Cloud sits at the same center as the body, so the eclipse
+						// self-skip uniform can be shared — that also avoids a second
+						// per-frame write in the renderer.
+						if (bo.eclipseShadow) {
+							attachEclipseShadowToBody(node.material, bo.eclipseShadow);
+						}
+						bo.clouds = node;
 					}
-					// Cloud sits at the same center as the body, so the eclipse
-					// self-skip uniform can be shared — that also avoids a second
-					// per-frame write in the renderer.
-					if (bo.eclipseShadow) {
-						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
-					}
-					bo.clouds = node;
-				})
+				)
 			);
 		}
 
