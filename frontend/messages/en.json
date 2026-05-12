@@ -9,6 +9,7 @@
 	"time_now": "Now",
 	"time_now_tooltip": "Jump to current wall-clock time",
 	"time_pick_date": "Pick a date",
+	"time_pick_time": "Pick a time",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 min/s",
 	"time_scale_hour_per_sec": "1 h/s",

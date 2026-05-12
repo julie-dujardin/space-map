@@ -9,6 +9,7 @@
 	"time_now": "Сейчас",
 	"time_now_tooltip": "Перейти к текущему времени",
 	"time_pick_date": "Выбрать дату",
+	"time_pick_time": "Выбрать время",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1 мин/с",
 	"time_scale_hour_per_sec": "1 ч/с",

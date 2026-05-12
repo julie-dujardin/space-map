@@ -41,6 +41,19 @@
 		clock.setJD(dateToJD(next));
 	}
 
+	let timeValue = $derived.by(() => {
+		const d = jdToDate(clock.jd);
+		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+	});
+
+	function handleTimeChange(e: Event) {
+		const match = (e.currentTarget as HTMLInputElement).value.match(/^(\d{2}):(\d{2})$/);
+		if (!match) return;
+		const next = jdToDate(clock.jd);
+		next.setHours(Number(match[1]), Number(match[2]), 0, 0);
+		clock.setJD(dateToJD(next));
+	}
+
 	// Width fixtures: cover the variants that change rendered length —
 	// month-abbreviation outliers, meridiem/hour boundaries, and day digit count.
 	// Char counting underestimates RTL/CJK/diacritics, so we measure actual
@@ -150,6 +163,17 @@
 				onValueChange={handleDateChange}
 				captionLayout="dropdown"
 			/>
+			<label class="flex items-center justify-between gap-3 border-t px-3 py-2 text-sm">
+				<span class="text-muted-foreground">{m.time_pick_time()}</span>
+				<input
+					type="time"
+					value={timeValue}
+					onchange={handleTimeChange}
+					class="h-8 rounded-md border bg-transparent px-2 font-mono tabular-nums text-sm
+						scheme-light-dark
+						focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+				/>
+			</label>
 		</Popover.Content>
 	</Popover.Root>
 

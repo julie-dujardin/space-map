@@ -9,6 +9,7 @@
 	"time_now": "现在",
 	"time_now_tooltip": "跳转到当前时间",
 	"time_pick_date": "选择日期",
+	"time_pick_time": "选择时间",
 	"time_scale_realtime": "1×",
 	"time_scale_min_per_sec": "1分钟/秒",
 	"time_scale_hour_per_sec": "1小时/秒",
