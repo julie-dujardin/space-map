@@ -12,7 +12,12 @@
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { TIME_DATE_OPTS, TIME_SCALES } from '$lib/scene/time-scales';
+	import {
+		TIME_DATE_OPTS,
+		TIME_SCALES,
+		PICKER_MIN_DATE,
+		PICKER_MAX_DATE
+	} from '$lib/scene/time-scales';
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { untrack } from 'svelte';
 
@@ -129,6 +134,8 @@
 							onValueChange={handleDateChange}
 							captionLayout="dropdown-inline"
 							locale={getLocale()}
+							minValue={PICKER_MIN_DATE}
+							maxValue={PICKER_MAX_DATE}
 						/>
 						<div class="border-t p-3">
 							<input

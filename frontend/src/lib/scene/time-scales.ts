@@ -1,3 +1,4 @@
+import { CalendarDate } from '@internationalized/date';
 import * as m from '$lib/paraglide/messages.js';
 
 export interface TimeScale {
@@ -22,3 +23,8 @@ export const TIME_DATE_OPTS: Intl.DateTimeFormatOptions = {
 	hour: '2-digit',
 	minute: '2-digit'
 };
+
+// Range with the best ephemeris/orbital-data coverage; the date picker is
+// clamped to it (the clock itself can still drift outside via fast playback).
+export const PICKER_MIN_DATE = new CalendarDate(1950, 1, 1);
+export const PICKER_MAX_DATE = new CalendarDate(2050, 12, 31);

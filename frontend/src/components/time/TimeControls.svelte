@@ -9,7 +9,12 @@
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { CalendarDate, type DateValue } from '@internationalized/date';
 	import { untrack } from 'svelte';
-	import { TIME_SCALES, TIME_DATE_OPTS } from '$lib/scene/time-scales';
+	import {
+		TIME_SCALES,
+		TIME_DATE_OPTS,
+		PICKER_MIN_DATE,
+		PICKER_MAX_DATE
+	} from '$lib/scene/time-scales';
 
 	interface Props {
 		clock: SimClock;
@@ -163,6 +168,8 @@
 				onValueChange={handleDateChange}
 				captionLayout="dropdown"
 				locale={getLocale()}
+				minValue={PICKER_MIN_DATE}
+				maxValue={PICKER_MAX_DATE}
 			/>
 			<div class="border-t p-3">
 				<input
