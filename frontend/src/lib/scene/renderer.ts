@@ -68,6 +68,7 @@ import {
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
+import { AtmospherePipeline } from './atmosphere-pipeline';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -123,6 +124,10 @@ export class SceneRenderer {
 	private scene: Scene;
 	private camera: PerspectiveCamera;
 	private controls: OrbitControls;
+	/** Off-screen atmosphere post-processing pipeline. Lazily created while
+	 *  focused in the Earth-Moon system, torn down (and re-created on resize)
+	 *  otherwise. Null = render straight to the canvas. */
+	private atmospherePipeline: AtmospherePipeline | null = null;
 	private raycaster = new Raycaster();
 	private pointer = new Vector2();
 	private pointerDownPos = new Vector2();
@@ -1168,7 +1173,20 @@ export class SceneRenderer {
 			this.scene.add(this.pendingSceneAdds.shift()!);
 		}
 
-		this.renderer.render(this.scene, this.camera);
+		// In the Earth-Moon system, route the frame through the atmosphere
+		// post-processing pipeline; everywhere else draw straight to the canvas.
+		// The pipeline is sized to the current viewport at creation, so a resize
+		// drops it (see `resize()`) and the next in-system frame re-makes it.
+		if (this.ctx.isFocusedOnEarthSystem()) {
+			this.atmospherePipeline ??= new AtmospherePipeline(this.renderer, this.scene, this.camera);
+			this.atmospherePipeline.render();
+		} else {
+			if (this.atmospherePipeline) {
+				this.atmospherePipeline.dispose();
+				this.atmospherePipeline = null;
+			}
+			this.renderer.render(this.scene, this.camera);
+		}
 		this.labelRenderer.render(this.scene, this.camera);
 	};
 
@@ -1861,10 +1879,18 @@ export class SceneRenderer {
 		this.camera.updateProjectionMatrix();
 		this.ctx.updateViewport(height);
 		setOrbitLineResolution(width, height);
+		// Pipeline targets are sized at creation; drop and let the next
+		// in-system frame rebuild at the new size.
+		if (this.atmospherePipeline) {
+			this.atmospherePipeline.dispose();
+			this.atmospherePipeline = null;
+		}
 	}
 
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
+		this.atmospherePipeline?.dispose();
+		this.atmospherePipeline = null;
 		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
 		this.renderer.domElement.removeEventListener('pointerup', this.onPointerUp);
 		this.controls.removeEventListener('end', this.onControlsEnd);

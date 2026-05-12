@@ -84,10 +84,18 @@ export interface AtmosphereParams {
 /**
  * Earth's atmosphere. Rayleigh / Mie / ozone coefficients and the ozone tent
  * are the sRGB-fitted values from Bruneton's "Precomputed Atmospheric
- * Scattering" reference model (also the defaults Sébastien Hillaire's paper
- * uses); the 100 km atmosphere top matches Hillaire's `ATMOSPHERE_TOP`.
- * `sunIntensity` is a free knob tuned against this project's LDR rendering, not
- * a physical irradiance.
+ * Scattering" reference model (also Sébastien Hillaire's defaults); 60 km is
+ * Bruneton's modelled atmosphere top.
+ *
+ * Knobs for the "looks washed out" / "limb too broad" feel, roughly in order
+ * of effect: `sunIntensity` (overall brightness — also de-whitens the limb as
+ * it drops, since less of it clips to 1.0); `topAltitudeKm` (width of the outer
+ * halo and, a bit, the over-disc band); `rayleighScaleHeightKm` (lower → tighter
+ * + dimmer, though < ~7 km is unphysical); `mieScatterPerKm` (the wavelength-
+ * neutral white haze). `PRIMARY_STEPS` in the shader trades a smoother, less
+ * over-bright limb for fill cost. All of these are read once when the atmosphere
+ * node is built; this module forces a full page reload on edit (see bottom) so
+ * tweaks take effect without a manual hard-refresh.
  */
 const EARTH: AtmosphereParams = {
 	topAltitudeKm: 80,
@@ -161,7 +169,7 @@ const FRAGMENT_SHADER = `
 	varying vec3 vWorldPos;
 	varying vec3 vPlanetCenter;
 
-	#define PRIMARY_STEPS 16
+	#define PRIMARY_STEPS 20
 	#define LIGHT_STEPS 8
 
 	// Ray (origin ro, unit dir rd) vs sphere centred at the origin, radius r.
@@ -319,3 +327,8 @@ export function disposeAtmosphereNode(node: AtmosphereNode): void {
 	node.mesh.geometry.dispose();
 	(node.mesh.material as Material).dispose();
 }
+
+// The params above are baked into the atmosphere node at scene-build time, so
+// an HMR module swap wouldn't change the running scene. Force a full reload on
+// any edit to this file (dev only — `import.meta.hot` is undefined in builds).
+if (import.meta.hot) import.meta.hot.accept(() => location.reload());
