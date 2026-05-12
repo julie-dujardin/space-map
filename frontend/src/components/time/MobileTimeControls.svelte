@@ -2,6 +2,7 @@
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import ClockIcon from '@lucide/svelte/icons/clock';
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -102,14 +103,21 @@
 			<div class="flex flex-col gap-4 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
 				<button
 					type="button"
-					class="inline-flex items-center gap-2 self-start rounded-md px-2 py-1 -ml-2
-						font-mono tabular-nums text-base hover:bg-primary/10 transition-colors cursor-pointer"
+					class="flex w-full items-center justify-between gap-3 rounded-lg border bg-background px-3 py-3
+						text-left transition-colors hover:bg-primary/5 cursor-pointer"
 					onclick={() => (showCalendar = !showCalendar)}
 					title={m.time_pick_date()}
 					aria-expanded={showCalendar}
 				>
-					<CalendarIcon class="size-4 opacity-70" />
-					<span>{dateLabel}</span>
+					<span class="flex min-w-0 items-center gap-2.5">
+						<CalendarIcon class="size-5 shrink-0 opacity-70" />
+						<span class="truncate font-mono tabular-nums text-base">{dateLabel}</span>
+					</span>
+					<ChevronDownIcon
+						class="size-4 shrink-0 opacity-50 transition-transform {showCalendar
+							? 'rotate-180'
+							: ''}"
+					/>
 				</button>
 
 				{#if showCalendar}
