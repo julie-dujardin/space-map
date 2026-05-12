@@ -35,6 +35,7 @@ import {
 } from './builders';
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
 import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
+import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from './atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-shadow';
 import { attachSpecularMap, disposeSpecularFromMaterial, type SpecularMeta } from './specular';
 import type { BodyObjects } from '../types';
@@ -73,6 +74,7 @@ export function buildMajorBodies(
 		let coronaSprite: Sprite | null = null;
 		let lensflareObj: Lensflare | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
+		let atmosphere: AtmosphereNode | null = null;
 		const extraObjects: Object3D[] = [];
 		if (!isVirtual) {
 			if (isStar) {
@@ -106,6 +108,17 @@ export function buildMajorBodies(
 
 			clickables.push(mesh);
 			meshToBody.set(mesh, body);
+
+			// Atmospheric-scattering shell, for bodies that have one. A sibling
+			// scene object kept at the body's centre by `repositionBodies`
+			// (hence the `extraObjects` membership); its sun direction is
+			// refreshed each frame in the renderer.
+			const atmoParams = isStar ? undefined : ATMOSPHERE_PARAMS[id];
+			if (atmoParams) {
+				atmosphere = buildAtmosphereNode(atmoParams, radius, effectiveRadiusKm(body.data));
+				scene.add(atmosphere.mesh);
+				extraObjects.push(atmosphere.mesh);
+			}
 		}
 
 		// CSS2D label
@@ -196,6 +209,7 @@ export function buildMajorBodies(
 			isMinor,
 			rings: null,
 			clouds: null,
+			atmosphere,
 			specularMap: null,
 			eclipseShadow
 		});

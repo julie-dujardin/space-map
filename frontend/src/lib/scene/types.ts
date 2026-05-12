@@ -4,6 +4,7 @@ import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { RingNode } from './objects/rings';
 import type { CloudNode } from './objects/clouds';
+import type { AtmosphereNode } from './objects/atmosphere';
 import type { EclipseSelfUniforms } from './objects/eclipse-shadow';
 
 // For focused objects:
@@ -95,6 +96,13 @@ export interface BodyObjects {
 	 * are driven by the same LOD pass that upgrades the surface texture.
 	 */
 	clouds: CloudNode | null;
+	/**
+	 * Atmospheric-scattering shell, built at construction for bodies listed in
+	 * `ATMOSPHERE_PARAMS` (Earth today). A sibling scene object kept at the
+	 * body's centre via `extraObjects`; the renderer pushes the body→Sun
+	 * direction onto its `material.uniforms.uSunDir` each frame.
+	 */
+	atmosphere: AtmosphereNode | null;
 	/**
 	 * Loaded specular/roughness map, populated by `loadSystemData` when the
 	 * body's system metadata carries a `specular` block. Bound to the body's
