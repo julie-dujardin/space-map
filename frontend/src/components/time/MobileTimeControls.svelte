@@ -50,6 +50,19 @@
 		clock.setJD(dateToJD(next));
 	}
 
+	let timeValue = $derived.by(() => {
+		const d = jdToDate(clock.jd);
+		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+	});
+
+	function handleTimeChange(e: Event) {
+		const match = (e.currentTarget as HTMLInputElement).value.match(/^(\d{2}):(\d{2})$/);
+		if (!match) return;
+		const next = jdToDate(clock.jd);
+		next.setHours(Number(match[1]), Number(match[2]), 0, 0);
+		clock.setJD(dateToJD(next));
+	}
+
 	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
 	let activeScale = $derived(
 		TIME_SCALES.find((s) => s.value === Math.abs(clock.timeScale)) ?? TIME_SCALES[0]
@@ -100,7 +113,7 @@
 				</button>
 
 				{#if showCalendar}
-					<div class="rounded-md border bg-background self-center">
+					<div class="self-center overflow-hidden rounded-md border bg-background">
 						<Calendar
 							type="single"
 							bind:value={pickerValue}
@@ -108,6 +121,17 @@
 							onValueChange={handleDateChange}
 							captionLayout="dropdown-inline"
 						/>
+						<label class="flex items-center justify-between gap-3 border-t px-3 py-2 text-sm">
+							<span class="text-muted-foreground">{m.time_pick_time()}</span>
+							<input
+								type="time"
+								value={timeValue}
+								onchange={handleTimeChange}
+								class="h-9 rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
+									scheme-light-dark
+									focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+							/>
+						</label>
 					</div>
 				{/if}
 
