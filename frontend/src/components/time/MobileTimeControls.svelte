@@ -130,17 +130,17 @@
 							captionLayout="dropdown-inline"
 							locale={getLocale()}
 						/>
-						<label class="flex items-center justify-between gap-3 border-t px-3 py-2 text-sm">
-							<span class="text-muted-foreground">{m.time_pick_time()}</span>
+						<div class="border-t p-3">
 							<input
 								type="time"
 								value={timeValue}
 								onchange={handleTimeChange}
-								class="h-9 rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
+								aria-label={m.time_pick_time()}
+								class="h-9 w-full rounded-md border bg-transparent px-2 font-mono tabular-nums text-base
 									scheme-light-dark
 									focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 							/>
-						</label>
+						</div>
 					</div>
 				{/if}
 
