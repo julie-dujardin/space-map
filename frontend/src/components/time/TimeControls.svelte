@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/clock.svelte';
@@ -80,17 +82,16 @@
 	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
 
 	// Measure the widest fixture against an off-screen span that mirrors the
-	// trigger's typography + padding, then pin the trigger's min-width to it.
-	// Pixel measurement handles non-Latin scripts and proportional fonts
-	// correctly; char counting does not.
+	// label's typography, then pin the label's min-width to it so the bar
+	// doesn't jitter as the clock ticks. Pixel measurement handles non-Latin
+	// scripts and proportional fonts correctly; char counting does not.
 	// TODO: recompute when the language switcher lands.
 	let dateMinPx = $state(0);
 
 	$effect(() => {
 		const loc = getLocale();
 		const el = document.createElement('span');
-		el.className =
-			'inline-flex items-center h-8 px-2 font-mono tabular-nums whitespace-nowrap text-xs';
+		el.className = 'inline-block font-mono tabular-nums whitespace-nowrap text-xs';
 		el.style.cssText =
 			'position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none;';
 		document.body.appendChild(el);
@@ -153,12 +154,21 @@
 
 	<Popover.Root bind:open={pickerOpen}>
 		<Popover.Trigger
-			class="inline-flex items-center justify-center h-8 px-2 font-mono tabular-nums
+			class="inline-flex items-center justify-center gap-1 h-8 px-2 font-mono tabular-nums
 				rounded-md hover:bg-primary/10 transition-colors cursor-pointer"
-			style={dateMinPx ? `min-width: ${dateMinPx}px` : undefined}
 			title={m.time_pick_date()}
 		>
-			{dateLabel}
+			<span
+				class="inline-block text-center"
+				style={dateMinPx ? `min-width: ${dateMinPx}px` : undefined}
+			>
+				{dateLabel}
+			</span>
+			{#if pickerOpen}
+				<ChevronDownIcon class="size-3.5 shrink-0 opacity-50" />
+			{:else}
+				<ChevronUpIcon class="size-3.5 shrink-0 opacity-50" />
+			{/if}
 		</Popover.Trigger>
 		<Popover.Content class="w-auto p-0" align="center" sideOffset={8}>
 			<Calendar
