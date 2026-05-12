@@ -128,6 +128,7 @@
 							bind:placeholder={pickerPlaceholder}
 							onValueChange={handleDateChange}
 							captionLayout="dropdown-inline"
+							locale={getLocale()}
 						/>
 						<label class="flex items-center justify-between gap-3 border-t px-3 py-2 text-sm">
 							<span class="text-muted-foreground">{m.time_pick_time()}</span>
