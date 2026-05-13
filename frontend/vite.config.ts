@@ -21,7 +21,10 @@ export default defineConfig({
 		paraglideVitePlugin({
 			project: './project.inlang',
 			outdir: './src/lib/paraglide',
-			strategy: ['preferredLanguage', 'cookie', 'baseLocale'],
+			// Cookie before preferredLanguage so the settings menu can override the
+			// browser-detected language. With the reverse order, setLocale() writes
+			// the cookie but preferredLanguage still wins on every getLocale call.
+			strategy: ['cookie', 'preferredLanguage', 'baseLocale'],
 			emitTsDeclarations: true
 		})
 	],

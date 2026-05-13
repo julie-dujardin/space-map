@@ -9,6 +9,21 @@
 		<link rel="alternate icon" href="/favicon.ico" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<script>
+			// Resolve theme before first paint so a stored 'light'/'dark' override
+			// doesn't FOUC through the system preference. Mirrors the auto logic in
+			// settings.svelte.ts; keep them in sync.
+			(function () {
+				try {
+					var s = localStorage.getItem('space-map-settings');
+					var theme = (s && JSON.parse(s).theme) || 'auto';
+					var dark =
+						theme === 'dark' ||
+						(theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+					if (dark) document.documentElement.classList.add('dark');
+				} catch (e) {}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

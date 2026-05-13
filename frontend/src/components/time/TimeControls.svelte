@@ -4,8 +4,9 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/clock.svelte';
-	import { dateToJD, jdToDate } from '$lib/format/date';
+	import { dateToJD, jdToDate, formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
+	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Calendar } from '$lib/components/ui/calendar';
@@ -79,17 +80,21 @@
 		new Date(Date.UTC(2026, 8, 9, 23, 59))
 	];
 
-	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
+	const settings = getSettings();
+	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
 
 	// Measure the widest fixture against an off-screen span that mirrors the
 	// label's typography, then pin the label's min-width to it so the bar
 	// doesn't jitter as the clock ticks. Pixel measurement handles non-Latin
 	// scripts and proportional fonts correctly; char counting does not.
-	// TODO: recompute when the language switcher lands.
 	let dateMinPx = $state(0);
 
 	$effect(() => {
 		const loc = getLocale();
+		// Re-measure when the user toggles date-format or clock — both can
+		// change the rendered width.
+		void settings.resolvedDateFormat;
+		void settings.resolvedHour12;
 		const el = document.createElement('span');
 		el.className = 'inline-block font-mono tabular-nums whitespace-nowrap text-xs';
 		el.style.cssText =
@@ -98,7 +103,7 @@
 		try {
 			let max = 0;
 			for (const d of WIDTH_FIXTURES) {
-				el.textContent = d.toLocaleString(loc, TIME_DATE_OPTS);
+				el.textContent = formatJulianDateTime(dateToJD(d), TIME_DATE_OPTS);
 				const w = el.getBoundingClientRect().width;
 				if (w > max) max = w;
 			}
@@ -106,6 +111,8 @@
 		} finally {
 			el.remove();
 		}
+		// Touch loc so the effect tracks locale changes too.
+		void loc;
 	});
 </script>
 

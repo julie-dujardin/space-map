@@ -9,7 +9,7 @@
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { CalendarDate, type DateValue } from '@internationalized/date';
-	import { dateToJD, jdToDate } from '$lib/format/date';
+	import { dateToJD, jdToDate, formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
@@ -69,7 +69,7 @@
 		clock.setJD(dateToJD(next));
 	}
 
-	let dateLabel = $derived(jdToDate(clock.jd).toLocaleString(getLocale(), TIME_DATE_OPTS));
+	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
 	let activeScale = $derived(
 		TIME_SCALES.find((s) => s.value === Math.abs(clock.timeScale)) ?? TIME_SCALES[0]
 	);

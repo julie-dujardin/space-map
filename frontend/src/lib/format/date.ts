@@ -1,4 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
+import { getSettings } from '$lib/state/settings.svelte';
 
 const JD_UNIX_EPOCH = 2440587.5;
 const MS_PER_DAY = 86400000;
@@ -13,7 +14,32 @@ export function jdToDate(jd: number): Date {
 	return new Date((jd - JD_UNIX_EPOCH) * MS_PER_DAY);
 }
 
-function formatDate(d: Date, month: 'long' | 'short' = 'long'): string {
+function pad(n: number, width = 2): string {
+	const s = String(Math.abs(n));
+	return s.length >= width ? s : '0'.repeat(width - s.length) + s;
+}
+
+/**
+ * Format a UTC Date as ISO 8601, omitting reduced-precision components
+ * (month=0 / day=0). Honors `opts` to decide whether to emit the time portion.
+ */
+function formatIso8601(
+	date: Date,
+	{ month, day, hasTime }: { month: number; day: number; hasTime: boolean }
+): string {
+	const year = date.getUTCFullYear();
+	const sign = year < 0 ? '-' : year > 9999 ? '+' : '';
+	const yStr = pad(Math.abs(year), 4);
+	let out = `${sign}${yStr}`;
+	if (month > 0) out += `-${pad(date.getUTCMonth() + 1)}`;
+	if (day > 0) out += `-${pad(date.getUTCDate())}`;
+	if (hasTime) {
+		out += `T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}Z`;
+	}
+	return out;
+}
+
+function formatLocaleDate(d: Date, month: 'long' | 'short' = 'long'): string {
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric', month, day: 'numeric' };
 	// JS Date has no year 0; getUTCFullYear() < 1 means BCE (proleptic Gregorian).
 	if (d.getUTCFullYear() < 1) opts.era = 'short';
@@ -56,14 +82,20 @@ export function parseIsoDate(raw: string): ParsedIsoDate | null {
 }
 
 /**
- * Format an ISO 8601 date string as a localized date. See {@link parseIsoDate}
- * for accepted formats. Reduced-precision month/day (00) are omitted from
- * rendering; negative years render with the locale's era.
+ * Format an ISO 8601 date string as a localized date (or pass-through ISO,
+ * depending on the user's date-format setting). See {@link parseIsoDate} for
+ * accepted formats. Reduced-precision month/day (00) are omitted from
+ * rendering; negative years render with the locale's era (locale mode) or a
+ * minus sign (ISO mode).
  */
 export function formatIsoDate(raw: string): string {
 	const parsed = parseIsoDate(raw);
 	if (!parsed) return raw;
 	const { date, month, day, isBCE, hasTime } = parsed;
+
+	if (getSettings().resolvedDateFormat === 'iso') {
+		return formatIso8601(date, { month, day, hasTime });
+	}
 
 	const opts: Intl.DateTimeFormatOptions = { year: 'numeric' };
 	if (month > 0) opts.month = 'long';
@@ -76,13 +108,38 @@ export function formatIsoDate(raw: string): string {
 
 	const dateStr = new Intl.DateTimeFormat(getLocale(), opts).format(date);
 	if (!hasTime || month === 0 || day === 0) return dateStr;
-	const timeStr = date.toLocaleTimeString(getLocale());
+	const timeOpts: Intl.DateTimeFormatOptions = { hour12: getSettings().resolvedHour12 };
+	const timeStr = date.toLocaleTimeString(getLocale(), timeOpts);
 	return `${dateStr} ${timeStr}`;
 }
 
-/** Format a Julian Date (TDB) as a localized date string. */
+/** Format a Julian Date (TDB) as a localized date string (or ISO 8601 date). */
 export function formatJulianDate(jd: number): string {
-	return formatDate(jdToDate(jd), 'short');
+	const d = jdToDate(jd);
+	if (getSettings().resolvedDateFormat === 'iso') {
+		return formatIso8601(d, { month: 1, day: 1, hasTime: false });
+	}
+	return formatLocaleDate(d, 'short');
+}
+
+/**
+ * Format a Julian Date as a localized date+time string, honoring the user's
+ * date-format and clock settings. Used by the simulator's time bar.
+ */
+export function formatJulianDateTime(jd: number, opts: Intl.DateTimeFormatOptions): string {
+	const d = jdToDate(jd);
+	const settings = getSettings();
+	if (settings.resolvedDateFormat === 'iso') {
+		// Local-time ISO: yyyy-mm-dd hh:mm (24h, since ISO doesn't define a 12h form).
+		const hasTime = opts.hour !== undefined || opts.minute !== undefined;
+		const datePart = `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+		if (!hasTime) return datePart;
+		const timePart = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+		return `${datePart} ${timePart}`;
+	}
+	const merged: Intl.DateTimeFormatOptions = { ...opts };
+	if (opts.hour !== undefined) merged.hour12 = settings.resolvedHour12;
+	return d.toLocaleString(getLocale(), merged);
 }
 
 /** Format a Julian Date relative to a reference JD as a localized "X ago" / "in X" string. */

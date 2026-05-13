@@ -17,6 +17,7 @@
 	import AttributionBar from '../../../../components/attribution/AttributionBar.svelte';
 	import TimeControls from '../../../../components/time/TimeControls.svelte';
 	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';
+	import SettingsButton from '../../../../components/settings/SettingsButton.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -87,6 +88,9 @@
 				onUserPromotedChange={(count) => (userPromotedCount = count)}
 			/>
 			<TimeControls {clock} />
+			<div class="fixed top-4 end-4 z-10 pointer-events-auto">
+				<SettingsButton />
+			</div>
 			{#if selectedBody?.data.id}
 				<ObjectDrawer
 					body={selectedBody}
