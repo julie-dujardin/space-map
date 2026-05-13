@@ -73,6 +73,13 @@
 	let activeScale = $derived(
 		TIME_SCALES.find((s) => s.value === Math.abs(clock.timeScale)) ?? TIME_SCALES[0]
 	);
+
+	// The inline year-select doesn't see minValue/maxValue and would otherwise
+	// fall back to a hardcoded [currentYear-100, currentYear] window.
+	const PICKER_YEARS = Array.from(
+		{ length: PICKER_MAX_DATE.year - PICKER_MIN_DATE.year + 1 },
+		(_, i) => PICKER_MIN_DATE.year + i
+	);
 </script>
 
 <button
@@ -136,6 +143,7 @@
 							locale={getLocale()}
 							minValue={PICKER_MIN_DATE}
 							maxValue={PICKER_MAX_DATE}
+							years={PICKER_YEARS}
 						/>
 						<div class="border-t p-3">
 							<input
