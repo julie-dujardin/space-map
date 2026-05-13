@@ -11,6 +11,7 @@
 
 	let { global, localized }: Props = $props();
 
+	let aliases = $derived(localized?.aliases ?? []);
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let nasaScienceUrl = $derived(global?.nasa_science_url);
 	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
@@ -70,13 +71,18 @@
 	});
 </script>
 
-{#if links.length || designation}
+{#if links.length || designation || aliases.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.links()}</h3>
 		<Separator />
 		<div class="flex flex-col gap-2.5 text-sm">
 			{#if designation}
 				<p class="text-muted-foreground">{m.designation_label({ designation })}</p>
+			{/if}
+			{#if aliases.length}
+				<p class="text-muted-foreground">
+					{m.also_known_as({ aliases: aliases.join(', ') })}
+				</p>
 			{/if}
 			{#each links as link (link.href)}
 				<a
