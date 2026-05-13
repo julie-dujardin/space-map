@@ -68,7 +68,8 @@ import {
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
-import { AtmospherePipeline } from './atmosphere-pipeline';
+import { AtmospherePipeline, ATMOSPHERE_COMPOSITION_ENABLED } from './atmosphere-pipeline';
+import { ATMOSPHERE_PARAMS } from './objects/atmosphere';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -1174,13 +1175,40 @@ export class SceneRenderer {
 		}
 
 		// In the Earth-Moon system, route the frame through the atmosphere
-		// post-processing pipeline; everywhere else draw straight to the canvas.
-		// The pipeline is sized to the current viewport at creation, so a resize
-		// drops it (see `resize()`) and the next in-system frame re-makes it.
-		if (this.ctx.isFocusedOnEarthSystem()) {
-			this.atmospherePipeline ??= new AtmospherePipeline(this.renderer, this.scene, this.camera);
-			this.atmospherePipeline.render();
+		// composition pipeline (which also hides the cheap additive shell, since
+		// it does everything the shell did plus aerial perspective); everywhere
+		// else draw straight to the canvas with the shell visible. The pipeline
+		// is sized to the current viewport at creation, so a resize drops it
+		// (see `resize()`) and the next in-system frame re-makes it.
+		const earthBo = this.bodyObjects.get('naif-399');
+		const earthParams = ATMOSPHERE_PARAMS['naif-399'];
+		if (
+			ATMOSPHERE_COMPOSITION_ENABLED &&
+			this.ctx.isFocusedOnEarthSystem() &&
+			earthBo &&
+			earthParams
+		) {
+			if (earthBo.atmosphere) earthBo.atmosphere.mesh.visible = false;
+			this.atmospherePipeline ??= new AtmospherePipeline(
+				this.renderer,
+				this.scene,
+				this.camera,
+				earthParams,
+				earthBo.radiusScene,
+				effectiveRadiusKm(earthBo.body.data)
+			);
+			const [fx, fy, fz] = this.focus.focusTruePos;
+			const [ex, ey, ez] = earthBo.body.position;
+			const sunPos = this.bodyObjects.get('naif-10')?.body.position;
+			const earthCenter = new Vector3(ex - fx, ey - fy, ez - fz);
+			const sunDir = new Vector3(
+				(sunPos?.[0] ?? 0) - ex,
+				(sunPos?.[1] ?? 0) - ey,
+				(sunPos?.[2] ?? 0) - ez
+			);
+			this.atmospherePipeline.render(earthCenter, sunDir);
 		} else {
+			if (earthBo?.atmosphere) earthBo.atmosphere.mesh.visible = true;
 			if (this.atmospherePipeline) {
 				this.atmospherePipeline.dispose();
 				this.atmospherePipeline = null;
