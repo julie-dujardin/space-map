@@ -117,12 +117,21 @@ def matches(path: Path, expected: dict) -> bool:
 
 
 def write_atomic(path: Path, content: bytes) -> None:
-    """Tempfile + rename in the destination dir — crash-safe."""
+    """Tempfile + rename in the destination dir — crash-safe.
+
+    `tempfile.mkstemp` creates the temp file with mode 0o600 (owner-only) for
+    security, and `os.replace` preserves that mode — so without an explicit
+    chmod the published binaries would be unreadable to anyone except the
+    export user, manifesting as nginx/CDN 403s on otherwise-existing files.
+    Force 0o644 to match what a plain `open(..., 'wb')` under the typical
+    0o022 umask produces.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(content)
+        os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except Exception:
         try:
