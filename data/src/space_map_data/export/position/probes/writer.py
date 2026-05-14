@@ -112,21 +112,36 @@ def _mission_kernels(mdir: Path) -> list[Path]:
     ]
 
 
-def _furnish_generic_kernels(kernels_dir: Path) -> int:
-    """Load every LSK / PCK / generic SPK under `kernels/`, skipping the
-    `missions/` and `probes/` subtrees (mission kernels are furnished per
-    probe to keep the pool small)."""
+def _collect_generic_kernels(
+    kernels_dir: Path,
+) -> tuple[list[Path], list[Path]]:
+    """Collect generic kernels under `kernels/`, splitting them by role.
+
+    Returns `(lsk_pck_paths, generic_spk_paths)`:
+      * LSK (.tls) / PCK (.tpc) — leapseconds and physical constants. No SPK
+        precedence implications; load once at outer scope.
+      * Generic SPKs (.bsp under `spk/`) — planetary ephemerides (de440,
+        sat441, …). Must be furnshed AFTER mission kernels so they win for
+        shared targets (Saturn 699, Saturn-barycenter 6, etc.). Mission
+        kernels like p11-a.bsp embed their own 1970s-era planetary data,
+        which would otherwise contaminate the fit.
+
+    `missions/` and `probes/` subtrees are excluded (handled per-probe).
+    """
     skip_dirs = {"missions", "probes"}
-    n = 0
+    lsk_pck: list[Path] = []
+    generic_spk: list[Path] = []
     for path in sorted(kernels_dir.rglob("*")):
         if not path.is_file():
             continue
         if any(part in skip_dirs for part in path.relative_to(kernels_dir).parts):
             continue
-        if path.suffix.lower() in (".bsp", ".tls", ".tpc"):
-            spiceypy.furnsh(str(path))
-            n += 1
-    return n
+        suffix = path.suffix.lower()
+        if suffix in (".tls", ".tpc"):
+            lsk_pck.append(path)
+        elif suffix == ".bsp":
+            generic_spk.append(path)
+    return lsk_pck, generic_spk
 
 
 @dataclass(frozen=True)
@@ -309,11 +324,17 @@ def _build_probe_metas(
 def _classify_pass(
     probe_id_cache: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
+    generic_spk_paths: list[Path],
     start_jd: float,
 ) -> tuple[list[_ProbePlan], dict[str, dict[int, list[_ProbePlan]]]]:
     """Pass 1: per-probe furnish + classify. Returns `(plans, chunk_index)`
     where `chunk_index[zone][chunk_idx]` lists the plans that contribute
-    there. Heavy work (kernel furnshing + spkezr sampling) but no fitting."""
+    there. Heavy work (kernel furnshing + spkezr sampling) but no fitting.
+
+    Furnsh order per probe: mission first, then generic SPKs — so modern
+    planetary ephemerides win over any planetary data bundled inside a
+    mission kernel.
+    """
     probes_raw = _enumerate_probes()
     logger.info("Probes export: %d spacecraft to classify", len(probes_raw))
 
@@ -326,6 +347,8 @@ def _classify_pass(
         kpaths = [str(k) for k in kernels]
         for k in kernels:
             spiceypy.furnsh(str(k))
+        for p in generic_spk_paths:
+            spiceypy.furnsh(str(p))
         try:
             landed, body = is_landed_probe(naif_id, kpaths)
             if landed:
@@ -385,6 +408,8 @@ def _classify_pass(
                 len(plan.contributions),
             )
         finally:
+            for p in generic_spk_paths:
+                spiceypy.unload(str(p))
             for k in kernels:
                 spiceypy.unload(str(k))
 
@@ -420,16 +445,19 @@ def _decide_dirty(
 def _fit_pass(
     plans: list[_ProbePlan],
     dirty: dict[str, dict[int, dict]],
+    generic_spk_paths: list[Path],
     start_jd: float,
 ) -> dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]]:
     """Pass 2: re-furnish each probe that touches at least one dirty chunk,
     run `size_chunk` for those (probe, chunk) pairs only.
 
+    Furnsh order matches pass 1: mission first, then generic SPKs.
+
     Returns `by_zone_chunk[zone][chunk_idx] = [(probe_id, first_offset,
     sub_chunks), …]`, packing-ready."""
-    by_zone_chunk: dict[
-        str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]
-    ] = defaultdict(lambda: defaultdict(list))
+    by_zone_chunk: dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]] = (
+        defaultdict(lambda: defaultdict(list))
+    )
 
     probes_with_dirty: list[_ProbePlan] = [
         p
@@ -446,6 +474,8 @@ def _fit_pass(
     for i, plan in enumerate(probes_with_dirty, 1):
         for k in plan.kernels:
             spiceypy.furnsh(str(k))
+        for p in generic_spk_paths:
+            spiceypy.furnsh(str(p))
         try:
             n_fit = 0
             for c in plan.contributions:
@@ -453,9 +483,7 @@ def _fit_pass(
                     continue
                 zone = ZONES_BY_KEY[c.zone_key]
                 sub_s = zone.kepler_subchunk_days * _S_PER_DAY
-                chunk_sizing = size_chunk(
-                    plan.naif_id, zone, c.c_start_et, c.c_end_et
-                )
+                chunk_sizing = size_chunk(plan.naif_id, zone, c.c_start_et, c.c_end_et)
                 if not chunk_sizing.sub_chunks:
                     continue
                 chunk_start_et = (
@@ -464,8 +492,7 @@ def _fit_pass(
                 )
                 first_offset = int(
                     round(
-                        (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
-                        / sub_s
+                        (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et) / sub_s
                     )
                 )
                 by_zone_chunk[c.zone_key][c.chunk_idx].append(
@@ -481,6 +508,8 @@ def _fit_pass(
                 n_fit,
             )
         finally:
+            for p in generic_spk_paths:
+                spiceypy.unload(str(p))
             for k in plan.kernels:
                 spiceypy.unload(str(k))
 
@@ -618,15 +647,25 @@ def write_probes(
     start_jd = _year_to_jd(_PROBE_EXPORT_START_YEAR)
     end_jd = _year_to_jd(_PROBE_EXPORT_END_YEAR)
 
-    n_generic = _furnish_generic_kernels(download_dir / PROVIDERS.SPICE / "kernels")
-    logger.info("Probes export: furnished %d generic kernels", n_generic)
+    lsk_pck_paths, generic_spk_paths = _collect_generic_kernels(
+        download_dir / PROVIDERS.SPICE / "kernels"
+    )
+    for p in lsk_pck_paths:
+        spiceypy.furnsh(str(p))
+    logger.info(
+        "Probes export: furnished %d LSK/PCK kernels (outer scope); "
+        "%d generic SPKs will be (un)furnshed per-probe after mission "
+        "kernels so they win for shared targets",
+        len(lsk_pck_paths),
+        len(generic_spk_paths),
+    )
 
     try:
         plans, chunk_index = _classify_pass(
-            probe_id_cache, metas_by_probe_id, start_jd
+            probe_id_cache, metas_by_probe_id, generic_spk_paths, start_jd
         )
         dirty = _decide_dirty(chunk_index, out_dir, download_dir)
-        by_zone_chunk = _fit_pass(plans, dirty, start_jd)
+        by_zone_chunk = _fit_pass(plans, dirty, generic_spk_paths, start_jd)
     finally:
         spiceypy.kclear()
 

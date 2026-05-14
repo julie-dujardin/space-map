@@ -35,7 +35,12 @@ logger = logging.getLogger(__name__)
 
 # Bump when sizing.py / writer.py / format.py probe-encoding logic changes.
 # Mismatch with a chunk's stored sidecar forces that chunk to be re-fitted.
-FIT_VERSION = 1
+#
+# v2 (2026-05-14): writer now furnshes mission kernels BEFORE generic SPKs
+# so modern planetary ephemerides (de440 / sat441) win over a mission's
+# bundled-from-the-1970s planetary data — Pioneer 11 Saturn dropped from
+# 1271 km to ~0 km error.
+FIT_VERSION = 2
 
 
 def zone_signature(zone: Zone) -> str:

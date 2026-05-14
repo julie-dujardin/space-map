@@ -178,7 +178,10 @@ flowchart LR
 
     %% Probes export refits kernels at export time (no pre-fit cache) — too
     %% probe-/zone-specific to pre-bake during download. DB provides probe
-    %% Object rows for obj_id_value + has_localized lookups.
+    %% Object rows for obj_id_value + has_localized lookups. Each emitted
+    %% chunk gets a JSON sidecar (.meta.json) with FIT_VERSION + zone_hash
+    %% + per-probe kernel mtime+size; re-exports skip chunks whose
+    %% signature still matches.
     F_PROBES --> E_POS_PROBES
     DB -. "probe Object rows<br/>+ probe_id cache" .-> E_POS_PROBES
 
