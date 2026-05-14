@@ -11,7 +11,7 @@ offenders.
 Catches what the chebyshev benchmark can't: the static asteroid orbits
 (SBDB Kepler) and the time-chunked SPICE moons (Method C mean-element
 fit with secular drift). Asteroid rows without SPICE coverage are
-skipped silently — only the 16 bodies in `sb441-n16.bsp` plus anything
+skipped silently — only the 373 bodies in `sb441-n373.bsp` plus anything
 covered by mission kernels are scored.
 
 Run from data/:
@@ -612,7 +612,7 @@ def _write_markdown(
         "at 5 evenly-spaced sample points per file. Bodies without SPICE "
         "coverage are skipped silently; the SBDB asteroid zones almost "
         "all show 0/N coverage because every SPICE-tracked numbered "
-        "asteroid (the 16 in `sb441-n16.bsp`) is shipped in the "
+        "asteroid (the 373 in `sb441-n373.bsp`) is shipped in the "
         "`major_asteroids` Chebyshev zone instead, not here. The signal "
         "lives in the time-chunked `moons:z0` Method C fits, the handful "
         "of comets and TNOs with mission-kernel coverage, and the active "
