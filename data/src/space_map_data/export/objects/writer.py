@@ -110,8 +110,8 @@ _SGP4_CELESTRAK_FIELDS = (
 )
 # Only earth-orbiting objects have CelesTrak rows (the earth zone query
 # eager-loads the relationship). Gating access on `parent_id == "naif-399"`
-# keeps the spacecraft zone (Sun-orbiting, no CelesTrak data) from triggering
-# a cross-thread lazy load.
+# avoids a cross-thread lazy load when iterating non-earth-orbiting
+# spacecraft (which have no CelesTrak data).
 _EARTH_OBJECT_ID = "naif-399"
 
 

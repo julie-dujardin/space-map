@@ -238,6 +238,7 @@ def _build_position_metadata(
             "end_jd": params["end_jd"],
             "subchunk_days": params["subchunk_days"],
             "float64_coeffs": params["float64_coeffs"],
+            "fit_center_naif_id": params["fit_center_naif_id"],
             "parent_id_type": "probe",
         }
     return {"zones": dict(sorted(zones.items()))}
@@ -874,9 +875,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             #            Horizons ephemerides but no SPK kernel.
             #   zoom 2 = SBDB-only dwarves (Eris, Makemake, Quaoar, …) that
             #            aren't in any SPK kernel either
-            # Major bodies + moons + deep-space spacecraft are horizons- or
-            # spice-source, so eager-load Object.horizons (kepler elements
-            # live there). SBDB-source majors join sbdb instead.
+            # Major bodies + moons are horizons- or spice-source, so eager-
+            # load Object.horizons (kepler elements live there). SBDB-source
+            # majors join sbdb instead. (Deep-space spacecraft used to ride
+            # here in a `spacecraft` zone — they're now in the dedicated
+            # probes export with proper SPICE trajectories.)
             _major_base = session.query(Object).options(
                 joinedload(Object.sbdb), joinedload(Object.horizons)
             )
@@ -922,20 +925,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     .filter(
                         Object.orbital_source == OrbitalSource.sbdb_moon,
                         Object.has_position == True,  # noqa: E712
-                    ),
-                ),
-                (
-                    "spacecraft",
-                    0,
-                    session.query(Object)
-                    .options(joinedload(Object.satcat), joinedload(Object.horizons))
-                    .filter(
-                        Object.spkid.is_(None),
-                        Object.object_type.in_(_SAT_TYPE_VALUES),
-                        Object.parent_id != _EARTH_OBJECT_ID,
-                        Object.id.notin_(cheb_covered_ids)
-                        if cheb_covered_ids
-                        else sa_true(),
                     ),
                 ),
             ]

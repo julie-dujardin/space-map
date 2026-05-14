@@ -613,6 +613,7 @@ def _write_pass(
             "end_jd": end_jd,
             "subchunk_days": zone.kepler_subchunk_days,
             "float64_coeffs": zone.float64_coeffs,
+            "fit_center_naif_id": zone.fit_center_naif_id,
         }
 
     return manifest

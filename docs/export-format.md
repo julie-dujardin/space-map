@@ -116,6 +116,7 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
         "end_jd": 2469807.5,
         "subchunk_days": 7.0,
         "float64_coeffs": true,
+        "fit_center_naif_id": 10,
         "parent_id_type": "probe"
       }
     }
