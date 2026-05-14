@@ -6,20 +6,20 @@ _Generated 2026-05-14._
 
 ## Per-zone error & size aggregates
 
-Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps in).
+Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps in). Coeff dtype is float32 (`f32`) for planet-centric zones and float64 (`f64`) only where position magnitudes exceed the float32 ~600 km quantization floor (interplanetary, with Voyagers/Pioneers at 100+ AU).
 
-| Zone | Chunk span | Files | Sub-chunks | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `earth-moon` | 1mo | 508 | 58242 | 531m | 328.3km | 458.8km | 8.5 | 60.5 | 224.0 | 13.3 | 26556 | 38 | 31648 | 0 |
-| `interplanetary` | 1y | 129 | 24444 | 0m | 37.3km | 2495.2km | 30.7 | 60.0 | 95.3 | 4.5 | 9282 | 101 | 14428 | 633 |
-| `jupiter` | 1y | 28 | 7984 | 157m | 1.7km | 9681.1km | 71.0 | 139.6 | 175.6 | 1.9 | 0 | 0 | 7984 | 0 |
-| `mars` | 1mo | 207 | 6576 | 2.5km | 251.9km | 498.4km | 16.8 | 262.0 | 360.7 | 8.0 | 2937 | 422 | 3217 | 0 |
-| `mercury` | 6mo | 18 | 1580 | 1.1km | 4.9km | 77.5km | 8.8 | 109.8 | 109.8 | 0.5 | 63 | 1414 | 103 | 0 |
-| `neptune` | 5y | 2 | 319 | 2.2km | 7.5km | 9.8km | 101.4 | 101.4 | 101.4 | 0.1 | 0 | 0 | 319 | 0 |
-| `pluto` | 5y | 1 | 21 | 82m | 328m | 493m | 3.5 | 3.5 | 3.5 | 0.0 | 0 | 0 | 21 | 0 |
-| `saturn` | 1y | 9 | 2161 | 1.1km | 6.1km | 709.9km | 62.3 | 109.5 | 109.5 | 0.6 | 919 | 0 | 1242 | 0 |
-| `uranus` | 5y | 1 | 218 | 1.3km | 3.6km | 306.9km | 118.7 | 118.7 | 118.7 | 0.1 | 0 | 0 | 218 | 0 |
-| `venus` | 6mo | 14 | 144 | 716m | 8.5km | 10.3km | 5.2 | 38.3 | 38.3 | 0.1 | 91 | 0 | 53 | 0 |
+| Zone | Chunk span | Coeff dtype | Files | Sub-chunks | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |
+|---|---:|:--:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `earth-moon` | 1mo | `f32` | 508 | 58242 | 531m | 328.3km | 458.8km | 8.5 | 60.5 | 224.0 | 13.3 | 26556 | 38 | 31648 | 0 |
+| `interplanetary` | 1y | `f64` | 129 | 24444 | 0m | 37.3km | 2495.2km | 30.7 | 60.0 | 95.3 | 4.5 | 9282 | 101 | 14428 | 633 |
+| `jupiter` | 1y | `f32` | 28 | 7984 | 157m | 1.7km | 9681.1km | 71.0 | 139.6 | 175.6 | 1.9 | 0 | 0 | 7984 | 0 |
+| `mars` | 1mo | `f32` | 207 | 6576 | 2.5km | 251.9km | 498.4km | 16.8 | 262.0 | 360.7 | 8.0 | 2937 | 422 | 3217 | 0 |
+| `mercury` | 6mo | `f32` | 18 | 1580 | 1.1km | 4.9km | 77.5km | 8.8 | 109.8 | 109.8 | 0.5 | 63 | 1414 | 103 | 0 |
+| `neptune` | 5y | `f32` | 2 | 319 | 2.2km | 7.5km | 9.8km | 101.4 | 101.4 | 101.4 | 0.1 | 0 | 0 | 319 | 0 |
+| `pluto` | 5y | `f32` | 1 | 21 | 82m | 328m | 493m | 3.5 | 3.5 | 3.5 | 0.0 | 0 | 0 | 21 | 0 |
+| `saturn` | 1y | `f32` | 9 | 2161 | 1.1km | 6.1km | 709.9km | 62.3 | 109.5 | 109.5 | 0.6 | 919 | 0 | 1242 | 0 |
+| `uranus` | 5y | `f32` | 1 | 218 | 1.3km | 3.6km | 306.9km | 118.7 | 118.7 | 118.7 | 0.1 | 0 | 0 | 218 | 0 |
+| `venus` | 6mo | `f32` | 14 | 144 | 716m | 8.5km | 10.3km | 5.2 | 38.3 | 38.3 | 0.1 | 91 | 0 | 53 | 0 |
 
 ## Per-probe error (worst-first within each zone)
 

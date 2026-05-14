@@ -6,19 +6,19 @@ _Generated 2026-05-14._
 
 ## Per-zone error & size aggregates
 
-Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps in). Errors come from comparing the decoded Chebyshev polynomial against parent-relative ECLIPJ2000 positions from `spkezr`.
+Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps in). `Coeffs` is the in-file coefficient dtype (`f32` for parent-relative moon zones, `f64` for Sun-orbiter zones where float32 quantization shows up at km scale). Errors come from comparing the decoded Chebyshev polynomial against parent-relative ECLIPJ2000 positions from `spkezr`.
 
-| Zone | Chunk span | Files | Bodies | Segments | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `major` | 5y | 20 | 20 | 51753 | 71mm | 188m | 7.8km | 736.6 | 741.1 | 741.1 | 14.4 |
-| `major_asteroids` | 5y | 20 | 15 | 17415 | 178m | 215m | 250m | 162.2 | 165.0 | 165.0 | 3.2 |
-| `moons/earth` | 5y | 20 | 1 | 9151 | 9m | 16m | 24m | 71.9 | 72.0 | 72.0 | 1.4 |
-| `moons/jupiter` | 6mo | 200 | 8 | 407427 | 12m | 976m | 1.6km | 339.3 | 340.4 | 340.5 | 66.3 |
-| `moons/mars` | 6mo | 200 | 2 | 146498 | 380mm | 583m | 921m | 138.1 | 138.5 | 138.5 | 27.0 |
-| `moons/neptune` | 3mo | 400 | 8 | 587592 | 2m | 17m | 155m | 278.5 | 278.7 | 278.8 | 108.6 |
-| `moons/pluto` | 2y | 50 | 5 | 61120 | 1m | 2m | 3m | 233.7 | 234.5 | 234.5 | 11.4 |
-| `moons/saturn` | 2mo | 800 | 23 | 941650 | 4m | 15m | 661m | 209.6 | 211.1 | 211.4 | 163.6 |
-| `moons/uranus` | 2mo | 800 | 18 | 1018822 | 2m | 13m | 442m | 236.3 | 238.8 | 238.9 | 185.0 |
+| Zone | Chunk span | Coeffs | Files | Bodies | Segments | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `major` | 5y | f64 | 20 | 20 | 51753 | 71mm | 188m | 7.8km | 736.6 | 741.1 | 741.1 | 14.4 |
+| `major_asteroids` | 5y | f64 | 20 | 15 | 17415 | 178m | 215m | 250m | 162.2 | 165.0 | 165.0 | 3.2 |
+| `moons/earth` | 5y | f32 | 20 | 1 | 9151 | 9m | 16m | 24m | 71.9 | 72.0 | 72.0 | 1.4 |
+| `moons/jupiter` | 6mo | f32 | 200 | 8 | 407427 | 12m | 976m | 1.6km | 339.3 | 340.4 | 340.5 | 66.3 |
+| `moons/mars` | 6mo | f32 | 200 | 2 | 146498 | 380mm | 583m | 921m | 138.1 | 138.5 | 138.5 | 27.0 |
+| `moons/neptune` | 3mo | f32 | 400 | 8 | 587592 | 2m | 17m | 155m | 278.5 | 278.7 | 278.8 | 108.6 |
+| `moons/pluto` | 2y | f32 | 50 | 5 | 61120 | 1m | 2m | 3m | 233.7 | 234.5 | 234.5 | 11.4 |
+| `moons/saturn` | 2mo | f32 | 800 | 23 | 941650 | 4m | 15m | 661m | 209.6 | 211.1 | 211.4 | 163.6 |
+| `moons/uranus` | 2mo | f32 | 800 | 18 | 1018822 | 2m | 13m | 442m | 236.3 | 238.8 | 238.9 | 185.0 |
 
 ## Per-body error (worst-first within each zone)
 
