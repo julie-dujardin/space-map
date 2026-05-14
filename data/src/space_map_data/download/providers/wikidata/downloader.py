@@ -18,6 +18,7 @@ from space_map_data.export.objects.wikidata_claims import (
     GLOBAL_CLAIMS,
     PID_TO_KEY,
 )
+from space_map_data.probes.probe_id import load_qids as load_probe_qids
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,9 @@ class WikidataDownloader(Downloader):
 
         # Resolve and fetch objects (all sources except IAU features)
         object_qids = resolver.resolve(self._OBJECT_ID_TYPES)
+        # Probe QIDs are hand-curated in spice/probe_ids.json (no external
+        # ID property gets us there via SPARQL), so seed them directly.
+        object_qids |= load_probe_qids()
         objects_dir = self.out_dir / "objects"
         objects_dir.mkdir(exist_ok=True)
         self._fetch_entities(

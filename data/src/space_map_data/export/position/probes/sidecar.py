@@ -78,23 +78,32 @@ def _kernel_entry(path: Path, download_dir: Path) -> dict:
 
 def build_chunk_signature(
     zone: Zone,
-    probes: list[tuple[int, list[Path]]],
+    probes: list[tuple[int, list[Path], int, bool]],
     download_dir: Path,
 ) -> dict:
     """Compute the expected sidecar contents from the *planned* probe set.
 
-    `probes` is `[(probe_id, [kernel_path, ...]), ...]`. Duplicate probe_ids
-    collapse to a single entry (latest wins) — the planning pass can append
-    a probe multiple times for a chunk when its zone-membership intervals
-    re-enter the chunk window.
+    `probes` is `[(probe_id, [kernel_path, ...], object_type_ordinal,
+    has_localized), ...]`. Duplicate probe_ids collapse to a single entry
+    (latest wins) — the planning pass can append a probe multiple times for
+    a chunk when its zone-membership intervals re-enter the chunk window.
+
+    Per-probe header bits (`object_type_ordinal`, `has_localized`) are
+    folded into the signature so that flipping either invalidates the
+    chunk — those bits live in each probe's binary header and a stale
+    chunk would otherwise keep the old values forever.
     """
-    probe_block: dict[str, list[dict]] = {}
-    for probe_id, kernels in probes:
+    probe_block: dict[str, dict] = {}
+    for probe_id, kernels, object_type_ordinal, has_localized in probes:
         entries = sorted(
             (_kernel_entry(k, download_dir) for k in kernels),
             key=lambda d: d["path"],
         )
-        probe_block[str(probe_id)] = entries
+        probe_block[str(probe_id)] = {
+            "kernels": entries,
+            "object_type_ordinal": object_type_ordinal,
+            "has_localized": has_localized,
+        }
     return {
         "fit_version": FIT_VERSION,
         "zone_hash": zone_signature(zone),

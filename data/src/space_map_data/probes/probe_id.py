@@ -154,6 +154,11 @@ def assign(
     return record
 
 
+def load_qids() -> set[str]:
+    """Return every non-null `wikidata_qid` from the on-disk probe cache."""
+    return {qid for rec in _load_cache().values() if (qid := rec.get("wikidata_qid"))}
+
+
 def assign_many(
     items: list[tuple[str, int, int]],
 ) -> dict[tuple[str, int], ProbeIdRecord]:

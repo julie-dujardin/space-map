@@ -418,6 +418,7 @@ def _classify_pass(
 
 def _decide_dirty(
     chunk_index: dict[str, dict[int, list[_ProbePlan]]],
+    metas_by_probe_id: dict[int, _ProbeMeta],
     out_dir: Path,
     download_dir: Path,
 ) -> dict[str, dict[int, dict]]:
@@ -430,7 +431,15 @@ def _decide_dirty(
         zone_obj = ZONES_BY_KEY[zone_key]
         zone_out = probes_dir / zone_key
         for chunk_idx, plan_list in chunks.items():
-            probes_for_sig = [(p.probe_id, p.kernels) for p in plan_list]
+            probes_for_sig = [
+                (
+                    p.probe_id,
+                    p.kernels,
+                    metas_by_probe_id[p.probe_id].object_type_ordinal,
+                    metas_by_probe_id[p.probe_id].has_localized,
+                )
+                for p in plan_list
+            ]
             new_sig = sidecar.build_chunk_signature(
                 zone_obj, probes_for_sig, download_dir
             )
@@ -665,7 +674,7 @@ def write_probes(
         plans, chunk_index = _classify_pass(
             probe_id_cache, metas_by_probe_id, generic_spk_paths, start_jd
         )
-        dirty = _decide_dirty(chunk_index, out_dir, download_dir)
+        dirty = _decide_dirty(chunk_index, metas_by_probe_id, out_dir, download_dir)
         by_zone_chunk = _fit_pass(plans, dirty, generic_spk_paths, start_jd)
     finally:
         spiceypy.kclear()
