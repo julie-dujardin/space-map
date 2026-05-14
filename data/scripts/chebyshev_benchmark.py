@@ -80,6 +80,7 @@ class BodyRecord:
 class ParsedChunk:
     start_jd: float
     end_jd: float
+    float64_coeffs: bool
     bodies: list[BodyRecord]
 
 
@@ -127,7 +128,7 @@ def _parse_chunk(path: Path) -> ParsedChunk:
             segments.append(Segment(seg_start, seg_end, coeffs))
         bodies.append(BodyRecord(naif_id, parent_id, segments))
     assert off == len(data), f"{path}: trailing data ({off} vs {len(data)})"
-    return ParsedChunk(start_jd, end_jd, bodies)
+    return ParsedChunk(start_jd, end_jd, float64_coeffs, bodies)
 
 
 # ── Decoders (mirror the frontend) ───────────────────────────────────────
@@ -269,6 +270,7 @@ def main() -> int:
     per_zone_files: dict[str, list[int]] = defaultdict(list)
     per_zone_segments: dict[str, int] = defaultdict(int)
     per_zone_chunk_years: dict[str, float] = {}
+    per_zone_float64: dict[str, bool] = {}
     # (zone, naif_id) → errs, plus parent_id snapshot for labeling.
     per_body_errs: dict[tuple[str, int], list[float]] = defaultdict(list)
     per_body_parent: dict[tuple[str, int], int] = {}
@@ -294,6 +296,7 @@ def main() -> int:
             for cf in chunk_files:
                 per_zone_files[zone_key].append(cf.stat().st_size)
                 parsed = _parse_chunk(cf)
+                per_zone_float64.setdefault(zone_key, parsed.float64_coeffs)
                 for body in parsed.bodies:
                     key = (zone_key, body.naif_id)
                     per_body_parent.setdefault(key, body.parent_id)
@@ -320,6 +323,7 @@ def main() -> int:
             {
                 "zone": zone_key,
                 "chunk_years": per_zone_chunk_years.get(zone_key, 0.0),
+                "coeffs": "f64" if per_zone_float64.get(zone_key) else "f32",
                 "files": len(sizes),
                 "bodies": len(bodies_in_zone),
                 "segments": per_zone_segments[zone_key],
@@ -357,15 +361,15 @@ def main() -> int:
     # Brief stdout summary (per-zone). Per-body table lives in the markdown.
     print()
     print(
-        f"{'zone':<22} {'chunk':>5} {'files':>5} {'bodies':>6} {'segments':>8}  "
+        f"{'zone':<22} {'chunk':>5} {'coef':>4} {'files':>5} {'bodies':>6} {'segments':>8}  "
         f"{'med_err':>9} {'p95_err':>9} {'max_err':>9}  "
         f"{'med_kb':>7} {'p95_kb':>7} {'max_kb':>7} {'sum_mb':>7}"
     )
-    print("-" * 125)
+    print("-" * 130)
     for r in zone_rows:
         print(
             f"{r['zone']:<22} {_format_chunk_span(r['chunk_years']):>5} "
-            f"{r['files']:>5} {r['bodies']:>6} {r['segments']:>8}  "
+            f"{r['coeffs']:>4} {r['files']:>5} {r['bodies']:>6} {r['segments']:>8}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M"
         )
@@ -408,19 +412,22 @@ def _write_markdown(
     lines.append("")
     lines.append(
         "Chunk span is the on-disk streaming-chunk duration (the unit the "
-        "frontend swaps in). Errors come from comparing the decoded "
-        "Chebyshev polynomial against parent-relative ECLIPJ2000 positions "
-        "from `spkezr`."
+        "frontend swaps in). `Coeffs` is the in-file coefficient dtype "
+        "(`f32` for parent-relative moon zones, `f64` for Sun-orbiter "
+        "zones where float32 quantization shows up at km scale). Errors "
+        "come from comparing the decoded Chebyshev polynomial against "
+        "parent-relative ECLIPJ2000 positions from `spkezr`."
     )
     lines.append("")
     lines.append(
-        "| Zone | Chunk span | Files | Bodies | Segments | Median err | p95 err | Max err | "
-        "Median KiB | p95 KiB | Max KiB | Total MiB |"
+        "| Zone | Chunk span | Coeffs | Files | Bodies | Segments | "
+        "Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB |"
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in zone_rows:
         lines.append(
             f"| `{r['zone']}` | {_format_chunk_span(r['chunk_years'])} | "
+            f"{r['coeffs']} | "
             f"{r['files']} | {r['bodies']} | {r['segments']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "
             f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['max_kb']:.1f} | {r['sum_mb']:.1f} |"

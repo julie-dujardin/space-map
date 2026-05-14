@@ -423,6 +423,9 @@ def main() -> int:
             {
                 "zone": zone_key,
                 "chunk_years": ZONES_BY_KEY[zone_key].chunk_years,
+                "coeff_dtype": "f64"
+                if ZONES_BY_KEY[zone_key].float64_coeffs
+                else "f32",
                 "files": len(sizes),
                 "n_sub": sum(counts.values()),
                 "med": pct(errs, 0.5),
@@ -456,16 +459,16 @@ def main() -> int:
     # markdown file.
     print()
     print(
-        f"{'zone':<14} {'chunk':>5} {'files':>5} {'subchunks':>10}  "
+        f"{'zone':<14} {'chunk':>5} {'coef':>4} {'files':>5} {'subchunks':>10}  "
         f"{'med_err':>9} {'p95_err':>9} {'max_err':>9}  "
         f"{'med_kb':>7} {'p95_kb':>7} {'max_kb':>7} {'sum_mb':>7}  method mix (k_pure / k_drift / cheb / uncov)"
     )
-    print("-" * 145)
+    print("-" * 150)
     for r in zone_rows:
         mix = f"{r['kpure']:>5} / {r['kdrift']:>5} / {r['cheb']:>5} / {r['uncov']:>3}"
         print(
             f"{r['zone']:<14} {_format_chunk_span(r['chunk_years']):>5} "
-            f"{r['files']:>5} {r['n_sub']:>10}  "
+            f"{r['coeff_dtype']:>4} {r['files']:>5} {r['n_sub']:>10}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
         )
@@ -508,19 +511,23 @@ def _write_markdown(
     lines.append("")
     lines.append(
         "Chunk span is the on-disk streaming-chunk duration (the unit the "
-        "frontend swaps in)."
+        "frontend swaps in). Coeff dtype is float32 (`f32`) for planet-"
+        "centric zones and float64 (`f64`) only where position magnitudes "
+        "exceed the float32 ~600 km quantization floor (interplanetary, "
+        "with Voyagers/Pioneers at 100+ AU)."
     )
     lines.append("")
     lines.append(
-        "| Zone | Chunk span | Files | Sub-chunks | Median err | p95 err | Max err | "
+        "| Zone | Chunk span | Coeff dtype | Files | Sub-chunks | Median err | p95 err | Max err | "
         "Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |"
     )
     lines.append(
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---:|:--:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     )
     for r in zone_rows:
         lines.append(
             f"| `{r['zone']}` | {_format_chunk_span(r['chunk_years'])} | "
+            f"`{r['coeff_dtype']}` | "
             f"{r['files']} | {r['n_sub']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "
             f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['max_kb']:.1f} | {r['sum_mb']:.1f} | "

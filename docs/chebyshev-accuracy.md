@@ -10,8 +10,8 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 
 | Zone | Chunk span | Files | Bodies | Segments | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `major` | 5y | 20 | 20 | 51753 | 164mm | 60.8km | 277.6km | 372.5 | 374.9 | 374.9 | 7.3 |
-| `major_asteroids` | 5y | 20 | 15 | 17415 | 9.6km | 16.7km | 32.3km | 82.5 | 83.9 | 83.9 | 1.6 |
+| `major` | 5y | 20 | 20 | 51753 | 71mm | 188m | 7.8km | 736.6 | 741.1 | 741.1 | 14.4 |
+| `major_asteroids` | 5y | 20 | 15 | 17415 | 178m | 215m | 250m | 162.2 | 165.0 | 165.0 | 3.2 |
 | `moons/earth` | 5y | 20 | 1 | 9151 | 9m | 16m | 24m | 71.9 | 72.0 | 72.0 | 1.4 |
 | `moons/jupiter` | 6mo | 200 | 8 | 407427 | 12m | 976m | 1.6km | 339.3 | 340.4 | 340.5 | 66.3 |
 | `moons/mars` | 6mo | 200 | 2 | 146498 | 380mm | 583m | 921m | 138.1 | 138.5 | 138.5 | 27.0 |
@@ -26,41 +26,41 @@ Fit residual is small by construction (Chebyshev–Lobatto interpolation at degr
 
 | Zone | NAIF | Name | Parent | Segments | Samples | Median err | p95 err | Max err |
 |---|---:|---|---:|---:|---:|---:|---:|---:|
-| `major` | 9 | PLUTO BARYCENTER | 0 | 1161 | 5805 | 116.4km | 242.5km | 277.6km |
-| `major` | 8 | NEPTUNE BARYCENTER | 0 | 1161 | 5805 | 99.9km | 215.3km | 258.2km |
-| `major` | 7 | URANUS BARYCENTER | 0 | 1161 | 5805 | 65.7km | 125.3km | 141.5km |
-| `major` | 6 | SATURN BARYCENTER | 0 | 1161 | 5805 | 32.9km | 61.9km | 69.7km |
-| `major` | 5 | JUPITER BARYCENTER | 0 | 1161 | 5805 | 18.4km | 31.5km | 38.6km |
-| `major` | 2000001 | CERES | 0 | 1161 | 5805 | 9.3km | 16.0km | 20.6km |
-| `major` | 4 | MARS BARYCENTER | 0 | 1161 | 5805 | 4.8km | 8.2km | 11.3km |
-| `major` | 3 | EARTH BARYCENTER | 0 | 2302 | 11510 | 3.5km | 7.4km | 8.8km |
-| `major` | 599 | JUPITER | 5 | 4585 | 22925 | 4mm | 7.8km | 7.8km |
-| `major` | 2 | VENUS BARYCENTER | 0 | 2302 | 11510 | 2.4km | 4.1km | 6.1km |
-| `major` | 1 | MERCURY BARYCENTER | 0 | 4585 | 22925 | 1.3km | 2.3km | 4.1km |
-| `major` | 10 | SUN | 0 | 2302 | 11510 | 177m | 227m | 259m |
-| `major` | 799 | URANUS | 7 | 4585 | 22925 | 1mm | 195m | 211m |
-| `major` | 899 | NEPTUNE | 8 | 4585 | 22925 | 3mm | 79m | 89m |
+| `major` | 599 | JUPITER | 5 | 4585 | 22925 | 0mm | 7.8km | 7.8km |
+| `major` | 2000001 | CERES | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major` | 10 | SUN | 0 | 2302 | 11510 | 178m | 215m | 250m |
+| `major` | 3 | EARTH BARYCENTER | 0 | 2302 | 11510 | 177m | 214m | 250m |
+| `major` | 799 | URANUS | 7 | 4585 | 22925 | 0mm | 195m | 211m |
+| `major` | 899 | NEPTUNE | 8 | 4585 | 22925 | 0mm | 79m | 89m |
+| `major` | 1 | MERCURY BARYCENTER | 0 | 4585 | 22925 | 766mm | 981mm | 1m |
+| `major` | 2 | VENUS BARYCENTER | 0 | 2302 | 11510 | 584mm | 588mm | 689mm |
 | `major` | 499 | MARS | 4 | 4585 | 22925 | 156mm | 463mm | 469mm |
-| `major` | 399 | EARTH | 3 | 4585 | 22925 | 90mm | 174mm | 336mm |
-| `major` | 999 | PLUTO | 9 | 4585 | 22925 | 61mm | 110mm | 181mm |
-| `major` | 699 | SATURN | 6 | 4585 | 22925 | 6mm | 15mm | 26mm |
+| `major` | 4 | MARS BARYCENTER | 0 | 1161 | 5805 | 399mm | 442mm | 447mm |
+| `major` | 5 | JUPITER BARYCENTER | 0 | 1161 | 5805 | 218mm | 228mm | 256mm |
+| `major` | 6 | SATURN BARYCENTER | 0 | 1161 | 5805 | 159mm | 170mm | 183mm |
+| `major` | 7 | URANUS BARYCENTER | 0 | 1161 | 5805 | 115mm | 119mm | 141mm |
+| `major` | 8 | NEPTUNE BARYCENTER | 0 | 1161 | 5805 | 91mm | 92mm | 109mm |
+| `major` | 9 | PLUTO BARYCENTER | 0 | 1161 | 5805 | 94mm | 102mm | 104mm |
+| `major` | 999 | PLUTO | 9 | 4585 | 22925 | 0mm | 58mm | 68mm |
+| `major` | 399 | EARTH | 3 | 4585 | 22925 | 14mm | 15mm | 15mm |
+| `major` | 699 | SATURN | 6 | 4585 | 22925 | 0mm | 0mm | 0mm |
 | `major` | 199 | MERCURY | 1 | 20 | 100 | 0mm | 0mm | 0mm |
 | `major` | 299 | VENUS | 2 | 20 | 100 | 0mm | 0mm | 0mm |
-| `major_asteroids` | 2000087 |  | 0 | 1161 | 5805 | 10.6km | 18.9km | 32.3km |
-| `major_asteroids` | 2000065 |  | 0 | 1161 | 5805 | 10.5km | 20.0km | 32.3km |
-| `major_asteroids` | 2000511 | DAVIDA | 0 | 1161 | 5805 | 10.6km | 20.2km | 31.9km |
-| `major_asteroids` | 2000107 |  | 0 | 1161 | 5805 | 10.5km | 18.4km | 31.7km |
-| `major_asteroids` | 2000704 |  | 0 | 1161 | 5805 | 9.7km | 16.7km | 22.9km |
-| `major_asteroids` | 2000052 | 52 EUROPA | 0 | 1161 | 5805 | 9.7km | 16.2km | 22.7km |
-| `major_asteroids` | 2000088 |  | 0 | 1161 | 5805 | 9.6km | 16.1km | 22.6km |
-| `major_asteroids` | 2000016 | PSYCHE | 0 | 1161 | 5805 | 9.2km | 16.1km | 22.6km |
-| `major_asteroids` | 2000002 | PALLAS | 0 | 1161 | 5805 | 9.8km | 16.7km | 22.1km |
-| `major_asteroids` | 2000010 |  | 0 | 1161 | 5805 | 10.2km | 16.6km | 21.9km |
-| `major_asteroids` | 2000007 |  | 0 | 1161 | 5805 | 8.4km | 15.7km | 21.6km |
-| `major_asteroids` | 2000003 |  | 0 | 1161 | 5805 | 8.7km | 16.0km | 21.6km |
-| `major_asteroids` | 2000031 |  | 0 | 1161 | 5805 | 10.2km | 16.6km | 20.9km |
-| `major_asteroids` | 2000015 |  | 0 | 1161 | 5805 | 8.9km | 16.0km | 20.0km |
-| `major_asteroids` | 2000004 | VESTA | 0 | 1161 | 5805 | 8.4km | 15.5km | 18.1km |
+| `major_asteroids` | 2000010 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000107 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000007 |  | 0 | 1161 | 5805 | 178m | 214m | 250m |
+| `major_asteroids` | 2000087 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000065 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000015 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000002 | PALLAS | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000704 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000003 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000004 | VESTA | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000511 | DAVIDA | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000016 | PSYCHE | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000088 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000052 | 52 EUROPA | 0 | 1161 | 5805 | 178m | 215m | 250m |
+| `major_asteroids` | 2000031 |  | 0 | 1161 | 5805 | 178m | 215m | 250m |
 | `moons/earth` | 301 | MOON | 3 | 9151 | 45755 | 9m | 16m | 24m |
 | `moons/jupiter` | 515 | ADRASTEA | 5 | 73249 | 366245 | 6m | 1.4km | 1.6km |
 | `moons/jupiter` | 516 | METIS | 5 | 73249 | 366245 | 4m | 974m | 1.1km |
