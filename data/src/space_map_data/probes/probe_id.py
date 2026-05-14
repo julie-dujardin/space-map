@@ -20,6 +20,10 @@ coverage interval at first ingest. Cached to a JSON file under `DOWNLOAD_DIR`
 since the DB is rebuilt regularly — the cache pins each (mission, naif_id) to
 a `probe_id` so the value is stable across re-ingests even if new kernels add
 earlier coverage later.
+
+The same cache also carries a manually-curated `wikidata_qid` per row,
+since probes don't share an external ID property with Wikidata (P247/COSPAR
+isn't on the Object row for probes) and would otherwise be unresolvable.
 """
 
 import json
@@ -57,6 +61,7 @@ class ProbeIdRecord:
     naif_id: int
     inception_mjd: int
     dedupe: int
+    wikidata_qid: str | None = None
 
     @property
     def probe_id(self) -> int:
@@ -133,6 +138,7 @@ def assign(
             naif_id=naif_id,
             inception_mjd=int(rec["inception_mjd"]),
             dedupe=int(rec["dedupe"]),
+            wikidata_qid=rec.get("wikidata_qid"),
         )
 
     used = {
@@ -148,6 +154,7 @@ def assign(
         "inception_mjd": inception_mjd,
         "dedupe": dedupe,
         "probe_id": record.probe_id,
+        "wikidata_qid": None,
     }
     if owned:
         _save_cache(cache)

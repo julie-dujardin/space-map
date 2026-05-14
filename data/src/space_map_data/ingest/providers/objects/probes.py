@@ -107,7 +107,7 @@ class ProbesIngestor:
         )
         self.session.commit()
 
-    def _build_row(self, record: dict, probe_id: int) -> dict:
+    def _build_row(self, record: dict, probe_id: int, wikidata_qid: str | None) -> dict:
         object_pk = make_object_id(ID_TYPES.PROBE, probe_id)
         return {
             "id": object_pk,
@@ -116,6 +116,7 @@ class ProbesIngestor:
             "naif_id": record["naif_id"],
             "probe_id": probe_id,
             "orbital_source": OrbitalSource.spice_probe,
+            "wikidata_qid": wikidata_qid,
             # Probe positions live in the per-zone chunk files, not in a
             # Kepler/SGP4 sub-table — `has_position=False` so element-based
             # writers skip them. The probes/ zone writer reads kernels directly.
@@ -142,7 +143,7 @@ class ProbesIngestor:
         rows: list[dict] = []
         for r in tqdm(records, desc="Probes ingest"):
             rec = assignments[(r["mission"], r["naif_id"])]
-            rows.append(self._build_row(r, rec.probe_id))
+            rows.append(self._build_row(r, rec.probe_id, rec.wikidata_qid))
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
                 rows = []

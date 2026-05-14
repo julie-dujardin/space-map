@@ -1175,6 +1175,34 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 len(orbitless_moons),
             )
 
+        # Probes ride in their own chunk files (not the elements table), so they
+        # carry has_position=False and never run through `_export_zone`. Build
+        # their per-object metadata here so the drawer can resolve their name
+        # and Wikidata extras when the user focuses one.
+        probe_objs = (
+            session.query(Object)
+            .filter(Object.orbital_source == OrbitalSource.spice_probe)
+            .all()
+        )
+        if probe_objs:
+            probe_data = _build_zone_object_data(
+                probe_objs,
+                wikidata_entities,
+                units,
+                nasa_science_urls,
+                orientation,
+                radii,
+                gms,
+                nut_prec,
+                texture_metadata,
+                clouds_metadata,
+            )
+            all_objects.global_data.update(probe_data.global_data)
+            for lang, by_id in probe_data.localized_data.items():
+                all_objects.localized_data[lang].update(by_id)
+            all_objects.has_localized.update(probe_data.has_localized)
+            logger.info("Built object data for %d probes", len(probe_objs))
+
         chebyshev_zones = write_chebyshev(
             session, DOWNLOAD_DIR, out_dir, radii, all_objects.has_localized
         )
