@@ -35,7 +35,7 @@ class TestWriteGlobalLabels:
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
         all_objs.global_data["naif-301"] = {"type": ObjectType.moon, "name": "Moon"}
         # Promoted via curated extras list
-        all_objs.global_data["naif--31"] = {
+        all_objs.global_data["probe-49065984"] = {
             "type": ObjectType.spacecraft,
             "name": "Voyager 1",
         }
@@ -48,7 +48,7 @@ class TestWriteGlobalLabels:
         write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
         names = _parse(tmp_path / "labels" / "en.gz")
-        assert set(names) == {"naif-399", "naif-301", "naif--31"}
+        assert set(names) == {"naif-399", "naif-301", "probe-49065984"}
 
     def test_emits_one_file_per_language(self, tmp_path):
         all_objs = ChunkObjectData()
@@ -72,16 +72,16 @@ class TestWriteGlobalLabels:
 
     def test_empty_name_when_neither_localized_nor_global_has_one(self, tmp_path):
         all_objs = ChunkObjectData()
-        # Curated extra with no Wikidata and no DB name (e.g. a probe with only
-        # a NAIF id). The empty-name line still ships because the id needs to
-        # appear in the keys for the frontend's auto-promote set; downstream
-        # name coalescing turns the empty value into a null and the drawer
-        # walks its fallback chain (loading → id) from there.
-        all_objs.global_data["naif--31"] = {"type": ObjectType.spacecraft}
+        # Curated extra with no Wikidata and no DB name (e.g. a probe whose
+        # ingest hasn't seen a Wikidata entity yet). The empty-name line still
+        # ships because the id needs to appear in the keys for the frontend's
+        # auto-promote set; downstream name coalescing turns the empty value
+        # into a null and the drawer walks its fallback chain (loading → id).
+        all_objs.global_data["probe-49065984"] = {"type": ObjectType.spacecraft}
 
         write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
 
-        assert _parse(tmp_path / "labels" / "en.gz") == {"naif--31": ""}
+        assert _parse(tmp_path / "labels" / "en.gz") == {"probe-49065984": ""}
 
     def test_chebyshev_covered_bodies_are_auto_promoted(self, tmp_path):
         """DE441 perturber asteroids ride in chebyshev but aren't in

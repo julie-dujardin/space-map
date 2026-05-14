@@ -244,12 +244,32 @@ def _build_position_metadata(
     return {"zones": dict(sorted(zones.items()))}
 
 
+_POSITION_INCREMENTAL_ZONES = {"earth", "probes"}
+
+
 def _remove_old_outputs(out_dir: Path) -> None:
-    """Remove all chunk output directories before a fresh export."""
-    for d in ("position", "objects"):
-        p = out_dir / d
-        if p.exists():
-            shutil.rmtree(p)
+    """Remove all chunk output directories before a fresh export.
+
+    `position/earth/` and `position/probes/` manage their own per-chunk
+    sidecars (see `position/elements/sidecar.py` and
+    `position/probes/sidecar.py`); wiping them would defeat the
+    skip-reexport logic, so they're left for the writer to overwrite or
+    skip in place. Every other zone under `position/` is wiped — the
+    elements writers don't atomic-overwrite, and stale part files for
+    bodies that have left a zone would otherwise linger forever.
+    """
+    pos = out_dir / "position"
+    if pos.exists():
+        for child in pos.iterdir():
+            if child.is_dir() and child.name in _POSITION_INCREMENTAL_ZONES:
+                continue
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+    p = out_dir / "objects"
+    if p.exists():
+        shutil.rmtree(p)
     # System metadata is regenerated each export (individual textures are not)
     for d in ("textures/systems", "systems"):
         p = out_dir / d
@@ -1165,11 +1185,19 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Bodies that ship in some position file — used to gate the labels
         # file's auto-promotion. Sourced from the DB column rather than a
         # runtime accumulator so the per-source ingest is the single writer
-        # of "is this row renderable in 3D".
+        # of "is this row renderable in 3D". Probes carry `has_position=False`
+        # because their positions live in dedicated chunk files (not the
+        # elements table), but they're equally renderable in 3D, so OR them
+        # in by orbital_source.
         rendered_ids = {
             oid
             for (oid,) in session.query(Object.id)
-            .filter(Object.has_position == True)  # noqa: E712
+            .filter(
+                or_(
+                    Object.has_position == True,  # noqa: E712
+                    Object.orbital_source == OrbitalSource.spice_probe,
+                )
+            )
             .all()
         }
 

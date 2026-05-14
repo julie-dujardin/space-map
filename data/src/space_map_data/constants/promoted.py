@@ -31,40 +31,35 @@ PROMOTED_TYPES: frozenset[ObjectType] = frozenset(
 
 PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
     {
-        # Spacecraft (deep-space, NAIF trajectories)
-        "naif--31",  # Voyager 1
-        "naif--32",  # Voyager 2
-        "naif--23",  # Pioneer 10
-        "naif--24",  # Pioneer 11
-        "naif--98",  # New Horizons
-        "naif--96",  # Parker Solar Probe
-        "naif--170",  # James Webb Space Telescope
-        "naif--49",  # Lucy
-        "naif--255",  # Psyche
-        "naif--159",  # Europa Clipper
-        "naif--64",  # OSIRIS-REx
-        "naif--121",  # BepiColombo
-        "naif--144",  # Solar Orbiter
-        "naif--37",  # Hayabusa 2
-        "naif--91",  # Hera
-        "naif--28",  # JUICE
-        "naif--227",  # Kepler
-        "naif--234",  # STEREO-A
-        "naif--21",  # SOHO
-        "naif--78",  # DSCOVR
-        "naif--55",  # Ulysses
+        # Spacecraft (deep-space, SPICE trajectories) — ride in the probes
+        # export under synthetic `probe-<probe_id>` IDs (inception_mjd + dedupe).
+        # Resolve via `space-map-downloads/spice/probe_ids.json`.
+        "probe-49065984",  # Voyager 1   (mission VOYAGER, naif -31)
+        "probe-49000448",  # Voyager 2   (mission VOYAGER, naif -32)
+        "probe-40910848",  # Pioneer 10  (mission PIONEER10, naif -23)
+        "probe-42479616",  # Pioneer 11  (mission PIONEER11, naif -24)
+        "probe-104804352",  # New Horizons (mission NEWHORIZONS, naif -98)
+        "probe-115347456",  # JWST        (mission JWST, naif -170)
+        "probe-120614912",  # Lucy        (mission LUCY, naif -49)
+        "probe-118050816",  # Psyche      (mission PSYCHE, naif -255)
+        "probe-110526464",  # BepiColombo (mission BEPICOLOMBO, naif -121)
+        "probe-112545792",  # Solar Orbiter (mission SOLAR-ORBITER, naif -144)
+        "probe-117293056",  # JUICE       (mission JUICE, naif -28)
+        "probe-92659712",  # STEREO-A    (mission STEREO, naif -234)
+        "probe-68640768",  # Ulysses     (mission ULYSSES, naif -55)
+        "probe-123482112",  # Hera        (mission HERA, naif -667)
+        "probe-107159552",  # Juno        (mission JUNO, naif -61)
+        "probe-89325568",  # MESSENGER   (mission MESSENGER, naif -236)
+        "probe-103354368",  # Gaia        (mission GAIA, naif -123)
+        # TODO: missions not yet in probe_ids.json — re-add after ingest:
+        #   Parker Solar Probe (-96), Europa Clipper (-159), OSIRIS-REx (-64),
+        #   Hayabusa 2 (-37), Kepler (-227), SOHO (-21), DSCOVR (-78).
         # Retired
-        # 'naif--79', # Spitzer Space Telescope
-        # 'naif--203', # Dawn
-        # Mars/moon/... probes - TODO
-        # 'naif--41', # Mars Express
-        # 'naif--53', # Mars Odyssey
-        # 'naif--74', # Mars Reconnaissance Orbiter
-        # 'naif--76', # Mars Science Laboratory (Curiosity)
-        # 'naif--143', # ExoMars16 TGO
-        # 'naif--189', # InSight
-        # 'naif--85', # LRO
-        # 'naif--61', # Juno
+        # 'probe-...' # Spitzer Space Telescope
+        # 'probe-101912576', # Dawn (mission DAWN, naif -203)
+        # Mars/moon/... probes - TODO promote when worth it:
+        # MEX (-41), Mars Odyssey (-53), MRO (-74), MSL (-76), ExoMars16 TGO (-143),
+        # InSight (-189), LRO (-85), Cassini, Galileo, Huygens, Rosetta, …
         # Earth-orbiting (NORAD/CelesTrak TLEs)
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
