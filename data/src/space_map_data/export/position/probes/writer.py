@@ -13,6 +13,10 @@ byte to evaluate position(t).
 Time-axis alignment: chunks align to a global `start_jd` (1950-01-01) so the
 chunk index for a given JD is `floor((jd - start_jd) / chunk_years / 365.25)`,
 matching the chebyshev exporter's convention.
+
+Incremental: each chunk emits a JSON sidecar with `(fit_version, zone_hash,
+probes→kernel mtime+size)`. On re-export we recompute that signature and
+skip the chunk if it matches what's on disk. See `sidecar.py`.
 """
 
 import gzip
@@ -20,7 +24,7 @@ import json
 import logging
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -40,12 +44,7 @@ from space_map_data.export.position.format import (
     pack_probes_header,
     pack_subchunk_record,
 )
-from space_map_data.models.object import Object, OrbitalSource
-from space_map_data.probes.probe_id import (
-    _load_cache as _load_probe_id_cache,
-    assign,
-    et_to_mjd,
-)
+from space_map_data.export.position.probes import sidecar
 from space_map_data.export.position.probes.sizing import (
     METHOD_CHEBYSHEV as SZ_METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT as SZ_METHOD_KEPLER_DRIFT,
@@ -53,6 +52,12 @@ from space_map_data.export.position.probes.sizing import (
     METHOD_UNCOVERABLE as SZ_METHOD_UNCOVERABLE,
     SubChunkFit,
     size_chunk,
+)
+from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.probes.probe_id import (
+    _load_cache as _load_probe_id_cache,
+    assign,
+    et_to_mjd,
 )
 from space_map_data.probes.trace import _coverage, classify_trace, is_landed_probe
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
@@ -132,6 +137,28 @@ class _ProbeMeta:
     obj_id: str
     object_type_ordinal: int
     has_localized: bool
+
+
+@dataclass(frozen=True)
+class _ChunkContribution:
+    """One probe's contribution to one (zone, chunk_idx): the time slice
+    it covers, aligned to the sub-chunk grid."""
+
+    zone_key: str
+    chunk_idx: int
+    c_start_et: float
+    c_end_et: float
+
+
+@dataclass
+class _ProbePlan:
+    """All chunks one probe touches + the kernels needed to fit them.
+    Built in the classify pass; consumed in the fit pass."""
+
+    probe_id: int
+    naif_id: int
+    kernels: list[Path]
+    contributions: list[_ChunkContribution] = field(default_factory=list)
 
 
 def _chunk_aligned_range(
@@ -279,141 +306,232 @@ def _build_probe_metas(
     return metas
 
 
-def write_probes(
-    session: Session,
-    download_dir: Path,
-    out_dir: Path,
-    has_localized: dict[str, bool],
-) -> dict[str, dict]:
-    """Build per-zone, per-chunk binary files for every probe on disk.
+def _classify_pass(
+    probe_id_cache: dict,
+    metas_by_probe_id: dict[int, _ProbeMeta],
+    start_jd: float,
+) -> tuple[list[_ProbePlan], dict[str, dict[int, list[_ProbePlan]]]]:
+    """Pass 1: per-probe furnish + classify. Returns `(plans, chunk_index)`
+    where `chunk_index[zone][chunk_idx]` lists the plans that contribute
+    there. Heavy work (kernel furnshing + spkezr sampling) but no fitting."""
+    probes_raw = _enumerate_probes()
+    logger.info("Probes export: %d spacecraft to classify", len(probes_raw))
 
-    Returns `{zone_key_with_prefix: {chunks, chunk_years, start_jd, end_jd}}`
-    so `_build_position_metadata` can fold it into the manifest.
-    """
-    if not MISSIONS_DIR.exists():
-        logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)
-        return {}
-
-    probe_id_cache = _load_probe_id_cache()
-    metas_by_probe_id = _build_probe_metas(session, has_localized)
-
-    start_jd = _year_to_jd(_PROBE_EXPORT_START_YEAR)
-    end_jd = _year_to_jd(_PROBE_EXPORT_END_YEAR)
-
-    # First pass: build per-(zone, chunk_idx) lists of (probe_id, [SubChunkFit]).
-    # Furnish generic kernels once at the outer level; per-probe mission
-    # kernels are furnished/unfurnished inside the probe loop.
-    n_generic = _furnish_generic_kernels(download_dir / PROVIDERS.SPICE / "kernels")
-    logger.info("Probes export: furnished %d generic kernels", n_generic)
-    probes = _enumerate_probes()
-    logger.info("Probes export: %d spacecraft to process", len(probes))
-
-    # zone_key → chunk_idx → list[(probe_id, first_subchunk_offset, [SubChunkFit])]
-    by_zone_chunk: dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]] = (
-        defaultdict(lambda: defaultdict(list))
+    plans: list[_ProbePlan] = []
+    chunk_index: dict[str, dict[int, list[_ProbePlan]]] = defaultdict(
+        lambda: defaultdict(list)
     )
 
-    try:
-        for i, (mdir, kernels, naif_id) in enumerate(probes, 1):
-            kpaths = [str(k) for k in kernels]
-            for k in kernels:
-                spiceypy.furnsh(str(k))
-            try:
-                landed, body = is_landed_probe(naif_id, kpaths)
-                if landed:
-                    logger.info(
-                        "[%d/%d] [skipped] %s naif=%d landed on body %s",
-                        i,
-                        len(probes),
-                        mdir.name,
-                        naif_id,
-                        body,
-                    )
-                    continue
-
-                # Pin probe_id (uses the on-disk cache; same as ingestor).
-                cov = _coverage(naif_id, kpaths)
-                if cov is None:
-                    logger.warning("no coverage for %s/%d", mdir.name, naif_id)
-                    continue
-                rec = assign(
-                    mission=mdir.name,
-                    naif_id=naif_id,
-                    inception_mjd=et_to_mjd(cov[0]),
-                    cache=probe_id_cache,
-                )
-                probe_id = rec.probe_id
-                if probe_id not in metas_by_probe_id:
-                    logger.warning(
-                        "no Object row for probe_id=%d (mission=%s naif=%d); "
-                        "run ingest first",
-                        probe_id,
-                        mdir.name,
-                        naif_id,
-                    )
-                    continue
-
-                intervals = classify_trace(naif_id, kpaths)
+    for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
+        kpaths = [str(k) for k in kernels]
+        for k in kernels:
+            spiceypy.furnsh(str(k))
+        try:
+            landed, body = is_landed_probe(naif_id, kpaths)
+            if landed:
                 logger.info(
-                    "[%d/%d] %s naif=%d probe_id=%d (%d zone intervals)",
+                    "[%d/%d] [skipped] %s naif=%d landed on body %s",
                     i,
-                    len(probes),
+                    len(probes_raw),
                     mdir.name,
                     naif_id,
-                    probe_id,
-                    len(intervals),
+                    body,
                 )
-                for iv in intervals:
-                    zone = ZONES_BY_KEY[iv.zone_key]
-                    sub_s = zone.kepler_subchunk_days * _S_PER_DAY
-                    for chunk_idx, c_start, c_end in _chunk_aligned_range(
-                        zone.chunk_years,
-                        zone.kepler_subchunk_days,
-                        iv.start_et,
-                        iv.end_et,
-                        start_jd,
-                    ):
-                        chunk_sizing = size_chunk(naif_id, zone, c_start, c_end)
-                        if not chunk_sizing.sub_chunks:
-                            continue
-                        chunk_start_et = (
-                            _jd_to_et(start_jd)
-                            + chunk_idx * zone.chunk_years * 365.25 * _S_PER_DAY
-                        )
-                        # Each chunk's first sub-chunk offset (relative to chunk
-                        # start, in subchunk_days units) lets the frontend
-                        # locate sub-chunk t-bounds without storing them.
-                        first_offset = int(
-                            round(
-                                (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
-                                / sub_s
-                            )
-                        )
-                        by_zone_chunk[iv.zone_key][chunk_idx].append(
-                            (probe_id, first_offset, list(chunk_sizing.sub_chunks))
-                        )
-            finally:
-                for k in kernels:
-                    spiceypy.unload(str(k))
-    finally:
-        spiceypy.kclear()
+                continue
+            cov = _coverage(naif_id, kpaths)
+            if cov is None:
+                logger.warning("no coverage for %s/%d", mdir.name, naif_id)
+                continue
+            rec = assign(
+                mission=mdir.name,
+                naif_id=naif_id,
+                inception_mjd=et_to_mjd(cov[0]),
+                cache=probe_id_cache,
+            )
+            probe_id = rec.probe_id
+            if probe_id not in metas_by_probe_id:
+                logger.warning(
+                    "no Object row for probe_id=%d (mission=%s naif=%d); "
+                    "run ingest first",
+                    probe_id,
+                    mdir.name,
+                    naif_id,
+                )
+                continue
+            intervals = classify_trace(naif_id, kpaths)
+            plan = _ProbePlan(probe_id=probe_id, naif_id=naif_id, kernels=kernels)
+            for iv in intervals:
+                zone = ZONES_BY_KEY[iv.zone_key]
+                for chunk_idx, c_start, c_end in _chunk_aligned_range(
+                    zone.chunk_years,
+                    zone.kepler_subchunk_days,
+                    iv.start_et,
+                    iv.end_et,
+                    start_jd,
+                ):
+                    plan.contributions.append(
+                        _ChunkContribution(iv.zone_key, chunk_idx, c_start, c_end)
+                    )
+                    chunk_index[iv.zone_key][chunk_idx].append(plan)
+            plans.append(plan)
+            logger.info(
+                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches)",
+                i,
+                len(probes_raw),
+                mdir.name,
+                naif_id,
+                probe_id,
+                len(intervals),
+                len(plan.contributions),
+            )
+        finally:
+            for k in kernels:
+                spiceypy.unload(str(k))
 
-    # Second pass: serialize each (zone, chunk_idx) into a .bin.gz file.
+    return plans, chunk_index
+
+
+def _decide_dirty(
+    chunk_index: dict[str, dict[int, list[_ProbePlan]]],
+    out_dir: Path,
+    download_dir: Path,
+) -> dict[str, dict[int, dict]]:
+    """For each planned chunk, compute its expected signature and compare
+    against the on-disk sidecar. Returns `dirty[zone][chunk_idx] = signature`
+    for chunks that need re-fitting."""
+    probes_dir = out_dir / "position" / "probes"
+    dirty: dict[str, dict[int, dict]] = defaultdict(dict)
+    for zone_key, chunks in chunk_index.items():
+        zone_obj = ZONES_BY_KEY[zone_key]
+        zone_out = probes_dir / zone_key
+        for chunk_idx, plan_list in chunks.items():
+            probes_for_sig = [(p.probe_id, p.kernels) for p in plan_list]
+            new_sig = sidecar.build_chunk_signature(
+                zone_obj, probes_for_sig, download_dir
+            )
+            binary_path = zone_out / f"{chunk_idx}.bin.gz"
+            sidecar_path = zone_out / f"{chunk_idx}.meta.json"
+            if binary_path.exists() and sidecar.matches(sidecar_path, new_sig):
+                continue
+            dirty[zone_key][chunk_idx] = new_sig
+    return dirty
+
+
+def _fit_pass(
+    plans: list[_ProbePlan],
+    dirty: dict[str, dict[int, dict]],
+    start_jd: float,
+) -> dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]]:
+    """Pass 2: re-furnish each probe that touches at least one dirty chunk,
+    run `size_chunk` for those (probe, chunk) pairs only.
+
+    Returns `by_zone_chunk[zone][chunk_idx] = [(probe_id, first_offset,
+    sub_chunks), …]`, packing-ready."""
+    by_zone_chunk: dict[
+        str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]
+    ] = defaultdict(lambda: defaultdict(list))
+
+    probes_with_dirty: list[_ProbePlan] = [
+        p
+        for p in plans
+        if any(c.chunk_idx in dirty.get(c.zone_key, {}) for c in p.contributions)
+    ]
+    n_dirty_total = sum(len(v) for v in dirty.values())
+    logger.info(
+        "Probes export: %d dirty chunks to re-fit across %d probes",
+        n_dirty_total,
+        len(probes_with_dirty),
+    )
+
+    for i, plan in enumerate(probes_with_dirty, 1):
+        for k in plan.kernels:
+            spiceypy.furnsh(str(k))
+        try:
+            n_fit = 0
+            for c in plan.contributions:
+                if c.chunk_idx not in dirty.get(c.zone_key, {}):
+                    continue
+                zone = ZONES_BY_KEY[c.zone_key]
+                sub_s = zone.kepler_subchunk_days * _S_PER_DAY
+                chunk_sizing = size_chunk(
+                    plan.naif_id, zone, c.c_start_et, c.c_end_et
+                )
+                if not chunk_sizing.sub_chunks:
+                    continue
+                chunk_start_et = (
+                    _jd_to_et(start_jd)
+                    + c.chunk_idx * zone.chunk_years * 365.25 * _S_PER_DAY
+                )
+                first_offset = int(
+                    round(
+                        (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
+                        / sub_s
+                    )
+                )
+                by_zone_chunk[c.zone_key][c.chunk_idx].append(
+                    (plan.probe_id, first_offset, list(chunk_sizing.sub_chunks))
+                )
+                n_fit += 1
+            logger.info(
+                "[%d/%d] fit probe_id=%d naif=%d → %d dirty (zone, chunk) entries",
+                i,
+                len(probes_with_dirty),
+                plan.probe_id,
+                plan.naif_id,
+                n_fit,
+            )
+        finally:
+            for k in plan.kernels:
+                spiceypy.unload(str(k))
+
+    return by_zone_chunk
+
+
+def _write_pass(
+    chunk_index: dict[str, dict[int, list[_ProbePlan]]],
+    dirty: dict[str, dict[int, dict]],
+    by_zone_chunk: dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]],
+    metas_by_probe_id: dict[int, _ProbeMeta],
+    out_dir: Path,
+    start_jd: float,
+    end_jd: float,
+) -> dict[str, dict]:
+    """Pass 3: serialize dirty chunks (binary + sidecar, atomic), and build
+    the manifest for every zone with at least one planned chunk."""
     probes_dir = out_dir / "position" / "probes"
     manifest: dict[str, dict] = {}
     for zone in ALL_ZONES:
-        zone_chunks = by_zone_chunk.get(zone.key)
-        if not zone_chunks:
+        zone_key = zone.key
+        all_chunks = chunk_index.get(zone_key)
+        if not all_chunks:
             continue
-        zone_out = probes_dir / zone.key
+        zone_out = probes_dir / zone_key
         zone_out.mkdir(parents=True, exist_ok=True)
 
+        n_emit = 0
+        n_skip = 0
         total_bytes = 0
-        n_chunks = 0
-        for chunk_idx, probe_records in sorted(zone_chunks.items()):
-            # Deterministic body order: ascending probe_id.
-            probe_records.sort(key=lambda r: r[0])
+        for chunk_idx in sorted(all_chunks):
+            binary_path = zone_out / f"{chunk_idx}.bin.gz"
+            sidecar_path = zone_out / f"{chunk_idx}.meta.json"
 
+            if chunk_idx not in dirty.get(zone_key, {}):
+                n_skip += 1
+                if binary_path.exists():
+                    total_bytes += binary_path.stat().st_size
+                continue
+
+            probe_records = by_zone_chunk.get(zone_key, {}).get(chunk_idx, [])
+            if not probe_records:
+                logger.warning(
+                    "probes/%s/%d: dirty but fit yielded zero probes; leaving "
+                    "any prior binary in place",
+                    zone_key,
+                    chunk_idx,
+                )
+                continue
+
+            probe_records.sort(key=lambda r: r[0])
             chunk_start_jd = start_jd + chunk_idx * zone.chunk_years * 365.25
             chunk_end_jd = chunk_start_jd + zone.chunk_years * 365.25
 
@@ -425,7 +543,6 @@ def write_probes(
                     subchunk_days=zone.kepler_subchunk_days,
                 )
             ]
-
             for probe_id, first_offset, sub_chunks in probe_records:
                 meta = metas_by_probe_id[probe_id]
                 buf.append(
@@ -439,30 +556,28 @@ def write_probes(
                 )
                 for sc in sub_chunks:
                     buf.append(_pack_subchunk(sc, zone))
+            compressed = gzip.compress(b"".join(buf))
+            sidecar.write_atomic(binary_path, compressed)
+            sidecar.write_sidecar(sidecar_path, dirty[zone_key][chunk_idx])
+            total_bytes += len(compressed)
+            n_emit += 1
 
-            data = b"".join(buf)
-            with gzip.open(zone_out / f"{chunk_idx}.bin.gz", "wb") as f:
-                f.write(data)
-            total_bytes += len(data)
-            n_chunks += 1
-
-        # Chunk count in manifest is the *total* expected chunks across the
-        # global time window — frontend computes chunk index from any JD via
-        # `floor((jd - start_jd) / chunk_years / 365.25)`. Same convention
-        # as chebyshev export.
         total_window_chunks = max(
             1, math.ceil((end_jd - start_jd) / (zone.chunk_years * 365.25))
         )
-        avg_kb = (total_bytes // n_chunks) // 1024 if n_chunks else 0
+        present = n_emit + n_skip
+        avg_kb = (total_bytes // present) // 1024 if present else 0
         logger.info(
-            "  probes/%s: %d emitted chunks (of %d window), avg %d KB/chunk, %.1f MB",
-            zone.key,
-            n_chunks,
+            "  probes/%s: %d re-fit + %d cached chunks (of %d window), "
+            "avg %d KB/chunk, %.1f MB total",
+            zone_key,
+            n_emit,
+            n_skip,
             total_window_chunks,
             avg_kb,
             total_bytes / 1024 / 1024,
         )
-        manifest[f"probes/{zone.key}"] = {
+        manifest[f"probes/{zone_key}"] = {
             "chunks": total_window_chunks,
             "chunk_years": zone.chunk_years,
             "start_jd": start_jd,
@@ -472,3 +587,55 @@ def write_probes(
         }
 
     return manifest
+
+
+def write_probes(
+    session: Session,
+    download_dir: Path,
+    out_dir: Path,
+    has_localized: dict[str, bool],
+) -> dict[str, dict]:
+    """Build per-zone, per-chunk binary files for every probe on disk.
+
+    Three-pass incremental export:
+      1. Classify each probe (furnish + spkezr) to know which chunks it
+         touches. No fitting yet.
+      2. Compare planned-chunk signatures against on-disk sidecars; only
+         "dirty" chunks proceed.
+      3. Re-furnish each probe that touches a dirty chunk and run the
+         expensive `size_chunk` fits only on those (probe, chunk) pairs.
+      4. Pack + atomic-write binary + sidecar per dirty chunk.
+
+    Returns `{zone_key_with_prefix: {chunks, chunk_years, start_jd, end_jd}}`
+    so `_build_position_metadata` can fold it into the manifest.
+    """
+    if not MISSIONS_DIR.exists():
+        logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)
+        return {}
+
+    probe_id_cache = _load_probe_id_cache()
+    metas_by_probe_id = _build_probe_metas(session, has_localized)
+    start_jd = _year_to_jd(_PROBE_EXPORT_START_YEAR)
+    end_jd = _year_to_jd(_PROBE_EXPORT_END_YEAR)
+
+    n_generic = _furnish_generic_kernels(download_dir / PROVIDERS.SPICE / "kernels")
+    logger.info("Probes export: furnished %d generic kernels", n_generic)
+
+    try:
+        plans, chunk_index = _classify_pass(
+            probe_id_cache, metas_by_probe_id, start_jd
+        )
+        dirty = _decide_dirty(chunk_index, out_dir, download_dir)
+        by_zone_chunk = _fit_pass(plans, dirty, start_jd)
+    finally:
+        spiceypy.kclear()
+
+    return _write_pass(
+        chunk_index,
+        dirty,
+        by_zone_chunk,
+        metas_by_probe_id,
+        out_dir,
+        start_jd,
+        end_jd,
+    )
