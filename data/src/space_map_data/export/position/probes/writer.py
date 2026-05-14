@@ -46,7 +46,7 @@ from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
 )
-from space_map_data.probes.sizing import (
+from space_map_data.export.position.probes.sizing import (
     METHOD_CHEBYSHEV as SZ_METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT as SZ_METHOD_KEPLER_DRIFT,
     METHOD_KEPLER_PURE as SZ_METHOD_KEPLER_PURE,
@@ -135,34 +135,61 @@ class _ProbeMeta:
 
 
 def _chunk_aligned_range(
-    chunk_years: float, t_start_et: float, t_end_et: float, start_jd_anchor: float
+    chunk_years: float,
+    subchunk_days: float,
+    t_start_et: float,
+    t_end_et: float,
+    start_jd_anchor: float,
 ) -> list[tuple[int, float, float]]:
     """Return `[(chunk_idx, sub_t_start_et, sub_t_end_et), ...]` covering
-    `[t_start_et, t_end_et]` on the global chunk grid anchored at
-    `start_jd_anchor`. Chunk indices are computed in JD space so they match
-    the manifest's chunk index for any (zone, jd) lookup."""
+    `[t_start_et, t_end_et]`, where the returned `(s, e)` snap to the
+    SUB-CHUNK grid anchored at `chunk_start_et`.
+
+    Snapping matters: the binary's `first_subchunk_offset` is an integer
+    sub-chunk index, so sub-chunk boundaries must land on
+    `chunk_start_et + k * sub_s` exactly. Without the snap the fits would
+    happen on interval-aligned windows but the binary would record them on
+    chunk-aligned indices, drifting up to half a sub_s — millions of km of
+    phase error on cruise probes.
+
+    Loses up to one sub_s per interval boundary (coverage trailing past
+    the last grid point gets dropped), which is at most a few days even
+    for interplanetary (7-day sub-chunks).
+    """
     chunk_s = chunk_years * 365.25 * _S_PER_DAY
+    sub_s = subchunk_days * _S_PER_DAY
     start_et_anchor = _jd_to_et(start_jd_anchor)
     first_idx = int(math.floor((t_start_et - start_et_anchor) / chunk_s))
     last_idx = int(math.ceil((t_end_et - start_et_anchor) / chunk_s))
+    subs_per_chunk = int(chunk_s / sub_s)
     out: list[tuple[int, float, float]] = []
     for idx in range(first_idx, last_idx):
         cs = start_et_anchor + idx * chunk_s
-        ce = cs + chunk_s
-        s = max(cs, t_start_et)
-        e = min(ce, t_end_et)
-        if e > s:
-            out.append((idx, s, e))
+        s_offset = max(0, int(math.ceil((t_start_et - cs) / sub_s)))
+        e_offset = min(subs_per_chunk, int(math.floor((t_end_et - cs) / sub_s)))
+        if s_offset >= e_offset:
+            continue
+        s = cs + s_offset * sub_s
+        e = cs + e_offset * sub_s
+        out.append((idx, s, e))
     return out
 
 
-def _pack_kepler_payload(elts: dict, method: str, float64: bool) -> bytes:
-    """Pack Kepler elements as float32/float64. Pure = 6 values, drift = 9.
+def _pack_kepler_payload(
+    elts: dict, method: str, float64: bool, sub_t_start_et: float
+) -> bytes:
+    """Pack Kepler elements + anchor offset. Pure = 7 values, drift = 10.
 
     Field order MUST match the frontend parser:
-      pure : a_km, e, i_rad, om0, w0, m0
-      drift: a_km, e, i_rad, om0, w0, m0, om_dot, w_dot, n_mean_rad_s
+      pure : a_km, e, i_rad, om0, w0, m0, t_anchor_offset_s
+      drift: a_km, e, i_rad, om0, w0, m0, om_dot, w_dot, n_mean_rad_s, t_anchor_offset_s
+
+    `t_anchor_offset_s = t_snap_et - sub_t_start_et` lets the consumer
+    reconstruct the snapshot epoch (which is *not* the sub-chunk start —
+    the fitter anchors at the closest valid sample to the sub-chunk
+    midpoint, drifting by up to ~half a fit-window from the start).
     """
+    t_anchor_offset_s = elts["t_mid"] - sub_t_start_et
     base = [
         elts["a_km"],
         elts["e"],
@@ -173,6 +200,7 @@ def _pack_kepler_payload(elts: dict, method: str, float64: bool) -> bytes:
     ]
     if method == SZ_METHOD_KEPLER_DRIFT:
         base.extend([elts["om_dot"], elts["w_dot"], elts["n_mean_rad_s"]])
+    base.append(t_anchor_offset_s)
     dtype = np.float64 if float64 else np.float32
     return np.asarray(base, dtype=dtype).tobytes()
 
@@ -193,7 +221,9 @@ def _pack_subchunk(fit: SubChunkFit, zone: Zone) -> bytes:
     ordinal = _METHOD_ORDINAL[fit.method]
     if fit.method in (SZ_METHOD_KEPLER_PURE, SZ_METHOD_KEPLER_DRIFT):
         assert fit.kepler_elts is not None  # invariant: kepler methods set this
-        payload = _pack_kepler_payload(fit.kepler_elts, fit.method, zone.float64_coeffs)
+        payload = _pack_kepler_payload(
+            fit.kepler_elts, fit.method, zone.float64_coeffs, fit.t_start_et
+        )
     elif fit.method == SZ_METHOD_CHEBYSHEV:
         assert fit.chebyshev_coeffs is not None  # invariant: chebyshev sets coeffs
         payload = _pack_chebyshev_payload(fit.chebyshev_coeffs, zone.float64_coeffs)
@@ -337,7 +367,11 @@ def write_probes(
                     zone = ZONES_BY_KEY[iv.zone_key]
                     sub_s = zone.kepler_subchunk_days * _S_PER_DAY
                     for chunk_idx, c_start, c_end in _chunk_aligned_range(
-                        zone.chunk_years, iv.start_et, iv.end_et, start_jd
+                        zone.chunk_years,
+                        zone.kepler_subchunk_days,
+                        iv.start_et,
+                        iv.end_et,
+                        start_jd,
                     ):
                         chunk_sizing = size_chunk(naif_id, zone, c_start, c_end)
                         if not chunk_sizing.sub_chunks:

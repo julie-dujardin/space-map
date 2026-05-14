@@ -55,12 +55,20 @@ def _chebyshev_bytes_per_segment(float64_coeffs: bool) -> int:
 def _kepler_bytes(method: str, float64_coeffs: bool) -> int:
     """Per-sub-chunk Kepler payload size.
 
-    Pure = 6 elements (a, e, i, Ω₀, ω₀, M₀). Drift adds Ω̇/ω̇/Ṁ → 9 total.
+    Pure = 6 elements (a, e, i, Ω₀, ω₀, M₀) + 1 anchor offset = 7 floats.
+    Drift adds Ω̇/ω̇/Ṁ → 10 total.
+
+    Anchor offset is `t_snap_et - sub_t_start_et` (seconds): the time the
+    snapshot elements were taken at, relative to the sub-chunk's start.
+    Without it the frontend can't tell where the snapshot anchor was, and
+    `conics` propagates from the wrong epoch — which costs millions of km
+    on heliocentric cruise probes.
+
     Mean motion `n` isn't stored: pure mode propagates M via mu in `conics`;
     drift mode bakes any J2 correction into the fitted Ṁ.
     """
     coeff_bytes = 8 if float64_coeffs else 4
-    n_elements = 9 if method == METHOD_KEPLER_DRIFT else 6
+    n_elements = 10 if method == METHOD_KEPLER_DRIFT else 7
     return n_elements * coeff_bytes
 
 
@@ -91,10 +99,6 @@ class SubChunkFit:
     kepler_elts: dict | None = None  # for kepler_pure / kepler_drift
     chebyshev_intlen_s: float | None = None  # uniform sub-segment length
     chebyshev_coeffs: np.ndarray | None = None  # (n_seg, 3, degree+1)
-
-
-# Back-compat alias — existing tests and scripts import SubChunkSizing.
-SubChunkSizing = SubChunkFit
 
 
 @dataclass(frozen=True)
@@ -308,9 +312,15 @@ def _fit_chebyshev_subchunk(
         np.cos(np.pi * k / CHEBYSHEV_DEGREE) if CHEBYSHEV_DEGREE > 0 else np.zeros(1)
     )
 
+    # Uniformly divide the sub-chunk so segments are equal-width. The binary
+    # format doesn't store per-segment bounds — frontend recovers them via
+    # `seg_dt = sub_chunk_duration / n_segments`. If we kept variable-width
+    # segments (last one clipped to `t_end`), the implicit reconstruction
+    # would land on the wrong window and τ evaluates the wrong polynomial.
     n_segments = _chebyshev_sub_interval_count(intlen_s, t_end - t_start)
-    seg_starts = t_start + np.arange(n_segments) * intlen_s
-    seg_ends = np.minimum(seg_starts + intlen_s, t_end)
+    seg_dt = (t_end - t_start) / n_segments
+    seg_starts = t_start + np.arange(n_segments) * seg_dt
+    seg_ends = seg_starts + seg_dt
 
     coeffs = np.zeros((n_segments, 3, n_nodes), dtype=np.float64)
     for seg_idx in range(n_segments):
@@ -476,10 +486,6 @@ def _fit_sub_chunk(
         chebyshev_intlen_s=intlen_d * _S_PER_DAY,
         chebyshev_coeffs=coeffs,
     )
-
-
-# Backwards-compat name for the sizing script.
-_size_sub_chunk = _fit_sub_chunk
 
 
 def size_chunk(
