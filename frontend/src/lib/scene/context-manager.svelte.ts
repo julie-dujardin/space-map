@@ -14,10 +14,13 @@ import {
 	isChunkIndexed,
 	isDateSegmented,
 	isParted,
+	isProbeZone,
+	probeZoneParams,
 	snapshotDate
 } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
+import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 
 /*
@@ -334,6 +337,13 @@ export class ContextManager {
 	 * ships no chebyshev block.
 	 */
 	chebStore: ChebyshevStore | null = null;
+	/**
+	 * Per-zone probe sub-chunks (Kepler-pure / Kepler-drift / Chebyshev). Null
+	 * until metadata resolves; stays null when the export ships no probe
+	 * zones. The renderer's per-frame update path consults it for any body
+	 * whose `orbitalSource === SPICE_PROBE`.
+	 */
+	probeStore: ProbeStore | null = null;
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */
 	dirtyAsteroidZones = new Set<string>();
@@ -419,7 +429,9 @@ export class ContextManager {
 			// it warms `[idx-1, idx, idx+1]` at construction. The flat-zone case
 			// (no chunk index) is handled here as a one-shot HTTP warm.
 			metadataPromise.then((metadata) => {
-				const moonsZoom = metadata.position.zones.moons?.zooms[0];
+				const moons = metadata.position.zones.moons;
+				if (!moons || isProbeZone(moons)) return;
+				const moonsZoom = moons.zooms[0];
 				if (moonsZoom && isParted(moonsZoom)) {
 					ChunkLoader.prefetch('moons', 0, 0, null);
 				}
@@ -435,6 +447,13 @@ export class ContextManager {
 				}[] = [];
 				for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 					if (zone === 'major' || zone === 'moons') continue;
+					// `spacecraft` was the legacy Sun-orbiter Kepler-fallback zone.
+					// Its objects now ship through the probes export (mixed
+					// Kepler-with-drift + Chebyshev sub-chunks); skip the zone
+					// here even if a stale manifest still lists it.
+					if (zone === 'spacecraft') continue;
+					// Probe zones load through ProbeStore, not the elements ChunkLoader.
+					if (isProbeZone(zoneData)) continue;
 					const parentIdType = zoneData.parent_id_type ?? 'naif';
 					for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 						const zoom = Number(zoomStr);
@@ -466,8 +485,38 @@ export class ContextManager {
 				await store.ensure(jd).done;
 				return store;
 			});
+			// Probes lag chebyshev — fit-center body positions must be in
+			// loader.positions before processProbes runs, and those come from
+			// the chebyshev pass below.
+			const probePromise = metadataPromise.then(async (metadata) => {
+				const params = probeZoneParams(metadata);
+				if (params.size === 0) return null;
+				console.log(
+					`ProbeStore: ${params.size} zone(s) from metadata:\n` +
+						Array.from(params)
+							.map(
+								([zone, p]) =>
+									`  ${zone}: chunks=${p.chunks} chunk_years=${p.chunk_years} ` +
+									`fit_center=naif-${p.fit_center_naif_id} float64=${p.float64_coeffs}`
+							)
+							.join('\n')
+				);
+				const missingCenter = Array.from(params).filter(
+					([, p]) => p.fit_center_naif_id === undefined
+				);
+				if (missingCenter.length > 0) {
+					console.warn(
+						`ProbeStore: ${missingCenter.length} zone(s) missing fit_center_naif_id in metadata ` +
+							`— re-export to refresh: ${missingCenter.map(([z]) => z).join(', ')}`
+					);
+				}
+				const store = new ProbeStore(params);
+				await store.ensure(jd).done;
+				return store;
+			});
 			const metadata = await metadataPromise;
 			this.chebStore = await chebPromise;
+			this.probeStore = await probePromise;
 			const loader = new ChunkLoader(this.chebStore);
 
 			// Phase 1: majors — load, register, and start rendering immediately.
@@ -489,19 +538,28 @@ export class ContextManager {
 			// Zoom 0 is reserved for chebyshev — kepler fallbacks live at
 			// higher zooms so the per-zoom shape stays single-payload.
 			const major: PositionedBody[] = [];
+			let cachedLabels: Awaited<ReturnType<typeof fetchLabels>> | null = null;
 			if (this.chebStore) {
-				const labels = await fetchLabels();
-				major.push(...loader.processChebyshev(date, labels));
+				cachedLabels = await fetchLabels();
+				major.push(...loader.processChebyshev(date, cachedLabels));
 			}
-			for (const zoom of [1, 2] as const) {
-				const zoomData = metadata.position.zones.major?.zooms[String(zoom)];
-				if (zoomData && isParted(zoomData)) {
-					for (let p = 0; p < zoomData.parts; p++) {
-						major.push(...(await loader.process('major', zoom, p, date)));
+			if (this.probeStore) {
+				cachedLabels ??= await fetchLabels();
+				major.push(...loader.processProbes(this.probeStore, date, cachedLabels));
+			}
+			const majorZone = metadata.position.zones.major;
+			if (majorZone && !isProbeZone(majorZone)) {
+				for (const zoom of [1, 2] as const) {
+					const zoomData = majorZone.zooms[String(zoom)];
+					if (zoomData && isParted(zoomData)) {
+						for (let p = 0; p < zoomData.parts; p++) {
+							major.push(...(await loader.process('major', zoom, p, date)));
+						}
 					}
 				}
 			}
-			const moonsZoom = metadata.position.zones.moons?.zooms[0];
+			const moonsZone = metadata.position.zones.moons;
+			const moonsZoom = moonsZone && !isProbeZone(moonsZone) ? moonsZone.zooms[0] : undefined;
 			const moonsTime =
 				moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
 			if (moonsZoom) {
@@ -842,6 +900,13 @@ export class ContextManager {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
 			return VISIBILITY.FULL;
 		}
+
+		// Probes carry a=0 by design — their positions come from the per-sub-chunk
+		// methods (kepler_pure/drift/chebyshev), not an osculating ellipse. The
+		// visibility heuristic below needs a meaningful refA, so skip it for
+		// probes and let the camera-distance dispatch in the spacecraft branch
+		// of the renderer handle them.
+		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) return VISIBILITY.FULL;
 
 		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
 		let refA = body.data.a;

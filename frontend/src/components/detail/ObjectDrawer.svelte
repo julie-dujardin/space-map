@@ -11,6 +11,7 @@
 	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import type { PositionedBody } from '$lib/types/objects';
+	import { OrbitalSource } from '$lib/fetch/position/format';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
@@ -27,6 +28,10 @@
 	import ObjectLinks from './ObjectLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
+	// Module-scope dedupe so the "no name resolved" warning fires at most once
+	// per body across the session — survives drawer remounts and effect re-runs.
+	const nameMissingLogged = new Set<string>();
+
 	interface Props {
 		body: PositionedBody;
 		clock: SimClock;
@@ -41,6 +46,15 @@
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
 	let parentBody = $derived(ctx?.getBody(body.data.parentId));
+
+	// Probes carry a=e=i=…=0 in body.data (no osculating elements — their
+	// positions come from per-sub-chunk dispatch). Feeding those zeros to the
+	// Orbital panel triggers a per-frame non-finite-elements warning, so leave
+	// orbitElements undefined for probes; the panel hides the affected rows.
+	let drawerOrbitElements = $derived(
+		body.orbitElements ??
+			(body.data.orbitalSource === OrbitalSource.SPICE_PROBE ? undefined : body.data)
+	);
 
 	// Sample sim time at 2 Hz so speed/altitude in the description update
 	// smoothly without re-deriving on every animation frame.
@@ -140,11 +154,13 @@
 
 	// Once the detail bundle resolves, push the now-known name into the URL
 	// (and via that, the page title). On permanent failure — bundle resolved
-	// without any name — log once and fall back to the id, so the user sees
-	// *something* identifiable instead of an empty drawer header.
+	// without any name — log once per body and fall back to the id, so the user
+	// sees *something* identifiable instead of an empty drawer header (and the
+	// console isn't spammed by repeated effect re-runs for the same body).
 	$effect(() => {
 		if (loading) return;
-		if (!resolvedName) {
+		if (!resolvedName && !nameMissingLogged.has(body.data.id)) {
+			nameMissingLogged.add(body.data.id);
 			console.warn(
 				`No name resolved for ${body.data.id} after detail fetch; using id as fallback.`
 			);
@@ -244,7 +260,7 @@
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
 				{body}
-				orbitElements={body.orbitElements ?? body.data}
+				orbitElements={drawerOrbitElements}
 				{parentBody}
 				jd={sampledJd}
 			/>

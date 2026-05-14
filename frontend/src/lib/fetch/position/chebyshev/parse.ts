@@ -3,11 +3,14 @@
  *
  * One body per record; each body holds segment-wise Chebyshev coefficients for
  * ECLIPJ2000 parent-relative position in km. Segment starts/ends are float64
- * (JD precision), coefficients are float32.
+ * (JD precision); coefficients are float32 by default, float64 when the file
+ * header's `CHEBYSHEV_FLAG_FLOAT64_COEFFS` bit is set (Sun-orbiter zones where
+ * the body's distance from its parent exceeds float32's resolution budget).
  */
 
 import {
 	CHEBYSHEV_BODY_HEADER_SIZE,
+	CHEBYSHEV_FLAG_FLOAT64_COEFFS,
 	HEADER_SIZE,
 	IdType,
 	buildObjectId
@@ -42,9 +45,11 @@ export interface ChebyshevBody {
 	/**
 	 * Flat coefficient store, laid out per segment as
 	 * `[cx_0..cx_{N-1}, cy_0..cy_{N-1}, cz_0..cz_{N-1}]` with `N = coeffsPerAxis`.
-	 * Length = `segmentCount * 3 * coeffsPerAxis`.
+	 * Length = `segmentCount * 3 * coeffsPerAxis`. Concrete type is
+	 * `Float32Array` for most zones, `Float64Array` for Sun-orbiter zones —
+	 * propagation reads it through indexed access so either dtype works.
 	 */
-	coeffs: Float32Array;
+	coeffs: Float32Array | Float64Array;
 }
 
 export interface ChebyshevChunk {
@@ -66,6 +71,8 @@ export function parseChebyshevPayload(
 ): ChebyshevChunk {
 	const view = new DataView(buffer);
 	const bodyCount = view.getUint32(24, true);
+	const float64Coeffs = (view.getUint8(28) & CHEBYSHEV_FLAG_FLOAT64_COEFFS) !== 0;
+	const coeffBytes = float64Coeffs ? 8 : 4;
 
 	const bodies: ChebyshevBody[] = [];
 	let offset = HEADER_SIZE;
@@ -93,17 +100,26 @@ export function parseChebyshevPayload(
 		const startJds = new Float64Array(segmentCount);
 		const endJds = new Float64Array(segmentCount);
 		const coeffsPerSeg = 3 * coeffsPerAxis;
-		const coeffs = new Float32Array(coeffsPerSeg * segmentCount);
-		const segCoeffBytes = coeffsPerSeg * 4;
+		const coeffs: Float32Array | Float64Array = float64Coeffs
+			? new Float64Array(coeffsPerSeg * segmentCount)
+			: new Float32Array(coeffsPerSeg * segmentCount);
+		const segCoeffBytes = coeffsPerSeg * coeffBytes;
 
 		for (let s = 0; s < segmentCount; s++) {
 			startJds[s] = view.getFloat64(offset, true);
 			endJds[s] = view.getFloat64(offset + 8, true);
 			offset += 16;
-			// offset is 4-byte aligned (16 + 12*N is a multiple of 4), so a
-			// Float32Array view is valid.
-			const segCoeffs = new Float32Array(buffer, offset, coeffsPerSeg);
-			coeffs.set(segCoeffs, s * coeffsPerSeg);
+			// Typed-array view needs `offset` aligned to its element size.
+			// f32: stride 16 + 12·N is 4-aligned. f64: stride 16 + 24·N is
+			// 8-aligned, and the 24-byte body header preserves it across body
+			// boundaries.
+			if (float64Coeffs) {
+				const segCoeffs = new Float64Array(buffer, offset, coeffsPerSeg);
+				(coeffs as Float64Array).set(segCoeffs, s * coeffsPerSeg);
+			} else {
+				const segCoeffs = new Float32Array(buffer, offset, coeffsPerSeg);
+				(coeffs as Float32Array).set(segCoeffs, s * coeffsPerSeg);
+			}
 			offset += segCoeffBytes;
 		}
 

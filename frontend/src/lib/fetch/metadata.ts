@@ -5,6 +5,7 @@
  */
 
 import type { ChebyshevZoneParams } from './position/chebyshev/store';
+import type { ProbeZoneParams } from './position/probes/store';
 import { DATA_BASE } from './data-base';
 
 /**
@@ -57,6 +58,23 @@ export interface ChebyshevZoom {
 	end_jd: number;
 }
 
+/** Probe zones — `chunked` shape but emitted directly at zone level (no
+ *  `zooms` wrapper) so the URL is `position/{zone}/{chunk}.bin.gz`. */
+export interface ProbeZoneMetadata {
+	shape: 'chunked';
+	chunks: number;
+	chunk_years: number;
+	start_jd: number;
+	end_jd: number;
+	subchunk_days: number;
+	float64_coeffs: boolean;
+	/** NAIF ID of the body each probe's position is relative to (10=Sun for
+	 *  interplanetary, 199=Mercury for probes/mercury, …). The frontend looks
+	 *  up the body's world position and GM via this id. */
+	fit_center_naif_id: number;
+	parent_id_type?: string;
+}
+
 /** Per-zoom metadata. Tagged union dispatched on the `shape` field. */
 export type ZoomMetadata = PartedZoom | DateSegmentedZoom | ChunkIndexedZoom | ChebyshevZoom;
 
@@ -95,6 +113,15 @@ export interface ZoneMetadata {
 	parent_id_type?: string;
 }
 
+/** Probe zone entries in `metadata.position.zones` are flat (no `zooms`
+ *  wrapper) — they carry the chunked-shape fields directly. Detect with
+ *  `'shape' in entry` since regular entries have a `zooms` key instead. */
+export type ZoneOrProbeMetadata = ZoneMetadata | ProbeZoneMetadata;
+
+export function isProbeZone(entry: ZoneOrProbeMetadata): entry is ProbeZoneMetadata {
+	return (entry as ProbeZoneMetadata).shape === 'chunked';
+}
+
 /**
  * Clamp `date` into the segmented zoom's date range and return the ISO
  * `YYYY-MM-DD` snapshot string for the URL builder. Snapshots are exported
@@ -109,7 +136,7 @@ export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 }
 
 export interface PositionMetadata {
-	zones: Record<string, ZoneMetadata>;
+	zones: Record<string, ZoneOrProbeMetadata>;
 }
 
 export interface Metadata {
@@ -137,6 +164,7 @@ export function fetchMetadata(): Promise<Metadata> {
 export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZoneParams> {
 	const out = new Map<string, ChebyshevZoneParams>();
 	for (const [zone, zoneData] of Object.entries(meta.position.zones)) {
+		if (isProbeZone(zoneData)) continue;
 		const zoom0 = zoneData.zooms['0'];
 		if (!zoom0 || zoom0.shape !== 'chunked') continue;
 		out.set(zone, {
@@ -144,6 +172,27 @@ export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZonePa
 			chunk_years: zoom0.chunk_years,
 			start_jd: zoom0.start_jd,
 			end_jd: zoom0.end_jd
+		});
+	}
+	return out;
+}
+
+/**
+ * Probe zones (`probes/*`) — flat manifest entries the `ProbeStore` consumes.
+ * Returns an empty map when no probe zones exist; callers gate construction
+ * on `size > 0`.
+ */
+export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
+	const out = new Map<string, ProbeZoneParams>();
+	for (const [zone, zoneData] of Object.entries(meta.position.zones)) {
+		if (!isProbeZone(zoneData)) continue;
+		out.set(zone, {
+			chunks: zoneData.chunks,
+			chunk_years: zoneData.chunk_years,
+			start_jd: zoneData.start_jd,
+			end_jd: zoneData.end_jd,
+			float64_coeffs: zoneData.float64_coeffs,
+			fit_center_naif_id: zoneData.fit_center_naif_id
 		});
 	}
 	return out;

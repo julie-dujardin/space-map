@@ -3,6 +3,7 @@ import { parseChebyshevPayload } from './parse';
 import { chebyshevPositionKm } from './propagate';
 import {
 	CHEBYSHEV_BODY_HEADER_SIZE,
+	CHEBYSHEV_FLAG_FLOAT64_COEFFS,
 	FORMAT_CHEBYSHEV,
 	HEADER_SIZE,
 	IdType,
@@ -30,15 +31,24 @@ interface BodySpec {
 
 /**
  * Build a chebyshev-payload position file. The 32-byte unified header is
- * common(24) + chebyshev extension(8 = body_count + reserved); each body
- * record uses the v7 layout where segment_count shrank to uint16 to make
- * room for object_type and a reserved byte.
+ * common(24) + chebyshev extension(8 = body_count + flags byte + 3 reserved);
+ * each body record uses the v7 layout where segment_count shrank to uint16 to
+ * make room for object_type and a reserved byte. Pass `flags` to set the
+ * extension flags byte (e.g. `CHEBYSHEV_FLAG_FLOAT64_COEFFS` to write f64
+ * coefficients instead of the default f32).
  */
-function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): ArrayBuffer {
+function buildBuffer(
+	chunkStart: number,
+	chunkEnd: number,
+	bodies: BodySpec[],
+	flags = 0
+): ArrayBuffer {
+	const float64Coeffs = (flags & CHEBYSHEV_FLAG_FLOAT64_COEFFS) !== 0;
+	const coeffBytes = float64Coeffs ? 8 : 4;
 	let size = HEADER_SIZE;
 	for (const b of bodies) {
 		size += CHEBYSHEV_BODY_HEADER_SIZE;
-		size += b.segments.length * (16 + 12 * b.coeffsPerAxis);
+		size += b.segments.length * (16 + 3 * coeffBytes * b.coeffsPerAxis);
 	}
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -49,7 +59,13 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 	view.setFloat64(8, chunkStart, true);
 	view.setFloat64(16, chunkEnd, true);
 	view.setUint32(24, bodies.length, true); // body_count
-	view.setUint32(28, 0, true); // reserved
+	view.setUint8(28, flags); // flags byte
+	view.setUint8(29, 0); // reserved
+	view.setUint16(30, 0, true); // reserved
+
+	const writeCoeff = float64Coeffs
+		? (off: number, v: number) => view.setFloat64(off, v, true)
+		: (off: number, v: number) => view.setFloat32(off, v, true);
 
 	let off = HEADER_SIZE;
 	for (const b of bodies) {
@@ -68,12 +84,12 @@ function buildBuffer(chunkStart: number, chunkEnd: number, bodies: BodySpec[]): 
 			view.setFloat64(off, seg.startJd, true);
 			view.setFloat64(off + 8, seg.endJd, true);
 			off += 16;
-			for (let i = 0; i < b.coeffsPerAxis; i++) view.setFloat32(off + i * 4, seg.cx[i], true);
-			off += 4 * b.coeffsPerAxis;
-			for (let i = 0; i < b.coeffsPerAxis; i++) view.setFloat32(off + i * 4, seg.cy[i], true);
-			off += 4 * b.coeffsPerAxis;
-			for (let i = 0; i < b.coeffsPerAxis; i++) view.setFloat32(off + i * 4, seg.cz[i], true);
-			off += 4 * b.coeffsPerAxis;
+			for (let i = 0; i < b.coeffsPerAxis; i++) writeCoeff(off + i * coeffBytes, seg.cx[i]);
+			off += coeffBytes * b.coeffsPerAxis;
+			for (let i = 0; i < b.coeffsPerAxis; i++) writeCoeff(off + i * coeffBytes, seg.cy[i]);
+			off += coeffBytes * b.coeffsPerAxis;
+			for (let i = 0; i < b.coeffsPerAxis; i++) writeCoeff(off + i * coeffBytes, seg.cz[i]);
+			off += coeffBytes * b.coeffsPerAxis;
 		}
 	}
 	return buf;
@@ -176,6 +192,31 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		expect(b2.coeffsPerAxis).toBe(4);
 		expect(b2.radiusKm).toBeCloseTo(100.0, 5);
 		expect(b2.coeffs).toEqual(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]));
+	});
+
+	it('decodes float64 coefficients when the file flag is set', () => {
+		// Coefficient values past float32's 24-bit mantissa — they must round-trip
+		// exactly to prove we're reading them as f64.
+		const cx = [1.000000000000001, 2.000000000000002, 3.000000000000003];
+		const buf = buildBuffer(
+			0,
+			1,
+			[
+				{
+					naifId: 5,
+					parentId: 0,
+					objIdValue: 5,
+					idType: IdType.NAIF,
+					radiusKm: NaN,
+					coeffsPerAxis: 3,
+					segments: [{ startJd: 0, endJd: 1, cx, cy: [0, 0, 0], cz: [0, 0, 0] }]
+				}
+			],
+			CHEBYSHEV_FLAG_FLOAT64_COEFFS
+		);
+		const body = parse(buf).bodies[0];
+		expect(body.coeffs).toBeInstanceOf(Float64Array);
+		expect(Array.from(body.coeffs.slice(0, 3))).toEqual(cx);
 	});
 });
 

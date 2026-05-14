@@ -164,9 +164,16 @@ export function cullOverlappingLabels(
 			const span = labelHalo.nextElementSibling as HTMLElement | null;
 			if (span) bo.labelTextWidth = span.offsetWidth;
 		}
-		// Focus-relative position for projection (matches camera's coordinate space)
+		// Focus-relative position for projection (matches camera's coordinate space).
+		// label.position carries the silhouette offset (set in updateBodyVisibility)
+		// so this projects to where the label actually renders on screen.
 		const [bx, by, bz] = body.position;
-		_tmpProj.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
+		const lp = label.position;
+		_tmpProj.set(
+			bx - focusTruePos[0] + lp.x,
+			by - focusTruePos[1] + lp.y,
+			bz - focusTruePos[2] + lp.z
+		);
 		_tmpProj.project(camera);
 		if (_tmpProj.z > 1) continue;
 		const isFocused = body.data.id === focusedBodyId;

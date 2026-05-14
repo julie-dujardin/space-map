@@ -29,6 +29,8 @@ import { bodyNorthVector } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
+import { OrbitalSource } from '$lib/fetch/position/format';
+import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
@@ -143,6 +145,9 @@ export class SceneRenderer {
 	 *  re-entering before the fly completes removes the entry from this set. */
 	private pendingUnloadBaryIds = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
+	/** Per-probe id we've already logged a "position unavailable" warning for,
+	 *  so we surface the failure once instead of flooding the console at 60fps. */
+	private probeUnavailableLogged = new Set<string>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
@@ -773,6 +778,7 @@ export class SceneRenderer {
 		// which chebyshev-tracked bodies are hidden (outOfRange) exactly like
 		// SGP4 out-of-coverage bodies.
 		this.ctx.chebStore?.ensure(jd);
+		this.ctx.probeStore?.ensure(jd);
 
 		// Aggregate data-unavailability across bodies for a single summary toast —
 		// per-body toasts would be spammy at chunk boundaries. Grouping by data
@@ -815,7 +821,8 @@ export class SceneRenderer {
 			// branch below uses `positionScene` as the authoritative gate.
 			const bo = this.bodyObjects.get(d.id);
 			const isChebTracked = this.ctx.chebStore?.has(d.id) ?? false;
-			if (!isChebTracked && (jd < d.validityStart || jd > d.validityEnd)) {
+			const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
+			if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
 				if (bo) bo.outOfRange = true;
 				// SGP4 is the only source with a finite validity here (TLE epoch
 				// ± 14 days); Keplerian/parabolic elements use ±Infinity bounds
@@ -861,6 +868,32 @@ export class SceneRenderer {
 				x = parentPos[0] + chebOffset[0];
 				y = parentPos[1] + chebOffset[1];
 				z = parentPos[2] + chebOffset[2];
+			} else if (isProbe) {
+				// Probes dispatch per sub-chunk (kepler_pure / kepler_drift /
+				// chebyshev) inside the store. parentId is `naif-<fit_center>`;
+				// extract the numeric for the GM lookup. Missing GM = 0 disables
+				// Kepler-pure (skip the body for the frame) rather than rendering
+				// at a junk M.
+				const fitCenterNaifId = Number(d.parentId.slice(5));
+				const muKm3s2 = getGmKm3s2(fitCenterNaifId) ?? 0;
+				const probeOffset = this.ctx.probeStore?.positionScene(d.id, jd, muKm3s2) ?? null;
+				if (!probeOffset) {
+					if (bo) bo.outOfRange = true;
+					if (!this.probeUnavailableLogged.has(d.id)) {
+						this.probeUnavailableLogged.add(d.id);
+						const reason = !this.ctx.probeStore
+							? 'no ProbeStore'
+							: this.ctx.probeStore.probe(d.id, jd) === null
+								? 'no chunk loaded for this jd'
+								: 'sub-chunk evaluation returned null (uncoverable or jd outside sub-chunk windows)';
+						console.warn(`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ${reason}`);
+					}
+					return;
+				}
+				this.probeUnavailableLogged.delete(d.id);
+				x = parentPos[0] + probeOffset[0];
+				y = parentPos[1] + probeOffset[1];
+				z = parentPos[2] + probeOffset[2];
 			} else if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. a Kepler-only barycenter
 				// placeholder, if one ever appears).

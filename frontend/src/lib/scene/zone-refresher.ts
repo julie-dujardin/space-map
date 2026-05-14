@@ -43,6 +43,7 @@ import {
 	chunkIndexForJd,
 	isChunkIndexed,
 	isDateSegmented,
+	isProbeZone,
 	snapshotDate,
 	type ChunkIndexedZoom,
 	type DateSegmentedZoom,
@@ -107,6 +108,8 @@ export class ZoneRefresher {
 	) {
 		const initialJd = dateToJD(initialDate);
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
+			// Probe zones load through ProbeStore, not this refresher.
+			if (isProbeZone(zoneData)) continue;
 			for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 				const zoom = Number(zoomStr);
 				// Chebyshev zones (`shape: chunked`) are driven by the

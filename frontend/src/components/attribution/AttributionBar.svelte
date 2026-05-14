@@ -18,7 +18,8 @@
 		[OrbitalSource.SBDB]: m.provider_nasa,
 		[OrbitalSource.CELESTRAK]: m.provider_celestrak,
 		[OrbitalSource.SPICE]: m.provider_nasa,
-		[OrbitalSource.SBDB_MOON]: m.provider_nasa
+		[OrbitalSource.SBDB_MOON]: m.provider_nasa,
+		[OrbitalSource.SPICE_PROBE]: m.provider_nasa
 	};
 
 	const ORBIT_ORDER: OrbitalSource[] = [
@@ -26,6 +27,7 @@
 		OrbitalSource.SBDB,
 		OrbitalSource.SPICE,
 		OrbitalSource.SBDB_MOON,
+		OrbitalSource.SPICE_PROBE,
 		OrbitalSource.CELESTRAK
 	];
 
