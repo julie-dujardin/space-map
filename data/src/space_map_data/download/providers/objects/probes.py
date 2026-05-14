@@ -211,6 +211,12 @@ ESA_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "COMET-INTERCEPTOR",
         "ExoMarsRSP",
         "LPF",
+        # Aliases for missions already mirrored under their NAIF directory
+        # name. Skipping the ESA-hyphenated form avoids downloading the same
+        # SPK files twice and producing two probe_ids for one spacecraft.
+        "SMART-1",  # → NAIF SMART1
+        "ExoMars2016",  # → NAIF EXOMARS2016
+        "MARS-EXPRESS",  # → NAIF MEX
     }
 )
 

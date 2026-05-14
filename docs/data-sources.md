@@ -7,7 +7,8 @@
 | Artificial satellite | ✅ | Norad CAT ID | 20580 | P377 | Celestrak |
 |  | ❌ | Cospar ID | 1990-037B | P247 | Celestrak, horizons |
 |  | ❌ | NAIF | -48 | P2956 | horizons |
-| Probes | ✅ | NAIF | -254 | P2956 | horizons |
+| Probes | ✅ | Probe ID | 100265984 (MSL/Curiosity) | - | spice probes pipeline (derived from kernel coverage start + per-day dedupe) |
+|  | ❌ | NAIF | -254 | P2956 | horizons, spice — recycled across missions (e.g. -76 was Mariner 10 and is MSL today), so not safe as a primary key |
 |  | ❌ | Cospar ID | 2003-027A | P247 | horizons |
 |  | ❌ | (Norad CAT ID?) | | P377 | celestrak possibly for some entries? |
 | Natural body (planet/moon) | ✅ | NAIF | 399 | P2956 | horizons |
@@ -31,7 +32,8 @@
 |---|---|---|---|---|---|---|
 | Norad CAT ID | Artificial satellite, few Probes | 20580 | https://www.n2yo.com/satellite/?s=\<id\>, https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=\<id\> | | P377 | Celestrak |
 | Cospar ID | Artificial satellite, few Probes | 1990-037B, 2003-027A | https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=\<id\>: unavailable, https://www.n2yo.com/database/?q=\<id\> | | P247 | Celestrak, horizons |
-| NAIF | large bodies, small set of small bodies, Probes | 399, 20000001, -48, -254 | https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='\<id\>' | | P2956 | horizons (sbdb: computable from NAIF) |
+| NAIF | large bodies, small set of small bodies, Probes (non-unique — recycled) | 399, 20000001, -48, -254 | https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND='\<id\>' | For natural bodies: stable. For spacecraft: NAIF reuses negative integers as missions end (NAIF -76 = Mariner 10 in 1973, MSL today). For spacecraft we use a synthetic `probe_id` as the canonical key instead. | P2956 | horizons (sbdb: computable from NAIF) |
+| Probe ID | Probes | 100265984 | (synthetic, not externally addressable) | int32 packed as `((inception_mjd − MJD(1945-01-01)) << 12) \| (dedupe & 0xFFF)`. Inception is the start of the longest contiguous SPK coverage at first ingest, cached at `spice/probe_ids.json` keyed by `(mission, naif_id)` so it survives DB rebuilds. Resolves NAIF-recycling collisions by encoding the launch era; 12 bits of dedupe handle same-day multi-payload launches (GRAIL Ebb/Flow, InSight + MarCO-A + MarCO-B). | - | spice probes pipeline |
 | Provisional designation | large bodies | 2003J22 | | | P490 | horizons, sbdb |
 | SPK ID | Small bodies | 20000001 | https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=\<id\> | | P716 | sbdb (horizons: computed from NAIF) |
 | MPC designation | Small bodies | 1; 2024 FG9 | https://www.minorplanetcenter.net/db_search/show_object?object_id=\<id\> | | P5736 | sbdb |

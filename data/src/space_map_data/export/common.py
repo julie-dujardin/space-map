@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.credits import write_credits
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev, write_chunk
+from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.chebyshev.writer import _object_for_naif_id
 from space_map_data.export.position.elements.celestrak_source import (
     CelesTrakElements,
@@ -164,6 +165,7 @@ def _build_position_zoom(snaps: list["SnapshotResult"], zone: str, zoom: int) ->
 def _build_position_metadata(
     zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
     chebyshev_zones: Mapping[str, dict],
+    probe_zones: Mapping[str, dict] | None = None,
 ) -> dict:
     """Build the unified ``position.zones`` metadata block.
 
@@ -219,6 +221,25 @@ def _build_position_metadata(
             "end_jd": params["end_jd"],
         }
         zone_entry.setdefault("parent_id_type", "naif")
+    # Probe zones have no zoom levels — emit the shape fields directly at
+    # zone level (no `zooms` wrapper) so the URL is
+    # `position/{zone}/{chunk}.bin.gz` without an interpolated zoom segment.
+    for zone, params in (probe_zones or {}).items():
+        if zone in zones:
+            raise ValueError(
+                f"{zone}: probes tried to claim a zone already in use by "
+                f"elements/chebyshev"
+            )
+        zones[zone] = {
+            "shape": "chunked",
+            "chunks": params["chunks"],
+            "chunk_years": params["chunk_years"],
+            "start_jd": params["start_jd"],
+            "end_jd": params["end_jd"],
+            "subchunk_days": params["subchunk_days"],
+            "float64_coeffs": params["float64_coeffs"],
+            "parent_id_type": "probe",
+        }
     return {"zones": dict(sorted(zones.items()))}
 
 
@@ -1148,6 +1169,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         chebyshev_zones = write_chebyshev(
             session, DOWNLOAD_DIR, out_dir, radii, all_objects.has_localized
         )
+        probe_zones = write_probes(
+            session, DOWNLOAD_DIR, out_dir, all_objects.has_localized
+        )
 
         # Bodies that ship in some position file — used to gate the labels
         # file's auto-promotion. Sourced from the DB column rather than a
@@ -1168,7 +1192,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)
 
-    position_metadata = _build_position_metadata(zone_structure, chebyshev_zones)
+    position_metadata = _build_position_metadata(
+        zone_structure, chebyshev_zones, probe_zones
+    )
     metadata = {"position": position_metadata, "object_bundles": bundle_ns}
     (out_dir / "metadata.json").write_bytes(
         orjson.dumps(metadata, option=orjson.OPT_INDENT_2)

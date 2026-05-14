@@ -52,6 +52,13 @@ HEADER_SIZE = COMMON_HEADER_SIZE + EXTENSION_SIZE  # 32 bytes, 8-aligned
 # Top-level format byte at offset 6.
 FORMAT_ELEMENTS = 0
 FORMAT_CHEBYSHEV = 1
+FORMAT_PROBES = 2
+
+# Sub-chunk method ordinals (probes binary, per sub-chunk record).
+METHOD_UNCOVERABLE = 0
+METHOD_KEPLER_PURE = 1
+METHOD_KEPLER_DRIFT = 2
+METHOD_CHEBYSHEV = 3
 
 # Elements sub-formats (uint16 at offset 24).
 SUBFORMAT_KEPLERIAN = 0
@@ -74,6 +81,7 @@ SOURCE_ORDINAL: dict[OrbitalSource, int] = {
     OrbitalSource.celestrak: 2,
     OrbitalSource.spice: 3,
     OrbitalSource.sbdb_moon: 4,
+    OrbitalSource.spice_probe: 5,
 }
 
 ID_TYPE_ORDINAL: dict[ID_TYPES, int] = {
@@ -99,6 +107,12 @@ assert _ELEMENTS_EXT_STRUCT.size == EXTENSION_SIZE
 
 _CHEBYSHEV_EXT_STRUCT = struct.Struct("<II")
 assert _CHEBYSHEV_EXT_STRUCT.size == EXTENSION_SIZE
+
+# Probes extension (offsets 24..31):
+#   24      uint32   probe_count
+#   28      float32  subchunk_days        (from Zone.kepler_subchunk_days)
+_PROBES_EXT_STRUCT = struct.Struct("<If")
+assert _PROBES_EXT_STRUCT.size == EXTENSION_SIZE
 
 
 def pack_elements_header(
@@ -126,6 +140,70 @@ def pack_chebyshev_header(
     return _COMMON_STRUCT.pack(
         MAGIC, VERSION, FORMAT_CHEBYSHEV, 0, start_jd, end_jd
     ) + _CHEBYSHEV_EXT_STRUCT.pack(body_count, 0)
+
+
+def pack_probes_header(
+    start_jd: float,
+    end_jd: float,
+    probe_count: int,
+    subchunk_days: float,
+) -> bytes:
+    """Pack the 32-byte header for a probes-payload file (format = 2)."""
+    return _COMMON_STRUCT.pack(
+        MAGIC, VERSION, FORMAT_PROBES, 0, start_jd, end_jd
+    ) + _PROBES_EXT_STRUCT.pack(probe_count, float(subchunk_days))
+
+
+# Per-probe header inside a probes-payload file (12 bytes, 4-aligned):
+#
+# Offset  Type     Field
+# 0       int32    obj_id_value          (probe_id; recover full ID via id_type)
+# 4       uint8    id_type               (ID_TYPE_ORDINAL[ID_TYPES.PROBE] = 4)
+# 5       uint8    object_type           (ObjectType ordinal; always spacecraft today)
+# 6       uint8    has_localized         (1 iff the probe has any Wikidata translation)
+# 7       uint8    reserved
+# 8       uint16   n_subchunks           (sub-chunk records that follow, in order)
+# 10      uint16   first_subchunk_offset (in units of subchunk_days, from chunk start)
+PROBE_HEADER_SIZE = 12
+_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHH")
+assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE
+
+
+def pack_probe_header(
+    probe_id: int,
+    object_type_ordinal: int,
+    has_localized: bool,
+    n_subchunks: int,
+    first_subchunk_offset: int,
+) -> bytes:
+    return _PROBE_HEADER_STRUCT.pack(
+        probe_id,
+        ID_TYPE_ORDINAL[ID_TYPES.PROBE],
+        object_type_ordinal,
+        1 if has_localized else 0,
+        0,
+        n_subchunks,
+        first_subchunk_offset,
+    )
+
+
+# Per-sub-chunk record (8-byte fixed header + variable payload):
+#
+#   0  uint8  method        (0=uncoverable, 1=kepler_pure, 2=kepler_drift, 3=chebyshev)
+#   1  uint8  reserved
+#   2  uint16 reserved2
+#   4  uint32 payload_len   (bytes following this header)
+#   8  ...payload...
+#
+# Chose uint32 over uint16 because the finest-intlen chebyshev sub-chunks
+# can hit ~67 KiB of coefficients (interplanetary 7-day sub-chunk × 0.03-d
+# intlen × float64), which overflows uint16.
+_SUBCHUNK_HEADER_STRUCT = struct.Struct("<BBHI")
+SUBCHUNK_HEADER_SIZE = _SUBCHUNK_HEADER_STRUCT.size  # 8
+
+
+def pack_subchunk_record(method_ordinal: int, payload: bytes) -> bytes:
+    return _SUBCHUNK_HEADER_STRUCT.pack(method_ordinal, 0, 0, len(payload)) + payload
 
 
 # Per-body chebyshev header (24 bytes, 8-aligned):
