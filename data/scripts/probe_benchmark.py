@@ -431,91 +431,51 @@ def main() -> int:
         )
 
     # ── Per-probe-per-zone aggregates ────────────────────────────────────
-    by_zone_probes: dict[str, list[tuple[int, float, float, int]]] = defaultdict(list)
+    # Tuple layout: (probe_id, max_err, p95_err, median_err, sample_count).
+    by_zone_probes: dict[str, list[tuple[int, float, float, float, int]]] = defaultdict(
+        list
+    )
     for (zone_key, pid), errs in per_probe_errs.items():
         if not errs:
             continue
         sorted_e = sorted(errs)
         by_zone_probes[zone_key].append(
-            (pid, sorted_e[-1], pct(sorted_e, 0.95), len(sorted_e))
+            (pid, sorted_e[-1], pct(sorted_e, 0.95), pct(sorted_e, 0.5), len(sorted_e))
         )
 
-    # Render both text tables once, print to stdout AND fold into the
-    # markdown report so the file is a faithful capture of the run.
-    zone_table_text = _render_zone_table_text(zone_rows)
-    worst_table_text = _render_worst_table_text(by_zone_probes, probe_id_to_naif)
-
+    # Brief stdout summary (per-zone). The full per-probe table lives in the
+    # markdown file.
     print()
-    print(zone_table_text)
-    print()
-    print(worst_table_text)
-
-    if args.output:
-        _write_markdown(
-            args.output,
-            zone_rows,
-            by_zone_probes,
-            probe_id_to_naif,
-            zone_table_text,
-            worst_table_text,
-        )
-        logger.info("Wrote %s", args.output)
-    return 0
-
-
-def _render_zone_table_text(zone_rows: list[dict]) -> str:
-    lines: list[str] = []
-    lines.append(
+    print(
         f"{'zone':<14} {'files':>5} {'subchunks':>10}  "
         f"{'med_err':>9} {'p95_err':>9} {'max_err':>9}  "
         f"{'med_kb':>7} {'p95_kb':>7} {'sum_mb':>7}  method mix (k_pure / k_drift / cheb / uncov)"
     )
-    lines.append("-" * 130)
+    print("-" * 130)
     for r in zone_rows:
         mix = f"{r['kpure']:>5} / {r['kdrift']:>5} / {r['cheb']:>5} / {r['uncov']:>3}"
-        lines.append(
+        print(
             f"{r['zone']:<14} {r['files']:>5} {r['n_sub']:>10}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
         )
-    return "\n".join(lines)
 
-
-def _render_worst_table_text(
-    by_zone_probes: dict[str, list[tuple[int, float, float, int]]],
-    probe_id_to_naif: dict[int, tuple[str, int]],
-) -> str:
-    lines: list[str] = []
-    lines.append("Worst probes per zone (top-3 by max sample error):")
-    lines.append(
-        f"  {'zone':<14} {'probe_id':>10}  {'mission':<14} {'naif':>5}  "
-        f"{'samples':>7}  {'max_err':>9}  {'p95_err':>9}"
-    )
-    lines.append("  " + "-" * 90)
-    for zone_key in sorted(by_zone_probes):
-        top = sorted(by_zone_probes[zone_key], key=lambda r: -r[1])[:3]
-        for pid, mx, p95, n in top:
-            mission, naif_id = probe_id_to_naif.get(pid, ("?", 0))
-            lines.append(
-                f"  {zone_key:<14} {pid:>10}  {mission:<14} {naif_id:>5}  "
-                f"{n:>7}  {_format_err(mx):>9}  {_format_err(p95):>9}"
-            )
-    return "\n".join(lines)
+    if args.output:
+        _write_markdown(args.output, zone_rows, by_zone_probes, probe_id_to_naif)
+        logger.info("Wrote %s", args.output)
+    return 0
 
 
 def _write_markdown(
     path: Path,
     zone_rows: list[dict],
-    by_zone_probes: dict[str, list[tuple[int, float, float, int]]],
+    by_zone_probes: dict[str, list[tuple[int, float, float, float, int]]],
     probe_id_to_naif: dict[int, tuple[str, int]],
-    zone_table_text: str,
-    worst_table_text: str,
 ) -> None:
     """Render the benchmark output as a markdown report.
 
-    Includes both renderable markdown tables (so the file is readable
-    on GitHub) and a verbatim capture of the script's stdout (the
-    fixed-width text tables) in a fenced code block.
+    Two tables: per-zone aggregates, then every probe in every zone
+    sorted by max sample error (worst-first within each zone).
     """
     import datetime
 
@@ -550,38 +510,28 @@ def _write_markdown(
         )
     lines.append("")
 
-    lines.append("## Worst probes per zone")
+    lines.append("## Per-probe error (worst-first within each zone)")
     lines.append("")
     lines.append(
-        "Top-3 by max sample error. Outliers here are typically physically "
-        "motivated — single-pass planetary flybys (Voyager, Pioneer), "
-        "EDLs (Phoenix, MSL), or maneuver-heavy windows where the "
-        "finest-intlen Chebyshev fit still exceeds the zone threshold."
+        "Outliers are typically physically motivated — single-pass planetary "
+        "flybys (Voyager, Pioneer), EDLs (Phoenix, MSL), or maneuver-heavy "
+        "windows where the finest-intlen Chebyshev fit still exceeds the "
+        "zone threshold."
     )
     lines.append("")
-    lines.append("| Zone | probe_id | Mission | NAIF | Samples | Max err | p95 err |")
-    lines.append("|---|---:|---|---:|---:|---:|---:|")
+    lines.append(
+        "| Zone | probe_id | Mission | NAIF | Samples | Median err | p95 err | Max err |"
+    )
+    lines.append("|---|---:|---|---:|---:|---:|---:|---:|")
     for zone_key in sorted(by_zone_probes):
-        top = sorted(by_zone_probes[zone_key], key=lambda r: -r[1])[:3]
-        for pid, mx, p95, n in top:
+        for pid, mx, p95, med, n in sorted(
+            by_zone_probes[zone_key], key=lambda r: -r[1]
+        ):
             mission, naif_id = probe_id_to_naif.get(pid, ("?", 0))
             lines.append(
                 f"| `{zone_key}` | `{pid}` | {mission} | {naif_id} | "
-                f"{n} | {_format_err(mx)} | {_format_err(p95)} |"
+                f"{n} | {_format_err(med)} | {_format_err(p95)} | {_format_err(mx)} |"
             )
-    lines.append("")
-
-    lines.append("## Raw script output")
-    lines.append("")
-    lines.append(
-        "Verbatim capture of the `probe_benchmark.py` stdout — same data as the tables above, fixed-width for terminal comparison."
-    )
-    lines.append("")
-    lines.append("```")
-    lines.append(zone_table_text)
-    lines.append("")
-    lines.append(worst_table_text)
-    lines.append("```")
     lines.append("")
 
     path.parent.mkdir(parents=True, exist_ok=True)

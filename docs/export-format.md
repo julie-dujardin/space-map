@@ -481,13 +481,14 @@ intersects the chunk's time window. Within a probe, the trajectory is
 sliced into fixed-width **sub-chunks** (`subchunk_days` from the chunk
 header) — each sub-chunk is independently fit as one of:
 
-  * **Kepler pure** — 6-element snapshot at sub-chunk midpoint, propagated
-    by `conics` (mu from the zone's central body). Cheap (24/48 B). Used
-    for clean heliocentric cruise where there's no J2 source.
-  * **Kepler drift** — 6 snapshot elements + linear-fit `Ω̇, ω̇, Ṁ`
-    (36/72 B). Used for J2-perturbed planetary orbiters (MAVEN, MEX, …);
-    `Ṁ` absorbs any J2 mean-motion correction so the propagation honors
-    secular drift without an analytic J2 term.
+  * **Kepler pure** — 6-element snapshot at the snapshot epoch, propagated
+    by `conics` (mu from the zone's central body), plus 1 anchor offset.
+    Cheap (28/56 B). Used for clean heliocentric cruise where there's no
+    J2 source.
+  * **Kepler drift** — 6 snapshot elements + linear-fit `Ω̇, ω̇, Ṁ` + 1
+    anchor offset (40/80 B). Used for J2-perturbed planetary orbiters
+    (MAVEN, MEX, …); `Ṁ` absorbs any J2 mean-motion correction so the
+    propagation honors secular drift without an analytic J2 term.
   * **Chebyshev** — degree-11 polynomial coefficients over a uniform
     sub-segment grid (3 axes × 12 coeffs = 144 / 288 B per segment).
     Used during flybys, maneuvers, EDLs, and other windows where Kepler
@@ -559,27 +560,41 @@ zone's `float64_coeffs` flag is `true` (currently only `probes/interplanetary`,
 which sees Voyagers at 100+ AU where float32's ~600 km quantization floor
 would dominate).
 
-**`kepler_pure` (method = 1)** — 6 elements, fixed order:
+**`kepler_pure` (method = 1)** — 6 elements + 1 anchor offset:
 ```
-[ a_km, e, i_rad, om0, w0, m0 ]      # 24 B (f32) or 48 B (f64)
+[ a_km, e, i_rad, om0, w0, m0, t_anchor_offset_s ]   # 28 B (f32) or 56 B (f64)
 ```
-Position at time `et` is `spiceypy.conics([rp, e, i, om0, w0, m0, t_mid, mu], et)`
-where `rp = a_km * (1 - e)` and `mu` is the gravitational parameter of the
-zone's central body (`fit_center_naif_id`). `t_mid` is the sub-chunk
-midpoint; `conics` propagates `M` via `mu` from there.
+The fit doesn't anchor at the sub-chunk midpoint — it anchors at
+`t_snap`, the closest valid SPICE sample to the midpoint (some samples
+get rejected when the orbit goes hyperbolic at flybys). `t_anchor_offset_s`
+stores `t_snap - sub_t_start_et` so the consumer can reconstruct the
+correct propagation epoch. Without it the implicit-midpoint assumption
+costs millions of km on cruise probes.
 
-**`kepler_drift` (method = 2)** — 9 elements:
+Evaluation:
+```
+t_anchor = sub_t_start_et + t_anchor_offset_s
+rp       = a_km * (1 - e)
+position = spiceypy.conics([rp, e, i_rad, om0, w0, m0, t_anchor, mu], et)
+```
+where `mu` is the gravitational parameter of the zone's central body
+(`fit_center_naif_id`). `conics` propagates `M` via `mu` from `t_anchor`.
+
+**`kepler_drift` (method = 2)** — 9 elements + 1 anchor offset:
 ```
 [ a_km, e, i_rad, om0, w0, m0,
-  om_dot, w_dot, n_mean_rad_s ]      # 36 B (f32) or 72 B (f64)
+  om_dot, w_dot, n_mean_rad_s,
+  t_anchor_offset_s ]                                # 40 B (f32) or 80 B (f64)
 ```
-Evaluate by manually drifting `om`, `w`, `M`, then calling `conics` with
-`t0=et` (so it doesn't re-propagate `M`):
+Evaluate by manually drifting `om`, `w`, `M` from `t_anchor`, then calling
+`conics` with `t0=et` (so it doesn't re-propagate `M`):
 ```
-dt = et - t_mid                             # t_mid = sub-chunk start
-om_t = om0 + om_dot * dt
-w_t  = w0  + w_dot  * dt
-m_t  = m0  + n_mean_rad_s * dt
+t_anchor = sub_t_start_et + t_anchor_offset_s
+dt       = et - t_anchor
+om_t     = om0 + om_dot * dt
+w_t      = w0  + w_dot  * dt
+m_t      = m0  + n_mean_rad_s * dt
+position = spiceypy.conics([rp, e, i_rad, om_t, w_t, m_t, et, mu], et)
 ```
 The fitted `n_mean_rad_s` (vs. `sqrt(mu/a³)`) bakes any J2 `Ṁ` correction
 into the propagation.
