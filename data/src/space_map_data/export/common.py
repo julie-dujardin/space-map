@@ -1184,6 +1184,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             .filter(Object.orbital_source == OrbitalSource.spice_probe)
             .all()
         )
+        probe_ids: set[str] = {p.id for p in probe_objs}
         if probe_objs:
             probe_data = _build_zone_object_data(
                 probe_objs,
@@ -1232,7 +1233,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     bundle_ns = write_object_bundles(
         out_dir, all_objects.global_data, all_objects.localized_data
     )
-    write_global_labels(out_dir, all_objects, cheb_covered_ids, rendered_ids)
+    write_global_labels(out_dir, all_objects, cheb_covered_ids, probe_ids, rendered_ids)
 
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)

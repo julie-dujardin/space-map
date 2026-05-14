@@ -45,7 +45,9 @@ class TestWriteGlobalLabels:
             "name": "Random",
         }
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         names = _parse(tmp_path / "labels" / "en.gz")
         assert set(names) == {"naif-399", "naif-301", "probe-49065984"}
@@ -54,7 +56,9 @@ class TestWriteGlobalLabels:
         all_objs = ChunkObjectData()
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         for lang in LANGUAGES:
             assert (tmp_path / "labels" / f"{lang}.gz").exists()
@@ -64,7 +68,9 @@ class TestWriteGlobalLabels:
         all_objs.global_data["naif-399"] = {"type": ObjectType.planet, "name": "Earth"}
         all_objs.localized_data["fr"]["naif-399"] = {"name": "Terre"}
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         assert _parse(tmp_path / "labels" / "fr.gz")["naif-399"] == "Terre"
         # No localized override for English → fall through to global obj.name
@@ -79,7 +85,9 @@ class TestWriteGlobalLabels:
         # into a null and the drawer walks its fallback chain (loading → id).
         all_objs.global_data["probe-49065984"] = {"type": ObjectType.spacecraft}
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"probe-49065984": ""}
 
@@ -94,7 +102,11 @@ class TestWriteGlobalLabels:
         }
 
         write_global_labels(
-            tmp_path, all_objs, {"spkid-20000052"}, set(all_objs.global_data.keys())
+            tmp_path,
+            all_objs,
+            {"spkid-20000052"},
+            set(),
+            set(all_objs.global_data.keys()),
         )
 
         assert _parse(tmp_path / "labels" / "en.gz") == {"spkid-20000052": "52 Europa"}
@@ -110,7 +122,9 @@ class TestWriteGlobalLabels:
             "provisional_designation": "2010J1",
         }
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         assert _parse_with_flags(tmp_path / "labels" / "en.gz") == {
             "naif-551": ("2010J1", "m"),
@@ -145,7 +159,9 @@ class TestWriteGlobalLabels:
             "provisional_designation": "S2010 J5",
         }
 
-        write_global_labels(tmp_path, all_objs, set(), set(all_objs.global_data.keys()))
+        write_global_labels(
+            tmp_path, all_objs, set(), set(), set(all_objs.global_data.keys())
+        )
 
         flags = {
             obj_id: f
@@ -158,4 +174,31 @@ class TestWriteGlobalLabels:
             "naif-557": "",
             "naif-65289": "m",
             "naif-55533": "m",
+        }
+
+    def test_all_probes_are_promoted_with_minor_flag_outside_extras(self, tmp_path):
+        """Every probe rides in the labels file so the high-accuracy probe
+        system can render it. Curated extras (``PROMOTED_EXTRA_IDS``) label
+        normally; the rest get the ``m`` flag for collapsed-halo rendering."""
+        all_objs = ChunkObjectData()
+        # Curated extra — Voyager 1 is in PROMOTED_EXTRA_IDS
+        all_objs.global_data["probe-49065984"] = {
+            "type": ObjectType.spacecraft,
+            "name": "VOYAGER 1 (-31)",
+        }
+        # Non-curated probe (not in PROMOTED_EXTRA_IDS) — should still ship,
+        # marked minor so the frontend collapses its halo by default
+        all_objs.global_data["probe-99999999"] = {
+            "type": ObjectType.spacecraft,
+            "name": "GENERIC (-99)",
+        }
+        probe_ids = {"probe-49065984", "probe-99999999"}
+
+        write_global_labels(
+            tmp_path, all_objs, set(), probe_ids, set(all_objs.global_data.keys())
+        )
+
+        assert _parse_with_flags(tmp_path / "labels" / "en.gz") == {
+            "probe-49065984": ("VOYAGER 1 (-31)", ""),
+            "probe-99999999": ("GENERIC (-99)", "m"),
         }

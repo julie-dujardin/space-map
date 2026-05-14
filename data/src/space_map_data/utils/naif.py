@@ -102,6 +102,33 @@ CHEBYSHEV_MOON_WHITELIST: frozenset[str] = frozenset(
     }
 )
 
+# Asteroids that get full Chebyshev treatment. Originally the entire content
+# of `sb441-n16.bsp` (16 most massive main-belt perturbers from DE441) — when
+# we swapped to `sb441-n373.bsp` we kept the export scope here so the shipped
+# asteroid list stays curated rather than ballooning to 373 bodies. Ceres is
+# classified as `dwarf_planet` and passes through `_CORE_BODY_TYPES`
+# independently, so it doesn't need a slot here.
+CHEBYSHEV_ASTEROID_WHITELIST: frozenset[int] = frozenset(
+    {
+        2000002,  # Pallas
+        2000003,  # Juno
+        2000004,  # Vesta
+        2000007,  # Iris
+        2000010,  # Hygiea
+        2000015,  # Eunomia
+        2000016,  # Psyche
+        2000031,  # Euphrosyne
+        2000052,  # 52 Europa
+        2000065,  # Cybele
+        2000087,  # Sylvia
+        2000088,  # Thisbe
+        2000107,  # Camilla
+        2000511,  # Davida
+        2000704,  # Interamnia
+    }
+)
+
+
 # Per-parent Chebyshev chunk cadence (years). Tuned so each chunk lands at
 # roughly ~200 KB regardless of how many bodies share the parent's zone:
 # Saturn's 24 whitelisted moons are densest and need ~1.5-month chunks; Pluto's

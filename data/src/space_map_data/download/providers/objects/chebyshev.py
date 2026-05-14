@@ -21,7 +21,11 @@ from jplephem.spk import SPK
 from tqdm import tqdm
 
 from space_map_data.models.object import ObjectType
-from space_map_data.utils.naif import CHEBYSHEV_MOON_WHITELIST, MajorBody
+from space_map_data.utils.naif import (
+    CHEBYSHEV_ASTEROID_WHITELIST,
+    CHEBYSHEV_MOON_WHITELIST,
+    MajorBody,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +35,16 @@ _J2000_JD = 2451545.0
 # Cap coefficient count per segment to keep binary packing predictable.
 _MAX_DEGREE = 20
 
-# Core body types always get Chebyshev. Moons are gated by an explicit whitelist
-# (surface-feature bodies only); everything else falls back to a cheaper
-# mean-elements-plus-rates format exported separately.
+# Core body types always get Chebyshev. Moons and asteroids are gated by
+# explicit whitelists (surface-feature moons / shipped-asteroid set);
+# everything else falls back to a cheaper mean-elements-plus-rates format
+# exported separately.
 _CORE_BODY_TYPES = frozenset(
     {
         ObjectType.star,
         ObjectType.planet,
         ObjectType.dwarf_planet,
         ObjectType.barycenter,
-        ObjectType.asteroid,
     }
 )
 
@@ -212,12 +216,13 @@ def _sample_body(
 def _should_extract(body: MajorBody) -> bool:
     """Decide whether this body is worth shipping Chebyshev for.
 
-    Core body types (star, planets, dwarves, barycenters, asteroids) are always
-    included — they anchor the hierarchical frame or carry named-asteroid
-    trajectories. Moons are gated by an explicit name whitelist of
-    surface-feature bodies (Io, Enceladus, Titan, …): those are the only moons
-    a user ever zooms into, and the rest get the much cheaper mean-elements
-    format exported separately.
+    Core body types (star, planets, dwarves, barycenters) are always included
+    — they anchor the hierarchical frame. Moons and asteroids are gated by
+    explicit whitelists: surface-feature moons (Io, Enceladus, Titan, …) and
+    the 15 main-belt perturbers we shipped before swapping to sb441-n373.bsp.
+    Everything else (the other 358 sb441 asteroids, irregular moons, comets,
+    spacecraft) goes through the cheaper mean-elements format exported
+    separately.
     """
     if body.naif_id == 0:
         return False  # SSB is the coordinate origin — no orbit to describe
@@ -226,6 +231,8 @@ def _should_extract(body: MajorBody) -> bool:
     if body.object_type == ObjectType.moon:
         name_lc = (body.name or "").lower()
         return name_lc in CHEBYSHEV_MOON_WHITELIST
+    if body.object_type == ObjectType.asteroid:
+        return body.naif_id in CHEBYSHEV_ASTEROID_WHITELIST
     return False
 
 
@@ -286,10 +293,15 @@ def extract_chebyshev(
             skipped_filter += 1
             continue
 
-        if body.object_type in _CORE_BODY_TYPES:
+        if (
+            body.object_type in _CORE_BODY_TYPES
+            or body.object_type == ObjectType.asteroid
+        ):
             # Source kernel's fine interval was chosen for a fast sibling
             # (typical case: Mars 499 in a kernel sized for Phobos). Use the
             # core floor to avoid generating ~100× more segments than needed.
+            # Asteroids share the floor: they're slow main-belt movers, no
+            # value in segments shorter than 8 days.
             intlen_s = max(intlen_s, _SLOW_BODY_MIN_INTLEN_S)
         elif body.object_type == ObjectType.moon:
             # Moon whitelist members get a 0.5-day floor; native intervals as
