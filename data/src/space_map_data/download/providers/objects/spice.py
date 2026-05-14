@@ -50,10 +50,13 @@ _NAIF_BASE_URL = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 # SSD site for the SB441 asteroid kernel).
 _FIXED_KERNELS: dict[str, str] = {
     "de440.bsp": "spk/planets/de440.bsp",  # planet + Moon ephemerides
-    # 16 largest asteroids used as perturbers in DE441 — Ceres, Vesta, Pallas,
-    # etc. Only hosted at JPL's SSD (not in NAIF's generic_kernels tree); gives
-    # us high-accuracy Chebyshev coverage for the major asteroids.
-    "sb441-n16.bsp": "https://ssd.jpl.nasa.gov/ftp/eph/small_bodies/asteroids_de441/sb441-n16.bsp",
+    # Full DE441 small-body perturber set: 343 main-belt asteroids + 30 KBOs,
+    # covering JD -1200525.5 to 5008242.5 (year -8001 to +9000). Documented in
+    # IOM 392R-21-005 (D. Farnocchia, 2021). Only hosted at JPL's SSD (not in
+    # NAIF's generic_kernels tree); ~14 GB on disk. The "n16" variant (16
+    # bodies, 616 MB) is the smaller alternative if disk is tight — `spkobj`
+    # discovers whatever's in the file, so the rest of the pipeline auto-adapts.
+    "sb441-n373.bsp": "https://ssd.jpl.nasa.gov/ftp/eph/small_bodies/asteroids_de441/sb441-n373.bsp",
     # Gravity harmonics J2/J3/J4 for the major planets — used to compute analytic
     # secular precession rates for moons that don't get full Chebyshev coverage.
     "Gravity.tpc": "pck/Gravity.tpc",
@@ -1007,7 +1010,7 @@ class SpiceDownloader(Downloader):
         all_ids = spk_ids | set(_EXTRA_NAIF_IDS)
 
         # Step 4: Classify all bodies. We keep a broad list here because the
-        # Chebyshev extractor downstream wants asteroids too (sb441-n16s); the
+        # Chebyshev extractor downstream wants asteroids too (sb441-n373); the
         # Keplerian element extraction then filters to `_ELEMENT_TYPES` only.
         horizons_names = _load_horizons_names(self.out_dir.parent)
         all_bodies: list[MajorBody] = []
@@ -1376,8 +1379,8 @@ class SpiceDownloader(Downloader):
 
         # Step 10: Extract Chebyshev polynomial ephemeris for the Chebyshev
         # body set — core bodies (planets, Sun, dwarves, barycenters) plus the
-        # 16 sb441-n16 asteroids plus the whitelisted surface-feature moons.
-        # Runs here so furnshed kernels stay in memory.
+        # sb441-n373 perturber asteroids plus the whitelisted surface-feature
+        # moons. Runs here so furnshed kernels stay in memory.
         cheb_cfg = _load_chebyshev_config()
         cheb_count = extract_chebyshev(
             self.out_dir,
