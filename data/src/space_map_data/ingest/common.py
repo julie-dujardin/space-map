@@ -11,6 +11,7 @@ from space_map_data.ingest.providers import iau_nomenclature, image_selection, w
 from space_map_data.ingest.providers.objects import (
     celestrak,
     horizons,
+    probes,
     satcat,
     sbdb,
     sbdb_moons,
@@ -43,6 +44,9 @@ def ingest_objects(download_dir: Path) -> None:
     # existing rows (e.g. Pluto's Charon) and merge SBDB metadata onto
     # them instead of producing duplicate Object rows.
     sbdb_moons.ingest(download_dir)
+    # Spacecraft Object rows from `missions/*/_index.json`. Their IDs are
+    # `probe-<int>` rather than `naif-<int>` because NAIF IDs are recycled.
+    probes.ingest(download_dir)
 
 
 def ingest_features(download_dir: Path) -> None:
