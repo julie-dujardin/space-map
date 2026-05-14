@@ -251,12 +251,16 @@ def extract_chebyshev(
         (end_et - start_et) / _S_PER_DAY,
     )
 
-    extracted = 0
+    # Plan first so we can report the work split (extract vs. cache vs. skip)
+    # before the sampling progress bar starts — sampling dominates wall time,
+    # so an up-front summary lets the operator know whether this run is mostly
+    # cached or mostly cold.
+    to_extract: list[tuple[MajorBody, float, int, Path]] = []
     cached = 0
     skipped_no_spk = 0
     skipped_filter = 0
     kept_paths: set[Path] = set()
-    for body in tqdm(bodies, desc="Chebyshev", unit="body"):
+    for body in bodies:
         native = _native_params(kernel_paths, body.naif_id)
         if native is None:
             # No raw SPK segment — e.g. the body is classified as a moon/planet
@@ -296,6 +300,21 @@ def extract_chebyshev(
             cached += 1
             continue
 
+        to_extract.append((body, intlen_s, degree, out_path))
+
+    logger.info(
+        "Chebyshev plan: %d to extract, %d reused from cache, %d skipped "
+        "(no SPK coverage), %d skipped (filtered out)",
+        len(to_extract),
+        cached,
+        skipped_no_spk,
+        skipped_filter,
+    )
+
+    extracted = 0
+    for body, intlen_s, degree, out_path in tqdm(
+        to_extract, desc="Chebyshev", unit="body"
+    ):
         try:
             start_jds, end_jds, coeffs = _sample_body(
                 body.naif_id,
