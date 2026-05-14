@@ -31,8 +31,22 @@ _J2000_JD = 2451545.0
 _AU_KM = 149_597_870.7
 
 # Sub-interval sweep, coarsest first. We pick the largest intlen whose max
-# position error stays under the zone threshold.
-INTLEN_SWEEP_DAYS: tuple[float, ...] = (30.0, 10.0, 3.0, 1.0, 0.3, 0.1, 0.03)
+# position error stays under the zone threshold. The finest entries
+# (0.01 d ≈ 14 min, 0.003 d ≈ 4 min) exist for high-velocity planetary
+# flybys — Voyager 2 at Neptune periapsis (27 km/s @ 4,950 km) needs short
+# segments because the deflection at periapsis is too sharp for a degree-11
+# polynomial over a longer window.
+INTLEN_SWEEP_DAYS: tuple[float, ...] = (
+    30.0,
+    10.0,
+    3.0,
+    1.0,
+    0.3,
+    0.1,
+    0.03,
+    0.01,
+    0.003,
+)
 CHEBYSHEV_DEGREE = 11
 
 # Method tags. Pure = snapshot Kepler (6 elements, no drift). Drift =

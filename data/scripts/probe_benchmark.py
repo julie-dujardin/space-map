@@ -327,6 +327,13 @@ def _format_err(km: float) -> str:
     return f"{km:.1e}km"
 
 
+def _format_chunk_span(years: float) -> str:
+    """Human-friendly streaming-chunk duration: months under 1 y, else years."""
+    if years < 1:
+        return f"{years * 12:.0f}mo"
+    return f"{years:.0f}y"
+
+
 def main() -> int:
     args = _parse_args()
     manifest_path = _manifest_path(args.export_dir)
@@ -415,6 +422,7 @@ def main() -> int:
         zone_rows.append(
             {
                 "zone": zone_key,
+                "chunk_years": ZONES_BY_KEY[zone_key].chunk_years,
                 "files": len(sizes),
                 "n_sub": sum(counts.values()),
                 "med": pct(errs, 0.5),
@@ -422,6 +430,7 @@ def main() -> int:
                 "max": errs[-1] if errs else 0.0,
                 "med_kb": pct(sizes, 0.5) / 1024 if sizes else 0,
                 "p95_kb": pct(sizes, 0.95) / 1024 if sizes else 0,
+                "max_kb": sizes[-1] / 1024 if sizes else 0,
                 "sum_mb": sum(sizes) / 1024 / 1024,
                 "kpure": counts.get(METHOD_KEPLER_PURE, 0),
                 "kdrift": counts.get(METHOD_KEPLER_DRIFT, 0),
@@ -447,17 +456,18 @@ def main() -> int:
     # markdown file.
     print()
     print(
-        f"{'zone':<14} {'files':>5} {'subchunks':>10}  "
+        f"{'zone':<14} {'chunk':>5} {'files':>5} {'subchunks':>10}  "
         f"{'med_err':>9} {'p95_err':>9} {'max_err':>9}  "
-        f"{'med_kb':>7} {'p95_kb':>7} {'sum_mb':>7}  method mix (k_pure / k_drift / cheb / uncov)"
+        f"{'med_kb':>7} {'p95_kb':>7} {'max_kb':>7} {'sum_mb':>7}  method mix (k_pure / k_drift / cheb / uncov)"
     )
-    print("-" * 130)
+    print("-" * 145)
     for r in zone_rows:
         mix = f"{r['kpure']:>5} / {r['kdrift']:>5} / {r['cheb']:>5} / {r['uncov']:>3}"
         print(
-            f"{r['zone']:<14} {r['files']:>5} {r['n_sub']:>10}  "
+            f"{r['zone']:<14} {_format_chunk_span(r['chunk_years']):>5} "
+            f"{r['files']:>5} {r['n_sub']:>10}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
-            f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
+            f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
         )
 
     if args.output:
@@ -497,15 +507,23 @@ def _write_markdown(
     lines.append("## Per-zone error & size aggregates")
     lines.append("")
     lines.append(
-        "| Zone | Files | Sub-chunks | Median err | p95 err | Max err | "
-        "Median KiB | p95 KiB | Total MiB | k_pure | k_drift | cheb | uncov |"
+        "Chunk span is the on-disk streaming-chunk duration (the unit the "
+        "frontend swaps in)."
     )
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("")
+    lines.append(
+        "| Zone | Chunk span | Files | Sub-chunks | Median err | p95 err | Max err | "
+        "Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |"
+    )
+    lines.append(
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    )
     for r in zone_rows:
         lines.append(
-            f"| `{r['zone']}` | {r['files']} | {r['n_sub']} | "
+            f"| `{r['zone']}` | {_format_chunk_span(r['chunk_years'])} | "
+            f"{r['files']} | {r['n_sub']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "
-            f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['sum_mb']:.1f} | "
+            f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['max_kb']:.1f} | {r['sum_mb']:.1f} | "
             f"{r['kpure']} | {r['kdrift']} | {r['cheb']} | {r['uncov']} |"
         )
     lines.append("")
