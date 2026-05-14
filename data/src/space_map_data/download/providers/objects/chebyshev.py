@@ -115,9 +115,15 @@ def _cache_is_valid(
         with np.load(path) as data:
             meta = data["meta"]
             params = data["params"]
+            coeffs_dtype = data["coeffs"].dtype
     except Exception:
         return False
     if meta.shape != (3,) or params.shape != (3,):
+        return False
+    # Stored coeffs must be float64 — the writer downcasts at pack time if
+    # the destination zone is float32, but it needs the full-precision source
+    # to make that choice.
+    if coeffs_dtype != np.float64:
         return False
     if int(meta[0]) != body.naif_id:
         return False
@@ -154,9 +160,12 @@ def _sample_body(
     -------
     start_jds : (n,) float64  — sub-interval start, JD TDB
     end_jds   : (n,) float64  — sub-interval end, JD TDB
-    coeffs    : (n, 3, degree+1) float32  — Chebyshev coefficients (c0..cN) for
+    coeffs    : (n, 3, degree+1) float64  — Chebyshev coefficients (c0..cN) for
                                             position in km, ECLIPJ2000,
-                                            parent-relative
+                                            parent-relative. The writer
+                                            downcasts to float32 per-zone when
+                                            the zone's float64_coeffs flag is
+                                            off.
     """
     n_nodes = degree + 1
     k = np.arange(n_nodes)
@@ -166,7 +175,7 @@ def _sample_body(
     n_intervals = int(math.ceil((end_et - start_et) / intlen_s))
     start_jds = np.empty(n_intervals, dtype=np.float64)
     end_jds = np.empty(n_intervals, dtype=np.float64)
-    coeffs = np.empty((n_intervals, 3, n_nodes), dtype=np.float32)
+    coeffs = np.empty((n_intervals, 3, n_nodes), dtype=np.float64)
 
     target_str = str(naif_id)
     parent_str = str(parent_id)
@@ -186,10 +195,13 @@ def _sample_body(
             positions[j, 2] = state[2]
 
         # Fit per axis (chebfit uses least-squares; with node-count == deg+1 at
-        # Chebyshev extrema this is an exact interpolant).
+        # Chebyshev extrema this is an exact interpolant). Stored at full
+        # float64 precision — the per-zone writer chooses whether to truncate
+        # to float32 when packing the binary.
         for axis in range(3):
-            c = np.polynomial.chebyshev.chebfit(nodes_tau, positions[:, axis], degree)
-            coeffs[i, axis, :] = c.astype(np.float32)
+            coeffs[i, axis, :] = np.polynomial.chebyshev.chebfit(
+                nodes_tau, positions[:, axis], degree
+            )
 
         start_jds[i] = _et_to_jd(seg_start_et)
         end_jds[i] = _et_to_jd(seg_end_et)

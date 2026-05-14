@@ -29,7 +29,9 @@ Elements extension (offsets 24..31):
 Chebyshev extension (offsets 24..31):
 
     24      uint32   body_count
-    28      uint32   reserved (zero)
+    28      uint8    flags             (bit 0 = float64 coefficients)
+    29      uint8    reserved (zero)
+    30      uint16   reserved (zero)
 
 Total header size is 32 bytes either way, matching the v6 layout so column
 reading code at HEADER_SIZE=32 carries over unchanged.
@@ -105,8 +107,13 @@ assert _COMMON_STRUCT.size == COMMON_HEADER_SIZE
 _ELEMENTS_EXT_STRUCT = struct.Struct("<HBBI")
 assert _ELEMENTS_EXT_STRUCT.size == EXTENSION_SIZE
 
-_CHEBYSHEV_EXT_STRUCT = struct.Struct("<II")
+_CHEBYSHEV_EXT_STRUCT = struct.Struct("<IBBH")
 assert _CHEBYSHEV_EXT_STRUCT.size == EXTENSION_SIZE
+
+# bit 0 set ⇒ per-segment coefficients are stored as float64 instead of float32.
+# Body header stays the same either way (segment_count + coeffs_per_axis are
+# enough to size the payload once the dtype is known from the file header).
+CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01
 
 # Probes extension (offsets 24..31):
 #   24      uint32   probe_count
@@ -135,11 +142,12 @@ def pack_chebyshev_header(
     start_jd: float,
     end_jd: float,
     body_count: int,
+    flags: int = 0,
 ) -> bytes:
     """Pack the 32-byte header for a chebyshev-payload file."""
     return _COMMON_STRUCT.pack(
         MAGIC, VERSION, FORMAT_CHEBYSHEV, 0, start_jd, end_jd
-    ) + _CHEBYSHEV_EXT_STRUCT.pack(body_count, 0)
+    ) + _CHEBYSHEV_EXT_STRUCT.pack(body_count, flags, 0, 0)
 
 
 def pack_probes_header(

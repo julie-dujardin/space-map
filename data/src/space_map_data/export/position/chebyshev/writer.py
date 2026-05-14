@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.export.position.format import (
+    CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     ID_TYPE_ORDINAL,
     MISSING_ID_TYPE,
     MISSING_INT32,
@@ -69,6 +70,13 @@ _PARENT_NAMES = {
     8: "neptune",
     9: "pluto",
 }
+
+# Zones where float32 coefficients lose visible precision because the body's
+# absolute distance from its parent is large. The Sun-orbiter zones sit at
+# ~1e9–6e9 km from SSB, which is right at float32's 7-digit limit and produces
+# hundreds of km of quantization error. Moon zones are parent-relative and stay
+# well below the float32 limit, so they keep the cheaper dtype.
+_FLOAT64_ZONES = frozenset({"major", "major_asteroids"})
 
 
 def _year_to_jd(year: int) -> float:
@@ -176,6 +184,7 @@ def _write_chunk_file(
     bodies: list[
         tuple[Object, int, int, np.ndarray, np.ndarray, np.ndarray, float, bool]
     ],
+    float64_coeffs: bool,
 ) -> int:
     """Write one chunk file at `position/{zone}/0/{chunk_idx}.bin.gz`.
 
@@ -184,8 +193,12 @@ def _write_chunk_file(
     chunk_dir = out_dir / "position" / zone / "0"
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
+    coeff_dtype = np.float64 if float64_coeffs else np.float32
+    flags = CHEBYSHEV_FLAG_FLOAT64_COEFFS if float64_coeffs else 0
     buf: list[bytes] = []
-    buf.append(pack_chebyshev_header(chunk_start_jd, chunk_end_jd, len(bodies)))
+    buf.append(
+        pack_chebyshev_header(chunk_start_jd, chunk_end_jd, len(bodies), flags=flags)
+    )
 
     for (
         obj,
@@ -219,10 +232,10 @@ def _write_chunk_file(
             continue
         starts_f64 = np.ascontiguousarray(seg_starts, dtype=np.float64)
         ends_f64 = np.ascontiguousarray(seg_ends, dtype=np.float64)
-        coeffs_f32 = np.ascontiguousarray(seg_coeffs, dtype=np.float32)
+        coeffs_packed = np.ascontiguousarray(seg_coeffs, dtype=coeff_dtype)
         for i in range(n_segments):
             buf.append(struct.pack("<dd", float(starts_f64[i]), float(ends_f64[i])))
-            buf.append(coeffs_f32[i].tobytes(order="C"))
+            buf.append(coeffs_packed[i].tobytes(order="C"))
 
     data = b"".join(buf)
     out_path = chunk_dir / f"{chunk_idx}.bin.gz"
@@ -311,6 +324,7 @@ def write_chebyshev(
             chunk_years = CHEBYSHEV_PARENT_CHUNK_YEARS.get(parent_id or 0, 0.5)
         else:
             chunk_years = core_chunk_years
+        float64_coeffs = zone in _FLOAT64_ZONES
         n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
         total_bytes = 0
         for chunk_idx in range(n_chunks):
@@ -355,6 +369,7 @@ def write_chebyshev(
                 chunk_start_jd,
                 chunk_end_jd,
                 chunk_bodies,
+                float64_coeffs,
             )
             total_bytes += nbytes
         avg_kb = (total_bytes // n_chunks) // 1024 if n_chunks else 0
@@ -372,6 +387,7 @@ def write_chebyshev(
             "chunk_years": chunk_years,
             "start_jd": start_jd_total,
             "end_jd": end_jd_total,
+            "float64_coeffs": float64_coeffs,
         }
 
     return zone_manifest

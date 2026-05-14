@@ -5,6 +5,7 @@ import struct
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import (
+    CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     FORMAT_CHEBYSHEV,
     FORMAT_ELEMENTS,
     HEADER_SIZE,
@@ -147,6 +148,16 @@ class TestPackChebyshevHeader:
         _m, _v, _t, start, end, _n, _r = _unpack_chebyshev(header)
         assert start == 2460000.5
         assert end == 2460100.5
+
+    def test_flags_default_to_zero(self):
+        header = pack_chebyshev_header(0.0, 0.0, 0)
+        assert header[28] == 0
+
+    def test_float64_flag_lands_at_offset_28(self):
+        header = pack_chebyshev_header(
+            0.0, 0.0, 0, flags=CHEBYSHEV_FLAG_FLOAT64_COEFFS
+        )
+        assert header[28] & CHEBYSHEV_FLAG_FLOAT64_COEFFS
 
 
 class TestAlign8:

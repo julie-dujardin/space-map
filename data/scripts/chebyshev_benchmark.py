@@ -35,6 +35,7 @@ sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
     BODY_HEADER_SIZE,
+    CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     FORMAT_CHEBYSHEV,
     HEADER_SIZE,
     MAGIC,
@@ -89,7 +90,10 @@ def _parse_chunk(path: Path) -> ParsedChunk:
     assert magic == MAGIC and ver == VERSION and fmt == FORMAT_CHEBYSHEV, (
         f"{path}: bad header magic={magic!r} ver={ver} fmt={fmt}"
     )
-    body_count, _reserved = struct.unpack("<II", data[24:HEADER_SIZE])
+    body_count, flags, _r1, _r2 = struct.unpack("<IBBH", data[24:HEADER_SIZE])
+    float64_coeffs = bool(flags & CHEBYSHEV_FLAG_FLOAT64_COEFFS)
+    coeff_dtype = np.float64 if float64_coeffs else np.float32
+    coeff_bytes = 8 if float64_coeffs else 4
 
     off = HEADER_SIZE
     bodies: list[BodyRecord] = []
@@ -108,13 +112,13 @@ def _parse_chunk(path: Path) -> ParsedChunk:
         ) = struct.unpack("<iiifHBBBBH", data[off : off + BODY_HEADER_SIZE])
         off += BODY_HEADER_SIZE
         segments: list[Segment] = []
-        seg_coeffs_bytes = coeffs_per_axis * 3 * 4  # float32
+        seg_coeffs_bytes = coeffs_per_axis * 3 * coeff_bytes
         for _ in range(segment_count):
             seg_start, seg_end = struct.unpack("<dd", data[off : off + 16])
             off += 16
             coeffs = (
                 np.frombuffer(
-                    data, dtype=np.float32, count=3 * coeffs_per_axis, offset=off
+                    data, dtype=coeff_dtype, count=3 * coeffs_per_axis, offset=off
                 )
                 .reshape(3, coeffs_per_axis)
                 .astype(np.float64)
