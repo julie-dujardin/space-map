@@ -2,7 +2,8 @@
 export enum UrlType {
 	Body = 'b', // naif-
 	SmallBody = 's', // spkid-
-	EarthSatellite = 'e' // norad_satcat-
+	EarthSatellite = 'e', // norad_satcat-
+	Probe = 'p' // probe-
 }
 
 /**
