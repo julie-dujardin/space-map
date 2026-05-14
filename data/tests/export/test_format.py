@@ -154,9 +154,7 @@ class TestPackChebyshevHeader:
         assert header[28] == 0
 
     def test_float64_flag_lands_at_offset_28(self):
-        header = pack_chebyshev_header(
-            0.0, 0.0, 0, flags=CHEBYSHEV_FLAG_FLOAT64_COEFFS
-        )
+        header = pack_chebyshev_header(0.0, 0.0, 0, flags=CHEBYSHEV_FLAG_FLOAT64_COEFFS)
         assert header[28] & CHEBYSHEV_FLAG_FLOAT64_COEFFS
 
 
