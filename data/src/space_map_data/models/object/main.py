@@ -82,6 +82,7 @@ class OrbitalSource(StrEnum):
     sbdb_moon = PROVIDERS.SBDB_MOONS
     celestrak = PROVIDERS.CELESTRAK
     spice = PROVIDERS.SPICE
+    spice_probe = PROVIDERS.SPICE_PROBES
 
 
 class Object(Base):
@@ -131,6 +132,10 @@ class Object(Base):
     naif_id_extended: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True
     )  # 5-digit extended NAIF ID used by SPICE for irregular-moon kernels
+    probe_id: Mapped[int | None] = mapped_column(
+        unique=True, default=None, index=True
+    )  # int32 ID packing inception MJD + dedupe for spacecraft (see probes/probe_id.py).
+    # Used because NAIF IDs are recycled across missions (e.g. -76 was Mariner 10, now MSL).
 
     # Orbital element scale + central body. Kepler elements themselves live
     # on the sub-tables (Horizons / SBDB / CelesTrak); join via orbital_source.

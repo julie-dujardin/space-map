@@ -12,6 +12,7 @@ from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.objects.horizons import HorizonsDownloader
+from space_map_data.download.providers.objects.probes import ProbesDownloader
 from space_map_data.download.providers.objects.spice import SpiceDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.objects.sbdb import SBDBDownloader
@@ -37,6 +38,7 @@ PROVIDERS_CLASSES = [
     SBDBDownloader,
     SBDBMoonsDownloader,
     SpiceDownloader,
+    ProbesDownloader,
     HorizonsDownloader,
     WikidataDownloader,
     WikipediaDownloader,
