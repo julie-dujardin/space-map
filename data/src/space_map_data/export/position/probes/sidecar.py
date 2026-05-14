@@ -23,14 +23,15 @@ content hash here.
 
 import hashlib
 import json
-import logging
-import os
-import tempfile
 from pathlib import Path
 
+from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
+    matches,
+    read_sidecar,
+    write_atomic,
+    write_sidecar,
+)
 from space_map_data.probes.zones import Zone
-
-logger = logging.getLogger(__name__)
 
 
 # Bump when sizing.py / writer.py / format.py probe-encoding logic changes.
@@ -99,47 +100,3 @@ def build_chunk_signature(
         "zone_hash": zone_signature(zone),
         "probes": dict(sorted(probe_block.items())),
     }
-
-
-def read_sidecar(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        logger.warning("Sidecar %s unreadable (%s); treating as missing", path, e)
-        return None
-
-
-def matches(path: Path, expected: dict) -> bool:
-    """True iff the on-disk sidecar equals `expected`."""
-    return read_sidecar(path) == expected
-
-
-def write_atomic(path: Path, content: bytes) -> None:
-    """Tempfile + rename in the destination dir — crash-safe.
-
-    `tempfile.mkstemp` creates the temp file with mode 0o600 (owner-only) for
-    security, and `os.replace` preserves that mode — so without an explicit
-    chmod the published binaries would be unreadable to anyone except the
-    export user, manifesting as nginx/CDN 403s on otherwise-existing files.
-    Force 0o644 to match what a plain `open(..., 'wb')` under the typical
-    0o022 umask produces.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(content)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
-def write_sidecar(path: Path, signature: dict) -> None:
-    write_atomic(path, json.dumps(signature, sort_keys=True, indent=2).encode())

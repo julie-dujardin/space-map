@@ -3,6 +3,8 @@
 import logging
 from pathlib import Path
 
+from space_map_data.constants.providers import PROVIDERS
+from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.writer import (
     write_elements,
     write_parabolic_elements,
@@ -16,6 +18,7 @@ from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.utils.paths import DOWNLOAD_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,18 @@ CHUNK_SIZE = 10_000
 # propagator itself errors out a year or two past epoch — ±14d is the
 # conventional "still reasonably accurate" window for LEO.
 SGP4_VALIDITY_SLACK_DAYS = 14.0
+
+
+def _earth_day_dir(date_iso: str) -> Path:
+    """Map a snapshot's `YYYY-MM-DD` label to its CelesTrak day-dir on disk.
+
+    The downloader stores each day at
+    `space-map-downloads/celestrak/{YYYY}/{MM}/{DD}/` (zero-padded month/day).
+    The sidecar fingerprints the CSVs in that dir to decide whether to
+    re-encode a part.
+    """
+    year, month, day = date_iso.split("-")
+    return DOWNLOAD_DIR / PROVIDERS.CELESTRAK / year / month / day
 
 
 def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:
@@ -113,11 +128,23 @@ def write_chunk(
     # zones, the time-chunk's [start, end] for time-chunked moons).
     start_jd = validity_start_jd
     end_jd = validity_end_jd
+    sidecar_path: Path | None = None
+    signature: dict | None = None
     if zone == "PAR":
         write_fn = write_parabolic_elements
     elif zone == "earth":
         write_fn = write_sgp4_elements
         start_jd, end_jd = _sgp4_validity_window(objects)
+        # Earth parts come from per-day CelesTrak CSVs that the downloader
+        # writes once and never edits. If the CSV fingerprints + the encoding
+        # version match an existing binary's sidecar, the part contents are
+        # determined entirely by those inputs — skip the encode + gzip.
+        assert time is not None, "earth zone snapshots must carry a date label"
+        day_dir = _earth_day_dir(time)
+        sidecar_path = chunk_dir / f"{part}.meta.json"
+        signature = sidecar.build_part_signature(day_dir)
+        if out_path.exists() and sidecar.matches(sidecar_path, signature):
+            return out_path.stat().st_size
     else:
         write_fn = write_elements
     write_fn(
@@ -129,4 +156,6 @@ def write_chunk(
         start_jd=start_jd,
         end_jd=end_jd,
     )
+    if sidecar_path is not None and signature is not None:
+        sidecar.write_sidecar(sidecar_path, signature)
     return out_path.stat().st_size
