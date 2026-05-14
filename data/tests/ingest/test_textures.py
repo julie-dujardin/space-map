@@ -360,8 +360,8 @@ class TestProcessClouds:
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = []
         proc._global_warnings = []
-        proc._mark_texture_available = lambda _object_id: None  # type: ignore[method-assign]
-        proc._reset_texture_available = lambda: None  # type: ignore[method-assign]
+        proc._mark_texture_available = lambda _object_id: None
+        proc._reset_texture_available = lambda: None
         return proc
 
     @staticmethod
