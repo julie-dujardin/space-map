@@ -26,6 +26,7 @@ class ID_TYPES(StrEnum):
     PROVISIONAL_DESIGNATION = "provisional_designation"
     IAU_FEATURE_ID = "iau_feature_id"
     NAME = "name"
+    PROBE = "probe"  # synthetic ID for spacecraft (inception date + dedupe)
 
 
 def make_object_id(id_type: ID_TYPES, value: int | str) -> str:
