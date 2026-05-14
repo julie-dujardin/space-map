@@ -110,8 +110,30 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "spkid-1000107",  # 81P/Wild 2
         "spkid-1000041",  # 103P/Hartley 2
         "spkid-1000132",  # C/1995 O1 (Hale-Bopp)
+        # Great comets (non-periodic)
+        "spkid-1000738",  # Great Comet of 1807
         "spkid-1000742",  # Great Comet of 1811
+        "spkid-1000749",  # Great Comet of 1819
+        "spkid-1000755",  # Great Comet of 1823  # TODO check defunct
+        "spkid-1000778",  # Great Comet of 1843
+        "spkid-1000845",  # Great Southern Comet of 1865
+        "spkid-1000872",  # Great Southern Comet of 1880
+        "spkid-1000882",  # Great Comet of 1882
+        "spkid-1000899",  # Great Southern Comet of 1887
+        "spkid-1000945",  # Great Comet of 1901
+        "spkid-1000967",  # Great January Comet of 1910
+        "spkid-1001121",  # Comet Ikeya–Seki
+        "spkid-1003162",  # C/2011 W3 (Lovejoy)
         "spkid-1003667",  # C/2020 F3 (NEOWISE)
         "spkid-1003913",  # C/2023 A3 (Tsuchinshan-ATLAS)
+        # no wikidata match
+        "spkid-1000592",  # C/390 Q1
+        "spkid-1000616",  # Great Comet of 1264
+        "spkid-1000630",  # Great Comet of 1402
+        "spkid-1000639",  # Great Comet of 1472
+        "spkid-1000648",  # Great Comet of 1556
+        "spkid-1000651",  # Great Comet of 1577
+        "spkid-1000669",  # Great Comet of 1680
+        "spkid-1000690",  # Great Comet of 1744
     }
 )
