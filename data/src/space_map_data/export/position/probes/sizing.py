@@ -319,6 +319,18 @@ def _fit_chebyshev_subchunk(
 
     All segments are fit (vs. the previous lazy-on-eval-point approach) so
     the resulting coefficient array can be packed into the export binary.
+
+    TODO(discontinuity-aware fitting): old (1970s-era) SPKs have small
+    step discontinuities at their internal intlen boundaries — e.g.
+    p10-a.bsp at jd=2442040.5 has an 11 km position step. If a segment
+    straddles such a step, the polynomial interpolates exactly at the 12
+    Gauss-Lobatto nodes but oscillates ~step-size between them (Pioneer 10
+    Jupiter shows a 9.7 km tip at one sample out of 1295). `n_eval_samples`
+    is too coarse to detect this; finer intlen doesn't help because the
+    step is at a fixed time. Real fix: sub-second-cadence scan to detect
+    discontinuities, then choose an intlen + grid offset that aligns
+    segment boundaries to the step location. See
+    `scripts/probe_diagnose_pioneer10.py` for the worked-out case.
     """
     n_nodes = CHEBYSHEV_DEGREE + 1
     k = np.arange(n_nodes)
