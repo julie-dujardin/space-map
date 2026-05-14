@@ -96,6 +96,47 @@ def _native_params(
     return None
 
 
+def _cache_is_valid(
+    path: Path,
+    body: MajorBody,
+    intlen_s: float,
+    degree: int,
+    start_et: float,
+    end_et: float,
+) -> bool:
+    """Check whether the on-disk npz still matches the requested parameters.
+
+    Invalidates on any change to parent, intlen, degree, or time range so we
+    don't ship coefficients fit against a different configuration.
+    """
+    if not path.exists():
+        return False
+    try:
+        with np.load(path) as data:
+            meta = data["meta"]
+            params = data["params"]
+    except Exception:
+        return False
+    if meta.shape != (3,) or params.shape != (3,):
+        return False
+    if int(meta[0]) != body.naif_id:
+        return False
+    if int(meta[1]) != body.parent_id:
+        return False
+    if int(meta[2]) != degree:
+        return False
+    expected_start_jd = _et_to_jd(start_et)
+    expected_end_jd = _et_to_jd(end_et)
+    # JD-day comparisons need only sub-second precision; 1e-6 d ≈ 0.09 s.
+    if abs(float(params[0]) - expected_start_jd) > 1e-6:
+        return False
+    if abs(float(params[1]) - expected_end_jd) > 1e-6:
+        return False
+    if abs(float(params[2]) - intlen_s) > 1e-6:
+        return False
+    return True
+
+
 def _sample_body(
     naif_id: int,
     parent_id: int,
@@ -187,19 +228,18 @@ def extract_chebyshev(
     ship.
 
     Writes one `.npz` per body under `out_dir / chebyshev / {naif_id}.npz`.
-    Stale files from a prior run are removed first so the directory always
-    reflects the current filter policy.
+    Bodies whose cached file still matches the requested time range, sampling
+    interval, and degree are skipped; stale files (filtered out, no SPK
+    coverage, or parameter mismatch) are removed at the end so the directory
+    always reflects the current filter policy.
 
-    Returns the number of bodies successfully extracted.
+    Returns the number of bodies present in the output directory after the
+    run (newly extracted plus cache hits).
 
     Caller must have furnished all relevant kernels before invoking; we only
     read the SPK files here to discover native sub-interval parameters.
     """
-    import shutil
-
     cheb_dir = out_dir / "chebyshev"
-    if cheb_dir.exists():
-        shutil.rmtree(cheb_dir)
     cheb_dir.mkdir(exist_ok=True)
 
     start_et = spiceypy.str2et(f"{start_year}-01-01T00:00:00")
@@ -212,8 +252,10 @@ def extract_chebyshev(
     )
 
     extracted = 0
+    cached = 0
     skipped_no_spk = 0
     skipped_filter = 0
+    kept_paths: set[Path] = set()
     for body in tqdm(bodies, desc="Chebyshev", unit="body"):
         native = _native_params(kernel_paths, body.naif_id)
         if native is None:
@@ -248,6 +290,12 @@ def extract_chebyshev(
             )
             degree = _MAX_DEGREE
 
+        out_path = cheb_dir / f"{body.naif_id}.npz"
+        if _cache_is_valid(out_path, body, intlen_s, degree, start_et, end_et):
+            kept_paths.add(out_path)
+            cached += 1
+            continue
+
         try:
             start_jds, end_jds, coeffs = _sample_body(
                 body.naif_id,
@@ -266,7 +314,6 @@ def extract_chebyshev(
             )
             continue
 
-        out_path = cheb_dir / f"{body.naif_id}.npz"
         np.savez(
             out_path,
             start_jds=start_jds,
@@ -276,15 +323,29 @@ def extract_chebyshev(
                 [body.naif_id, body.parent_id, degree],
                 dtype=np.int64,
             ),
+            params=np.array(
+                [_et_to_jd(start_et), _et_to_jd(end_et), intlen_s],
+                dtype=np.float64,
+            ),
         )
+        kept_paths.add(out_path)
         extracted += 1
 
+    removed_stale = 0
+    for existing in cheb_dir.glob("*.npz"):
+        if existing not in kept_paths:
+            existing.unlink()
+            removed_stale += 1
+
     logger.info(
-        "Chebyshev extraction complete: %d bodies extracted, %d skipped "
-        "(no SPK coverage), %d skipped (filtered out) -> %s",
+        "Chebyshev extraction complete: %d bodies extracted, %d reused from "
+        "cache, %d skipped (no SPK coverage), %d skipped (filtered out), "
+        "%d stale files removed -> %s",
         extracted,
+        cached,
         skipped_no_spk,
         skipped_filter,
+        removed_stale,
         cheb_dir,
     )
-    return extracted
+    return extracted + cached
