@@ -114,10 +114,69 @@ def _coverage(naif_id: int, kernel_paths: list[str]) -> tuple[float, float] | No
     return longest[0], longest[1]
 
 
+def _landed_tail_start_idx(
+    naif_id: int,
+    sample_ets: np.ndarray,
+    altitude_threshold_km: float,
+) -> int | None:
+    """Index of the first sample of the longest landed-tail.
+
+    A sample is "landed" if the probe is within `altitude_threshold_km`
+    of any major-body surface. The tail is the longest run of consecutive
+    landed samples that INCLUDES the last sample. Returns the start index
+    of that tail, or None if the probe isn't landed at the end of coverage.
+
+    Why: Phoenix-class landed missions ship SPKs that park the spacecraft
+    at lander coordinates and extend 90+ years forward. SPICE's last-
+    furnshed-wins precedence makes those parked-coords win over the cruise
+    kernel near landing time, producing a 250,000 km step in a single
+    sample. Polynomial fits of any degree can't span that. Truncate
+    coverage at the start of the landed tail so we only render the
+    in-flight phase.
+    """
+    n = len(sample_ets)
+    if n < 2:
+        return None
+    # Per-sample boolean: is the probe within threshold of any landing body?
+    landed = np.zeros(n, dtype=bool)
+    for k, et in enumerate(sample_ets):
+        for body_naif in _LANDING_TARGETS:
+            try:
+                state, _ = spiceypy.spkezr(
+                    str(naif_id),
+                    float(et),
+                    "ECLIPJ2000",
+                    "NONE",
+                    str(body_naif),
+                )
+            except spiceypy.exceptions.SpiceyError:
+                continue
+            try:
+                radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
+            except spiceypy.exceptions.SpiceyError:
+                continue
+            dist = float(np.linalg.norm(state[:3]))
+            r_max = float(max(radii))
+            if (dist - r_max) < altitude_threshold_km:
+                landed[k] = True
+                break
+    if not landed[-1]:
+        return None
+    # Walk back from the last sample while consecutive landed.
+    idx = n - 1
+    while idx > 0 and landed[idx - 1]:
+        idx -= 1
+    if idx == 0:
+        # Entire coverage looks landed — leave that case to is_landed_probe.
+        return None
+    return idx
+
+
 def classify_trace(
     naif_id: int,
     kernel_paths: list[str],
     sample_dt_days: float = 1.0,
+    landed_tail_altitude_km: float = 50.0,
 ) -> list[ZoneInterval]:
     """Sample the probe's trajectory at `sample_dt_days` cadence and return
     the run-length-encoded zone membership timeline.
@@ -131,6 +190,11 @@ def classify_trace(
     full coverage. Cruise-then-orbiter probes (GRAIL, LADEE, Cassini post-
     SOI) emit interplanetary only for the cruise portion — once captured
     by a planet system they show up in that planet's zone, not heliocentric.
+
+    If the probe ends its coverage parked on a body's surface (Phoenix,
+    InSight, MGS post-aerobrake, etc.) we truncate at the start of that
+    landed tail. The cruise-to-surface kernel discontinuity that SPICE
+    produces from precedence-driven SPK switching can't be polynomial-fit.
     """
     cov = _coverage(naif_id, kernel_paths)
     if cov is None:
@@ -139,6 +203,21 @@ def classify_trace(
     dt_s = sample_dt_days * _S_PER_DAY
     n_samples = max(2, int(np.ceil((t1 - t0) / dt_s)) + 1)
     ets = np.linspace(t0, t1, n_samples)
+
+    # Truncate the trailing landed phase, if any.
+    cut = _landed_tail_start_idx(naif_id, ets, landed_tail_altitude_km)
+    if cut is not None and cut >= 2:
+        cut_et = float(ets[cut])
+        days_dropped = (t1 - cut_et) / _S_PER_DAY
+        ets = ets[:cut]
+        n_samples = len(ets)
+        logger.info(
+            "classify_trace naif=%d: truncating landed tail at et=%.0f "
+            "(%.1f days dropped)",
+            naif_id,
+            cut_et,
+            days_dropped,
+        )
 
     intervals: list[ZoneInterval] = []
     in_any_planetary = np.zeros(n_samples, dtype=bool)

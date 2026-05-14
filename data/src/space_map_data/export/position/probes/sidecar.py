@@ -40,7 +40,11 @@ logger = logging.getLogger(__name__)
 # so modern planetary ephemerides (de440 / sat441) win over a mission's
 # bundled-from-the-1970s planetary data — Pioneer 11 Saturn dropped from
 # 1271 km to ~0 km error.
-FIT_VERSION = 2
+# v3 (2026-05-14): classify_trace truncates the trailing landed phase so
+# landed missions (Phoenix, InSight, MGS post-aerobrake) don't include
+# the cruise→surface kernel-precedence step that polynomial fits can't
+# capture — Phoenix Mars max dropped from 123,096 km to fitter floor.
+FIT_VERSION = 3
 
 
 def zone_signature(zone: Zone) -> str:
