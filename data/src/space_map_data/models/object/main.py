@@ -108,7 +108,12 @@ class Object(Base):
         index=True,
     )  # Wikidata entity ID (e.g. Q2)
     naif_id: Mapped[int | None] = mapped_column(
-        unique=True, default=None, index=True
+        # Not unique: NAIF IDs recycle across spacecraft (-76 = Mariner 10 and
+        # MSL, -12 = LADEE and Pioneer Venus Multiprobe, -66 = Vega 2 and
+        # MarCO-B, ...). Natural-body NAIF IDs are positive and effectively
+        # unique by data, but the constraint is too strict to enforce DB-wide.
+        default=None,
+        index=True,
     )  # NAIF/SPK ID (from Horizons or SPICE)
     spkid: Mapped[int | None] = mapped_column(
         unique=True, default=None, index=True

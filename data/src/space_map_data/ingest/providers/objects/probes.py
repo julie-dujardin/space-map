@@ -113,10 +113,7 @@ class ProbesIngestor:
             "id": object_pk,
             "name": f"{record['mission']} ({record['naif_id']})",
             "object_type": ObjectType.spacecraft,
-            # `Object.naif_id` is `unique=True`, but NAIF IDs are recycled
-            # across missions (-76 = Mariner 10 and MSL), so we intentionally
-            # don't populate it here — the canonical (mission, naif_id)→probe_id
-            # map lives in `spice/probe_ids.json`.
+            "naif_id": record["naif_id"],
             "probe_id": probe_id,
             "orbital_source": OrbitalSource.spice_probe,
             # Probe positions live in the per-zone chunk files, not in a

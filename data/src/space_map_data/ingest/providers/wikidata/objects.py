@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy import update
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.models.object import Object
+from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 from tqdm import tqdm
@@ -299,7 +299,13 @@ def ingest(download_dir: Path) -> None:
         return
 
     session = get_session()
-    session.execute(update(Object).values(wikidata_qid=None))
+    # Probes carry hand-curated QIDs (no Wikidata external ID property to
+    # SPARQL them through), so they're excluded from the wipe.
+    session.execute(
+        update(Object)
+        .where(Object.orbital_source != OrbitalSource.spice_probe)
+        .values(wikidata_qid=None)
+    )
     session.commit()
 
     obj_to_qids, qid_to_objs = _build_mappings(session, ids_dir)
