@@ -76,7 +76,27 @@ export const MINOR_PROMOTED_IDS: ReadonlySet<string> = new Set([
 	'spkid-20000511', // 511 Davida
 	'spkid-20000588', // 588 Achilles
 	'spkid-20000704', // 704 Interamnia
-	'spkid-20001862' // 1862 Apollo
+	'spkid-20001862', // 1862 Apollo
+	'spkid-1000592', // C/390 Q1
+	'spkid-1000616', // Great Comet of 1264
+	'spkid-1000630', // Great Comet of 1402
+	'spkid-1000639', // Great Comet of 1472
+	'spkid-1000648', // Great Comet of 1556
+	'spkid-1000651', // Great Comet of 1577
+	'spkid-1000669', // Great Comet of 1680
+	'spkid-1000690', // Great Comet of 1744
+	'spkid-1000738', // Great Comet of 1807
+	'spkid-1000742', // Great Comet of 1811
+	'spkid-1000749', // Great Comet of 1819
+	'spkid-1000755', // Great Comet of 1823
+	'spkid-1000778', // Great Comet of 1843
+	'spkid-1000845', // Great Southern Comet of 1865
+	'spkid-1000872', // Great Southern Comet of 1880
+	'spkid-1000882', // Great Comet of 1882
+	'spkid-1000899', // Great Southern Comet of 1887
+	'spkid-1000945', // Great Comet of 1901
+	'spkid-1000967', // Great January Comet of 1910
+	'spkid-1001121' // Comet Ikeya–Seki
 ]);
 
 /**
