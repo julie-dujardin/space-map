@@ -329,8 +329,10 @@ export class ContextManager {
 
 	// --- Non-reactive data (only read from renderer/construction, never from Svelte templates) ---
 	majorBodies: PositionedBody[] = [];
-	asteroidBodiesByZone = new Map<string, PositionedBody[]>();
-	spacecraftByParent = new Map<string, PositionedBody[]>();
+	// Inner Map is keyed by object id so `getBody`/zone-local lookups are O(1)
+	// without duplicating body refs into a parallel flat index.
+	asteroidBodiesByZone = new Map<string, Map<string, PositionedBody>>();
+	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 	/**
 	 * Chebyshev polynomial ephemeris for SPICE-sourced major bodies. Null until
 	 * the metadata.json fetch in `load()` resolves; stays null if the export
@@ -369,6 +371,13 @@ export class ContextManager {
 	 * from whichever planetary system the camera is in.
 	 */
 	focusedSystemId = $state<string | null>(null);
+	// Plain mirrors of the reactive focus fields above. Hot per-frame loops
+	// (visibility, sphere/texture LOD, ring shaders) read these instead of the
+	// $state-tracked versions — in dev mode every $state getter fires a
+	// reactive-source tag + `get_proxied_value` trap, and the per-body loops
+	// turned that into the dominant cost.
+	private focusedBodyIdPlain: string = 'naif-10';
+	private focusedSystemIdPlain: string | null = null;
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	private cameraDistThreeJS = 0;
@@ -401,16 +410,15 @@ export class ContextManager {
 		if (major) return major;
 		if (zone !== undefined) {
 			return (
-				this.spacecraftByParent.get(zone)?.find((b) => b.data.id === id) ??
-				this.asteroidBodiesByZone.get(zone)?.find((b) => b.data.id === id)
+				this.spacecraftByParent.get(zone)?.get(id) ?? this.asteroidBodiesByZone.get(zone)?.get(id)
 			);
 		}
-		for (const bodies of this.spacecraftByParent.values()) {
-			const hit = bodies.find((b) => b.data.id === id);
+		for (const byId of this.spacecraftByParent.values()) {
+			const hit = byId.get(id);
 			if (hit) return hit;
 		}
-		for (const bodies of this.asteroidBodiesByZone.values()) {
-			const hit = bodies.find((b) => b.data.id === id);
+		for (const byId of this.asteroidBodiesByZone.values()) {
+			const hit = byId.get(id);
 			if (hit) return hit;
 		}
 		return undefined;
@@ -568,8 +576,8 @@ export class ContextManager {
 
 			this.addBodies(major);
 
-			const pendingAsteroids = new Map<string, PositionedBody[]>();
-			const pendingSpacecraft = new Map<string, PositionedBody[]>();
+			const pendingAsteroids = new Map<string, Map<string, PositionedBody>>();
+			const pendingSpacecraft = new Map<string, Map<string, PositionedBody>>();
 			// Placeholders for URL-loaded targets (one per session): when the real
 			// chunk lands the entry's data/position fields are mutated in place so
 			// the BodyObject the renderer kept holds onto fresh elements without us
@@ -577,8 +585,11 @@ export class ContextManager {
 			const placeholderById = new Map<string, PositionedBody>();
 
 			const flush = () => {
-				this.asteroidBodiesByZone = new Map(pendingAsteroids);
-				this.spacecraftByParent = new Map(pendingSpacecraft);
+				// Re-wrap each inner Map so the outer reference changes for any
+				// reactive observers — inner refs stay stable for in-place updates.
+				const cloneOuter = <K, V>(m: Map<K, V>): Map<K, V> => new Map(m);
+				this.asteroidBodiesByZone = cloneOuter(pendingAsteroids);
+				this.spacecraftByParent = cloneOuter(pendingSpacecraft);
 				this.minorBodyVersion++;
 			};
 
@@ -593,11 +604,15 @@ export class ContextManager {
 					const type = body.data.objectType;
 					if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
 						const key = body.data.parentId;
-						pendingSpacecraft.set(key, [...(pendingSpacecraft.get(key) ?? []), body]);
+						let bucket = pendingSpacecraft.get(key);
+						if (!bucket) pendingSpacecraft.set(key, (bucket = new Map()));
+						bucket.set(body.data.id, body);
 						placeholderById.set(body.data.id, body);
 						this.dirtySpacecraftGroups.add(key);
 					} else if (zone) {
-						pendingAsteroids.set(zone, [...(pendingAsteroids.get(zone) ?? []), body]);
+						let bucket = pendingAsteroids.get(zone);
+						if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
+						bucket.set(body.data.id, body);
 						placeholderById.set(body.data.id, body);
 						this.dirtyAsteroidZones.add(zone);
 					} else {
@@ -610,10 +625,19 @@ export class ContextManager {
 				}
 			}
 
+			// Probes ride bodiesById (so getBody / URL focus / placeholder routing
+			// works) but are excluded from `majorBodies` so `buildScene` doesn't
+			// build a sphere + orbit line for each on first paint. The hot
+			// per-frame iteration loops (visibility, sphere LOD, texture LOD,
+			// ring shaders) walk `bodyObjects` which only contains promoted
+			// entries — keeping the long tail of probes out of that set keeps
+			// the loops short. On focus, `ensureBodyObjects` builds the full
+			// visual representation.
 			this.majorBodies = major.filter(
 				(b) =>
 					b.data.objectType !== ObjectType.BARYCENTER &&
-					b.data.objectType !== ObjectType.LAGRANGE_POINT
+					b.data.objectType !== ObjectType.LAGRANGE_POINT &&
+					b.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 			);
 			this.loading = false;
 
@@ -653,14 +677,14 @@ export class ContextManager {
 									continue;
 								}
 								if (b.data.objectType === ObjectType.SPACECRAFT) {
-									const list = pendingSpacecraft.get(b.data.parentId) ?? [];
-									list.push(b);
-									pendingSpacecraft.set(b.data.parentId, list);
+									let bucket = pendingSpacecraft.get(b.data.parentId);
+									if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
+									bucket.set(b.data.id, b);
 									this.dirtySpacecraftGroups.add(b.data.parentId);
 								} else {
-									const list = pendingAsteroids.get(zone) ?? [];
-									list.push(b);
-									pendingAsteroids.set(zone, list);
+									let bucket = pendingAsteroids.get(zone);
+									if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
+									bucket.set(b.data.id, b);
 									this.dirtyAsteroidZones.add(zone);
 								}
 							}
@@ -771,7 +795,7 @@ export class ContextManager {
 		const zoomed = dist <= ZOOM_THRESHOLD_AU * AU_SCALE;
 		if (zoomed !== this.isZoomedIn) {
 			this.isZoomedIn = zoomed;
-			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
+			this.activeSystemId = this.isZoomedIn ? this.focusedSystemIdPlain : null;
 		}
 		// Only recompute when distance changes by more than 0.5% — avoids a filter+sort every frame
 		if (Math.abs(dist - this.lastRecomputeDist) > this.lastRecomputeDist * 0.005 + 0.001) {
@@ -781,8 +805,9 @@ export class ContextManager {
 	}
 
 	setFocused(body: PositionedBody): void {
-		if (body.data.id !== this.focusedBodyId) {
+		if (body.data.id !== this.focusedBodyIdPlain) {
 			this.focusedBodyId = body.data.id;
+			this.focusedBodyIdPlain = body.data.id;
 			// A planetary barycenter IS the system root (planets/moons are its children),
 			// but the SSB (naif-0) is top-level, not a system.
 			const isSystemBarycenter =
@@ -809,7 +834,8 @@ export class ContextManager {
 						: body.data.parentId;
 			}
 			this.focusedSystemId = sysId;
-			this.activeSystemId = this.isZoomedIn ? this.focusedSystemId : null;
+			this.focusedSystemIdPlain = sysId;
+			this.activeSystemId = this.isZoomedIn ? sysId : null;
 			this.lastRecomputeDist = -1; // force recompute on next updateCamera
 			this.recomputeFullMoons();
 		}
@@ -824,7 +850,7 @@ export class ContextManager {
 			vis = VISIBILITY.HIDE;
 		} else {
 			const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
-			const isFocused = moon.data.id === this.focusedBodyId;
+			const isFocused = moon.data.id === this.focusedBodyIdPlain;
 			vis = computeVisibilityFromRatio(
 				ratio,
 				this.scaledPlanetary,
@@ -846,7 +872,7 @@ export class ContextManager {
 	 */
 	private recomputeFullMoons(): void {
 		this.fullMoonIds.clear();
-		const sysId = this.focusedSystemId;
+		const sysId = this.focusedSystemIdPlain;
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
 		const children: PositionedBody[] = [];
@@ -926,7 +952,7 @@ export class ContextManager {
 		// planets use distance to the body itself.
 		const dist =
 			body.data.objectType === ObjectType.SPACECRAFT ? this.cameraDistThreeJS : camDistThreeJS;
-		const isFocused = body.data.id === this.focusedBodyId;
+		const isFocused = body.data.id === this.focusedBodyIdPlain;
 		return computeVisibilityFromRatio(
 			dist / AU_SCALE / refA,
 			this.scaledSystem,
@@ -989,7 +1015,7 @@ export class ContextManager {
 	}
 
 	private isInFocusedSystem(parentId: string): boolean {
-		return this.isInSystem(parentId, this.focusedSystemId);
+		return this.isInSystem(parentId, this.focusedSystemIdPlain);
 	}
 
 	/**

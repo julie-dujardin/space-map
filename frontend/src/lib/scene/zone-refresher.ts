@@ -207,7 +207,7 @@ export class ZoneRefresher {
 				)
 			);
 
-			const newBuckets = new Map<string, PositionedBody[]>();
+			const newBuckets = new Map<string, Map<string, PositionedBody>>();
 			for (const chunk of chunks) {
 				this.ctx.recordOrbitSources(chunk);
 				for (const body of chunk) {
@@ -220,9 +220,9 @@ export class ZoneRefresher {
 						continue;
 					}
 					const key = body.data.parentId;
-					const list = newBuckets.get(key) ?? [];
-					list.push(body);
-					newBuckets.set(key, list);
+					let bucket = newBuckets.get(key);
+					if (!bucket) newBuckets.set(key, (bucket = new Map()));
+					bucket.set(body.data.id, body);
 				}
 			}
 
@@ -231,11 +231,11 @@ export class ZoneRefresher {
 			let removed = 0;
 
 			for (const [key, freshBodies] of newBuckets) {
-				const existing = this.ctx.spacecraftByParent.get(key) ?? [];
-				const existingById = new Map(existing.map((b) => [b.data.id, b]));
-				const merged: PositionedBody[] = [];
-				for (const b of freshBodies) {
-					const e = existingById.get(b.data.id);
+				const existing = this.ctx.spacecraftByParent.get(key);
+				const merged = new Map<string, PositionedBody>();
+				const carriedIds = new Set<string>();
+				for (const [id, b] of freshBodies) {
+					const e = existing?.get(id);
 					if (e) {
 						e.data = b.data;
 						e.position = b.position;
@@ -246,15 +246,19 @@ export class ZoneRefresher {
 						// motion and syncs the orbit line via that reference.
 						if (b.orbitElements !== undefined) e.orbitElements = b.orbitElements;
 						if (b.orbitCenter !== undefined) e.orbitCenter = b.orbitCenter;
-						merged.push(e);
-						existingById.delete(b.data.id);
+						merged.set(id, e);
+						carriedIds.add(id);
 						updated++;
 					} else {
-						merged.push(b);
+						merged.set(id, b);
 						added++;
 					}
 				}
-				removed += existingById.size;
+				if (existing) {
+					for (const id of existing.keys()) {
+						if (!carriedIds.has(id)) removed++;
+					}
+				}
 				this.ctx.spacecraftByParent.set(key, merged);
 				this.ctx.dirtySpacecraftGroups.add(key);
 			}
@@ -265,7 +269,7 @@ export class ZoneRefresher {
 				if (newBuckets.has(key)) continue;
 				const prev = this.ctx.spacecraftByParent.get(key);
 				if (prev) {
-					removed += prev.length;
+					removed += prev.size;
 					this.ctx.spacecraftByParent.delete(key);
 					this.ctx.dirtySpacecraftGroups.add(key);
 				}

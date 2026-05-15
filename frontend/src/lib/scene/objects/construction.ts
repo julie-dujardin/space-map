@@ -40,9 +40,18 @@ import { attachEclipseShadowToBody, type EclipseSelfUniforms } from './eclipse-s
 import { attachSpecularMap, disposeSpecularFromMaterial, type SpecularMeta } from './specular';
 import type { BodyObjects } from '../types';
 
-function excludePromoted(bodies: PositionedBody[], promotedIds?: Set<string>): PositionedBody[] {
-	if (!promotedIds || promotedIds.size === 0) return bodies;
-	return bodies.filter((b) => !promotedIds.has(b.data.id));
+function excludePromoted(
+	bodies: Iterable<PositionedBody>,
+	promotedIds?: Set<string>
+): PositionedBody[] {
+	if (!promotedIds || promotedIds.size === 0) {
+		return Array.isArray(bodies) ? bodies : Array.from(bodies);
+	}
+	const out: PositionedBody[] = [];
+	for (const b of bodies) {
+		if (!promotedIds.has(b.data.id)) out.push(b);
+	}
+	return out;
 }
 
 export function buildMajorBodies(
@@ -267,8 +276,8 @@ export function buildPointClouds(
 	const moonPoints = new Map<string, Points>();
 
 	// Asteroid point clouds (one per zone)
-	for (const [zone, bodies] of ctx.asteroidBodiesByZone) {
-		const filtered = excludePromoted(bodies, promotedIds);
+	for (const [zone, byId] of ctx.asteroidBodiesByZone) {
+		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length > 0) {
 			const pts = makePointCloud(
 				filtered,
@@ -282,8 +291,8 @@ export function buildPointClouds(
 	}
 
 	// Spacecraft point clouds (one per parent body)
-	for (const [groupParentId, bodies] of ctx.spacecraftByParent.entries()) {
-		const filtered = excludePromoted(bodies, promotedIds);
+	for (const [groupParentId, byId] of ctx.spacecraftByParent.entries()) {
+		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
 		const points = makePointCloud(
 			filtered,

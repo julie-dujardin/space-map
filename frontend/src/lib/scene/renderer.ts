@@ -440,8 +440,8 @@ export class SceneRenderer {
 
 		for (const zone of this.ctx.dirtyAsteroidZones) {
 			const groupId = `asteroid:${zone}`;
-			const bodies = this.ctx.asteroidBodiesByZone.get(zone);
-			if (!bodies || bodies.length === 0) {
+			const bucket = this.ctx.asteroidBodiesByZone.get(zone);
+			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.asteroidPoints.get(zone);
 				if (stale) {
@@ -450,6 +450,7 @@ export class SceneRenderer {
 				}
 				continue;
 			}
+			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
 			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
@@ -473,8 +474,8 @@ export class SceneRenderer {
 
 		for (const gid of this.ctx.dirtySpacecraftGroups) {
 			const groupId = `spacecraft:${gid}`;
-			const bodies = this.ctx.spacecraftByParent.get(gid);
-			if (!bodies || bodies.length === 0) {
+			const bucket = this.ctx.spacecraftByParent.get(gid);
+			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.spacecraftPoints.get(gid);
 				if (stale) {
@@ -483,6 +484,7 @@ export class SceneRenderer {
 				}
 				continue;
 			}
+			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
 			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
@@ -1191,6 +1193,13 @@ export class SceneRenderer {
 					!MINOR_PROMOTED_IDS.has(id)
 				)
 					continue;
+				// Probes ride bodiesById but stay out of bodyObjects until
+				// focused — every promoted probe would add a sphere mesh +
+				// orbit line + a permanent slot in every per-frame iteration
+				// loop. `ensureBodyObjects` is called from the focus path
+				// (handleFocus / URL-loaded targetId) when a probe is actually
+				// looked at.
+				if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) continue;
 				this.ensureBodyObjects(body);
 				break; // one per frame to spread GPU work
 			}
@@ -1622,8 +1631,8 @@ export class SceneRenderer {
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			this.ctx.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
-			for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-				if (bodies.some((b) => b.data.id === body.data.id)) {
+			for (const [zone, byId] of this.ctx.asteroidBodiesByZone) {
+				if (byId.has(body.data.id)) {
 					this.ctx.dirtyAsteroidZones.add(zone);
 					break;
 				}
@@ -1699,8 +1708,8 @@ export class SceneRenderer {
 			if (objectType === ObjectType.SPACECRAFT) {
 				dirtySpacecraftParents.add(bo.body.data.parentId);
 			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
-				for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-					if (bodies.some((b) => b.data.id === id)) {
+				for (const [zone, byId] of this.ctx.asteroidBodiesByZone) {
+					if (byId.has(id)) {
 						dirtyAsteroidZones.add(zone);
 						break;
 					}

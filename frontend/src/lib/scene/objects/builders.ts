@@ -696,6 +696,20 @@ export function refreshOrbitLineGeometry(
 		}
 	}
 
+	// Memoization gate: when curve, anchor, orbit-center, and basis are all
+	// unchanged since the last commit, the vertex buffer is still correct.
+	// Skip nearest-point search + buffer rewrite — meaningful during paused
+	// camera drags where everything is static but rAF still fires.
+	const anchor = body.trailAnchor ?? body.position;
+	const ud = line.userData;
+	const curveChanged = curve !== ud.lastCurveRef;
+	const anchorChanged =
+		anchor[0] !== ud.lastAnchorX || anchor[1] !== ud.lastAnchorY || anchor[2] !== ud.lastAnchorZ;
+	const centerChanged = cx !== ud.lastCenterX || cy !== ud.lastCenterY || cz !== ud.lastCenterZ;
+	const basisChanged =
+		basisPos[0] !== ud.lastBasisX || basisPos[1] !== ud.lastBasisY || basisPos[2] !== ud.lastBasisZ;
+	if (!curveChanged && !anchorChanged && !centerChanged && !basisChanged) return;
+
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
@@ -714,7 +728,17 @@ export function refreshOrbitLineGeometry(
 	}
 	commitOrbitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
-	line.userData.orbitLocalPositions = validPoints;
+	ud.orbitLocalPositions = validPoints;
+	ud.lastCurveRef = curve;
+	ud.lastAnchorX = anchor[0];
+	ud.lastAnchorY = anchor[1];
+	ud.lastAnchorZ = anchor[2];
+	ud.lastCenterX = cx;
+	ud.lastCenterY = cy;
+	ud.lastCenterZ = cz;
+	ud.lastBasisX = basisPos[0];
+	ud.lastBasisY = basisPos[1];
+	ud.lastBasisZ = basisPos[2];
 }
 
 /** Create a radial gradient canvas texture for the star corona glow. */
