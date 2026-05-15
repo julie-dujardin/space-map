@@ -22,7 +22,10 @@ from sqlalchemy.orm import Session, joinedload
 from space_map_data.export.credits import write_credits
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev, write_chunk
 from space_map_data.export.position.probes import write_probes
-from space_map_data.export.position.chebyshev.writer import _object_for_naif_id
+from space_map_data.export.position.chebyshev.writer import (
+    _object_for_naif_id,
+    should_export as _should_export_chebyshev,
+)
 from space_map_data.export.position.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
@@ -786,7 +789,7 @@ def _chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
             logger.warning("Couldn't read cheb npz %s: %s", path, exc)
             continue
         obj = _object_for_naif_id(session, naif_id)
-        if obj is not None:
+        if obj is not None and _should_export_chebyshev(obj, naif_id):
             ids.add(obj.id)
     return ids
 

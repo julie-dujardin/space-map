@@ -36,6 +36,7 @@ from space_map_data.export.position.format import (
 )
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.naif import (
+    CHEBYSHEV_ASTEROID_WHITELIST,
     CHEBYSHEV_PARENT_CHUNK_YEARS,
     spk_id_from_naif,
 )
@@ -115,6 +116,24 @@ def _object_for_naif_id(session: Session, naif_id: int) -> Object | None:
             session.query(Object).filter(Object.spkid == fallback_spkid).one_or_none()
         )
     return None
+
+
+def should_export(obj: Object, naif_id: int) -> bool:
+    """Defense-in-depth gate against stale `.npz` files in the cheb dir.
+
+    The download-time `_should_extract` (download/.../chebyshev.py) is the
+    primary filter — it controls which bodies get sampled in the first place
+    — but stale files from before a whitelist tightening can linger in the
+    cheb dir until the next download run cleans them up. Mirroring the
+    asteroid whitelist here means the export reflects the current whitelist
+    constant immediately, regardless of download dir state.
+    """
+    if (
+        obj.object_type in _ASTEROID_TYPES
+        and naif_id not in CHEBYSHEV_ASTEROID_WHITELIST
+    ):
+        return False
+    return True
 
 
 def _slice_segments(
@@ -296,6 +315,7 @@ def write_chebyshev(
     # Group bodies by zone and retain everything in memory (small — ≤80 bodies
     # across the whole export after filtering).
     zone_bodies: dict[str, list] = defaultdict(list)
+    skipped_filter = 0
     for path in sorted(cheb_dir.glob("*.npz")):
         naif_id, parent_id, start_jds, end_jds, coeffs = _load_body_npz(path)
         obj = _object_for_naif_id(session, naif_id)
@@ -306,11 +326,21 @@ def write_chebyshev(
                 path.name,
             )
             continue
+        if not should_export(obj, naif_id):
+            skipped_filter += 1
+            continue
         radius = (radii.get(naif_id) or {}).get("a")
         zone = _determine_zone(obj.object_type, naif_id, parent_id)
         has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(
             (obj, naif_id, parent_id, start_jds, end_jds, coeffs, radius, has_loc)
+        )
+    if skipped_filter:
+        logger.info(
+            "Chebyshev: skipped %d body file(s) outside the active whitelist "
+            "(stale `.npz`s from a previous download — next download run will "
+            "remove them)",
+            skipped_filter,
         )
 
     zone_manifest: dict[str, dict] = {}
