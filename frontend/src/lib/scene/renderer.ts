@@ -1193,13 +1193,21 @@ export class SceneRenderer {
 					!MINOR_PROMOTED_IDS.has(id)
 				)
 					continue;
-				// Probes ride bodiesById but stay out of bodyObjects until
-				// focused — every promoted probe would add a sphere mesh +
-				// orbit line + a permanent slot in every per-frame iteration
-				// loop. `ensureBodyObjects` is called from the focus path
-				// (handleFocus / URL-loaded targetId) when a probe is actually
-				// looked at.
-				if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) continue;
+				// Probes, asteroids, and comets stay out of bodyObjects until
+				// focused — every promoted entry adds a sphere mesh + orbit
+				// line + a permanent slot in every per-frame iteration loop
+				// (visibility, sphere/texture LOD, ring/atmosphere shaders).
+				// Asteroids/comets already render as point-cloud dots in their
+				// per-zone groups; probes have no fallback dot yet and stay
+				// invisible until focused. `ensureBodyObjects` runs from the
+				// focus path (handleFocus / URL-loaded targetId / click).
+				const objType = body.data.objectType;
+				if (
+					body.data.orbitalSource === OrbitalSource.SPICE_PROBE ||
+					isAsteroid(objType) ||
+					objType === ObjectType.COMET
+				)
+					continue;
 				this.ensureBodyObjects(body);
 				break; // one per frame to spread GPU work
 			}
