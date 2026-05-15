@@ -36,6 +36,13 @@ const ORBIT_CURVE_REFRESH_DEG = 0.01;
 // accumulates when the static snapshot ages — Earth's Moon (period ~28 d)
 // re-derives every ~0.28 d of sim time, Pluto every ~2.5 yr.
 const CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION = 1 / 100;
+// Hard cap on the re-derive cadence so long-period bodies still refresh in
+// reasonable sim time. Mostly matters for probe trails: a Voyager-style cruise
+// modeled as a heliocentric Kepler-pure sub-chunk has period ~years, and the
+// curve needs to rebuild within hours of crossing into a Chebyshev sub-chunk
+// at a planetary flyby — not months. Benign for existing bodies (Pluto's 2.5 yr
+// gate becomes 1 d; Earth's Moon's 0.28 d gate is already tighter).
+const MAX_REDERIVE_DAYS = 1.0;
 
 export function makeCircleTexture(): CanvasTexture {
 	const size = 32;
@@ -651,7 +658,11 @@ export function refreshOrbitLineGeometry(
 			const n = body.orbitElements.n;
 			const period = n > 0 ? 360 / n : Infinity;
 			const dt = Math.abs(jd - elementsJd);
-			if (dt > period * CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION) {
+			const refreshThreshold = Math.min(
+				period * CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION,
+				MAX_REDERIVE_DAYS
+			);
+			if (dt > refreshThreshold) {
 				const fresh = body.rederiveElements(jd);
 				// Null fresh = jd out of chebyshev coverage; the body's
 				// out-of-range toast already surfaces that, so we silently

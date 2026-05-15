@@ -20,6 +20,7 @@ import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/ch
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probePositionScene } from '$lib/fetch/position/probes/propagate';
+import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import {
@@ -468,12 +469,18 @@ export class ChunkLoader {
 	 *      systems-global may not be loaded yet at first paint; the renderer
 	 *      retries each frame so eventual consistency catches up.
 	 *
-	 * The returned `BodyData` carries zero osculating elements — the polynomial
-	 * + Kepler-fit method records produce the position directly; we don't
-	 * derive a Kepler snapshot for orbit-line drawing yet (probes ship without
-	 * orbit lines in this pass). `validityStart/End` come from the chunk's
-	 * common-header bounds, used by the renderer to hide a probe whose chunk
-	 * isn't loaded yet rather than render a stale position.
+	 * The returned `BodyData` carries zero osculating elements (the fit methods
+	 * produce position directly, no need to round-trip through Kepler for the
+	 * body itself). The `PositionedBody`'s `orbitElements` + `rederiveElements`
+	 * carry a per-sub-chunk osculating snapshot for the orbit-line trail —
+	 * `kepler_pure` and `kepler_drift` map their packed elements directly,
+	 * `chebyshev` derives them from a state-vector finite difference. The
+	 * existing periodic re-derive in `refreshOrbitLineGeometry` automatically
+	 * picks up the next sub-chunk's elements when `jd` crosses a boundary.
+	 *
+	 * `validityStart/End` come from the chunk's common-header bounds, used by
+	 * the renderer to hide a probe whose chunk isn't loaded yet rather than
+	 * render a stale position.
 	 */
 	processProbes(probeStore: ProbeStore, date: Date, labels: LabelMap): PositionedBody[] {
 		const jd = dateToJD(date);
@@ -541,7 +548,28 @@ export class ChunkLoader {
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE_PROBE
 			};
-			result.push({ data, position: pos, orbitCenter: anchor });
+			const elements = probeOsculatingElements(probe, jd, muKm3s2);
+			// Re-read live probe record AND its current zone's fit center on
+			// every call: scrubbing the timeline can move the probe into a
+			// different chunk (per-chunk Probe ref goes stale) or a different
+			// zone with a different fit center (cruise → captured orbit). A
+			// late-arriving systems-global GM table also self-heals on the next
+			// periodic re-derive. Mirrors the chebyshev rederive pattern
+			// (`ownRederive` in processChebyshev).
+			const ownId = probe.id;
+			const rederiveElements = (newJd: number): OrbitalElements | null => {
+				const located = probeStore.probeWithCenter(ownId, newJd);
+				if (!located) return null;
+				const freshMu = getGmKm3s2(located.fitCenterNaifId) ?? 0;
+				return probeOsculatingElements(located.probe, newJd, freshMu);
+			};
+			result.push({
+				data,
+				position: pos,
+				orbitElements: elements ?? undefined,
+				orbitCenter: anchor,
+				rederiveElements
+			});
 		}
 		// Diagnostics — without these, the only signal a probe didn't render
 		// is "you don't see it on screen". Surface every silent-drop path

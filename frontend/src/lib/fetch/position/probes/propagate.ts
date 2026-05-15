@@ -43,7 +43,7 @@ export function jdToEt(jd: number): number {
 /** Binary search for the largest `i` with `subStartEt[i] <= et < subEndEt[i]`,
  *  or -1 when `et` falls outside the probe's covered range. Assumes sub-chunks
  *  are contiguous and time-sorted (writer guarantees this). */
-function findSubChunkIndex(probe: Probe, et: number): number {
+export function findSubChunkIndex(probe: Probe, et: number): number {
 	const starts = probe.subStartEt;
 	const ends = probe.subEndEt;
 	const n = starts.length;
@@ -224,4 +224,38 @@ export function probePositionScene(
 	const km = probePositionKm(probe, jd, muKm3S2);
 	if (km === null) return null;
 	return [kmToScene(km[0]), kmToScene(km[2]), -kmToScene(km[1])];
+}
+
+const VELOCITY_FD_HALF_WINDOW_S = 30;
+const VELOCITY_FD_HALF_WINDOW_JD = VELOCITY_FD_HALF_WINDOW_S / SECONDS_PER_DAY;
+
+/**
+ * Parent-relative probe state (km, km/day) at `jd` via centered finite
+ * difference of {@link probePositionKm}. Method-agnostic — handles Kepler-pure,
+ * Kepler-drift, and Chebyshev sub-chunks uniformly. Velocity units match
+ * {@link chebyshevStateKm} so downstream conversions to AU/day are shared.
+ *
+ * Returns null when any of the three samples is null (e.g. the ±30 s window
+ * crosses the probe's coverage boundary or both sides fall in an uncoverable
+ * sub-chunk). Callers fall back to a position-only entry in that case.
+ */
+export function probeStateKm(
+	probe: Probe,
+	jd: number,
+	muKm3S2: number
+): { position: [number, number, number]; velocity: [number, number, number] } | null {
+	const center = probePositionKm(probe, jd, muKm3S2);
+	if (center === null) return null;
+	const plus = probePositionKm(probe, jd + VELOCITY_FD_HALF_WINDOW_JD, muKm3S2);
+	const minus = probePositionKm(probe, jd - VELOCITY_FD_HALF_WINDOW_JD, muKm3S2);
+	if (plus === null || minus === null) return null;
+	const inv2dt = 1 / (2 * VELOCITY_FD_HALF_WINDOW_JD); // km/day per km
+	return {
+		position: center,
+		velocity: [
+			(plus[0] - minus[0]) * inv2dt,
+			(plus[1] - minus[1]) * inv2dt,
+			(plus[2] - minus[2]) * inv2dt
+		]
+	};
 }

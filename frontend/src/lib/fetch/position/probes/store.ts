@@ -206,6 +206,16 @@ export class ProbeStore {
 		return this.resolve(objectId, jd)?.probe ?? null;
 	}
 
+	/** Parsed probe record + zone fit-center NAIF ID at `jd`. Use this when the
+	 *  caller needs to follow cross-zone transitions (e.g. cruise → captured
+	 *  orbit changes the fit center from Sun to a planet, and Kepler-pure mean
+	 *  motion `sqrt(mu/a³)` is mu-sensitive). */
+	probeWithCenter(objectId: string, jd: number): { probe: Probe; fitCenterNaifId: number } | null {
+		const loc = this.resolve(objectId, jd);
+		if (!loc) return null;
+		return { probe: loc.probe, fitCenterNaifId: loc.params.fit_center_naif_id };
+	}
+
 	/** Parent-relative probe position in km at `jd`, with `mu` (km³/s²) of the
 	 *  zone's fit center supplied by the caller. Returns null if the probe
 	 *  isn't loaded or jd is outside any sub-chunk's window. */
