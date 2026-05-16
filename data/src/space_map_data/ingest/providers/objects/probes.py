@@ -47,7 +47,10 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
     """Walk `missions/*/_index.json` and return one record per spacecraft.
 
     Skips landed probes (TODO: lat/lon pipeline for surface installations).
-    Each record carries `(mission, naif_id, inception_mjd, kernel_paths)`.
+    Each record carries `(mission, naif_id, inception_mjd, name_hint?)`.
+    `name_hint` (currently emitted by HorizonsSyntheticDownloader as
+    `files[].name_horizons`) lets us name synthesized rows after the actual
+    spacecraft rather than the umbrella mission folder.
     """
     out: list[dict] = []
     for mdir in sorted(missions_dir.iterdir()):
@@ -60,6 +63,20 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
         if not kernels:
             continue
         idx = json.loads(idx_path.read_text())
+        # Per-naif name hint from the downloader, when available. Index files
+        # written by HorizonsSyntheticDownloader carry one bsp per spacecraft
+        # with the Horizons name attached; agency indexes don't and we fall
+        # back to the mission folder name.
+        name_hint_by_naif: dict[int, str] = {}
+        for f in idx.get("files", []):
+            hint = f.get("name_horizons")
+            if not hint:
+                continue
+            for t in f.get("targets", []):
+                try:
+                    name_hint_by_naif[int(t)] = hint
+                except (TypeError, ValueError):
+                    pass
         # Any negative NAIF ID is a spacecraft per SPICE convention. Legacy
         # range was -1..-999, but modern commercial missions exceed that
         # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.). The
@@ -71,8 +88,20 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
         )
         if not spacecraft_ids:
             continue
-        kpaths = [str(k) for k in kernels]
+        # Per-naif kernel paths from the index's targets mapping. Important
+        # for HORIZONS-SYNTH where one dir holds N bsps for N spacecraft —
+        # passing the full kernel list per naif would be O(N²) on spkcov.
+        targets = idx.get("targets", {})
+        all_kpaths = [str(k) for k in kernels]
         for naif_id in spacecraft_ids:
+            naif_files = targets.get(str(naif_id), [])
+            kpaths = (
+                [str(mdir / fn) for fn in naif_files if (mdir / fn).exists()]
+                if naif_files
+                else all_kpaths
+            )
+            if not kpaths:
+                continue
             landed, body = is_landed_probe(naif_id, kpaths)
             if landed:
                 logger.info(
@@ -91,6 +120,7 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
                     "mission": mdir.name,
                     "naif_id": naif_id,
                     "inception_mjd": et_to_mjd(t0),
+                    "name_hint": name_hint_by_naif.get(naif_id),
                 }
             )
     # Deterministic dedupe order: (inception, naif_id, mission).
@@ -115,9 +145,10 @@ class ProbesIngestor:
 
     def _build_row(self, record: dict, probe_id: int, wikidata_qid: str | None) -> dict:
         object_pk = make_object_id(ID_TYPES.PROBE, probe_id)
+        name = record.get("name_hint") or f"{record['mission']} ({record['naif_id']})"
         return {
             "id": object_pk,
-            "name": f"{record['mission']} ({record['naif_id']})",
+            "name": name,
             "object_type": ObjectType.spacecraft,
             "naif_id": record["naif_id"],
             "probe_id": probe_id,
