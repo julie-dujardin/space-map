@@ -45,7 +45,10 @@ from space_map_data.probes.zones import Zone
 # landed missions (Phoenix, InSight, MGS post-aerobrake) don't include
 # the cruise→surface kernel-precedence step that polynomial fits can't
 # capture — Phoenix Mars max dropped from 123,096 km to fitter floor.
-FIT_VERSION = 3
+# v4 (2026-05-16): classify_trace now keeps every contiguous SPK interval
+# instead of only the longest one, so probes with archive gaps (e.g. NH's
+# 2007-2014 hole) emit chunks for the pre-gap trajectory too.
+FIT_VERSION = 4
 
 
 def zone_signature(zone: Zone) -> str:

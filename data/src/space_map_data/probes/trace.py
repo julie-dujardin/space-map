@@ -55,12 +55,23 @@ def is_landed_probe(
     probes, Huygens) are deliberately *not* skipped — their kernels cover
     the entry phase which is real trajectory data. Returns False unless
     every sample is at the surface.
+
+    Probes with gapped coverage (e.g. NH's Sep-2007 → Dec-2014 hole between
+    Jupiter-flyby and Pluto-approach kernels) are sampled per-interval —
+    samples in the gap would produce SPICE errors, and a probe that's in
+    flight in any interval is by definition not landed.
     """
-    cov = _coverage(naif_id, kernel_paths)
-    if cov is None:
+    intervals = _merged_intervals(naif_id, kernel_paths)
+    if not intervals:
         return False, None
-    n_samples = 5
-    sample_ets = np.linspace(cov[0] + 60, cov[1] - 60, n_samples)
+    n_per_interval = 5
+    sample_ets: list[float] = []
+    for t0, t1 in intervals:
+        if t1 - t0 < 120:  # interval too short to leave 60 s margins on both ends
+            continue
+        sample_ets.extend(np.linspace(t0 + 60, t1 - 60, n_per_interval))
+    if not sample_ets:
+        return False, None
 
     # For each candidate body, count how many samples are within altitude.
     counts: dict[int, int] = {}
@@ -84,13 +95,22 @@ def is_landed_probe(
     if not counts:
         return False, None
     best_body, best_n = max(counts.items(), key=lambda kv: kv[1])
-    if best_n == n_samples:
+    if best_n == len(sample_ets):
         return True, best_body
     return False, None
 
 
-def _coverage(naif_id: int, kernel_paths: list[str]) -> tuple[float, float] | None:
-    """Longest contiguous covered interval for `naif_id` across all kernels."""
+def _merged_intervals(
+    naif_id: int, kernel_paths: list[str]
+) -> list[tuple[float, float]]:
+    """All contiguous SPK coverage intervals for `naif_id`, merged across
+    overlapping/touching kernels and sorted by start.
+
+    Returns an empty list when no kernel covers `naif_id`. Multiple intervals
+    indicate gaps in the timeline — NH's archive has a 7-year hole between
+    its 2006-2007 cruise kernel and its 2014-onwards Pluto-approach kernels,
+    and the writer needs to see both so the pre-gap trajectory shows up too.
+    """
     intervals: list[tuple[float, float]] = []
     for path in kernel_paths:
         try:
@@ -102,7 +122,7 @@ def _coverage(naif_id: int, kernel_paths: list[str]) -> tuple[float, float] | No
         except spiceypy.exceptions.SpiceyError:
             continue
     if not intervals:
-        return None
+        return []
     intervals.sort()
     merged: list[list[float]] = [list(intervals[0])]
     for s, e in intervals[1:]:
@@ -110,8 +130,23 @@ def _coverage(naif_id: int, kernel_paths: list[str]) -> tuple[float, float] | No
             merged[-1][1] = max(merged[-1][1], e)
         else:
             merged.append([s, e])
-    longest = max(merged, key=lambda iv: iv[1] - iv[0])
-    return longest[0], longest[1]
+    return [(iv[0], iv[1]) for iv in merged]
+
+
+def inception_et(naif_id: int, kernel_paths: list[str]) -> float | None:
+    """Start of the longest contiguous coverage interval — the canonical
+    "this probe came into being" timestamp for `probe_id` assignment.
+
+    Picking the *longest* (not earliest) interval keeps `probe_id`s stable
+    when an archive grows a short pre-mission test interval that didn't
+    exist at first ingest. The cache in `probe_id.py` already pins each
+    `(mission, naif_id)` once assigned, so this only matters for probes
+    ingested for the first time.
+    """
+    intervals = _merged_intervals(naif_id, kernel_paths)
+    if not intervals:
+        return None
+    return max(intervals, key=lambda iv: iv[1] - iv[0])[0]
 
 
 def _landed_tail_start_idx(
@@ -191,15 +226,39 @@ def classify_trace(
     SOI) emit interplanetary only for the cruise portion — once captured
     by a planet system they show up in that planet's zone, not heliocentric.
 
-    If the probe ends its coverage parked on a body's surface (Phoenix,
-    InSight, MGS post-aerobrake, etc.) we truncate at the start of that
-    landed tail. The cruise-to-surface kernel discontinuity that SPICE
+    Probes with gapped SPK archives (NH has a 2007-2014 hole between the
+    Jupiter-flyby and Pluto-approach kernels) are sampled per-contiguous-
+    interval and the per-interval classifications are concatenated, so the
+    gap doesn't show up as fake interplanetary coverage.
+
+    If a contiguous interval ends with the probe parked on a body's surface
+    (Phoenix, InSight, MGS post-aerobrake, …) we truncate at the start of
+    that landed tail. The cruise-to-surface kernel discontinuity that SPICE
     produces from precedence-driven SPK switching can't be polynomial-fit.
     """
-    cov = _coverage(naif_id, kernel_paths)
-    if cov is None:
+    merged = _merged_intervals(naif_id, kernel_paths)
+    if not merged:
         return []
-    t0, t1 = cov
+    out: list[ZoneInterval] = []
+    for t0, t1 in merged:
+        out.extend(
+            _classify_contiguous_interval(
+                naif_id, t0, t1, sample_dt_days, landed_tail_altitude_km
+            )
+        )
+    return out
+
+
+def _classify_contiguous_interval(
+    naif_id: int,
+    t0: float,
+    t1: float,
+    sample_dt_days: float,
+    landed_tail_altitude_km: float,
+) -> list[ZoneInterval]:
+    """Classify a single gap-free coverage interval. See `classify_trace`
+    for the per-zone / per-interval semantics — this is the inner loop body
+    factored out so multi-interval probes can call it once per interval."""
     dt_s = sample_dt_days * _S_PER_DAY
     n_samples = max(2, int(np.ceil((t1 - t0) / dt_s)) + 1)
     ets = np.linspace(t0, t1, n_samples)

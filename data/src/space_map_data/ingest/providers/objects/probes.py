@@ -24,7 +24,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.probes.probe_id import assign_many, et_to_mjd
-from space_map_data.probes.trace import _coverage, is_landed_probe
+from space_map_data.probes.trace import inception_et, is_landed_probe
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -76,15 +76,15 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
                     body,
                 )
                 continue
-            cov = _coverage(naif_id, kpaths)
-            if cov is None:
+            t0 = inception_et(naif_id, kpaths)
+            if t0 is None:
                 logger.warning("no coverage for %s/%d", mdir.name, naif_id)
                 continue
             out.append(
                 {
                     "mission": mdir.name,
                     "naif_id": naif_id,
-                    "inception_mjd": et_to_mjd(cov[0]),
+                    "inception_mjd": et_to_mjd(t0),
                 }
             )
     # Deterministic dedupe order: (inception, naif_id, mission).

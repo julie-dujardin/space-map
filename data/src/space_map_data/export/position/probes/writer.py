@@ -59,7 +59,7 @@ from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
 )
-from space_map_data.probes.trace import _coverage, classify_trace, is_landed_probe
+from space_map_data.probes.trace import classify_trace, inception_et, is_landed_probe
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
 
 logger = logging.getLogger(__name__)
@@ -361,14 +361,14 @@ def _classify_pass(
                     body,
                 )
                 continue
-            cov = _coverage(naif_id, kpaths)
-            if cov is None:
+            t0 = inception_et(naif_id, kpaths)
+            if t0 is None:
                 logger.warning("no coverage for %s/%d", mdir.name, naif_id)
                 continue
             rec = assign(
                 mission=mdir.name,
                 naif_id=naif_id,
-                inception_mjd=et_to_mjd(cov[0]),
+                inception_mjd=et_to_mjd(t0),
                 cache=probe_id_cache,
             )
             probe_id = rec.probe_id
