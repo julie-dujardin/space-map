@@ -895,6 +895,7 @@ export class SceneRenderer {
 				const probeOffset = this.ctx.probeStore?.positionScene(d.id, jd, muKm3s2) ?? null;
 				if (!probeOffset) {
 					if (bo) bo.outOfRange = true;
+					if (d.id === focusedId) oorState.focusedOutOfRange = true;
 					if (!this.probeUnavailableLogged.has(d.id)) {
 						this.probeUnavailableLogged.add(d.id);
 						const reason = !this.ctx.probeStore
@@ -1614,8 +1615,11 @@ export class SceneRenderer {
 		// halo, and orbit line spawn at the current jd instead of jumping on
 		// the next tick.
 		refreshMinorBodyPosition(body, this.clock.jd, this.ctx);
-		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
-		if (!body.orbitElements) {
+		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built.
+		// Skip probes: their `body.data` carries a=e=…=0 (positions come from per-sub-chunk dispatch),
+		// and assigning those zeros to `orbitElements` defeats the SPICE_PROBE guard in ObjectDrawer
+		// — currentStateFromElements would then warn "non-finite elements" every frame.
+		if (!body.orbitElements && body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
 			body.orbitElements = body.data;
 			const parent = this.bodyObjects.get(body.data.parentId);
 			if (parent) body.orbitCenter = [...parent.body.position];
