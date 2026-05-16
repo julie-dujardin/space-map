@@ -230,14 +230,23 @@ const VELOCITY_FD_HALF_WINDOW_S = 30;
 const VELOCITY_FD_HALF_WINDOW_JD = VELOCITY_FD_HALF_WINDOW_S / SECONDS_PER_DAY;
 
 /**
- * Parent-relative probe state (km, km/day) at `jd` via centered finite
- * difference of {@link probePositionKm}. Method-agnostic — handles Kepler-pure,
- * Kepler-drift, and Chebyshev sub-chunks uniformly. Velocity units match
- * {@link chebyshevStateKm} so downstream conversions to AU/day are shared.
+ * Parent-relative probe state (km, km/day) at `jd` via finite difference of
+ * {@link probePositionKm}. Method-agnostic — handles Kepler-pure, Kepler-drift,
+ * and Chebyshev sub-chunks uniformly. Velocity units match {@link chebyshevStateKm}
+ * so downstream conversions to AU/day are shared.
  *
- * Returns null when any of the three samples is null (e.g. the ±30 s window
- * crosses the probe's coverage boundary or both sides fall in an uncoverable
- * sub-chunk). Callers fall back to a position-only entry in that case.
+ * Prefers a centered FD (second-order accuracy). At the very first / very last
+ * sub-chunk's boundary one side of the window falls outside any sub-chunk —
+ * NH's interplanetary chunk 64 has its first sub-chunk start snapped to
+ * 2014-12-10 00:00 because the kernel only opens at 2014-12-08 05:12, so jd-30s
+ * has no sub-chunk to evaluate against. In that case fall back to a one-sided
+ * forward / backward FD (first-order) so the osculating element derivation
+ * still works at coverage edges instead of leaving the drawer empty.
+ *
+ * Returns null only when the center sample itself misses (jd outside coverage)
+ * or when both side samples miss (a sub-chunk so short it's smaller than the
+ * FD window on both sides — should never happen with the writer's 7-day
+ * minimum interplanetary sub-chunks).
  */
 export function probeStateKm(
 	probe: Probe,
@@ -246,16 +255,29 @@ export function probeStateKm(
 ): { position: [number, number, number]; velocity: [number, number, number] } | null {
 	const center = probePositionKm(probe, jd, muKm3S2);
 	if (center === null) return null;
-	const plus = probePositionKm(probe, jd + VELOCITY_FD_HALF_WINDOW_JD, muKm3S2);
-	const minus = probePositionKm(probe, jd - VELOCITY_FD_HALF_WINDOW_JD, muKm3S2);
-	if (plus === null || minus === null) return null;
-	const inv2dt = 1 / (2 * VELOCITY_FD_HALF_WINDOW_JD); // km/day per km
+	const dt = VELOCITY_FD_HALF_WINDOW_JD;
+	const plus = probePositionKm(probe, jd + dt, muKm3S2);
+	const minus = probePositionKm(probe, jd - dt, muKm3S2);
+	let a: [number, number, number];
+	let b: [number, number, number];
+	let invDt: number;
+	if (plus !== null && minus !== null) {
+		a = plus;
+		b = minus;
+		invDt = 1 / (2 * dt);
+	} else if (plus !== null) {
+		a = plus;
+		b = center;
+		invDt = 1 / dt;
+	} else if (minus !== null) {
+		a = center;
+		b = minus;
+		invDt = 1 / dt;
+	} else {
+		return null;
+	}
 	return {
 		position: center,
-		velocity: [
-			(plus[0] - minus[0]) * inv2dt,
-			(plus[1] - minus[1]) * inv2dt,
-			(plus[2] - minus[2]) * inv2dt
-		]
+		velocity: [(a[0] - b[0]) * invDt, (a[1] - b[1]) * invDt, (a[2] - b[2]) * invDt]
 	};
 }

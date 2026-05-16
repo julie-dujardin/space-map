@@ -141,10 +141,16 @@ describe('probeOsculatingElements', () => {
 			expect(probeOsculatingElements(probe, JD_J2000 + 0.5, 0)).toBeNull();
 		});
 
-		it('returns null when the FD window touches outside coverage', () => {
-			// Sample exactly at sub-chunk start — the ±30s window's minus branch
-			// falls before subStartEt[0]=0, so probeStateKm returns null.
-			expect(probeOsculatingElements(probe, JD_J2000, MU_EARTH)).toBeNull();
+		it('falls back to one-sided FD at the sub-chunk boundary', () => {
+			// Sample exactly at sub-chunk start — the centered ±30s window's
+			// minus branch falls before subStartEt[0]=0, but probeStateKm now
+			// degrades to a forward FD instead of giving up, so the osculating
+			// elements are still finite at the boundary.
+			const el = probeOsculatingElements(probe, JD_J2000, MU_EARTH);
+			expect(el).not.toBeNull();
+			expect(Number.isFinite(el!.a)).toBe(true);
+			expect(Number.isFinite(el!.e)).toBe(true);
+			expect(Number.isFinite(el!.n)).toBe(true);
 		});
 	});
 
