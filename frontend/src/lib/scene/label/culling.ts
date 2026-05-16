@@ -35,6 +35,7 @@ export function dimLabel(
 		// adds the body to hoveredBodyIds, stealing focus from whatever's behind.
 		if (labelHalo.parentElement) {
 			labelHalo.parentElement.style.pointerEvents = clickable ? '' : 'none';
+			labelHalo.parentElement.style.visibility = '';
 		}
 	}
 	if (nameSpan) {
@@ -53,7 +54,10 @@ export function restoreLabel(
 		if (!isHovered) labelHalo.style.transform = '';
 		labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
 		// A label unclickable on frame N must regain clicks when it wins frame N+1.
-		if (labelHalo.parentElement) labelHalo.parentElement.style.pointerEvents = '';
+		if (labelHalo.parentElement) {
+			labelHalo.parentElement.style.pointerEvents = '';
+			labelHalo.parentElement.style.visibility = '';
+		}
 	}
 	if (nameSpan) {
 		nameSpan.style.display = '';
@@ -203,9 +207,14 @@ export function cullOverlappingLabels(
 		});
 	}
 
-	// Sort: selected first, then by type priority, then closer first
+	// Sort: selected first, then non-selected non-minor (so all maximized halos
+	// reserve space in _accepted before any minor-promoted halo is tested),
+	// then by type priority, then closer first.
 	_candidates.sort((a, b) => {
 		if (a.isSelected !== b.isSelected) return a.isSelected ? -1 : 1;
+		const aMinor = a.isMinor && !a.isSelected;
+		const bMinor = b.isMinor && !b.isSelected;
+		if (aMinor !== bMinor) return aMinor ? 1 : -1;
 		const pa = typePriority(a.body.data.objectType);
 		const pb = typePriority(b.body.data.objectType);
 		if (pa !== pb) return pa - pb;
@@ -227,14 +236,6 @@ export function cullOverlappingLabels(
 		dist
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
-		// Minor-promoted: collapse to scale 0.3 (same as occluded) and hide the
-		// name text. On hover/focus the candidate is "selected" and falls through
-		// to the normal restoreLabel path so the halo grows back and the name
-		// appears. `dimLabel` already produces the exact desired visual.
-		if (isMinor && !isSelected) {
-			dimLabel(labelHalo, nameSpan, true, 0.5);
-			continue;
-		}
 		if (isCapped && !isSelected) {
 			dimLabel(labelHalo, nameSpan, true);
 			continue;
@@ -242,6 +243,29 @@ export function cullOverlappingLabels(
 		// Check if behind a screen occluder (body large enough to hide labels behind it)
 		if (!isSelected && isScreenOccluded(screenX, screenY, dist, bodyId, screenOccluders)) {
 			label.visible = false;
+			continue;
+		}
+		// Minor-promoted, unselected: keep the scale-0.5 visual but test against
+		// _accepted using the minor halo's actual footprint (HALO_RADIUS_PX * 0.5).
+		// Sort guarantees every maximized halo is in _accepted by now, so a hit
+		// always means a real maximized label is sitting on top → hide. Don't
+		// push into _accepted: a minor halo must never block a maximized one.
+		if (isMinor && !isSelected) {
+			const minorRadius = HALO_RADIUS_PX * 0.5;
+			const minorOverlaps = _accepted.some(
+				(a) =>
+					screenX - minorRadius < a.right &&
+					screenX + minorRadius > a.left &&
+					Math.abs(screenY - a.y) < LH
+			);
+			// Hide via CSS visibility on the label root: cullOverlappingLabels runs
+			// every 3rd frame but applyLabelDisplay (every frame) would clobber
+			// label.visible back to true between passes, causing flicker. CSS
+			// visibility persists. dimLabel/restoreLabel clear it on transition.
+			dimLabel(labelHalo, nameSpan, !minorOverlaps, 0.5);
+			if (minorOverlaps && labelHalo?.parentElement) {
+				labelHalo.parentElement.style.visibility = 'hidden';
+			}
 			continue;
 		}
 		const overlaps = _accepted.some(

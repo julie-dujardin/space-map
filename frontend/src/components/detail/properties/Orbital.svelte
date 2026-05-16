@@ -56,15 +56,17 @@
 		return ORBIT_CLASS_LABEL[id]?.() ?? id;
 	}
 
-	// Localized provider names for OrbitalSource. SPICE reuses the ephemeris-kernel
-	// label (vs the PCK-orientation one) since this row describes orbits. UNKNOWN
-	// is omitted on purpose — handled by warning + null in `dataSourceLabel`.
+	// Localized provider names for OrbitalSource. Both SPICE variants reuse the
+	// ephemeris-kernel label (vs the PCK-orientation one) since this row describes
+	// orbits. UNKNOWN is omitted on purpose — handled by warning + null in
+	// `dataSourceLabel`.
 	const ORBIT_SOURCE_LABEL: Partial<Record<OrbitalSource, () => string>> = {
 		[OrbitalSource.HORIZONS]: m.source_horizons_name,
 		[OrbitalSource.SBDB]: m.source_sbdb_name,
 		[OrbitalSource.CELESTRAK]: m.source_celestrak_name,
 		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name,
-		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name
+		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name,
+		[OrbitalSource.SPICE_PROBE]: m.source_spice_ephemeris_name
 	};
 
 	interface Props {

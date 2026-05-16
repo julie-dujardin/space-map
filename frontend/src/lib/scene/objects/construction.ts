@@ -364,11 +364,22 @@ export function buildOrbitLines(
 	for (const [, bo] of bodyObjects) {
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
-		// Need orbit elements to draw a curve. STAR is the Sun — no orbit line.
-		// Halo-only asteroids/comets get no trail until focus upgrades them to a
-		// full mesh (handled by `upgradeBodyMesh`); barycenters, Lagrange points,
-		// and probes are halo-only too but keep their orbit lines.
-		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
+		// STAR is the Sun — no orbit line. Halo-only asteroids/comets get no
+		// trail until focus upgrades them to a full mesh (handled by
+		// `upgradeBodyMesh`); barycenters, Lagrange points, and probes are
+		// halo-only too but keep their orbit lines.
+		if (body.data.objectType === ObjectType.STAR) continue;
+		// Probes whose elements were null at processProbes time (typically
+		// because systems-global GMs hadn't landed yet) carry a rederive
+		// callback — retry it now so the trail self-heals on the next
+		// buildOrbitLines pass once GMs are populated. Without this the
+		// per-frame refresh path is unreachable: refreshOrbitLineGeometry
+		// only runs when `bo.orbitLine` exists.
+		if (!body.orbitElements && body.rederiveElements && jd !== undefined) {
+			const fresh = body.rederiveElements(jd);
+			if (fresh) body.orbitElements = fresh;
+		}
+		if (!body.orbitElements) continue;
 		const t = body.data.objectType;
 		const isHaloOnlySmallBody = !bo.mesh && (isAsteroid(t) || t === ObjectType.COMET);
 		if (isHaloOnlySmallBody) continue;
