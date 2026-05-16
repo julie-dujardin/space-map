@@ -60,8 +60,14 @@ def _collect_probes(missions_dir: Path) -> list[dict]:
         if not kernels:
             continue
         idx = json.loads(idx_path.read_text())
+        # Any negative NAIF ID is a spacecraft per SPICE convention. Legacy
+        # range was -1..-999, but modern commercial missions exceed that
+        # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.). The
+        # MISSION_INCLUDE + SKIP_PATTERNS curation upstream means non-trajectory
+        # targets (ground stations, sensors) don't reach the _index in the
+        # first place, so we don't need a magnitude bound here.
         spacecraft_ids = sorted(
-            t for t in (int(s) for s in idx.get("targets", {})) if -999 <= t <= -1
+            t for t in (int(s) for s in idx.get("targets", {})) if t < 0
         )
         if not spacecraft_ids:
             continue

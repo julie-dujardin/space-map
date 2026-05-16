@@ -26,12 +26,13 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from jplephem.spk import SPK
+import spiceypy
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
@@ -129,7 +130,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # kernels (~8 GiB cumulative). Disabled pending a cost/value decision.
     "CHANDRAYAAN-1": (),
     "MAVEN": (r"^maven_orb_rec\.bsp$",),
-    "EUROPACLIPPER": (r"^europaclipper_recon_\d+_\d+\.bsp$",),
+    # Pre-launch `europaclipper_recon_*` pattern never matched any published
+    # file; real layout is `ref_trj_*_scpse.bsp` (full-mission references)
+    # plus dozens of incremental `trj_*_OD\d+_v\d+.bsp` arc reconstructions.
+    "EUROPACLIPPER": (r"^ref_trj_\d+_\d+_21F31_MEGA_L\d+_A\d+_LP\d+_V\d+_scpse\.bsp$",),
     "MARS2020": (r"^m2020_cruise_od\d+_v\d+\.bsp$",),
     "MSL": (r"^msl_cruise_v\d+\.bsp$",),
     "THEMIS": (),  # Earth-orbit constellation; tracked via celestrak instead
@@ -150,7 +154,11 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     ),
     "HST": (r"^hst\.bsp$",),
     "IUE": (r"^IUE\.bsp$",),
-    "INSIGHT": (r"^insight_cru_ops_v\d+\.bsp$",),
+    # InSight cruise + the two MarCO CubeSats that rode along to Mars.
+    "INSIGHT": (
+        r"^insight_cru_ops_v\d+\.bsp$",
+        r"^marco[ab]_\d+_\d+_\d+_v\d+\.bsp$",
+    ),
     "PHOENIX": (r"^phx_cruise\.bsp$", r"^phx_edl_rec_traj\.bsp$"),
     "LADEE": (r"^ladee_r_\d+_\d+_(?:pha|loa|sci)_v\d+\.bsp$",),
     "DEEPIMPACT": (
@@ -185,6 +193,8 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "NOZOMI": (r"^planetb_pb98\.bsp$",),
     # ESA-only missions (newly enabled).
     "EUCLID": (r"^euclid_flp_\d{8}_\d{8}_v\d+\.bsp$",),
+    # Each `integral_sc_ssm_20021017_<asof>_v<NN>.bsp` re-spans launch→that
+    # date; only the lex-last filename is needed (see `MISSION_LATEST_ONLY`).
     "INTEGRAL": (r"^integral_sc_ssm_20021017_\d+_v\d+\.bsp$",),
     "XMM": (
         r"^xmm_horizons_\d+_\d+_v\d+\.bsp$",
@@ -203,6 +213,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "NEWHORIZONS": (
         r"^nh_recon_e2j_v\d+\.bsp$",
         r"^nh_recon_j2sep07_prelimv\d+\.bsp$",
+        # Cruise-era OD reconstructions (od077 ≈ 2007 → 2009, od117 ≈ 2011 →
+        # 2014). Fills the 7-year gap between Jupiter departure and Pluto
+        # approach that the recon_e2j / recon_pluto pair leaves open.
+        r"^nh_recon_od\d+_v\d+\.bsp$",
         r"^nh_recon_pluto_od\d+_v\d+\.bsp$",
         r"^nh_recon_arrokoth_od\d+_v\d+\.bsp$",
         r"^nh_pred_alleph_od\d+\.bsp$",
@@ -263,6 +277,13 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "SELENE": (r"^SEL_M_\d+_\d+_SGM[HI]_\d+\.BSP$",),  # Kaguya
 }
 
+# Missions where each MISSION_INCLUDE regex matches multiple cumulative
+# versions and we only want the lex-last filename per pattern. Use for
+# `mission_<launch>_<asof>_v<NN>.bsp` series where each kernel fully respans
+# the prior coverage.
+MISSION_LATEST_ONLY: frozenset[str] = frozenset({"INTEGRAL"})
+
+
 SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
     re.compile(p, re.IGNORECASE)
     for p in (
@@ -299,6 +320,7 @@ SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
 # Top-level dirs at the mirror roots that don't contain mission trajectories.
 NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
     {
+        # Not real probe trajectories.
         "TDRSS",  # geostationary relay fleet — celestrak
         "GNS",  # Galileo NavSat / GNSS — celestrak
         "SDU",  # Stardust sample-return capsule — PDS3 archive
@@ -306,6 +328,25 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "ROCKY7",  # Mars-yard rover prototype (Earth surface)
         "MSR",  # Mars Sample Return — pre-decisional / canceled
         "MGN",  # Magellan — no SPKs published anywhere on NAIF
+        # Dirs that exist at the NAIF root but whose `kernels/spk/` 404s
+        # because the canonical kernels live on a PDS3/PDS4 archive (or on
+        # DARTS for SELENE). Without skipping, every run logs a 404 warning
+        # for these. Each entry is fetched via PDS3_DATASETS / PDS4_BUNDLES /
+        # DARTS_SOURCES — keep the two lists in sync.
+        "CLEMENTINE",  # no PDS dataset wired yet (clem1-l-spice-6-v1.0)
+        "DART",  # PDS4
+        "DS1",  # no PDS dataset wired yet (ds1-a_c-spice-6-v1.0)
+        "GRAIL",  # PDS3
+        "HAYABUSA",  # PDS3
+        "LRO",  # PDS3
+        "MESSENGER",  # PDS3
+        "MGS",  # PDS3
+        "MPF",  # no PDS dataset wired yet (mpf-m-spice-6-v1.0)
+        "NEAR",  # PDS3
+        "NEWHORIZONS",  # PDS3
+        "SELENE",  # DARTS
+        "SPP",  # Parker Solar Probe — no SPKs published at NAIF
+        # Tree housekeeping.
         "cosmographia",
         "deprecated_kernels",
         "generic_kernels",
@@ -329,6 +370,7 @@ ESA_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "ExoMars2016",  # → NAIF EXOMARS2016
         "MARS-EXPRESS",  # → NAIF MEX
         "GIOTTO",  # → NAIF GIOTTO (same merged file on both mirrors)
+        "JWST",  # → NAIF JWST (canonical jwst_rec/jwst_pred there)
     }
 )
 
@@ -348,17 +390,28 @@ class MissionSource:
 
 
 def _list_dir(client: httpx.Client, url: str) -> list[str]:
-    try:
-        resp = client.get(url, timeout=60.0)
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning("listing failed for %s: %s", url, exc)
-        return []
-    return [
-        h
-        for h in re.findall(r'href="([^"?/][^"]*)"', resp.text)
-        if h not in {"..", "."}
-    ]
+    """List Apache-style directory hrefs at `url`, with one retry.
+
+    NAIF and ESA both occasionally serve a 404 for a directory that succeeds on
+    immediate retry (server-side cache miss / index regeneration). A single
+    1-second retry catches these without masking persistently-missing dirs.
+    """
+    last_exc: httpx.HTTPError | None = None
+    for attempt in range(2):
+        try:
+            resp = client.get(url, timeout=60.0)
+            resp.raise_for_status()
+            return [
+                h
+                for h in re.findall(r'href="([^"?/][^"]*)"', resp.text)
+                if h not in {"..", "."}
+            ]
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(1.0)
+    logger.warning("listing failed for %s: %s", url, last_exc)
+    return []
 
 
 def _list_mirror_sources(
@@ -436,7 +489,15 @@ def _list_mission_spks(client: httpx.Client, source: MissionSource) -> list[File
         )
         if include_pats:
             pre_filter = len(hrefs)
-            hrefs = [h for h in hrefs if any(p.match(h) for p in include_pats)]
+            if source.mission in MISSION_LATEST_ONLY:
+                kept: list[str] = []
+                for pat in include_pats:
+                    matches = sorted(h for h in hrefs if pat.match(h))
+                    if matches:
+                        kept.append(matches[-1])
+                hrefs = kept
+            else:
+                hrefs = [h for h in hrefs if any(p.match(h) for p in include_pats)]
             # Catches the M01/SOLAR-ORBITER-style bug where a hardcoded version
             # number in the regex drifts past the latest published kernel and
             # silently matches zero files.
@@ -490,17 +551,19 @@ def _stream_to(client: httpx.Client, url: str, dest: Path, expected_size: int) -
 
 
 def _spk_targets(path: Path) -> list[int]:
-    """Unique NAIF target IDs in `path` (sorted)."""
+    """Unique NAIF target IDs in `path` (sorted).
+
+    Uses spiceypy.spkobj rather than jplephem because the latter only handles
+    SPK types 2/3/13; older missions (Viking, Helios, early Mariners, some
+    Pioneer files) use type 1 modified-difference arrays which jplephem reads
+    as "this SPK file has been damaged".
+    """
     try:
-        spk = SPK.open(str(path))
-    except Exception as exc:  # noqa: BLE001
+        ids = spiceypy.spkobj(str(path))
+    except spiceypy.exceptions.SpiceyError as exc:
         logger.warning("SPK open failed for %s: %s", path.name, exc)
         return []
-    try:
-        targets = {int(seg.target) for seg in spk.segments}
-    finally:
-        spk.close()
-    return sorted(targets)
+    return sorted(int(naif) for naif in ids)
 
 
 class ProbesDownloader(Downloader):
@@ -631,7 +694,7 @@ class ProbesDownloader(Downloader):
         self._save_metadata(
             url=f"{NAIF_BASE}|{ESA_BASE}|{NAIF_PDS_BASE}",
             record_count=total_files,
-            complete=True,
+            complete=False,
             missions=len([r for r in results if r.get("files")]),
             total_mib=round(total_mib, 1),
         )
