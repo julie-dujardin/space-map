@@ -61,6 +61,21 @@ PDS3_DATASETS: dict[str, str] = {
 
 PDS4_BUNDLES: dict[str, str] = {
     "DART": "dart/dart_spice",
+    # JAXA Hayabusa2 (NAIF -37) — DARTS v1.0 bundle mirrored at NAIF, 2025-03-12.
+    "HYB2": "hyb2/hyb2_spice",
+    # JAXA Akatsuki / PLANET-C (NAIF -5) — DARTS v4.0 bundle mirrored at NAIF.
+    "VCO": "vco/vco_spice",
+    # NASA CLPS lunar landers — single combined bundle for Peregrine (-244),
+    # IM-1 Odysseus (-370011), IM-2 Athena (-370021), Blue Ghost 1 (-2711).
+    "CLPS": "clps/clps_spice",
+}
+
+# JAXA DARTS — kernels that don't have a NAIF mirror. SELENE/Kaguya is the
+# only such case today; the rest of JAXA's SPICE archive (Hayabusa2, Akatsuki,
+# original Hayabusa) is mirrored on NAIF and handled via the PDS3/PDS4 plumbing.
+DARTS_BASE = "https://data.darts.isas.jaxa.jp/pub"
+DARTS_SOURCES: dict[str, str] = {
+    "SELENE": f"{DARTS_BASE}/spice/SELENE/kernels_ORG/spk/",
 }
 
 # Conservative per-mission whitelists. Empty tuple = mission disabled; no entry =
@@ -68,7 +83,10 @@ PDS4_BUNDLES: dict[str, str] = {
 # validate each mission's trajectory extraction.
 MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # --- Operational-tree missions ---
-    "CASSINI": (),
+    # 2020-reprocessed reconstruction (~156 files, ~2.7 GiB). The PDS3 archive
+    # `co-s_j_e_v-spice-6-v1.0` carries the same data more cleanly if this
+    # turns out too heavy.
+    "CASSINI": (r"^200128RU_SCPSE_\d+_\d+\.bsp$",),
     "EXOMARS2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "ExoMars2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "DAWN": (r"^Dawn_ephem_\d+\.bsp$",),
@@ -76,26 +94,111 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "JUNO": (r"^juno_rec_orbit\.bsp$", r"^juno_pred_orbit\.bsp$"),
     "MEX": (r"^MEX_ROB_\d+_\d+_\d+\.BSP$",),
     "MARS-EXPRESS": (r"^MEX_ROB_\d+_\d+_\d+\.BSP$",),
-    "MRO": (r"^mro_cruise\.bsp$", r"^mro_psp\.bsp$"),
-    "MER": (r"^mer[12]_cruise.*\.bsp$",),
-    "M01": (r"^m01_full\.bsp$",),
+    "MRO": (r"^mro_cruise\.bsp$", r"^mro_psp\d*\.bsp$"),
+    "MER": (r"^mer[12]_cruise.*\.bsp$", r"^mer[12]_edl_rcb_v\d+\.bsp$"),
+    # NAIF's actual M01 (Mars Odyssey) files are split across cruise +
+    # aerobraking + 27+ science extensions; the file `m01_full.bsp` does NOT
+    # exist on NAIF (the previous pattern matched zero files).
+    "M01": (
+        r"^m01_cruise\.bsp$",
+        r"^m01_ab(?:_v\d+)?\.bsp$",
+        r"^m01_ext\d+\.bsp$",
+        r"^m01_map\d+\.bsp$",
+        r"^m01_map_rec\.bsp$",
+    ),
     "JUICE": (r"^juice_orbc_000104_\d+_\d+_v01\.bsp$",),
     "LUCY": (r"^lcy_\d+_330\d+_.*sconly_v\d+\.bsp$",),
-    "SOLAR-ORBITER": (r"^solo_ANC_soc-orbit_\d+-\d+_L030_V\d+_\d+_V\d+\.bsp$",),
+    # Latest L-version on NAIF is L025; the previous L030 hardcode matched
+    # zero files. Generalised to match any L-version so future bumps don't
+    # silently break this.
+    "SOLAR-ORBITER": (r"^solo_ANC_soc-orbit_\d+-\d+_L\d+_V\d+_\d+_V\d+\.bsp$",),
     "JWST": (r"^jwst_(?:rec|pred)\.bsp$",),
     "HERA": (r"^HERA_NomTrajDCP3VCF_v\d+\.bsp$",),
     "PSYCHE": (r"^psyche_rec_\d+-\d+_\d+_v\d+\.bsp$",),
     "GAIA": (r"^gaia_\d+_\d+_v\d+\.bsp$",),
+    # NAIF/{VEX,VENUS-EXPRESS,ROSETTA,MPF}/kernels/spk/ are empty on the
+    # operational tree; real data lives in PDS3 archives (vex-e_v-spice-6-v2.0,
+    # ros-e_m_a_c-spice-6-v1.0, mpf-m-spice-6-v1.0). Adding those is a
+    # follow-up extension to `PDS3_DATASETS`.
     "VEX": (),
     "VENUS-EXPRESS": (),
     "ROSETTA": (),
-    "ORX": (),
+    # OSIRIS-REx cumulative post-encounter ODs.
+    "ORX": (r"^orx_\d+_\d+_refod\d+_v\d+\.bsp$",),
+    # Chandrayaan-1 has either a single 712 MiB predict or 2300+ daily 3.5 MiB
+    # kernels (~8 GiB cumulative). Disabled pending a cost/value decision.
     "CHANDRAYAAN-1": (),
     "MAVEN": (r"^maven_orb_rec\.bsp$",),
     "EUROPACLIPPER": (r"^europaclipper_recon_\d+_\d+\.bsp$",),
     "MARS2020": (r"^m2020_cruise_od\d+_v\d+\.bsp$",),
     "MSL": (r"^msl_cruise_v\d+\.bsp$",),
     "THEMIS": (),  # Earth-orbit constellation; tracked via celestrak instead
+    "SMAP": (),  # Earth-orbit; celestrak
+    # Newly enabled (previously skipped or accept-all). Patterns picked from a
+    # fresh sweep of each NAIF/ESA `kernels/spk/` listing.
+    "SIRTF": (r"^spk_191101_200134_220101_short\.bsp$",),  # Spitzer warm phase
+    "CHANDRA": (r"^chandra_merged\.bsp$",),
+    "APOLLO": (r"^apollo15-1\.bsp$", r"^a16_subsat_ssd_lp150q\.bsp$"),
+    "MPL": (r"^mpl_cruise\.bsp$",),  # Mars Polar Lander (lost during EDL)
+    "PHSRM": (r"^phsrm_\d+_\d+_\d+_nom\d+\.bsp$",),  # Phobos-Grunt (planned)
+    "PHOBOS88": (r"^p88mrg\.bsp$", r"^iam_r2\.bsp$"),  # Phobos 2
+    "LPM": (r"^lp_ask_\d+-\d+\.bsp$",),  # Lunar Prospector
+    "GLL": (r"^gll_951120_021126_raj2021\.bsp$",),  # Galileo, 2021 reanalysis
+    "HELIOS": (
+        r"^\d+R_helios[12]_\d+_\d+\.bsp$",
+        r"^\d+AP_helios[12]_\d+_\d+\.bsp$",
+    ),
+    "HST": (r"^hst\.bsp$",),
+    "IUE": (r"^IUE\.bsp$",),
+    "INSIGHT": (r"^insight_cru_ops_v\d+\.bsp$",),
+    "PHOENIX": (r"^phx_cruise\.bsp$", r"^phx_edl_rec_traj\.bsp$"),
+    "LADEE": (r"^ladee_r_\d+_\d+_(?:pha|loa|sci)_v\d+\.bsp$",),
+    "DEEPIMPACT": (
+        r"^di_finalenc_nav_v\d+\.bsp$",
+        r"^dif_dixi_nav_v\d+\.bsp$",
+        r"^dif_epoch_nav_v\d+\.bsp$",
+    ),
+    "CONTOUR": (
+        r"^contour\.traj\.\d+\.noplephem-\d+\.bsp$",
+        r"^contour_phasing\.bsp$",
+    ),
+    "STEREO": (r"^STEREO-A_merged\.bsp$",),  # STEREO-B failed 2014
+    "ULYSSES": (r"^ulysses_\d+_\d+_\d+\.bsp$",),
+    "VEGA": (r"^vega\..*\.bsp$",),
+    "VIKING": (r"^vo[12]_rcon\.bsp$",),  # orbiters only; landers are surface
+    "VOYAGER": (r"^[Vv]oyager_[12]\.[A-Za-z0-9.+_]+merged\.bsp$",),
+    "MCO": (r"^mco_cruise\.bsp$",),  # Mars Climate Orbiter (lost)
+    "M2": (r"^m2_\d+_\d+_ja_v\d+\.bsp$",),  # Mariner 2
+    "M9": (r"^m9\.bsp$",),  # Mariner 9
+    "M10": (r"^M10_archive_\d+\.bsp$",),  # Mariner 10
+    "GIOTTO": (r"^giotto_\d+_\d+\.bsp$",),
+    "LUNARORBITER": (
+        r"^lo[123]_ssd_lp150q\.bsp$",
+        r"^lo4_ssd_lp150q_v2\.bsp$",
+        r"^lo5_ssd_lp150q\.bsp$",
+    ),
+    "PIONEER6": (r"^pio6-a\.bsp$",),
+    "PIONEER8": (r"^pioneer8-seti\.bsp$",),
+    "PIONEER10": (r"^p10-a\.bsp$",),
+    "PIONEER11": (r"^p11-a\.bsp$", r"^p11_sat336\.bsp$"),
+    "PIONEER12": (r"^pvo_\d+_\d+_ssd\d+\.bsp$",),  # Pioneer Venus Orbiter
+    "NOZOMI": (r"^planetb_pb98\.bsp$",),
+    # ESA-only missions (newly enabled).
+    "EUCLID": (r"^euclid_flp_\d{8}_\d{8}_v\d+\.bsp$",),
+    "INTEGRAL": (r"^integral_sc_ssm_20021017_\d+_v\d+\.bsp$",),
+    "XMM": (
+        r"^xmm_horizons_\d+_\d+_v\d+\.bsp$",
+        r"^xmm_ssm_\d+_\d+_v\d+\.bsp$",
+    ),
+    "LPF": (r"^lpfcmd\.bsp$",),  # LISA Pathfinder
+    "HUYGENS": (
+        r"^\d+AP_OPK_\d+_\d+\.BSP$",
+        r"^HUYGENS_(?:COAST|ENTRY|DESCENT|LANDED)_V\d+\.BSP$",
+    ),
+    "COMET-INTERCEPTOR": (r"^CI_SC[AB][12]?_v\d+\.bsp$",),
+    "ENVISION": (r"^EnVision_T1_2032_N_LPO_ML014_\d+_\d+_v\d+\.bsp$",),
+    "RAMSES": (r"^ramses_study_LPO_\d+(?:_CEP)?_\d+_\d+_v\d+\.bsp$",),
+    "M-MATISSE": (r"^mmatisse_(?:henri|marguerite)_ipo1_LD21_\d+_\d+_v\d+\.bsp$",),
     # --- PDS3 archive missions ---
     "NEWHORIZONS": (
         r"^nh_recon_e2j_v\d+\.bsp$",
@@ -135,6 +238,29 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         # SKIP_PATTERNS (parks debris at Dimorphos through 2099).
         r"^dart_\d+_\d+_\d+_\d+_rec_v\d+\.bsp$",
     ),
+    "HYB2": (
+        # Long-arc reconstructed Hayabusa2 trajectory (cruise + Ryugu
+        # proximity); the per-MASCOT/opnav/struct kernels are skipped.
+        r"^hyb2_\d{8}-\d{8}_\d+[hm]_final_ver\d+\.bsp$",
+        r"^hyb2_asteroid_to_earth_\d+_v\d+\.bsp$",
+    ),
+    "VCO": (
+        # Akatsuki / PLANET-C per-year reconstruction, 2010 launch onward.
+        r"^vco_\d{4}_v\d+\.bsp$",
+    ),
+    "CLPS": (
+        # Four landers share one PDS4 bundle. Cruise + EDL kernels for each;
+        # static *_atls_*, *_ls_*, *_struct_* placeholders are excluded.
+        r"^clps_to2ab_apm1_cru_rec_\d+_\d+_v\d+\.bsp$",  # Peregrine cruise
+        r"^clps_to2im_im1_cru_rec_\d+_\d+_v\d+\.bsp$",  # IM-1 cruise
+        r"^clps_to2im_im1_edl_rec_\d+_v\d+\.bsp$",  # IM-1 EDL
+        r"^clps_prime1_im2_cru_rec_\d+_\d+_v\d+\.bsp$",  # IM-2 cruise
+        r"^clps_prime1_im2_edl_rec_\d+_v\d+\.bsp$",  # IM-2 EDL
+        r"^clps_to19d_bgm1_cru_rec_\d+_\d+_v\d+\.bsp$",  # BG-1 cruise
+        r"^clps_to19d_bgm1_edl_rec_\d+_v\d+\.bsp$",  # BG-1 EDL
+    ),
+    # --- DARTS-only missions ---
+    "SELENE": (r"^SEL_M_\d+_\d+_SGM[HI]_\d+\.BSP$",),  # Kaguya
 }
 
 SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
@@ -173,20 +299,13 @@ SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
 # Top-level dirs at the mirror roots that don't contain mission trajectories.
 NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
     {
-        "TDRSS",
-        "GNS",
-        "SDU",
-        "SIRTF",
-        "APOLLO",
-        "CHANDRA",
-        "FIDO",
-        "ROCKY7",
-        "LPM",
-        "PHSRM",
-        "PHOBOS88",
-        "MSR",
-        "MPL",
-        "MGN",
+        "TDRSS",  # geostationary relay fleet — celestrak
+        "GNS",  # Galileo NavSat / GNSS — celestrak
+        "SDU",  # Stardust sample-return capsule — PDS3 archive
+        "FIDO",  # Mars-yard rover prototype (Earth surface)
+        "ROCKY7",  # Mars-yard rover prototype (Earth surface)
+        "MSR",  # Mars Sample Return — pre-decisional / canceled
+        "MGN",  # Magellan — no SPKs published anywhere on NAIF
         "cosmographia",
         "deprecated_kernels",
         "generic_kernels",
@@ -201,22 +320,15 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
 ESA_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
     {
         "esa_generic",
-        "GNSS",
-        "INTEGRAL",
-        "XMM",
-        "EUCLID",
-        "M-MATISSE",
-        "RAMSES",
-        "ENVISION",
-        "COMET-INTERCEPTOR",
-        "ExoMarsRSP",
-        "LPF",
+        "GNSS",  # European GNSS constellation — celestrak
+        "ExoMarsRSP",  # Russian-led, canceled 2022 (only test/sim kernels)
         # Aliases for missions already mirrored under their NAIF directory
         # name. Skipping the ESA-hyphenated form avoids downloading the same
         # SPK files twice and producing two probe_ids for one spacecraft.
         "SMART-1",  # → NAIF SMART1
         "ExoMars2016",  # → NAIF EXOMARS2016
         "MARS-EXPRESS",  # → NAIF MEX
+        "GIOTTO",  # → NAIF GIOTTO (same merged file on both mirrors)
     }
 )
 
@@ -298,6 +410,18 @@ def _list_pds4_sources() -> list[MissionSource]:
     ]
 
 
+def _list_darts_sources() -> list[MissionSource]:
+    """JAXA DARTS missions that aren't mirrored on NAIF.
+
+    Today this is just SELENE/Kaguya — JAXA's other SPICE bundles (Hayabusa2,
+    Akatsuki) are mirrored at NAIF and handled via `_list_pds4_sources`.
+    """
+    return [
+        MissionSource("JAXA-DARTS", mission, spk_url)
+        for mission, spk_url in DARTS_SOURCES.items()
+    ]
+
+
 def _list_mission_spks(client: httpx.Client, source: MissionSource) -> list[FileEntry]:
     """Return kept (size-known) SPK entries for `source`.
 
@@ -311,7 +435,19 @@ def _list_mission_spks(client: httpx.Client, source: MissionSource) -> list[File
             re.compile(p, re.IGNORECASE) for p in MISSION_INCLUDE[source.mission]
         )
         if include_pats:
+            pre_filter = len(hrefs)
             hrefs = [h for h in hrefs if any(p.match(h) for p in include_pats)]
+            # Catches the M01/SOLAR-ORBITER-style bug where a hardcoded version
+            # number in the regex drifts past the latest published kernel and
+            # silently matches zero files.
+            if pre_filter and not hrefs:
+                logger.warning(
+                    "%s/%s: MISSION_INCLUDE matched 0 of %d candidate .bsp "
+                    "files — pattern likely stale",
+                    source.server,
+                    source.mission,
+                    pre_filter,
+                )
         else:
             hrefs = []
     if not hrefs:
@@ -395,6 +531,7 @@ class ProbesDownloader(Downloader):
         )
         sources += _list_pds3_sources(self.client)
         sources += _list_pds4_sources()
+        sources += _list_darts_sources()
         return sources
 
     def _process_mission(self, source: MissionSource, max_mib: float | None) -> dict:
