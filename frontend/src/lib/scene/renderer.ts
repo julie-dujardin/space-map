@@ -37,6 +37,8 @@ import {
 	loadBodyLabel,
 	buildOrbitLines,
 	buildPointClouds,
+	downgradeBodyMesh,
+	isMeshUpgradable,
 	loadBodyTexture,
 	loadBodyTextureTier,
 	loadSystemData,
@@ -44,7 +46,8 @@ import {
 	textureFrameForJd,
 	tierRank,
 	highestAvailableTier,
-	unloadSystemTextures
+	unloadSystemTextures,
+	upgradeBodyMesh
 } from './objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
 import {
@@ -363,6 +366,17 @@ export class SceneRenderer {
 
 		// If focused body has no visual objects (e.g. placeholder from global file), build them.
 		if (focusBody) this.ensureBodyObjects(focusBody);
+
+		// Initial focus on a halo-only type (asteroid/comet/probe) needs its
+		// mesh built immediately — `setFocusTarget` handles this on subsequent
+		// focus changes, but the init path skips that helper.
+		if (focusBody && isMeshUpgradable(focusBody)) {
+			const bo = this.bodyObjects.get(focusBody.data.id);
+			if (bo) {
+				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+			}
+		}
 
 		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
@@ -1789,6 +1803,28 @@ export class SceneRenderer {
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.ensureBodyObjects(body);
+
+		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
+		// sphere mesh (and asteroids/comets their orbit line) only while
+		// focused; reverting to halo-only on un-focus keeps the unfocused
+		// scene cheap. minDistance below depends on the focused body's mesh
+		// radius, so do the swap before reading it.
+		const prevFocused = this.focusedBody;
+		if (prevFocused && prevFocused.data.id !== body.data.id && isMeshUpgradable(prevFocused)) {
+			const prevBo = this.bodyObjects.get(prevFocused.data.id);
+			if (prevBo) downgradeBodyMesh(prevBo, this.scene, this.clickables, this.meshToBody);
+		}
+		if (isMeshUpgradable(body)) {
+			const bo = this.bodyObjects.get(body.data.id);
+			if (bo) {
+				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				// Asteroids/comets had no orbit line as halo-only; this picks it
+				// up now that `bo.mesh` is set. Probes already had one — the
+				// "already built" guard inside buildOrbitLines skips them.
+				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+			}
+		}
+
 		this.focusedBody = body;
 		this.controls.minDistance = minCameraDistance(body);
 		this.ctx.setFocused(body);

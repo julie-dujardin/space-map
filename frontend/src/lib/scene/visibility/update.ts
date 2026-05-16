@@ -125,14 +125,13 @@ export function updateBodyVisibility(
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 
-		if (
-			body.data.objectType === ObjectType.BARYCENTER ||
-			body.data.objectType === ObjectType.LAGRANGE_POINT
-		) {
-			// Virtual bodies promoted via URL navigation: always visible once built.
-			// Exception: barycenters that visually overlap a primary body (SSB/Sun,
-			// Pluto-BC/Pluto) hide until the camera is close enough that the offset
-			// projects to at least one halo diameter on screen.
+		if (bo.mesh === null) {
+			// Halo-only bodies (barycenters, Lagrange points, and unfocused
+			// asteroids/comets/probes auto-promoted to a label+halo entry):
+			// always visible once built — the halo is the entire visual.
+			// Exception: barycenters that visually overlap a primary body
+			// (SSB/Sun, Pluto-BC/Pluto) hide until the offset projects to at
+			// least one halo diameter on screen.
 			let visible = true;
 			const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
 			if (primaryId) {

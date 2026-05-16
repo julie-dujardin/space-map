@@ -255,6 +255,106 @@ function orbitLineWidthFor(body: PositionedBody): number {
 	return 1;
 }
 
+/**
+ * True for body types that auto-promote to a halo+label entry but should swap
+ * to a full sphere mesh once focused (and drop back to halo-only on un-focus).
+ * Barycenters and Lagrange points are halo-only too, but have no physical body
+ * so they never upgrade.
+ */
+export function isMeshUpgradable(body: PositionedBody): boolean {
+	const t = body.data.objectType;
+	return (
+		t === ObjectType.COMET || isAsteroid(t) || body.data.orbitalSource === OrbitalSource.SPICE_PROBE
+	);
+}
+
+/**
+ * Add the sphere mesh (+ atmosphere, eclipse shadow, clickable registration) to
+ * an existing halo-only {@link BodyObjects} entry. No-op if a mesh already
+ * exists. Caller re-runs {@link buildOrbitLines} to pick up the orbit line for
+ * non-probe types whose halo-only state had no trail.
+ */
+export function upgradeBodyMesh(
+	bo: BodyObjects,
+	scene: Scene,
+	clickables: Mesh[],
+	meshToBody: Map<Mesh, PositionedBody>
+): void {
+	if (bo.mesh !== null) return;
+	const { body, radiusScene } = bo;
+	const color = resolveBodyColor(body.data);
+	const segments = 64;
+	const geometry = new SphereGeometry(radiusScene, segments, segments);
+	const material = new MeshStandardMaterial({ color });
+	const mesh = new Mesh(geometry, material);
+	scene.add(mesh);
+	bo.mesh = mesh;
+	bo.extraObjects.push(mesh);
+	clickables.push(mesh);
+	meshToBody.set(mesh, body);
+	bo.eclipseShadow = attachEclipseShadowToBody(material);
+	bo.currentSegments = segments;
+
+	const atmoParams = ATMOSPHERE_PARAMS[body.data.id];
+	if (atmoParams) {
+		bo.atmosphere = buildAtmosphereNode(atmoParams, radiusScene, effectiveRadiusKm(body.data));
+		scene.add(bo.atmosphere.mesh);
+		bo.extraObjects.push(bo.atmosphere.mesh);
+	}
+}
+
+/**
+ * Reverse of {@link upgradeBodyMesh}: dispose the sphere mesh, atmosphere, and
+ * eclipse shadow; for non-probe types also dispose the orbit line so the body
+ * reverts to a labelled halo only. Probes keep their trail (their halo-only
+ * mode is "halo + trail, no mesh").
+ */
+export function downgradeBodyMesh(
+	bo: BodyObjects,
+	scene: Scene,
+	clickables: Mesh[],
+	meshToBody: Map<Mesh, PositionedBody>
+): void {
+	const mesh = bo.mesh;
+	if (mesh) {
+		scene.remove(mesh);
+		mesh.geometry.dispose();
+		const mat = mesh.material;
+		if (Array.isArray(mat)) for (const m of mat) m.dispose();
+		else mat.dispose();
+		const idx = clickables.indexOf(mesh);
+		if (idx >= 0) clickables.splice(idx, 1);
+		meshToBody.delete(mesh);
+		const extraIdx = bo.extraObjects.indexOf(mesh);
+		if (extraIdx >= 0) bo.extraObjects.splice(extraIdx, 1);
+		bo.mesh = null;
+		bo.currentSegments = undefined;
+		bo.eclipseShadow = null;
+	}
+
+	if (bo.atmosphere) {
+		const atmoMesh = bo.atmosphere.mesh;
+		scene.remove(atmoMesh);
+		const ai = bo.extraObjects.indexOf(atmoMesh);
+		if (ai >= 0) bo.extraObjects.splice(ai, 1);
+		atmoMesh.geometry.dispose();
+		const m = atmoMesh.material;
+		if (Array.isArray(m)) for (const mm of m) mm.dispose();
+		else m.dispose();
+		bo.atmosphere = null;
+	}
+
+	const isProbe = bo.body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
+	if (bo.orbitLine && !isProbe) {
+		scene.remove(bo.orbitLine);
+		bo.orbitLine.geometry.dispose();
+		const lm = bo.orbitLine.material;
+		if (Array.isArray(lm)) for (const mm of lm) mm.dispose();
+		else lm.dispose();
+		bo.orbitLine = null;
+	}
+}
+
 export function buildOrbitLines(
 	bodyObjects: Map<string, BodyObjects>,
 	scene: Scene,
@@ -265,10 +365,13 @@ export function buildOrbitLines(
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		// Need orbit elements to draw a curve. STAR is the Sun — no orbit line.
-		// Halo-only bodies (asteroids/comets/probes/barycenters/Lagrange) share
-		// `mesh === null` with virtual bodies and skip the orbit line too —
-		// they show as a labelled halo, no trail.
-		if (!body.orbitElements || body.data.objectType === ObjectType.STAR || !bo.mesh) continue;
+		// Halo-only asteroids/comets get no trail until focus upgrades them to a
+		// full mesh (handled by `upgradeBodyMesh`); barycenters, Lagrange points,
+		// and probes are halo-only too but keep their orbit lines.
+		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
+		const t = body.data.objectType;
+		const isHaloOnlySmallBody = !bo.mesh && (isAsteroid(t) || t === ObjectType.COMET);
+		if (isHaloOnlySmallBody) continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
 		scene.add(line);
