@@ -19,7 +19,8 @@ import { BODY_COLORS, MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
-import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
@@ -67,12 +68,24 @@ export function buildMajorBodies(
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
+		// "Halo-only" types render as a label + halo with no sphere mesh and
+		// (handled by `buildOrbitLines` below) no orbit line: barycenters and
+		// Lagrange points have no physical body, and asteroids/comets/probes
+		// are too small to be visually meaningful at planetary scale — the
+		// halo carries the name + click target. Per-frame iteration loops
+		// (visibility, sphere/texture LOD, ring shaders) skip entries with
+		// `mesh === null`, so this keeps the body's slot in `bodyObjects`
+		// effectively free.
+		const t = body.data.objectType;
 		const isVirtual =
-			body.data.objectType === ObjectType.BARYCENTER ||
-			body.data.objectType === ObjectType.LAGRANGE_POINT;
+			t === ObjectType.BARYCENTER ||
+			t === ObjectType.LAGRANGE_POINT ||
+			t === ObjectType.COMET ||
+			isAsteroid(t) ||
+			body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
 		const color = resolveBodyColor(body.data);
 		const radius = kmToScene(effectiveRadiusKm(body.data));
-		const isStar = body.data.objectType === ObjectType.STAR;
+		const isStar = t === ObjectType.STAR;
 
 		const group = new Group();
 		// Position set to origin — repositionAll() applies focus-relative offset each frame
@@ -132,7 +145,7 @@ export function buildMajorBodies(
 
 		// CSS2D label
 		const variant = getLabelVariant(body);
-		const isLarge = isStar || body.data.objectType === ObjectType.PLANET;
+		const isLarge = isStar || t === ObjectType.PLANET;
 		// Two minor sources: the curated barycenter/asteroid list (frontend-only),
 		// and the data-driven `m` flag the labels file ships for designation-only
 		// moons (e.g. naif-65289/S2020 S48). Both render the same way — collapsed
@@ -252,7 +265,10 @@ export function buildOrbitLines(
 		if (bo.orbitLine !== null) continue;
 		const { body } = bo;
 		// Need orbit elements to draw a curve. STAR is the Sun — no orbit line.
-		if (!body.orbitElements || body.data.objectType === ObjectType.STAR) continue;
+		// Halo-only bodies (asteroids/comets/probes/barycenters/Lagrange) share
+		// `mesh === null` with virtual bodies and skip the orbit line too —
+		// they show as a labelled halo, no trail.
+		if (!body.orbitElements || body.data.objectType === ObjectType.STAR || !bo.mesh) continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
 		scene.add(line);
