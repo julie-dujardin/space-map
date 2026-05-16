@@ -1,0 +1,298 @@
+"""Unit tests for the Horizons synthetic-SPK download helpers."""
+
+from unittest.mock import MagicMock
+
+import httpx
+import numpy as np
+import pytest
+
+from space_map_data.download.providers.objects import horizons_synth as hs
+
+
+# ---------------------------------------------------------------------------
+# Time helpers
+# ---------------------------------------------------------------------------
+
+
+class TestTimeHelpers:
+    """Round-trip checks for the JD/ET/ISO conversions."""
+
+    def test_jd_to_iso_at_j2000(self):
+        # J2000 epoch is 2000-01-01 12:00 TT, which we round down to date.
+        assert hs._jd_to_iso(2451545.0) == "2000-01-01"
+
+    def test_jd_to_iso_at_voyager_launch(self):
+        # 1977-AUG-20 15:32 TDB → JD 2443376.148...
+        assert hs._jd_to_iso(2443376.148) == "1977-08-20"
+
+    def test_et_jd_round_trip(self):
+        for jd in (2451545.0, 2443376.148, 2461110.5, 2415020.5):
+            et = (jd - 2451545.0) * 86400.0
+            assert hs._et_to_jd(et) == pytest.approx(jd)
+
+
+# ---------------------------------------------------------------------------
+# Cadence policy
+# ---------------------------------------------------------------------------
+
+
+class TestCoarseStepFor:
+    """Cadence tiering by span length."""
+
+    def test_short_window_uses_1h(self):
+        # Apollo S-IVB stages have ~20-day coverage.
+        assert hs._coarse_step_for(20) == "1 h"
+        assert hs._coarse_step_for(60) == "1 h"
+
+    def test_year_window_uses_1d(self):
+        # Tianwen-1 has ~6 months, NISAR ~year.
+        assert hs._coarse_step_for(61) == "1 d"
+        assert hs._coarse_step_for(180) == "1 d"
+        assert hs._coarse_step_for(365) == "1 d"
+
+    def test_long_window_uses_7d(self):
+        # Voyager 2 spans 122 years.
+        assert hs._coarse_step_for(366) == "7 d"
+        assert hs._coarse_step_for(122 * 365) == "7 d"
+
+
+# ---------------------------------------------------------------------------
+# Horizons CSV parsing
+# ---------------------------------------------------------------------------
+
+
+_SAMPLE_CSV = """\
+API VERSION: 1.2
+API SOURCE: NASA/JPL Horizons API
+
+[header text]
+
+$$SOE
+2460676.500000000, A.D. 2025-Jan-01 00:00:00.0000,  5.734902866007734E+09, -8.913897076915403E+09, -1.781075837096583E+10,  4.218560195726143E+00, -4.071034191379132E+00, -1.411082680475604E+01,
+2460677.500000000, A.D. 2025-Jan-02 00:00:00.0000,  5.735267349281271E+09, -8.914248813766993E+09, -1.781197754541512E+10,  4.218552617767505E+00, -4.071022558716548E+00, -1.411080396628405E+01,
+$$EOE
+"""
+
+
+class TestParseHorizonsCsv:
+    def test_extracts_two_samples(self):
+        samples = hs._parse_horizons_csv(_SAMPLE_CSV)
+        assert len(samples) == 2
+
+    def test_first_sample_state_matches_csv(self):
+        samples = hs._parse_horizons_csv(_SAMPLE_CSV)
+        # JD 2460676.5 = 2025-01-01 00:00 TDB. ET = (jd - J2000) * 86400.
+        assert samples[0].et == pytest.approx((2460676.5 - 2451545.0) * 86400.0)
+        # State vector x, y, z, vx, vy, vz.
+        assert samples[0].state[0] == pytest.approx(5.734902866007734e9)
+        assert samples[0].state[5] == pytest.approx(-1.411082680475604e1)
+
+    def test_missing_block_returns_empty(self):
+        assert hs._parse_horizons_csv("no SOE block here") == []
+
+    def test_malformed_lines_skipped(self):
+        text = "$$SOE\nnot-a-csv-row\n2460676.5, foo, 1, 2, 3, 4, 5, 6\n$$EOE\n"
+        samples = hs._parse_horizons_csv(text)
+        # First row has non-numeric values; second has 8 numeric-looking parts
+        # (but parts[1] is "foo" which we don't parse). Only well-formed rows
+        # pass; expect 1 sample.
+        assert len(samples) == 1
+
+
+_TWO_CHUNK_CSV = """\
+header1
+$$SOE
+2460676.5, A.D. 2025-Jan-01 00:00:00.0,  1.0,  2.0,  3.0,  0.1,  0.2,  0.3,
+2460677.5, A.D. 2025-Jan-02 00:00:00.0,  4.0,  5.0,  6.0,  0.4,  0.5,  0.6,
+$$EOE
+header2
+$$SOE
+2460677.5, A.D. 2025-Jan-02 00:00:00.0,  4.0,  5.0,  6.0,  0.4,  0.5,  0.6,
+2460678.5, A.D. 2025-Jan-03 00:00:00.0,  7.0,  8.0,  9.0,  0.7,  0.8,  0.9,
+$$EOE
+"""
+
+
+class TestParseChunks:
+    def test_dedups_adjacent_overlap(self):
+        # The 2025-Jan-02 sample appears at the end of chunk 1 and start of
+        # chunk 2 (Horizons' inclusive-stop quirk for chunked fetches). The
+        # parser should drop the duplicate.
+        samples = hs._parse_chunks(_TWO_CHUNK_CSV)
+        assert len(samples) == 3
+        # Strictly increasing epochs.
+        ets = [s.et for s in samples]
+        assert ets == sorted(set(ets))
+
+
+# ---------------------------------------------------------------------------
+# Horizons MB spacecraft filter
+# ---------------------------------------------------------------------------
+
+
+# NAIF ID is right-aligned within a 9-char column [0:9]; the real Horizons
+# MB file pads each ID with leading spaces accordingly. Get this wrong (e.g.
+# 7 leading spaces before "-32") and `-32` truncates to `-3`.
+_SAMPLE_MB = """\
+   ID#      Name                               Designation  IAU/aliases/other
+  -------  ---------------------------------- -----------  -------------------
+      -32  Voyager 2 (spacecraft)
+       -3  Mars Orbiter Mission (spacecraft)
+      -25  Lunar Prospector (LP) (spacecraft)
+  -937001  2017 PDC (simulation)
+  -999789  2023 NM (debris)
+ -9901492  Luna-25 STAGE (spacecraft)
+-54054450  Surveyor-2 Centaur RB
+  -999742  LISA Pathfinder Propulsion Module
+      399  Earth
+"""
+
+
+class TestParseHorizonsSpacecraft:
+    def test_keeps_real_spacecraft(self):
+        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        ids = {n for n, _ in out}
+        assert -32 in ids
+        assert -3 in ids
+        assert -25 in ids
+
+    def test_drops_simulations(self):
+        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        ids = {n for n, _ in out}
+        assert -937001 not in ids
+
+    def test_drops_debris(self):
+        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        ids = {n for n, _ in out}
+        assert -999789 not in ids
+
+    def test_drops_stages_and_boosters(self):
+        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        ids = {n for n, _ in out}
+        assert -9901492 not in ids  # Luna-25 STAGE
+        assert -54054450 not in ids  # Centaur RB
+        assert -999742 not in ids  # Propulsion Module
+
+    def test_drops_positive_ids(self):
+        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        ids = {n for n, _ in out}
+        assert 399 not in ids
+
+
+# ---------------------------------------------------------------------------
+# OBJ_DATA header parsing
+# ---------------------------------------------------------------------------
+
+
+_VOYAGER_OBJ = {
+    "result": (
+        "*******************************************************************************\n"
+        " Revised: Aug 19, 2022   Voyager 2 Spacecraft (interplanetary) / (Sun)     -32\n"
+        "                        http://www.jpl.nasa.gov/missions/voyager-2/\n"
+    ),
+    "signature": {"source": "NASA/JPL Horizons API", "version": "1.2"},
+}
+
+
+class TestFetchObjData:
+    def test_parses_revised_and_name(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = _VOYAGER_OBJ
+        mock_resp.raise_for_status.return_value = None
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = mock_resp
+
+        obj = hs.fetch_obj_data(client, -32)
+        assert obj.revised == "Aug 19, 2022"
+        assert "Voyager 2" in obj.name
+
+    def test_unknown_revised_falls_back(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": "no header here"}
+        mock_resp.raise_for_status.return_value = None
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = mock_resp
+
+        obj = hs.fetch_obj_data(client, -42)
+        assert obj.revised == "unknown"
+        assert obj.name == "NAIF -42"
+
+
+# ---------------------------------------------------------------------------
+# Refinement window detection
+# ---------------------------------------------------------------------------
+
+
+class TestIdentifyRefinementWindows:
+    def _make_samples(self, n: int, day_step: float = 7.0) -> list[hs.Sample]:
+        """N samples spaced `day_step` apart starting at ET 0."""
+        return [
+            hs.Sample(et=i * day_step * 86400.0, state=(0, 0, 0, 0, 0, 0))
+            for i in range(n)
+        ]
+
+    def test_no_proximity_no_windows(self):
+        samples = self._make_samples(20)
+        # Stub `get_body_pos` returns a body 10^20 km away — always far.
+        far_away = np.array([1e20, 0, 0])
+        windows = hs._identify_refinement_windows(
+            samples,
+            get_body_pos=lambda _b, _t: far_away,
+            coverage_start_iso="2000-01-01",
+            coverage_end_iso="2010-01-01",
+        )
+        assert windows == []
+
+    def test_proximity_at_one_sample(self):
+        samples = self._make_samples(20)
+
+        # Body coincides with spacecraft at sample 10 only.
+        def get_body_pos(_b, et):
+            if et == samples[10].et:
+                return np.array([0.0, 0.0, 0.0])
+            return np.array([1e20, 0.0, 0.0])
+
+        windows = hs._identify_refinement_windows(
+            samples,
+            get_body_pos=get_body_pos,
+            coverage_start_iso="2000-01-01",
+            coverage_end_iso="2010-01-01",
+        )
+        assert len(windows) == 1
+
+    def test_two_separate_windows(self):
+        samples = self._make_samples(30)
+
+        # Body close at samples 5..7 and 20..22.
+        def get_body_pos(_b, et):
+            for idx in (5, 6, 7, 20, 21, 22):
+                if et == samples[idx].et:
+                    return np.array([0.0, 0.0, 0.0])
+            return np.array([1e20, 0.0, 0.0])
+
+        windows = hs._identify_refinement_windows(
+            samples,
+            get_body_pos=get_body_pos,
+            coverage_start_iso="2000-01-01",
+            coverage_end_iso="2010-01-01",
+        )
+        assert len(windows) == 2
+
+    def test_windows_clamped_to_coverage(self):
+        # First sample is at coverage start; padding would push the window
+        # boundary one week before — should be clamped.
+        samples = self._make_samples(5)
+
+        def get_body_pos(_b, et):
+            if et == samples[0].et:
+                return np.array([0.0, 0.0, 0.0])
+            return np.array([1e20, 0.0, 0.0])
+
+        windows = hs._identify_refinement_windows(
+            samples,
+            get_body_pos=get_body_pos,
+            coverage_start_iso="2000-01-01",
+            coverage_end_iso="2010-01-01",
+        )
+        # Start must be on or after 2000-01-02 (coverage_start + 1d margin).
+        assert windows[0][0] >= "2000-01-02"
