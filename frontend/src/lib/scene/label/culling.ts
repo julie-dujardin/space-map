@@ -35,7 +35,6 @@ export function dimLabel(
 		// adds the body to hoveredBodyIds, stealing focus from whatever's behind.
 		if (labelHalo.parentElement) {
 			labelHalo.parentElement.style.pointerEvents = clickable ? '' : 'none';
-			labelHalo.parentElement.style.visibility = '';
 		}
 	}
 	if (nameSpan) {
@@ -54,10 +53,7 @@ export function restoreLabel(
 		if (!isHovered) labelHalo.style.transform = '';
 		labelHalo.style.border = labelHalo.dataset.origBorder ?? '';
 		// A label unclickable on frame N must regain clicks when it wins frame N+1.
-		if (labelHalo.parentElement) {
-			labelHalo.parentElement.style.pointerEvents = '';
-			labelHalo.parentElement.style.visibility = '';
-		}
+		if (labelHalo.parentElement) labelHalo.parentElement.style.pointerEvents = '';
 	}
 	if (nameSpan) {
 		nameSpan.style.display = '';
@@ -245,11 +241,12 @@ export function cullOverlappingLabels(
 			label.visible = false;
 			continue;
 		}
-		// Minor-promoted, unselected: keep the scale-0.5 visual but test against
-		// _accepted using the minor halo's actual footprint (HALO_RADIUS_PX * 0.5).
-		// Sort guarantees every maximized halo is in _accepted by now, so a hit
-		// always means a real maximized label is sitting on top → hide. Don't
-		// push into _accepted: a minor halo must never block a maximized one.
+		// Minor-promoted, unselected: stays minimized at scale 0.5, but if a real
+		// maximized halo (already in _accepted thanks to the sort) is sitting on
+		// top of it, shrink further to 0.3 — the same "lost a conflict" visual a
+		// maximized label gets. Tested against _accepted using the minor halo's
+		// actual footprint (HALO_RADIUS_PX * 0.5), and never pushed into
+		// _accepted so a minor halo can't block a real label.
 		if (isMinor && !isSelected) {
 			const minorRadius = HALO_RADIUS_PX * 0.5;
 			const minorOverlaps = _accepted.some(
@@ -258,14 +255,7 @@ export function cullOverlappingLabels(
 					screenX + minorRadius > a.left &&
 					Math.abs(screenY - a.y) < LH
 			);
-			// Hide via CSS visibility on the label root: cullOverlappingLabels runs
-			// every 3rd frame but applyLabelDisplay (every frame) would clobber
-			// label.visible back to true between passes, causing flicker. CSS
-			// visibility persists. dimLabel/restoreLabel clear it on transition.
-			dimLabel(labelHalo, nameSpan, !minorOverlaps, 0.5);
-			if (minorOverlaps && labelHalo?.parentElement) {
-				labelHalo.parentElement.style.visibility = 'hidden';
-			}
+			dimLabel(labelHalo, nameSpan, !minorOverlaps, minorOverlaps ? 0.3 : 0.5);
 			continue;
 		}
 		const overlaps = _accepted.some(
