@@ -17,7 +17,7 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 | `mercury` | 6mo | `f32` | 18 | 1580 | 1.1km | 4.9km | 77.5km | 8.8 | 109.8 | 109.8 | 0.5 | 63 | 1414 | 103 | 0 |
 | `neptune` | 5y | `f32` | 2 | 319 | 2.2km | 7.5km | 9.8km | 101.4 | 101.4 | 101.4 | 0.1 | 0 | 0 | 319 | 0 |
 | `pluto` | 5y | `f32` | 1 | 20 | 77m | 451m | 493m | 3.3 | 3.3 | 3.3 | 0.0 | 0 | 0 | 20 | 0 |
-| `saturn` | 1y | `f32` | 18 | 7127 | 1.5km | 8055.8km | 137111.6km | 69.3 | 149.8 | 149.8 | 1.3 | 4227 | 0 | 2900 | 0 |
+| `saturn` | 1y | `f32` | 18 | 7127 | 1.0km | 6.5km | 709.9km | 69.3 | 149.8 | 149.8 | 1.3 | 4227 | 0 | 2900 | 0 |
 | `uranus` | 5y | `f32` | 1 | 218 | 1.3km | 3.6km | 306.9km | 118.7 | 118.7 | 118.7 | 0.1 | 0 | 0 | 218 | 0 |
 | `venus` | 6mo | `f32` | 57 | 7065 | 3m | 1.3km | 19.3km | 67.8 | 858.6 | 863.0 | 16.3 | 303 | 195 | 6567 | 0 |
 
@@ -258,8 +258,8 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `mercury` | `110526464` | BEPICOLOMBO | -121 | 380 | 5m | 2.4km | 7.4km |
 | `neptune` | `49000448` | VOYAGER | -32 | 1595 | 2.2km | 7.5km | 9.8km |
 | `pluto` | `104804352` | NEWHORIZONS | -98 | 100 | 77m | 451m | 493m |
-| `saturn` | `88592384` | CASSINI | -82 | 24830 | 1.9km | 10795.3km | 137111.6km |
 | `saturn` | `49000448` | VOYAGER | -32 | 1385 | 1.1km | 3.6km | 709.9km |
+| `saturn` | `88592384` | CASSINI | -82 | 24830 | 1.0km | 6.7km | 23.8km |
 | `saturn` | `89788416` | HUYGENS | -82 | 6600 | 1.0km | 6.7km | 17.9km |
 | `saturn` | `42479616` | PIONEER11 | -24 | 1750 | 1.3km | 3.6km | 5.3km |
 | `saturn` | `89915392` | HUYGENS | -150 | 95 | 128m | 3.5km | 4.4km |
