@@ -52,7 +52,12 @@ from space_map_data.probes.zones import Zone
 # (no longer carved out by planetary windows), so flyby/captured probes appear
 # in BOTH interplanetary and the planet zone — frontend renders correctly in
 # whichever view without a cross-zone handoff at the boundary moment.
-FIT_VERSION = 5
+# v6 (2026-05-17): per-sample landed detection (alt < 50 km AND body-fixed
+# |v| < 10 m/s) splits coverage into alternating flying/landed phases.
+# Zone classification runs on flying ranges only, so chunks no longer include
+# parked-tail kernel discontinuities OR pre-launch on-pad samples; landed
+# phases are returned for a future lat/lng export but currently unused.
+FIT_VERSION = 6
 
 
 def zone_signature(zone: Zone) -> str:

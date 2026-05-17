@@ -4,6 +4,13 @@ Coarse cadence — we don't need second-by-second resolution. Sampling at
 day-scale catches zone transitions to within a day, which is below every
 zone's chunk size. A probe is in `interplanetary` always *and* in any
 planetary zone it falls inside (dupe is intentional, see `zones.py`).
+
+Per-sample landed detection splits coverage into alternating flying and
+landed phases (a probe can land, fly again, and land again — Apollo
+splashdowns, GRAIL pre-launch on the pad → lunar impact, sample-return
+capsules). Zone classification runs on flying phases only; landed phases
+carry just (body, start_et, end_et) for the consumer to decide what to
+do with.
 """
 
 import logging
@@ -29,6 +36,26 @@ class ZoneInterval:
     end_et: float
 
 
+@dataclass(frozen=True)
+class LandedPhase:
+    """A contiguous window where the probe sits on a body's surface.
+
+    TODO(landed-export): emit per-phase lat/lng samples in IAU_<BODY> frame
+    so the frontend can pin landers on the surface. Detection is in place;
+    the export-side writer doesn't ship anything for these yet.
+    """
+
+    body_naif_id: int
+    start_et: float
+    end_et: float
+
+
+@dataclass(frozen=True)
+class TraceResult:
+    zone_intervals: list[ZoneInterval]
+    landed_phases: list[LandedPhase]
+
+
 # Bodies we check for "is this probe sitting on this body's surface".
 # Major planets + Moon (NAIF 301) + a few large moons that have been landed on.
 _LANDING_TARGETS: tuple[int, ...] = (
@@ -39,6 +66,27 @@ _LANDING_TARGETS: tuple[int, ...] = (
     499,  # Mars
     606,  # Titan (Huygens)
 )
+
+# IAU body-fixed frame names — used to compute body-fixed velocity for the
+# landed-vs-orbiting test. A lander tracks the body's rotation exactly, so
+# its body-fixed |v| ≈ 0; a low-altitude orbiter dipping past 50 km still
+# moves at ~1.6 km/s in the body-fixed frame.
+_IAU_FRAME: dict[int, str] = {
+    199: "IAU_MERCURY",
+    299: "IAU_VENUS",
+    301: "IAU_MOON",
+    399: "IAU_EARTH",
+    499: "IAU_MARS",
+    606: "IAU_TITAN",
+}
+
+# Per-sample landed-detection thresholds. Altitude alone false-positives on
+# GRAIL/LADEE/MESSENGER perilunes/periherms (~30 km altitude at orbital speed);
+# adding the v_bf gate cleanly separates real landers (≤ 8 m/s body-fixed)
+# from low orbiters (≥ 1.6 km/s body-fixed). Values held in module scope so
+# callers don't have to plumb them through three layers of helpers.
+_LANDED_ALT_KM = 50.0
+_LANDED_VBF_M_PER_S = 10.0
 
 
 def is_landed_probe(
@@ -166,73 +214,83 @@ def _positions_wrt_ssb(naif_id: int, ets: np.ndarray) -> np.ndarray:
     return out
 
 
-def _landed_tail_start_idx(
+def _per_sample_landed_body(
     naif_id: int,
     sample_ets: np.ndarray,
-    altitude_threshold_km: float,
-    probe_ssb: np.ndarray | None = None,
-) -> int | None:
-    """Index of the first sample of the longest landed-tail.
+    probe_ssb: np.ndarray,
+    target_ssb_cache: dict[int, np.ndarray] | None = None,
+) -> np.ndarray:
+    """Per-sample body NAIF the probe is landed on (or 0 = flying).
 
-    A sample is "landed" if the probe is within `altitude_threshold_km`
-    of any major-body surface. The tail is the longest run of consecutive
-    landed samples that INCLUDES the last sample. Returns the start index
-    of that tail, or None if the probe isn't landed at the end of coverage.
+    Two-pass test per sample:
 
-    Why: Phoenix-class landed missions ship SPKs that park the spacecraft
-    at lander coordinates and extend 90+ years forward. SPICE's last-
-    furnshed-wins precedence makes those parked-coords win over the cruise
-    kernel near landing time, producing a 250,000 km step in a single
-    sample. Polynomial fits of any degree can't span that. Truncate
-    coverage at the start of the landed tail so we only render the
-    in-flight phase.
+      1. Cheap altitude prefilter using cached SSB-relative positions —
+         spkpos against each `_LANDING_TARGETS` only touches DE/sat
+         kernels (a handful of segments, not the mission's hundreds).
+         Samples that aren't within `_LANDED_ALT_KM` of any body skip
+         the second pass entirely.
 
-    Pass `probe_ssb` (from `_positions_wrt_ssb`) to avoid recomputing the
-    probe's SSB positions — the caller already needs them for zone classify.
+      2. For each candidate sample, spkezr in the body's IAU frame to
+         get body-fixed velocity. A lander tracks rotation → |v_bf| ≈ 0;
+         a low orbiter at low altitude still has ~1.6 km/s body-fixed.
+         Sample is landed iff |v_bf| < `_LANDED_VBF_M_PER_S`.
+
+    `target_ssb_cache` is shared with zone classification (planet bodies
+    are not zone barycenters, but the function will mutate the cache so
+    later callers can reuse computed SSB tracks).
     """
     n = len(sample_ets)
-    if n < 2:
-        return None
-    if probe_ssb is None:
-        probe_ssb = _positions_wrt_ssb(naif_id, sample_ets)
-
-    # Per-target SSB positions (cheap — only DE/sat segments) + body radii.
-    landed = np.zeros(n, dtype=bool)
+    near_body = np.zeros(n, dtype=int)
+    cache = target_ssb_cache if target_ssb_cache is not None else {}
     for body_naif in _LANDING_TARGETS:
         try:
             radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
         except spiceypy.exceptions.SpiceyError:
             continue
-        body_ssb = _positions_wrt_ssb(body_naif, sample_ets)
+        r_max = float(max(radii))
+        if body_naif not in cache:
+            cache[body_naif] = _positions_wrt_ssb(body_naif, sample_ets)
+        body_ssb = cache[body_naif]
         rel = probe_ssb - body_ssb
         dist = np.linalg.norm(rel, axis=1)
-        r_max = float(max(radii))
-        landed |= (~np.isnan(dist)) & ((dist - r_max) < altitude_threshold_km)
+        # First body that wins claims the sample; bodies are checked in
+        # _LANDING_TARGETS order. In practice the candidate sets are
+        # disjoint — a probe within 50 km of Earth's surface isn't also
+        # within 50 km of the Moon's — so the order doesn't matter.
+        mask = (~np.isnan(dist)) & ((dist - r_max) < _LANDED_ALT_KM) & (near_body == 0)
+        near_body[mask] = body_naif
 
-    if not landed[-1]:
-        return None
-    # Walk back from the last sample while consecutive landed.
-    idx = n - 1
-    while idx > 0 and landed[idx - 1]:
-        idx -= 1
-    if idx == 0:
-        # Entire coverage looks landed — leave that case to is_landed_probe.
-        return None
-    return idx
+    out = np.zeros(n, dtype=int)
+    for k in range(n):
+        body = int(near_body[k])
+        if body == 0:
+            continue
+        frame = _IAU_FRAME.get(body)
+        if frame is None:
+            continue
+        try:
+            state, _ = spiceypy.spkezr(
+                str(naif_id), float(sample_ets[k]), frame, "NONE", str(body)
+            )
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        v_bf_m_per_s = float(np.linalg.norm(state[3:])) * 1000.0
+        if v_bf_m_per_s < _LANDED_VBF_M_PER_S:
+            out[k] = body
+    return out
 
 
 def classify_trace(
     naif_id: int,
     kernel_paths: list[str],
     sample_dt_days: float = 1.0,
-    landed_tail_altitude_km: float = 50.0,
-) -> list[ZoneInterval]:
+) -> TraceResult:
     """Sample the probe's trajectory at `sample_dt_days` cadence and return
-    the run-length-encoded zone membership timeline.
+    the run-length-encoded zone-membership timeline plus any landed phases.
 
     A probe is placed in:
       * any planetary zone whose `r_zone_km` it's inside at that time
-      * `interplanetary` across the full contiguous coverage interval
+      * `interplanetary` across each flying-phase contiguous range
 
     Interplanetary is NOT carved by planetary windows — during a flyby (or
     a full captured-orbit phase) the probe is emitted into BOTH the planet
@@ -245,22 +303,22 @@ def classify_trace(
     interval and the per-interval classifications are concatenated, so the
     gap doesn't show up as fake interplanetary coverage.
 
-    If a contiguous interval ends with the probe parked on a body's surface
-    (Phoenix, InSight, MGS post-aerobrake, …) we truncate at the start of
-    that landed tail. The cruise-to-surface kernel discontinuity that SPICE
-    produces from precedence-driven SPK switching can't be polynomial-fit.
+    Landed phases (probe sitting on a major body's surface — altitude <
+    50 km AND body-fixed |v| < 10 m/s) are excluded from zone classification
+    and returned separately. A probe can have arbitrarily many landed
+    phases interleaved with flying ones (Apollo splashdowns, GRAIL's
+    pre-launch sample at Cape Canaveral, sample-return capsules).
     """
     merged = _merged_intervals(naif_id, kernel_paths)
     if not merged:
-        return []
-    out: list[ZoneInterval] = []
+        return TraceResult(zone_intervals=[], landed_phases=[])
+    zone_intervals: list[ZoneInterval] = []
+    landed_phases: list[LandedPhase] = []
     for t0, t1 in merged:
-        out.extend(
-            _classify_contiguous_interval(
-                naif_id, t0, t1, sample_dt_days, landed_tail_altitude_km
-            )
-        )
-    return out
+        zs, ls = _classify_contiguous_interval(naif_id, t0, t1, sample_dt_days)
+        zone_intervals.extend(zs)
+        landed_phases.extend(ls)
+    return TraceResult(zone_intervals=zone_intervals, landed_phases=landed_phases)
 
 
 def _classify_contiguous_interval(
@@ -268,11 +326,10 @@ def _classify_contiguous_interval(
     t0: float,
     t1: float,
     sample_dt_days: float,
-    landed_tail_altitude_km: float,
-) -> list[ZoneInterval]:
+) -> tuple[list[ZoneInterval], list[LandedPhase]]:
     """Classify a single gap-free coverage interval. See `classify_trace`
-    for the per-zone / per-interval semantics — this is the inner loop body
-    factored out so multi-interval probes can call it once per interval."""
+    for semantics — this is the inner loop body factored out so multi-
+    interval probes can call it once per interval."""
     dt_s = sample_dt_days * _S_PER_DAY
     n_samples = max(2, int(np.ceil((t1 - t0) / dt_s)) + 1)
     ets = np.linspace(t0, t1, n_samples)
@@ -285,26 +342,58 @@ def _classify_contiguous_interval(
     # magnitude cheaper. Cuts MEX classify_trace from ~62 min to ~7 min.
     probe_ssb = _positions_wrt_ssb(naif_id, ets)
 
-    # Truncate the trailing landed phase, if any.
-    cut = _landed_tail_start_idx(
-        naif_id, ets, landed_tail_altitude_km, probe_ssb=probe_ssb
-    )
-    if cut is not None and cut >= 2:
-        cut_et = float(ets[cut])
-        days_dropped = (t1 - cut_et) / _S_PER_DAY
-        ets = ets[:cut]
-        probe_ssb = probe_ssb[:cut]
-        n_samples = len(ets)
-        logger.info(
-            "classify_trace naif=%d: truncating landed tail at et=%.0f "
-            "(%.1f days dropped)",
-            naif_id,
-            cut_et,
-            days_dropped,
-        )
-
-    intervals: list[ZoneInterval] = []
+    # Per-sample landed body (or 0 = flying). RLE into phases; flying ranges
+    # get zone classification, landed ranges are recorded standalone.
     target_ssb_cache: dict[int, np.ndarray] = {}
+    landed_body = _per_sample_landed_body(
+        naif_id, ets, probe_ssb, target_ssb_cache=target_ssb_cache
+    )
+
+    zone_intervals: list[ZoneInterval] = []
+    landed_phases: list[LandedPhase] = []
+    i = 0
+    while i < n_samples:
+        cur = int(landed_body[i])
+        j = i
+        while j + 1 < n_samples and int(landed_body[j + 1]) == cur:
+            j += 1
+        if cur != 0:
+            landed_phases.append(
+                LandedPhase(
+                    body_naif_id=cur, start_et=float(ets[i]), end_et=float(ets[j])
+                )
+            )
+        else:
+            _classify_flying_subrange(
+                ets, probe_ssb, i, j, target_ssb_cache, zone_intervals
+            )
+        i = j + 1
+
+    return zone_intervals, landed_phases
+
+
+def _classify_flying_subrange(
+    ets: np.ndarray,
+    probe_ssb: np.ndarray,
+    s_idx: int,
+    e_idx: int,
+    target_ssb_cache: dict[int, np.ndarray],
+    out: list[ZoneInterval],
+) -> None:
+    """Run zone classification over `ets[s_idx:e_idx+1]` and append the
+    resulting `ZoneInterval`s to `out`.
+
+    Interplanetary spans the full sub-range — flybys are NOT carved out.
+    The probe co-exists in interplanetary and the planet zone during a
+    flyby so the frontend can render it in whichever view the user is
+    looking at without cross-zone handoff at the boundary moment (see
+    zones.py docstring).
+    """
+    n_sub = e_idx - s_idx + 1
+    if n_sub < 1:
+        return
+    sub_ets = ets[s_idx : e_idx + 1]
+    sub_probe_ssb = probe_ssb[s_idx : e_idx + 1]
 
     for zone in PLANETARY_ZONES:
         if zone.r_zone_km is None:
@@ -312,25 +401,21 @@ def _classify_contiguous_interval(
         tgt = zone.barycenter_naif_id
         if tgt not in target_ssb_cache:
             target_ssb_cache[tgt] = _positions_wrt_ssb(tgt, ets)
-        rel = probe_ssb - target_ssb_cache[tgt]
+        rel = sub_probe_ssb - target_ssb_cache[tgt][s_idx : e_idx + 1]
         dist = np.linalg.norm(rel, axis=1)
         in_zone_mask = (~np.isnan(dist)) & (dist < zone.r_zone_km)
         if not in_zone_mask.any():
             continue
-        # Run-length encode the boolean mask back into [start, end] intervals.
         diffs = np.diff(in_zone_mask.astype(int), prepend=0, append=0)
         starts = np.where(diffs == 1)[0]
         ends = np.where(diffs == -1)[0]
         for s, e in zip(starts, ends, strict=True):
-            intervals.append(
-                ZoneInterval(zone.key, float(ets[s]), float(ets[min(e, n_samples - 1)]))
+            out.append(
+                ZoneInterval(
+                    zone.key,
+                    float(sub_ets[s]),
+                    float(sub_ets[min(e, n_sub - 1)]),
+                )
             )
 
-    # Interplanetary spans the full contiguous coverage interval — flybys
-    # are NOT carved out. The probe co-exists in interplanetary and the
-    # planet zone during a flyby so the frontend can render it in whichever
-    # view the user is looking at without cross-zone handoff at the
-    # boundary moment (see zones.py docstring).
-    intervals.append(ZoneInterval(INTERPLANETARY.key, float(ets[0]), float(ets[-1])))
-
-    return intervals
+    out.append(ZoneInterval(INTERPLANETARY.key, float(sub_ets[0]), float(sub_ets[-1])))

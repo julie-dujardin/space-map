@@ -61,7 +61,7 @@ from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
 )
-from space_map_data.probes.trace import classify_trace, inception_et, is_landed_probe
+from space_map_data.probes.trace import classify_trace, inception_et
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
 
 logger = logging.getLogger(__name__)
@@ -356,10 +356,10 @@ def _classify_worker(
 
     Returns a serialisable dict — the main process owns `probe_id_cache` and
     plan construction. Possible statuses:
-      * `landed`  — probe spent its whole coverage on a body's surface
       * `no_coverage` — no SPK covers this naif_id
-      * `ok` — payload includes `inception_et` and `intervals` (zone, start_et,
-        end_et triples)
+      * `ok` — payload includes `inception_et`, flying-phase zone `intervals`
+        (zone_key, start_et, end_et triples), and `landed_phases` (body_naif,
+        start_et, end_et triples). Either list may be empty.
 
     SPICE state per process: generic kernels were furnished in
     `_classify_worker_init`; mission kernels are furnshed here and unloaded
@@ -368,17 +368,19 @@ def _classify_worker(
     for k in kernel_paths:
         spiceypy.furnsh(k)
     try:
-        landed, body = is_landed_probe(naif_id, kernel_paths)
-        if landed:
-            return {"status": "landed", "body": body}
         t0 = inception_et(naif_id, kernel_paths)
         if t0 is None:
             return {"status": "no_coverage"}
-        intervals = classify_trace(naif_id, kernel_paths)
+        result = classify_trace(naif_id, kernel_paths)
         return {
             "status": "ok",
             "inception_et": t0,
-            "intervals": [(iv.zone_key, iv.start_et, iv.end_et) for iv in intervals],
+            "intervals": [
+                (iv.zone_key, iv.start_et, iv.end_et) for iv in result.zone_intervals
+            ],
+            "landed_phases": [
+                (p.body_naif_id, p.start_et, p.end_et) for p in result.landed_phases
+            ],
         }
     finally:
         for k in kernel_paths:
@@ -444,16 +446,6 @@ def _classify_pass(
                 )
                 continue
 
-            if result["status"] == "landed":
-                logger.info(
-                    "[%d/%d] [skipped] %s naif=%d landed on body %s",
-                    i,
-                    n_probes,
-                    mdir.name,
-                    naif_id,
-                    result["body"],
-                )
-                continue
             if result["status"] == "no_coverage":
                 logger.warning("no coverage for %s/%d", mdir.name, naif_id)
                 continue
@@ -491,8 +483,15 @@ def _classify_pass(
                     )
                     chunk_index[zone_key][chunk_idx].append(plan)
             plans.append(plan)
+            # TODO(landed-export): classify_trace returns landed phases too
+            # (`result["landed_phases"]` = list of (body_naif, start_et,
+            # end_et) triples) — surface them in a `landed/{body}.json.gz`
+            # output once the frontend's lat/lng pin renderer is ready.
+            # Detection is correct as of this pass; we just don't ship.
+            landed_phases = result.get("landed_phases", [])
             logger.info(
-                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches)",
+                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
+                "%d landed phases)",
                 i,
                 n_probes,
                 mdir.name,
@@ -500,6 +499,7 @@ def _classify_pass(
                 probe_id,
                 len(result["intervals"]),
                 len(plan.contributions),
+                len(landed_phases),
             )
 
     return plans, chunk_index
