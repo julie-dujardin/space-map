@@ -218,13 +218,13 @@ def classify_trace(
 
     A probe is placed in:
       * any planetary zone whose `r_zone_km` it's inside at that time
-      * `interplanetary` at times when it's outside every planetary zone
+      * `interplanetary` across the full contiguous coverage interval
 
-    Voyager-class deep-space probes are always outside planetary zones and
-    are naturally captured by the interplanetary RLE intervals across their
-    full coverage. Cruise-then-orbiter probes (GRAIL, LADEE, Cassini post-
-    SOI) emit interplanetary only for the cruise portion — once captured
-    by a planet system they show up in that planet's zone, not heliocentric.
+    Interplanetary is NOT carved by planetary windows — during a flyby (or
+    a full captured-orbit phase) the probe is emitted into BOTH the planet
+    zone and interplanetary, so the frontend renders correctly in whichever
+    view the user is in without having to stitch chunks across zones at the
+    boundary moment. See `zones.py` for the rationale.
 
     Probes with gapped SPK archives (NH has a 2007-2014 hole between the
     Jupiter-flyby and Pluto-approach kernels) are sampled per-contiguous-
@@ -279,7 +279,6 @@ def _classify_contiguous_interval(
         )
 
     intervals: list[ZoneInterval] = []
-    in_any_planetary = np.zeros(n_samples, dtype=bool)
 
     for zone in PLANETARY_ZONES:
         if zone.r_zone_km is None:
@@ -300,7 +299,6 @@ def _classify_contiguous_interval(
             in_zone_mask[k] = dist < zone.r_zone_km
         if not in_zone_mask.any():
             continue
-        in_any_planetary |= in_zone_mask
         # Run-length encode the boolean mask back into [start, end] intervals.
         diffs = np.diff(in_zone_mask.astype(int), prepend=0, append=0)
         starts = np.where(diffs == 1)[0]
@@ -310,22 +308,11 @@ def _classify_contiguous_interval(
                 ZoneInterval(zone.key, float(ets[s]), float(ets[min(e, n_samples - 1)]))
             )
 
-    # Emit interplanetary intervals only for the run-length-encoded windows
-    # where the probe is genuinely outside every planetary zone — never
-    # extend to full coverage. Probes that spend their full life outside
-    # planet zones (Voyagers, Pioneers, NH, cruisers) are fully covered
-    # naturally; hybrid cruise-then-orbiter probes get only their cruise
-    # portion in interplanetary, not their orbiter phase.
-    out_mask = ~in_any_planetary
-    if out_mask.any():
-        diffs = np.diff(out_mask.astype(int), prepend=0, append=0)
-        starts = np.where(diffs == 1)[0]
-        ends = np.where(diffs == -1)[0]
-        for s, e in zip(starts, ends, strict=True):
-            intervals.append(
-                ZoneInterval(
-                    INTERPLANETARY.key, float(ets[s]), float(ets[min(e, n_samples - 1)])
-                )
-            )
+    # Interplanetary spans the full contiguous coverage interval — flybys
+    # are NOT carved out. The probe co-exists in interplanetary and the
+    # planet zone during a flyby so the frontend can render it in whichever
+    # view the user is looking at without cross-zone handoff at the
+    # boundary moment (see zones.py docstring).
+    intervals.append(ZoneInterval(INTERPLANETARY.key, float(ets[0]), float(ets[-1])))
 
     return intervals

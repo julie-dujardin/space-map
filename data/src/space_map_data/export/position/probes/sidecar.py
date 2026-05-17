@@ -48,7 +48,11 @@ from space_map_data.probes.zones import Zone
 # v4 (2026-05-16): classify_trace now keeps every contiguous SPK interval
 # instead of only the longest one, so probes with archive gaps (e.g. NH's
 # 2007-2014 hole) emit chunks for the pre-gap trajectory too.
-FIT_VERSION = 4
+# v5 (2026-05-17): interplanetary spans the full contiguous coverage interval
+# (no longer carved out by planetary windows), so flyby/captured probes appear
+# in BOTH interplanetary and the planet zone — frontend renders correctly in
+# whichever view without a cross-zone handoff at the boundary moment.
+FIT_VERSION = 5
 
 
 def zone_signature(zone: Zone) -> str:
