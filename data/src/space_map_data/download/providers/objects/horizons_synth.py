@@ -681,7 +681,9 @@ def _existing_agency_naifs() -> set[int]:
 def _write_index(coverage: dict[int, str]) -> None:
     """Emit a `missions/HORIZONS-SYNTH/_index.json` so the agency ingest walker
     finds these kernels alongside the rest. Schema matches ProbesDownloader's
-    per-mission index.
+    per-mission index plus per-file `name_horizons` and `revised` carried
+    from the cached meta (used by the future precedence resolver — synth
+    wins over agency only when synth `revised` is newer than agency mtime).
     """
     SYNTH_KERNELS_DIR.mkdir(parents=True, exist_ok=True)
     files = []
@@ -690,12 +692,20 @@ def _write_index(coverage: dict[int, str]) -> None:
         spk = SYNTH_KERNELS_DIR / f"{naif_id}.bsp"
         if not spk.exists():
             continue
+        meta_path = SYNTH_CACHE_ROOT / str(naif_id) / "meta.json"
+        revised = "unknown"
+        if meta_path.exists():
+            try:
+                revised = orjson.loads(meta_path.read_bytes()).get("revised", "unknown")
+            except (orjson.JSONDecodeError, OSError):
+                pass
         files.append(
             {
                 "name": spk.name,
                 "size_bytes": spk.stat().st_size,
                 "targets": [naif_id],
                 "name_horizons": name,
+                "revised": revised,
             }
         )
         targets[str(naif_id)] = [spk.name]
