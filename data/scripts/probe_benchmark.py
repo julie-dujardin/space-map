@@ -19,9 +19,11 @@ import argparse
 import gzip
 import json
 import logging
+import multiprocessing
 import struct
 import sys
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -300,6 +302,50 @@ def _sample_ets(sub: SubChunkRecord, n: int) -> np.ndarray:
     return np.linspace(sub.t_start_et, sub.t_end_et, n)
 
 
+def _bench_worker_init(lsk_pck_paths: list[str]) -> None:
+    """Per-worker setup: furnsh LSK/PCK once. Generic SPKs are furnshed
+    per-task to preserve mission-first / generic-last precedence."""
+    for p in lsk_pck_paths:
+        spiceypy.furnsh(p)
+
+
+def _bench_worker(
+    probe_id: int,
+    naif_id: int,
+    mission_kernels_str: list[str],
+    generic_spk_paths_str: list[str],
+    sub_chunks: list["SubChunkRecord"],
+    mu: float,
+    fit_center: int,
+    float64: bool,
+    samples_per_subchunk: int,
+) -> tuple[int, list[float]]:
+    """Per-probe per-zone worker. Furnshes mission then generic SPKs (matching
+    `writer._fit_pass` precedence so modern DE wins for shared planetary
+    targets), evaluates each sub-chunk vs SPICE truth, unloads, returns errors.
+
+    Returns `(probe_id, errs)`. Errors aggregated outside to keep this fn
+    pure and picklable.
+    """
+    for k in mission_kernels_str:
+        spiceypy.furnsh(k)
+    for p in generic_spk_paths_str:
+        spiceypy.furnsh(p)
+    try:
+        errs: list[float] = []
+        for sub in sub_chunks:
+            sample_ets = _sample_ets(sub, samples_per_subchunk)
+            errs.extend(
+                _evaluate_subchunk(sub, naif_id, mu, fit_center, float64, sample_ets)
+            )
+        return probe_id, errs
+    finally:
+        for p in generic_spk_paths_str:
+            spiceypy.unload(p)
+        for k in mission_kernels_str:
+            spiceypy.unload(k)
+
+
 def _evaluate_subchunk(
     sub: SubChunkRecord,
     naif_id: int,
@@ -411,19 +457,23 @@ def main() -> int:
     probe_id_to_naif = _invert_probe_id_cache()
     probe_kernels = _build_probe_kernels()
     lsk_pck_paths, generic_spk_paths = _collect_kernels()
+    lsk_pck_str = [str(p) for p in lsk_pck_paths]
+    generic_str = [str(p) for p in generic_spk_paths]
+    # Main process needs LSK/PCK for `_mu_for_center` (bodvrd lookups).
     for p in lsk_pck_paths:
         spiceypy.furnsh(str(p))
+    n_workers = max(1, min(8, multiprocessing.cpu_count() // 2))
     logger.info(
-        "Furnished %d LSK/PCK kernels at outer scope; per probe, %d generic "
-        "SPKs furnshed AFTER the mission kernels (matching writer order, so "
-        "modern planetary DEs win over 1970s-era embedded ephemerides); "
-        "benchmarking %d zones",
+        "Benchmarking %d zones across %d worker processes; each worker "
+        "pre-furnishes %d LSK/PCK kernels and re-furnishes %d mission + "
+        "generic SPKs per probe (mission first, generic last — matches "
+        "writer._fit_pass precedence)",
+        len(probe_zones),
+        n_workers,
         len(lsk_pck_paths),
         len(generic_spk_paths),
-        len(probe_zones),
     )
 
-    # zone → list[SampleResult]; per-probe accumulator inside
     per_zone_errs: dict[str, list[float]] = defaultdict(list)
     per_zone_files: dict[str, list[int]] = defaultdict(list)
     per_zone_method_counts: dict[str, dict[int, int]] = defaultdict(
@@ -431,7 +481,11 @@ def main() -> int:
     )
     per_probe_errs: dict[tuple[str, int], list[float]] = defaultdict(list)
 
-    try:
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_bench_worker_init,
+        initargs=(lsk_pck_str,),
+    ) as ex:
         for zone_key, manifest_entry in sorted(probe_zones.items()):
             if zone_key not in ZONES_BY_KEY:
                 logger.warning("unknown zone %s in manifest, skipping", zone_key)
@@ -447,13 +501,9 @@ def main() -> int:
             )
             if args.limit:
                 chunk_files = chunk_files[: args.limit]
-            logger.info(
-                "[%s] %d chunk files, mu=%.3e km³/s²", zone_key, len(chunk_files), mu
-            )
 
             # Pass 1: parse every chunk once, collect sub-chunks grouped by
-            # probe_id so the SPICE-truth comparison can run probe-major (one
-            # furnsh/unload pair per probe, not per chunk).
+            # probe_id.
             per_probe_subs: dict[int, list[SubChunkRecord]] = defaultdict(list)
             for cf in chunk_files:
                 per_zone_files[zone_key].append(cf.stat().st_size)
@@ -463,13 +513,11 @@ def main() -> int:
                     for sub in probe.sub_chunks:
                         per_zone_method_counts[zone_key][sub.method] += 1
 
-            # Pass 2: per-probe — furnsh only that probe's mission kernels
-            # (mirrors `writer._fit_pass`), evaluate every sub-chunk against
-            # SPICE truth, unload. Critical when NAIF codes are shared across
-            # mission dirs (CASSINI/HUYGENS both target -82): the writer fit
-            # against the high-fidelity CASSINI kernels alone, so the
-            # benchmark must do the same or it compares against a different
-            # probe's predicted truth.
+            # Pass 2: dispatch one task per probe to the worker pool. Workers
+            # have isolated SPICE state — no kernel-pool contamination across
+            # probes (critical when NAIF codes are shared, e.g. CASSINI/HUYGENS
+            # both target -82).
+            futures = []
             for probe_id in sorted(per_probe_subs):
                 mission_naif = probe_id_to_naif.get(probe_id)
                 if mission_naif is None:
@@ -479,25 +527,37 @@ def main() -> int:
                     continue
                 _, naif_id = mission_naif
                 kernels = probe_kernels.get(probe_id, [])
-                for k in kernels:
-                    spiceypy.furnsh(str(k))
-                for p in generic_spk_paths:
-                    spiceypy.furnsh(str(p))
+                fut = ex.submit(
+                    _bench_worker,
+                    probe_id,
+                    naif_id,
+                    [str(k) for k in kernels],
+                    generic_str,
+                    per_probe_subs[probe_id],
+                    mu,
+                    fit_center,
+                    float64,
+                    args.samples_per_subchunk,
+                )
+                futures.append(fut)
+
+            n_done = 0
+            for fut in as_completed(futures):
                 try:
-                    for sub in per_probe_subs[probe_id]:
-                        sample_ets = _sample_ets(sub, args.samples_per_subchunk)
-                        errs = _evaluate_subchunk(
-                            sub, naif_id, mu, fit_center, float64, sample_ets
-                        )
-                        per_zone_errs[zone_key].extend(errs)
-                        per_probe_errs[(zone_key, probe_id)].extend(errs)
-                finally:
-                    for p in generic_spk_paths:
-                        spiceypy.unload(str(p))
-                    for k in kernels:
-                        spiceypy.unload(str(k))
-    finally:
-        spiceypy.kclear()
+                    probe_id, errs = fut.result()
+                except Exception:
+                    logger.exception("bench worker failed in zone %s", zone_key)
+                    continue
+                per_zone_errs[zone_key].extend(errs)
+                per_probe_errs[(zone_key, probe_id)].extend(errs)
+                n_done += 1
+            logger.info(
+                "[%s] %d chunk files, %d probes evaluated, mu=%.3e km³/s²",
+                zone_key,
+                len(chunk_files),
+                n_done,
+                mu,
+            )
 
     def pct(lst: list[int] | list[float], q: float) -> float:
         return lst[min(len(lst) - 1, int(q * len(lst)))] if lst else 0.0
