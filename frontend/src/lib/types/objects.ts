@@ -168,14 +168,8 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005
 };
-/** Same fallback table indexed by `orbitalSource`. SPICE probes ride through
- *  `buildMajorBodies` (sphere mesh) rather than the point-cloud path Earth sats
- *  use, so a 5 m default would render them at ~3·10⁻¹⁰ scene units (invisible).
- *  Bump to 100 km so a probe shows up as a small sphere at planetary distances.
- *  This is purely a visual choice; the actual physical extent of a spacecraft
- *  isn't meaningful at solar-system scale. */
 const FALLBACK_RADIUS_KM_BY_SOURCE: Partial<Record<number, number>> = {
-	[OrbitalSource.SPICE_PROBE]: 100
+	[OrbitalSource.SPICE_PROBE]: 0.005
 };
 const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
 

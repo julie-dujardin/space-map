@@ -23,7 +23,9 @@ import gzip
 import json
 import logging
 import math
+import multiprocessing
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,7 +61,7 @@ from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
 )
-from space_map_data.probes.trace import classify_trace, inception_et, is_landed_probe
+from space_map_data.probes.trace import classify_trace, inception_et
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
 
 logger = logging.getLogger(__name__)
@@ -277,7 +279,14 @@ def _pack_subchunk(fit: SubChunkFit, zone: Zone) -> bytes:
 def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
     """Walk `missions/` and return `[(mission_dir, kernels, naif_id)]` for
     every spacecraft NAIF ID in `[-999, -1]`, after dropping stationary
-    kernels."""
+    kernels.
+
+    Kernels come from `_index.json`'s `files` list (whatever MISSION_INCLUDE
+    matched at download time), NOT a directory glob. Globbing would pick up
+    stale or downloader-filtered BSPs left over from prior downloads — e.g.
+    MEX's 269 ORMM monthly kernels that we now exclude because their segment
+    count thrashes SPICE's DAF cache.
+    """
     out: list[tuple[Path, list[Path], int]] = []
     if not MISSIONS_DIR.exists():
         return out
@@ -287,10 +296,15 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         idx_path = mdir / "_index.json"
         if not idx_path.exists():
             continue
-        kernels = _mission_kernels(mdir)
+        idx = json.loads(idx_path.read_text())
+        kernels = [
+            mdir / f["name"]
+            for f in idx.get("files", [])
+            if (mdir / f["name"]).exists()
+            and not any(p in f["name"] for p in _STATIONARY_PATTERNS)
+        ]
         if not kernels:
             continue
-        idx = json.loads(idx_path.read_text())
         spacecraft_ids = sorted(
             t for t in (int(s) for s in idx.get("targets", {})) if -999 <= t <= -1
         )
@@ -321,50 +335,122 @@ def _build_probe_metas(
     return metas
 
 
+def _classify_worker_init(generic_spk_paths: list[str]) -> None:
+    """Per-worker process init: furnish generic kernels (LSK/PCK/DE/sat).
+
+    Generics live for the worker's lifetime so we don't re-furnsh ~40 files
+    on every task. Mission kernels still get furnshed/unloaded per-task
+    because they vary per probe and a slow mission like MEX (282 BSPs)
+    would bloat the per-worker kernel pool otherwise.
+    """
+    for p in generic_spk_paths:
+        spiceypy.furnsh(p)
+
+
+def _classify_worker(
+    mission_name: str,
+    kernel_paths: list[str],
+    naif_id: int,
+) -> dict:
+    """Per-probe classification done in a worker process.
+
+    Returns a serialisable dict — the main process owns `probe_id_cache` and
+    plan construction. Possible statuses:
+      * `no_coverage` — no SPK covers this naif_id
+      * `ok` — payload includes `inception_et`, flying-phase zone `intervals`
+        (zone_key, start_et, end_et triples), and `landed_phases` (body_naif,
+        start_et, end_et triples). Either list may be empty.
+
+    SPICE state per process: generic kernels were furnished in
+    `_classify_worker_init`; mission kernels are furnshed here and unloaded
+    in `finally` so the worker can move to the next mission cleanly.
+    """
+    for k in kernel_paths:
+        spiceypy.furnsh(k)
+    try:
+        t0 = inception_et(naif_id, kernel_paths)
+        if t0 is None:
+            return {"status": "no_coverage"}
+        result = classify_trace(naif_id, kernel_paths)
+        return {
+            "status": "ok",
+            "inception_et": t0,
+            "intervals": [
+                (iv.zone_key, iv.start_et, iv.end_et) for iv in result.zone_intervals
+            ],
+            "landed_phases": [
+                (p.body_naif_id, p.start_et, p.end_et) for p in result.landed_phases
+            ],
+        }
+    finally:
+        for k in kernel_paths:
+            spiceypy.unload(k)
+
+
 def _classify_pass(
     probe_id_cache: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
     generic_spk_paths: list[Path],
     start_jd: float,
 ) -> tuple[list[_ProbePlan], dict[str, dict[int, list[_ProbePlan]]]]:
-    """Pass 1: per-probe furnish + classify. Returns `(plans, chunk_index)`
-    where `chunk_index[zone][chunk_idx]` lists the plans that contribute
-    there. Heavy work (kernel furnshing + spkezr sampling) but no fitting.
+    """Pass 1: per-probe furnish + classify, parallelised across processes.
 
-    Furnsh order per probe: mission first, then generic SPKs — so modern
-    planetary ephemerides win over any planetary data bundled inside a
-    mission kernel.
+    SPICE state is per-process, so each worker gets its own kernel pool —
+    no contention with the parent and no GIL bottleneck on the spkpos loop.
+    `probe_id` assignment runs serially in the main process because
+    `probe_id_cache` is mutable and the order in which IDs are allocated
+    must match the deterministic `(inception_mjd, naif_id)` policy in
+    `probes.probe_id.assign`.
+
+    Furnsh order per probe: mission first (in worker), then generic SPKs
+    (pre-furnshed via initializer) — so modern planetary ephemerides win
+    over any planetary data bundled inside a mission kernel.
     """
     probes_raw = _enumerate_probes()
-    logger.info("Probes export: %d spacecraft to classify", len(probes_raw))
+    n_probes = len(probes_raw)
+    n_workers = max(1, min(8, multiprocessing.cpu_count() // 2))
+    logger.info(
+        "Probes export: %d spacecraft to classify across %d workers",
+        n_probes,
+        n_workers,
+    )
 
     plans: list[_ProbePlan] = []
     chunk_index: dict[str, dict[int, list[_ProbePlan]]] = defaultdict(
         lambda: defaultdict(list)
     )
 
-    for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
-        kpaths = [str(k) for k in kernels]
-        for k in kernels:
-            spiceypy.furnsh(str(k))
-        for p in generic_spk_paths:
-            spiceypy.furnsh(str(p))
-        try:
-            landed, body = is_landed_probe(naif_id, kpaths)
-            if landed:
-                logger.info(
-                    "[%d/%d] [skipped] %s naif=%d landed on body %s",
+    generic_str = [str(p) for p in generic_spk_paths]
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_classify_worker_init,
+        initargs=(generic_str,),
+    ) as ex:
+        futures = {}
+        for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
+            kpaths = [str(k) for k in kernels]
+            fut = ex.submit(_classify_worker, mdir.name, kpaths, naif_id)
+            futures[fut] = (i, mdir, kernels, naif_id)
+
+        for fut in as_completed(futures):
+            i, mdir, kernels, naif_id = futures[fut]
+            try:
+                result = fut.result()
+            except Exception:
+                logger.exception(
+                    "[%d/%d] classify worker failed for %s naif=%d",
                     i,
-                    len(probes_raw),
+                    n_probes,
                     mdir.name,
                     naif_id,
-                    body,
                 )
                 continue
-            t0 = inception_et(naif_id, kpaths)
-            if t0 is None:
+
+            if result["status"] == "no_coverage":
                 logger.warning("no coverage for %s/%d", mdir.name, naif_id)
                 continue
+
+            t0 = result["inception_et"]
             rec = assign(
                 mission=mdir.name,
                 naif_id=naif_id,
@@ -381,37 +467,40 @@ def _classify_pass(
                     naif_id,
                 )
                 continue
-            intervals = classify_trace(naif_id, kpaths)
+
             plan = _ProbePlan(probe_id=probe_id, naif_id=naif_id, kernels=kernels)
-            for iv in intervals:
-                zone = ZONES_BY_KEY[iv.zone_key]
+            for zone_key, iv_start, iv_end in result["intervals"]:
+                zone = ZONES_BY_KEY[zone_key]
                 for chunk_idx, c_start, c_end in _chunk_aligned_range(
                     zone.chunk_years,
                     zone.kepler_subchunk_days,
-                    iv.start_et,
-                    iv.end_et,
+                    iv_start,
+                    iv_end,
                     start_jd,
                 ):
                     plan.contributions.append(
-                        _ChunkContribution(iv.zone_key, chunk_idx, c_start, c_end)
+                        _ChunkContribution(zone_key, chunk_idx, c_start, c_end)
                     )
-                    chunk_index[iv.zone_key][chunk_idx].append(plan)
+                    chunk_index[zone_key][chunk_idx].append(plan)
             plans.append(plan)
+            # TODO(landed-export): classify_trace returns landed phases too
+            # (`result["landed_phases"]` = list of (body_naif, start_et,
+            # end_et) triples) — surface them in a `landed/{body}.json.gz`
+            # output once the frontend's lat/lng pin renderer is ready.
+            # Detection is correct as of this pass; we just don't ship.
+            landed_phases = result.get("landed_phases", [])
             logger.info(
-                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches)",
+                "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
+                "%d landed phases)",
                 i,
-                len(probes_raw),
+                n_probes,
                 mdir.name,
                 naif_id,
                 probe_id,
-                len(intervals),
+                len(result["intervals"]),
                 len(plan.contributions),
+                len(landed_phases),
             )
-        finally:
-            for p in generic_spk_paths:
-                spiceypy.unload(str(p))
-            for k in kernels:
-                spiceypy.unload(str(k))
 
     return plans, chunk_index
 

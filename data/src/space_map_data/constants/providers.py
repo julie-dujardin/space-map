@@ -8,6 +8,7 @@ class PROVIDERS(StrEnum):
     SBDB_MOONS = "sbdb_moons"
     SPICE = "spice"
     SPICE_PROBES = "spice_probes"
+    SPICE_HORIZONS_SYNTH = "spice_horizons_synth"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"
     COMMONS = "commons"
@@ -15,6 +16,7 @@ class PROVIDERS(StrEnum):
     IAU_NOMENCLATURE = "iau_nomenclature"
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
+    DEEPL = "deepl"
 
 
 class ID_TYPES(StrEnum):

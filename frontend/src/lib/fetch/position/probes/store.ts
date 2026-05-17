@@ -16,7 +16,12 @@
  */
 
 import { fetchProbes, type FetchedProbes } from '$lib/fetch/position/probes/fetch';
-import { probePositionKm, probePositionScene } from '$lib/fetch/position/probes/propagate';
+import {
+	findSubChunkIndex,
+	jdToEt,
+	probePositionKm,
+	probePositionScene
+} from '$lib/fetch/position/probes/propagate';
 import type { Probe } from '$lib/fetch/position/probes/parse';
 
 const DAYS_PER_YEAR = 365.25;
@@ -188,14 +193,27 @@ export class ProbeStore {
 		}
 	}
 
+	/** Iterate zones in metadata order; for each, find every record matching
+	 *  `objectId` in the chunk for `jd` (the writer may emit >1 record per probe
+	 *  per chunk when an interval splits inside the chunk window) and return the
+	 *  first one whose sub-chunks actually cover `jd`. Falls through to the next
+	 *  zone if the records exist but none cover `jd` — handles cross-zone
+	 *  transitions (cruise → captured orbit at a flyby/capture boundary): the
+	 *  interplanetary chunk lists the probe up to the boundary, the planet
+	 *  chunk picks up from there, and the renderer follows the live one without
+	 *  a frame where the probe is hidden. */
 	private resolve(objectId: string, jd: number): ProbeLocation | null {
+		const et = jdToEt(jd);
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx);
 			if (!chunk) continue;
-			const rowIdx = chunk.ids.indexOf(objectId);
-			if (rowIdx < 0) continue;
-			return { zone, probe: chunk.probes[rowIdx], params };
+			for (let i = 0; i < chunk.probes.length; i++) {
+				if (chunk.ids[i] !== objectId) continue;
+				const probe = chunk.probes[i];
+				if (findSubChunkIndex(probe, et) < 0) continue;
+				return { zone, probe, params };
+			}
 		}
 		return null;
 	}

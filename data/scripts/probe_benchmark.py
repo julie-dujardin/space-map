@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
+from space_map_data.download.providers.objects.probes import MISSIONS_DIR  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
     FORMAT_PROBES,
     HEADER_SIZE,
@@ -44,8 +45,12 @@ from space_map_data.export.position.format import (  # noqa: E402
     VERSION,
 )
 from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
+from space_map_data.export.position.probes.writer import (  # noqa: E402
+    _mission_kernels,
+)
 from space_map_data.probes.probe_id import (  # noqa: E402
     CACHE_PATH as PROBE_ID_CACHE,
+    load_probe_labels,
 )
 from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
@@ -219,26 +224,76 @@ class SampleResult:
 
 
 def _invert_probe_id_cache() -> dict[int, tuple[str, int]]:
-    """Build `probe_id → (mission, naif_id)` from the cache."""
+    """`probe_id → (label, naif_id)` with HORIZONS-SYNTH names resolved
+    per-spacecraft via `load_probe_labels`."""
     cache = json.loads(PROBE_ID_CACHE.read_text())
-    return {
-        int(r["probe_id"]): (r["mission"], int(r["naif_id"])) for r in cache.values()
+    naif_by_pid: dict[int, int] = {
+        int(r["probe_id"]): int(r["naif_id"]) for r in cache.values()
     }
+    labels = load_probe_labels()
+    out: dict[int, tuple[str, int]] = {}
+    for pid, naif in naif_by_pid.items():
+        label = labels.get(pid, f"?/{naif}")
+        # labels are "Name/naif"; split off the naif suffix the benchmark
+        # builds its own table column for.
+        name = label.rsplit("/", 1)[0] if "/" in label else label
+        out[pid] = (name, naif)
+    return out
+
+
+def _build_probe_kernels() -> dict[int, list[Path]]:
+    """`probe_id → [mission kernel paths]` mirroring the writer's per-probe
+    furnsh set. Required because some NAIF codes are shared across mission
+    directories (CASSINI/HUYGENS both target -82, with the HUYGENS dir
+    carrying a predicted Cassini OPK to chain Huygens' coast kernel against
+    Cassini's position before separation). Furnishing every mission kernel
+    at once would let SPICE's last-furnshed-wins return the wrong probe's
+    truth at evaluation time — Cassini's reconstructed SCPSE fits get
+    benchmarked against the Huygens dir's predicted OPK, inflating the
+    reported error by 4 orders of magnitude. This mapping lets the
+    benchmark furnsh exactly the kernels the writer saw when it fit each
+    probe.
+    """
+    cache = json.loads(PROBE_ID_CACHE.read_text())
+    mission_kernels: dict[str, list[Path]] = {}
+    out: dict[int, list[Path]] = {}
+    for rec in cache.values():
+        mission = rec["mission"]
+        if mission not in mission_kernels:
+            mdir = MISSIONS_DIR / mission
+            mission_kernels[mission] = _mission_kernels(mdir) if mdir.exists() else []
+        out[int(rec["probe_id"])] = mission_kernels[mission]
+    return out
 
 
 def _mu_for_center(naif_id: int) -> float:
     return float(spiceypy.bodvrd(str(naif_id), "GM", 1)[1][0])
 
 
-def _furnish_all_kernels() -> int:
-    n = 0
+def _collect_kernels() -> tuple[list[Path], list[Path]]:
+    """Return `(lsk_pck_paths, generic_spk_paths)` — same split as the writer.
+
+    LSK/PCK are leapseconds + physical constants, no SPK precedence
+    implications. Generic SPKs are planetary DEs and satellite ephemerides
+    (de440, sat441, …). The writer furnshes generic SPKs AFTER mission
+    kernels so they win for shared targets like Saturn (699), since pre-
+    de440-era mission kernels (p11-a.bsp, vg2_sat.bsp, …) carry their own
+    1970s-vintage planetary data which would otherwise contaminate the fit.
+    The benchmark mirrors that ordering per probe.
+    """
+    skip_dirs = {"missions", "probes"}
+    lsk_pck: list[Path] = []
+    generic_spk: list[Path] = []
     for path in sorted(_KERNELS_ROOT.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() in (".bsp", ".tls", ".tpc"):
-            spiceypy.furnsh(str(path))
-            n += 1
-    return n
+        rel_parts = path.relative_to(_KERNELS_ROOT).parts
+        suffix = path.suffix.lower()
+        if suffix in (".tls", ".tpc"):
+            lsk_pck.append(path)
+        elif suffix == ".bsp" and not any(p in skip_dirs for p in rel_parts):
+            generic_spk.append(path)
+    return lsk_pck, generic_spk
 
 
 def _sample_ets(sub: SubChunkRecord, n: int) -> np.ndarray:
@@ -354,8 +409,19 @@ def main() -> int:
         return 1
 
     probe_id_to_naif = _invert_probe_id_cache()
-    n = _furnish_all_kernels()
-    logger.info("Furnished %d kernels; benchmarking %d zones", n, len(probe_zones))
+    probe_kernels = _build_probe_kernels()
+    lsk_pck_paths, generic_spk_paths = _collect_kernels()
+    for p in lsk_pck_paths:
+        spiceypy.furnsh(str(p))
+    logger.info(
+        "Furnished %d LSK/PCK kernels at outer scope; per probe, %d generic "
+        "SPKs furnshed AFTER the mission kernels (matching writer order, so "
+        "modern planetary DEs win over 1970s-era embedded ephemerides); "
+        "benchmarking %d zones",
+        len(lsk_pck_paths),
+        len(generic_spk_paths),
+        len(probe_zones),
+    )
 
     # zone → list[SampleResult]; per-probe accumulator inside
     per_zone_errs: dict[str, list[float]] = defaultdict(list)
@@ -385,28 +451,51 @@ def main() -> int:
                 "[%s] %d chunk files, mu=%.3e km³/s²", zone_key, len(chunk_files), mu
             )
 
+            # Pass 1: parse every chunk once, collect sub-chunks grouped by
+            # probe_id so the SPICE-truth comparison can run probe-major (one
+            # furnsh/unload pair per probe, not per chunk).
+            per_probe_subs: dict[int, list[SubChunkRecord]] = defaultdict(list)
             for cf in chunk_files:
                 per_zone_files[zone_key].append(cf.stat().st_size)
                 parsed = _parse_chunk(cf)
                 for probe in parsed.probes:
-                    mission_naif = probe_id_to_naif.get(probe.probe_id)
-                    if mission_naif is None:
-                        logger.warning(
-                            "probe_id=%d in %s/%s not in cache",
-                            probe.probe_id,
-                            zone_key,
-                            cf.name,
-                        )
-                        continue
-                    _, naif_id = mission_naif
+                    per_probe_subs[probe.probe_id].extend(probe.sub_chunks)
                     for sub in probe.sub_chunks:
                         per_zone_method_counts[zone_key][sub.method] += 1
+
+            # Pass 2: per-probe — furnsh only that probe's mission kernels
+            # (mirrors `writer._fit_pass`), evaluate every sub-chunk against
+            # SPICE truth, unload. Critical when NAIF codes are shared across
+            # mission dirs (CASSINI/HUYGENS both target -82): the writer fit
+            # against the high-fidelity CASSINI kernels alone, so the
+            # benchmark must do the same or it compares against a different
+            # probe's predicted truth.
+            for probe_id in sorted(per_probe_subs):
+                mission_naif = probe_id_to_naif.get(probe_id)
+                if mission_naif is None:
+                    logger.warning(
+                        "probe_id=%d in zone %s not in cache", probe_id, zone_key
+                    )
+                    continue
+                _, naif_id = mission_naif
+                kernels = probe_kernels.get(probe_id, [])
+                for k in kernels:
+                    spiceypy.furnsh(str(k))
+                for p in generic_spk_paths:
+                    spiceypy.furnsh(str(p))
+                try:
+                    for sub in per_probe_subs[probe_id]:
                         sample_ets = _sample_ets(sub, args.samples_per_subchunk)
                         errs = _evaluate_subchunk(
                             sub, naif_id, mu, fit_center, float64, sample_ets
                         )
                         per_zone_errs[zone_key].extend(errs)
-                        per_probe_errs[(zone_key, probe.probe_id)].extend(errs)
+                        per_probe_errs[(zone_key, probe_id)].extend(errs)
+                finally:
+                    for p in generic_spk_paths:
+                        spiceypy.unload(str(p))
+                    for k in kernels:
+                        spiceypy.unload(str(k))
     finally:
         spiceypy.kclear()
 

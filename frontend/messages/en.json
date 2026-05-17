@@ -160,7 +160,16 @@
 	"my_location_inaccurate": "Reported accuracy is {km} km — actual location may differ",
 	"my_location_error": "Could not get your location",
 	"clear_promoted": "Clear pinned objects",
-	"cleared_n_promoted": "Cleared {count} pinned object(s)",
+	"cleared_n_promoted": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Cleared {count} pinned object",
+				"countPlural=other": "Cleared {count} pinned objects"
+			}
+		}
+	],
 	"north_reference": "North reference",
 	"north_solar_system": "Solar system",
 	"north_solar_system_desc": "J2000 ecliptic plane",

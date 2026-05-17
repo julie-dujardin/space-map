@@ -48,7 +48,22 @@ from space_map_data.probes.zones import Zone
 # v4 (2026-05-16): classify_trace now keeps every contiguous SPK interval
 # instead of only the longest one, so probes with archive gaps (e.g. NH's
 # 2007-2014 hole) emit chunks for the pre-gap trajectory too.
-FIT_VERSION = 4
+# v5 (2026-05-17): interplanetary spans the full contiguous coverage interval
+# (no longer carved out by planetary windows), so flyby/captured probes appear
+# in BOTH interplanetary and the planet zone — frontend renders correctly in
+# whichever view without a cross-zone handoff at the boundary moment.
+# v6 (2026-05-17): per-sample landed detection (alt < 50 km AND body-fixed
+# |v| < 10 m/s) splits coverage into alternating flying/landed phases. Zone
+# classification runs on flying ranges only, so chunks no longer include
+# parked-tail kernel discontinuities OR pre-launch on-pad samples; landed
+# phases are returned for a future lat/lng export but currently unused.
+# v7 (2026-05-17): captured-orbit interplanetary fix. v5 over-emitted
+# interplanetary for orbiters (MEX, HST, Cassini-post-SOI, …) — a 7-day
+# Sun-centered Kepler fit can't capture spacecraft motion around a planet,
+# so those chunks shipped with ~1 AU error. v7 keeps the "flybys live in
+# both zones" intent but excludes the captured tail (last in-zone run that
+# extends to flying-subrange end) from interplanetary. See trace.py.
+FIT_VERSION = 7
 
 
 def zone_signature(zone: Zone) -> str:
