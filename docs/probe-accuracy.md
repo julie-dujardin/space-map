@@ -10,7 +10,7 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 
 | Zone | Chunk span | Coeff dtype | Files | Sub-chunks | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |
 |---|---:|:--:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `earth-moon` | 1mo | `f32` | 647 | 270833 | 31m | 160.3km | 330281.7km | 58.9 | 401.7 | 653.5 | 66.9 | 60985 | 328 | 209520 | 0 |
+| `earth-moon` | 1mo | `f32` | 647 | 270839 | 31m | 160.4km | 330281.7km | 58.9 | 401.8 | 653.6 | 66.9 | 60990 | 328 | 209521 | 0 |
 | `interplanetary` | 1y | `f64` | 129 | 41735 | 376m | 41.8km | 2495.2km | 37.3 | 94.3 | 148.3 | 5.7 | 25415 | 120 | 15718 | 482 |
 | `jupiter` | 1y | `f32` | 35 | 10058 | 139m | 1.7km | 9681.1km | 71.0 | 139.6 | 175.6 | 2.4 | 0 | 0 | 10058 | 0 |
 | `mars` | 1mo | `f32` | 442 | 34304 | 3.8km | 220.6km | 499.9km | 35.2 | 139.4 | 360.7 | 23.5 | 15444 | 6448 | 12412 | 0 |
@@ -39,7 +39,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `96198656` | Kepler (spacecraft) | -227 | 1795 | 44m | 114m | 1459.3km |
 | `earth-moon` | `91226112` | Venus Express (spacecraft) | -248 | 105 | 33m | 95m | 979.2km |
 | `earth-moon` | `106278912` | LPF | -118 | 6545 | 33m | 62m | 499.5km |
-| `earth-moon` | `67969024` | HST | -48 | 130470 | 170.6km | 381.9km | 458.8km |
+| `earth-moon` | `67969024` | HST | -48 | 130500 | 170.6km | 381.9km | 458.8km |
 | `earth-moon` | `86638592` | INTEGRAL | -275 | 80725 | 1.1km | 5.5km | 202.8km |
 | `earth-moon` | `109834240` | TESS (spacecraft) | -95 | 34285 | 500m | 7.5km | 132.3km |
 | `earth-moon` | `88051712` | SMART1 | -238 | 10555 | 14m | 4.5km | 124.7km |

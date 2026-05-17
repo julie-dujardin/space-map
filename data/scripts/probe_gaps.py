@@ -2,18 +2,27 @@
 overall start and end — i.e. holes the user would notice as the probe
 disappearing mid-mission.
 
-For each probe, union all sub-chunks across every zone (interplanetary +
-planetary, since a probe in Jupiter's zone during a flyby is still "covered"
-even though interplanetary stops). A gap is any time span where:
-  * `t_start > first_subchunk_start` and `t_end < last_subchunk_end`
+For each probe, union all chunks across every zone. A gap is any time
+span where:
+  * `t_start > first_chunk_start` and `t_end < last_chunk_end`
     (so we don't flag pre-launch or post-mission),
-  * no sub-chunk overlaps it,
+  * no chunk overlaps it,
   * the gap is longer than `--min-gap-days`.
 
-This is the kind of check that would have surfaced the NH 2007-2014 hole
-(the old `_coverage()` kept only the longest contiguous SPK interval, so
-NH's Earth→Jupiter cruise was silently dropped) before a user spotted it
-in the UI.
+Post-FIT_VERSION 5, interplanetary spans the full contiguous SPK coverage
+interval (flybys are no longer carved out), so the union is mostly
+redundant — interplanetary alone covers every probe's full timeline
+except for genuine multi-interval SPK archives. The cross-zone union
+still helps in two cases:
+  * the probe's mission archive only ships planet-zone coverage and
+    nothing for the cruise (e.g. Juno, whose SPK opens at JOI 2016-07-05);
+    interplanetary co-covers the orbiter phase but never the pre-2016
+    cruise, so no false gap is reported there.
+  * a fix regresses and interplanetary loses the flyby/capture portion
+    again — the planet-zone coverage masks it so we don't blow up.
+
+The classic case this catches is NH's 2007-2014 hole between the Jupiter-
+flyby and Pluto-approach kernels: no zone has data because no kernel does.
 
 Run from data/:
     uv run python scripts/probe_gaps.py
@@ -71,7 +80,7 @@ def _collect_intervals(
             chunk_idx = int(meta_path.stem.split(".")[0])
             try:
                 data = json.loads(meta_path.read_text())
-            except OSError, json.JSONDecodeError:
+            except (OSError, json.JSONDecodeError):
                 continue
             t0 = start_jd + chunk_idx * chunk_days
             t1 = t0 + chunk_days
