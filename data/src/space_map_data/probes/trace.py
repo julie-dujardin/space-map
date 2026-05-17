@@ -383,17 +383,29 @@ def _classify_flying_subrange(
     """Run zone classification over `ets[s_idx:e_idx+1]` and append the
     resulting `ZoneInterval`s to `out`.
 
-    Interplanetary spans the full sub-range — flybys are NOT carved out.
-    The probe co-exists in interplanetary and the planet zone during a
-    flyby so the frontend can render it in whichever view the user is
-    looking at without cross-zone handoff at the boundary moment (see
-    zones.py docstring).
+    Interplanetary spans the full sub-range EXCEPT "captured" periods. A
+    zone-X run is captured when the probe is still inside zone X at the
+    last sample of this flying sub-range — i.e. it never exits before the
+    SPK coverage ends. Captured runs emit ONLY the planet zone; flyby
+    runs emit BOTH the planet zone and interplanetary (so the frontend
+    can render in either view without a cross-zone handoff at the
+    boundary moment, see zones.py).
+
+    Orbiters (MEX in Mars, HST in Earth-Moon, Cassini-post-SOI in Saturn,
+    Europa Clipper's future Jupiter orbit, …) have their planet zone as
+    the last in-zone run reaching the end of coverage → captured →
+    skip interplanetary for that span. A 7-day Kepler/Chebyshev fit
+    centered on the Sun can't simultaneously capture the planet's
+    heliocentric motion and the spacecraft's much faster planet-centered
+    motion; pre-v6 the fit collapsed to "spacecraft ≈ planet" with error
+    ≈ planet-Sun distance (~1 AU).
     """
     n_sub = e_idx - s_idx + 1
     if n_sub < 1:
         return
     sub_ets = ets[s_idx : e_idx + 1]
     sub_probe_ssb = probe_ssb[s_idx : e_idx + 1]
+    captured_mask = np.zeros(n_sub, dtype=bool)
 
     for zone in PLANETARY_ZONES:
         if zone.r_zone_km is None:
@@ -417,5 +429,24 @@ def _classify_flying_subrange(
                     float(sub_ets[min(e, n_sub - 1)]),
                 )
             )
+        # If the probe is still in this zone at the last sample of the
+        # flying sub-range, the final in-zone run is "captured" — exclude
+        # it from interplanetary.
+        if in_zone_mask[-1]:
+            captured_mask[starts[-1] :] = True
 
-    out.append(ZoneInterval(INTERPLANETARY.key, float(sub_ets[0]), float(sub_ets[-1])))
+    # Interplanetary spans the flying sub-range except captured periods.
+    interp_mask = ~captured_mask
+    if not interp_mask.any():
+        return
+    diffs = np.diff(interp_mask.astype(int), prepend=0, append=0)
+    starts = np.where(diffs == 1)[0]
+    ends = np.where(diffs == -1)[0]
+    for s, e in zip(starts, ends, strict=True):
+        out.append(
+            ZoneInterval(
+                INTERPLANETARY.key,
+                float(sub_ets[s]),
+                float(sub_ets[min(e, n_sub - 1)]),
+            )
+        )
