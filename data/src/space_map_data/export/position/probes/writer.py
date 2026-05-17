@@ -23,7 +23,9 @@ import gzip
 import json
 import logging
 import math
+import multiprocessing
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -321,50 +323,130 @@ def _build_probe_metas(
     return metas
 
 
+def _classify_worker_init(generic_spk_paths: list[str]) -> None:
+    """Per-worker process init: furnish generic kernels (LSK/PCK/DE/sat).
+
+    Generics live for the worker's lifetime so we don't re-furnsh ~40 files
+    on every task. Mission kernels still get furnshed/unloaded per-task
+    because they vary per probe and a slow mission like MEX (282 BSPs)
+    would bloat the per-worker kernel pool otherwise.
+    """
+    for p in generic_spk_paths:
+        spiceypy.furnsh(p)
+
+
+def _classify_worker(
+    mission_name: str,
+    kernel_paths: list[str],
+    naif_id: int,
+) -> dict:
+    """Per-probe classification done in a worker process.
+
+    Returns a serialisable dict — the main process owns `probe_id_cache` and
+    plan construction. Possible statuses:
+      * `landed`  — probe spent its whole coverage on a body's surface
+      * `no_coverage` — no SPK covers this naif_id
+      * `ok` — payload includes `inception_et` and `intervals` (zone, start_et,
+        end_et triples)
+
+    SPICE state per process: generic kernels were furnished in
+    `_classify_worker_init`; mission kernels are furnshed here and unloaded
+    in `finally` so the worker can move to the next mission cleanly.
+    """
+    for k in kernel_paths:
+        spiceypy.furnsh(k)
+    try:
+        landed, body = is_landed_probe(naif_id, kernel_paths)
+        if landed:
+            return {"status": "landed", "body": body}
+        t0 = inception_et(naif_id, kernel_paths)
+        if t0 is None:
+            return {"status": "no_coverage"}
+        intervals = classify_trace(naif_id, kernel_paths)
+        return {
+            "status": "ok",
+            "inception_et": t0,
+            "intervals": [(iv.zone_key, iv.start_et, iv.end_et) for iv in intervals],
+        }
+    finally:
+        for k in kernel_paths:
+            spiceypy.unload(k)
+
+
 def _classify_pass(
     probe_id_cache: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
     generic_spk_paths: list[Path],
     start_jd: float,
 ) -> tuple[list[_ProbePlan], dict[str, dict[int, list[_ProbePlan]]]]:
-    """Pass 1: per-probe furnish + classify. Returns `(plans, chunk_index)`
-    where `chunk_index[zone][chunk_idx]` lists the plans that contribute
-    there. Heavy work (kernel furnshing + spkezr sampling) but no fitting.
+    """Pass 1: per-probe furnish + classify, parallelised across processes.
 
-    Furnsh order per probe: mission first, then generic SPKs — so modern
-    planetary ephemerides win over any planetary data bundled inside a
-    mission kernel.
+    SPICE state is per-process, so each worker gets its own kernel pool —
+    no contention with the parent and no GIL bottleneck on the spkpos loop.
+    `probe_id` assignment runs serially in the main process because
+    `probe_id_cache` is mutable and the order in which IDs are allocated
+    must match the deterministic `(inception_mjd, naif_id)` policy in
+    `probes.probe_id.assign`.
+
+    Furnsh order per probe: mission first (in worker), then generic SPKs
+    (pre-furnshed via initializer) — so modern planetary ephemerides win
+    over any planetary data bundled inside a mission kernel.
     """
     probes_raw = _enumerate_probes()
-    logger.info("Probes export: %d spacecraft to classify", len(probes_raw))
+    n_probes = len(probes_raw)
+    n_workers = max(1, min(8, multiprocessing.cpu_count() // 2))
+    logger.info(
+        "Probes export: %d spacecraft to classify across %d workers",
+        n_probes,
+        n_workers,
+    )
 
     plans: list[_ProbePlan] = []
     chunk_index: dict[str, dict[int, list[_ProbePlan]]] = defaultdict(
         lambda: defaultdict(list)
     )
 
-    for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
-        kpaths = [str(k) for k in kernels]
-        for k in kernels:
-            spiceypy.furnsh(str(k))
-        for p in generic_spk_paths:
-            spiceypy.furnsh(str(p))
-        try:
-            landed, body = is_landed_probe(naif_id, kpaths)
-            if landed:
+    generic_str = [str(p) for p in generic_spk_paths]
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_classify_worker_init,
+        initargs=(generic_str,),
+    ) as ex:
+        futures = {}
+        for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
+            kpaths = [str(k) for k in kernels]
+            fut = ex.submit(_classify_worker, mdir.name, kpaths, naif_id)
+            futures[fut] = (i, mdir, kernels, naif_id)
+
+        for fut in as_completed(futures):
+            i, mdir, kernels, naif_id = futures[fut]
+            try:
+                result = fut.result()
+            except Exception:
+                logger.exception(
+                    "[%d/%d] classify worker failed for %s naif=%d",
+                    i,
+                    n_probes,
+                    mdir.name,
+                    naif_id,
+                )
+                continue
+
+            if result["status"] == "landed":
                 logger.info(
                     "[%d/%d] [skipped] %s naif=%d landed on body %s",
                     i,
-                    len(probes_raw),
+                    n_probes,
                     mdir.name,
                     naif_id,
-                    body,
+                    result["body"],
                 )
                 continue
-            t0 = inception_et(naif_id, kpaths)
-            if t0 is None:
+            if result["status"] == "no_coverage":
                 logger.warning("no coverage for %s/%d", mdir.name, naif_id)
                 continue
+
+            t0 = result["inception_et"]
             rec = assign(
                 mission=mdir.name,
                 naif_id=naif_id,
@@ -381,37 +463,32 @@ def _classify_pass(
                     naif_id,
                 )
                 continue
-            intervals = classify_trace(naif_id, kpaths)
+
             plan = _ProbePlan(probe_id=probe_id, naif_id=naif_id, kernels=kernels)
-            for iv in intervals:
-                zone = ZONES_BY_KEY[iv.zone_key]
+            for zone_key, iv_start, iv_end in result["intervals"]:
+                zone = ZONES_BY_KEY[zone_key]
                 for chunk_idx, c_start, c_end in _chunk_aligned_range(
                     zone.chunk_years,
                     zone.kepler_subchunk_days,
-                    iv.start_et,
-                    iv.end_et,
+                    iv_start,
+                    iv_end,
                     start_jd,
                 ):
                     plan.contributions.append(
-                        _ChunkContribution(iv.zone_key, chunk_idx, c_start, c_end)
+                        _ChunkContribution(zone_key, chunk_idx, c_start, c_end)
                     )
-                    chunk_index[iv.zone_key][chunk_idx].append(plan)
+                    chunk_index[zone_key][chunk_idx].append(plan)
             plans.append(plan)
             logger.info(
                 "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches)",
                 i,
-                len(probes_raw),
+                n_probes,
                 mdir.name,
                 naif_id,
                 probe_id,
-                len(intervals),
+                len(result["intervals"]),
                 len(plan.contributions),
             )
-        finally:
-            for p in generic_spk_paths:
-                spiceypy.unload(str(p))
-            for k in kernels:
-                spiceypy.unload(str(k))
 
     return plans, chunk_index
 
