@@ -29,12 +29,16 @@ import { bodyNorthVector } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
+import { OrbitalSource } from '$lib/fetch/position/format';
+import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	buildMajorBodies,
 	loadBodyLabel,
 	buildOrbitLines,
 	buildPointClouds,
+	downgradeBodyMesh,
+	isMeshUpgradable,
 	loadBodyTexture,
 	loadBodyTextureTier,
 	loadSystemData,
@@ -42,7 +46,8 @@ import {
 	textureFrameForJd,
 	tierRank,
 	highestAvailableTier,
-	unloadSystemTextures
+	unloadSystemTextures,
+	upgradeBodyMesh
 } from './objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
 import {
@@ -143,6 +148,9 @@ export class SceneRenderer {
 	 *  re-entering before the fly completes removes the entry from this set. */
 	private pendingUnloadBaryIds = new Set<string>();
 	private spacecraftPoints = new Map<string, Points>();
+	/** Per-probe id we've already logged a "position unavailable" warning for,
+	 *  so we surface the failure once instead of flooding the console at 60fps. */
+	private probeUnavailableLogged = new Set<string>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
@@ -359,6 +367,17 @@ export class SceneRenderer {
 		// If focused body has no visual objects (e.g. placeholder from global file), build them.
 		if (focusBody) this.ensureBodyObjects(focusBody);
 
+		// Initial focus on a halo-only type (asteroid/comet/probe) needs its
+		// mesh built immediately — `setFocusTarget` handles this on subsequent
+		// focus changes, but the init path skips that helper.
+		if (focusBody && isMeshUpgradable(focusBody)) {
+			const bo = this.bodyObjects.get(focusBody.data.id);
+			if (bo) {
+				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+			}
+		}
+
 		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
 
@@ -435,8 +454,8 @@ export class SceneRenderer {
 
 		for (const zone of this.ctx.dirtyAsteroidZones) {
 			const groupId = `asteroid:${zone}`;
-			const bodies = this.ctx.asteroidBodiesByZone.get(zone);
-			if (!bodies || bodies.length === 0) {
+			const bucket = this.ctx.asteroidBodiesByZone.get(zone);
+			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.asteroidPoints.get(zone);
 				if (stale) {
@@ -445,6 +464,7 @@ export class SceneRenderer {
 				}
 				continue;
 			}
+			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
 			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
@@ -468,8 +488,8 @@ export class SceneRenderer {
 
 		for (const gid of this.ctx.dirtySpacecraftGroups) {
 			const groupId = `spacecraft:${gid}`;
-			const bodies = this.ctx.spacecraftByParent.get(gid);
-			if (!bodies || bodies.length === 0) {
+			const bucket = this.ctx.spacecraftByParent.get(gid);
+			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.spacecraftPoints.get(gid);
 				if (stale) {
@@ -478,6 +498,7 @@ export class SceneRenderer {
 				}
 				continue;
 			}
+			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
 			const front = this.orbitPool.front(groupId);
 			if (!front) continue;
@@ -773,6 +794,7 @@ export class SceneRenderer {
 		// which chebyshev-tracked bodies are hidden (outOfRange) exactly like
 		// SGP4 out-of-coverage bodies.
 		this.ctx.chebStore?.ensure(jd);
+		this.ctx.probeStore?.ensure(jd);
 
 		// Aggregate data-unavailability across bodies for a single summary toast —
 		// per-body toasts would be spammy at chunk boundaries. Grouping by data
@@ -815,7 +837,8 @@ export class SceneRenderer {
 			// branch below uses `positionScene` as the authoritative gate.
 			const bo = this.bodyObjects.get(d.id);
 			const isChebTracked = this.ctx.chebStore?.has(d.id) ?? false;
-			if (!isChebTracked && (jd < d.validityStart || jd > d.validityEnd)) {
+			const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
+			if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
 				if (bo) bo.outOfRange = true;
 				// SGP4 is the only source with a finite validity here (TLE epoch
 				// ± 14 days); Keplerian/parabolic elements use ±Infinity bounds
@@ -861,6 +884,33 @@ export class SceneRenderer {
 				x = parentPos[0] + chebOffset[0];
 				y = parentPos[1] + chebOffset[1];
 				z = parentPos[2] + chebOffset[2];
+			} else if (isProbe) {
+				// Probes dispatch per sub-chunk (kepler_pure / kepler_drift /
+				// chebyshev) inside the store. parentId is `naif-<fit_center>`;
+				// extract the numeric for the GM lookup. Missing GM = 0 disables
+				// Kepler-pure (skip the body for the frame) rather than rendering
+				// at a junk M.
+				const fitCenterNaifId = Number(d.parentId.slice(5));
+				const muKm3s2 = getGmKm3s2(fitCenterNaifId) ?? 0;
+				const probeOffset = this.ctx.probeStore?.positionScene(d.id, jd, muKm3s2) ?? null;
+				if (!probeOffset) {
+					if (bo) bo.outOfRange = true;
+					if (d.id === focusedId) oorState.focusedOutOfRange = true;
+					if (!this.probeUnavailableLogged.has(d.id)) {
+						this.probeUnavailableLogged.add(d.id);
+						const reason = !this.ctx.probeStore
+							? 'no ProbeStore'
+							: this.ctx.probeStore.probe(d.id, jd) === null
+								? 'no chunk loaded for this jd'
+								: 'sub-chunk evaluation returned null (uncoverable or jd outside sub-chunk windows)';
+						console.warn(`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ${reason}`);
+					}
+					return;
+				}
+				this.probeUnavailableLogged.delete(d.id);
+				x = parentPos[0] + probeOffset[0];
+				y = parentPos[1] + probeOffset[1];
+				z = parentPos[2] + probeOffset[2];
 			} else if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. a Kepler-only barycenter
 				// placeholder, if one ever appears).
@@ -1158,6 +1208,12 @@ export class SceneRenderer {
 					!MINOR_PROMOTED_IDS.has(id)
 				)
 					continue;
+				// Asteroids, comets, and probes auto-promote to a halo + label
+				// only (no sphere mesh, no orbit line) via `buildMajorBodies`'s
+				// `isHaloOnly` branch — they show up as named halos but skip
+				// the per-frame mesh/orbit-line cost. Full-mesh upgrade on
+				// focus is a follow-up if the small-body visualization needs
+				// it.
 				this.ensureBodyObjects(body);
 				break; // one per frame to spread GPU work
 			}
@@ -1559,8 +1615,11 @@ export class SceneRenderer {
 		// halo, and orbit line spawn at the current jd instead of jumping on
 		// the next tick.
 		refreshMinorBodyPosition(body, this.clock.jd, this.ctx);
-		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built
-		if (!body.orbitElements) {
+		// Minor bodies from chunks lack orbitElements; populate from data so orbit lines can be built.
+		// Skip probes: their `body.data` carries a=e=…=0 (positions come from per-sub-chunk dispatch),
+		// and assigning those zeros to `orbitElements` defeats the SPICE_PROBE guard in ObjectDrawer
+		// — currentStateFromElements would then warn "non-finite elements" every frame.
+		if (!body.orbitElements && body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
 			body.orbitElements = body.data;
 			const parent = this.bodyObjects.get(body.data.parentId);
 			if (parent) body.orbitCenter = [...parent.body.position];
@@ -1589,8 +1648,8 @@ export class SceneRenderer {
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			this.ctx.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
-			for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-				if (bodies.some((b) => b.data.id === body.data.id)) {
+			for (const [zone, byId] of this.ctx.asteroidBodiesByZone) {
+				if (byId.has(body.data.id)) {
 					this.ctx.dirtyAsteroidZones.add(zone);
 					break;
 				}
@@ -1666,8 +1725,8 @@ export class SceneRenderer {
 			if (objectType === ObjectType.SPACECRAFT) {
 				dirtySpacecraftParents.add(bo.body.data.parentId);
 			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
-				for (const [zone, bodies] of this.ctx.asteroidBodiesByZone) {
-					if (bodies.some((b) => b.data.id === id)) {
+				for (const [zone, byId] of this.ctx.asteroidBodiesByZone) {
+					if (byId.has(id)) {
 						dirtyAsteroidZones.add(zone);
 						break;
 					}
@@ -1748,6 +1807,28 @@ export class SceneRenderer {
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.ensureBodyObjects(body);
+
+		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
+		// sphere mesh (and asteroids/comets their orbit line) only while
+		// focused; reverting to halo-only on un-focus keeps the unfocused
+		// scene cheap. minDistance below depends on the focused body's mesh
+		// radius, so do the swap before reading it.
+		const prevFocused = this.focusedBody;
+		if (prevFocused && prevFocused.data.id !== body.data.id && isMeshUpgradable(prevFocused)) {
+			const prevBo = this.bodyObjects.get(prevFocused.data.id);
+			if (prevBo) downgradeBodyMesh(prevBo, this.scene, this.clickables, this.meshToBody);
+		}
+		if (isMeshUpgradable(body)) {
+			const bo = this.bodyObjects.get(body.data.id);
+			if (bo) {
+				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+				// Asteroids/comets had no orbit line as halo-only; this picks it
+				// up now that `bo.mesh` is set. Probes already had one — the
+				// "already built" guard inside buildOrbitLines skips them.
+				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+			}
+		}
+
 		this.focusedBody = body;
 		this.controls.minDistance = minCameraDistance(body);
 		this.ctx.setFocused(body);

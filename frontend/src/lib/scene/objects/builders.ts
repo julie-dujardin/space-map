@@ -36,6 +36,13 @@ const ORBIT_CURVE_REFRESH_DEG = 0.01;
 // accumulates when the static snapshot ages — Earth's Moon (period ~28 d)
 // re-derives every ~0.28 d of sim time, Pluto every ~2.5 yr.
 const CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION = 1 / 100;
+// Hard cap on the re-derive cadence so long-period bodies still refresh in
+// reasonable sim time. Mostly matters for probe trails: a Voyager-style cruise
+// modeled as a heliocentric Kepler-pure sub-chunk has period ~years, and the
+// curve needs to rebuild within hours of crossing into a Chebyshev sub-chunk
+// at a planetary flyby — not months. Benign for existing bodies (Pluto's 2.5 yr
+// gate becomes 1 d; Earth's Moon's 0.28 d gate is already tighter).
+const MAX_REDERIVE_DAYS = 1.0;
 
 export function makeCircleTexture(): CanvasTexture {
 	const size = 32;
@@ -651,7 +658,11 @@ export function refreshOrbitLineGeometry(
 			const n = body.orbitElements.n;
 			const period = n > 0 ? 360 / n : Infinity;
 			const dt = Math.abs(jd - elementsJd);
-			if (dt > period * CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION) {
+			const refreshThreshold = Math.min(
+				period * CHEB_ELEMENTS_REFRESH_PERIOD_FRACTION,
+				MAX_REDERIVE_DAYS
+			);
+			if (dt > refreshThreshold) {
 				const fresh = body.rederiveElements(jd);
 				// Null fresh = jd out of chebyshev coverage; the body's
 				// out-of-range toast already surfaces that, so we silently
@@ -685,6 +696,20 @@ export function refreshOrbitLineGeometry(
 		}
 	}
 
+	// Memoization gate: when curve, anchor, orbit-center, and basis are all
+	// unchanged since the last commit, the vertex buffer is still correct.
+	// Skip nearest-point search + buffer rewrite — meaningful during paused
+	// camera drags where everything is static but rAF still fires.
+	const anchor = body.trailAnchor ?? body.position;
+	const ud = line.userData;
+	const curveChanged = curve !== ud.lastCurveRef;
+	const anchorChanged =
+		anchor[0] !== ud.lastAnchorX || anchor[1] !== ud.lastAnchorY || anchor[2] !== ud.lastAnchorZ;
+	const centerChanged = cx !== ud.lastCenterX || cy !== ud.lastCenterY || cz !== ud.lastCenterZ;
+	const basisChanged =
+		basisPos[0] !== ud.lastBasisX || basisPos[1] !== ud.lastBasisY || basisPos[2] !== ud.lastBasisZ;
+	if (!curveChanged && !anchorChanged && !centerChanged && !basisChanged) return;
+
 	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
@@ -703,7 +728,17 @@ export function refreshOrbitLineGeometry(
 	}
 	commitOrbitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
-	line.userData.orbitLocalPositions = validPoints;
+	ud.orbitLocalPositions = validPoints;
+	ud.lastCurveRef = curve;
+	ud.lastAnchorX = anchor[0];
+	ud.lastAnchorY = anchor[1];
+	ud.lastAnchorZ = anchor[2];
+	ud.lastCenterX = cx;
+	ud.lastCenterY = cy;
+	ud.lastCenterZ = cz;
+	ud.lastBasisX = basisPos[0];
+	ud.lastBasisY = basisPos[1];
+	ud.lastBasisZ = basisPos[2];
 }
 
 /** Create a radial gradient canvas texture for the star corona glow. */

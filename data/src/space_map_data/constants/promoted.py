@@ -47,12 +47,13 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-117293056",  # JUICE       (mission JUICE, naif -28)
         "probe-92659712",  # STEREO-A    (mission STEREO, naif -234)
         "probe-68640768",  # Ulysses     (mission ULYSSES, naif -55)
-        "probe-123482112",  # Hera        (mission HERA, naif -667)
+        "probe-119513088",  # Hera        (mission HERA, naif -91)
         "probe-107159552",  # Juno        (mission JUNO, naif -61)
         "probe-89325568",  # MESSENGER   (mission MESSENGER, naif -236)
         "probe-103354368",  # Gaia        (mission GAIA, naif -123)
+        "probe-119541760",  # Europa Clipper (mission EUROPACLIPPER, naif -159)
         # TODO: missions not yet in probe_ids.json — re-add after ingest:
-        #   Parker Solar Probe (-96), Europa Clipper (-159), OSIRIS-REx (-64),
+        #   Parker Solar Probe (-96), OSIRIS-REx (-64),
         #   Hayabusa 2 (-37), Kepler (-227), SOHO (-21), DSCOVR (-78).
         # Retired
         # 'probe-...' # Spitzer Space Telescope

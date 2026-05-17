@@ -164,9 +164,16 @@ export function cullOverlappingLabels(
 			const span = labelHalo.nextElementSibling as HTMLElement | null;
 			if (span) bo.labelTextWidth = span.offsetWidth;
 		}
-		// Focus-relative position for projection (matches camera's coordinate space)
+		// Focus-relative position for projection (matches camera's coordinate space).
+		// label.position carries the silhouette offset (set in updateBodyVisibility)
+		// so this projects to where the label actually renders on screen.
 		const [bx, by, bz] = body.position;
-		_tmpProj.set(bx - focusTruePos[0], by - focusTruePos[1], bz - focusTruePos[2]);
+		const lp = label.position;
+		_tmpProj.set(
+			bx - focusTruePos[0] + lp.x,
+			by - focusTruePos[1] + lp.y,
+			bz - focusTruePos[2] + lp.z
+		);
 		_tmpProj.project(camera);
 		if (_tmpProj.z > 1) continue;
 		const isFocused = body.data.id === focusedBodyId;
@@ -196,9 +203,14 @@ export function cullOverlappingLabels(
 		});
 	}
 
-	// Sort: selected first, then by type priority, then closer first
+	// Sort: selected first, then non-selected non-minor (so all maximized halos
+	// reserve space in _accepted before any minor-promoted halo is tested),
+	// then by type priority, then closer first.
 	_candidates.sort((a, b) => {
 		if (a.isSelected !== b.isSelected) return a.isSelected ? -1 : 1;
+		const aMinor = a.isMinor && !a.isSelected;
+		const bMinor = b.isMinor && !b.isSelected;
+		if (aMinor !== bMinor) return aMinor ? 1 : -1;
 		const pa = typePriority(a.body.data.objectType);
 		const pb = typePriority(b.body.data.objectType);
 		if (pa !== pb) return pa - pb;
@@ -220,14 +232,6 @@ export function cullOverlappingLabels(
 		dist
 	} of _candidates) {
 		const nameSpan = labelHalo?.nextElementSibling as HTMLElement | null;
-		// Minor-promoted: collapse to scale 0.3 (same as occluded) and hide the
-		// name text. On hover/focus the candidate is "selected" and falls through
-		// to the normal restoreLabel path so the halo grows back and the name
-		// appears. `dimLabel` already produces the exact desired visual.
-		if (isMinor && !isSelected) {
-			dimLabel(labelHalo, nameSpan, true, 0.5);
-			continue;
-		}
 		if (isCapped && !isSelected) {
 			dimLabel(labelHalo, nameSpan, true);
 			continue;
@@ -235,6 +239,23 @@ export function cullOverlappingLabels(
 		// Check if behind a screen occluder (body large enough to hide labels behind it)
 		if (!isSelected && isScreenOccluded(screenX, screenY, dist, bodyId, screenOccluders)) {
 			label.visible = false;
+			continue;
+		}
+		// Minor-promoted, unselected: stays minimized at scale 0.5, but if a real
+		// maximized halo (already in _accepted thanks to the sort) is sitting on
+		// top of it, shrink further to 0.3 — the same "lost a conflict" visual a
+		// maximized label gets. Tested against _accepted using the minor halo's
+		// actual footprint (HALO_RADIUS_PX * 0.5), and never pushed into
+		// _accepted so a minor halo can't block a real label.
+		if (isMinor && !isSelected) {
+			const minorRadius = HALO_RADIUS_PX * 0.5;
+			const minorOverlaps = _accepted.some(
+				(a) =>
+					screenX - minorRadius < a.right &&
+					screenX + minorRadius > a.left &&
+					Math.abs(screenY - a.y) < LH
+			);
+			dimLabel(labelHalo, nameSpan, !minorOverlaps, minorOverlaps ? 0.3 : 0.5);
 			continue;
 		}
 		const overlaps = _accepted.some(

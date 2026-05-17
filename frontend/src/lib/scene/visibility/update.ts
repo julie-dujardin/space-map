@@ -43,17 +43,69 @@ export function updateBodyVisibility(
 		focusTruePos[2] + camera.position.z
 	];
 
-	// Build screen-space occluder list: bodies whose sphere fills enough of
-	// the screen to hide labels behind them (only when zoomed in close).
+	// Pre-pass: for each body with a label and a finite radius, compute the
+	// visible-disc center on screen and offset `label.position` so the CSS2D
+	// label renders at that center (not the projected body-center, which can
+	// be tens of pixels off-disc for a close off-axis body — Earth seen from a
+	// LEO sat, Saturn seen from one of its moons).
+	//
+	// Math: for a sphere at camera-frame position (Bx, By, Bz) with radius r,
+	// the silhouette is a 3D circle whose projection to screen is an ellipse
+	// whose center is at body_NDC · β where β = Bz²/(Bz²−r²). (Derived from
+	// the tangent-cone conic — the body's geometric center projection is *not*
+	// the ellipse center under perspective; it's shifted radially inward.)
+	// To realise this with CSS2DRenderer, the label local position in camera
+	// frame is ((β−1)·Bx, (β−1)·By, 0); rotated by camera.quaternion it
+	// becomes the scene-frame offset stored on label.position.
 	const fp = focusTruePos;
+	const cameraInverse = camera.matrixWorldInverse;
+	for (const bo of bodyObjects.values()) {
+		bo.cachedDist = f64dist(camTrue, bo.body.position);
+		const label = bo.label;
+		if (!label) continue;
+		const r = bo.radiusScene;
+		if (!r) {
+			label.position.set(0, 0, 0);
+			continue;
+		}
+		const [bx, by, bz] = bo.body.position;
+		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
+		const camX = tmpV3.x,
+			camY = tmpV3.y,
+			camZ = tmpV3.z;
+		const camZ2 = camZ * camZ;
+		const r2 = r * r;
+		if (camZ2 <= r2) {
+			label.position.set(0, 0, 0);
+			continue;
+		}
+		const beta1 = r2 / (camZ2 - r2); // β − 1
+		tmpV3.set(beta1 * camX, beta1 * camY, 0).applyQuaternion(camera.quaternion);
+		label.position.copy(tmpV3);
+	}
+
+	// Build screen-space occluder list: bodies whose sphere fills enough of
+	// the screen to hide labels behind them. Disc radius uses the ellipse's
+	// perpendicular axis (r·f / √(Bz²−r²)) — the smaller of the two for
+	// off-axis bodies, so we don't over-occlude. The center is the projected
+	// label position (already silhouette-corrected above).
 	const screenOccluders: ScreenOccluder[] = [];
 	for (const bo of bodyObjects.values()) {
-		if (!bo.radiusScene) continue;
-		const dist = f64dist(camTrue, bo.body.position);
-		const screenR = (bo.radiusScene / dist) * projScale;
-		if (screenR < HALO_RADIUS_PX) continue;
+		const r = bo.radiusScene;
+		if (!r) continue;
+		const dist = bo.cachedDist;
+		if (dist <= r) continue;
 		const [bx, by, bz] = bo.body.position;
-		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
+		const camZ2 = tmpV3.z * tmpV3.z;
+		if (camZ2 <= r * r) continue;
+		const screenR = (r * projScale) / Math.sqrt(camZ2 - r * r);
+		if (screenR < HALO_RADIUS_PX) continue;
+		const lp = bo.label?.position;
+		const ox = lp?.x ?? 0,
+			oy = lp?.y ?? 0,
+			oz = lp?.z ?? 0;
+		tmpV3.set(bx - fp[0] + ox, by - fp[1] + oy, bz - fp[2] + oz);
 		tmpV3.project(camera);
 		if (tmpV3.z > 1) continue;
 		screenOccluders.push({
@@ -67,21 +119,19 @@ export function updateBodyVisibility(
 
 	for (const bo of bodyObjects.values()) {
 		const { body, group, orbitLine } = bo;
-		const dist = f64dist(camTrue, body.position);
-		bo.cachedDist = dist;
+		const dist = bo.cachedDist;
 
 		let showLabel: boolean;
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
 
-		if (
-			body.data.objectType === ObjectType.BARYCENTER ||
-			body.data.objectType === ObjectType.LAGRANGE_POINT
-		) {
-			// Virtual bodies promoted via URL navigation: always visible once built.
-			// Exception: barycenters that visually overlap a primary body (SSB/Sun,
-			// Pluto-BC/Pluto) hide until the camera is close enough that the offset
-			// projects to at least one halo diameter on screen.
+		if (bo.mesh === null) {
+			// Halo-only bodies (barycenters, Lagrange points, and unfocused
+			// asteroids/comets/probes auto-promoted to a label+halo entry):
+			// always visible once built — the halo is the entire visual.
+			// Exception: barycenters that visually overlap a primary body
+			// (SSB/Sun, Pluto-BC/Pluto) hide until the offset projects to at
+			// least one halo diameter on screen.
 			let visible = true;
 			const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
 			if (primaryId) {
@@ -169,7 +219,8 @@ export function updateBodyVisibility(
 		for (const bo of bodyObjects.values()) {
 			if (!bo.label?.visible) continue;
 			const [bx, by, bz] = bo.body.position;
-			tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]);
+			const lp = bo.label.position;
+			tmpV3.set(bx - fp[0] + lp.x, by - fp[1] + lp.y, bz - fp[2] + lp.z);
 			tmpV3.project(camera);
 			if (tmpV3.z > 1) continue;
 			if (

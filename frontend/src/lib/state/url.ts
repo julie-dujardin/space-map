@@ -6,6 +6,7 @@ import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.SmallBody) return 'spkid';
 	if (urlType === UrlType.EarthSatellite) return 'norad_satcat';
+	if (urlType === UrlType.Probe) return 'probe';
 	return 'naif'; // UrlType.Body
 }
 
@@ -13,6 +14,7 @@ export function urlTypeToIdPrefix(urlType: string): string {
 export function urlTypeFromId(id: string): UrlType {
 	if (id.startsWith('spkid-')) return UrlType.SmallBody;
 	if (id.startsWith('norad_satcat-')) return UrlType.EarthSatellite;
+	if (id.startsWith('probe-')) return UrlType.Probe;
 	return UrlType.Body; // naif-
 }
 
@@ -71,7 +73,9 @@ export function serializeUrl(state: MapViewState): string {
 		? 'norad_satcat-'
 		: state.id.startsWith('spkid-')
 			? 'spkid-'
-			: 'naif-';
+			: state.id.startsWith('probe-')
+				? 'probe-'
+				: 'naif-';
 	const numericId = state.id.slice(prefix.length);
 	const path = resolve('/[type]/[id]/[[name]]', {
 		type: state.type,

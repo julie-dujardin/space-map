@@ -114,7 +114,18 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # silently break this.
     "SOLAR-ORBITER": (r"^solo_ANC_soc-orbit_\d+-\d+_L\d+_V\d+_\d+_V\d+\.bsp$",),
     "JWST": (r"^jwst_(?:rec|pred)\.bsp$",),
-    "HERA": (r"^HERA_NomTrajDCP3VCF_v\d+\.bsp$",),
+    # ESA `kernels/mk/hera_plan.tm` is the canonical "use these SPKs" file
+    # and points at two iterating series: `hera_fcp_*` (Flight Control
+    # Product, reconstructed flight, launch → ~present) and `hera_flp_*`
+    # (Forward-Looking Product, planned trajectory through ~rendezvous).
+    # Both increment a 6-digit iteration on every release; MISSION_LATEST_ONLY
+    # keeps just the lex-last of each. The previous `HERA_NomTrajDCP3VCF_v01`
+    # pattern caught a 3-day Didymos sub-phase kernel, too short to fit even
+    # one interplanetary sub-chunk (7d) so HERA never reached the export.
+    "HERA": (
+        r"^hera_fcp_\d+_\d+_\d+_v\d+\.bsp$",
+        r"^hera_flp_\d+_\d+_\d+_v\d+\.bsp$",
+    ),
     "PSYCHE": (r"^psyche_rec_\d+-\d+_\d+_v\d+\.bsp$",),
     "GAIA": (r"^gaia_\d+_\d+_v\d+\.bsp$",),
     # NAIF/{VEX,VENUS-EXPRESS,ROSETTA,MPF}/kernels/spk/ are empty on the
@@ -281,7 +292,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
 # versions and we only want the lex-last filename per pattern. Use for
 # `mission_<launch>_<asof>_v<NN>.bsp` series where each kernel fully respans
 # the prior coverage.
-MISSION_LATEST_ONLY: frozenset[str] = frozenset({"INTEGRAL"})
+MISSION_LATEST_ONLY: frozenset[str] = frozenset({"INTEGRAL", "HERA"})
 
 
 SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(

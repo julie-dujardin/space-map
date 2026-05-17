@@ -18,8 +18,17 @@ import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
+import type { ProbeStore } from '$lib/fetch/position/probes/store';
+import { probePositionScene } from '$lib/fetch/position/probes/propagate';
+import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
+import {
+	PROBE_METHOD_CHEBYSHEV,
+	PROBE_METHOD_KEPLER_DRIFT,
+	PROBE_METHOD_KEPLER_PURE,
+	PROBE_METHOD_UNCOVERABLE
+} from '$lib/fetch/position/format';
 
 const KM_DAY_TO_AU_DAY = 1 / AU_KM;
 
@@ -444,6 +453,183 @@ export class ChunkLoader {
 		return result;
 	}
 
+	/**
+	 * Build PositionedBody[] for every probe whose current chunk is resident
+	 * in `probeStore`. Mirrors `processChebyshev` but for spacecraft probes:
+	 *
+	 *   1. Iterate `probeStore.probesAt(jd)` — yields one entry per (zone, probe)
+	 *      whose chunk for jd is loaded. The same probe_id can appear under
+	 *      multiple zones (cruise + captured-orbit phases); the renderer
+	 *      handles cross-zone routing per frame via store dispatch.
+	 *   2. Resolve the fit-center body (Sun for `probes/interplanetary`,
+	 *      Mercury for `probes/mercury`, …) in `this.positions` — chebyshev
+	 *      must have run first so these are present.
+	 *   3. Look up GM(km³/s²) for the fit center; without it Kepler-pure
+	 *      sub-chunks can't be evaluated (no `sqrt(mu/a³)` for M drift).
+	 *      systems-global may not be loaded yet at first paint; the renderer
+	 *      retries each frame so eventual consistency catches up.
+	 *
+	 * The returned `BodyData` carries zero osculating elements (the fit methods
+	 * produce position directly, no need to round-trip through Kepler for the
+	 * body itself). The `PositionedBody`'s `orbitElements` + `rederiveElements`
+	 * carry a per-sub-chunk osculating snapshot for the orbit-line trail —
+	 * `kepler_pure` and `kepler_drift` map their packed elements directly,
+	 * `chebyshev` derives them from a state-vector finite difference. The
+	 * existing periodic re-derive in `refreshOrbitLineGeometry` automatically
+	 * picks up the next sub-chunk's elements when `jd` crosses a boundary.
+	 *
+	 * `validityStart/End` come from the chunk's common-header bounds, used by
+	 * the renderer to hide a probe whose chunk isn't loaded yet rather than
+	 * render a stale position.
+	 */
+	processProbes(probeStore: ProbeStore, date: Date, labels: LabelMap): PositionedBody[] {
+		const jd = dateToJD(date);
+		const result: PositionedBody[] = [];
+		const perZone = new Map<
+			string,
+			{ count: number; center: number | undefined; methodCounts: Map<number, number> }
+		>();
+		const missingParents = new Map<string, Set<string>>(); // parentKey → probe ids
+		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
+		const nullOffsets = new Set<string>();
+		const undefinedCenterProbes = new Set<string>();
+		for (const { zone, probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
+			if (!probe.id) continue;
+			let zoneStats = perZone.get(zone);
+			if (!zoneStats) {
+				zoneStats = { count: 0, center: zoneCenterNaifId, methodCounts: new Map() };
+				perZone.set(zone, zoneStats);
+			}
+			zoneStats.count++;
+			for (const sc of probe.subChunks) {
+				zoneStats.methodCounts.set(sc.method, (zoneStats.methodCounts.get(sc.method) ?? 0) + 1);
+			}
+			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
+			const parentKey = `naif-${zoneCenterNaifId}`;
+			const parentPos = this.positions.get(parentKey);
+			if (!parentPos) {
+				let s = missingParents.get(parentKey);
+				if (!s) missingParents.set(parentKey, (s = new Set()));
+				s.add(probe.id);
+			}
+			const anchor = parentPos ?? this.positions.get('naif-0')!;
+			const muKm3s2 = zoneCenterNaifId === undefined ? 0 : (getGmKm3s2(zoneCenterNaifId) ?? 0);
+			if (muKm3s2 === 0) {
+				let s = missingGm.get(parentKey);
+				if (!s) missingGm.set(parentKey, (s = new Set()));
+				s.add(probe.id);
+			}
+			const offset = probePositionScene(probe, jd, muKm3s2);
+			if (!offset) nullOffsets.add(probe.id);
+			// Probe outside its sub-chunk windows at this jd (e.g. chunk
+			// straddles its inception) — emit a position-only entry at the
+			// parent's location; the per-frame propagator hides it.
+			const pos: [number, number, number] = offset
+				? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
+				: [anchor[0], anchor[1], anchor[2]];
+			const data: BodyData = {
+				id: probe.id,
+				name: pickLabel(labels, probe.id),
+				isMinor: pickIsMinor(labels, probe.id),
+				hasLocalized: probe.hasLocalized,
+				objectType: probe.objectType as ObjectType,
+				parentId: parentKey,
+				radiusKm: NaN, // probes have no physical-radius column; renderer falls back
+				a: 0,
+				e: 0,
+				i: 0,
+				om: 0,
+				w: 0,
+				ma: 0,
+				n: 0,
+				epoch: 0,
+				equatorial: false,
+				validityStart: startJd,
+				validityEnd: endJd,
+				orbitalSource: OrbitalSource.SPICE_PROBE
+			};
+			const elements = probeOsculatingElements(probe, jd, muKm3s2);
+			// Re-read live probe record AND its current zone's fit center on
+			// every call: scrubbing the timeline can move the probe into a
+			// different chunk (per-chunk Probe ref goes stale) or a different
+			// zone with a different fit center (cruise → captured orbit). A
+			// late-arriving systems-global GM table also self-heals on the next
+			// periodic re-derive. Mirrors the chebyshev rederive pattern
+			// (`ownRederive` in processChebyshev).
+			const ownId = probe.id;
+			const rederiveElements = (newJd: number): OrbitalElements | null => {
+				const located = probeStore.probeWithCenter(ownId, newJd);
+				if (!located) return null;
+				const freshMu = getGmKm3s2(located.fitCenterNaifId) ?? 0;
+				return probeOsculatingElements(located.probe, newJd, freshMu);
+			};
+			result.push({
+				data,
+				position: pos,
+				orbitElements: elements ?? undefined,
+				orbitCenter: anchor,
+				rederiveElements
+			});
+		}
+		// Diagnostics — without these, the only signal a probe didn't render
+		// is "you don't see it on screen". Surface every silent-drop path
+		// once, deduped to keep the console legible.
+		const methodName = (m: number) =>
+			m === PROBE_METHOD_KEPLER_PURE
+				? 'kepler_pure'
+				: m === PROBE_METHOD_KEPLER_DRIFT
+					? 'kepler_drift'
+					: m === PROBE_METHOD_CHEBYSHEV
+						? 'chebyshev'
+						: m === PROBE_METHOD_UNCOVERABLE
+							? 'uncoverable'
+							: `method=${m}`;
+		const totalProbes = Array.from(perZone.values()).reduce((a, s) => a + s.count, 0);
+		const zoneLines = Array.from(perZone)
+			.map(([z, s]) => {
+				const methods = Array.from(s.methodCounts)
+					.map(([m, n]) => `${methodName(m)}=${n}`)
+					.join('/');
+				return `  ${z}: ${s.count} probe(s), fit_center=naif-${s.center}, sub-chunks: ${methods}`;
+			})
+			.join('\n');
+		console.log(
+			`processProbes: loaded ${totalProbes} probe(s) across ${perZone.size} zone(s) for jd=${jd.toFixed(3)}\n${zoneLines}`
+		);
+		if (undefinedCenterProbes.size > 0) {
+			console.error(
+				`processProbes: ${undefinedCenterProbes.size} probe(s) have undefined fit_center_naif_id ` +
+					`— metadata.json is stale (re-export to pick up fit_center_naif_id field). ` +
+					`Affected probe ids: ${Array.from(undefinedCenterProbes).slice(0, 10).join(', ')}` +
+					(undefinedCenterProbes.size > 10 ? ` (+${undefinedCenterProbes.size - 10} more)` : '')
+			);
+		}
+		for (const [parentKey, probeIds] of missingParents) {
+			console.warn(
+				`processProbes: fit-center ${parentKey} not in positions ` +
+					`(anchored at SSB) — ${probeIds.size} probe(s): ${Array.from(probeIds).slice(0, 5).join(', ')}` +
+					(probeIds.size > 5 ? ` (+${probeIds.size - 5} more)` : '')
+			);
+		}
+		for (const [parentKey, probeIds] of missingGm) {
+			console.warn(
+				`processProbes: GM unavailable for ${parentKey} ` +
+					`— kepler_pure sub-chunks will use mu=0 (static snapshot); ` +
+					`affected ${probeIds.size} probe(s): ${Array.from(probeIds).slice(0, 5).join(', ')}` +
+					(probeIds.size > 5 ? ` (+${probeIds.size - 5} more)` : '')
+			);
+		}
+		if (nullOffsets.size > 0) {
+			console.warn(
+				`processProbes: ${nullOffsets.size} probe(s) outside sub-chunk windows at load ` +
+					`(will stay hidden until jd enters coverage): ` +
+					`${Array.from(nullOffsets).slice(0, 5).join(', ')}` +
+					(nullOffsets.size > 5 ? ` (+${nullOffsets.size - 5} more)` : '')
+			);
+		}
+		return result;
+	}
+
 	async process(
 		zone: string,
 		zoom: number,
@@ -461,7 +647,10 @@ export class ChunkLoader {
 		]);
 		const idMap = cols.idMap;
 
-		console.log(`Loaded: ${cols.rowCount} objects`);
+		console.log(
+			`Loaded ${cols.rowCount} ${cols.kind} object(s) from ${zone}/${zoom}/${part}` +
+				(time ? `/${time}` : '')
+		);
 		const isParabolic = cols.kind === 'parabolic';
 		const isSGP4 = cols.kind === 'sgp4';
 		const jd = dateToJD(date);

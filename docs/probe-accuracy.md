@@ -10,16 +10,16 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 
 | Zone | Chunk span | Coeff dtype | Files | Sub-chunks | Median err | p95 err | Max err | Median KiB | p95 KiB | Max KiB | Total MiB | k_pure | k_drift | cheb | uncov |
 |---|---:|:--:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `earth-moon` | 1mo | `f32` | 647 | 270833 | 544m | 297.5km | 499.5km | 58.9 | 401.7 | 653.5 | 66.9 | 60985 | 328 | 209520 | 0 |
-| `interplanetary` | 1y | `f64` | 129 | 41735 | 0m | 46.0km | 2495.2km | 37.3 | 94.3 | 148.3 | 5.7 | 25415 | 120 | 15718 | 482 |
-| `jupiter` | 1y | `f32` | 35 | 10058 | 139m | 2.0km | 9681.1km | 71.0 | 139.6 | 175.6 | 2.4 | 0 | 0 | 10058 | 0 |
-| `mars` | 1mo | `f32` | 442 | 34304 | 8.0km | 238.3km | 499.9km | 35.2 | 139.4 | 360.7 | 23.5 | 15444 | 6448 | 12412 | 0 |
+| `earth-moon` | 1mo | `f32` | 647 | 270833 | 31m | 160.3km | 330281.7km | 58.9 | 401.7 | 653.5 | 66.9 | 60985 | 328 | 209520 | 0 |
+| `interplanetary` | 1y | `f64` | 129 | 41735 | 376m | 41.8km | 2495.2km | 37.3 | 94.3 | 148.3 | 5.7 | 25415 | 120 | 15718 | 482 |
+| `jupiter` | 1y | `f32` | 35 | 10058 | 139m | 1.7km | 9681.1km | 71.0 | 139.6 | 175.6 | 2.4 | 0 | 0 | 10058 | 0 |
+| `mars` | 1mo | `f32` | 442 | 34304 | 3.8km | 220.6km | 499.9km | 35.2 | 139.4 | 360.7 | 23.5 | 15444 | 6448 | 12412 | 0 |
 | `mercury` | 6mo | `f32` | 18 | 1580 | 1.1km | 4.9km | 77.5km | 8.8 | 109.8 | 109.8 | 0.5 | 63 | 1414 | 103 | 0 |
 | `neptune` | 5y | `f32` | 2 | 319 | 2.2km | 7.5km | 9.8km | 101.4 | 101.4 | 101.4 | 0.1 | 0 | 0 | 319 | 0 |
 | `pluto` | 5y | `f32` | 1 | 20 | 77m | 451m | 493m | 3.3 | 3.3 | 3.3 | 0.0 | 0 | 0 | 20 | 0 |
 | `saturn` | 1y | `f32` | 18 | 7127 | 1.5km | 8055.8km | 137111.6km | 69.3 | 149.8 | 149.8 | 1.3 | 4227 | 0 | 2900 | 0 |
 | `uranus` | 5y | `f32` | 1 | 218 | 1.3km | 3.6km | 306.9km | 118.7 | 118.7 | 118.7 | 0.1 | 0 | 0 | 218 | 0 |
-| `venus` | 6mo | `f32` | 57 | 7065 | 7m | 3.4km | 19.3km | 67.8 | 858.6 | 863.0 | 16.3 | 303 | 195 | 6567 | 0 |
+| `venus` | 6mo | `f32` | 57 | 7065 | 3m | 1.3km | 19.3km | 67.8 | 858.6 | 863.0 | 16.3 | 303 | 195 | 6567 | 0 |
 
 ## Per-probe error (worst-first within each zone)
 
@@ -27,9 +27,21 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 
 | Zone | probe_id | Mission | NAIF | Samples | Median err | p95 err | Max err |
 |---|---:|---|---:|---:|---:|---:|---:|
+| `earth-moon` | `117874688` | HORIZONS-SYNTH | -156 | 10630 | 32m | 62m | 330281.7km |
+| `earth-moon` | `111718401` | HORIZONS-SYNTH | -152 | 24625 | 15m | 458m | 263077.8km |
+| `earth-moon` | `103178240` | HORIZONS-SYNTH | -3 | 350 | 66m | 6.1km | 95188.6km |
+| `earth-moon` | `107151360` | HORIZONS-SYNTH | -86 | 22475 | 301m | 5.0km | 47652.4km |
+| `earth-moon` | `76296192` | HORIZONS-SYNTH | -640 | 9445 | 2m | 2.8km | 36184.0km |
+| `earth-moon` | `113205248` | HORIZONS-SYNTH | -62 | 95 | 30m | 74m | 30608.4km |
+| `earth-moon` | `116686851` | HORIZONS-SYNTH | -125 | 455 | 28m | 71m | 29012.4km |
+| `earth-moon` | `120958976` | HORIZONS-SYNTH | -231 | 7475 | 32m | 62m | 5616.5km |
+| `earth-moon` | `88698880` | HORIZONS-SYNTH | -226 | 385 | 30m | 118m | 2779.2km |
+| `earth-moon` | `96198656` | HORIZONS-SYNTH | -227 | 1795 | 44m | 114m | 1459.3km |
+| `earth-moon` | `91226112` | HORIZONS-SYNTH | -248 | 105 | 33m | 95m | 979.2km |
 | `earth-moon` | `106278912` | LPF | -118 | 6545 | 33m | 62m | 499.5km |
 | `earth-moon` | `67969024` | HST | -48 | 130470 | 170.6km | 381.9km | 458.8km |
 | `earth-moon` | `86638592` | INTEGRAL | -275 | 80725 | 1.1km | 5.5km | 202.8km |
+| `earth-moon` | `109834240` | HORIZONS-SYNTH | -95 | 34285 | 500m | 7.5km | 132.3km |
 | `earth-moon` | `88051712` | SMART1 | -238 | 10555 | 14m | 4.5km | 124.7km |
 | `earth-moon` | `102932480` | LADEE | -12 | 2155 | 104m | 1.4km | 43.1km |
 | `earth-moon` | `81858560` | CHANDRA | -151 | 72250 | 1.1km | 5.1km | 34.6km |
@@ -41,31 +53,61 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `32583680` | LUNARORBITER | -531 | 230 | 12m | 10.3km | 17.2km |
 | `earth-moon` | `86196224` | CONTOUR | -200 | 1125 | 36m | 3.4km | 13.8km |
 | `earth-moon` | `33976320` | LUNARORBITER | -535 | 640 | 14m | 7.5km | 13.0km |
+| `earth-moon` | `111718400` | HORIZONS-SYNTH | -153 | 415 | 12m | 3.5km | 12.9km |
 | `earth-moon` | `80404480` | LPM | -25 | 5480 | 79m | 319m | 12.8km |
 | `earth-moon` | `94793728` | SELENE | -131 | 5760 | 71m | 358m | 10.8km |
+| `earth-moon` | `121163776` | HORIZONS-SYNTH | -10 | 2270 | 42m | 590m | 10.2km |
+| `earth-moon` | `92663808` | HORIZONS-SYNTH | -235 | 1390 | 21m | 4.2km | 10.1km |
+| `earth-moon` | `74735616` | HORIZONS-SYNTH | -8 | 114130 | 30m | 62m | 10.1km |
+| `earth-moon` | `88449024` | HORIZONS-SYNTH | -997 | 17940 | 21m | 5.2km | 10.0km |
+| `earth-moon` | `84701184` | HORIZONS-SYNTH | -165 | 27775 | 35m | 62m | 10.0km |
+| `earth-moon` | `84873216` | HORIZONS-SYNTH | -47 | 13490 | 35m | 68m | 10.0km |
+| `earth-moon` | `120102913` | HORIZONS-SYNTH | -242 | 485 | 23m | 225m | 10.0km |
+| `earth-moon` | `116789248` | HORIZONS-SYNTH | -164 | 2645 | 28m | 1.7km | 9.9km |
+| `earth-moon` | `87195648` | HORIZONS-SYNTH | -998 | 1385 | 21m | 4.3km | 9.9km |
+| `earth-moon` | `96620544` | HORIZONS-SYNTH | -18 | 1075 | 15m | 5.8km | 9.9km |
 | `earth-moon` | `92659712` | STEREO | -234 | 1045 | 26m | 4.2km | 9.8km |
+| `earth-moon` | `93134848` | HORIZONS-SYNTH | -193 | 69345 | 8m | 21m | 9.7km |
+| `earth-moon` | `117895168` | HORIZONS-SYNTH | -240 | 1310 | 24m | 3.6km | 9.7km |
+| `earth-moon` | `116260864` | HORIZONS-SYNTH | -155 | 15565 | 16m | 530m | 9.5km |
 | `earth-moon` | `117612544` | EUCLID | -680 | 29810 | 33m | 61m | 9.4km |
+| `earth-moon` | `93134849` | HORIZONS-SYNTH | -192 | 69345 | 8m | 21m | 9.3km |
 | `earth-moon` | `118394880` | CLPS | -244 | 90 | 14m | 2.8km | 8.9km |
 | `earth-moon` | `103354368` | GAIA | -123 | 41065 | 35m | 61m | 8.8km |
+| `earth-moon` | `117669888` | HORIZONS-SYNTH | -169 | 1125 | 13m | 5.2km | 8.7km |
+| `earth-moon` | `117669889` | HORIZONS-SYNTH | -158 | 380 | 10m | 3.7km | 8.7km |
+| `earth-moon` | `96477184` | HORIZONS-SYNTH | -489 | 18000 | 36m | 63m | 8.6km |
+| `earth-moon` | `96477185` | HORIZONS-SYNTH | -486 | 15040 | 36m | 64m | 8.5km |
+| `earth-moon` | `86642688` | HORIZONS-SYNTH | -198 | 84915 | 4m | 17m | 8.5km |
+| `earth-moon` | `76357632` | HORIZONS-SYNTH | -21 | 109995 | 34m | 61m | 8.4km |
+| `earth-moon` | `120958977` | HORIZONS-SYNTH | -43 | 2555 | 34m | 64m | 8.3km |
 | `earth-moon` | `49065984` | VOYAGER | -31 | 35 | 28m | 947m | 8.0km |
 | `earth-moon` | `115347456` | JWST | -170 | 33740 | 33m | 61m | 7.8km |
 | `earth-moon` | `110526464` | BEPICOLOMBO | -121 | 335 | 49m | 2.1km | 7.5km |
+| `earth-moon` | `97353728` | HORIZONS-SYNTH | -163 | 53360 | 11m | 33m | 7.4km |
 | `earth-moon` | `80879616` | MCO | -127 | 105 | 40m | 134m | 6.1km |
 | `earth-moon` | `117293056` | JUICE | -28 | 445 | 28m | 121m | 5.9km |
 | `earth-moon` | `96616448` | LRO | -85 | 59360 | 156m | 1.1km | 5.9km |
+| `earth-moon` | `73691136` | HORIZONS-SYNTH | -40 | 675 | 177m | 3.9km | 5.5km |
 | `earth-moon` | `81121280` | NOZOMI | -178 | 400 | 28m | 108m | 5.0km |
+| `earth-moon` | `94101504` | HORIZONS-SYNTH | -39 | 54580 | 9m | 22m | 4.6km |
 | `earth-moon` | `46612480` | HELIOS | -302 | 25 | 125m | 3.2km | 4.2km |
 | `earth-moon` | `89325568` | MESSENGER | -236 | 235 | 39m | 80m | 4.1km |
+| `earth-moon` | `81121281` | HORIZONS-SYNTH | -29 | 365 | 28m | 133m | 4.0km |
 | `earth-moon` | `68640768` | ULYSSES | -55 | 35 | 68m | 902m | 3.7km |
 | `earth-moon` | `42479616` | PIONEER11 | -24 | 30 | 52m | 856m | 3.4km |
 | `earth-moon` | `76308480` | GLL | -77 | 225 | 26m | 267m | 3.0km |
 | `earth-moon` | `87605248` | MER | -254 | 115 | 36m | 122m | 3.0km |
 | `earth-moon` | `93814784` | PHOENIX | -84 | 65 | 32m | 504m | 2.7km |
 | `earth-moon` | `44969984` | HELIOS | -301 | 25 | 352m | 2.4km | 2.6km |
+| `earth-moon` | `116686852` | HORIZONS-SYNTH | -75 | 455 | 31m | 74m | 2.2km |
+| `earth-moon` | `122601472` | HORIZONS-SYNTH | -211 | 18710 | 37m | 64m | 2.2km |
 | `earth-moon` | `119541760` | EUROPACLIPPER | -159 | 110 | 23m | 103m | 1.8km |
 | `earth-moon` | `40910848` | PIONEER10 | -23 | 35 | 18m | 1.5km | 1.6km |
+| `earth-moon` | `103411712` | HORIZONS-SYNTH | -111 | 350 | 32m | 119m | 1.6km |
 | `earth-moon` | `49000448` | VOYAGER | -32 | 35 | 32m | 1.4km | 1.5km |
 | `earth-moon` | `89989120` | DEEPIMPACT | -140 | 820 | 42m | 103m | 1.3km |
+| `earth-moon` | `116686850` | HORIZONS-SYNTH | -182 | 485 | 26m | 96m | 1.3km |
 | `earth-moon` | `107429888` | ORX | -64 | 275 | 27m | 92m | 802m |
 | `earth-moon` | `112156672` | HYB2 | -37 | 355 | 31m | 96m | 654m |
 | `earth-moon` | `80715776` | MGS | -94 | 105 | 27m | 118m | 552m |
@@ -82,6 +124,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `89989121` | DEEPIMPACT | -70 | 105 | 40m | 124m | 131m |
 | `earth-moon` | `100265984` | MSL | -76 | 100 | 41m | 130m | 131m |
 | `earth-moon` | `97996800` | VCO | -5 | 75 | 42m | 128m | 129m |
+| `earth-moon` | `86376450` | HORIZONS-SYNTH | -204 | 75 | 29m | 123m | 124m |
 | `earth-moon` | `113246208` | MARS2020 | -168 | 80 | 27m | 123m | 124m |
 | `earth-moon` | `118050816` | PSYCHE | -255 | 25 | 55m | 119m | 119m |
 | `earth-moon` | `84353024` | M01 | -53 | 105 | 33m | 115m | 116m |
@@ -89,53 +132,80 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `87719936` | MER | -253 | 85 | 26m | 102m | 107m |
 | `earth-moon` | `115220480` | DART | -135 | 120 | 39m | 83m | 96m |
 | `earth-moon` | `109899777` | INSIGHT | -66 | 115 | 32m | 71m | 91m |
+| `earth-moon` | `123904000` | HORIZONS-SYNTH | -33 | 47285 | 34m | 61m | 86m |
 | `earth-moon` | `119513088` | HERA | -91 | 65 | 27m | 84m | 86m |
 | `earth-moon` | `109899776` | INSIGHT | -189 | 115 | 36m | 77m | 84m |
 | `earth-moon` | `109899778` | INSIGHT | -65 | 115 | 34m | 79m | 81m |
+| `earth-moon` | `110309376` | HORIZONS-SYNTH | -96 | 25 | 29m | 74m | 77m |
+| `earth-moon` | `86376448` | HORIZONS-SYNTH | -206 | 160 | 34m | 74m | 75m |
+| `earth-moon` | `86376449` | HORIZONS-SYNTH | -205 | 75 | 28m | 70m | 75m |
 | `interplanetary` | `68640768` | ULYSSES | -55 | 15270 | 2.6km | 32.7km | 2495.2km |
 | `interplanetary` | `107429888` | ORX | -64 | 1825 | 1.7km | 28.2km | 1311.0km |
 | `interplanetary` | `92659712` | STEREO | -234 | 3090 | 1.7km | 12.9km | 1110.0km |
+| `interplanetary` | `110309376` | HORIZONS-SYNTH | -96 | 2900 | 1.9km | 159.5km | 1019.0km |
 | `interplanetary` | `77094912` | NEAR | -93 | 1198 | 4.0km | 537.2km | 996.4km |
+| `interplanetary` | `92663808` | HORIZONS-SYNTH | -235 | 4565 | 2.0km | 38.1km | 989.9km |
 | `interplanetary` | `86196224` | CONTOUR | -200 | 1520 | 4.7km | 104.0km | 989.1km |
 | `interplanetary` | `115220480` | DART | -135 | 205 | 18.5km | 159.9km | 986.2km |
 | `interplanetary` | `46612480` | HELIOS | -302 | 1070 | 29.9km | 293.0km | 985.3km |
 | `interplanetary` | `44969984` | HELIOS | -301 | 2920 | 30.9km | 384.8km | 984.7km |
+| `interplanetary` | `116789248` | HORIZONS-SYNTH | -164 | 3705 | 1.9km | 11.9km | 982.1km |
 | `interplanetary` | `112156672` | HYB2 | -37 | 1870 | 3.5km | 482.7km | 981.7km |
 | `interplanetary` | `76308480` | GLL | -77 | 1415 | 5.5km | 205.8km | 978.4km |
 | `interplanetary` | `118050816` | PSYCHE | -255 | 605 | 1.3km | 35.9km | 958.3km |
 | `interplanetary` | `81121280` | NOZOMI | -178 | 1225 | 2.1km | 92.6km | 949.0km |
+| `interplanetary` | `116686852` | HORIZONS-SYNTH | -75 | 55 | 104.0km | 773.4km | 945.9km |
 | `interplanetary` | `117293056` | JUICE | -28 | 1960 | 4.0km | 153.0km | 945.4km |
 | `interplanetary` | `89989120` | DEEPIMPACT | -140 | 4095 | 1.9km | 66.0km | 944.5km |
+| `interplanetary` | `96477184` | HORIZONS-SYNTH | -489 | 9255 | 1.4km | 9.4km | 940.6km |
+| `interplanetary` | `113205248` | HORIZONS-SYNTH | -62 | 125 | 11.5km | 255.9km | 940.3km |
 | `interplanetary` | `119513088` | HERA | -91 | 645 | 2.2km | 43.6km | 940.2km |
+| `interplanetary` | `96198656` | HORIZONS-SYNTH | -227 | 23460 | 1.4km | 16.2km | 936.8km |
+| `interplanetary` | `96477185` | HORIZONS-SYNTH | -486 | 9470 | 1.4km | 12.0km | 934.5km |
 | `interplanetary` | `80879616` | MCO | -127 | 185 | 7.8km | 174.4km | 933.4km |
 | `interplanetary` | `26587136` | M2 | -2 | 70 | 38.6km | 471.4km | 932.4km |
 | `interplanetary` | `84353024` | M01 | -53 | 125 | 6.5km | 201.7km | 932.0km |
+| `interplanetary` | `116686851` | HORIZONS-SYNTH | -125 | 245 | 48.1km | 335.1km | 927.6km |
 | `interplanetary` | `110526464` | BEPICOLOMBO | -121 | 1735 | 66.6km | 275.2km | 927.0km |
+| `interplanetary` | `87195648` | HORIZONS-SYNTH | -998 | 110 | 16.7km | 452.3km | 906.2km |
 | `interplanetary` | `89325568` | MESSENGER | -236 | 1650 | 4.2km | 59.7km | 898.0km |
+| `interplanetary` | `116686850` | HORIZONS-SYNTH | -182 | 115 | 24.9km | 463.1km | 895.2km |
+| `interplanetary` | `84873216` | HORIZONS-SYNTH | -47 | 3790 | 1.8km | 18.0km | 882.9km |
+| `interplanetary` | `81121281` | HORIZONS-SYNTH | -29 | 3090 | 2.4km | 68.3km | 879.8km |
 | `interplanetary` | `87605248` | MER | -254 | 130 | 7.4km | 237.7km | 858.0km |
 | `interplanetary` | `119541760` | EUROPACLIPPER | -159 | 1275 | 5.1km | 154.4km | 848.3km |
 | `interplanetary` | `109899776` | INSIGHT | -189 | 125 | 7.9km | 232.3km | 827.6km |
 | `interplanetary` | `40910848` | PIONEER10 | -23 | 4430 | 0m | 7.5km | 824.5km |
+| `interplanetary` | `116416512` | HORIZONS-SYNTH | -210 | 135 | 35.7km | 513.3km | 814.8km |
+| `interplanetary` | `103411712` | HORIZONS-SYNTH | -111 | 470 | 2.3km | 110.7km | 809.2km |
+| `interplanetary` | `86376450` | HORIZONS-SYNTH | -204 | 255 | 5.0km | 134.5km | 800.0km |
 | `interplanetary` | `112545792` | SOLAR-ORBITER | -144 | 2720 | 3.4km | 30.2km | 798.8km |
 | `interplanetary` | `100265984` | MSL | -76 | 165 | 4.5km | 161.8km | 779.2km |
 | `interplanetary` | `109899777` | INSIGHT | -66 | 400 | 3.5km | 127.2km | 770.1km |
+| `interplanetary` | `91226112` | HORIZONS-SYNTH | -248 | 90 | 33.3km | 415.5km | 758.2km |
+| `interplanetary` | `120102913` | HORIZONS-SYNTH | -242 | 6665 | 1.5km | 10.2km | 757.1km |
 | `interplanetary` | `97996800` | VCO | -5 | 1405 | 5.0km | 119.7km | 752.8km |
 | `interplanetary` | `131874816` | ENVISION | -668 | 80 | 36.1km | 322.1km | 747.1km |
 | `interplanetary` | `93814784` | PHOENIX | -84 | 195 | 5.1km | 125.5km | 726.2km |
 | `interplanetary` | `90857472` | MRO | -74 | 130 | 5.3km | 146.9km | 682.0km |
 | `interplanetary` | `80715776` | MGS | -94 | 200 | 3.0km | 154.5km | 680.7km |
+| `interplanetary` | `88698880` | HORIZONS-SYNTH | -226 | 3195 | 3.1km | 83.8km | 677.8km |
+| `interplanetary` | `103178240` | HORIZONS-SYNTH | -3 | 195 | 6.8km | 176.3km | 659.5km |
 | `interplanetary` | `120614912` | LUCY | -49 | 1973 | 1.8km | 8.5km | 648.5km |
 | `interplanetary` | `100196352` | PHSRM | -555 | 195 | 5.0km | 140.0km | 644.6km |
 | `interplanetary` | `89989121` | DEEPIMPACT | -70 | 250 | 1.3km | 100.4km | 604.7km |
 | `interplanetary` | `113246208` | MARS2020 | -168 | 125 | 6.7km | 175.8km | 602.2km |
 | `interplanetary` | `124805120` | RAMSES | -92 | 215 | 1.8km | 119.1km | 580.0km |
+| `interplanetary` | `86376449` | HORIZONS-SYNTH | -205 | 255 | 105.0km | 470.4km | 566.9km |
 | `interplanetary` | `42479616` | PIONEER11 | -24 | 3910 | 0m | 50.0km | 556.6km |
 | `interplanetary` | `49065984` | VOYAGER | -31 | 31500 | 0m | 0m | 553.2km |
 | `interplanetary` | `49000448` | VOYAGER | -32 | 31000 | 0m | 0m | 547.8km |
+| `interplanetary` | `86376448` | HORIZONS-SYNTH | -206 | 245 | 4.9km | 74.8km | 514.3km |
 | `interplanetary` | `87719936` | MER | -253 | 125 | 4.9km | 140.0km | 488.2km |
 | `interplanetary` | `80977920` | MPL | -116 | 225 | 3.8km | 122.8km | 468.7km |
 | `interplanetary` | `109899778` | INSIGHT | -65 | 400 | 2.0km | 67.0km | 296.4km |
 | `interplanetary` | `104804352` | NEWHORIZONS | -98 | 6105 | 0m | 6m | 241.0km |
+| `interplanetary` | `78118912` | HORIZONS-SYNTH | -530 | 95 | 1.4km | 24.7km | 64.0km |
 | `interplanetary` | `101912576` | DAWN | -203 | 1555 | 1.7km | 10.1km | 30.5km |
 | `interplanetary` | `78716928` | PIONEER8 | -20 | 645 | 1.1km | 5.6km | 10.7km |
 | `interplanetary` | `112132096` | SIRTF | -79 | 560 | 1.2km | 7.2km | 10.6km |
@@ -145,7 +215,6 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `interplanetary` | `61759489` | VEGA | -66 | 5 | 417m | 1.5km | 1.5km |
 | `jupiter` | `40910848` | PIONEER10 | -23 | 1295 | 907m | 3.4km | 9681.1km |
 | `jupiter` | `42479616` | PIONEER11 | -24 | 1230 | 1.1km | 2.8km | 173.6km |
-| `jupiter` | `75776000` | HORIZONS-SYNTH | -344 | 695 | 140.1km | 142.2km | 143.0km |
 | `jupiter` | `76308480` | GLL | -77 | 15200 | 190m | 944m | 44.8km |
 | `jupiter` | `119541760` | EUROPACLIPPER | -159 | 8925 | 61m | 1.0km | 43.8km |
 | `jupiter` | `107159552` | JUNO | -61 | 18105 | 113m | 246m | 16.9km |
@@ -154,6 +223,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `jupiter` | `117293056` | JUICE | -28 | 915 | 974m | 3.6km | 4.0km |
 | `jupiter` | `49000448` | VOYAGER | -32 | 1430 | 911m | 3.5km | 4.0km |
 | `jupiter` | `104804352` | NEWHORIZONS | -98 | 625 | 931m | 3.5km | 3.9km |
+| `jupiter` | `75776000` | HORIZONS-SYNTH | -344 | 695 | 878m | 3.1km | 3.9km |
 | `mars` | `90857472` | MRO | -74 | 36100 | 7.4km | 265.9km | 499.9km |
 | `mars` | `84353024` | M01 | -53 | 44225 | 9.7km | 280.1km | 499.9km |
 | `mars` | `109281280` | EXOMARS2016 | -143 | 9200 | 24.4km | 312.9km | 498.4km |
@@ -169,6 +239,9 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `mars` | `48336896` | VIKING | -27 | 4480 | 1m | 150m | 48.2km |
 | `mars` | `120983552` | MAVEN | -202 | 320 | 10.4km | 28.2km | 39.1km |
 | `mars` | `81121280` | NOZOMI | -178 | 100 | 54m | 1.8km | 33.3km |
+| `mars` | `103178240` | HORIZONS-SYNTH | -3 | 14700 | 13m | 1.5km | 11.3km |
+| `mars` | `113205248` | HORIZONS-SYNTH | -62 | 9965 | 458m | 2.8km | 9.1km |
+| `mars` | `78118912` | HORIZONS-SYNTH | -530 | 2580 | 3m | 4m | 6.8km |
 | `mars` | `119513088` | HERA | -91 | 25 | 33m | 519m | 572m |
 | `mars` | `87719936` | MER | -253 | 35 | 20m | 60m | 194m |
 | `mars` | `80977920` | MPL | -116 | 15 | 43m | 156m | 156m |
@@ -179,6 +252,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `mars` | `87605248` | MER | -254 | 35 | 30m | 68m | 69m |
 | `mars` | `100265984` | MSL | -76 | 25 | 14m | 64m | 67m |
 | `mars` | `119541760` | EUROPACLIPPER | -159 | 20 | 32m | 61m | 61m |
+| `mars` | `88698880` | HORIZONS-SYNTH | -226 | 20 | 19m | 54m | 54m |
 | `mars` | `113246208` | MARS2020 | -168 | 40 | 22m | 43m | 44m |
 | `mercury` | `89325568` | MESSENGER | -236 | 7520 | 1.2km | 4.9km | 77.5km |
 | `mercury` | `110526464` | BEPICOLOMBO | -121 | 380 | 5m | 2.4km | 7.4km |
@@ -194,9 +268,11 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `venus` | `97996800` | VCO | -5 | 15385 | 7m | 237m | 19.3km |
 | `venus` | `110526464` | BEPICOLOMBO | -121 | 50 | 24m | 750m | 10.3km |
 | `venus` | `53637120` | PIONEER12 | -12 | 3770 | 535m | 7.4km | 10.0km |
+| `venus` | `91226112` | HORIZONS-SYNTH | -248 | 15800 | 1m | 57m | 9.9km |
 | `venus` | `76308480` | GLL | -77 | 30 | 18m | 1.2km | 9.0km |
 | `venus` | `131874816` | ENVISION | -668 | 70 | 6m | 162m | 1.3km |
 | `venus` | `117293056` | JUICE | -28 | 25 | 19m | 166m | 197m |
 | `venus` | `112545792` | SOLAR-ORBITER | -144 | 80 | 20m | 77m | 129m |
+| `venus` | `110309376` | HORIZONS-SYNTH | -96 | 40 | 27m | 77m | 85m |
 | `venus` | `26587136` | M2 | -2 | 35 | 21m | 63m | 64m |
 | `venus` | `89325568` | MESSENGER | -236 | 40 | 20m | 33m | 35m |

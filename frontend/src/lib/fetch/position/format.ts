@@ -21,6 +21,7 @@ export const HEADER_SIZE = COMMON_HEADER_SIZE + EXTENSION_SIZE; // 32
 /** Top-level format byte at offset 6 of the common header. */
 export const FORMAT_ELEMENTS = 0;
 export const FORMAT_CHEBYSHEV = 1;
+export const FORMAT_PROBES = 2;
 
 /** Elements sub-format (uint16 at offset 24). */
 export const SUBFORMAT_KEPLERIAN = 0;
@@ -29,6 +30,26 @@ export const SUBFORMAT_SGP4 = 2;
 
 /** Per-body chebyshev header size, follows the file header for cheb files. */
 export const CHEBYSHEV_BODY_HEADER_SIZE = 24;
+
+/** Per-sub-chunk record method byte values (probes payload). */
+export const PROBE_METHOD_UNCOVERABLE = 0;
+export const PROBE_METHOD_KEPLER_PURE = 1;
+export const PROBE_METHOD_KEPLER_DRIFT = 2;
+export const PROBE_METHOD_CHEBYSHEV = 3;
+
+/** Per-probe header size inside a probes-payload file. */
+export const PROBE_HEADER_SIZE = 12;
+/** Per-sub-chunk record header size (preceding the method-specific payload). */
+export const SUBCHUNK_HEADER_SIZE = 8;
+
+/**
+ * Bit in the chebyshev extension's flags byte (offset 28 of the common header)
+ * that marks the file's per-segment coefficients as float64 instead of the
+ * default float32. Sun-orbiter zones (`major`, `major_asteroids`) carry their
+ * absolute distances far enough from the SSB that float32 quantization shows
+ * up at km scale, so they ship f64. Moon zones stay f32.
+ */
+export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
 
 export const BASE_POSITION_PATH = `${DATA_BASE}/v1/position`;
 
@@ -60,6 +81,12 @@ export function chunkedUrl(zone: string, zoom: number, chunk: number): string {
 	return `${BASE_POSITION_PATH}/${zone}/${zoom}/${chunk}.bin.gz`;
 }
 
+/** Probe zones use the `chunked` shape with no zoom segment — see
+ *  [Probes payload](docs/export-format.md#probes-payload-format-byte--2). */
+export function chunkedFlatUrl(zone: string, chunk: number): string {
+	return `${BASE_POSITION_PATH}/${zone}/${chunk}.bin.gz`;
+}
+
 /** Sentinel values for missing data in the binary format. */
 export const MISSING_INT32 = -1;
 export const MISSING_UINT8 = 255;
@@ -83,6 +110,7 @@ export enum OrbitalSource {
 	CELESTRAK = 2,
 	SPICE = 3,
 	SBDB_MOON = 4,
+	SPICE_PROBE = 5,
 	UNKNOWN = 255
 }
 
@@ -98,6 +126,7 @@ export enum IdType {
 	SPKID = 1,
 	NORAD_SATCAT = 2,
 	SBDB_MOON = 3,
+	PROBE = 4,
 	UNKNOWN = 255
 }
 
@@ -106,7 +135,8 @@ const ID_TYPE_PREFIX: Record<number, string> = {
 	[IdType.NAIF]: 'naif',
 	[IdType.SPKID]: 'spkid',
 	[IdType.NORAD_SATCAT]: 'norad_satcat',
-	[IdType.SBDB_MOON]: 'sbdb_moon'
+	[IdType.SBDB_MOON]: 'sbdb_moon',
+	[IdType.PROBE]: 'probe'
 };
 
 /**
