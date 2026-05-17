@@ -149,10 +149,28 @@ def inception_et(naif_id: int, kernel_paths: list[str]) -> float | None:
     return max(intervals, key=lambda iv: iv[1] - iv[0])[0]
 
 
+def _positions_wrt_ssb(naif_id: int, ets: np.ndarray) -> np.ndarray:
+    """Per-ET position of `naif_id` wrt SSB (ECLIPJ2000, no light-time).
+
+    Returns a `(len(ets), 3)` array; rows where the lookup failed are NaN.
+    Single helper so probe / planet / body positions all flow through one
+    spkpos call per ET, letting the caller cache and reuse them.
+    """
+    out = np.full((len(ets), 3), np.nan)
+    for k, et in enumerate(ets):
+        try:
+            pos, _ = spiceypy.spkpos(str(naif_id), float(et), "ECLIPJ2000", "NONE", "0")
+            out[k] = pos
+        except spiceypy.exceptions.SpiceyError:
+            pass
+    return out
+
+
 def _landed_tail_start_idx(
     naif_id: int,
     sample_ets: np.ndarray,
     altitude_threshold_km: float,
+    probe_ssb: np.ndarray | None = None,
 ) -> int | None:
     """Index of the first sample of the longest landed-tail.
 
@@ -168,33 +186,29 @@ def _landed_tail_start_idx(
     sample. Polynomial fits of any degree can't span that. Truncate
     coverage at the start of the landed tail so we only render the
     in-flight phase.
+
+    Pass `probe_ssb` (from `_positions_wrt_ssb`) to avoid recomputing the
+    probe's SSB positions — the caller already needs them for zone classify.
     """
     n = len(sample_ets)
     if n < 2:
         return None
-    # Per-sample boolean: is the probe within threshold of any landing body?
+    if probe_ssb is None:
+        probe_ssb = _positions_wrt_ssb(naif_id, sample_ets)
+
+    # Per-target SSB positions (cheap — only DE/sat segments) + body radii.
     landed = np.zeros(n, dtype=bool)
-    for k, et in enumerate(sample_ets):
-        for body_naif in _LANDING_TARGETS:
-            try:
-                state, _ = spiceypy.spkezr(
-                    str(naif_id),
-                    float(et),
-                    "ECLIPJ2000",
-                    "NONE",
-                    str(body_naif),
-                )
-            except spiceypy.exceptions.SpiceyError:
-                continue
-            try:
-                radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
-            except spiceypy.exceptions.SpiceyError:
-                continue
-            dist = float(np.linalg.norm(state[:3]))
-            r_max = float(max(radii))
-            if (dist - r_max) < altitude_threshold_km:
-                landed[k] = True
-                break
+    for body_naif in _LANDING_TARGETS:
+        try:
+            radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        body_ssb = _positions_wrt_ssb(body_naif, sample_ets)
+        rel = probe_ssb - body_ssb
+        dist = np.linalg.norm(rel, axis=1)
+        r_max = float(max(radii))
+        landed |= (~np.isnan(dist)) & ((dist - r_max) < altitude_threshold_km)
+
     if not landed[-1]:
         return None
     # Walk back from the last sample while consecutive landed.
@@ -263,12 +277,23 @@ def _classify_contiguous_interval(
     n_samples = max(2, int(np.ceil((t1 - t0) / dt_s)) + 1)
     ets = np.linspace(t0, t1, n_samples)
 
+    # Compute probe-rel-SSB once per ET. This is the dominant cost when a
+    # mission has many loaded segments (e.g. MEX with 282 BSPs): each spkpos
+    # walks the segment list to find the probe. The per-zone loop below then
+    # subtracts cached planet-rel-SSB positions — those calls only touch DE /
+    # satellite kernels (a handful of segments) so they're an order of
+    # magnitude cheaper. Cuts MEX classify_trace from ~62 min to ~7 min.
+    probe_ssb = _positions_wrt_ssb(naif_id, ets)
+
     # Truncate the trailing landed phase, if any.
-    cut = _landed_tail_start_idx(naif_id, ets, landed_tail_altitude_km)
+    cut = _landed_tail_start_idx(
+        naif_id, ets, landed_tail_altitude_km, probe_ssb=probe_ssb
+    )
     if cut is not None and cut >= 2:
         cut_et = float(ets[cut])
         days_dropped = (t1 - cut_et) / _S_PER_DAY
         ets = ets[:cut]
+        probe_ssb = probe_ssb[:cut]
         n_samples = len(ets)
         logger.info(
             "classify_trace naif=%d: truncating landed tail at et=%.0f "
@@ -279,24 +304,17 @@ def _classify_contiguous_interval(
         )
 
     intervals: list[ZoneInterval] = []
+    target_ssb_cache: dict[int, np.ndarray] = {}
 
     for zone in PLANETARY_ZONES:
         if zone.r_zone_km is None:
             continue
-        in_zone_mask = np.zeros(n_samples, dtype=bool)
-        for k, et in enumerate(ets):
-            try:
-                state, _ = spiceypy.spkezr(
-                    str(naif_id),
-                    float(et),
-                    "ECLIPJ2000",
-                    "NONE",
-                    str(zone.barycenter_naif_id),
-                )
-            except spiceypy.exceptions.SpiceyError:
-                continue
-            dist = float(np.linalg.norm(state[:3]))
-            in_zone_mask[k] = dist < zone.r_zone_km
+        tgt = zone.barycenter_naif_id
+        if tgt not in target_ssb_cache:
+            target_ssb_cache[tgt] = _positions_wrt_ssb(tgt, ets)
+        rel = probe_ssb - target_ssb_cache[tgt]
+        dist = np.linalg.norm(rel, axis=1)
+        in_zone_mask = (~np.isnan(dist)) & (dist < zone.r_zone_km)
         if not in_zone_mask.any():
             continue
         # Run-length encode the boolean mask back into [start, end] intervals.
