@@ -567,15 +567,22 @@ def build_one(naif_id: int) -> Path:
     Coarse segment first, then refined segments — SPICE evaluates with the
     last matching segment in the file winning for overlapping epochs, so
     queries inside a refinement window automatically use the 1h data.
+
+    Writes to `<spk>.tmp` then atomically replaces `<spk>` so a concurrent
+    reader (e.g. an in-flight `space-map-export` furnshing the same file)
+    keeps its already-open fd on the previous inode and finishes cleanly.
+    Without this the export raced and crashed with SPICE(FILENOTFOUND) when
+    the downloader unlinked an SPK between the export's furnsh and unload.
     """
     cache_dir = SYNTH_CACHE_ROOT / str(naif_id)
     meta = orjson.loads((cache_dir / "meta.json").read_bytes())
     SYNTH_KERNELS_DIR.mkdir(parents=True, exist_ok=True)
     spk_path = SYNTH_KERNELS_DIR / f"{naif_id}.bsp"
-    if spk_path.exists():
-        spk_path.unlink()
+    tmp_path = spk_path.with_suffix(spk_path.suffix + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
 
-    handle = spiceypy.spkopn(str(spk_path), f"Horizons synth {meta['name']}"[:60], 0)
+    handle = spiceypy.spkopn(str(tmp_path), f"Horizons synth {meta['name']}"[:60], 0)
     written = 0
     try:
         coarse_samples = _parse_chunks((cache_dir / meta["coarse"]["file"]).read_text())
@@ -591,8 +598,9 @@ def build_one(naif_id: int) -> Path:
         spiceypy.spkcls(handle)
 
     if written == 0:
-        spk_path.unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
         raise RuntimeError(f"naif {naif_id}: no usable segments")
+    tmp_path.replace(spk_path)
 
     logger.info(
         "naif %d: wrote %s (%d segments, %d bytes)",
