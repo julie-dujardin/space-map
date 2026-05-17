@@ -279,7 +279,14 @@ def _pack_subchunk(fit: SubChunkFit, zone: Zone) -> bytes:
 def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
     """Walk `missions/` and return `[(mission_dir, kernels, naif_id)]` for
     every spacecraft NAIF ID in `[-999, -1]`, after dropping stationary
-    kernels."""
+    kernels.
+
+    Kernels come from `_index.json`'s `files` list (whatever MISSION_INCLUDE
+    matched at download time), NOT a directory glob. Globbing would pick up
+    stale or downloader-filtered BSPs left over from prior downloads — e.g.
+    MEX's 269 ORMM monthly kernels that we now exclude because their segment
+    count thrashes SPICE's DAF cache.
+    """
     out: list[tuple[Path, list[Path], int]] = []
     if not MISSIONS_DIR.exists():
         return out
@@ -289,10 +296,15 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         idx_path = mdir / "_index.json"
         if not idx_path.exists():
             continue
-        kernels = _mission_kernels(mdir)
+        idx = json.loads(idx_path.read_text())
+        kernels = [
+            mdir / f["name"]
+            for f in idx.get("files", [])
+            if (mdir / f["name"]).exists()
+            and not any(p in f["name"] for p in _STATIONARY_PATTERNS)
+        ]
         if not kernels:
             continue
-        idx = json.loads(idx_path.read_text())
         spacecraft_ids = sorted(
             t for t in (int(s) for s in idx.get("targets", {})) if -999 <= t <= -1
         )
