@@ -91,10 +91,39 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "EXOMARS2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "ExoMars2016": (r"^em16_tgo_mlt_\d+_\d+_v\d+\.bsp$",),
     "DAWN": (r"^Dawn_ephem_\d+\.bsp$",),
-    "BEPICOLOMBO": (r"^bc_mcs_mct_\d+_\d+_\d+_v03\.bsp$",),
-    "JUNO": (r"^juno_rec_orbit\.bsp$", r"^juno_pred_orbit\.bsp$"),
-    "MEX": (r"^MEX_ROB_\d+_\d+_\d+\.BSP$",),
-    "MARS-EXPRESS": (r"^MEX_ROB_\d+_\d+_\d+\.BSP$",),
+    # MPO+MMO+MTM composite during cruise (`bc_mcs_mct_*`), and post-separation
+    # MMO/MPO long-term plans (`bc_mmo_mlt_*`, `bc_mpo_mlt_*`) plus their
+    # post-2028 SLT extensions. Each MLT iteration covers a different date
+    # span (different planning epochs), so we keep all matches rather than
+    # lex-last; SPICE's last-furnish-wins handles overlap fine.
+    "BEPICOLOMBO": (
+        r"^bc_mcs_mct_\d+_\d+_\d+_v\d+\.bsp$",
+        r"^bc_mmo_mlt_\d+_\d+_\d+_v\d+\.bsp$",
+        r"^bc_mpo_mlt_\d+_\d+_\d+_v\d+\.bsp$",
+        r"^bc_mmo_slt_extension_\d+_\d+_v\d+\.bsp$",
+        r"^bc_mpo_slt_extension_\d+_\d+_v\d+\.bsp$",
+    ),
+    # `spk_ref_*` is the long-arc trajectory reference predict (~7 yr); lex-last
+    # picks the most recent issue, which extends past `juno_pred_orbit`.
+    "JUNO": (
+        r"^juno_rec_orbit\.bsp$",
+        r"^juno_pred_orbit\.bsp$",
+        r"^spk_ref_\d{6}_\d{6}_\d{6}\.bsp$",
+    ),
+    # ESA `MEX/` 404s — canonical dir is `MARS-EXPRESS/` (NAIF `MEX/` mirrors
+    # the same archive). `MEX_ROB_*` reconstruction is frozen at 2013-12-31;
+    # `ORMM__*` continues monthly (one file per month, ~6-11 MB each, must
+    # keep all for full coverage); `ORMF_*` is the flight predict (full-mission).
+    "MEX": (
+        r"^MEX_ROB_\d+_\d+_\d+\.BSP$",
+        r"^ORMM__\d{12}_\d+\.BSP$",
+        r"^ORMF_T\d+_\d{6}_\d{6}_\d+\.BSP$",
+    ),
+    "MARS-EXPRESS": (
+        r"^MEX_ROB_\d+_\d+_\d+\.BSP$",
+        r"^ORMM__\d{12}_\d+\.BSP$",
+        r"^ORMF_T\d+_\d{6}_\d{6}_\d+\.BSP$",
+    ),
     "MRO": (r"^mro_cruise\.bsp$", r"^mro_psp\d*\.bsp$"),
     "MER": (r"^mer[12]_cruise.*\.bsp$", r"^mer[12]_edl_rcb_v\d+\.bsp$"),
     # NAIF's actual M01 (Mars Odyssey) files are split across cruise +
@@ -107,7 +136,10 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^m01_map\d+\.bsp$",
         r"^m01_map_rec\.bsp$",
     ),
-    "JUICE": (r"^juice_orbc_000104_\d+_\d+_v01\.bsp$",),
+    # `juice_orbc_<iter>_<start>_<end>_v<N>.bsp` — iteration ID and version
+    # both bump over time; previous `000104..._v01` hardcode would silently
+    # break on the next ESA release.
+    "JUICE": (r"^juice_orbc_\d+_\d+_\d+_v\d+\.bsp$",),
     "LUCY": (r"^lcy_\d+_330\d+_.*sconly_v\d+\.bsp$",),
     # Latest L-version on NAIF is L025; the previous L030 hardcode matched
     # zero files. Generalised to match any L-version so future bumps don't
@@ -126,8 +158,21 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^hera_fcp_\d+_\d+_\d+_v\d+\.bsp$",
         r"^hera_flp_\d+_\d+_\d+_v\d+\.bsp$",
     ),
-    "PSYCHE": (r"^psyche_rec_\d+-\d+_\d+_v\d+\.bsp$",),
-    "GAIA": (r"^gaia_\d+_\d+_v\d+\.bsp$",),
+    # `_rec_*` are per-arc reconstructions (must keep all); `_ref_*` are
+    # long-arc references to mission EOM (Psyche arrival 2029-06).
+    "PSYCHE": (
+        r"^psyche_rec_\d+-\d+_\d+_v\d+\.bsp$",
+        r"^psyche_ref_\d+-\d+_\d+_v\d+\.bsp$",
+    ),
+    # `gaia_<launch>_<asof>_v\d+` is the cumulative reconstruction; `_rec_`
+    # and `_pre_` are weekly chunks (LATEST_ONLY picks the latest each); `_flp_`
+    # is the long-arc flight predict (to 2125).
+    "GAIA": (
+        r"^gaia_\d+_\d+_v\d+\.bsp$",
+        r"^gaia_rec_\d+_\d+_v\d+\.bsp$",
+        r"^gaia_pre_\d+_\d+_v\d+\.bsp$",
+        r"^gaia_flp_\d+_\d+_v\d+\.bsp$",
+    ),
     # NAIF/{VEX,VENUS-EXPRESS,ROSETTA,MPF}/kernels/spk/ are empty on the
     # operational tree; real data lives in PDS3 archives (vex-e_v-spice-6-v2.0,
     # ros-e_m_a_c-spice-6-v1.0, mpf-m-spice-6-v1.0). Adding those is a
@@ -135,12 +180,24 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "VEX": (),
     "VENUS-EXPRESS": (),
     "ROSETTA": (),
-    # OSIRIS-REx cumulative post-encounter ODs.
-    "ORX": (r"^orx_\d+_\d+_refod\d+_v\d+\.bsp$",),
+    # OSIRIS-REx / OSIRIS-APEX. NAIF moved from `refodNNN` to plain `odNNN`
+    # after Bennu departure (and ODs now carry maneuver tags like `od401-C-
+    # TCM18-P-TCM19B`). `_pgaa\d+_dayNNmNN_*` are the multi-year long-arc
+    # references for the primary mission.
+    "ORX": (
+        r"^orx_\d+_\d+_\d+_(?:refod|od)\d+[A-Za-z0-9_-]*_v\d+\.bsp$",
+        r"^orx_\d+_\d+_pgaa\d+_day\d+m\d+(?:_v\d+)?\.bsp$",
+        r"^spk_orx_\d+_\d+_pgaa\d+_day\d+m\d+_v\d+\.bsp$",
+    ),
     # Chandrayaan-1 has either a single 712 MiB predict or 2300+ daily 3.5 MiB
     # kernels (~8 GiB cumulative). Disabled pending a cost/value decision.
     "CHANDRAYAAN-1": (),
-    "MAVEN": (r"^maven_orb_rec\.bsp$",),
+    # Cumulative reconstruction + quarterly deltas. NAIF updates the cumulative
+    # quarterly; deltas catch the case where the cumulative lags.
+    "MAVEN": (
+        r"^maven_orb_rec\.bsp$",
+        r"^maven_orb_rec_\d{6}_\d{6}_v\d+\.bsp$",
+    ),
     # Pre-launch `europaclipper_recon_*` pattern never matched any published
     # file; real layout is `ref_trj_*_scpse.bsp` (full-mission references)
     # plus dozens of incremental `trj_*_OD\d+_v\d+.bsp` arc reconstructions.
@@ -217,9 +274,18 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^HUYGENS_(?:COAST|ENTRY|DESCENT|LANDED)_V\d+\.BSP$",
     ),
     "COMET-INTERCEPTOR": (r"^CI_SC[AB][12]?_v\d+\.bsp$",),
-    "ENVISION": (r"^EnVision_T1_2032_N_LPO_ML014_\d+_\d+_v\d+\.bsp$",),
+    # Pre-launch trajectory study with many variant scenarios (T1/T4/ET1/HEO,
+    # NorthVOI/SouthVOI/LPO, etc). Permissive: every EnVision_*.bsp under
+    # this dir is a trajectory candidate; SKIP_PATTERNS already drops
+    # `_struct_` and other non-trajectory files.
+    "ENVISION": (r"^EnVision_[A-Za-z0-9_]+(?:_v\d+)?\.bsp$",),
     "RAMSES": (r"^ramses_study_LPO_\d+(?:_CEP)?_\d+_\d+_v\d+\.bsp$",),
-    "M-MATISSE": (r"^mmatisse_(?:henri|marguerite)_ipo1_LD21_\d+_\d+_v\d+\.bsp$",),
+    # M-MATISSE has both short summary IPO1 LD21 files AND per-phase
+    # (EEM/T2/T4, year, LD, FDC/DLC, IPO1/IPO2) detailed kernels.
+    "M-MATISSE": (
+        r"^mmatisse_(?:henri|marguerite)_ipo1_LD21_\d+_\d+_v\d+\.bsp$",
+        r"^mmatisse_(?:henri|marguerite)_\d{4}_[A-Za-z0-9]+_LD\d+_(?:FDC|DLC)_IPO\d+_\d+_\d+_v\d+\.bsp$",
+    ),
     # --- PDS3 archive missions ---
     "NEWHORIZONS": (
         r"^nh_recon_e2j_v\d+\.bsp$",
@@ -231,6 +297,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^nh_recon_pluto_od\d+_v\d+\.bsp$",
         r"^nh_recon_arrokoth_od\d+_v\d+\.bsp$",
         r"^nh_pred_alleph_od\d+\.bsp$",
+        r"^nh_pred_od\d+\.bsp$",
     ),
     "MESSENGER": (
         # Cumulative cruise+orbital long-arc, OD431 v_2.
@@ -249,10 +316,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^near_erosorbit_nav_v\d+\.bsp$",
         r"^near_eroslanded_nav_v\d+\.bsp$",
     ),
-    "GRAIL": (
-        r"^grail_\d+_\d+_nav_v\d+\.bsp$",
-        r"^grail_\d+_\d+_crashsite_v\d+\.bsp$",
-    ),
+    "GRAIL": (r"^grail_\d+_\d+_nav_v\d+\.bsp$",),
     "HAYABUSA": (
         r"^hay_jaxa_\d+_\d+_v\d+n?\.bsp$",
         r"^hayabusa_itokawarendezvous_v\d+\.bsp$",
@@ -292,7 +356,20 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
 # versions and we only want the lex-last filename per pattern. Use for
 # `mission_<launch>_<asof>_v<NN>.bsp` series where each kernel fully respans
 # the prior coverage.
-MISSION_LATEST_ONLY: frozenset[str] = frozenset({"INTEGRAL", "HERA"})
+MISSION_LATEST_ONLY: frozenset[str] = frozenset(
+    {
+        # Each pattern in these missions is a forward-extending cumulative
+        # series — lex-last is the most recent issue and supersedes prior
+        # iterations. (BepiColombo MMO/MPO MLT explicitly doesn't qualify:
+        # different MLT iterations cover *different* date windows, so we
+        # keep all matches.)
+        "INTEGRAL",
+        "HERA",
+        "GAIA",
+        "JUNO",
+        "JUICE",
+    }
+)
 
 
 SKIP_PATTERNS: tuple[re.Pattern, ...] = tuple(
