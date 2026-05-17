@@ -4,9 +4,14 @@ Bypasses the full `space-map-export` pipeline so we can verify the synth
 SPKs flow through to gzipped per-zone/per-chunk binaries without depending
 on the rest of the export running cleanly.
 
-Outputs land under `space-map-export/position/probes/`.
+Writes chunks to `space-map-export/v1/position/probes/{zone}/{chunk}.bin.gz`
+matching the full-pipeline layout, and emits a minimal
+`space-map-export/v1/metadata.json` carrying just the `position.zones`
+section so the probe-diagnostic scripts (probe_benchmark, probe_chunks,
+probe_gaps) can read the manifest.
 """
 
+import json
 import logging
 import logging.config
 import tomllib
@@ -21,7 +26,9 @@ def main() -> None:
         logging.config.dictConfig(tomllib.load(f))
 
     log = logging.getLogger("horizons_synth_probe_export")
-    out_dir = EXPORT_DIR
+    # Match the full-pipeline layout so probe_benchmark / probe_chunks /
+    # probe_gaps find the chunks and manifest where they expect.
+    out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with engine_scope():
@@ -35,6 +42,21 @@ def main() -> None:
                 len(zones),
                 sorted(zones.keys()),
             )
+
+    # Minimal manifest so probe-diagnostic scripts can find the zones.
+    # `space-map-export` writes a much richer metadata.json but those extras
+    # aren't needed for the probe scripts; we merge into an existing manifest
+    # if one is already present so we don't clobber prior exports.
+    manifest_path = out_dir / "metadata.json"
+    manifest: dict = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except json.JSONDecodeError:
+            manifest = {}
+    manifest.setdefault("position", {}).setdefault("zones", {}).update(zones)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    log.info("Wrote manifest %s with %d zones", manifest_path, len(zones))
 
 
 if __name__ == "__main__":
