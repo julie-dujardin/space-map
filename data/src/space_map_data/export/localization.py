@@ -4,6 +4,11 @@ import orjson
 import logging
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.deepl import (
+    MessageValue,
+    load_translations as load_deepl_translations,
+    lookup_translation,
+)
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -18,7 +23,7 @@ MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
 
 # All prefixes managed by this module — keys with these prefixes are removed
 # before writing fresh ones, so hand-written keys are never touched.
-_GENERATED_PREFIXES = ("unit_name_", "unit_symbol_", "property_name_")
+GENERATED_PREFIXES = ("unit_name_", "unit_symbol_", "property_name_")
 
 _UNIT_SYMBOL_PID = "P5061"
 
@@ -129,38 +134,80 @@ def _collect_property_labels(
     return result
 
 
+def _strip_generated(data: dict[str, MessageValue]) -> dict[str, MessageValue]:
+    return {
+        k: v
+        for k, v in data.items()
+        if not any(k.startswith(p) for p in GENERATED_PREFIXES)
+    }
+
+
 def write_messages(
     wikidata_entities: WikidataEntityCache,
     used_units: set[str],
 ) -> None:
-    """Collect unit + property labels and merge them into frontend message files."""
+    """Collect unit + property labels and merge them into frontend message files.
+
+    For non-English languages, manual (non-generated) entries are replaced with
+    DeepL translations pulled from ``DOWNLOAD_DIR/deepl/{lang}.json`` (produced
+    by the download phase). Plural-variant en.json entries are expanded into
+    the target locale's CLDR plural categories. Strings missing from the cache
+    fall back to the existing translation, then to the English source.
+    """
     unit_labels = _collect_unit_labels(wikidata_entities, used_units)
     property_labels = _collect_property_labels(wikidata_entities)
 
+    en_file = MESSAGES_DIR / "en.json"
+    en_manual: dict[str, MessageValue] = (
+        _strip_generated(orjson.loads(en_file.read_bytes())) if en_file.exists() else {}
+    )
+
     for lang in LANGUAGES:
         msg_file = MESSAGES_DIR / f"{lang}.json"
-        if msg_file.exists():
-            existing = orjson.loads(msg_file.read_bytes())
+        existing: dict[str, MessageValue] = (
+            orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
+        )
+
+        if lang == "en":
+            manual: dict[str, MessageValue] = _strip_generated(existing)
         else:
-            existing = {}
+            existing_manual = _strip_generated(existing)
+            translations = load_deepl_translations(lang)
+            manual = {}
+            untranslated: list[str] = []
+            for key, en_value in en_manual.items():
+                if not en_value:
+                    manual[key] = en_value
+                    continue
+                translated = lookup_translation(translations, key, en_value, lang)
+                if translated is None:
+                    untranslated.append(key)
+                    manual[key] = existing_manual.get(key, en_value)
+                else:
+                    manual[key] = translated
+            if untranslated:
+                logger.warning(
+                    "DeepL cache missing %d translation(s) for %s; "
+                    "keeping prior values where present (first few: %s) — "
+                    "run `space-map-download deepl` to refresh",
+                    len(untranslated),
+                    lang,
+                    untranslated[:5],
+                )
 
-        # Strip old generated keys
-        manual = {
-            k: v
-            for k, v in existing.items()
-            if not any(k.startswith(p) for p in _GENERATED_PREFIXES)
-        }
-
-        # Merge fresh generated keys
         generated = {
             **unit_labels.get(lang, {}),
             **property_labels.get(lang, {}),
         }
-        merged = {**manual, **dict(sorted(generated.items()))}
+        merged: dict[str, MessageValue] = {
+            **manual,
+            **dict(sorted(generated.items())),
+        }
 
         msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
         logger.info(
-            "Wrote %d generated keys to %s (%d total)",
+            "Wrote %d manual + %d generated keys to %s (%d total)",
+            len(manual),
             len(generated),
             msg_file.name,
             len(merged),

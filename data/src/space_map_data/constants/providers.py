@@ -16,6 +16,7 @@ class PROVIDERS(StrEnum):
     IAU_NOMENCLATURE = "iau_nomenclature"
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
+    DEEPL = "deepl"
 
 
 class ID_TYPES(StrEnum):

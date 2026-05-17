@@ -32,6 +32,7 @@ from space_map_data.download.providers.metadata.texture_sources import (
     TextureSourcesDownloader,
 )
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
+from space_map_data.download.providers.deepl import DeepLDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ PROVIDERS_CLASSES = [
     IAUNomenclatureDownloader,
     TextureSourcesDownloader,
     BJJRingsDownloader,
+    DeepLDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 

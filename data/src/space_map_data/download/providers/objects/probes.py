@@ -111,17 +111,21 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^spk_ref_\d{6}_\d{6}_\d{6}\.bsp$",
     ),
     # ESA `MEX/` 404s — canonical dir is `MARS-EXPRESS/` (NAIF `MEX/` mirrors
-    # the same archive). `MEX_ROB_*` reconstruction is frozen at 2013-12-31;
-    # `ORMM__*` continues monthly (one file per month, ~6-11 MB each, must
-    # keep all for full coverage); `ORMF_*` is the flight predict (full-mission).
+    # the same archive). Kept patterns:
+    #   * `MEX_ROB_*` — yearly reconstruction, frozen at 2013-12-31
+    #   * `ORMF_*`    — flight predict, full-mission, latest extends to 2032
+    # The `ORMM__YYMMDDHHMMSS_NNNNN.BSP` monthly reconstructions (269 files
+    # 2003→present, continuous coverage) are EXCLUDED: 269 small segments
+    # in one furnish pool blow out SPICE's DAF cache and make classify_trace
+    # run for 30+ min on MEX alone. Re-add via either (a) HORIZONS-SYNTH
+    # precedence wins for the 2014-2018 gap, or (b) per-mission spkmerge in
+    # the download pipeline to collapse 269 BSPs into 1.
     "MEX": (
         r"^MEX_ROB_\d+_\d+_\d+\.BSP$",
-        r"^ORMM__\d{12}_\d+\.BSP$",
         r"^ORMF_T\d+_\d{6}_\d{6}_\d+\.BSP$",
     ),
     "MARS-EXPRESS": (
         r"^MEX_ROB_\d+_\d+_\d+\.BSP$",
-        r"^ORMM__\d{12}_\d+\.BSP$",
         r"^ORMF_T\d+_\d{6}_\d{6}_\d+\.BSP$",
     ),
     "MRO": (r"^mro_cruise\.bsp$", r"^mro_psp\d*\.bsp$"),
