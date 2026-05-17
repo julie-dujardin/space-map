@@ -21,7 +21,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.probe_id import CACHE_PATH as PROBE_ID_CACHE  # noqa: E402
+from space_map_data.probes.probe_id import load_probe_labels  # noqa: E402
 from space_map_data.utils.paths import EXPORT_DIR  # noqa: E402
 
 _JD_UNIX_EPOCH = 2440587.5  # JD of 1970-01-01 00:00 UTC
@@ -33,9 +33,8 @@ def _jd_to_date(jd: float) -> str:
 
 
 def _load_probe_names() -> dict[int, str]:
-    """`probe_id → "MISSION/naif"` from the on-disk probe_id cache."""
-    cache = json.loads(PROBE_ID_CACHE.read_text())
-    return {int(r["probe_id"]): key for key, r in cache.items()}
+    """`probe_id → "Label/naif"` (HORIZONS-SYNTH names resolved per-spacecraft)."""
+    return load_probe_labels()
 
 
 def _collapse_runs(idxs: list[int]) -> list[tuple[int, int]]:

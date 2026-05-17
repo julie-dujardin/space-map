@@ -46,6 +46,7 @@ from space_map_data.export.position.format import (  # noqa: E402
 from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
 from space_map_data.probes.probe_id import (  # noqa: E402
     CACHE_PATH as PROBE_ID_CACHE,
+    load_probe_labels,
 )
 from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
@@ -219,11 +220,21 @@ class SampleResult:
 
 
 def _invert_probe_id_cache() -> dict[int, tuple[str, int]]:
-    """Build `probe_id → (mission, naif_id)` from the cache."""
+    """`probe_id → (label, naif_id)` with HORIZONS-SYNTH names resolved
+    per-spacecraft via `load_probe_labels`."""
     cache = json.loads(PROBE_ID_CACHE.read_text())
-    return {
-        int(r["probe_id"]): (r["mission"], int(r["naif_id"])) for r in cache.values()
+    naif_by_pid: dict[int, int] = {
+        int(r["probe_id"]): int(r["naif_id"]) for r in cache.values()
     }
+    labels = load_probe_labels()
+    out: dict[int, tuple[str, int]] = {}
+    for pid, naif in naif_by_pid.items():
+        label = labels.get(pid, f"?/{naif}")
+        # labels are "Name/naif"; split off the naif suffix the benchmark
+        # builds its own table column for.
+        name = label.rsplit("/", 1)[0] if "/" in label else label
+        out[pid] = (name, naif)
+    return out
 
 
 def _mu_for_center(naif_id: int) -> float:

@@ -32,7 +32,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.probes.probe_id import CACHE_PATH as PROBE_ID_CACHE  # noqa: E402
+from space_map_data.probes.probe_id import load_probe_labels  # noqa: E402
 from space_map_data.utils.paths import EXPORT_DIR  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -49,8 +49,7 @@ def _jd_to_date(jd: float) -> str:
 
 
 def _load_probe_names() -> dict[int, str]:
-    cache = json.loads(PROBE_ID_CACHE.read_text())
-    return {int(r["probe_id"]): key for key, r in cache.items()}
+    return load_probe_labels()
 
 
 def _collect_intervals(

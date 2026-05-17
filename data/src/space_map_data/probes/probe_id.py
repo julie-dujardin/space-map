@@ -113,6 +113,48 @@ def _cache_key(mission: str, naif_id: int) -> str:
     return f"{mission}/{naif_id}"
 
 
+def load_probe_labels() -> dict[int, str]:
+    """`probe_id → "Label/naif"` for the on-disk cache.
+
+    Label is the mission folder name by default, except for HORIZONS-SYNTH
+    where the umbrella name is replaced with the per-naif Horizons
+    spacecraft name from `missions/HORIZONS-SYNTH/_index.json` (so probes
+    read as "Aditya-L1 (spacecraft)/-156" rather than "HORIZONS-SYNTH/-156"
+    in the diagnostic scripts). Falls back gracefully when the synth index
+    is missing or unreadable.
+    """
+    cache = _load_cache()
+    labels: dict[int, str] = {int(r["probe_id"]): key for key, r in cache.items()}
+
+    synth_idx = (
+        DOWNLOAD_DIR
+        / "spice"
+        / "kernels"
+        / "missions"
+        / "HORIZONS-SYNTH"
+        / "_index.json"
+    )
+    if not synth_idx.exists():
+        return labels
+    try:
+        idx = json.loads(synth_idx.read_text())
+    except (OSError, json.JSONDecodeError):
+        return labels
+    naif_to_name: dict[int, str] = {
+        int(t): f["name_horizons"]
+        for f in idx.get("files", [])
+        for t in f.get("targets", [])
+        if f.get("name_horizons")
+    }
+    for r in cache.values():
+        if r.get("mission") != "HORIZONS-SYNTH":
+            continue
+        nm = naif_to_name.get(int(r["naif_id"]))
+        if nm:
+            labels[int(r["probe_id"])] = f"{nm}/{r['naif_id']}"
+    return labels
+
+
 def assign(
     mission: str,
     naif_id: int,
