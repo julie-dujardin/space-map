@@ -181,10 +181,25 @@ export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZonePa
  * Probe zones (`probes/*`) — flat manifest entries the `ProbeStore` consumes.
  * Returns an empty map when no probe zones exist; callers gate construction
  * on `size > 0`.
+ *
+ * `interplanetary` is intentionally inserted last so the `ProbeStore`'s
+ * first-match-wins resolution prefers a planet-centric zone over the catch-all
+ * heliocentric one. A flyby probe is emitted into both zones at the same jd
+ * (see `data/.../trace.py`), and elements derived against the Sun would render
+ * as a meaningless near-hyperbolic curve while the probe is captured around a
+ * planet (e=>1 because the probe's Sun-relative velocity is dominated by the
+ * planet's orbital velocity).
  */
 export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
 	const out = new Map<string, ProbeZoneParams>();
-	for (const [zone, zoneData] of Object.entries(meta.position.zones)) {
+	const entries = Object.entries(meta.position.zones)
+		.filter(([, z]) => isProbeZone(z))
+		.sort(([a], [b]) => {
+			const aLast = a === 'probes/interplanetary' ? 1 : 0;
+			const bLast = b === 'probes/interplanetary' ? 1 : 0;
+			return aLast - bLast || a.localeCompare(b);
+		});
+	for (const [zone, zoneData] of entries) {
 		if (!isProbeZone(zoneData)) continue;
 		out.set(zone, {
 			chunks: zoneData.chunks,

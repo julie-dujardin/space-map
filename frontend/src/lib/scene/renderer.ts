@@ -30,7 +30,8 @@ import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { probePositionScene } from '$lib/fetch/position/probes/propagate';
+import { probePositionKm } from '$lib/fetch/position/probes/propagate';
+import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
@@ -911,9 +912,9 @@ export class SceneRenderer {
 					return;
 				}
 				const fitCenterNaifId = located.fitCenterNaifId;
-				const muKm3s2 = getGmKm3s2(fitCenterNaifId) ?? 0;
-				const probeOffset = probePositionScene(located.probe, jd, muKm3s2);
-				if (!probeOffset) {
+				const fitMu = getGmKm3s2(fitCenterNaifId) ?? 0;
+				const probeOffsetKm = probePositionKm(located.probe, jd, fitMu);
+				if (!probeOffsetKm) {
 					if (bo) bo.outOfRange = true;
 					if (d.id === focusedId) oorState.focusedOutOfRange = true;
 					if (!this.probeUnavailableLogged.has(d.id)) {
@@ -926,12 +927,33 @@ export class SceneRenderer {
 					return;
 				}
 				this.probeUnavailableLogged.delete(d.id);
-				const probeParentKey = `naif-${fitCenterNaifId}`;
+				// Retarget the primary to the Moon for lunar orbiters in
+				// `probes/earth-moon`. Falls through to the fit center if the
+				// secondary isn't in positionMap yet (chebyshev chunk still
+				// loading) so world position stays correct.
+				const rawOverride = resolvePrimaryOverride(
+					probeOffsetKm,
+					jd,
+					fitCenterNaifId,
+					this.ctx.chebStore ?? null
+				);
+				const overrideKey = rawOverride ? `naif-${rawOverride.naifId}` : null;
+				const overridePos = overrideKey ? positionMap.get(overrideKey) : undefined;
+				const useOverride = !!(rawOverride && overridePos);
+				const probeParentKey = useOverride ? overrideKey! : `naif-${fitCenterNaifId}`;
 				if (d.parentId !== probeParentKey) d.parentId = probeParentKey;
 				parentPos = positionMap.get(probeParentKey) ?? ([0, 0, 0] as Vec3);
-				x = parentPos[0] + probeOffset[0];
-				y = parentPos[1] + probeOffset[1];
-				z = parentPos[2] + probeOffset[2];
+				let oxKm = probeOffsetKm[0];
+				let oyKm = probeOffsetKm[1];
+				let ozKm = probeOffsetKm[2];
+				if (useOverride && rawOverride) {
+					oxKm -= rawOverride.positionKm[0];
+					oyKm -= rawOverride.positionKm[1];
+					ozKm -= rawOverride.positionKm[2];
+				}
+				x = parentPos[0] + kmToScene(oxKm);
+				y = parentPos[1] + kmToScene(ozKm);
+				z = parentPos[2] - kmToScene(oyKm);
 			} else if (d.a === 0 && !isParabolic && !d.satrec) {
 				// Body coincides with its parent (e.g. a Kepler-only barycenter
 				// placeholder, if one ever appears).
