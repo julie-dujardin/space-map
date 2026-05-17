@@ -493,8 +493,17 @@ export class ChunkLoader {
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
 		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
+		// Dedupe by probe.id: a flyby probe is in BOTH interplanetary and the
+		// planet zone at the same jd (intentional — see trace.py / zones.py), so
+		// `probesAt` yields it twice. Cold-start picks the first zone the store
+		// iterates (metadata insertion order); the per-frame propagator re-resolves
+		// the live zone via `probeWithCenter`, flipping parentId in place when the
+		// active zone changes.
+		const seenProbeIds = new Set<string>();
 		for (const { zone, probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
 			if (!probe.id) continue;
+			if (seenProbeIds.has(probe.id)) continue;
+			seenProbeIds.add(probe.id);
 			let zoneStats = perZone.get(zone);
 			if (!zoneStats) {
 				zoneStats = { count: 0, center: zoneCenterNaifId, methodCounts: new Map() };

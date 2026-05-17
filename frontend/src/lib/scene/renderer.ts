@@ -30,6 +30,7 @@ import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
+import { probePositionScene } from '$lib/fetch/position/probes/propagate';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
@@ -827,7 +828,10 @@ export class SceneRenderer {
 		// update until the focused body's own position is known below.
 		const computePosition = (body: PositionedBody) => {
 			const d = body.data;
-			const parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
+			// `let` because the probe branch may re-parent (cruise → captured
+			// orbit picks up under the planet's fit center) and the orbit-line /
+			// trail-anchor writes below need the resolved parent's position.
+			let parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 			const isParabolic = d.q != null;
 			// Validity gate: hide bodies whose elements would diverge (SGP4) or
 			// produce nonsense (parabolic) outside their stated window. Skipped
@@ -886,28 +890,45 @@ export class SceneRenderer {
 				z = parentPos[2] + chebOffset[2];
 			} else if (isProbe) {
 				// Probes dispatch per sub-chunk (kepler_pure / kepler_drift /
-				// chebyshev) inside the store. parentId is `naif-<fit_center>`;
-				// extract the numeric for the GM lookup. Missing GM = 0 disables
-				// Kepler-pure (skip the body for the frame) rather than rendering
-				// at a junk M.
-				const fitCenterNaifId = Number(d.parentId.slice(5));
-				const muKm3s2 = getGmKm3s2(fitCenterNaifId) ?? 0;
-				const probeOffset = this.ctx.probeStore?.positionScene(d.id, jd, muKm3s2) ?? null;
-				if (!probeOffset) {
+				// chebyshev) inside the store. The fit center is the zone's
+				// `fit_center_naif_id` returned by the resolver — NOT
+				// `d.parentId`, which lags by a frame at cross-zone transitions
+				// (cruise interplanetary → captured orbit at a planet). Re-resolve
+				// per frame so we read the live zone, then flip parentId and
+				// parentPos so the orbit-line / trail-anchor writes below follow
+				// the new parent in the same frame.
+				const located = this.ctx.probeStore?.probeWithCenter(d.id, jd) ?? null;
+				if (!located) {
 					if (bo) bo.outOfRange = true;
 					if (d.id === focusedId) oorState.focusedOutOfRange = true;
 					if (!this.probeUnavailableLogged.has(d.id)) {
 						this.probeUnavailableLogged.add(d.id);
 						const reason = !this.ctx.probeStore
 							? 'no ProbeStore'
-							: this.ctx.probeStore.probe(d.id, jd) === null
-								? 'no chunk loaded for this jd'
-								: 'sub-chunk evaluation returned null (uncoverable or jd outside sub-chunk windows)';
+							: 'no zone has both a loaded chunk and a sub-chunk covering this jd';
 						console.warn(`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ${reason}`);
 					}
 					return;
 				}
+				const fitCenterNaifId = located.fitCenterNaifId;
+				const muKm3s2 = getGmKm3s2(fitCenterNaifId) ?? 0;
+				const probeOffset = probePositionScene(located.probe, jd, muKm3s2);
+				if (!probeOffset) {
+					if (bo) bo.outOfRange = true;
+					if (d.id === focusedId) oorState.focusedOutOfRange = true;
+					if (!this.probeUnavailableLogged.has(d.id)) {
+						this.probeUnavailableLogged.add(d.id);
+						console.warn(
+							`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ` +
+								'sub-chunk evaluation returned null (uncoverable, non-finite fit, or missing mu for kepler_pure)'
+						);
+					}
+					return;
+				}
 				this.probeUnavailableLogged.delete(d.id);
+				const probeParentKey = `naif-${fitCenterNaifId}`;
+				if (d.parentId !== probeParentKey) d.parentId = probeParentKey;
+				parentPos = positionMap.get(probeParentKey) ?? ([0, 0, 0] as Vec3);
 				x = parentPos[0] + probeOffset[0];
 				y = parentPos[1] + probeOffset[1];
 				z = parentPos[2] + probeOffset[2];
