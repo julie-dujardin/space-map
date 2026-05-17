@@ -335,15 +335,20 @@ def _build_probe_metas(
     return metas
 
 
-def _classify_worker_init(generic_spk_paths: list[str]) -> None:
-    """Per-worker process init: furnish generic kernels (LSK/PCK/DE/sat).
+def _classify_worker_init(kernel_paths: list[str]) -> None:
+    """Per-worker process init: furnish LSK/PCK + generic SPKs.
 
-    Generics live for the worker's lifetime so we don't re-furnsh ~40 files
-    on every task. Mission kernels still get furnshed/unloaded per-task
-    because they vary per probe and a slow mission like MEX (282 BSPs)
-    would bloat the per-worker kernel pool otherwise.
+    Lives for the worker's lifetime so we don't re-furnsh ~40 files on every
+    task. Mission kernels still get furnshed/unloaded per-task because they
+    vary per probe and a slow mission like MEX (282 BSPs) would bloat the
+    per-worker kernel pool otherwise.
+
+    LSK is required for SPK Type 10 (SGP4) kernels — e.g. HST's
+    `hst_edited.bsp` — which need leap-second data to convert TLE epochs to
+    ET. Without it, `spkpos(-48, ...)` silently returns NaN and the probe
+    falls out of every zone, ending up incorrectly labelled interplanetary.
     """
-    for p in generic_spk_paths:
+    for p in kernel_paths:
         spiceypy.furnsh(p)
 
 
@@ -390,6 +395,7 @@ def _classify_worker(
 def _classify_pass(
     probe_id_cache: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
+    lsk_pck_paths: list[Path],
     generic_spk_paths: list[Path],
     start_jd: float,
 ) -> tuple[list[_ProbePlan], dict[str, dict[int, list[_ProbePlan]]]]:
@@ -420,11 +426,14 @@ def _classify_pass(
         lambda: defaultdict(list)
     )
 
-    generic_str = [str(p) for p in generic_spk_paths]
+    # LSK first so SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses
+    # this format — can convert TLE epochs to ET; PCK for body-fixed-frame
+    # lookups in landed detection; generic SPKs for planet ephemerides.
+    init_paths = [str(p) for p in (lsk_pck_paths + generic_spk_paths)]
     with ProcessPoolExecutor(
         max_workers=n_workers,
         initializer=_classify_worker_init,
-        initargs=(generic_str,),
+        initargs=(init_paths,),
     ) as ex:
         futures = {}
         for i, (mdir, kernels, naif_id) in enumerate(probes_raw, 1):
@@ -761,7 +770,11 @@ def write_probes(
 
     try:
         plans, chunk_index = _classify_pass(
-            probe_id_cache, metas_by_probe_id, generic_spk_paths, start_jd
+            probe_id_cache,
+            metas_by_probe_id,
+            lsk_pck_paths,
+            generic_spk_paths,
+            start_jd,
         )
         dirty = _decide_dirty(chunk_index, metas_by_probe_id, out_dir, download_dir)
         by_zone_chunk = _fit_pass(plans, dirty, generic_spk_paths, start_jd)

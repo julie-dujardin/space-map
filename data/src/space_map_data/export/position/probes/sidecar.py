@@ -63,7 +63,12 @@ from space_map_data.probes.zones import Zone
 # so those chunks shipped with ~1 AU error. v7 keeps the "flybys live in
 # both zones" intent but excludes the captured tail (last in-zone run that
 # extends to flying-subrange end) from interplanetary. See trace.py.
-FIT_VERSION = 7
+# v8 (2026-05-17): classify workers now also furnsh LSK at init. Without
+# LSK, SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses this format —
+# silently return NaN from spkpos and fall out of every planet zone,
+# ending up incorrectly labelled interplanetary. v7 chunks for HST (and
+# any other SGP4-format probe) are invalid for this reason.
+FIT_VERSION = 8
 
 
 def zone_signature(zone: Zone) -> str:
