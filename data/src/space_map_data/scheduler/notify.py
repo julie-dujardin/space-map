@@ -105,7 +105,8 @@ def notify_download_run(results: list[ProviderResult]) -> None:
     title, body = _format(results)
     priority = 1 if any_failed else -2
     _send_pushover(title, body, priority=priority)
-    _send_email(title, body)
+    if any_failed:
+        _send_email(title, body)
 
 
 if __name__ == "__main__":
