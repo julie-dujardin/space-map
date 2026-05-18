@@ -927,18 +927,27 @@ export class ContextManager {
 			return VISIBILITY.FULL;
 		}
 
-		// Probes carry a=0 by design — their positions come from the per-sub-chunk
-		// methods (kepler_pure/drift/chebyshev), not an osculating ellipse. The
-		// visibility heuristic below needs a meaningful refA, so skip it for
-		// probes and let the camera-distance dispatch in the spacecraft branch
-		// of the renderer handle them.
-		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) return VISIBILITY.FULL;
-
-		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
-		let refA = body.data.a;
-		if (!isTopLevelParent(body.data.parentId)) {
+		// Probes carry a=0 by design — their positions come from per-sub-chunk
+		// methods (kepler_pure/drift/chebyshev), not an osculating ellipse — so
+		// approximate refA from the current body→parent distance (≈ semi-major
+		// axis for near-circular orbits, which most probes follow once captured;
+		// cruise probes parent on the Sun and end up with a heliocentric-scale
+		// refA naturally).
+		let refA: number;
+		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
 			const parent = this.bodiesById.get(body.data.parentId);
-			if (parent?.data.a) refA = parent.data.a;
+			if (!parent) return VISIBILITY.FULL;
+			const dx = body.position[0] - parent.position[0];
+			const dy = body.position[1] - parent.position[1];
+			const dz = body.position[2] - parent.position[2];
+			refA = Math.sqrt(dx * dx + dy * dy + dz * dz) / AU_SCALE / 2;
+		} else {
+			// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
+			refA = body.data.a;
+			if (!isTopLevelParent(body.data.parentId)) {
+				const parent = this.bodiesById.get(body.data.parentId);
+				if (parent?.data.a) refA = parent.data.a;
+			}
 		}
 		if (!refA || refA < 0) {
 			if (refA >= 0 && body.data.e < 0.9) {

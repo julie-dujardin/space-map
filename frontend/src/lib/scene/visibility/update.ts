@@ -1,5 +1,6 @@
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
+import { VISIBILITY } from '$lib/scene/context-manager.svelte';
 import { BARYCENTER_PRIMARY } from '$lib/constants';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import {
@@ -126,27 +127,39 @@ export function updateBodyVisibility(
 		const isFocused = body.data.id === focusedBodyId;
 
 		if (bo.mesh === null) {
-			// Halo-only bodies (barycenters, Lagrange points, and unfocused
-			// asteroids/comets/probes auto-promoted to a label+halo entry):
-			// always visible once built — the halo is the entire visual.
-			// Exception: barycenters that visually overlap a primary body
-			// (SSB/Sun, Pluto-BC/Pluto) hide until the offset projects to at
-			// least one halo diameter on screen.
-			let visible = true;
-			const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
-			if (primaryId) {
-				const primaryBo = bodyObjects.get(primaryId);
-				if (primaryBo) {
-					const sepWorld = f64dist(body.position, primaryBo.body.position);
-					const camToPrimary = f64dist(camTrue, primaryBo.body.position);
-					const pxSep = (sepWorld / camToPrimary) * projScale;
-					if (pxSep < HALO_RADIUS_PX) visible = false;
+			// Halo-only bodies fall into two categories with different gates:
+			// - Barycenters / Lagrange points: navigational aids, always visible
+			//   once built (with a barycenter-primary overlap check so SSB/Sun
+			//   and Pluto-BC/Pluto don't stack).
+			// - Auto-promoted asteroids/comets/probes (label+halo entries with
+			//   no mesh): apply the same distance-ratio threshold + active-system
+			//   gate as the mesh path, so they fade out when zooming into a
+			//   planet system (matching the point-cloud behavior they replace).
+			const ot = body.data.objectType;
+			if (ot === ObjectType.BARYCENTER || ot === ObjectType.LAGRANGE_POINT) {
+				let visible = true;
+				const primaryId = !isFocused ? BARYCENTER_PRIMARY.get(body.data.id) : undefined;
+				if (primaryId) {
+					const primaryBo = bodyObjects.get(primaryId);
+					if (primaryBo) {
+						const sepWorld = f64dist(body.position, primaryBo.body.position);
+						const camToPrimary = f64dist(camTrue, primaryBo.body.position);
+						const pxSep = (sepWorld / camToPrimary) * projScale;
+						if (pxSep < HALO_RADIUS_PX) visible = false;
+					}
 				}
+				group.visible = visible;
+				if (orbitLine) orbitLine.visible = visible;
+				showLabel = visible;
+				isClose = false;
+			} else {
+				const vis = ctx.getPlanetVisibility(body, dist);
+				const visible = vis !== VISIBILITY.HIDE && ctx.hasFullRendering(body);
+				group.visible = visible;
+				if (orbitLine) orbitLine.visible = visible;
+				showLabel = visible;
+				isClose = false;
 			}
-			group.visible = visible;
-			if (orbitLine) orbitLine.visible = visible;
-			showLabel = visible;
-			isClose = false;
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets
 			const isMoon = body.data.objectType === ObjectType.MOON;
