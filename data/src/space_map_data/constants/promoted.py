@@ -31,9 +31,7 @@ PROMOTED_TYPES: frozenset[ObjectType] = frozenset(
 
 PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
     {
-        # Spacecraft (deep-space, SPICE trajectories) — ride in the probes
-        # export under synthetic `probe-<probe_id>` IDs (inception_mjd + dedupe).
-        # Resolve via `space-map-downloads/spice/probe_ids.json`.
+        # Spacecraft: deep space
         "probe-49065984",  # Voyager 1   (mission VOYAGER, naif -31)
         "probe-49000448",  # Voyager 2   (mission VOYAGER, naif -32)
         "probe-40910848",  # Pioneer 10  (mission PIONEER10, naif -23)
@@ -52,15 +50,73 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-89325568",  # MESSENGER   (mission MESSENGER, naif -236)
         "probe-103354368",  # Gaia        (mission GAIA, naif -123)
         "probe-119541760",  # Europa Clipper (mission EUROPACLIPPER, naif -159)
-        # TODO: missions not yet in probe_ids.json — re-add after ingest:
-        #   Parker Solar Probe (-96), OSIRIS-REx (-64),
-        #   Hayabusa 2 (-37), Kepler (-227), SOHO (-21), DSCOVR (-78).
+        "probe-110309376",  # Parker Solar Probe (mission HORIZONS-SYNTH, naif -96)
+        "probe-107429888",  # OSIRIS-REx  (mission ORX, naif -64)
+        "probe-112156672",  # Hayabusa 2  (mission HYB2, naif -37)
+        "probe-96198656",  # Kepler      (mission HORIZONS-SYNTH, naif -227)
+        "probe-76357632",  # SOHO        (mission HORIZONS-SYNTH, naif -21)
+        "probe-105070592",  # DSCOVR      (mission EVENTS-DB, naif -90000220)
+        "probe-117612544",  # Euclid      (mission EUCLID, naif -680)
+        # Small-body visitors (sample-return / impactor)
+        "probe-90976256",  # Hayabusa 1  (mission HAYABUSA, naif -130; visited Itokawa)
+        "probe-89989120",  # Deep Impact (mission DEEPIMPACT, naif -140; visited Tempel 1)
+        "probe-115220480",  # DART        (mission DART, naif -135; impacted Didymos)
+        # Venus orbiters
+        "probe-80683008",  # Magellan    (mission EVENTS-DB, naif -90000036)
+        "probe-111718401",  # Akatsuki    (mission HORIZONS-SYNTH, naif -152)
+        # Mars / planetary orbiters & landers
+        "probe-93536256",  # Mars Express (mission MEX, naif -41)
+        "probe-84353024",  # Mars Odyssey (mission M01, naif -53)
+        "probe-90857472",  # MRO         (mission MRO, naif -74)
+        "probe-100265984",  # MSL Curiosity (mission MSL, naif -76)
+        "probe-109281280",  # ExoMars 2016 TGO (mission EXOMARS2016, naif -143)
+        "probe-109899776",  # InSight     (mission INSIGHT, naif -189)
+        "probe-107151360",  # Tianwen-1   (mission HORIZONS-SYNTH, naif -86)
+        "probe-96616448",  # LRO         (mission LRO, naif -85)
+        "probe-88592384",  # Cassini     (mission CASSINI, naif -82)
+        "probe-76308480",  # Galileo     (mission GLL, naif -77)
+        "probe-89915392",  # Huygens     (mission HUYGENS, naif -150)
+        "probe-88698880",  # Rosetta     (mission HORIZONS-SYNTH, naif -226)
+        # Apollo program — trajectories (APOLLO mission) + EVENTS-DB markers.
+        # EVENTS-DB IDs identified by inception_mjd → launch date.
+        "probe-39936000",  # Apollo 15 traj (mission APOLLO, naif -915)
+        "probe-41050112",  # Apollo 16 PFS-1 subsatellite (mission APOLLO, naif -916300)
+        "probe-36040704",  # Apollo 8
+        "probe-36040705",  # Apollo 8
+        "probe-36646912",  # Apollo 10
+        "probe-36646913",  # Apollo 10
+        "probe-36663296",  # Apollo 10
+        "probe-36663297",  # Apollo 10
+        "probe-36888576",  # Apollo 11
+        "probe-36888577",  # Apollo 11
+        "probe-36904960",  # Apollo 11
+        "probe-36909056",  # Apollo 11
+        "probe-37384192",  # Apollo 12
+        "probe-37384193",  # Apollo 12
+        "probe-37404672",  # Apollo 12
+        "probe-37408768",  # Apollo 12
+        "probe-37990400",  # Apollo 13
+        "probe-37990401",  # Apollo 13
+        "probe-37990402",  # Apollo 13
+        "probe-39198720",  # Apollo 14
+        "probe-39202816",  # Apollo 14
+        "probe-39219200",  # Apollo 14
+        "probe-39223296",  # Apollo 14
+        "probe-39919616",  # Apollo 15
+        "probe-39919617",  # Apollo 15
+        "probe-39936001",  # Apollo 15
+        "probe-39948288",  # Apollo 15
+        "probe-41005056",  # Apollo 16
+        "probe-41005057",  # Apollo 16
+        "probe-41021440",  # Apollo 16
+        "probe-41037824",  # Apollo 16
+        "probe-41967616",  # Apollo 17
+        "probe-41967617",  # Apollo 17
+        "probe-41984000",  # Apollo 17
+        "probe-41996288",  # Apollo 17
         # Retired
-        # 'probe-...' # Spitzer Space Telescope
-        # 'probe-101912576', # Dawn (mission DAWN, naif -203)
-        # Mars/moon/... probes - TODO promote when worth it:
-        # MEX (-41), Mars Odyssey (-53), MRO (-74), MSL (-76), ExoMars16 TGO (-143),
-        # InSight (-189), LRO (-85), Cassini, Galileo, Huygens, Rosetta, …
+        "probe-112132096",  # Spitzer Space Telescope (mission SIRTF, naif -79)
+        "probe-101912576",  # Dawn (mission DAWN, naif -203)
         # Earth-orbiting (NORAD/CelesTrak TLEs)
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
