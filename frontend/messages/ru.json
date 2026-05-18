@@ -37,7 +37,7 @@
 	"type_comet": "комета",
 	"type_debris": "обломки",
 	"type_dwarf_planet": "карликовая планета",
-	"type_lagrange_point": "точка Лагранжа",
+	"type_lagrange_point": "Точка Лагранжа",
 	"type_moon": "спутник",
 	"type_planet": "планета",
 	"type_spacecraft": "космический аппарат",
@@ -85,7 +85,7 @@
 	"category_communications": "Спутник связи",
 	"category_navigation": "Навигационный спутник",
 	"category_weather": "Метеорологический спутник",
-	"category_observation": "Спутник наблюдения Земли",
+	"category_observation": "Спутник наблюдения за Землёй",
 	"category_science": "Научный спутник",
 	"category_military": "Военный спутник",
 	"category_disaster_sar": "Спутник ЧС / SAR",
@@ -160,7 +160,18 @@
 	"my_location_inaccurate": "Заявленная точность: {km} км — реальное положение может отличаться",
 	"my_location_error": "Не удалось определить ваше местоположение",
 	"clear_promoted": "Очистить закреплённые объекты",
-	"cleared_n_promoted": "Очищено закреплённых объектов: {count}",
+	"cleared_n_promoted": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Очищен 1 закреплённый объект",
+				"countPlural=few": "Очищено {count} закреплённых объекта",
+				"countPlural=many": "Очищено {count} закреплённых объектов",
+				"countPlural=other": "Очищено {count} закреплённых объектов"
+			}
+		}
+	],
 	"north_reference": "Северное направление",
 	"north_solar_system": "Солнечная система",
 	"north_solar_system_desc": "Плоскость эклиптики J2000",
