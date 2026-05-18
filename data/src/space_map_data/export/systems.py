@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,10 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     Returns {object_id: metadata_dict}. Sibling bundles whose directory ends
     in ``_clouds`` or ``_specular`` are filtered out; use the dedicated
     loaders for those.
+
+    Body ids come from the data dir (``out_dir/textures``) but metadata.json
+    is read from the mirror dir; ingest writes the texture's webp variants
+    and its metadata.json to those two paths separately.
     """
     textures_dir = out_dir / "textures"
     result: dict[str, dict] = {}
@@ -144,7 +149,7 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
             (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX)
         ):
             continue
-        meta_file = body_dir / "metadata.json"
+        meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             result[body_dir.name] = orjson.loads(meta_file.read_bytes())
     logger.info("Loaded texture metadata for %d bodies", len(result))
@@ -167,7 +172,7 @@ def load_clouds_metadata(out_dir: Path) -> dict[str, dict]:
     for body_dir in textures_dir.iterdir():
         if not body_dir.is_dir() or not body_dir.name.endswith(_CLOUDS_SUFFIX):
             continue
-        meta_file = body_dir / "metadata.json"
+        meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             host_id = body_dir.name.removesuffix(_CLOUDS_SUFFIX)
             result[host_id] = orjson.loads(meta_file.read_bytes())
@@ -214,7 +219,7 @@ def load_specular_metadata(out_dir: Path) -> dict[str, dict]:
     for body_dir in textures_dir.iterdir():
         if not body_dir.is_dir() or not body_dir.name.endswith(_SPECULAR_SUFFIX):
             continue
-        meta_file = body_dir / "metadata.json"
+        meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             host_id = body_dir.name.removesuffix(_SPECULAR_SUFFIX)
             result[host_id] = orjson.loads(meta_file.read_bytes())
@@ -257,7 +262,7 @@ def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
     for body_dir in rings_dir.iterdir():
         if not body_dir.is_dir():
             continue
-        meta_file = body_dir / "metadata.json"
+        meta_file = mirror_path(body_dir / "metadata.json")
         if meta_file.exists():
             result[body_dir.name] = orjson.loads(meta_file.read_bytes())
     logger.info("Loaded ring metadata for %d bodies", len(result))

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     matches,
+    mirror_path,
     read_sidecar,
     write_atomic,
     write_sidecar,

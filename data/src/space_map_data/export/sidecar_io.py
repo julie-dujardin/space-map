@@ -12,7 +12,28 @@ import os
 import tempfile
 from pathlib import Path
 
+from space_map_data.utils.paths import EXPORT_DIR, EXPORT_METADATA_DIR
+
 logger = logging.getLogger(__name__)
+
+
+def mirror_path(path: Path) -> Path:
+    """Map an EXPORT_DIR path to its EXPORT_METADATA_DIR counterpart.
+
+    Build-only sidecar metadata (incremental sidecars, texture/ring
+    metadata.json) is written under EXPORT_METADATA_DIR with the same
+    relative layout so EXPORT_DIR can be deployed to Cloudflare Pages
+    (20k-file cap) without the sidecars eating the budget.
+
+    Paths outside EXPORT_DIR (e.g. pytest tmp_path) pass through
+    unchanged — callers writing data and metadata to a test fixture
+    end up colocated, matching pre-split behaviour.
+    """
+    try:
+        rel = path.relative_to(EXPORT_DIR)
+    except ValueError:
+        return path
+    return EXPORT_METADATA_DIR / rel
 
 
 def write_atomic(path: Path, content: bytes) -> None:

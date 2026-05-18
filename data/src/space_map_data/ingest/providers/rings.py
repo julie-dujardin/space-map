@@ -22,6 +22,7 @@ import numpy as np
 import yaml
 from PIL import Image
 
+from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
@@ -144,7 +145,8 @@ class RingProcessor:
 
         out_dir = PROCESSED_DIR / object_id
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_meta_path = out_dir / "metadata.json"
+        out_meta_path = mirror_path(out_dir / "metadata.json")
+        out_meta_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not force and out_meta_path.exists():
             log.debug(

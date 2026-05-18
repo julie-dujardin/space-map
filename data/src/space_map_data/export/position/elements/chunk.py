@@ -141,7 +141,7 @@ def write_chunk(
         # determined entirely by those inputs — skip the encode + gzip.
         assert time is not None, "earth zone snapshots must carry a date label"
         day_dir = _earth_day_dir(time)
-        sidecar_path = chunk_dir / f"{part}.meta.json"
+        sidecar_path = sidecar.mirror_path(chunk_dir / f"{part}.meta.json")
         signature = sidecar.build_part_signature(day_dir)
         if out_path.exists() and sidecar.matches(sidecar_path, signature):
             return out_path.stat().st_size

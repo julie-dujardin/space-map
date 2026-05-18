@@ -11,6 +11,7 @@ import tifffile
 import yaml
 from PIL import Image
 
+from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
@@ -124,7 +125,7 @@ def _refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) 
     (`source_file`, `source_dimensions`, `processed_at`, `exports`) intact.
     Silently no-ops if the file is missing — nothing to refresh.
     """
-    meta_path = out_dir / "metadata.json"
+    meta_path = mirror_path(out_dir / "metadata.json")
     if not meta_path.exists():
         return
     try:
@@ -145,8 +146,9 @@ def _refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) 
     if all(current.get(k) == v for k, v in desired.items()):
         return
     current.update(desired)
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(json.dumps(current, indent=2))
-    log.info("refreshed metadata from yaml: %s", meta_path.relative_to(PROCESSED_DIR))
+    log.info("refreshed metadata from yaml: %s/metadata.json", out_dir.name)
 
 
 def _scraped_attribution(src_file_name: str) -> str | None:
@@ -366,7 +368,7 @@ def _any_export_over_cap(out_dir: Path) -> bool:
     the normal skip path, which will write a fresh metadata via
     ``_refresh_metadata_from_yaml`` if needed).
     """
-    meta_path = out_dir / "metadata.json"
+    meta_path = mirror_path(out_dir / "metadata.json")
     if not meta_path.exists():
         return False
     try:
@@ -492,7 +494,7 @@ class TextureProcessor:
         patched into the existing metadata.json and the texture is marked
         available.
         """
-        meta_path = out_dir / "metadata.json"
+        meta_path = mirror_path(out_dir / "metadata.json")
         if not meta_path.exists():
             return False
 
@@ -552,7 +554,9 @@ class TextureProcessor:
             "processed_at": datetime.now(UTC).isoformat(),
             "exports": exports,
         }
-        (out_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+        meta_path = mirror_path(out_dir / "metadata.json")
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(metadata, indent=2))
 
     def process_all(self, force: bool = False) -> None:
         """Process all textures listed in download-metadata.yaml.
@@ -825,7 +829,7 @@ class TextureProcessor:
         target_frames = [fid for fid, _ in inputs]
 
         out_dir = PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
-        meta_path = out_dir / "metadata.json"
+        meta_path = mirror_path(out_dir / "metadata.json")
 
         download_meta_path = EARTH_CLOUDS_DIR / "metadata.json"
         download_meta: dict = {}
@@ -901,6 +905,7 @@ class TextureProcessor:
             "frames": target_frames,
             "processed_at": datetime.now(UTC).isoformat(),
         }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
         meta_path.write_text(json.dumps(metadata, indent=2))
         log.info(
             "processed clouds → %s (%d frames × %d tiers)",

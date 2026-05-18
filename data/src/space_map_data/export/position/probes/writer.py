@@ -604,7 +604,7 @@ def _decide_dirty(
                 zone_obj, probes_for_sig, download_dir
             )
             binary_path = zone_out / f"{chunk_idx}.bin.gz"
-            sidecar_path = zone_out / f"{chunk_idx}.meta.json"
+            sidecar_path = sidecar.mirror_path(zone_out / f"{chunk_idx}.meta.json")
             if binary_path.exists() and sidecar.matches(sidecar_path, new_sig):
                 continue
             dirty[zone_key][chunk_idx] = new_sig
@@ -711,7 +711,7 @@ def _write_pass(
         total_bytes = 0
         for chunk_idx in sorted(all_chunks):
             binary_path = zone_out / f"{chunk_idx}.bin.gz"
-            sidecar_path = zone_out / f"{chunk_idx}.meta.json"
+            sidecar_path = sidecar.mirror_path(zone_out / f"{chunk_idx}.meta.json")
 
             if chunk_idx not in dirty.get(zone_key, {}):
                 n_skip += 1
