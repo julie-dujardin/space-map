@@ -60,11 +60,14 @@ from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
 )
 from space_map_data.models.object import (
+    CelesTrak,
     Horizons,
     Object,
     ObjectType,
     OrbitalSource,
+    Satcat,
     SBDB,
+    SBDBMoon,
 )
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
@@ -248,6 +251,26 @@ def _build_position_metadata(
 
 
 _POSITION_INCREMENTAL_ZONES = {"earth", "probes"}
+
+# Minimum row count required per table for a healthy export. Below this we
+# assume the ingest aborted partway and refuse to run rather than ship an
+# export with whole zones silently missing.
+_MIN_ROWS_PER_TABLE = 10
+_EXPECTED_TABLES = (Object, CelesTrak, Horizons, Satcat, SBDB, SBDBMoon)
+
+
+def _precheck_tables(session: Session) -> None:
+    """Raise if any expected table has fewer than `_MIN_ROWS_PER_TABLE` rows."""
+    empty = []
+    for model in _EXPECTED_TABLES:
+        n = session.query(model).limit(_MIN_ROWS_PER_TABLE).count()
+        if n < _MIN_ROWS_PER_TABLE:
+            empty.append(f"{model.__tablename__}={n}")
+    if empty:
+        raise RuntimeError(
+            f"Export pre-check failed: tables below {_MIN_ROWS_PER_TABLE} rows "
+            f"({', '.join(empty)}). Re-run ingest before exporting."
+        )
 
 
 def _remove_old_outputs(out_dir: Path) -> None:
@@ -797,6 +820,8 @@ def _chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
+    with Session(engine) as session:
+        _precheck_tables(session)
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
     _remove_old_outputs(out_dir)
