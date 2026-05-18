@@ -630,7 +630,9 @@ export class ChunkLoader {
 				data,
 				position: pos,
 				orbitElements: elements ?? undefined,
-				orbitCenter: anchor,
+				// Private array, not a shared reference to the fit center body's position:
+				// a probe's parent can flip between frames as it crosses zones.
+				orbitCenter: [anchor[0], anchor[1], anchor[2]],
 				rederiveElements
 			});
 		}

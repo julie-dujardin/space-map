@@ -153,6 +153,17 @@ export class SceneRenderer {
 	/** Per-probe id we've already logged a "position unavailable" warning for,
 	 *  so we surface the failure once instead of flooding the console at 60fps. */
 	private probeUnavailableLogged = new Set<string>();
+	/** Body ids whose per-frame position became non-finite (NaN/Infinity) — one
+	 *  warning per id, then silenced. Diagnostic for the "body teleports to
+	 *  Sun/SSB" symptom caused by a parent in the chain having NaN/missing
+	 *  positionMap entry. */
+	private nonFinitePosLogged = new Set<string>();
+	/** Major-body ids whose per-frame chebyshev offset returned null — one
+	 *  warning per id. Catches "child teleports to parent" cascades where the
+	 *  parent's chunk missed or its segments don't cover the live jd, but the
+	 *  child's own cheb is still valid (resulting in finite [0,0,0] world pos,
+	 *  invisible to the non-finite diagnostic). */
+	private chebNullOffsetLogged = new Set<string>();
 	private moonPoints = new Map<string, Points>();
 	private clickables: Mesh[] = [];
 	private meshToBody = new Map<Mesh, PositionedBody>();
@@ -816,6 +827,24 @@ export class SceneRenderer {
 		// find their parent; barycenters are in ctx.bodiesById but not meshed.
 		const positionMap = new Map<string, Vec3>();
 		positionMap.set('naif-0', [0, 0, 0]);
+		// Pre-seed every body's last-known position so when a parent's per-frame
+		// computePosition early-returns (chebyshev chunk mid-load, segment gap,
+		// non-finite eval), its children read the previous-frame value rather
+		// than the [0,0,0] fallback. The seed stores the SAME body.position
+		// reference that computePosition later mutates, so successful updates
+		// remain visible without re-seeding. Failure mode is bounded to "child
+		// is one frame stale" instead of "child teleports to SSB and stays
+		// there until the chunk lands" (the cascade root for the Venus-in-Sun /
+		// Earth-in-Mercury / Sun-on-Earth symptoms). The previous moons-out-of-
+		// focused-system block below is now redundant but harmless.
+		for (const body of this.ctx.bodiesById.values()) {
+			positionMap.set(body.data.id, body.position);
+		}
+		for (const bo of this.bodyObjects.values()) {
+			if (!this.ctx.bodiesById.has(bo.body.data.id)) {
+				positionMap.set(bo.body.data.id, bo.body.position);
+			}
+		}
 
 		// Propagate position from `body.data` (the body's own elements around
 		// its parent), NOT `body.orbitElements` — for planets those differ:
@@ -883,6 +912,26 @@ export class SceneRenderer {
 							oorState.majorBodies.latestEnd = coverage.end;
 						}
 						if (d.id === focusedId) oorState.focusedOutOfRange = true;
+					}
+					// Cascade-root diagnostic: when chebOffset is null for a
+					// known major body, any child whose own chebOffset is
+					// `[0,0,0]` (Mercury, Venus, Mars, Moon-vs-Earth-system, …)
+					// will land at finite-zero in world coords on this frame,
+					// because the pre-seed of positionMap keeps the parent at
+					// its previous-frame position only if we don't overwrite —
+					// actually the pre-seed handles that case. Still log here
+					// once per body so we know *which* chunk dropped out.
+					if (!this.chebNullOffsetLogged.has(d.id)) {
+						this.chebNullOffsetLogged.add(d.id);
+						const insideCoverage = coverage
+							? jd >= coverage.start && jd <= coverage.end
+							: undefined;
+						console.warn(
+							`chebStore.positionScene[${d.id}] returned null at jd=${jd.toFixed(3)} ` +
+								`(coverage=${coverage ? `[${coverage.start.toFixed(1)},${coverage.end.toFixed(1)}]` : 'unknown'}, ` +
+								`insideCoverage=${insideCoverage}) — children of this body will read stale ` +
+								`positionMap entry (pre-seeded) instead of falling to SSB`
+						);
 					}
 					return;
 				}
@@ -973,6 +1022,20 @@ export class SceneRenderer {
 			body.position[0] = x;
 			body.position[1] = y;
 			body.position[2] = z;
+			if (
+				!this.nonFinitePosLogged.has(d.id) &&
+				(!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+			) {
+				this.nonFinitePosLogged.add(d.id);
+				const parentInMap = positionMap.has(d.parentId);
+				console.warn(
+					`computePosition[${d.id}] non-finite: pos=[${x},${y},${z}] ` +
+						`parentId=${d.parentId} parentInPositionMap=${parentInMap} ` +
+						`parentPos=[${parentPos[0]},${parentPos[1]},${parentPos[2]}] ` +
+						`isChebTracked=${isChebTracked} isProbe=${isProbe} ` +
+						`objectType=${d.objectType}`
+				);
+			}
 			if (body.orbitCenter) {
 				body.orbitCenter[0] = parentPos[0];
 				body.orbitCenter[1] = parentPos[1];
