@@ -48,7 +48,7 @@ from space_map_data.export.position.format import (  # noqa: E402
 )
 from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
 from space_map_data.export.position.probes.writer import (  # noqa: E402
-    _mission_kernels,
+    _kernels_from_index,
 )
 from space_map_data.probes.probe_id import (  # noqa: E402
     CACHE_PATH as PROBE_ID_CACHE,
@@ -244,17 +244,22 @@ def _invert_probe_id_cache() -> dict[int, tuple[str, int]]:
 
 
 def _build_probe_kernels() -> dict[int, list[Path]]:
-    """`probe_id → [mission kernel paths]` mirroring the writer's per-probe
-    furnsh set. Required because some NAIF codes are shared across mission
-    directories (CASSINI/HUYGENS both target -82, with the HUYGENS dir
-    carrying a predicted Cassini OPK to chain Huygens' coast kernel against
-    Cassini's position before separation). Furnishing every mission kernel
-    at once would let SPICE's last-furnshed-wins return the wrong probe's
-    truth at evaluation time — Cassini's reconstructed SCPSE fits get
-    benchmarked against the Huygens dir's predicted OPK, inflating the
-    reported error by 4 orders of magnitude. This mapping lets the
-    benchmark furnsh exactly the kernels the writer saw when it fit each
-    probe.
+    """`probe_id → [mission kernel paths]` matching the writer's per-probe
+    furnsh set exactly.
+
+    Per-probe rather than per-mission because some NAIF codes are shared
+    across mission directories (CASSINI/HUYGENS both target -82, with the
+    HUYGENS dir carrying a predicted Cassini OPK to chain Huygens' coast
+    kernel against Cassini's position before separation). Furnishing every
+    mission kernel at once would let SPICE's last-furnshed-wins return the
+    wrong probe's truth.
+
+    Reads via `_kernels_from_index` — same `_index.json` + MISSION_INCLUDE
+    + precedence-sort path the writer uses, so any kernel the writer fit
+    against is the same kernel the benchmark evaluates against. Previously
+    this globbed the mission directory and picked up extras the writer
+    intentionally excluded (e.g. MEX's ORMM monthlies, DEEPIMPACT's EPOXI
+    re-targeting kernels), inflating reported errors by orders of magnitude.
     """
     cache = json.loads(PROBE_ID_CACHE.read_text())
     mission_kernels: dict[str, list[Path]] = {}
@@ -263,7 +268,9 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
         mission = rec["mission"]
         if mission not in mission_kernels:
             mdir = MISSIONS_DIR / mission
-            mission_kernels[mission] = _mission_kernels(mdir) if mdir.exists() else []
+            mission_kernels[mission] = (
+                _kernels_from_index(mdir) if mdir.exists() else []
+            )
         out[int(rec["probe_id"])] = mission_kernels[mission]
     return out
 

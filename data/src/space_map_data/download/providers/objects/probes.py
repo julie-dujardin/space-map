@@ -278,11 +278,21 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^HUYGENS_(?:COAST|ENTRY|DESCENT|LANDED)_V\d+\.BSP$",
     ),
     "COMET-INTERCEPTOR": (r"^CI_SC[AB][12]?_v\d+\.bsp$",),
-    # Pre-launch trajectory study with many variant scenarios (T1/T4/ET1/HEO,
-    # NorthVOI/SouthVOI/LPO, etc). Permissive: every EnVision_*.bsp under
-    # this dir is a trajectory candidate; SKIP_PATTERNS already drops
-    # `_struct_` and other non-trajectory files.
-    "ENVISION": (r"^EnVision_[A-Za-z0-9_]+(?:_v\d+)?\.bsp$",),
+    # Pre-launch trajectory study with ~14 variant scenarios (T1/T4/ET1/HEO,
+    # NorthVOI/SouthVOI/LPO, ML007/008/014, …). They overlap in time, all
+    # target NAIF -668, and disagree on position — SPICE's last-loaded-wins
+    # then makes the fit compare against an arbitrary scenario. We pin to
+    # the ESA baseline: T1 (Trajectory 1, 2032 launch), NorthVOI insertion,
+    # ML014 (latest planning iteration). LPO covers the post-VOI early
+    # science orbit (2032-12 → 2033-05) and NorthVOI covers the established
+    # science orbit (2034-07 → 2038-09). Aerobraking window 2033-2034 is
+    # left as a gap. Update this list if ESA's mission planning baseline
+    # changes — the other files (T4, ET1, HEO, ML008, …) are alternative
+    # scenarios from pre-launch trade studies, not consecutive refinements.
+    "ENVISION": (
+        r"^EnVision_T1_2032_N_LPO_ML014_\d+_\d+_v\d+\.bsp$",
+        r"^EnVision_T1_2032_NorthVOI_ML014_\d+_\d+_v\d+\.bsp$",
+    ),
     "RAMSES": (r"^ramses_study_LPO_\d+(?:_CEP)?_\d+_\d+_v\d+\.bsp$",),
     # M-MATISSE has both short summary IPO1 LD21 files AND per-phase
     # (EEM/T2/T4, year, LD, FDC/DLC, IPO1/IPO2) detailed kernels.

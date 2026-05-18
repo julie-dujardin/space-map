@@ -24,6 +24,7 @@ import json
 import logging
 import math
 import multiprocessing
+import re
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -35,7 +36,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.providers.objects.probes import MISSIONS_DIR
+from space_map_data.download.providers.objects.probes import (
+    MISSION_INCLUDE,
+    MISSIONS_DIR,
+)
 from space_map_data.export.position.format import (
     METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT,
@@ -106,12 +110,81 @@ def _jd_to_et(jd: float) -> float:
     return (jd - _J2000_JD) * _S_PER_DAY
 
 
-def _mission_kernels(mdir: Path) -> list[Path]:
-    return [
-        k
-        for k in (sorted(mdir.glob("*.bsp")) + sorted(mdir.glob("*.BSP")))
-        if not any(p in k.name for p in _STATIONARY_PATTERNS)
-    ]
+# Filename-token markers that classify a kernel by trajectory provenance.
+# Reconstruction-class kernels furnshed LAST so SPICE last-loaded-wins picks
+# them over any predict-class kernel that also covers the same ET. Tokens
+# match against case-folded `_`/`.`/`-` splits of the filename so accidental
+# substring hits (e.g. "merged" containing "rg") don't trigger.
+_RECON_TOKENS: frozenset[str] = frozenset(
+    {"rec", "recon", "reconstruction", "reconstructed", "fcp", "final"}
+)
+_PREDICT_TOKENS: frozenset[str] = frozenset(
+    {"pre", "pred", "predict", "predicted", "flp", "ref", "forecast"}
+)
+
+
+def _kernel_precedence(name: str) -> int:
+    """Lower = furnshed first (loses), higher = furnshed last (wins).
+
+    Three tiers: 0 predict / forward-looking, 1 default, 2 reconstruction.
+    Used to break SPICE last-loaded-wins ties in favor of the higher-quality
+    kernel when two kernels cover the same ET — e.g. GAIA's `gaia_rec_*`
+    (weekly reconstruction) wins over `gaia_flp_*` (long-arc flight predict),
+    HERA's `_fcp_` (Flight Control Product) wins over `_flp_` (Forward-Looking
+    Planned), JUNO's `juno_rec_orbit` wins over `juno_pred_orbit` and the
+    `spk_ref_*` long-arc reference.
+    """
+    tokens = re.split(r"[_.\-]", name.lower())
+    if any(t in _RECON_TOKENS for t in tokens):
+        return 2
+    if any(t in _PREDICT_TOKENS for t in tokens):
+        return 0
+    return 1
+
+
+def _kernels_from_index(mdir: Path) -> list[Path]:
+    """Return mission kernels from `_index.json`'s `files` list, filtered
+    and sorted ready to furnish.
+
+    Steps:
+      1. Read names from `_index.json` (NOT a directory glob — that would
+         pick up `MEX/ORMM_*` monthlies and similar files the downloader
+         intentionally excludes).
+      2. Re-apply the current `MISSION_INCLUDE` pattern (so tightening it
+         takes effect without re-download — e.g. dropping ENVISION planning
+         scenario variants).
+      3. Drop stationary kernels (post-mission ephemerides parked at impact
+         site / surface that span decades at fixed coords).
+      4. Sort by `(_kernel_precedence, name)` — predict-class kernels
+         furnshed first so reconstruction wins under SPICE's
+         last-loaded-wins. Within a tier, alphabetical (preserves
+         lex-last = latest version semantics).
+
+    Shared between the writer's classify/fit passes and the benchmark, so
+    both sides see identical truth.
+    """
+    idx_path = mdir / "_index.json"
+    if not idx_path.exists():
+        return []
+    idx = json.loads(idx_path.read_text())
+    include_pats = tuple(
+        re.compile(p, re.IGNORECASE) for p in MISSION_INCLUDE.get(mdir.name, ())
+    )
+    candidates: list[Path] = []
+    for entry in idx.get("files", []):
+        name = entry["name"]
+        path = mdir / name
+        if not path.exists():
+            continue
+        if any(p in name for p in _STATIONARY_PATTERNS):
+            continue
+        if include_pats and not any(p.match(name) for p in include_pats):
+            logger.debug(
+                "drop %s/%s: no longer matches MISSION_INCLUDE", mdir.name, name
+            )
+            continue
+        candidates.append(path)
+    return sorted(candidates, key=lambda p: (_kernel_precedence(p.name), p.name))
 
 
 def _collect_generic_kernels(
@@ -278,14 +351,8 @@ def _pack_subchunk(fit: SubChunkFit, zone: Zone) -> bytes:
 
 def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
     """Walk `missions/` and return `[(mission_dir, kernels, naif_id)]` for
-    every spacecraft NAIF ID in `[-999, -1]`, after dropping stationary
-    kernels.
-
-    Kernels come from `_index.json`'s `files` list (whatever MISSION_INCLUDE
-    matched at download time), NOT a directory glob. Globbing would pick up
-    stale or downloader-filtered BSPs left over from prior downloads — e.g.
-    MEX's 269 ORMM monthly kernels that we now exclude because their segment
-    count thrashes SPICE's DAF cache.
+    every spacecraft NAIF ID in `[-999, -1]`. See `_kernels_from_index` for
+    the kernel filtering/precedence rules.
     """
     out: list[tuple[Path, list[Path], int]] = []
     if not MISSIONS_DIR.exists():
@@ -296,15 +363,10 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         idx_path = mdir / "_index.json"
         if not idx_path.exists():
             continue
-        idx = json.loads(idx_path.read_text())
-        kernels = [
-            mdir / f["name"]
-            for f in idx.get("files", [])
-            if (mdir / f["name"]).exists()
-            and not any(p in f["name"] for p in _STATIONARY_PATTERNS)
-        ]
+        kernels = _kernels_from_index(mdir)
         if not kernels:
             continue
+        idx = json.loads(idx_path.read_text())
         spacecraft_ids = sorted(
             t for t in (int(s) for s in idx.get("targets", {})) if -999 <= t <= -1
         )
