@@ -7,10 +7,14 @@
 	let { children } = $props();
 	const settings = getSettings();
 
+	let direction = $state(getTextDirection(getLocale()));
+
 	$effect(() => {
 		const locale = getLocale();
+		const dir = getTextDirection(locale);
 		document.documentElement.lang = locale;
-		document.documentElement.dir = getTextDirection(locale);
+		document.documentElement.dir = dir;
+		direction = dir;
 	});
 
 	$effect(() => {
@@ -18,5 +22,5 @@
 	});
 </script>
 
-<Sonner position="top-right" />
+<Sonner position={direction === 'rtl' ? 'top-left' : 'top-right'} dir={direction} />
 {@render children()}
