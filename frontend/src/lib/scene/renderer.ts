@@ -1692,7 +1692,7 @@ export class SceneRenderer {
 				);
 				const cloudFrame = cloudFrameForJd(this.clock.jd, bo.clouds.availableFrames);
 				if (cloudTarget && cloudFrame) {
-					loadCloudTexture(bo.clouds, cloudTarget, cloudFrame, this.textureLoader);
+					loadCloudTexture(bo.clouds, cloudTarget, cloudFrame);
 				}
 			}
 		}

@@ -7,13 +7,7 @@
  * Texture tiers mirror the surface tiers (low/medium/high) and are upgraded
  * alongside the surface by the renderer's per-frame LOD pass.
  */
-import {
-	Mesh,
-	MeshStandardMaterial,
-	SphereGeometry,
-	type Texture,
-	type TextureLoader
-} from 'three';
+import { Mesh, MeshStandardMaterial, SphereGeometry, Texture } from 'three';
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
@@ -64,16 +58,26 @@ function cloudTextureUrl(id: string, tier: string, frame: string): string {
 	return `${DATA_BASE}/v1/textures/${id}/${tier}_${frame}.webp`;
 }
 
-async function fetchCloudTexture(
-	id: string,
-	tier: string,
-	frame: string,
-	loader: TextureLoader
-): Promise<Texture | null> {
+/**
+ * Decode the WebP off the main thread via `createImageBitmap` so the 3D loop
+ * doesn't stall while a snapshot loads. `TextureLoader` would route through
+ * `<img>` + a same-thread decode that visibly froze the renderer at high
+ * time-warp when frames swap often. Pre-flipping the bitmap (`imageOrientation:
+ * 'flipY'`) lets us set `texture.flipY = false` and skip the UNPACK_FLIP_Y
+ * copy at upload time.
+ */
+async function fetchCloudTexture(id: string, tier: string, frame: string): Promise<Texture | null> {
 	try {
-		return await new Promise<Texture>((resolve, reject) => {
-			loader.load(cloudTextureUrl(id, tier, frame), resolve, undefined, reject);
-		});
+		const response = await fetch(cloudTextureUrl(id, tier, frame));
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`);
+		}
+		const blob = await response.blob();
+		const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY' });
+		const texture = new Texture(bitmap);
+		texture.flipY = false;
+		texture.needsUpdate = true;
+		return texture;
 	} catch (err) {
 		console.warn(`Failed to load ${tier} cloud texture for ${id} @ ${frame}:`, err);
 		return null;
@@ -150,10 +154,9 @@ export async function loadCloudNode(
 	parentMesh: Mesh,
 	parentRadiusScene: number,
 	meta: CloudMeta,
-	frame: string,
-	loader: TextureLoader
+	frame: string
 ): Promise<CloudNode | null> {
-	const texture = await fetchCloudTexture(meta.id, 'low', frame, loader);
+	const texture = await fetchCloudTexture(meta.id, 'low', frame);
 	if (!texture) return null;
 
 	const material = new MeshStandardMaterial({
@@ -188,8 +191,7 @@ export async function loadCloudNode(
 export async function loadCloudTexture(
 	node: CloudNode,
 	tier: string,
-	frame: string,
-	loader: TextureLoader
+	frame: string
 ): Promise<void> {
 	if (node.textureLoading) return;
 	if (node.textureTier === tier && node.textureFrame === frame) return;
@@ -200,7 +202,7 @@ export async function loadCloudTexture(
 	node.lastSwapMs = now;
 	node.textureLoading = true;
 	try {
-		const texture = await fetchCloudTexture(node.id, tier, frame, loader);
+		const texture = await fetchCloudTexture(node.id, tier, frame);
 		if (texture) {
 			node.material.map?.dispose();
 			node.material.map = texture;

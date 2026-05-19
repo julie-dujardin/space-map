@@ -853,26 +853,24 @@ export async function loadSystemData(
 				continue;
 			}
 			promises.push(
-				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, initialFrame, textureLoader).then(
-					(node) => {
-						if (!node) return;
-						if (bo.clouds) {
-							// A concurrent system reload finished first — drop ours.
-							node.mesh.geometry.dispose();
-							node.material.map?.dispose();
-							node.material.dispose();
-							parentMesh.remove(node.mesh);
-							return;
-						}
-						// Cloud sits at the same center as the body, so the eclipse
-						// self-skip uniform can be shared — that also avoids a second
-						// per-frame write in the renderer.
-						if (bo.eclipseShadow) {
-							attachEclipseShadowToBody(node.material, bo.eclipseShadow);
-						}
-						bo.clouds = node;
+				loadCloudNode(parentMesh, bo.radiusScene, cloudMeta, initialFrame).then((node) => {
+					if (!node) return;
+					if (bo.clouds) {
+						// A concurrent system reload finished first — drop ours.
+						node.mesh.geometry.dispose();
+						node.material.map?.dispose();
+						node.material.dispose();
+						parentMesh.remove(node.mesh);
+						return;
 					}
-				)
+					// Cloud sits at the same center as the body, so the eclipse
+					// self-skip uniform can be shared — that also avoids a second
+					// per-frame write in the renderer.
+					if (bo.eclipseShadow) {
+						attachEclipseShadowToBody(node.material, bo.eclipseShadow);
+					}
+					bo.clouds = node;
+				})
 			);
 		}
 
