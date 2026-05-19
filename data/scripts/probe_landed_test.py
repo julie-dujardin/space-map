@@ -3,15 +3,17 @@
 Reads `LANDED_MISSIONS_DIR/<MISSION>/_index.json` (written by the probes
 downloader's landed bucket) and for each spacecraft with a landed phase:
 
-  1. Samples body-fixed position at `--fine-dt` cadence across the phase in
-     the body's IAU rotating frame.
-  2. Converts each sample to (lat°, lon°, alt_km) via `spiceypy.recgeo` so
-     numbers match published lander/rover coordinates (areodetic on Mars,
-     geodetic on Earth, spherical on bodies with f=0).
-  3. Greedily decimates: keeps a sample whenever displacement since the
-     last kept sample reaches `--motion-m` OR elapsed time reaches
-     `--time-s`. Phases whose peak displacement stays under
-     `--stationary-m` are treated as a single fixed lat/lng.
+  1. Builds an "anchor" ET list: phase start, every 00:00 UTC strictly
+     inside the phase, phase end. These are emitted as samples
+     unconditionally — the user spec is "one daily lat/lng at 00:00 UTC".
+  2. Sub-samples between anchors at `--fine-dt` cadence to catch intra-day
+     motion. A sub-sample is emitted whenever its displacement since the
+     last kept sample reaches `--motion-m`.
+  3. Each sample is converted to (lat°, lon°, alt_km) via `spiceypy.recgeo`
+     so numbers match published lander/rover coordinates (areodetic on
+     Mars, geodetic on Earth, spherical on bodies with f=0).
+  4. Phases whose peak displacement stays under `--stationary-m` are
+     collapsed to a single fixed lat/lng.
 
 Reports a summary table per (probe, phase) plus aggregate counts, and can
 dump full per-sample data to JSON for inspection.
@@ -30,6 +32,7 @@ import multiprocessing
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +50,7 @@ from space_map_data.export.position.probes.writer import (  # noqa: E402
 )
 from space_map_data.probes.probe_id import _load_cache as _load_probe_cache  # noqa: E402
 from space_map_data.probes.trace import _IAU_FRAME, classify_trace  # noqa: E402
+from space_map_data.probes.zones import PLANETARY_ZONES  # noqa: E402
 from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -55,6 +59,72 @@ logger = logging.getLogger(__name__)
 _S_PER_DAY = 86400.0
 _J2000_JD = 2451545.0
 _KERNELS_ROOT = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels"
+
+# Wire-format byte counts for `METHOD_LANDED` (planned sub-chunk variant in
+# data/src/space_map_data/export/position/format.py — see plan in chat). One
+# sub-chunk per (probe-phase, streaming-chunk) overlap.
+#
+#   SUBCHUNK_HDR (uint8 method + uint8 + uint16 + uint32 payload_len) = 8 B
+#   LANDED_HDR (int32 body_naif_id + uint8 flags + 3 B pad
+#               + int32 lat_ref_e7 + int32 lng_ref_e7 + int32 alt_ref_mm) = 20 B
+#   sample_count (uint32; moving phases only)                            = 4 B
+#   per-sample (uint32 et_offset_s + 3 × int32 lat_e7/lng_e7/alt_mm)     = 16 B
+_BYTES_SUBCHUNK_HDR = 8
+_BYTES_LANDED_HDR = 20
+_BYTES_SAMPLE_COUNT = 4
+_BYTES_PER_SAMPLE = 16
+
+# Bodies that lack a directly-matching planetary zone (their `fit_center_naif_id`
+# in PLANETARY_ZONES is the parent planet). Map landed-on body → zone key.
+_NON_PLANET_BODY_TO_ZONE: dict[int, str] = {
+    301: "earth-moon",  # Moon
+    606: "saturn",  # Titan (Huygens) — saturn zone covers all Saturn moons
+}
+
+
+def _zone_for_body(body_naif_id: int) -> tuple[str, float]:
+    """(zone_key, chunk_years) for the streaming chunks the landed phase will
+    land in. Direct match against `fit_center_naif_id` for planet-centric
+    bodies (Mars 499 → mars zone, Earth 399 → earth-moon, etc.), explicit
+    mapping for moons (Titan, Luna). Falls back to a 1-yr default if a new
+    body shows up that we haven't classified yet."""
+    for z in PLANETARY_ZONES:
+        if z.fit_center_naif_id == body_naif_id:
+            return z.key, z.chunk_years
+    if body_naif_id in _NON_PLANET_BODY_TO_ZONE:
+        key = _NON_PLANET_BODY_TO_ZONE[body_naif_id]
+        for z in PLANETARY_ZONES:
+            if z.key == key:
+                return z.key, z.chunk_years
+    return "unknown", 1.0
+
+
+def _phase_export_size(
+    start_et: float,
+    end_et: float,
+    is_static: bool,
+    n_samples: int,
+    chunk_years: float,
+) -> tuple[int, int]:
+    """(total_bytes, n_chunks) the phase contributes to its zone's streaming
+    chunks, summed across every chunk it overlaps.
+
+    Static phase: one 20-B landed-record + 8-B sub-chunk header repeated in
+    every chunk it overlaps (the frontend swaps chunks independently, each
+    must carry the static position). 28 B × n_chunks.
+
+    Moving phase: one (8 + 24 + 16×k) record per chunk, where k is the
+    samples in that chunk. We approximate by spreading n_samples evenly —
+    motion-triggered extras are rare (10 over 87 yr for MSL), so chunks
+    average ≈ n_samples / n_chunks plus tiny rounding."""
+    chunk_s = chunk_years * 365.25 * _S_PER_DAY
+    n_chunks = max(1, int(math.ceil((end_et - start_et) / chunk_s)))
+    if is_static:
+        return n_chunks * (_BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR), n_chunks
+    moving_overhead = n_chunks * (
+        _BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR + _BYTES_SAMPLE_COUNT
+    )
+    return moving_overhead + n_samples * _BYTES_PER_SAMPLE, n_chunks
 
 
 def _et_to_iso(et: float) -> str:
@@ -68,7 +138,9 @@ def _et_to_iso(et: float) -> str:
 @dataclass
 class LandedSample:
     """One body-fixed sample. `et` keeps full SPICE precision; `xyz_m`
-    drives decimation distance math; lat/lon/alt are display values."""
+    drives decimation distance math; lat/lon/alt are display values.
+    `is_anchor` flags samples that must always be kept (phase start/end
+    and 00:00 UTC daily bookmarks) regardless of motion threshold."""
 
     et: float
     x_m: float
@@ -77,6 +149,7 @@ class LandedSample:
     lat_deg: float
     lon_deg: float
     alt_km: float
+    is_anchor: bool = False
 
 
 @dataclass
@@ -97,6 +170,10 @@ class PhaseResult:
     peak_displacement_m: float
     peak_step_m: float
     total_path_m: float
+    zone_key: str  # streaming-chunk zone this phase falls into ("mars" etc.)
+    chunk_years: float  # streaming-chunk span for that zone
+    n_chunks: int  # streaming chunks the phase overlaps
+    export_bytes: int  # METHOD_LANDED bytes added across all chunks (incl. headers)
     lat_min_deg: float
     lat_max_deg: float
     lon_min_deg: float
@@ -117,6 +194,53 @@ def _body_radii_and_flattening(body_naif_id: int) -> tuple[float, float]:
     return re, f
 
 
+def _daily_midnights(start_et: float, end_et: float) -> list[float]:
+    """ETs for 00:00:00 UTC on each calendar day strictly between `start_et`
+    and `end_et` (excludes both endpoints, which are added separately as
+    phase anchors). Uses `str2et` per date so we stay UTC-aligned across
+    leap seconds — adding 86400 ET-seconds drifts by ~1 s per ~1.5 yr."""
+    start_iso = spiceypy.et2utc(start_et, "ISOC", 0)
+    end_iso = spiceypy.et2utc(end_et, "ISOC", 0)
+    first_midnight = datetime.fromisoformat(start_iso.split("T")[0]) + timedelta(days=1)
+    last_midnight = datetime.fromisoformat(end_iso.split("T")[0])
+    out: list[float] = []
+    d = first_midnight
+    while d <= last_midnight:
+        et = spiceypy.str2et(d.strftime("%Y-%m-%dT00:00:00"))
+        if start_et < et < end_et:
+            out.append(float(et))
+        d += timedelta(days=1)
+    return out
+
+
+def _sample_at(
+    naif_id: int,
+    body_naif_id: int,
+    frame: str,
+    re: float,
+    f: float,
+    et: float,
+    is_anchor: bool,
+) -> LandedSample | None:
+    try:
+        pos, _ = spiceypy.spkpos(
+            str(naif_id), float(et), frame, "NONE", str(body_naif_id)
+        )
+    except spiceypy.exceptions.SpiceyError:
+        return None
+    lon_rad, lat_rad, alt_km = spiceypy.recgeo(pos, re, f)
+    return LandedSample(
+        et=float(et),
+        x_m=float(pos[0]) * 1000.0,
+        y_m=float(pos[1]) * 1000.0,
+        z_m=float(pos[2]) * 1000.0,
+        lat_deg=float(np.degrees(lat_rad)),
+        lon_deg=float(np.degrees(lon_rad)),
+        alt_km=float(alt_km),
+        is_anchor=is_anchor,
+    )
+
+
 def _sample_phase(
     naif_id: int,
     body_naif_id: int,
@@ -124,56 +248,53 @@ def _sample_phase(
     end_et: float,
     fine_dt_s: float,
 ) -> list[LandedSample]:
+    """All fine + anchor samples across the phase, sorted by ET.
+
+    Anchors are (start, every UTC midnight strictly inside, end) — the
+    "daily 00:00 UTC" emission requirement. Between anchors we sub-sample
+    at `fine_dt_s` cadence so the decimator can detect intra-day motion
+    and insert extra samples when displacement crosses the 100 m
+    threshold. `is_anchor=True` on those samples lets the decimator
+    keep them unconditionally."""
     frame = _IAU_FRAME.get(body_naif_id)
     if frame is None:
         return []
     re, f = _body_radii_and_flattening(body_naif_id)
     if end_et <= start_et:
         return []
-    n = max(2, int(math.ceil((end_et - start_et) / fine_dt_s)) + 1)
-    ets = np.linspace(start_et, end_et, n)
+
+    anchor_ets = {start_et, end_et, *_daily_midnights(start_et, end_et)}
+    n_fine = max(2, int(math.ceil((end_et - start_et) / fine_dt_s)) + 1)
+    fine_ets = np.linspace(start_et, end_et, n_fine).tolist()
+    all_ets = sorted(set(fine_ets) | anchor_ets)
+
     out: list[LandedSample] = []
-    for et in ets:
-        try:
-            pos, _ = spiceypy.spkpos(
-                str(naif_id), float(et), frame, "NONE", str(body_naif_id)
-            )
-        except spiceypy.exceptions.SpiceyError:
-            continue
-        lon_rad, lat_rad, alt_km = spiceypy.recgeo(pos, re, f)
-        out.append(
-            LandedSample(
-                et=float(et),
-                x_m=float(pos[0]) * 1000.0,
-                y_m=float(pos[1]) * 1000.0,
-                z_m=float(pos[2]) * 1000.0,
-                lat_deg=float(np.degrees(lat_rad)),
-                lon_deg=float(np.degrees(lon_rad)),
-                alt_km=float(alt_km),
-            )
-        )
+    for et in all_ets:
+        s = _sample_at(naif_id, body_naif_id, frame, re, f, et, et in anchor_ets)
+        if s is not None:
+            out.append(s)
     return out
 
 
-def _decimate(
-    samples: list[LandedSample], motion_m: float, time_s: float
-) -> list[LandedSample]:
-    """Keep first + last; keep any middle sample whose displacement OR
-    elapsed time since the last kept sample crosses the threshold."""
-    if len(samples) <= 2:
-        return list(samples)
+def _decimate(samples: list[LandedSample], motion_m: float) -> list[LandedSample]:
+    """Keep every anchor sample (phase start/end + 00:00 UTC midnights),
+    plus any intra-day fine sample whose displacement since the last kept
+    sample reaches `motion_m`."""
+    if not samples:
+        return []
     kept: list[LandedSample] = [samples[0]]
     last = samples[0]
-    for s in samples[1:-1]:
+    for s in samples[1:]:
+        if s.is_anchor:
+            kept.append(s)
+            last = s
+            continue
         dx = s.x_m - last.x_m
         dy = s.y_m - last.y_m
         dz = s.z_m - last.z_m
-        d = math.sqrt(dx * dx + dy * dy + dz * dz)
-        elapsed = s.et - last.et
-        if d >= motion_m or elapsed >= time_s:
+        if math.sqrt(dx * dx + dy * dy + dz * dz) >= motion_m:
             kept.append(s)
             last = s
-    kept.append(samples[-1])
     return kept
 
 
@@ -186,7 +307,6 @@ def _summarize(
     phase_end_et: float,
     fine_samples: list[LandedSample],
     motion_m: float,
-    time_s: float,
     stationary_m: float,
     capture_samples: bool,
 ) -> PhaseResult | None:
@@ -220,11 +340,20 @@ def _summarize(
         total_path = 0.0
         peak_step = 0.0
     else:
-        kept = _decimate(fine_samples, motion_m, time_s)
+        kept = _decimate(fine_samples, motion_m)
 
     lats = [s.lat_deg for s in fine_samples]
     lons = [s.lon_deg for s in fine_samples]
     alts = [s.alt_km for s in fine_samples]
+
+    zone_key, chunk_years = _zone_for_body(body_naif_id)
+    export_bytes, n_chunks = _phase_export_size(
+        start_et=phase_start_et,
+        end_et=phase_end_et,
+        is_static=is_stationary,
+        n_samples=len(kept),
+        chunk_years=chunk_years,
+    )
 
     return PhaseResult(
         mission=mission,
@@ -243,6 +372,10 @@ def _summarize(
         peak_displacement_m=peak_disp,
         peak_step_m=peak_step,
         total_path_m=total_path,
+        zone_key=zone_key,
+        chunk_years=chunk_years,
+        n_chunks=n_chunks,
+        export_bytes=export_bytes,
         lat_min_deg=min(lats),
         lat_max_deg=max(lats),
         lon_min_deg=min(lons),
@@ -268,7 +401,6 @@ def _worker(
     probe_label: str,
     fine_dt_s: float,
     motion_m: float,
-    time_s: float,
     stationary_m: float,
     capture_samples: bool,
 ) -> list[dict]:
@@ -295,7 +427,6 @@ def _worker(
                 phase_end_et=phase.end_et,
                 fine_samples=fine,
                 motion_m=motion_m,
-                time_s=time_s,
                 stationary_m=stationary_m,
                 capture_samples=capture_samples,
             )
@@ -391,14 +522,9 @@ def _parse_args() -> argparse.Namespace:
         "--motion-m",
         type=float,
         default=100.0,
-        help="emit a new decimated sample after this many meters of motion (default: 100)",
-    )
-    p.add_argument(
-        "--time-s",
-        type=float,
-        default=_S_PER_DAY,
-        help="emit a new decimated sample after this much elapsed time, seconds "
-        "(default: 86400)",
+        help="emit a new decimated sample after this many meters of motion "
+        "(default: 100). Daily 00:00 UTC anchors are always emitted "
+        "regardless — this only controls intra-day refinement.",
     )
     p.add_argument(
         "--stationary-m",
@@ -467,7 +593,6 @@ def main() -> int:
                 label,
                 args.fine_dt,
                 args.motion_m,
-                args.time_s,
                 args.stationary_m,
                 args.json is not None,
             )
@@ -509,15 +634,28 @@ def main() -> int:
 
 def _print_summary(results: list[dict]) -> None:
     """Print a per-phase table sorted by mission + start time, then a
-    body-aggregate count + a moving-vs-stationary tally."""
+    body-aggregate tally.
+
+    `B/chunk` is the projected `METHOD_LANDED` bytes added to *each*
+    streaming chunk this phase touches — the relevant cost since these
+    sub-chunk records bolt onto the existing per-chunk file the
+    trajectory pipeline already writes.
+
+      * Static phase: 8-B sub-chunk header + 20-B landed-record = 28 B/chunk
+        (every chunk the phase spans pays this; the rover sits in place).
+      * Moving phase: 32 B header + 16 B per kept sample in that chunk;
+        with ~30 daily samples/chunk on Mars that's ~512 B/chunk avg.
+    """
     print()
     print(
         f"{'mission':<14} {'naif':>6} {'body':>5} {'start':>10} {'end':>10} "
         f"{'days':>7} {'stat?':>6} {'disp_m':>9} {'path_m':>10} "
-        f"{'lat°':>8} {'lon°':>9} {'alt_km':>8} {'n_raw':>6} {'n_dec':>5}"
+        f"{'lat°':>8} {'lon°':>9} {'alt_km':>8} {'n_raw':>6} {'n_dec':>5} "
+        f"{'zone':>11} {'chunks':>7} {'B/chunk':>9}"
     )
-    print("-" * 140)
+    print("-" * 175)
     for r in sorted(results, key=lambda x: (x["mission"], x["start_et"])):
+        b_per_chunk = r["export_bytes"] / max(1, r["n_chunks"])
         print(
             f"{r['mission'][:14]:<14} {r['naif_id']:>6} {r['body_naif_id']:>5} "
             f"{r['start_utc'][:10]:>10} {r['end_utc'][:10]:>10} "
@@ -525,21 +663,27 @@ def _print_summary(results: list[dict]) -> None:
             f"{'yes' if r['is_stationary'] else 'no':>6} "
             f"{r['peak_displacement_m']:>9.1f} {r['total_path_m']:>10.1f} "
             f"{r['lat_min_deg']:>8.3f} {r['lon_min_deg']:>9.3f} "
-            f"{r['alt_min_km']:>8.3f} {r['n_raw']:>6} {r['n_decimated']:>5}"
+            f"{r['alt_min_km']:>8.3f} {r['n_raw']:>6} {r['n_decimated']:>5} "
+            f"{r['zone_key']:>11} {r['n_chunks']:>7} "
+            f"{b_per_chunk:>9.0f}"
         )
 
     by_body: dict[int, list[dict]] = {}
     for r in results:
         by_body.setdefault(r["body_naif_id"], []).append(r)
     print()
-    print("by body:")
+    print("by body (avg B/chunk = sum bytes ÷ sum chunks across phases):")
     for body, rows in sorted(by_body.items()):
         n_static = sum(1 for r in rows if r["is_stationary"])
         n_moving = len(rows) - n_static
         n_kept = sum(r["n_decimated"] for r in rows)
+        total_chunks = sum(r["n_chunks"] for r in rows)
+        total_bytes = sum(r["export_bytes"] for r in rows)
+        avg_b = total_bytes / max(1, total_chunks)
         print(
             f"  body={body:>3}  phases={len(rows):>3}  static={n_static:>3}  "
-            f"moving={n_moving:>3}  decimated_samples_total={n_kept}"
+            f"moving={n_moving:>3}  samples={n_kept:>6}  "
+            f"chunks={total_chunks:>5}  avg B/chunk={avg_b:>5.0f}"
         )
 
 
