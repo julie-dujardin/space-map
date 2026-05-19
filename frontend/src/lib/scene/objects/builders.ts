@@ -819,11 +819,23 @@ export function makeStarPoint(color: string, circleTexture: CanvasTexture): Poin
 
 const F32_MAX = 3.4028235e38;
 
+/**
+ * Screen-space point size for the asteroid clouds. Smaller on phones so the
+ * 1.3M-asteroid main belt doesn't visually swamp the planets at typical
+ * mobile viewport scales. 768px matches the breakpoint used elsewhere
+ * (ObjectDrawer, SettingsButton).
+ */
+export function asteroidPointSize(): number {
+	if (typeof window === 'undefined') return 3;
+	return window.matchMedia('(max-width: 768px)').matches ? 2 : 3;
+}
+
 export function makePointCloud(
 	bodies: PositionedBody[],
 	texture: CanvasTexture,
 	color: string,
-	basisPos: [number, number, number] = [0, 0, 0]
+	basisPos: [number, number, number] = [0, 0, 0],
+	size: number = 4
 ): Points {
 	const valid = bodies.filter((b) => {
 		const [x, y, z] = b.position;
@@ -854,7 +866,7 @@ export function makePointCloud(
 		map: texture,
 		color,
 		transparent: true,
-		size: 4,
+		size,
 		sizeAttenuation: false,
 		depthTest: true,
 		depthWrite: false
@@ -877,7 +889,8 @@ export function makePointCloudFromBuffer(
 	positions: Float32Array,
 	drawCount: number,
 	texture: CanvasTexture,
-	color: string
+	color: string,
+	size: number = 4
 ): Points {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new BufferAttribute(positions, 3));
@@ -886,7 +899,7 @@ export function makePointCloudFromBuffer(
 		map: texture,
 		color,
 		transparent: true,
-		size: 4,
+		size,
 		sizeAttenuation: false,
 		depthTest: true,
 		depthWrite: false

@@ -28,6 +28,7 @@ import { TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
 import {
+	asteroidPointSize,
 	makeCircleTexture,
 	makeOrbitLine,
 	makePointCloud,
@@ -406,6 +407,7 @@ export function buildPointClouds(
 	const moonPoints = new Map<string, Points>();
 
 	// Asteroid point clouds (one per zone)
+	const asteroidSize = asteroidPointSize();
 	for (const [zone, byId] of ctx.asteroidBodiesByZone) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length > 0) {
@@ -413,7 +415,8 @@ export function buildPointClouds(
 				filtered,
 				circleTexture,
 				resolveBodyColor(filtered[0].data),
-				basisPos
+				basisPos,
+				asteroidSize
 			);
 			asteroidPoints.set(zone, pts);
 			scene.add(pts);

@@ -53,6 +53,7 @@ import {
 } from './objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
 import {
+	asteroidPointSize,
 	makePointCloudFromBuffer,
 	rebaseOrbitLineLocals,
 	refreshOrbitLineGeometry,
@@ -490,7 +491,8 @@ export class SceneRenderer {
 					front,
 					bodies.length,
 					this.circleTexture,
-					resolveBodyColor(bodies[0].data)
+					resolveBodyColor(bodies[0].data),
+					asteroidPointSize()
 				);
 				pts.userData.frontBasis = seedBasis;
 				this.asteroidPoints.set(zone, pts);
