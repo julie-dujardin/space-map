@@ -50,6 +50,16 @@ NAIF_PDS_BASE = "https://naif.jpl.nasa.gov/pub/naif/pds"
 # export can also import it.
 MISSIONS_DIR = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels" / "missions"
 
+# Surface / post-touchdown kernels live in a sibling tree. Two reasons for
+# splitting them out: (1) the trajectory exporter explicitly does NOT want
+# them — loading a `*_atls_*` next to `*_cruise_*` makes SPICE last-loaded-
+# wins paint the cruise NAIF at the surface during EDL, contaminating the
+# classify_trace landed-detection signal; (2) the landed exporter wants
+# them in isolation so cruise/EDL motion doesn't bleed into the surface
+# trace. Each mission lives at the same key in both trees, with its own
+# _index.json — see `LANDED_INCLUDE` for the per-mission whitelist.
+LANDED_MISSIONS_DIR = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels" / "landed_missions"
+
 PDS3_DATASETS: dict[str, str] = {
     "NEWHORIZONS": "nh-j_p_ss-spice-6-v1.0",
     "MESSENGER": "mess-e_v_h-spice-6-v1.0",
@@ -177,10 +187,11 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^gaia_pre_\d+_\d+_v\d+\.bsp$",
         r"^gaia_flp_\d+_\d+_v\d+\.bsp$",
     ),
-    # NAIF/{VEX,VENUS-EXPRESS,ROSETTA,MPF}/kernels/spk/ are empty on the
+    # NAIF/{VEX,VENUS-EXPRESS,ROSETTA}/kernels/spk/ are empty on the
     # operational tree; real data lives in PDS3 archives (vex-e_v-spice-6-v2.0,
-    # ros-e_m_a_c-spice-6-v1.0, mpf-m-spice-6-v1.0). Adding those is a
-    # follow-up extension to `PDS3_DATASETS`.
+    # ros-e_m_a_c-spice-6-v1.0). Adding those is a follow-up extension to
+    # `PDS3_DATASETS`. MPF is similar but its PDS3 dataset doesn't exist —
+    # see the `landed-events` TODO below for the shared no-SPK path.
     "VEX": (),
     "VENUS-EXPRESS": (),
     "ROSETTA": (),
@@ -273,9 +284,12 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^xmm_ssm_\d+_\d+_v\d+\.bsp$",
     ),
     "LPF": (r"^lpfcmd\.bsp$",),  # LISA Pathfinder
+    # LANDED phase moved to LANDED_INCLUDE so the trajectory pipeline doesn't
+    # classify Huygens-on-Titan as a flying-then-landed sequence — surface
+    # samples belong in the lat/lng export, not in the chunk fit.
     "HUYGENS": (
         r"^\d+AP_OPK_\d+_\d+\.BSP$",
-        r"^HUYGENS_(?:COAST|ENTRY|DESCENT|LANDED)_V\d+\.BSP$",
+        r"^HUYGENS_(?:COAST|ENTRY|DESCENT)_V\d+\.BSP$",
     ),
     "COMET-INTERCEPTOR": (r"^CI_SC[AB][12]?_v\d+\.bsp$",),
     # Pre-launch trajectory study with ~14 variant scenarios (T1/T4/ET1/HEO,
@@ -366,6 +380,64 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     "SELENE": (r"^SEL_M_\d+_\d+_SGM[HI]_\d+\.BSP$",),  # Kaguya
 }
 
+
+# Surface / post-touchdown kernels. Parallel to MISSION_INCLUDE but routed
+# to `LANDED_MISSIONS_DIR` instead of `MISSIONS_DIR`. Each mission's full
+# kernel listing is filtered against MISSION_INCLUDE *and* LANDED_INCLUDE
+# in one pass; files matching here are excluded from the trajectory bucket
+# regardless of MISSION_INCLUDE state.
+#
+# Three kernel flavors per mission to keep in mind:
+#   * `*_atls_ops*_v*.bsp`  — spacecraft NAIF (-189, -84, -76, -168) pinned
+#     at landing site post-touchdown. The actual "where is the probe sitting".
+#   * `*_ls_ops*_iau2000_v*.bsp` — landing-site NAIF (×100 + 900) reference,
+#     fixed IAU2000 coords. Same lat/lng as the atls kernel but under a
+#     SPICE-internal NAIF, useful as a cross-check.
+#   * `*_surf_rover_(tlm|loc)_*_v*.bsp` — sol-range slices of the rover's
+#     actual surface track. Telemetry is more accurate than location;
+#     SPICE last-loaded-wins picks whichever is loaded later.
+#
+# Excludes the `_gc_` pre-flight planning variants, `_nom_*` nominal
+# planning, `_struct_*` instrument FKs, `_still_at_ls_v*` pre-launch
+# placeholders (which would otherwise span 2000→2099 at the landing site
+# and inflate sample counts).
+LANDED_INCLUDE: dict[str, tuple[str, ...]] = {
+    # Static landers
+    "INSIGHT": (
+        r"^insight_atls_ops\d+_v\d+\.bsp$",
+        r"^insight_ls_ops\d+_iau2000_v\d+\.bsp$",
+    ),
+    "PHOENIX": (
+        r"^phx_ls_to_lander_v\d+\.bsp$",
+        r"^phx_ls_ops\d+_iau2000_v\d+\.bsp$",
+        r"^phx_spk-land_\d+_\d+_\d+(?:_eph)?\.bsp$",
+    ),
+    "VIKING": (r"^vl[12]\.bsp$",),  # NAIF -327 (Viking 1), -330 (Viking 2)
+    "HUYGENS": (r"^HUYGENS_LANDED_V\d+\.BSP$",),  # NAIF -150 on Titan
+    # Active/historic rovers. `*_surf_rover_tlm_*` is intentionally excluded:
+    # it carries instrument-FK target NAIFs (-76501..-76620 etc.) in a mission
+    # frame (-76910 / -168910) that we don't load the FK for, and the rover-
+    # body NAIF (-76, -168) is fully covered by `*_surf_rover_loc_*` segments
+    # in IAU_MARS. Same for MER: the `surf_iddg` kernels carry joint angle
+    # data in an unknown mission frame; only `_ls_` (landing-site position)
+    # is useful here since the rover-body NAIF (-253, -254) has no separate
+    # trajectory kernel in the archive — MER positions reduce to the static
+    # landing site.
+    "MSL": (
+        r"^msl_atls_ops\d+_v\d+\.bsp$",
+        r"^msl_ls_ops\d+_iau2000_v\d+\.bsp$",
+        r"^msl_surf_rover_loc_\d+_\d+_v\d+\.bsp$",
+        r"^msl_surf_rover_loc_runout\.bsp$",  # future-prediction tail
+    ),
+    "MARS2020": (
+        r"^m2020_atls_ops\d+_v\d+\.bsp$",
+        r"^m2020_ls_ops\d+_iau2000_v\d+\.bsp$",
+        r"^m2020_surf_rover_loc_\d+_\d+_v\d+\.bsp$",
+        r"^m2020_surf_rover_loc_runout\.bsp$",
+    ),
+    "MER": (r"^mer[12]_ls_\d+_iau2000_v\d+\.bsp$",),
+}
+
 # Missions where each MISSION_INCLUDE regex matches multiple cumulative
 # versions and we only want the lex-last filename per pattern. Use for
 # `mission_<launch>_<asof>_v<NN>.bsp` series where each kernel fully respans
@@ -443,7 +515,18 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "LRO",  # PDS3
         "MESSENGER",  # PDS3
         "MGS",  # PDS3
-        "MPF",  # no PDS dataset wired yet (mpf-m-spice-6-v1.0)
+        # TODO(landed-events): Mars Pathfinder has no usable SPK. NAIF only
+        # hosts a 3-minute EDL kernel (MPF/misc/pwithers/mpf_edl_mpam_v01.bsp,
+        # NAIF -53, 1997-07-04 16:51:45→16:54:40 UTC) that cuts off at ~7 km
+        # altitude before touchdown, and the expected PDS3 dataset
+        # mpf-m-spice-6-v1.0 doesn't exist at /pub/naif/pds/data/. Sojourner
+        # never got a NAIF ID at all. Pathfinder and Sojourner go through the
+        # same path as other archive-gap landers (most Luna/Venera, Chang'e,
+        # Yutu, Zhurong, Tianwen-1 lander, Beagle 2, Schiaparelli, Hope,
+        # Mangalyaan, MPL/DS2, Fobos-Grunt, etc.): emit a static lat/lng from
+        # the `landing_site` block in research/probe-events/*.json instead of
+        # synthesizing an SPK. That path isn't built yet.
+        "MPF",
         "NEAR",  # PDS3
         "NEWHORIZONS",  # PDS3
         "SELENE",  # DARTS
@@ -577,44 +660,93 @@ def _list_darts_sources() -> list[MissionSource]:
     ]
 
 
-def _list_mission_spks(client: httpx.Client, source: MissionSource) -> list[FileEntry]:
-    """Return kept (size-known) SPK entries for `source`.
+@dataclass(frozen=True)
+class MissionFiles:
+    """Kept SPK entries for a mission, split by destination bucket.
+
+    Trajectory kernels are mirrored into `MISSIONS_DIR/<mission>/`; landed
+    kernels (post-touchdown / surface) into `LANDED_MISSIONS_DIR/<mission>/`.
+    A file is routed to one bucket only — LANDED_INCLUDE wins over
+    MISSION_INCLUDE so a surface kernel can't accidentally end up in the
+    trajectory tree even if MISSION_INCLUDE is too permissive.
+    """
+
+    trajectory: list[FileEntry]
+    landed: list[FileEntry]
+
+
+def _apply_include(
+    hrefs: list[str],
+    include: dict[str, tuple[str, ...]],
+    mission: str,
+    use_latest_only: bool,
+) -> list[str]:
+    """Filter `hrefs` against `include[mission]` patterns. Returns [] when
+    the mission has an entry in `include` but no files match (caller logs)."""
+    if mission not in include:
+        return list(hrefs)  # accept-all
+    patterns = include[mission]
+    if not patterns:
+        return []  # explicitly disabled
+    compiled = tuple(re.compile(p, re.IGNORECASE) for p in patterns)
+    if use_latest_only:
+        kept: list[str] = []
+        for pat in compiled:
+            matches = sorted(h for h in hrefs if pat.match(h))
+            if matches:
+                kept.append(matches[-1])
+        return kept
+    return [h for h in hrefs if any(p.match(h) for p in compiled)]
+
+
+def _list_mission_spks(client: httpx.Client, source: MissionSource) -> MissionFiles:
+    """Return kept (size-known) SPK entries for `source`, split into
+    trajectory + landed buckets.
+
+    One upstream listing + one HEAD batch are shared between both buckets.
+    Files matching `LANDED_INCLUDE` are routed to `landed` and excluded
+    from `trajectory` even if `MISSION_INCLUDE` would also have matched
+    them (LANDED wins).
 
     Parallel HEAD requests via asyncio because some missions list hundreds
-    of small daily kernels (e.g. Cassini, MEX).
+    of small daily kernels (e.g. Cassini, MEX, MSL surface tracks).
     """
     raw = [h for h in _list_dir(client, source.spk_url) if h.lower().endswith(".bsp")]
     hrefs = [h for h in raw if not any(p.match(h) for p in SKIP_PATTERNS)]
-    if source.mission in MISSION_INCLUDE:
-        include_pats = tuple(
-            re.compile(p, re.IGNORECASE) for p in MISSION_INCLUDE[source.mission]
+    pre_filter = len(hrefs)
+
+    landed_hrefs = _apply_include(
+        hrefs, LANDED_INCLUDE, source.mission, use_latest_only=False
+    )
+    trajectory_pool = [h for h in hrefs if h not in set(landed_hrefs)]
+    trajectory_hrefs = _apply_include(
+        trajectory_pool,
+        MISSION_INCLUDE,
+        source.mission,
+        use_latest_only=source.mission in MISSION_LATEST_ONLY,
+    )
+
+    # Catches the M01/SOLAR-ORBITER-style bug where a hardcoded version
+    # number in the regex drifts past the latest published kernel and
+    # silently matches zero files. Only logs when MISSION_INCLUDE had an
+    # entry but post-filter is empty — accept-all (no entry) is fine.
+    if (
+        source.mission in MISSION_INCLUDE
+        and MISSION_INCLUDE[source.mission]
+        and pre_filter
+        and not trajectory_hrefs
+    ):
+        logger.warning(
+            "%s/%s: MISSION_INCLUDE matched 0 of %d candidate .bsp "
+            "files — pattern likely stale",
+            source.server,
+            source.mission,
+            pre_filter,
         )
-        if include_pats:
-            pre_filter = len(hrefs)
-            if source.mission in MISSION_LATEST_ONLY:
-                kept: list[str] = []
-                for pat in include_pats:
-                    matches = sorted(h for h in hrefs if pat.match(h))
-                    if matches:
-                        kept.append(matches[-1])
-                hrefs = kept
-            else:
-                hrefs = [h for h in hrefs if any(p.match(h) for p in include_pats)]
-            # Catches the M01/SOLAR-ORBITER-style bug where a hardcoded version
-            # number in the regex drifts past the latest published kernel and
-            # silently matches zero files.
-            if pre_filter and not hrefs:
-                logger.warning(
-                    "%s/%s: MISSION_INCLUDE matched 0 of %d candidate .bsp "
-                    "files — pattern likely stale",
-                    source.server,
-                    source.mission,
-                    pre_filter,
-                )
-        else:
-            hrefs = []
-    if not hrefs:
-        return []
+
+    all_hrefs = trajectory_hrefs + landed_hrefs
+    if not all_hrefs:
+        return MissionFiles(trajectory=[], landed=[])
 
     async def _all_sizes() -> list[int]:
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as ac:
@@ -629,13 +761,17 @@ def _list_mission_spks(client: httpx.Client, source: MissionSource) -> list[File
                     except httpx.HTTPError:
                         return 0
 
-            return await asyncio.gather(*(one(h) for h in hrefs))
+            return await asyncio.gather(*(one(h) for h in all_hrefs))
 
     sizes = asyncio.run(_all_sizes())
-    return [
-        FileEntry(name=h, url=f"{source.spk_url}{h}", size_bytes=s)
-        for h, s in zip(hrefs, sizes, strict=True)
-    ]
+    sized = {
+        h: FileEntry(name=h, url=f"{source.spk_url}{h}", size_bytes=s)
+        for h, s in zip(all_hrefs, sizes, strict=True)
+    }
+    return MissionFiles(
+        trajectory=[sized[h] for h in trajectory_hrefs],
+        landed=[sized[h] for h in landed_hrefs],
+    )
 
 
 def _stream_to(client: httpx.Client, url: str, dest: Path, expected_size: int) -> None:
@@ -685,6 +821,7 @@ class ProbesDownloader(Downloader):
         self.client = client
         self.out_dir = MISSIONS_DIR
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        LANDED_MISSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
     def _resolve_sources(self) -> list[MissionSource]:
         sources: list[MissionSource] = []
@@ -701,9 +838,18 @@ class ProbesDownloader(Downloader):
 
     def _process_mission(self, source: MissionSource, max_mib: float | None) -> dict:
         files = _list_mission_spks(self.client, source)
-        if not files:
+        bucket_files = (
+            ("trajectory", files.trajectory, MISSIONS_DIR),
+            ("landed", files.landed, LANDED_MISSIONS_DIR),
+        )
+        # Old setups dropped surface kernels under MISSIONS_DIR alongside
+        # trajectory ones. Move them to LANDED_MISSIONS_DIR before any
+        # download/index work so the resulting _index.json never lists a
+        # file that's in the wrong tree.
+        self._migrate_stragglers_both_ways(source.mission)
+        if not files.trajectory and not files.landed:
             return {"mission": source.mission, "skipped": False, "mib": 0.0, "files": 0}
-        total = sum(f.size_bytes for f in files)
+        total = sum(f.size_bytes for b in bucket_files for f in b[1])
         mib = total / 1024 / 1024
         if max_mib is not None and mib > max_mib:
             logger.warning(
@@ -715,51 +861,110 @@ class ProbesDownloader(Downloader):
             )
             return {"mission": source.mission, "skipped": True, "mib": mib}
 
-        mission_dir = self.out_dir / source.mission
-        mission_dir.mkdir(parents=True, exist_ok=True)
         logger.info(
-            "%s/%s: %d files (%.1f MiB)",
+            "%s/%s: %d trajectory + %d landed files (%.1f MiB)",
             source.server,
             source.mission,
-            len(files),
+            len(files.trajectory),
+            len(files.landed),
             mib,
         )
 
-        coverage_by_naif: dict[int, list[str]] = defaultdict(list)
-        file_records: list[dict] = []
-        for f in files:
-            local = mission_dir / f.name
-            try:
-                _stream_to(self.client, f.url, local, f.size_bytes)
-            except httpx.HTTPError as exc:
-                logger.warning("download failed for %s: %s", f.name, exc)
+        total_bytes = 0
+        total_files = 0
+        for bucket_name, bucket, root in bucket_files:
+            if not bucket:
                 continue
-            targets = _spk_targets(local)
-            for t in targets:
-                coverage_by_naif[t].append(f.name)
-            file_records.append(
-                {"name": f.name, "size_bytes": local.stat().st_size, "targets": targets}
+            mission_dir = root / source.mission
+            mission_dir.mkdir(parents=True, exist_ok=True)
+            coverage_by_naif: dict[int, list[str]] = defaultdict(list)
+            file_records: list[dict] = []
+            for f in bucket:
+                local = mission_dir / f.name
+                try:
+                    _stream_to(self.client, f.url, local, f.size_bytes)
+                except httpx.HTTPError as exc:
+                    logger.warning("download failed for %s: %s", f.name, exc)
+                    continue
+                targets = _spk_targets(local)
+                for t in targets:
+                    coverage_by_naif[t].append(f.name)
+                file_records.append(
+                    {
+                        "name": f.name,
+                        "size_bytes": local.stat().st_size,
+                        "targets": targets,
+                    }
+                )
+            index = {
+                "server": source.server,
+                "mission": source.mission,
+                "spk_url": source.spk_url,
+                "bucket": bucket_name,
+                "files": file_records,
+                "targets": {
+                    str(naif): sorted(set(names))
+                    for naif, names in sorted(coverage_by_naif.items())
+                },
+            }
+            (mission_dir / "_index.json").write_text(
+                json.dumps(index, indent=2, sort_keys=True)
             )
-
-        index = {
-            "server": source.server,
-            "mission": source.mission,
-            "spk_url": source.spk_url,
-            "files": file_records,
-            "targets": {
-                str(naif): sorted(set(names))
-                for naif, names in sorted(coverage_by_naif.items())
-            },
-        }
-        (mission_dir / "_index.json").write_text(
-            json.dumps(index, indent=2, sort_keys=True)
-        )
+            total_bytes += sum(r["size_bytes"] for r in file_records)
+            total_files += len(file_records)
         return {
             "mission": source.mission,
             "skipped": False,
-            "mib": sum(r["size_bytes"] for r in file_records) / 1024 / 1024,
-            "files": len(file_records),
+            "mib": total_bytes / 1024 / 1024,
+            "files": total_files,
         }
+
+    def _migrate_stragglers_both_ways(self, mission: str) -> None:
+        """Move any kernels currently sitting in the wrong tree into the
+        right one before re-indexing.
+
+        Earlier downloads (pre-LANDED_INCLUDE split) dropped surface kernels
+        under MISSIONS_DIR alongside trajectory ones. Without migration the
+        old copies would still poison the trajectory pipeline (classify_trace
+        sees their NAIFs and reports a landed phase) AND we'd double-download
+        them under landed_missions/. Idempotent — a second invocation finds
+        nothing to move.
+
+        Direction is fixed by the file's name vs the include patterns:
+          * any file in MISSIONS_DIR/<M>/  matching LANDED_INCLUDE → move to
+            LANDED_MISSIONS_DIR/<M>/
+          * any file in LANDED_MISSIONS_DIR/<M>/ matching MISSION_INCLUDE →
+            move to MISSIONS_DIR/<M>/
+        """
+        for src_root, dst_root, target_patterns in (
+            (MISSIONS_DIR, LANDED_MISSIONS_DIR, LANDED_INCLUDE.get(mission, ())),
+            (LANDED_MISSIONS_DIR, MISSIONS_DIR, MISSION_INCLUDE.get(mission, ())),
+        ):
+            if not target_patterns:
+                continue
+            src_dir = src_root / mission
+            if not src_dir.exists():
+                continue
+            compiled = tuple(re.compile(p, re.IGNORECASE) for p in target_patterns)
+            dst_dir = dst_root / mission
+            for path in sorted(src_dir.iterdir()):
+                if not path.is_file() or path.suffix.lower() != ".bsp":
+                    continue
+                if not any(p.match(path.name) for p in compiled):
+                    continue
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                dest = dst_dir / path.name
+                if dest.exists():
+                    path.unlink()
+                    continue
+                path.rename(dest)
+                logger.info(
+                    "migrated %s/%s: %s/ → %s/",
+                    mission,
+                    path.name,
+                    src_root.name,
+                    dst_root.name,
+                )
 
     def download(
         self,

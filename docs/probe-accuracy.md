@@ -13,7 +13,7 @@ Chunk span is the on-disk streaming-chunk duration (the unit the frontend swaps 
 | `earth-moon` | 1mo | `f32` | 650 | 271792 | 31m | 159.5km | 330281.7km | 58.9 | 402.0 | 653.6 | 67.3 | 60988 | 328 | 210476 | 0 |
 | `interplanetary` | 1y | `f64` | 158 | 43226 | 1.2km | 44.7km | 2608.2km | 12.5 | 532.9 | 1032.1 | 13.9 | 30570 | 123 | 11807 | 726 |
 | `jupiter` | 1y | `f32` | 37 | 10696 | 288m | 5.1km | 9681.1km | 79.3 | 139.6 | 175.6 | 2.6 | 0 | 0 | 10696 | 0 |
-| `mars` | 1mo | `f32` | 529 | 46376 | 7.0km | 190.8km | 499.9km | 33.5 | 116.3 | 282.5 | 23.2 | 15533 | 18739 | 12104 | 0 |
+| `mars` | 1mo | `f32` | 529 | 46376 | 7.0km | 190.9km | 246161.1km | 33.5 | 116.3 | 282.5 | 23.2 | 15533 | 18739 | 12104 | 0 |
 | `mercury` | 6mo | `f32` | 25 | 4277 | 1.3km | 5.2km | 77.5km | 8.5 | 60.8 | 100.7 | 0.5 | 1635 | 2594 | 48 | 0 |
 | `neptune` | 5y | `f32` | 2 | 319 | 2.2km | 7.5km | 9.8km | 101.4 | 101.4 | 101.4 | 0.1 | 0 | 0 | 319 | 0 |
 | `pluto` | 5y | `f32` | 1 | 20 | 77m | 451m | 493m | 3.3 | 3.3 | 3.3 | 0.0 | 0 | 0 | 20 | 0 |
@@ -75,8 +75,8 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `earth-moon` | `117612544` | EUCLID | -680 | 29810 | 33m | 61m | 9.4km |
 | `earth-moon` | `93134849` | THEMIS-B (spacecraft) | -192 | 69345 | 8m | 21m | 9.3km |
 | `earth-moon` | `118394880` | CLPS | -244 | 100 | 14m | 2.8km | 8.9km |
-| `earth-moon` | `117669888` | Chandrayaan-3P (ORBITER) (spacecra | -169 | 1125 | 13m | 5.2km | 8.7km |
 | `earth-moon` | `117669889` | Chandrayaan-3 (LANDER spacecraft) | -158 | 380 | 10m | 3.7km | 8.7km |
+| `earth-moon` | `117669888` | Chandrayaan-3P (ORBITER) (spacecra | -169 | 1125 | 13m | 5.2km | 8.7km |
 | `earth-moon` | `96477184` | Planck Space Observatory (spacecra | -489 | 18000 | 36m | 63m | 8.6km |
 | `earth-moon` | `96477185` | Herschel Space Observatory (spacec | -486 | 15040 | 36m | 64m | 8.5km |
 | `earth-moon` | `86642688` | INTEGRAL (spacecraft) | -198 | 85120 | 4m | 17m | 8.5km |
@@ -230,6 +230,7 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `jupiter` | `49000448` | VOYAGER | -32 | 1430 | 911m | 3.5km | 4.0km |
 | `jupiter` | `104804352` | NEWHORIZONS | -98 | 625 | 931m | 3.5km | 3.9km |
 | `jupiter` | `75776000` | Galileo Probe (spacecraft) | -344 | 695 | 878m | 3.1km | 3.9km |
+| `mars` | `93814784` | PHOENIX | -84 | 40 | 36m | 187068.6km | 246161.1km |
 | `mars` | `90857472` | MRO | -74 | 36100 | 7.4km | 265.9km | 499.9km |
 | `mars` | `84353024` | M01 | -53 | 44225 | 9.7km | 280.1km | 499.9km |
 | `mars` | `109281280` | EXOMARS2016 | -143 | 9200 | 24.4km | 312.9km | 498.4km |
@@ -255,7 +256,6 @@ Outliers are typically physically motivated — single-pass planetary flybys (Vo
 | `mars` | `109899777` | INSIGHT | -66 | 75 | 19m | 60m | 129m |
 | `mars` | `109899776` | INSIGHT | -189 | 35 | 15m | 62m | 125m |
 | `mars` | `109899778` | INSIGHT | -65 | 75 | 21m | 59m | 114m |
-| `mars` | `93814784` | PHOENIX | -84 | 40 | 34m | 65m | 70m |
 | `mars` | `87605248` | MER | -254 | 35 | 30m | 68m | 69m |
 | `mars` | `100265984` | MSL | -76 | 25 | 14m | 64m | 67m |
 | `mars` | `119541760` | EUROPACLIPPER | -159 | 20 | 32m | 61m | 61m |
