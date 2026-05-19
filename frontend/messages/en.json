@@ -141,6 +141,7 @@
 	"method_sgp4": "SGP4",
 	"method_kepler": "Two-body Kepler",
 	"method_kepler_j2": "Two-body Kepler + J2 secular drift",
+	"method_kepler_drift": "Two-body Kepler + secular drift",
 	"method_chebyshev": "Chebyshev polynomial",
 	"comet_type": "Comet type",
 	"known_satellites": "Known satellites",

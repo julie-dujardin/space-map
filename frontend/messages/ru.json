@@ -141,6 +141,7 @@
 	"method_sgp4": "SGP4",
 	"method_kepler": "Двухтельная задача Кеплера",
 	"method_kepler_j2": "Двухтельная задача Кеплера + вековой дрейф J2",
+	"method_kepler_drift": "Двухтельная задача Кеплера + вековой дрейф",
 	"method_chebyshev": "Полином Чебышёва",
 	"comet_type": "Тип кометы",
 	"known_satellites": "Известные спутники",

@@ -5,7 +5,14 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
-	import { OrbitalSource } from '$lib/fetch/position/format';
+	import {
+		OrbitalSource,
+		PROBE_METHOD_CHEBYSHEV,
+		PROBE_METHOD_KEPLER_DRIFT,
+		PROBE_METHOD_KEPLER_PURE,
+		PROBE_METHOD_UNCOVERABLE
+	} from '$lib/fetch/position/format';
+	import { findSubChunkIndex, jdToEt } from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
@@ -174,6 +181,22 @@
 	// the panel consistent with the scene.
 	let propagationMethodLabel = $derived.by(() => {
 		if (!orbit) return null;
+		// Probes dispatch per sub-chunk in the binary; report whichever method
+		// covers the current jd, not the osculating-Kepler fallback the renderer
+		// hands us via body.orbitElements.
+		if (body?.data.orbitalSource === OrbitalSource.SPICE_PROBE && ctx?.probeStore) {
+			const probe = ctx.probeStore.probe(body.data.id, jd);
+			if (probe) {
+				const idx = findSubChunkIndex(probe, jdToEt(jd));
+				if (idx >= 0) {
+					const method = probe.subChunks[idx].method;
+					if (method === PROBE_METHOD_CHEBYSHEV) return m.method_chebyshev();
+					if (method === PROBE_METHOD_KEPLER_DRIFT) return m.method_kepler_drift();
+					if (method === PROBE_METHOD_KEPLER_PURE) return m.method_kepler();
+					if (method === PROBE_METHOD_UNCOVERABLE) return null;
+				}
+			}
+		}
 		if (body && ctx?.chebStore?.has(body.data.id)) return m.method_chebyshev();
 		if (body?.data.satrec) return m.method_sgp4();
 		if ((orbitElements?.omDot ?? 0) !== 0 || (orbitElements?.wDot ?? 0) !== 0)

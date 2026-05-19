@@ -141,6 +141,7 @@
 	"method_sgp4": "SGP4",
 	"method_kepler": "二体ケプラー",
 	"method_kepler_j2": "二体ケプラー + J2 永年摂動",
+	"method_kepler_drift": "二体ケプラー + 永年摂動",
 	"method_chebyshev": "チェビシェフ多項式",
 	"comet_type": "彗星タイプ",
 	"known_satellites": "既知の衛星",
