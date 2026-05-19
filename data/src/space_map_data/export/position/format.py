@@ -61,6 +61,14 @@ METHOD_UNCOVERABLE = 0
 METHOD_KEPLER_PURE = 1
 METHOD_KEPLER_DRIFT = 2
 METHOD_CHEBYSHEV = 3
+# `METHOD_LANDED` records sit OUTSIDE the sub-chunk grid that 0..3 use — one
+# trailing record per probe per chunk, gated by `PROBE_FLAG_HAS_LANDED_RECORD`
+# in the probe header. Carries its own start/end ET offsets so its lifetime
+# is decoupled from `subchunk_days × n_subchunks`.
+METHOD_LANDED = 4
+
+# Probe-header flags (byte 7).
+PROBE_FLAG_HAS_LANDED_RECORD = 0x01
 
 # Elements sub-formats (uint16 at offset 24).
 SUBFORMAT_KEPLERIAN = 0
@@ -169,8 +177,8 @@ def pack_probes_header(
 # 4       uint8    id_type               (ID_TYPE_ORDINAL[ID_TYPES.PROBE] = 4)
 # 5       uint8    object_type           (ObjectType ordinal; always spacecraft today)
 # 6       uint8    has_localized         (1 iff the probe has any Wikidata translation)
-# 7       uint8    reserved
-# 8       uint16   n_subchunks           (sub-chunk records that follow, in order)
+# 7       uint8    flags                 (bit 0 = has trailing METHOD_LANDED record)
+# 8       uint16   n_subchunks           (FLYING sub-chunk records that follow, in order)
 # 10      uint16   first_subchunk_offset (in units of subchunk_days, from chunk start)
 PROBE_HEADER_SIZE = 12
 _PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHH")
@@ -183,13 +191,15 @@ def pack_probe_header(
     has_localized: bool,
     n_subchunks: int,
     first_subchunk_offset: int,
+    has_landed_record: bool = False,
 ) -> bytes:
+    flags = PROBE_FLAG_HAS_LANDED_RECORD if has_landed_record else 0
     return _PROBE_HEADER_STRUCT.pack(
         probe_id,
         ID_TYPE_ORDINAL[ID_TYPES.PROBE],
         object_type_ordinal,
         1 if has_localized else 0,
-        0,
+        flags,
         n_subchunks,
         first_subchunk_offset,
     )
@@ -260,3 +270,95 @@ def pack_body_header(
 def align8(size: int) -> int:
     """Round up to next multiple of 8."""
     return (size + 7) & ~7
+
+
+# METHOD_LANDED payload — the trailing record that appears after a probe's
+# flying sub-chunks when `PROBE_FLAG_HAS_LANDED_RECORD` is set:
+#
+# Offset  Type     Field
+# 0       int32    body_naif_id      (body the probe sits on; 499 Mars, 606 Titan, …)
+# 4       uint8    flags             (bit 0 = is_static)
+# 5       uint8[3] reserved          (zero pad to 4-aligned)
+# 8       uint32   start_offset_s    (seconds from chunk start_jd; phase entry within chunk)
+# 12      uint32   end_offset_s      (seconds from chunk start_jd; phase exit within chunk)
+# 16      int32    lat_ref_e7        (round(lat° × 1e7); reference / static position)
+# 20      int32    lng_ref_e7
+# 24      int32    alt_ref_mm        (mm above body reference ellipsoid)
+# 28      uint32   sample_count      (0 for static — ref *is* the position)
+# 32      sample_count × LANDED_SAMPLE_STRUCT (16 B each: et_offset_s + lat/lng/alt)
+#
+# Decode: lat° = lat_e7 / 1e7 → ~1.1 cm precision at Earth, 0.7 cm at Mars,
+# well under the 0.1-m target on every body in `_IAU_FRAME`. The reference
+# position uses the same encoding so the decoder never crosses encodings.
+LANDED_HEADER_SIZE = 32
+_LANDED_HEADER_STRUCT = struct.Struct("<iB3sIIiiiI")
+assert _LANDED_HEADER_STRUCT.size == LANDED_HEADER_SIZE
+
+LANDED_SAMPLE_SIZE = 16
+_LANDED_SAMPLE_STRUCT = struct.Struct("<Iiii")
+assert _LANDED_SAMPLE_STRUCT.size == LANDED_SAMPLE_SIZE
+
+LANDED_FLAG_STATIC = 0x01
+# Scale factor `lat_deg × LAT_LNG_SCALE → int32`. Picked as the largest power
+# of 10 that still leaves int32 headroom for the full ±180° lng range (max
+# value 1.8e9 vs int32 ceiling 2.147e9). Gives the same 1.1 cm precision floor
+# everywhere — no body-radius dependency in the encoder.
+LANDED_LATLNG_SCALE = 10_000_000  # 1e7
+
+
+def _quantize_deg(deg: float) -> int:
+    """Lat/lng degrees → int32 with 1e7 scale, clamped to int32 range."""
+    return max(
+        -2_147_483_647, min(2_147_483_647, int(round(deg * LANDED_LATLNG_SCALE)))
+    )
+
+
+def _quantize_alt_m(alt_m: float) -> int:
+    """Altitude metres → int32 millimetres (range ±2,147 km — fits any body)."""
+    return max(-2_147_483_647, min(2_147_483_647, int(round(alt_m * 1000.0))))
+
+
+def pack_landed_payload(
+    body_naif_id: int,
+    is_static: bool,
+    start_offset_s: int,
+    end_offset_s: int,
+    lat_ref_deg: float,
+    lng_ref_deg: float,
+    alt_ref_m: float,
+    samples: list[tuple[int, float, float, float]],
+) -> bytes:
+    """Pack one METHOD_LANDED record.
+
+    `samples` is a list of `(et_offset_s_from_chunk_start, lat_deg, lng_deg,
+    alt_m)` tuples. For static phases pass an empty list — the reference
+    fields carry the fixed position.
+
+    Quantises to int32 × 1e7 for lat/lng (~1 cm precision globally) and
+    int32 millimetres for altitude.
+    """
+    flags = LANDED_FLAG_STATIC if is_static else 0
+    header = _LANDED_HEADER_STRUCT.pack(
+        body_naif_id,
+        flags,
+        b"\x00\x00\x00",
+        int(start_offset_s),
+        int(end_offset_s),
+        _quantize_deg(lat_ref_deg),
+        _quantize_deg(lng_ref_deg),
+        _quantize_alt_m(alt_ref_m),
+        len(samples),
+    )
+    if not samples:
+        return header
+    sample_buf = bytearray(len(samples) * LANDED_SAMPLE_SIZE)
+    for i, (et_offset_s, lat_deg, lng_deg, alt_m) in enumerate(samples):
+        _LANDED_SAMPLE_STRUCT.pack_into(
+            sample_buf,
+            i * LANDED_SAMPLE_SIZE,
+            int(et_offset_s),
+            _quantize_deg(lat_deg),
+            _quantize_deg(lng_deg),
+            _quantize_alt_m(alt_m),
+        )
+    return header + bytes(sample_buf)

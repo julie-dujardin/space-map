@@ -60,18 +60,17 @@ _S_PER_DAY = 86400.0
 _J2000_JD = 2451545.0
 _KERNELS_ROOT = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels"
 
-# Wire-format byte counts for `METHOD_LANDED` (planned sub-chunk variant in
-# data/src/space_map_data/export/position/format.py — see plan in chat). One
-# sub-chunk per (probe-phase, streaming-chunk) overlap.
+# Wire-format byte counts for `METHOD_LANDED` (mirrors the constants in
+# `space_map_data.export.position.format`). One trailing record per
+# (probe, streaming-chunk) overlap, sitting outside the regular sub-chunk
+# grid — gated by `PROBE_FLAG_HAS_LANDED_RECORD` in the probe header.
 #
-#   SUBCHUNK_HDR (uint8 method + uint8 + uint16 + uint32 payload_len) = 8 B
-#   LANDED_HDR (int32 body_naif_id + uint8 flags + 3 B pad
-#               + int32 lat_ref_e7 + int32 lng_ref_e7 + int32 alt_ref_mm) = 20 B
-#   sample_count (uint32; moving phases only)                            = 4 B
-#   per-sample (uint32 et_offset_s + 3 × int32 lat_e7/lng_e7/alt_mm)     = 16 B
+#   SUBCHUNK_HDR  (method + reserved + payload_len)                  = 8  B
+#   LANDED_HEADER (body_naif + flags + start/end offsets
+#                  + lat_ref/lng_ref/alt_ref + sample_count)          = 32 B
+#   per-sample    (et_offset + lat_e7 + lng_e7 + alt_mm)             = 16 B
 _BYTES_SUBCHUNK_HDR = 8
-_BYTES_LANDED_HDR = 20
-_BYTES_SAMPLE_COUNT = 4
+_BYTES_LANDED_HDR = 32
 _BYTES_PER_SAMPLE = 16
 
 # Bodies that lack a directly-matching planetary zone (their `fit_center_naif_id`
@@ -109,22 +108,19 @@ def _phase_export_size(
     """(total_bytes, n_chunks) the phase contributes to its zone's streaming
     chunks, summed across every chunk it overlaps.
 
-    Static phase: one 20-B landed-record + 8-B sub-chunk header repeated in
-    every chunk it overlaps (the frontend swaps chunks independently, each
-    must carry the static position). 28 B × n_chunks.
+    Static phase: 8-B sub-chunk header + 32-B landed-record header (samples=0)
+    in every chunk the phase overlaps. The frontend swaps chunks independently,
+    so each chunk must carry the static position on its own.
 
-    Moving phase: one (8 + 24 + 16×k) record per chunk, where k is the
-    samples in that chunk. We approximate by spreading n_samples evenly —
-    motion-triggered extras are rare (10 over 87 yr for MSL), so chunks
-    average ≈ n_samples / n_chunks plus tiny rounding."""
+    Moving phase: same 40-B chunk overhead + 16 B per kept sample. We spread
+    `n_samples` evenly across chunks; motion-triggered extras are rare
+    (10 over 87 yr for MSL), so the approximation is tight."""
     chunk_s = chunk_years * 365.25 * _S_PER_DAY
     n_chunks = max(1, int(math.ceil((end_et - start_et) / chunk_s)))
+    overhead = n_chunks * (_BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR)
     if is_static:
-        return n_chunks * (_BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR), n_chunks
-    moving_overhead = n_chunks * (
-        _BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR + _BYTES_SAMPLE_COUNT
-    )
-    return moving_overhead + n_samples * _BYTES_PER_SAMPLE, n_chunks
+        return overhead, n_chunks
+    return overhead + n_samples * _BYTES_PER_SAMPLE, n_chunks
 
 
 def _et_to_iso(et: float) -> str:

@@ -28,6 +28,7 @@ import re
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +38,8 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.providers.objects.probes import (
+    LANDED_INCLUDE,
+    LANDED_MISSIONS_DIR,
     MISSION_INCLUDE,
     MISSIONS_DIR,
 )
@@ -44,8 +47,10 @@ from space_map_data.export.position.format import (
     METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT,
     METHOD_KEPLER_PURE,
+    METHOD_LANDED,
     METHOD_UNCOVERABLE,
     OBJECT_TYPE_ORDINAL,
+    pack_landed_payload,
     pack_probe_header,
     pack_probes_header,
     pack_subchunk_record,
@@ -65,7 +70,7 @@ from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
 )
-from space_map_data.probes.trace import classify_trace, inception_et
+from space_map_data.probes.trace import _IAU_FRAME, classify_trace, inception_et
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
 
 logger = logging.getLogger(__name__)
@@ -163,12 +168,31 @@ def _kernels_from_index(mdir: Path) -> list[Path]:
     Shared between the writer's classify/fit passes and the benchmark, so
     both sides see identical truth.
     """
+    return _kernels_from_index_with(mdir, MISSION_INCLUDE, skip_stationary=True)
+
+
+def _landed_kernels_from_index(mission_name: str) -> list[Path]:
+    """Same shape as `_kernels_from_index` but for the `landed_missions/<M>/`
+    bucket, filtering against `LANDED_INCLUDE` instead of `MISSION_INCLUDE`.
+    Stationary-pattern filtering is OFF — landed kernels are *meant* to be
+    stationary (Viking/Phoenix landers, MSL runout tail)."""
+    mdir = LANDED_MISSIONS_DIR / mission_name
+    if not mdir.exists():
+        return []
+    return _kernels_from_index_with(mdir, LANDED_INCLUDE, skip_stationary=False)
+
+
+def _kernels_from_index_with(
+    mdir: Path,
+    include_map: dict[str, tuple[str, ...]],
+    skip_stationary: bool,
+) -> list[Path]:
     idx_path = mdir / "_index.json"
     if not idx_path.exists():
         return []
     idx = json.loads(idx_path.read_text())
     include_pats = tuple(
-        re.compile(p, re.IGNORECASE) for p in MISSION_INCLUDE.get(mdir.name, ())
+        re.compile(p, re.IGNORECASE) for p in include_map.get(mdir.name, ())
     )
     candidates: list[Path] = []
     for entry in idx.get("files", []):
@@ -176,11 +200,11 @@ def _kernels_from_index(mdir: Path) -> list[Path]:
         path = mdir / name
         if not path.exists():
             continue
-        if any(p in name for p in _STATIONARY_PATTERNS):
+        if skip_stationary and any(p in name for p in _STATIONARY_PATTERNS):
             continue
         if include_pats and not any(p.match(name) for p in include_pats):
             logger.debug(
-                "drop %s/%s: no longer matches MISSION_INCLUDE", mdir.name, name
+                "drop %s/%s: no longer matches include patterns", mdir.name, name
             )
             continue
         candidates.append(path)
@@ -232,12 +256,24 @@ class _ProbeMeta:
 @dataclass(frozen=True)
 class _ChunkContribution:
     """One probe's contribution to one (zone, chunk_idx): the time slice
-    it covers, aligned to the sub-chunk grid."""
+    it covers.
+
+    `kind="flying"` contributions go through `size_chunk` (Kepler/Chebyshev
+    sub-chunks, sub-chunk-grid-aligned).
+
+    `kind="landed"` contributions carry the landing body's NAIF; the fit
+    pass samples lat/lng at fine cadence + decimates to daily-00:00-UTC
+    anchors + 100 m motion thresholds, packing as a single trailing
+    `METHOD_LANDED` record. Landed contributions don't snap to the sub-
+    chunk grid — they cover the literal phase-within-chunk window.
+    """
 
     zone_key: str
     chunk_idx: int
     c_start_et: float
     c_end_et: float
+    kind: str = "flying"  # "flying" | "landed"
+    landed_body_naif_id: int | None = None
 
 
 @dataclass
@@ -249,6 +285,57 @@ class _ProbePlan:
     naif_id: int
     kernels: list[Path]
     contributions: list[_ChunkContribution] = field(default_factory=list)
+
+
+# Bodies whose IAU-frame landed phases route to a zone whose `fit_center_naif_id`
+# is *not* the body itself. Map: body_naif → zone key. Mercury/Venus/Earth/Mars
+# match their planet zone directly via `fit_center_naif_id`; Moon and Titan
+# need the explicit mapping (Moon→earth-moon, Titan→saturn — the zones we
+# stream chunks for).
+_LANDED_BODY_TO_ZONE: dict[int, str] = {
+    301: "earth-moon",
+    606: "saturn",
+}
+
+
+def _zone_for_landed_body(body_naif_id: int) -> Zone | None:
+    """Return the streaming-chunk zone a landed phase on `body_naif_id`
+    contributes to. Direct planet match if its fit_center matches the body
+    (Mars 499, Earth 399, Venus 299, Mercury 199), else the explicit moon
+    map; None if neither (no rendering path yet for the asteroid landers
+    we'd want for Hayabusa/OSIRIS-REx)."""
+    for z in ALL_ZONES:
+        if z.fit_center_naif_id == body_naif_id:
+            return z
+    if body_naif_id in _LANDED_BODY_TO_ZONE:
+        return ZONES_BY_KEY.get(_LANDED_BODY_TO_ZONE[body_naif_id])
+    return None
+
+
+def _landed_chunk_range(
+    chunk_years: float,
+    t_start_et: float,
+    t_end_et: float,
+    start_jd_anchor: float,
+) -> list[tuple[int, float, float]]:
+    """Slice a landed phase across streaming chunks. Unlike
+    `_chunk_aligned_range` (used by flying contributions), this does NOT
+    snap to the sub-chunk grid — the landed record carries its own start/
+    end ET offsets inside the chunk and lives outside the grid timing."""
+    chunk_s = chunk_years * 365.25 * _S_PER_DAY
+    start_et_anchor = _jd_to_et(start_jd_anchor)
+    first_idx = int(math.floor((t_start_et - start_et_anchor) / chunk_s))
+    last_idx = int(math.ceil((t_end_et - start_et_anchor) / chunk_s))
+    out: list[tuple[int, float, float]] = []
+    for idx in range(first_idx, last_idx):
+        cs = start_et_anchor + idx * chunk_s
+        ce = cs + chunk_s
+        s = max(cs, t_start_et)
+        e = min(ce, t_end_et)
+        if e <= s:
+            continue
+        out.append((idx, s, e))
+    return out
 
 
 def _chunk_aligned_range(
@@ -349,29 +436,204 @@ def _pack_subchunk(fit: SubChunkFit, zone: Zone) -> bytes:
     return pack_subchunk_record(ordinal, payload)
 
 
+# Landed-phase fit pipeline. One LandedFit per (probe, chunk) overlap;
+# emitted as a trailing METHOD_LANDED record after the probe's flying
+# sub-chunks. See `format.pack_landed_payload` for the wire layout.
+_LANDED_FINE_DT_S = 3600.0  # 1-hour sub-sampling between daily anchors
+_LANDED_MOTION_M = 100.0
+_LANDED_STATIONARY_M = 100.0
+
+
+@dataclass(frozen=True)
+class LandedFit:
+    """Sampled landed-phase data for one streaming chunk."""
+
+    body_naif_id: int
+    is_static: bool
+    start_offset_s: int  # seconds from chunk_start_jd
+    end_offset_s: int
+    lat_ref_deg: float
+    lng_ref_deg: float
+    alt_ref_m: float
+    samples: list[tuple[int, float, float, float]]
+    # (et_offset_s_from_chunk_start, lat_deg, lng_deg, alt_m)
+    peak_displacement_m: float
+
+
+def _daily_midnight_ets(t_start_et: float, t_end_et: float) -> list[float]:
+    """ETs at 00:00:00 UTC each calendar day strictly inside (t_start_et,
+    t_end_et). Uses `str2et` per date so we stay UTC-aligned across leap
+    seconds (a 365 × 86400 ET sec increment drifts ~1 s per ~1.5 yr)."""
+    if t_end_et <= t_start_et:
+        return []
+    start_iso = spiceypy.et2utc(t_start_et, "ISOC", 0)
+    end_iso = spiceypy.et2utc(t_end_et, "ISOC", 0)
+    first = datetime.fromisoformat(start_iso.split("T")[0]) + timedelta(days=1)
+    last = datetime.fromisoformat(end_iso.split("T")[0])
+    out: list[float] = []
+    d = first
+    while d <= last:
+        et = float(spiceypy.str2et(d.strftime("%Y-%m-%dT00:00:00")))
+        if t_start_et < et < t_end_et:
+            out.append(et)
+        d += timedelta(days=1)
+    return out
+
+
+def _body_radii_and_flattening(body_naif_id: int) -> tuple[float, float]:
+    """Equatorial radius (km) and flattening for `recgeo`. Flattening = 0
+    for tri-axial bodies whose PCK lists Rx=Ry=Rz (Moon, asteroids); SPICE's
+    recgeo collapses to a spherical lat/lon in that case."""
+    radii = spiceypy.bodvrd(str(body_naif_id), "RADII", 3)[1]
+    re = float(radii[0])
+    rp = float(radii[2])
+    f = (re - rp) / re if re > 0 else 0.0
+    return re, f
+
+
+def _fit_landed_chunk(
+    probe_naif_id: int,
+    body_naif_id: int,
+    chunk_start_et: float,
+    c_start_et: float,
+    c_end_et: float,
+) -> LandedFit | None:
+    """Sample the probe's landed phase within `[c_start_et, c_end_et]`,
+    decimate to (00:00 UTC daily anchors + intra-day samples whose motion
+    crosses 100 m), pack as a `LandedFit`. Mirrors the validation logic in
+    `data/scripts/probe_landed_test.py`.
+
+    Returns None if the body has no IAU frame (asteroid/comet — not yet
+    supported) or if every `spkpos` lookup fails in the window."""
+    frame = _IAU_FRAME.get(body_naif_id)
+    if frame is None:
+        return None
+    try:
+        re, f = _body_radii_and_flattening(body_naif_id)
+    except spiceypy.exceptions.SpiceyError:
+        return None
+
+    anchor_set = {c_start_et, c_end_et, *_daily_midnight_ets(c_start_et, c_end_et)}
+    n_fine = max(2, int(math.ceil((c_end_et - c_start_et) / _LANDED_FINE_DT_S)) + 1)
+    fine_ets = np.linspace(c_start_et, c_end_et, n_fine).tolist()
+    all_ets = sorted(anchor_set | set(fine_ets))
+
+    fine_samples: list[tuple[float, np.ndarray, float, float, float]] = []
+    for et in all_ets:
+        try:
+            pos, _ = spiceypy.spkpos(
+                str(probe_naif_id), float(et), frame, "NONE", str(body_naif_id)
+            )
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        lon_rad, lat_rad, alt_km = spiceypy.recgeo(pos, re, f)
+        fine_samples.append(
+            (
+                float(et),
+                np.asarray(pos, dtype=np.float64) * 1000.0,  # body-fixed XYZ in metres
+                float(np.degrees(lat_rad)),
+                float(np.degrees(lon_rad)),
+                float(alt_km) * 1000.0,  # alt in metres for the wire format
+            )
+        )
+    if not fine_samples:
+        return None
+
+    first_et, first_xyz_m, first_lat, first_lng, first_alt_m = fine_samples[0]
+    peak_disp = 0.0
+    for et, xyz_m, _lat, _lng, _alt in fine_samples[1:]:
+        d = float(np.linalg.norm(xyz_m - first_xyz_m))
+        if d > peak_disp:
+            peak_disp = d
+
+    is_static = peak_disp < _LANDED_STATIONARY_M
+
+    kept_samples: list[tuple[int, float, float, float]] = []
+    if not is_static:
+        last_xyz = first_xyz_m
+        # Anchors and motion-triggered samples (skip the first; it becomes
+        # the reference and is implied by the lat_ref / lng_ref fields).
+        for et, xyz_m, lat, lng, alt_m in fine_samples[1:]:
+            is_anchor = et in anchor_set
+            d = float(np.linalg.norm(xyz_m - last_xyz))
+            if is_anchor or d >= _LANDED_MOTION_M:
+                offset_s = int(round(et - chunk_start_et))
+                kept_samples.append((offset_s, lat, lng, alt_m))
+                last_xyz = xyz_m
+
+    return LandedFit(
+        body_naif_id=body_naif_id,
+        is_static=is_static,
+        start_offset_s=int(round(c_start_et - chunk_start_et)),
+        end_offset_s=int(round(c_end_et - chunk_start_et)),
+        lat_ref_deg=first_lat,
+        lng_ref_deg=first_lng,
+        alt_ref_m=first_alt_m,
+        samples=kept_samples,
+        peak_displacement_m=peak_disp,
+    )
+
+
+def _pack_landed_subchunk(fit: LandedFit) -> bytes:
+    payload = pack_landed_payload(
+        body_naif_id=fit.body_naif_id,
+        is_static=fit.is_static,
+        start_offset_s=fit.start_offset_s,
+        end_offset_s=fit.end_offset_s,
+        lat_ref_deg=fit.lat_ref_deg,
+        lng_ref_deg=fit.lng_ref_deg,
+        alt_ref_m=fit.alt_ref_m,
+        samples=fit.samples,
+    )
+    return pack_subchunk_record(METHOD_LANDED, payload)
+
+
 def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
-    """Walk `missions/` and return `[(mission_dir, kernels, naif_id)]` for
-    every spacecraft NAIF ID in `[-999, -1]`. See `_kernels_from_index` for
-    the kernel filtering/precedence rules.
+    """Walk `missions/` and `landed_missions/` and return
+    `[(mission_dir, kernels, naif_id)]` for every spacecraft NAIF ID in
+    `[-999, -1]`.
+
+    The returned kernel list combines BOTH buckets (trajectory + landed) so
+    `classify_trace` sees the full picture for a probe whose timeline goes
+    cruise → EDL → surface. Spacecraft NAIFs come from the union of both
+    indexes — missions like MER carry the rover bodies (-253/-254) only in
+    the landed bucket. Probes whose only coverage is a landing-site NAIF
+    (`-X900` pattern) are not enumerated here yet; that path is reserved
+    for the events-JSON ingest of Soviet/Chinese / archive-gap landers.
+
+    See `_kernels_from_index` / `_landed_kernels_from_index` for filtering
+    and precedence rules.
     """
     out: list[tuple[Path, list[Path], int]] = []
-    if not MISSIONS_DIR.exists():
-        return out
-    for mdir in sorted(MISSIONS_DIR.iterdir()):
-        if not mdir.is_dir():
-            continue
-        idx_path = mdir / "_index.json"
-        if not idx_path.exists():
-            continue
-        kernels = _kernels_from_index(mdir)
-        if not kernels:
-            continue
-        idx = json.loads(idx_path.read_text())
-        spacecraft_ids = sorted(
-            t for t in (int(s) for s in idx.get("targets", {})) if -999 <= t <= -1
+    mission_names: set[str] = set()
+    if MISSIONS_DIR.exists():
+        mission_names.update(p.name for p in MISSIONS_DIR.iterdir() if p.is_dir())
+    if LANDED_MISSIONS_DIR.exists():
+        mission_names.update(
+            p.name for p in LANDED_MISSIONS_DIR.iterdir() if p.is_dir()
         )
+    for name in sorted(mission_names):
+        mdir = MISSIONS_DIR / name
+        trajectory_kernels = (
+            _kernels_from_index(mdir) if (mdir / "_index.json").exists() else []
+        )
+        landed_kernels = _landed_kernels_from_index(name)
+        if not trajectory_kernels and not landed_kernels:
+            continue
+        targets: set[int] = set()
+        if (mdir / "_index.json").exists():
+            traj_idx = json.loads((mdir / "_index.json").read_text())
+            targets.update(int(s) for s in traj_idx.get("targets", {}))
+        landed_idx_path = LANDED_MISSIONS_DIR / name / "_index.json"
+        if landed_idx_path.exists():
+            landed_idx = json.loads(landed_idx_path.read_text())
+            targets.update(int(s) for s in landed_idx.get("targets", {}))
+        spacecraft_ids = sorted(t for t in targets if -999 <= t <= -1)
+        # Furnish trajectory first then landed so landed wins under SPICE
+        # last-loaded-wins where ET coverage overlaps (EDL window).
+        combined = trajectory_kernels + landed_kernels
         for naif_id in spacecraft_ids:
-            out.append((mdir, kernels, naif_id))
+            out.append((mdir, combined, naif_id))
     return out
 
 
@@ -553,13 +815,37 @@ def _classify_pass(
                         _ChunkContribution(zone_key, chunk_idx, c_start, c_end)
                     )
                     chunk_index[zone_key][chunk_idx].append(plan)
-            plans.append(plan)
-            # TODO(landed-export): classify_trace returns landed phases too
-            # (`result["landed_phases"]` = list of (body_naif, start_et,
-            # end_et) triples) — surface them in a `landed/{body}.json.gz`
-            # output once the frontend's lat/lng pin renderer is ready.
-            # Detection is correct as of this pass; we just don't ship.
+            # Landed phases — each gets one trailing `METHOD_LANDED` record
+            # per streaming chunk it overlaps. Routes to the body's parent
+            # planet zone (Mars 499 → mars zone, Titan 606 → saturn, …).
             landed_phases = result.get("landed_phases", [])
+            for body_naif, ph_start, ph_end in landed_phases:
+                zone = _zone_for_landed_body(int(body_naif))
+                if zone is None:
+                    logger.warning(
+                        "no zone mapping for landed body %d on probe %s/%d; "
+                        "phase %.0f→%.0f dropped",
+                        body_naif,
+                        mdir.name,
+                        naif_id,
+                        ph_start,
+                        ph_end,
+                    )
+                    continue
+                for chunk_idx, c_start, c_end in _landed_chunk_range(
+                    zone.chunk_years, ph_start, ph_end, start_jd
+                ):
+                    contrib = _ChunkContribution(
+                        zone_key=zone.key,
+                        chunk_idx=chunk_idx,
+                        c_start_et=c_start,
+                        c_end_et=c_end,
+                        kind="landed",
+                        landed_body_naif_id=int(body_naif),
+                    )
+                    plan.contributions.append(contrib)
+                    chunk_index[zone.key][chunk_idx].append(plan)
+            plans.append(plan)
             logger.info(
                 "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
                 "%d landed phases)",
@@ -611,21 +897,33 @@ def _decide_dirty(
     return dirty
 
 
+@dataclass
+class _ChunkProbeRecord:
+    """One probe's contribution to one chunk, packing-ready. Carries the
+    fitted flying sub-chunks (possibly empty if the probe is landed-only
+    in this chunk) and at most one trailing `METHOD_LANDED` record."""
+
+    probe_id: int
+    first_offset: int
+    flying: list[SubChunkFit] = field(default_factory=list)
+    landed: LandedFit | None = None
+
+
 def _fit_pass(
     plans: list[_ProbePlan],
     dirty: dict[str, dict[int, dict]],
     generic_spk_paths: list[Path],
     start_jd: float,
-) -> dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]]:
+) -> dict[str, dict[int, list[_ChunkProbeRecord]]]:
     """Pass 2: re-furnish each probe that touches at least one dirty chunk,
-    run `size_chunk` for those (probe, chunk) pairs only.
+    run `size_chunk` (flying contributions) and `_fit_landed_chunk` (landed
+    contributions) for those (probe, chunk) pairs only.
 
-    Furnsh order matches pass 1: mission first, then generic SPKs.
-
-    Returns `by_zone_chunk[zone][chunk_idx] = [(probe_id, first_offset,
-    sub_chunks), …]`, packing-ready."""
-    by_zone_chunk: dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]] = (
-        defaultdict(lambda: defaultdict(list))
+    Returns `by_zone_chunk[zone][chunk_idx] = list[_ChunkProbeRecord]`,
+    packing-ready.
+    """
+    by_zone_chunk: dict[str, dict[int, list[_ChunkProbeRecord]]] = defaultdict(
+        lambda: defaultdict(list)
     )
 
     probes_with_dirty: list[_ProbePlan] = [
@@ -646,35 +944,63 @@ def _fit_pass(
         for p in generic_spk_paths:
             spiceypy.furnsh(str(p))
         try:
-            n_fit = 0
+            # Group this probe's dirty contributions by (zone, chunk) so we
+            # build at most one _ChunkProbeRecord per chunk even when both
+            # flying and landed contributions land in the same chunk.
+            by_chunk: dict[tuple[str, int], _ChunkProbeRecord] = {}
             for c in plan.contributions:
                 if c.chunk_idx not in dirty.get(c.zone_key, {}):
                     continue
                 zone = ZONES_BY_KEY[c.zone_key]
-                sub_s = zone.kepler_subchunk_days * _S_PER_DAY
-                chunk_sizing = size_chunk(plan.naif_id, zone, c.c_start_et, c.c_end_et)
-                if not chunk_sizing.sub_chunks:
-                    continue
                 chunk_start_et = (
                     _jd_to_et(start_jd)
                     + c.chunk_idx * zone.chunk_years * 365.25 * _S_PER_DAY
                 )
-                first_offset = int(
-                    round(
-                        (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et) / sub_s
+                key = (c.zone_key, c.chunk_idx)
+                rec = by_chunk.get(key)
+                if c.kind == "flying":
+                    sub_s = zone.kepler_subchunk_days * _S_PER_DAY
+                    chunk_sizing = size_chunk(
+                        plan.naif_id, zone, c.c_start_et, c.c_end_et
                     )
-                )
-                by_zone_chunk[c.zone_key][c.chunk_idx].append(
-                    (plan.probe_id, first_offset, list(chunk_sizing.sub_chunks))
-                )
-                n_fit += 1
+                    if not chunk_sizing.sub_chunks:
+                        continue
+                    first_offset = int(
+                        round(
+                            (chunk_sizing.sub_chunks[0].t_start_et - chunk_start_et)
+                            / sub_s
+                        )
+                    )
+                    if rec is None:
+                        rec = _ChunkProbeRecord(
+                            probe_id=plan.probe_id, first_offset=first_offset
+                        )
+                        by_chunk[key] = rec
+                    rec.flying.extend(chunk_sizing.sub_chunks)
+                elif c.kind == "landed":
+                    assert c.landed_body_naif_id is not None
+                    landed_fit = _fit_landed_chunk(
+                        probe_naif_id=plan.naif_id,
+                        body_naif_id=c.landed_body_naif_id,
+                        chunk_start_et=chunk_start_et,
+                        c_start_et=c.c_start_et,
+                        c_end_et=c.c_end_et,
+                    )
+                    if landed_fit is None:
+                        continue
+                    if rec is None:
+                        rec = _ChunkProbeRecord(probe_id=plan.probe_id, first_offset=0)
+                        by_chunk[key] = rec
+                    rec.landed = landed_fit
+            for (zone_key, chunk_idx), rec in by_chunk.items():
+                by_zone_chunk[zone_key][chunk_idx].append(rec)
             logger.info(
                 "[%d/%d] fit probe_id=%d naif=%d → %d dirty (zone, chunk) entries",
                 i,
                 len(probes_with_dirty),
                 plan.probe_id,
                 plan.naif_id,
-                n_fit,
+                len(by_chunk),
             )
         finally:
             for p in generic_spk_paths:
@@ -688,7 +1014,7 @@ def _fit_pass(
 def _write_pass(
     chunk_index: dict[str, dict[int, list[_ProbePlan]]],
     dirty: dict[str, dict[int, dict]],
-    by_zone_chunk: dict[str, dict[int, list[tuple[int, int, list[SubChunkFit]]]]],
+    by_zone_chunk: dict[str, dict[int, list[_ChunkProbeRecord]]],
     metas_by_probe_id: dict[int, _ProbeMeta],
     out_dir: Path,
     start_jd: float,
@@ -729,7 +1055,7 @@ def _write_pass(
                 )
                 continue
 
-            probe_records.sort(key=lambda r: r[0])
+            probe_records.sort(key=lambda r: r.probe_id)
             chunk_start_jd = start_jd + chunk_idx * zone.chunk_years * 365.25
             chunk_end_jd = chunk_start_jd + zone.chunk_years * 365.25
 
@@ -741,19 +1067,22 @@ def _write_pass(
                     subchunk_days=zone.kepler_subchunk_days,
                 )
             ]
-            for probe_id, first_offset, sub_chunks in probe_records:
-                meta = metas_by_probe_id[probe_id]
+            for rec in probe_records:
+                meta = metas_by_probe_id[rec.probe_id]
                 buf.append(
                     pack_probe_header(
                         probe_id=meta.probe_id,
                         object_type_ordinal=meta.object_type_ordinal,
                         has_localized=meta.has_localized,
-                        n_subchunks=len(sub_chunks),
-                        first_subchunk_offset=first_offset,
+                        n_subchunks=len(rec.flying),
+                        first_subchunk_offset=rec.first_offset,
+                        has_landed_record=rec.landed is not None,
                     )
                 )
-                for sc in sub_chunks:
+                for sc in rec.flying:
                     buf.append(_pack_subchunk(sc, zone))
+                if rec.landed is not None:
+                    buf.append(_pack_landed_subchunk(rec.landed))
             compressed = gzip.compress(b"".join(buf))
             sidecar.write_atomic(binary_path, compressed)
             sidecar.write_sidecar(sidecar_path, dirty[zone_key][chunk_idx])
