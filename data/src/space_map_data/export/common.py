@@ -250,7 +250,7 @@ def _build_position_metadata(
     return {"zones": dict(sorted(zones.items()))}
 
 
-_POSITION_INCREMENTAL_ZONES = {"earth", "probes"}
+_POSITION_INCREMENTAL_ZONES = {"earth", "probes", "small_bodies"}
 
 # Minimum row count required per table for a healthy export. Below this we
 # assume the ingest aborted partway and refuse to run rather than ship an
@@ -276,13 +276,17 @@ def _precheck_tables(session: Session) -> None:
 def _remove_old_outputs(out_dir: Path) -> None:
     """Remove all chunk output directories before a fresh export.
 
-    `position/earth/` and `position/probes/` manage their own per-chunk
-    sidecars (see `position/elements/sidecar.py` and
-    `position/probes/sidecar.py`); wiping them would defeat the
-    skip-reexport logic, so they're left for the writer to overwrite or
-    skip in place. Every other zone under `position/` is wiped — the
-    elements writers don't atomic-overwrite, and stale part files for
-    bodies that have left a zone would otherwise linger forever.
+    Top-level dirs in `_POSITION_INCREMENTAL_ZONES` (`earth`, `probes`,
+    `small_bodies`) manage their own per-chunk sidecars (see the per-zone
+    `sidecar.py` modules); wiping them would defeat the skip-reexport
+    logic, so they're left for the writer to overwrite or skip in place.
+    Stale parts inside an incremental zone (e.g. an asteroid class shrank,
+    so a part is now orphan) are cleaned up post-export by
+    :func:`_prune_small_bodies`.
+
+    Every other zone under `position/` is wiped — the elements writers
+    don't atomic-overwrite, and stale part files for bodies that have left
+    a zone would otherwise linger forever.
     """
     pos = out_dir / "position"
     if pos.exists():
@@ -308,6 +312,90 @@ def _remove_old_outputs(out_dir: Path) -> None:
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
+
+
+def _planned_small_body_paths(
+    out_dir: Path,
+    zone_structure: Mapping[str, Mapping[int, "ZoomSnapshots"]],
+) -> set[Path]:
+    """Return the set of `.bin.gz` paths this run intends to keep under
+    `position/small_bodies/`, derived from `zone_structure`.
+
+    Used by :func:`_prune_small_bodies` to delete anything not in the set.
+    """
+    planned: set[Path] = set()
+    for zone, zoom_map in zone_structure.items():
+        if not zone.startswith("small_bodies/"):
+            continue
+        for zoom, zoom_snaps in zoom_map.items():
+            for snap in zoom_snaps.snapshots:
+                base = out_dir / "position" / zone / str(zoom)
+                if snap.time is not None:
+                    base = base / snap.time
+                for part in range(snap.num_parts):
+                    planned.add(base / f"{part}.bin.gz")
+    return planned
+
+
+def _prune_small_bodies(
+    out_dir: Path,
+    zone_structure: Mapping[str, Mapping[int, "ZoomSnapshots"]],
+) -> None:
+    """Delete on-disk parts under `position/small_bodies/` not in this run's
+    plan, plus their sidecars in the metadata mirror.
+
+    Incremental export preserves `position/small_bodies/` across runs (see
+    `_POSITION_INCREMENTAL_ZONES`); without a prune pass, orphans from class
+    shrinkage (fewer parts), removed classes, or moved-to-different-zone
+    bodies would linger forever.
+
+    Sidecar mirroring: parts live in `EXPORT_DIR/position/small_bodies/...`
+    and sidecars in `EXPORT_METADATA_DIR/position/small_bodies/...`; both
+    sides are walked so a sidecar whose binary already vanished (e.g. partial
+    deletion from a prior crash) is also cleaned up.
+    """
+    from space_map_data.export.position.elements import (
+        sidecar,
+    )  # local import: avoid cycle
+
+    planned = _planned_small_body_paths(out_dir, zone_structure)
+    sb_dir = out_dir / "position" / "small_bodies"
+    deleted = 0
+    if sb_dir.exists():
+        for bin_path in sb_dir.rglob("*.bin.gz"):
+            if bin_path in planned:
+                continue
+            bin_path.unlink()
+            part_idx = bin_path.name.removesuffix(".bin.gz")
+            meta_path = sidecar.mirror_path(bin_path.parent / f"{part_idx}.meta.json")
+            meta_path.unlink(missing_ok=True)
+            deleted += 1
+        for d in sorted((d for d in sb_dir.rglob("*") if d.is_dir()), reverse=True):
+            try:
+                d.rmdir()
+            except OSError:
+                pass  # not empty — keep
+
+    # Catch orphan sidecars whose binaries already vanished (e.g. a class was
+    # fully removed before this run, leaving only the metadata mirror behind).
+    meta_sb_dir = sidecar.mirror_path(sb_dir)
+    if meta_sb_dir.exists():
+        for meta_path in meta_sb_dir.rglob("*.meta.json"):
+            rel_dir = meta_path.relative_to(meta_sb_dir).parent
+            part_idx = meta_path.name.removesuffix(".meta.json")
+            if sb_dir / rel_dir / f"{part_idx}.bin.gz" not in planned:
+                meta_path.unlink()
+                deleted += 1
+        for d in sorted(
+            (d for d in meta_sb_dir.rglob("*") if d.is_dir()), reverse=True
+        ):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+
+    if deleted:
+        logger.info("Pruned %d orphan small_bodies parts/sidecars", deleted)
 
 
 def _overlay_celestrak_elements(
@@ -1048,10 +1136,17 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 )
                 if cheb_covered_ids:
                     sbdb_q = sbdb_q.filter(Object.id.notin_(cheb_covered_ids))
-                objects = sbdb_q.order_by(Object.random_int).limit(limit_per_zone).all()
+                # SBDB zones are uncapped: incremental per-part sidecars (see
+                # elements/sidecar.build_sbdb_part_signature) mean a no-op
+                # re-export costs a sidecar scan rather than re-encoding every
+                # asteroid. The first-export and post-refresh cost still scales
+                # with row count, but that's amortized across re-runs.
+                objects = sbdb_q.order_by(Object.random_int).all()
                 if not objects:
                     continue
-                zone = cls.name
+                # All SBDB classes ship under one parent dir so the prune pass
+                # and incremental wipe rules can target them as a group.
+                zone = f"small_bodies/{cls.name}"
                 f = executor.submit(
                     _export_zone,
                     zone,
@@ -1266,6 +1361,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # --- Other outputs ---
     write_messages(wikidata_entities, units.used_units)
 
+    _prune_small_bodies(out_dir, zone_structure)
     position_metadata = _build_position_metadata(
         zone_structure, chebyshev_zones, probe_zones
     )

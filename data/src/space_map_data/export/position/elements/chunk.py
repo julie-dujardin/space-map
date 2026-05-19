@@ -130,7 +130,7 @@ def write_chunk(
     end_jd = validity_end_jd
     sidecar_path: Path | None = None
     signature: dict | None = None
-    if zone == "PAR":
+    if zone == "small_bodies/PAR":
         write_fn = write_parabolic_elements
     elif zone == "earth":
         write_fn = write_sgp4_elements
@@ -140,13 +140,18 @@ def write_chunk(
         # version match an existing binary's sidecar, the part contents are
         # determined entirely by those inputs — skip the encode + gzip.
         assert time is not None, "earth zone snapshots must carry a date label"
-        day_dir = _earth_day_dir(time)
-        sidecar_path = sidecar.mirror_path(chunk_dir / f"{part}.meta.json")
-        signature = sidecar.build_part_signature(day_dir)
-        if out_path.exists() and sidecar.matches(sidecar_path, signature):
-            return out_path.stat().st_size
+        signature = sidecar.build_earth_part_signature(_earth_day_dir(time))
     else:
         write_fn = write_elements
+    if zone.startswith("small_bodies/"):
+        # SBDB ships its full catalog as one snapshot; the sidecar fingerprint
+        # is shared across every small_bodies/* part. A re-download invalidates
+        # all of them at once. No CelesTrak-style per-day variance.
+        signature = sidecar.build_sbdb_part_signature(DOWNLOAD_DIR)
+    if signature is not None:
+        sidecar_path = sidecar.mirror_path(chunk_dir / f"{part}.meta.json")
+        if out_path.exists() and sidecar.matches(sidecar_path, signature):
+            return out_path.stat().st_size
     write_fn(
         objects,
         out_path,

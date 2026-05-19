@@ -10,7 +10,7 @@ v1/
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
-    {zone}/{zoom}/{part}.bin.gz                   static parted        — most SBDB zones, Earth-orbit spacecraft
+    {zone}/{zoom}/{part}.bin.gz                   static parted        — small_bodies/{class} zones, Earth-orbit spacecraft
     {zone}/{zoom}/{label}/{part}.bin.gz           time-chunked + parted — earth (date label), moons (chunk-idx label)
     {zone}/{zoom}/{chunk}.bin.gz                  time-chunked, unparted — chebyshev zones
     probes/{zone}/{chunk}.bin.gz                  time-chunked, no zoom segment — interplanetary probes (format byte = 2)
@@ -49,7 +49,7 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
 {
   "position": {
     "zones": {
-      "MBA": {
+      "small_bodies/MBA": {
         "zooms": {
           "0": { "shape": "parted", "parts": 12 },
           "1": { "shape": "parted", "parts": 47 }
@@ -132,7 +132,7 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
 
 | `shape`           | URL                                              | Used by                              |
 |-------------------|--------------------------------------------------|--------------------------------------|
-| `parted`          | `position/{zone}/{zoom}/{part}.bin.gz`           | most SBDB zones, Earth-orbit spacecraft, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
+| `parted`          | `position/{zone}/{zoom}/{part}.bin.gz`           | `small_bodies/{class}` zones, Earth-orbit spacecraft, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
 | `chunked-parted`  | `position/{zone}/{zoom}/{label}/{part}.bin.gz`   | `earth` (label = ISO date), `moons` (label = chunk index) |
 | `chunked` (zoomed) | `position/{zone}/{zoom}/{chunk}.bin.gz`         | every chebyshev zone (`major`, `major_asteroids`, `moons/{parent}`) |
 | `chunked` (flat)  | `position/{zone}/{chunk}.bin.gz`                 | probe zones (`probes/*`) — manifest entry has no `zooms` wrapper, signalling no zoom segment in the URL |
@@ -183,11 +183,42 @@ level — so the zoom level would always be `0` and is elided for clarity.
   every zone its trajectory passes through (cruise + planet captures), so
   the same probe can appear in multiple zone files at different times.
 
-**SBDB zones** — named after [orbit class](../data/src/space_map_data/models/object/sbdb.py) (e.g. `APO`, `MBA`, `TJN`):
+**`small_bodies/{class}`** — SBDB-sourced asteroids and comets, one zone per
+[orbit class](../data/src/space_map_data/models/object/sbdb.py) (`small_bodies/APO`, `small_bodies/MBA`, `small_bodies/TJN`, …):
 - Zoom 0 = named objects
 - Zoom 1 = unnamed objects
 
-Each (zone, zoom) pair may have multiple parts (max 10,000 objects per part).
+Each (zone, zoom) pair may have multiple parts (10,000 objects per part).
+Objects are hash-bucketed across parts by `Object.random_int` so the same id
+always lands in the same part across runs — required for the per-part
+incremental sidecar to be meaningful.
+
+The shared `small_bodies/` prefix lets export wipe + prune target the whole
+group as a unit: a fresh SBDB pull invalidates every part, but no other
+zone's outputs are touched.
+
+### Incremental export
+
+Both `earth` and `small_bodies/{class}` parts carry a `{part}.meta.json`
+sidecar (stored in `EXPORT_METADATA_DIR` mirror, never published) recording
+the upstream snapshot that produced them:
+
+- `earth/{zoom}/{date}/{part}.meta.json` — fingerprints the CelesTrak CSVs
+  for that day (`name + mtime_ns + size` per CSV). A re-downloaded day
+  invalidates only that date's parts.
+- `small_bodies/{class}/{zoom}/{part}.meta.json` — fingerprints the SBDB
+  download metadata (`downloaded_at + record_count + complete`). The unit
+  of cacheability is the whole SBDB snapshot, so a re-download invalidates
+  every `small_bodies/*` part; a no-op re-export drops the cost to a
+  sidecar scan.
+
+Both sidecar shapes carry `format_version` so a writer/encoding change
+invalidates everything regardless of upstream freshness. Probes use the
+same pattern at `probes/{zone}/{chunk}.meta.json` (see [Probes payload](#probes-payload-format-byte--2)).
+
+A post-export prune pass walks `position/small_bodies/` and deletes orphan
+parts (and their sidecars) that this run didn't plan — covers asteroids
+moving between classes, class shrinkage, or zooms disappearing.
 
 ### Time-segmented zones
 
@@ -329,7 +360,7 @@ CelesTrak, which `json2satrec` expects unconverted.
 
 ### Parabolic columns (sub-format = 1)
 
-Used for the `PAR` zone. Parabolic comets (`e = 1`) lack a semi-major axis and mean motion; they use perihelion distance and time of perihelion instead.
+Used for the `small_bodies/PAR` zone. Parabolic comets (`e = 1`) lack a semi-major axis and mean motion; they use perihelion distance and time of perihelion instead.
 
 Columns 0–3 are identical to Keplerian. Julian Dates use float64; other columns use float32:
 

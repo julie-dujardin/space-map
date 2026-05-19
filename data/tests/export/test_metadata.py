@@ -47,14 +47,20 @@ class TestStaticShape:
     """Single snapshot with ``time is None`` → ``{shape: parted, parts}``."""
 
     def test_emits_parted_shape(self):
-        meta = _build_position_metadata({"AMO": {0: _zoom(_result(num_parts=1))}}, {})
+        meta = _build_position_metadata(
+            {"small_bodies/AMO": {0: _zoom(_result(num_parts=1))}}, {}
+        )
         assert meta == {
-            "zones": {"AMO": {"zooms": {"0": {"shape": "parted", "parts": 1}}}}
+            "zones": {
+                "small_bodies/AMO": {"zooms": {"0": {"shape": "parted", "parts": 1}}}
+            }
         }
 
     def test_carries_parts_count(self):
-        meta = _build_position_metadata({"MBA": {0: _zoom(_result(num_parts=12))}}, {})
-        assert meta["zones"]["MBA"]["zooms"]["0"] == {
+        meta = _build_position_metadata(
+            {"small_bodies/MBA": {0: _zoom(_result(num_parts=12))}}, {}
+        )
+        assert meta["zones"]["small_bodies/MBA"]["zooms"]["0"] == {
             "shape": "parted",
             "parts": 12,
         }
@@ -235,7 +241,7 @@ class TestMixedZones:
     def test_four_shapes(self):
         meta = _build_position_metadata(
             {
-                "AMO": {0: _zoom(_result(num_parts=1))},
+                "small_bodies/AMO": {0: _zoom(_result(num_parts=1))},
                 "earth": {
                     0: _zoom(
                         _result(time="2026-04-23"),
@@ -261,7 +267,7 @@ class TestMixedZones:
                 }
             },
         )
-        assert meta["zones"]["AMO"]["zooms"]["0"]["shape"] == "parted"
+        assert meta["zones"]["small_bodies/AMO"]["zooms"]["0"]["shape"] == "parted"
         assert meta["zones"]["earth"]["zooms"]["0"]["shape"] == "chunked-parted"
         assert meta["zones"]["earth"]["zooms"]["0"]["label"] == "date"
         assert meta["zones"]["moons"]["zooms"]["0"]["shape"] == "chunked-parted"

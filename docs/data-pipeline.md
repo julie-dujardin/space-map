@@ -90,7 +90,7 @@ flowchart LR
         direction TB
 
         E_POS_CHEB["position/chebyshev<br/><i>read .npz, route to zone (major→flat,<br/>moons→per-parent), time-chunk by years,<br/>pack with 24B header + degree, gzip per chunk</i>"]
-        E_POS_EL["position/elements<br/><i>query Kepler/Parabolic/SGP4,<br/>columnar binary, format byte dispatch,<br/>per-source uniformity checks</i>"]
+        E_POS_EL["position/elements<br/><i>query Kepler/Parabolic/SGP4,<br/>columnar binary, format byte dispatch,<br/>per-source uniformity checks,<br/>earth + small_bodies parts sidecar-skipped<br/>when upstream snapshot unchanged</i>"]
         E_POS_PROBES["position/probes<br/><i>furnish kernels, classify_trace per zone,<br/>fit Method-C Kepler (pure or drift) per sub-chunk,<br/>fall back to Chebyshev when err > threshold,<br/>format byte = 2, no zoom segment in URL</i>"]
         E_OBJ["objects<br/><i>hash-bucket sha256(id) %% N<br/>(K_GLOBAL=100, K_LOCALIZED=200/lang),<br/>extract Wikidata claims, resolve unit QIDs,<br/>build SBDB/SATCAT/Wikipedia summaries</i>"]
         E_LBL["labels<br/><i>filter to promoted set (planets, moons, stars,<br/>chebyshev asteroids, curated extras),<br/>per-language UTF-8 line files</i>"]
