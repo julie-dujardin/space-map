@@ -213,6 +213,12 @@ def _summarize(
     is_stationary = peak_disp < stationary_m
     if is_stationary:
         kept = [first]
+        # Static probes only "moved" via frame-conversion noise — each step is
+        # a few cm, sums to tens of km over decades of runout. Reporting that
+        # as path makes static lines look like 30 km drives. Zero it out;
+        # peak_displacement_m still tells the real noise floor.
+        total_path = 0.0
+        peak_step = 0.0
     else:
         kept = _decimate(fine_samples, motion_m, time_s)
 

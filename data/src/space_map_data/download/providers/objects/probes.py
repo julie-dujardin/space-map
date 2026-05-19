@@ -435,7 +435,15 @@ LANDED_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^m2020_surf_rover_loc_\d+_\d+_v\d+\.bsp$",
         r"^m2020_surf_rover_loc_runout\.bsp$",
     ),
-    "MER": (r"^mer[12]_ls_\d+_iau2000_v\d+\.bsp$",),
+    # MER `rvr_rpf` ("rover position fix") gives the only rover-body (-253,
+    # -254) trajectory in the archive — two short kernels per rover (~2 and
+    # ~5 days respectively), spanning the first ~3 months post-landing. After
+    # those, only `_ls_` (static landing site) and `iddg` (joint-angle
+    # telemetry, ignored — mission frame -253000 we don't load) are available.
+    "MER": (
+        r"^mer[12]_ls_\d+_iau2000_v\d+\.bsp$",
+        r"^mer[12]_rvr_rpf_\d+\.bsp$",
+    ),
 }
 
 # Missions where each MISSION_INCLUDE regex matches multiple cumulative
@@ -715,8 +723,14 @@ def _list_mission_spks(client: httpx.Client, source: MissionSource) -> MissionFi
     hrefs = [h for h in raw if not any(p.match(h) for p in SKIP_PATTERNS)]
     pre_filter = len(hrefs)
 
-    landed_hrefs = _apply_include(
-        hrefs, LANDED_INCLUDE, source.mission, use_latest_only=False
+    # LANDED is opt-in: missions without an explicit entry route everything
+    # to trajectory. (`_apply_include` returns accept-all when the mission is
+    # absent — fine for MISSION_INCLUDE, wrong for LANDED_INCLUDE since it
+    # would dump all of CASSINI/BEPICOLOMBO/etc. into landed_missions/.)
+    landed_hrefs = (
+        _apply_include(hrefs, LANDED_INCLUDE, source.mission, use_latest_only=False)
+        if source.mission in LANDED_INCLUDE
+        else []
     )
     trajectory_pool = [h for h in hrefs if h not in set(landed_hrefs)]
     trajectory_hrefs = _apply_include(
