@@ -41,6 +41,7 @@ export interface CloudNode {
 	textureTier?: string;
 	textureFrame?: string;
 	textureLoading?: boolean;
+	lastSwapMs?: number;
 }
 
 /**
@@ -49,6 +50,15 @@ export interface CloudNode {
  * coplanar-fragment depth-equality glitch on some GPUs.
  */
 const CLOUD_RADIUS_OFFSET = 1.002;
+
+/**
+ * Minimum wall-clock interval between cloud-texture swaps. At high time-warp
+ * `cloudFrameForJd` would otherwise pick a new 3h snapshot every render, and
+ * each swap costs a fetch + WebP decode + GPU upload even when the file is
+ * HTTP-cached. Clouds are visual noise at fast speed, so capping the swap
+ * rate is invisible.
+ */
+const CLOUD_SWAP_MIN_INTERVAL_MS = 1000;
 
 function cloudTextureUrl(id: string, tier: string, frame: string): string {
 	return `${DATA_BASE}/v1/textures/${id}/${tier}_${frame}.webp`;
@@ -185,6 +195,9 @@ export async function loadCloudTexture(
 	if (node.textureTier === tier && node.textureFrame === frame) return;
 	if (!node.availableTiers.includes(tier)) return;
 	if (!node.availableFrames.includes(frame)) return;
+	const now = performance.now();
+	if (node.lastSwapMs !== undefined && now - node.lastSwapMs < CLOUD_SWAP_MIN_INTERVAL_MS) return;
+	node.lastSwapMs = now;
 	node.textureLoading = true;
 	try {
 		const texture = await fetchCloudTexture(node.id, tier, frame, loader);
