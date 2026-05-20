@@ -246,6 +246,11 @@ export class SceneRenderer {
 	private rafId = 0;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
+	// FPS ring buffer: timestamps of the last `FPS_SAMPLE_FRAMES` ticks. fps =
+	// (n - 1) / (last - first) seconds, which stays stable down to ~5 fps.
+	private static readonly FPS_SAMPLE_FRAMES = 30;
+	private fpsSamples: number[] = [];
+	private fpsSampleHead = 0;
 	/**
 	 * Initial lat/lon/zoom stashed until the focused body's orientation has
 	 * loaded, at which point we re-place the camera in body-fixed coords.
@@ -1282,6 +1287,16 @@ export class SceneRenderer {
 	private tick = (): void => {
 		this.rafId = requestAnimationFrame(this.tick);
 
+		// FPS ring buffer — ~16 bytes per sample, only read when the debug
+		// overlay is open. Cheap enough to always keep current.
+		const nowMs = performance.now();
+		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
+			this.fpsSamples.push(nowMs);
+		} else {
+			this.fpsSamples[this.fpsSampleHead] = nowMs;
+			this.fpsSampleHead = (this.fpsSampleHead + 1) % SceneRenderer.FPS_SAMPLE_FRAMES;
+		}
+
 		this.updateCameraUp();
 
 		// Snap controls target on first frame
@@ -2061,6 +2076,62 @@ export class SceneRenderer {
 
 	getFocusedBody(): PositionedBody | undefined {
 		return this.focusedBody;
+	}
+
+	/**
+	 * Snapshot of internals for the debug overlay. Read on demand; nothing
+	 * here is hot, but the call lives behind a settings toggle so the
+	 * GC-pressure of one allocation per frame is fine.
+	 *
+	 * `fps` is averaged across the ring buffer (~0.5s at 60Hz); when the tab
+	 * is backgrounded RAF is throttled and the buffer ages out — that's
+	 * accurate, not stale.
+	 */
+	getDebugStats(): {
+		fps: number;
+		workers: number;
+		workerGroups: number;
+		drawCalls: number;
+		triangles: number;
+		geometries: number;
+		textures: number;
+		programs: number;
+		promotedBodies: number;
+		focusedId: string | undefined;
+		focusedName: string | undefined;
+		cameraDistanceAU: number;
+		viewportW: number;
+		viewportH: number;
+		pixelRatio: number;
+	} {
+		const samples = this.fpsSamples;
+		let fps = 0;
+		if (samples.length >= 2) {
+			// Reassemble the ring buffer in chronological order.
+			const head = samples.length < SceneRenderer.FPS_SAMPLE_FRAMES ? 0 : this.fpsSampleHead;
+			const oldest = samples[head];
+			const newest = samples[(head - 1 + samples.length) % samples.length];
+			const dtSec = (newest - oldest) / 1000;
+			if (dtSec > 0) fps = (samples.length - 1) / dtSec;
+		}
+		const info = this.renderer.info;
+		return {
+			fps,
+			workers: this.orbitPool.workerCount,
+			workerGroups: this.orbitPool.groupCount,
+			drawCalls: info.render.calls,
+			triangles: info.render.triangles,
+			geometries: info.memory.geometries,
+			textures: info.memory.textures,
+			programs: info.programs?.length ?? 0,
+			promotedBodies: this.bodyObjects.size,
+			focusedId: this.focusedBody?.data.id,
+			focusedName: this.focusedBody?.data.name ?? undefined,
+			cameraDistanceAU: this.getCameraState().distance / AU_SCALE,
+			viewportW: this.renderer.domElement.clientWidth,
+			viewportH: this.renderer.domElement.clientHeight,
+			pixelRatio: this.renderer.getPixelRatio()
+		};
 	}
 
 	/**

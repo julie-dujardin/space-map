@@ -73,6 +73,14 @@ export class OrbitWorkerPool {
 		this.onResult = handler;
 	}
 
+	get workerCount(): number {
+		return this.workers.length;
+	}
+
+	get groupCount(): number {
+		return this.groups.size;
+	}
+
 	/**
 	 * Return the current front-buffer for a group. Caller binds this to the
 	 * geometry's position attribute after calling {@link rewire}.

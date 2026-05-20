@@ -9,6 +9,10 @@
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
+	import DebugOverlay from './DebugOverlay.svelte';
+	import { getSettings } from '$lib/state/settings.svelte';
+
+	const settings = getSettings();
 
 	interface Props {
 		clock: SimClock;
@@ -141,4 +145,7 @@
 <div class="relative w-full h-full select-none" style="-webkit-user-select: none;">
 	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto"></canvas>
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
+	{#if settings.showDebugInfo}
+		<DebugOverlay getRenderer={() => renderer} {ctx} {clock} />
+	{/if}
 </div>

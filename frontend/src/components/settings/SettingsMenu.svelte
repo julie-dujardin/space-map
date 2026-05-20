@@ -235,5 +235,34 @@
 				{/if}
 			</div>
 		</section>
+
+		<!-- DEVELOPER -->
+		<section class="flex flex-col gap-4">
+			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+				{m.settings_section_developer()}
+			</h3>
+
+			<div class="flex items-center justify-between gap-3">
+				<div class="min-w-0">
+					<div class="text-sm font-medium">{m.settings_debug_info()}</div>
+					<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
+				</div>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={settings.showDebugInfo}
+					aria-label={m.settings_debug_info()}
+					class="relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors cursor-pointer
+						focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50
+						{settings.showDebugInfo ? 'bg-primary' : 'bg-muted'}"
+					onclick={() => settings.setShowDebugInfo(!settings.showDebugInfo)}
+				>
+					<span
+						class="inline-block size-4 rounded-full bg-background shadow transition-transform
+							{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
+					></span>
+				</button>
+			</div>
+		</section>
 	</div>
 </div>

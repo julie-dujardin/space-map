@@ -1,4 +1,10 @@
-import { ObjectType, ZONE_A_RANGE, type BodyData, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	ZONE_A_RANGE,
+	isAsteroid,
+	type BodyData,
+	type PositionedBody
+} from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -1007,6 +1013,56 @@ export class ContextManager {
 		const ratio = camDistAU / range.maxA;
 		// reduce clutter by lowering threshold a bit
 		return ratio <= this.scaledSystem[VISIBILITY.FAR] / 3;
+	}
+
+	/**
+	 * High-level object counts for the debug overlay. Walks the live maps
+	 * directly so it always reflects whatever's loaded, including bodies that
+	 * arrived after first paint.
+	 *
+	 * Buckets:
+	 *  - `planets`: planets + dwarf planets (anything in bodiesById of those types).
+	 *  - `moons`: bodies in bodiesById typed MOON.
+	 *  - `probes`: SPICE-tracked spacecraft (orbitalSource = SPICE_PROBE) plus
+	 *    any spacecraft groups not orbiting Earth.
+	 *  - `earthSatellites`: spacecraft/debris bucketed under Earth (naif-399).
+	 *  - `smallBodies`: asteroid + comet zone totals (excluding the 'earth'
+	 *    zone, which holds debris/rocket-bodies).
+	 */
+	getObjectCounts(): {
+		planets: number;
+		moons: number;
+		probes: number;
+		earthSatellites: number;
+		smallBodies: number;
+	} {
+		let planets = 0;
+		let moons = 0;
+		let probes = 0;
+		for (const b of this.bodiesById.values()) {
+			const t = b.data.objectType;
+			if (t === ObjectType.PLANET || t === ObjectType.DWARF_PLANET) planets++;
+			else if (t === ObjectType.MOON) moons++;
+			else if (t === ObjectType.SPACECRAFT) probes++;
+		}
+		let earthSatellites = this.spacecraftByParent.get('naif-399')?.size ?? 0;
+		earthSatellites += this.asteroidBodiesByZone.get('earth')?.size ?? 0;
+		for (const [parentId, bucket] of this.spacecraftByParent) {
+			if (parentId === 'naif-399') continue;
+			probes += bucket.size;
+		}
+		let smallBodies = 0;
+		for (const [zone, bucket] of this.asteroidBodiesByZone) {
+			if (zone === 'earth') continue;
+			smallBodies += bucket.size;
+		}
+		// Standalone asteroids/comets that arrived through bodiesById (URL-loaded
+		// placeholders or major chunks) — fold them into the small-body count so
+		// e.g. Bennu shows up.
+		for (const b of this.bodiesById.values()) {
+			if (isAsteroid(b.data.objectType) || b.data.objectType === ObjectType.COMET) smallBodies++;
+		}
+		return { planets, moons, probes, earthSatellites, smallBodies };
 	}
 
 	/** Max orbital semi-major axis (AU) of moons in a system. Used to size the shadow camera frustum. */
