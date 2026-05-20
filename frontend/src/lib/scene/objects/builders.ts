@@ -133,7 +133,7 @@ function writeOrbitAlphas(
 	isOpenCurve: boolean,
 	useTrail: boolean
 ): void {
-	const fullMax = 0.9;
+	const fullMax = 0.55;
 	const fullMin = isOpenCurve ? 0 : fullMax / 3;
 	const last = fullArr.length - 1;
 	for (let k = 0; k < fullArr.length; k++) {
@@ -141,7 +141,7 @@ function writeOrbitAlphas(
 	}
 	if (useTrail) {
 		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
-		const trailMax = 0.6;
+		const trailMax = 0.35;
 		trailArr.fill(0);
 		for (let k = 0; k < Math.min(trailLen, trailArr.length); k++) {
 			trailArr[k] = trailMax - (k / (trailLen - 1)) * trailMax;
@@ -151,11 +151,20 @@ function writeOrbitAlphas(
 	}
 }
 
+// LDR overlays (trails, asteroid point clouds) read directly as the body's halo
+// colour under ACES; scale down so they render as a darker shade rather than
+// matching the halo.
+const OVERLAY_COLOR_SCALE = 0.5;
+
+function overlayColor(color: string): Color {
+	return new Color(color).multiplyScalar(OVERLAY_COLOR_SCALE);
+}
+
 function makeOrbitLineMaterial(color: string): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
 		uniforms: {
-			uColor: { value: new Color(color) },
+			uColor: { value: overlayColor(color) },
 			uCenterOffset: { value: new Vector3() },
 			uAlphaMultiplier: { value: 1.0 },
 			uAlphaMin: { value: 0.0 },
@@ -214,7 +223,7 @@ function makeFatOrbitLineMaterial(color: string, lineWidth: number): ShaderMater
 		transparent: true,
 		side: DoubleSide,
 		uniforms: {
-			uColor: { value: new Color(color) },
+			uColor: { value: overlayColor(color) },
 			uCenterOffset: { value: new Vector3() },
 			uAlphaMultiplier: { value: 1.0 },
 			uAlphaMin: { value: 0.0 },
@@ -784,7 +793,7 @@ export function makePointCloud(
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
 	const material = new PointsMaterial({
 		map: texture,
-		color,
+		color: overlayColor(color),
 		transparent: true,
 		size,
 		sizeAttenuation: false,
@@ -817,7 +826,7 @@ export function makePointCloudFromBuffer(
 	geometry.setDrawRange(0, drawCount);
 	const material = new PointsMaterial({
 		map: texture,
-		color,
+		color: overlayColor(color),
 		transparent: true,
 		size,
 		sizeAttenuation: false,

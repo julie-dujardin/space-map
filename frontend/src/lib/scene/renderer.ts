@@ -317,15 +317,10 @@ export class SceneRenderer {
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-		// ACES gives the Sun's HDR output (intensity 6× in makeStarSurfaceMaterial)
-		// a soft highlight rolloff to saturated white — same look a camera gets
-		// pointing at the Sun. Exposure < 1 counteracts Three's built-in
-		// `color *= exposure/0.6` premultiplier inside the ACES shader chunk,
-		// which would otherwise lift the mid-tone UI elements (orbit trails,
-		// halos) ~10–30% across the screen. The Sun is still well past the bloom
-		// threshold so it saturates either way.
+		// ACES rolls the Sun's HDR output to saturated white. LDR overlays
+		// (trails, halos) are scaled in their own builders to compensate.
 		this.renderer.toneMapping = ACESFilmicToneMapping;
-		this.renderer.toneMappingExposure = 0.6;
+		this.renderer.toneMappingExposure = 1.0;
 		// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
 		// size so the requested width reads as pixels regardless of devicePixelRatio.
 		setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
