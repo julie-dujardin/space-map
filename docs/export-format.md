@@ -117,7 +117,8 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
         "subchunk_days": 7.0,
         "float64_coeffs": true,
         "fit_center_naif_id": 10,
-        "parent_id_type": "probe"
+        "parent_id_type": "probe",
+        "present": [[27, 99]]
       }
     }
   },
@@ -152,6 +153,23 @@ omit the zoom segment: `position/probes/interplanetary/47.bin.gz` rather
 than `position/probes/interplanetary/0/47.bin.gz`. Probes never need
 multi-resolution tiers — per-zone routing already picks the right detail
 level — so the zoom level would always be `0` and is elided for clarity.
+
+Probe zones are **sparse**: the writer only emits a file for a chunk index
+when ≥1 probe contributes (Pluto only during the New Horizons flyby,
+Uranus/Neptune only across the Voyager 2 windows, …), so most `chunk_idx ∈
+[0, chunks)` slots have no file. To avoid speculative 404s, each probe-zone
+manifest entry carries a `present` field listing every chunk index a file
+actually exists for, collapsed into inclusive-inclusive ranges:
+
+```
+"present": [[27, 99]]          // interplanetary — dense, one contiguous range
+"present": [[129, 132]]        // pluto — New Horizons flyby only
+"present": []                  // zone planned but no probe contributed
+```
+
+Clients should treat any `chunk_idx` outside every `[start, end]` pair as
+authoritatively absent and skip the GET. Indices are the same values used in
+the URL (`{zone}/{chunk_idx}.bin.gz`).
 
 ## Zones and zoom levels
 

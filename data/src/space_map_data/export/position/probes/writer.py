@@ -1011,6 +1011,25 @@ def _fit_pass(
     return by_zone_chunk
 
 
+def _to_ranges(indices: list[int]) -> list[list[int]]:
+    """Collapse a sorted list of unique ints into inclusive-inclusive ranges
+    `[[start, end], ...]`. Lets the manifest declare every chunk index a probe
+    file actually exists for without listing each one — dense zones collapse
+    to a single range, sparse zones (Pluto, Uranus, …) to two or three."""
+    if not indices:
+        return []
+    ranges: list[list[int]] = []
+    start = prev = indices[0]
+    for idx in indices[1:]:
+        if idx == prev + 1:
+            prev = idx
+            continue
+        ranges.append([start, prev])
+        start = prev = idx
+    ranges.append([start, prev])
+    return ranges
+
+
 def _write_pass(
     chunk_index: dict[str, dict[int, list[_ProbePlan]]],
     dirty: dict[str, dict[int, dict]],
@@ -1104,6 +1123,9 @@ def _write_pass(
             avg_kb,
             total_bytes / 1024 / 1024,
         )
+        present_indices = sorted(
+            int(p.name.split(".", 1)[0]) for p in zone_out.glob("*.bin.gz")
+        )
         manifest[f"probes/{zone_key}"] = {
             "chunks": total_window_chunks,
             "chunk_years": zone.chunk_years,
@@ -1112,6 +1134,7 @@ def _write_pass(
             "subchunk_days": zone.kepler_subchunk_days,
             "float64_coeffs": zone.float64_coeffs,
             "fit_center_naif_id": zone.fit_center_naif_id,
+            "present": _to_ranges(present_indices),
         }
 
     return manifest
