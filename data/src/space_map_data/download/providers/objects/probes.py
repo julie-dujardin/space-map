@@ -788,6 +788,83 @@ def _list_mission_spks(client: httpx.Client, source: MissionSource) -> MissionFi
     )
 
 
+_GENERIC_PCK_SNAPSHOT_RE = re.compile(r"^pck\d+\.tpc$", re.IGNORECASE)
+_VERSIONED_PCK_RE = re.compile(r"^(?P<stem>.+)_v(?P<ver>\d+)\.tpc$", re.IGNORECASE)
+
+
+def _filter_mission_pcks(hrefs: list[str]) -> list[str]:
+    """Filter raw .tpc directory listings down to the canonical per-body files.
+
+    Two filters:
+    * Drop `pck\\d+.tpc` — generic-kernel snapshots bundled into mission dirs
+      (e.g. ORX/kernels/pck/pck00010.tpc). The current pck00011 from
+      `generic_kernels/pck/` supersedes them; loading the snapshot adds bytes
+      and slows furnsh without contributing anything generic doesn't already.
+    * For `<body>_v<n>.tpc` series, keep the highest version per body. NAIF
+      mission archives keep older revisions for traceability; the latest is
+      the canonical pick (same convention as `_LATEST_VERSION_KERNELS` in
+      the SPICE provider).
+    """
+    versioned: dict[str, tuple[int, str]] = {}
+    unversioned: list[str] = []
+    for h in hrefs:
+        if _GENERIC_PCK_SNAPSHOT_RE.match(h):
+            continue
+        m = _VERSIONED_PCK_RE.match(h)
+        if m:
+            stem = m.group("stem").lower()
+            ver = int(m.group("ver"))
+            prev = versioned.get(stem)
+            if prev is None or ver > prev[0]:
+                versioned[stem] = (ver, h)
+        else:
+            unversioned.append(h)
+    return sorted([entry[1] for entry in versioned.values()] + unversioned)
+
+
+def _list_mission_pcks(client: httpx.Client, source: MissionSource) -> list[FileEntry]:
+    """Return sized text-PCK entries from `<mission>/kernels/pck/` (or the PDS
+    equivalent at the sibling of `spk/`).
+
+    Most missions don't publish a PCK directory — listing failures are silent
+    by design (`_list_dir` returns [] on 404). Filtered to `.tpc` (text PCKs)
+    only: `.bpc` files are high-frequency Earth-orientation snapshots and
+    don't contribute body shape/orientation/GM constants; `.fk` frame kernels
+    define rotation frames but no scalar constants.
+
+    No per-mission whitelist: PCKs are KB-scale and the SPICE downloader's
+    generic-wins furnish order (mission first, generic last) prevents any
+    cross-body regression from incidental planet entries in mission PCKs.
+    See `_filter_mission_pcks` for the version/snapshot filters applied here.
+    """
+    pck_url = source.spk_url.replace("/spk/", "/pck/")
+    listed = [h for h in _list_dir(client, pck_url) if h.lower().endswith(".tpc")]
+    raw = _filter_mission_pcks(listed)
+    if not raw:
+        return []
+
+    async def _all_sizes() -> list[int]:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as ac:
+            limits = asyncio.Semaphore(16)
+
+            async def one(href: str) -> int:
+                async with limits:
+                    try:
+                        r = await ac.head(f"{pck_url}{href}")
+                        r.raise_for_status()
+                        return int(r.headers.get("content-length", 0))
+                    except httpx.HTTPError:
+                        return 0
+
+            return await asyncio.gather(*(one(h) for h in raw))
+
+    sizes = asyncio.run(_all_sizes())
+    return [
+        FileEntry(name=h, url=f"{pck_url}{h}", size_bytes=s)
+        for h, s in zip(raw, sizes, strict=True)
+    ]
+
+
 def _stream_to(client: httpx.Client, url: str, dest: Path, expected_size: int) -> None:
     """Stream `url` to `dest`. Skip if size already matches `expected_size`."""
     if dest.exists() and expected_size and dest.stat().st_size == expected_size:
@@ -852,6 +929,7 @@ class ProbesDownloader(Downloader):
 
     def _process_mission(self, source: MissionSource, max_mib: float | None) -> dict:
         files = _list_mission_spks(self.client, source)
+        pck_files = _list_mission_pcks(self.client, source)
         bucket_files = (
             ("trajectory", files.trajectory, MISSIONS_DIR),
             ("landed", files.landed, LANDED_MISSIONS_DIR),
@@ -861,7 +939,7 @@ class ProbesDownloader(Downloader):
         # download/index work so the resulting _index.json never lists a
         # file that's in the wrong tree.
         self._migrate_stragglers_both_ways(source.mission)
-        if not files.trajectory and not files.landed:
+        if not files.trajectory and not files.landed and not pck_files:
             return {"mission": source.mission, "skipped": False, "mib": 0.0, "files": 0}
         total = sum(f.size_bytes for b in bucket_files for f in b[1])
         mib = total / 1024 / 1024
@@ -926,11 +1004,37 @@ class ProbesDownloader(Downloader):
             )
             total_bytes += sum(r["size_bytes"] for r in file_records)
             total_files += len(file_records)
+
+        # PCKs are fetched into MISSIONS_DIR/<mission>/ next to the SPKs but
+        # not added to _index.json — the ingest step turns indexed targets
+        # into probe Object rows, and PCKs reference small-body targets that
+        # are already Object rows from SBDB. The SPICE provider's extract
+        # step discovers these files via MISSIONS_DIR.glob("*/*.tpc").
+        pck_bytes = 0
+        if pck_files:
+            mission_dir = MISSIONS_DIR / source.mission
+            mission_dir.mkdir(parents=True, exist_ok=True)
+            for f in pck_files:
+                local = mission_dir / f.name
+                try:
+                    _stream_to(self.client, f.url, local, f.size_bytes)
+                except httpx.HTTPError as exc:
+                    logger.warning("PCK download failed for %s: %s", f.name, exc)
+                    continue
+                pck_bytes += local.stat().st_size
+            logger.info(
+                "%s/%s: %d PCK files (%.1f KiB)",
+                source.server,
+                source.mission,
+                len(pck_files),
+                pck_bytes / 1024,
+            )
+
         return {
             "mission": source.mission,
             "skipped": False,
-            "mib": total_bytes / 1024 / 1024,
-            "files": total_files,
+            "mib": (total_bytes + pck_bytes) / 1024 / 1024,
+            "files": total_files + len(pck_files),
         }
 
     def _migrate_stragglers_both_ways(self, mission: str) -> None:

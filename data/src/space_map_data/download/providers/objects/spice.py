@@ -18,6 +18,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
+from space_map_data.download.providers.objects.probes import MISSIONS_DIR
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_MOON_WHITELIST,
@@ -176,6 +177,39 @@ def _load_chebyshev_config() -> dict[str, int | float]:
 
 # Barycenters that don't appear in SPK but we need (0=SSB, 1-9=planet barycenters, 10=Sun)
 _EXTRA_NAIF_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+
+def _canonical_naif(naif_id: int) -> int | None:
+    """Normalize numbered-asteroid NAIF IDs to the canonical `2_000_000 + n` form.
+
+    Some mission PCKs use non-standard NAIF ID conventions for asteroids:
+
+    * **Lucy / DART** for the binary primary use `9_<spkid>` (e.g.
+      `BODY920000617_RADII` = Patroclus, `BODY920065803_RADII` = Didymos).
+      Map down to NAIF `2_000_000 + n` (Patroclus → 2000617).
+    * **Lucy** for solo asteroids uses the bare SBDB spkid `20_000_000 + n`
+      (e.g. `BODY20052246_RADII` for Donaldjohanson #52246) — likely an
+      oversight, since Bennu/Ryugu/etc. use the standard NAIF form. Map
+      down to `2_000_000 + n` (Donaldjohanson → 2052246).
+    * **Lucy / DART** for the binary secondary use `1_<spkid>` (e.g.
+      `BODY120000617_RADII` = Menoetius, `BODY120065803_RADII` = Dimorphos).
+      These are asteroid satellites; their Object rows live in `SBDBMoon`
+      with non-NAIF object IDs, so we have no `Object.naif_id` to attach
+      to. Returns None — caller drops the entry and the satellite stays
+      shape-less for now. Wiring satellites up properly needs a join via
+      `SBDBMoon.parent_spkid + iau_num` instead of NAIF ID.
+    """
+    # Binary primary: 9_20XXXXXX → 2_XXXXXX. Same offset as the solo form
+    # plus a leading "9", so subtract (9-2) * 10^8 + 18M = 918_000_000.
+    if 920_000_000 <= naif_id < 930_000_000:
+        return naif_id - 918_000_000
+    # Binary secondary: 1_20XXXXXX → no NAIF mapping (see docstring).
+    if 120_000_000 <= naif_id < 130_000_000:
+        return None
+    # Solo asteroid SBDB spkid form: 20_000_000 + n → 2_000_000 + n.
+    if 20_000_000 <= naif_id < 30_000_000:
+        return naif_id - 18_000_000
+    return naif_id
 
 # Types we extract elements for (skip asteroids/comets — those stay in SBDB)
 _ELEMENT_TYPES = frozenset(
@@ -685,35 +719,40 @@ class SpiceDownloader(Downloader):
         iterating a fixed set, so asteroids and comets with orientation data
         in the PCK are included automatically.
         """
-        # Find all body IDs with POLE_RA in the kernel pool
-        matches = spiceypy.gnpool("BODY*_POLE_RA", 0, 1000)
+        # Find all body IDs with POLE_RA in the kernel pool. Negative IDs
+        # (spacecraft + instruments) are excluded — see `_extract_radii` for
+        # the rationale; the same generic-wins + canonical-naif policy applies.
+        matches = spiceypy.gnpool("BODY*_POLE_RA", 0, 5000)
         naif_ids: set[int] = set()
         for var in matches:
-            m = re.match(r"BODY(-?\d+)_POLE_RA", var)
+            m = re.match(r"BODY(\d+)_POLE_RA", var)
             if m:
                 naif_ids.add(int(m.group(1)))
 
-        rows = []
+        rows_by_canonical: dict[int, dict] = {}
         for naif_id in sorted(naif_ids):
+            canonical = _canonical_naif(naif_id)
+            if canonical is None:
+                continue
+            if canonical in rows_by_canonical:
+                continue
             try:
                 pole_ra = spiceypy.bodvrd(str(naif_id), "POLE_RA", 3)[1]
                 pole_dec = spiceypy.bodvrd(str(naif_id), "POLE_DEC", 3)[1]
                 pm = spiceypy.bodvrd(str(naif_id), "PM", 3)[1]
             except spiceypy.exceptions.SpiceyError:
                 continue
-            rows.append(
-                {
-                    "naif_id": naif_id,
-                    "pole_ra_0": pole_ra[0],
-                    "pole_ra_1": pole_ra[1],
-                    "pole_dec_0": pole_dec[0],
-                    "pole_dec_1": pole_dec[1],
-                    "w0": pm[0],
-                    "w1": pm[1],
-                    "w2": pm[2],
-                }
-            )
-        return rows
+            rows_by_canonical[canonical] = {
+                "naif_id": canonical,
+                "pole_ra_0": pole_ra[0],
+                "pole_ra_1": pole_ra[1],
+                "pole_dec_0": pole_dec[0],
+                "pole_dec_1": pole_dec[1],
+                "w0": pm[0],
+                "w1": pm[1],
+                "w2": pm[2],
+            }
+        return sorted(rows_by_canonical.values(), key=lambda r: r["naif_id"])
 
     @staticmethod
     def _extract_nutation() -> tuple[
@@ -812,30 +851,43 @@ class SpiceDownloader(Downloader):
         """Extract PCK triaxial radii (a, b, c in km) for all bodies that have them.
 
         Enumerated independently from orientation — a body can have radii
-        without pole data, and vice versa.
+        without pole data, and vice versa. Only positive NAIF IDs are kept:
+        negative IDs are spacecraft and instrument footprints (e.g. JUNO MWR
+        antennae publish `BODY-28000xxx_RADII` for beam dimensions), not body
+        shapes. Same filter applies in `_extract_orientation`.
+
+        Numbered asteroids are emitted under the canonical NAIF convention
+        (`2_000_000 + n`). The Lucy mission's per-target PCKs use the SBDB
+        spkid form (`20_000_000 + n`, e.g. `BODY20052246_RADII` for
+        Donaldjohanson); we map those down so downstream `Object.naif_id`
+        lookups match. If both forms are present in the pool, the NAIF-
+        canonical one wins (preserves the generic-PCK > mission-PCK policy).
         """
-        matches = spiceypy.gnpool("BODY*_RADII", 0, 1000)
+        matches = spiceypy.gnpool("BODY*_RADII", 0, 5000)
         naif_ids: set[int] = set()
         for var in matches:
-            m = re.match(r"BODY(-?\d+)_RADII", var)
+            m = re.match(r"BODY(\d+)_RADII", var)
             if m:
                 naif_ids.add(int(m.group(1)))
 
-        rows = []
+        rows_by_canonical: dict[int, dict] = {}
         for naif_id in sorted(naif_ids):
+            canonical = _canonical_naif(naif_id)
+            if canonical is None:
+                continue  # binary-satellite NAIF form (no Object to attach to)
+            if canonical in rows_by_canonical:
+                continue  # NAIF-canonical form was already emitted first
             try:
                 radii = spiceypy.bodvrd(str(naif_id), "RADII", 3)[1]
             except spiceypy.exceptions.SpiceyError:
                 continue
-            rows.append(
-                {
-                    "naif_id": naif_id,
-                    "radius_a_km": radii[0],
-                    "radius_b_km": radii[1],
-                    "radius_c_km": radii[2],
-                }
-            )
-        return rows
+            rows_by_canonical[canonical] = {
+                "naif_id": canonical,
+                "radius_a_km": radii[0],
+                "radius_b_km": radii[1],
+                "radius_c_km": radii[2],
+            }
+        return sorted(rows_by_canonical.values(), key=lambda r: r["naif_id"])
 
     @staticmethod
     def _extract_gms() -> list[dict]:
@@ -990,7 +1042,22 @@ class SpiceDownloader(Downloader):
         kernels = self._build_kernel_list()
         kernel_paths = self._download_kernels(kernels)
 
-        # Step 2: Load all kernels
+        # Step 2: Load all kernels. Mission PCKs furnish first so the generic
+        # kernel pool (pck00011, gm_de440, Gravity.tpc) overrides any
+        # incidental planet/Sun entries — IAU/WGCCRE values are the most
+        # rigorous synthesis. Mission-PCK values survive only for bodies the
+        # generic kernels don't define (Bennu, Ryugu, Didymos, Donaldjohanson,
+        # Dinkinesh, Arrokoth, …), which is the whole point of bringing them in.
+        mission_pcks = sorted(MISSIONS_DIR.glob("*/*.tpc")) if MISSIONS_DIR.exists() else []
+        for path in mission_pcks:
+            spiceypy.furnsh(str(path))
+        if mission_pcks:
+            logger.info(
+                "Furnished %d mission PCKs from %d missions",
+                len(mission_pcks),
+                len({p.parent.name for p in mission_pcks}),
+            )
+
         for path in kernel_paths:
             spiceypy.furnsh(str(path))
 
