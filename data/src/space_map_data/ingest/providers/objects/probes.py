@@ -1,9 +1,13 @@
-"""Ingest spacecraft Object rows from `missions/*/_index.json`.
+"""Ingest spacecraft Object rows from `missions/*/_index.json` and
+`landed_missions/*/_index.json`.
 
-Walks every per-mission index file written by `ProbesDownloader`, classifies
-trajectory coverage to skip landed/static probes, computes the inception MJD
-of each spacecraft NAIF ID's longest contiguous SPK interval, and persists
-one Object row per `(mission, naif_id)` with `id_type=PROBE`.
+Walks every per-mission index file written by `ProbesDownloader` (both the
+trajectory and the landed-bucket tree), computes the inception MJD of each
+spacecraft NAIF ID's longest contiguous SPK interval across the union of
+buckets, and persists one Object row per `(mission, naif_id)` with
+`id_type=PROBE`. Landed-only probes (Viking landers, etc.) get rows the
+same way as trajectory-only ones — the renderer dispatches between flying
+sub-chunks and landed records via the per-chunk binary.
 
 The primary key is `probe-<probe_id>` so the row survives NAIF-ID recycling
 (e.g. -76 was Mariner 10 and is MSL today — two separate rows with distinct
@@ -24,7 +28,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.probes.probe_id import assign_many, et_to_mjd
-from space_map_data.probes.trace import inception_et, is_landed_probe
+from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
@@ -43,86 +47,121 @@ def _mission_kernels(mission_dir: Path) -> list[Path]:
     ]
 
 
-def _collect_probes(missions_dir: Path) -> list[dict]:
-    """Walk `missions/*/_index.json` and return one record per spacecraft.
+def _is_instrument_naif(naif: int, all_targets: set[int]) -> bool:
+    """SPK-convention instrument NAIFs are `-spacecraft × 1000 - k` for some
+    small `k`. MSL's surface kernels expose rover-arm joints -76501..-76620
+    as targets alongside the rover body -76; we don't want Object rows for
+    those joints. Returns True iff `naif`'s magnitude is `> 1000` and the
+    high-order "spacecraft" half is in `all_targets`."""
+    if naif >= 0:
+        return False
+    n = -naif
+    if n <= 1000:
+        return False
+    parent_code = n // 1000
+    if n % 1000 == 0:
+        return False
+    return -parent_code in all_targets
 
-    Skips landed probes (TODO: lat/lon pipeline for surface installations).
+
+def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]:
+    """Walk `missions/*/_index.json` and `landed_missions/*/_index.json` and
+    return one record per spacecraft.
+
     Each record carries `(mission, naif_id, inception_mjd, name_hint?)`.
     `name_hint` (currently emitted by HorizonsSyntheticDownloader as
     `files[].name_horizons`) lets us name synthesized rows after the actual
     spacecraft rather than the umbrella mission folder.
+
+    For probes covered in both buckets (MSL has cruise in missions/ and
+    surface in landed_missions/), the union of kernels feeds `inception_et`
+    so the inception MJD picks up the earliest real-data start.
+
+    Landed-only probes (Viking landers, future Soviet/Chinese stuff) get
+    rows from `landed_missions/` alone — the binary export will emit just
+    a trailing METHOD_LANDED record for each chunk they occupy.
     """
-    out: list[dict] = []
-    for mdir in sorted(missions_dir.iterdir()):
-        if not mdir.is_dir():
-            continue
-        idx_path = mdir / "_index.json"
-        if not idx_path.exists():
-            continue
-        kernels = _mission_kernels(mdir)
-        if not kernels:
-            continue
-        idx = json.loads(idx_path.read_text())
-        # Per-naif name hint from the downloader, when available. Index files
-        # written by HorizonsSyntheticDownloader carry one bsp per spacecraft
-        # with the Horizons name attached; agency indexes don't and we fall
-        # back to the mission folder name.
-        name_hint_by_naif: dict[int, str] = {}
-        for f in idx.get("files", []):
-            hint = f.get("name_horizons")
-            if not hint:
+    per_mission_naifs: dict[tuple[str, int], dict] = {}
+    name_hints: dict[tuple[str, int], str] = {}
+
+    def _ingest_bucket(base: Path) -> None:
+        if not base.exists():
+            return
+        for mdir in sorted(base.iterdir()):
+            if not mdir.is_dir():
                 continue
-            for t in f.get("targets", []):
-                try:
-                    name_hint_by_naif[int(t)] = hint
-                except (TypeError, ValueError):
-                    pass
-        # Any negative NAIF ID is a spacecraft per SPICE convention. Legacy
-        # range was -1..-999, but modern commercial missions exceed that
-        # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.). The
-        # MISSION_INCLUDE + SKIP_PATTERNS curation upstream means non-trajectory
-        # targets (ground stations, sensors) don't reach the _index in the
-        # first place, so we don't need a magnitude bound here.
-        spacecraft_ids = sorted(
-            t for t in (int(s) for s in idx.get("targets", {})) if t < 0
-        )
-        if not spacecraft_ids:
-            continue
-        # Per-naif kernel paths from the index's targets mapping. Important
-        # for HORIZONS-SYNTH where one dir holds N bsps for N spacecraft —
-        # passing the full kernel list per naif would be O(N²) on spkcov.
-        targets = idx.get("targets", {})
-        all_kpaths = [str(k) for k in kernels]
-        for naif_id in spacecraft_ids:
-            naif_files = targets.get(str(naif_id), [])
-            kpaths = (
-                [str(mdir / fn) for fn in naif_files if (mdir / fn).exists()]
-                if naif_files
-                else all_kpaths
+            idx_path = mdir / "_index.json"
+            if not idx_path.exists():
+                continue
+            kernels = _mission_kernels(mdir)
+            if not kernels:
+                continue
+            idx = json.loads(idx_path.read_text())
+            for f in idx.get("files", []):
+                hint = f.get("name_horizons")
+                if not hint:
+                    continue
+                for t in f.get("targets", []):
+                    try:
+                        name_hints.setdefault((mdir.name, int(t)), hint)
+                    except (TypeError, ValueError):
+                        pass
+            # Any negative NAIF ID is a spacecraft per SPICE convention.
+            # Modern commercial missions exceed the legacy -1..-999 range
+            # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.).
+            # Two exclusions:
+            #   * Landing-site NAIFs (`-X900` from `spacecraft × 1000 - 900`)
+            #     are per-body fixed points the SPK chains through, not probes.
+            #   * Instrument NAIFs (`-X * 1000 - k` for small k, when -X is
+            #     itself a target) — MSL surface kernels expose rover-arm
+            #     joints -76501..-76620 alongside the rover body -76.
+            raw_targets = {int(s) for s in idx.get("targets", {})}
+            spacecraft_ids = sorted(
+                t
+                for t in raw_targets
+                if t < 0
+                and (-t) % 1000 != 900
+                and not _is_instrument_naif(t, raw_targets)
             )
-            if not kpaths:
+            if not spacecraft_ids:
                 continue
-            landed, body = is_landed_probe(naif_id, kpaths)
-            if landed:
-                logger.info(
-                    "[skipped] %s naif=%d is landed on body %s (TODO lat/lon pipeline)",
-                    mdir.name,
-                    naif_id,
-                    body,
+            targets = idx.get("targets", {})
+            all_kpaths = [str(k) for k in kernels]
+            for naif_id in spacecraft_ids:
+                naif_files = targets.get(str(naif_id), [])
+                kpaths = (
+                    [str(mdir / fn) for fn in naif_files if (mdir / fn).exists()]
+                    if naif_files
+                    else all_kpaths
                 )
-                continue
-            t0 = inception_et(naif_id, kpaths)
-            if t0 is None:
-                logger.warning("no coverage for %s/%d", mdir.name, naif_id)
-                continue
-            out.append(
-                {
-                    "mission": mdir.name,
-                    "naif_id": naif_id,
-                    "inception_mjd": et_to_mjd(t0),
-                    "name_hint": name_hint_by_naif.get(naif_id),
-                }
-            )
+                if not kpaths:
+                    continue
+                rec = per_mission_naifs.setdefault(
+                    (mdir.name, naif_id),
+                    {"mission": mdir.name, "naif_id": naif_id, "kpaths": []},
+                )
+                rec["kpaths"].extend(kpaths)
+
+    _ingest_bucket(missions_dir)
+    _ingest_bucket(landed_missions_dir)
+
+    out: list[dict] = []
+    for (mission, naif_id), rec in per_mission_naifs.items():
+        # Dedupe kernel paths (a probe present in both buckets shouldn't
+        # double-count its coverage in inception_et).
+        kpaths = sorted(set(rec["kpaths"]))
+        t0 = inception_et(naif_id, kpaths)
+        if t0 is None:
+            logger.warning("no coverage for %s/%d", mission, naif_id)
+            continue
+        out.append(
+            {
+                "mission": mission,
+                "naif_id": naif_id,
+                "inception_mjd": et_to_mjd(t0),
+                "name_hint": name_hints.get((mission, naif_id)),
+            }
+        )
     # Deterministic dedupe order: (inception, naif_id, mission).
     out.sort(key=lambda r: (r["inception_mjd"], r["naif_id"], r["mission"]))
     return out
@@ -134,6 +173,9 @@ class ProbesIngestor:
     def __init__(self, download_dir: Path) -> None:
         self.session = get_session()
         self.missions_dir = download_dir / PROVIDERS.SPICE / "kernels" / "missions"
+        self.landed_missions_dir = (
+            download_dir / PROVIDERS.SPICE / "kernels" / "landed_missions"
+        )
 
     def _clear(self) -> None:
         """Drop previously-ingested probe rows. Safe: probes live under their
@@ -161,12 +203,13 @@ class ProbesIngestor:
         }
 
     def run(self) -> None:
-        if not self.missions_dir.exists():
+        if not self.missions_dir.exists() and not self.landed_missions_dir.exists():
             logger.warning(
-                "Probes missions dir not found at %s, skipping", self.missions_dir
+                "No probe missions or landed_missions dir at %s — skipping",
+                self.missions_dir,
             )
             return
-        records = _collect_probes(self.missions_dir)
+        records = _collect_probes(self.missions_dir, self.landed_missions_dir)
         if not records:
             logger.info("No probes found under %s", self.missions_dir)
             return
