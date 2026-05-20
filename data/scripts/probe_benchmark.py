@@ -35,16 +35,21 @@ sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.download.providers.objects.probes import MISSIONS_DIR  # noqa: E402
+from space_map_data.constants.providers import ID_TYPES  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
     FORMAT_PROBES,
     HEADER_SIZE,
+    ID_TYPE_ORDINAL,
     MAGIC,
     METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT,
     METHOD_KEPLER_PURE,
     METHOD_LANDED,
     METHOD_UNCOVERABLE,
+    MISSING_ID_TYPE,
+    MISSING_INT32,
     PROBE_FLAG_HAS_LANDED_RECORD,
+    PROBE_HEADER_SIZE,
     SUBCHUNK_HEADER_SIZE,
     VERSION,
 )
@@ -57,7 +62,11 @@ from space_map_data.probes.probe_id import (  # noqa: E402
     load_probe_labels,
 )
 from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
+from space_map_data.utils.naif import naif_id_from_spk  # noqa: E402
 from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
+
+_NAIF_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
+_SPKID_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -95,8 +104,27 @@ class SubChunkRecord:
 
 
 @dataclass(frozen=True)
+class _BenchSub:
+    """Per-probe sub-chunk + the SPICE NAIF its fit was anchored at.
+
+    The bench worker uses this to call `spkezr` and `bodvrd("GM")` against
+    the right center per sub-chunk — necessary now that a single probe can
+    span chunks fit against different centers (Apollo trans-lunar coast
+    around Earth, then lunar orbit around the Moon, in the same earth-moon
+    zone)."""
+
+    method: int
+    t_start_et: float
+    t_end_et: float
+    payload: bytes
+    fit_center_naif: int
+
+
+@dataclass(frozen=True)
 class ProbeChunkRecord:
     probe_id: int
+    fit_center_id_value: int
+    fit_center_id_type: int
     sub_chunks: list[SubChunkRecord]
 
 
@@ -121,10 +149,18 @@ def _parse_chunk(path: Path) -> ParsedChunk:
     off = HEADER_SIZE
     probes: list[ProbeChunkRecord] = []
     for _ in range(probe_count):
-        obj_id_value, _id_type, _obj_type, _has_loc, flags, n_sub, first_off = (
-            struct.unpack("<iBBBBHH", data[off : off + 12])
-        )
-        off += 12
+        (
+            obj_id_value,
+            _id_type,
+            _obj_type,
+            _has_loc,
+            flags,
+            n_sub,
+            first_off,
+            fit_center_id_value,
+            fit_center_id_type,
+        ) = struct.unpack("<iBBBBHHiBxxx", data[off : off + PROBE_HEADER_SIZE])
+        off += PROBE_HEADER_SIZE
         sub_chunks: list[SubChunkRecord] = []
         for i in range(n_sub):
             method, _, _, payload_len = struct.unpack(
@@ -149,9 +185,54 @@ def _parse_chunk(path: Path) -> ParsedChunk:
                 f"{path}: probe flagged has_landed but trailing record method={method}"
             )
             off += SUBCHUNK_HEADER_SIZE + payload_len
-        probes.append(ProbeChunkRecord(obj_id_value, sub_chunks))
+        probes.append(
+            ProbeChunkRecord(
+                obj_id_value,
+                fit_center_id_value,
+                fit_center_id_type,
+                sub_chunks,
+            )
+        )
     assert off == len(data), f"{path}: trailing data ({off} vs {len(data)})"
     return ParsedChunk(start_jd, end_jd, subchunk_days, probes)
+
+
+def _resolve_fit_center_naif(
+    fit_center_id_value: int,
+    fit_center_id_type: int,
+    zone_default_naif_id: int,
+) -> int:
+    """Map the per-probe-header `(id_value, id_type)` pair to a SPICE NAIF the
+    benchmark can hand to `spkezr` / `bodvrd`. Sentinel pair (`MISSING_INT32`,
+    `MISSING_ID_TYPE`) means the probe stayed on the zone's stored fit center
+    — pass that through unchanged.
+
+    SPKID → NAIF goes through `naif_id_from_spk` (e.g. Vesta `spkid-20000004`
+    → naif 2000004). NAIF is already a SPICE ID — no transform needed. Other
+    id types are a configuration bug (the writer should only emit NAIF/SPKID
+    for fit centers) so log and fall back to the zone default rather than
+    silently mis-evaluate."""
+    if fit_center_id_value == MISSING_INT32 or fit_center_id_type == MISSING_ID_TYPE:
+        return zone_default_naif_id
+    if fit_center_id_type == _NAIF_ID_TYPE_ORDINAL:
+        return fit_center_id_value
+    if fit_center_id_type == _SPKID_ID_TYPE_ORDINAL:
+        mapped = naif_id_from_spk(fit_center_id_value)
+        if mapped is None:
+            logger.warning(
+                "fit_center spkid=%d unmapped; falling back to zone default %d",
+                fit_center_id_value,
+                zone_default_naif_id,
+            )
+            return zone_default_naif_id
+        return mapped
+    logger.warning(
+        "unexpected fit_center id_type=%d (value=%d); falling back to zone default %d",
+        fit_center_id_type,
+        fit_center_id_value,
+        zone_default_naif_id,
+    )
+    return zone_default_naif_id
 
 
 # ── Decoders (mirror the frontend) ───────────────────────────────────────
@@ -289,10 +370,6 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
     return out
 
 
-def _mu_for_center(naif_id: int) -> float:
-    return float(spiceypy.bodvrd(str(naif_id), "GM", 1)[1][0])
-
-
 def _collect_kernels() -> tuple[list[Path], list[Path]]:
     """Return `(lsk_pck_paths, generic_spk_paths)` — same split as the writer.
 
@@ -335,9 +412,7 @@ def _bench_worker(
     naif_id: int,
     mission_kernels_str: list[str],
     generic_spk_paths_str: list[str],
-    sub_chunks: list["SubChunkRecord"],
-    mu: float,
-    fit_center: int,
+    sub_chunks: list["_BenchSub"],
     float64: bool,
     samples_per_subchunk: int,
 ) -> tuple[int, list[float]]:
@@ -345,20 +420,26 @@ def _bench_worker(
     `writer._fit_pass` precedence so modern DE wins for shared planetary
     targets), evaluates each sub-chunk vs SPICE truth, unloads, returns errors.
 
-    Returns `(probe_id, errs)`. Errors aggregated outside to keep this fn
-    pure and picklable.
+    `mu` is resolved per sub-chunk from `fit_center_naif` (cached in-worker
+    so the same NAIF doesn't pay for `bodvrd` every call). Returns
+    `(probe_id, errs)` — errors aggregated outside to keep this fn pure
+    and picklable.
     """
     for k in mission_kernels_str:
         spiceypy.furnsh(k)
     for p in generic_spk_paths_str:
         spiceypy.furnsh(p)
     try:
+        mu_cache: dict[int, float] = {}
         errs: list[float] = []
         for sub in sub_chunks:
-            sample_ets = _sample_ets(sub, samples_per_subchunk)
-            errs.extend(
-                _evaluate_subchunk(sub, naif_id, mu, fit_center, float64, sample_ets)
-            )
+            if sub.fit_center_naif not in mu_cache:
+                mu_cache[sub.fit_center_naif] = float(
+                    spiceypy.bodvrd(str(sub.fit_center_naif), "GM", 1)[1][0]
+                )
+            mu = mu_cache[sub.fit_center_naif]
+            sample_ets = np.linspace(sub.t_start_et, sub.t_end_et, samples_per_subchunk)
+            errs.extend(_evaluate_subchunk(sub, naif_id, mu, float64, sample_ets))
         return probe_id, errs
     finally:
         for p in generic_spk_paths_str:
@@ -368,10 +449,9 @@ def _bench_worker(
 
 
 def _evaluate_subchunk(
-    sub: SubChunkRecord,
+    sub: _BenchSub,
     naif_id: int,
     mu: float,
-    fit_center: int,
     float64: bool,
     sample_ets: np.ndarray,
 ) -> list[float]:
@@ -385,7 +465,11 @@ def _evaluate_subchunk(
     for et in sample_ets:
         try:
             truth, _ = spiceypy.spkezr(
-                str(naif_id), float(et), "ECLIPJ2000", "NONE", str(fit_center)
+                str(naif_id),
+                float(et),
+                "ECLIPJ2000",
+                "NONE",
+                str(sub.fit_center_naif),
             )
         except spiceypy.exceptions.SpiceyError:
             continue
@@ -480,7 +564,8 @@ def main() -> int:
     lsk_pck_paths, generic_spk_paths = _collect_kernels()
     lsk_pck_str = [str(p) for p in lsk_pck_paths]
     generic_str = [str(p) for p in generic_spk_paths]
-    # Main process needs LSK/PCK for `_mu_for_center` (bodvrd lookups).
+    # Main process furnshes LSK/PCK to keep symmetry with the writer — worker
+    # processes do their own bodvrd lookups (per-sub-chunk fit centers).
     for p in lsk_pck_paths:
         spiceypy.furnsh(str(p))
     n_workers = max(1, min(8, multiprocessing.cpu_count() // 2))
@@ -512,8 +597,7 @@ def main() -> int:
                 logger.warning("unknown zone %s in manifest, skipping", zone_key)
                 continue
             zone = ZONES_BY_KEY[zone_key]
-            fit_center = zone.fit_center_naif_id
-            mu = _mu_for_center(fit_center)
+            zone_default_naif = zone.fit_center_naif_id
             float64 = manifest_entry.get("float64_coeffs", zone.float64_coeffs)
 
             zone_dir = probes_root / zone_key
@@ -523,16 +607,41 @@ def main() -> int:
             if args.limit:
                 chunk_files = chunk_files[: args.limit]
 
-            # Pass 1: parse every chunk once, collect sub-chunks grouped by
-            # probe_id.
-            per_probe_subs: dict[int, list[SubChunkRecord]] = defaultdict(list)
+            # Pass 1: parse every chunk once, collect per-probe sub-chunks
+            # with their resolved fit-center NAIF attached (a single probe
+            # can have chunks fit against different centers — Apollo
+            # Earth-coast then Moon-orbit then Earth-return — and the
+            # benchmark must evaluate each against the right center).
+            per_probe_subs: dict[int, list[_BenchSub]] = defaultdict(list)
+            override_count = 0
             for cf in chunk_files:
                 per_zone_files[zone_key].append(cf.stat().st_size)
                 parsed = _parse_chunk(cf)
                 for probe in parsed.probes:
-                    per_probe_subs[probe.probe_id].extend(probe.sub_chunks)
+                    fit_center_naif = _resolve_fit_center_naif(
+                        probe.fit_center_id_value,
+                        probe.fit_center_id_type,
+                        zone_default_naif,
+                    )
+                    if fit_center_naif != zone_default_naif:
+                        override_count += 1
                     for sub in probe.sub_chunks:
+                        per_probe_subs[probe.probe_id].append(
+                            _BenchSub(
+                                method=sub.method,
+                                t_start_et=sub.t_start_et,
+                                t_end_et=sub.t_end_et,
+                                payload=sub.payload,
+                                fit_center_naif=fit_center_naif,
+                            )
+                        )
                         per_zone_method_counts[zone_key][sub.method] += 1
+            if override_count:
+                logger.info(
+                    "[%s] %d (probe, chunk) entries fit against non-zone-default center",
+                    zone_key,
+                    override_count,
+                )
 
             # Pass 2: dispatch one task per probe to the worker pool. Workers
             # have isolated SPICE state — no kernel-pool contamination across
@@ -555,8 +664,6 @@ def main() -> int:
                     [str(k) for k in kernels],
                     generic_str,
                     per_probe_subs[probe_id],
-                    mu,
-                    fit_center,
                     float64,
                     args.samples_per_subchunk,
                 )
@@ -573,11 +680,11 @@ def main() -> int:
                 per_probe_errs[(zone_key, probe_id)].extend(errs)
                 n_done += 1
             logger.info(
-                "[%s] %d chunk files, %d probes evaluated, mu=%.3e km³/s²",
+                "[%s] %d chunk files, %d probes evaluated (default fit center NAIF %d)",
                 zone_key,
                 len(chunk_files),
                 n_done,
-                mu,
+                zone_default_naif,
             )
 
     def pct(lst: list[int] | list[float], q: float) -> float:

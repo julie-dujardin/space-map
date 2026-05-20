@@ -44,7 +44,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 7
+VERSION = 8
 
 # Common header at offset 0..23, format extension at 24..31.
 COMMON_HEADER_SIZE = 24
@@ -170,7 +170,7 @@ def pack_probes_header(
     ) + _PROBES_EXT_STRUCT.pack(probe_count, float(subchunk_days))
 
 
-# Per-probe header inside a probes-payload file (12 bytes, 4-aligned):
+# Per-probe header inside a probes-payload file (20 bytes, 4-aligned):
 #
 # Offset  Type     Field
 # 0       int32    obj_id_value          (probe_id; recover full ID via id_type)
@@ -180,8 +180,22 @@ def pack_probes_header(
 # 7       uint8    flags                 (bit 0 = has trailing METHOD_LANDED record)
 # 8       uint16   n_subchunks           (FLYING sub-chunk records that follow, in order)
 # 10      uint16   first_subchunk_offset (in units of subchunk_days, from chunk start)
-PROBE_HEADER_SIZE = 12
-_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHH")
+# 12      int32    fit_center_id_value   (the body each sub-chunk is fit against;
+#                                         MISSING_INT32 = use the zone default)
+# 16      uint8    fit_center_id_type    (ID_TYPE_ORDINAL for fit_center_id_value;
+#                                         MISSING_ID_TYPE = use the zone default)
+# 17      uint8[3] reserved              (zero pad to 4-aligned)
+#
+# `fit_center_id_value + fit_center_id_type` lets a probe whose dominant primary
+# is not the zone's stored center (lunar orbiters in `probes/earth-moon`, Titan
+# orbiters in `probes/saturn`, Dawn @ Vesta in `probes/interplanetary`, …) get
+# its Kepler/Chebyshev fit against that primary instead. The renderer composes
+# `world = fit_center_body_world + probe_offset`, so it needs to know which body
+# to look up. NAIF for moons/planets, SPKID for asteroids — encoded the same way
+# as the elements-format's per-row id_type so both halves of the export use the
+# same ordinal table.
+PROBE_HEADER_SIZE = 20
+_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBxxx")
 assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE
 
 
@@ -192,6 +206,8 @@ def pack_probe_header(
     n_subchunks: int,
     first_subchunk_offset: int,
     has_landed_record: bool = False,
+    fit_center_id_value: int = MISSING_INT32,
+    fit_center_id_type: int = MISSING_ID_TYPE,
 ) -> bytes:
     flags = PROBE_FLAG_HAS_LANDED_RECORD if has_landed_record else 0
     return _PROBE_HEADER_STRUCT.pack(
@@ -202,6 +218,8 @@ def pack_probe_header(
         flags,
         n_subchunks,
         first_subchunk_offset,
+        fit_center_id_value,
+        fit_center_id_type,
     )
 
 

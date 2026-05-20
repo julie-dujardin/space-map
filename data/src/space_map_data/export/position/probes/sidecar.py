@@ -69,7 +69,14 @@ from space_map_data.probes.zones import Zone
 # silently return NaN from spkpos and fall out of every planet zone,
 # ending up incorrectly labelled interplanetary. v7 chunks for HST (and
 # any other SGP4-format probe) are invalid for this reason.
-FIT_VERSION = 8
+# v9 (2026-05-20): per-probe fit-center override. Spacecraft inside a
+# moon/asteroid's Hill sphere now fit Kepler/Chebyshev against that body
+# directly, instead of always against the zone's stored fit center.
+# Lunar orbiters that previously paid for Chebyshev relative to Earth
+# (because no Kepler fit can describe Moon-orbit + Moon-around-Earth)
+# now ship as cheap Method-C Kepler relative to the Moon. Binary format
+# bumped to v8 — the probe header grew by 8 bytes for the fit_center_id.
+FIT_VERSION = 9
 
 
 def zone_signature(zone: Zone) -> str:
@@ -104,6 +111,7 @@ def build_chunk_signature(
     zone: Zone,
     probes: list[tuple[int, list[Path], int, bool]],
     download_dir: Path,
+    candidates_hash: str,
 ) -> dict:
     """Compute the expected sidecar contents from the *planned* probe set.
 
@@ -116,6 +124,11 @@ def build_chunk_signature(
     folded into the signature so that flipping either invalidates the
     chunk — those bits live in each probe's binary header and a stale
     chunk would otherwise keep the old values forever.
+
+    `candidates_hash` summarises the set of alternate fit centers
+    (moons / asteroids) that detection considered. Changes — adding a
+    moon to chebyshev, removing an asteroid — invalidate every chunk so
+    detection re-runs.
     """
     probe_block: dict[str, dict] = {}
     for probe_id, kernels, object_type_ordinal, has_localized in probes:
@@ -131,5 +144,6 @@ def build_chunk_signature(
     return {
         "fit_version": FIT_VERSION,
         "zone_hash": zone_signature(zone),
+        "candidates_hash": candidates_hash,
         "probes": dict(sorted(probe_block.items())),
     }

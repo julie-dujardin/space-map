@@ -397,6 +397,7 @@ def _fit_chebyshev_subchunk(
 def _fit_sub_chunk(
     naif_id: int,
     zone: Zone,
+    fit_center_naif_id: int,
     mu: float,
     sub_t_start: float,
     sub_t_end: float,
@@ -421,14 +422,14 @@ def _fit_sub_chunk(
 
     fit_half_s = max(2.0 * sub_s, 2 * _S_PER_DAY)
     fit_ets = np.linspace(sub_mid - fit_half_s, sub_mid + fit_half_s, 80)
-    variants = _fit_method_c(naif_id, zone.fit_center_naif_id, mu, fit_ets)
+    variants = _fit_method_c(naif_id, fit_center_naif_id, mu, fit_ets)
 
     kepler_err = float("inf")
     if variants:
         eval_ets = np.linspace(sub_t_start, sub_t_end, 20)
         best_v: tuple[dict, float] | None = None
         for v in variants:
-            err = _kepler_max_err_km(v, naif_id, zone.fit_center_naif_id, eval_ets)
+            err = _kepler_max_err_km(v, naif_id, fit_center_naif_id, eval_ets)
             if best_v is None or err < best_v[1]:
                 best_v = (v, err)
         if best_v is not None:
@@ -468,7 +469,7 @@ def _fit_sub_chunk(
         intlen_s = intlen_d * _S_PER_DAY
         seg_s = min(intlen_s, sub_s)
         result = _fit_chebyshev_subchunk(
-            naif_id, zone.fit_center_naif_id, sub_t_start, sub_t_end, seg_s
+            naif_id, fit_center_naif_id, sub_t_start, sub_t_end, seg_s
         )
         if result is None:
             return SubChunkFit(
@@ -519,6 +520,7 @@ def size_chunk(
     zone: Zone,
     t_start: float,
     t_end: float,
+    fit_center_naif_id: int | None = None,
 ) -> ChunkSizing:
     """Slice the streaming chunk into Kepler-width sub-chunks, fit each.
 
@@ -526,9 +528,21 @@ def size_chunk(
     9 floats = 36 bytes) and Chebyshev (refit-and-pack like
     `download/providers/objects/chebyshev.py`). The overall chunk's byte
     cost is the sum of its sub-chunks.
+
+    `fit_center_naif_id` overrides the zone's default fit center for this
+    chunk — e.g. a lunar orbiter in `earth-moon` gets fit around the Moon
+    (301) instead of Earth (399). When None, falls back to
+    `zone.fit_center_naif_id`. The caller decides whether the probe sits
+    inside an alternate primary's Hill sphere; this function just trusts
+    the choice and routes mu + spkezr accordingly.
     """
+    center = (
+        fit_center_naif_id
+        if fit_center_naif_id is not None
+        else zone.fit_center_naif_id
+    )
     try:
-        mu = spiceypy.bodvrd(str(zone.fit_center_naif_id), "GM", 1)[1][0]
+        mu = spiceypy.bodvrd(str(center), "GM", 1)[1][0]
     except spiceypy.exceptions.SpiceyError:
         return ChunkSizing(0, 0, 0, 1, float("inf"), [])
 
@@ -540,7 +554,7 @@ def size_chunk(
     while cur < t_end:
         nxt = min(cur + sub_s, t_end)
         sub_chunks.append(
-            _fit_sub_chunk(naif_id, zone, mu, cur, nxt, base_threshold_km)
+            _fit_sub_chunk(naif_id, zone, center, mu, cur, nxt, base_threshold_km)
         )
         cur = nxt
 

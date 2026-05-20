@@ -49,6 +49,8 @@ from space_map_data.export.position.format import (
     METHOD_KEPLER_PURE,
     METHOD_LANDED,
     METHOD_UNCOVERABLE,
+    MISSING_ID_TYPE,
+    MISSING_INT32,
     OBJECT_TYPE_ORDINAL,
     pack_landed_payload,
     pack_probe_header,
@@ -65,6 +67,14 @@ from space_map_data.export.position.probes.sizing import (
     size_chunk,
 )
 from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.probes.fit_centers import (
+    FitCenterCandidate,
+    candidates_for_zone,
+    candidates_hash,
+    detect_fit_center,
+    fit_center_header_fields,
+    load_candidates,
+)
 from space_map_data.probes.probe_id import (
     _load_cache as _load_probe_id_cache,
     assign,
@@ -867,6 +877,7 @@ def _decide_dirty(
     metas_by_probe_id: dict[int, _ProbeMeta],
     out_dir: Path,
     download_dir: Path,
+    candidates_hash_by_zone: dict[str, str],
 ) -> dict[str, dict[int, dict]]:
     """For each planned chunk, compute its expected signature and compare
     against the on-disk sidecar. Returns `dirty[zone][chunk_idx] = signature`
@@ -876,6 +887,7 @@ def _decide_dirty(
     for zone_key, chunks in chunk_index.items():
         zone_obj = ZONES_BY_KEY[zone_key]
         zone_out = probes_dir / zone_key
+        cand_hash = candidates_hash_by_zone.get(zone_key, "")
         for chunk_idx, plan_list in chunks.items():
             probes_for_sig = [
                 (
@@ -887,7 +899,7 @@ def _decide_dirty(
                 for p in plan_list
             ]
             new_sig = sidecar.build_chunk_signature(
-                zone_obj, probes_for_sig, download_dir
+                zone_obj, probes_for_sig, download_dir, cand_hash
             )
             binary_path = zone_out / f"{chunk_idx}.bin.gz"
             sidecar_path = sidecar.mirror_path(zone_out / f"{chunk_idx}.meta.json")
@@ -901,10 +913,19 @@ def _decide_dirty(
 class _ChunkProbeRecord:
     """One probe's contribution to one chunk, packing-ready. Carries the
     fitted flying sub-chunks (possibly empty if the probe is landed-only
-    in this chunk) and at most one trailing `METHOD_LANDED` record."""
+    in this chunk), an optional trailing `METHOD_LANDED` record, and the
+    fit center the flying sub-chunks were fit against (so the probe header
+    can encode it for the renderer's primary-override path).
+
+    `fit_center_id_value` + `fit_center_id_type` use the sentinel pair
+    `(MISSING_INT32, MISSING_ID_TYPE)` when the probe stayed on the zone's
+    stored fit center — the renderer skips the override path in that case.
+    """
 
     probe_id: int
     first_offset: int
+    fit_center_id_value: int = MISSING_INT32
+    fit_center_id_type: int = MISSING_ID_TYPE
     flying: list[SubChunkFit] = field(default_factory=list)
     landed: LandedFit | None = None
 
@@ -914,10 +935,17 @@ def _fit_pass(
     dirty: dict[str, dict[int, dict]],
     generic_spk_paths: list[Path],
     start_jd: float,
+    candidates_by_zone: dict[str, list[FitCenterCandidate]],
 ) -> dict[str, dict[int, list[_ChunkProbeRecord]]]:
     """Pass 2: re-furnish each probe that touches at least one dirty chunk,
     run `size_chunk` (flying contributions) and `_fit_landed_chunk` (landed
     contributions) for those (probe, chunk) pairs only.
+
+    Per-(probe, chunk) fit-center detection runs here while the probe's
+    mission kernels are furnshed. The first flying contribution in a chunk
+    establishes the fit center; subsequent flying contributions in the same
+    chunk reuse it (so a probe that re-enters the zone mid-chunk doesn't
+    mix Earth-fit and Moon-fit sub-chunks under one probe header).
 
     Returns `by_zone_chunk[zone][chunk_idx] = list[_ChunkProbeRecord]`,
     packing-ready.
@@ -948,6 +976,7 @@ def _fit_pass(
             # build at most one _ChunkProbeRecord per chunk even when both
             # flying and landed contributions land in the same chunk.
             by_chunk: dict[tuple[str, int], _ChunkProbeRecord] = {}
+            fit_center_naif_by_key: dict[tuple[str, int], int] = {}
             for c in plan.contributions:
                 if c.chunk_idx not in dirty.get(c.zone_key, {}):
                     continue
@@ -960,8 +989,37 @@ def _fit_pass(
                 rec = by_chunk.get(key)
                 if c.kind == "flying":
                     sub_s = zone.kepler_subchunk_days * _S_PER_DAY
+                    cached_center = fit_center_naif_by_key.get(key)
+                    if cached_center is None:
+                        chosen = detect_fit_center(
+                            candidates_by_zone.get(c.zone_key, []),
+                            plan.naif_id,
+                            c.c_start_et,
+                            c.c_end_et,
+                        )
+                        center_naif = (
+                            chosen.naif_id
+                            if chosen is not None
+                            else zone.fit_center_naif_id
+                        )
+                        center_id_value, center_id_type = fit_center_header_fields(
+                            chosen
+                        )
+                        fit_center_naif_by_key[key] = center_naif
+                    else:
+                        center_naif = cached_center
+                        center_id_value = (
+                            rec.fit_center_id_value if rec else MISSING_INT32
+                        )
+                        center_id_type = (
+                            rec.fit_center_id_type if rec else MISSING_ID_TYPE
+                        )
                     chunk_sizing = size_chunk(
-                        plan.naif_id, zone, c.c_start_et, c.c_end_et
+                        plan.naif_id,
+                        zone,
+                        c.c_start_et,
+                        c.c_end_et,
+                        fit_center_naif_id=center_naif,
                     )
                     if not chunk_sizing.sub_chunks:
                         continue
@@ -973,7 +1031,10 @@ def _fit_pass(
                     )
                     if rec is None:
                         rec = _ChunkProbeRecord(
-                            probe_id=plan.probe_id, first_offset=first_offset
+                            probe_id=plan.probe_id,
+                            first_offset=first_offset,
+                            fit_center_id_value=center_id_value,
+                            fit_center_id_type=center_id_type,
                         )
                         by_chunk[key] = rec
                     rec.flying.extend(chunk_sizing.sub_chunks)
@@ -1096,6 +1157,8 @@ def _write_pass(
                         n_subchunks=len(rec.flying),
                         first_subchunk_offset=rec.first_offset,
                         has_landed_record=rec.landed is not None,
+                        fit_center_id_value=rec.fit_center_id_value,
+                        fit_center_id_type=rec.fit_center_id_type,
                     )
                 )
                 for sc in rec.flying:
@@ -1182,6 +1245,25 @@ def write_probes(
         len(generic_spk_paths),
     )
 
+    # Candidate fit centers — alternates the per-probe fit can route to when
+    # a spacecraft sits inside a moon/asteroid's Hill sphere. Loaded once
+    # against the PCK pool (GM-only, no spkpos needed here), pre-grouped per
+    # zone so `_fit_pass` can do detection without re-scanning the npz dir.
+    chebyshev_cache_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
+    all_candidates = load_candidates(chebyshev_cache_dir)
+    candidates_by_zone: dict[str, list[FitCenterCandidate]] = {}
+    candidates_hash_by_zone: dict[str, str] = {}
+    for zone in ALL_ZONES:
+        zone_cands = candidates_for_zone(all_candidates, zone)
+        candidates_by_zone[zone.key] = zone_cands
+        candidates_hash_by_zone[zone.key] = candidates_hash(zone_cands)
+    logger.info(
+        "Probes export: %d candidate fit centers loaded (%s)",
+        len(all_candidates),
+        ", ".join(f"{k}={len(v)}" for k, v in candidates_by_zone.items() if v)
+        or "no overrides",
+    )
+
     try:
         plans, chunk_index = _classify_pass(
             probe_id_cache,
@@ -1190,8 +1272,16 @@ def write_probes(
             generic_spk_paths,
             start_jd,
         )
-        dirty = _decide_dirty(chunk_index, metas_by_probe_id, out_dir, download_dir)
-        by_zone_chunk = _fit_pass(plans, dirty, generic_spk_paths, start_jd)
+        dirty = _decide_dirty(
+            chunk_index,
+            metas_by_probe_id,
+            out_dir,
+            download_dir,
+            candidates_hash_by_zone,
+        )
+        by_zone_chunk = _fit_pass(
+            plans, dirty, generic_spk_paths, start_jd, candidates_by_zone
+        )
     finally:
         spiceypy.kclear()
 
