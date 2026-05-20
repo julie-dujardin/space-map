@@ -211,6 +211,7 @@ def _canonical_naif(naif_id: int) -> int | None:
         return naif_id - 18_000_000
     return naif_id
 
+
 # Types we extract elements for (skip asteroids/comets — those stay in SBDB)
 _ELEMENT_TYPES = frozenset(
     {
@@ -1048,7 +1049,9 @@ class SpiceDownloader(Downloader):
         # rigorous synthesis. Mission-PCK values survive only for bodies the
         # generic kernels don't define (Bennu, Ryugu, Didymos, Donaldjohanson,
         # Dinkinesh, Arrokoth, …), which is the whole point of bringing them in.
-        mission_pcks = sorted(MISSIONS_DIR.glob("*/*.tpc")) if MISSIONS_DIR.exists() else []
+        mission_pcks = (
+            sorted(MISSIONS_DIR.glob("*/*.tpc")) if MISSIONS_DIR.exists() else []
+        )
         for path in mission_pcks:
             spiceypy.furnsh(str(path))
         if mission_pcks:

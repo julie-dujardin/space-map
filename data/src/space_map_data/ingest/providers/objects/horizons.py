@@ -204,10 +204,15 @@ class HorizonsIngestor:
             delete(Object).where(Object.orbital_source == OrbitalSource.horizons)
         )
         # Only clear naif_id on rows that Horizons set (via cross-referencing).
-        # SPICE-owned rows keep their authoritative NAIF IDs.
+        # SPICE-owned rows keep their authoritative NAIF IDs; SBDB-owned rows
+        # keep theirs too (asteroids/comets get a computed naif_id at sbdb
+        # ingest time via `naif_id_from_spk`, which mission-PCK radii lookup
+        # joins against — see `export/objects/writer.py` radii attachment).
         self.session.execute(
             update(Object)
-            .where(Object.orbital_source != OrbitalSource.spice)
+            .where(
+                Object.orbital_source.notin_([OrbitalSource.spice, OrbitalSource.sbdb])
+            )
             .values(naif_id=None)
         )
         self.session.commit()
