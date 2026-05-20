@@ -13,6 +13,19 @@ import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import { f64dist, type Vec3 } from '../animation/math';
 
+// Pooled occluder array — reused across frames; trimmed to active prefix via
+// `.length = active` so existing iter/`for-of` consumers keep working. Empty
+// frames cost zero allocations (vs. `const x = []` + N pushes the old way).
+const _occluderPool: ScreenOccluder[] = [];
+function ensureOccluder(idx: number): ScreenOccluder {
+	let o = _occluderPool[idx];
+	if (!o) {
+		o = { sx: 0, sy: 0, r: 0, id: '', dist: 0 };
+		_occluderPool[idx] = o;
+	}
+	return o;
+}
+
 /**
  * Per-frame visibility update for all bodies, point clouds, labels, and orbit lines.
  * Returns the updated cull frame counter and screen occluders (for shadow logic).
@@ -90,7 +103,8 @@ export function updateBodyVisibility(
 	// perpendicular axis (r·f / √(Bz²−r²)) — the smaller of the two for
 	// off-axis bodies, so we don't over-occlude. The center is the projected
 	// label position (already silhouette-corrected above).
-	const screenOccluders: ScreenOccluder[] = [];
+	const screenOccluders = _occluderPool;
+	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {
 		const r = bo.radiusScene;
 		if (!r) continue;
@@ -109,14 +123,18 @@ export function updateBodyVisibility(
 		tmpV3.set(bx - fp[0] + ox, by - fp[1] + oy, bz - fp[2] + oz);
 		tmpV3.project(camera);
 		if (tmpV3.z > 1) continue;
-		screenOccluders.push({
-			sx: (tmpV3.x * 0.5 + 0.5) * screenW,
-			sy: (-tmpV3.y * 0.5 + 0.5) * screenH,
-			r: screenR,
-			id: bo.body.data.id,
-			dist
-		});
+		const occ = ensureOccluder(occluderCount++);
+		occ.sx = (tmpV3.x * 0.5 + 0.5) * screenW;
+		occ.sy = (-tmpV3.y * 0.5 + 0.5) * screenH;
+		occ.r = screenR;
+		occ.id = bo.body.data.id;
+		occ.dist = dist;
 	}
+	// Trim the pool view to the active prefix so .length-based iteration is
+	// correct in downstream consumers (cullOverlappingLabels, this function's
+	// later isScreenOccluded call). Slots past occluderCount keep their last
+	// values but are invisible to length-bounded iteration; no per-frame alloc.
+	screenOccluders.length = occluderCount;
 
 	for (const bo of bodyObjects.values()) {
 		const { body, group, orbitLine } = bo;
