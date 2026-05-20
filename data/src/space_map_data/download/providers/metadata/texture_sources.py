@@ -33,6 +33,7 @@ import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlparse
 
 import httpx
@@ -427,11 +428,12 @@ def _svs_people(entries: object) -> list[str]:
     if not isinstance(entries, list):
         return []
     out: list[str] = []
-    for p in entries:
-        if not isinstance(p, dict):
+    for raw in entries:
+        if not isinstance(raw, dict):
             continue
-        name = (p.get("name") or "").strip()
-        employer = (p.get("employer") or "").strip()
+        p = cast(dict[str, object], raw)
+        name = str(p.get("name") or "").strip()
+        employer = str(p.get("employer") or "").strip()
         if not name:
             continue
         out.append(f"{name} ({employer})" if employer else name)

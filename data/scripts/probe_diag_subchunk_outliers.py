@@ -131,8 +131,10 @@ def main() -> int:
         chunk_files = sorted(
             zone_dir.glob("*.bin.gz"), key=lambda p: int(p.stem.split(".")[0])
         )
-        # Collect per-probe sub-chunks.
-        per_probe: dict[int, list[tuple[int, "pb.SubChunkRecord"]]] = {}
+        # Collect per-probe sub-chunks, wrapping each as a `_BenchSub` with
+        # the resolved fit-center NAIF (a single probe can span chunks fit
+        # against different centers).
+        per_probe: dict[int, list[tuple[int, "pb._BenchSub"]]] = {}
         for cf in chunk_files:
             chunk_idx = int(cf.stem.split(".")[0])
             parsed = pb._parse_chunk(cf)
@@ -141,10 +143,26 @@ def main() -> int:
                     naif_pair = naif_by_pid.get(probe.probe_id)
                     if not naif_pair or naif_pair[0] != args.probe_naif:
                         continue
-                per_probe.setdefault(probe.probe_id, []).extend(
-                    (chunk_idx, sub) for sub in probe.sub_chunks
+                fit_center_naif = pb._resolve_fit_center_naif(
+                    probe.fit_center_id_value,
+                    probe.fit_center_id_type,
+                    fit_center,
                 )
-        # Evaluate each sub-chunk.
+                per_probe.setdefault(probe.probe_id, []).extend(
+                    (
+                        chunk_idx,
+                        pb._BenchSub(
+                            method=sub.method,
+                            t_start_et=sub.t_start_et,
+                            t_end_et=sub.t_end_et,
+                            payload=sub.payload,
+                            fit_center_naif=fit_center_naif,
+                        ),
+                    )
+                    for sub in probe.sub_chunks
+                )
+        # Evaluate each sub-chunk. `mu` is resolved per sub-chunk's fit center
+        # (cached) since a probe can change anchor mid-zone.
         for pid, subs in per_probe.items():
             naif_pair = naif_by_pid.get(pid)
             if not naif_pair:
@@ -155,14 +173,22 @@ def main() -> int:
                 spiceypy.furnsh(str(k))
             for k in generic_spk:
                 spiceypy.furnsh(str(k))
+            mu_cache: dict[int, float] = {fit_center: mu}
             try:
                 for chunk_idx, sub in subs:
+                    if sub.fit_center_naif not in mu_cache:
+                        try:
+                            mu_cache[sub.fit_center_naif] = float(
+                                spiceypy.bodvrd(str(sub.fit_center_naif), "GM", 1)[1][0]
+                            )
+                        except spiceypy.exceptions.SpiceyError:
+                            continue
+                    sub_mu = mu_cache[sub.fit_center_naif]
                     sample_ets = np.linspace(sub.t_start_et, sub.t_end_et, 5)
                     errs = pb._evaluate_subchunk(
                         sub,
                         naif_id,
-                        mu,
-                        fit_center,
+                        sub_mu,
                         zone.float64_coeffs,
                         sample_ets,
                     )
