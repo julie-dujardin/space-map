@@ -60,7 +60,10 @@ export class OrbitWorkerPool {
 	private nextWorker = 0;
 
 	constructor(size: number = navigator.hardwareConcurrency ?? 4) {
-		const n = Math.max(1, Math.min(8, size - 1));
+		// Floor at 2 so even 2-core phones (hardwareConcurrency=2) get parallel
+		// asteroid/spacecraft propagation; double-buffer absorbs any UI-thread
+		// contention, so reserving a core for UI no longer earns its keep.
+		const n = Math.max(2, Math.min(8, size));
 		this.workers = [];
 		for (let i = 0; i < n; i++) {
 			const w = new OrbitWorker();

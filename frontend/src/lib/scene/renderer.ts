@@ -17,7 +17,7 @@ import {
 	Vector3,
 	WebGLRenderer
 } from 'three';
-import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -145,7 +145,7 @@ export class SceneRenderer {
 	private renderer: WebGLRenderer;
 	private composer: EffectComposer;
 	private bloomPass: UnrealBloomPass;
-	private labelRenderer: CSS2DRenderer;
+	private labelRenderer: ThrottledCSS2DRenderer;
 	private scene: Scene;
 	private camera: PerspectiveCamera;
 	private controls: OrbitControls;
@@ -328,7 +328,7 @@ export class SceneRenderer {
 		// analytically per-fragment by the eclipse / ring-shadow paths.
 
 		// CSS2D label renderer
-		this.labelRenderer = new CSS2DRenderer({ element: labelContainer });
+		this.labelRenderer = new ThrottledCSS2DRenderer({ element: labelContainer });
 		this.labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
 		ctx.updateViewport(canvas.clientHeight);
 
