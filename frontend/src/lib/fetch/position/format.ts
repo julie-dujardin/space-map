@@ -36,11 +36,23 @@ export const PROBE_METHOD_UNCOVERABLE = 0;
 export const PROBE_METHOD_KEPLER_PURE = 1;
 export const PROBE_METHOD_KEPLER_DRIFT = 2;
 export const PROBE_METHOD_CHEBYSHEV = 3;
+/**
+ * `PROBE_METHOD_LANDED` sits OUTSIDE the regular sub-chunk grid — one
+ * trailing record per probe per chunk, gated by
+ * `PROBE_FLAG_HAS_LANDED_RECORD` in the probe header. Carries its own
+ * start/end ET offsets so its lifetime is decoupled from
+ * `subchunk_days × n_subchunks`. The parser skips past it for now;
+ * landed probes simply have no trail in the renderer.
+ */
+export const PROBE_METHOD_LANDED = 4;
 
 /** Per-probe header size inside a probes-payload file. */
 export const PROBE_HEADER_SIZE = 12;
 /** Per-sub-chunk record header size (preceding the method-specific payload). */
 export const SUBCHUNK_HEADER_SIZE = 8;
+
+/** Probe-header flags byte (offset 7) bit assignments. */
+export const PROBE_FLAG_HAS_LANDED_RECORD = 0x01;
 
 /**
  * Bit in the chebyshev extension's flags byte (offset 28 of the common header)

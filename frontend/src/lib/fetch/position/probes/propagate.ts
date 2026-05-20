@@ -27,6 +27,7 @@ import type {
 	ChebyshevSub,
 	KeplerDriftElts,
 	KeplerPureElts,
+	LandedRecord,
 	Probe,
 	SubChunk
 } from '$lib/fetch/position/probes/parse';
@@ -224,6 +225,44 @@ export function probePositionScene(
 	const km = probePositionKm(probe, jd, muKm3S2);
 	if (km === null) return null;
 	return [kmToScene(km[0]), kmToScene(km[2]), -kmToScene(km[1])];
+}
+
+/** True iff a probe has a landed record active at `jd` — the renderer uses
+ *  this to dispatch between the flying and landed branches. */
+export function isLandedAt(probe: Probe, jd: number): boolean {
+	if (!probe.landed) return false;
+	const et = jdToEt(jd);
+	return et >= probe.landed.startEt && et < probe.landed.endEt;
+}
+
+/** Stair-step lookup into a `LandedRecord`: returns the (lat°, lon°, alt m)
+ *  of the latest sample whose et ≤ now, or the reference position for
+ *  static phases / pre-first-sample times. Returns null when `jd` is
+ *  outside the landed window — caller falls back to the flying path. */
+export function landedPositionAt(
+	landed: LandedRecord,
+	jd: number
+): { latDeg: number; lngDeg: number; altM: number } | null {
+	const et = jdToEt(jd);
+	if (et < landed.startEt || et >= landed.endEt) return null;
+	const n = landed.sampleEt.length;
+	if (n === 0 || et < landed.sampleEt[0]) {
+		return { latDeg: landed.latRefDeg, lngDeg: landed.lngRefDeg, altM: landed.altRefM };
+	}
+	// Binary search for largest i with sampleEt[i] ≤ et — stair-step (the rover
+	// sat at sample i's position until sample i+1's et).
+	let lo = 0;
+	let hi = n - 1;
+	while (lo < hi) {
+		const mid = (lo + hi + 1) >>> 1;
+		if (landed.sampleEt[mid] <= et) lo = mid;
+		else hi = mid - 1;
+	}
+	return {
+		latDeg: landed.sampleLatDeg[lo],
+		lngDeg: landed.sampleLngDeg[lo],
+		altM: landed.sampleAltM[lo]
+	};
 }
 
 const VELOCITY_FD_HALF_WINDOW_S = 30;

@@ -211,7 +211,12 @@ export class ProbeStore {
 			for (let i = 0; i < chunk.probes.length; i++) {
 				if (chunk.ids[i] !== objectId) continue;
 				const probe = chunk.probes[i];
-				if (findSubChunkIndex(probe, et) < 0) continue;
+				const hasFlying = findSubChunkIndex(probe, et) >= 0;
+				const landed = probe.landed;
+				const hasLanded = landed !== undefined && et >= landed.startEt && et < landed.endEt;
+				// Either path matches — the renderer dispatches between flying
+				// sub-chunks (kepler/chebyshev) and the trailing landed record.
+				if (!hasFlying && !hasLanded) continue;
 				return { zone, probe, params };
 			}
 		}

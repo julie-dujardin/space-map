@@ -20,17 +20,28 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
-import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	effectiveRadiusKm,
+	isAsteroid,
+	type BodyData,
+	type PositionedBody
+} from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
-import { applyOrientation } from '$lib/math/orientation';
+import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
 import { bodyNorthVector } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { probePositionKm } from '$lib/fetch/position/probes/propagate';
+import type { LandedRecord, Probe } from '$lib/fetch/position/probes/parse';
+import {
+	isLandedAt,
+	landedPositionAt,
+	probePositionKm
+} from '$lib/fetch/position/probes/propagate';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
@@ -801,6 +812,68 @@ export class SceneRenderer {
 
 	// --- Per-frame body position & orientation updates ---
 
+	/**
+	 * Place a landed probe at its body-surface lat/lng/alt in world coords.
+	 *
+	 * Steps:
+	 *   1. Stair-step lookup into the landed record at `jd` → (lat, lng, alt_m).
+	 *   2. Find the landing body in `bodiesById` (e.g. naif-499 for Mars).
+	 *   3. Compute body-fixed XYZ from (lat, lng, alt) — Three.js convention:
+	 *      local +X = prime meridian, +Y = north pole, −Z = east.
+	 *   4. Rotate by the body's IAU quaternion (pole + spin at `jd`, with
+	 *      nutation/precession sums if present) to land in scene-frame coords.
+	 *   5. Convert to scene units and add to the body's world position.
+	 *
+	 * Returns null when the landing body isn't loaded yet (e.g. Titan chebyshev
+	 * chunk still streaming) or lacks orientation data — caller marks the
+	 * probe out-of-range for one frame and tries again next tick.
+	 */
+	private _renderLandedProbe(
+		d: BodyData,
+		probe: Probe,
+		landed: LandedRecord,
+		jd: number,
+		positionMap: Map<string, Vec3>
+	): { x: number; y: number; z: number; parentPos: Vec3 } | null {
+		const sample = landedPositionAt(landed, jd);
+		if (!sample) return null;
+		const bodyKey = `naif-${landed.bodyNaifId}`;
+		const landingBody = this.ctx.bodiesById.get(bodyKey);
+		if (!landingBody || !landingBody.orientation) return null;
+		const bodyWorldPos = positionMap.get(bodyKey);
+		if (!bodyWorldPos) return null;
+		const radiusKm = landingBody.data.radiusKm;
+		if (!Number.isFinite(radiusKm) || radiusKm <= 0) return null;
+		const DEG2RAD = Math.PI / 180;
+		const latR = sample.latDeg * DEG2RAD;
+		const lngR = sample.lngDeg * DEG2RAD;
+		// Spherical body-fixed XYZ in km (sphere approximation — for typical
+		// planet flattenings the geodetic-vs-spherical difference is well below
+		// the rendered point's pixel size). Convention matches the IAU body-
+		// fixed frame the writer's lat/lng/alt were sampled in:
+		//   local +X → prime meridian on equator (lat=0, lon=0)
+		//   local +Y → north pole (lat=+90)
+		//   local −Z → east (lon=+90)
+		const r = radiusKm + sample.altM / 1000;
+		const cosLat = Math.cos(latR);
+		const bx = r * cosLat * Math.cos(lngR);
+		const by = r * Math.sin(latR);
+		const bz = -r * cosLat * Math.sin(lngR);
+		const quat = bodyQuaternion(landingBody.orientation, jd, landingBody.nutPrec);
+		const tmp = new Vector3(bx, by, bz).applyQuaternion(quat);
+		// `tmp` is body-relative scene-frame km. Convert to scene units and
+		// add to the landing body's world position. The original ECLIPJ2000-→-
+		// scene axis swap in `kmToScene` does NOT apply here because
+		// `bodyQuaternion` already returns a Three.js-coords rotation.
+		d.parentId = bodyKey;
+		return {
+			x: bodyWorldPos[0] + kmToScene(tmp.x),
+			y: bodyWorldPos[1] + kmToScene(tmp.y),
+			z: bodyWorldPos[2] + kmToScene(tmp.z),
+			parentPos: bodyWorldPos
+		};
+	}
+
 	private updatePositions(jd: number): void {
 		// Keep the chebyshev working set centred on `jd` — chunks for the
 		// current time window load in the background on boundary crossings so
@@ -960,6 +1033,43 @@ export class SceneRenderer {
 							: 'no zone has both a loaded chunk and a sub-chunk covering this jd';
 						console.warn(`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — ${reason}`);
 					}
+					return;
+				}
+				// Landed branch: probe is on a body's surface at this jd. Place
+				// it at the lat/lng on the landing body's surface, applying the
+				// body's IAU orientation to put it in world coords. Skip the
+				// flying-fit path entirely; orbit-line / trail rendering will
+				// noop downstream because there's no orbit.
+				const probeLanded = located.probe.landed;
+				if (probeLanded && isLandedAt(located.probe, jd)) {
+					const landedRender = this._renderLandedProbe(
+						d,
+						located.probe,
+						probeLanded,
+						jd,
+						positionMap
+					);
+					if (!landedRender) {
+						if (bo) bo.outOfRange = true;
+						if (d.id === focusedId) oorState.focusedOutOfRange = true;
+						return;
+					}
+					this.probeUnavailableLogged.delete(d.id);
+					if (bo) bo.outOfRange = false;
+					body.position[0] = landedRender.x;
+					body.position[1] = landedRender.y;
+					body.position[2] = landedRender.z;
+					if (body.orbitCenter) {
+						body.orbitCenter[0] = landedRender.parentPos[0];
+						body.orbitCenter[1] = landedRender.parentPos[1];
+						body.orbitCenter[2] = landedRender.parentPos[2];
+					}
+					if (body.trailAnchor) {
+						body.trailAnchor[0] = landedRender.parentPos[0];
+						body.trailAnchor[1] = landedRender.parentPos[1];
+						body.trailAnchor[2] = landedRender.parentPos[2];
+					}
+					positionMap.set(d.id, body.position);
 					return;
 				}
 				const fitCenterNaifId = located.fitCenterNaifId;

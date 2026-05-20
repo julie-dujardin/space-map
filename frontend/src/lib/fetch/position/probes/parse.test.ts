@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { parseProbesPayload } from './parse';
-import { probePositionKm } from './propagate';
+import { isLandedAt, landedPositionAt, probePositionKm } from './propagate';
 import {
 	FORMAT_PROBES,
 	HEADER_SIZE,
 	IdType,
 	MAGIC,
+	PROBE_FLAG_HAS_LANDED_RECORD,
 	PROBE_HEADER_SIZE,
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,
 	PROBE_METHOD_KEPLER_PURE,
+	PROBE_METHOD_LANDED,
 	PROBE_METHOD_UNCOVERABLE,
 	SUBCHUNK_HEADER_SIZE,
 	VERSION
@@ -266,6 +268,69 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		expect(probePositionKm(probe, 2451600.0, 0)).toBeNull(); // after window
 	});
 
+	it('skips a trailing METHOD_LANDED record without corrupting the next probe', () => {
+		// Two probes in one chunk. probe[0] has a landed record trailing its
+		// (empty) flying sub-chunks; probe[1] follows immediately. If the
+		// parser doesn't skip the landed record, probe[1]'s header would be
+		// read from inside probe[0]'s landed payload and everything breaks.
+		const startJd = 2451545.0;
+		const subchunkDays = 7.0;
+		// Landed payload: 32-byte header + 0 samples (static).
+		const landedPayloadLen = 32;
+		// Hand-build the buffer: chunk header + probe[0] header + landed record
+		// + probe[1] header + 1 uncoverable sub-chunk.
+		const size =
+			HEADER_SIZE +
+			PROBE_HEADER_SIZE +
+			(SUBCHUNK_HEADER_SIZE + landedPayloadLen) +
+			PROBE_HEADER_SIZE +
+			SUBCHUNK_HEADER_SIZE;
+		const buf = new ArrayBuffer(size);
+		const view = new DataView(buf);
+		view.setUint32(0, MAGIC, true);
+		view.setUint16(4, VERSION, true);
+		view.setUint8(6, FORMAT_PROBES);
+		view.setUint8(7, 0);
+		view.setFloat64(8, startJd, true);
+		view.setFloat64(16, startJd + subchunkDays, true);
+		view.setUint32(24, 2, true);
+		view.setFloat32(28, subchunkDays, true);
+
+		let off = HEADER_SIZE;
+		// probe[0]: landed-only, no flying sub-chunks
+		view.setInt32(off, 111, true);
+		view.setUint8(off + 4, IdType.PROBE);
+		view.setUint8(off + 5, 13);
+		view.setUint8(off + 6, 0);
+		view.setUint8(off + 7, PROBE_FLAG_HAS_LANDED_RECORD);
+		view.setUint16(off + 8, 0, true);
+		view.setUint16(off + 10, 0, true);
+		off += PROBE_HEADER_SIZE;
+		// Trailing METHOD_LANDED record
+		view.setUint8(off, PROBE_METHOD_LANDED);
+		view.setUint32(off + 4, landedPayloadLen, true);
+		off += SUBCHUNK_HEADER_SIZE + landedPayloadLen;
+		// probe[1]: normal probe with one uncoverable sub-chunk
+		view.setInt32(off, 222, true);
+		view.setUint8(off + 4, IdType.PROBE);
+		view.setUint8(off + 5, 13);
+		view.setUint8(off + 6, 0);
+		view.setUint8(off + 7, 0);
+		view.setUint16(off + 8, 1, true);
+		view.setUint16(off + 10, 0, true);
+		off += PROBE_HEADER_SIZE;
+		view.setUint8(off, PROBE_METHOD_UNCOVERABLE);
+		view.setUint32(off + 4, 0, true);
+
+		const chunk = parseProbesPayload(buf, startJd, startJd + subchunkDays, false);
+		expect(chunk.probes).toHaveLength(2);
+		expect(chunk.probes[0].probeId).toBe(111);
+		expect(chunk.probes[0].subChunks).toHaveLength(0);
+		expect(chunk.probes[1].probeId).toBe(222);
+		expect(chunk.probes[1].subChunks).toHaveLength(1);
+		expect(chunk.probes[1].subChunks[0].method).toBe(PROBE_METHOD_UNCOVERABLE);
+	});
+
 	it('honours first_subchunk_offset for probes that start mid-chunk', () => {
 		// Chunk = 14 days, subchunk = 7 days. Probe's first sub-chunk starts at
 		// offset 1 → sub starts at chunkStart + 7 days.
@@ -295,5 +360,62 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		expect(probePositionKm(probe, startJd + 3, 3.986e5)).toBeNull();
 		// Within offset window — finite.
 		expect(probePositionKm(probe, startJd + 10, 3.986e5)).not.toBeNull();
+	});
+
+	it('parses a METHOD_LANDED record and exposes lat/lng via landedPositionAt', () => {
+		// Static lander (Phoenix-like) covering the full chunk window.
+		const startJd = 2454611.0;
+		const subchunkDays = 30.4375; // ~mars chunk
+		const landedPayloadLen = 32;
+		const size = HEADER_SIZE + PROBE_HEADER_SIZE + (SUBCHUNK_HEADER_SIZE + landedPayloadLen);
+		const buf = new ArrayBuffer(size);
+		const view = new DataView(buf);
+		view.setUint32(0, MAGIC, true);
+		view.setUint16(4, VERSION, true);
+		view.setUint8(6, FORMAT_PROBES);
+		view.setUint8(7, 0);
+		view.setFloat64(8, startJd, true);
+		view.setFloat64(16, startJd + subchunkDays, true);
+		view.setUint32(24, 1, true);
+		view.setFloat32(28, subchunkDays, true);
+		let off = HEADER_SIZE;
+		view.setInt32(off, 999, true);
+		view.setUint8(off + 4, IdType.PROBE);
+		view.setUint8(off + 5, 13);
+		view.setUint8(off + 6, 0);
+		view.setUint8(off + 7, PROBE_FLAG_HAS_LANDED_RECORD);
+		view.setUint16(off + 8, 0, true);
+		view.setUint16(off + 10, 0, true);
+		off += PROBE_HEADER_SIZE;
+		// METHOD_LANDED record: body=499 (Mars), static, full-chunk window,
+		// Phoenix touchdown coordinates.
+		view.setUint8(off, PROBE_METHOD_LANDED);
+		view.setUint32(off + 4, landedPayloadLen, true);
+		const po = off + SUBCHUNK_HEADER_SIZE;
+		view.setInt32(po, 499, true); // body_naif_id
+		view.setUint8(po + 4, 0x01); // is_static
+		view.setUint32(po + 8, 0, true); // start_offset_s
+		view.setUint32(po + 12, Math.round(subchunkDays * 86400), true); // end_offset_s
+		view.setInt32(po + 16, Math.round(68.4507 * 1e7), true); // lat_ref_e7
+		view.setInt32(po + 20, Math.round(-125.7513 * 1e7), true); // lng_ref_e7
+		view.setInt32(po + 24, -2591200, true); // alt_ref_mm = -2591.2 m
+		view.setUint32(po + 28, 0, true); // sample_count = 0 (static)
+
+		const chunk = parseProbesPayload(buf, startJd, startJd + subchunkDays, false);
+		expect(chunk.probes).toHaveLength(1);
+		const probe = chunk.probes[0];
+		expect(probe.landed).toBeDefined();
+		expect(probe.landed!.bodyNaifId).toBe(499);
+		expect(probe.landed!.isStatic).toBe(true);
+		// jd in window → returns the reference position.
+		expect(isLandedAt(probe, startJd + 5)).toBe(true);
+		const sample = landedPositionAt(probe.landed!, startJd + 5);
+		expect(sample).not.toBeNull();
+		expect(sample!.latDeg).toBeCloseTo(68.4507, 3);
+		expect(sample!.lngDeg).toBeCloseTo(-125.7513, 3);
+		expect(sample!.altM).toBeCloseTo(-2591.2, 1);
+		// jd outside window → null + isLandedAt false.
+		expect(isLandedAt(probe, startJd - 10)).toBe(false);
+		expect(landedPositionAt(probe.landed!, startJd - 10)).toBeNull();
 	});
 });

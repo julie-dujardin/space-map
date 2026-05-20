@@ -18,10 +18,12 @@
 import {
 	HEADER_SIZE,
 	IdType,
+	PROBE_FLAG_HAS_LANDED_RECORD,
 	PROBE_HEADER_SIZE,
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,
 	PROBE_METHOD_KEPLER_PURE,
+	PROBE_METHOD_LANDED,
 	PROBE_METHOD_UNCOVERABLE,
 	SUBCHUNK_HEADER_SIZE,
 	buildObjectId
@@ -74,6 +76,35 @@ export interface UncoverableSub {
 
 export type SubChunk = KeplerPureElts | KeplerDriftElts | ChebyshevSub | UncoverableSub;
 
+/**
+ * Trailing METHOD_LANDED record — the probe is parked on a body's surface
+ * during this chunk's window. Coordinates are body-fixed (IAU rotating
+ * frame); the renderer applies the body's IAU orientation at eval time to
+ * place the probe in world coords.
+ *
+ * `samples` is empty for static phases (the rover sat still in this chunk);
+ * the reference position is the displayed position. For moving phases the
+ * reference is the first kept sample (touchdown / chunk-start), and
+ * `sampleEt` is sorted ascending. The renderer should stair-step:
+ * pick the latest sample whose `et` ≤ now.
+ */
+export interface LandedRecord {
+	bodyNaifId: number;
+	isStatic: boolean;
+	/** Phase entry ET (s past J2000, TDB) within or extending into this chunk. */
+	startEt: number;
+	/** Phase exit ET. */
+	endEt: number;
+	latRefDeg: number;
+	lngRefDeg: number;
+	altRefM: number;
+	/** Per-sample absolute ET (s past J2000, TDB). Empty for static. Sorted. */
+	sampleEt: Float64Array;
+	sampleLatDeg: Float32Array;
+	sampleLngDeg: Float32Array;
+	sampleAltM: Float32Array;
+}
+
 export interface Probe {
 	/** Full Object ID (`probe-<value>`), reconstructed from the header. */
 	id: string;
@@ -87,6 +118,9 @@ export interface Probe {
 	/** Sub-chunk end ET in seconds past J2000 (TDB) — `subStartEt[i] + subchunkS`. */
 	subEndEt: number[];
 	subChunks: SubChunk[];
+	/** Optional trailing landed record — present when the probe was on a body's
+	 *  surface for part or all of this chunk. */
+	landed?: LandedRecord;
 }
 
 export interface ProbeChunk {
@@ -171,6 +205,69 @@ function parseKeplerPayload(
 	};
 }
 
+/**
+ * METHOD_LANDED payload layout (mirrors `pack_landed_payload` in format.py):
+ *
+ *   0   int32   body_naif_id
+ *   4   uint8   flags             (bit 0 = is_static)
+ *   5   uint8[3] reserved
+ *   8   uint32  start_offset_s    (from chunk_start_et)
+ *   12  uint32  end_offset_s
+ *   16  int32   lat_ref_e7        (lat° × 1e7)
+ *   20  int32   lng_ref_e7
+ *   24  int32   alt_ref_mm
+ *   28  uint32  sample_count
+ *   32+ sample_count × {uint32 et_offset_s, int32 lat_e7, int32 lng_e7, int32 alt_mm}
+ */
+const LANDED_LATLNG_SCALE = 1e-7;
+const LANDED_ALT_MM_SCALE = 1e-3;
+const LANDED_FLAG_STATIC = 0x01;
+const LANDED_SAMPLE_SIZE = 16;
+const LANDED_HEADER_SIZE = 32;
+
+function parseLandedPayload(
+	buffer: ArrayBuffer,
+	offset: number,
+	chunkStartEt: number
+): LandedRecord {
+	const view = new DataView(buffer, offset, LANDED_HEADER_SIZE);
+	const bodyNaifId = view.getInt32(0, true);
+	const flagsByte = view.getUint8(4);
+	const startOffsetS = view.getUint32(8, true);
+	const endOffsetS = view.getUint32(12, true);
+	const latRefDeg = view.getInt32(16, true) * LANDED_LATLNG_SCALE;
+	const lngRefDeg = view.getInt32(20, true) * LANDED_LATLNG_SCALE;
+	const altRefM = view.getInt32(24, true) * LANDED_ALT_MM_SCALE;
+	const sampleCount = view.getUint32(28, true);
+	const sampleEt = new Float64Array(sampleCount);
+	const sampleLatDeg = new Float32Array(sampleCount);
+	const sampleLngDeg = new Float32Array(sampleCount);
+	const sampleAltM = new Float32Array(sampleCount);
+	if (sampleCount > 0) {
+		const sv = new DataView(buffer, offset + LANDED_HEADER_SIZE, sampleCount * LANDED_SAMPLE_SIZE);
+		for (let i = 0; i < sampleCount; i++) {
+			const off = i * LANDED_SAMPLE_SIZE;
+			sampleEt[i] = chunkStartEt + sv.getUint32(off, true);
+			sampleLatDeg[i] = sv.getInt32(off + 4, true) * LANDED_LATLNG_SCALE;
+			sampleLngDeg[i] = sv.getInt32(off + 8, true) * LANDED_LATLNG_SCALE;
+			sampleAltM[i] = sv.getInt32(off + 12, true) * LANDED_ALT_MM_SCALE;
+		}
+	}
+	return {
+		bodyNaifId,
+		isStatic: (flagsByte & LANDED_FLAG_STATIC) !== 0,
+		startEt: chunkStartEt + startOffsetS,
+		endEt: chunkStartEt + endOffsetS,
+		latRefDeg,
+		lngRefDeg,
+		altRefM,
+		sampleEt,
+		sampleLatDeg,
+		sampleLngDeg,
+		sampleAltM
+	};
+}
+
 function parseChebyshevPayload(
 	buffer: ArrayBuffer,
 	offset: number,
@@ -208,7 +305,8 @@ export function parseProbesPayload(
 		const idTypeOrdinal = view.getUint8(offset + 4) as IdType;
 		const objectType = view.getUint8(offset + 5);
 		const hasLocalized = view.getUint8(offset + 6) === 1;
-		// offset+7 reserved
+		const flags = view.getUint8(offset + 7);
+		const hasLandedRecord = (flags & PROBE_FLAG_HAS_LANDED_RECORD) !== 0;
 		const nSubchunks = view.getUint16(offset + 8, true);
 		const firstSubchunkOffset = view.getUint16(offset + 10, true);
 		offset += PROBE_HEADER_SIZE;
@@ -244,6 +342,24 @@ export function parseProbesPayload(
 			offset = payloadOffset + payloadLen;
 		}
 
+		// Trailing METHOD_LANDED record — the probe is parked on a body's
+		// surface for part or all of this chunk. The renderer applies the
+		// body's IAU orientation at eval time to place the probe in world
+		// coords (no trail — landed probes aren't on an orbit).
+		let landed: LandedRecord | undefined;
+		if (hasLandedRecord) {
+			const method = view.getUint8(offset);
+			if (method !== PROBE_METHOD_LANDED) {
+				throw new Error(
+					`probe ${p}: PROBE_FLAG_HAS_LANDED_RECORD set but trailing record method = ${method}, expected ${PROBE_METHOD_LANDED}`
+				);
+			}
+			const payloadLen = view.getUint32(offset + 4, true);
+			const po = offset + SUBCHUNK_HEADER_SIZE;
+			landed = parseLandedPayload(buffer, po, chunkStartEt);
+			offset = po + payloadLen;
+		}
+
 		probes.push({
 			id,
 			probeId: objIdValue,
@@ -251,7 +367,8 @@ export function parseProbesPayload(
 			objectType,
 			subStartEt,
 			subEndEt,
-			subChunks
+			subChunks,
+			landed
 		});
 	}
 
