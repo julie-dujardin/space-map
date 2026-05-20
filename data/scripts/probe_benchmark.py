@@ -42,7 +42,9 @@ from space_map_data.export.position.format import (  # noqa: E402
     METHOD_CHEBYSHEV,
     METHOD_KEPLER_DRIFT,
     METHOD_KEPLER_PURE,
+    METHOD_LANDED,
     METHOD_UNCOVERABLE,
+    PROBE_FLAG_HAS_LANDED_RECORD,
     SUBCHUNK_HEADER_SIZE,
     VERSION,
 )
@@ -119,7 +121,7 @@ def _parse_chunk(path: Path) -> ParsedChunk:
     off = HEADER_SIZE
     probes: list[ProbeChunkRecord] = []
     for _ in range(probe_count):
-        obj_id_value, _id_type, _obj_type, _has_loc, _, n_sub, first_off = (
+        obj_id_value, _id_type, _obj_type, _has_loc, flags, n_sub, first_off = (
             struct.unpack("<iBBBBHH", data[off : off + 12])
         )
         off += 12
@@ -135,6 +137,18 @@ def _parse_chunk(path: Path) -> ParsedChunk:
             sub_chunks.append(
                 SubChunkRecord(method, sub_start_et, sub_start_et + sub_s, payload)
             )
+        if flags & PROBE_FLAG_HAS_LANDED_RECORD:
+            # Trailing METHOD_LANDED record (body-fixed lat/lng/alt for the
+            # surface phase). Skipped here — this benchmark validates flying-
+            # phase Kepler/Chebyshev fits against spkezr inertial truth, which
+            # is a different comparison than what the landed record encodes.
+            method, _, _, payload_len = struct.unpack(
+                "<BBHI", data[off : off + SUBCHUNK_HEADER_SIZE]
+            )
+            assert method == METHOD_LANDED, (
+                f"{path}: probe flagged has_landed but trailing record method={method}"
+            )
+            off += SUBCHUNK_HEADER_SIZE + payload_len
         probes.append(ProbeChunkRecord(obj_id_value, sub_chunks))
     assert off == len(data), f"{path}: trailing data ({off} vs {len(data)})"
     return ParsedChunk(start_jd, end_jd, subchunk_days, probes)
