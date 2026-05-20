@@ -31,7 +31,14 @@ const NEIGHBOR_WINDOW = 1;
  *  `zooms` wrapper). `fit_center_naif_id` is the body each probe's position
  *  is relative to (10=Sun for interplanetary, 199=Mercury, …); the store
  *  hands it back to callers so they can look up the body's world position
- *  and GM via the systems-global file. */
+ *  and GM via the systems-global file.
+ *
+ *  `present` lists every chunk index a `.bin.gz` actually exists for, as
+ *  inclusive-inclusive ranges (sorted, non-overlapping). Probe zones are
+ *  sparse — `chunks` is the full theoretical span across `[start_jd, end_jd]`,
+ *  but most slots have no file (Pluto = single New Horizons flyby chunk,
+ *  Uranus/Neptune = a single Voyager 2 flyby pair, …). The store consults
+ *  `present` before issuing any GET so absent chunks cost zero round-trips. */
 export interface ProbeZoneParams {
 	chunks: number;
 	chunk_years: number;
@@ -39,6 +46,17 @@ export interface ProbeZoneParams {
 	end_jd: number;
 	float64_coeffs: boolean;
 	fit_center_naif_id: number;
+	present: [number, number][];
+}
+
+/** True iff `idx` falls inside any range in `present`. Ranges are sorted
+ *  ascending and non-overlapping; once `idx < range.start` we can return early. */
+function isPresent(present: [number, number][], idx: number): boolean {
+	for (const [s, e] of present) {
+		if (idx < s) return false;
+		if (idx <= e) return true;
+	}
+	return false;
 }
 
 /** Yielded by `probesAt` so the scene loader can build PositionedBody for
@@ -68,11 +86,6 @@ export class ProbeStore {
 	private readonly zoneParams: Map<string, ProbeZoneParams>;
 	/** `zone → chunkIdx → parsed chunk`. */
 	private readonly chunks = new Map<string, Map<number, FetchedProbes>>();
-	/** Per-zone set of chunk indices known to have no file on the export
-	 *  (sparse-zone gap). Marked once on 404/403, so subsequent `ensure()`
-	 *  calls don't re-issue fetches and downstream code treats "absent" the
-	 *  same as "loaded but empty". */
-	private readonly absent = new Map<string, Set<number>>();
 	/** In-flight `loadChunk` promises keyed by `zone:chunkIdx` — concurrent
 	 *  `ensure()` calls don't kick off duplicate fetches. */
 	private readonly inflight = new Map<string, Promise<void>>();
@@ -105,10 +118,13 @@ export class ProbeStore {
 		let ready = true;
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
-			if (!this.isResident(zone, center)) ready = false;
+			if (isPresent(params.present, center) && !this.isResident(zone, center)) {
+				ready = false;
+			}
 			for (let d = -NEIGHBOR_WINDOW; d <= NEIGHBOR_WINDOW; d++) {
 				const idx = center + d;
 				if (idx < 0 || idx >= params.chunks) continue;
+				if (!isPresent(params.present, idx)) continue;
 				const job = this.loadChunk(zone, idx, params);
 				if (job) jobs.push(job);
 			}
@@ -119,18 +135,14 @@ export class ProbeStore {
 		};
 	}
 
-	/** True when `chunkIdx` for `zone` is either loaded or known absent —
-	 *  both states mean "no further fetch needed". */
 	private isResident(zone: string, chunkIdx: number): boolean {
-		return (
-			(this.chunks.get(zone)?.has(chunkIdx) ?? false) ||
-			(this.absent.get(zone)?.has(chunkIdx) ?? false)
-		);
+		return this.chunks.get(zone)?.has(chunkIdx) ?? false;
 	}
 
 	private allCurrentChunksLoaded(jd: number): boolean {
 		for (const [zone, params] of this.zoneParams) {
 			const center = chunkIndexForJd(params, jd);
+			if (!isPresent(params.present, center)) continue;
 			if (!this.isResident(zone, center)) return false;
 		}
 		return true;
@@ -158,15 +170,6 @@ export class ProbeStore {
 			this.chunks.set(zone, zoneMap);
 		}
 		const chunk = await fetchProbes(zone, chunkIdx, params.float64_coeffs);
-		if (chunk === null) {
-			let absentSet = this.absent.get(zone);
-			if (!absentSet) {
-				absentSet = new Set();
-				this.absent.set(zone, absentSet);
-			}
-			absentSet.add(chunkIdx);
-			return;
-		}
 		zoneMap.set(chunkIdx, chunk);
 	}
 

@@ -73,6 +73,12 @@ export interface ProbeZoneMetadata {
 	 *  up the body's world position and GM via this id. */
 	fit_center_naif_id: number;
 	parent_id_type?: string;
+	/** Inclusive-inclusive `[start, end]` ranges of chunk indices that actually
+	 *  have a `.bin.gz` on the export. Zones are sparse (Pluto = New Horizons
+	 *  flyby only, …) and most slots in `[0, chunks)` have no file; clients
+	 *  must treat any chunk index outside every range as authoritatively absent
+	 *  and skip the GET. Ranges are sorted ascending and non-overlapping. */
+	present: [number, number][];
 }
 
 /** Per-zoom metadata. Tagged union dispatched on the `shape` field. */
@@ -207,7 +213,8 @@ export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
 			start_jd: zoneData.start_jd,
 			end_jd: zoneData.end_jd,
 			float64_coeffs: zoneData.float64_coeffs,
-			fit_center_naif_id: zoneData.fit_center_naif_id
+			fit_center_naif_id: zoneData.fit_center_naif_id,
+			present: zoneData.present
 		});
 	}
 	return out;
