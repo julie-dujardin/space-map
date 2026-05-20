@@ -246,6 +246,7 @@ def _build_position_metadata(
             "float64_coeffs": params["float64_coeffs"],
             "fit_center_naif_id": params["fit_center_naif_id"],
             "parent_id_type": "probe",
+            "present": params["present"],
         }
     return {"zones": dict(sorted(zones.items()))}
 
