@@ -1,6 +1,6 @@
 /** Colors keyed by prefixed body ID */
 export const BODY_COLORS: Record<string, string> = {
-	'naif-10': '#ffdd44', // Sun
+	'naif-10': '#ffdd44', // Sun — saturated yellow for the UI/thematic tint (CSS halo, corona sprite, lensflare, sub-pixel point). The photosphere shader overrides this internally with a physically-derived 5778 K blackbody value
 	'naif-199': '#b5b5b5', // Mercury
 	'naif-299': '#e8cda0', // Venus
 	'naif-399': '#4da6ff', // Earth

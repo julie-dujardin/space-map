@@ -18,13 +18,13 @@ export interface SpecularMeta {
 
 /**
  * Roughness target over open water. The mask is binary today (land=0,
- * ocean=255), so the value here is what the ocean lerps to; a real
- * sea-surface micro-roughness is ~0.2–0.4, anything lower and the sun
- * glint becomes a mirror-bright pinpoint. Land retains `material.roughness`
- * (1.0 by default), which keeps continents indistinguishable from before
- * the specular map was attached.
+ * ocean=255), so the value here is what the ocean lerps to. Land retains
+ * `material.roughness` (1.0 by default), which keeps continents
+ * indistinguishable from before the specular map was attached. Physically
+ * realistic open-water values sit around ~0.2–0.4, but we use a much
+ * rougher tuning to keep the sun glint from dominating the view.
  */
-const OCEAN_ROUGHNESS = 0.35;
+const OCEAN_ROUGHNESS = 0.55;
 
 const SPECULAR_HOOK = Symbol('specular-hook');
 

@@ -1,4 +1,5 @@
 import {
+	ACESFilmicToneMapping,
 	AmbientLight,
 	BufferAttribute,
 	DirectionalLight,
@@ -18,6 +19,10 @@ import {
 } from 'three';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
 import {
@@ -138,6 +143,8 @@ function desiredSphereSegments(
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
+	private composer: EffectComposer;
+	private bloomPass: UnrealBloomPass;
 	private labelRenderer: CSS2DRenderer;
 	private scene: Scene;
 	private camera: PerspectiveCamera;
@@ -310,6 +317,15 @@ export class SceneRenderer {
 		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+		// ACES gives the Sun's HDR output (intensity 6× in makeStarSurfaceMaterial)
+		// a soft highlight rolloff to saturated white — same look a camera gets
+		// pointing at the Sun. Exposure < 1 counteracts Three's built-in
+		// `color *= exposure/0.6` premultiplier inside the ACES shader chunk,
+		// which would otherwise lift the mid-tone UI elements (orbit trails,
+		// halos) ~10–30% across the screen. The Sun is still well past the bloom
+		// threshold so it saturates either way.
+		this.renderer.toneMapping = ACESFilmicToneMapping;
+		this.renderer.toneMappingExposure = 0.6;
 		// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
 		// size so the requested width reads as pixels regardless of devicePixelRatio.
 		setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
@@ -338,6 +354,24 @@ export class SceneRenderer {
 		// Camera
 		const aspect = canvas.clientWidth / canvas.clientHeight;
 		this.camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), 100000);
+
+		// Post-processing: bloom catches HDR pixels (Sun shader writes ~6× linear)
+		// and bleeds them into surrounding pixels. Threshold=1.0 keeps the rest of
+		// the scene unaffected — only the Sun crosses the threshold. OutputPass
+		// applies tone-mapping + sRGB conversion at the end of the chain (the
+		// renderer's own tonemap stage doesn't run when composer is driving it).
+		this.composer = new EffectComposer(this.renderer);
+		this.composer.setPixelRatio(window.devicePixelRatio);
+		this.composer.setSize(canvas.clientWidth, canvas.clientHeight);
+		this.composer.addPass(new RenderPass(this.scene, this.camera));
+		this.bloomPass = new UnrealBloomPass(
+			new Vector2(canvas.clientWidth, canvas.clientHeight),
+			0.3, // strength
+			0.5, // radius
+			1.0 // threshold — physically motivated: only HDR over-bright pixels bloom
+		);
+		this.composer.addPass(this.bloomPass);
+		this.composer.addPass(new OutputPass());
 
 		// Set initial camera position from URL state
 		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
@@ -1457,7 +1491,7 @@ export class SceneRenderer {
 			this.scene.add(this.pendingSceneAdds.shift()!);
 		}
 
-		this.renderer.render(this.scene, this.camera);
+		this.composer.render();
 		this.labelRenderer.render(this.scene, this.camera);
 	};
 
@@ -2226,6 +2260,8 @@ export class SceneRenderer {
 
 	resize(width: number, height: number): void {
 		this.renderer.setSize(width, height, false);
+		this.composer.setSize(width, height);
+		this.bloomPass.setSize(width, height);
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();

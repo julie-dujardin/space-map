@@ -1,5 +1,4 @@
 import {
-	AdditiveBlending,
 	BufferAttribute,
 	BufferGeometry,
 	CanvasTexture,
@@ -11,13 +10,10 @@ import {
 	Points,
 	PointsMaterial,
 	ShaderMaterial,
-	Sprite,
-	SpriteMaterial,
 	Uint16BufferAttribute,
 	Vector2,
 	Vector3
 } from 'three';
-import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
 import { propagateOrbitAngles } from '$lib/math/orbit/position';
 import { dateToJD } from '$lib/format/date';
@@ -739,82 +735,6 @@ export function refreshOrbitLineGeometry(
 	ud.lastBasisX = basisPos[0];
 	ud.lastBasisY = basisPos[1];
 	ud.lastBasisZ = basisPos[2];
-}
-
-/** Create a radial gradient canvas texture for the star corona glow. */
-function makeGlowTexture(color: string, size = 256): CanvasTexture {
-	const canvas = document.createElement('canvas');
-	canvas.width = size;
-	canvas.height = size;
-	const ctx = canvas.getContext('2d')!;
-	const half = size / 2;
-	const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
-	gradient.addColorStop(0, color);
-	gradient.addColorStop(0.15, color);
-	gradient.addColorStop(0.4, color.replace(')', ', 0.3)').replace('rgb(', 'rgba('));
-	gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-	ctx.fillStyle = gradient;
-	ctx.fillRect(0, 0, size, size);
-	return new CanvasTexture(canvas);
-}
-
-/** Convert hex color like #ffdd44 to rgb() string. */
-function hexToRgb(hex: string): string {
-	const r = parseInt(hex.slice(1, 3), 16);
-	const g = parseInt(hex.slice(3, 5), 16);
-	const b = parseInt(hex.slice(5, 7), 16);
-	return `rgb(${r}, ${g}, ${b})`;
-}
-
-/**
- * Build corona glow sprite + lensflare for a star.
- * The sprite is a soft additive-blended billboard, and the lensflare adds
- * camera-facing flare elements that scale with distance.
- */
-export function makeStarGlow(
-	radius: number,
-	color: string
-): { corona: Sprite; lensflare: Lensflare } {
-	const rgbColor = color.startsWith('#') ? hexToRgb(color) : color;
-
-	// Corona glow sprite — 6x the star radius for a soft halo
-	const glowTexture = makeGlowTexture(rgbColor);
-	const coronaMaterial = new SpriteMaterial({
-		map: glowTexture,
-		blending: AdditiveBlending,
-		transparent: true,
-		opacity: 0.6,
-		depthWrite: false,
-		depthTest: true
-	});
-	const corona = new Sprite(coronaMaterial);
-	const glowSize = radius * 6;
-	corona.scale.set(glowSize, glowSize, 1);
-
-	// Lensflare — subtle flare elements
-	const flareTexture = makeGlowTexture(rgbColor, 128);
-	const lensflare = new Lensflare();
-	lensflare.addElement(new LensflareElement(flareTexture, 35, 0, new Color(color)));
-
-	return { corona, lensflare };
-}
-
-/** Single fixed-size dot for a star, visible when the mesh is sub-pixel. */
-export function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
-	const geometry = new BufferGeometry();
-	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(3), 3));
-	const material = new PointsMaterial({
-		color,
-		map: circleTexture,
-		transparent: true,
-		size: 6,
-		sizeAttenuation: false,
-		depthTest: true,
-		depthWrite: false
-	});
-	const points = new Points(geometry, material);
-	points.frustumCulled = false;
-	return points;
 }
 
 const F32_MAX = 3.4028235e38;

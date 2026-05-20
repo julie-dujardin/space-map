@@ -3,17 +3,13 @@ import {
 	Group,
 	type Material,
 	Mesh,
-	MeshBasicMaterial,
 	MeshStandardMaterial,
 	type Object3D,
 	Points,
-	PointLight,
 	PointsMaterial,
 	Scene,
-	SphereGeometry,
-	type Sprite
+	SphereGeometry
 } from 'three';
-import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import { resolveBodyColor } from '$lib/utils';
 import { BODY_COLORS, MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
@@ -27,14 +23,8 @@ import { jdToDate } from '$lib/format/date';
 import { SRGBColorSpace, TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
-import {
-	asteroidPointSize,
-	makeCircleTexture,
-	makeOrbitLine,
-	makePointCloud,
-	makeStarGlow,
-	makeStarPoint
-} from './builders';
+import { asteroidPointSize, makeCircleTexture, makeOrbitLine, makePointCloud } from './builders';
+import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from './sun';
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
 import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from './atmosphere';
@@ -93,31 +83,24 @@ export function buildMajorBodies(
 		group.position.set(0, 0, 0);
 
 		let mesh: Mesh | null = null;
-		let starPoint: Points | null = null;
-		let coronaSprite: Sprite | null = null;
-		let lensflareObj: Lensflare | null = null;
+		let starExtras: StarExtras | null = null;
 		let eclipseShadow: EclipseSelfUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
 		const extraObjects: Object3D[] = [];
 		if (!isVirtual) {
 			if (isStar) {
-				const light = new PointLight(0xffffff, 2, 0, 0);
-				scene.add(light);
-				const { corona, lensflare } = makeStarGlow(radius, color);
-				coronaSprite = corona;
-				lensflareObj = lensflare;
-				scene.add(corona);
-				scene.add(lensflare);
-				starPoint = makeStarPoint(color, circleTexture);
-				scene.add(starPoint);
-				extraObjects.push(light, corona, lensflare, starPoint);
+				starExtras = buildStarExtras(scene, radius, color, circleTexture);
+				extraObjects.push(
+					starExtras.light,
+					starExtras.corona,
+					starExtras.lensflare,
+					starExtras.starPoint
+				);
 			}
 
 			const segments = isStar ? 96 : 64;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			const material = isStar
-				? new MeshBasicMaterial({ color })
-				: new MeshStandardMaterial({ color });
+			const material = isStar ? makeStarSurfaceMaterial() : new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
 			if (!isStar) {
 				// Body-on-body shadows are computed analytically by the
@@ -222,9 +205,9 @@ export function buildMajorBodies(
 			label,
 			labelHalo,
 			extraObjects,
-			corona: coronaSprite,
-			lensflare: lensflareObj,
-			starPoint,
+			corona: starExtras?.corona ?? null,
+			lensflare: starExtras?.lensflare ?? null,
+			starPoint: starExtras?.starPoint ?? null,
 			orbitLine,
 			radiusScene: radius,
 			cachedDist: 0,
@@ -663,7 +646,7 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
  */
 export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!bo.mesh) return;
-	const material = bo.mesh.material as MeshStandardMaterial | MeshBasicMaterial;
+	const material = bo.mesh.material as MeshStandardMaterial;
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;
