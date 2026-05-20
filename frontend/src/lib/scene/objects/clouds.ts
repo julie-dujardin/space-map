@@ -7,7 +7,7 @@
  * Texture tiers mirror the surface tiers (low/medium/high) and are upgraded
  * alongside the surface by the renderer's per-frame LOD pass.
  */
-import { Mesh, MeshStandardMaterial, SphereGeometry, Texture } from 'three';
+import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } from 'three';
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
@@ -76,6 +76,7 @@ async function fetchCloudTexture(id: string, tier: string, frame: string): Promi
 		const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY' });
 		const texture = new Texture(bitmap);
 		texture.flipY = false;
+		texture.colorSpace = SRGBColorSpace;
 		texture.needsUpdate = true;
 		return texture;
 	} catch (err) {

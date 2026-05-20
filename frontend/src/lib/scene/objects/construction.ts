@@ -24,7 +24,7 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
-import { TextureLoader, type Texture } from 'three';
+import { SRGBColorSpace, TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
 import {
@@ -533,6 +533,7 @@ async function swapBodyTexture(
 		const texture = await new Promise<Texture>((resolve, reject) => {
 			textureLoader.load(textureUrlFor(fileId, tier, frame), resolve, undefined, reject);
 		});
+		texture.colorSpace = SRGBColorSpace;
 		const material = bo.mesh.material as MeshStandardMaterial;
 		material.map?.dispose();
 		material.map = texture;
