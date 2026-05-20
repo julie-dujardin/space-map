@@ -1,3 +1,4 @@
+import gc
 import json
 import logging
 import math
@@ -6,7 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+import Imath
 import numpy as np
+import OpenEXR  # ty: ignore[unresolved-import]  # C extension, no stubs
+import py360convert
 import tifffile
 import yaml
 from PIL import Image
@@ -37,6 +41,23 @@ EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
 # Suffix on the export directory holding a body's specular/roughness bundle —
 # sibling of the surface texture, mirrors the `_clouds` convention.
 SPECULAR_SUFFIX = "_specular"
+
+# Cubemap face order, matching Three.js' CubeTextureLoader expectation
+# (+X, -X, +Y, -Y, +Z, -Z).
+SKYBOX_FACES = ("px", "nx", "py", "ny", "pz", "nz")
+# py360convert.e2c with cube_format="dict" returns Front/Right/Back/Left/Up/Down
+# keys (yaw=0 → F; +x → R; +y → U; etc.). This maps each onto its WebGL axis
+# label so the on-disk filenames stay aligned with cubemap-sampler conventions.
+# Renderer-side RA/dec orientation can apply a rotation if needed.
+_PY360_TO_FACE = {"R": "px", "L": "nx", "U": "py", "D": "ny", "F": "pz", "B": "nz"}
+# Per-face edge length for each tier. UASTC 4K/face would be the eventual
+# target; for WebP we keep the same dims and rely on the size cap.
+SKYBOX_TIER_SIZES = {"low": 2048, "high": 4096}
+# Exposure pre-multiplier applied before Reinhard tonemap. The SVS Deep Star
+# Maps EXR has bright stars sitting well above 1.0; bumping exposure brings
+# the Milky Way out of the toe before the tonemap squashes the dynamic range.
+SKYBOX_EXPOSURE = 4.0
+
 WEBP_MAX = 16383  # WebP hard limit per dimension
 EXPORT_SIZES = [2048, 8192]  # intermediate sizes to generate for large images
 
@@ -93,6 +114,110 @@ def _open_image(path: Path) -> Image.Image:
 
     arr = (arr * 255.0).astype(np.uint8)
     return Image.fromarray(arr, mode="RGB")
+
+
+def _mem_available_bytes() -> int | None:
+    """Return MemAvailable from /proc/meminfo in bytes, or None if unreadable.
+
+    Used as a coarse pre-flight check before loading multi-gigabyte EXRs.
+    Returns None on non-Linux platforms or if the file is missing — callers
+    treat None as "don't know, proceed".
+    """
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    return int(parts[1]) * 1024  # kB → bytes
+    except OSError:
+        return None
+    return None
+
+
+# Source-to-output downsample ratio applied while streaming the EXR. The
+# SVS Deep Star Maps 2020 source is 65536×32768 — far above what a 4K-per-face
+# cubemap can resolve. Box-averaging 4:1 in each axis lands the working
+# equirect at 16384×8192 (~45 px/deg), matching a 4K cube face's angular
+# sampling density and keeping the uint8 buffer at ~384 MiB.
+_SKYBOX_DOWNSAMPLE = 4
+# Number of *output* rows tonemapped per streaming band. At 16K output width
+# with 4× downsample, each band reads 256×4 = 1024 source scanlines per
+# channel (~128 MiB of half-float source data per band).
+_SKYBOX_BAND_OUT_ROWS = 256
+
+
+def _load_and_tonemap_skybox_streaming(src: Path) -> np.ndarray:
+    """Stream-read an HDR equirect EXR and tonemap to a downsampled uint8 equirect.
+
+    Returns (H/ds, W/ds, 3) uint8 in sRGB-encoded values, where ``ds`` is
+    ``_SKYBOX_DOWNSAMPLE``. Reads source scanlines in chunks via OpenEXR's
+    ``InputFile.channel`` so peak working memory stays well under the full
+    uncompressed pixel size (12+ GiB for 64K×32K half-float).
+
+    The Reinhard tonemap with exposure pre-multiplier (``SKYBOX_EXPOSURE``)
+    lifts faint Milky Way structure above the toe before compression to
+    [0, 1). sRGB encoding follows so the resulting WebP samples correctly
+    under Three.js' default sRGB texture path.
+    """
+    inp = OpenEXR.InputFile(str(src))
+    hdr = inp.header()
+    dw = hdr["dataWindow"]
+    src_w = dw.max.x - dw.min.x + 1
+    src_h = dw.max.y - dw.min.y + 1
+    ds = _SKYBOX_DOWNSAMPLE
+    if src_w % ds or src_h % ds:
+        raise ValueError(
+            f"{src.name}: dims {src_w}x{src_h} not divisible by downsample {ds}"
+        )
+    out_w, out_h = src_w // ds, src_h // ds
+    out = np.empty((out_h, out_w, 3), dtype=np.uint8)
+    pt = Imath.PixelType(Imath.PixelType.HALF)
+
+    log.info(
+        "streaming EXR %dx%d → %dx%d uint8 (%dx downsample, %d bands)",
+        src_w,
+        src_h,
+        out_w,
+        out_h,
+        ds,
+        (out_h + _SKYBOX_BAND_OUT_ROWS - 1) // _SKYBOX_BAND_OUT_ROWS,
+    )
+
+    for out_y0 in range(0, out_h, _SKYBOX_BAND_OUT_ROWS):
+        out_y1 = min(out_y0 + _SKYBOX_BAND_OUT_ROWS, out_h)
+        band_out_h = out_y1 - out_y0
+        src_y0 = out_y0 * ds
+        src_y1 = src_y0 + band_out_h * ds - 1  # inclusive
+
+        channels: list[np.ndarray] = []
+        for name in ("R", "G", "B"):
+            raw = inp.channel(name, pt, src_y0, src_y1)
+            ch = np.frombuffer(raw, dtype=np.float16).reshape(band_out_h * ds, src_w)
+            channels.append(ch)
+
+        # Stack and box-average ds×ds blocks. Cast to float32 first so
+        # bright-star half-float values aggregate without saturation bias.
+        rgb_src = np.stack(channels, axis=-1).astype(np.float32, copy=False)
+        del channels
+        band = rgb_src.reshape(band_out_h, ds, out_w, ds, 3).mean(
+            axis=(1, 3), dtype=np.float32
+        )
+        del rgb_src
+
+        np.multiply(band, SKYBOX_EXPOSURE, out=band)
+        np.clip(band, 0.0, None, out=band)
+        denom = band + 1.0
+        np.divide(band, denom, out=band)
+        del denom
+        srgb = _linear_to_srgb(band)
+        np.clip(srgb, 0.0, 1.0, out=srgb)
+        np.multiply(srgb, 255.0, out=srgb)
+        np.add(srgb, 0.5, out=srgb)
+        out[out_y0:out_y1] = srgb.astype(np.uint8, copy=False)
+        del band, srgb
+
+    inp.close()
+    return out
 
 
 def _open_specular_source(src: Path) -> Image.Image:
@@ -355,6 +480,13 @@ def _stale_metadata_reason(existing: dict, entry: dict) -> str | None:
             or existing.get("source_file") != entry["file"]
         ):
             return "yaml entry shape changed"
+    if type_ == "cubemap_skybox":
+        if (
+            existing.get("type") != type_
+            or tuple(existing.get("faces") or ()) != SKYBOX_FACES
+            or existing.get("tier_face_size") != SKYBOX_TIER_SIZES
+        ):
+            return "skybox entry shape changed"
     return None
 
 
@@ -583,6 +715,9 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_specular":
                 self._process_specular(entry, force=force)
                 continue
+            if entry.get("type") == "cubemap_skybox":
+                self._process_skybox(entry, force=force)
+                continue
             src = entry.get("_source_dir", RAW_DIR) / entry["file"]
             if not src.exists():
                 msg = f"listed in metadata but not found: {entry['file']}"
@@ -695,6 +830,124 @@ class TextureProcessor:
         )
         log.info(
             "processed specular %s → %s (%d exports)", src.name, object_id, len(exports)
+        )
+        return out_dir
+
+    def _process_skybox(self, entry: dict, force: bool = False) -> Path:
+        """Process a ``cubemap_skybox`` entry from an HDR equirectangular EXR.
+
+        Loads the source EXR linear-light, applies an exposure-bumped Reinhard
+        tonemap, projects to six cubemap faces (px, nx, py, ny, pz, nz) at
+        each tier size, and writes one lossy WebP per face per tier:
+        ``{tier}_{face}.webp`` under ``PROCESSED_DIR/<body>/``. A single
+        metadata.json records the face list, tier sizes, and per-file size
+        records (nested ``{tier: {face: rec}}``).
+
+        Skip semantics mirror the other processors: ``_try_skip`` short-
+        circuits when metadata exists, the entry shape is unchanged, and no
+        export exceeds the size cap.
+        """
+        src = entry.get("_source_dir", RAW_DIR) / entry["file"]
+        if not src.exists():
+            msg = f"skybox source missing: {entry['file']}"
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            return PROCESSED_DIR
+
+        object_id = entry["body"]
+        out_dir = PROCESSED_DIR / object_id
+
+        if not force and self._try_skip(
+            out_dir, entry, attribution_file=src.name, label=f"{object_id} skybox"
+        ):
+            return out_dir
+
+        # Pre-flight: the streaming loader downsamples to ~384 MiB and
+        # py360convert's 4K-per-face cubemap working set adds another ~1 GiB;
+        # 2 GiB available is comfortable headroom. (The earlier whole-image
+        # imageio load needed 30+ GiB and would OOM-kill the process.)
+        SKYBOX_MIN_AVAILABLE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
+        avail = _mem_available_bytes()
+        if avail is not None and avail < SKYBOX_MIN_AVAILABLE_BYTES:
+            msg = (
+                f"skybox {object_id}: insufficient memory "
+                f"({avail / 1024**3:.1f} GiB available, need ≥{SKYBOX_MIN_AVAILABLE_BYTES / 1024**3:.0f} GiB); "
+                f"close other apps and rerun"
+            )
+            log.error(msg)
+            self._global_warnings.append(msg)
+            return PROCESSED_DIR
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        log.info("loading + tonemapping skybox EXR %s (streaming)…", src.name)
+        ldr_equirect = _load_and_tonemap_skybox_streaming(src)
+        h, w, _ = ldr_equirect.shape
+        # Source dims for metadata are the *original* EXR dimensions, not the
+        # downsampled working buffer — record both via the explicit factor.
+        src_w = w * _SKYBOX_DOWNSAMPLE
+        src_h = h * _SKYBOX_DOWNSAMPLE
+        gc.collect()
+
+        exports: dict[str, dict[str, dict]] = {}
+        warnings: list[str] = []
+        high_size = SKYBOX_TIER_SIZES["high"]
+        log.info("extracting cubemap faces at %dpx (high tier)…", high_size)
+        # Single e2c pass at high tier; downsample for lower tiers below.
+        raw_faces = py360convert.e2c(
+            ldr_equirect, face_w=high_size, mode="bilinear", cube_format="dict"
+        )
+        # Remap py360convert's F/R/B/L/U/D keys to WebGL axis labels.
+        high_faces = {_PY360_TO_FACE[k]: v for k, v in raw_faces.items()}
+        del ldr_equirect, raw_faces
+        gc.collect()
+
+        for tier, face_size in SKYBOX_TIER_SIZES.items():
+            tier_exports: dict[str, dict] = {}
+            for face in SKYBOX_FACES:
+                img = Image.fromarray(high_faces[face], mode="RGB")
+                if face_size != high_size:
+                    img = img.resize((face_size, face_size), Image.Resampling.LANCZOS)
+                rec = _save_webp(img, out_dir / f"{tier}_{face}.webp", lossless=False)
+                tier_exports[face] = rec
+
+                target = _size_target(face_size)
+                if target and rec["size_bytes"] > target:
+                    msg = (
+                        f"{object_id}/{tier}_{face}.webp: "
+                        f"{rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
+                    )
+                    log.warning(msg)
+                    warnings.append(msg)
+            exports[tier] = tier_exports
+        del high_faces
+        gc.collect()
+        self._global_warnings.extend(warnings)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=src.name,
+            attribution_file=src.name,
+            source_dims=[src_w, src_h],
+            exports=exports,
+            extra_fields={
+                "encoding": "webp",
+                "frame": "j2000",
+                "faces": list(SKYBOX_FACES),
+                "tiers": list(SKYBOX_TIER_SIZES),
+                "tier_face_size": dict(SKYBOX_TIER_SIZES),
+                "exposure": SKYBOX_EXPOSURE,
+                "working_equirect_size": [w, h],
+                "downsample_from_source": _SKYBOX_DOWNSAMPLE,
+            },
+        )
+        log.info(
+            "processed skybox %s → %s (%d faces × %d tiers)",
+            src.name,
+            object_id,
+            len(SKYBOX_FACES),
+            len(SKYBOX_TIER_SIZES),
         )
         return out_dir
 

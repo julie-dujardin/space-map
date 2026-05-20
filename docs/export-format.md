@@ -25,6 +25,8 @@ v1/
   textures/{id}_clouds/metadata.json              cloud-overlay source + tier/frame inventory
   textures/{id}_specular/{tier}.webp              specular/roughness map (type = cylindrical_specular)
   textures/{id}_specular/metadata.json            specular source + exports
+  textures/stars/{tier}_{face}.webp               cubemap-skybox faces (type = cubemap_skybox), face ∈ px|nx|py|ny|pz|nz
+  textures/stars/metadata.json                    skybox source + per-face exports
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
@@ -125,9 +127,26 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
   "object_bundles": {
     "global": 1093,
     "en": 208, "fr": 208, "ja": 208, "ar": 201, "ru": 208, "zh": 208
+  },
+  "skybox": {
+    "id": "stars",
+    "type": "cubemap_skybox",
+    "encoding": "webp",
+    "frame": "j2000",
+    "faces": ["px", "nx", "py", "ny", "pz", "nz"],
+    "tiers": ["low", "high"],
+    "tier_face_size": { "low": 2048, "high": 4096 },
+    "source": "https://svs.gsfc.nasa.gov/4851/",
+    "organisation": "NASA",
+    "attribution": "..."
   }
 }
 ```
+
+The `skybox` block is omitted when no cubemap-skybox bundle is present in
+the export. The frontend loads face URLs as
+`/v1/textures/{skybox.id}/{tier}_{face}.webp` and picks the largest tier
+whose `tier_face_size[tier]` fits the device's max texture dimension.
 
 ### Shape → URL
 

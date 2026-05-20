@@ -26,6 +26,10 @@ _CLOUDS_SUFFIX = "_clouds"
 # Sibling bundle holding a specular/roughness map for the host body
 # (e.g. naif-399_specular carries Earth's ocean mask).
 _SPECULAR_SUFFIX = "_specular"
+# Top-level celestial-sphere texture directory — `textures/stars/`. Holds the
+# cubemap-skybox bundle the renderer drops behind the whole scene as
+# `scene.background`. Not tied to any NAIF body.
+_SKYBOX_DIR = "stars"
 
 # Object types that belong in planetary systems
 _SYSTEM_TYPES = frozenset(
@@ -241,6 +245,45 @@ def specular_block(meta: dict) -> dict:
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
+
+
+def load_skybox_metadata(out_dir: Path) -> dict | None:
+    """Load the cubemap-skybox bundle metadata.json from the export tree.
+
+    Returns the parsed metadata dict, or None when no skybox bundle has been
+    ingested. The renderer drops a single skybox behind the whole scene; if
+    multiple skyboxes ever ship, this returns the one at ``textures/stars/``.
+    """
+    meta_file = mirror_path(out_dir / "textures" / _SKYBOX_DIR / "metadata.json")
+    if not meta_file.exists():
+        return None
+    return orjson.loads(meta_file.read_bytes())
+
+
+def skybox_block(meta: dict) -> dict:
+    """Build the top-level ``skybox`` block embedded in v1/metadata.json.
+
+    Carries only what the frontend needs to fetch faces and credit the
+    bundle: id, face/tier shape, encoding, sky frame, and attribution.
+    The renderer composes URLs as ``/v1/textures/{skybox.id}/{tier}_{face}.webp``
+    where face ∈ ``faces`` and tier ∈ ``tiers``.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "type": meta["type"],
+        "encoding": meta["encoding"],
+        "frame": meta["frame"],
+        "faces": list(meta["faces"]),
+        "tiers": list(meta["tiers"]),
+        "tier_face_size": dict(meta["tier_face_size"]),
+        "source": meta["source"],
+        "organisation": meta["organisation"],
     }
     if meta.get("attribution") is not None:
         block["attribution"] = meta["attribution"]

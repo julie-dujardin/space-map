@@ -294,6 +294,15 @@ wheels = [
 ]
 
 [[package]]
+name = "openexr"
+version = "3.4.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/36/7f/b172c42790a16179a8eb474c46fa30dacf788b6babb4604866b9fec791f6/openexr-3.4.11.tar.gz", hash = "sha256:c32233f4ffea51ca3fe05a3f0193b24bf21d7cab04a46c292badc7c9dfa60851", size = 25603203, upload-time = "2026-04-29T23:30:42.186Z" }
+
+[[package]]
 name = "orjson"
 version = "3.11.8"
 source = { registry = "https://pypi.org/simple" }
@@ -549,6 +558,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "httpx" },
     { name = "jplephem" },
+    { name = "openexr" },
     { name = "orjson" },
     { name = "pillow" },
     { name = "pyyaml" },
@@ -572,6 +582,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "httpx" },
     { name = "jplephem", specifier = ">=2.24" },
+    { name = "openexr", specifier = ">=3.4.11" },
     { name = "orjson", specifier = ">=3.11.8" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },

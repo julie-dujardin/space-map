@@ -50,8 +50,10 @@ from space_map_data.export.systems import (
     load_radii,
     load_clouds_metadata,
     load_ring_metadata,
+    load_skybox_metadata,
     load_specular_metadata,
     load_texture_metadata,
+    skybox_block,
     write_system_metadata,
     write_systems_global,
 )
@@ -1366,7 +1368,10 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     position_metadata = _build_position_metadata(
         zone_structure, chebyshev_zones, probe_zones
     )
-    metadata = {"position": position_metadata, "object_bundles": bundle_ns}
+    metadata: dict = {"position": position_metadata, "object_bundles": bundle_ns}
+    skybox_meta = load_skybox_metadata(out_dir)
+    if skybox_meta is not None:
+        metadata["skybox"] = skybox_block(skybox_meta)
     (out_dir / "metadata.json").write_bytes(
         orjson.dumps(metadata, option=orjson.OPT_INDENT_2)
     )
