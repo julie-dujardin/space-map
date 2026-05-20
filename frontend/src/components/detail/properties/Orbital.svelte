@@ -12,7 +12,12 @@
 		PROBE_METHOD_KEPLER_PURE,
 		PROBE_METHOD_UNCOVERABLE
 	} from '$lib/fetch/position/format';
-	import { findSubChunkIndex, jdToEt } from '$lib/fetch/position/probes/propagate';
+	import {
+		findSubChunkIndex,
+		isLandedAt,
+		jdToEt,
+		landedPositionAt
+	} from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
@@ -86,6 +91,28 @@
 	}
 
 	let { global, localized, body, orbitElements, parentBody, jd }: Props = $props();
+
+	// Landed-probe detection: a SPICE_PROBE whose current chunk carries a
+	// trailing METHOD_LANDED record covering `jd` is sitting on a body's
+	// surface. The orbital-elements section makes no sense for these — show
+	// a position section (lat/lng/altitude) instead.
+	let landedProbe = $derived.by(() => {
+		if (body?.data.orbitalSource !== OrbitalSource.SPICE_PROBE || !ctx?.probeStore) {
+			return null;
+		}
+		const probe = ctx.probeStore.probe(body.data.id, jd);
+		if (!probe || !probe.landed || !isLandedAt(probe, jd)) return null;
+		return probe.landed;
+	});
+	let landedSample = $derived.by(() => {
+		if (!landedProbe) return null;
+		return landedPositionAt(landedProbe, jd);
+	});
+	let landedBody = $derived.by(() => {
+		if (!landedProbe) return null;
+		return ctx?.bodiesById.get(`naif-${landedProbe.bodyNaifId}`) ?? null;
+	});
+	let landedBodyName = $derived(landedBody?.data.name ?? null);
 
 	let orbit = $derived(orbitElements ?? global?.orbit);
 	// SGP4 when a satrec is available — Kepler from TLE elements drifts visibly
@@ -234,7 +261,40 @@
 	);
 </script>
 
-{#if hasContent}
+{#if landedProbe && landedSample}
+	<Section title={m.surface_position()}>
+		<Row
+			label={m.latitude()}
+			value={`${formatNumber(landedSample.latDeg)}°`}
+			tooltip={m.tooltip_latitude()}
+		/>
+		<Row
+			label={m.longitude()}
+			value={`${formatNumber(landedSample.lngDeg)}°`}
+			tooltip={m.tooltip_longitude()}
+		/>
+		<Row
+			label={m.altitude()}
+			value={formatQuantity({ value: landedSample.altM, unit: 'metre' }, true)}
+			tooltip={m.tooltip_altitude()}
+		/>
+		{#if landedBodyName}
+			<Row label={m.landed_on()} value={landedBodyName} tooltip={m.tooltip_landed_on()} />
+		{/if}
+		<Row
+			label={m.surface_state()}
+			value={landedProbe.isStatic ? m.surface_state_stationary() : m.surface_state_mobile()}
+			tooltip={m.tooltip_surface_state()}
+		/>
+		{#if dataSourceLabel}
+			<Row
+				label={m.orbit_data_source()}
+				value={dataSourceLabel}
+				tooltip={m.tooltip_orbit_data_source()}
+			/>
+		{/if}
+	</Section>
+{:else if hasContent}
 	<Section title={m.orbital_elements()}>
 		{#snippet header()}
 			{#if isNeo || isPha}
