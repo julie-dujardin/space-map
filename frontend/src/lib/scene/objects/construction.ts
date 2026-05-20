@@ -331,6 +331,11 @@ export function downgradeBodyMesh(
 		bo.mesh = null;
 		bo.currentSegments = undefined;
 		bo.eclipseShadow = null;
+		// The new mesh on re-upgrade starts with identity scale, so the
+		// triaxial scale needs to be re-applied. (`bo.radiusScene` keeps its
+		// bumped value — the next sphere is built at that size, and the
+		// radii application below produces the right (a, b, c) regardless.)
+		bo.radiiApplied = false;
 	}
 
 	if (bo.atmosphere) {
@@ -549,11 +554,37 @@ async function swapBodyTexture(
 }
 
 /**
+ * Apply SPICE PCK triaxial radii to a body's mesh as a non-uniform scale.
+ *
+ * The mesh starts as a uniform `SphereGeometry(radiusScene)`; this scales
+ * it into an ellipsoid with semi-axes (a, b, c) km. The applyOrientation
+ * basis (pole on local +Y, ascending node on local +X) means SPICE (X, Y, Z)
+ * maps to mesh local (X, Z, Y), so X→a, Y→c, Z→b. After scaling, the scalar
+ * `radiusScene` is bumped to the rendered ellipsoid's largest extent so
+ * halo / label / LOD / occlusion screen-size checks match what the user sees.
+ *
+ * Marks `bo.radiiApplied` so callers don't re-scale the same mesh.
+ */
+function applyRadiiToMesh(bo: BodyObjects, radii: { a: number; b: number; c: number }): void {
+	if (!bo.mesh) return;
+	const { a, b, c } = radii;
+	const s = kmToScene(1) / bo.radiusScene;
+	bo.mesh.scale.set(a * s, c * s, b * s);
+	bo.radiusScene = kmToScene(Math.max(a, b, c));
+	bo.radiiApplied = true;
+}
+
+/**
  * Initial low-tier texture load, used when focusing a body that may not be
  * part of a pre-declared system (the system-metadata path handles the rest).
  * Also forwards the texture attribution to `ctx` so the bar/popover can
  * credit standalone bodies (e.g. Bennu, Ceres) the same way it credits bodies
  * registered via loadSystemData.
+ *
+ * For non-system bodies this is also where SPICE orientation + triaxial radii
+ * from the global JSON get applied (loadSystemData handles system bodies via
+ * the per-system metadata file). Per-frame orientation re-application happens
+ * in the renderer's main loop based on `bo.body.orientation`.
  */
 export async function loadBodyTexture(
 	bo: BodyObjects,
@@ -564,7 +595,19 @@ export async function loadBodyTexture(
 ): Promise<void> {
 	if (bo.textureTier || bo.textureLoading) return;
 	const detail = await fetchObjectDetail(bo.body.data.id, hasLocalized);
-	if (!detail.global?.map_texture_available) return;
+	if (!detail.global) return;
+
+	// Apply orientation and triaxial radii from the global JSON. These run
+	// before the map-texture early-return below so bodies without a surface
+	// map (most asteroids) still get their ellipsoid shape and spin axis.
+	if (detail.global.orientation && !bo.body.orientation) {
+		bo.body.orientation = detail.global.orientation;
+	}
+	if (detail.global.radii && bo.radiusScene > 0 && !bo.radiiApplied) {
+		applyRadiiToMesh(bo, detail.global.radii);
+	}
+
+	if (!detail.global.map_texture_available) return;
 	if (ctx && detail.global.texture) {
 		// Standalones aren't tied to a planetary system barycenter; key the
 		// credit on the body itself so the bar/popover can match it against
@@ -788,15 +831,8 @@ export async function loadSystemData(
 		// Apply triaxial flattening. applyOrientation puts the body's pole on
 		// local +Y and the ascending node on local +X, so SPICE (X, Y, Z)
 		// maps to mesh local (X, Z, Y).
-		if (bodyMeta.radii && bo.radiusScene > 0) {
-			const { a, b, c } = bodyMeta.radii;
-			const s = kmToScene(1) / bo.radiusScene;
-			bo.mesh.scale.set(a * s, c * s, b * s);
-			// Replace the scalar radiusScene (sourced from SBDB/Wikidata, used
-			// for halo visibility, label placement, texture LOD and screen
-			// occlusion) with the rendered ellipsoid's largest extent so those
-			// screen-size checks match what the user sees.
-			bo.radiusScene = kmToScene(Math.max(a, b, c));
+		if (bodyMeta.radii && bo.radiusScene > 0 && !bo.radiiApplied) {
+			applyRadiiToMesh(bo, bodyMeta.radii);
 		}
 
 		// Record available tiers and load the base `low` tier if no texture is

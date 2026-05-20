@@ -44,6 +44,13 @@ export interface BodyObjects {
 	/** Thin orbit lines are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */
 	orbitLine: Line | Mesh | null;
 	radiusScene: number;
+	/**
+	 * True once the body's SPICE triaxial radii (`global.radii` or system meta
+	 * `radii`) have been applied to the mesh as a non-uniform scale. Gates
+	 * double-application: re-scaling against the now-bumped `radiusScene`
+	 * would produce a stretched ellipsoid. Reset on mesh teardown.
+	 */
+	radiiApplied?: boolean;
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
 	/**
