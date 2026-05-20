@@ -13,17 +13,15 @@ import {
 	SpriteMaterial,
 	Vector3
 } from 'three';
-import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */
 export interface StarExtras {
 	light: PointLight;
 	corona: Sprite;
-	lensflare: Lensflare;
 	starPoint: Points;
 }
 
-/** Radial gradient canvas texture used by the corona sprite and lensflare. */
+/** Radial gradient canvas texture used by the corona sprite. */
 function makeGlowTexture(color: string, size = 256): CanvasTexture {
 	const canvas = document.createElement('canvas');
 	canvas.width = size;
@@ -31,10 +29,13 @@ function makeGlowTexture(color: string, size = 256): CanvasTexture {
 	const ctx = canvas.getContext('2d')!;
 	const half = size / 2;
 	const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
-	gradient.addColorStop(0, color);
-	gradient.addColorStop(0.15, color);
-	gradient.addColorStop(0.4, color.replace(')', ', 0.3)').replace('rgb(', 'rgba('));
-	gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+	// Fade the alpha but keep the same RGB so canvas's sRGB interpolation never
+	// produces a dark intermediate — a fade to `rgba(0,0,0,0)` reads as a black
+	// ring through the bloom transition.
+	gradient.addColorStop(0, withAlpha(color, 1));
+	gradient.addColorStop(0.15, withAlpha(color, 1));
+	gradient.addColorStop(0.4, withAlpha(color, 0.3));
+	gradient.addColorStop(1, withAlpha(color, 0));
 	ctx.fillStyle = gradient;
 	ctx.fillRect(0, 0, size, size);
 	return new CanvasTexture(canvas);
@@ -47,11 +48,15 @@ function hexToRgb(hex: string): string {
 	return `rgb(${r}, ${g}, ${b})`;
 }
 
+function withAlpha(rgbColor: string, alpha: number): string {
+	return rgbColor.replace(')', `, ${alpha})`).replace('rgb(', 'rgba(');
+}
+
 /**
  * Photosphere centre colour: blackbody-to-sRGB for the Sun's effective
  * temperature (5778 K). Overrides the body's `BODY_COLORS` tint (which is the
- * saturated yellow used by the halo / corona / lensflare / starPoint) because
- * the actual disc, lit by HDR + bloom + ACES, reads physically as warm white.
+ * saturated yellow used by the halo / corona / starPoint) because the actual
+ * disc, lit by HDR + bloom + ACES, reads physically as warm white.
  */
 const PHOTOSPHERE_CENTRE_COLOR = '#fff5eb';
 
@@ -121,8 +126,8 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 	});
 }
 
-/** Soft additive corona billboard + a single lensflare element, sized off radius. */
-function makeStarGlow(radius: number, color: string): { corona: Sprite; lensflare: Lensflare } {
+/** Soft additive corona billboard sized off radius. */
+function makeStarGlow(radius: number, color: string): Sprite {
 	const rgbColor = color.startsWith('#') ? hexToRgb(color) : color;
 
 	const glowTexture = makeGlowTexture(rgbColor);
@@ -138,11 +143,7 @@ function makeStarGlow(radius: number, color: string): { corona: Sprite; lensflar
 	const glowSize = radius * 6;
 	corona.scale.set(glowSize, glowSize, 1);
 
-	const flareTexture = makeGlowTexture(rgbColor, 128);
-	const lensflare = new Lensflare();
-	lensflare.addElement(new LensflareElement(flareTexture, 35, 0, new Color(color)));
-
-	return { corona, lensflare };
+	return corona;
 }
 
 /** Single fixed-size dot, visible when the star's mesh is sub-pixel. */
@@ -165,10 +166,9 @@ function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 
 /**
  * Build every scene-side object a star contributes beyond its photosphere mesh:
- * the heliocentric PointLight, the additive corona sprite, the lensflare, and
- * the sub-pixel fallback point. All four are added to `scene` and returned so
- * the caller can track them on its BodyObjects record (for visibility / focus /
- * cleanup paths).
+ * the heliocentric PointLight, the additive corona sprite, and the sub-pixel
+ * fallback point. All three are added to `scene` and returned so the caller can
+ * track them on its BodyObjects record (for visibility / focus / cleanup paths).
  */
 export function buildStarExtras(
 	scene: Scene,
@@ -178,10 +178,9 @@ export function buildStarExtras(
 ): StarExtras {
 	const light = new PointLight(0xffffff, 2, 0, 0);
 	scene.add(light);
-	const { corona, lensflare } = makeStarGlow(radius, color);
+	const corona = makeStarGlow(radius, color);
 	scene.add(corona);
-	scene.add(lensflare);
 	const starPoint = makeStarPoint(color, circleTexture);
 	scene.add(starPoint);
-	return { light, corona, lensflare, starPoint };
+	return { light, corona, starPoint };
 }

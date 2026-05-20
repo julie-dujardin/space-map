@@ -1962,7 +1962,7 @@ export class SceneRenderer {
 				bo.label.removeFromParent();
 			}
 			this.scene.remove(bo.group);
-			// Mesh + (for stars) corona/lensflare/etc. are added to scene directly.
+			// Mesh + (for stars) corona/starPoint/etc. are added to scene directly.
 			for (const obj of bo.extraObjects) this.scene.remove(obj);
 			if (bo.orbitLine) this.scene.remove(bo.orbitLine);
 

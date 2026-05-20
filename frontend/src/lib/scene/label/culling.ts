@@ -101,7 +101,7 @@ export function applyLabelDisplay(
 
 /**
  * Returns true when a screen point is inside any occluder disc that is closer
- * to the camera. Used for star corona/lensflare occlusion from the renderer.
+ * to the camera. Used for star corona occlusion from the renderer.
  */
 export function isScreenOccluded(
 	sx: number,

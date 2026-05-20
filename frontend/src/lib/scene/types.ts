@@ -1,5 +1,4 @@
 import type { Group, Line, Mesh, Object3D, Points, Sprite, Texture } from 'three';
-import type { Lensflare } from 'three/addons/objects/Lensflare.js';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { RingNode } from './objects/rings';
@@ -33,12 +32,10 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
-	/** Top-level scene objects that track this body's position (corona, lensflare). */
+	/** Top-level scene objects that track this body's position (corona, starPoint). */
 	extraObjects: Object3D[];
 	/** Star corona glow sprite (for manual occlusion). */
 	corona: Sprite | null;
-	/** Star lensflare (for manual occlusion). */
-	lensflare: Lensflare | null;
 	/** Fixed-size star dot shown when the mesh is sub-pixel. */
 	starPoint: Points | null;
 	/** Thin orbit lines are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */

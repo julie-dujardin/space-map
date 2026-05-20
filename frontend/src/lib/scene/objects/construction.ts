@@ -90,12 +90,7 @@ export function buildMajorBodies(
 		if (!isVirtual) {
 			if (isStar) {
 				starExtras = buildStarExtras(scene, radius, color, circleTexture);
-				extraObjects.push(
-					starExtras.light,
-					starExtras.corona,
-					starExtras.lensflare,
-					starExtras.starPoint
-				);
+				extraObjects.push(starExtras.light, starExtras.corona, starExtras.starPoint);
 			}
 
 			const segments = isStar ? 96 : 64;
@@ -206,7 +201,6 @@ export function buildMajorBodies(
 			labelHalo,
 			extraObjects,
 			corona: starExtras?.corona ?? null,
-			lensflare: starExtras?.lensflare ?? null,
 			starPoint: starExtras?.starPoint ?? null,
 			orbitLine,
 			radiusScene: radius,
