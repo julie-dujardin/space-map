@@ -16,7 +16,9 @@ Supported sites:
 - NASA Photojournal (`science.nasa.gov/photojournal/...`) — labeled block
   with Credits / Target / Mission / Instrument / Description and JSON-LD.
 - NASA Scientific Visualization Studio (`svs.gsfc.nasa.gov/<id>/...`) —
-  "Visualizations by" credit + free-text description.
+  fetched via the studio's JSON API at `svs.gsfc.nasa.gov/api/<id>` (much
+  cleaner than scraping the page) for title, description, credits, dates,
+  funding sources, keywords, and the downloadable media listing.
 - NASA Earth Observatory (`science.nasa.gov/earth/earth-observatory/...`) —
   loose prose; meta description + main article body.
 
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 TEXTURES_DIR = DOWNLOAD_DIR / "textures"
 DOWNLOAD_METADATA_YAML = TEXTURES_DIR / "download-metadata.yaml"
+MISC_DIR = TEXTURES_DIR / "misc"
 SOURCE_METADATA_DIR = TEXTURES_DIR / "source_metadata"
 HTML_CACHE_DIR = SOURCE_METADATA_DIR / "html"
 PARSED_DIR = SOURCE_METADATA_DIR / "parsed"
@@ -406,88 +409,111 @@ def _parse_nasa_photojournal(html: str, url: str) -> dict:
 
 # ----------------------------------------------------------- NASA SVS parser -
 
-_SVS_ID_RE = re.compile(r"ID:\s*(\d+)", re.IGNORECASE)
+_SVS_PATH_ID_RE = re.compile(r"^/(\d+)(?:/|$)")
 
 
-def _parse_nasa_svs(html: str, url: str) -> dict:
-    """Parse a svs.gsfc.nasa.gov/<id>/ visualization page.
+def _svs_id_from_url(url: str) -> str | None:
+    """Extract the numeric visualization id from an svs.gsfc.nasa.gov page URL."""
+    m = _SVS_PATH_ID_RE.match(urlparse(url).path)
+    return m.group(1) if m else None
 
-    SVS pages carry a "Visualizations by:" line, a release date, and a long
-    freeform description.
+
+def _svs_api_url(svs_id: str) -> str:
+    return f"https://svs.gsfc.nasa.gov/api/{svs_id}"
+
+
+def _svs_people(entries: object) -> list[str]:
+    """Flatten an SVS credit list of `{name, employer}` dicts into "Name (Employer)" strings."""
+    if not isinstance(entries, list):
+        return []
+    out: list[str] = []
+    for p in entries:
+        if not isinstance(p, dict):
+            continue
+        name = (p.get("name") or "").strip()
+        employer = (p.get("employer") or "").strip()
+        if not name:
+            continue
+        out.append(f"{name} ({employer})" if employer else name)
+    return out
+
+
+def _parse_nasa_svs(data: dict, url: str) -> dict:
+    """Parse a payload from the svs.gsfc.nasa.gov/api/<id> JSON endpoint.
+
+    The API exposes everything the HTML page renders as structured fields:
+    title, description, release/update timestamps, role-keyed credits, mission
+    and funding tags, keywords, and per-media-group download listings. We pull
+    a normalized subset suitable for attribution + provenance display.
     """
-    soup = BeautifulSoup(html, "html.parser")
+    svs_id = (
+        str(data.get("id")) if data.get("id") is not None else _svs_id_from_url(url)
+    )
 
-    title_tag = soup.find("h1") or soup.find("title")
-    title = title_tag.get_text(" ", strip=True) if title_tag else None
+    main_credits = data.get("main_credits") or {}
+    visualizations_by = _svs_people(main_credits.get("Visualizations by"))
 
-    meta_desc = _meta(soup, "description")
+    credits_by_role: dict[str, list[str]] = {}
+    for entry in data.get("credits") or []:
+        if not isinstance(entry, dict):
+            continue
+        role = (entry.get("role") or "").strip()
+        people = _svs_people(entry.get("people"))
+        if role and people:
+            credits_by_role[role] = people
 
-    main_text = _clean_main_text(soup)
-    lines = [ln for ln in main_text.split("\n") if ln.strip()]
+    description = data.get("description")
+    if isinstance(description, str):
+        # API descriptions sometimes list download filenames after a "||" sep.
+        # Drop those — they're a flattened table of contents, not prose.
+        description = description.split("||", 1)[0].strip() or None
 
-    svs_id = None
-    released = None
-    last_updated = None
-    visualizations_by: list[str] = []
-    description_start = None
-
-    for idx, ln in enumerate(lines):
-        stripped = ln.strip()
-        m = _SVS_ID_RE.search(stripped)
-        if m and svs_id is None:
-            svs_id = m.group(1)
-        if stripped.lower() == "released" and idx + 1 < len(lines):
-            released = lines[idx + 1].strip()
-        if stripped.lower() == "last updated" and idx + 1 < len(lines):
-            last_updated = lines[idx + 1].strip()
-        if stripped.lower() == "visualizations by:" and idx + 1 < len(lines):
-            # Each name on its own line, terminated by "View full credits".
-            j = idx + 1
-            while j < len(lines):
-                nxt = lines[j].strip()
-                if not nxt or nxt.lower().endswith(":"):
-                    break
-                if nxt.startswith("View full credits"):
-                    description_start = j + 1
-                    break
-                visualizations_by.append(nxt)
-                j += 1
-            else:
-                description_start = j
-
-    # Description: first few paragraphs after the credits block, stopping at the
-    # download/images listings (short table-of-contents lines like "Color",
-    # "Download", bare filenames like "foo.jpg [200 MB]").
-    description_lines: list[str] = []
-    if description_start is not None:
-        for ln in lines[description_start:]:
-            if ln in {"Color", "Elevation", "Download", "Images", "Related pages"}:
+    # Each media group lists one or more files at varying resolutions.
+    media_files: list[dict] = []
+    for group in data.get("media_groups") or []:
+        if not isinstance(group, dict):
+            continue
+        for item in group.get("items") or []:
+            if not isinstance(item, dict):
                 continue
-            if re.match(r"^\S+\.\S+\s", ln) or "[" in ln and "]" in ln[-20:]:
-                # Looks like "file.ext [size]" — download listing
+            inst = (
+                item.get("instance") if isinstance(item.get("instance"), dict) else item
+            )
+            filename = inst.get("filename")
+            if not filename:
                 continue
-            if len(ln) < 20 and len(description_lines) >= 2:
-                # Likely a section break after we've got some content
-                break
-            description_lines.append(ln)
-            if len(description_lines) >= 8:
-                break
-    description = " ".join(description_lines).strip() or None
+            media_files.append(
+                {
+                    "filename": filename,
+                    "url": inst.get("url"),
+                    "width": inst.get("width"),
+                    "height": inst.get("height"),
+                    "media_type": inst.get("media_type"),
+                }
+            )
 
     attribution = None
     if visualizations_by:
-        attribution = f"NASA Goddard Scientific Visualization Studio — visualizations by {', '.join(visualizations_by)}."
+        attribution = (
+            "NASA's Goddard Space Flight Center Scientific Visualization Studio "
+            f"— visualizations by {', '.join(visualizations_by)}."
+        )
 
     return {
         "source_url": url,
+        "api_url": _svs_api_url(svs_id) if svs_id else None,
         "site": "nasa_svs",
         "svs_id": svs_id,
-        "title": title,
-        "description_meta": meta_desc,
+        "title": data.get("title"),
         "description": description,
         "visualizations_by": visualizations_by,
-        "released": released,
-        "last_updated": last_updated,
+        "credits_by_role": credits_by_role,
+        "released": data.get("release_date"),
+        "last_updated": data.get("update_date"),
+        "missions": data.get("missions") or [],
+        "funding_sources": data.get("funding_sources") or [],
+        "keywords": data.get("keywords") or [],
+        "media_files": media_files,
         "attribution_guess": attribution,
     }
 
@@ -546,12 +572,13 @@ def _parse_nasa_earth_observatory(html: str, url: str) -> dict:
 
 # ------------------------------------------------------- dispatch / download -
 
-_PARSERS = {
+_HTML_PARSERS = {
     "usgs_astrogeology": _parse_usgs,
     "nasa_photojournal": _parse_nasa_photojournal,
-    "nasa_svs": _parse_nasa_svs,
     "nasa_earth_observatory": _parse_nasa_earth_observatory,
 }
+
+_ALL_SITES = {*_HTML_PARSERS.keys(), "nasa_svs"}
 
 
 def _site_for(url: str) -> str | None:
@@ -585,19 +612,36 @@ class TextureSourcesDownloader(Downloader):
         PARSED_DIR.mkdir(parents=True, exist_ok=True)
 
     def _load_entries(self) -> list[dict]:
+        """Collect entries from the main yaml plus every `misc/*/download-metadata.yaml`.
+
+        Mirrors TextureProcessor's startup merge so manually-staged textures
+        (e.g. `misc/star_map/`) get the same source-metadata treatment.
+        """
         if not DOWNLOAD_METADATA_YAML.exists():
             raise FileNotFoundError(
                 f"download-metadata.yaml not found at {DOWNLOAD_METADATA_YAML}"
             )
-        doc = yaml.safe_load(DOWNLOAD_METADATA_YAML.read_text())
-        return doc.get("bodies", [])
+        entries: list[dict] = list(
+            yaml.safe_load(DOWNLOAD_METADATA_YAML.read_text()).get("bodies", [])
+        )
+        if MISC_DIR.is_dir():
+            for sub in sorted(MISC_DIR.iterdir()):
+                if not sub.is_dir():
+                    continue
+                sub_yaml = sub / "download-metadata.yaml"
+                if not sub_yaml.is_file():
+                    continue
+                data = yaml.safe_load(sub_yaml.read_text()) or {}
+                entries.extend(data.get("bodies") or [])
+        return entries
 
-    def _fetch_html(self, url: str, cache_path: Path, *, force: bool) -> str:
+    def _fetch_text(self, url: str, cache_path: Path, *, force: bool) -> str:
         if cache_path.exists() and not force:
             return cache_path.read_text(encoding="utf-8")
         logger.info("GET %s", url)
         resp = self.client.get(url)
         resp.raise_for_status()
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(resp.text, encoding="utf-8")
         time.sleep(REQUEST_DELAY_SECONDS)
         return resp.text
@@ -634,18 +678,10 @@ class TextureSourcesDownloader(Downloader):
                 logger.debug("Already parsed: %s", out_json.name)
                 continue
 
-            html_path = HTML_CACHE_DIR / f"{stem}.html"
             try:
-                html = self._fetch_html(source_url, html_path, force=force)
+                parsed = self._fetch_and_parse(site, source_url, stem, force=force)
             except Exception:
-                logger.exception("Failed to fetch %s", source_url)
-                errors += 1
-                continue
-
-            try:
-                parsed = _PARSERS[site](html, source_url)
-            except Exception:
-                logger.exception("Failed to parse %s (%s)", source_url, site)
+                logger.exception("Failed to fetch/parse %s (%s)", source_url, site)
                 errors += 1
                 continue
 
@@ -668,8 +704,25 @@ class TextureSourcesDownloader(Downloader):
             url=str(DOWNLOAD_METADATA_YAML),
             record_count=wrote,
             complete=True,
-            parser_sites=sorted(_PARSERS.keys()),
+            parser_sites=sorted(_ALL_SITES),
         )
+
+    def _fetch_and_parse(
+        self, site: str, source_url: str, stem: str, *, force: bool
+    ) -> dict:
+        """Dispatch fetch + parse per site. SVS uses its JSON API; others scrape HTML."""
+        if site == "nasa_svs":
+            svs_id = _svs_id_from_url(source_url)
+            if not svs_id:
+                raise ValueError(f"could not extract SVS id from {source_url}")
+            api_url = _svs_api_url(svs_id)
+            cache_path = HTML_CACHE_DIR / f"{stem}.api.json"
+            payload = self._fetch_text(api_url, cache_path, force=force)
+            return _parse_nasa_svs(json.loads(payload), source_url)
+
+        cache_path = HTML_CACHE_DIR / f"{stem}.html"
+        html = self._fetch_text(source_url, cache_path, force=force)
+        return _HTML_PARSERS[site](html, source_url)
 
     def is_complete(self, limit: int | None) -> bool:
         # Always re-run; cheap since HTML is cached and per-entry JSONs are
