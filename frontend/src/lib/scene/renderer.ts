@@ -68,6 +68,7 @@ import {
 	upgradeBodyMesh
 } from './objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
+import { loadSkybox } from './objects/skybox';
 import {
 	asteroidPointSize,
 	makePointCloudFromBuffer,
@@ -335,6 +336,9 @@ export class SceneRenderer {
 		// Scene + lights
 		this.scene = new Scene();
 		this.scene.add(new AmbientLight(0xffffff, 0.01));
+		// Celestial-sphere cubemap drops in behind everything via `scene.background`.
+		// Fire-and-forget — the scene renders black until the faces arrive.
+		void loadSkybox(this.scene, this.renderer);
 
 		// Directional sun light for sub-system view (swapped in when zoomed
 		// into a planet's moon system; PointLight at the Sun handles

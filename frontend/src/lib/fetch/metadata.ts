@@ -145,9 +145,31 @@ export interface PositionMetadata {
 	zones: Record<string, ZoneOrProbeMetadata>;
 }
 
+/**
+ * Cubemap-skybox bundle metadata embedded at the top level. The renderer
+ * picks the largest tier whose per-face size fits the device's max texture
+ * dimension and loads the six face WebPs into a `CubeTexture` that becomes
+ * `scene.background`. Face URLs:
+ * `/v1/textures/{skybox.id}/{tier}_{face}.webp`.
+ */
+export interface SkyboxMetadata {
+	id: string;
+	type: 'cubemap_skybox';
+	encoding: 'webp';
+	frame: string;
+	faces: string[];
+	tiers: string[];
+	tier_face_size: Record<string, number>;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
 export interface Metadata {
 	position: PositionMetadata;
 	object_bundles: ObjectBundles;
+	skybox?: SkyboxMetadata;
 }
 
 let pending: Promise<Metadata> | null = null;
