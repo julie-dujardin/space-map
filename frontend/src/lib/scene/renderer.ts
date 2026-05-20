@@ -248,6 +248,13 @@ export class SceneRenderer {
 	 * `asteroid:<zone>`, `spacecraft:<parentId>`.
 	 */
 	private pointCloudParentAtUpdate = new Map<string, Vec3>();
+	// Per-frame scratch containers reused across ticks to avoid Map/Array churn.
+	// Cleared/trimmed at the start of each consumer; never escape their owning
+	// method's call. Reusing the buckets/backing array beats fresh-alloc ~4×
+	// (see alloc-pressure.bench.ts).
+	private readonly _positionMapScratch = new Map<string, Vec3>();
+	private readonly _pointCloudParentsScratch = new Map<string, Vec3>();
+	private readonly _eclipseCandidatesScratch: BodyObjects[] = [];
 	/** Memoized moon → parent grouping; invalidated when majorBodies count changes (new chunk loaded). */
 	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
 
@@ -741,7 +748,8 @@ export class SceneRenderer {
 	private updatePointClouds(jd: number): void {
 		this.writeMoonPointClouds();
 
-		const parents = new Map<string, Vec3>();
+		const parents = this._pointCloudParentsScratch;
+		parents.clear();
 		const sunPos = this.ctx.getBody('naif-10')?.position ?? ([0, 0, 0] as Vec3);
 		for (const [zone] of this.ctx.asteroidBodiesByZone) {
 			parents.set(`asteroid:${zone}`, [sunPos[0], sunPos[1], sunPos[2]]);
@@ -938,7 +946,8 @@ export class SceneRenderer {
 		// parentId is the planetary barycenter (SPICE convention: Io → naif-5),
 		// not the planet, so barycenters must be in the map for children to
 		// find their parent; barycenters are in ctx.bodiesById but not meshed.
-		const positionMap = new Map<string, Vec3>();
+		const positionMap = this._positionMapScratch;
+		positionMap.clear();
 		positionMap.set('naif-0', [0, 0, 0]);
 		// Pre-seed every body's last-known position so when a parent's per-frame
 		// computePosition early-returns (chebyshev chunk mid-load, segment gap,
@@ -1729,25 +1738,32 @@ export class SceneRenderer {
 		// Collect eligible occluders (non-star bodies with a measured
 		// radius) and sort by scene radius descending so that if there are
 		// more than MAX_OCCLUDERS we keep the dominant ones.
-		const candidates: BodyObjects[] = [];
+		const candidates = this._eclipseCandidatesScratch;
+		let n = 0;
 		for (const bo of this.bodyObjects.values()) {
 			if (bo.body.data.objectType === ObjectType.STAR) continue;
 			const km = bo.body.data.radiusKm;
 			if (!Number.isFinite(km) || km <= 0) continue;
 			if (bo.radiusScene <= 0) continue;
-			candidates.push(bo);
+			candidates[n++] = bo;
 		}
-		if (candidates.length > MAX_OCCLUDERS) {
+		candidates.length = n;
+		if (n > MAX_OCCLUDERS) {
 			candidates.sort((a, b) => b.radiusScene - a.radiusScene);
 			candidates.length = MAX_OCCLUDERS;
+			n = MAX_OCCLUDERS;
 		}
 		const slots = eclipse.uOccluders.value;
-		for (let i = 0; i < candidates.length; i++) {
+		for (let i = 0; i < n; i++) {
 			const bo = candidates[i];
 			const [bx, by, bz] = bo.body.position;
 			slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
 		}
-		eclipse.uOccluderCount.value = candidates.length;
+		eclipse.uOccluderCount.value = n;
+		// Drop refs so the pool doesn't pin removed bodies' meshes/materials
+		// (BodyObjects transitively references DOM elements and GPU resources).
+		for (let i = 0; i < n; i++) candidates[i] = undefined as never;
+		candidates.length = 0;
 
 		// Receivers: every non-star body that got an eclipse handler at
 		// construction time. Mirror its focus-relative center so the
