@@ -143,7 +143,7 @@
 </script>
 
 <div class="relative w-full h-full select-none" style="-webkit-user-select: none;">
-	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto"></canvas>
+	<canvas bind:this={canvas} class="w-full h-full block pointer-events-auto touch-none"></canvas>
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
 	{#if settings.showDebugInfo}
 		<DebugOverlay getRenderer={() => renderer} {ctx} {clock} />
