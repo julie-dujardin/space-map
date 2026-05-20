@@ -190,6 +190,7 @@
 	"settings_source_browser": "من متصفّحك ({tag})",
 	"settings_source_system": "من تفضيلات نظامك",
 	"settings_source_locale": "من إعداداتك المحلية",
+	"settings_source_iso": "من تنسيق ISO",
 	"go_to_object": "الانتقال إلى الجسم",
 	"zoom_out_to_system": "التصغير إلى النظام",
 	"object_not_found": "الجسم {id} غير موجود",

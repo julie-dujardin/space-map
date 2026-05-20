@@ -201,6 +201,7 @@
 	"settings_source_browser": "из вашего браузера ({tag})",
 	"settings_source_system": "из настроек системы",
 	"settings_source_locale": "из вашей локали",
+	"settings_source_iso": "из формата ISO",
 	"go_to_object": "Перейти к объекту",
 	"zoom_out_to_system": "Отдалить до системы",
 	"object_not_found": "Объект {id} не найден",

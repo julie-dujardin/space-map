@@ -190,6 +190,7 @@
 	"settings_source_browser": "来自您的浏览器 ({tag})",
 	"settings_source_system": "来自您的系统偏好设置",
 	"settings_source_locale": "来自您的区域设置",
+	"settings_source_iso": "来自 ISO 格式",
 	"go_to_object": "前往该对象",
 	"zoom_out_to_system": "缩小至该系统",
 	"object_not_found": "未找到对象 {id}",

@@ -199,6 +199,7 @@
 	"settings_source_browser": "from your browser ({tag})",
 	"settings_source_system": "from your system preference",
 	"settings_source_locale": "from your locale",
+	"settings_source_iso": "from ISO format",
 	"go_to_object": "Go to object",
 	"zoom_out_to_system": "Zoom out to system",
 	"object_not_found": "Object {id} not found",

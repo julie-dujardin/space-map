@@ -199,6 +199,7 @@
 	"settings_source_browser": "depuis votre navigateur ({tag})",
 	"settings_source_system": "depuis vos préférences système",
 	"settings_source_locale": "depuis votre locale",
+	"settings_source_iso": "depuis le format ISO",
 	"go_to_object": "Aller à l'objet",
 	"zoom_out_to_system": "Dézoomer vers le système",
 	"object_not_found": "Objet {id} introuvable",

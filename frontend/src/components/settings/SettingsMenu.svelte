@@ -45,6 +45,10 @@
 	let resolvedThemeLabel = $derived(
 		settings.resolvedTheme === 'dark' ? m.settings_theme_dark() : m.settings_theme_light()
 	);
+	// ISO date format implies 24h; lock the clock toggle so the UI matches the
+	// behavior already enforced by the formatters.
+	let clockLocked = $derived(settings.dateFormat === 'iso');
+	let effectiveClock = $derived<Clock>(clockLocked ? '24h' : settings.clock);
 </script>
 
 <div class="flex flex-col">
@@ -183,17 +187,21 @@
 						<div class="text-sm font-medium">{m.settings_clock()}</div>
 					</div>
 					<div
-						class="inline-flex shrink-0 rounded-md bg-muted p-0.5"
+						class="inline-flex shrink-0 rounded-md bg-muted p-0.5 transition-opacity {clockLocked
+							? 'opacity-60'
+							: ''}"
 						role="radiogroup"
 						aria-label={m.settings_clock()}
 					>
 						{#each clockOptions as opt (opt.value)}
-							{@const active = settings.clock === opt.value}
+							{@const active = effectiveClock === opt.value}
 							<button
 								type="button"
 								role="radio"
 								aria-checked={active}
-								class="px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer
+								disabled={clockLocked}
+								class="px-2.5 py-1 text-xs font-medium rounded transition-colors
+									{clockLocked ? 'cursor-not-allowed' : 'cursor-pointer'}
 									{active
 									? 'bg-background text-foreground shadow-sm'
 									: 'text-muted-foreground hover:text-foreground'}"
@@ -204,7 +212,17 @@
 						{/each}
 					</div>
 				</div>
-				{#if settings.clock === 'auto'}
+				{#if clockLocked}
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
+						<span
+							>{m.settings_auto_source({
+								value: m.settings_clock_24h(),
+								source: m.settings_source_iso()
+							})}</span
+						>
+					</div>
+				{:else if settings.clock === 'auto'}
 					<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
 						<span class="size-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
 						<span
