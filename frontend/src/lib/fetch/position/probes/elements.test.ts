@@ -21,6 +21,7 @@ function makeProbe(subStartEt: number[], subEndEt: number[], subChunks: SubChunk
 		probeId: 1,
 		hasLocalized: false,
 		objectType: 13,
+		fitCenter: null,
 		subStartEt,
 		subEndEt,
 		subChunks

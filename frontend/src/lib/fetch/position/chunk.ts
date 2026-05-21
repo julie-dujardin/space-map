@@ -515,55 +515,33 @@ export class ChunkLoader {
 				zoneStats.methodCounts.set(sc.method, (zoneStats.methodCounts.get(sc.method) ?? 0) + 1);
 			}
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
-			const fitCenterKey = `naif-${zoneCenterNaifId}`;
-			const fitCenterPos = this.positions.get(fitCenterKey);
-			if (!fitCenterPos) {
-				let s = missingParents.get(fitCenterKey);
-				if (!s) missingParents.set(fitCenterKey, (s = new Set()));
+			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
+			// Resolve the probe's *actual* fit center: the writer-stamped
+			// override (Moon for lunar orbiters, Titan for Cassini-at-Titan, …)
+			// or the zone center when there's no override. Sub-chunks were fit
+			// against that body, so its NAIF + GM + world position drive both
+			// the propagator and the anchor.
+			const override = resolvePrimaryOverride(probe, jd, zoneCenterKey, this.cheb);
+			const primaryKey = override ? override.id : zoneCenterKey;
+			const primaryNaif = override ? override.naifId : zoneCenterNaifId;
+			const primaryMu = primaryNaif === undefined ? 0 : (getGmKm3s2(primaryNaif) ?? 0);
+			const primaryPos = this.positions.get(primaryKey);
+			if (!primaryPos) {
+				let s = missingParents.get(primaryKey);
+				if (!s) missingParents.set(primaryKey, (s = new Set()));
 				s.add(probe.id);
 			}
-			const fitMu = zoneCenterNaifId === undefined ? 0 : (getGmKm3s2(zoneCenterNaifId) ?? 0);
-			if (fitMu === 0) {
-				let s = missingGm.get(fitCenterKey);
-				if (!s) missingGm.set(fitCenterKey, (s = new Set()));
+			if (primaryMu === 0) {
+				let s = missingGm.get(primaryKey);
+				if (!s) missingGm.set(primaryKey, (s = new Set()));
 				s.add(probe.id);
 			}
-			const offsetKm = probePositionKm(probe, jd, fitMu);
+			const offsetKm = probePositionKm(probe, jd, primaryMu);
 			if (!offsetKm) nullOffsets.add(probe.id);
-			// Lunar orbiters in `probes/earth-moon` are stored Earth-relative
-			// (the zone's only fit center). Elements derived against Earth give
-			// a hyperbolic curve since the probe's Earth-relative velocity is
-			// Moon-around-Earth + probe-around-Moon, past Earth escape. Switch
-			// the primary to the Moon when the probe is inside the lunar Hill
-			// sphere — only the orbit-line frame changes; world position stays
-			// identical (parentPos + offset is the same total either way).
-			const rawOverride = offsetKm
-				? resolvePrimaryOverride(offsetKm, jd, zoneCenterNaifId, this.cheb)
+			const anchor = primaryPos ?? this.positions.get('naif-0')!;
+			const offset: [number, number, number] | null = offsetKm
+				? [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])]
 				: null;
-			// Drop the override if the secondary primary isn't in `this.positions`
-			// yet (chebyshev pass dropped it for this jd, or its GM is missing).
-			// Falling through to the fit center keeps world position correct
-			// while the orbit-line stays in the original frame for one frame
-			// until the next refresh.
-			const overridePos = rawOverride
-				? this.positions.get(`naif-${rawOverride.naifId}`)
-				: undefined;
-			const overrideMu = rawOverride ? (getGmKm3s2(rawOverride.naifId) ?? 0) : 0;
-			const override = rawOverride && overridePos && overrideMu > 0 ? rawOverride : null;
-			const primaryKey = override ? `naif-${override.naifId}` : fitCenterKey;
-			const primaryMu = override ? overrideMu : fitMu;
-			const anchor = (override ? overridePos : fitCenterPos) ?? this.positions.get('naif-0')!;
-			let offset: [number, number, number] | null = null;
-			if (offsetKm) {
-				if (override) {
-					const dx = offsetKm[0] - override.positionKm[0];
-					const dy = offsetKm[1] - override.positionKm[1];
-					const dz = offsetKm[2] - override.positionKm[2];
-					offset = [kmToScene(dx), kmToScene(dz), -kmToScene(dy)];
-				} else {
-					offset = [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])];
-				}
-			}
 			// Probe outside its sub-chunk windows at this jd (e.g. chunk
 			// straddles its inception) — emit a position-only entry at the
 			// parent's location; the per-frame propagator hides it.
@@ -591,14 +569,7 @@ export class ChunkLoader {
 				validityEnd: endJd,
 				orbitalSource: OrbitalSource.SPICE_PROBE
 			};
-			const secondary = override
-				? {
-						positionKm: override.positionKm,
-						velocityKmDay: override.velocityKmDay,
-						fitCenterMuKm3S2: fitMu
-					}
-				: null;
-			const elements = probeOsculatingElements(probe, jd, primaryMu, secondary);
+			const elements = probeOsculatingElements(probe, jd, primaryMu);
 			// Re-read live probe record AND its current zone's fit center on
 			// every call: scrubbing the timeline can move the probe into a
 			// different chunk (per-chunk Probe ref goes stale) or a different
@@ -611,20 +582,11 @@ export class ChunkLoader {
 			const rederiveElements = (newJd: number): OrbitalElements | null => {
 				const located = probeStore.probeWithCenter(ownId, newJd);
 				if (!located) return null;
-				const freshFitMu = getGmKm3s2(located.fitCenterNaifId) ?? 0;
-				const freshOffsetKm = probePositionKm(located.probe, newJd, freshFitMu);
-				const freshOverride = freshOffsetKm
-					? resolvePrimaryOverride(freshOffsetKm, newJd, located.fitCenterNaifId, cheb)
-					: null;
-				const freshPrimaryMu = freshOverride ? (getGmKm3s2(freshOverride.naifId) ?? 0) : freshFitMu;
-				const freshSecondary = freshOverride
-					? {
-							positionKm: freshOverride.positionKm,
-							velocityKmDay: freshOverride.velocityKmDay,
-							fitCenterMuKm3S2: freshFitMu
-						}
-					: null;
-				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu, freshSecondary);
+				const freshZoneKey = `naif-${located.fitCenterNaifId}`;
+				const freshOverride = resolvePrimaryOverride(located.probe, newJd, freshZoneKey, cheb);
+				const freshPrimaryNaif = freshOverride ? freshOverride.naifId : located.fitCenterNaifId;
+				const freshPrimaryMu = getGmKm3s2(freshPrimaryNaif) ?? 0;
+				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu);
 			};
 			result.push({
 				data,

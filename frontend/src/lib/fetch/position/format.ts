@@ -12,7 +12,7 @@
 import { DATA_BASE } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 7;
+export const VERSION = 8;
 
 export const COMMON_HEADER_SIZE = 24;
 export const EXTENSION_SIZE = 8;
@@ -47,7 +47,7 @@ export const PROBE_METHOD_CHEBYSHEV = 3;
 export const PROBE_METHOD_LANDED = 4;
 
 /** Per-probe header size inside a probes-payload file. */
-export const PROBE_HEADER_SIZE = 12;
+export const PROBE_HEADER_SIZE = 20;
 /** Per-sub-chunk record header size (preceding the method-specific payload). */
 export const SUBCHUNK_HEADER_SIZE = 8;
 

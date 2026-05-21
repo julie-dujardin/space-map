@@ -18,6 +18,8 @@
 import {
 	HEADER_SIZE,
 	IdType,
+	MISSING_INT32,
+	MISSING_UINT8,
 	PROBE_FLAG_HAS_LANDED_RECORD,
 	PROBE_HEADER_SIZE,
 	PROBE_METHOD_CHEBYSHEV,
@@ -113,6 +115,12 @@ export interface Probe {
 	hasLocalized: boolean;
 	/** ObjectType ordinal — always `spacecraft` today; surfaced for futureproofing. */
 	objectType: number;
+	/** Per-probe fit-center override. Null when the probe stayed on the zone's
+	 *  stored fit center (renderer composes against the zone center as before).
+	 *  Non-null when the writer routed this probe to a moon/asteroid — the
+	 *  renderer must compose `world = fitCenter_world + probe_offset` against
+	 *  this body's chebyshev state. */
+	fitCenter: { id: string; idType: IdType; idValue: number } | null;
 	/** Sub-chunk start ET in seconds past J2000 (TDB). */
 	subStartEt: number[];
 	/** Sub-chunk end ET in seconds past J2000 (TDB) — `subStartEt[i] + subchunkS`. */
@@ -309,6 +317,8 @@ export function parseProbesPayload(
 		const hasLandedRecord = (flags & PROBE_FLAG_HAS_LANDED_RECORD) !== 0;
 		const nSubchunks = view.getUint16(offset + 8, true);
 		const firstSubchunkOffset = view.getUint16(offset + 10, true);
+		const fitCenterIdValue = view.getInt32(offset + 12, true);
+		const fitCenterIdType = view.getUint8(offset + 16);
 		offset += PROBE_HEADER_SIZE;
 
 		const id = buildObjectId(idTypeOrdinal, objIdValue) ?? '';
@@ -316,6 +326,18 @@ export function parseProbesPayload(
 			console.warn(
 				`probes payload: probe[${p}] (value=${objIdValue}) has unknown id-type ${idTypeOrdinal}; skipping`
 			);
+		}
+
+		let fitCenter: Probe['fitCenter'] = null;
+		if (fitCenterIdValue !== MISSING_INT32 && fitCenterIdType !== MISSING_UINT8) {
+			const fcId = buildObjectId(fitCenterIdType, fitCenterIdValue);
+			if (fcId) {
+				fitCenter = { id: fcId, idType: fitCenterIdType as IdType, idValue: fitCenterIdValue };
+			} else {
+				console.warn(
+					`probes payload: probe[${p}] has unknown fit-center id-type ${fitCenterIdType}; falling back to zone default`
+				);
+			}
 		}
 
 		const subStartEt: number[] = new Array(nSubchunks);
@@ -365,6 +387,7 @@ export function parseProbesPayload(
 			probeId: objIdValue,
 			hasLocalized,
 			objectType,
+			fitCenter,
 			subStartEt,
 			subEndEt,
 			subChunks,

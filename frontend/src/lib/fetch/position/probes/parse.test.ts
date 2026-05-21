@@ -6,6 +6,8 @@ import {
 	HEADER_SIZE,
 	IdType,
 	MAGIC,
+	MISSING_INT32,
+	MISSING_UINT8,
 	PROBE_FLAG_HAS_LANDED_RECORD,
 	PROBE_HEADER_SIZE,
 	PROBE_METHOD_CHEBYSHEV,
@@ -28,6 +30,8 @@ interface ProbeSpec {
 	hasLocalized: boolean;
 	firstSubchunkOffset: number;
 	subChunks: SubChunkSpec[];
+	fitCenterIdValue?: number;
+	fitCenterIdType?: number;
 }
 
 function buildBuffer(
@@ -65,6 +69,8 @@ function buildBuffer(
 		view.setUint8(off + 7, 0);
 		view.setUint16(off + 8, p.subChunks.length, true);
 		view.setUint16(off + 10, p.firstSubchunkOffset, true);
+		view.setInt32(off + 12, p.fitCenterIdValue ?? MISSING_INT32, true);
+		view.setUint8(off + 16, p.fitCenterIdType ?? MISSING_UINT8);
 		off += PROBE_HEADER_SIZE;
 		for (const sc of p.subChunks) {
 			const payloadLen = sc.payload.length * coeffBytes;
@@ -305,6 +311,8 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		view.setUint8(off + 7, PROBE_FLAG_HAS_LANDED_RECORD);
 		view.setUint16(off + 8, 0, true);
 		view.setUint16(off + 10, 0, true);
+		view.setInt32(off + 12, MISSING_INT32, true);
+		view.setUint8(off + 16, MISSING_UINT8);
 		off += PROBE_HEADER_SIZE;
 		// Trailing METHOD_LANDED record
 		view.setUint8(off, PROBE_METHOD_LANDED);
@@ -318,6 +326,8 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		view.setUint8(off + 7, 0);
 		view.setUint16(off + 8, 1, true);
 		view.setUint16(off + 10, 0, true);
+		view.setInt32(off + 12, MISSING_INT32, true);
+		view.setUint8(off + 16, MISSING_UINT8);
 		off += PROBE_HEADER_SIZE;
 		view.setUint8(off, PROBE_METHOD_UNCOVERABLE);
 		view.setUint32(off + 4, 0, true);
@@ -329,6 +339,40 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		expect(chunk.probes[1].probeId).toBe(222);
 		expect(chunk.probes[1].subChunks).toHaveLength(1);
 		expect(chunk.probes[1].subChunks[0].method).toBe(PROBE_METHOD_UNCOVERABLE);
+	});
+
+	it('exposes the per-probe fit_center override when stamped in the header', () => {
+		const buf = buildBuffer(
+			2451545.0,
+			2451545.0 + 7.0,
+			7.0,
+			[
+				{
+					probeId: 1,
+					objectType: 13,
+					hasLocalized: false,
+					firstSubchunkOffset: 0,
+					subChunks: [{ method: PROBE_METHOD_UNCOVERABLE, payload: [] }],
+					fitCenterIdValue: 301, // Moon NAIF
+					fitCenterIdType: IdType.NAIF
+				},
+				{
+					probeId: 2,
+					objectType: 13,
+					hasLocalized: false,
+					firstSubchunkOffset: 0,
+					subChunks: [{ method: PROBE_METHOD_UNCOVERABLE, payload: [] }]
+				}
+			],
+			false
+		);
+		const chunk = parseProbesPayload(buf, 2451545.0, 2451545.0 + 7.0, false);
+		expect(chunk.probes[0].fitCenter).toEqual({
+			id: 'naif-301',
+			idType: IdType.NAIF,
+			idValue: 301
+		});
+		expect(chunk.probes[1].fitCenter).toBeNull();
 	});
 
 	it('honours first_subchunk_offset for probes that start mid-chunk', () => {
@@ -386,6 +430,8 @@ describe('parseProbesPayload — synthetic buffers', () => {
 		view.setUint8(off + 7, PROBE_FLAG_HAS_LANDED_RECORD);
 		view.setUint16(off + 8, 0, true);
 		view.setUint16(off + 10, 0, true);
+		view.setInt32(off + 12, MISSING_INT32, true);
+		view.setUint8(off + 16, MISSING_UINT8);
 		off += PROBE_HEADER_SIZE;
 		// METHOD_LANDED record: body=499 (Mars), static, full-chunk window,
 		// Phoenix touchdown coordinates.
