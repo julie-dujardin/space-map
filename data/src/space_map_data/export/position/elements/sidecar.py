@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     matches,
     mirror_path,
@@ -34,9 +35,10 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 )
 
 
-# Bump when the elements encoding (writer.py / format.py columns for any
-# elements-format zone) changes. Mismatch with a part's stored sidecar
-# forces that part to be re-encoded.
+# Bump when the elements encoding changes in a way the binary VERSION bump
+# doesn't already capture (e.g. column reordering at the same VERSION).
+# Otherwise rely on BINARY_VERSION going into the signature — any wire-format
+# bump (probe header growth, new fields) invalidates every elements part too.
 FORMAT_VERSION = 1
 
 
@@ -75,6 +77,7 @@ def build_earth_part_signature(day_dir: Path) -> dict:
     """
     return {
         "format_version": FORMAT_VERSION,
+        "binary_version": BINARY_VERSION,
         "inputs": _day_dir_inputs(day_dir),
     }
 
@@ -98,6 +101,7 @@ def build_sbdb_part_signature(download_dir: Path) -> dict:
     meta = json.loads(meta_path.read_text())
     return {
         "format_version": FORMAT_VERSION,
+        "binary_version": BINARY_VERSION,
         "sbdb_snapshot": {
             "downloaded_at": meta["downloaded_at"],
             "record_count": meta["record_count"],

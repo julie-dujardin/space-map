@@ -136,12 +136,21 @@ class ParsedChunk:
     probes: list[ProbeChunkRecord]
 
 
+class _StaleChunk(Exception):
+    """Raised when a chunk on disk doesn't match the current writer format
+    version — almost always a leftover from a previous export that the
+    current run didn't re-fit (because no probe currently contributes to
+    that chunk). The benchmark skips these rather than abort; the writer
+    sweeps them on its own pass."""
+
+
 def _parse_chunk(path: Path) -> ParsedChunk:
     data = gzip.decompress(path.read_bytes())
     magic, ver, fmt, _, start_jd, end_jd = struct.unpack("<4sHBBdd", data[:24])
-    assert magic == MAGIC and ver == VERSION and fmt == FORMAT_PROBES, (
-        f"{path}: bad header magic={magic} ver={ver} fmt={fmt}"
-    )
+    if magic != MAGIC or fmt != FORMAT_PROBES:
+        raise AssertionError(f"{path}: bad header magic={magic} ver={ver} fmt={fmt}")
+    if ver != VERSION:
+        raise _StaleChunk(f"{path}: stale format version {ver} (expected {VERSION})")
     probe_count, subchunk_days = struct.unpack("<If", data[24:HEADER_SIZE])
     chunk_start_et = (start_jd - _J2000_JD) * _S_PER_DAY
     sub_s = subchunk_days * _S_PER_DAY
@@ -614,9 +623,15 @@ def main() -> int:
             # benchmark must evaluate each against the right center).
             per_probe_subs: dict[int, list[_BenchSub]] = defaultdict(list)
             override_count = 0
+            n_stale_skipped = 0
             for cf in chunk_files:
+                try:
+                    parsed = _parse_chunk(cf)
+                except _StaleChunk as e:
+                    n_stale_skipped += 1
+                    logger.debug("%s", e)
+                    continue
                 per_zone_files[zone_key].append(cf.stat().st_size)
-                parsed = _parse_chunk(cf)
                 for probe in parsed.probes:
                     fit_center_naif = _resolve_fit_center_naif(
                         probe.fit_center_id_value,
@@ -641,6 +656,13 @@ def main() -> int:
                     "[%s] %d (probe, chunk) entries fit against non-zone-default center",
                     zone_key,
                     override_count,
+                )
+            if n_stale_skipped:
+                logger.warning(
+                    "[%s] skipped %d stale chunk(s) — writer's stale-sweep should "
+                    "clean these on the next export",
+                    zone_key,
+                    n_stale_skipped,
                 )
 
             # Pass 2: dispatch one task per probe to the worker pool. Workers

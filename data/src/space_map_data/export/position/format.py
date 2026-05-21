@@ -180,20 +180,15 @@ def pack_probes_header(
 # 7       uint8    flags                 (bit 0 = has trailing METHOD_LANDED record)
 # 8       uint16   n_subchunks           (FLYING sub-chunk records that follow, in order)
 # 10      uint16   first_subchunk_offset (in units of subchunk_days, from chunk start)
-# 12      int32    fit_center_id_value   (the body each sub-chunk is fit against;
-#                                         MISSING_INT32 = use the zone default)
+# 12      int32    fit_center_id_value   (alternate primary the fit is anchored
+#                                         to; MISSING_INT32 = use zone default)
 # 16      uint8    fit_center_id_type    (ID_TYPE_ORDINAL for fit_center_id_value;
-#                                         MISSING_ID_TYPE = use the zone default)
+#                                         MISSING_ID_TYPE = use zone default)
 # 17      uint8[3] reserved              (zero pad to 4-aligned)
 #
-# `fit_center_id_value + fit_center_id_type` lets a probe whose dominant primary
-# is not the zone's stored center (lunar orbiters in `probes/earth-moon`, Titan
-# orbiters in `probes/saturn`, Dawn @ Vesta in `probes/interplanetary`, …) get
-# its Kepler/Chebyshev fit against that primary instead. The renderer composes
-# `world = fit_center_body_world + probe_offset`, so it needs to know which body
-# to look up. NAIF for moons/planets, SPKID for asteroids — encoded the same way
-# as the elements-format's per-row id_type so both halves of the export use the
-# same ordinal table.
+# fit_center lets a probe fit against its dominant primary (Moon, Titan,
+# Vesta, …) instead of the zone center. NAIF for moons/planets, SPKID for
+# asteroids — renderer composes `world = fit_center_world + probe_offset`.
 PROBE_HEADER_SIZE = 20
 _PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBxxx")
 assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE

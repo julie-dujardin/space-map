@@ -35,48 +35,9 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 from space_map_data.probes.zones import Zone
 
 
-# Bump when sizing.py / writer.py / format.py probe-encoding logic changes.
-# Mismatch with a chunk's stored sidecar forces that chunk to be re-fitted.
-#
-# v2 (2026-05-14): writer now furnshes mission kernels BEFORE generic SPKs
-# so modern planetary ephemerides (de440 / sat441) win over a mission's
-# bundled-from-the-1970s planetary data — Pioneer 11 Saturn dropped from
-# 1271 km to ~0 km error.
-# v3 (2026-05-14): classify_trace truncates the trailing landed phase so
-# landed missions (Phoenix, InSight, MGS post-aerobrake) don't include
-# the cruise→surface kernel-precedence step that polynomial fits can't
-# capture — Phoenix Mars max dropped from 123,096 km to fitter floor.
-# v4 (2026-05-16): classify_trace now keeps every contiguous SPK interval
-# instead of only the longest one, so probes with archive gaps (e.g. NH's
-# 2007-2014 hole) emit chunks for the pre-gap trajectory too.
-# v5 (2026-05-17): interplanetary spans the full contiguous coverage interval
-# (no longer carved out by planetary windows), so flyby/captured probes appear
-# in BOTH interplanetary and the planet zone — frontend renders correctly in
-# whichever view without a cross-zone handoff at the boundary moment.
-# v6 (2026-05-17): per-sample landed detection (alt < 50 km AND body-fixed
-# |v| < 10 m/s) splits coverage into alternating flying/landed phases. Zone
-# classification runs on flying ranges only, so chunks no longer include
-# parked-tail kernel discontinuities OR pre-launch on-pad samples; landed
-# phases are returned for a future lat/lng export but currently unused.
-# v7 (2026-05-17): captured-orbit interplanetary fix. v5 over-emitted
-# interplanetary for orbiters (MEX, HST, Cassini-post-SOI, …) — a 7-day
-# Sun-centered Kepler fit can't capture spacecraft motion around a planet,
-# so those chunks shipped with ~1 AU error. v7 keeps the "flybys live in
-# both zones" intent but excludes the captured tail (last in-zone run that
-# extends to flying-subrange end) from interplanetary. See trace.py.
-# v8 (2026-05-17): classify workers now also furnsh LSK at init. Without
-# LSK, SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses this format —
-# silently return NaN from spkpos and fall out of every planet zone,
-# ending up incorrectly labelled interplanetary. v7 chunks for HST (and
-# any other SGP4-format probe) are invalid for this reason.
-# v9 (2026-05-20): per-probe fit-center override. Spacecraft inside a
-# moon/asteroid's Hill sphere now fit Kepler/Chebyshev against that body
-# directly, instead of always against the zone's stored fit center.
-# Lunar orbiters that previously paid for Chebyshev relative to Earth
-# (because no Kepler fit can describe Moon-orbit + Moon-around-Earth)
-# now ship as cheap Method-C Kepler relative to the Moon. Binary format
-# bumped to v8 — the probe header grew by 8 bytes for the fit_center_id.
-FIT_VERSION = 9
+# Bump when sizing.py / writer.py / format.py probe-encoding logic changes —
+# any chunk whose stored sidecar's `fit_version` doesn't match is re-fitted.
+FIT_VERSION = 10
 
 
 def zone_signature(zone: Zone) -> str:

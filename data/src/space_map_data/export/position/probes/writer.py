@@ -911,16 +911,10 @@ def _decide_dirty(
 
 @dataclass
 class _ChunkProbeRecord:
-    """One probe's contribution to one chunk, packing-ready. Carries the
-    fitted flying sub-chunks (possibly empty if the probe is landed-only
-    in this chunk), an optional trailing `METHOD_LANDED` record, and the
-    fit center the flying sub-chunks were fit against (so the probe header
-    can encode it for the renderer's primary-override path).
-
-    `fit_center_id_value` + `fit_center_id_type` use the sentinel pair
-    `(MISSING_INT32, MISSING_ID_TYPE)` when the probe stayed on the zone's
-    stored fit center — the renderer skips the override path in that case.
-    """
+    """One probe's contribution to one chunk, packing-ready. Holds the
+    fitted flying sub-chunks (may be empty if landed-only), an optional
+    trailing `METHOD_LANDED`, and the fit center to encode in the header
+    (sentinel pair = stay on the zone's stored center)."""
 
     probe_id: int
     first_offset: int
@@ -937,18 +931,13 @@ def _fit_pass(
     start_jd: float,
     candidates_by_zone: dict[str, list[FitCenterCandidate]],
 ) -> dict[str, dict[int, list[_ChunkProbeRecord]]]:
-    """Pass 2: re-furnish each probe that touches at least one dirty chunk,
-    run `size_chunk` (flying contributions) and `_fit_landed_chunk` (landed
-    contributions) for those (probe, chunk) pairs only.
+    """Pass 2: re-furnish each probe that touches a dirty chunk, fit its
+    flying + landed contributions, return `by_zone_chunk[zone][chunk_idx]`.
 
-    Per-(probe, chunk) fit-center detection runs here while the probe's
-    mission kernels are furnshed. The first flying contribution in a chunk
-    establishes the fit center; subsequent flying contributions in the same
-    chunk reuse it (so a probe that re-enters the zone mid-chunk doesn't
-    mix Earth-fit and Moon-fit sub-chunks under one probe header).
-
-    Returns `by_zone_chunk[zone][chunk_idx] = list[_ChunkProbeRecord]`,
-    packing-ready.
+    Fit-center detection runs per (probe, chunk) while the probe's kernels
+    are furnshed. The first flying contribution to a chunk pins the center;
+    later contributions to the same chunk reuse it so one probe header
+    encodes one center.
     """
     by_zone_chunk: dict[str, dict[int, list[_ChunkProbeRecord]]] = defaultdict(
         lambda: defaultdict(list)
@@ -1072,6 +1061,43 @@ def _fit_pass(
     return by_zone_chunk
 
 
+def _pad_flying_grid(
+    flying: list[SubChunkFit],
+    chunk_start_et: float,
+    sub_s: float,
+) -> tuple[int, list[SubChunkFit]] | None:
+    """Sort `flying` by ET and insert `METHOD_UNCOVERABLE` records into
+    grid gaps so the binary packs as a contiguous run on the sub-chunk
+    grid. Required for probes whose multiple disjoint SPK intervals
+    contribute to the same chunk — without padding the second interval's
+    sub-chunks decode at off-by-one grid positions and break the Kepler
+    anchor offset. Returns `(first_offset, padded)` or None if empty."""
+    if not flying:
+        return None
+    sorted_flying = sorted(flying, key=lambda f: f.t_start_et)
+    first_offset = int(round((sorted_flying[0].t_start_et - chunk_start_et) / sub_s))
+    expected_offset = first_offset
+    padded: list[SubChunkFit] = []
+    for f in sorted_flying:
+        actual_offset = int(round((f.t_start_et - chunk_start_et) / sub_s))
+        while expected_offset < actual_offset:
+            slot_start_et = chunk_start_et + expected_offset * sub_s
+            padded.append(
+                SubChunkFit(
+                    method=SZ_METHOD_UNCOVERABLE,
+                    t_start_et=slot_start_et,
+                    t_end_et=slot_start_et + sub_s,
+                    bytes=0,
+                    max_err_km=float("nan"),
+                    detail="grid-gap pad (multi-interval probe coverage)",
+                )
+            )
+            expected_offset += 1
+        padded.append(f)
+        expected_offset += 1
+    return first_offset, padded
+
+
 def _to_ranges(indices: list[int]) -> list[list[int]]:
     """Collapse a sorted list of unique ints into inclusive-inclusive ranges
     `[[start, end], ...]`. Lets the manifest declare every chunk index a probe
@@ -1112,6 +1138,23 @@ def _write_pass(
         zone_out = probes_dir / zone_key
         zone_out.mkdir(parents=True, exist_ok=True)
 
+        # Sweep chunk files no probe contributes to anymore. Stale binaries
+        # would otherwise show up in `present` and ship to the frontend.
+        expected = set(all_chunks)
+        n_stale = 0
+        for stale in zone_out.glob("*.bin.gz"):
+            try:
+                idx = int(stale.name.split(".", 1)[0])
+            except ValueError:
+                continue
+            if idx in expected:
+                continue
+            stale.unlink(missing_ok=True)
+            sidecar.mirror_path(zone_out / f"{idx}.meta.json").unlink(missing_ok=True)
+            n_stale += 1
+        if n_stale:
+            logger.info("  probes/%s: removed %d stale chunk(s)", zone_key, n_stale)
+
         n_emit = 0
         n_skip = 0
         total_bytes = 0
@@ -1138,6 +1181,8 @@ def _write_pass(
             probe_records.sort(key=lambda r: r.probe_id)
             chunk_start_jd = start_jd + chunk_idx * zone.chunk_years * 365.25
             chunk_end_jd = chunk_start_jd + zone.chunk_years * 365.25
+            chunk_start_et = _jd_to_et(chunk_start_jd)
+            sub_s = zone.kepler_subchunk_days * _S_PER_DAY
 
             buf: list[bytes] = [
                 pack_probes_header(
@@ -1149,19 +1194,24 @@ def _write_pass(
             ]
             for rec in probe_records:
                 meta = metas_by_probe_id[rec.probe_id]
+                padded_flying = _pad_flying_grid(rec.flying, chunk_start_et, sub_s)
+                rec.first_offset = (
+                    padded_flying[0] if padded_flying else rec.first_offset
+                )
+                flying = padded_flying[1] if padded_flying else rec.flying
                 buf.append(
                     pack_probe_header(
                         probe_id=meta.probe_id,
                         object_type_ordinal=meta.object_type_ordinal,
                         has_localized=meta.has_localized,
-                        n_subchunks=len(rec.flying),
+                        n_subchunks=len(flying),
                         first_subchunk_offset=rec.first_offset,
                         has_landed_record=rec.landed is not None,
                         fit_center_id_value=rec.fit_center_id_value,
                         fit_center_id_type=rec.fit_center_id_type,
                     )
                 )
-                for sc in rec.flying:
+                for sc in flying:
                     buf.append(_pack_subchunk(sc, zone))
                 if rec.landed is not None:
                     buf.append(_pack_landed_subchunk(rec.landed))
@@ -1245,10 +1295,6 @@ def write_probes(
         len(generic_spk_paths),
     )
 
-    # Candidate fit centers — alternates the per-probe fit can route to when
-    # a spacecraft sits inside a moon/asteroid's Hill sphere. Loaded once
-    # against the PCK pool (GM-only, no spkpos needed here), pre-grouped per
-    # zone so `_fit_pass` can do detection without re-scanning the npz dir.
     chebyshev_cache_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
     all_candidates = load_candidates(chebyshev_cache_dir)
     candidates_by_zone: dict[str, list[FitCenterCandidate]] = {}
