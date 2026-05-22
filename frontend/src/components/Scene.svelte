@@ -10,6 +10,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import DebugOverlay from './DebugOverlay.svelte';
+	import SkyboxDebugSliders from './SkyboxDebugSliders.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 
 	const settings = getSettings();
@@ -147,5 +148,8 @@
 	<div bind:this={labelContainer} class="absolute inset-0 pointer-events-none z-0"></div>
 	{#if settings.showDebugInfo}
 		<DebugOverlay getRenderer={() => renderer} {ctx} {clock} />
+	{/if}
+	{#if settings.showSkyboxAlign}
+		<SkyboxDebugSliders getRenderer={() => renderer} />
 	{/if}
 </div>

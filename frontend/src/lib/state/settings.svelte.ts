@@ -23,6 +23,7 @@ interface Persisted {
 	dateFormat?: DateFormatChoice;
 	language?: LanguageChoice;
 	showDebugInfo?: boolean;
+	showSkyboxAlign?: boolean;
 }
 
 function readPersisted(): Persisted {
@@ -46,6 +47,7 @@ class SettingsState {
 	dateFormat = $state<DateFormatChoice>('auto');
 	language = $state<LanguageChoice>('auto');
 	showDebugInfo = $state(false);
+	showSkyboxAlign = $state(false);
 	#systemDark = $state(false);
 
 	constructor() {
@@ -55,6 +57,7 @@ class SettingsState {
 		this.dateFormat = stored.dateFormat ?? 'auto';
 		this.language = stored.language ?? 'auto';
 		this.showDebugInfo = stored.showDebugInfo ?? false;
+		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 
 		if (typeof window !== 'undefined' && window.matchMedia) {
 			const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -80,6 +83,11 @@ class SettingsState {
 
 	setShowDebugInfo(v: boolean) {
 		this.showDebugInfo = v;
+		this.persist();
+	}
+
+	setShowSkyboxAlign(v: boolean) {
+		this.showSkyboxAlign = v;
 		this.persist();
 	}
 
@@ -135,7 +143,8 @@ class SettingsState {
 				clock: this.clock,
 				dateFormat: this.dateFormat,
 				language: this.language,
-				showDebugInfo: this.showDebugInfo
+				showDebugInfo: this.showDebugInfo,
+				showSkyboxAlign: this.showSkyboxAlign
 			};
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 		} catch {

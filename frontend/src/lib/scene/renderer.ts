@@ -4,6 +4,7 @@ import {
 	BufferAttribute,
 	DirectionalLight,
 	Float32BufferAttribute,
+	Group,
 	Mesh,
 	PerspectiveCamera,
 	PointLight,
@@ -36,7 +37,7 @@ import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
-import { bodyNorthVector } from '$lib/scene/north-reference';
+import { bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
@@ -68,7 +69,8 @@ import {
 	upgradeBodyMesh
 } from './objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
-import { loadSkybox } from './objects/skybox';
+import { loadSkybox, SKYBOX_BASE_ROTATION } from './objects/skybox';
+import { createSkyDebugMarkers, disposeSkyDebugMarkers } from './objects/sky-debug-markers';
 import {
 	asteroidPointSize,
 	makePointCloudFromBuffer,
@@ -214,6 +216,19 @@ export class SceneRenderer {
 
 	/** Body whose IAU pole drives camera.up. null = ecliptic Y (scene frame). */
 	private northRefId: string | null = null;
+
+	/**
+	 * Debug-only knob applied on top of the math-derived skybox rotation.
+	 * Combined as `base · adjust(rxDeg, ryDeg, rzDeg)` so 0,0,0 reproduces the
+	 * derived alignment.
+	 */
+	private readonly skyboxAdjust = { rxDeg: 0, ryDeg: 0, rzDeg: 0 };
+	private readonly _skyboxQ = new Quaternion();
+	private readonly _skyboxAdjustQ = new Quaternion();
+	private readonly _skyboxAxisX = new Vector3(1, 0, 0);
+	private readonly _skyboxAxisY = new Vector3(0, 1, 0);
+	private readonly _skyboxAxisZ = new Vector3(0, 0, 1);
+	private skyDebugGroup: Group | null = null;
 	private readonly upStartVec = new Vector3(0, 1, 0);
 	private readonly upTargetVec = new Vector3(0, 1, 0);
 	private readonly upCurrentVec = new Vector3(0, 1, 0);
@@ -345,6 +360,9 @@ export class SceneRenderer {
 		this.scene.add(new AmbientLight(0xffffff, 0.01));
 		// Celestial-sphere cubemap drops in behind everything via `scene.background`.
 		// Fire-and-forget — the scene renders black until the faces arrive.
+		// Seed the rotation synchronously so it's correct from frame 1 (and so a
+		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
+		this.setSkyboxAdjust(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer);
 
 		// Directional sun light for sub-system view (swapped in when zoomed
@@ -2189,10 +2207,52 @@ export class SceneRenderer {
 		this.upAnimStartTime = performance.now();
 	}
 
+	/** Read the current debug skybox-rotation adjustment (degrees, X/Y/Z). */
+	getSkyboxAdjust(): { rxDeg: number; ryDeg: number; rzDeg: number } {
+		return { ...this.skyboxAdjust };
+	}
+
+	/**
+	 * Apply an extra rotation on top of the math-derived skybox alignment.
+	 * Angles are degrees, composed as Rz · Ry · Rx around the *scene* axes,
+	 * then post-multiplied onto the base: `final = base · adjust`. Pass 0,0,0
+	 * to clear and reproduce the analytically-derived rotation.
+	 */
+	setSkyboxAdjust(rxDeg: number, ryDeg: number, rzDeg: number): void {
+		this.skyboxAdjust.rxDeg = rxDeg;
+		this.skyboxAdjust.ryDeg = ryDeg;
+		this.skyboxAdjust.rzDeg = rzDeg;
+		const DEG2RAD = Math.PI / 180;
+		this._skyboxAdjustQ
+			.setFromAxisAngle(this._skyboxAxisX, rxDeg * DEG2RAD)
+			.premultiply(new Quaternion().setFromAxisAngle(this._skyboxAxisY, ryDeg * DEG2RAD))
+			.premultiply(new Quaternion().setFromAxisAngle(this._skyboxAxisZ, rzDeg * DEG2RAD));
+		this._skyboxQ.copy(SKYBOX_BASE_ROTATION).multiply(this._skyboxAdjustQ);
+		this.scene.backgroundRotation.setFromQuaternion(this._skyboxQ);
+	}
+
+	/** Toggle the celestial-landmark debug markers (galactic center, NCP, …). */
+	setSkyDebugMarkersVisible(visible: boolean): void {
+		if (visible) {
+			if (!this.skyDebugGroup) {
+				this.skyDebugGroup = createSkyDebugMarkers();
+				this.scene.add(this.skyDebugGroup);
+			}
+			this.skyDebugGroup.visible = true;
+		} else if (this.skyDebugGroup) {
+			disposeSkyDebugMarkers(this.skyDebugGroup);
+			this.skyDebugGroup = null;
+		}
+	}
+
 	private updateCameraUp(): void {
-		const refBody = this.northRefId ? this.ctx.getBody(this.northRefId) : undefined;
-		if (refBody) bodyNorthVector(refBody, this.clock.jd, this.upTargetVec);
-		else this.upTargetVec.copy(SceneRenderer._upRef);
+		if (this.northRefId === GALACTIC_REF_ID) {
+			galacticNorthVector(this.upTargetVec);
+		} else {
+			const refBody = this.northRefId ? this.ctx.getBody(this.northRefId) : undefined;
+			if (refBody) bodyNorthVector(refBody, this.clock.jd, this.upTargetVec);
+			else this.upTargetVec.copy(SceneRenderer._upRef);
+		}
 
 		const elapsed = performance.now() - this.upAnimStartTime;
 		if (elapsed >= SceneRenderer.UP_ANIM_DURATION_MS) {

@@ -4,7 +4,8 @@
 	import CompassIcon from '@lucide/svelte/icons/compass';
 	import EarthIcon from '@lucide/svelte/icons/earth';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
-	import type { NorthChoice } from '$lib/scene/north-reference';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import { GALACTIC_REF_ID, type NorthChoice } from '$lib/scene/north-reference';
 
 	interface Props {
 		choices: NorthChoice[];
@@ -34,6 +35,8 @@
 		>
 			{#if selectedId === null}
 				<OrbitIcon class="size-3.5" />
+			{:else if selectedId === GALACTIC_REF_ID}
+				<SparklesIcon class="size-3.5" />
 			{:else}
 				<EarthIcon class="size-3.5" />
 			{/if}
@@ -58,10 +61,22 @@
 						}}
 					>
 						<div class="text-sm">
-							{choice.id === null ? m.north_solar_system() : (choice.name ?? choice.id)}
+							{#if choice.id === null}
+								{m.north_solar_system()}
+							{:else if choice.id === GALACTIC_REF_ID}
+								{m.north_galactic()}
+							{:else}
+								{choice.name ?? choice.id}
+							{/if}
 						</div>
 						<div class="text-xs text-muted-foreground">
-							{choice.id === null ? m.north_solar_system_desc() : m.north_body_desc()}
+							{#if choice.id === null}
+								{m.north_solar_system_desc()}
+							{:else if choice.id === GALACTIC_REF_ID}
+								{m.north_galactic_desc()}
+							{:else}
+								{m.north_body_desc()}
+							{/if}
 						</div>
 					</button>
 				</li>

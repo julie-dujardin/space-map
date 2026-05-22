@@ -3,6 +3,7 @@
 	import type { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/clock.svelte';
+	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -12,6 +13,7 @@
 	}
 
 	let { getRenderer, ctx, clock }: Props = $props();
+	const settings = getSettings();
 
 	type Stats = ReturnType<SceneRenderer['getDebugStats']>;
 	type Counts = ReturnType<ContextManager['getObjectCounts']>;
@@ -64,7 +66,7 @@
 </script>
 
 <div
-	class="absolute top-3 start-3 z-10 pointer-events-none
+	class="absolute top-3 start-3 z-10 pointer-events-auto
 		rounded-md bg-background/80 backdrop-blur-sm border border-border/60
 		px-3 py-2 text-[11px] font-mono leading-tight text-foreground/90
 		shadow-md max-w-[260px] select-text"
@@ -137,5 +139,16 @@
 		<span class="text-end tabular-nums">{clock.timeScale.toLocaleString()}×</span>
 		<span class="text-muted-foreground">{m.debug_jd()}</span>
 		<span class="text-end tabular-nums">{clock.jd.toFixed(3)}</span>
+	</div>
+
+	<div class="mt-2 pt-2 border-t border-border/40">
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showSkyboxAlign}
+				onchange={(e) => settings.setShowSkyboxAlign(e.currentTarget.checked)}
+			/>
+			<span>Skybox alignment tool</span>
+		</label>
 	</div>
 </div>
