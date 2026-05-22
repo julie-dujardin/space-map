@@ -18,6 +18,7 @@
 	import TimeControls from '../../../../components/time/TimeControls.svelte';
 	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';
 	import SettingsButton from '../../../../components/settings/SettingsButton.svelte';
+	import LayersButton from '../../../../components/layers/LayersButton.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -88,8 +89,9 @@
 				onUserPromotedChange={(count) => (userPromotedCount = count)}
 			/>
 			<TimeControls {clock} />
-			<div class="fixed top-4 end-4 z-10 pointer-events-auto">
+			<div class="fixed top-4 end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto">
 				<SettingsButton />
+				<LayersButton />
 			</div>
 			{#if selectedBody?.data.id}
 				<ObjectDrawer

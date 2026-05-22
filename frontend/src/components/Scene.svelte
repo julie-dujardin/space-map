@@ -138,6 +138,10 @@
 		renderer?.setNorthReference(northRefId);
 	});
 
+	$effect(() => {
+		renderer?.setImmersive(settings.viewMode === 'immersive');
+	});
+
 	onDestroy(() => {
 		renderer?.dispose();
 	});

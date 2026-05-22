@@ -1,10 +1,10 @@
 <script lang="ts">
-	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import LayersIcon from '@lucide/svelte/icons/layers';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { Portal } from 'bits-ui';
 	import * as Popover from '$lib/components/ui/popover';
 	import * as m from '$lib/paraglide/messages.js';
-	import SettingsMenu from './SettingsMenu.svelte';
+	import LayersMenu from './LayersMenu.svelte';
 
 	let open = $state(false);
 	let isMobile = $state(false);
@@ -17,7 +17,6 @@
 		return () => mq.removeEventListener('change', onChange);
 	});
 
-	// Esc-to-close for the mobile fullscreen panel (Popover handles this itself).
 	$effect(() => {
 		if (!open || !isMobile) return;
 		const onKey = (e: KeyboardEvent) => {
@@ -38,22 +37,19 @@
 		type="button"
 		class={buttonClass}
 		onclick={() => (open = true)}
-		title={m.settings_title()}
-		aria-label={m.settings_title()}
+		title={m.layers_title()}
+		aria-label={m.layers_title()}
 	>
-		<SettingsIcon class="size-5" />
+		<LayersIcon class="size-5" />
 	</button>
 
 	{#if open}
-		<!-- Portal to document.body so the panel escapes the parent z-10 stacking
-		     context and can actually sit above ObjectDrawer (z-50) and the other
-		     overlay buttons. -->
 		<Portal>
 			<div
 				class="fixed inset-0 z-[70] bg-background overflow-y-auto"
 				role="dialog"
 				aria-modal="true"
-				aria-label={m.settings_title()}
+				aria-label={m.layers_title()}
 			>
 				<button
 					type="button"
@@ -64,14 +60,14 @@
 				>
 					<XIcon class="size-5" />
 				</button>
-				<SettingsMenu />
+				<LayersMenu />
 			</div>
 		</Portal>
 	{/if}
 {:else}
 	<Popover.Root bind:open>
-		<Popover.Trigger class={buttonClass} title={m.settings_title()} aria-label={m.settings_title()}>
-			<SettingsIcon class="size-4" />
+		<Popover.Trigger class={buttonClass} title={m.layers_title()} aria-label={m.layers_title()}>
+			<LayersIcon class="size-4" />
 		</Popover.Trigger>
 		<Popover.Content
 			side="bottom"
@@ -79,7 +75,7 @@
 			sideOffset={8}
 			class="w-80 max-h-[80vh] overflow-hidden p-0"
 		>
-			<SettingsMenu />
+			<LayersMenu />
 		</Popover.Content>
 	</Popover.Root>
 {/if}

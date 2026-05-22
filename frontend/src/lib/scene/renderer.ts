@@ -296,6 +296,14 @@ export class SceneRenderer {
 	private sunPointLight: PointLight | undefined;
 	/** Pinned user-location dot on Earth's surface (Google-Maps-style). */
 	private userLocationMarker: CSS2DObject | null = null;
+	/** DOM container for CSS2D labels; hidden entirely in immersive mode. */
+	private labelContainer: HTMLElement;
+	/**
+	 * Layer used for "map UI": orbit lines + point clouds. Immersive mode
+	 * disables this layer on the camera, so the WebGL pass skips them while
+	 * meshes (layer 0) keep rendering.
+	 */
+	private static readonly MAP_LAYER = 1;
 
 	constructor(
 		canvas: HTMLCanvasElement,
@@ -308,6 +316,7 @@ export class SceneRenderer {
 		this.ctx = ctx;
 		this.clock = clock;
 		this.callbacks = callbacks;
+		this.labelContainer = labelContainer;
 
 		// Promoted set is exactly the keys of the global per-language labels file.
 		// Fire-and-forget: the auto-promote loop reads the set every frame and is
@@ -463,6 +472,7 @@ export class SceneRenderer {
 			if (bo) {
 				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
 				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+				this.assignMapLayerToOrbitLines();
 			}
 		}
 
@@ -508,11 +518,45 @@ export class SceneRenderer {
 		this.asteroidPoints = pts.asteroidPoints;
 		this.spacecraftPoints = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
+		this.assignMapLayerToPointClouds();
 		// Defer orbit line geometry (100K+ Kepler solves) to after first paint
 		const basis = this.pointCloudBasisPos;
 		// requestIdleCallback isn't available in Safari
 		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 0));
-		scheduleIdle(() => buildOrbitLines(this.bodyObjects, this.scene, basis, this.clock.jd));
+		scheduleIdle(() => {
+			buildOrbitLines(this.bodyObjects, this.scene, basis, this.clock.jd);
+			this.assignMapLayerToOrbitLines();
+		});
+	}
+
+	/** Assign all current orbit lines to MAP_LAYER so they can be hidden together by immersive mode. */
+	private assignMapLayerToOrbitLines(): void {
+		for (const bo of this.bodyObjects.values()) {
+			if (bo.orbitLine) bo.orbitLine.layers.set(SceneRenderer.MAP_LAYER);
+		}
+	}
+
+	/** Assign all current point clouds to MAP_LAYER. */
+	private assignMapLayerToPointClouds(): void {
+		for (const pts of this.asteroidPoints.values()) pts.layers.set(SceneRenderer.MAP_LAYER);
+		for (const pts of this.spacecraftPoints.values()) pts.layers.set(SceneRenderer.MAP_LAYER);
+		for (const pts of this.moonPoints.values()) pts.layers.set(SceneRenderer.MAP_LAYER);
+	}
+
+	/**
+	 * Map vs immersive view. Immersive hides CSS2D labels (DOM), orbit lines,
+	 * and point clouds — leaving only meshes + skybox visible. Picking and
+	 * camera controls keep working, so the user can still navigate (with
+	 * difficulty) and toggle back.
+	 */
+	setImmersive(immersive: boolean): void {
+		if (immersive) {
+			this.camera.layers.disable(SceneRenderer.MAP_LAYER);
+			this.labelContainer.style.display = 'none';
+		} else {
+			this.camera.layers.enable(SceneRenderer.MAP_LAYER);
+			this.labelContainer.style.display = '';
+		}
 	}
 
 	/**
@@ -1506,7 +1550,9 @@ export class SceneRenderer {
 
 		// Stagger new point cloud additions: one per frame to spread GPU upload cost
 		if (this.pendingSceneAdds.length > 0) {
-			this.scene.add(this.pendingSceneAdds.shift()!);
+			const pts = this.pendingSceneAdds.shift()!;
+			pts.layers.set(SceneRenderer.MAP_LAYER);
+			this.scene.add(pts);
 		}
 
 		this.composer.render();
@@ -1928,6 +1974,7 @@ export class SceneRenderer {
 			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+		this.assignMapLayerToOrbitLines();
 		this.repositionAll();
 
 		// Click-promoted minor bodies enter with no name (the global labels file
@@ -2118,6 +2165,7 @@ export class SceneRenderer {
 				// up now that `bo.mesh` is set. Probes already had one — the
 				// "already built" guard inside buildOrbitLines skips them.
 				buildOrbitLines(this.bodyObjects, this.scene, this.pointCloudBasisPos, this.clock.jd);
+				this.assignMapLayerToOrbitLines();
 			}
 		}
 

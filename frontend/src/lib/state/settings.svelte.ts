@@ -16,6 +16,7 @@ export type Theme = 'auto' | 'light' | 'dark';
 export type Clock = 'auto' | '12h' | '24h';
 export type DateFormatChoice = 'auto' | 'iso';
 export type LanguageChoice = 'auto' | Locale;
+export type ViewMode = 'map' | 'immersive';
 
 interface Persisted {
 	theme?: Theme;
@@ -24,6 +25,7 @@ interface Persisted {
 	language?: LanguageChoice;
 	showDebugInfo?: boolean;
 	showSkyboxAlign?: boolean;
+	viewMode?: ViewMode;
 }
 
 function readPersisted(): Persisted {
@@ -48,6 +50,7 @@ class SettingsState {
 	language = $state<LanguageChoice>('auto');
 	showDebugInfo = $state(false);
 	showSkyboxAlign = $state(false);
+	viewMode = $state<ViewMode>('map');
 	#systemDark = $state(false);
 
 	constructor() {
@@ -58,6 +61,7 @@ class SettingsState {
 		this.language = stored.language ?? 'auto';
 		this.showDebugInfo = stored.showDebugInfo ?? false;
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
+		this.viewMode = stored.viewMode ?? 'map';
 
 		if (typeof window !== 'undefined' && window.matchMedia) {
 			const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -88,6 +92,11 @@ class SettingsState {
 
 	setShowSkyboxAlign(v: boolean) {
 		this.showSkyboxAlign = v;
+		this.persist();
+	}
+
+	setViewMode(v: ViewMode) {
+		this.viewMode = v;
 		this.persist();
 	}
 
@@ -144,7 +153,8 @@ class SettingsState {
 				dateFormat: this.dateFormat,
 				language: this.language,
 				showDebugInfo: this.showDebugInfo,
-				showSkyboxAlign: this.showSkyboxAlign
+				showSkyboxAlign: this.showSkyboxAlign,
+				viewMode: this.viewMode
 			};
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 		} catch {
