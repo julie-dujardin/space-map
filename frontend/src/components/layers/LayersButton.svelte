@@ -45,8 +45,12 @@
 
 	{#if open}
 		<Portal>
+			<!-- pointer-events-auto: bits-ui's modal scroll-lock sets
+			     `pointer-events: none` on document.body while ObjectDrawer's vaul
+			     drawer is open. Without this override, our portal'd panel
+			     (a body child) inherits that and the controls become dead. -->
 			<div
-				class="fixed inset-0 z-[70] bg-background overflow-y-auto"
+				class="fixed inset-0 z-[70] bg-background overflow-y-auto pointer-events-auto"
 				role="dialog"
 				aria-modal="true"
 				aria-label={m.layers_title()}
