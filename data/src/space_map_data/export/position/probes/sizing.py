@@ -420,8 +420,50 @@ def _fit_sub_chunk(
     sub_mid = 0.5 * (sub_t_start + sub_t_end)
     cheb_bytes_per_seg = _chebyshev_bytes_per_segment(zone.float64_coeffs)
 
-    fit_half_s = max(2.0 * sub_s, 2 * _S_PER_DAY)
-    fit_ets = np.linspace(sub_mid - fit_half_s, sub_mid + fit_half_s, 80)
+    # Fit window: default ±2 days. Narrow it for short-period orbits — for a
+    # 2-hour lunar orbiter (Chandrayaan-2, Danuri, LRO, LADEE), a wide window
+    # averages over 48 mascon-perturbed orbits and the linear-drift assumption
+    # in Method-C collapses (~2500 km median error, samples dipping below the
+    # lunar surface). Scaling the half-window to ~2 orbital periods preserves
+    # statistical power for the Ω̇/ω̇/Ṁ fit while keeping the linear assumption
+    # locally valid (~150 km median for the same probes, never below surface).
+    default_half_s = max(2.0 * sub_s, 2 * _S_PER_DAY)
+    # Estimate the orbital period from multi-sample oscelt over a wide window.
+    # A single oscelt at sub_mid is unreliable for high-e orbits — INTEGRAL's
+    # instantaneous osculating period collapses to ~3 h near perigee even
+    # though the real orbit is multi-day, because small lunar third-body
+    # velocity perturbations push the osculating energy way off. Sampling
+    # broadly (≥1 month for earth-moon) and taking the max period across
+    # samples biases toward apogee-side samples where the osculating elements
+    # are stable. For genuinely short-period orbits every sample agrees on
+    # the period, so the max equals the actual.
+    prelim_window_s = max(default_half_s, 15 * _S_PER_DAY)
+    prelim_ets = np.linspace(sub_mid - prelim_window_s, sub_mid + prelim_window_s, 21)
+    max_period_s = 0.0
+    for et in prelim_ets:
+        state = _safe_spkezr(naif_id, float(et), "ECLIPJ2000", fit_center_naif_id)
+        if state is None:
+            continue
+        try:
+            rp_p, ecc_p, _, _, _, _, _, _ = spiceypy.oscelt(state[0], float(et), mu)
+        except spiceypy.exceptions.SpiceyError:
+            continue
+        if not (0 < ecc_p < 1.0 and rp_p > 0):
+            continue
+        period_s = 2.0 * math.pi * math.sqrt((rp_p / (1 - ecc_p)) ** 3 / mu)
+        max_period_s = max(max_period_s, period_s)
+    # Fit window scales to ~2 orbital periods so the Method-C linear-drift
+    # assumption stays locally valid. Short-period orbits (lunar orbiters)
+    # get a narrow window (averaging over many mascon-perturbed orbits
+    # collapses the fit). Long-period orbits (INTEGRAL, halo orbits) get a
+    # wide window so the fit samples span a meaningful arc of the orbit
+    # rather than just the near-perigee fast pass.
+    if max_period_s > 0:
+        fit_half_s = max(0.25 * _S_PER_DAY, min(default_half_s, 2.0 * max_period_s))
+    else:
+        fit_half_s = default_half_s
+    # 200 fit samples gives Nyquist-clean coverage at any reasonable window.
+    fit_ets = np.linspace(sub_mid - fit_half_s, sub_mid + fit_half_s, 200)
     variants = _fit_method_c(naif_id, fit_center_naif_id, mu, fit_ets)
 
     kepler_err = float("inf")
@@ -434,18 +476,40 @@ def _fit_sub_chunk(
                 best_v = (v, err)
         if best_v is not None:
             kepler_err = best_v[1]
-            # Threshold relaxation for short-period orbits.
-            period_s = 2 * math.pi * math.sqrt(best_v[0]["a_km"] ** 3 / mu)
+            # Use the prelim multi-sample max period for the short-period
+            # decision rather than the fitted snapshot's a_km. For high-e
+            # orbits the snapshot a near perigee collapses to nonsense (e.g.
+            # INTEGRAL: snapshot a=17000 km, fitted period ~6 h, vs real
+            # ~3-day period), and would incorrectly flag as short-period and
+            # force Kepler. The prelim sweeps a wide window so apogee-side
+            # samples reveal the true period.
+            period_s = (
+                max_period_s
+                if max_period_s > 0
+                else 2 * math.pi * math.sqrt(best_v[0]["a_km"] ** 3 / mu)
+            )
+            is_short_period = period_s < zone.short_orbit_period_s
             threshold_km = (
                 max(base_threshold_km, zone.short_orbit_threshold_km)
-                if period_s < zone.short_orbit_period_s
+                if is_short_period
                 else base_threshold_km
             )
-            if kepler_err <= threshold_km:
+            # For short-period orbiters (sub-day periods around a planet/moon)
+            # Chebyshev's degree-11 polynomial covers multiple orbital cycles
+            # per segment at any byte budget we can afford. Pin to whichever
+            # Kepler variant has lower residual rather than fall through to a
+            # Chebyshev that will alias and put the probe below the body's
+            # surface — accuracy_threshold is advisory in this regime.
+            if kepler_err <= threshold_km or is_short_period:
                 method = (
                     METHOD_KEPLER_DRIFT
                     if best_v[0].get("mode") == "drift"
                     else METHOD_KEPLER_PURE
+                )
+                detail = (
+                    f"{best_v[0]['mode']} thresh={threshold_km:.0f}km"
+                    if kepler_err <= threshold_km
+                    else f"{best_v[0]['mode']} short-period-forced (err {kepler_err:.0f}km)"
                 )
                 return SubChunkFit(
                     method=method,
@@ -453,7 +517,7 @@ def _fit_sub_chunk(
                     t_end_et=sub_t_end,
                     bytes=_kepler_bytes(method, zone.float64_coeffs),
                     max_err_km=kepler_err,
-                    detail=f"{best_v[0]['mode']} thresh={threshold_km:.0f}km",
+                    detail=detail,
                     kepler_elts=best_v[0],
                 )
         else:

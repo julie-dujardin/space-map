@@ -46,6 +46,48 @@ SYNTH_ROOT = SYNTH_CACHE_ROOT
 
 REFINE_STEP = "1 h"
 
+# Probes whose orbital period inside a major body's Hill sphere is comparable
+# to or shorter than `REFINE_STEP`. SPK Type 13 uses degree-7 Hermite
+# interpolation across (typically) 8 consecutive samples — at 1-hour cadence
+# that polynomial spans 8 hours, which for a ~2-hour lunar orbiter covers
+# 4 orbital cycles. The polynomial can't represent that, so spkpos between
+# samples returns ~hundreds-of-km errors with samples dipping below the
+# Moon's surface. Bumping these probes to 1-minute cadence keeps the
+# polynomial span at ~8 minutes (well under one orbit) so Hermite is clean.
+#
+# Only includes probes for which we don't have an agency-published SPK and
+# whose lunar / planetary orbit is dense enough to alias. Membership checked
+# in `_refine_step_for`.
+TIGHT_REFINE_NAIF_IDS: frozenset[int] = frozenset(
+    {
+        # Lunar low orbiters (~2h period)
+        -86,  # Chandrayaan-1
+        -152,  # Chandrayaan-2 Orbiter
+        -153,  # Chandrayaan-2 Lander (descent)
+        -155,  # Danuri / KPLO
+        -158,  # Chandrayaan-3 Lander (descent)
+        -169,  # Chandrayaan-3 Propulsion Module
+        -240,  # SLIM (lunar low orbit + landing)
+        # Mars cruise/landing with periapsis ~36min
+        -530,  # Mars Pathfinder
+        # Earth-LEO satellites with multi-decade coverage are deferred for
+        # now — their 1-h SPK cadence aliases the same way, but they render
+        # close enough to Earth that the 1-h-Hermite jitter isn't visible at
+        # the zoom levels we care about, and a full 1-min refetch is multi-
+        # hour per probe. Re-add (-163 WISE, -127424 Aqua, -128376 Aura,
+        # -128485 Swift, etc.) once the writer can handle very-long-coverage
+        # tight refines incrementally.
+    }
+)
+
+
+def _refine_step_for(naif_id: int) -> str:
+    """Refinement cadence for `naif_id`. 1-minute for fast-period orbits
+    flagged in `TIGHT_REFINE_NAIF_IDS`, else the default `REFINE_STEP`."""
+    if naif_id in TIGHT_REFINE_NAIF_IDS:
+        return "1 m"
+    return REFINE_STEP
+
 
 def _coarse_step_for(span_days: int) -> str:
     """Pick a coarse-pass cadence that yields ≥ degree+1=8 samples while
@@ -213,20 +255,33 @@ def fetch_vectors(
     return resp.text
 
 
+def _chunk_days_for_step(step: str) -> int:
+    """Pick a chunk size so each request stays comfortably under Horizons'
+    per-response sample cap (~90k rows). Coarser cadences span more days;
+    1-minute cadence has to chunk down to ~50-day windows."""
+    n, unit = step.split()
+    n = int(n)
+    minutes_per_sample = {"m": n, "h": n * 60, "d": n * 60 * 24}[unit]
+    samples_per_day = max(1, (24 * 60) // minutes_per_sample)
+    return max(1, 80_000 // samples_per_day)
+
+
 def _fetch_vectors_chunked(
     client: httpx.Client,
     naif_id: int,
     start_iso: str,
     stop_iso: str,
     step: str,
-    chunk_days: int = 365 * 5,
+    chunk_days: int | None = None,
 ) -> str:
     """Fetch a long span in ≤chunk_days slices; concatenate the CSVs.
 
-    The concatenated text has multiple $$SOE/$$EOE blocks; `_parse_horizons_csv`
-    only reads the first block per call, so callers should re-parse each chunk
-    separately if they need samples from all of them.
+    The concatenated text has multiple $$SOE/$$EOE blocks; callers should
+    parse it with `_parse_chunks` rather than `_parse_horizons_csv` (which
+    reads only the first block).
     """
+    if chunk_days is None:
+        chunk_days = _chunk_days_for_step(step)
     start = datetime.fromisoformat(start_iso).date()
     stop = datetime.fromisoformat(stop_iso).date()
     pieces: list[str] = []
@@ -427,13 +482,23 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
 
     if not force and meta_path.exists():
         prev = orjson.loads(meta_path.read_bytes())
-        if prev.get("revised") == obj.revised:
+        expected_tag = _refine_step_for(naif_id).replace(" ", "")
+        cached_tags = {r.get("cadence") for r in prev.get("refined", [])}
+        cadence_match = not cached_tags or cached_tags == {expected_tag}
+        if prev.get("revised") == obj.revised and cadence_match:
             logger.info(
                 "naif %d: cache up to date (revised %s), skipping fetch",
                 naif_id,
                 obj.revised,
             )
             return prev
+        if not cadence_match:
+            logger.info(
+                "naif %d: cached refine cadence %s != expected %s; refetching",
+                naif_id,
+                ",".join(sorted(t for t in cached_tags if t)) or "(none)",
+                expected_tag,
+            )
 
     win_start, win_end = detect_window(client, naif_id)
     span_days = (
@@ -481,23 +546,30 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
             for p in furnished:
                 spiceypy.unload(str(p))
 
-        logger.info("naif %d: %d refinement windows", naif_id, len(windows))
+        refine_step = _refine_step_for(naif_id)
+        refine_tag = refine_step.replace(" ", "")
+        logger.info(
+            "naif %d: %d refinement windows @ %s",
+            naif_id,
+            len(windows),
+            refine_step,
+        )
         for ws, we in windows:
-            fn = f"refine_{ws}_{we}_1h.csv"
+            fn = f"refine_{ws}_{we}_{refine_tag}.csv"
             path = cache_dir / fn
-            logger.info("naif %d: refining %s..%s @ 1h", naif_id, ws, we)
+            logger.info("naif %d: refining %s..%s @ %s", naif_id, ws, we, refine_step)
             try:
-                text = fetch_vectors(client, naif_id, ws, we, REFINE_STEP)
+                text = _fetch_vectors_chunked(client, naif_id, ws, we, refine_step)
             except httpx.HTTPError as exc:
                 logger.warning("naif %d refine %s..%s failed: %s", naif_id, ws, we, exc)
                 continue
             path.write_text(text)
-            samples = _parse_horizons_csv(text)
+            samples = _parse_chunks(text)
             refine_meta.append(
                 {
                     "start": ws,
                     "end": we,
-                    "cadence": "1h",
+                    "cadence": refine_tag,
                     "file": fn,
                     "count": len(samples),
                 }
@@ -589,7 +661,10 @@ def build_one(naif_id: int) -> Path:
         if _write_segment(handle, naif_id, coarse_samples, f"coarse_{meta['revised']}"):
             written += 1
         for r in meta["refined"]:
-            samples = _parse_horizons_csv((cache_dir / r["file"]).read_text())
+            # `_parse_chunks` handles the multi-block CSVs that `_fetch_vectors_chunked`
+            # produces (for tight-cadence refines too big to fit in one request) while
+            # still working on legacy single-block 1-h CSVs.
+            samples = _parse_chunks((cache_dir / r["file"]).read_text())
             if _write_segment(
                 handle, naif_id, samples, f"refine_{r['start']}_{r['end']}"
             ):

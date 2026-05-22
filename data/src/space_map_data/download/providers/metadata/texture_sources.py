@@ -637,7 +637,9 @@ class TextureSourcesDownloader(Downloader):
                 entries.extend(data.get("bodies") or [])
         dropped = sum(1 for e in entries if not isinstance(e, dict))
         if dropped:
-            logger.warning("Dropping %d empty/invalid body entries from texture metadata", dropped)
+            logger.warning(
+                "Dropping %d empty/invalid body entries from texture metadata", dropped
+            )
             entries = [e for e in entries if isinstance(e, dict)]
         return entries
 

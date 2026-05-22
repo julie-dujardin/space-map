@@ -741,6 +741,34 @@ def main() -> int:
             }
         )
 
+    # Pooled-across-zones total row. Percentiles re-computed on the
+    # combined error/size lists rather than averaged from per-zone numbers,
+    # so a small handful of huge errors in one zone don't get hidden by
+    # mean-of-means dilution.
+    # total_row omits `zone`/`chunk_years`/`coeff_dtype` (rendered as blanks
+    # at print time) so every entry is numeric — keeps the value type a
+    # single union of int|float and avoids float()-cast noise downstream.
+    if zone_rows:
+        all_errs = sorted(e for errs in per_zone_errs.values() for e in errs)
+        all_sizes = sorted(s for sizes in per_zone_files.values() for s in sizes)
+        total_row: dict[str, float] | None = {
+            "files": sum(r["files"] for r in zone_rows),
+            "n_sub": sum(r["n_sub"] for r in zone_rows),
+            "med": pct(all_errs, 0.5),
+            "p95": pct(all_errs, 0.95),
+            "max": all_errs[-1] if all_errs else 0.0,
+            "med_kb": pct(all_sizes, 0.5) / 1024 if all_sizes else 0,
+            "p95_kb": pct(all_sizes, 0.95) / 1024 if all_sizes else 0,
+            "max_kb": all_sizes[-1] / 1024 if all_sizes else 0,
+            "sum_mb": sum(r["sum_mb"] for r in zone_rows),
+            "kpure": sum(r["kpure"] for r in zone_rows),
+            "kdrift": sum(r["kdrift"] for r in zone_rows),
+            "cheb": sum(r["cheb"] for r in zone_rows),
+            "uncov": sum(r["uncov"] for r in zone_rows),
+        }
+    else:
+        total_row = None
+
     # ── Per-probe-per-zone aggregates ────────────────────────────────────
     # Tuple layout: (probe_id, max_err, p95_err, median_err, sample_count).
     by_zone_probes: dict[str, list[tuple[int, float, float, float, int]]] = defaultdict(
@@ -771,9 +799,20 @@ def main() -> int:
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
         )
+    if total_row is not None and len(zone_rows) > 1:
+        r = total_row
+        mix = f"{int(r['kpure']):>5} / {int(r['kdrift']):>5} / {int(r['cheb']):>5} / {int(r['uncov']):>3}"
+        print(
+            f"{'total':<14} {'':>5} "
+            f"{'':>4} {int(r['files']):>5} {int(r['n_sub']):>10}  "
+            f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
+            f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
+        )
 
     if args.output:
-        _write_markdown(args.output, zone_rows, by_zone_probes, probe_id_to_naif)
+        _write_markdown(
+            args.output, zone_rows, total_row, by_zone_probes, probe_id_to_naif
+        )
         logger.info("Wrote %s", args.output)
     return 0
 
@@ -781,6 +820,7 @@ def main() -> int:
 def _write_markdown(
     path: Path,
     zone_rows: list[dict],
+    total_row: dict | None,
     by_zone_probes: dict[str, list[tuple[int, float, float, float, int]]],
     probe_id_to_naif: dict[int, tuple[str, int]],
 ) -> None:
@@ -831,6 +871,15 @@ def _write_markdown(
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "
             f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['max_kb']:.1f} | {r['sum_mb']:.1f} | "
             f"{r['kpure']} | {r['kdrift']} | {r['cheb']} | {r['uncov']} |"
+        )
+    if total_row is not None and len(zone_rows) > 1:
+        r = total_row
+        lines.append(
+            f"| **total** | | | "
+            f"**{int(r['files'])}** | **{int(r['n_sub'])}** | "
+            f"**{_format_err(r['med'])}** | **{_format_err(r['p95'])}** | **{_format_err(r['max'])}** | "
+            f"**{r['med_kb']:.1f}** | **{r['p95_kb']:.1f}** | **{r['max_kb']:.1f}** | **{r['sum_mb']:.1f}** | "
+            f"**{int(r['kpure'])}** | **{int(r['kdrift'])}** | **{int(r['cheb'])}** | **{int(r['uncov'])}** |"
         )
     lines.append("")
 

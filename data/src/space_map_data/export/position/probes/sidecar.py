@@ -37,7 +37,7 @@ from space_map_data.probes.zones import Zone
 
 # Bump when sizing.py / writer.py / format.py probe-encoding logic changes —
 # any chunk whose stored sidecar's `fit_version` doesn't match is re-fitted.
-FIT_VERSION = 10
+FIT_VERSION = 14
 
 
 def zone_signature(zone: Zone) -> str:

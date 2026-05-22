@@ -9,7 +9,7 @@ import time
 import numpy as np
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -90,6 +90,14 @@ _SUN_MAJOR_TYPES = {
 _SUN_MAJOR_TYPE_VALUES = [t.value for t in _SUN_MAJOR_TYPES]
 
 _DEFAULT_ZONE_LIMIT = 10_000
+
+# SBDB combos are uncapped (see comment in `export`); MBA-unnamed alone is
+# ~hundreds of thousands of ORM Objects. With an unbounded executor every
+# combo's `.all()` landed in RAM before any worker drained, and the session's
+# identity map pinned them all — that's the 30-40 GB blow-up. Cap concurrent
+# zone exports so peak memory ≈ MAX_IN_FLIGHT × largest-combo size. 8 keeps the
+# big MBA-unnamed combo (~3 GB) + smaller ones in flight under ~20 GB.
+_MAX_ZONE_IN_FLIGHT = 8
 
 
 @dataclass
@@ -939,6 +947,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     ring_metadata = load_ring_metadata(out_dir)
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
+    skybox_metadata = load_skybox_metadata(out_dir)
 
     write_systems_global(out_dir, gms, nut_prec_angles)
 
@@ -991,7 +1000,43 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 len(cheb_covered_ids),
             )
 
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=_MAX_ZONE_IN_FLIGHT) as executor:
+            in_flight: set = set()
+
+            def _gate() -> None:
+                """Block until at least one slot frees up.
+
+                Without this the loop would queue every combo's loaded ORM
+                objects in the executor's work queue, defeating max_workers as
+                a memory bound. The expunge after each SBDB submit only frees
+                memory once *all* refs to those objects drop — including the
+                queued future's — so we have to keep the queue short too.
+                """
+                while len(in_flight) >= _MAX_ZONE_IN_FLIGHT:
+                    done, _pending = wait(in_flight, return_when=FIRST_COMPLETED)
+                    in_flight.difference_update(done)
+
+            def _submit_zone(zone: str, zoom: int, snapshots: ZoneSnapshots) -> None:
+                _gate()
+                f = executor.submit(
+                    _export_zone,
+                    zone,
+                    zoom,
+                    snapshots,
+                    out_dir,
+                    wikidata_entities,
+                    units,
+                    nasa_science_urls,
+                    orientation,
+                    radii,
+                    gms,
+                    nut_prec,
+                    texture_metadata,
+                    clouds_metadata,
+                )
+                futures[f] = (zone, zoom)
+                in_flight.add(f)
+
             # Non-SBDB zones: (zone, zoom, query)
             _earth_base = (
                 session.query(Object)
@@ -1087,23 +1132,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     snapshots = _moons_snapshots(objects, DOWNLOAD_DIR)
                 else:
                     snapshots = _single_snapshot(objects)
-                f = executor.submit(
-                    _export_zone,
-                    zone,
-                    zoom,
-                    snapshots,
-                    out_dir,
-                    wikidata_entities,
-                    units,
-                    nasa_science_urls,
-                    orientation,
-                    radii,
-                    gms,
-                    nut_prec,
-                    texture_metadata,
-                    clouds_metadata,
-                )
-                futures[f] = (zone, zoom)
+                _submit_zone(zone, zoom, snapshots)
 
             # SBDB: one query per (class, zoom)
             named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
@@ -1150,23 +1179,14 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 # All SBDB classes ship under one parent dir so the prune pass
                 # and incremental wipe rules can target them as a group.
                 zone = f"small_bodies/{cls.name}"
-                f = executor.submit(
-                    _export_zone,
-                    zone,
-                    zoom,
-                    _single_snapshot(objects),
-                    out_dir,
-                    wikidata_entities,
-                    units,
-                    nasa_science_urls,
-                    orientation,
-                    radii,
-                    gms,
-                    nut_prec,
-                    texture_metadata,
-                    clouds_metadata,
-                )
-                futures[f] = (zone, zoom)
+                _submit_zone(zone, zoom, _single_snapshot(objects))
+                # Detach the just-loaded ORM rows so the session's identity
+                # map stops pinning them. Workers keep them alive via their
+                # own Python refs; joinedload populated everything they need,
+                # so no lazy load can fire. Drop the local list ref too so
+                # the only owner is the future.
+                del objects
+                session.expunge_all()
 
             # Earth zones run inline: per-day overlays mutate the same Object
             # instances in-place, so multiple days can't be shipped to threads
@@ -1215,7 +1235,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             specular_metadata,
         )
         write_credits(
-            session, out_dir, texture_metadata, ring_metadata, clouds_metadata
+            session,
+            out_dir,
+            texture_metadata,
+            ring_metadata,
+            clouds_metadata,
+            skybox_metadata,
         )
 
         # Aggregate has_localized from elements futures before writing chebyshev
@@ -1369,9 +1394,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         zone_structure, chebyshev_zones, probe_zones
     )
     metadata: dict = {"position": position_metadata, "object_bundles": bundle_ns}
-    skybox_meta = load_skybox_metadata(out_dir)
-    if skybox_meta is not None:
-        metadata["skybox"] = skybox_block(skybox_meta)
+    if skybox_metadata is not None:
+        metadata["skybox"] = skybox_block(skybox_metadata)
     (out_dir / "metadata.json").write_bytes(
         orjson.dumps(metadata, option=orjson.OPT_INDENT_2)
     )
