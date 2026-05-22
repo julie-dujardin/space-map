@@ -1341,6 +1341,12 @@ interface Credits {
       description?: string;
     }>;
   }>;
+  skybox?: {                     // whole-sky cubemap backdrop — single global asset, no host body
+    source: string;
+    organisation: string;
+    attribution?: string;
+    description?: string;
+  };
 }
 ```
 
@@ -1353,7 +1359,9 @@ that bucket. Only bodies whose `metadata.json` exists on disk (under
 into further sibling keys (`models`, `mesh_assets`, …) on the same file when
 those pipelines come online. Static credits (orbital providers, SPICE/IAU
 rotation kernels, Wikidata, Wikipedia, Wikimedia Commons, IAU nomenclature)
-live in the frontend page itself and don't need to be emitted here.
+live in the frontend page itself and don't need to be emitted here. The
+top-level `skybox` block is emitted whenever a cubemap-skybox bundle exists
+under `textures/stars/` and mirrors the credit fields from its metadata.
 
 ## Consuming the data
 

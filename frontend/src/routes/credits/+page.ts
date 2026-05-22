@@ -58,8 +58,20 @@ export interface SystemGroup {
 	clouds?: CloudCredit[];
 }
 
+/**
+ * Whole-sky cubemap backdrop credit. Sits at the top level alongside `systems`
+ * because the skybox has no host body — it's a single global asset.
+ */
+export interface SkyboxCredit {
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
 export interface Credits {
 	systems: SystemGroup[];
+	skybox?: SkyboxCredit;
 }
 
 export const load = async ({

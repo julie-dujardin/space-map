@@ -129,6 +129,15 @@
 		</ul>
 	</section>
 
+	{#if ctx.skyboxCredit}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_skybox())}
+			<ul class="space-y-0.5">
+				<li>{@render link(ctx.skyboxCredit.source, ctx.skyboxCredit.organisation)}</li>
+			</ul>
+		</section>
+	{/if}
+
 	{#if ringList.length > 0}
 		<section class="space-y-1">
 			{@render sectionHeader(m.attribution_section_rings())}

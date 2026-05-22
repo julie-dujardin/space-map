@@ -3,10 +3,11 @@
 Feeds the `/credits` frontend page. Centralises everything that deserves a
 public thank-you so the page can render without fanning out per-body requests.
 
-Only texture credits are dynamic today — orbital ephemeris, rotation kernels,
-and metadata providers are static knowledge baked into the frontend. When
-asteroid textures or 3D mesh assets land later they should extend this file
-(e.g. a `"models"` key) rather than spawning a parallel export.
+Only texture, ring, cloud, and skybox credits are dynamic today — orbital
+ephemeris, rotation kernels, and metadata providers are static knowledge baked
+into the frontend. When asteroid textures or 3D mesh assets land later they
+should extend this file (e.g. a `"models"` key) rather than spawning a parallel
+export.
 """
 
 import logging
@@ -141,12 +142,26 @@ def _sibling_credit_entry(body_id: str, name: str, meta: dict) -> dict:
     return entry
 
 
+def _skybox_credit_entry(meta: dict) -> dict:
+    """Shape the top-level skybox credit entry from the bundle metadata."""
+    entry: dict = {
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+    }
+    if meta.get("attribution") is not None:
+        entry["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        entry["description"] = meta["description"]
+    return entry
+
+
 def write_credits(
     session: Session,
     out_dir: Path,
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    skybox_metadata: dict | None,
 ) -> None:
     """Emit `v1/credits.json` summarising every credit-worthy data source.
 
@@ -156,11 +171,17 @@ def write_credits(
     orbiting asteroids and dwarf planets like Bennu or Ceres) that don't
     belong to a system. Each system bucket carries sibling `textures`,
     `rings`, and `clouds` arrays — all optional; only populated arrays are
-    emitted.
+    emitted. The whole-sky cubemap skybox is a one-off backdrop with no host
+    body, so it rides at the top level alongside `systems`.
     """
-    if not texture_metadata and not ring_metadata and not clouds_metadata:
+    if (
+        not texture_metadata
+        and not ring_metadata
+        and not clouds_metadata
+        and not skybox_metadata
+    ):
         logger.info(
-            "No texture, ring, or cloud metadata available; skipping credits.json"
+            "No texture, ring, cloud, or skybox metadata available; skipping credits.json"
         )
         return
 
@@ -257,7 +278,9 @@ def write_credits(
             bucket["clouds"] = clouds_grouped[None]
         systems_out.append(bucket)
 
-    payload = {"systems": systems_out}
+    payload: dict = {"systems": systems_out}
+    if skybox_metadata is not None:
+        payload["skybox"] = _skybox_credit_entry(skybox_metadata)
     (out_dir / "credits.json").write_bytes(
         orjson.dumps(payload, option=orjson.OPT_INDENT_2)
     )
@@ -265,9 +288,10 @@ def write_credits(
     n_rings = sum(len(g) for g in rings_grouped.values())
     n_clouds = sum(len(g) for g in clouds_grouped.values())
     logger.info(
-        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies)",
+        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies%s)",
         len(systems_out),
         n_textures,
         n_rings,
         n_clouds,
+        ", + skybox" if skybox_metadata is not None else "",
     )

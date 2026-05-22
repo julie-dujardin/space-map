@@ -89,6 +89,20 @@
 			<p class="text-xs text-muted-foreground mt-2">{m.credits_images_individual_note()}</p>
 		</section>
 
+		{#if credits.skybox}
+			<section>
+				{@render sectionHeader(m.attribution_section_skybox())}
+				<ul class="space-y-1">
+					<li>
+						{@render link(credits.skybox.source, credits.skybox.organisation)}
+						{#if credits.skybox.attribution}
+							<div class="text-xs text-muted-foreground mt-0.5">{credits.skybox.attribution}</div>
+						{/if}
+					</li>
+				</ul>
+			</section>
+		{/if}
+
 		{#if credits.systems.some((g) => g.rings && g.rings.length > 0)}
 			<section>
 				{@render sectionHeader(m.attribution_section_rings())}

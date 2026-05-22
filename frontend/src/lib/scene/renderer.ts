@@ -363,7 +363,7 @@ export class SceneRenderer {
 		// Seed the rotation synchronously so it's correct from frame 1 (and so a
 		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
 		this.setSkyboxAdjust(0, 0, 0);
-		void loadSkybox(this.scene, this.renderer);
+		void loadSkybox(this.scene, this.renderer, ctx);
 
 		// Directional sun light for sub-system view (swapped in when zoomed
 		// into a planet's moon system; PointLight at the Sun handles

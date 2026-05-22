@@ -161,6 +161,18 @@ export interface CloudCredit {
 }
 
 /**
+ * Whole-sky cubemap backdrop attribution. Recorded once when `loadSkybox`
+ * resolves the bundle metadata; no per-body scoping because the skybox is a
+ * single global asset rendered behind the whole scene.
+ */
+export interface SkyboxCredit {
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Create a placeholder PositionedBody from the __global__ object file along
  * with the SBDB-class zone id (e.g. `"MBA"`) for routing — null when the
  * object has no SBDB record, in which case the caller falls back to
@@ -326,6 +338,11 @@ export class ContextManager {
 	 */
 	cloudCredits = new Map<string, CloudCredit>();
 	cloudCreditsVersion = $state(0);
+	/**
+	 * Whole-sky cubemap backdrop attribution. Single global asset, so no map —
+	 * just a nullable slot populated once when `loadSkybox` resolves.
+	 */
+	skyboxCredit = $state<SkyboxCredit | null>(null);
 	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
 	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
 	 *  consumers — currently the compass-north choice list — recompute as

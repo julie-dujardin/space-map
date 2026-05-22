@@ -47,6 +47,7 @@ import {
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { fetchMetadata, type SkyboxMetadata } from '$lib/fetch/metadata';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
+import type { ContextManager } from '$lib/scene/context-manager.svelte';
 
 const DEG2RAD = Math.PI / 180;
 const OBLIQUITY_RAD = EARTH_OBLIQUITY_DEG * DEG2RAD;
@@ -117,14 +118,26 @@ async function loadFromMeta(
 /**
  * Fetch the top-level metadata (memoized; shares the chunk-prefetcher's
  * promise), pick a tier, and install the cubemap-skybox bundle as
- * `scene.background`. Fire-and-forget from the renderer init path — errors
- * (including a missing skybox block) are swallowed with a console warning so
- * the scene falls back to its default black background instead of breaking.
+ * `scene.background`. Also publishes the bundle's credit fields onto
+ * `ctx.skyboxCredit` so the in-map attribution popover can surface them.
+ * Fire-and-forget from the renderer init path — errors (including a missing
+ * skybox block) are swallowed with a console warning so the scene falls back
+ * to its default black background instead of breaking.
  */
-export async function loadSkybox(scene: Scene, renderer: WebGLRenderer): Promise<void> {
+export async function loadSkybox(
+	scene: Scene,
+	renderer: WebGLRenderer,
+	ctx: ContextManager
+): Promise<void> {
 	try {
 		const meta = await fetchMetadata();
 		if (!meta.skybox) return;
+		ctx.skyboxCredit = {
+			source: meta.skybox.source,
+			organisation: meta.skybox.organisation,
+			attribution: meta.skybox.attribution,
+			description: meta.skybox.description
+		};
 		await loadFromMeta(scene, renderer, meta.skybox);
 	} catch (err) {
 		console.warn('Failed to load skybox:', err);
