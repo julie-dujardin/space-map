@@ -12,6 +12,20 @@ import {
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import { f64dist, type Vec3 } from '../animation/math';
+import {
+	STAR_POINT_FLOOR_INTENSITY,
+	STAR_POINT_HANDOFF_INTENSITY,
+	STAR_POINT_SIZE_PX
+} from '../objects/sun';
+
+/**
+ * Screen radius (px) at which the photosphere mesh hands off to the star
+ * point: the mesh's projected disc and the point sprite cover the same area
+ * here, so the two render contributions can be matched in HDR for a smooth
+ * bloom transition. See `STAR_POINT_HANDOFF_INTENSITY` for the brightness
+ * side of the handoff.
+ */
+const STAR_POINT_HANDOFF_R = STAR_POINT_SIZE_PX / 2;
 
 // Pooled occluder array — reused across frames; trimmed to active prefix via
 // `.length = active` so existing iter/`for-of` consumers keep working. Empty
@@ -200,14 +214,30 @@ export function updateBodyVisibility(
 			showLabel = false;
 		}
 
-		// Star extras: sub-pixel dot toggles with mesh size; stars always
-		// keep their group visible and derive isClose from screen size
-		// (they have no orbital semi-major axis, so the tier is always FULL).
+		// Star extras: the point sprite takes over once the mesh disc has
+		// shrunk to the point's own on-screen area (`screenR < SIZE/2`), so
+		// the two cover the same number of pixels at the handoff and the
+		// alpha-blended overlap can be matched in HDR. Beyond the handoff
+		// the point's `uIntensity` falls as the squared ratio of the current
+		// to handoff screen radius — equivalent to the physical 1/d²
+		// apparent-flux law since `screenR ∝ 1/d`. The floor keeps the dot
+		// visible at LDR (no bloom) once the apparent flux drops below the
+		// bloom threshold — roughly the look of the Sun from Pluto's orbit.
 		if (bo.starPoint) {
 			const screenR = (bo.radiusScene / dist) * projScale;
-			bo.starPoint.visible = screenR < 1;
+			const subPixel = screenR < STAR_POINT_HANDOFF_R;
+			bo.starPoint.visible = subPixel;
+			if (subPixel) {
+				const material = bo.starPoint.material as ShaderMaterial;
+				const t = screenR / STAR_POINT_HANDOFF_R;
+				const intensity = Math.max(
+					STAR_POINT_HANDOFF_INTENSITY * t * t,
+					STAR_POINT_FLOOR_INTENSITY
+				);
+				material.uniforms.uIntensity.value = intensity;
+			}
 			group.visible = true;
-			isClose = screenR >= 1;
+			isClose = !subPixel;
 			showLabel = !isClose;
 		}
 

@@ -6,13 +6,64 @@ import {
 	Float32BufferAttribute,
 	PointLight,
 	Points,
-	PointsMaterial,
 	Scene,
 	ShaderMaterial,
 	Sprite,
 	SpriteMaterial,
 	Vector3
 } from 'three';
+
+/**
+ * HDR over-bright multiplier the photosphere fragment shader writes for each
+ * pixel of the sun's disc (modulated by Eddington limb darkening). The bloom
+ * pass + ACES tonemap above 1.0 turn this into the saturated white + halo
+ * look. Shared with the star-point handoff calc so the dot's brightness
+ * tracks the mesh's whenever this is tuned.
+ */
+export const SUN_HDR_MULTIPLIER = 6;
+/**
+ * Disc-averaged intensity factor for the Eddington limb-darkening law
+ * `I(μ) = I₀(1 − u + u·μ)` with `u = 0.6`. Closed-form integral over the
+ * projected disc: `⟨I⟩/I₀ = 1 − u/3 = 0.8`. Used to convert the centre-pixel
+ * HDR (`SUN_HDR_MULTIPLIER`) into the average per-pixel HDR the star-point
+ * needs to deliver for a smooth bloom handoff.
+ */
+const EDDINGTON_DISC_AVG = 0.8;
+/**
+ * Pixel diameter of the star-point sprite. The visibility pass switches from
+ * mesh to point when the mesh's projected radius drops below `SIZE/2` — i.e.
+ * the moment their on-screen areas coincide.
+ */
+export const STAR_POINT_SIZE_PX = 4;
+/**
+ * Uniform alpha of the circle texture sampled by the star-point shader
+ * (`makeCircleTexture` fills with `globalAlpha = 0.3`). Under normal alpha
+ * blending against a near-black background, the framebuffer ends up at
+ * `uColor · uIntensity · texelAlpha`, so this divides out of the handoff
+ * intensity calculation.
+ */
+const STAR_POINT_TEXEL_ALPHA = 0.3;
+/**
+ * HDR `uIntensity` the star-point shader emits at the handoff moment
+ * (`screenR == STAR_POINT_SIZE_PX/2`, where mesh and point cover the same
+ * area). Derived so the point's average per-pixel framebuffer HDR matches
+ * the mesh's disc-averaged HDR:
+ *
+ *     uIntensity · texelAlpha = SUN_HDR_MULTIPLIER · EDDINGTON_DISC_AVG
+ *
+ * giving a continuous bloom contribution across the handoff. The visibility
+ * pass scales this down as `(screenR / (SIZE/2))²` once past the handoff for
+ * the inverse-square apparent-brightness fall-off with distance.
+ */
+export const STAR_POINT_HANDOFF_INTENSITY =
+	(SUN_HDR_MULTIPLIER * EDDINGTON_DISC_AVG) / STAR_POINT_TEXEL_ALPHA;
+/**
+ * Lower bound on the star-point HDR uniform. Sits just above the bloom
+ * threshold (1.0) so even at apparent fluxes well below handoff, the dot
+ * still picks up a faint halo — roughly how a bright distant star reads on
+ * a real-camera exposure rather than a hard LDR speck.
+ */
+export const STAR_POINT_FLOOR_INTENSITY = 3;
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */
 export interface StarExtras {
@@ -120,7 +171,7 @@ export function makeStarSurfaceMaterial(): ShaderMaterial {
 				// 1.0 and tone-maps via ACES, so the disc centre saturates to
 				// white with a soft halo of bleeding light — same look a camera
 				// gets when pointed at the Sun, rather than a flat cream ball.
-				gl_FragColor = vec4(tint * darkening * 6.0, 1.0);
+				gl_FragColor = vec4(tint * darkening * ${SUN_HDR_MULTIPLIER.toFixed(1)}, 1.0);
 			}
 		`
 	});
@@ -146,16 +197,47 @@ function makeStarGlow(radius: number, color: string): Sprite {
 	return corona;
 }
 
-/** Single fixed-size dot, visible when the star's mesh is sub-pixel. */
+/**
+ * Single fixed-size dot, visible when the star's mesh is sub-pixel. Uses a
+ * custom shader (not `PointsMaterial`) so its output can exceed 1.0 in linear
+ * space and feed the bloom pass — without that, the dot is clamped to LDR and
+ * the sun's bloom would vanish the instant the mesh drops below one pixel.
+ * `uIntensity` is driven per-frame from `screenR²` (visibility/update.ts),
+ * giving an inverse-square apparent-brightness fall-off with distance.
+ */
 function makeStarPoint(color: string, circleTexture: CanvasTexture): Points {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(3), 3));
-	const material = new PointsMaterial({
-		color,
-		map: circleTexture,
+	const c = new Color(color);
+	const material = new ShaderMaterial({
+		uniforms: {
+			uColor: { value: new Vector3(c.r, c.g, c.b) },
+			uIntensity: { value: STAR_POINT_HANDOFF_INTENSITY },
+			uMap: { value: circleTexture }
+		},
+		vertexShader: `
+			#include <common>
+			#include <logdepthbuf_pars_vertex>
+			void main() {
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+				gl_PointSize = ${STAR_POINT_SIZE_PX.toFixed(1)};
+				#include <logdepthbuf_vertex>
+			}
+		`,
+		fragmentShader: `
+			#include <common>
+			#include <logdepthbuf_pars_fragment>
+			uniform vec3 uColor;
+			uniform float uIntensity;
+			uniform sampler2D uMap;
+			void main() {
+				#include <logdepthbuf_fragment>
+				vec4 texel = texture2D(uMap, gl_PointCoord);
+				if (texel.a < 0.01) discard;
+				gl_FragColor = vec4(uColor * uIntensity, texel.a);
+			}
+		`,
 		transparent: true,
-		size: 6,
-		sizeAttenuation: false,
 		depthTest: true,
 		depthWrite: false
 	});
