@@ -3,6 +3,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { archiveLabel } from '$lib/credits/archive-labels';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import {
@@ -68,10 +69,7 @@
 		return ORBIT_CLASS_LABEL[id]?.() ?? id;
 	}
 
-	// Localized provider names for OrbitalSource. Both SPICE variants reuse the
-	// ephemeris-kernel label (vs the PCK-orientation one) since this row describes
-	// orbits. UNKNOWN is omitted on purpose — handled by warning + null in
-	// `dataSourceLabel`.
+	// Fallback when the global JSON predates `ephemeris_source`.
 	const ORBIT_SOURCE_LABEL: Partial<Record<OrbitalSource, () => string>> = {
 		[OrbitalSource.HORIZONS]: m.source_horizons_name,
 		[OrbitalSource.SBDB]: m.source_sbdb_name,
@@ -190,6 +188,8 @@
 	);
 
 	let dataSourceLabel = $derived.by(() => {
+		const archive = archiveLabel(global?.ephemeris_source);
+		if (archive) return archive;
 		const src = body?.data.orbitalSource;
 		if (src == null) return null;
 		const label = ORBIT_SOURCE_LABEL[src];

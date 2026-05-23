@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import { archiveLabel } from '$lib/credits/archive-labels';
 	import type { Credits } from './+page';
 
 	interface Props {
@@ -47,14 +48,11 @@
 		<section>
 			{@render sectionHeader(m.attribution_section_orbits())}
 			<ul class="space-y-1">
-				<li>{@render link('https://ssd.jpl.nasa.gov/horizons/', m.source_horizons_name())}</li>
-				<li>
-					{@render link('https://ssd.jpl.nasa.gov/tools/sbdb_query.html', m.source_sbdb_name())}
-				</li>
-				<li>
-					{@render link('https://naif.jpl.nasa.gov/naif/', m.source_spice_ephemeris_name())}
-				</li>
-				<li>{@render link('https://celestrak.org/', m.source_celestrak_name())}</li>
+				{#each credits.ephemeris_archives as archive (archive.id)}
+					<li>
+						{@render link(archive.source, archiveLabel(archive.id) ?? archive.organisation)}
+					</li>
+				{/each}
 			</ul>
 		</section>
 

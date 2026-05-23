@@ -69,8 +69,16 @@ export interface SkyboxCredit {
 	description?: string;
 }
 
+/** Entry in the orbital-credits section; `id` matches `global.ephemeris_source`. */
+export interface EphemerisArchive {
+	id: string;
+	source: string;
+	organisation: string;
+}
+
 export interface Credits {
 	systems: SystemGroup[];
+	ephemeris_archives: EphemerisArchive[];
 	skybox?: SkyboxCredit;
 }
 

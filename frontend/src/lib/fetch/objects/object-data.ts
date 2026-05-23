@@ -59,6 +59,9 @@ export interface GlobalObjectData {
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
 	nasa_science_url?: string;
+	/** Archive id (e.g. `"naif"`, `"esa"`, `"naif-pds3"`); resolves to a
+	 *  label via `$lib/credits/archive-labels`. */
+	ephemeris_source?: string;
 	cross_refs?: {
 		wikidata_qid?: string;
 		naif_id?: number;
