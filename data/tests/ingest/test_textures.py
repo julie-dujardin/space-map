@@ -5,15 +5,16 @@ import json
 import numpy as np
 from PIL import Image
 
-from space_map_data.ingest.providers import textures
 from space_map_data.ingest.providers.textures import (
+    EARTH_CLOUDS_OBJECT_ID,
     MAX_FILE_BYTES,
     MIN_QUALITY,
     TextureProcessor,
-    _any_export_over_cap,
-    _expand_entry_files,
-    _save_webp,
+    any_export_over_cap,
+    expand_entry_files,
+    save_webp,
 )
+from space_map_data.ingest.providers.textures import config
 
 
 def _make_noise(width: int, height: int) -> Image.Image:
@@ -33,12 +34,12 @@ def _make_gradient(width: int, height: int) -> Image.Image:
 
 
 class TestSaveWebpCap:
-    """_save_webp enforces MAX_FILE_BYTES by reducing quality, then dims."""
+    """save_webp enforces MAX_FILE_BYTES by reducing quality, then dims."""
 
     def test_small_image_saves_at_default_quality(self, tmp_path):
         """Trivially small images fit under the cap with no degradation."""
         img = Image.new("RGB", (64, 32), color="red")
-        rec = _save_webp(img, tmp_path / "out.webp", lossless=False)
+        rec = save_webp(img, tmp_path / "out.webp", lossless=False)
         assert rec["width"] == 64
         assert rec["height"] == 32
         assert rec["size_bytes"] < MAX_FILE_BYTES
@@ -46,18 +47,17 @@ class TestSaveWebpCap:
 
     def test_lossless_skips_cap_but_warns(self, tmp_path, caplog):
         """Lossless path preserves the image even if oversized — but warns."""
-        caplog.set_level("WARNING", logger="space_map_data.ingest.providers.textures")
+        caplog.set_level("WARNING")
         img = _make_noise(512, 512)
         # Use an impossibly tight cap to force the warning branch.
-        rec = _save_webp(img, tmp_path / "out.webp", lossless=True, max_bytes=1024)
+        rec = save_webp(img, tmp_path / "out.webp", lossless=True, max_bytes=1024)
         assert rec["lossless"] is True
         assert rec["width"] == 512
         assert any("exceeds cap" in r.message for r in caplog.records)
 
-    def test_quality_drops_to_fit_cap(self, tmp_path, caplog):
+    def test_quality_drops_to_fit_cap(self, tmp_path):
         """A gradient image (compresses well at lower quality) lands under a
         mid-range cap after one or two quality steps, without resizing."""
-        caplog.set_level("INFO", logger="space_map_data.ingest.providers.textures")
         img = _make_gradient(1024, 1024)
 
         # Encode at q=80 and MIN_QUALITY to bracket the achievable size range.
@@ -71,7 +71,7 @@ class TestSaveWebpCap:
         # Cap midway between the two so exactly one quality step should be
         # enough — the test exercises the "q down, no resize" path.
         cap = (q_min + q80) // 2
-        rec = _save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=cap)
+        rec = save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=cap)
         assert rec["width"] == 1024  # no resize
         assert rec["size_bytes"] <= cap
         assert rec.get("quality") is not None
@@ -83,8 +83,8 @@ class TestSaveWebpCap:
         Uses a noise image (uncompressible) and a permissive MIN_DIM floor so
         the test runs fast without actually shrinking below a reasonable size.
         """
-        caplog.set_level("INFO", logger="space_map_data.ingest.providers.textures")
-        monkeypatch.setattr(textures, "MIN_DIM_AFTER_SHRINK", 256)
+        caplog.set_level("INFO")
+        monkeypatch.setattr(config, "MIN_DIM_AFTER_SHRINK", 256)
         img = _make_noise(1024, 1024)
 
         # Probe at MIN_QUALITY — noise compresses poorly, natural floor is
@@ -93,7 +93,7 @@ class TestSaveWebpCap:
         min_q_size = (tmp_path / "probe.webp").stat().st_size
         cap = min_q_size // 5
 
-        rec = _save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=cap)
+        rec = save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=cap)
         assert rec["size_bytes"] <= cap
         # Must have shrunk below the original 1024 longest side.
         assert max(rec["width"], rec["height"]) < 1024
@@ -105,16 +105,16 @@ class TestSaveWebpCap:
         output stays on disk and an error is logged. Uses a small noise image
         so the shrink loop terminates quickly (first shrink already undershoots
         the default MIN_DIM_AFTER_SHRINK=4096)."""
-        caplog.set_level("ERROR", logger="space_map_data.ingest.providers.textures")
+        caplog.set_level("ERROR")
         img = _make_noise(1024, 1024)  # first shrink → 870 < 4096 floor
-        rec = _save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=1)
+        rec = save_webp(img, tmp_path / "out.webp", lossless=False, max_bytes=1)
         assert (tmp_path / "out.webp").exists()
         assert rec["size_bytes"] > 1
         assert any("cannot fit" in r.message for r in caplog.records)
 
 
 class TestAnyExportOverCap:
-    """_any_export_over_cap triggers auto-reprocess when a bundle is stale."""
+    """any_export_over_cap triggers auto-reprocess when a bundle is stale."""
 
     def test_returns_true_when_any_export_exceeds(self, tmp_path):
         (tmp_path / "metadata.json").write_text(
@@ -127,7 +127,7 @@ class TestAnyExportOverCap:
                 }
             )
         )
-        assert _any_export_over_cap(tmp_path) is True
+        assert any_export_over_cap(tmp_path) is True
 
     def test_returns_false_when_all_under_cap(self, tmp_path):
         (tmp_path / "metadata.json").write_text(
@@ -140,14 +140,14 @@ class TestAnyExportOverCap:
                 }
             )
         )
-        assert _any_export_over_cap(tmp_path) is False
+        assert any_export_over_cap(tmp_path) is False
 
     def test_missing_metadata_returns_false(self, tmp_path):
-        assert _any_export_over_cap(tmp_path) is False
+        assert any_export_over_cap(tmp_path) is False
 
     def test_corrupt_metadata_returns_false(self, tmp_path):
         (tmp_path / "metadata.json").write_text("{not json")
-        assert _any_export_over_cap(tmp_path) is False
+        assert any_export_over_cap(tmp_path) is False
 
     def test_nested_monthly_exports_detected_over_cap(self, tmp_path):
         """Monthly metadata nests records one level deeper (frame → tier → rec).
@@ -172,15 +172,15 @@ class TestAnyExportOverCap:
                 }
             )
         )
-        assert _any_export_over_cap(tmp_path) is True
+        assert any_export_over_cap(tmp_path) is True
 
 
 class TestExpandEntryFiles:
-    """_expand_entry_files turns a yaml entry into concrete raw filenames."""
+    """expand_entry_files turns a yaml entry into concrete raw filenames."""
 
     def test_single_frame_identity(self):
         entry = {"file": "mars.tif", "type": "cylindrical"}
-        assert _expand_entry_files(entry) == ["mars.tif"]
+        assert expand_entry_files(entry) == ["mars.tif"]
 
     def test_monthly_template_expands(self):
         entry = {
@@ -188,7 +188,7 @@ class TestExpandEntryFiles:
             "type": "cylindrical_monthly",
             "months": 12,
         }
-        result = _expand_entry_files(entry)
+        result = expand_entry_files(entry)
         assert len(result) == 12
         assert result[0] == "world.200401.tif"
         assert result[5] == "world.200406.tif"
@@ -200,7 +200,7 @@ class TestExpandEntryFiles:
             "file": "x.{month}.tif",
             "type": "cylindrical_monthly",
         }
-        assert len(_expand_entry_files(entry)) == 12
+        assert len(expand_entry_files(entry)) == 12
 
 
 class TestProcessMonthly:
@@ -216,8 +216,8 @@ class TestProcessMonthly:
         processed = tmp_path / "processed"
         raw.mkdir()
         processed.mkdir()
-        monkeypatch.setattr(textures, "RAW_DIR", raw)
-        monkeypatch.setattr(textures, "PROCESSED_DIR", processed)
+        monkeypatch.setattr(config, "RAW_DIR", raw)
+        monkeypatch.setattr(config, "PROCESSED_DIR", processed)
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = [entry]
         proc._global_warnings = []
@@ -246,11 +246,11 @@ class TestProcessMonthly:
             "months": 3,
         }
         proc = self._make_processor(monkeypatch, tmp_path, entry)
-        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
+        self._seed_frames(config.RAW_DIR, entry["file"], entry["months"])
 
         proc._process_monthly(entry)
 
-        body_dir = textures.PROCESSED_DIR / "naif-399"
+        body_dir = config.PROCESSED_DIR / "naif-399"
         meta = json.loads((body_dir / "metadata.json").read_text())
         assert meta["type"] == "cylindrical_monthly"
         assert meta["frames"] == 3
@@ -274,8 +274,8 @@ class TestProcessMonthly:
             "months": 2,
         }
         proc = self._make_processor(monkeypatch, tmp_path, entry)
-        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
-        body_dir = textures.PROCESSED_DIR / "naif-399"
+        self._seed_frames(config.RAW_DIR, entry["file"], entry["months"])
+        body_dir = config.PROCESSED_DIR / "naif-399"
         body_dir.mkdir()
         for stale in ("low.webp", "medium.webp", "high.webp"):
             (body_dir / stale).write_bytes(b"stale")
@@ -288,7 +288,7 @@ class TestProcessMonthly:
     def test_missing_source_logs_warning_and_skips_frame(
         self, tmp_path, monkeypatch, caplog
     ):
-        caplog.set_level("WARNING", logger="space_map_data.ingest.providers.textures")
+        caplog.set_level("WARNING")
         entry = {
             "body": "naif-399",
             "body_name": "earth",
@@ -302,12 +302,12 @@ class TestProcessMonthly:
         # Seed only months 1 and 3; 2 is missing.
         for m in (1, 3):
             img = Image.new("RGB", (128, 64), color="blue")
-            img.save(textures.RAW_DIR / entry["file"].format(month=m))
+            img.save(config.RAW_DIR / entry["file"].format(month=m))
 
         proc._process_monthly(entry)
 
         meta = json.loads(
-            (textures.PROCESSED_DIR / "naif-399" / "metadata.json").read_text()
+            (config.PROCESSED_DIR / "naif-399" / "metadata.json").read_text()
         )
         assert sorted(meta["exports"].keys()) == ["01", "03"]
         assert any("monthly source missing" in r.message for r in caplog.records)
@@ -326,14 +326,14 @@ class TestProcessMonthly:
             "months": 2,
         }
         proc = self._make_processor(monkeypatch, tmp_path, entry)
-        self._seed_frames(textures.RAW_DIR, entry["file"], entry["months"])
+        self._seed_frames(config.RAW_DIR, entry["file"], entry["months"])
         proc._process_monthly(entry)
 
-        body_dir = textures.PROCESSED_DIR / "naif-399"
+        body_dir = config.PROCESSED_DIR / "naif-399"
         # Mutate yaml to claim 3 frames; add a 3rd source so the processor can
         # produce it.
         img = Image.new("RGB", (128, 64), color="green")
-        img.save(textures.RAW_DIR / entry["file"].format(month=3))
+        img.save(config.RAW_DIR / entry["file"].format(month=3))
         new_entry = {**entry, "months": 3}
 
         proc._process_monthly(new_entry)
@@ -355,8 +355,8 @@ class TestProcessClouds:
         processed = tmp_path / "processed"
         clouds.mkdir()
         processed.mkdir()
-        monkeypatch.setattr(textures, "EARTH_CLOUDS_DIR", clouds)
-        monkeypatch.setattr(textures, "PROCESSED_DIR", processed)
+        monkeypatch.setattr(config, "EARTH_CLOUDS_DIR", clouds)
+        monkeypatch.setattr(config, "PROCESSED_DIR", processed)
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = []
         proc._global_warnings = []
@@ -391,15 +391,15 @@ class TestProcessClouds:
 
     def test_exports_every_snapshot_and_writes_metadata(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_metadata(config.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
 
         proc._process_clouds()
 
-        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
         meta = json.loads((out_dir / "metadata.json").read_text())
-        assert meta["id"] == textures.EARTH_CLOUDS_OBJECT_ID
+        assert meta["id"] == EARTH_CLOUDS_OBJECT_ID
         assert meta["type"] == "clouds_overlay"
         assert meta["attribution"] == "Contains modified EUMETSAT data"
         assert meta["source"] == "https://example.com/clouds.png"
@@ -414,16 +414,16 @@ class TestProcessClouds:
 
     def test_incrementally_adds_new_snapshot(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_metadata(config.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
         proc._process_clouds()
 
-        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
         assert json.loads((out_dir / "metadata.json").read_text())["frames"] == [
             "2026050500"
         ]
 
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
         proc._process_clouds()
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["frames"] == ["2026050500", "2026050518"]
@@ -433,16 +433,16 @@ class TestProcessClouds:
 
     def test_purges_outputs_for_vanished_snapshots(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_metadata(config.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
         proc._process_clouds()
 
-        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
         assert (out_dir / "low_2026050500.webp").exists()
 
         # Delete the older snapshot and reprocess; its outputs must go too.
-        (textures.EARTH_CLOUDS_DIR / "2026" / "05" / "05" / "00.png").unlink()
+        (config.EARTH_CLOUDS_DIR / "2026" / "05" / "05" / "00.png").unlink()
         proc._process_clouds()
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["frames"] == ["2026050518"]
@@ -450,11 +450,11 @@ class TestProcessClouds:
 
     def test_skips_when_frame_inventory_unchanged(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(textures.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        self._seed_metadata(config.EARTH_CLOUDS_DIR)
+        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
         proc._process_clouds()
 
-        out_dir = textures.PROCESSED_DIR / textures.EARTH_CLOUDS_OBJECT_ID
+        out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
         first_ts = json.loads((out_dir / "metadata.json").read_text())["processed_at"]
 
         proc._process_clouds()
@@ -462,20 +462,20 @@ class TestProcessClouds:
         assert first_ts == second_ts
 
     def test_no_snapshots_warns_and_skips(self, tmp_path, monkeypatch, caplog):
-        caplog.set_level("WARNING", logger="space_map_data.ingest.providers.textures")
+        caplog.set_level("WARNING")
         proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(textures.EARTH_CLOUDS_DIR)
+        self._seed_metadata(config.EARTH_CLOUDS_DIR)
 
         result = proc._process_clouds()
-        assert result == textures.PROCESSED_DIR
+        assert result == config.PROCESSED_DIR
         assert any("no earth_clouds snapshots" in r.message for r in caplog.records)
         assert any("no earth_clouds snapshots" in w for w in proc._global_warnings)
 
     def test_missing_clouds_dir_is_silent_noop(self, tmp_path, monkeypatch):
         proc = self._make_processor(monkeypatch, tmp_path)
         # Remove the dir created by _make_processor.
-        textures.EARTH_CLOUDS_DIR.rmdir()
+        config.EARTH_CLOUDS_DIR.rmdir()
 
         result = proc._process_clouds()
-        assert result == textures.PROCESSED_DIR
+        assert result == config.PROCESSED_DIR
         assert proc._global_warnings == []
