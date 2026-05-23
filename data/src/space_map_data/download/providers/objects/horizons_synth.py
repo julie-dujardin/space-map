@@ -735,6 +735,50 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
     return sorted(out, key=lambda r: -abs(r[0]))
 
 
+def qid_deduped_synth_naifs(cache: dict[str, dict] | None = None) -> set[int]:
+    """NAIF IDs of HORIZONS-SYNTH probes whose QID matches an SPK-backed agency probe.
+
+    Resolves cases where Horizons assigns its own NAIF to a spacecraft already
+    served by an agency SPK under a different NAIF — e.g. INTEGRAL (agency
+    -275 / Horizons -198, both Q50021). Horizons' coarse-sampled ephemerides
+    cannot resolve highly elliptical perigee passes and may place the probe
+    below the central body's surface, so the agency SPK always wins when both
+    are present. The filter is consulted at synthesis time (skips re-fetch)
+    AND at export-enumeration time (drops the synth probe from the chunk plan
+    even when `_index.json` still lists it).
+
+    Only agency missions that publish SPK kernels (those with an
+    `<mission>/_index.json` under `missions/`) count as "covered" — metadata-
+    only buckets like EVENTS-DB carry probe-events but no ephemeris, so
+    deduping a synth against them would leave the probe with no trajectory
+    at all (e.g. Tianwen-1 has only the Horizons synth at NAIF -86).
+    """
+    from space_map_data.probes.probe_id import _load_cache
+
+    if cache is None:
+        cache = _load_cache()
+    missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
+    spk_missions: set[str] = set()
+    if missions_dir.exists():
+        spk_missions = {
+            p.name
+            for p in missions_dir.iterdir()
+            if p.is_dir()
+            and p.name != "HORIZONS-SYNTH"
+            and (p / "_index.json").exists()
+        }
+    agency_qids: set[str] = {
+        r["wikidata_qid"]
+        for r in cache.values()
+        if r.get("mission") in spk_missions and r.get("wikidata_qid")
+    }
+    return {
+        int(r["naif_id"])
+        for r in cache.values()
+        if r.get("mission") == "HORIZONS-SYNTH" and r.get("wikidata_qid") in agency_qids
+    }
+
+
 def _existing_agency_naifs() -> set[int]:
     """NAIF IDs already covered by agency-published SPKs under `missions/`."""
     missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
@@ -839,12 +883,16 @@ class HorizonsSyntheticDownloader(Downloader):
             )
         all_sc = _parse_horizons_spacecraft(mb_path.read_text())
         agency = _existing_agency_naifs()
-        candidates = [(n, nm) for n, nm in all_sc if n not in agency]
+        qid_dups = qid_deduped_synth_naifs()
+        candidates = [
+            (n, nm) for n, nm in all_sc if n not in agency and n not in qid_dups
+        ]
         logger.info(
             "horizons-synth: %d MB spacecraft - %d already in missions/ "
-            "= %d to synthesize",
+            "- %d qid-deduped against agency = %d to synthesize",
             len(all_sc),
             len(agency),
+            len(qid_dups),
             len(candidates),
         )
         if limit is not None:

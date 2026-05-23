@@ -296,3 +296,94 @@ class TestIdentifyRefinementWindows:
         )
         # Start must be on or after 2000-01-02 (coverage_start + 1d margin).
         assert windows[0][0] >= "2000-01-02"
+
+
+class TestQidDedupedSynthNaifs:
+    """Cross-mission deduplication of HORIZONS-SYNTH probes by Wikidata QID."""
+
+    @staticmethod
+    def _missions_dir_with(tmp_path, names):
+        """Create stub mission dirs with empty `_index.json` for each name."""
+        missions = tmp_path / "spice" / "kernels" / "missions"
+        missions.mkdir(parents=True)
+        for n in names:
+            (missions / n).mkdir()
+            (missions / n / "_index.json").write_text("{}")
+        return missions
+
+    def test_dedups_synth_naif_against_spk_backed_agency(self, tmp_path, monkeypatch):
+        # INTEGRAL case: ESA SPK at -275, Horizons synth at -198, both Q50021.
+        self._missions_dir_with(tmp_path, ["INTEGRAL"])
+        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        cache = {
+            "INTEGRAL/-275": {
+                "mission": "INTEGRAL",
+                "naif_id": -275,
+                "wikidata_qid": "Q50021",
+            },
+            "HORIZONS-SYNTH/-198": {
+                "mission": "HORIZONS-SYNTH",
+                "naif_id": -198,
+                "wikidata_qid": "Q50021",
+            },
+        }
+        assert hs.qid_deduped_synth_naifs(cache) == {-198}
+
+    def test_ignores_metadata_only_buckets(self, tmp_path, monkeypatch):
+        # EVENTS-DB has no `missions/EVENTS-DB/` SPK dir, so it must not act
+        # as an agency match — Tianwen-1's only ephemeris is the synth.
+        self._missions_dir_with(tmp_path, ["INTEGRAL"])  # arbitrary; not the match
+        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        cache = {
+            "EVENTS-DB/-90000051": {
+                "mission": "EVENTS-DB",
+                "naif_id": -90000051,
+                "wikidata_qid": "Q49011",
+            },
+            "HORIZONS-SYNTH/-86": {
+                "mission": "HORIZONS-SYNTH",
+                "naif_id": -86,
+                "wikidata_qid": "Q49011",
+            },
+        }
+        assert hs.qid_deduped_synth_naifs(cache) == set()
+
+    def test_no_match_when_qids_differ(self, tmp_path, monkeypatch):
+        self._missions_dir_with(tmp_path, ["JUNO"])
+        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        cache = {
+            "JUNO/-61": {
+                "mission": "JUNO",
+                "naif_id": -61,
+                "wikidata_qid": "Q186287",
+            },
+            "HORIZONS-SYNTH/-227": {
+                "mission": "HORIZONS-SYNTH",
+                "naif_id": -227,
+                "wikidata_qid": "Q15839",  # Kepler, no collision
+            },
+        }
+        assert hs.qid_deduped_synth_naifs(cache) == set()
+
+    def test_empty_cache_returns_empty_set(self, tmp_path, monkeypatch):
+        self._missions_dir_with(tmp_path, ["INTEGRAL"])
+        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        assert hs.qid_deduped_synth_naifs({}) == set()
+
+    def test_synth_without_qid_is_kept(self, tmp_path, monkeypatch):
+        # Brand-new synth entries lack a curated QID — never dedup them.
+        self._missions_dir_with(tmp_path, ["INTEGRAL"])
+        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        cache = {
+            "INTEGRAL/-275": {
+                "mission": "INTEGRAL",
+                "naif_id": -275,
+                "wikidata_qid": "Q50021",
+            },
+            "HORIZONS-SYNTH/-198": {
+                "mission": "HORIZONS-SYNTH",
+                "naif_id": -198,
+                "wikidata_qid": None,
+            },
+        }
+        assert hs.qid_deduped_synth_naifs(cache) == set()

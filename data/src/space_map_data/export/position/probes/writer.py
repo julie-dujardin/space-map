@@ -57,6 +57,9 @@ from space_map_data.export.position.format import (
     pack_probes_header,
     pack_subchunk_record,
 )
+from space_map_data.download.providers.objects.horizons_synth import (
+    qid_deduped_synth_naifs,
+)
 from space_map_data.export.position.probes import sidecar
 from space_map_data.export.position.probes.sizing import (
     METHOD_CHEBYSHEV as SZ_METHOD_CHEBYSHEV,
@@ -622,6 +625,7 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         mission_names.update(
             p.name for p in LANDED_MISSIONS_DIR.iterdir() if p.is_dir()
         )
+    synth_qid_dups = qid_deduped_synth_naifs()
     for name in sorted(mission_names):
         mdir = MISSIONS_DIR / name
         trajectory_kernels = (
@@ -643,6 +647,13 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         # last-loaded-wins where ET coverage overlaps (EDL window).
         combined = trajectory_kernels + landed_kernels
         for naif_id in spacecraft_ids:
+            if name == "HORIZONS-SYNTH" and naif_id in synth_qid_dups:
+                logger.info(
+                    "skipping HORIZONS-SYNTH naif=%d: QID already covered "
+                    "by an agency mission probe",
+                    naif_id,
+                )
+                continue
             out.append((mdir, combined, naif_id))
     return out
 
