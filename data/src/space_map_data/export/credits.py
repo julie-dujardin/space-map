@@ -3,11 +3,12 @@
 Feeds the `/credits` frontend page. Centralises everything that deserves a
 public thank-you so the page can render without fanning out per-body requests.
 
-Only texture, ring, cloud, and skybox credits are dynamic today — orbital
-ephemeris, rotation kernels, and metadata providers are static knowledge baked
-into the frontend. When asteroid textures or 3D mesh assets land later they
-should extend this file (e.g. a `"models"` key) rather than spawning a parallel
-export.
+Texture, ring, cloud, and skybox credits are dynamic per body. The ephemeris-
+archive list is fixed (NAIF, ESA, JAXA DARTS, …) but rides in credits.json
+too so the frontend renders it data-driven alongside the per-body credits;
+each body's ephemeris archive id is shipped in the global object JSON under
+`ephemeris_source`. Rotation kernels and metadata providers stay static
+frontend knowledge for now.
 """
 
 import logging
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.systems import texture_attribution
 from space_map_data.models.object import Object, ObjectType
 
@@ -174,17 +176,6 @@ def write_credits(
     emitted. The whole-sky cubemap skybox is a one-off backdrop with no host
     body, so it rides at the top level alongside `systems`.
     """
-    if (
-        not texture_metadata
-        and not ring_metadata
-        and not clouds_metadata
-        and not skybox_metadata
-    ):
-        logger.info(
-            "No texture, ring, cloud, or skybox metadata available; skipping credits.json"
-        )
-        return
-
     body_ids = set(texture_metadata) | set(ring_metadata) | set(clouds_metadata)
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
@@ -278,7 +269,10 @@ def write_credits(
             bucket["clouds"] = clouds_grouped[None]
         systems_out.append(bucket)
 
-    payload: dict = {"systems": systems_out}
+    payload: dict = {
+        "systems": systems_out,
+        "ephemeris_archives": EPHEMERIS_ARCHIVES,
+    }
     if skybox_metadata is not None:
         payload["skybox"] = _skybox_credit_entry(skybox_metadata)
     (out_dir / "credits.json").write_bytes(

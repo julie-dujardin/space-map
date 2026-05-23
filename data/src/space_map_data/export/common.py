@@ -20,6 +20,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.credits import write_credits
+from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev, write_chunk
 from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.chebyshev.writer import (
@@ -504,6 +505,7 @@ def _build_zone_object_data(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    probe_kernel_sources: dict[int, str],
 ) -> ChunkObjectData:
     """Build globals/localized/flags for a flat zone-wide object list (no I/O).
 
@@ -524,6 +526,7 @@ def _build_zone_object_data(
         nut_prec=nut_prec,
         texture_metadata=texture_metadata,
         clouds_metadata=clouds_metadata,
+        probe_kernel_sources=probe_kernel_sources,
     )
 
 
@@ -820,6 +823,7 @@ def _export_zone(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    probe_kernel_sources: dict[int, str],
 ) -> ZoneExportResult:
     """Build per-object data once for the zone; write element parts per snapshot.
 
@@ -854,6 +858,7 @@ def _export_zone(
         nut_prec,
         texture_metadata,
         clouds_metadata,
+        probe_kernel_sources,
     )
 
     result = ZoneExportResult(
@@ -948,6 +953,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
+    probe_kernel_sources = load_probe_kernel_sources()
 
     write_systems_global(out_dir, gms, nut_prec_angles)
 
@@ -1033,6 +1039,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                     clouds_metadata,
+                    probe_kernel_sources,
                 )
                 futures[f] = (zone, zoom)
                 in_flight.add(f)
@@ -1219,6 +1226,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                     nut_prec,
                     texture_metadata,
                     clouds_metadata,
+                    probe_kernel_sources,
                 )
                 _record("earth", zoom_label, result)
             # executor joins here — session still open so ORM objects remain valid
@@ -1278,6 +1286,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 nut_prec,
                 texture_metadata,
                 clouds_metadata,
+                probe_kernel_sources,
             )
             all_objects.global_data.update(cheb_data.global_data)
             for lang, by_id in cheb_data.localized_data.items():
@@ -1316,6 +1325,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 nut_prec,
                 texture_metadata,
                 clouds_metadata,
+                probe_kernel_sources,
             )
             all_objects.global_data.update(orbitless_data.global_data)
             for lang, by_id in orbitless_data.localized_data.items():
@@ -1348,6 +1358,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 nut_prec,
                 texture_metadata,
                 clouds_metadata,
+                probe_kernel_sources,
             )
             all_objects.global_data.update(probe_data.global_data)
             for lang, by_id in probe_data.localized_data.items():

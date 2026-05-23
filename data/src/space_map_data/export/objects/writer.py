@@ -20,6 +20,7 @@ import logging
 from pathlib import Path
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.ephemeris import ephemeris_archive_for
 from space_map_data.export.wikidata import (
     WikidataEntity,
     WikidataEntityCache,
@@ -201,6 +202,7 @@ def build_chunk_object_data(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    probe_kernel_sources: dict[int, str],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -244,6 +246,7 @@ def build_chunk_object_data(
             nut_prec,
             texture_metadata,
             clouds_metadata,
+            probe_kernel_sources,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -328,6 +331,7 @@ def _build_global(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    probe_kernel_sources: dict[int, str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -363,6 +367,14 @@ def _build_global(
     nasa_url = nasa_science_urls.get(obj.id)
     if nasa_url:
         data["nasa_science_url"] = nasa_url
+
+    # Upstream archive credit for this body's ephemeris (NAIF, ESA, JAXA DARTS,
+    # …). Lives at the top level rather than inside `orbit` because probes ship
+    # no Kepler block — their positions come from the per-zone chunk binary —
+    # but they still need to credit the kernel mirror they were sourced from.
+    archive = ephemeris_archive_for(obj, probe_kernel_sources)
+    if archive is not None:
+        data["ephemeris_source"] = archive
 
     # Orbital elements — parabolic comets use q/tp instead of a/ma/n
     sbdb = obj.sbdb if obj.spkid is not None else None
