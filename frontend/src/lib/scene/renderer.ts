@@ -1,29 +1,26 @@
 import {
-	ACESFilmicToneMapping,
-	AmbientLight,
-	DirectionalLight,
+	type DirectionalLight,
 	Mesh,
-	PerspectiveCamera,
+	type PerspectiveCamera,
 	PointLight,
-	Raycaster,
-	Scene,
+	type Scene,
 	TextureLoader,
-	Vector2,
 	Vector3,
-	WebGLRenderer
+	type WebGLRenderer
 } from 'three';
-import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import type { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
+import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
 import type { PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { bootThree } from './setup/three-boot';
+import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import {
@@ -55,7 +52,6 @@ import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animat
 import { FocusController } from './focus/controller';
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
-import { pickPointCloudBody } from './interaction/picking';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -70,9 +66,7 @@ export class SceneRenderer {
 	private scene: Scene;
 	private camera: PerspectiveCamera;
 	private controls: OrbitControls;
-	private raycaster = new Raycaster();
-	private pointer = new Vector2();
-	private pointerDownPos = new Vector2();
+	private pointerInteraction!: PointerInteraction;
 
 	private ctx: ContextManager;
 	private clock: SimClock;
@@ -153,68 +147,21 @@ export class SceneRenderer {
 		this.callbacks = callbacks;
 		this.labelContainer = labelContainer;
 
-		// Renderer
-		this.renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
-		this.renderer.setPixelRatio(window.devicePixelRatio);
-		this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-		// ACES rolls the Sun's HDR output to saturated white. LDR overlays
-		// (trails, halos) are scaled in their own builders to compensate.
-		this.renderer.toneMapping = ACESFilmicToneMapping;
-		this.renderer.toneMappingExposure = 1.0;
-		// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
-		// size so the requested width reads as pixels regardless of devicePixelRatio.
-		setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
-		// Shadow map is unused — body-on-body shadows are computed
-		// analytically per-fragment by the eclipse / ring-shadow paths.
+		const boot = bootThree(canvas, labelContainer, ctx);
+		this.renderer = boot.renderer;
+		this.labelRenderer = boot.labelRenderer;
+		this.scene = boot.scene;
+		this.camera = boot.camera;
+		this.composer = boot.composer;
+		this.bloomPass = boot.bloomPass;
+		this.shadowLight = boot.shadowLight;
 
-		// CSS2D label renderer
-		this.labelRenderer = new ThrottledCSS2DRenderer({ element: labelContainer });
-		this.labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
-		ctx.updateViewport(canvas.clientHeight);
-
-		// Scene + lights
-		this.scene = new Scene();
-		this.scene.add(new AmbientLight(0xffffff, 0.01));
-		// Celestial-sphere cubemap drops in behind everything via `scene.background`.
-		// Fire-and-forget — the scene renders black until the faces arrive.
-		// Seed the rotation synchronously so it's correct from frame 1 (and so a
+		// Skybox: seed rotation synchronously so it's correct from frame 1 (so a
 		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
-
-		// Directional sun light for sub-system view (swapped in when zoomed
-		// into a planet's moon system; PointLight at the Sun handles
-		// solar-system view). Body-on-body shadows are computed analytically
-		// per-fragment (see `attachEclipseShadowToBody` and
-		// `attachRingShadowToPlanet`), so no shadow map is needed.
-		this.shadowLight = new DirectionalLight(0xffffff, 0);
-		this.shadowLight.castShadow = false;
-		this.scene.add(this.shadowLight);
-		this.scene.add(this.shadowLight.target);
-
-		// Camera
-		const aspect = canvas.clientWidth / canvas.clientHeight;
-		this.camera = new PerspectiveCamera(60, aspect, kmToScene(0.001), 100000);
-
-		// Post-processing: bloom catches HDR pixels (Sun shader writes ~6× linear)
-		// and bleeds them into surrounding pixels. Threshold=1.0 keeps the rest of
-		// the scene unaffected — only the Sun crosses the threshold. OutputPass
-		// applies tone-mapping + sRGB conversion at the end of the chain (the
-		// renderer's own tonemap stage doesn't run when composer is driving it).
-		this.composer = new EffectComposer(this.renderer);
-		this.composer.setPixelRatio(window.devicePixelRatio);
-		this.composer.setSize(canvas.clientWidth, canvas.clientHeight);
-		this.composer.addPass(new RenderPass(this.scene, this.camera));
-		this.bloomPass = new UnrealBloomPass(
-			new Vector2(canvas.clientWidth, canvas.clientHeight),
-			0.3, // strength
-			0.5, // radius
-			1.0 // threshold — physically motivated: only HDR over-bright pixels bloom
-		);
-		this.composer.addPass(this.bloomPass);
-		this.composer.addPass(new OutputPass());
 
 		// Set initial camera position from URL state
 		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
@@ -239,7 +186,7 @@ export class SceneRenderer {
 		this.pointClouds.seedBasis(focusPos);
 
 		// OrbitControls — target always at origin
-		this.controls = new OrbitControls(this.camera, canvas);
+		this.controls = new OrbitControlsClass(this.camera, canvas);
 		this.controls.enableDamping = true;
 		this.controls.minDistance = focusBody ? minCameraDistance(focusBody) : kmToScene(0.01);
 		this.controls.maxDistance = 31_620.5 * AU_SCALE; // 0.5 light-year
@@ -337,9 +284,17 @@ export class SceneRenderer {
 		if (focusBody) this.maybeLoadTexture(focusBody);
 		this.systemData.syncToFocus();
 
-		// Click handler
-		canvas.addEventListener('pointerdown', this.onPointerDown);
-		canvas.addEventListener('pointerup', this.onPointerUp);
+		this.pointerInteraction = new PointerInteraction(
+			canvas,
+			this.camera,
+			ctx,
+			clock,
+			this.focus,
+			this.clickables,
+			this.meshToBody,
+			(body) => this.focusController.handleFocus(body)
+		);
+		this.pointerInteraction.attach();
 
 		// Start loop
 		this.tick();
@@ -594,56 +549,6 @@ export class SceneRenderer {
 		this.focusController.clearPendingInitialView();
 	};
 
-	private onPointerDown = (e: PointerEvent): void => {
-		this.pointerDownPos.set(e.clientX, e.clientY);
-	};
-
-	private onPointerUp = (e: PointerEvent): void => {
-		const dx = e.clientX - this.pointerDownPos.x;
-		const dy = e.clientY - this.pointerDownPos.y;
-		if (dx * dx + dy * dy > 9) return;
-
-		const canvas = this.renderer.domElement;
-		const rect = canvas.getBoundingClientRect();
-		this.pointer.set(
-			((e.clientX - rect.left) / rect.width) * 2 - 1,
-			-((e.clientY - rect.top) / rect.height) * 2 + 1
-		);
-		this.raycaster.setFromCamera(this.pointer, this.camera);
-
-		// Check mesh hits (planets, stars, etc.)
-		const hits = this.raycaster.intersectObjects(this.clickables);
-		let bestBody: PositionedBody | undefined;
-		let bestDist = Infinity;
-		if (hits.length > 0) {
-			const body = this.meshToBody.get(hits[0].object as Mesh);
-			if (body) {
-				bestBody = body;
-				bestDist = hits[0].distance;
-			}
-		}
-
-		// Check point cloud bodies (asteroids, spacecraft, moons shown as dots)
-		const pointHit = pickPointCloudBody(
-			this.pointer,
-			this.camera,
-			this.ctx,
-			this.focus.focusTruePos,
-			canvas.clientWidth,
-			canvas.clientHeight,
-			this._tmpV3,
-			this.clock.jd,
-			e.pointerType
-		);
-		if (pointHit && pointHit.distance < bestDist) {
-			bestBody = pointHit.body;
-		}
-
-		if (bestBody) {
-			this.focusController.handleFocus(bestBody);
-		}
-	};
-
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (bo) loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
@@ -750,8 +655,7 @@ export class SceneRenderer {
 
 	dispose(): void {
 		cancelAnimationFrame(this.rafId);
-		this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
-		this.renderer.domElement.removeEventListener('pointerup', this.onPointerUp);
+		this.pointerInteraction.detach();
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.renderer.dispose();
