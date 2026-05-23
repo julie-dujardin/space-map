@@ -18,6 +18,7 @@ class PROVIDERS(StrEnum):
     BJJ_RINGS = "bjj_rings"
     DEEPL = "deepl"
     NASA_3D = "nasa_3d"
+    ESA_3D = "esa_3d"
 
 
 class ID_TYPES(StrEnum):

@@ -33,7 +33,8 @@ from space_map_data.download.providers.metadata.texture_sources import (
 )
 from space_map_data.download.providers.bjj_rings import BJJRingsDownloader
 from space_map_data.download.providers.deepl import DeepLDownloader
-from space_map_data.download.providers.nasa_3d import NASA3DResourcesDownloader
+from space_map_data.download.providers.three_d.nasa import NASA3DResourcesDownloader
+from space_map_data.download.providers.three_d.esa import ESA3DDownloader
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ PROVIDERS_CLASSES = [
     BJJRingsDownloader,
     DeepLDownloader,
     NASA3DResourcesDownloader,
+    ESA3DDownloader,
 ]
 SOURCES: dict[str, Type[Downloader]] = {cls.name: cls for cls in PROVIDERS_CLASSES}
 
