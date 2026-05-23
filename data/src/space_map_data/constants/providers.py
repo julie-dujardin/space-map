@@ -17,6 +17,7 @@ class PROVIDERS(StrEnum):
     TEXTURE_SOURCES = "texture_sources"
     BJJ_RINGS = "bjj_rings"
     DEEPL = "deepl"
+    NASA_3D = "nasa_3d"
 
 
 class ID_TYPES(StrEnum):
