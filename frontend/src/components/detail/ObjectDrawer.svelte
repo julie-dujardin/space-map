@@ -58,8 +58,9 @@
 
 	// Sample sim time at 2 Hz so speed/altitude in the description update
 	// smoothly without re-deriving on every animation frame.
-	let sampledJd = $state(clock.jd);
+	let sampledJd = $state(0);
 	$effect(() => {
+		sampledJd = clock.jd;
 		const id = setInterval(() => (sampledJd = clock.jd), 200);
 		return () => clearInterval(id);
 	});
