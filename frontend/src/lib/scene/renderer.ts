@@ -12,7 +12,6 @@ import {
 	Quaternion,
 	Raycaster,
 	Scene,
-	SphereGeometry,
 	TextureLoader,
 	Vector2,
 	Vector3,
@@ -26,28 +25,17 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
-import {
-	ObjectType,
-	effectiveRadiusKm,
-	isAsteroid,
-	type BodyData,
-	type PositionedBody
-} from '$lib/types/objects';
+import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
-import { applyOrientation, bodyQuaternion } from '$lib/math/orientation';
+import { applyOrientation } from '$lib/math/orientation';
 import { bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from '$lib/scene/north-reference';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import type { LandedRecord, Probe } from '$lib/fetch/position/probes/parse';
-import {
-	isLandedAt,
-	landedPositionAt,
-	probePositionKm
-} from '$lib/fetch/position/probes/propagate';
+import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
@@ -59,16 +47,11 @@ import {
 	downgradeBodyMesh,
 	isMeshUpgradable,
 	loadBodyTexture,
-	loadBodyTextureTier,
 	loadSystemData,
 	makeCircleTexture,
-	textureFrameForJd,
-	tierRank,
-	highestAvailableTier,
 	unloadSystemTextures,
 	upgradeBodyMesh
 } from './objects/construction';
-import { cloudFrameForJd, loadCloudTexture } from './objects/clouds';
 import { loadSkybox, SKYBOX_BASE_ROTATION } from './objects/skybox';
 import { createSkyDebugMarkers, disposeSkyDebugMarkers } from './objects/sky-debug-markers';
 import {
@@ -78,7 +61,13 @@ import {
 	refreshOrbitLineGeometry,
 	setOrbitLineResolution
 } from './objects/builders';
-import { getEclipseSceneUniforms, MAX_OCCLUDERS } from './objects/eclipse-shadow';
+import { updateRingShaders } from './shaders/ring-uniforms';
+import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
+import { updateEclipseUniforms } from './shaders/eclipse-uniforms';
+import { updateSunShadowLight } from './shaders/sun-shadow-light';
+import { updateSphereLOD } from './lod/sphere-lod';
+import { updateTextureLOD } from './lod/texture-lod';
+import { renderLandedProbe } from './position/landed-probe';
 import { resolveBodyColor } from '$lib/utils';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { type BodyObjects, type Callbacks } from './types';
@@ -98,49 +87,6 @@ import { pickPointCloudBody } from './interaction/picking';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-
-/**
- * Sphere-LOD tiers, sorted by descending pixel-radius threshold. The first
- * tier whose `up` is met (screenR ≥ up) sets the target segment count. Down-
- * steps are gated by 15% hysteresis (see {@link desiredSphereSegments}) so a
- * body sitting on a threshold doesn't flap geometry counts every frame as the
- * camera jitters.
- */
-const SPHERE_LOD_TIERS = [
-	{ up: 150, segs: 128 },
-	{ up: 40, segs: 64 },
-	{ up: 0, segs: 32 }
-];
-
-/**
- * Cap for bodies outside the active planetary system (and not the sun): they
- * never fill enough screen for higher counts to matter, so we skip the ladder
- * entirely and stay cheap.
- */
-const OUT_OF_SYSTEM_SPHERE_SEGMENTS = 24;
-
-function desiredSphereSegments(
-	screenR: number,
-	isStar: boolean,
-	inSystem: boolean,
-	current: number
-): number {
-	if (!inSystem && !isStar) return OUT_OF_SYSTEM_SPHERE_SEGMENTS;
-	let target = SPHERE_LOD_TIERS[SPHERE_LOD_TIERS.length - 1].segs;
-	for (const t of SPHERE_LOD_TIERS) {
-		if (screenR >= t.up) {
-			target = t.segs;
-			break;
-		}
-	}
-	// Hysteresis: only step *down* if we've fallen well below the current
-	// tier's up-threshold. Up-steps are immediate.
-	if (target < current) {
-		const currentTier = SPHERE_LOD_TIERS.find((t) => t.segs === current);
-		if (currentTier && screenR >= currentTier.up * 0.85) return current;
-	}
-	return target;
-}
 
 // --- SceneRenderer ---
 
@@ -269,7 +215,6 @@ export class SceneRenderer {
 	// (see alloc-pressure.bench.ts).
 	private readonly _positionMapScratch = new Map<string, Vec3>();
 	private readonly _pointCloudParentsScratch = new Map<string, Vec3>();
-	private readonly _eclipseCandidatesScratch: BodyObjects[] = [];
 	/** Memoized moon → parent grouping; invalidated when majorBodies count changes (new chunk loaded). */
 	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
 
@@ -920,68 +865,6 @@ export class SceneRenderer {
 
 	// --- Per-frame body position & orientation updates ---
 
-	/**
-	 * Place a landed probe at its body-surface lat/lng/alt in world coords.
-	 *
-	 * Steps:
-	 *   1. Stair-step lookup into the landed record at `jd` → (lat, lng, alt_m).
-	 *   2. Find the landing body in `bodiesById` (e.g. naif-499 for Mars).
-	 *   3. Compute body-fixed XYZ from (lat, lng, alt) — Three.js convention:
-	 *      local +X = prime meridian, +Y = north pole, −Z = east.
-	 *   4. Rotate by the body's IAU quaternion (pole + spin at `jd`, with
-	 *      nutation/precession sums if present) to land in scene-frame coords.
-	 *   5. Convert to scene units and add to the body's world position.
-	 *
-	 * Returns null when the landing body isn't loaded yet (e.g. Titan chebyshev
-	 * chunk still streaming) or lacks orientation data — caller marks the
-	 * probe out-of-range for one frame and tries again next tick.
-	 */
-	private _renderLandedProbe(
-		d: BodyData,
-		probe: Probe,
-		landed: LandedRecord,
-		jd: number,
-		positionMap: Map<string, Vec3>
-	): { x: number; y: number; z: number; parentPos: Vec3 } | null {
-		const sample = landedPositionAt(landed, jd);
-		if (!sample) return null;
-		const bodyKey = `naif-${landed.bodyNaifId}`;
-		const landingBody = this.ctx.bodiesById.get(bodyKey);
-		if (!landingBody || !landingBody.orientation) return null;
-		const bodyWorldPos = positionMap.get(bodyKey);
-		if (!bodyWorldPos) return null;
-		const radiusKm = landingBody.data.radiusKm;
-		if (!Number.isFinite(radiusKm) || radiusKm <= 0) return null;
-		const DEG2RAD = Math.PI / 180;
-		const latR = sample.latDeg * DEG2RAD;
-		const lngR = sample.lngDeg * DEG2RAD;
-		// Spherical body-fixed XYZ in km (sphere approximation — for typical
-		// planet flattenings the geodetic-vs-spherical difference is well below
-		// the rendered point's pixel size). Convention matches the IAU body-
-		// fixed frame the writer's lat/lng/alt were sampled in:
-		//   local +X → prime meridian on equator (lat=0, lon=0)
-		//   local +Y → north pole (lat=+90)
-		//   local −Z → east (lon=+90)
-		const r = radiusKm + sample.altM / 1000;
-		const cosLat = Math.cos(latR);
-		const bx = r * cosLat * Math.cos(lngR);
-		const by = r * Math.sin(latR);
-		const bz = -r * cosLat * Math.sin(lngR);
-		const quat = bodyQuaternion(landingBody.orientation, jd, landingBody.nutPrec);
-		const tmp = new Vector3(bx, by, bz).applyQuaternion(quat);
-		// `tmp` is body-relative scene-frame km. Convert to scene units and
-		// add to the landing body's world position. The original ECLIPJ2000-→-
-		// scene axis swap in `kmToScene` does NOT apply here because
-		// `bodyQuaternion` already returns a Three.js-coords rotation.
-		d.parentId = bodyKey;
-		return {
-			x: bodyWorldPos[0] + kmToScene(tmp.x),
-			y: bodyWorldPos[1] + kmToScene(tmp.y),
-			z: bodyWorldPos[2] + kmToScene(tmp.z),
-			parentPos: bodyWorldPos
-		};
-	}
-
 	private updatePositions(jd: number): void {
 		// Keep the chebyshev working set centred on `jd` — chunks for the
 		// current time window load in the background on boundary crossings so
@@ -1151,12 +1034,13 @@ export class SceneRenderer {
 				// noop downstream because there's no orbit.
 				const probeLanded = located.probe.landed;
 				if (probeLanded && isLandedAt(located.probe, jd)) {
-					const landedRender = this._renderLandedProbe(
+					const landedRender = renderLandedProbe(
 						d,
 						located.probe,
 						probeLanded,
 						jd,
-						positionMap
+						positionMap,
+						this.ctx
 					);
 					if (!landedRender) {
 						if (bo) bo.outOfRange = true;
@@ -1472,49 +1356,34 @@ export class SceneRenderer {
 		// stale basis for one frame.
 		this.refreshDeferredOrbitLines();
 
-		this.updateRingShaders();
-		this.updateAtmosphereShaders();
-		this.updateEclipseUniforms();
+		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
+		updateAtmosphereShaders(this.bodyObjects);
+		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// Hide the user-location dot when it rotates around to Earth's far side.
 		this.updateUserLocationOcclusion();
 
-		this.updateTextureLOD();
-		this.updateSphereLOD();
+		const focusedIdLod = this.focusedBody?.data.id;
+		updateTextureLOD(
+			this.bodyObjects,
+			this.camera,
+			this.renderer,
+			this.ctx,
+			this.textureLoader,
+			focusedIdLod,
+			this.clock.jd
+		);
+		updateSphereLOD(this.bodyObjects, this.camera, this.renderer, this.ctx, focusedIdLod);
 
-		// Shadow light: swap between PointLight (solar system) and DirectionalLight (sub-system)
-		const sysId = this.ctx.activeSystemId;
-		if (sysId) {
-			// Sun direction in focus-relative coordinates
-			const sunPos = this.bodyObjects.get('naif-10')?.body.position;
-			const [fx, fy, fz] = this.focus.focusTruePos;
-			const sunRelX = (sunPos?.[0] ?? 0) - fx;
-			const sunRelY = (sunPos?.[1] ?? 0) - fy;
-			const sunRelZ = (sunPos?.[2] ?? 0) - fz;
-			const sunDir = this._tmpV3.set(sunRelX, sunRelY, sunRelZ).normalize();
-
-			const lightDist = 10;
-			this.shadowLight.position.copy(sunDir).multiplyScalar(lightDist);
-			this.shadowLight.target.position.set(0, 0, 0);
-			this.shadowLight.intensity = 2;
-			if (this.sunPointLight) this.sunPointLight.intensity = 0;
-
-			// Lateral extent: tight to camera view for high texel density.
-			// Rings no longer receive into the shadow map (their own shader
-			// ray-marches the planet's oblate spheroid analytically), so the
-			// frustum can stay sized to the camera view without a ring floor.
-			const lateral = Math.max(distance * 2, 0.001);
-			const depthExtent = this.ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
-			const shadowCam = this.shadowLight.shadow.camera;
-			shadowCam.left = shadowCam.bottom = -lateral;
-			shadowCam.right = shadowCam.top = lateral;
-			shadowCam.near = lightDist - depthExtent;
-			shadowCam.far = lightDist + depthExtent;
-			shadowCam.updateProjectionMatrix();
-		} else {
-			this.shadowLight.intensity = 0;
-			if (this.sunPointLight) this.sunPointLight.intensity = 2;
-		}
+		updateSunShadowLight(
+			this.bodyObjects,
+			this.focus.focusTruePos,
+			this.ctx,
+			this.shadowLight,
+			this.sunPointLight,
+			distance,
+			this._tmpV3
+		);
 
 		// Auto-promote one default-important minor body per frame
 		if (this.pendingDefaultPromotions.size > 0) {
@@ -1693,239 +1562,6 @@ export class SceneRenderer {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
 		loadBodyTexture(bo, this.textureLoader, this.clock.jd, body.data.hasLocalized, this.ctx);
-	}
-
-	/**
-	 * Refresh per-frame ring uniforms — both the ring material's lit/unlit
-	 * sun direction, and the planet material's analytical ring-shadow inputs
-	 * (sun direction, pole direction, planet center). The shadow ray-march
-	 * runs entirely in world space, so all three vectors need updating as the
-	 * body orbits, spins, and the focus basis shifts.
-	 */
-	private updateRingShaders(): void {
-		const sunPos = this.bodyObjects.get('naif-10')?.body.position;
-		if (!sunPos) return;
-		const [fx, fy, fz] = this.focus.focusTruePos;
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.rings) continue;
-			const [bx, by, bz] = bo.body.position;
-
-			// uSunDir on the ring material — direction body → sun in true
-			// world coords. Same in scene/focus-relative coords because the
-			// focus offset cancels.
-			const ringSunDir = bo.rings.material.uniforms.uSunDir.value as Vector3;
-			ringSunDir.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz).normalize();
-
-			// Planet center and pole are shared across both ray-marches:
-			// the ring's planet-shadow path (`planetShadowOnRing`, always
-			// present) and the planet's ring-shadow path (`planetShadow`,
-			// present once `attachRingShadowToPlanet` has run).
-			const psOnRing = bo.rings.planetShadowOnRing;
-			psOnRing.uPlanetCenter.value.set(bx - fx, by - fy, bz - fz);
-			if (bo.mesh) {
-				psOnRing.uPlanetPoleDir.value.set(0, 1, 0).applyQuaternion(bo.mesh.quaternion);
-			}
-
-			const ps = bo.rings.planetShadow;
-			if (!ps) continue;
-			ps.uRingShadowSunDir.value.copy(ringSunDir);
-			ps.uRingShadowPoleDir.value.copy(psOnRing.uPlanetPoleDir.value);
-			ps.uRingShadowCenter.value.copy(psOnRing.uPlanetCenter.value);
-		}
-	}
-
-	/**
-	 * Refresh per-frame atmosphere uniforms: the body→Sun direction for each
-	 * body that carries a scattering shell. Everything else the shader needs is
-	 * static (radii, coefficients) or derived from the shell mesh's model
-	 * matrix (the planet centre), so this is the only per-frame work.
-	 */
-	private updateAtmosphereShaders(): void {
-		const sunPos = this.bodyObjects.get('naif-10')?.body.position;
-		if (!sunPos) return;
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.atmosphere) continue;
-			const [bx, by, bz] = bo.body.position;
-			(bo.atmosphere.material.uniforms.uSunDir.value as Vector3)
-				.set(sunPos[0] - bx, sunPos[1] - by, sunPos[2] - bz)
-				.normalize();
-		}
-	}
-
-	/**
-	 * Refresh per-frame eclipse uniforms — sun position/radius, the
-	 * occluder list, and each receiver's self-position. Occluder
-	 * eligibility is gated on a measured (real) `radiusKm`: the data layer
-	 * fills in a fallback radius for bodies whose physical size is
-	 * unknown, and using those for shadow casting would draw wrong-sized
-	 * shadows. Stars are excluded since the Sun *is* the light source.
-	 *
-	 * If the system has more than {@link MAX_OCCLUDERS} eligible bodies we
-	 * keep the largest by scene radius — those dominate the shadow budget
-	 * and the smaller ones contribute negligible obscuration anyway.
-	 */
-	private updateEclipseUniforms(): void {
-		const eclipse = getEclipseSceneUniforms();
-		const sunBo = this.bodyObjects.get('naif-10');
-		if (!sunBo) {
-			eclipse.uSunAngularRadius.value = 0;
-			eclipse.uOccluderCount.value = 0;
-			return;
-		}
-		const [fx, fy, fz] = this.focus.focusTruePos;
-		const sunPos = sunBo.body.position;
-		// Sun→focus vector is huge in scene units (~1 AU), so do the
-		// magnitude work here in float64 and ship the shader a unit
-		// direction + a precomputed angular radius. Variation in either
-		// across a body is ~r/AU ≈ 1e-5, well below the Sun's own
-		// angular size, so per-fragment recomputation in float32 would
-		// just inject quantisation banding for no physical gain.
-		const sx = sunPos[0] - fx;
-		const sy = sunPos[1] - fy;
-		const sz = sunPos[2] - fz;
-		const sunDist = Math.hypot(sx, sy, sz);
-		if (sunDist > 0) {
-			eclipse.uSunDir.value.set(sx / sunDist, sy / sunDist, sz / sunDist);
-			eclipse.uSunAngularRadius.value = Math.asin(Math.min(sunBo.radiusScene / sunDist, 1));
-		} else {
-			eclipse.uSunAngularRadius.value = 0;
-		}
-
-		// Collect eligible occluders (non-star bodies with a measured
-		// radius) and sort by scene radius descending so that if there are
-		// more than MAX_OCCLUDERS we keep the dominant ones.
-		const candidates = this._eclipseCandidatesScratch;
-		let n = 0;
-		for (const bo of this.bodyObjects.values()) {
-			if (bo.body.data.objectType === ObjectType.STAR) continue;
-			const km = bo.body.data.radiusKm;
-			if (!Number.isFinite(km) || km <= 0) continue;
-			if (bo.radiusScene <= 0) continue;
-			candidates[n++] = bo;
-		}
-		candidates.length = n;
-		if (n > MAX_OCCLUDERS) {
-			candidates.sort((a, b) => b.radiusScene - a.radiusScene);
-			candidates.length = MAX_OCCLUDERS;
-			n = MAX_OCCLUDERS;
-		}
-		const slots = eclipse.uOccluders.value;
-		for (let i = 0; i < n; i++) {
-			const bo = candidates[i];
-			const [bx, by, bz] = bo.body.position;
-			slots[i].set(bx - fx, by - fy, bz - fz, bo.radiusScene);
-		}
-		eclipse.uOccluderCount.value = n;
-		// Drop refs so the pool doesn't pin removed bodies' meshes/materials
-		// (BodyObjects transitively references DOM elements and GPU resources).
-		for (let i = 0; i < n; i++) candidates[i] = undefined as never;
-		candidates.length = 0;
-
-		// Receivers: every non-star body that got an eclipse handler at
-		// construction time. Mirror its focus-relative center so the
-		// shader can skip its own slot in the occluder loop.
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.eclipseShadow) continue;
-			const [bx, by, bz] = bo.body.position;
-			bo.eclipseShadow.uEclipseSelfPos.value.set(bx - fx, by - fy, bz - fz);
-		}
-	}
-
-	/**
-	 * Per-frame texture LOD: upgrade each visible body's texture tier based on
-	 * its screen-space radius. One-way upgrade — the prior texture is disposed
-	 * when a higher tier loads, so at most one tier per body lives on the GPU.
-	 */
-	/**
-	 * Per-frame sphere-geometry LOD: pick a segment count from {@link SPHERE_LOD_TIERS}
-	 * based on each body's screen-space pixel radius and swap `mesh.geometry`
-	 * when it changes. Bodies outside the active system (and not the sun) are
-	 * capped at {@link OUT_OF_SYSTEM_SPHERE_SEGMENTS} since they never fill
-	 * enough screen for facets to read at viewing scale. Hysteresis on the
-	 * down-step prevents thrash when zooming across a threshold.
-	 */
-	private updateSphereLOD(): void {
-		const fovRad = (this.camera.fov * Math.PI) / 180;
-		const screenH = this.renderer.domElement.clientHeight;
-		const projScale = screenH / (2 * Math.tan(fovRad / 2));
-		const activeSystem = this.ctx.activeSystemId;
-		const focusedId = this.focusedBody?.data.id;
-
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
-			if (bo.cachedDist <= 0) continue;
-			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
-			const isStar = bo.body.data.objectType === ObjectType.STAR;
-			const id = bo.body.data.id;
-			const inSystem = activeSystem
-				? id === activeSystem || this.ctx.isInActiveSystem(bo.body.data.parentId)
-				: id === focusedId;
-			const desired = desiredSphereSegments(screenR, isStar, inSystem, bo.currentSegments ?? 64);
-			if (desired === bo.currentSegments) continue;
-			const radius = kmToScene(effectiveRadiusKm(bo.body.data));
-			const old = bo.mesh.geometry;
-			bo.mesh.geometry = new SphereGeometry(radius, desired, desired);
-			old.dispose();
-			bo.currentSegments = desired;
-		}
-	}
-
-	private updateTextureLOD(): void {
-		const fovRad = (this.camera.fov * Math.PI) / 180;
-		const screenH = this.renderer.domElement.clientHeight;
-		const projScale = screenH / (2 * Math.tan(fovRad / 2));
-		const activeSystem = this.ctx.activeSystemId;
-		const focusedId = this.focusedBody?.data.id;
-
-		for (const bo of this.bodyObjects.values()) {
-			if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
-			if (!bo.availableTiers?.length) continue;
-			if (bo.cachedDist <= 0) continue;
-			const id = bo.body.data.id;
-			if (activeSystem) {
-				if (id !== activeSystem && !this.ctx.isInActiveSystem(bo.body.data.parentId)) continue;
-			} else if (id !== focusedId) {
-				continue;
-			}
-
-			const screenR = (bo.radiusScene / bo.cachedDist) * projScale;
-			const altitudeRadii = bo.cachedDist / bo.radiusScene;
-			let desired: 'low' | 'medium' | 'high';
-			if (screenR < 256 && altitudeRadii > 10) desired = 'low';
-			else if (screenR < 1024 && altitudeRadii > 2) desired = 'medium';
-			else desired = 'high';
-
-			const currentRank = tierRank(bo.textureTier);
-			const desiredRank = tierRank(desired);
-			const desiredFrame = textureFrameForJd(this.clock.jd, bo.availableFrames);
-			const frameChanged = desiredFrame !== bo.textureFrame;
-			const wantsUpgrade = desiredRank > currentRank;
-
-			// The cloud nudge below sits outside this gate so direct-load at
-			// high zoom doesn't strand clouds at low while their initial fetch
-			// is still resolving.
-			if (!bo.textureLoading && (wantsUpgrade || frameChanged)) {
-				const target = wantsUpgrade
-					? highestAvailableTier(desiredRank, bo.availableTiers)
-					: bo.textureTier;
-				if (target) loadBodyTextureTier(bo, target, desiredFrame, this.textureLoader);
-			}
-
-			// Clamp to whatever the cloud bundle actually exports — it may
-			// top out below the surface's tier (silent no-op otherwise). The
-			// frame slides separately with sim time, picking the closest
-			// snapshot from the exported set.
-			if (bo.clouds && bo.textureTier) {
-				const cloudTarget = highestAvailableTier(
-					tierRank(bo.textureTier),
-					bo.clouds.availableTiers
-				);
-				const cloudFrame = cloudFrameForJd(this.clock.jd, bo.clouds.availableFrames);
-				if (cloudTarget && cloudFrame) {
-					loadCloudTexture(bo.clouds, cloudTarget, cloudFrame);
-				}
-			}
-		}
 	}
 
 	private handleFocus(body: PositionedBody): void {
