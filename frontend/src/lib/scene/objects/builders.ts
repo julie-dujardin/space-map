@@ -18,6 +18,7 @@ import { orbitalElementsToCurve, sgp4Curve } from '$lib/math/orbit/curves';
 import { propagateOrbitAngles } from '$lib/math/orbit/position';
 import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 export const NUM_ORBIT_POINTS = 512;
 
@@ -419,6 +420,113 @@ function buildFatLineFromThin(
 	return new Mesh(geometry, makeFatOrbitLineMaterial(color, lineWidth));
 }
 
+/**
+ * Write a trail-buffer's contents into `posArr`, prefixed by a "live head"
+ * vertex at the body's current position. The +1 slot keeps the brightest
+ * trail vertex on the body itself — the same anchor the Kepler-curve path
+ * gets for free via `points[0] = bodyLocal`. Buffer samples are
+ * fit-center-relative, so they're shifted by `(orbitCenter − basis)`.
+ */
+function writeBufferVerticesWithLiveHead(
+	body: PositionedBody,
+	buffer: TrailBuffer,
+	posArr: Float32Array,
+	cx: number,
+	cy: number,
+	cz: number,
+	basisPos: [number, number, number]
+): number {
+	const head = body.trailAnchor ?? body.position;
+	posArr[0] = head[0] - basisPos[0];
+	posArr[1] = head[1] - basisPos[1];
+	posArr[2] = head[2] - basisPos[2];
+	const bx = cx - basisPos[0];
+	const by = cy - basisPos[1];
+	const bz = cz - basisPos[2];
+	const n = buffer.writeVertices(posArr.subarray(3) as Float32Array, bx, by, bz);
+	return 1 + n;
+}
+
+/**
+ * Build a trail-buffer-backed orbit line. Geometry is sized to `capacity + 1` —
+ * the +1 slot holds the live body position so the brightest trail vertex
+ * always sits on the body. Used for probes whose chunk has at least one
+ * chebyshev sub-chunk: an osculating-Kepler ellipse misrepresents the path
+ * during a flyby or capture, so we polyline the actual past trajectory.
+ */
+function makeTrailBufferOrbitLine(
+	body: PositionedBody,
+	trailBuffer: TrailBuffer,
+	color: string,
+	basisPos: [number, number, number],
+	lineWidth: number
+): Line | Mesh {
+	const { orbitCenter, data } = body;
+	const cx = orbitCenter?.[0] ?? 0;
+	const cy = orbitCenter?.[1] ?? 0;
+	const cz = orbitCenter?.[2] ?? 0;
+
+	const useTrail =
+		data.objectType === ObjectType.SPACECRAFT ||
+		data.objectType === ObjectType.DWARF_PLANET ||
+		data.objectType === ObjectType.MOON ||
+		data.objectType === ObjectType.COMET ||
+		isAsteroid(data.objectType);
+
+	const geomCap = trailBuffer.capacity + 1;
+	const posArr = new Float32Array(geomCap * 3);
+	const total = writeBufferVerticesWithLiveHead(body, trailBuffer, posArr, cx, cy, cz, basisPos);
+
+	const fullAlphas = new Float32Array(geomCap);
+	const trailAlphas = new Float32Array(geomCap);
+	if (total > 0) {
+		writeOrbitAlphas(
+			fullAlphas.subarray(0, total) as Float32Array,
+			trailAlphas.subarray(0, total) as Float32Array,
+			true,
+			useTrail
+		);
+	}
+
+	const isFat = lineWidth > 1;
+	const obj = isFat
+		? buildFatLineFromThin(geomCap, posArr, trailAlphas, fullAlphas, total, color, lineWidth)
+		: buildThinLineFromArrays(posArr, trailAlphas, fullAlphas, total, color);
+
+	obj.frustumCulled = false;
+	obj.visible = false;
+	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
+	obj.userData.trailBuffer = trailBuffer;
+	obj.userData.useTrail = useTrail;
+	if (isFat) {
+		obj.userData.isFatLine = true;
+		obj.userData.thinPositions = posArr;
+		obj.userData.thinTrailAlphas = trailAlphas;
+		obj.userData.thinFullAlphas = fullAlphas;
+	}
+	return obj;
+}
+
+/**
+ * Rewrite a trail-buffer-backed orbit line's vertex buffer from its current
+ * buffer contents. Called from {@link refreshOrbitLineGeometry} per jd tick
+ * and from focus-change paths. Unlike the Kepler/SGP4 path, there's no cached
+ * vertex list to rebase — the ring buffer is the source of truth, so we just
+ * re-read it with the new basis.
+ */
+export function refreshTrailBufferOrbitLineGeometry(
+	body: PositionedBody,
+	line: Line | Mesh,
+	buffer: TrailBuffer,
+	basisPos: [number, number, number]
+): void {
+	const useTrail = line.userData.useTrail as boolean;
+	const oc = line.userData.orbitCenter as Vector3;
+	const { posArr, trailArr, fullArr } = getOrbitWorkingArrays(line);
+	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
+	commitOrbitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
+}
+
 export function makeOrbitLine(
 	body: PositionedBody,
 	color: string,
@@ -426,6 +534,9 @@ export function makeOrbitLine(
 	jd: number = dateToJD(new Date()),
 	lineWidth: number = 1
 ): Line | Mesh {
+	if (body.trailBuffer) {
+		return makeTrailBufferOrbitLine(body, body.trailBuffer, color, basisPos, lineWidth);
+	}
 	const { orbitElements, orbitCenter, data } = body;
 
 	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
@@ -639,6 +750,16 @@ export function refreshOrbitLineGeometry(
 	basisPos: [number, number, number],
 	jd: number
 ): void {
+	// Trail-buffer path: buffer holds live past-position samples maintained by
+	// `updatePositions`; just copy them into the vertex buffer shifted by
+	// (orbitCenter − basis). No curve cache to fall back on, so this branch
+	// must run before the early-return on missing `orbitCurve`.
+	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
+	if (trailBuffer) {
+		refreshTrailBufferOrbitLineGeometry(body, line, trailBuffer, basisPos);
+		return;
+	}
+
 	let curve = line.userData.orbitCurve as [number, number, number][] | undefined;
 	if (!curve) return;
 	const isOpenCurve = line.userData.isOpenCurve as boolean;

@@ -37,7 +37,12 @@ import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { collectDebugStats, type DebugStats } from './debug/stats';
 import { PointCloudSystem } from './pointclouds/system';
-import { rebaseOrbitLineLocals, setOrbitLineResolution } from './objects/builders';
+import {
+	rebaseOrbitLineLocals,
+	refreshTrailBufferOrbitLineGeometry,
+	setOrbitLineResolution
+} from './objects/builders';
+import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { updatePositions, refreshDeferredOrbitLines } from './position/update-positions';
 import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
@@ -378,13 +383,21 @@ export class SceneRenderer {
 	 * through {@link refreshOrbitLineGeometry} instead.
 	 */
 	private rebuildOrbitLineBasis(): void {
-		const [fx, fy, fz] = this.focus.focusTruePos;
+		const basis = this.focus.focusTruePos;
+		const [fx, fy, fz] = basis;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.orbitLine;
 			// Don't gate on line.visible — newly-built lines are visible=false
 			// but will be flipped visible later this frame by updateBodyVisibility;
 			// their vertices must be rebased against the new focus before first render.
 			if (!line) continue;
+			// Trail-buffer lines have no cached `orbitLocalPositions` — re-read
+			// the buffer instead, which already holds parent-relative samples.
+			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
+			if (trailBuffer) {
+				refreshTrailBufferOrbitLineGeometry(bo.body, line, trailBuffer, basis);
+				continue;
+			}
 			const localPositions = line.userData.orbitLocalPositions as
 				| [number, number, number][]
 				| undefined;

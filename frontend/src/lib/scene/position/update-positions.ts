@@ -7,6 +7,7 @@ import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
+import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
@@ -222,11 +223,54 @@ export function updatePositions(params: UpdatePositionsParams): void {
 				return;
 			}
 			diagnostics.clearProbeUnavailable(d.id);
-			if (d.parentId !== probeParentKey) d.parentId = probeParentKey;
+			// Reseed the trail buffer (when present) before flipping parentId,
+			// so the back-population samples against the OLD parent's frame are
+			// dropped and the new frame starts fresh. Skip on first-ever resolve
+			// (initial parentId was set by processProbes against the same
+			// parent) — only the live mid-play flip needs a clear.
+			const probeParentChanged = d.parentId !== probeParentKey;
+			if (probeParentChanged && body.trailBuffer && ctx.probeStore) {
+				body.trailBuffer.clear();
+				populateProbeTrailBuffer(
+					body.trailBuffer,
+					ctx.probeStore,
+					ctx.chebStore ?? null,
+					d.id,
+					probeParentKey,
+					jd
+				);
+			}
+			if (probeParentChanged) d.parentId = probeParentKey;
 			parentPos = positionMap.get(probeParentKey) ?? ([0, 0, 0] as Vec3);
-			x = parentPos[0] + kmToScene(probeOffsetKm[0]);
-			y = parentPos[1] + kmToScene(probeOffsetKm[2]);
-			z = parentPos[2] - kmToScene(probeOffsetKm[1]);
+			const probeOffsetX = kmToScene(probeOffsetKm[0]);
+			const probeOffsetY = kmToScene(probeOffsetKm[2]);
+			const probeOffsetZ = -kmToScene(probeOffsetKm[1]);
+			x = parentPos[0] + probeOffsetX;
+			y = parentPos[1] + probeOffsetY;
+			z = parentPos[2] + probeOffsetZ;
+			// Trail-buffer maintenance: append at canonical stepDays intervals
+			// since the last sample. A backwards jump or a gap > capacity*step
+			// invalidates the existing samples — reseed via back-populate so
+			// the trail comes back instantly instead of growing from empty.
+			const tb = body.trailBuffer;
+			if (tb) {
+				const last = tb.newestJd;
+				const dt = jd - last;
+				const span = tb.stepDays * tb.capacity;
+				if (isFinite(last) && (dt < 0 || dt > span) && ctx.probeStore) {
+					tb.clear();
+					populateProbeTrailBuffer(
+						tb,
+						ctx.probeStore,
+						ctx.chebStore ?? null,
+						d.id,
+						probeParentKey,
+						jd
+					);
+				} else if (!isFinite(tb.newestJd) || jd - tb.newestJd >= tb.stepDays) {
+					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
+				}
+			}
 		} else if (d.a === 0 && !isParabolic && !d.satrec) {
 			// Body coincides with its parent (Kepler-only barycenter placeholder).
 			[x, y, z] = parentPos;

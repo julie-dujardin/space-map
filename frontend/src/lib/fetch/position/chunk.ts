@@ -22,8 +22,11 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
+import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
+import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
 import {
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,
@@ -278,6 +281,16 @@ export class ChunkLoader {
 	// resolves a planet's parent.
 	barycenters = new Map<string, OrbitalElements>();
 
+	/**
+	 * Past-position ring buffers for probes whose chunk has at least one
+	 * chebyshev sub-chunk. Keyed by probe.id and tagged with the current
+	 * parent key; when the probe crosses zones the parent flips and the
+	 * stored entries (in the OLD parent's frame) get cleared. Owned here so
+	 * accumulated trail history survives chunk-load passes — `processProbes`
+	 * mutates this map but never replaces it.
+	 */
+	private readonly probeBuffers = new Map<string, { buffer: TrailBuffer; parentKey: string }>();
+
 	constructor(private readonly cheb: ChebyshevStore | null) {
 		this.positions.set('naif-0', [0, 0, 0]); // Solar System Barycenter
 	}
@@ -472,12 +485,19 @@ export class ChunkLoader {
 	 *
 	 * The returned `BodyData` carries zero osculating elements (the fit methods
 	 * produce position directly, no need to round-trip through Kepler for the
-	 * body itself). The `PositionedBody`'s `orbitElements` + `rederiveElements`
-	 * carry a per-sub-chunk osculating snapshot for the orbit-line trail —
-	 * `kepler_pure` and `kepler_drift` map their packed elements directly,
-	 * `chebyshev` derives them from a state-vector finite difference. The
-	 * existing periodic re-derive in `refreshOrbitLineGeometry` automatically
-	 * picks up the next sub-chunk's elements when `jd` crosses a boundary.
+	 * body itself). Trail handling splits per probe:
+	 *
+	 *   - **Pure Kepler** (no chebyshev sub-chunks anywhere in the probe): the
+	 *     `PositionedBody`'s `orbitElements` + `rederiveElements` carry a
+	 *     per-sub-chunk osculating snapshot. `refreshOrbitLineGeometry`
+	 *     re-snapshots periodically so the curve tracks the next sub-chunk
+	 *     across boundaries.
+	 *   - **Has at least one chebyshev sub-chunk**: a `TrailBuffer` of past
+	 *     sampled positions takes over. `orbitElements` is left undefined so
+	 *     the orbit-line builder takes the buffer codepath; the buffer is
+	 *     back-filled here against the current parent's frame and appended to
+	 *     each frame by `updatePositions`. An osculating ellipse misrepresents
+	 *     a flyby / capture / depart maneuver, so we polyline the real path.
 	 *
 	 * `validityStart/End` come from the chunk's common-header bounds, used by
 	 * the renderer to hide a probe whose chunk isn't loaded yet rather than
@@ -588,14 +608,41 @@ export class ChunkLoader {
 				const freshPrimaryMu = getGmKm3s2(freshPrimaryNaif) ?? 0;
 				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu);
 			};
+			// Trail-buffer path for probes with any chebyshev sub-chunk: an
+			// osculating-ellipse trail is meaningless during a non-Kepler phase
+			// (planetary flyby, capture/depart maneuver), so sample real past
+			// positions instead. Probes that are pure Kepler stay on the
+			// orbit-elements codepath above. Buffer is sized by the osculating
+			// period when available (closes the loop after one orbit); falls back
+			// to the current chunk's window when elements can't be derived
+			// (mu=0 at first paint, degenerate chebyshev FD).
+			const hasChebyshev = probe.subChunks.some((sc) => sc.method === PROBE_METHOD_CHEBYSHEV);
+			let trailBuffer: TrailBuffer | undefined;
+			if (hasChebyshev) {
+				const periodDays = elements && elements.n > 0 ? 360 / elements.n : endJd - startJd;
+				const stepDays = periodDays > 0 ? periodDays / NUM_ORBIT_POINTS : 1;
+				const cached = this.probeBuffers.get(probe.id);
+				if (cached && cached.parentKey === primaryKey) {
+					trailBuffer = cached.buffer;
+				} else {
+					trailBuffer = new TrailBuffer(NUM_ORBIT_POINTS, stepDays);
+					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, probe.id, primaryKey, jd);
+					this.probeBuffers.set(probe.id, { buffer: trailBuffer, parentKey: primaryKey });
+				}
+			}
 			result.push({
 				data,
 				position: pos,
-				orbitElements: elements ?? undefined,
+				// Skip orbitElements when the buffer takes over — the orbit-line
+				// builder branches on trailBuffer first and would ignore the
+				// elements anyway; nil'ing them keeps the rederive cadence from
+				// re-snapshotting an ellipse no consumer ever draws.
+				orbitElements: trailBuffer ? undefined : (elements ?? undefined),
 				// Private array, not a shared reference to the fit center body's position:
 				// a probe's parent can flip between frames as it crosses zones.
 				orbitCenter: [anchor[0], anchor[1], anchor[2]],
-				rederiveElements
+				rederiveElements: trailBuffer ? undefined : rederiveElements,
+				trailBuffer
 			});
 		}
 		// Diagnostics — without these, the only signal a probe didn't render

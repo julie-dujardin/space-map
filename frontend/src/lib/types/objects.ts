@@ -1,6 +1,7 @@
 import type { SatRec } from 'satellite.js';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation } from '$lib/math/orientation';
+import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 export interface OrbitalElements {
 	a: number; // semi-major axis (AU)
@@ -102,6 +103,15 @@ export interface PositionedBody {
 	 * case.
 	 */
 	rederiveElements?: (jd: number) => OrbitalElements | null;
+	/**
+	 * Past-position ring buffer used to draw the orbit trail when the body's
+	 * motion can't be summarized by a single Kepler ellipse — set for probes
+	 * whose current chunk has at least one chebyshev sub-chunk. The buffer
+	 * holds fit-center-relative scene-space samples; the renderer adds the
+	 * current parent position at draw time. When present, the orbit-line
+	 * builder takes the buffer codepath and ignores `orbitElements`.
+	 */
+	trailBuffer?: TrailBuffer;
 	/**
 	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
 	 * planetary-system bodies (planets, moons), which the renderer uses to

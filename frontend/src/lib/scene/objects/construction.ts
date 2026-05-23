@@ -362,7 +362,10 @@ export function buildOrbitLines(
 			const fresh = body.rederiveElements(jd);
 			if (fresh) body.orbitElements = fresh;
 		}
-		if (!body.orbitElements) continue;
+		// Skip bodies with no orbit-line source. Trail-buffer-backed probes
+		// have no `orbitElements` (the buffer takes over the trail entirely),
+		// so they take this branch via the buffer instead.
+		if (!body.orbitElements && !body.trailBuffer) continue;
 		const t = body.data.objectType;
 		const isHaloOnlySmallBody = !bo.mesh && (isAsteroid(t) || t === ObjectType.COMET);
 		if (isHaloOnlySmallBody) continue;
