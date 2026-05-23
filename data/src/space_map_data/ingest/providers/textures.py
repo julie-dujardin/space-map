@@ -220,6 +220,54 @@ def _load_and_tonemap_skybox_streaming(src: Path) -> np.ndarray:
     return out
 
 
+def _alignment(entry: dict) -> dict:
+    """Extract cylindrical-alignment fields from a yaml entry.
+
+    Defaults match the renderer's expected convention (no flip, prime
+    meridian at the image centre) so untagged entries are no-ops.
+    """
+    return {
+        "west_positive": bool(entry.get("west_positive", False)),
+        "lon_at_left_deg": float(entry.get("lon_at_left_deg", -180.0)),
+    }
+
+
+_DEFAULT_ALIGNMENT = {"west_positive": False, "lon_at_left_deg": -180.0}
+
+
+def _align_cylindrical(
+    img: Image.Image, *, west_positive: bool, lon_at_left_deg: float
+) -> Image.Image:
+    """Transform a cylindrical equirectangular image to the renderer's convention.
+
+    The renderer (frontend/src/lib/math/orientation.ts) expects u=0 at
+    longitude -180°, u=0.5 at 0° (prime meridian), and longitude increasing
+    east with u.
+
+    Two corrections applied in order:
+      1. ``west_positive``: horizontally mirror W+ IAU sources (Jovian /
+         Saturnian satellites, gas giants under System III) so the result is
+         east-positive.
+      2. ``lon_at_left_deg``: east-positive longitude at the source's left
+         edge *after* any flip. The image is circularly shifted so this lands
+         at -180°. Default -180° → no shift.
+    """
+    if west_positive:
+        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+
+    w, h = img.size
+    shift_px = round((lon_at_left_deg + 180.0) / 360.0 * w) % w
+    if shift_px == 0:
+        return img
+
+    left = img.crop((0, 0, w - shift_px, h))
+    right = img.crop((w - shift_px, 0, w, h))
+    out = Image.new(img.mode, (w, h))
+    out.paste(right, (0, 0))
+    out.paste(left, (shift_px, 0))
+    return out
+
+
 def _open_specular_source(src: Path) -> Image.Image:
     """Derive a binary ocean mask from a bathymetry TIFF.
 
@@ -473,6 +521,10 @@ def _stale_metadata_reason(existing: dict, entry: dict) -> str | None:
     aren't handled here.
     """
     type_ = entry.get("type")
+    if type_ in ("cylindrical", "cylindrical_monthly", "cylindrical_specular"):
+        cur_align = existing.get("alignment") or _DEFAULT_ALIGNMENT
+        if cur_align != _alignment(entry):
+            return "alignment changed"
     if type_ == "cylindrical_monthly":
         if (
             existing.get("type") != type_
@@ -771,6 +823,8 @@ class TextureProcessor:
 
         out_dir.mkdir(parents=True, exist_ok=True)
         img = _open_image(src)
+        source_dims = [img.width, img.height]
+        img = _align_cylindrical(img, **_alignment(entry))
         exports, warnings = self._export(img, object_id, out_dir)
         self._global_warnings.extend(warnings)
 
@@ -779,8 +833,9 @@ class TextureProcessor:
             entry,
             source_file=src.name,
             attribution_file=src.name,
-            source_dims=[img.width, img.height],
+            source_dims=source_dims,
             exports=exports,
+            extra_fields={"alignment": _alignment(entry)},
         )
         log.info("processed %s → %s (%d exports)", src.name, object_id, len(exports))
         return out_dir
@@ -817,6 +872,8 @@ class TextureProcessor:
 
         out_dir.mkdir(parents=True, exist_ok=True)
         img = _open_specular_source(src)
+        source_dims = [img.width, img.height]
+        img = _align_cylindrical(img, **_alignment(entry))
         exports, warnings = self._export(img, object_id, out_dir)
         self._global_warnings.extend(warnings)
 
@@ -825,8 +882,9 @@ class TextureProcessor:
             entry,
             source_file=src.name,
             attribution_file=src.name,
-            source_dims=[img.width, img.height],
+            source_dims=source_dims,
             exports=exports,
+            extra_fields={"alignment": _alignment(entry)},
         )
         log.info(
             "processed specular %s → %s (%d exports)", src.name, object_id, len(exports)
@@ -1002,6 +1060,7 @@ class TextureProcessor:
         all_exports: dict[str, dict[str, dict]] = {}
         source_dims: list[int] | None = None
 
+        align = _alignment(entry)
         for m in range(1, months + 1):
             fname = file_template.format(month=m)
             src = source_dir / fname
@@ -1010,6 +1069,7 @@ class TextureProcessor:
             img = _open_image(src)
             if source_dims is None:
                 source_dims = [img.width, img.height]
+            img = _align_cylindrical(img, **align)
             suffix = f"_{m:02d}"
             exports, warnings = self._export(img, object_id, out_dir, suffix)
             all_exports[f"{m:02d}"] = exports
@@ -1027,7 +1087,7 @@ class TextureProcessor:
             attribution_file=expected_files[0],
             source_dims=source_dims,
             exports=all_exports,
-            extra_fields={"frames": months},
+            extra_fields={"frames": months, "alignment": align},
         )
         log.info(
             "processed %s → %s monthly (%d frames × %d tiers)",
