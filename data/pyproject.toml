@@ -9,6 +9,7 @@ dependencies = [
     "openexr>=3.4.11",
     "orjson>=3.11.8",
     "pillow>=12.2.0",
+    "py360convert>=1.0.4",
     "pyyaml>=6.0.3",
     "spiceypy>=8.1.0",
     "sqlalchemy>=2.0",
