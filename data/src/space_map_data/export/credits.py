@@ -1,14 +1,8 @@
-"""Aggregated credits file: `v1/credits.json`.
+"""Aggregated `v1/credits.json` for the `/credits` frontend page.
 
-Feeds the `/credits` frontend page. Centralises everything that deserves a
-public thank-you so the page can render without fanning out per-body requests.
-
-Texture, ring, cloud, and skybox credits are dynamic per body. The ephemeris-
-archive list is fixed (NAIF, ESA, JAXA DARTS, …) but rides in credits.json
-too so the frontend renders it data-driven alongside the per-body credits;
-each body's ephemeris archive id is shipped in the global object JSON under
-`ephemeris_source`. Rotation kernels and metadata providers stay static
-frontend knowledge for now.
+Per-body credits (textures, rings, clouds, skybox) plus the static
+ephemeris-archive catalog. Each body's archive id lives in its global JSON
+under `ephemeris_source`.
 """
 
 import logging

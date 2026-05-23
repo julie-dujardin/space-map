@@ -368,10 +368,8 @@ def _build_global(
     if nasa_url:
         data["nasa_science_url"] = nasa_url
 
-    # Upstream archive credit for this body's ephemeris (NAIF, ESA, JAXA DARTS,
-    # …). Lives at the top level rather than inside `orbit` because probes ship
-    # no Kepler block — their positions come from the per-zone chunk binary —
-    # but they still need to credit the kernel mirror they were sourced from.
+    # Top-level rather than inside `orbit` so probes (which ship no Kepler
+    # block) still carry their archive credit.
     archive = ephemeris_archive_for(obj, probe_kernel_sources)
     if archive is not None:
         data["ephemeris_source"] = archive

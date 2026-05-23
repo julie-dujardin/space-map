@@ -1,11 +1,8 @@
-"""Per-object ephemeris-source attribution.
+"""Per-object ephemeris-archive attribution.
 
-Names the upstream archive that provided each body's orbital data so the
-frontend can credit the right organisation (NAIF, ESA, JAXA DARTS, …). For
-most sources the mapping is constant (`OrbitalSource.horizons` → Horizons,
-etc.); probes are the only case where it varies per row because mission SPK
-kernels come from different mirrors (NAIF operational, ESA SPICE Service,
-NAIF PDS3/PDS4 archives, JAXA DARTS).
+Probes are the only case where the archive varies per body — mission SPKs
+come from NAIF, ESA, NAIF PDS3/4, or JAXA DARTS. Everything else maps
+deterministically from `OrbitalSource`.
 """
 
 import json
@@ -22,8 +19,7 @@ from space_map_data.probes.probe_id import CACHE_PATH as PROBE_IDS_CACHE
 logger = logging.getLogger(__name__)
 
 
-# Stable archive identifiers shipped in the global JSON. Short lowercase
-# strings so the frontend can map them to localized labels without parsing.
+# Archive ids shipped in the global JSON; the frontend keys localized labels off them.
 ARCHIVE_NAIF = "naif"
 ARCHIVE_ESA = "esa"
 ARCHIVE_NAIF_PDS3 = "naif-pds3"
@@ -34,10 +30,8 @@ ARCHIVE_SBDB = "sbdb"
 ARCHIVE_CELESTRAK = "celestrak"
 
 
-# Maps the `server` field written by `ProbesDownloader` into _index.json to
-# our archive id. `JPL-Horizons-synth` is for probes whose trajectory was
-# synthesized from Horizons API queries rather than fetched as a real SPK —
-# so its archive credit goes to Horizons, not to a SPICE mirror.
+# `server` strings written into `_index.json` by `ProbesDownloader`. Synth
+# probes get the Horizons credit since their trajectory came from there.
 _SERVER_TO_ARCHIVE: dict[str, str] = {
     "NAIF": ARCHIVE_NAIF,
     "ESA": ARCHIVE_ESA,
@@ -47,8 +41,7 @@ _SERVER_TO_ARCHIVE: dict[str, str] = {
     "JPL-Horizons-synth": ARCHIVE_HORIZONS,
 }
 
-# Static fallbacks for non-probe orbital sources. SPICE generic kernels
-# (planets/moons/asteroids) come from NAIF's `generic_kernels/` tree.
+# Generic SPICE kernels (planets/moons/asteroids) come from NAIF's tree.
 _NON_PROBE_ARCHIVE: dict[OrbitalSource, str] = {
     OrbitalSource.horizons: ARCHIVE_HORIZONS,
     OrbitalSource.sbdb: ARCHIVE_SBDB,
@@ -71,14 +64,8 @@ def _read_mission_server(mission_dir: Path) -> str | None:
 
 
 def load_probe_kernel_sources() -> dict[int, str]:
-    """Build `{probe_id → archive_id}` from on-disk indices and the probe cache.
-
-    Walks `missions/*/_index.json` and `landed_missions/*/_index.json` to
-    discover which `server` published each mission, then joins against the
-    `probe_ids.json` cache (which records the mission → probe_id mapping)
-    to produce a probe-keyed map. Missions present in both trees agree on
-    `server`; one read suffices.
-    """
+    """Build `{probe_id → archive_id}` by joining mission `_index.json` servers
+    against the probe_ids cache."""
     if not PROBE_IDS_CACHE.exists():
         logger.info(
             "probe_ids cache missing at %s; no probe sources to map", PROBE_IDS_CACHE
@@ -138,13 +125,9 @@ def load_probe_kernel_sources() -> dict[int, str]:
 def ephemeris_archive_for(
     obj: Object, probe_kernel_sources: dict[int, str]
 ) -> str | None:
-    """Return the archive id crediting *obj*'s orbital ephemeris, or None.
-
-    For probes, dispatches to the kernel-source map (one entry per probe id).
-    For everything else, falls back to the constant per-`OrbitalSource` map.
-    Probes whose mission isn't in the map fall back to NAIF — every probe SPK
-    we currently fetch goes through a NAIF-hosted archive at minimum.
-    """
+    """Archive id crediting *obj*'s ephemeris, or None. Probes without a
+    mapped mission fall back to NAIF (every probe SPK we fetch passes through
+    a NAIF-hosted archive at minimum)."""
     src = obj.orbital_source
     if src is None:
         return None
@@ -157,10 +140,9 @@ def ephemeris_archive_for(
     return _NON_PROBE_ARCHIVE.get(src)
 
 
-# Static archive catalog shipped in `credits.json` so the frontend can render
-# the orbital-credits section data-driven. Each entry is the URL the
-# corresponding archive id (above) resolves to. CelesTrak / Horizons / SBDB
-# aren't SPICE archives but live alongside since they're orbital-data sources.
+# Shipped in `credits.json` so the frontend's orbital-credits section is
+# data-driven. Horizons / SBDB / CelesTrak aren't SPICE archives but ride
+# along since they're orbital-data sources too.
 EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
     {
         "id": ARCHIVE_HORIZONS,
