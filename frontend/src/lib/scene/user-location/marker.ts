@@ -1,6 +1,6 @@
 import { Mesh } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import './user-location.css';
+import './marker.css';
 
 const RAD = Math.PI / 180;
 

@@ -5,7 +5,7 @@
 	import EarthIcon from '@lucide/svelte/icons/earth';
 	import OrbitIcon from '@lucide/svelte/icons/orbit';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
-	import { GALACTIC_REF_ID, type NorthChoice } from '$lib/scene/north-reference';
+	import { GALACTIC_REF_ID, type NorthChoice } from '$lib/scene/camera/north-reference';
 
 	interface Props {
 		choices: NorthChoice[];

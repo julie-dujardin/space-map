@@ -251,26 +251,19 @@ async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
 }
 
 /**
- * Fetch the global + localized detail entries for `fileId`. Under the hood
- * this fetches the hash-bucketed bundle containing the object (bucket count
- * `N` per tier is read from `metadata.json → object_bundles`) and extracts
- * the id-keyed entry. Bundles are cached, so subsequent lookups for
- * bucket-mates are a local map lookup.
- *
- * `hasLocalized` is the per-row bit on the binary chunk: when `false`, the
- * object has no Wikidata in any language and the localized fetch is skipped
- * entirely (otherwise we'd 404 on every click for flag-0 bodies). On 404 the
- * locale's bundle is missing for this object — give up; there is no English
- * fallback tier.
+ * Fetch the global + (optionally) localized detail bundles for `fileId`.
+ * Bundles are hash-bucketed via `metadata.json → object_bundles` and cached.
+ * Pass `body.data.hasLocalized` for `fetchLocalized` to skip the localized
+ * fetch on bodies with no Wikidata (avoids a guaranteed 404).
  */
 export async function fetchObjectDetail(
 	fileId: string,
-	hasLocalized = true,
+	fetchLocalized = true,
 	lang = getLocale()
 ): Promise<ObjectDetailData> {
 	const meta = await fetchMetadata();
 
-	const nLocalized = hasLocalized ? meta.object_bundles[lang] : 0;
+	const nLocalized = fetchLocalized ? meta.object_bundles[lang] : 0;
 
 	const [globalBucket, localizedBucket] = await Promise.all([
 		hashBucket(fileId, meta.object_bundles.global),
@@ -281,7 +274,7 @@ export async function fetchObjectDetail(
 		`${DATA_BASE}/v1/objects/__global__/${globalBucket}.json.gz`
 	);
 	const localizedPromise: Promise<LocalizedObjectData | undefined> =
-		hasLocalized && localizedBucket >= 0
+		fetchLocalized && localizedBucket >= 0
 			? fetchBundle<LocalizedObjectData>(
 					`${DATA_BASE}/v1/objects/${lang}/${localizedBucket}.json.gz`
 				).then((b) => b[fileId])

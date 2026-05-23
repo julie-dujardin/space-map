@@ -13,7 +13,7 @@
 	import MyLocation from '../../../../components/MyLocation.svelte';
 	import ClearPromoted from '../../../../components/ClearPromoted.svelte';
 	import CompassNorthSelector from '../../../../components/CompassNorthSelector.svelte';
-	import { getNorthChoices } from '$lib/scene/north-reference';
+	import { getNorthChoices } from '$lib/scene/camera/north-reference';
 	import AttributionBar from '../../../../components/attribution/AttributionBar.svelte';
 	import TimeControls from '../../../../components/time/TimeControls.svelte';
 	import MobileTimeControls from '../../../../components/time/MobileTimeControls.svelte';

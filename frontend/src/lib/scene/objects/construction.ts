@@ -567,11 +567,12 @@ export async function loadBodyTexture(
 	bo: BodyObjects,
 	textureLoader: TextureLoader,
 	currentJd: number,
-	hasLocalized = true,
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.textureTier || bo.textureLoading) return;
-	const detail = await fetchObjectDetail(bo.body.data.id, hasLocalized);
+	// Texture/orientation/radii live in `detail.global`; the localized bundle
+	// would only carry the display name, which this path doesn't read.
+	const detail = await fetchObjectDetail(bo.body.data.id, false);
 	if (!detail.global) return;
 
 	// Apply orientation and triaxial radii from the global JSON. These run

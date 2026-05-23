@@ -4,12 +4,10 @@ import {
 	BufferAttribute,
 	DirectionalLight,
 	Float32BufferAttribute,
-	Group,
 	Mesh,
 	PerspectiveCamera,
 	PointLight,
 	Points,
-	Quaternion,
 	Raycaster,
 	Scene,
 	TextureLoader,
@@ -30,7 +28,7 @@ import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { SimClock } from '$lib/scene/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { applyOrientation } from '$lib/math/orientation';
-import { bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from '$lib/scene/north-reference';
+import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
@@ -47,13 +45,14 @@ import {
 	downgradeBodyMesh,
 	isMeshUpgradable,
 	loadBodyTexture,
-	loadSystemData,
 	makeCircleTexture,
-	unloadSystemTextures,
 	upgradeBodyMesh
 } from './objects/construction';
-import { loadSkybox, SKYBOX_BASE_ROTATION } from './objects/skybox';
-import { createSkyDebugMarkers, disposeSkyDebugMarkers } from './objects/sky-debug-markers';
+import { SystemDataLoader } from './system-data/loader';
+import { loadSkybox } from './objects/skybox';
+import { SkyboxAdjuster } from './debug/skybox-adjust';
+import { SkyDebugMarkers } from './debug/sky-markers';
+import { collectDebugStats, type DebugStats } from './debug/stats';
 import {
 	asteroidPointSize,
 	makePointCloudFromBuffer,
@@ -85,7 +84,8 @@ import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { pickPointCloudBody } from './interaction/picking';
 import { emptyGroup, updateOutOfRangeToast, type OutOfRangeState } from './out-of-range-toast';
-import { createUserLocationMarker, removeUserLocationMarker } from './user-location';
+import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
+import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // --- SceneRenderer ---
@@ -110,13 +110,7 @@ export class SceneRenderer {
 	private circleTexture = makeCircleTexture();
 	private orbitPool = new OrbitWorkerPool();
 	private asteroidPoints = new Map<string, Points>();
-	private lastSystemTextureBarycenter: string | null = null;
-	/** Barycenters whose textures should be released once the in-flight focus
-	 *  animation settles. Populated by {@link maybeLoadSystemData} on each
-	 *  system switch, drained in the tick loop. Holding the disposal until
-	 *  fly-settle avoids thrash when the user rapidly clicks between systems —
-	 *  re-entering before the fly completes removes the entry from this set. */
-	private pendingUnloadBaryIds = new Set<string>();
+	private systemData!: SystemDataLoader;
 	private spacecraftPoints = new Map<string, Points>();
 	/** Per-probe id we've already logged a "position unavailable" warning for,
 	 *  so we surface the failure once instead of flooding the console at 60fps. */
@@ -158,31 +152,10 @@ export class SceneRenderer {
 
 	private focusedBody: PositionedBody | undefined;
 	private readonly _tmpV3 = new Vector3();
-	private readonly _tmpUserLoc = new Vector3();
 
-	/** Body whose IAU pole drives camera.up. null = ecliptic Y (scene frame). */
-	private northRefId: string | null = null;
-
-	/**
-	 * Debug-only knob applied on top of the math-derived skybox rotation.
-	 * Combined as `base · adjust(rxDeg, ryDeg, rzDeg)` so 0,0,0 reproduces the
-	 * derived alignment.
-	 */
-	private readonly skyboxAdjust = { rxDeg: 0, ryDeg: 0, rzDeg: 0 };
-	private readonly _skyboxQ = new Quaternion();
-	private readonly _skyboxAdjustQ = new Quaternion();
-	private readonly _skyboxAxisX = new Vector3(1, 0, 0);
-	private readonly _skyboxAxisY = new Vector3(0, 1, 0);
-	private readonly _skyboxAxisZ = new Vector3(0, 0, 1);
-	private skyDebugGroup: Group | null = null;
-	private readonly upStartVec = new Vector3(0, 1, 0);
-	private readonly upTargetVec = new Vector3(0, 1, 0);
-	private readonly upCurrentVec = new Vector3(0, 1, 0);
-	private upAnimStartTime = -Infinity;
-	private static readonly UP_ANIM_DURATION_MS = 400;
-	private readonly _upQuatA = new Quaternion();
-	private readonly _upQuatB = new Quaternion();
-	private static readonly _upRef = new Vector3(0, 1, 0);
+	private cameraUp!: CameraUpController;
+	private skyboxAdjuster!: SkyboxAdjuster;
+	private skyDebugMarkers!: SkyDebugMarkers;
 
 	// Focus/fly animation state (mutated by animation module)
 	private readonly focus: FocusState = {
@@ -316,7 +289,9 @@ export class SceneRenderer {
 		// Fire-and-forget — the scene renders black until the faces arrive.
 		// Seed the rotation synchronously so it's correct from frame 1 (and so a
 		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
-		this.setSkyboxAdjust(0, 0, 0);
+		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
+		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
+		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
 
 		// Directional sun light for sub-system view (swapped in when zoomed
@@ -392,6 +367,8 @@ export class SceneRenderer {
 		this.controls.update();
 		this.controls.addEventListener('end', this.onControlsEnd);
 
+		this.cameraUp = new CameraUpController(this.camera, this.controls, ctx);
+
 		// Sync context initial state
 		if (focusBody) ctx.setFocused(focusBody);
 		ctx.updateCamera(initialView.zoom);
@@ -424,9 +401,19 @@ export class SceneRenderer {
 		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
 
+		this.systemData = new SystemDataLoader(
+			this.scene,
+			ctx,
+			this.renderer,
+			this.textureLoader,
+			this.bodyObjects,
+			clock,
+			() => this.reapplyInitialViewIfPending()
+		);
+
 		// Load textures for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
-		this.maybeLoadSystemData();
+		this.systemData.syncToFocus();
 
 		// Click handler
 		canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -1277,7 +1264,7 @@ export class SceneRenderer {
 			this.fpsSampleHead = (this.fpsSampleHead + 1) % SceneRenderer.FPS_SAMPLE_FRAMES;
 		}
 
-		this.updateCameraUp();
+		this.cameraUp.update(this.clock.jd);
 
 		// Snap controls target on first frame
 		if (this.firstFrame) {
@@ -1321,13 +1308,10 @@ export class SceneRenderer {
 		// than disposed at click time) so a fly that gets reversed mid-way
 		// doesn't thrash the GPU.
 		if (
-			this.pendingUnloadBaryIds.size > 0 &&
+			this.systemData.hasPendingUnloads() &&
 			performance.now() - this.focus.focusStartTime >= this.focus.focusDurationMs
 		) {
-			for (const baryId of this.pendingUnloadBaryIds) {
-				unloadSystemTextures(baryId, this.bodyObjects, this.scene, this.ctx);
-			}
-			this.pendingUnloadBaryIds.clear();
+			this.systemData.drainPendingUnloads();
 		}
 
 		// Camera state → visibility decisions
@@ -1361,7 +1345,7 @@ export class SceneRenderer {
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
 		// Hide the user-location dot when it rotates around to Earth's far side.
-		this.updateUserLocationOcclusion();
+		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
 
 		const focusedIdLod = this.focusedBody?.data.id;
 		updateTextureLOD(
@@ -1491,45 +1475,6 @@ export class SceneRenderer {
 		}
 	};
 
-	/** Load system metadata (textures + orientation) for the focused system (if changed). */
-	private maybeLoadSystemData(): void {
-		const sysId = this.ctx.focusedSystemId;
-		if (!sysId) {
-			// Standalone focus (Sun, Ceres, comet…) — no system to load, but if a
-			// system was loaded before, queue it for unload so leaving e.g. Jupiter
-			// to focus the Sun still releases Jupiter's textures.
-			if (this.lastSystemTextureBarycenter) {
-				this.pendingUnloadBaryIds.add(this.lastSystemTextureBarycenter);
-				this.lastSystemTextureBarycenter = null;
-			}
-			return;
-		}
-		// Resolve to barycenter: if sysId is a planet (e.g. naif-599), its parent is the barycenter
-		const body = this.ctx.getBody(sysId);
-		const baryId =
-			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
-		if (baryId === this.lastSystemTextureBarycenter) return;
-		// Queue the prior system for release, then drop the new one out of the
-		// pending set in case the user is re-entering it mid-fly.
-		if (this.lastSystemTextureBarycenter) {
-			this.pendingUnloadBaryIds.add(this.lastSystemTextureBarycenter);
-		}
-		this.pendingUnloadBaryIds.delete(baryId);
-		this.lastSystemTextureBarycenter = baryId;
-		loadSystemData(
-			baryId,
-			this.bodyObjects,
-			this.scene,
-			this.textureLoader,
-			this.clock.jd,
-			this.renderer.capabilities.maxTextureSize,
-			this.ctx
-		).then(() => {
-			this.reapplyInitialViewIfPending();
-			this.ctx.orientationVersion++;
-		});
-	}
-
 	/**
 	 * Re-place the camera using the URL's body-fixed lat/lon once the focused
 	 * body's orientation has been applied. The initial placement in the
@@ -1560,8 +1505,7 @@ export class SceneRenderer {
 
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
-		if (!bo) return;
-		loadBodyTexture(bo, this.textureLoader, this.clock.jd, body.data.hasLocalized, this.ctx);
+		if (bo) loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
 	}
 
 	private handleFocus(body: PositionedBody): void {
@@ -1810,7 +1754,7 @@ export class SceneRenderer {
 		this.ctx.setFocused(body);
 		this.callbacks.onFocusChange(body);
 		this.maybeLoadTexture(body);
-		this.maybeLoadSystemData();
+		this.systemData.syncToFocus();
 		prepareFocusTarget(this.focus, [...body.position], this.camera, this.cameraTruePos(), camPos);
 		// Focus moved on/off a user-promoted body — re-emit so the clear button's
 		// visibility (which excludes the focused body) stays in sync.
@@ -1830,23 +1774,7 @@ export class SceneRenderer {
 	 * is backgrounded RAF is throttled and the buffer ages out — that's
 	 * accurate, not stale.
 	 */
-	getDebugStats(): {
-		fps: number;
-		workers: number;
-		workerGroups: number;
-		drawCalls: number;
-		triangles: number;
-		geometries: number;
-		textures: number;
-		programs: number;
-		promotedBodies: number;
-		focusedId: string | undefined;
-		focusedName: string | undefined;
-		cameraDistanceAU: number;
-		viewportW: number;
-		viewportH: number;
-		pixelRatio: number;
-	} {
+	getDebugStats(): DebugStats {
 		const samples = this.fpsSamples;
 		let fps = 0;
 		if (samples.length >= 2) {
@@ -1857,105 +1785,30 @@ export class SceneRenderer {
 			const dtSec = (newest - oldest) / 1000;
 			if (dtSec > 0) fps = (samples.length - 1) / dtSec;
 		}
-		const info = this.renderer.info;
-		return {
+		return collectDebugStats({
 			fps,
-			workers: this.orbitPool.workerCount,
-			workerGroups: this.orbitPool.groupCount,
-			drawCalls: info.render.calls,
-			triangles: info.render.triangles,
-			geometries: info.memory.geometries,
-			textures: info.memory.textures,
-			programs: info.programs?.length ?? 0,
-			promotedBodies: this.bodyObjects.size,
-			focusedId: this.focusedBody?.data.id,
-			focusedName: this.focusedBody?.data.name ?? undefined,
-			cameraDistanceAU: this.getCameraState().distance / AU_SCALE,
-			viewportW: this.renderer.domElement.clientWidth,
-			viewportH: this.renderer.domElement.clientHeight,
-			pixelRatio: this.renderer.getPixelRatio()
-		};
+			orbitPool: this.orbitPool,
+			renderer: this.renderer,
+			bodyObjects: this.bodyObjects,
+			focusedBody: this.focusedBody,
+			cameraDistanceScene: this.getCameraState().distance
+		});
 	}
 
-	/**
-	 * Set which body's IAU north pole drives `camera.up`. `null` reverts to
-	 * ecliptic Y (scene frame). Triggers a slerp from the currently-applied up
-	 * vector to the new target over `UP_ANIM_DURATION_MS`. The target is
-	 * recomputed each frame inside {@link updateCameraUp} so it tracks the
-	 * (slow) drift of the body's pole over time.
-	 */
 	setNorthReference(id: string | null): void {
-		if (id === this.northRefId) return;
-		this.northRefId = id;
-		this.upStartVec.copy(this.upCurrentVec);
-		this.upAnimStartTime = performance.now();
+		this.cameraUp.setNorthReference(id);
 	}
 
-	/** Read the current debug skybox-rotation adjustment (degrees, X/Y/Z). */
 	getSkyboxAdjust(): { rxDeg: number; ryDeg: number; rzDeg: number } {
-		return { ...this.skyboxAdjust };
+		return this.skyboxAdjuster.get();
 	}
 
-	/**
-	 * Apply an extra rotation on top of the math-derived skybox alignment.
-	 * Angles are degrees, composed as Rz · Ry · Rx around the *scene* axes,
-	 * then post-multiplied onto the base: `final = base · adjust`. Pass 0,0,0
-	 * to clear and reproduce the analytically-derived rotation.
-	 */
 	setSkyboxAdjust(rxDeg: number, ryDeg: number, rzDeg: number): void {
-		this.skyboxAdjust.rxDeg = rxDeg;
-		this.skyboxAdjust.ryDeg = ryDeg;
-		this.skyboxAdjust.rzDeg = rzDeg;
-		const DEG2RAD = Math.PI / 180;
-		this._skyboxAdjustQ
-			.setFromAxisAngle(this._skyboxAxisX, rxDeg * DEG2RAD)
-			.premultiply(new Quaternion().setFromAxisAngle(this._skyboxAxisY, ryDeg * DEG2RAD))
-			.premultiply(new Quaternion().setFromAxisAngle(this._skyboxAxisZ, rzDeg * DEG2RAD));
-		this._skyboxQ.copy(SKYBOX_BASE_ROTATION).multiply(this._skyboxAdjustQ);
-		this.scene.backgroundRotation.setFromQuaternion(this._skyboxQ);
+		this.skyboxAdjuster.set(rxDeg, ryDeg, rzDeg);
 	}
 
-	/** Toggle the celestial-landmark debug markers (galactic center, NCP, …). */
 	setSkyDebugMarkersVisible(visible: boolean): void {
-		if (visible) {
-			if (!this.skyDebugGroup) {
-				this.skyDebugGroup = createSkyDebugMarkers();
-				this.scene.add(this.skyDebugGroup);
-			}
-			this.skyDebugGroup.visible = true;
-		} else if (this.skyDebugGroup) {
-			disposeSkyDebugMarkers(this.skyDebugGroup);
-			this.skyDebugGroup = null;
-		}
-	}
-
-	private updateCameraUp(): void {
-		if (this.northRefId === GALACTIC_REF_ID) {
-			galacticNorthVector(this.upTargetVec);
-		} else {
-			const refBody = this.northRefId ? this.ctx.getBody(this.northRefId) : undefined;
-			if (refBody) bodyNorthVector(refBody, this.clock.jd, this.upTargetVec);
-			else this.upTargetVec.copy(SceneRenderer._upRef);
-		}
-
-		const elapsed = performance.now() - this.upAnimStartTime;
-		if (elapsed >= SceneRenderer.UP_ANIM_DURATION_MS) {
-			this.upCurrentVec.copy(this.upTargetVec);
-		} else {
-			const t = Math.max(0, elapsed / SceneRenderer.UP_ANIM_DURATION_MS);
-			const s = t * t * (3 - 2 * t);
-			// Slerp via the rotation quaternions that map ecliptic Y → start/target.
-			this._upQuatA.setFromUnitVectors(SceneRenderer._upRef, this.upStartVec);
-			this._upQuatB.setFromUnitVectors(SceneRenderer._upRef, this.upTargetVec);
-			this._upQuatA.slerp(this._upQuatB, s);
-			this.upCurrentVec.copy(SceneRenderer._upRef).applyQuaternion(this._upQuatA);
-		}
-		this.camera.up.copy(this.upCurrentVec);
-
-		// OrbitControls caches its up→Y quat at construction and never refreshes it.
-		const ctrls = this.controls as unknown as { _quat: Quaternion; _quatInverse: Quaternion };
-		ctrls._quat.setFromUnitVectors(this.upCurrentVec, SceneRenderer._upRef);
-		ctrls._quatInverse.copy(ctrls._quat).invert();
+		this.skyDebugMarkers.setVisible(visible);
 	}
 
 	/**
@@ -1980,33 +1833,6 @@ export class SceneRenderer {
 			removeUserLocationMarker(this.userLocationMarker);
 			this.userLocationMarker = null;
 		}
-	}
-
-	/**
-	 * Hide the user-location dot when it's on Earth's far hemisphere from the
-	 * camera. The marker sits exactly on the surface (|earthToMarker| = R), so
-	 * the tangent-plane visibility check reduces to `earthToMarker · earthToCamera > R²`.
-	 * If the camera is inside Earth (e.g., debug zoom-through), keep it visible.
-	 */
-	private updateUserLocationOcclusion(): void {
-		const marker = this.userLocationMarker;
-		if (!marker) return;
-		const earth = this.bodyObjects.get('naif-399');
-		if (!earth?.mesh) return;
-		// Earth-center → marker, in scene-frame coords (focus-relative).
-		this._tmpUserLoc.copy(marker.position).applyQuaternion(earth.mesh.quaternion);
-		const ex = this._tmpUserLoc.x;
-		const ey = this._tmpUserLoc.y;
-		const ez = this._tmpUserLoc.z;
-		// Earth-center → camera. mesh.position holds Earth's focus-relative pos.
-		const ep = earth.mesh.position;
-		const cx = this.camera.position.x - ep.x;
-		const cy = this.camera.position.y - ep.y;
-		const cz = this.camera.position.z - ep.z;
-		const r = earth.radiusScene;
-		const r2 = r * r;
-		const camDist2 = cx * cx + cy * cy + cz * cz;
-		marker.visible = camDist2 <= r2 || ex * cx + ey * cy + ez * cz > r2;
 	}
 
 	resize(width: number, height: number): void {
