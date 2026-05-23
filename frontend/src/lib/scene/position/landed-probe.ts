@@ -9,23 +9,9 @@ import type { Vec3 } from '$lib/scene/animation/math';
 
 /**
  * Place a landed probe at its body-surface lat/lng/alt in world coords.
- *
- * Steps:
- *   1. Stair-step lookup into the landed record at `jd` → (lat, lng, alt_m).
- *   2. Find the landing body in `bodiesById` (e.g. naif-499 for Mars).
- *   3. Compute body-fixed XYZ from (lat, lng, alt) — Three.js convention:
- *      local +X = prime meridian, +Y = north pole, −Z = east.
- *   4. Rotate by the body's IAU quaternion (pole + spin at `jd`, with
- *      nutation/precession sums if present) to land in scene-frame coords.
- *   5. Convert to scene units and add to the body's world position.
- *
- * Returns null when the landing body isn't loaded yet (e.g. Titan chebyshev
- * chunk still streaming) or lacks orientation data — caller marks the
- * probe out-of-range for one frame and tries again next tick.
- *
- * Side effect: mutates `d.parentId` to the landing body's NAIF key so the
- * orbit-line / trail-anchor writes downstream in `computePosition` follow
- * the new parent in the same frame.
+ * Returns null when the landing body isn't loaded or lacks orientation data
+ * (caller hides the probe for the frame). Mutates `d.parentId` so the
+ * downstream orbit-line/trail-anchor writes follow the new parent.
  */
 export function renderLandedProbe(
 	d: BodyData,
@@ -47,13 +33,9 @@ export function renderLandedProbe(
 	const DEG2RAD = Math.PI / 180;
 	const latR = sample.latDeg * DEG2RAD;
 	const lngR = sample.lngDeg * DEG2RAD;
-	// Spherical body-fixed XYZ in km (sphere approximation — for typical
-	// planet flattenings the geodetic-vs-spherical difference is well below
-	// the rendered point's pixel size). Convention matches the IAU body-
-	// fixed frame the writer's lat/lng/alt were sampled in:
-	//   local +X → prime meridian on equator (lat=0, lon=0)
-	//   local +Y → north pole (lat=+90)
-	//   local −Z → east (lon=+90)
+	// Body-fixed XYZ in km, IAU convention: +X = prime meridian, +Y = north
+	// pole, −Z = east. Sphere approximation: geodetic-vs-spherical error is
+	// well below the rendered probe's pixel size for typical flattenings.
 	const r = radiusKm + sample.altM / 1000;
 	const cosLat = Math.cos(latR);
 	const bx = r * cosLat * Math.cos(lngR);
@@ -61,9 +43,7 @@ export function renderLandedProbe(
 	const bz = -r * cosLat * Math.sin(lngR);
 	const quat = bodyQuaternion(landingBody.orientation, jd, landingBody.nutPrec);
 	const tmp = new Vector3(bx, by, bz).applyQuaternion(quat);
-	// `tmp` is body-relative scene-frame km. Convert to scene units and
-	// add to the landing body's world position. The original ECLIPJ2000-→-
-	// scene axis swap in `kmToScene` does NOT apply here because
+	// `tmp` is body-relative km in scene-frame; no axis swap needed because
 	// `bodyQuaternion` already returns a Three.js-coords rotation.
 	d.parentId = bodyKey;
 	return {

@@ -9,11 +9,7 @@ import {
 } from '$lib/scene/objects/construction';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/clouds';
 
-/**
- * Per-frame texture LOD: upgrade each visible body's texture tier based on
- * its screen-space radius. One-way upgrade — the prior texture is disposed
- * when a higher tier loads, so at most one tier per body lives on the GPU.
- */
+/** Per-frame texture LOD: upgrade tier by screen-space radius. One-way — prior tier disposed. */
 export function updateTextureLOD(
 	bodyObjects: Map<string, BodyObjects>,
 	camera: PerspectiveCamera,
@@ -52,9 +48,8 @@ export function updateTextureLOD(
 		const frameChanged = desiredFrame !== bo.textureFrame;
 		const wantsUpgrade = desiredRank > currentRank;
 
-		// The cloud nudge below sits outside this gate so direct-load at
-		// high zoom doesn't strand clouds at low while their initial fetch
-		// is still resolving.
+		// Cloud nudge sits outside this gate so a direct high-zoom load doesn't
+		// strand clouds at low while the surface fetch is in flight.
 		if (!bo.textureLoading && (wantsUpgrade || frameChanged)) {
 			const target = wantsUpgrade
 				? highestAvailableTier(desiredRank, bo.availableTiers)
@@ -62,10 +57,8 @@ export function updateTextureLOD(
 			if (target) loadBodyTextureTier(bo, target, desiredFrame, textureLoader);
 		}
 
-		// Clamp to whatever the cloud bundle actually exports — it may
-		// top out below the surface's tier (silent no-op otherwise). The
-		// frame slides separately with sim time, picking the closest
-		// snapshot from the exported set.
+		// Clamp to whatever the cloud bundle exports (may top out below the
+		// surface tier); frame slides separately with sim time.
 		if (bo.clouds && bo.textureTier) {
 			const cloudTarget = highestAvailableTier(tierRank(bo.textureTier), bo.clouds.availableTiers);
 			const cloudFrame = cloudFrameForJd(jd, bo.clouds.availableFrames);

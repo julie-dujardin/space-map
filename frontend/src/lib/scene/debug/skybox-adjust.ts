@@ -3,11 +3,7 @@ import { SKYBOX_BASE_ROTATION } from '$lib/scene/objects/skybox';
 
 const DEG2RAD = Math.PI / 180;
 
-/**
- * Debug-only adjustment applied on top of the math-derived skybox rotation.
- * Combined as `base · adjust(rxDeg, ryDeg, rzDeg)` so 0,0,0 reproduces the
- * derived alignment. Mutates `scene.backgroundRotation` on each call.
- */
+/** Debug skybox rotation, composed as `base · adjust`; 0,0,0 reproduces the derived alignment. */
 export class SkyboxAdjuster {
 	private readonly adjust = { rxDeg: 0, ryDeg: 0, rzDeg: 0 };
 	private readonly _q = new Quaternion();
@@ -23,12 +19,7 @@ export class SkyboxAdjuster {
 		return { ...this.adjust };
 	}
 
-	/**
-	 * Apply an extra rotation on top of the math-derived skybox alignment.
-	 * Angles are degrees, composed as Rz · Ry · Rx around the *scene* axes,
-	 * then post-multiplied onto the base: `final = base · adjust`. Pass 0,0,0
-	 * to clear and reproduce the analytically-derived rotation.
-	 */
+	/** Degrees, composed as Rz · Ry · Rx around the scene axes. 0,0,0 clears. */
 	set(rxDeg: number, ryDeg: number, rzDeg: number): void {
 		this.adjust.rxDeg = rxDeg;
 		this.adjust.ryDeg = ryDeg;

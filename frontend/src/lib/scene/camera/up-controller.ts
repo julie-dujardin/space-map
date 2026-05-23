@@ -7,15 +7,10 @@ const UP_ANIM_DURATION_MS = 400;
 const SCENE_UP = new Vector3(0, 1, 0);
 
 /**
- * Owns `camera.up` while the user switches between north references (ecliptic
- * Y / galactic north / any body's IAU pole). Slerps the up vector from its
- * current value to the new target over {@link UP_ANIM_DURATION_MS} so the
- * scene doesn't snap when the reference changes; thereafter recomputes the
- * target each frame so it tracks the slow drift of the body's pole.
- *
- * Also pokes `OrbitControls`'s private up→Y quaternion, which the addon caches
- * at construction and never refreshes — without this poke, dragging after a
- * north-reference change rotates around the wrong axis.
+ * Drives `camera.up` from a north reference (ecliptic Y / galactic / body
+ * pole), slerping across switches so the scene doesn't snap. Also re-pokes
+ * `OrbitControls`'s cached up→Y quat — without that, dragging after a switch
+ * rotates around the wrong axis.
  */
 export class CameraUpController {
 	private refId: string | null = null;
@@ -32,11 +27,7 @@ export class CameraUpController {
 		private readonly ctx: ContextManager
 	) {}
 
-	/**
-	 * Set which body's IAU north pole drives `camera.up`. `null` reverts to
-	 * ecliptic Y (scene frame). Triggers a slerp from the currently-applied up
-	 * vector to the new target over {@link UP_ANIM_DURATION_MS}.
-	 */
+	/** `null` reverts to ecliptic Y; any other id triggers a slerp to its pole. */
 	setNorthReference(id: string | null): void {
 		if (id === this.refId) return;
 		this.refId = id;

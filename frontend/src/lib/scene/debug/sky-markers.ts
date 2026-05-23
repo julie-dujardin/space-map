@@ -4,11 +4,7 @@ import {
 	disposeSkyDebugMarkers
 } from '$lib/scene/objects/sky-debug-markers';
 
-/**
- * Toggle for the celestial-landmark debug markers (galactic center, NCP, …).
- * Builds the group lazily on first show; tears it down (including GPU
- * resources) on hide so an off toggle returns the scene to no-cost state.
- */
+/** Celestial-landmark debug markers (galactic center, NCP, …). Lazy build, full teardown on hide. */
 export class SkyDebugMarkers {
 	private group: Group | null = null;
 

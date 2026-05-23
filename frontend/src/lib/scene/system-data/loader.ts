@@ -6,12 +6,9 @@ import type { SimClock } from '$lib/scene/clock.svelte';
 import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/construction';
 
 /**
- * Owns the "which system's textures + orientation are currently resident"
- * decision. Tracks the currently loaded barycenter and a deferred-unload queue:
- * the previous system's textures stay resident until the in-flight focus
- * animation settles, so a fly that gets reversed mid-way doesn't thrash the
- * GPU. The caller drives draining via {@link drainPendingUnloads} when its
- * focus animation has finished.
+ * Tracks which system's textures + orientation are resident, plus a
+ * deferred-unload queue so a focus-fly that reverses mid-way doesn't thrash
+ * the GPU. Caller drains via {@link drainPendingUnloads} once the fly settles.
  */
 export class SystemDataLoader {
 	private lastBaryId: string | null = null;
@@ -27,30 +24,23 @@ export class SystemDataLoader {
 		private readonly onLoaded: () => void
 	) {}
 
-	/**
-	 * Sync resident textures to the focused system. If the focus changed
-	 * barycenters, queues the prior system for deferred unload and kicks off
-	 * the new one's `loadSystemData` (textures + orientation + rings + clouds).
-	 */
+	/** On barycenter change, queue the prior system for unload and load the new one. */
 	syncToFocus(): void {
 		const sysId = this.ctx.focusedSystemId;
 		if (!sysId) {
-			// Standalone focus (Sun, Ceres, comet…) — no system to load, but if a
-			// system was loaded before, queue it for unload so leaving e.g. Jupiter
-			// to focus the Sun still releases Jupiter's textures.
+			// Standalone focus (Sun, Ceres, comet…): queue any prior system for unload.
 			if (this.lastBaryId) {
 				this.pendingUnloads.add(this.lastBaryId);
 				this.lastBaryId = null;
 			}
 			return;
 		}
-		// Resolve to barycenter: if sysId is a planet (e.g. naif-599), its parent is the barycenter.
+		// Resolve sysId to its barycenter (planet → parent, barycenter → itself).
 		const body = this.ctx.getBody(sysId);
 		const baryId =
 			body?.data.objectType === ObjectType.BARYCENTER ? sysId : (body?.data.parentId ?? sysId);
 		if (baryId === this.lastBaryId) return;
-		// Queue the prior system for release, then drop the new one out of the
-		// pending set in case the user is re-entering it mid-fly.
+		// Drop the new id from pending unloads in case the user re-enters mid-fly.
 		if (this.lastBaryId) this.pendingUnloads.add(this.lastBaryId);
 		this.pendingUnloads.delete(baryId);
 		this.lastBaryId = baryId;
@@ -68,11 +58,7 @@ export class SystemDataLoader {
 		});
 	}
 
-	/**
-	 * Release the GPU textures of any system that was queued for unload by a
-	 * prior `syncToFocus`. Caller should gate this on the focus animation
-	 * having settled.
-	 */
+	/** Release the GPU textures of every queued system. Gate on focus-fly settled. */
 	drainPendingUnloads(): void {
 		if (this.pendingUnloads.size === 0) return;
 		for (const baryId of this.pendingUnloads) {

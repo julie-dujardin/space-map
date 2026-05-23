@@ -22,11 +22,7 @@ export interface DebugStats {
 	pixelRatio: number;
 }
 
-/**
- * Snapshot of renderer internals for the debug overlay. Read on demand;
- * nothing here is hot, but the call lives behind a settings toggle so the
- * GC-pressure of one allocation per frame is fine.
- */
+/** Snapshot of renderer internals for the debug overlay. Read on demand. */
 export function collectDebugStats(params: {
 	fps: number;
 	orbitPool: OrbitWorkerPool;

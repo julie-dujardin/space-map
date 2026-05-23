@@ -7,16 +7,9 @@ import { AU_SCALE } from '$lib/math/units';
 const LIGHT_DIST = 10;
 
 /**
- * Swap the active sun light between the solar-system `PointLight` and the
- * sub-system `DirectionalLight`. The directional light points from the Sun's
- * focus-relative direction towards the origin, with the shadow camera sized
- * tightly to the current view distance for high texel density. When no
- * planetary system is active the directional light is silenced and the
- * point light at the Sun takes over.
- *
- * Rings no longer receive into the shadow map (their own shader ray-marches
- * the planet's oblate spheroid analytically), so the frustum can stay sized
- * to the camera view without a ring floor.
+ * Swap between the solar-system `PointLight` and the sub-system shadow-casting
+ * `DirectionalLight`, sizing the shadow camera tightly to the current view
+ * distance. No ring floor — rings ray-march their own planet shadow.
  */
 export function updateSunShadowLight(
 	bodyObjects: Map<string, BodyObjects>,

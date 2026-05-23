@@ -1,12 +1,7 @@
 import { Vector3 } from 'three';
 import type { BodyObjects } from '$lib/scene/types';
 
-/**
- * Refresh per-frame atmosphere uniforms: the body→Sun direction for each
- * body that carries a scattering shell. Everything else the shader needs is
- * static (radii, coefficients) or derived from the shell mesh's model
- * matrix (the planet centre), so this is the only per-frame work.
- */
+/** Refresh per-frame `uSunDir` on every scattering shell. */
 export function updateAtmosphereShaders(bodyObjects: Map<string, BodyObjects>): void {
 	const sunPos = bodyObjects.get('naif-10')?.body.position;
 	if (!sunPos) return;

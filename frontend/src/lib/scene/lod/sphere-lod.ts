@@ -4,24 +4,14 @@ import { kmToScene } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
 
-/**
- * Sphere-LOD tiers, sorted by descending pixel-radius threshold. The first
- * tier whose `up` is met (screenR ≥ up) sets the target segment count. Down-
- * steps are gated by 15% hysteresis (see {@link desiredSphereSegments}) so a
- * body sitting on a threshold doesn't flap geometry counts every frame as the
- * camera jitters.
- */
+/** Pixel-radius → segment count, descending. Down-step uses 15% hysteresis. */
 const SPHERE_LOD_TIERS = [
 	{ up: 150, segs: 128 },
 	{ up: 40, segs: 64 },
 	{ up: 0, segs: 32 }
 ];
 
-/**
- * Cap for bodies outside the active planetary system (and not the sun): they
- * never fill enough screen for higher counts to matter, so we skip the ladder
- * entirely and stay cheap.
- */
+/** Cap for bodies outside the active system (sun excepted) — they never fill enough screen to matter. */
 const OUT_OF_SYSTEM_SPHERE_SEGMENTS = 24;
 
 function desiredSphereSegments(
@@ -47,14 +37,7 @@ function desiredSphereSegments(
 	return target;
 }
 
-/**
- * Per-frame sphere-geometry LOD: pick a segment count from {@link SPHERE_LOD_TIERS}
- * based on each body's screen-space pixel radius and swap `mesh.geometry`
- * when it changes. Bodies outside the active system (and not the sun) are
- * capped at {@link OUT_OF_SYSTEM_SPHERE_SEGMENTS} since they never fill
- * enough screen for facets to read at viewing scale. Hysteresis on the
- * down-step prevents thrash when zooming across a threshold.
- */
+/** Per-frame sphere-geometry LOD: swap `mesh.geometry` when the screen-space pixel radius crosses a tier. */
 export function updateSphereLOD(
 	bodyObjects: Map<string, BodyObjects>,
 	camera: PerspectiveCamera,

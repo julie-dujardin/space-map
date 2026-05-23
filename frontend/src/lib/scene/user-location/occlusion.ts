@@ -5,10 +5,9 @@ import type { BodyObjects } from '$lib/scene/types';
 const _tmp = new Vector3();
 
 /**
- * Hide the user-location dot when it's on Earth's far hemisphere from the
- * camera. The marker sits exactly on the surface (|earthToMarker| = R), so
- * the tangent-plane visibility check reduces to `earthToMarker · earthToCamera > R²`.
- * If the camera is inside Earth (e.g., debug zoom-through), keep it visible.
+ * Hide the marker when on Earth's far hemisphere. Marker sits on the surface,
+ * so the tangent-plane test reduces to `earthToMarker · earthToCamera > R²`.
+ * Camera inside Earth (e.g. debug zoom-through) keeps it visible.
  */
 export function updateUserLocationOcclusion(
 	marker: CSS2DObject | null,
