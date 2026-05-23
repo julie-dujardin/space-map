@@ -235,7 +235,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
         r"^\d+R_helios[12]_\d+_\d+\.bsp$",
         r"^\d+AP_helios[12]_\d+_\d+\.bsp$",
     ),
-    "HST": (r"^hst\.bsp$",),
+    "HST": (),  # Earth-orbit; tracked via celestrak (norad_satcat-20580)
     "IUE": (r"^IUE\.bsp$",),
     # InSight cruise + the two MarCO CubeSats that rode along to Mars.
     "INSIGHT": (
