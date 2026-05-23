@@ -181,7 +181,7 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
     },
     {
         "id": ARCHIVE_JAXA_DARTS,
-        "source": "https://data.darts.isas.jaxa.jp/",
+        "source": "https://darts.isas.jaxa.jp/",
         "organisation": "JAXA DARTS",
     },
 ]
