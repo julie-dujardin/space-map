@@ -633,15 +633,15 @@ export class ChunkLoader {
 			result.push({
 				data,
 				position: pos,
-				// Skip orbitElements when the buffer takes over — the trail
-				// builder branches on trailBuffer first and would ignore the
-				// elements anyway; nil'ing them keeps the rederive cadence from
-				// re-snapshotting an ellipse no consumer ever draws.
-				orbitElements: trailBuffer ? undefined : (elements ?? undefined),
+				// Pass elements through even when the buffer drives trail rendering:
+				// the detail panel reads orbitElements to populate its orbital-elements
+				// section. The trail refresh path early-returns on trailBuffer before
+				// touching elements/rederive, so this is free for trail rendering.
+				orbitElements: elements ?? undefined,
 				// Private array, not a shared reference to the fit center body's position:
 				// a probe's parent can flip between frames as it crosses zones.
 				orbitCenter: [anchor[0], anchor[1], anchor[2]],
-				rederiveElements: trailBuffer ? undefined : rederiveElements,
+				rederiveElements,
 				trailBuffer
 			});
 		}
