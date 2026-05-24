@@ -13,7 +13,7 @@ import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { buildPointClouds } from '$lib/scene/objects/construction';
-import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/builders';
+import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
 
 const REBASE_THRESHOLD_AU = 0.01;

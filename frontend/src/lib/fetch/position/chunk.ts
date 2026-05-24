@@ -26,7 +26,7 @@ import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { NUM_TRAIL_POINTS } from '$lib/scene/objects/builders';
+import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
 import {
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,

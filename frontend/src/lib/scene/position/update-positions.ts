@@ -18,7 +18,7 @@ import {
 	updateOutOfRangeToast,
 	type OutOfRangeState
 } from '$lib/scene/out-of-range-toast';
-import { refreshTrail } from '$lib/scene/objects/builders';
+import { refreshTrail } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
 import type { PositionDiagnostics } from './diagnostics';
 
