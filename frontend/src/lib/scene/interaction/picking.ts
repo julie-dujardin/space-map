@@ -62,20 +62,20 @@ export function pickPointCloudBody(
 
 	// Visible asteroid zones
 	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
-		if (!ctx.isAsteroidGroupVisible(zone)) continue;
+		if (!ctx.visibility.isAsteroidGroupVisible(zone)) continue;
 		for (const body of byId.values()) testBody(body);
 	}
 
 	// Visible spacecraft groups
 	for (const [gid, byId] of ctx.bodies.spacecraftByParent) {
-		if (!ctx.isSpacecraftGroupVisible(gid)) continue;
+		if (!ctx.visibility.isSpacecraftGroupVisible(gid)) continue;
 		for (const body of byId.values()) testBody(body);
 	}
 
 	// Visible moon point-cloud groups (moons shown as dots when zoomed out)
 	for (const body of ctx.bodies.majorBodies) {
 		if (body.data.objectType !== ObjectType.MOON) continue;
-		if (!ctx.isMoonGroupVisible(body.data.parentId)) continue;
+		if (!ctx.visibility.isMoonGroupVisible(body.data.parentId)) continue;
 		testBody(body);
 	}
 

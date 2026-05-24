@@ -20,7 +20,7 @@ export function updateSunShadowLight(
 	cameraDistance: number,
 	tmpV3: Vector3
 ): void {
-	const sysId = ctx.activeSystemId;
+	const sysId = ctx.visibility.activeSystemId;
 	if (!sysId) {
 		shadowLight.intensity = 0;
 		if (sunPointLight) sunPointLight.intensity = 2;

@@ -334,7 +334,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	// Skip moons outside the focused system: their visuals are all gated on
 	// `isInFocusedSystem`, so a stale position can't render, and switching
 	// focus pulls them back in the same frame `focusedSystemId` flips.
-	const sysId = ctx.focusedSystemId;
+	const sysId = ctx.visibility.focusedSystemId;
 	for (const body of ctx.bodies.bodiesById.values()) {
 		if (body.data.objectType === ObjectType.MOON) {
 			const inSystem = sysId !== null && body.data.parentId === sysId;

@@ -175,7 +175,7 @@ export class FocusController {
 
 		this.focusedBody = body;
 		controls.minDistance = minCameraDistance(body);
-		ctx.setFocused(body);
+		ctx.visibility.setFocused(body);
 		callbacks.onFocusChange(body);
 		loadTexture(body);
 		systemData.syncToFocus();

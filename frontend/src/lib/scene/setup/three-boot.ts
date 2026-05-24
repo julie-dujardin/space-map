@@ -53,7 +53,7 @@ export function bootThree(
 
 	const labelRenderer = new ThrottledCSS2DRenderer({ element: labelContainer });
 	labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
-	ctx.updateViewport(canvas.clientHeight);
+	ctx.visibility.updateViewport(canvas.clientHeight);
 
 	const scene = new Scene();
 	scene.add(new AmbientLight(0xffffff, 0.01));

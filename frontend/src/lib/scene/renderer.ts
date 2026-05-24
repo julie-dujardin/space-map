@@ -254,8 +254,8 @@ export class SceneRenderer {
 		});
 
 		// Sync context initial state
-		if (focusBody) ctx.setFocused(focusBody);
-		ctx.updateCamera(initialView.zoom);
+		if (focusBody) ctx.visibility.setFocused(focusBody);
+		ctx.visibility.updateCamera(initialView.zoom);
 
 		// Notify initial focus
 		callbacks.onFocusChange(focusBody);
@@ -482,7 +482,7 @@ export class SceneRenderer {
 
 		// Camera state → visibility decisions
 		const { distance } = this.getCameraState();
-		this.ctx.updateCamera(distance);
+		this.ctx.visibility.updateCamera(distance);
 
 		// Per-frame visibility, label, and orbit line updates
 		this.cullFrameCounter = updateBodyVisibility(
@@ -662,7 +662,7 @@ export class SceneRenderer {
 		this.labelRenderer.setSize(width, height);
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();
-		this.ctx.updateViewport(height);
+		this.ctx.visibility.updateViewport(height);
 		setOrbitLineResolution(width, height);
 	}
 

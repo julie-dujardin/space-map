@@ -185,8 +185,8 @@ export function updateBodyVisibility(
 				showLabel = visible;
 				isClose = false;
 			} else {
-				const vis = ctx.getPlanetVisibility(body, dist);
-				const visible = vis !== VISIBILITY.HIDE && ctx.hasFullRendering(body);
+				const vis = ctx.visibility.getPlanetVisibility(body, dist);
+				const visible = vis !== VISIBILITY.HIDE && ctx.visibility.hasFullRendering(body);
 				group.visible = visible;
 				if (orbitLine) orbitLine.visible = visible;
 				showLabel = visible;
@@ -195,10 +195,12 @@ export function updateBodyVisibility(
 		} else {
 			// Moons, planets, spacecraft, asteroids, comets, dwarf planets
 			const isMoon = body.data.objectType === ObjectType.MOON;
-			const vis = isMoon ? ctx.getMoonVisibility(body) : ctx.getPlanetVisibility(body, dist);
+			const vis = isMoon
+				? ctx.visibility.getMoonVisibility(body)
+				: ctx.visibility.getPlanetVisibility(body, dist);
 			const vf = isMoon
 				? moonVisFlags(vis, hideCappedMoonLabels, isFocused)
-				: bodyVisFlags(vis, ctx.hasFullRendering(body), isFocused);
+				: bodyVisFlags(vis, ctx.visibility.hasFullRendering(body), isFocused);
 			group.visible = vf.groupVisible;
 			if (orbitLine) orbitLine.visible = vf.orbitVisible;
 			showLabel = vf.showLabel;
@@ -265,13 +267,13 @@ export function updateBodyVisibility(
 	}
 
 	for (const [zone, pts] of asteroidPoints) {
-		pts.visible = ctx.isAsteroidGroupVisible(zone);
+		pts.visible = ctx.visibility.isAsteroidGroupVisible(zone);
 	}
 	for (const [gid, pts] of spacecraftPoints) {
-		pts.visible = ctx.isSpacecraftGroupVisible(gid);
+		pts.visible = ctx.visibility.isSpacecraftGroupVisible(gid);
 	}
 	for (const [parentId, pts] of moonPoints) {
-		pts.visible = ctx.isMoonGroupVisible(parentId);
+		pts.visible = ctx.visibility.isMoonGroupVisible(parentId);
 	}
 
 	// Screen-space label occlusion runs every frame (cheap: typically 0-2 occluders).

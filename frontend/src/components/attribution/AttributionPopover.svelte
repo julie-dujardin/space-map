@@ -43,7 +43,7 @@
 	const orbitEntries = $derived.by(() => {
 		// CelesTrak only covers Earth satellites — suppress its credit outside
 		// the Earth-Moon system, mirroring the bar's scoping.
-		const inEarthSystem = ctx.isFocusedOnEarthSystem();
+		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		return ORBIT_ENTRIES.filter(
 			({ source }) =>
 				ctx.credits.orbitSources.has(source) &&
@@ -56,8 +56,8 @@
 	// credits come via loadBodyTexture, not loadSystemData).
 	const textureList = $derived.by(() => {
 		void ctx.credits.textureVersion;
-		const sysId = ctx.focusedSystemId;
-		const bodyId = ctx.focusedBodyId;
+		const sysId = ctx.visibility.focusedSystemId;
+		const bodyId = ctx.visibility.focusedBodyId;
 		return [...ctx.credits.texture.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
@@ -65,8 +65,8 @@
 
 	const ringList = $derived.by(() => {
 		void ctx.credits.ringVersion;
-		const sysId = ctx.focusedSystemId;
-		const bodyId = ctx.focusedBodyId;
+		const sysId = ctx.visibility.focusedSystemId;
+		const bodyId = ctx.visibility.focusedBodyId;
 		return [...ctx.credits.ring.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
@@ -74,8 +74,8 @@
 
 	const cloudList = $derived.by(() => {
 		void ctx.credits.cloudVersion;
-		const sysId = ctx.focusedSystemId;
-		const bodyId = ctx.focusedBodyId;
+		const sysId = ctx.visibility.focusedSystemId;
+		const bodyId = ctx.visibility.focusedBodyId;
 		return [...ctx.credits.cloud.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));

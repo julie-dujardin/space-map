@@ -26,7 +26,7 @@ export class SystemDataLoader {
 
 	/** On barycenter change, queue the prior system for unload and load the new one. */
 	syncToFocus(): void {
-		const sysId = this.ctx.focusedSystemId;
+		const sysId = this.ctx.visibility.focusedSystemId;
 		if (!sysId) {
 			// Standalone focus (Sun, Ceres, comet…): queue any prior system for unload.
 			if (this.lastBaryId) {

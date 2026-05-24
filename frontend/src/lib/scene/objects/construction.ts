@@ -667,7 +667,7 @@ export function unloadSystemTextures(
 	ctx: ContextManager
 ): void {
 	for (const bo of bodyObjects.values()) {
-		if (!ctx.isBodyInSystem(bo.body, barycenterId)) continue;
+		if (!ctx.visibility.isBodyInSystem(bo.body, barycenterId)) continue;
 		unloadBodyTexture(bo);
 		if (bo.specularMap && bo.mesh) {
 			disposeSpecularFromMaterial(bo.mesh.material as MeshStandardMaterial);

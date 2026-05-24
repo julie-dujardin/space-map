@@ -22,7 +22,7 @@ export function updateTextureLOD(
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
-	const activeSystem = ctx.activeSystemId;
+	const activeSystem = ctx.visibility.activeSystemId;
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
@@ -30,7 +30,7 @@ export function updateTextureLOD(
 		if (bo.cachedDist <= 0) continue;
 		const id = bo.body.data.id;
 		if (activeSystem) {
-			if (id !== activeSystem && !ctx.isInActiveSystem(bo.body.data.parentId)) continue;
+			if (id !== activeSystem && !ctx.visibility.isInActiveSystem(bo.body.data.parentId)) continue;
 		} else if (id !== focusedId) {
 			continue;
 		}

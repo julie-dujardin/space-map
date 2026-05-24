@@ -48,7 +48,7 @@ export function updateSphereLOD(
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
-	const activeSystem = ctx.activeSystemId;
+	const activeSystem = ctx.visibility.activeSystemId;
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;
@@ -57,7 +57,7 @@ export function updateSphereLOD(
 		const isStar = bo.body.data.objectType === ObjectType.STAR;
 		const id = bo.body.data.id;
 		const inSystem = activeSystem
-			? id === activeSystem || ctx.isInActiveSystem(bo.body.data.parentId)
+			? id === activeSystem || ctx.visibility.isInActiveSystem(bo.body.data.parentId)
 			: id === focusedId;
 		const desired = desiredSphereSegments(screenR, isStar, inSystem, bo.currentSegments ?? 64);
 		if (desired === bo.currentSegments) continue;

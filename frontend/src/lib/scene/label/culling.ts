@@ -231,7 +231,7 @@ export function cullOverlappingLabels(
 		c.labelHalo = labelHalo;
 		c.isCapped =
 			body.data.objectType === ObjectType.MOON
-				? ctx.getMoonVisibility(body) === VISIBILITY.CAPPED
+				? ctx.visibility.getMoonVisibility(body) === VISIBILITY.CAPPED
 				: false;
 		c.isMinor = bo.isMinor;
 		c.isFocused = isFocused;

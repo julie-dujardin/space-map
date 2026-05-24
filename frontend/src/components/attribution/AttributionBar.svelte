@@ -34,7 +34,7 @@
 	const orbitLabels = $derived.by(() => {
 		// CelesTrak only covers Earth satellites — hide its credit everywhere
 		// except the Earth-Moon system, where those bodies are actually drawn.
-		const inEarthSystem = ctx.isFocusedOnEarthSystem();
+		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		const seen = new Set<string>();
 		const out: string[] = [];
 		for (const src of ORBIT_ORDER) {
@@ -58,8 +58,8 @@
 		void ctx.credits.textureVersion;
 		void ctx.credits.ringVersion;
 		void ctx.credits.cloudVersion;
-		const sysId = ctx.focusedSystemId;
-		const bodyId = ctx.focusedBodyId;
+		const sysId = ctx.visibility.focusedSystemId;
+		const bodyId = ctx.visibility.focusedBodyId;
 		const orgs = new Set<string>();
 		const sources = [ctx.credits.texture, ctx.credits.ring, ctx.credits.cloud];
 		for (const credits of sources) {

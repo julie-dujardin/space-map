@@ -324,7 +324,7 @@ export class PointCloudSystem {
 			const pts = this.moonPoints.get(parentId);
 			if (!pts) continue;
 			// Skip hidden groups — saves a vertex-buffer rewrite + GPU upload per parent in any non-focused system.
-			if (!this.ctx.isMoonGroupVisible(parentId)) continue;
+			if (!this.ctx.visibility.isMoonGroupVisible(parentId)) continue;
 			const posAttr = pts.geometry.getAttribute('position');
 			const arr = posAttr.array as Float32Array;
 			const n = Math.min(moons.length, arr.length / 3);
