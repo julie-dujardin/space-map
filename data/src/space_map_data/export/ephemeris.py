@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 
-from space_map_data.download.providers.objects.probes import (
+from space_map_data.download.providers.spice.probes import (
     LANDED_MISSIONS_DIR,
     MISSIONS_DIR,
 )

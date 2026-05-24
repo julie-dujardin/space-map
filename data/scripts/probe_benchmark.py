@@ -34,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.download.providers.objects.probes import MISSIONS_DIR  # noqa: E402
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
 from space_map_data.constants.providers import ID_TYPES  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
     FORMAT_PROBES,

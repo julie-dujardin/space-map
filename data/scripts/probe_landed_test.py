@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.download.providers.objects.probes import (  # noqa: E402
+from space_map_data.download.providers.spice.probes import (  # noqa: E402
     LANDED_MISSIONS_DIR,
 )
 from space_map_data.export.position.probes.writer import (  # noqa: E402

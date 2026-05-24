@@ -37,7 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.download.providers.objects.probes import (
+from space_map_data.download.providers.spice.probes import (
     LANDED_INCLUDE,
     LANDED_MISSIONS_DIR,
     MISSION_INCLUDE,

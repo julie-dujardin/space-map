@@ -15,7 +15,6 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
-from space_map_data.download.providers.objects.probes import MISSIONS_DIR
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_MOON_WHITELIST,
@@ -23,6 +22,8 @@ from space_map_data.utils.naif import (
     classify_object,
 )
 
+from ..naif_http import spk_targets
+from ..probes.layout import MISSIONS_DIR
 from .elements import (
     METHOD_C_RESIDUAL_WARN_ARCMIN,
     MOON_CHUNK_YEARS,
@@ -448,11 +449,8 @@ class SpiceDownloader(Downloader):
         """Get all body NAIF IDs covered by loaded SPK kernels."""
         all_ids: set[int] = set()
         for path in kernel_paths:
-            if not path.suffix == ".bsp":
-                continue
-            ids = spiceypy.spkobj(str(path))
-            for naif_id in ids:
-                all_ids.add(int(naif_id))
+            if path.suffix == ".bsp":
+                all_ids |= spk_targets(path)
         return all_ids
 
     def _extract_moon_chunks(

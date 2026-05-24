@@ -24,7 +24,7 @@ import spiceypy  # noqa: E402
 # Reuse the benchmark's parsing and evaluation helpers.
 import scripts.probe_benchmark as pb  # noqa: E402
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
-from space_map_data.download.providers.objects.probes import MISSIONS_DIR  # noqa: E402
+from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
 from space_map_data.export.position.probes.writer import (  # noqa: E402
     _STATIONARY_PATTERNS,
     _kernels_from_index,

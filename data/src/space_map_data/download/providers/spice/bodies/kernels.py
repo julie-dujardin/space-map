@@ -7,6 +7,8 @@ from pathlib import Path
 import httpx
 from tqdm import tqdm
 
+from ..naif_http import list_naif_dir, stream_to
+
 logger = logging.getLogger(__name__)
 
 NAIF_BASE_URL = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
@@ -69,14 +71,13 @@ def download_kernels(
     for filename, url_path in tqdm(kernels.items(), desc="SPICE kernels", unit="file"):
         subdir = _local_subdir(filename, url_path)
         local_dir = kernel_dir / subdir if subdir else kernel_dir
-        local_dir.mkdir(parents=True, exist_ok=True)
-        local = local_dir / filename
         url = (
             url_path
-            if url_path.startswith("http://") or url_path.startswith("https://")
+            if url_path.startswith(("http://", "https://"))
             else f"{NAIF_BASE_URL}/{url_path}"
         )
-
+        local = local_dir / filename
+        expected_size = 0
         if local.exists():
             head = client.head(url)
             head.raise_for_status()
@@ -85,13 +86,8 @@ def download_kernels(
                 logger.debug("Kernel %s already downloaded", filename)
                 paths.append(local)
                 continue
-
         logger.info("Downloading %s ...", filename)
-        with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            with local.open("wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
-                    f.write(chunk)
+        stream_to(client, url, local, expected_size)
         logger.info("  -> %s (%.1f MB)", local.name, local.stat().st_size / 1e6)
         paths.append(local)
 
@@ -106,7 +102,7 @@ def _local_subdir(filename: str, url_path: str) -> str:
     kernels are out of scope here — they go through the per-mission
     downloader and live in `missions/<MISSION>/`.
     """
-    if url_path.startswith("http://") or url_path.startswith("https://"):
+    if url_path.startswith(("http://", "https://")):
         # Full URL — fall back to filename heuristic for the kernels we serve
         # ourselves (SB441 asteroid kernel is the only one today).
         if filename.lower().startswith("sb441"):
@@ -126,7 +122,7 @@ def _resolve_dynamic(client: httpx.Client) -> dict[str, str]:
         by_dir.setdefault(dir_path, []).append(re.compile(pattern))
 
     for dir_path, patterns in by_dir.items():
-        hrefs = _list_directory(client, dir_path)
+        hrefs = list_naif_dir(client, f"{NAIF_BASE_URL}/{dir_path}/")
         for pattern in patterns:
             best_ver = -1
             best_name = ""
@@ -144,7 +140,7 @@ def _resolve_dynamic(client: httpx.Client) -> dict[str, str]:
                 logger.warning("No match for %s in %s/", pattern.pattern, dir_path)
 
     # Satellite kernels: all .bsp files for each planet prefix
-    hrefs = _list_directory(client, "spk/satellites")
+    hrefs = list_naif_dir(client, f"{NAIF_BASE_URL}/spk/satellites/")
     for prefix in _SATELLITE_PREFIXES:
         count = 0
         for href in hrefs:
@@ -154,11 +150,3 @@ def _resolve_dynamic(client: httpx.Client) -> dict[str, str]:
         logger.info("Resolved %d satellite kernels for %s*", count, prefix)
 
     return resolved
-
-
-def _list_directory(client: httpx.Client, dir_path: str) -> list[str]:
-    """Fetch a NAIF directory listing and return all href values."""
-    url = f"{NAIF_BASE_URL}/{dir_path}/"
-    resp = client.get(url)
-    resp.raise_for_status()
-    return re.findall(r'href="([^"]+)"', resp.text)
