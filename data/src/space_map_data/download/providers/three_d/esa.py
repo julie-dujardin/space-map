@@ -13,9 +13,10 @@ Per-root layout::
         metadata.yaml
 
 metadata.yaml mirrors the per-entry schema of ``nasa-3d-resources.yaml`` so
-the two catalogues can be consumed uniformly. ID fields (naif_id, probe_id,
-wikidata_qid, norad_cat_id, cospar_id) are left null — the downloader can't
-reliably auto-match — and are filled in by hand afterwards.
+the two catalogues can be consumed uniformly: ``slug``, ``files`` (the
+downloaded source files, textures.zip excluded), and an empty ``missions``
+list that gets hand-filled with NAIF / probe / NORAD / COSPAR IDs after
+download (the SciFleet API doesn't expose them).
 """
 
 import logging
@@ -142,7 +143,7 @@ class ESA3DDownloader(Downloader):
         for slug in sorted(members):
             entry = catalog[slug]
             downloads = entry.get("downloads", {}) or {}
-            models: list[dict] = []
+            files: list[dict] = []
             for fmt, type_label in WANTED_FORMATS.items():
                 fname = downloads.get(fmt)
                 if not fname:
@@ -150,32 +151,29 @@ class ESA3DDownloader(Downloader):
                 ok, size = self._download_file(slug, fname, dir_path / fname)
                 if not ok:
                     continue
-                models.append(
+                # `textures.zip` is fetched for the converter to stage next to
+                # the .fbx but isn't a model file in its own right — keep it
+                # out of the manifest's `files:` list.
+                if type_label == "textures":
+                    continue
+                files.append(
                     {
                         "path": f"{DIR_LABEL}/{root}/{fname}",
                         "type": type_label,
                         "size": size,
                     }
                 )
-            if not models:
+            if not files:
                 logger.warning("No models downloaded for %s", slug)
-            entries.append(self._build_entry(slug, entry, models))
+            entries.append(self._build_entry(slug, entry, files))
 
         self._write_metadata(dir_path, root, entries)
 
-    def _build_entry(self, slug: str, raw: dict, models: list[dict]) -> dict:
-        name = (raw.get("heading") or slug).strip()
+    def _build_entry(self, slug: str, raw: dict, files: list[dict]) -> dict:
         return {
             "slug": slug,
-            "name": name,
             "kind": "probe",
-            "naif_id": None,
-            "probe_id": None,
-            "probe_mission": None,
             "wikidata_qid": None,
-            "norad_cat_id": None,
-            "cospar_id": None,
-            "notes": None,
             "esa_catalog": {
                 "id": slug,
                 "parent": raw.get("parent"),
@@ -185,7 +183,12 @@ class ESA3DDownloader(Downloader):
                 "category_filter": raw.get("category_filter") or None,
                 "description": _strip_html(raw.get("description")),
             },
-            "models": models,
+            "files": files,
+            # IDs (naif_id, probe_id, norad_cat_id, cospar_id, name) per mission
+            # are filled in manually after download — the SciFleet API doesn't
+            # expose them. Multi-mission entries (Cluster, Double Star, Proba-3)
+            # grow extra rows under `missions:`.
+            "missions": [],
         }
 
     def _write_metadata(self, dir_path: Path, root: str, entries: list[dict]) -> None:
