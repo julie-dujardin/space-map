@@ -23,7 +23,7 @@ import logging
 import re
 from pathlib import Path
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
@@ -240,29 +240,6 @@ class ProbesIngestor:
             "has_position": False,
         }
 
-    def _cross_reference_naifs(self, cross_refs: list[tuple[str, int]]) -> None:
-        """Backfill NAIF onto pre-existing non-probe Objects via COSPAR match.
-
-        When a probe shares a COSPAR with another Object (typically a CelesTrak
-        row for a satellite Horizons also tracks), the probe row can't carry
-        the COSPAR — it's unique — so we instead push the probe's NAIF onto
-        the existing Object. ``naif_id IS NULL`` ensures we don't overwrite
-        a NAIF already set by another source.
-        """
-        updated = 0
-        for cospar, naif in cross_refs:
-            updated += self.session.execute(
-                update(Object)
-                .where(Object.cospar_id == cospar)
-                .where(Object.naif_id.is_(None))
-                .values(naif_id=naif)
-            ).rowcount  # type: ignore[union-attr]
-        if updated:
-            logger.info(
-                "Cross-referenced NAIF onto %d Objects via probe COSPAR overlap",
-                updated,
-            )
-
     def run(self) -> None:
         if not self.missions_dir.exists() and not self.landed_missions_dir.exists():
             logger.warning(
@@ -282,52 +259,18 @@ class ProbesIngestor:
 
         self._clear()
 
-        # Cospar can't sit on two Objects — unique constraint. When another
-        # row already owns the cospar for a probe's spacecraft (CelesTrak
-        # typically), the probe row leaves cospar null and we backfill the
-        # probe's NAIF onto that existing row instead.
-        candidate_cospars = {
-            cospar
-            for r in records
-            for _, cospar in [self._mb_identity(r["naif_id"])]
-            if cospar is not None
-        }
-        existing_cospar_owners: set[str] = {
-            c
-            for c in self.session.execute(
-                select(Object.cospar_id).where(Object.cospar_id.in_(candidate_cospars))
-            ).scalars()
-            if c is not None
-        }
-        cross_refs: list[tuple[str, int]] = []
-        # Two probe rows for the same spacecraft (e.g. CASSINI + HUYGENS both
-        # reference NAIF -82) want the same COSPAR. Keep it on the first row
-        # we see; subsequent rows null it.
-        cospar_taken_by_probe: set[str] = set()
-
         rows: list[dict] = []
         for r in tqdm(records, desc="Probes ingest"):
             rec = assignments[(r["mission"], r["naif_id"])]
             _, candidate_cospar = self._mb_identity(r["naif_id"])
-            if candidate_cospar is None:
-                cospar_for_row: str | None = None
-            elif candidate_cospar in existing_cospar_owners:
-                cross_refs.append((candidate_cospar, r["naif_id"]))
-                cospar_for_row = None
-            elif candidate_cospar in cospar_taken_by_probe:
-                cospar_for_row = None
-            else:
-                cospar_taken_by_probe.add(candidate_cospar)
-                cospar_for_row = candidate_cospar
             rows.append(
-                self._build_row(r, rec.probe_id, rec.wikidata_qid, cospar_for_row)
+                self._build_row(r, rec.probe_id, rec.wikidata_qid, candidate_cospar)
             )
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
                 rows = []
         if rows:
             self.session.execute(insert(Object), rows)
-        self._cross_reference_naifs(cross_refs)
         self.session.commit()
         logger.info("Ingested %d probe Objects", len(records))
 

@@ -133,22 +133,15 @@ class CelesTrakIngestor:
 
     def _clear(self) -> None:
         self.session.execute(delete(CelesTrakRow))
-        # Reset satcat object_id links for celestrak-sourced objects before
-        # deleting those objects.
+        # Reset satcat object_id links for all NORAD-backed objects (both
+        # celestrak-tracked active sats and inactive satcat-backfilled stubs)
+        # before deleting those objects.
         self.session.execute(
             update(Satcat)
-            .where(
-                Satcat.object_id.in_(
-                    select(Object.id).where(
-                        Object.orbital_source == OrbitalSource.celestrak
-                    )
-                )
-            )
+            .where(Satcat.object_id.like("norad_satcat-%"))
             .values(object_id=None)
         )
-        self.session.execute(
-            delete(Object).where(Object.orbital_source == OrbitalSource.celestrak)
-        )
+        self.session.execute(delete(Object).where(Object.id.like("norad_satcat-%")))
         self.session.commit()
 
     def run(self) -> None:
@@ -216,6 +209,76 @@ class CelesTrakIngestor:
                 self.missing_satcat,
                 self.total_rows,
             )
+
+        # Backfill Object rows for every satcat entry CelesTrak didn't cover
+        # (decayed/inactive sats without current TLEs). These stubs have no
+        # orbital_source/has_position, so export skips them — but they exist
+        # so the model ingest and any other consumer can link via NORAD.
+        self._backfill_inactive_satcat()
+
+    def _backfill_inactive_satcat(self) -> None:
+        rows = self.session.execute(
+            select(
+                Satcat.NORAD_CAT_ID,
+                Satcat.OBJECT_NAME,
+                Satcat.COSPAR_ID,
+                Satcat.object_type,
+            ).where(Satcat.object_id.is_(None))
+        ).all()
+        if not rows:
+            return
+
+        # Consolidate: if an Object already owns this COSPAR (typically a
+        # probe row whose spacecraft is also catalogued in SATCAT — e.g.
+        # NORAD 25008 + probe-88592384 both = Cassini), reuse it instead of
+        # minting a parallel norad_satcat-N row. Load every Object cospar in
+        # one shot — IN-clause batching would blow past SQLite's variable
+        # limit when satcat has tens of thousands of unobjected rows.
+        cospar_to_object: dict[str, str] = {
+            c: oid
+            for c, oid in self.session.execute(
+                select(Object.cospar_id, Object.id).where(Object.cospar_id.is_not(None))
+            ).all()
+        }
+
+        new_objects: list[dict] = []
+        link_updates: list[dict] = []
+        for norad, name, cospar, sotype in rows:
+            reuse_id = cospar_to_object.get(cospar) if cospar else None
+            if reuse_id:
+                link_updates.append({"NORAD_CAT_ID": norad, "object_id": reuse_id})
+                continue
+            object_id = make_object_id(ID_TYPES.NORAD_SATCAT, norad)
+            object_type = (
+                ObjectType.debris
+                if sotype in (SatcatObjectType.ROCKET_BODY, SatcatObjectType.DEBRIS)
+                else ObjectType.spacecraft
+            )
+            new_objects.append(
+                dict(
+                    id=object_id,
+                    name=name,
+                    object_type=object_type,
+                    norad_cat_id=norad,
+                    cospar_id=cospar,
+                    scale=ElementsScale.planet,
+                    parent_id="naif-399",
+                    orbital_source=None,
+                    has_position=False,
+                )
+            )
+            link_updates.append({"NORAD_CAT_ID": norad, "object_id": object_id})
+
+        for i in range(0, len(new_objects), self.BATCH):
+            self.session.execute(insert(Object), new_objects[i : i + self.BATCH])
+        for i in range(0, len(link_updates), self.BATCH):
+            self.session.execute(update(Satcat), link_updates[i : i + self.BATCH])
+        self.session.commit()
+        logger.info(
+            "Backfilled %d inactive SATCAT Object stubs, reused %d existing Objects via COSPAR",
+            len(new_objects),
+            len(link_updates) - len(new_objects),
+        )
 
 
 def _count_csv_rows(path: Path) -> int:

@@ -12,11 +12,18 @@ from space_map_data.ingest.providers.models import config
 log = logging.getLogger(__name__)
 
 
-def resolve_mission_object_id(mission: dict) -> str | None:
+def resolve_mission_object_id(
+    mission: dict, satcat_norad_to_object_id: dict[int, str] | None = None
+) -> str | None:
     """Map one mission descriptor to its canonical object_id.
 
     Priority: ``probe_id`` > ``naif_id`` > ``norad_cat_id`` > ``spkid``.
     Returns None when nothing resolves, so the caller can skip that mission.
+
+    When ``satcat_norad_to_object_id`` is provided, a NORAD lookup follows
+    ``Satcat.object_id`` — which may have been consolidated onto a probe Object
+    (e.g. NORAD 25008 → ``probe-88592384`` for Cassini) rather than minted as
+    a standalone ``norad_satcat-N`` stub.
     """
     probe_id = mission.get("probe_id")
     if probe_id is not None:
@@ -26,6 +33,10 @@ def resolve_mission_object_id(mission: dict) -> str | None:
         return make_object_id(ID_TYPES.NAIF, naif)
     norad = mission.get("norad_cat_id")
     if norad is not None:
+        if satcat_norad_to_object_id is not None:
+            resolved = satcat_norad_to_object_id.get(norad)
+            if resolved is not None:
+                return resolved
         return make_object_id(ID_TYPES.NORAD_SATCAT, norad)
     spkid = mission.get("spkid")
     if spkid is not None:

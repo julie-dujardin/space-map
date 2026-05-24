@@ -128,8 +128,10 @@ class Object(Base):
         unique=True, default=None, index=True
     )  # NORAD catalog number (from CelesTrak or SATCAT)
     cospar_id: Mapped[str | None] = mapped_column(
-        unique=True, default=None, index=True
-    )  # COSPAR international designator (YYYY-NNNP)
+        default=None, index=True
+    )  # COSPAR international designator (YYYY-NNNP). Not unique: a satcat row
+    # and a probe row for the same spacecraft both legitimately carry the same
+    # COSPAR (e.g. NORAD 25008 + probe-88592384 = Cassini, 1997-061A).
     iau_roman_designation: Mapped[str | None] = mapped_column(
         unique=False, default=None, index=True
     )  # IAU satellite designation (planet letter + Roman numeral, e.g. JLVII)

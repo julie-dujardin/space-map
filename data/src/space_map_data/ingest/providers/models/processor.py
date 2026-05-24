@@ -106,6 +106,7 @@ class ModelProcessor:
         # we'll write to the DB at the end. Future-work TODO: explicit per-
         # mission winner selection when several slugs depict the same mission
         # (e.g. "cassini-with-huygens" vs "cassini").
+        self._satcat_norad_to_object_id = self._load_satcat_object_ids()
         mission_winners = self._assign_mission_winners()
         db_object_ids = self._load_db_object_ids()
 
@@ -179,7 +180,9 @@ class ModelProcessor:
                 if not slug:
                     continue
                 for mission in entry.get("missions") or []:
-                    oid = metadata.resolve_mission_object_id(mission)
+                    oid = metadata.resolve_mission_object_id(
+                        mission, self._satcat_norad_to_object_id
+                    )
                     if oid is None:
                         continue
                     candidates[oid].append(slug)
@@ -206,12 +209,32 @@ class ModelProcessor:
         session = get_session()
         return {row[0] for row in session.query(Object.id).all()}
 
+    def _load_satcat_object_ids(self) -> dict[int, str]:
+        """Map every satcat NORAD → its actual ``Object.id``.
+
+        After CelesTrak ingest, Satcat.object_id is set to either the
+        ``norad_satcat-N`` stub or — when consolidated via COSPAR — to the
+        existing probe Object (e.g. NORAD 25008 → ``probe-88592384``). We
+        consult this map when resolving model-mission NORADs so consolidated
+        entries land on the same Object as the probe row.
+        """
+        from space_map_data.models.object.satcat import Satcat
+
+        session = get_session()
+        return {
+            norad: oid
+            for norad, oid in session.query(Satcat.NORAD_CAT_ID, Satcat.object_id).all()
+            if oid is not None
+        }
+
     def _entry_has_db_mission(self, entry: dict, db_object_ids: set[str]) -> bool:
         """Skip entries that resolve to no Object row — saves Blender/gltf work
         on generic catalog assets (tools, ground infra, unbuilt concepts) that
         no mission would ever reference."""
         for mission in entry.get("missions") or []:
-            oid = metadata.resolve_mission_object_id(mission)
+            oid = metadata.resolve_mission_object_id(
+                mission, self._satcat_norad_to_object_id
+            )
             if oid is not None and oid in db_object_ids:
                 return True
         return False
