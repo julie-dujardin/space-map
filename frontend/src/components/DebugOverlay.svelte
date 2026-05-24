@@ -16,7 +16,7 @@
 	const settings = getSettings();
 
 	type Stats = ReturnType<SceneRenderer['getDebugStats']>;
-	type Counts = ReturnType<ContextManager['getObjectCounts']>;
+	type Counts = ReturnType<ContextManager['bodies']['getObjectCounts']>;
 
 	let stats = $state<Stats | null>(null);
 	let counts = $state<Counts>({
@@ -51,7 +51,7 @@
 			const r = getRenderer();
 			if (!r) return;
 			stats = r.getDebugStats();
-			counts = ctx.getObjectCounts();
+			counts = ctx.bodies.getObjectCounts();
 			// @ts-expect-error — non-standard Chromium API
 			const mem = performance.memory;
 			if (mem?.usedJSHeapSize != null) jsHeapMB = mem.usedJSHeapSize / 1_048_576;

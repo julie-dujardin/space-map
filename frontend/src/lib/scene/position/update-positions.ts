@@ -66,11 +66,11 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	// bounded to "child one frame stale" instead of "child teleports to SSB".
 	positionMap.clear();
 	positionMap.set('naif-0', [0, 0, 0]);
-	for (const body of ctx.bodiesById.values()) {
+	for (const body of ctx.bodies.bodiesById.values()) {
 		positionMap.set(body.data.id, body.position);
 	}
 	for (const bo of bodyObjects.values()) {
-		if (!ctx.bodiesById.has(bo.body.data.id)) {
+		if (!ctx.bodies.bodiesById.has(bo.body.data.id)) {
 			positionMap.set(bo.body.data.id, bo.body.position);
 		}
 	}
@@ -328,14 +328,14 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		}
 	};
 
-	// First pass: bodies in ctx.bodiesById (barycenters → planets → moons).
+	// First pass: bodies in ctx.bodies.bodiesById (barycenters → planets → moons).
 	// Second pass: promoted minor bodies that only live in bodyObjects.
 	//
 	// Skip moons outside the focused system: their visuals are all gated on
 	// `isInFocusedSystem`, so a stale position can't render, and switching
 	// focus pulls them back in the same frame `focusedSystemId` flips.
 	const sysId = ctx.focusedSystemId;
-	for (const body of ctx.bodiesById.values()) {
+	for (const body of ctx.bodies.bodiesById.values()) {
 		if (body.data.objectType === ObjectType.MOON) {
 			const inSystem = sysId !== null && body.data.parentId === sysId;
 			if (!inSystem && body.data.id !== focusedId) {
@@ -349,7 +349,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		computePosition(body);
 	}
 	for (const bo of bodyObjects.values()) {
-		if (!ctx.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
+		if (!ctx.bodies.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
 	}
 
 	updateOutOfRangeToast(oorState);

@@ -393,7 +393,7 @@ export function buildPointClouds(
 
 	// Asteroid point clouds (one per zone)
 	const asteroidSize = asteroidPointSize();
-	for (const [zone, byId] of ctx.asteroidBodiesByZone) {
+	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length > 0) {
 			const pts = makePointCloud(
@@ -409,7 +409,7 @@ export function buildPointClouds(
 	}
 
 	// Spacecraft point clouds (one per parent body)
-	for (const [groupParentId, byId] of ctx.spacecraftByParent.entries()) {
+	for (const [groupParentId, byId] of ctx.bodies.spacecraftByParent.entries()) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
 		const points = makePointCloud(
@@ -424,7 +424,7 @@ export function buildPointClouds(
 
 	// Moon point clouds (one per parent body, initially hidden)
 	const moonsByParent = new Map<string, PositionedBody[]>();
-	for (const body of ctx.majorBodies) {
+	for (const body of ctx.bodies.majorBodies) {
 		if (body.data.objectType === ObjectType.MOON) {
 			const list = moonsByParent.get(body.data.parentId) ?? [];
 			list.push(body);

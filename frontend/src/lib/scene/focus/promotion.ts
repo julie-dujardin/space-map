@@ -123,11 +123,11 @@ export class PromotionRegistry {
 
 		// Rebuild the body's point-cloud group so its dot disappears.
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
-			ctx.dirtySpacecraftGroups.add(body.data.parentId);
+			ctx.bodies.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
-			for (const [zone, byId] of ctx.asteroidBodiesByZone) {
+			for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 				if (byId.has(body.data.id)) {
-					ctx.dirtyAsteroidZones.add(zone);
+					ctx.bodies.dirtyAsteroidZones.add(zone);
 					break;
 				}
 			}
@@ -188,7 +188,7 @@ export class PromotionRegistry {
 			if (objectType === ObjectType.SPACECRAFT) {
 				dirtySpacecraftParents.add(bo.body.data.parentId);
 			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
-				for (const [zone, byId] of ctx.asteroidBodiesByZone) {
+				for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 					if (byId.has(id)) {
 						dirtyAsteroidZones.add(zone);
 						break;
@@ -200,8 +200,8 @@ export class PromotionRegistry {
 			this.userPromoted.delete(id);
 		}
 
-		for (const p of dirtySpacecraftParents) ctx.dirtySpacecraftGroups.add(p);
-		for (const z of dirtyAsteroidZones) ctx.dirtyAsteroidZones.add(z);
+		for (const p of dirtySpacecraftParents) ctx.bodies.dirtySpacecraftGroups.add(p);
+		for (const z of dirtyAsteroidZones) ctx.bodies.dirtyAsteroidZones.add(z);
 		if (dirtySpacecraftParents.size > 0 || dirtyAsteroidZones.size > 0) {
 			pointClouds.rebuildMinor();
 		}

@@ -54,7 +54,7 @@ export class SystemDataLoader {
 			this.ctx
 		).then(() => {
 			this.onLoaded();
-			this.ctx.orientationVersion++;
+			this.ctx.bodies.orientationVersion++;
 		});
 	}
 

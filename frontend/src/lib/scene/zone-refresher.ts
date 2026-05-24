@@ -231,7 +231,7 @@ export class ZoneRefresher {
 			let removed = 0;
 
 			for (const [key, freshBodies] of newBuckets) {
-				const existing = this.ctx.spacecraftByParent.get(key);
+				const existing = this.ctx.bodies.spacecraftByParent.get(key);
 				const merged = new Map<string, PositionedBody>();
 				const carriedIds = new Set<string>();
 				for (const [id, b] of freshBodies) {
@@ -259,25 +259,25 @@ export class ZoneRefresher {
 						if (!carriedIds.has(id)) removed++;
 					}
 				}
-				this.ctx.spacecraftByParent.set(key, merged);
-				this.ctx.dirtySpacecraftGroups.add(key);
+				this.ctx.bodies.spacecraftByParent.set(key, merged);
+				this.ctx.bodies.dirtySpacecraftGroups.add(key);
 			}
 
 			// Buckets that existed last time but got nothing now: drop them so the
 			// renderer can unwire the corresponding worker group.
 			for (const key of z.knownBuckets) {
 				if (newBuckets.has(key)) continue;
-				const prev = this.ctx.spacecraftByParent.get(key);
+				const prev = this.ctx.bodies.spacecraftByParent.get(key);
 				if (prev) {
 					removed += prev.size;
-					this.ctx.spacecraftByParent.delete(key);
-					this.ctx.dirtySpacecraftGroups.add(key);
+					this.ctx.bodies.spacecraftByParent.delete(key);
+					this.ctx.bodies.dirtySpacecraftGroups.add(key);
 				}
 			}
 
 			z.knownBuckets = new Set(newBuckets.keys());
 			z.currentTime = time;
-			this.ctx.minorBodyVersion++;
+			this.ctx.bodies.minorBodyVersion++;
 			console.log(
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);
@@ -332,12 +332,12 @@ export class ZoneRefresher {
 		for (const chunk of chunks) {
 			this.ctx.credits.recordOrbitSources(chunk);
 			for (const fresh of chunk) {
-				const existing = this.ctx.bodiesById.get(fresh.data.id);
+				const existing = this.ctx.bodies.bodiesById.get(fresh.data.id);
 				if (!existing) {
 					// New body in this chunk — register it. Rare in practice (moons
 					// membership is stable across Method-C chunks) but cheap.
-					this.ctx.addBodies([fresh]);
-					this.ctx.majorBodies.push(fresh);
+					this.ctx.bodies.addBodies([fresh]);
+					this.ctx.bodies.majorBodies.push(fresh);
 					added++;
 					continue;
 				}
@@ -348,7 +348,7 @@ export class ZoneRefresher {
 				updated++;
 			}
 		}
-		this.ctx.minorBodyVersion++;
+		this.ctx.bodies.minorBodyVersion++;
 		console.log(`zone-refresher: ${z.zone} chunk ${previous} → ${target} (+${added} ~${updated})`);
 	}
 

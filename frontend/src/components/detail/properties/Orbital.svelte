@@ -108,7 +108,7 @@
 	});
 	let landedBody = $derived.by(() => {
 		if (!landedProbe) return null;
-		return ctx?.bodiesById.get(`naif-${landedProbe.bodyNaifId}`) ?? null;
+		return ctx?.bodies.bodiesById.get(`naif-${landedProbe.bodyNaifId}`) ?? null;
 	});
 	let landedBodyName = $derived(landedBody?.data.name ?? null);
 

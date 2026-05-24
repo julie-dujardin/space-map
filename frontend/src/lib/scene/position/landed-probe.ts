@@ -24,7 +24,7 @@ export function renderLandedProbe(
 	const sample = landedPositionAt(landed, jd);
 	if (!sample) return null;
 	const bodyKey = `naif-${landed.bodyNaifId}`;
-	const landingBody = ctx.bodiesById.get(bodyKey);
+	const landingBody = ctx.bodies.bodiesById.get(bodyKey);
 	if (!landingBody || !landingBody.orientation) return null;
 	const bodyWorldPos = positionMap.get(bodyKey);
 	if (!bodyWorldPos) return null;

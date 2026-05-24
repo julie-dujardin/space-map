@@ -97,15 +97,18 @@ export class PointCloudSystem {
 	 * flicker on rebase). New zones get a Points seeded from `body.position`.
 	 */
 	rebuildMinor(): void {
-		if (this.ctx.dirtyAsteroidZones.size === 0 && this.ctx.dirtySpacecraftGroups.size === 0) {
+		if (
+			this.ctx.bodies.dirtyAsteroidZones.size === 0 &&
+			this.ctx.bodies.dirtySpacecraftGroups.size === 0
+		) {
 			return;
 		}
 		const skip = new Set(this.bodyObjects.keys());
 		const seedBasis: Vec3 = [this.basisPos[0], this.basisPos[1], this.basisPos[2]];
 
-		for (const zone of this.ctx.dirtyAsteroidZones) {
+		for (const zone of this.ctx.bodies.dirtyAsteroidZones) {
 			const groupId = `asteroid:${zone}`;
-			const bucket = this.ctx.asteroidBodiesByZone.get(zone);
+			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
 			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.asteroidPoints.get(zone);
@@ -136,11 +139,11 @@ export class PointCloudSystem {
 				this.pendingSceneAdds.push(pts);
 			}
 		}
-		this.ctx.dirtyAsteroidZones.clear();
+		this.ctx.bodies.dirtyAsteroidZones.clear();
 
-		for (const gid of this.ctx.dirtySpacecraftGroups) {
+		for (const gid of this.ctx.bodies.dirtySpacecraftGroups) {
 			const groupId = `spacecraft:${gid}`;
-			const bucket = this.ctx.spacecraftByParent.get(gid);
+			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
 			if (!bucket || bucket.size === 0) {
 				this.orbitPool.unwireOne(groupId);
 				const stale = this.spacecraftPoints.get(gid);
@@ -170,7 +173,7 @@ export class PointCloudSystem {
 				this.pendingSceneAdds.push(pts);
 			}
 		}
-		this.ctx.dirtySpacecraftGroups.clear();
+		this.ctx.bodies.dirtySpacecraftGroups.clear();
 	}
 
 	/** Fill a pool-owned Float32Array with basis-relative positions for the 1-2 frames before the first worker result. */
@@ -268,8 +271,8 @@ export class PointCloudSystem {
 
 	rebuildBasis(): void {
 		this.basisPos = [...this.focus.focusTruePos];
-		for (const zone of this.asteroidPoints.keys()) this.ctx.dirtyAsteroidZones.add(zone);
-		for (const gid of this.spacecraftPoints.keys()) this.ctx.dirtySpacecraftGroups.add(gid);
+		for (const zone of this.asteroidPoints.keys()) this.ctx.bodies.dirtyAsteroidZones.add(zone);
+		for (const gid of this.spacecraftPoints.keys()) this.ctx.bodies.dirtySpacecraftGroups.add(gid);
 		this.rebuildMinor();
 		// Don't reset parent snapshots: vertex buffers were rewritten from the
 		// stale `body.position` left over from the last round-robin write, so
@@ -290,10 +293,10 @@ export class PointCloudSystem {
 		const parents = this._parentsScratch;
 		parents.clear();
 		const sunPos = this.ctx.getBody('naif-10')?.position ?? ([0, 0, 0] as Vec3);
-		for (const [zone] of this.ctx.asteroidBodiesByZone) {
+		for (const [zone] of this.ctx.bodies.asteroidBodiesByZone) {
 			parents.set(`asteroid:${zone}`, [sunPos[0], sunPos[1], sunPos[2]]);
 		}
-		for (const [gid] of this.ctx.spacecraftByParent) {
+		for (const [gid] of this.ctx.bodies.spacecraftByParent) {
 			const pp = this.ctx.getBody(gid)?.position ?? ([0, 0, 0] as Vec3);
 			parents.set(`spacecraft:${gid}`, [pp[0], pp[1], pp[2]]);
 		}
@@ -301,10 +304,10 @@ export class PointCloudSystem {
 	}
 
 	private moonsByParent(): Map<string, PositionedBody[]> {
-		const len = this.ctx.majorBodies.length;
+		const len = this.ctx.bodies.majorBodies.length;
 		if (this.moonsByParentCache?.len === len) return this.moonsByParentCache.map;
 		const map = new Map<string, PositionedBody[]>();
-		for (const body of this.ctx.majorBodies) {
+		for (const body of this.ctx.bodies.majorBodies) {
 			if (body.data.objectType === ObjectType.MOON) {
 				const list = map.get(body.data.parentId) ?? [];
 				list.push(body);

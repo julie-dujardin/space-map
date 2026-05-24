@@ -1,4 +1,4 @@
-import { ObjectType, ZONE_A_RANGE, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -6,6 +6,7 @@ import { AU_SCALE } from '../math/units';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import { CreditsStore } from '$lib/scene/credits.svelte';
+import { BodyIndex, isTopLevelParent } from '$lib/scene/bodies.svelte';
 import {
 	chebyshevZoneParams,
 	chunkIndexForJd,
@@ -33,37 +34,17 @@ import {
 	ZOOM_THRESHOLD_AU
 } from '$lib/scene/visibility/thresholds';
 
-/** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
-function isTopLevelParent(parentId: string): boolean {
-	return parentId === 'naif-0' || parentId === 'naif-10';
-}
-
 export class ContextManager {
-	private readonly childrenByParent = new Map<string, Set<string>>();
-	readonly bodiesById = new Map<string, PositionedBody>();
-	/** Max semi-major axis (AU) of moons per parent body ID. Used to gate point-cloud visibility. */
-	private readonly moonMaxAByParent = new Map<string, number>();
+	/** Body store: every loaded `PositionedBody`, parent/child graph, dirty
+	 *  zone markers, and version counters for reactive consumers. */
+	bodies = new BodyIndex();
 
 	// --- Reactive loading state ---
 	loading = $state(true);
 	error = $state<string | null>(null);
-	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
-	minorBodyVersion = $state(0);
 	/** Attribution state: per-body imagery credits, skybox credit, orbit-source set. */
 	credits = new CreditsStore();
-	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
-	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
-	 *  consumers — currently the compass-north choice list — recompute as
-	 *  pole data arrives, since orientation is a property mutation on the
-	 *  existing `$state.raw` body and wouldn't otherwise re-trigger derived. */
-	orientationVersion = $state(0);
 
-	// --- Non-reactive data (only read from renderer/construction, never from Svelte templates) ---
-	majorBodies: PositionedBody[] = [];
-	// Inner Map is keyed by object id so `getBody`/zone-local lookups are O(1)
-	// without duplicating body refs into a parallel flat index.
-	asteroidBodiesByZone = new Map<string, Map<string, PositionedBody>>();
-	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 	/**
 	 * Chebyshev polynomial ephemeris for SPICE-sourced major bodies. Null until
 	 * the metadata.json fetch in `load()` resolves; stays null if the export
@@ -120,39 +101,9 @@ export class ContextManager {
 	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
 
-	/**
-	 * Look up any body by ID.
-	 *
-	 * `zone` is an optional hint. When provided the search is restricted to
-	 * that zone — use it from per-zone iteration paths (chunk reconciliation,
-	 * picking results) where you already know which bucket the body lives in.
-	 * The zone string is the same key the body was filed under: a `naif-X`
-	 * parent id for spacecraft groups, or an OrbitClass enum name (e.g. `MBA`)
-	 * for asteroid zones; we probe both maps so callers don't have to
-	 * disambiguate.
-	 *
-	 * Without a hint: bodiesById → spacecraftByParent → asteroidBodiesByZone.
-	 * Spacecraft come before asteroid zones because there are far fewer
-	 * groups (a handful of parents vs. ~20 zones with thousands of bodies),
-	 * so the linear scan finishes faster on a miss.
-	 */
+	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
 	getBody(id: string, zone?: string): PositionedBody | undefined {
-		const major = this.bodiesById.get(id);
-		if (major) return major;
-		if (zone !== undefined) {
-			return (
-				this.spacecraftByParent.get(zone)?.get(id) ?? this.asteroidBodiesByZone.get(zone)?.get(id)
-			);
-		}
-		for (const byId of this.spacecraftByParent.values()) {
-			const hit = byId.get(id);
-			if (hit) return hit;
-		}
-		for (const byId of this.asteroidBodiesByZone.values()) {
-			const hit = byId.get(id);
-			if (hit) return hit;
-		}
-		return undefined;
+		return this.bodies.getBody(id, zone);
 	}
 
 	async load(date: Date, targetId?: string): Promise<void> {
@@ -305,7 +256,8 @@ export class ContextManager {
 				major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
 			}
 
-			this.addBodies(major);
+			this.bodies.addBodies(major);
+			this.credits.recordOrbitSources(major);
 
 			const pendingAsteroids = new Map<string, Map<string, PositionedBody>>();
 			const pendingSpacecraft = new Map<string, Map<string, PositionedBody>>();
@@ -319,9 +271,9 @@ export class ContextManager {
 				// Re-wrap each inner Map so the outer reference changes for any
 				// reactive observers — inner refs stay stable for in-place updates.
 				const cloneOuter = <K, V>(m: Map<K, V>): Map<K, V> => new Map(m);
-				this.asteroidBodiesByZone = cloneOuter(pendingAsteroids);
-				this.spacecraftByParent = cloneOuter(pendingSpacecraft);
-				this.minorBodyVersion++;
+				this.bodies.asteroidBodiesByZone = cloneOuter(pendingAsteroids);
+				this.bodies.spacecraftByParent = cloneOuter(pendingSpacecraft);
+				this.bodies.minorBodyVersion++;
 			};
 
 			// If the target body wasn't in majors/moons, resolve it from the global
@@ -339,17 +291,17 @@ export class ContextManager {
 						if (!bucket) pendingSpacecraft.set(key, (bucket = new Map()));
 						bucket.set(body.data.id, body);
 						placeholderById.set(body.data.id, body);
-						this.dirtySpacecraftGroups.add(key);
+						this.bodies.dirtySpacecraftGroups.add(key);
 					} else if (zone) {
 						let bucket = pendingAsteroids.get(zone);
 						if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
 						bucket.set(body.data.id, body);
 						placeholderById.set(body.data.id, body);
-						this.dirtyAsteroidZones.add(zone);
+						this.bodies.dirtyAsteroidZones.add(zone);
 					} else {
 						// Major / undocumented / wikidata-only — no zone to route into,
 						// fall back to bodiesById so getBody() still finds it.
-						this.addBodies([body]);
+						this.bodies.addBodies([body]);
 					}
 					this.credits.recordOrbitSources([body]);
 					flush();
@@ -364,7 +316,7 @@ export class ContextManager {
 			// entries — keeping the long tail of probes out of that set keeps
 			// the loops short. On focus, `ensureBodyObjects` builds the full
 			// visual representation.
-			this.majorBodies = major.filter(
+			this.bodies.majorBodies = major.filter(
 				(b) =>
 					b.data.objectType !== ObjectType.BARYCENTER &&
 					b.data.objectType !== ObjectType.LAGRANGE_POINT &&
@@ -401,9 +353,9 @@ export class ContextManager {
 									if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
 									placeholderById.delete(b.data.id);
 									if (b.data.objectType === ObjectType.SPACECRAFT) {
-										this.dirtySpacecraftGroups.add(b.data.parentId);
+										this.bodies.dirtySpacecraftGroups.add(b.data.parentId);
 									} else {
-										this.dirtyAsteroidZones.add(zone);
+										this.bodies.dirtyAsteroidZones.add(zone);
 									}
 									continue;
 								}
@@ -411,12 +363,12 @@ export class ContextManager {
 									let bucket = pendingSpacecraft.get(b.data.parentId);
 									if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
 									bucket.set(b.data.id, b);
-									this.dirtySpacecraftGroups.add(b.data.parentId);
+									this.bodies.dirtySpacecraftGroups.add(b.data.parentId);
 								} else {
 									let bucket = pendingAsteroids.get(zone);
 									if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
 									bucket.set(b.data.id, b);
-									this.dirtyAsteroidZones.add(zone);
+									this.bodies.dirtyAsteroidZones.add(zone);
 								}
 							}
 						})
@@ -441,21 +393,6 @@ export class ContextManager {
 	 *  zones (moons Method-C-fit elements expire each chunk). */
 	refreshTick(date: Date): void {
 		this.refresher?.tick(date);
-	}
-
-	addBodies(bodies: PositionedBody[]): void {
-		for (const b of bodies) {
-			this.bodiesById.set(b.data.id, b);
-
-			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
-			set.add(b.data.id);
-			this.childrenByParent.set(b.data.parentId, set);
-			if (b.data.objectType === ObjectType.MOON) {
-				const prev = this.moonMaxAByParent.get(b.data.parentId) ?? 0;
-				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
-			}
-		}
-		this.credits.recordOrbitSources(bodies);
 	}
 
 	/**
@@ -512,7 +449,7 @@ export class ContextManager {
 				// a system member one level deeper (e.g. an Earth satellite's parent is naif-399,
 				// whose parent is naif-3). Satellites aren't recorded as barycenter children
 				// — too many — so resolve by walking up via bodiesById instead.
-				const parent = this.bodiesById.get(body.data.parentId);
+				const parent = this.bodies.bodiesById.get(body.data.parentId);
 				sysId =
 					parent && !isTopLevelParent(parent.data.parentId)
 						? parent.data.parentId
@@ -561,8 +498,8 @@ export class ContextManager {
 		if (!sysId) return;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
 		const children: PositionedBody[] = [];
-		for (const id of this.childrenByParent.get(sysId) ?? []) {
-			const b = this.bodiesById.get(id);
+		for (const id of this.bodies.getChildren(sysId) ?? []) {
+			const b = this.bodies.bodiesById.get(id);
 			if (
 				b &&
 				b.data.objectType === ObjectType.MOON &&
@@ -582,20 +519,10 @@ export class ContextManager {
 	 */
 	isMoonGroupVisible(parentId: string): boolean {
 		if (!this.isInFocusedSystem(parentId)) return false;
-		const maxA = this.moonMaxAByParent.get(parentId);
+		const maxA = this.bodies.maxMoonA(parentId);
 		if (!maxA) return false;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / maxA;
 		return ratio <= this.scaledPlanetary[VISIBILITY.FAR];
-	}
-
-	/**
-	 * Whether a body orbits within a planetary system (not directly around SSB/Sun).
-	 * True for moons, planet-orbiting spacecraft, etc.
-	 */
-	isSystemBody(body: PositionedBody): boolean {
-		if (isTopLevelParent(body.data.parentId)) return false;
-		const parent = this.bodiesById.get(body.data.parentId);
-		return parent?.data.objectType !== ObjectType.BARYCENTER;
 	}
 
 	/**
@@ -607,7 +534,7 @@ export class ContextManager {
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		// Planet-orbiting bodies: only visible when their system is focused.
-		if (this.isSystemBody(body)) {
+		if (this.bodies.isSystemBody(body)) {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
 			return VISIBILITY.FULL;
 		}
@@ -620,7 +547,7 @@ export class ContextManager {
 		// refA naturally).
 		let refA: number;
 		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
-			const parent = this.bodiesById.get(body.data.parentId);
+			const parent = this.bodies.bodiesById.get(body.data.parentId);
 			if (!parent) return VISIBILITY.FULL;
 			const dx = body.position[0] - parent.position[0];
 			const dy = body.position[1] - parent.position[1];
@@ -630,7 +557,7 @@ export class ContextManager {
 			// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
 			refA = body.data.a;
 			if (!isTopLevelParent(body.data.parentId)) {
-				const parent = this.bodiesById.get(body.data.parentId);
+				const parent = this.bodies.bodiesById.get(body.data.parentId);
 				if (parent?.data.a) refA = parent.data.a;
 			}
 		}
@@ -672,11 +599,11 @@ export class ContextManager {
 	isSpacecraftGroupVisible(groupParentId: string): boolean {
 		const sysId = this.activeSystemId;
 		if (isTopLevelParent(groupParentId)) return !sysId;
-		const parent = this.bodiesById.get(groupParentId);
+		const parent = this.bodies.bodiesById.get(groupParentId);
 		if (parent?.data.objectType === ObjectType.STAR) return !sysId;
 		if (!sysId) return false;
 		if (groupParentId === sysId) return true;
-		return this.childrenByParent.get(sysId)?.has(groupParentId) ?? false;
+		return this.bodies.getChildren(sysId)?.has(groupParentId) ?? false;
 	}
 
 	/**
@@ -694,72 +621,17 @@ export class ContextManager {
 		return ratio <= this.scaledSystem[VISIBILITY.FAR] / 3;
 	}
 
-	/**
-	 * High-level object counts for the debug overlay. Walks the live maps
-	 * directly so it always reflects whatever's loaded, including bodies that
-	 * arrived after first paint.
-	 *
-	 * Buckets:
-	 *  - `planets`: planets + dwarf planets (anything in bodiesById of those types).
-	 *  - `moons`: bodies in bodiesById typed MOON.
-	 *  - `probes`: SPICE-tracked spacecraft (orbitalSource = SPICE_PROBE) plus
-	 *    any spacecraft groups not orbiting Earth.
-	 *  - `earthSatellites`: spacecraft/debris bucketed under Earth (naif-399).
-	 *  - `smallBodies`: asteroid + comet zone totals (excluding the 'earth'
-	 *    zone, which holds debris/rocket-bodies).
-	 */
-	getObjectCounts(): {
-		planets: number;
-		moons: number;
-		probes: number;
-		earthSatellites: number;
-		smallBodies: number;
-	} {
-		let planets = 0;
-		let moons = 0;
-		let probes = 0;
-		for (const b of this.bodiesById.values()) {
-			const t = b.data.objectType;
-			if (t === ObjectType.PLANET || t === ObjectType.DWARF_PLANET) planets++;
-			else if (t === ObjectType.MOON) moons++;
-			else if (t === ObjectType.SPACECRAFT) probes++;
-		}
-		let earthSatellites = this.spacecraftByParent.get('naif-399')?.size ?? 0;
-		earthSatellites += this.asteroidBodiesByZone.get('earth')?.size ?? 0;
-		for (const [parentId, bucket] of this.spacecraftByParent) {
-			if (parentId === 'naif-399') continue;
-			probes += bucket.size;
-		}
-		let smallBodies = 0;
-		for (const [zone, bucket] of this.asteroidBodiesByZone) {
-			if (zone === 'earth') continue;
-			smallBodies += bucket.size;
-		}
-		// Standalone asteroids/comets that arrived through bodiesById (URL-loaded
-		// placeholders or major chunks) — fold them into the small-body count so
-		// e.g. Bennu shows up.
-		for (const b of this.bodiesById.values()) {
-			if (isAsteroid(b.data.objectType) || b.data.objectType === ObjectType.COMET) smallBodies++;
-		}
-		return { planets, moons, probes, earthSatellites, smallBodies };
-	}
-
-	/** Max orbital semi-major axis (AU) of moons in a system. Used to size the shadow camera frustum. */
-	getSystemExtent(sysId: string): number {
-		return this.moonMaxAByParent.get(sysId) ?? 0.01;
-	}
-
 	isInActiveSystem(parentId: string): boolean {
-		return this.isInSystem(parentId, this.activeSystemId);
+		return this.bodies.isInSystem(parentId, this.activeSystemId);
 	}
 
 	/** True if `body` (the body itself or by parentage) belongs to `sysId`. */
 	isBodyInSystem(body: PositionedBody, sysId: string): boolean {
-		return body.data.id === sysId || this.isInSystem(body.data.parentId, sysId);
+		return body.data.id === sysId || this.bodies.isInSystem(body.data.parentId, sysId);
 	}
 
 	private isInFocusedSystem(parentId: string): boolean {
-		return this.isInSystem(parentId, this.focusedSystemIdPlain);
+		return this.bodies.isInSystem(parentId, this.focusedSystemIdPlain);
 	}
 
 	/**
@@ -770,15 +642,5 @@ export class ContextManager {
 	 */
 	isFocusedOnEarthSystem(): boolean {
 		return this.focusedSystemId === 'naif-3';
-	}
-
-	/**
-	 * True if the given parentId belongs to a system.
-	 * Handles two levels: parentId === barycenter, or parentId is a direct child of the barycenter.
-	 */
-	private isInSystem(parentId: string, sysId: string | null): boolean {
-		if (!sysId) return false;
-		if (parentId === sysId) return true;
-		return this.childrenByParent.get(sysId)?.has(parentId) ?? false;
 	}
 }

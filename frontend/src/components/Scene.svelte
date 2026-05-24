@@ -130,7 +130,7 @@
 	});
 
 	$effect(() => {
-		void ctx.minorBodyVersion; // reactive dependency — re-runs on each flush
+		void ctx.bodies.minorBodyVersion; // reactive dependency — re-runs on each flush
 		renderer?.rebuildMinorPointClouds();
 	});
 

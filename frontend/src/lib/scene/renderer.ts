@@ -169,7 +169,7 @@ export class SceneRenderer {
 		void loadSkybox(this.scene, this.renderer, ctx);
 
 		// Set initial camera position from URL state
-		const sunBody = ctx.majorBodies.find((b) => b.data.id === 'naif-10');
+		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === 'naif-10');
 		const matchedBody = ctx.getBody(initialView.id);
 		const focusBody = matchedBody ?? sunBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
@@ -309,7 +309,7 @@ export class SceneRenderer {
 
 	private buildScene(): void {
 		buildMajorBodies(
-			this.ctx.majorBodies,
+			this.ctx.bodies.majorBodies,
 			this.scene,
 			this.clickables,
 			this.meshToBody,

@@ -42,7 +42,7 @@
 	let northRefId = $state<string | null>(null);
 
 	const northChoices = $derived.by(() => {
-		void ctx.orientationVersion; // re-run when system data lands orientation
+		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
 		return getNorthChoices(cameraFocus, ctx);
 	});
 

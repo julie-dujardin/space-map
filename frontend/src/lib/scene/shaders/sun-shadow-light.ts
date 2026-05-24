@@ -40,7 +40,7 @@ export function updateSunShadowLight(
 	if (sunPointLight) sunPointLight.intensity = 0;
 
 	const lateral = Math.max(cameraDistance * 2, 0.001);
-	const depthExtent = ctx.getSystemExtent(sysId) * AU_SCALE * 1.2;
+	const depthExtent = ctx.bodies.getSystemExtent(sysId) * AU_SCALE * 1.2;
 	const shadowCam = shadowLight.shadow.camera;
 	shadowCam.left = shadowCam.bottom = -lateral;
 	shadowCam.right = shadowCam.top = lateral;
