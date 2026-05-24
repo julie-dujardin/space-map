@@ -1,4 +1,4 @@
-import { VISIBILITY } from '$lib/scene/context-manager.svelte';
+import { VISIBILITY } from './thresholds';
 
 export type VisibilityFlags = {
 	groupVisible: boolean;

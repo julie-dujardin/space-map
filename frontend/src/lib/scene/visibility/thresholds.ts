@@ -1,0 +1,60 @@
+/*
+ * Visibility options:
+ * CLOSE: too close to show everything, revert to point cloud.
+ * FULL: show halos and trails.
+ * CAPPED: In range for FULL but rejected by the crowding cap — point cloud by default, minimized halo when hideCappedMoonLabels=true.
+ * FAR: point cloud.
+ * HIDE: hide entirely.
+ */
+export enum VISIBILITY {
+	CLOSE = 1,
+	FULL = 2,
+	CAPPED = 3,
+	FAR = 4,
+	HIDE = 5
+}
+
+/*
+ * Distance ratio thresholds for visibility levels.
+ * Ratio is (camera distance to focused body / moon semi-major axis), both in AU.
+ * These were tuned for a 27" 1440p monitor; FULL and FAR are scaled at runtime by screenScaleFactor.
+ */
+/** Viewport height (CSS px) the distance-ratio thresholds were tuned for. */
+export const REFERENCE_VIEWPORT_HEIGHT = 1503;
+
+export const PLANETARY_DISTANCE_RATIO_THRESHOLDS = {
+	[VISIBILITY.CLOSE]: 0.3,
+	[VISIBILITY.FULL]: 20,
+	[VISIBILITY.FAR]: 100,
+	[VISIBILITY.HIDE]: Infinity
+};
+export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
+	[VISIBILITY.CLOSE]: 0.01,
+	[VISIBILITY.FULL]: 20,
+	[VISIBILITY.FAR]: 100,
+	[VISIBILITY.HIDE]: Infinity
+};
+
+/** Multiplier applied to the FULL threshold for the currently focused body. */
+export const FOCUSED_FULL_MULTIPLIER_MOON = 5;
+export const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacecraft that orbit farther than GEO
+
+/** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
+export const MAX_FULL_MOONS = 20;
+
+/** Below this distance, hide other systems (halos, orbits, spacecraft). */
+export const ZOOM_THRESHOLD_AU = 0.05;
+
+/** Shared ratio→VISIBILITY mapping used by both moon and planet/spacecraft visibility. */
+export function computeVisibilityFromRatio(
+	ratio: number,
+	thresholds: typeof PLANETARY_DISTANCE_RATIO_THRESHOLDS,
+	focusedMultiplier: number,
+	isFocused: boolean
+): VISIBILITY {
+	if (ratio <= thresholds[VISIBILITY.CLOSE]) return VISIBILITY.CLOSE;
+	if (ratio <= thresholds[VISIBILITY.FULL] * (isFocused ? focusedMultiplier : 1))
+		return VISIBILITY.FULL;
+	if (ratio <= thresholds[VISIBILITY.FAR]) return VISIBILITY.FAR;
+	return VISIBILITY.HIDE;
+}

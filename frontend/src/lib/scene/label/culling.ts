@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import { ObjectType } from '$lib/types/objects';
-import { VISIBILITY, type ContextManager } from '$lib/scene/context-manager.svelte';
+import { VISIBILITY } from '$lib/scene/visibility/thresholds';
+import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import {
 	HIDE_LABEL_BODY_HALO_FACTOR,
 	HALO_RADIUS_PX,

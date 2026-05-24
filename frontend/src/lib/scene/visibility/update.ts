@@ -1,6 +1,6 @@
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
-import { VISIBILITY } from '$lib/scene/context-manager.svelte';
+import { VISIBILITY } from './thresholds';
 import { BARYCENTER_PRIMARY } from '$lib/constants';
 import type { ContextManager } from '$lib/scene/context-manager.svelte';
 import {
