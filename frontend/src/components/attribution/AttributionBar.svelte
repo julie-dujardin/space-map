@@ -38,7 +38,7 @@
 		const seen = new Set<string>();
 		const out: string[] = [];
 		for (const src of ORBIT_ORDER) {
-			if (!ctx.orbitSources.has(src)) continue;
+			if (!ctx.credits.orbitSources.has(src)) continue;
 			if (src === OrbitalSource.CELESTRAK && !inEarthSystem) continue;
 			const label = ORBIT_LABELS[src as Exclude<OrbitalSource, OrbitalSource.UNKNOWN>]();
 			if (seen.has(label)) continue;
@@ -55,13 +55,13 @@
 	// and clouds share the imagery chip in the bar (per-source attribution
 	// gets its own section in the popover and on the credits page).
 	const textureOrgs = $derived.by(() => {
-		void ctx.textureCreditsVersion;
-		void ctx.ringCreditsVersion;
-		void ctx.cloudCreditsVersion;
+		void ctx.credits.textureVersion;
+		void ctx.credits.ringVersion;
+		void ctx.credits.cloudVersion;
 		const sysId = ctx.focusedSystemId;
 		const bodyId = ctx.focusedBodyId;
 		const orgs = new Set<string>();
-		const sources = [ctx.textureCredits, ctx.ringCredits, ctx.cloudCredits];
+		const sources = [ctx.credits.texture, ctx.credits.ring, ctx.credits.cloud];
 		for (const credits of sources) {
 			for (const credit of credits.values()) {
 				if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {

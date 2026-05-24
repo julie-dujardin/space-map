@@ -209,7 +209,7 @@ export class ZoneRefresher {
 
 			const newBuckets = new Map<string, Map<string, PositionedBody>>();
 			for (const chunk of chunks) {
-				this.ctx.recordOrbitSources(chunk);
+				this.ctx.credits.recordOrbitSources(chunk);
 				for (const body of chunk) {
 					const t = body.data.objectType;
 					if (t !== ObjectType.SPACECRAFT && t !== ObjectType.DEBRIS) {
@@ -330,7 +330,7 @@ export class ZoneRefresher {
 		let updated = 0;
 		let added = 0;
 		for (const chunk of chunks) {
-			this.ctx.recordOrbitSources(chunk);
+			this.ctx.credits.recordOrbitSources(chunk);
 			for (const fresh of chunk) {
 				const existing = this.ctx.bodiesById.get(fresh.data.id);
 				if (!existing) {

@@ -5,6 +5,7 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '../math/units';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
+import { CreditsStore } from '$lib/scene/credits.svelte';
 import {
 	chebyshevZoneParams,
 	chunkIndexForJd,
@@ -32,65 +33,6 @@ import {
 	ZOOM_THRESHOLD_AU
 } from '$lib/scene/visibility/thresholds';
 
-/**
- * Per-body texture attribution recorded when its system metadata loads.
- * `systemId` is the barycenter ID the body belongs to, used by the bar to
- * show imagery credits only for the focused system while the popover shows
- * every loaded texture regardless of focus.
- */
-export interface TextureCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	type: string;
-	attribution?: string;
-	description?: string;
-}
-
-/**
- * Per-body planetary-ring attribution recorded when its system metadata
- * loads. Sibling to {@link TextureCredit} — same scoping rules apply (bar
- * filters by focused system / focused body, popover surfaces all loaded).
- * No `type` field: textures distinguish projections (cylindrical, …), but
- * ring profiles are radial-only, so the qualifier is implicit.
- */
-export interface RingCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	attribution?: string;
-	description?: string;
-}
-
-/**
- * Per-body cloud-overlay attribution recorded when its system metadata
- * loads. Sibling to {@link TextureCredit} / {@link RingCredit} — same
- * scoping rules apply. Earth is the only producer today; the credits page
- * surfaces these under their own "Clouds" section.
- */
-export interface CloudCredit {
-	bodyId: string;
-	systemId: string;
-	source: string;
-	organisation: string;
-	attribution?: string;
-	description?: string;
-}
-
-/**
- * Whole-sky cubemap backdrop attribution. Recorded once when `loadSkybox`
- * resolves the bundle metadata; no per-body scoping because the skybox is a
- * single global asset rendered behind the whole scene.
- */
-export interface SkyboxCredit {
-	source: string;
-	organisation: string;
-	attribution?: string;
-	description?: string;
-}
-
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
 function isTopLevelParent(parentId: string): boolean {
 	return parentId === 'naif-0' || parentId === 'naif-10';
@@ -107,42 +49,8 @@ export class ContextManager {
 	error = $state<string | null>(null);
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
-	/**
-	 * Providers that have contributed at least one body to the loaded scene.
-	 * Reassigned (not mutated) on new arrivals so `$derived` consumers — the
-	 * bottom-right attribution bar — recompute. `OrbitalSource.UNKNOWN` is
-	 * never added; pre-v3 chunks with no source byte stay silent rather than
-	 * showing a misleading "Unknown" label.
-	 */
-	orbitSources = $state(new Set<OrbitalSource>());
-	/**
-	 * Per-body texture credits, populated as `loadSystemData` lands each
-	 * system's `systems/{bary}.json`. Drives both the bar (dedup'd org set for
-	 * the focused system) and the popover (full list of every loaded texture
-	 * with source URL + optional description). Bump `textureCreditsVersion`
-	 * whenever a new entry lands so `$derived` consumers re-read.
-	 */
-	textureCredits = new Map<string, TextureCredit>();
-	textureCreditsVersion = $state(0);
-	/**
-	 * Per-body planetary-ring credits, populated alongside `textureCredits`
-	 * by `loadSystemData`. Today only Saturn lands here; the bar mixes ring
-	 * organisations into the imagery list, and the popover + credits page
-	 * surface them under their own "Rings" section.
-	 */
-	ringCredits = new Map<string, RingCredit>();
-	ringCreditsVersion = $state(0);
-	/**
-	 * Per-body cloud-overlay credits, populated alongside `textureCredits` /
-	 * `ringCredits` by `loadSystemData`. Earth is the only producer today.
-	 */
-	cloudCredits = new Map<string, CloudCredit>();
-	cloudCreditsVersion = $state(0);
-	/**
-	 * Whole-sky cubemap backdrop attribution. Single global asset, so no map —
-	 * just a nullable slot populated once when `loadSkybox` resolves.
-	 */
-	skyboxCredit = $state<SkyboxCredit | null>(null);
+	/** Attribution state: per-body imagery credits, skybox credit, orbit-source set. */
+	credits = new CreditsStore();
 	/** Bumped by the renderer after `loadSystemData` lands a system's metadata
 	 *  (which is what attaches `orientation` to PositionedBody). Lets reactive
 	 *  consumers — currently the compass-north choice list — recompute as
@@ -443,7 +351,7 @@ export class ContextManager {
 						// fall back to bodiesById so getBody() still finds it.
 						this.addBodies([body]);
 					}
-					this.recordOrbitSources([body]);
+					this.credits.recordOrbitSources([body]);
 					flush();
 				}
 			}
@@ -474,7 +382,7 @@ export class ContextManager {
 				await Promise.all(
 					minorChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 						loader.process(zone, zoom, part, date, time, parentIdType).then((chunk) => {
-							this.recordOrbitSources(chunk);
+							this.credits.recordOrbitSources(chunk);
 							for (const b of chunk) {
 								const placeholder = placeholderById.get(b.data.id);
 								if (placeholder) {
@@ -547,53 +455,7 @@ export class ContextManager {
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
 			}
 		}
-		this.recordOrbitSources(bodies);
-	}
-
-	/**
-	 * Fold each body's `orbitalSource` into the reactive set. Reassigns on new
-	 * entries so `$derived` consumers recompute; no-op when everything in the
-	 * batch is already known (keeps minor-body chunk flushes cheap).
-	 */
-	recordOrbitSources(bodies: PositionedBody[]): void {
-		let added = false;
-		for (const b of bodies) {
-			const src = b.data.orbitalSource;
-			if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) continue;
-			this.orbitSources.add(src);
-			added = true;
-		}
-		if (added) this.orbitSources = new Set(this.orbitSources);
-	}
-
-	/**
-	 * Record the texture attribution for a body. Idempotent by `bodyId` so
-	 * revisiting a system doesn't bump the version spuriously.
-	 */
-	registerTextureCredit(credit: TextureCredit): void {
-		if (this.textureCredits.has(credit.bodyId)) return;
-		this.textureCredits.set(credit.bodyId, credit);
-		this.textureCreditsVersion++;
-	}
-
-	/**
-	 * Record the planetary-ring attribution for a body. Idempotent by
-	 * `bodyId` — same shape as {@link registerTextureCredit}.
-	 */
-	registerRingCredit(credit: RingCredit): void {
-		if (this.ringCredits.has(credit.bodyId)) return;
-		this.ringCredits.set(credit.bodyId, credit);
-		this.ringCreditsVersion++;
-	}
-
-	/**
-	 * Record the cloud-overlay attribution for a body. Idempotent by
-	 * `bodyId` — same shape as {@link registerRingCredit}.
-	 */
-	registerCloudCredit(credit: CloudCredit): void {
-		if (this.cloudCredits.has(credit.bodyId)) return;
-		this.cloudCredits.set(credit.bodyId, credit);
-		this.cloudCreditsVersion++;
+		this.credits.recordOrbitSources(bodies);
 	}
 
 	/**

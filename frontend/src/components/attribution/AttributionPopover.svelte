@@ -46,7 +46,8 @@
 		const inEarthSystem = ctx.isFocusedOnEarthSystem();
 		return ORBIT_ENTRIES.filter(
 			({ source }) =>
-				ctx.orbitSources.has(source) && (source !== OrbitalSource.CELESTRAK || inEarthSystem)
+				ctx.credits.orbitSources.has(source) &&
+				(source !== OrbitalSource.CELESTRAK || inEarthSystem)
 		).map(({ entry }) => entry());
 	});
 
@@ -54,28 +55,28 @@
 	// the focused body itself (covers standalones like Bennu/Ceres whose
 	// credits come via loadBodyTexture, not loadSystemData).
 	const textureList = $derived.by(() => {
-		void ctx.textureCreditsVersion;
+		void ctx.credits.textureVersion;
 		const sysId = ctx.focusedSystemId;
 		const bodyId = ctx.focusedBodyId;
-		return [...ctx.textureCredits.values()]
+		return [...ctx.credits.texture.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
 	const ringList = $derived.by(() => {
-		void ctx.ringCreditsVersion;
+		void ctx.credits.ringVersion;
 		const sysId = ctx.focusedSystemId;
 		const bodyId = ctx.focusedBodyId;
-		return [...ctx.ringCredits.values()]
+		return [...ctx.credits.ring.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
 	const cloudList = $derived.by(() => {
-		void ctx.cloudCreditsVersion;
+		void ctx.credits.cloudVersion;
 		const sysId = ctx.focusedSystemId;
 		const bodyId = ctx.focusedBodyId;
-		return [...ctx.cloudCredits.values()]
+		return [...ctx.credits.cloud.values()]
 			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
@@ -129,11 +130,11 @@
 		</ul>
 	</section>
 
-	{#if ctx.skyboxCredit}
+	{#if ctx.credits.skybox}
 		<section class="space-y-1">
 			{@render sectionHeader(m.attribution_section_skybox())}
 			<ul class="space-y-0.5">
-				<li>{@render link(ctx.skyboxCredit.source, ctx.skyboxCredit.organisation)}</li>
+				<li>{@render link(ctx.credits.skybox.source, ctx.credits.skybox.organisation)}</li>
 			</ul>
 		</section>
 	{/if}

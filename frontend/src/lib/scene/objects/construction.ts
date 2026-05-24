@@ -594,7 +594,7 @@ export async function loadBodyTexture(
 		// credit on the body itself so the bar/popover can match it against
 		// the focused body id.
 		const bodyId = bo.body.data.id;
-		ctx.registerTextureCredit({
+		ctx.credits.registerTexture({
 			bodyId,
 			systemId: bodyId,
 			source: detail.global.texture.source,
@@ -778,7 +778,7 @@ export async function loadSystemData(
 	const promises: Promise<void>[] = [];
 	for (const [bodyId, bodyMeta] of Object.entries(meta)) {
 		if (ctx && bodyMeta.texture) {
-			ctx.registerTextureCredit({
+			ctx.credits.registerTexture({
 				bodyId,
 				systemId: barycenterId,
 				source: bodyMeta.texture.source,
@@ -853,7 +853,7 @@ export async function loadSystemData(
 		// same scene lights. Idempotent: re-entering with `bo.clouds` set skips.
 		if (bodyMeta.clouds && !bo.clouds && bo.mesh) {
 			if (ctx) {
-				ctx.registerCloudCredit({
+				ctx.credits.registerCloud({
 					bodyId,
 					systemId: barycenterId,
 					source: bodyMeta.clouds.source,
@@ -896,7 +896,7 @@ export async function loadSystemData(
 		// re-entering the system with `bo.rings` already set is a no-op.
 		if (bodyMeta.rings && !bo.rings) {
 			if (ctx) {
-				ctx.registerRingCredit({
+				ctx.credits.registerRing({
 					bodyId,
 					systemId: barycenterId,
 					source: bodyMeta.rings.source,
