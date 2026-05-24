@@ -15,8 +15,8 @@ log = logging.getLogger(__name__)
 def resolve_mission_object_id(mission: dict) -> str | None:
     """Map one mission descriptor to its canonical object_id.
 
-    Priority: ``probe_id`` > ``naif_id`` > ``norad_cat_id``. Returns None
-    (and logs) when nothing resolves, so the caller can skip that mission.
+    Priority: ``probe_id`` > ``naif_id`` > ``norad_cat_id`` > ``spkid``.
+    Returns None when nothing resolves, so the caller can skip that mission.
     """
     probe_id = mission.get("probe_id")
     if probe_id is not None:
@@ -27,6 +27,9 @@ def resolve_mission_object_id(mission: dict) -> str | None:
     norad = mission.get("norad_cat_id")
     if norad is not None:
         return make_object_id(ID_TYPES.NORAD_SATCAT, norad)
+    spkid = mission.get("spkid")
+    if spkid is not None:
+        return make_object_id(ID_TYPES.SPKID, spkid)
     return None
 
 

@@ -1228,11 +1228,12 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 ```json
 {
   "slug": "mars-odyssey",
-  "schema": 2,
+  "schema": 3,
   "source": "NASA-3D-Resources",
   "source_url": "https://www.nasa.gov/3d-resources/",
   "attribution": "NASA",
   "downloaded_at": "2025-06-03T09:00:30-07:00",
+  "type": "probe",
   "missions": [
     { "object_id": "probe-84353024", "name": "2001 Mars Odyssey" }
   ],
@@ -1259,7 +1260,8 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 - `source` / `source_url` — catalog the bundle came from (`"NASA-3D-Resources"` / `"ESA SciFleet"`) and its user-facing landing page. Keys must appear in `MODEL_CATALOGS` (see `ingest/providers/models/config.py`); credits-page emission warns and drops unrecognised sources.
 - `attribution` — credit line (NASA's catalog or ESA's "ESA / scifleet.esa.int"); flows through to the credit aggregator.
 - `downloaded_at` — when the source bytes were last fetched. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
-- `missions` — every Object whose `model_name` points at this slug; `name` is whatever the manifest entry supplied (may be a placeholder like `"Cluster #2"` until per-mission names are hand-curated).
+- `type` — coarse category from the manifest: `probe`, `earth_sat`, `station`, `lander`, `rocket`, `asteroid`, `astronomical_object`, `ground_infrastructure`, `equipment`, `instrument`, `subassembly`, `aircraft`, `submersible`, `robot`, `generic_sat`, `concept`. Lets the frontend filter the model browser without re-deriving from mission data.
+- `missions` — every Object whose `model_name` points at this slug; `name` is whatever the manifest entry supplied. Mission resolution priority: `probe_id` → `naif_id` → `norad_cat_id` → `spkid` (the last for asteroids).
 - `exports.{tier}.source_type` — the original file format the tier was converted from (`"glb"`, `"fbx"`, `"blend"`, `"obj"`, `"3ds"`). `"glb"` means pass-through, anything else means a Blender import happened.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.
 - `source_hashes` — sha256 of each tier's source file at conversion time; ingest uses these together with `schema` to skip re-conversion on idempotent re-runs.

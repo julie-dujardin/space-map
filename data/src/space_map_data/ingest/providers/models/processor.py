@@ -107,11 +107,13 @@ class ModelProcessor:
         # mission winner selection when several slugs depict the same mission
         # (e.g. "cassini-with-huygens" vs "cassini").
         mission_winners = self._assign_mission_winners()
+        db_object_ids = self._load_db_object_ids()
 
         all_entries: list[tuple[Path, dict]] = [
             (yaml_path, entry)
             for yaml_path, doc in self._yaml_docs
             for entry in doc.get("entries") or []
+            if self._entry_has_db_mission(entry, db_object_ids)
         ]
         for yaml_path, entry in tqdm(all_entries, desc="3D models", unit="entry"):
             self._process_entry(entry, yaml_path, force=force)
@@ -199,6 +201,20 @@ class ModelProcessor:
         session = get_session()
         session.query(Object).update({Object.model_name: None})
         session.commit()
+
+    def _load_db_object_ids(self) -> set[str]:
+        session = get_session()
+        return {row[0] for row in session.query(Object.id).all()}
+
+    def _entry_has_db_mission(self, entry: dict, db_object_ids: set[str]) -> bool:
+        """Skip entries that resolve to no Object row — saves Blender/gltf work
+        on generic catalog assets (tools, ground infra, unbuilt concepts) that
+        no mission would ever reference."""
+        for mission in entry.get("missions") or []:
+            oid = metadata.resolve_mission_object_id(mission)
+            if oid is not None and oid in db_object_ids:
+                return True
+        return False
 
     def _write_mission_pointers(self, winners: dict[str, str]) -> None:
         """Write the resolved ``model_name`` pointer for every mission winner.
@@ -483,6 +499,7 @@ class ModelProcessor:
             "slug": slug,
             "schema": config.SCHEMA_VERSION,
             **catalog,
+            "type": entry.get("type"),
             "missions": self._missions_block(entry),
             "tiers": sorted(exports.keys()),
             "exports": exports,

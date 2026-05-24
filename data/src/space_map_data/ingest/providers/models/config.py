@@ -11,7 +11,7 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "models"
 
 # Bump when the public per-slug metadata.json shape changes — _try_skip
 # treats older files as stale and reprocesses them.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Catalog metadata propagated into each model's metadata.json and into the
 # credits.json aggregate. Keyed by the manifest's top-level ``source.name``
