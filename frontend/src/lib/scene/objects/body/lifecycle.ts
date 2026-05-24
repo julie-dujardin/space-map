@@ -14,8 +14,8 @@ import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { createLabel, getLabelVariant } from '../../label/factory';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
-import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../atmosphere';
-import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../eclipse-shadow';
+import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
+import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
 import type { BodyObjects } from '../../types';
 
 export function buildMajorBodies(

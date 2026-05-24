@@ -1,7 +1,7 @@
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
-import { getEclipseSceneUniforms, MAX_OCCLUDERS } from '$lib/scene/objects/eclipse-shadow';
+import { getEclipseSceneUniforms, MAX_OCCLUDERS } from '$lib/scene/objects/surface/eclipse-shadow';
 
 // Reused across frames; trimmed to active prefix each call.
 const _candidatesScratch: BodyObjects[] = [];

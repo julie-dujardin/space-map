@@ -1,5 +1,5 @@
 import { Quaternion, Vector3, type Scene } from 'three';
-import { SKYBOX_BASE_ROTATION } from '$lib/scene/objects/skybox';
+import { SKYBOX_BASE_ROTATION } from '$lib/scene/objects/sky/skybox';
 
 const DEG2RAD = Math.PI / 180;
 

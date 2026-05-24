@@ -1,10 +1,10 @@
 import type { Group, Line, Mesh, Object3D, Points, Sprite, Texture } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import type { RingNode } from './objects/rings';
-import type { CloudNode } from './objects/clouds';
-import type { AtmosphereNode } from './objects/atmosphere';
-import type { EclipseSelfUniforms } from './objects/eclipse-shadow';
+import type { RingNode } from './objects/surface/rings';
+import type { CloudNode } from './objects/surface/clouds';
+import type { AtmosphereNode } from './objects/surface/atmosphere';
+import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 
 // For focused objects:
 // Body/halo size ratio at which the label should be hidden

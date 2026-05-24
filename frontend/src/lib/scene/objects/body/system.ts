@@ -4,10 +4,24 @@ import { applyOrientation } from '$lib/math/orientation';
 import { getNutPrecAngles, ownerIdFor } from '$lib/fetch/systems-global';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { attachEclipseShadowToBody } from '../eclipse-shadow';
-import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from '../rings';
-import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from '../clouds';
-import { attachSpecularMap, disposeSpecularFromMaterial, type SpecularMeta } from '../specular';
+import { attachEclipseShadowToBody } from '../surface/eclipse-shadow';
+import {
+	attachRingShadowToPlanet,
+	disposeRingNode,
+	loadRingNode,
+	type RingMeta
+} from '../surface/rings';
+import {
+	cloudFrameForJd,
+	disposeCloudNode,
+	loadCloudNode,
+	type CloudMeta
+} from '../surface/clouds';
+import {
+	attachSpecularMap,
+	disposeSpecularFromMaterial,
+	type SpecularMeta
+} from '../surface/specular';
 import type { BodyObjects } from '../../types';
 import {
 	applyRadiiToMesh,

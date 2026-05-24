@@ -28,7 +28,7 @@ import { loadBodyTexture } from './objects/body/textures';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
-import { loadSkybox } from './objects/skybox';
+import { loadSkybox } from './objects/sky/skybox';
 import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { collectDebugStats, type DebugStats } from './debug/stats';

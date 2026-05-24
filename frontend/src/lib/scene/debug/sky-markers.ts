@@ -2,7 +2,7 @@ import { Group, type Scene } from 'three';
 import {
 	createSkyDebugMarkers,
 	disposeSkyDebugMarkers
-} from '$lib/scene/objects/sky-debug-markers';
+} from '$lib/scene/objects/sky/debug-markers';
 
 /** Celestial-landmark debug markers (galactic center, NCP, …). Lazy build, full teardown on hide. */
 export class SkyDebugMarkers {
