@@ -159,6 +159,11 @@ class Object(Base):
     image_available: Mapped[bool] = mapped_column(default=False)
     has_wikipedia_description: Mapped[bool] = mapped_column(default=False)
     has_rings: Mapped[bool] = mapped_column(default=False)
+    # Slug of the 3D-model bundle under EXPORT_DIR/v1/models/{slug}/. Many
+    # objects may point at the same slug (Viking 1/2 share an orbiter model;
+    # Cluster II spacecraft share a constellation model). Authored by the
+    # models ingest provider; null when no model is available.
+    model_name: Mapped[str | None] = mapped_column(default=None)
     # True when this row carries the orbital elements needed to ship in a
     # position file (Keplerian/SGP4/parabolic). Computed at ingest from the
     # source-specific required-element set; consumed by export queries to

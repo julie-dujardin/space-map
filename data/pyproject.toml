@@ -11,6 +11,7 @@ dependencies = [
     "pillow>=12.2.0",
     "py360convert>=1.0.4",
     "pyyaml>=6.0.3",
+    "ruamel-yaml>=0.19.1",
     "spiceypy>=8.1.0",
     "sqlalchemy>=2.0",
     "tifffile>=2026.3.3",

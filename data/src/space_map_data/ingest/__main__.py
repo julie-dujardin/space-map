@@ -16,6 +16,7 @@ from space_map_data.ingest.common import (
     ingest_wikipedia,
     log_db_summary,
 )
+from space_map_data.ingest.providers.models import ModelProcessor
 from space_map_data.ingest.providers.rings import RingProcessor
 from space_map_data.ingest.providers.textures import TextureProcessor
 
@@ -27,6 +28,7 @@ ALL_TARGETS = [
     "wikipedia",
     "textures",
     "rings",
+    "models",
 ]
 
 
@@ -79,6 +81,8 @@ def cli():
             TextureProcessor().process_all(force=args.force)
         if "rings" in selected:
             RingProcessor().process_all(force=args.force)
+        if "models" in selected:
+            ModelProcessor().process_all(force=args.force)
 
 
 if __name__ == "__main__":
