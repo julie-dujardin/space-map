@@ -5,7 +5,7 @@ import logging
 import logging.config
 import tomllib
 
-from space_map_data.export.common import export
+from space_map_data.export.pipeline.orchestrator import export
 from space_map_data.utils.db import engine_scope
 from space_map_data.utils.paths import DATA_DIR
 

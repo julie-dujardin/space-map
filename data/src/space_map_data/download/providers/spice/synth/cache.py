@@ -20,6 +20,7 @@ from .refine import (
     _furnish_planets,
     _identify_refinement_windows,
     _refine_step_for,
+    compute_major_body_hill_km,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
                 get_pos,
                 coverage_start_iso=win_start,
                 coverage_end_iso=win_end,
+                hill_table=compute_major_body_hill_km(),
             )
         finally:
             for p in furnished:

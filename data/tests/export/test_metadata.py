@@ -1,4 +1,4 @@
-"""Tests for the unified position manifest dispatch in `_build_position_metadata`.
+"""Tests for the unified position manifest dispatch in `build_position_metadata`.
 
 Three input shapes (static / chunk-indexed / date-segmented) drive three
 output shapes plus the chebyshev-only `chunked` shape folded in from the
@@ -10,11 +10,11 @@ heuristics.
 
 import pytest
 
-from space_map_data.export.common import (
-    SnapshotResult,
+from space_map_data.export.pipeline.manifest import (
     ZoomSnapshots,
-    _build_position_metadata,
+    build_position_metadata,
 )
+from space_map_data.export.pipeline.zone import SnapshotResult
 from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
@@ -47,7 +47,7 @@ class TestStaticShape:
     """Single snapshot with ``time is None`` → ``{shape: parted, parts}``."""
 
     def test_emits_parted_shape(self):
-        meta = _build_position_metadata(
+        meta = build_position_metadata(
             {"small_bodies/AMO": {0: _zoom(_result(num_parts=1))}}, {}
         )
         assert meta == {
@@ -57,7 +57,7 @@ class TestStaticShape:
         }
 
     def test_carries_parts_count(self):
-        meta = _build_position_metadata(
+        meta = build_position_metadata(
             {"small_bodies/MBA": {0: _zoom(_result(num_parts=12))}}, {}
         )
         assert meta["zones"]["small_bodies/MBA"]["zooms"]["0"] == {
@@ -93,7 +93,7 @@ class TestChunkIndexedShape:
                 validity_end_jd=2433830.375,
             ),
         )
-        meta = _build_position_metadata({"moons": {0: zoom}}, {})
+        meta = build_position_metadata({"moons": {0: zoom}}, {})
         assert meta["zones"]["moons"]["zooms"]["0"] == {
             "shape": "chunked-parted",
             "label": "index",
@@ -126,7 +126,7 @@ class TestChunkIndexedShape:
                 validity_end_jd=2350730.0,
             ),
         )
-        meta = _build_position_metadata({"moons/pluto": {0: zoom}}, {})
+        meta = build_position_metadata({"moons/pluto": {0: zoom}}, {})
         assert meta["zones"]["moons/pluto"]["zooms"]["0"]["start_jd"] == 2300000.0
         assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunks"] == 3
 
@@ -136,7 +136,7 @@ class TestChunkIndexedShape:
             _result(time="1", chunk_years=1.0),
         )
         with pytest.raises(ValueError, match="mixes chunk_years"):
-            _build_position_metadata({"moons": {0: zoom}}, {})
+            build_position_metadata({"moons": {0: zoom}}, {})
 
     def test_rejects_uneven_parts(self):
         zoom = _zoom(
@@ -144,7 +144,7 @@ class TestChunkIndexedShape:
             _result(time="1", num_parts=2, chunk_years=0.5),
         )
         with pytest.raises(ValueError, match="uneven parts"):
-            _build_position_metadata({"moons": {0: zoom}}, {})
+            build_position_metadata({"moons": {0: zoom}}, {})
 
     def test_rejects_static_mixed_with_timed(self):
         # A timed stream with a stray None-time entry is a producer bug; the
@@ -154,7 +154,7 @@ class TestChunkIndexedShape:
             _result(time="0", chunk_years=0.5),
         )
         with pytest.raises(ValueError, match="mixes timed snapshots"):
-            _build_position_metadata({"moons": {0: zoom}}, {})
+            build_position_metadata({"moons": {0: zoom}}, {})
 
 
 class TestDateSegmentedShape:
@@ -166,7 +166,7 @@ class TestDateSegmentedShape:
             _result(time="2026-04-24", num_parts=1),
             _result(time="2026-04-27", num_parts=1),
         )
-        meta = _build_position_metadata({"earth": {0: zoom}}, {})
+        meta = build_position_metadata({"earth": {0: zoom}}, {})
         assert meta["zones"]["earth"]["zooms"]["0"] == {
             "shape": "chunked-parted",
             "label": "date",
@@ -183,7 +183,7 @@ class TestDateSegmentedShape:
             _result(time="2026-01-01"),
             _result(time="2026-06-15"),
         )
-        meta = _build_position_metadata({"earth": {0: zoom}}, {})
+        meta = build_position_metadata({"earth": {0: zoom}}, {})
         out = meta["zones"]["earth"]["zooms"]["0"]
         assert out["start_date"] == "2026-01-01"
         assert out["end_date"] == "2026-12-31"
@@ -193,7 +193,7 @@ class TestChebyshevShape:
     """Per-zone chebyshev fragment folds in as ``shape: chunked`` at zoom 0."""
 
     def test_emits_chunked_shape(self):
-        meta = _build_position_metadata(
+        meta = build_position_metadata(
             {},
             {
                 "major": {
@@ -214,7 +214,7 @@ class TestChebyshevShape:
 
     def test_per_zone_cadence(self):
         """Different zones can ship different chunk_years (Saturn 0.125, Pluto 2)."""
-        meta = _build_position_metadata(
+        meta = build_position_metadata(
             {},
             {
                 "moons/saturn": {
@@ -239,7 +239,7 @@ class TestMixedZones:
     """All four shapes coexist in one manifest, picked per-zone+zoom independently."""
 
     def test_four_shapes(self):
-        meta = _build_position_metadata(
+        meta = build_position_metadata(
             {
                 "small_bodies/AMO": {0: _zoom(_result(num_parts=1))},
                 "earth": {
@@ -277,7 +277,7 @@ class TestMixedZones:
     def test_chebyshev_collision_rejects(self):
         """Elements + chebyshev both at zoom 0 of the same zone is a producer bug."""
         with pytest.raises(ValueError, match="claim zoom 0"):
-            _build_position_metadata(
+            build_position_metadata(
                 {"major": {0: _zoom(_result(num_parts=1))}},
                 {
                     "major": {

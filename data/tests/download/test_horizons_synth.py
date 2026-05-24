@@ -194,6 +194,10 @@ class TestFetchObjData:
 
 
 class TestIdentifyRefinementWindows:
+    # Single-body stub Hill table — value is irrelevant for window-logic tests
+    # since the proximity check below uses a body at (0,0,0) or 1e20 km away.
+    _STUB_HILL = {199: 1.0e6}
+
     def _make_samples(self, n: int, day_step: float = 7.0) -> list[horizons_api.Sample]:
         """N samples spaced `day_step` apart starting at ET 0."""
         return [
@@ -210,6 +214,7 @@ class TestIdentifyRefinementWindows:
             get_body_pos=lambda _b, _t: far_away,
             coverage_start_iso="2000-01-01",
             coverage_end_iso="2010-01-01",
+            hill_table=self._STUB_HILL,
         )
         assert windows == []
 
@@ -227,6 +232,7 @@ class TestIdentifyRefinementWindows:
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
             coverage_end_iso="2010-01-01",
+            hill_table=self._STUB_HILL,
         )
         assert len(windows) == 1
 
@@ -245,6 +251,7 @@ class TestIdentifyRefinementWindows:
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
             coverage_end_iso="2010-01-01",
+            hill_table=self._STUB_HILL,
         )
         assert len(windows) == 2
 
@@ -263,9 +270,81 @@ class TestIdentifyRefinementWindows:
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
             coverage_end_iso="2010-01-01",
+            hill_table=self._STUB_HILL,
         )
         # Start must be on or after 2000-01-02 (coverage_start + 1d margin).
         assert windows[0][0] >= "2000-01-02"
+
+
+class TestComputeMajorBodyHillKm:
+    """Cross-check the computed Hill table against published values.
+
+    Reference: NASA fact-sheet Hill radii (in km) — accurate to 1% or so once
+    you allow for the J2000 osculating-element snapshot wobbling slightly from
+    each body's mean orbit. Re-uses the LSK + de440 furnished by the caller
+    via `_furnish_planets`; this test class furnishes them itself.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _spice(self):
+        # Clear the cache so each test recomputes against freshly-furnished kernels.
+        refine._HILL_CACHE = None
+        paths = refine._furnish_planets()
+        yield
+        for p in paths:
+            import spiceypy
+
+            spiceypy.unload(str(p))
+        refine._HILL_CACHE = None
+
+    def test_planet_hill_radii_match_published(self):
+        hill = refine.compute_major_body_hill_km()
+        # Published Hill radii (Mkm) from standard references. Moon's
+        # osculating-element snapshot at J2000 wobbles ~7% off the mean orbit
+        # so it gets a looser tolerance than the planets.
+        expected_mkm = {
+            199: (0.22, 0.05),
+            299: (1.01, 0.05),
+            399: (1.50, 0.05),
+            301: (0.061, 0.10),
+            4: (1.08, 0.05),
+            5: (53.1, 0.05),
+            6: (65.0, 0.05),
+            7: (70.0, 0.05),
+            8: (116.0, 0.05),
+        }
+        for body, (want, tol) in expected_mkm.items():
+            got_mkm = hill[body] / 1e6
+            assert abs(got_mkm - want) / want < tol, (
+                f"body {body}: computed {got_mkm:.3f} Mkm vs published {want} Mkm"
+            )
+
+    def test_sun_entry_satisfies_alias_condition(self):
+        # Sun "Hill" × REFINE_HILL_FACTOR = r_trigger. At that distance the
+        # chord swept by a circular orbit in one coarse step should equal
+        # _SUN_REFINE_CHORD_TO_R × r_trigger.
+        hill = refine.compute_major_body_hill_km()
+        gm_sun = refine._gm_table_km3_s2()[10]
+        r_trigger = hill[10] * refine.REFINE_HILL_FACTOR
+        import math
+
+        v_circ = math.sqrt(gm_sun / r_trigger)
+        chord = v_circ * refine._COARSE_STEP_S
+        assert chord / r_trigger == pytest.approx(
+            refine._SUN_REFINE_CHORD_TO_R, rel=1e-6
+        )
+
+    def test_sun_entry_catches_psp_perihelion_region(self):
+        # PSP coarse samples around perihelion sit at ~22 Mkm from the Sun
+        # (see horizons-synth/-96/coarse_*.csv). The trigger threshold must
+        # exceed that distance, but not so much that it triggers on every
+        # interplanetary cruise — bound it at ~70 Mkm (otherwise we'd refine
+        # every probe inside Mercury's orbit).
+        hill = refine.compute_major_body_hill_km()
+        trigger_mkm = hill[10] * refine.REFINE_HILL_FACTOR / 1e6
+        assert 22 < trigger_mkm < 70, (
+            f"Sun trigger {trigger_mkm:.1f} Mkm outside expected 22..70 Mkm range"
+        )
 
 
 class TestQidDedupedSynthNaifs:

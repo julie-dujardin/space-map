@@ -1,5 +1,6 @@
 """Cadence policy + Hill-sphere proximity → refinement windows."""
 
+import csv
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -76,26 +77,86 @@ REFINE_HILL_FACTOR = 5.0
 # resampled at the tight cadence too (avoids sharp 7d→1h transitions).
 REFINE_PAD_DAYS = 7.0
 
-# Major-body NAIF IDs and Hill-sphere radii in km. We use planet *barycenter*
-# NAIF IDs for the outer planets (4, 5, 6, 7, 8) because de440.bsp only
-# contains the barycenters of Mars onwards, not the planet bodies themselves
-# (which need the per-system satellite kernels). The barycenter coincides
-# with the planet to within a few thousand km for the outer planets — fine
-# for proximity-bucket detection. Mercury/Venus barycenter == the planet
-# itself (no moons) so we use 199 and 299 directly. Earth and Moon get their
-# own IDs because they're separated by ~384 000 km and we want to detect
-# proximity to either body, not just to the Earth-Moon barycenter.
-MAJOR_BODY_HILL_KM: dict[int, float] = {
-    199: 2.20e5,  # Mercury
-    299: 1.01e6,  # Venus
-    399: 1.50e6,  # Earth
-    301: 6.61e4,  # Moon (Earth-centred Hill sphere)
-    4: 1.08e6,  # Mars barycenter
-    5: 5.31e7,  # Jupiter barycenter
-    6: 6.50e7,  # Saturn barycenter
-    7: 7.00e7,  # Uranus barycenter
-    8: 1.16e8,  # Neptune barycenter
-}
+# (secondary_naif, primary_naif) pairs for Hill-radius computation. Outer
+# planets use barycenter IDs (4, 5, 6, 7, 8) because de440.bsp only contains
+# barycenters past Mars; planet-only mass differs from barycenter by <1%, fine
+# for proximity bucketing. Mercury/Venus have no moons so 199/299 == their
+# barycenters. Earth and Moon get separate entries (separated by 384 000 km;
+# we want to detect proximity to either body, not just to EMB).
+_HILL_PAIRS: tuple[tuple[int, int], ...] = (
+    (199, 10),
+    (299, 10),
+    (399, 10),
+    (301, 399),
+    (4, 10),
+    (5, 10),
+    (6, 10),
+    (7, 10),
+    (8, 10),
+)
+
+# Sun proximity-refine threshold isn't a Hill radius — the Sun's true Hill is
+# the heliopause. We derive a synthetic "Hill" entry from the alias condition
+# for a 7-day coarse cadence: at heliocentric distance r the circular-orbit
+# velocity is sqrt(GM_sun/r), and one coarse step covers a chord v×dt. We want
+# to refine wherever chord ≥ _SUN_REFINE_CHORD_TO_R × r — i.e., the spacecraft
+# sweeps ~30°+ per coarse sample, beyond which Hermite-degree-7 between samples
+# diverges from the true trajectory (PSP perihelion rendered at 3 R_sun vs the
+# real 9.85 R_sun). Stored pre-divided by REFINE_HILL_FACTOR so the scaling in
+# `_identify_refinement_windows` reproduces the trigger distance directly.
+_SUN_REFINE_CHORD_TO_R = 0.5
+_COARSE_STEP_S = 7 * 86400.0
+
+
+def _gm_table_km3_s2() -> dict[int, float]:
+    """Read gm.csv → {naif_id: GM (km³/s²)}. Path matches export.systems.load_gms."""
+    out: dict[int, float] = {}
+    with (DOWNLOAD_DIR / "spice" / "gm.csv").open(newline="") as f:
+        for row in csv.DictReader(f):
+            out[int(row["naif_id"])] = float(row["gm_km3_s2"])
+    return out
+
+
+_HILL_CACHE: dict[int, float] | None = None
+
+
+def compute_major_body_hill_km() -> dict[int, float]:
+    """Compute Hill radii (km) for the proximity-refine check.
+
+    Planet/Moon: r_hill = a × ∛(GM_s / 3 GM_p) where `a` comes from a J2000
+    osculating-element snapshot via SPICE. Caller must furnish LSK + de440
+    before invoking — `cache.py` already does this around _identify_refinement_windows.
+
+    Sun: synthetic "Hill" = r_trigger / REFINE_HILL_FACTOR where r_trigger is
+    the heliocentric distance at which the per-coarse-step chord equals
+    `_SUN_REFINE_CHORD_TO_R × r` for a circular orbit. With the default 0.5
+    ratio and 7-day cadence this comes out at ~12 Mkm (×5 = 58 Mkm trigger,
+    catching PSP's pre/post-perihelion coarse samples).
+
+    Cached on first call — values are stable across the pipeline run.
+    """
+    global _HILL_CACHE
+    if _HILL_CACHE is not None:
+        return _HILL_CACHE
+    gm = _gm_table_km3_s2()
+    et = spiceypy.utc2et("2000-01-01T12:00:00")
+    out: dict[int, float] = {}
+    for secondary, primary in _HILL_PAIRS:
+        state, _ = spiceypy.spkezr(str(secondary), et, "J2000", "NONE", str(primary))
+        elts = spiceypy.oscelt(state, et, gm[primary])
+        rp, ecc = elts[0], elts[1]
+        a = rp / (1 - ecc) if ecc < 1 else rp
+        out[secondary] = a * (gm[secondary] / (3 * gm[primary])) ** (1 / 3)
+    r_trigger = (
+        gm[10] * _COARSE_STEP_S * _COARSE_STEP_S / _SUN_REFINE_CHORD_TO_R**2
+    ) ** (1 / 3)
+    out[10] = r_trigger / REFINE_HILL_FACTOR
+    _HILL_CACHE = out
+    logger.info(
+        "computed hill radii (Mkm): %s",
+        ", ".join(f"{b}={r / 1e6:.2f}" for b, r in sorted(out.items())),
+    )
+    return out
 
 
 def _identify_refinement_windows(
@@ -104,6 +165,7 @@ def _identify_refinement_windows(
     *,
     coverage_start_iso: str,
     coverage_end_iso: str,
+    hill_table: dict[int, float],
 ) -> list[tuple[str, str]]:
     """Coarse samples + per-body Hill-radius proximity check → 1h windows.
 
@@ -120,7 +182,7 @@ def _identify_refinement_windows(
     near = np.zeros(n, dtype=bool)
     for i, s in enumerate(samples):
         spc = np.asarray(s.state[:3])
-        for body_id, hill_km in MAJOR_BODY_HILL_KM.items():
+        for body_id, hill_km in hill_table.items():
             try:
                 body_pos = np.asarray(get_body_pos(body_id, s.et))
             except spiceypy.exceptions.SpiceyError:
