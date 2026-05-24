@@ -29,7 +29,7 @@ import {
 	makeCircleTexture,
 	upgradeBodyMesh,
 	buildMajorBodies,
-	buildOrbitLines
+	buildTrails
 } from './objects/construction';
 import { SystemDataLoader } from './system-data/loader';
 import { loadSkybox } from './objects/skybox';
@@ -37,13 +37,9 @@ import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { collectDebugStats, type DebugStats } from './debug/stats';
 import { PointCloudSystem } from './pointclouds/system';
-import {
-	rebaseOrbitLineLocals,
-	refreshTrailBufferOrbitLineGeometry,
-	setOrbitLineResolution
-} from './objects/builders';
+import { rebaseTrailLocals, refreshBufferTrail, setTrailResolution } from './objects/builders';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { updatePositions, refreshDeferredOrbitLines } from './position/update-positions';
+import { updatePositions, refreshDeferredTrails } from './position/update-positions';
 import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
@@ -133,7 +129,7 @@ export class SceneRenderer {
 	/** DOM container for CSS2D labels; hidden entirely in immersive mode. */
 	private labelContainer: HTMLElement;
 	/**
-	 * Layer used for "map UI": orbit lines + point clouds. Immersive mode
+	 * Layer used for "map UI": trails + point clouds. Immersive mode
 	 * disables this layer on the camera, so the WebGL pass skips them while
 	 * meshes (layer 0) keep rendering.
 	 */
@@ -186,7 +182,7 @@ export class SceneRenderer {
 			this.circleTexture,
 			this.focus,
 			SceneRenderer.MAP_LAYER,
-			() => this.rebuildOrbitLineBasis()
+			() => this.rebuildTrailBasis()
 		);
 		this.pointClouds.seedBasis(focusPos);
 
@@ -227,7 +223,7 @@ export class SceneRenderer {
 				systemData: this.systemData,
 				loadTexture: (b) => this.maybeLoadTexture(b),
 				repositionAll: () => this.repositionAll(),
-				assignMapLayerToOrbitLines: () => this.assignMapLayerToOrbitLines()
+				assignMapLayerToTrails: () => this.assignMapLayerToTrails()
 			},
 			focusBody,
 			this.hoveredBodyIds,
@@ -277,8 +273,8 @@ export class SceneRenderer {
 			const bo = this.bodyObjects.get(focusBody.data.id);
 			if (bo) {
 				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
-				buildOrbitLines(this.bodyObjects, this.scene, this.pointClouds.basis(), this.clock.jd);
-				this.assignMapLayerToOrbitLines();
+				buildTrails(this.bodyObjects, this.scene, this.pointClouds.basis(), this.clock.jd);
+				this.assignMapLayerToTrails();
 			}
 		}
 
@@ -320,24 +316,24 @@ export class SceneRenderer {
 			(id, hovered) => (hovered ? this.hoveredBodyIds.add(id) : this.hoveredBodyIds.delete(id))
 		);
 		this.pointClouds.buildInitial(new Set(this.bodyObjects.keys()));
-		// Defer orbit line geometry (100K+ Kepler solves) to after first paint.
+		// Defer trail geometry (100K+ Kepler solves) to after first paint.
 		const basis = this.pointClouds.basis();
 		const scheduleIdle = globalThis.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 0));
 		scheduleIdle(() => {
-			buildOrbitLines(this.bodyObjects, this.scene, basis, this.clock.jd);
-			this.assignMapLayerToOrbitLines();
+			buildTrails(this.bodyObjects, this.scene, basis, this.clock.jd);
+			this.assignMapLayerToTrails();
 		});
 	}
 
-	/** Assign all current orbit lines to MAP_LAYER so they can be hidden together by immersive mode. */
-	private assignMapLayerToOrbitLines(): void {
+	/** Assign all current trails to MAP_LAYER so they can be hidden together by immersive mode. */
+	private assignMapLayerToTrails(): void {
 		for (const bo of this.bodyObjects.values()) {
-			if (bo.orbitLine) bo.orbitLine.layers.set(SceneRenderer.MAP_LAYER);
+			if (bo.trail) bo.trail.layers.set(SceneRenderer.MAP_LAYER);
 		}
 	}
 
 	/**
-	 * Map vs immersive view. Immersive hides CSS2D labels (DOM), orbit lines,
+	 * Map vs immersive view. Immersive hides CSS2D labels (DOM), trails,
 	 * and point clouds — leaving only meshes + skybox visible. Picking and
 	 * camera controls keep working, so the user can still navigate (with
 	 * difficulty) and toggle back.
@@ -360,10 +356,10 @@ export class SceneRenderer {
 
 	private repositionAll(): void {
 		this.repositionBodies();
-		this.rebuildOrbitLineBasis();
+		this.rebuildTrailBasis();
 	}
 
-	/** Like {@link repositionAll} but skips the orbit-line rewrite — for callers that already refreshed lines per-body. */
+	/** Like {@link repositionAll} but skips the trail rewrite — for callers that already refreshed lines per-body. */
 	private repositionBodies(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		for (const bo of this.bodyObjects.values()) {
@@ -380,30 +376,30 @@ export class SceneRenderer {
 	/**
 	 * Rebase the cached orbit-local vertices against the current focus (no
 	 * Kepler recompute). Used by focus animation paths; the per-jd path goes
-	 * through {@link refreshOrbitLineGeometry} instead.
+	 * through {@link refreshTrail} instead.
 	 */
-	private rebuildOrbitLineBasis(): void {
+	private rebuildTrailBasis(): void {
 		const basis = this.focus.focusTruePos;
 		const [fx, fy, fz] = basis;
 		for (const bo of this.bodyObjects.values()) {
-			const line = bo.orbitLine;
+			const line = bo.trail;
 			// Don't gate on line.visible — newly-built lines are visible=false
 			// but will be flipped visible later this frame by updateBodyVisibility;
 			// their vertices must be rebased against the new focus before first render.
 			if (!line) continue;
-			// Trail-buffer lines have no cached `orbitLocalPositions` — re-read
+			// Trail-buffer lines have no cached `trailLocalPositions` — re-read
 			// the buffer instead, which already holds parent-relative samples.
 			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 			if (trailBuffer) {
-				refreshTrailBufferOrbitLineGeometry(bo.body, line, trailBuffer, basis);
+				refreshBufferTrail(bo.body, line, trailBuffer, basis);
 				continue;
 			}
-			const localPositions = line.userData.orbitLocalPositions as
+			const localPositions = line.userData.trailLocalPositions as
 				| [number, number, number][]
 				| undefined;
 			if (!localPositions) continue;
 			const oc = line.userData.orbitCenter as Vector3;
-			rebaseOrbitLineLocals(line, localPositions, oc.x - fx, oc.y - fy, oc.z - fz);
+			rebaseTrailLocals(line, localPositions, oc.x - fx, oc.y - fy, oc.z - fz);
 		}
 	}
 
@@ -484,7 +480,7 @@ export class SceneRenderer {
 		const { distance } = this.getCameraState();
 		this.ctx.visibility.updateCamera(distance);
 
-		// Per-frame visibility, label, and orbit line updates
+		// Per-frame visibility, label, and trail updates
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
@@ -504,7 +500,7 @@ export class SceneRenderer {
 		// Catch lines that updatePositions skipped (visible=false last frame)
 		// but updateBodyVisibility just flipped on, so they don't render at a
 		// stale basis for one frame.
-		refreshDeferredOrbitLines(this.bodyObjects, this.focus, this.lastUpdatedJd);
+		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
 		updateAtmosphereShaders(this.bodyObjects);
@@ -663,7 +659,7 @@ export class SceneRenderer {
 		this.camera.aspect = width / height;
 		this.camera.updateProjectionMatrix();
 		this.ctx.visibility.updateViewport(height);
-		setOrbitLineResolution(width, height);
+		setTrailResolution(width, height);
 	}
 
 	dispose(): void {

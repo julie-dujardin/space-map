@@ -20,13 +20,13 @@ import { dateToJD } from '$lib/format/date';
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
-export const NUM_ORBIT_POINTS = 512;
+export const NUM_TRAIL_POINTS = 512;
 
 // Re-render the precessing-elements curve when accumulated drift on Ω or ω
 // exceeds this many degrees. At 0.01° the chord offset stays sub-body-radius
 // even for the closest Saturn moons, well below typical screen pixel scale.
 // Verified manually: 0.1 results in visible flickery offset from moons to their trails.
-const ORBIT_CURVE_REFRESH_DEG = 0.01;
+const TRAIL_CURVE_REFRESH_DEG = 0.01;
 
 // Re-snapshot chebyshev-derived osculating elements after sim jd has advanced
 // by this fraction of the orbit's period. Bounds the body-on-curve drift that
@@ -56,7 +56,7 @@ export function makeCircleTexture(): CanvasTexture {
 }
 
 /** Anchor the static curve at the body's current position so the trail trails *behind* it. */
-function buildOrbitTrailPoints(
+function buildTrailPoints(
 	body: PositionedBody,
 	curve: [number, number, number][],
 	isOpenCurve: boolean,
@@ -102,15 +102,15 @@ function buildOrbitTrailPoints(
 
 	const points: [number, number, number][] = [bodyLocal];
 	if (isOpenCurve) {
-		for (let k = 0; k < NUM_ORBIT_POINTS - 1; k++) {
+		for (let k = 0; k < NUM_TRAIL_POINTS - 1; k++) {
 			const idx = Math.max(trailStart - k, 0);
 			points.push(curve[idx]);
 			if (idx === 0) break;
 		}
 	} else {
-		for (let k = 0; k < NUM_ORBIT_POINTS - 1; k++) {
+		for (let k = 0; k < NUM_TRAIL_POINTS - 1; k++) {
 			points.push(
-				curve[(((trailStart - k) % NUM_ORBIT_POINTS) + NUM_ORBIT_POINTS) % NUM_ORBIT_POINTS]
+				curve[(((trailStart - k) % NUM_TRAIL_POINTS) + NUM_TRAIL_POINTS) % NUM_TRAIL_POINTS]
 			);
 		}
 		points.push(bodyLocal); // close the loop
@@ -128,7 +128,7 @@ function buildOrbitTrailPoints(
  * the tail tip; closed curves (Kepler ellipse) fade to a non-zero floor so the
  * loop seam doesn't pop. The partial-trail ramp is the same shape regardless.
  */
-function writeOrbitAlphas(
+function writeTrailAlphas(
 	fullArr: Float32Array,
 	trailArr: Float32Array,
 	isOpenCurve: boolean,
@@ -141,7 +141,7 @@ function writeOrbitAlphas(
 		fullArr[k] = fullMax - (last > 0 ? k / last : 0) * (fullMax - fullMin);
 	}
 	if (useTrail) {
-		const trailLen = Math.round(NUM_ORBIT_POINTS / 3);
+		const trailLen = Math.round(NUM_TRAIL_POINTS / 3);
 		const trailMax = 0.35;
 		trailArr.fill(0);
 		for (let k = 0; k < Math.min(trailLen, trailArr.length); k++) {
@@ -161,7 +161,7 @@ function overlayColor(color: string): Color {
 	return new Color(color).multiplyScalar(OVERLAY_COLOR_SCALE);
 }
 
-function makeOrbitLineMaterial(color: string): ShaderMaterial {
+function makeTrailMaterial(color: string): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
 		uniforms: {
@@ -200,26 +200,26 @@ function makeOrbitLineMaterial(color: string): ShaderMaterial {
 	});
 }
 
-// Shared between every fat orbit-line material so resize() updates them all in
+// Shared between every fat trail material so resize() updates them all in
 // one place. Mutating this Vector2 propagates to every material that holds it
 // as a uniform value (Three.js compares by reference, not by snapshot).
-const ORBIT_LINE_RESOLUTION = new Vector2(1, 1);
+const TRAIL_RESOLUTION = new Vector2(1, 1);
 
-/** Update the screen resolution used by fat orbit lines for screen-space line expansion. */
-export function setOrbitLineResolution(width: number, height: number): void {
-	ORBIT_LINE_RESOLUTION.set(width, height);
+/** Update the screen resolution used by fat trails for screen-space line expansion. */
+export function setTrailResolution(width: number, height: number): void {
+	TRAIL_RESOLUTION.set(width, height);
 }
 
 /**
- * Fat-line shader: same precision/alpha logic as {@link makeOrbitLineMaterial},
+ * Fat-line shader: same precision/alpha logic as {@link makeTrailMaterial},
  * but expands each segment to a screen-space quad of width `uLineWidth` pixels.
  *
- * Geometry is indexed triangles built by {@link makeFatOrbitLineGeometry}: each
+ * Geometry is indexed triangles built by {@link makeFatTrailGeometry}: each
  * logical point is duplicated into a (-1, +1) side pair, and `nextPosition`
  * carries the segment's other endpoint so the shader can compute screen-space
  * direction without an extra draw call.
  */
-function makeFatOrbitLineMaterial(color: string, lineWidth: number): ShaderMaterial {
+function makeFatTrailMaterial(color: string, lineWidth: number): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
 		side: DoubleSide,
@@ -230,7 +230,7 @@ function makeFatOrbitLineMaterial(color: string, lineWidth: number): ShaderMater
 			uAlphaMin: { value: 0.0 },
 			uShowFull: { value: 0.0 },
 			uLineWidth: { value: lineWidth },
-			uResolution: { value: ORBIT_LINE_RESOLUTION }
+			uResolution: { value: TRAIL_RESOLUTION }
 		},
 		vertexShader: `
 			#include <common>
@@ -278,15 +278,15 @@ function makeFatOrbitLineMaterial(color: string, lineWidth: number): ShaderMater
 }
 
 /**
- * Build the indexed triangle geometry backing a fat orbit line. Vertices come
+ * Build the indexed triangle geometry backing a fat trail. Vertices come
  * in side pairs (one shifted to `-1`, one to `+1` perpendicular to the segment
  * in screen space); the index buffer is pre-filled with `(capacity - 1)` quads.
  *
- * Refresh paths populate the per-vertex arrays via {@link writeFatOrbitVertices}
+ * Refresh paths populate the per-vertex arrays via {@link writeFatTrailVertices}
  * and call `geometry.setDrawRange(0, 6 * (n - 1))` to control how many quads
  * render.
  */
-function makeFatOrbitLineGeometry(capacity: number): BufferGeometry {
+function makeFatTrailGeometry(capacity: number): BufferGeometry {
 	const vertCount = 2 * capacity;
 	const positions = new Float32Array(vertCount * 3);
 	const nextPositions = new Float32Array(vertCount * 3);
@@ -323,12 +323,12 @@ function makeFatOrbitLineGeometry(capacity: number): BufferGeometry {
 }
 
 /**
- * Populate a fat orbit line's vertex arrays from `n` logical points + alpha
+ * Populate a fat trail's vertex arrays from `n` logical points + alpha
  * ramps. Each point is duplicated into a (-1, +1) side pair; `nextPosition`
  * for the last point falls back to itself so the shader's degenerate-segment
  * branch picks a stable perpendicular.
  */
-function writeFatOrbitVertices(
+function writeFatTrailVertices(
 	geometry: BufferGeometry,
 	posSrc: Float32Array,
 	trailSrc: Float32Array,
@@ -380,7 +380,7 @@ function writeFatOrbitVertices(
 	geometry.setDrawRange(0, Math.max(0, 6 * (m - 1)));
 }
 
-function makeEmptyOrbitLine(): Line | Mesh {
+function makeEmptyTrail(): Line | Mesh {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(6), 3));
 	const material = new ShaderMaterial({ transparent: true });
@@ -389,7 +389,7 @@ function makeEmptyOrbitLine(): Line | Mesh {
 	return line;
 }
 
-/** Wrap pre-computed thin arrays into a `Line` with a shared orbit-line material. */
+/** Wrap pre-computed thin arrays into a `Line` with a shared trail material. */
 function buildThinLineFromArrays(
 	posArr: Float32Array,
 	trailAlphas: Float32Array,
@@ -402,7 +402,7 @@ function buildThinLineFromArrays(
 	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
 	geometry.setDrawRange(0, total);
-	return new Line(geometry, makeOrbitLineMaterial(color));
+	return new Line(geometry, makeTrailMaterial(color));
 }
 
 /** Wrap pre-computed thin arrays into a fat-line `Mesh`. */
@@ -415,9 +415,9 @@ function buildFatLineFromThin(
 	color: string,
 	lineWidth: number
 ): Mesh {
-	const geometry = makeFatOrbitLineGeometry(capacity);
-	writeFatOrbitVertices(geometry, posArr, trailAlphas, fullAlphas, total);
-	return new Mesh(geometry, makeFatOrbitLineMaterial(color, lineWidth));
+	const geometry = makeFatTrailGeometry(capacity);
+	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
+	return new Mesh(geometry, makeFatTrailMaterial(color, lineWidth));
 }
 
 /**
@@ -448,13 +448,13 @@ function writeBufferVerticesWithLiveHead(
 }
 
 /**
- * Build a trail-buffer-backed orbit line. Geometry is sized to `capacity + 1` —
+ * Build a trail backed by a sample buffer. Geometry is sized to `capacity + 1` —
  * the +1 slot holds the live body position so the brightest trail vertex
  * always sits on the body. Used for probes whose chunk has at least one
  * chebyshev sub-chunk: an osculating-Kepler ellipse misrepresents the path
  * during a flyby or capture, so we polyline the actual past trajectory.
  */
-function makeTrailBufferOrbitLine(
+function makeBufferTrail(
 	body: PositionedBody,
 	trailBuffer: TrailBuffer,
 	color: string,
@@ -480,7 +480,7 @@ function makeTrailBufferOrbitLine(
 	const fullAlphas = new Float32Array(geomCap);
 	const trailAlphas = new Float32Array(geomCap);
 	if (total > 0) {
-		writeOrbitAlphas(
+		writeTrailAlphas(
 			fullAlphas.subarray(0, total) as Float32Array,
 			trailAlphas.subarray(0, total) as Float32Array,
 			true,
@@ -508,13 +508,12 @@ function makeTrailBufferOrbitLine(
 }
 
 /**
- * Rewrite a trail-buffer-backed orbit line's vertex buffer from its current
- * buffer contents. Called from {@link refreshOrbitLineGeometry} per jd tick
- * and from focus-change paths. Unlike the Kepler/SGP4 path, there's no cached
- * vertex list to rebase — the ring buffer is the source of truth, so we just
- * re-read it with the new basis.
+ * Rewrite a buffer-backed trail's vertex buffer from its current contents.
+ * Called from {@link refreshTrail} per jd tick and from focus-change paths.
+ * Unlike the Kepler/SGP4 path, there's no cached vertex list to rebase — the
+ * ring buffer is the source of truth, so we just re-read it with the new basis.
  */
-export function refreshTrailBufferOrbitLineGeometry(
+export function refreshBufferTrail(
 	body: PositionedBody,
 	line: Line | Mesh,
 	buffer: TrailBuffer,
@@ -522,12 +521,12 @@ export function refreshTrailBufferOrbitLineGeometry(
 ): void {
 	const useTrail = line.userData.useTrail as boolean;
 	const oc = line.userData.orbitCenter as Vector3;
-	const { posArr, trailArr, fullArr } = getOrbitWorkingArrays(line);
+	const { posArr, trailArr, fullArr } = getTrailWorkingArrays(line);
 	const total = writeBufferVerticesWithLiveHead(body, buffer, posArr, oc.x, oc.y, oc.z, basisPos);
-	commitOrbitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
+	commitTrail(line, posArr, trailArr, fullArr, total, true, useTrail);
 }
 
-export function makeOrbitLine(
+export function makeTrail(
 	body: PositionedBody,
 	color: string,
 	basisPos: [number, number, number] = [0, 0, 0],
@@ -535,7 +534,7 @@ export function makeOrbitLine(
 	lineWidth: number = 1
 ): Line | Mesh {
 	if (body.trailBuffer) {
-		return makeTrailBufferOrbitLine(body, body.trailBuffer, color, basisPos, lineWidth);
+		return makeBufferTrail(body, body.trailBuffer, color, basisPos, lineWidth);
 	}
 	const { orbitElements, orbitCenter, data } = body;
 
@@ -545,16 +544,16 @@ export function makeOrbitLine(
 	let curve: [number, number, number][];
 	let isOpenCurve: boolean;
 	if (data.satrec) {
-		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_ORBIT_POINTS);
+		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_TRAIL_POINTS);
 		isOpenCurve = true;
 	} else {
-		if (!orbitElements) throw new Error('makeOrbitLine called without orbitElements');
+		if (!orbitElements) throw new Error('makeTrail called without orbitElements');
 		// Apply secular drift on Ω/ω so the drawn ellipse matches the body's
 		// current orbit plane, not the chunk midpoint's. The curve is re-rendered
-		// from refreshOrbitLineGeometry once accumulated drift exceeds
-		// ORBIT_CURVE_REFRESH_DEG; the curveJd anchor below is its starting point.
+		// from refreshTrail once accumulated drift exceeds
+		// TRAIL_CURVE_REFRESH_DEG; the curveJd anchor below is its starting point.
 		const propagated = propagateOrbitAngles(orbitElements, jd);
-		const result = orbitalElementsToCurve(propagated, NUM_ORBIT_POINTS);
+		const result = orbitalElementsToCurve(propagated, NUM_TRAIL_POINTS);
 		curve = result.points;
 		isOpenCurve = result.isOpen;
 	}
@@ -571,17 +570,17 @@ export function makeOrbitLine(
 		data.objectType === ObjectType.COMET ||
 		isAsteroid(data.objectType);
 
-	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
-	if (validPoints.length < 2) return makeEmptyOrbitLine();
+	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
+	if (validPoints.length < 2) return makeEmptyTrail();
 
 	// Size buffers to the full curve length so refreshes that produce longer
 	// trails (e.g. body.position and curve become consistent after the first
 	// tick for SGP4 bodies) don't hit the `posAttr.count < validPoints.length`
-	// early-return in refreshOrbitLineGeometry.
+	// early-return in refreshTrail.
 	const bufferCapacity = Math.max(validPoints.length, curve.length);
 	const fullAlphas = new Float32Array(bufferCapacity);
 	const trailAlphas = new Float32Array(bufferCapacity);
-	writeOrbitAlphas(
+	writeTrailAlphas(
 		fullAlphas.subarray(0, validPoints.length) as Float32Array,
 		trailAlphas.subarray(0, validPoints.length) as Float32Array,
 		isOpenCurve,
@@ -619,13 +618,13 @@ export function makeOrbitLine(
 	// Store Float64 orbit-local positions for rebuilding when focus changes,
 	// and the static curve + flags for per-frame trail refresh while time plays.
 	obj.userData.orbitCenter = new Vector3(cx, cy, cz);
-	obj.userData.orbitLocalPositions = validPoints;
-	obj.userData.orbitCurve = curve;
+	obj.userData.trailLocalPositions = validPoints;
+	obj.userData.sourceCurve = curve;
 	obj.userData.isOpenCurve = isOpenCurve;
 	obj.userData.useTrail = useTrail;
 	obj.userData.curveJd = jd;
 	// Last jd at which `body.orbitElements` was snapshot — read by the
-	// chebyshev re-derive gate in {@link refreshOrbitLineGeometry}. Defaults
+	// chebyshev re-derive gate in {@link refreshTrail}. Defaults
 	// to the elements' own epoch (chebyshev callers set epoch to derive-jd);
 	// non-rederive bodies don't read it.
 	obj.userData.elementsJd = orbitElements?.epoch ?? jd;
@@ -641,11 +640,11 @@ export function makeOrbitLine(
 /**
  * Working arrays for the per-frame trail refresh. For thin `Line` objects this
  * is the live geometry attribute backing storage; for fat `Mesh` objects it is
- * the userData scratch that {@link writeFatOrbitVertices} later expands into
+ * the userData scratch that {@link writeFatTrailVertices} later expands into
  * the duplicated/indexed geometry. `capacity` is logical points (the fat
  * geometry has 2× that many vertices, but the writer accepts logical counts).
  */
-function getOrbitWorkingArrays(line: Line | Mesh): {
+function getTrailWorkingArrays(line: Line | Mesh): {
 	posArr: Float32Array;
 	trailArr: Float32Array;
 	fullArr: Float32Array;
@@ -676,7 +675,7 @@ function getOrbitWorkingArrays(line: Line | Mesh): {
  * buffer, Kepler/SGP4 curve) populate `posArr` with their own logic and call
  * this to commit the frame's geometry update.
  */
-function commitOrbitTrail(
+function commitTrail(
 	line: Line | Mesh,
 	posArr: Float32Array,
 	trailArr: Float32Array,
@@ -692,14 +691,14 @@ function commitOrbitTrail(
 		}
 		return;
 	}
-	writeOrbitAlphas(
+	writeTrailAlphas(
 		fullArr.subarray(0, n) as Float32Array,
 		trailArr.subarray(0, n) as Float32Array,
 		isOpenCurve,
 		useTrail
 	);
 	if (line.userData.isFatLine) {
-		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
+		writeFatTrailVertices(line.geometry, posArr, trailArr, fullArr, n);
 		return;
 	}
 	line.geometry.setDrawRange(0, n);
@@ -709,19 +708,19 @@ function commitOrbitTrail(
 }
 
 /**
- * Rewrite an orbit line's vertex buffer from cached orbit-local positions and
+ * Rewrite an trail's vertex buffer from cached orbit-local positions and
  * a fresh basis offset, without any curve recompute. Used by the focus-change
  * path, which needs every line rebased before the first render against the new
  * basis but does not advance jd.
  */
-export function rebaseOrbitLineLocals(
+export function rebaseTrailLocals(
 	line: Line | Mesh,
 	localPositions: [number, number, number][],
 	ox: number,
 	oy: number,
 	oz: number
 ): void {
-	const { posArr, trailArr, fullArr, capacity } = getOrbitWorkingArrays(line);
+	const { posArr, trailArr, fullArr, capacity } = getTrailWorkingArrays(line);
 	const n = Math.min(localPositions.length, capacity);
 	for (let i = 0; i < n; i++) {
 		posArr[i * 3] = localPositions[i][0] + ox;
@@ -729,14 +728,14 @@ export function rebaseOrbitLineLocals(
 		posArr[i * 3 + 2] = localPositions[i][2] + oz;
 	}
 	if (line.userData.isFatLine) {
-		writeFatOrbitVertices(line.geometry, posArr, trailArr, fullArr, n);
+		writeFatTrailVertices(line.geometry, posArr, trailArr, fullArr, n);
 		return;
 	}
 	line.geometry.getAttribute('position').needsUpdate = true;
 }
 
 /**
- * Re-anchor an orbit line's trail at the body's current position. Must run
+ * Re-anchor an trail's trail at the body's current position. Must run
  * after the body (and its `orbitCenter`) have been updated this frame.
  *
  * For SGP4-backed bodies, the underlying curve is regenerated each call using
@@ -744,7 +743,7 @@ export function rebaseOrbitLineLocals(
  * clock — a static construction-time curve would drift out of sync under time
  * playback (and go stale entirely under drag/J2 secular effects).
  */
-export function refreshOrbitLineGeometry(
+export function refreshTrail(
 	body: PositionedBody,
 	line: Line | Mesh,
 	basisPos: [number, number, number],
@@ -753,14 +752,14 @@ export function refreshOrbitLineGeometry(
 	// Trail-buffer path: buffer holds live past-position samples maintained by
 	// `updatePositions`; just copy them into the vertex buffer shifted by
 	// (orbitCenter − basis). No curve cache to fall back on, so this branch
-	// must run before the early-return on missing `orbitCurve`.
+	// must run before the early-return on missing `sourceCurve`.
 	const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 	if (trailBuffer) {
-		refreshTrailBufferOrbitLineGeometry(body, line, trailBuffer, basisPos);
+		refreshBufferTrail(body, line, trailBuffer, basisPos);
 		return;
 	}
 
-	let curve = line.userData.orbitCurve as [number, number, number][] | undefined;
+	let curve = line.userData.sourceCurve as [number, number, number][] | undefined;
 	if (!curve) return;
 	const isOpenCurve = line.userData.isOpenCurve as boolean;
 	const useTrail = line.userData.useTrail as boolean;
@@ -771,8 +770,8 @@ export function refreshOrbitLineGeometry(
 
 	// SGP4 curves are a sliding window ending at the current sim jd.
 	if (body.data.satrec) {
-		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_ORBIT_POINTS);
-		line.userData.orbitCurve = curve;
+		curve = sgp4Curve(body.data.satrec, jd, body.data.n / 360, NUM_TRAIL_POINTS);
+		line.userData.sourceCurve = curve;
 	} else if (body.orbitElements) {
 		// Chebyshev-derived osculating elements: re-snapshot periodically so
 		// the static ellipse stays aligned with the body's actual chebyshev
@@ -795,8 +794,8 @@ export function refreshOrbitLineGeometry(
 				// keep the stale snapshot rather than warn-spamming per frame.
 				if (fresh) {
 					Object.assign(body.orbitElements, fresh);
-					curve = orbitalElementsToCurve(body.orbitElements, NUM_ORBIT_POINTS).points;
-					line.userData.orbitCurve = curve;
+					curve = orbitalElementsToCurve(body.orbitElements, NUM_TRAIL_POINTS).points;
+					line.userData.sourceCurve = curve;
 					line.userData.curveJd = jd;
 					line.userData.elementsJd = jd;
 				}
@@ -805,7 +804,7 @@ export function refreshOrbitLineGeometry(
 		// Method-C-fit moons carry secular Ω/ω drift; the curve was built with
 		// angles current at construction time but goes stale as `jd` advances.
 		// Regenerate when the predicted angular drift since the last build
-		// exceeds ORBIT_CURVE_REFRESH_DEG — gated to avoid per-frame work for
+		// exceeds TRAIL_CURVE_REFRESH_DEG — gated to avoid per-frame work for
 		// slow precessors where drift takes years to accumulate. No-op for
 		// chebyshev-derived elements since those don't carry omDot/wDot.
 		const omDot = body.orbitElements.omDot ?? 0;
@@ -813,10 +812,10 @@ export function refreshOrbitLineGeometry(
 		const maxRate = Math.max(Math.abs(omDot), Math.abs(wDot));
 		if (maxRate > 0) {
 			const curveJd = (line.userData.curveJd as number | undefined) ?? jd;
-			if (maxRate * Math.abs(jd - curveJd) > ORBIT_CURVE_REFRESH_DEG) {
+			if (maxRate * Math.abs(jd - curveJd) > TRAIL_CURVE_REFRESH_DEG) {
 				const propagated = propagateOrbitAngles(body.orbitElements, jd);
-				curve = orbitalElementsToCurve(propagated, NUM_ORBIT_POINTS).points;
-				line.userData.orbitCurve = curve;
+				curve = orbitalElementsToCurve(propagated, NUM_TRAIL_POINTS).points;
+				line.userData.sourceCurve = curve;
 				line.userData.curveJd = jd;
 			}
 		}
@@ -836,13 +835,13 @@ export function refreshOrbitLineGeometry(
 		basisPos[0] !== ud.lastBasisX || basisPos[1] !== ud.lastBasisY || basisPos[2] !== ud.lastBasisZ;
 	if (!curveChanged && !anchorChanged && !centerChanged && !basisChanged) return;
 
-	const validPoints = buildOrbitTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
+	const validPoints = buildTrailPoints(body, curve, isOpenCurve, cx, cy, cz);
 	if (validPoints.length < 2) return;
 
 	// Clamp to working-array capacity rather than silently skipping — dropping
 	// a frame from a too-small buffer would freeze the trail permanently when
 	// the SGP4 window grows past its construction-time size.
-	const { posArr, trailArr, fullArr, capacity } = getOrbitWorkingArrays(line);
+	const { posArr, trailArr, fullArr, capacity } = getTrailWorkingArrays(line);
 	const bx = cx - basisPos[0],
 		by = cy - basisPos[1],
 		bz = cz - basisPos[2];
@@ -852,9 +851,9 @@ export function refreshOrbitLineGeometry(
 		posArr[k * 3 + 1] = validPoints[k][1] + by;
 		posArr[k * 3 + 2] = validPoints[k][2] + bz;
 	}
-	commitOrbitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
+	commitTrail(line, posArr, trailArr, fullArr, n, isOpenCurve, useTrail);
 	// Cache the new orbit-local vertex list for the next focus-basis rebuild.
-	ud.orbitLocalPositions = validPoints;
+	ud.trailLocalPositions = validPoints;
 	ud.lastCurveRef = curve;
 	ud.lastAnchorX = anchor[0];
 	ud.lastAnchorY = anchor[1];

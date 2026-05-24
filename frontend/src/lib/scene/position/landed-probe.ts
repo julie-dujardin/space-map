@@ -11,7 +11,7 @@ import type { Vec3 } from '$lib/scene/animation/math';
  * Place a landed probe at its body-surface lat/lng/alt in world coords.
  * Returns null when the landing body isn't loaded or lacks orientation data
  * (caller hides the probe for the frame). Mutates `d.parentId` so the
- * downstream orbit-line/trail-anchor writes follow the new parent.
+ * downstream trail geometry and trail-anchor writes follow the new parent.
  */
 export function renderLandedProbe(
 	d: BodyData,

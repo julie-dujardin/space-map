@@ -26,7 +26,7 @@ import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
-import { NUM_ORBIT_POINTS } from '$lib/scene/objects/builders';
+import { NUM_TRAIL_POINTS } from '$lib/scene/objects/builders';
 import {
 	PROBE_METHOD_CHEBYSHEV,
 	PROBE_METHOD_KEPLER_DRIFT,
@@ -41,8 +41,8 @@ const KM_DAY_TO_AU_DAY = 1 / AU_KM;
  * the parent's GM. Returns null when the parent has no GM (SPICE coverage
  * hole or pre-load timing on `systems/global.json`), the chebyshev sample
  * misses, or the resulting state degenerates (radial / parabolic). The
- * snapshot drives the orbit-line curve through the same kepler path as
- * SBDB-sourced bodies — see `processChebyshev` below. The orbit-line refresh
+ * snapshot drives the trail curve through the same kepler path as
+ * SBDB-sourced bodies — see `processChebyshev` below. The trail refresh
  * path re-invokes this periodically via `PositionedBody.rederiveElements` to
  * keep the ellipse aligned with the actual chebyshev path as time advances
  * within a chunk.
@@ -312,8 +312,8 @@ export class ChunkLoader {
 	 * The body's `data` carries osculating Keplerian elements derived from the
 	 * Chebyshev state (position + velocity) at `jd` plus the parent's GM. This
 	 * is the same shape the SBDB/Horizons elements path produces, so the
-	 * orbit-line builder draws a closed kepler curve through the unified path
-	 * in {@link makeOrbitLine}. `a` from the derivation also serves the
+	 * trail builder draws a closed kepler curve through the unified path
+	 * in {@link makeTrail}. `a` from the derivation also serves the
 	 * visibility-ratio code (`getMoonVisibility`, `getPlanetVisibility`).
 	 */
 	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
@@ -366,7 +366,7 @@ export class ChunkLoader {
 			// state is degenerate; the body still gets a position-only entry
 			// so it can render, just without an orbit curve.
 			const elements = chebyshevOsculatingElements(body, body.parentId, jd);
-			// Re-derive callback used by the orbit-line refresh path. We can't
+			// Re-derive callback used by the trail refresh path. We can't
 			// close over the `ChebyshevBody` reference here — those records
 			// are *per-chunk*, so by the time the user crosses a chunk boundary
 			// the captured ref no longer covers the new jd and rederive would
@@ -489,12 +489,12 @@ export class ChunkLoader {
 	 *
 	 *   - **Pure Kepler** (no chebyshev sub-chunks anywhere in the probe): the
 	 *     `PositionedBody`'s `orbitElements` + `rederiveElements` carry a
-	 *     per-sub-chunk osculating snapshot. `refreshOrbitLineGeometry`
+	 *     per-sub-chunk osculating snapshot. `refreshTrail`
 	 *     re-snapshots periodically so the curve tracks the next sub-chunk
 	 *     across boundaries.
 	 *   - **Has at least one chebyshev sub-chunk**: a `TrailBuffer` of past
 	 *     sampled positions takes over. `orbitElements` is left undefined so
-	 *     the orbit-line builder takes the buffer codepath; the buffer is
+	 *     the trail builder takes the buffer codepath; the buffer is
 	 *     back-filled here against the current parent's frame and appended to
 	 *     each frame by `updatePositions`. An osculating ellipse misrepresents
 	 *     a flyby / capture / depart maneuver, so we polyline the real path.
@@ -620,12 +620,12 @@ export class ChunkLoader {
 			let trailBuffer: TrailBuffer | undefined;
 			if (hasChebyshev) {
 				const periodDays = elements && elements.n > 0 ? 360 / elements.n : endJd - startJd;
-				const stepDays = periodDays > 0 ? periodDays / NUM_ORBIT_POINTS : 1;
+				const stepDays = periodDays > 0 ? periodDays / NUM_TRAIL_POINTS : 1;
 				const cached = this.probeBuffers.get(probe.id);
 				if (cached && cached.parentKey === primaryKey) {
 					trailBuffer = cached.buffer;
 				} else {
-					trailBuffer = new TrailBuffer(NUM_ORBIT_POINTS, stepDays);
+					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays);
 					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, probe.id, primaryKey, jd);
 					this.probeBuffers.set(probe.id, { buffer: trailBuffer, parentKey: primaryKey });
 				}
@@ -633,7 +633,7 @@ export class ChunkLoader {
 			result.push({
 				data,
 				position: pos,
-				// Skip orbitElements when the buffer takes over — the orbit-line
+				// Skip orbitElements when the buffer takes over — the trail
 				// builder branches on trailBuffer first and would ignore the
 				// elements anyway; nil'ing them keeps the rederive cadence from
 				// re-snapshotting an ellipse no consumer ever draws.

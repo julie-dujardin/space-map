@@ -51,7 +51,7 @@ export class PointCloudSystem {
 		private readonly circleTexture: CanvasTexture,
 		private readonly focus: FocusState,
 		private readonly mapLayer: number,
-		/** Called whenever the basis is rebuilt so the caller can rebase orbit-line vertices. */
+		/** Called whenever the basis is rebuilt so the caller can rebase trail vertices. */
 		private readonly onBasisRebuilt: () => void
 	) {
 		this.orbitPool.setResultHandler(this.onPoolResult);

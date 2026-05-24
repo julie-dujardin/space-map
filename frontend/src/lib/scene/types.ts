@@ -38,8 +38,8 @@ export interface BodyObjects {
 	corona: Sprite | null;
 	/** Fixed-size star dot shown when the mesh is sub-pixel. */
 	starPoint: Points | null;
-	/** Thin orbit lines are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */
-	orbitLine: Line | Mesh | null;
+	/** Thin trails are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */
+	trail: Line | Mesh | null;
 	radiusScene: number;
 	/**
 	 * True once the body's SPICE triaxial radii (`global.radii` or system meta

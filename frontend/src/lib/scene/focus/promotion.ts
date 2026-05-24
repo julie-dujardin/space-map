@@ -6,7 +6,7 @@ import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { buildMajorBodies, buildOrbitLines, loadBodyLabel } from '$lib/scene/objects/construction';
+import { buildMajorBodies, buildTrails, loadBodyLabel } from '$lib/scene/objects/construction';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 
@@ -23,8 +23,8 @@ export interface PromotionDeps {
 	pointClouds: PointCloudSystem;
 	/** Called when the user clicks a body's mesh — wired into buildMajorBodies. */
 	onBodyClick: (body: PositionedBody) => void;
-	/** Called to assign MAP_LAYER to newly-built orbit lines. */
-	assignMapLayerToOrbitLines: () => void;
+	/** Called to assign MAP_LAYER to newly-built trails. */
+	assignMapLayerToTrails: () => void;
 	/** Called to refresh all object positions after a new body is built. */
 	repositionAll: () => void;
 	/** Returns the focused body id (excluded from clear / count) — null if no focus. */
@@ -79,18 +79,18 @@ export class PromotionRegistry {
 		return this.defaults.has(id);
 	}
 
-	/** Build mesh, label, halo, and orbit line for a body that only existed as a point-cloud dot. */
+	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
 			this.deps;
 		if (bodyObjects.has(body.data.id)) return;
 		// Point-cloud bodies aren't touched by updatePositions — their CPU
 		// position is frozen at load. Refresh before building so the mesh,
-		// halo, and orbit line spawn at the current jd instead of jumping
+		// halo, and trail spawn at the current jd instead of jumping
 		// on the next tick.
 		refreshMinorBodyPosition(body, clock.jd, ctx);
 		// Minor bodies from chunks lack orbitElements; populate from data so
-		// orbit lines can be built. Skip probes: their `body.data` carries
+		// trails can be built. Skip probes: their `body.data` carries
 		// a=e=…=0 (positions come from per-sub-chunk dispatch), and assigning
 		// those zeros to `orbitElements` defeats the SPICE_PROBE guard in
 		// ObjectDrawer — currentStateFromElements would warn every frame.
@@ -111,8 +111,8 @@ export class PromotionRegistry {
 			(id, hovered) =>
 				hovered ? this.deps.hoveredBodyIds.add(id) : this.deps.hoveredBodyIds.delete(id)
 		);
-		buildOrbitLines(bodyObjects, scene, this.deps.pointClouds.basis(), clock.jd);
-		this.deps.assignMapLayerToOrbitLines();
+		buildTrails(bodyObjects, scene, this.deps.pointClouds.basis(), clock.jd);
+		this.deps.assignMapLayerToTrails();
 		this.deps.repositionAll();
 
 		// Click-promoted minor bodies enter unnamed (global labels file only
@@ -165,7 +165,7 @@ export class PromotionRegistry {
 			scene.remove(bo.group);
 			// Mesh + (for stars) corona/starPoint/etc. are added to scene directly.
 			for (const obj of bo.extraObjects) scene.remove(obj);
-			if (bo.orbitLine) scene.remove(bo.orbitLine);
+			if (bo.trail) scene.remove(bo.trail);
 
 			if (bo.mesh) {
 				bo.mesh.geometry.dispose();
@@ -176,9 +176,9 @@ export class PromotionRegistry {
 				if (idx >= 0) clickables.splice(idx, 1);
 				meshToBody.delete(bo.mesh);
 			}
-			if (bo.orbitLine) {
-				bo.orbitLine.geometry.dispose();
-				const mat = bo.orbitLine.material;
+			if (bo.trail) {
+				bo.trail.geometry.dispose();
+				const mat = bo.trail.material;
 				if (Array.isArray(mat)) for (const m of mat) m.dispose();
 				else mat.dispose();
 			}
@@ -244,7 +244,7 @@ export class PromotionRegistry {
 			)
 				continue;
 			// Asteroids, comets, and probes auto-promote to a halo + label only
-			// (no sphere mesh, no orbit line) via buildMajorBodies's isHaloOnly
+			// (no sphere mesh, no trail) via buildMajorBodies's isHaloOnly
 			// branch. Full-mesh upgrade on focus is a follow-up.
 			this.ensureBodyObjects(body);
 			break; // one per frame

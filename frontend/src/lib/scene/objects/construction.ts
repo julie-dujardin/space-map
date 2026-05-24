@@ -23,7 +23,7 @@ import { jdToDate } from '$lib/format/date';
 import { SRGBColorSpace, TextureLoader, type Texture } from 'three';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
-import { asteroidPointSize, makeCircleTexture, makeOrbitLine, makePointCloud } from './builders';
+import { asteroidPointSize, makeCircleTexture, makeTrail, makePointCloud } from './builders';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from './sun';
 import { attachRingShadowToPlanet, disposeRingNode, loadRingNode, type RingMeta } from './rings';
 import { cloudFrameForJd, disposeCloudNode, loadCloudNode, type CloudMeta } from './clouds';
@@ -60,7 +60,7 @@ export function buildMajorBodies(
 	for (const body of bodies) {
 		const id = body.data.id;
 		// "Halo-only" types render as a label + halo with no sphere mesh and
-		// (handled by `buildOrbitLines` below) no orbit line: barycenters and
+		// (handled by `buildTrails` below) no trail: barycenters and
 		// Lagrange points have no physical body, and asteroids/comets/probes
 		// are too small to be visually meaningful at planetary scale — the
 		// halo carries the name + click target. Per-frame iteration loops
@@ -185,8 +185,8 @@ export function buildMajorBodies(
 			group.add(label);
 		}
 
-		// Orbit line — built later in buildOrbitLines() to defer 100K+ Kepler solves
-		const orbitLine = null;
+		// Trail — built later in buildTrails() to defer 100K+ Kepler solves
+		const trail = null;
 
 		scene.add(group);
 		const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
@@ -202,7 +202,7 @@ export function buildMajorBodies(
 			extraObjects,
 			corona: starExtras?.corona ?? null,
 			starPoint: starExtras?.starPoint ?? null,
-			orbitLine,
+			trail,
 			radiusScene: radius,
 			cachedDist: 0,
 			currentSegments: isVirtual ? undefined : isStar ? 96 : 64,
@@ -217,12 +217,12 @@ export function buildMajorBodies(
 }
 
 /**
- * Per-body orbit-line width in pixels. Planets get a chunky 5px line so they
+ * Per-body trail width in pixels. Planets get a chunky 5px line so they
  * read at a glance against the busier minor-body field; named moons (those
  * with a colour entry in {@link BODY_COLORS}) get 2px to stand out from the
  * mass of unnamed satellites without overwhelming the planet they orbit.
  */
-function orbitLineWidthFor(body: PositionedBody): number {
+function trailWidthFor(body: PositionedBody): number {
 	if (body.data.objectType === ObjectType.PLANET) return 4;
 	if (
 		(body.data.objectType === ObjectType.MOON ||
@@ -249,7 +249,7 @@ export function isMeshUpgradable(body: PositionedBody): boolean {
 /**
  * Add the sphere mesh (+ atmosphere, eclipse shadow, clickable registration) to
  * an existing halo-only {@link BodyObjects} entry. No-op if a mesh already
- * exists. Caller re-runs {@link buildOrbitLines} to pick up the orbit line for
+ * exists. Caller re-runs {@link buildTrails} to pick up the trail for
  * non-probe types whose halo-only state had no trail.
  */
 export function upgradeBodyMesh(
@@ -283,7 +283,7 @@ export function upgradeBodyMesh(
 
 /**
  * Reverse of {@link upgradeBodyMesh}: dispose the sphere mesh, atmosphere, and
- * eclipse shadow; for non-probe types also dispose the orbit line so the body
+ * eclipse shadow; for non-probe types also dispose the trail so the body
  * reverts to a labelled halo only. Probes keep their trail (their halo-only
  * mode is "halo + trail, no mesh").
  */
@@ -328,41 +328,41 @@ export function downgradeBodyMesh(
 	}
 
 	const isProbe = bo.body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
-	if (bo.orbitLine && !isProbe) {
-		scene.remove(bo.orbitLine);
-		bo.orbitLine.geometry.dispose();
-		const lm = bo.orbitLine.material;
+	if (bo.trail && !isProbe) {
+		scene.remove(bo.trail);
+		bo.trail.geometry.dispose();
+		const lm = bo.trail.material;
 		if (Array.isArray(lm)) for (const mm of lm) mm.dispose();
 		else lm.dispose();
-		bo.orbitLine = null;
+		bo.trail = null;
 	}
 }
 
-export function buildOrbitLines(
+export function buildTrails(
 	bodyObjects: Map<string, BodyObjects>,
 	scene: Scene,
 	basisPos: [number, number, number] = [0, 0, 0],
 	jd?: number
 ): void {
 	for (const [, bo] of bodyObjects) {
-		if (bo.orbitLine !== null) continue;
+		if (bo.trail !== null) continue;
 		const { body } = bo;
-		// STAR is the Sun — no orbit line. Halo-only asteroids/comets get no
+		// STAR is the Sun — no trail. Halo-only asteroids/comets get no
 		// trail until focus upgrades them to a full mesh (handled by
 		// `upgradeBodyMesh`); barycenters, Lagrange points, and probes are
-		// halo-only too but keep their orbit lines.
+		// halo-only too but keep their trails.
 		if (body.data.objectType === ObjectType.STAR) continue;
 		// Probes whose elements were null at processProbes time (typically
 		// because systems-global GMs hadn't landed yet) carry a rederive
 		// callback — retry it now so the trail self-heals on the next
-		// buildOrbitLines pass once GMs are populated. Without this the
-		// per-frame refresh path is unreachable: refreshOrbitLineGeometry
-		// only runs when `bo.orbitLine` exists.
+		// buildTrails pass once GMs are populated. Without this the
+		// per-frame refresh path is unreachable: refreshTrail
+		// only runs when `bo.trail` exists.
 		if (!body.orbitElements && body.rederiveElements && jd !== undefined) {
 			const fresh = body.rederiveElements(jd);
 			if (fresh) body.orbitElements = fresh;
 		}
-		// Skip bodies with no orbit-line source. Trail-buffer-backed probes
+		// Skip bodies with no trail source. Trail-buffer-backed probes
 		// have no `orbitElements` (the buffer takes over the trail entirely),
 		// so they take this branch via the buffer instead.
 		if (!body.orbitElements && !body.trailBuffer) continue;
@@ -370,9 +370,9 @@ export function buildOrbitLines(
 		const isHaloOnlySmallBody = !bo.mesh && (isAsteroid(t) || t === ObjectType.COMET);
 		if (isHaloOnlySmallBody) continue;
 		const color = resolveBodyColor(body.data);
-		const line = makeOrbitLine(body, color, basisPos, jd, orbitLineWidthFor(body));
+		const line = makeTrail(body, color, basisPos, jd, trailWidthFor(body));
 		scene.add(line);
-		bo.orbitLine = line;
+		bo.trail = line;
 	}
 }
 

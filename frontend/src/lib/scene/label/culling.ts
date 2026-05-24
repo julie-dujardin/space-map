@@ -93,7 +93,7 @@ export function applyLabelDisplay(
 			show = screenR < HALO_RADIUS_PX * HIDE_LABEL_BODY_HALO_FACTOR;
 		}
 	}
-	if (bo.orbitLine && hideHaloRing) bo.orbitLine.visible = false;
+	if (bo.trail && hideHaloRing) bo.trail.visible = false;
 
 	label.visible = show;
 	if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';

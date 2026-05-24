@@ -18,7 +18,7 @@ import {
 	updateOutOfRangeToast,
 	type OutOfRangeState
 } from '$lib/scene/out-of-range-toast';
-import { refreshOrbitLineGeometry } from '$lib/scene/objects/builders';
+import { refreshTrail } from '$lib/scene/objects/builders';
 import { renderLandedProbe } from './landed-probe';
 import type { PositionDiagnostics } from './diagnostics';
 
@@ -37,7 +37,7 @@ export interface UpdatePositionsParams {
  * Per-frame body position + orientation update. Drives chebyshev, SPICE-probe,
  * SGP4, parabolic, and Keplerian paths; aggregates out-of-range bodies into a
  * single toast; locks focus onto the focused body's new position (unless an
- * animation is driving it); refreshes orbit-line geometry against the new
+ * animation is driving it); refreshes trail geometry against the new
  * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
  */
 export function updatePositions(params: UpdatePositionsParams): void {
@@ -75,13 +75,13 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		}
 	}
 
-	// Pass 1: compute positions + orbitCenters. Don't touch orbit-line geometry
+	// Pass 1: compute positions + orbitCenters. Don't touch trail geometry
 	// here — it depends on focus.focusTruePos, which can't be updated until
 	// the focused body's own position is known below.
 	const computePosition = (body: PositionedBody) => {
 		const d = body.data;
 		// `let` because the probe branch may re-parent (cruise → captured orbit
-		// picks up under the planet's fit center) and the orbit-line / trail-
+		// picks up under the planet's fit center) and the trail / trail-
 		// anchor writes below need the resolved parent's position.
 		let parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
 		const isParabolic = d.q != null;
@@ -153,7 +153,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			// Probes dispatch per sub-chunk inside the store. Fit center is the
 			// zone's `fit_center_naif_id` — NOT d.parentId (which lags by a frame
 			// at cross-zone transitions). Re-resolve per frame, then flip parentId
-			// so orbit-line / trail-anchor writes follow the new parent.
+			// so trail geometry and trail-anchor writes follow the new parent.
 			const located = ctx.probeStore?.probeWithCenter(d.id, jd) ?? null;
 			if (!located) {
 				if (bo) bo.outOfRange = true;
@@ -313,8 +313,8 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		positionMap.set(d.id, body.position);
 
 		if (!bo) return;
-		if (bo.orbitLine && body.orbitCenter) {
-			const oc = bo.orbitLine.userData.orbitCenter as Vector3 | undefined;
+		if (bo.trail && body.orbitCenter) {
+			const oc = bo.trail.userData.orbitCenter as Vector3 | undefined;
 			if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
 		}
 		if (body.orientation && bo.mesh) {
@@ -377,43 +377,43 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		}
 	}
 
-	// Refresh orbit-line geometry against the fresh focus basis. Doing it
+	// Refresh trail geometry against the fresh focus basis. Doing it
 	// inside computePosition would store vertices against the previous frame's
 	// focus, shifting every trail by focus-velocity * dt — visible as trails
 	// "preceding" the body along the focus's own orbit. Skip invisible lines:
 	// GPU buffer uploads dominate this path (~6 KB × needsUpdate per line) and
 	// most lines are off. Newly-built lines default visible=false and would
 	// render at construction-time basis for one frame after visibility flips
-	// them on — mark them `refreshDeferred` for {@link refreshDeferredOrbitLines}.
+	// them on — mark them `refreshDeferred` for {@link refreshDeferredTrails}.
 	const basis = focus.focusTruePos;
 	for (const bo of bodyObjects.values()) {
-		const line = bo.orbitLine;
+		const line = bo.trail;
 		if (!line) continue;
 		if (!line.visible) {
 			line.userData.refreshDeferred = true;
 			continue;
 		}
-		refreshOrbitLineGeometry(bo.body, line, basis, jd);
+		refreshTrail(bo.body, line, basis, jd);
 		line.userData.refreshDeferred = false;
 	}
 }
 
 /**
- * Refresh orbit lines marked `refreshDeferred` by {@link updatePositions} —
+ * Refresh trails marked `refreshDeferred` by {@link updatePositions} —
  * i.e. lines that were invisible last frame but just got flipped visible by
  * `updateBodyVisibility`. Without this they'd render against a stale basis
  * for one frame.
  */
-export function refreshDeferredOrbitLines(
+export function refreshDeferredTrails(
 	bodyObjects: Map<string, BodyObjects>,
 	focus: FocusState,
 	jd: number
 ): void {
 	const basis = focus.focusTruePos;
 	for (const bo of bodyObjects.values()) {
-		const line = bo.orbitLine;
+		const line = bo.trail;
 		if (!line || !line.visible || !line.userData.refreshDeferred) continue;
-		refreshOrbitLineGeometry(bo.body, line, basis, jd);
+		refreshTrail(bo.body, line, basis, jd);
 		line.userData.refreshDeferred = false;
 	}
 }

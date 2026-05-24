@@ -7,7 +7,7 @@ const MS_PER_DAY = 86_400_000;
  * timeScale === 0 means paused. Read `jd` each frame (reactive).
  *
  * TODO: when time-varying elements land (osculating / SPK interpolation),
- * orbit line curves will need regeneration once sim-time drifts too far
+ * trail curves will need regeneration once sim-time drifts too far
  * from the curve's epoch. Fixed Keplerian elements don't require this.
  */
 export class SimClock {

@@ -41,7 +41,7 @@ function ensureOccluder(idx: number): ScreenOccluder {
 }
 
 /**
- * Per-frame visibility update for all bodies, point clouds, labels, and orbit lines.
+ * Per-frame visibility update for all bodies, point clouds, labels, and trails.
  * Returns the updated cull frame counter and screen occluders (for shadow logic).
  */
 export function updateBodyVisibility(
@@ -151,7 +151,7 @@ export function updateBodyVisibility(
 	screenOccluders.length = occluderCount;
 
 	for (const bo of bodyObjects.values()) {
-		const { body, group, orbitLine } = bo;
+		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
 
 		let showLabel: boolean;
@@ -181,14 +181,14 @@ export function updateBodyVisibility(
 					}
 				}
 				group.visible = visible;
-				if (orbitLine) orbitLine.visible = visible;
+				if (trail) trail.visible = visible;
 				showLabel = visible;
 				isClose = false;
 			} else {
 				const vis = ctx.visibility.getPlanetVisibility(body, dist);
 				const visible = vis !== VISIBILITY.HIDE && ctx.visibility.hasFullRendering(body);
 				group.visible = visible;
-				if (orbitLine) orbitLine.visible = visible;
+				if (trail) trail.visible = visible;
 				showLabel = visible;
 				isClose = false;
 			}
@@ -202,7 +202,7 @@ export function updateBodyVisibility(
 				? moonVisFlags(vis, hideCappedMoonLabels, isFocused)
 				: bodyVisFlags(vis, ctx.visibility.hasFullRendering(body), isFocused);
 			group.visible = vf.groupVisible;
-			if (orbitLine) orbitLine.visible = vf.orbitVisible;
+			if (trail) trail.visible = vf.orbitVisible;
 			showLabel = vf.showLabel;
 			isClose = vf.isClose;
 		}
@@ -212,7 +212,7 @@ export function updateBodyVisibility(
 		// its last valid position.
 		if (bo.outOfRange) {
 			group.visible = false;
-			if (orbitLine) orbitLine.visible = false;
+			if (trail) trail.visible = false;
 			showLabel = false;
 		}
 
@@ -246,8 +246,8 @@ export function updateBodyVisibility(
 		// Minor-promoted halos: ring stays (label.visible left alone so the DOM
 		// element keeps rendering), but the trail draws only on focus. The name
 		// span and halo scale are handled in cullOverlappingLabels.
-		if (bo.isMinor && !isFocused && orbitLine) {
-			orbitLine.visible = false;
+		if (bo.isMinor && !isFocused && trail) {
+			trail.visible = false;
 		}
 
 		// Detach labels from hidden groups so CSS2DRenderer's recursive
@@ -318,10 +318,10 @@ export function updateBodyVisibility(
 	// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
 	// Also update alpha multiplier for hover/focus highlight
 	for (const bo of bodyObjects.values()) {
-		const line = bo.orbitLine;
+		const line = bo.trail;
 		if (!line?.visible) continue;
 		const mat = line.material as ShaderMaterial;
-		// Orbit line vertices are written focus-relative (by refreshOrbitLineGeometry
+		// Trail vertices are written focus-relative (by refreshTrail
 		// every frame), so offset is simply −cam — tiny, keeping (vertex + offset)
 		// precise in Float32 even for meter-scale viewing of distant bodies.
 		mat.uniforms.uCenterOffset.value.set(

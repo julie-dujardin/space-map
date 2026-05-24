@@ -266,7 +266,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	// Probes ride bodiesById (so getBody / URL focus / placeholder routing
 	// works) but are excluded from `majorBodies` so `buildScene` doesn't
-	// build a sphere + orbit line for each on first paint. The hot
+	// build a sphere + trail for each on first paint. The hot
 	// per-frame iteration loops (visibility, sphere LOD, texture LOD,
 	// ring shaders) walk `bodyObjects` which only contains promoted
 	// entries — keeping the long tail of probes out of that set keeps
@@ -304,7 +304,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 							// them — chunk.ts leaves orbitElements/orbitCenter unset
 							// for non-major bodies, but the placeholder's orbitCenter
 							// array is what the per-frame loop mutates to keep the
-							// focused sat's orbit line tracking parent motion.
+							// focused sat's trail tracking parent motion.
 							if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
 							if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
 							placeholderById.delete(b.data.id);

@@ -14,7 +14,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { kmToScene } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
-import { setOrbitLineResolution } from '$lib/scene/objects/builders';
+import { setTrailResolution } from '$lib/scene/objects/builders';
 
 export interface ThreeBoot {
 	renderer: WebGLRenderer;
@@ -47,9 +47,9 @@ export function bootThree(
 	// halos) are scaled in their own builders to compensate.
 	renderer.toneMapping = ACESFilmicToneMapping;
 	renderer.toneMappingExposure = 1.0;
-	// Fat orbit lines expand by `width / resolution` in NDC; feed the CSS-pixel
+	// Fat trails expand by `width / resolution` in NDC; feed the CSS-pixel
 	// size so width reads as pixels regardless of devicePixelRatio.
-	setOrbitLineResolution(canvas.clientWidth, canvas.clientHeight);
+	setTrailResolution(canvas.clientWidth, canvas.clientHeight);
 
 	const labelRenderer = new ThrottledCSS2DRenderer({ element: labelContainer });
 	labelRenderer.setSize(canvas.clientWidth, canvas.clientHeight);

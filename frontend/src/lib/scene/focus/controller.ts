@@ -6,7 +6,7 @@ import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import {
-	buildOrbitLines,
+	buildTrails,
 	downgradeBodyMesh,
 	isMeshUpgradable,
 	upgradeBodyMesh
@@ -39,7 +39,7 @@ export interface FocusDeps {
 	/** Renderer-owned wrappers needed by setFocusTarget. */
 	loadTexture: (body: PositionedBody) => void;
 	repositionAll: () => void;
-	assignMapLayerToOrbitLines: () => void;
+	assignMapLayerToTrails: () => void;
 }
 
 /**
@@ -78,7 +78,7 @@ export class FocusController {
 			hoveredBodyIds,
 			pointClouds: deps.pointClouds,
 			onBodyClick: (b) => this.handleFocus(b),
-			assignMapLayerToOrbitLines: deps.assignMapLayerToOrbitLines,
+			assignMapLayerToTrails: deps.assignMapLayerToTrails,
 			repositionAll: deps.repositionAll,
 			getFocusedId: () => this.focusedBody?.data.id,
 			onUserPromotedChange: deps.callbacks.onUserPromotedChange
@@ -148,12 +148,12 @@ export class FocusController {
 			clock,
 			systemData,
 			loadTexture,
-			assignMapLayerToOrbitLines
+			assignMapLayerToTrails
 		} = this.deps;
 		this.promotion.ensureBodyObjects(body);
 
 		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
-		// sphere mesh (and a/c their orbit line) only while focused; reverting
+		// sphere mesh (and a/c their trail) only while focused; reverting
 		// to halo-only on un-focus keeps the unfocused scene cheap. minDistance
 		// below reads the focused body's mesh radius, so do the swap first.
 		const prev = this.focusedBody;
@@ -165,11 +165,11 @@ export class FocusController {
 			const bo = bodyObjects.get(body.data.id);
 			if (bo) {
 				upgradeBodyMesh(bo, scene, clickables, meshToBody);
-				// Asteroids/comets had no orbit line as halo-only; this picks it
+				// Asteroids/comets had no trail as halo-only; this picks it
 				// up now that `bo.mesh` is set. Probes already had one — the
-				// "already built" guard inside buildOrbitLines skips them.
-				buildOrbitLines(bodyObjects, scene, pointClouds.basis(), clock.jd);
-				assignMapLayerToOrbitLines();
+				// "already built" guard inside buildTrails skips them.
+				buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
+				assignMapLayerToTrails();
 			}
 		}
 

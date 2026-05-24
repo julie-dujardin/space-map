@@ -94,7 +94,7 @@ export interface PositionedBody {
 	trailAnchor?: [number, number, number];
 	/**
 	 * Re-derive `orbitElements` at a new `jd`. Set for chebyshev-source bodies
-	 * so the orbit-line refresh path can periodically re-snapshot the
+	 * so the trail refresh path can periodically re-snapshot the
 	 * osculating elements as the body progresses through its chunk — keeping
 	 * the drawn ellipse aligned with the actual chebyshev path instead of
 	 * frozen at the chunk-load snapshot. Returns null on the same conditions
@@ -108,7 +108,7 @@ export interface PositionedBody {
 	 * motion can't be summarized by a single Kepler ellipse — set for probes
 	 * whose current chunk has at least one chebyshev sub-chunk. The buffer
 	 * holds fit-center-relative scene-space samples; the renderer adds the
-	 * current parent position at draw time. When present, the orbit-line
+	 * current parent position at draw time. When present, the trail
 	 * builder takes the buffer codepath and ignores `orbitElements`.
 	 */
 	trailBuffer?: TrailBuffer;

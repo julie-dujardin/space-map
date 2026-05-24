@@ -243,7 +243,7 @@ export class ZoneRefresher {
 						// orbitElements/orbitCenter unset for non-major bodies, but the
 						// placeholder for a focused sat needs its `orbitCenter` array to
 						// stay alive — the per-frame loop mutates it to track parent
-						// motion and syncs the orbit line via that reference.
+						// motion and syncs the trail via that reference.
 						if (b.orbitElements !== undefined) e.orbitElements = b.orbitElements;
 						if (b.orbitCenter !== undefined) e.orbitCenter = b.orbitCenter;
 						merged.set(id, e);

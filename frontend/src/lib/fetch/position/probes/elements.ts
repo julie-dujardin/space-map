@@ -4,12 +4,12 @@
  * Each sub-chunk is fit against the probe's stamped primary (Moon for lunar
  * orbiters, Sun for cruise, …), so elements come out in that primary's frame
  * directly — the caller passes the primary's GM and the elements are usable
- * by the orbit-line refresh path without further transform.
+ * by the trail refresh path without further transform.
  *
  *   - kepler_pure  → static OrbitalElements (no drift).
  *   - kepler_drift → OrbitalElements + omDot/wDot in deg/day.
  *   - chebyshev    → osculating elements from a state-vector sample.
- *   - uncoverable  → null; orbit line is skipped.
+ *   - uncoverable  → null; trail is skipped.
  *
  * Returns null when `mu <= 0` for the Kepler paths or when the chebyshev
  * state sample is null / degenerate.

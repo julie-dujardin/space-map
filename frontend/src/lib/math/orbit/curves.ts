@@ -4,7 +4,7 @@ import { sgp4PositionScene } from './sgp4';
 import type { SatRec } from 'satellite.js';
 
 /**
- * Generate points along a parabolic trajectory for rendering orbit lines.
+ * Generate points along a parabolic trajectory for rendering trails.
  * Returns an open curve in Three.js coordinates.
  * Samples uniformly in true anomaly, capped at rMaxAU from the focus.
  */
@@ -32,7 +32,7 @@ export function orbitalElementsToParabola(
 }
 
 /**
- * Generate points along the full orbit ellipse for rendering orbit lines.
+ * Generate points along the full orbit ellipse for rendering trails.
  * Returns array of [x, y, z] in Three.js coordinates.
  */
 export function orbitalElementsToEllipse(
@@ -70,7 +70,7 @@ export function orbitalElementsToEllipse(
 }
 
 /**
- * Generate points along a hyperbolic trajectory for rendering orbit lines.
+ * Generate points along a hyperbolic trajectory for rendering trails.
  * Returns an open curve (not closed) in Three.js coordinates.
  *
  * Computes positions directly from the hyperbolic anomaly H, avoiding the
