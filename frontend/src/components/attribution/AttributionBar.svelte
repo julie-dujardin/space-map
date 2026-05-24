@@ -51,13 +51,14 @@
 	// Include credits from (a) the focused planetary system — so the Jupiter
 	// system shows every textured Galilean — AND (b) the focused body itself —
 	// so standalones like Bennu or Ceres, which never get a systems/{bary}.json
-	// entry, still credit their imagery once loadBodyTexture has run. Rings
-	// and clouds share the imagery chip in the bar (per-source attribution
-	// gets its own section in the popover and on the credits page).
+	// entry, still credit their imagery once loadBodyTexture has run. Rings,
+	// clouds, and 3D models share the imagery chip in the bar (per-source
+	// attribution gets its own section in the popover and on the credits page).
 	const textureOrgs = $derived.by(() => {
 		void ctx.credits.textureVersion;
 		void ctx.credits.ringVersion;
 		void ctx.credits.cloudVersion;
+		void ctx.credits.modelVersion;
 		const sysId = ctx.visibility.focusedSystemId;
 		const bodyId = ctx.visibility.focusedBodyId;
 		const orgs = new Set<string>();
@@ -69,6 +70,10 @@
 				}
 			}
 		}
+		// Models are body-scoped only — a probe's model credit doesn't bleed
+		// into the system's other bodies.
+		const modelCredit = bodyId ? ctx.credits.model.get(bodyId) : undefined;
+		if (modelCredit) orgs.add(modelCredit.organisation);
 		return [...orgs].sort();
 	});
 </script>

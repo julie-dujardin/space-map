@@ -276,6 +276,7 @@
 	"attribution_section_clouds": "雲量",
 	"attribution_section_metadata": "天体メタデータと名前",
 	"attribution_section_images": "画像",
+	"attribution_section_models": "3Dモデル",
 	"attribution_section_skybox": "星図",
 	"source_horizons_name": "NASA JPL Horizons",
 	"source_sbdb_name": "NASA JPL 小天体データベース",

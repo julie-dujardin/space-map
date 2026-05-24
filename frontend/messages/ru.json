@@ -287,6 +287,7 @@
 	"attribution_section_clouds": "Облачный покров",
 	"attribution_section_metadata": "Метаданные и названия объектов",
 	"attribution_section_images": "Изображения",
+	"attribution_section_models": "3D-модели",
 	"attribution_section_skybox": "Звёздная карта",
 	"source_horizons_name": "NASA JPL Horizons",
 	"source_sbdb_name": "NASA JPL База данных малых тел",

@@ -3,10 +3,29 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '../../types';
+
+/** Subset of `metadata.json` (per-model public bundle) that's needed to
+ *  register the focused-body credit. The exporter writes more fields, but
+ *  the scene only needs the catalog landing page + name. */
+interface ModelBundleMeta {
+	source: string;
+	source_url: string;
+}
 
 const _loader = new GLTFLoader();
 _loader.setMeshoptDecoder(MeshoptDecoder);
+const _bundleMetaCache = new Map<string, Promise<ModelBundleMeta>>();
+
+function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
+	let p = _bundleMetaCache.get(slug);
+	if (!p) {
+		p = fetch(`${DATA_BASE}/v1/models/${slug}/metadata.json`).then((r) => r.json());
+		_bundleMetaCache.set(slug, p);
+	}
+	return p;
+}
 
 /**
  * Fetch and attach the spacecraft 3D model for `bo` if its global JSON
@@ -16,7 +35,11 @@ _loader.setMeshoptDecoder(MeshoptDecoder);
  * the placeholder sphere mesh at the same screen size. The sphere mesh is
  * left in place but hidden; un-hidden by `unloadBodyModel` on un-focus.
  */
-export async function loadBodyModel(bo: BodyObjects, scene: Scene): Promise<void> {
+export async function loadBodyModel(
+	bo: BodyObjects,
+	scene: Scene,
+	ctx?: ContextManager
+): Promise<void> {
 	if (bo.model || bo.modelLoading) return;
 	bo.modelLoading = true;
 	try {
@@ -27,6 +50,10 @@ export async function loadBodyModel(bo: BodyObjects, scene: Scene): Promise<void
 		// flight. Drop the load so we don't attach a stray model to a body
 		// whose sphere was already disposed.
 		if (!bo.mesh) return;
+		// Kick the bundle metadata fetch alongside the GLB — it's tiny and
+		// cacheable, and we want the credit registered as soon as the model is
+		// visible so the attribution bar/popover update in lockstep.
+		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(`${DATA_BASE}/v1/models/${slug}/high.glb`);
 		if (!bo.mesh) {
 			disposeGltf(gltf.scene);
@@ -39,6 +66,20 @@ export async function loadBodyModel(bo: BodyObjects, scene: Scene): Promise<void
 		bo.model = root;
 		bo.modelName = slug;
 		bo.mesh.visible = false;
+		if (ctx) {
+			try {
+				const meta = await metaPromise;
+				ctx.credits.registerModel({
+					bodyId: bo.body.data.id,
+					source: meta.source_url,
+					organisation: meta.source
+				});
+			} catch (e) {
+				// Credits are a nice-to-have; a missing/corrupt metadata.json
+				// shouldn't tear down the loaded model.
+				console.warn(`Failed to register model credit for ${slug}:`, e);
+			}
+		}
 	} finally {
 		bo.modelLoading = false;
 	}

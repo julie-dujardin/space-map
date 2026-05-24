@@ -81,6 +81,14 @@
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	});
 
+	// 3D models are body-scoped (only the focused probe's model is in the
+	// scene). The popover shows the focused body's model credit directly.
+	const focusedModel = $derived.by(() => {
+		void ctx.credits.modelVersion;
+		const bodyId = ctx.visibility.focusedBodyId;
+		return bodyId ? ctx.credits.model.get(bodyId) : undefined;
+	});
+
 	function bodyName(id: string): string {
 		return ctx.getBody(id)?.data.name ?? id;
 	}
@@ -168,6 +176,21 @@
 				{#each textureList as t (t.bodyId)}
 					<li>{@render link(t.source, bodyName(t.bodyId), t.organisation)}</li>
 				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if focusedModel}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_models())}
+			<ul class="space-y-0.5">
+				<li>
+					{@render link(
+						focusedModel.source,
+						bodyName(focusedModel.bodyId),
+						focusedModel.organisation
+					)}
+				</li>
 			</ul>
 		</section>
 	{/if}

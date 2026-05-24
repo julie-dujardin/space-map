@@ -76,9 +76,21 @@ export interface EphemerisArchive {
 	organisation: string;
 }
 
+/**
+ * One row in the 3D-models section — a catalog name + its landing page.
+ * Per-spacecraft model credits aren't shipped (the catalog license covers
+ * every model from that source); this is the catalog roll-up emitted by
+ * the exporter only when at least one ingested model came from it.
+ */
+export interface ModelCatalog {
+	name: string;
+	url: string;
+}
+
 export interface Credits {
 	systems: SystemGroup[];
 	ephemeris_archives: EphemerisArchive[];
+	models?: ModelCatalog[];
 	skybox?: SkyboxCredit;
 }
 

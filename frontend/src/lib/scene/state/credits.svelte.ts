@@ -49,6 +49,20 @@ export interface CloudCredit {
 }
 
 /**
+ * Per-body spacecraft-model attribution, recorded when its GLB finishes
+ * loading. Scoped to the focused body only — the popover/bar surface this
+ * for the single focused probe (vs. textures, which spread across a whole
+ * planetary system). `source` is the catalog landing page (e.g.
+ * `https://www.nasa.gov/3d-resources/`), `organisation` the catalog name
+ * (`NASA-3D-Resources`).
+ */
+export interface ModelCredit {
+	bodyId: string;
+	source: string;
+	organisation: string;
+}
+
+/**
  * Whole-sky cubemap backdrop attribution. Recorded once when `loadSkybox`
  * resolves the bundle metadata; no per-body scoping because the skybox is a
  * single global asset rendered behind the whole scene.
@@ -77,6 +91,8 @@ export class CreditsStore {
 	ringVersion = $state(0);
 	cloud = new Map<string, CloudCredit>();
 	cloudVersion = $state(0);
+	model = new Map<string, ModelCredit>();
+	modelVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
 	/**
 	 * Providers that have contributed at least one body to the loaded scene.
@@ -103,6 +119,12 @@ export class CreditsStore {
 		if (this.cloud.has(credit.bodyId)) return;
 		this.cloud.set(credit.bodyId, credit);
 		this.cloudVersion++;
+	}
+
+	registerModel(credit: ModelCredit): void {
+		if (this.model.has(credit.bodyId)) return;
+		this.model.set(credit.bodyId, credit);
+		this.modelVersion++;
 	}
 
 	/**

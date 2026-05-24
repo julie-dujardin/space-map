@@ -562,7 +562,7 @@ export class SceneRenderer {
 		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
 		// Spacecraft 3D model — gated on `global.model_name` inside loadBodyModel,
 		// so cheap no-op for every body that doesn't have a model bundle.
-		loadBodyModel(bo, this.scene);
+		loadBodyModel(bo, this.scene, this.ctx);
 	}
 
 	// --- Public API ---

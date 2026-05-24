@@ -285,6 +285,7 @@
 	"attribution_section_clouds": "Cloud cover",
 	"attribution_section_metadata": "Object metadata & names",
 	"attribution_section_images": "Images",
+	"attribution_section_models": "3D models",
 	"attribution_section_skybox": "Star map",
 	"source_horizons_name": "NASA JPL Horizons",
 	"source_sbdb_name": "NASA JPL Small-Body Database",

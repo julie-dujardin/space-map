@@ -87,6 +87,17 @@
 			<p class="text-xs text-muted-foreground mt-2">{m.credits_images_individual_note()}</p>
 		</section>
 
+		{#if credits.models && credits.models.length > 0}
+			<section>
+				{@render sectionHeader(m.attribution_section_models())}
+				<ul class="space-y-1">
+					{#each credits.models as cat (cat.url)}
+						<li>{@render link(cat.url, cat.name)}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		{#if credits.skybox}
 			<section>
 				{@render sectionHeader(m.attribution_section_skybox())}
