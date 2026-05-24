@@ -6,7 +6,7 @@ import {
 	textureFrameForJd,
 	tierRank,
 	highestAvailableTier
-} from '$lib/scene/objects/construction';
+} from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/clouds';
 
 /** Per-frame texture LOD: upgrade tier by screen-space radius. One-way — prior tier disposed. */

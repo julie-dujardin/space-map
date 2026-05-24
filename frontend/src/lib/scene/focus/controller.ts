@@ -6,11 +6,11 @@ import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import {
-	buildTrails,
 	downgradeBodyMesh,
 	isMeshUpgradable,
 	upgradeBodyMesh
-} from '$lib/scene/objects/construction';
+} from '$lib/scene/objects/body/lifecycle';
+import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
 	FOCUS_DURATION_MS,

@@ -3,7 +3,7 @@ import { ObjectType } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/construction';
+import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/body/system';
 
 /**
  * Tracks which system's textures + orientation are resident, plus a

@@ -6,7 +6,9 @@ import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { buildMajorBodies, buildTrails, loadBodyLabel } from '$lib/scene/objects/construction';
+import { buildMajorBodies } from '$lib/scene/objects/body/lifecycle';
+import { buildTrails } from '$lib/scene/objects/body/bulk';
+import { loadBodyLabel } from '$lib/scene/objects/body/textures';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 

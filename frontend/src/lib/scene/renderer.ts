@@ -23,14 +23,10 @@ import { bootThree } from './setup/three-boot';
 import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
-import {
-	isMeshUpgradable,
-	loadBodyTexture,
-	makeCircleTexture,
-	upgradeBodyMesh,
-	buildMajorBodies,
-	buildTrails
-} from './objects/construction';
+import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
+import { loadBodyTexture } from './objects/body/textures';
+import { buildTrails } from './objects/body/bulk';
+import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
 import { loadSkybox } from './objects/skybox';
 import { SkyboxAdjuster } from './debug/skybox-adjust';

@@ -12,7 +12,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
-import { buildPointClouds } from '$lib/scene/objects/construction';
+import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
 
