@@ -1,7 +1,9 @@
-"""Helpers: object_id resolution + tier-source selection + source hashing."""
+"""Helpers: object_id resolution + tier-source selection + source hashing + glTF stats."""
 
 import hashlib
+import json
 import logging
+import struct
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES, make_object_id
@@ -66,3 +68,58 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def gltf_stats(glb_path: Path) -> dict[str, int]:
+    """Parse a .glb's JSON chunk and return content stats.
+
+    Stats are cheap to extract because every glTF accessor's element count
+    is stored in the JSON header — no buffer decode needed. Returns an
+    empty dict if the file isn't a glTF 2 binary or the JSON chunk fails
+    to parse.
+
+    ``triangles`` counts only primitives with ``mode == 4`` (TRIANGLES);
+    other topologies (lines, points, strips) are excluded — they wouldn't
+    be triangle-rendered anyway.
+    """
+    try:
+        with glb_path.open("rb") as f:
+            header = f.read(12)
+            if len(header) < 12:
+                return {}
+            magic, version, _length = struct.unpack("<4sII", header)
+            if magic != b"glTF" or version != 2:
+                return {}
+            chunk_header = f.read(8)
+            if len(chunk_header) < 8:
+                return {}
+            chunk_len, chunk_type = struct.unpack("<II", chunk_header)
+            if chunk_type != 0x4E4F534A:  # "JSON" little-endian
+                return {}
+            json_bytes = f.read(chunk_len)
+        gltf = json.loads(json_bytes)
+    except (OSError, struct.error, json.JSONDecodeError) as exc:
+        log.warning("failed to parse glTF stats for %s: %s", glb_path, exc)
+        return {}
+
+    accessors = gltf.get("accessors") or []
+    triangles = 0
+    for mesh in gltf.get("meshes") or []:
+        for prim in mesh.get("primitives") or []:
+            if prim.get("mode", 4) != 4:
+                continue
+            if "indices" in prim:
+                acc_idx = prim["indices"]
+            else:
+                acc_idx = (prim.get("attributes") or {}).get("POSITION")
+            if acc_idx is None or acc_idx >= len(accessors):
+                continue
+            triangles += accessors[acc_idx].get("count", 0) // 3
+
+    return {
+        "triangles": triangles,
+        "meshes": len(gltf.get("meshes") or []),
+        "nodes": len(gltf.get("nodes") or []),
+        "textures": len(gltf.get("textures") or []),
+        "animations": len(gltf.get("animations") or []),
+    }

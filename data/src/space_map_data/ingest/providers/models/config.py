@@ -4,11 +4,29 @@ from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
 
 MODELS_DOWNLOAD_DIR = DOWNLOAD_DIR / "3d"
 NASA_MANIFEST = MODELS_DOWNLOAD_DIR / "nasa-3d-resources.yaml"
+NASA_CHECKOUT = MODELS_DOWNLOAD_DIR / "NASA-3D-Resources"
 ESA_DIR = MODELS_DOWNLOAD_DIR / "ESA-SciFleet"
 
 PROCESSED_DIR = EXPORT_DIR / "v1" / "models"
 
-SCHEMA_VERSION = 1
+# Bump when the public per-slug metadata.json shape changes — _try_skip
+# treats older files as stale and reprocesses them.
+SCHEMA_VERSION = 2
+
+# Catalog metadata propagated into each model's metadata.json and into the
+# credits.json aggregate. Keyed by the manifest's top-level ``source.name``
+# (NASA) or ``source.catalog`` (ESA) value.
+MODEL_CATALOGS: dict[str, dict[str, str]] = {
+    "NASA-3D-Resources": {
+        "url": "https://www.nasa.gov/3d-resources/",
+        # Repo doesn't ship a license header; the catalog page covers it.
+        "default_attribution": "NASA",
+    },
+    "ESA SciFleet": {
+        "url": "https://scifleet.esa.int/",
+        "default_attribution": "ESA / scifleet.esa.int",
+    },
+}
 
 # Source-format priority within a single manifest entry. Smaller index = preferred.
 # `.glb` skips the Blender step entirely. `.fbx`/`.blend`/`.obj`/`.3ds` need Blender.

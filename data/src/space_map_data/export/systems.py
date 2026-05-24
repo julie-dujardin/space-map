@@ -313,22 +313,24 @@ def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def load_model_metadata(out_dir: Path) -> dict[str, dict]:
-    """Load all per-object 3D-model metadata.json files from the export tree.
+    """Load all per-slug 3D-model metadata.json files from the export tree.
 
-    Returns {object_id: metadata_dict}. Only objects whose model bundle was
-    successfully ingested are included.
+    Returns ``{slug: metadata_dict}``. Unlike the texture/ring/clouds
+    loaders, the model metadata.json lives in ``EXPORT_DIR`` itself
+    (publicly served — clients fetch it to get the source catalog, tier
+    stats, and mission list); no mirror_path indirection.
     """
     models_dir = out_dir / "models"
     result: dict[str, dict] = {}
     if not models_dir.exists():
         return result
-    for obj_dir in models_dir.iterdir():
-        if not obj_dir.is_dir():
+    for slug_dir in models_dir.iterdir():
+        if not slug_dir.is_dir():
             continue
-        meta_file = mirror_path(obj_dir / "metadata.json")
+        meta_file = slug_dir / "metadata.json"
         if meta_file.exists():
-            result[obj_dir.name] = orjson.loads(meta_file.read_bytes())
-    logger.info("Loaded model metadata for %d objects", len(result))
+            result[slug_dir.name] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded model metadata for %d slugs", len(result))
     return result
 
 

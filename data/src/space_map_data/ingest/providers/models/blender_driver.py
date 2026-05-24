@@ -35,7 +35,7 @@ def _patch_fbx_importer() -> None:
     the import proceed.
     """
     try:
-        import io_scene_fbx.import_fbx as fbx  # type: ignore[import-not-found]
+        import io_scene_fbx.import_fbx as fbx  # ty: ignore[unresolved-import]  # Blender add-on
     except ImportError:
         return  # FBX add-on not loaded (we only need this for .fbx imports)
     original = getattr(fbx, "blen_read_light", None)

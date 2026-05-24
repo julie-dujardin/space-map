@@ -33,7 +33,6 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from tqdm import tqdm
 
-from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.ingest.providers.models import config, conversion, metadata
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
@@ -49,12 +48,41 @@ class SlugConflictError(RuntimeError):
     """Two manifest entries share the same slug — names must be globally unique."""
 
 
+def _nasa_checkout_iso() -> str | None:
+    """ISO timestamp of the last commit on the NASA-3D-Resources checkout.
+
+    Used as ``downloaded_at`` for NASA models — the repo doesn't ship a
+    machine-readable fetch time, but the checkout's HEAD commit time is the
+    closest available proxy (it bumps every ``git pull``). Returns None when
+    the checkout doesn't exist or git is unavailable.
+    """
+    checkout = config.NASA_CHECKOUT
+    if not (checkout / ".git").is_dir():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(checkout), "log", "-1", "--format=%cI", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
+        return None
+    return result.stdout.strip() or None
+
+
 class ModelProcessor:
     def __init__(self) -> None:
         self._yaml_docs: list[tuple[Path, dict]] = []
         self._global_warnings: list[str] = []
         self._has_blender = conversion.blender_available()
         self._has_gltf_transform = conversion.gltf_transform_available()
+        self._nasa_downloaded_at = _nasa_checkout_iso()
         if not self._has_blender:
             log.warning(
                 "blender not on PATH — .fbx/.blend/.obj/.3ds models will be skipped. "
@@ -234,7 +262,7 @@ class ModelProcessor:
                 low = (candidate, low_type)
 
         out_dir = config.PROCESSED_DIR / slug
-        meta_path = mirror_path(out_dir / "metadata.json")
+        meta_path = out_dir / "metadata.json"
 
         source_hashes = {"high": metadata.sha256_file(high_path)}
         if low is not None:
@@ -259,13 +287,18 @@ class ModelProcessor:
             log.error("conversion failed for %s: %s", slug, stderr)
             return
 
-        exports = self._export_record(high_glb, low_glb)
-        attribution = self._attribution(yaml_path)
+        catalog = self._catalog_info(yaml_path)
+        exports = self._export_record(
+            high_glb=high_glb,
+            high_type=high_type,
+            low_glb=low_glb,
+            low_type=low[1] if low is not None else high_type,
+        )
         self._write_metadata(
             out_dir=out_dir,
             slug=slug,
             entry=entry,
-            attribution=attribution,
+            catalog=catalog,
             exports=exports,
             source_hashes=source_hashes,
         )
@@ -364,37 +397,76 @@ class ModelProcessor:
             # WebP-compressed, but it's still loadable by Three.js' GLTFLoader.
             shutil.copyfile(src, dst)
 
-    def _export_record(self, high_glb: Path, low_glb: Path | None) -> dict[str, dict]:
-        exports: dict[str, dict] = {
-            "high": {
-                "size_bytes": high_glb.stat().st_size,
-                "sha256": metadata.sha256_file(high_glb),
-            }
-        }
+    def _export_record(
+        self,
+        *,
+        high_glb: Path,
+        high_type: str,
+        low_glb: Path | None,
+        low_type: str,
+    ) -> dict[str, dict]:
+        exports: dict[str, dict] = {"high": self._tier_record(high_glb, high_type)}
         if low_glb is not None and low_glb.exists():
-            exports["low"] = {
-                "size_bytes": low_glb.stat().st_size,
-                "sha256": metadata.sha256_file(low_glb),
-            }
+            exports["low"] = self._tier_record(low_glb, low_type)
         return exports
 
-    def _attribution(self, yaml_path: Path) -> str | None:
-        """Resolve an attribution string for a manifest doc.
+    def _tier_record(self, glb: Path, source_type: str) -> dict:
+        """Per-tier export entry: file metadata + glTF content stats."""
+        record: dict = {
+            "size_bytes": glb.stat().st_size,
+            "sha256": metadata.sha256_file(glb),
+            "source_type": source_type,
+        }
+        stats = metadata.gltf_stats(glb)
+        if stats:
+            record["stats"] = stats
+        return record
 
-        ESA per-directory manifests have ``source.attribution`` at the top.
-        NASA's single manifest's source block lacks one; the repo's overall
-        license (NASA Image Use) is what `_MODEL_SOURCES` in the credits
-        writer keys off — return "NASA" so the catalog match works.
+    def _catalog_info(self, yaml_path: Path) -> dict:
+        """Resolve catalog name / URL / downloaded_at / attribution for a doc.
+
+        Each manifest's top-level ``source`` block carries a name (NASA uses
+        ``source.name``, ESA uses ``source.catalog``). The known names map
+        to URL + default-attribution in ``MODEL_CATALOGS``. ``downloaded_at``
+        comes from ``source.downloaded_at`` (ESA's downloader stamps it) or
+        from the NASA checkout's git HEAD commit time as a fallback.
         """
-        for path, doc in self._yaml_docs:
-            if path != yaml_path:
+        doc = next((d for p, d in self._yaml_docs if p == yaml_path), None) or {}
+        source = doc.get("source") or {}
+        name = source.get("name") or source.get("catalog")
+        catalog = config.MODEL_CATALOGS.get(name) if name else None
+
+        attribution = source.get("attribution")
+        if not isinstance(attribution, str):
+            attribution = catalog["default_attribution"] if catalog else None
+
+        downloaded_at = source.get("downloaded_at")
+        if not downloaded_at and name == "NASA-3D-Resources":
+            downloaded_at = self._nasa_downloaded_at
+
+        info: dict = {}
+        if name:
+            info["source"] = name
+        if catalog:
+            info["source_url"] = catalog["url"]
+        if attribution:
+            info["attribution"] = attribution
+        if downloaded_at:
+            info["downloaded_at"] = downloaded_at
+        return info
+
+    def _missions_block(self, entry: dict) -> list[dict]:
+        """Convert ``missions:`` to ``[{object_id, name?}, …]``, dropping unresolvable."""
+        out: list[dict] = []
+        for mission in entry.get("missions") or []:
+            oid = metadata.resolve_mission_object_id(mission)
+            if oid is None:
                 continue
-            attr = (doc.get("source") or {}).get("attribution")
-            if isinstance(attr, str):
-                return attr
-            if (doc.get("source") or {}).get("name") == "NASA-3D-Resources":
-                return "NASA"
-        return None
+            item: dict = {"object_id": oid}
+            if mission.get("name"):
+                item["name"] = mission["name"]
+            out.append(item)
+        return out
 
     def _write_metadata(
         self,
@@ -402,20 +474,19 @@ class ModelProcessor:
         out_dir: Path,
         slug: str,
         entry: dict,
-        attribution: str | None,
+        catalog: dict,
         exports: dict[str, dict],
         source_hashes: dict[str, str],
     ) -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
-        meta = {
+        meta: dict = {
             "slug": slug,
             "schema": config.SCHEMA_VERSION,
-            "attribution": attribution,
+            **catalog,
+            "missions": self._missions_block(entry),
             "tiers": sorted(exports.keys()),
             "exports": exports,
             "source_hashes": source_hashes,
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        meta_path = mirror_path(out_dir / "metadata.json")
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, indent=2))
+        (out_dir / "metadata.json").write_text(json.dumps(meta, indent=2))

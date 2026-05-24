@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.export.ephemeris import EPHEMERIS_ARCHIVES
 from space_map_data.export.systems import texture_attribution
+from space_map_data.ingest.providers.models.config import MODEL_CATALOGS
 from space_map_data.models.object import Object, ObjectType
 
 logger = logging.getLogger(__name__)
@@ -20,22 +21,6 @@ logger = logging.getLogger(__name__)
 # Top-level NAIF hubs (SSB, Sun). Bodies parented here are standalone —
 # asteroids and dwarf planets without a hosting planetary system.
 _TOP_LEVEL_NAIF_IDS = {0, 10}
-
-# 3D-model source catalogs. Matched against each model's ``attribution`` field
-# (written by the models ingest provider). ``url`` is the user-facing landing
-# page for the catalog, not the per-asset fetch URL.
-_MODEL_SOURCES: tuple[dict, ...] = (
-    {
-        "match_attribution": "NASA",
-        "name": "NASA-3D-Resources",
-        "url": "https://www.nasa.gov/3d-resources/",
-    },
-    {
-        "match_attribution": "ESA / scifleet.esa.int",
-        "name": "ESA SciFleet",
-        "url": "https://scifleet.esa.int/",
-    },
-)
 
 
 def _body_name(obj: Object) -> str:
@@ -171,29 +156,25 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
     """Emit one entry per 3D-model source catalog that has at least one bundle.
 
     Per-body model lists aren't worth the noise on the credits page — the
-    catalog license (NASA's Image Use, ESA's SciFleet terms) is what matters,
-    not which specific spacecraft we pulled. Entries whose attribution
-    doesn't match any known catalog get a warning so the catalog list
-    stays maintained as new sources arrive.
+    catalog license (NASA's Image Use, ESA's SciFleet terms) is what
+    matters. Bundles whose ``source`` doesn't appear in ``MODEL_CATALOGS``
+    get a warning so the catalog list stays maintained as new sources arrive.
     """
     matched: set[str] = set()
-    for body_id, meta in model_metadata.items():
-        attribution = meta.get("attribution")
-        match = next(
-            (s for s in _MODEL_SOURCES if s["match_attribution"] == attribution), None
-        )
-        if match is None:
+    for slug, meta in model_metadata.items():
+        source = meta.get("source")
+        if not source or source not in MODEL_CATALOGS:
             logger.warning(
-                "Model %s has unrecognised attribution %r — add it to _MODEL_SOURCES",
-                body_id,
-                attribution,
+                "Model %s has unrecognised source %r — add it to MODEL_CATALOGS",
+                slug,
+                source,
             )
             continue
-        matched.add(match["name"])
+        matched.add(source)
     return [
-        {"name": src["name"], "url": src["url"]}
-        for src in _MODEL_SOURCES
-        if src["name"] in matched
+        {"name": name, "url": catalog["url"]}
+        for name, catalog in MODEL_CATALOGS.items()
+        if name in matched
     ]
 
 
@@ -217,12 +198,10 @@ def write_credits(
     emitted. The whole-sky cubemap skybox is a one-off backdrop with no host
     body, so it rides at the top level alongside `systems`.
     """
-    body_ids = (
-        set(texture_metadata)
-        | set(ring_metadata)
-        | set(clouds_metadata)
-        | set(model_metadata)
-    )
+    # Model metadata is keyed by slug, not object_id — those keys aren't
+    # Object.id values and would just produce empty rows on the DB lookup
+    # below, so they're excluded from the body_ids set.
+    body_ids = set(texture_metadata) | set(ring_metadata) | set(clouds_metadata)
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
 
