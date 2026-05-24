@@ -1,8 +1,12 @@
 import {
+	AmbientLight,
+	DirectionalLight as DirectionalLightClass,
 	type DirectionalLight,
 	Mesh,
+	PerspectiveCamera as PerspectiveCameraClass,
 	type PerspectiveCamera,
 	PointLight,
+	Scene as SceneClass,
 	type Scene,
 	TextureLoader,
 	Vector3,
@@ -25,7 +29,7 @@ import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
-import { loadBodyModel } from './objects/body/model';
+import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
@@ -86,6 +90,22 @@ export class SceneRenderer {
 
 	private focusController!: FocusController;
 	private readonly _tmpV3 = new Vector3();
+
+	/**
+	 * Isolated overlay scene + camera for spacecraft 3D models. The main scene
+	 * uses `logarithmicDepthBuffer: true` to span sub-meter probe details and
+	 * AU-scale orbits in one go — but inside the focused body's ~10⁻¹⁰
+	 * scene-unit bubble, log depth precision collapses and a thin tubular
+	 * structure (Euclid's baffle, Gaia's antenna shell) Z-fights with itself
+	 * and reads as "outside-in". Rendering the model in its own scene with a
+	 * tightly-fit near/far avoids the precision cliff entirely. The model
+	 * lives at scene-unit-1 scale here (vs ~10⁻¹⁰ in the main scene); the
+	 * camera mirrors the main camera's orientation but at a scaled distance so
+	 * the model appears at the same on-screen position as the focused body.
+	 */
+	private modelScene!: Scene;
+	private modelCamera!: PerspectiveCamera;
+	private modelLight!: DirectionalLight;
 
 	private cameraUp!: CameraUpController;
 	private skyboxAdjuster!: SkyboxAdjuster;
@@ -154,6 +174,23 @@ export class SceneRenderer {
 		this.composer = boot.composer;
 		this.bloomPass = boot.bloomPass;
 		this.shadowLight = boot.shadowLight;
+
+		// Standalone scene + camera for the model overlay pass. The camera's
+		// near/far are recomputed per-frame to bracket the current view distance
+		// (see `renderModelOverlay`); the initial values just keep three.js
+		// happy until the first frame.
+		this.modelScene = new SceneClass();
+		this.modelScene.environment = makeModelEnvMap(this.renderer);
+		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
+		// Soft fill light parented to the camera, identity-pointed; we don't
+		// rotate it per-frame so the gltf-viewer-style ~60° offset gives us a
+		// stable highlight regardless of orbit angle.
+		const ambient = new AmbientLight(0xffffff, 0.3);
+		this.modelLight = new DirectionalLightClass(0xffffff, 2.5);
+		this.modelLight.position.set(0.5, 0, 0.866);
+		this.modelCamera.add(ambient);
+		this.modelCamera.add(this.modelLight);
+		this.modelScene.add(this.modelCamera);
 
 		// Skybox: seed rotation synchronously so it's correct from frame 1 (so a
 		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
@@ -536,8 +573,51 @@ export class SceneRenderer {
 		this.pointClouds.drainOnePendingSceneAdd();
 
 		this.composer.render();
+		this.renderModelOverlay();
 		this.labelRenderer.render(this.scene, this.camera);
 	};
+
+	/**
+	 * Composite the focused body's 3D model on top of the main render. The
+	 * model lives in `modelScene` at unit scale; we mirror the main camera's
+	 * orientation and place the overlay camera at a distance chosen so the
+	 * model occupies the same screen footprint as the focused body (which is
+	 * 10⁻¹⁰-scale in the main scene). Near/far are tight around the model, so
+	 * depth precision stays good — independent of the main scene's
+	 * `logarithmicDepthBuffer` regime.
+	 */
+	private renderModelOverlay(): void {
+		const focusBody = this.focusController.current;
+		if (!focusBody) return;
+		const bo = this.bodyObjects.get(focusBody.data.id);
+		if (!bo?.model) return;
+
+		// Main camera target is the focused body, which sits at scene origin in
+		// focus-relative coords; the camera's distance from origin is the
+		// distance-to-body that orbit controls expose.
+		const camDist = this.camera.position.length();
+		// Model bounds in modelScene are normalised to extent 2 (radius 1)
+		// during load — see `loadBodyModel`. Picking `overlayDist = camDist /
+		// (2 * radiusScene)` keeps the on-screen size identical to what the
+		// (invisible) placeholder sphere would have occupied, so the model
+		// snaps in where the halo was.
+		const overlayDist = camDist / (2 * bo.radiusScene);
+		this.modelCamera.position.copy(this.camera.position).normalize().multiplyScalar(overlayDist);
+		this.modelCamera.quaternion.copy(this.camera.quaternion);
+		this.modelCamera.aspect = this.camera.aspect;
+		// Bracket the unit-radius model around `overlayDist` with a generous
+		// margin so partial-zoom-in doesn't clip and the depth-buffer range
+		// stays sensible. 24-bit depth across this range gives sub-mm
+		// precision within the model.
+		this.modelCamera.near = Math.max(0.01, overlayDist - 5);
+		this.modelCamera.far = overlayDist + 50;
+		this.modelCamera.updateProjectionMatrix();
+
+		this.renderer.autoClear = false;
+		this.renderer.clearDepth();
+		this.renderer.render(this.modelScene, this.modelCamera);
+		this.renderer.autoClear = true;
+	}
 
 	// --- Interaction ---
 
@@ -562,7 +642,7 @@ export class SceneRenderer {
 		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
 		// Spacecraft 3D model — gated on `global.model_name` inside loadBodyModel,
 		// so cheap no-op for every body that doesn't have a model bundle.
-		loadBodyModel(bo, this.scene, this.ctx);
+		loadBodyModel(bo, this.modelScene, this.ctx);
 	}
 
 	// --- Public API ---

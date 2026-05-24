@@ -1,6 +1,16 @@
-import { Box3, Mesh, type Object3D, type Scene, Texture, Vector3 } from 'three';
+import {
+	Box3,
+	Mesh,
+	type Object3D,
+	PMREMGenerator,
+	type Scene,
+	Texture,
+	Vector3,
+	type WebGLRenderer
+} from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -28,16 +38,31 @@ function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 }
 
 /**
+ * Build the neutral environment cubemap used by the model-overlay scene.
+ * Mirrors gltf-viewer's `RoomEnvironment` + PMREM setup, which is what
+ * makes PBR metals/specular surfaces show up correctly: with no
+ * environment, metallic factors near 1 reflect nothing and read as pure
+ * black.
+ */
+export function makeModelEnvMap(renderer: WebGLRenderer): Texture {
+	const pmrem = new PMREMGenerator(renderer);
+	const tex = pmrem.fromScene(new RoomEnvironment()).texture;
+	pmrem.dispose();
+	return tex;
+}
+
+/**
  * Fetch and attach the spacecraft 3D model for `bo` if its global JSON
- * carries `model_name`. Idempotent — re-entry while a load is in flight or
- * after a successful load is a no-op. Auto-fits the model so its largest
- * bbox half-extent matches the body's `radiusScene`, so it visually replaces
- * the placeholder sphere mesh at the same screen size. The sphere mesh is
- * left in place but hidden; un-hidden by `unloadBodyModel` on un-focus.
+ * carries `model_name`. The model is added to `modelScene` (a sibling scene
+ * rendered in its own pass with linear-depth-friendly near/far) at
+ * unit-radius scale around origin. `repositionBodies` doesn't touch the
+ * overlay scene — the main camera mirrors orientation onto the overlay
+ * camera per frame instead. Hides the focused body's placeholder sphere
+ * so the model takes its visual slot.
  */
 export async function loadBodyModel(
 	bo: BodyObjects,
-	scene: Scene,
+	modelScene: Scene,
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.model || bo.modelLoading) return;
@@ -47,12 +72,11 @@ export async function loadBodyModel(
 		const slug = detail.global?.model_name;
 		if (!slug) return;
 		// Body was un-focused (mesh torn down) while the bundle fetch was in
-		// flight. Drop the load so we don't attach a stray model to a body
-		// whose sphere was already disposed.
+		// flight. Drop the load so we don't attach a stray model.
 		if (!bo.mesh) return;
-		// Kick the bundle metadata fetch alongside the GLB — it's tiny and
-		// cacheable, and we want the credit registered as soon as the model is
-		// visible so the attribution bar/popover update in lockstep.
+		// Kick the bundle metadata fetch alongside the GLB — small and
+		// cacheable. Registering the credit as the model becomes visible
+		// keeps the attribution bar/popover in lockstep with what's on screen.
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(`${DATA_BASE}/v1/models/${slug}/high.glb`);
 		if (!bo.mesh) {
@@ -60,9 +84,8 @@ export async function loadBodyModel(
 			return;
 		}
 		const root = gltf.scene;
-		fitToRadius(root, bo.radiusScene);
-		scene.add(root);
-		bo.extraObjects.push(root);
+		fitToUnitRadius(root);
+		modelScene.add(root);
 		bo.model = root;
 		bo.modelName = slug;
 		bo.mesh.visible = false;
@@ -86,15 +109,14 @@ export async function loadBodyModel(
 }
 
 /**
- * Dispose the loaded model and restore the placeholder sphere. No-op when no
- * model is attached. Called from `downgradeBodyMesh`.
+ * Dispose the loaded model and restore the placeholder sphere. No-op when
+ * no model is attached. Called from `downgradeBodyMesh`. Removes the model
+ * from whichever scene it was parented to (the overlay's modelScene).
  */
-export function unloadBodyModel(bo: BodyObjects, scene: Scene): void {
+export function unloadBodyModel(bo: BodyObjects): void {
 	const root = bo.model;
 	if (!root) return;
-	scene.remove(root);
-	const idx = bo.extraObjects.indexOf(root);
-	if (idx >= 0) bo.extraObjects.splice(idx, 1);
+	root.parent?.remove(root);
 	disposeGltf(root);
 	bo.model = null;
 	bo.modelName = undefined;
@@ -102,20 +124,22 @@ export function unloadBodyModel(bo: BodyObjects, scene: Scene): void {
 }
 
 /**
- * Uniformly scale `root` so its largest bbox half-extent equals `radiusScene`.
- * Bbox is computed in `root`'s local space before any prior scale, then
- * applied by overwriting `root.scale`. Sub-meshes keep their authored local
- * transforms.
+ * Uniformly scale + translate `root` so its bbox max-dim becomes 2 (i.e.
+ * inscribed in a unit-radius sphere) and its bbox center sits at origin.
+ * Run before adding to the overlay scene. The overlay camera then orbits
+ * a unit-radius target — no need to coordinate scale with the focused
+ * body's tiny scene-space radius.
  */
-function fitToRadius(root: Object3D, radiusScene: number): void {
+function fitToUnitRadius(root: Object3D): void {
 	root.updateMatrixWorld(true);
 	const bbox = new Box3().setFromObject(root);
-	const size = new Vector3();
-	bbox.getSize(size);
+	const size = bbox.getSize(new Vector3());
+	const center = bbox.getCenter(new Vector3());
 	const maxDim = Math.max(size.x, size.y, size.z);
 	if (maxDim <= 0) return;
-	const k = (2 * radiusScene) / maxDim;
+	const k = 2 / maxDim;
 	root.scale.multiplyScalar(k);
+	root.position.copy(center).multiplyScalar(-k);
 }
 
 function disposeGltf(root: Object3D): void {
