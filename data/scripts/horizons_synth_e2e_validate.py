@@ -25,11 +25,9 @@ from dataclasses import dataclass
 import httpx
 import spiceypy
 
-from space_map_data.download.providers.objects.horizons_synth import (
-    SYNTH_KERNELS_DIR,
-    build_one,
-    fetch_one,
-)
+from space_map_data.download.providers.spice.synth import SYNTH_KERNELS_DIR
+from space_map_data.download.providers.spice.synth.cache import fetch_one
+from space_map_data.download.providers.spice.synth.spk import build_one
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
 

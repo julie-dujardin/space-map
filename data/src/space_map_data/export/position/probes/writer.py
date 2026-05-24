@@ -57,9 +57,7 @@ from space_map_data.export.position.format import (
     pack_probes_header,
     pack_subchunk_record,
 )
-from space_map_data.download.providers.objects.horizons_synth import (
-    qid_deduped_synth_naifs,
-)
+from space_map_data.download.providers.spice.synth import qid_deduped_synth_naifs
 from space_map_data.export.position.probes import sidecar
 from space_map_data.export.position.probes.sizing import (
     METHOD_CHEBYSHEV as SZ_METHOD_CHEBYSHEV,

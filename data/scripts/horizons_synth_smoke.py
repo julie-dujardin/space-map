@@ -11,11 +11,9 @@ import logging
 
 import httpx
 
-from space_map_data.download.providers.objects.horizons_synth import (
-    SYNTH_ROOT,
-    build_one,
-    fetch_one,
-)
+from space_map_data.download.providers.spice.synth import SYNTH_CACHE_ROOT
+from space_map_data.download.providers.spice.synth.cache import fetch_one
+from space_map_data.download.providers.spice.synth.spk import build_one
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -43,7 +41,7 @@ def main() -> None:
             spk = build_one(naif_id)
             print(f"  built: {spk} ({spk.stat().st_size / 1024:.1f} KiB)")
 
-    print(f"\nAll artefacts under {SYNTH_ROOT}")
+    print(f"\nAll artefacts under {SYNTH_CACHE_ROOT}")
 
 
 if __name__ == "__main__":

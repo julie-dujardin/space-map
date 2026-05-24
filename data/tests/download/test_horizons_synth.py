@@ -6,12 +6,7 @@ import httpx
 import numpy as np
 import pytest
 
-from space_map_data.download.providers.objects import horizons_synth as hs
-
-
-# ---------------------------------------------------------------------------
-# Time helpers
-# ---------------------------------------------------------------------------
+from space_map_data.download.providers.spice.synth import horizons_api, index, refine
 
 
 class TestTimeHelpers:
@@ -19,21 +14,16 @@ class TestTimeHelpers:
 
     def test_jd_to_iso_at_j2000(self):
         # J2000 epoch is 2000-01-01 12:00 TT, which we round down to date.
-        assert hs._jd_to_iso(2451545.0) == "2000-01-01"
+        assert horizons_api._jd_to_iso(2451545.0) == "2000-01-01"
 
     def test_jd_to_iso_at_voyager_launch(self):
         # 1977-AUG-20 15:32 TDB → JD 2443376.148...
-        assert hs._jd_to_iso(2443376.148) == "1977-08-20"
+        assert horizons_api._jd_to_iso(2443376.148) == "1977-08-20"
 
     def test_et_jd_round_trip(self):
         for jd in (2451545.0, 2443376.148, 2461110.5, 2415020.5):
             et = (jd - 2451545.0) * 86400.0
-            assert hs._et_to_jd(et) == pytest.approx(jd)
-
-
-# ---------------------------------------------------------------------------
-# Cadence policy
-# ---------------------------------------------------------------------------
+            assert horizons_api._et_to_jd(et) == pytest.approx(jd)
 
 
 class TestCoarseStepFor:
@@ -41,24 +31,19 @@ class TestCoarseStepFor:
 
     def test_short_window_uses_1h(self):
         # Apollo S-IVB stages have ~20-day coverage.
-        assert hs._coarse_step_for(20) == "1 h"
-        assert hs._coarse_step_for(60) == "1 h"
+        assert refine._coarse_step_for(20) == "1 h"
+        assert refine._coarse_step_for(60) == "1 h"
 
     def test_year_window_uses_1d(self):
         # Tianwen-1 has ~6 months, NISAR ~year.
-        assert hs._coarse_step_for(61) == "1 d"
-        assert hs._coarse_step_for(180) == "1 d"
-        assert hs._coarse_step_for(365) == "1 d"
+        assert refine._coarse_step_for(61) == "1 d"
+        assert refine._coarse_step_for(180) == "1 d"
+        assert refine._coarse_step_for(365) == "1 d"
 
     def test_long_window_uses_7d(self):
         # Voyager 2 spans 122 years.
-        assert hs._coarse_step_for(366) == "7 d"
-        assert hs._coarse_step_for(122 * 365) == "7 d"
-
-
-# ---------------------------------------------------------------------------
-# Horizons CSV parsing
-# ---------------------------------------------------------------------------
+        assert refine._coarse_step_for(366) == "7 d"
+        assert refine._coarse_step_for(122 * 365) == "7 d"
 
 
 _SAMPLE_CSV = """\
@@ -76,11 +61,11 @@ $$EOE
 
 class TestParseHorizonsCsv:
     def test_extracts_two_samples(self):
-        samples = hs._parse_horizons_csv(_SAMPLE_CSV)
+        samples = horizons_api._parse_horizons_csv(_SAMPLE_CSV)
         assert len(samples) == 2
 
     def test_first_sample_state_matches_csv(self):
-        samples = hs._parse_horizons_csv(_SAMPLE_CSV)
+        samples = horizons_api._parse_horizons_csv(_SAMPLE_CSV)
         # JD 2460676.5 = 2025-01-01 00:00 TDB. ET = (jd - J2000) * 86400.
         assert samples[0].et == pytest.approx((2460676.5 - 2451545.0) * 86400.0)
         # State vector x, y, z, vx, vy, vz.
@@ -88,11 +73,11 @@ class TestParseHorizonsCsv:
         assert samples[0].state[5] == pytest.approx(-1.411082680475604e1)
 
     def test_missing_block_returns_empty(self):
-        assert hs._parse_horizons_csv("no SOE block here") == []
+        assert horizons_api._parse_horizons_csv("no SOE block here") == []
 
     def test_malformed_lines_skipped(self):
         text = "$$SOE\nnot-a-csv-row\n2460676.5, foo, 1, 2, 3, 4, 5, 6\n$$EOE\n"
-        samples = hs._parse_horizons_csv(text)
+        samples = horizons_api._parse_horizons_csv(text)
         # First row has non-numeric values; second has 8 numeric-looking parts
         # (but parts[1] is "foo" which we don't parse). Only well-formed rows
         # pass; expect 1 sample.
@@ -118,16 +103,11 @@ class TestParseChunks:
         # The 2025-Jan-02 sample appears at the end of chunk 1 and start of
         # chunk 2 (Horizons' inclusive-stop quirk for chunked fetches). The
         # parser should drop the duplicate.
-        samples = hs._parse_chunks(_TWO_CHUNK_CSV)
+        samples = horizons_api._parse_chunks(_TWO_CHUNK_CSV)
         assert len(samples) == 3
         # Strictly increasing epochs.
         ets = [s.et for s in samples]
         assert ets == sorted(set(ets))
-
-
-# ---------------------------------------------------------------------------
-# Horizons MB spacecraft filter
-# ---------------------------------------------------------------------------
 
 
 # NAIF ID is right-aligned within a 9-char column [0:9]; the real Horizons
@@ -150,38 +130,33 @@ _SAMPLE_MB = """\
 
 class TestParseHorizonsSpacecraft:
     def test_keeps_real_spacecraft(self):
-        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
         ids = {n for n, _ in out}
         assert -32 in ids
         assert -3 in ids
         assert -25 in ids
 
     def test_drops_simulations(self):
-        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
         ids = {n for n, _ in out}
         assert -937001 not in ids
 
     def test_drops_debris(self):
-        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
         ids = {n for n, _ in out}
         assert -999789 not in ids
 
     def test_drops_stages_and_boosters(self):
-        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
         ids = {n for n, _ in out}
         assert -9901492 not in ids  # Luna-25 STAGE
         assert -54054450 not in ids  # Centaur RB
         assert -999742 not in ids  # Propulsion Module
 
     def test_drops_positive_ids(self):
-        out = hs._parse_horizons_spacecraft(_SAMPLE_MB)
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
         ids = {n for n, _ in out}
         assert 399 not in ids
-
-
-# ---------------------------------------------------------------------------
-# OBJ_DATA header parsing
-# ---------------------------------------------------------------------------
 
 
 _VOYAGER_OBJ = {
@@ -202,7 +177,7 @@ class TestFetchObjData:
         client = MagicMock(spec=httpx.Client)
         client.get.return_value = mock_resp
 
-        obj = hs.fetch_obj_data(client, -32)
+        obj = horizons_api.fetch_obj_data(client, -32)
         assert obj.revised == "Aug 19, 2022"
         assert "Voyager 2" in obj.name
 
@@ -213,21 +188,16 @@ class TestFetchObjData:
         client = MagicMock(spec=httpx.Client)
         client.get.return_value = mock_resp
 
-        obj = hs.fetch_obj_data(client, -42)
+        obj = horizons_api.fetch_obj_data(client, -42)
         assert obj.revised == "unknown"
         assert obj.name == "NAIF -42"
 
 
-# ---------------------------------------------------------------------------
-# Refinement window detection
-# ---------------------------------------------------------------------------
-
-
 class TestIdentifyRefinementWindows:
-    def _make_samples(self, n: int, day_step: float = 7.0) -> list[hs.Sample]:
+    def _make_samples(self, n: int, day_step: float = 7.0) -> list[horizons_api.Sample]:
         """N samples spaced `day_step` apart starting at ET 0."""
         return [
-            hs.Sample(et=i * day_step * 86400.0, state=(0, 0, 0, 0, 0, 0))
+            horizons_api.Sample(et=i * day_step * 86400.0, state=(0, 0, 0, 0, 0, 0))
             for i in range(n)
         ]
 
@@ -235,7 +205,7 @@ class TestIdentifyRefinementWindows:
         samples = self._make_samples(20)
         # Stub `get_body_pos` returns a body 10^20 km away — always far.
         far_away = np.array([1e20, 0, 0])
-        windows = hs._identify_refinement_windows(
+        windows = refine._identify_refinement_windows(
             samples,
             get_body_pos=lambda _b, _t: far_away,
             coverage_start_iso="2000-01-01",
@@ -252,7 +222,7 @@ class TestIdentifyRefinementWindows:
                 return np.array([0.0, 0.0, 0.0])
             return np.array([1e20, 0.0, 0.0])
 
-        windows = hs._identify_refinement_windows(
+        windows = refine._identify_refinement_windows(
             samples,
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
@@ -270,7 +240,7 @@ class TestIdentifyRefinementWindows:
                     return np.array([0.0, 0.0, 0.0])
             return np.array([1e20, 0.0, 0.0])
 
-        windows = hs._identify_refinement_windows(
+        windows = refine._identify_refinement_windows(
             samples,
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
@@ -288,7 +258,7 @@ class TestIdentifyRefinementWindows:
                 return np.array([0.0, 0.0, 0.0])
             return np.array([1e20, 0.0, 0.0])
 
-        windows = hs._identify_refinement_windows(
+        windows = refine._identify_refinement_windows(
             samples,
             get_body_pos=get_body_pos,
             coverage_start_iso="2000-01-01",
@@ -314,7 +284,7 @@ class TestQidDedupedSynthNaifs:
     def test_dedups_synth_naif_against_spk_backed_agency(self, tmp_path, monkeypatch):
         # INTEGRAL case: ESA SPK at -275, Horizons synth at -198, both Q50021.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
         cache = {
             "INTEGRAL/-275": {
                 "mission": "INTEGRAL",
@@ -327,13 +297,13 @@ class TestQidDedupedSynthNaifs:
                 "wikidata_qid": "Q50021",
             },
         }
-        assert hs.qid_deduped_synth_naifs(cache) == {-198}
+        assert index.qid_deduped_synth_naifs(cache) == {-198}
 
     def test_ignores_metadata_only_buckets(self, tmp_path, monkeypatch):
         # EVENTS-DB has no `missions/EVENTS-DB/` SPK dir, so it must not act
         # as an agency match — Tianwen-1's only ephemeris is the synth.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])  # arbitrary; not the match
-        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
         cache = {
             "EVENTS-DB/-90000051": {
                 "mission": "EVENTS-DB",
@@ -346,11 +316,11 @@ class TestQidDedupedSynthNaifs:
                 "wikidata_qid": "Q49011",
             },
         }
-        assert hs.qid_deduped_synth_naifs(cache) == set()
+        assert index.qid_deduped_synth_naifs(cache) == set()
 
     def test_no_match_when_qids_differ(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["JUNO"])
-        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
         cache = {
             "JUNO/-61": {
                 "mission": "JUNO",
@@ -363,17 +333,17 @@ class TestQidDedupedSynthNaifs:
                 "wikidata_qid": "Q15839",  # Kepler, no collision
             },
         }
-        assert hs.qid_deduped_synth_naifs(cache) == set()
+        assert index.qid_deduped_synth_naifs(cache) == set()
 
     def test_empty_cache_returns_empty_set(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
-        assert hs.qid_deduped_synth_naifs({}) == set()
+        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        assert index.qid_deduped_synth_naifs({}) == set()
 
     def test_synth_without_qid_is_kept(self, tmp_path, monkeypatch):
         # Brand-new synth entries lack a curated QID — never dedup them.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(hs, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
         cache = {
             "INTEGRAL/-275": {
                 "mission": "INTEGRAL",
@@ -386,4 +356,4 @@ class TestQidDedupedSynthNaifs:
                 "wikidata_qid": None,
             },
         }
-        assert hs.qid_deduped_synth_naifs(cache) == set()
+        assert index.qid_deduped_synth_naifs(cache) == set()

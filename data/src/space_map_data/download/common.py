@@ -12,10 +12,11 @@ from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
 from space_map_data.download.providers.objects.horizons import HorizonsDownloader
-from space_map_data.download.providers.objects.horizons_synth import (
+from space_map_data.download.providers.spice import (
     HorizonsSyntheticDownloader,
+    ProbesDownloader,
+    SpiceDownloader,
 )
-from space_map_data.download.providers.spice import ProbesDownloader, SpiceDownloader
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
 from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.objects.sbdb_moons import (
