@@ -132,9 +132,9 @@ _AU_KM = 149_597_870.7
 def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
     """Pick unified-name kepler elements from the right sub-table.
 
-    Dispatches on ``orbital_source``: horizons/spice rows read from the
-    Horizons sub-table (which exposes unified-name properties over its
-    native column names); SBDB rows read from the SBDB sub-table directly;
+    Dispatches on ``orbital_source``: spice rows read from the Horizons
+    sub-table (which exposes unified-name properties over its native column
+    names — table name is historical); SBDB rows read from the SBDB sub-table directly;
     celestrak rows read from the transient ``_daily_kepler`` overlay attached
     by the Earth-zone overlay (celestrak doesn't persist these). SBDB
     satellites store ``a`` natively in km (``a_km``); we convert to AU on
@@ -164,7 +164,7 @@ def _orbit_elements(obj: Object, attrs: tuple[str, ...]) -> dict:
             if val is not None:
                 out[attr] = val
         return out
-    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+    if src == OrbitalSource.spice:
         return _pick_attrs(obj.horizons, attrs) if obj.horizons is not None else {}
     return {}
 

@@ -10,7 +10,6 @@ from space_map_data.models.object import Object
 from space_map_data.ingest.providers import iau_nomenclature, image_selection, wikipedia
 from space_map_data.ingest.providers.objects import (
     celestrak,
-    horizons,
     probes,
     satcat,
     sbdb,
@@ -28,17 +27,15 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_objects(download_dir: Path) -> None:
-    """Ingest orbital bodies: SBDB, CelesTrak, Horizons, SPICE.
+    """Ingest orbital bodies: SBDB, CelesTrak, SPICE, spacecraft.
 
-    Horizons runs before SPICE so SPICE can upsert orbital elements and
-    secular drift rates onto the Horizons sub-table for major bodies and
-    moons (Horizons sub-table is the canonical kepler element store for
-    NAIF-keyed bodies; SPICE-source rows join it for elements).
+    Kepler elements for natural NAIF-keyed bodies land on the Horizons
+    sub-table via SPICE ingest (the table name is historical; SPICE is now
+    the only writer).
     """
     sbdb.ingest(download_dir)
     satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
-    horizons.ingest(download_dir)
     spice.ingest(download_dir)
     # Runs last so the name-match against Horizons/SPICE moons can find
     # existing rows (e.g. Pluto's Charon) and merge SBDB metadata onto

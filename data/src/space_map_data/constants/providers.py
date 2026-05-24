@@ -2,7 +2,6 @@ from enum import StrEnum
 
 
 class PROVIDERS(StrEnum):
-    HORIZONS = "horizons"
     CELESTRAK = "celestrak"
     SBDB = "sbdb"
     SBDB_MOONS = "sbdb_moons"

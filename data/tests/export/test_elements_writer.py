@@ -97,7 +97,7 @@ class TestWriteElements:
             ),
         ]
         out = tmp_path / "elements.bin.gz"
-        write_elements(objects, out, OrbitalSource.horizons, has_localized={})
+        write_elements(objects, out, OrbitalSource.spice, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         (
@@ -116,7 +116,7 @@ class TestWriteElements:
         assert top_format == FORMAT_ELEMENTS
         assert sub_format == SUBFORMAT_KEPLERIAN
         assert row_count == 2
-        assert source == SOURCE_ORDINAL[OrbitalSource.horizons]
+        assert source == SOURCE_ORDINAL[OrbitalSource.spice]
         assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NAIF]
         # Keplerian defaults to unbounded validity — the orbit is mathematical
         # and stays valid for any jd.
@@ -130,7 +130,7 @@ class TestWriteElements:
 
     def test_empty(self, tmp_path):
         out = tmp_path / "empty.bin.gz"
-        write_elements([], out, OrbitalSource.horizons, has_localized={})
+        write_elements([], out, OrbitalSource.spice, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         _, _, _, _, _, _, row_count, _, id_type = _read_header(raw)
@@ -145,7 +145,7 @@ class TestWriteElements:
         write_elements(
             [],
             out,
-            OrbitalSource.horizons,
+            OrbitalSource.spice,
             has_localized={},
             start_jd=2460000.5,
             end_jd=2460100.5,
@@ -169,7 +169,7 @@ class TestWriteElements:
             write_elements(
                 objects,
                 tmp_path / "mismatch.bin.gz",
-                OrbitalSource.horizons,
+                OrbitalSource.spice,
                 has_localized={},
             )
 
@@ -188,7 +188,7 @@ class TestWriteElements:
             write_elements(
                 objects,
                 tmp_path / "mixed.bin.gz",
-                OrbitalSource.horizons,
+                OrbitalSource.spice,
                 has_localized={},
             )
 
@@ -234,7 +234,7 @@ class TestWriteElements:
         obj.sbdb = sbdb
 
         out = tmp_path / "radius.bin.gz"
-        write_elements([obj], out, OrbitalSource.horizons, has_localized={})
+        write_elements([obj], out, OrbitalSource.spice, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         # radius_km is column 12 (last float32 column)
@@ -257,7 +257,7 @@ class TestWriteElements:
         write_elements(
             [obj],
             out,
-            OrbitalSource.horizons,
+            OrbitalSource.spice,
             radius_km_overrides={"naif-399": 6371.0},
             has_localized={},
         )
@@ -307,17 +307,17 @@ class TestWriteElements:
             id="naif-399",
             naif_id=399,
             object_type=ObjectType.planet,
-            orbital_source=OrbitalSource.horizons,
+            orbital_source=OrbitalSource.spice,
         )
         b = make_object(
             id="naif-499",
             naif_id=499,
             object_type=ObjectType.planet,
-            orbital_source=OrbitalSource.horizons,
+            orbital_source=OrbitalSource.spice,
         )
         out = tmp_path / "loc.bin.gz"
         write_elements(
-            [a, b], out, OrbitalSource.horizons, has_localized={"naif-399": True}
+            [a, b], out, OrbitalSource.spice, has_localized={"naif-399": True}
         )
         raw = gzip.decompress(out.read_bytes())
 
@@ -332,7 +332,7 @@ class TestWriteElements:
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
 
         out = tmp_path / "missing.bin.gz"
-        write_elements([obj], out, OrbitalSource.horizons, has_localized={})
+        write_elements([obj], out, OrbitalSource.spice, has_localized={})
 
         raw = gzip.decompress(out.read_bytes())
         offset = HEADER_SIZE + 8 + 8 + 8 + 8 + 8 + 56

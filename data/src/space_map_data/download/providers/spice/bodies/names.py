@@ -7,7 +7,7 @@ from pathlib import Path
 
 import spiceypy
 
-from space_map_data.constants.providers import PROVIDERS
+from .major_bodies import MB_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class HorizonsAlias:
     naif_id_extended: int | None = None
 
 
-def load_horizons_names(download_dir: Path) -> dict[int, HorizonsAlias]:
+def load_horizons_names(spice_dir: Path) -> dict[int, HorizonsAlias]:
     """Parse Horizons major_bodies.txt into {naif_id: HorizonsAlias}.
 
     Horizons publishes names for recently-named moons (e.g. 557 Eirene) that
@@ -32,7 +32,7 @@ def load_horizons_names(download_dir: Path) -> dict[int, HorizonsAlias]:
     The IAU/aliases column also carries the Roman-numeral IAU designation and
     the 5-digit extended NAIF ID that SPICE uses for irregular-moon kernels.
     """
-    path = download_dir / PROVIDERS.HORIZONS / "major_bodies.txt"
+    path = spice_dir / MB_FILENAME
     result: dict[int, HorizonsAlias] = {}
     if not path.exists():
         logger.warning("Horizons major_bodies.txt not found at %s", path)

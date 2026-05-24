@@ -33,9 +33,9 @@ def make_object(**overrides) -> Object:
 
     Kepler kwargs (epoch_jd, a, e, i, om, w, ma, n, om_dot, w_dot) are popped
     off and routed to:
-    * Horizons sub-table for horizons / spice / None sources (the default
-      fallback the writer uses when ``Object.orbital_source`` doesn't pin a
-      sub-table)
+    * Horizons sub-table for spice / None sources (the default fallback the
+      writer uses when ``Object.orbital_source`` doesn't pin a sub-table —
+      the sub-table's name is historical; SPICE is now its only writer)
     * a transient ``_daily_kepler`` dict for celestrak source — celestrak rows
       don't persist kepler elements, the daily overlay supplies them
     SBDB-source tests should set ``obj.sbdb`` themselves with element values
@@ -50,7 +50,7 @@ def make_object(**overrides) -> Object:
         "object_type": ObjectType.planet,
         "scale": ElementsScale.system,
         "parent_id": "naif-0",
-        "orbital_source": OrbitalSource.horizons,
+        "orbital_source": OrbitalSource.spice,
     }
     defaults.update(overrides)
     obj = Object(**defaults)
@@ -77,7 +77,7 @@ def make_object(**overrides) -> Object:
             }
         obj._daily_kepler = daily_kepler  # type: ignore[attr-defined]
     elif src != OrbitalSource.sbdb:
-        # horizons / spice / None — populate Horizons sub-table.
+        # spice / None — populate Horizons sub-table (historical name).
         obj.horizons = Horizons(
             naif_id=obj.naif_id,
             object_id=obj.id,

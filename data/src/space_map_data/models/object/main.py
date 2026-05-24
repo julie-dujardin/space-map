@@ -77,7 +77,6 @@ class ElementsScale(StrEnum):
 
 
 class OrbitalSource(StrEnum):
-    horizons = PROVIDERS.HORIZONS
     sbdb = PROVIDERS.SBDB
     sbdb_moon = PROVIDERS.SBDB_MOONS
     celestrak = PROVIDERS.CELESTRAK

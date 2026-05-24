@@ -43,7 +43,6 @@ _SERVER_TO_ARCHIVE: dict[str, str] = {
 
 # Generic SPICE kernels (planets/moons/asteroids) come from NAIF's tree.
 _NON_PROBE_ARCHIVE: dict[OrbitalSource, str] = {
-    OrbitalSource.horizons: ARCHIVE_HORIZONS,
     OrbitalSource.sbdb: ARCHIVE_SBDB,
     OrbitalSource.sbdb_moon: ARCHIVE_SBDB,
     OrbitalSource.celestrak: ARCHIVE_CELESTRAK,

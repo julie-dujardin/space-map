@@ -9,6 +9,7 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
+from ..bodies.major_bodies import MB_FILENAME
 from .cache import fetch_one
 from .horizons_api import HORIZONS_URL
 from .index import (
@@ -43,10 +44,10 @@ class HorizonsSyntheticDownloader(Downloader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def _candidates(self, limit: int | None) -> list[tuple[int, str]]:
-        mb_path = DOWNLOAD_DIR / "horizons" / "major_bodies.txt"
+        mb_path = DOWNLOAD_DIR / PROVIDERS.SPICE / MB_FILENAME
         if not mb_path.exists():
             raise DownloadError(
-                f"Need {mb_path}; run `space-map-download --sources horizons` first"
+                f"Need {mb_path}; run `space-map-download --sources spice` first"
             )
         all_sc = _parse_horizons_spacecraft(mb_path.read_text())
         agency = _existing_agency_naifs()

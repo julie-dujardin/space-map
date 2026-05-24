@@ -34,6 +34,7 @@ from .elements import (
     state_to_elements,
 )
 from .kernels import NAIF_BASE_URL, download_kernels, resolve_kernels
+from .major_bodies import fetch_major_bodies
 from .names import load_horizons_names, resolve_name
 from .pck_extract import (
     extract_gms,
@@ -130,6 +131,8 @@ class SpiceDownloader(Downloader):
             epoch = date.today()
         epoch_jd = epoch.toordinal() + 1721424.5
         logger.info("Using epoch %s (JD %.1f)", epoch.isoformat(), epoch_jd)
+
+        fetch_major_bodies(self.client, self.out_dir)
 
         kernels = resolve_kernels(self.client)
         kernel_paths = download_kernels(self.client, self.out_dir, kernels)
@@ -233,7 +236,7 @@ class SpiceDownloader(Downloader):
         """
         spk_ids = self._enumerate_spk_bodies(kernel_paths)
         all_ids = spk_ids | set(_EXTRA_NAIF_IDS)
-        horizons_names = load_horizons_names(self.out_dir.parent)
+        horizons_names = load_horizons_names(self.out_dir)
 
         bodies: list[MajorBody] = []
         for naif_id in sorted(all_ids):

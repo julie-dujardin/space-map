@@ -85,8 +85,9 @@ OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {t: i for i, t in enumerate(ObjectT
 SCALE_ORDINAL: dict[ElementsScale, int] = {s: i for i, s in enumerate(ElementsScale)}
 
 # Pinned by name so the frontend mirror can't drift on Python enum re-ordering.
+# Ordinal 0 used to belong to a now-removed `horizons` source; not reassigned
+# so frontends stay backwards-compatible with previously-shipped files.
 SOURCE_ORDINAL: dict[OrbitalSource, int] = {
-    OrbitalSource.horizons: 0,
     OrbitalSource.sbdb: 1,
     OrbitalSource.celestrak: 2,
     OrbitalSource.spice: 3,

@@ -20,18 +20,25 @@ Inception MJDs are cached at `spice/probe_ids.json` (see
 
 import json
 import logging
+import re
 from pathlib import Path
 
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select, update
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.download.providers.spice.bodies.names import (
+    HorizonsAlias,
+    load_horizons_names,
+)
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.probes.probe_id import assign_many, et_to_mjd
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
+
+_COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
 
 # Kernels we never want to feed `_coverage()`: they park a destroyed/landed
 # probe at fixed coords for decades and would push the longest-coverage
@@ -176,6 +183,11 @@ class ProbesIngestor:
         self.landed_missions_dir = (
             download_dir / PROVIDERS.SPICE / "kernels" / "landed_missions"
         )
+        # Used to backfill name + COSPAR onto probe Object rows; agency SPK
+        # indexes don't carry a polished name and never carry COSPAR.
+        self.horizons_aliases: dict[int, HorizonsAlias] = load_horizons_names(
+            download_dir / PROVIDERS.SPICE
+        )
 
     def _clear(self) -> None:
         """Drop previously-ingested probe rows. Safe: probes live under their
@@ -185,14 +197,40 @@ class ProbesIngestor:
         )
         self.session.commit()
 
-    def _build_row(self, record: dict, probe_id: int, wikidata_qid: str | None) -> dict:
+    def _mb_identity(self, naif_id: int) -> tuple[str | None, str | None]:
+        """Return ``(name, cospar)`` from the Horizons MB list, or ``(None, None)``.
+
+        ``cospar`` is only set when the MB designation column matches the
+        COSPAR pattern; planet/asteroid/PDC rows leave it None.
+        """
+        alias = self.horizons_aliases.get(naif_id)
+        if alias is None:
+            return None, None
+        cospar = None
+        if alias.designation and _COSPAR_RE.match(alias.designation):
+            cospar = alias.designation
+        return alias.name, cospar
+
+    def _build_row(
+        self,
+        record: dict,
+        probe_id: int,
+        wikidata_qid: str | None,
+        cospar_id: str | None,
+    ) -> dict:
         object_pk = make_object_id(ID_TYPES.PROBE, probe_id)
-        name = record.get("name_hint") or f"{record['mission']} ({record['naif_id']})"
+        mb_name, _ = self._mb_identity(record["naif_id"])
+        name = (
+            mb_name
+            or record.get("name_hint")
+            or f"{record['mission']} ({record['naif_id']})"
+        )
         return {
             "id": object_pk,
             "name": name,
             "object_type": ObjectType.spacecraft,
             "naif_id": record["naif_id"],
+            "cospar_id": cospar_id,
             "probe_id": probe_id,
             "orbital_source": OrbitalSource.spice_probe,
             "wikidata_qid": wikidata_qid,
@@ -201,6 +239,29 @@ class ProbesIngestor:
             # writers skip them. The probes/ zone writer reads kernels directly.
             "has_position": False,
         }
+
+    def _cross_reference_naifs(self, cross_refs: list[tuple[str, int]]) -> None:
+        """Backfill NAIF onto pre-existing non-probe Objects via COSPAR match.
+
+        When a probe shares a COSPAR with another Object (typically a CelesTrak
+        row for a satellite Horizons also tracks), the probe row can't carry
+        the COSPAR — it's unique — so we instead push the probe's NAIF onto
+        the existing Object. ``naif_id IS NULL`` ensures we don't overwrite
+        a NAIF already set by another source.
+        """
+        updated = 0
+        for cospar, naif in cross_refs:
+            updated += self.session.execute(
+                update(Object)
+                .where(Object.cospar_id == cospar)
+                .where(Object.naif_id.is_(None))
+                .values(naif_id=naif)
+            ).rowcount  # type: ignore[union-attr]
+        if updated:
+            logger.info(
+                "Cross-referenced NAIF onto %d Objects via probe COSPAR overlap",
+                updated,
+            )
 
     def run(self) -> None:
         if not self.missions_dir.exists() and not self.landed_missions_dir.exists():
@@ -220,15 +281,53 @@ class ProbesIngestor:
         )
 
         self._clear()
+
+        # Cospar can't sit on two Objects — unique constraint. When another
+        # row already owns the cospar for a probe's spacecraft (CelesTrak
+        # typically), the probe row leaves cospar null and we backfill the
+        # probe's NAIF onto that existing row instead.
+        candidate_cospars = {
+            cospar
+            for r in records
+            for _, cospar in [self._mb_identity(r["naif_id"])]
+            if cospar is not None
+        }
+        existing_cospar_owners: set[str] = {
+            c
+            for c in self.session.execute(
+                select(Object.cospar_id).where(Object.cospar_id.in_(candidate_cospars))
+            ).scalars()
+            if c is not None
+        }
+        cross_refs: list[tuple[str, int]] = []
+        # Two probe rows for the same spacecraft (e.g. CASSINI + HUYGENS both
+        # reference NAIF -82) want the same COSPAR. Keep it on the first row
+        # we see; subsequent rows null it.
+        cospar_taken_by_probe: set[str] = set()
+
         rows: list[dict] = []
         for r in tqdm(records, desc="Probes ingest"):
             rec = assignments[(r["mission"], r["naif_id"])]
-            rows.append(self._build_row(r, rec.probe_id, rec.wikidata_qid))
+            _, candidate_cospar = self._mb_identity(r["naif_id"])
+            if candidate_cospar is None:
+                cospar_for_row: str | None = None
+            elif candidate_cospar in existing_cospar_owners:
+                cross_refs.append((candidate_cospar, r["naif_id"]))
+                cospar_for_row = None
+            elif candidate_cospar in cospar_taken_by_probe:
+                cospar_for_row = None
+            else:
+                cospar_taken_by_probe.add(candidate_cospar)
+                cospar_for_row = candidate_cospar
+            rows.append(
+                self._build_row(r, rec.probe_id, rec.wikidata_qid, cospar_for_row)
+            )
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
                 rows = []
         if rows:
             self.session.execute(insert(Object), rows)
+        self._cross_reference_naifs(cross_refs)
         self.session.commit()
         logger.info("Ingested %d probe Objects", len(records))
 

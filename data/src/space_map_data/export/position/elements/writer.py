@@ -68,7 +68,7 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
             a_km = o.sbdb_moon.a_km
             return a_km / _AU_KM if a_km is not None else None
         return getattr(o.sbdb_moon, attr, None)
-    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+    if src == OrbitalSource.spice:
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None
 
@@ -79,7 +79,7 @@ def _drift_rate(o: Object, attr: str, file_source: OrbitalSource) -> float | Non
     Other sources don't fit secular drift, so they read as None.
     """
     src = o.orbital_source or file_source
-    if src in (OrbitalSource.horizons, OrbitalSource.spice):
+    if src == OrbitalSource.spice:
         return getattr(o.horizons, attr, None) if o.horizons is not None else None
     return None
 
