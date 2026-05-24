@@ -25,6 +25,7 @@ import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
+import { loadBodyModel } from './objects/body/model';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
@@ -557,7 +558,11 @@ export class SceneRenderer {
 
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
-		if (bo) loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
+		if (!bo) return;
+		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
+		// Spacecraft 3D model — gated on `global.model_name` inside loadBodyModel,
+		// so cheap no-op for every body that doesn't have a model bundle.
+		loadBodyModel(bo, this.scene);
 	}
 
 	// --- Public API ---

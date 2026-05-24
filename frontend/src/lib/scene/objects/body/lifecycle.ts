@@ -16,6 +16,7 @@ import { createLabel, getLabelVariant } from '../../label/factory';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
+import { unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
 
 export function buildMajorBodies(
@@ -183,7 +184,8 @@ export function buildMajorBodies(
 			clouds: null,
 			atmosphere,
 			specularMap: null,
-			eclipseShadow
+			eclipseShadow,
+			model: null
 		});
 	}
 }
@@ -248,6 +250,9 @@ export function downgradeBodyMesh(
 	clickables: Mesh[],
 	meshToBody: Map<Mesh, PositionedBody>
 ): void {
+	// 3D model lives parallel to the sphere mesh — dispose first so its
+	// dispose pass doesn't race against the sphere teardown below.
+	unloadBodyModel(bo, scene);
 	const mesh = bo.mesh;
 	if (mesh) {
 		scene.remove(mesh);

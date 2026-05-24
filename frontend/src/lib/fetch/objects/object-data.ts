@@ -55,6 +55,10 @@ export interface GlobalObjectData {
 	map_texture_available?: boolean;
 	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
 	texture?: TextureAttribution;
+	/** Slug under `v1/models/{model_name}/` when this body has a 3D model bundle.
+	 *  Multiple bodies can share one slug (e.g. all four Cluster II satellites
+	 *  point at `cluster`); the frontend loads `high.glb` from that directory. */
+	model_name?: string;
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;

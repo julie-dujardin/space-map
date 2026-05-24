@@ -122,6 +122,18 @@ export interface BodyObjects {
 	 * self-occlusion when scanning the scene-wide occluder array.
 	 */
 	eclipseShadow: EclipseSelfUniforms | null;
+	/**
+	 * Loaded GLTF root for spacecraft 3D models. Populated by `loadBodyModel`
+	 * on focus when the body's global JSON carries `model_name`; `null` when
+	 * the body has no model or hasn't been focused yet. Tracked alongside the
+	 * body's position via `extraObjects` so {@link repositionBodies} keeps it
+	 * locked to the body each frame. Disposed in `unloadBodyModel`.
+	 */
+	model: Object3D | null;
+	/** Slug of the currently loaded model bundle (matches `global.model_name`). */
+	modelName?: string;
+	/** Guard against re-entering `loadBodyModel` while a fetch is in flight. */
+	modelLoading?: boolean;
 }
 
 export interface Callbacks {
