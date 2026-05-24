@@ -50,6 +50,7 @@ from space_map_data.export.systems import (
     load_orientation,
     load_radii,
     load_clouds_metadata,
+    load_model_metadata,
     load_ring_metadata,
     load_skybox_metadata,
     load_specular_metadata,
@@ -953,6 +954,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
+    model_metadata = load_model_metadata(out_dir)
     probe_kernel_sources = load_probe_kernel_sources()
 
     write_systems_global(out_dir, gms, nut_prec_angles)
@@ -1249,6 +1251,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             ring_metadata,
             clouds_metadata,
             skybox_metadata,
+            model_metadata,
         )
 
         # Aggregate has_localized from elements futures before writing chebyshev

@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 # asteroids and dwarf planets without a hosting planetary system.
 _TOP_LEVEL_NAIF_IDS = {0, 10}
 
+# 3D-model source catalogs. Matched against each model's ``attribution`` field
+# (written by the models ingest provider). ``url`` is the user-facing landing
+# page for the catalog, not the per-asset fetch URL.
+_MODEL_SOURCES: tuple[dict, ...] = (
+    {
+        "match_attribution": "NASA",
+        "name": "NASA-3D-Resources",
+        "url": "https://www.nasa.gov/3d-resources/",
+    },
+    {
+        "match_attribution": "ESA / scifleet.esa.int",
+        "name": "ESA SciFleet",
+        "url": "https://scifleet.esa.int/",
+    },
+)
+
 
 def _body_name(obj: Object) -> str:
     """Canonical English-ish display name for a textured body.
@@ -151,6 +167,36 @@ def _skybox_credit_entry(meta: dict) -> dict:
     return entry
 
 
+def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
+    """Emit one entry per 3D-model source catalog that has at least one bundle.
+
+    Per-body model lists aren't worth the noise on the credits page — the
+    catalog license (NASA's Image Use, ESA's SciFleet terms) is what matters,
+    not which specific spacecraft we pulled. Entries whose attribution
+    doesn't match any known catalog get a warning so the catalog list
+    stays maintained as new sources arrive.
+    """
+    matched: set[str] = set()
+    for body_id, meta in model_metadata.items():
+        attribution = meta.get("attribution")
+        match = next(
+            (s for s in _MODEL_SOURCES if s["match_attribution"] == attribution), None
+        )
+        if match is None:
+            logger.warning(
+                "Model %s has unrecognised attribution %r — add it to _MODEL_SOURCES",
+                body_id,
+                attribution,
+            )
+            continue
+        matched.add(match["name"])
+    return [
+        {"name": src["name"], "url": src["url"]}
+        for src in _MODEL_SOURCES
+        if src["name"] in matched
+    ]
+
+
 def write_credits(
     session: Session,
     out_dir: Path,
@@ -158,6 +204,7 @@ def write_credits(
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     skybox_metadata: dict | None,
+    model_metadata: dict[str, dict],
 ) -> None:
     """Emit `v1/credits.json` summarising every credit-worthy data source.
 
@@ -170,7 +217,12 @@ def write_credits(
     emitted. The whole-sky cubemap skybox is a one-off backdrop with no host
     body, so it rides at the top level alongside `systems`.
     """
-    body_ids = set(texture_metadata) | set(ring_metadata) | set(clouds_metadata)
+    body_ids = (
+        set(texture_metadata)
+        | set(ring_metadata)
+        | set(clouds_metadata)
+        | set(model_metadata)
+    )
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
 
@@ -263,10 +315,14 @@ def write_credits(
             bucket["clouds"] = clouds_grouped[None]
         systems_out.append(bucket)
 
+    models_out = _build_models_credits(model_metadata)
+
     payload: dict = {
         "systems": systems_out,
         "ephemeris_archives": EPHEMERIS_ARCHIVES,
     }
+    if models_out:
+        payload["models"] = models_out
     if skybox_metadata is not None:
         payload["skybox"] = _skybox_credit_entry(skybox_metadata)
     (out_dir / "credits.json").write_bytes(
@@ -276,10 +332,12 @@ def write_credits(
     n_rings = sum(len(g) for g in rings_grouped.values())
     n_clouds = sum(len(g) for g in clouds_grouped.values())
     logger.info(
-        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies%s)",
+        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies, %d model source%s%s)",
         len(systems_out),
         n_textures,
         n_rings,
         n_clouds,
+        len(models_out),
+        "" if len(models_out) == 1 else "s",
         ", + skybox" if skybox_metadata is not None else "",
     )

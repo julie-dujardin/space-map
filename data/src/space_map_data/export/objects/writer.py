@@ -347,6 +347,8 @@ def _build_global(
             logger.warning(
                 "Texture metadata missing for %s; skipping attribution", obj.id
             )
+    if obj.model_name is not None:
+        data["model_name"] = obj.model_name
     clouds_meta = clouds_metadata.get(obj.id)
     if clouds_meta is not None:
         data["clouds"] = clouds_block(clouds_meta)

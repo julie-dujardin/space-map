@@ -312,6 +312,26 @@ def load_ring_metadata(out_dir: Path) -> dict[str, dict]:
     return result
 
 
+def load_model_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load all per-object 3D-model metadata.json files from the export tree.
+
+    Returns {object_id: metadata_dict}. Only objects whose model bundle was
+    successfully ingested are included.
+    """
+    models_dir = out_dir / "models"
+    result: dict[str, dict] = {}
+    if not models_dir.exists():
+        return result
+    for obj_dir in models_dir.iterdir():
+        if not obj_dir.is_dir():
+            continue
+        meta_file = mirror_path(obj_dir / "metadata.json")
+        if meta_file.exists():
+            result[obj_dir.name] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded model metadata for %d objects", len(result))
+    return result
+
+
 def ring_block(meta: dict) -> dict:
     """Build the per-body `rings` block emitted into systems/{bary}.json and
     the global object detail.
