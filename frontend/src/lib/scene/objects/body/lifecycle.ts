@@ -250,9 +250,9 @@ export function downgradeBodyMesh(
 	clickables: Mesh[],
 	meshToBody: Map<Mesh, PositionedBody>
 ): void {
-	// 3D model lives parallel to the sphere mesh — dispose first so its
-	// dispose pass doesn't race against the sphere teardown below.
-	unloadBodyModel(bo, scene);
+	// 3D model lives in the overlay scene — dispose first to release its
+	// textures + geometry before the sphere teardown below.
+	unloadBodyModel(bo);
 	const mesh = bo.mesh;
 	if (mesh) {
 		scene.remove(mesh);

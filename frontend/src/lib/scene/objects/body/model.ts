@@ -39,10 +39,11 @@ function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 
 /**
  * Build the neutral environment cubemap used by the model-overlay scene.
- * Mirrors gltf-viewer's `RoomEnvironment` + PMREM setup, which is what
- * makes PBR metals/specular surfaces show up correctly: with no
- * environment, metallic factors near 1 reflect nothing and read as pure
- * black.
+ * Mirrors gltf-viewer's `RoomEnvironment` + PMREM setup — needed so PBR
+ * metals/specular surfaces have something to reflect. The overlay scene
+ * dims this aggressively via `environmentIntensity` because in deep space
+ * we want the sun's directional shadow to dominate; the env's only job
+ * here is to keep metallics from going pure black.
  */
 export function makeModelEnvMap(renderer: WebGLRenderer): Texture {
 	const pmrem = new PMREMGenerator(renderer);

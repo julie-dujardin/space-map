@@ -181,16 +181,19 @@ export class SceneRenderer {
 		// happy until the first frame.
 		this.modelScene = new SceneClass();
 		this.modelScene.environment = makeModelEnvMap(this.renderer);
+		// Heavily dimmed IBL — just enough so metallic surfaces have something
+		// to reflect (without it, full-metalness panels read as pure black),
+		// without washing out the directional sun's shadow.
+		this.modelScene.environmentIntensity = 0.04;
 		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
-		// Soft fill light parented to the camera, identity-pointed; we don't
-		// rotate it per-frame so the gltf-viewer-style ~60° offset gives us a
-		// stable highlight regardless of orbit angle.
-		const ambient = new AmbientLight(0xffffff, 0.3);
-		this.modelLight = new DirectionalLightClass(0xffffff, 2.5);
-		this.modelLight.position.set(0.5, 0, 0.866);
-		this.modelCamera.add(ambient);
-		this.modelCamera.add(this.modelLight);
 		this.modelScene.add(this.modelCamera);
+		// Thin ambient floor + a directional sun whose position is set
+		// per-frame to the body→Sun direction in the main scene
+		// (see `renderModelOverlay`).
+		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
+		this.modelLight = new DirectionalLightClass(0xffffff, 3.0);
+		this.modelScene.add(this.modelLight);
+		this.modelScene.add(this.modelLight.target);
 
 		// Skybox: seed rotation synchronously so it's correct from frame 1 (so a
 		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
@@ -612,6 +615,20 @@ export class SceneRenderer {
 		this.modelCamera.near = Math.max(0.01, overlayDist - 5);
 		this.modelCamera.far = overlayDist + 50;
 		this.modelCamera.updateProjectionMatrix();
+
+		// Mirror the scene's sun direction onto the overlay's directional
+		// light so the model is lit on the same side as the rest of the
+		// scene. Sun direction = (sunPos - focusPos) normalised, computed in
+		// world coords; the overlay scene is independent so we apply the unit
+		// vector directly. Light position is the source of the rays (target
+		// is origin where the model sits); arbitrary positive distance.
+		const sunBody = this.bodyObjects.get('naif-10')?.body;
+		if (sunBody) {
+			const [sx, sy, sz] = sunBody.position;
+			const [fx, fy, fz] = focusBody.position;
+			this._tmpV3.set(sx - fx, sy - fy, sz - fz).normalize();
+			this.modelLight.position.copy(this._tmpV3).multiplyScalar(10);
+		}
 
 		this.renderer.autoClear = false;
 		this.renderer.clearDepth();
