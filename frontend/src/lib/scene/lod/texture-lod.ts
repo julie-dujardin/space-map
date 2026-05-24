@@ -1,5 +1,5 @@
 import type { PerspectiveCamera, TextureLoader, WebGLRenderer } from 'three';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
 import {
 	loadBodyTextureTier,

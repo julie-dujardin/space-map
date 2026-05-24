@@ -21,7 +21,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
 import { SRGBColorSpace, TextureLoader, type Texture } from 'three';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { createLabel, getLabelVariant, setLabelName } from '../label/factory';
 import { asteroidPointSize, makeCircleTexture, makeOrbitLine, makePointCloud } from './builders';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from './sun';

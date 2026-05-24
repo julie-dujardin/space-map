@@ -51,7 +51,7 @@ import {
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { dateToJD } from '$lib/format/date';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 const MIN_LOAD_INTERVAL_MS = 2000;
 

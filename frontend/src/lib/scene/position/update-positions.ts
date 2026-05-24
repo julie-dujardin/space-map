@@ -10,7 +10,7 @@ import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import type { BodyObjects } from '$lib/scene/types';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { Vec3 } from '$lib/scene/animation/math';
 import {

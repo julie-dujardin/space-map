@@ -12,7 +12,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { kmToScene } from '$lib/math/units';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setOrbitLineResolution } from '$lib/scene/objects/builders';
 

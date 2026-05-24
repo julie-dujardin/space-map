@@ -3,7 +3,7 @@
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
-	import type { SimClock } from '$lib/scene/clock.svelte';
+	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { dateToJD, jdToDate, formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { getSettings } from '$lib/state/settings.svelte';

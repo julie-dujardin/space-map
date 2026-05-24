@@ -2,7 +2,7 @@ import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer 
 import { ObjectType } from '$lib/types/objects';
 import { VISIBILITY } from './thresholds';
 import { BARYCENTER_PRIMARY } from '$lib/constants';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import {
 	applyLabelDisplay,
 	isScreenOccluded,

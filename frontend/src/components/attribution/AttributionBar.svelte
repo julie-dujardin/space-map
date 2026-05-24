@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import { siGithub } from 'simple-icons';
-	import type { ContextManager } from '$lib/scene/context-manager.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';

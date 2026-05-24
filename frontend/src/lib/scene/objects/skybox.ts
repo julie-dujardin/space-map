@@ -47,7 +47,7 @@ import {
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { fetchMetadata, type SkyboxMetadata } from '$lib/fetch/metadata';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 const DEG2RAD = Math.PI / 180;
 const OBLIQUITY_RAD = EARTH_OBLIQUITY_DEG * DEG2RAD;

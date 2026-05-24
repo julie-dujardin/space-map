@@ -1,8 +1,8 @@
 import type { Scene, TextureLoader, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import type { SimClock } from '$lib/scene/clock.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { loadSystemData, unloadSystemTextures } from '$lib/scene/objects/construction';
 
 /**

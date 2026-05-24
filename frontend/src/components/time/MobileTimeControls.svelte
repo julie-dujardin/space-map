@@ -18,7 +18,7 @@
 		PICKER_MIN_DATE,
 		PICKER_MAX_DATE
 	} from '$lib/scene/time-scales';
-	import type { SimClock } from '$lib/scene/clock.svelte';
+	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { untrack } from 'svelte';
 
 	interface Props {

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { SceneRenderer } from '$lib/scene/renderer';
-	import type { ContextManager } from '$lib/scene/context-manager.svelte';
-	import type { SimClock } from '$lib/scene/clock.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 

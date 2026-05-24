@@ -1,7 +1,7 @@
 import type { PositionedBody } from '$lib/types/objects';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 /**
  * Recompute `body.position` in place from its orbital elements at `jd`.

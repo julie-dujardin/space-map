@@ -1,7 +1,7 @@
 import { SphereGeometry, type PerspectiveCamera, type WebGLRenderer } from 'three';
 import { ObjectType, effectiveRadiusKm } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '$lib/scene/types';
 
 /** Pixel-radius → segment count, descending. Down-step uses 15% hysteresis. */

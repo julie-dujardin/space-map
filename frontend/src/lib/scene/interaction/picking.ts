@@ -1,6 +1,6 @@
 import type { PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import type { Vec3 } from '../animation/math';
 

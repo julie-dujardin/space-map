@@ -4,7 +4,7 @@ import type { LandedRecord, Probe } from '$lib/fetch/position/probes/parse';
 import { landedPositionAt } from '$lib/fetch/position/probes/propagate';
 import { kmToScene } from '$lib/math/units';
 import { bodyQuaternion } from '$lib/math/orientation';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { Vec3 } from '$lib/scene/animation/math';
 
 /**

@@ -19,7 +19,7 @@
 		jdToEt,
 		landedPositionAt
 	} from '$lib/fetch/position/probes/propagate';
-	import type { ContextManager } from '$lib/scene/context-manager.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';

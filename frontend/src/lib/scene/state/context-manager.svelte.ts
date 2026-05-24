@@ -2,11 +2,11 @@ import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/object
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { AU_SCALE } from '../math/units';
+import { AU_SCALE } from '$lib/math/units';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
-import { CreditsStore } from '$lib/scene/credits.svelte';
-import { BodyIndex, isTopLevelParent } from '$lib/scene/bodies.svelte';
+import { CreditsStore } from '$lib/scene/state/credits.svelte';
+import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import {
 	chebyshevZoneParams,
 	chunkIndexForJd,

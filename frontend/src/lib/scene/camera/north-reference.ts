@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import type { PositionedBody } from '$lib/types/objects';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 /**
  * A camera "north" reference. `id === null` is the always-available

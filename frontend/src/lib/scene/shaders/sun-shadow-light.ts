@@ -1,7 +1,7 @@
 import type { DirectionalLight, PointLight, Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
 
 const LIGHT_DIST = 10;

@@ -1,8 +1,8 @@
 import { Raycaster, Vector2, Vector3, type Mesh, type PerspectiveCamera } from 'three';
 import type { PositionedBody } from '$lib/types/objects';
 import type { FocusState } from '$lib/scene/animation/focus';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import type { SimClock } from '$lib/scene/clock.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { pickPointCloudBody } from './picking';
 
 const CLICK_DRAG_PX2 = 9; // 3px move tolerance — anything larger reads as a drag, not a click.

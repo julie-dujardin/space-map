@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import { SceneRenderer } from '$lib/scene/renderer';
-	import type { ContextManager } from '$lib/scene/context-manager.svelte';
-	import type { SimClock } from '$lib/scene/clock.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';

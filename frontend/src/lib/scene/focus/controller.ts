@@ -3,8 +3,8 @@ import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PositionedBody } from '$lib/types/objects';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks } from '$lib/scene/types';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import type { SimClock } from '$lib/scene/clock.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { SimClock } from '$lib/scene/state/clock.svelte';
 import {
 	buildOrbitLines,
 	downgradeBodyMesh,

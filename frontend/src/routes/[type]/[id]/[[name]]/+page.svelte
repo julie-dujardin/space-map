@@ -2,8 +2,8 @@
 	import { onMount, setContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from '../../../../components/Scene.svelte';
-	import { ContextManager } from '$lib/scene/context-manager.svelte';
-	import { SimClock } from '$lib/scene/clock.svelte';
+	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { SimClock } from '$lib/scene/state/clock.svelte';
 	import { dateToJD } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';

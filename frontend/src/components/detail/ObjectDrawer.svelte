@@ -12,8 +12,8 @@
 	import { toast } from 'svelte-sonner';
 	import type { PositionedBody } from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
-	import type { ContextManager } from '$lib/scene/context-manager.svelte';
-	import type { SimClock } from '$lib/scene/clock.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';

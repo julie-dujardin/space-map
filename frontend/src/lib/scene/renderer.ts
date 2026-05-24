@@ -16,8 +16,8 @@ import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/Orbit
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { MapViewState } from '$lib/state/view';
 import type { PositionedBody } from '$lib/types/objects';
-import type { ContextManager } from '$lib/scene/context-manager.svelte';
-import type { SimClock } from '$lib/scene/clock.svelte';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { bootThree } from './setup/three-boot';
 import { PointerInteraction } from './interaction/pointer';
