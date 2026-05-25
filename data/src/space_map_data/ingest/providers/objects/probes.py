@@ -32,13 +32,24 @@ from space_map_data.download.providers.spice.bodies.names import (
     load_horizons_names,
 )
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.probes.probe_id import assign_many, et_to_mjd
+from space_map_data.probes.probe_id import ProbeIdRecord, assign_many, et_to_mjd
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
 _COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
+
+# Probes whose position truth is CelesTrak's daily TLE snapshot rather than the
+# Horizons-synthesized chebyshev fit. The probe-* Object is still the canonical
+# row (so /p/N URLs and 3D model assignment resolve to it), but it rides the
+# Earth-zone export with SGP4 elements instead of the probe-zone chunk binaries.
+# Currently just HST: HORIZONS-SYNTH has a kernel for naif=-48 but its temporal
+# resolution is monthly-ish, whereas CelesTrak ships daily TLEs for NORAD 20580.
+_CELESTRAK_PROBE_NAIF_IDS: frozenset[int] = frozenset({-48})
+
+_EARTH_OBJECT_ID = "naif-399"
+_SUN_OBJECT_ID = "naif-10"
 
 # Kernels we never want to feed `_coverage()`: they park a destroyed/landed
 # probe at fixed coords for decades and would push the longest-coverage
@@ -211,33 +222,40 @@ class ProbesIngestor:
             cospar = alias.designation
         return alias.name, cospar
 
-    def _build_row(
-        self,
-        record: dict,
-        probe_id: int,
-        wikidata_qid: str | None,
-        cospar_id: str | None,
-    ) -> dict:
-        object_pk = make_object_id(ID_TYPES.PROBE, probe_id)
-        mb_name, _ = self._mb_identity(record["naif_id"])
+    def _build_row(self, record: dict, rec: ProbeIdRecord) -> dict:
+        object_pk = make_object_id(ID_TYPES.PROBE, rec.probe_id)
+        mb_name, mb_cospar = self._mb_identity(record["naif_id"])
         name = (
             mb_name
             or record.get("name_hint")
             or f"{record['mission']} ({record['naif_id']})"
         )
+        # Cache cospar wins over MB (lets us override MB's "K"-suffixed weirdness
+        # for spacecraft like Hayabusa 2 where MB diverges from satcat's primary
+        # designator).
+        cospar = rec.cospar_id or mb_cospar
+        on_earth = record["naif_id"] in _CELESTRAK_PROBE_NAIF_IDS
         return {
             "id": object_pk,
             "name": name,
             "object_type": ObjectType.spacecraft,
             "naif_id": record["naif_id"],
-            "cospar_id": cospar_id,
-            "probe_id": probe_id,
-            "orbital_source": OrbitalSource.spice_probe,
-            "wikidata_qid": wikidata_qid,
-            # Probe positions live in the per-zone chunk files, not in a
-            # Kepler/SGP4 sub-table — `has_position=False` so element-based
-            # writers skip them. The probes/ zone writer reads kernels directly.
-            "has_position": False,
+            "cospar_id": cospar,
+            "norad_cat_id": rec.norad_cat_id,
+            "probe_id": rec.probe_id,
+            # Parent_id is decoration for probe rows — the frontend reads the
+            # actual parent from the position file at render time. Default to
+            # the Sun (matches SBDB's heliocentric convention); celestrak-driven
+            # probes get Earth so the Earth-zone export query picks them up.
+            "parent_id": _EARTH_OBJECT_ID if on_earth else _SUN_OBJECT_ID,
+            "orbital_source": (
+                OrbitalSource.celestrak if on_earth else OrbitalSource.spice_probe
+            ),
+            "wikidata_qid": rec.wikidata_qid,
+            # `has_position=True` for celestrak-routed probes so the elements
+            # writer ships them; default probes ride the probes/ zone (chunk
+            # binaries) which reads kernels directly, hence False.
+            "has_position": on_earth,
         }
 
     def run(self) -> None:
@@ -262,10 +280,7 @@ class ProbesIngestor:
         rows: list[dict] = []
         for r in tqdm(records, desc="Probes ingest"):
             rec = assignments[(r["mission"], r["naif_id"])]
-            _, candidate_cospar = self._mb_identity(r["naif_id"])
-            rows.append(
-                self._build_row(r, rec.probe_id, rec.wikidata_qid, candidate_cospar)
-            )
+            rows.append(self._build_row(r, rec))
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
                 rows = []

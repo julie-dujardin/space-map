@@ -62,6 +62,14 @@ class ProbeIdRecord:
     inception_mjd: int
     dedupe: int
     wikidata_qid: str | None = None
+    # Cross-references for spacecraft also catalogued by CelesTrak/SATCAT.
+    # When set, the celestrak ingest skips minting a parallel norad_satcat-N
+    # Object for this spacecraft and re-points its CelesTrak/Satcat rows at
+    # this probe-* row instead. Mostly used for sub-spacecraft that share
+    # their launch's NORAD with the parent (Huygens↔Cassini, LICIACube↔DART)
+    # and for entries whose Horizons MB designation lacks a COSPAR.
+    cospar_id: str | None = None
+    norad_cat_id: int | None = None
 
     @property
     def probe_id(self) -> int:
@@ -181,6 +189,8 @@ def assign(
             inception_mjd=int(rec["inception_mjd"]),
             dedupe=int(rec["dedupe"]),
             wikidata_qid=rec.get("wikidata_qid"),
+            cospar_id=rec.get("cospar_id"),
+            norad_cat_id=rec.get("norad_cat_id"),
         )
 
     used = {
@@ -197,6 +207,8 @@ def assign(
         "dedupe": dedupe,
         "probe_id": record.probe_id,
         "wikidata_qid": None,
+        "cospar_id": None,
+        "norad_cat_id": None,
     }
     if owned:
         _save_cache(cache)

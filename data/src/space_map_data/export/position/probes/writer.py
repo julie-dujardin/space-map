@@ -658,16 +658,25 @@ def _enumerate_probes() -> list[tuple[Path, list[Path], int]]:
 
 def _build_probe_metas(
     session: Session, has_localized: dict[str, bool]
-) -> dict[int, _ProbeMeta]:
-    """Map probe_id → _ProbeMeta for every probe Object row in the DB."""
+) -> tuple[dict[int, _ProbeMeta], set[int]]:
+    """Map probe_id → _ProbeMeta + set of probe_ids routed elsewhere.
+
+    Only `orbital_source=spice_probe` rows ride the probe-zone export. Probes
+    routed to another export (e.g. HST → CelesTrak Earth zone) still have a
+    kernel on disk that the classify pass will pick up, so we return those
+    probe_ids separately to distinguish "missing Object row" (warn) from
+    "routed via another zone" (silent skip).
+    """
     rows = session.execute(
-        select(Object.id, Object.probe_id, Object.object_type).where(
-            Object.orbital_source == OrbitalSource.spice_probe
-        )
+        select(
+            Object.id, Object.probe_id, Object.object_type, Object.orbital_source
+        ).where(Object.probe_id.is_not(None))
     ).all()
     metas: dict[int, _ProbeMeta] = {}
+    excluded: set[int] = set()
     for row in rows:
-        if row.probe_id is None:
+        if row.orbital_source != OrbitalSource.spice_probe:
+            excluded.add(row.probe_id)
             continue
         metas[row.probe_id] = _ProbeMeta(
             probe_id=row.probe_id,
@@ -675,7 +684,7 @@ def _build_probe_metas(
             object_type_ordinal=OBJECT_TYPE_ORDINAL.get(row.object_type, 255),
             has_localized=bool(has_localized.get(row.id, False)),
         )
-    return metas
+    return metas, excluded
 
 
 def _classify_worker_init(kernel_paths: list[str]) -> None:
@@ -738,6 +747,7 @@ def _classify_worker(
 def _classify_pass(
     probe_id_cache: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
+    excluded_probe_ids: set[int],
     lsk_pck_paths: list[Path],
     generic_spk_paths: list[Path],
     start_jd: float,
@@ -810,6 +820,11 @@ def _classify_pass(
                 cache=probe_id_cache,
             )
             probe_id = rec.probe_id
+            if probe_id in excluded_probe_ids:
+                # Probe exists but its Object row routes to another export
+                # (e.g. HST → CelesTrak Earth zone). Silent skip — its
+                # position data ships from that zone, not here.
+                continue
             if probe_id not in metas_by_probe_id:
                 logger.warning(
                     "no Object row for probe_id=%d (mission=%s naif=%d); "
@@ -1287,7 +1302,7 @@ def write_probes(
         return {}
 
     probe_id_cache = _load_probe_id_cache()
-    metas_by_probe_id = _build_probe_metas(session, has_localized)
+    metas_by_probe_id, excluded_probe_ids = _build_probe_metas(session, has_localized)
     start_jd = _year_to_jd(_PROBE_EXPORT_START_YEAR)
     end_jd = _year_to_jd(_PROBE_EXPORT_END_YEAR)
 
@@ -1323,6 +1338,7 @@ def write_probes(
         plans, chunk_index = _classify_pass(
             probe_id_cache,
             metas_by_probe_id,
+            excluded_probe_ids,
             lsk_pck_paths,
             generic_spk_paths,
             start_jd,

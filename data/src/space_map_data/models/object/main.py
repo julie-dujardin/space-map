@@ -125,7 +125,14 @@ class Object(Base):
         unique=False, default=None, index=True
     )  # Minor Planet Center database designation (e.g. 2024 FG9, 1 [ceres]), from JPL SBDB
     norad_cat_id: Mapped[int | None] = mapped_column(
-        unique=True, default=None, index=True
+        # Not unique: sub-spacecraft that ride a primary into orbit and split
+        # off beyond Earth share their launch's NORAD with the parent. Huygens
+        # rode 1997-061A with Cassini (NORAD 25008); LICIACube rode DART
+        # (NORAD 49497); Ingenuity rode Mars 2020 (NORAD 47545). Both the
+        # parent's probe row and the sub-spacecraft's probe row carry the
+        # same NORAD so cross-system search by catalog number resolves either.
+        default=None,
+        index=True,
     )  # NORAD catalog number (from CelesTrak or SATCAT)
     cospar_id: Mapped[str | None] = mapped_column(
         default=None, index=True

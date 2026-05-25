@@ -49,6 +49,11 @@ class CelesTrakIngestor:
         self.missing_satcat = 0
         # Pre-loaded from the satcat DB table (ingested earlier).
         self.satcat_object_types: dict[int, SatcatObjectType | None] = {}
+        # COSPAR → existing probe-* Object.id. Built once in `run()` before
+        # any row is parsed; lets us consolidate this row onto the pre-existing
+        # probe row instead of minting a parallel `norad_satcat-N` stub for
+        # spacecraft tracked under both providers (HST, Cassini, Kepler, …).
+        self.cospar_to_probe: dict[str, str] = {}
 
     def _load_satcat_object_types(self) -> None:
         """Pre-load object_type from the satcat table for ObjectType classification."""
@@ -60,9 +65,25 @@ class CelesTrakIngestor:
             "Loaded %d SATCAT object types from DB", len(self.satcat_object_types)
         )
 
+    def _load_cospar_to_probe(self) -> None:
+        """{cospar_id: probe-* Object.id} for already-ingested probe rows."""
+        self.cospar_to_probe = {
+            c: oid
+            for c, oid in self.session.execute(
+                select(Object.cospar_id, Object.id).where(
+                    Object.id.like("probe-%"),
+                    Object.cospar_id.is_not(None),
+                )
+            ).all()
+        }
+        logger.info(
+            "Loaded %d probe COSPAR cross-references for consolidation",
+            len(self.cospar_to_probe),
+        )
+
     def _parse_row(self, row: dict) -> dict:
-        object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
         norad = int(row["NORAD_CAT_ID"])
+        cospar = string_or_none(row["OBJECT_ID"])
         name = string_or_none(row["OBJECT_NAME"])
         if name == "UNKNOWN":
             name = None
@@ -77,26 +98,36 @@ class CelesTrakIngestor:
             else ObjectType.spacecraft
         )
 
-        obj = dict(
-            id=object_id,
-            name=name,
-            object_type=object_type,
-            norad_cat_id=norad,
-            cospar_id=string_or_none(row["OBJECT_ID"]),
-            scale=ElementsScale.planet,
-            parent_id="naif-399",
-            orbital_source=OrbitalSource.celestrak,
-            # Earth sats live in the daily TLE snapshots; rows with no
-            # current TLE are dropped at overlay time, not here.
-            has_position=True,
-        )
+        # If a probe row already owns this COSPAR (Cassini, HST, Kepler, …),
+        # consolidate: no parallel `norad_satcat-N` Object, the CelesTrak row
+        # and Satcat link both point at the probe row.
+        probe_object_id = self.cospar_to_probe.get(cospar) if cospar else None
+        if probe_object_id is not None:
+            obj = None
+            ct_object_id = probe_object_id
+        else:
+            object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
+            obj = dict(
+                id=object_id,
+                name=name,
+                object_type=object_type,
+                norad_cat_id=norad,
+                cospar_id=cospar,
+                scale=ElementsScale.planet,
+                parent_id="naif-399",
+                orbital_source=OrbitalSource.celestrak,
+                # Earth sats live in the daily TLE snapshots; rows with no
+                # current TLE are dropped at overlay time, not here.
+                has_position=True,
+            )
+            ct_object_id = object_id
         # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are
         # not persisted: the export reads fresh values from the daily snapshot
         # files. Keep only metadata + SGP4 extras the writer reads at export
         # time (those get overwritten per-day too, but ingest seeds them so
         # consumers querying the DB outside export still see something).
         ct = dict(
-            object_id=object_id,
+            object_id=ct_object_id,
             OBJECT_NAME=row["OBJECT_NAME"],
             TRAK_OBJECT_ID=row["OBJECT_ID"],
             EPHEMERIS_TYPE=int_or_none(row["EPHEMERIS_TYPE"]),
@@ -108,37 +139,58 @@ class CelesTrakIngestor:
             MEAN_MOTION_DOT=float_or_none(row["MEAN_MOTION_DOT"]),
             MEAN_MOTION_DDOT=float_or_none(row["MEAN_MOTION_DDOT"]),
         )
-        return {"object": obj, "celestrak": ct}
+        return {
+            "object": obj,
+            "celestrak": ct,
+            "norad": norad,
+            "satcat_link_id": ct_object_id,
+        }
 
     def _insert(self, rows: list[dict]) -> None:
         if not rows:
             return
-        objects = [r["object"] for r in rows]
-        self.session.execute(insert(Object), objects)
+        objects = [r["object"] for r in rows if r["object"] is not None]
+        if objects:
+            self.session.execute(insert(Object), objects)
         ct_rows = [r["celestrak"] for r in rows]
         self.session.execute(insert(CelesTrakRow), ct_rows)
         self.session.commit()
 
     def _link_satcat(self, rows: list[dict]) -> None:
-        """Set Satcat.object_id for satellites that now have Object rows."""
-        for r in rows:
-            norad = r["object"]["norad_cat_id"]
-            object_id = r["object"]["id"]
-            self.session.execute(
-                update(Satcat)
-                .where(Satcat.NORAD_CAT_ID == norad)
-                .values(object_id=object_id)
+        """Set Satcat.object_id for satellites tracked by CelesTrak.
+
+        For consolidated rows the link points at the probe-* Object; otherwise
+        at the freshly-minted `norad_satcat-N`. Skipped when satcat has no row
+        for the NORAD (group-only debris, etc.) — the bulk UPDATE's strict
+        rowcount check would raise StaleDataError otherwise.
+        """
+        link_updates = [
+            {"NORAD_CAT_ID": r["norad"], "object_id": r["satcat_link_id"]}
+            for r in rows
+            if r["norad"] in self.satcat_object_types
+        ]
+        skipped = len(rows) - len(link_updates)
+        if skipped:
+            logger.info(
+                "Skipping satcat link for %d NORAD(s) without a satcat row", skipped
             )
-        self.session.commit()
+        if link_updates:
+            self.session.execute(update(Satcat), link_updates)
+            self.session.commit()
 
     def _clear(self) -> None:
         self.session.execute(delete(CelesTrakRow))
         # Reset satcat object_id links for all NORAD-backed objects (both
         # celestrak-tracked active sats and inactive satcat-backfilled stubs)
-        # before deleting those objects.
+        # before deleting those objects. Probe-* links are reset too so a
+        # stale link from a previous run can't survive when its NORAD now
+        # appears in gp-active (the consolidation path will re-set it).
         self.session.execute(
             update(Satcat)
-            .where(Satcat.object_id.like("norad_satcat-%"))
+            .where(
+                Satcat.object_id.like("norad_satcat-%")
+                | Satcat.object_id.like("probe-%")
+            )
             .values(object_id=None)
         )
         self.session.execute(delete(Object).where(Object.id.like("norad_satcat-%")))
@@ -150,6 +202,7 @@ class CelesTrakIngestor:
             return
         self._clear()
         self._load_satcat_object_types()
+        self._load_cospar_to_probe()
         group_data = load_groups(self.groups_dir)
 
         total = _count_csv_rows(self.csv_path)
@@ -217,6 +270,16 @@ class CelesTrakIngestor:
         self._backfill_inactive_satcat()
 
     def _backfill_inactive_satcat(self) -> None:
+        """Mint `norad_satcat-N` rows for satcat entries CelesTrak doesn't cover.
+
+        Active sats and inactive sats with a probe match were both handled
+        inline during `_parse_row` (no parallel rows minted), so anything
+        still lacking an `object_id` here is genuinely satcat-only: decayed
+        debris, retired birds without current TLEs, satcat dust. Mint stubs
+        with no `orbital_source` / `has_position` so the export skips them
+        but downstream consumers (model ingest, focus URLs) can still link
+        in via NORAD.
+        """
         rows = self.session.execute(
             select(
                 Satcat.NORAD_CAT_ID,
@@ -228,25 +291,15 @@ class CelesTrakIngestor:
         if not rows:
             return
 
-        # Consolidate: if an Object already owns this COSPAR (typically a
-        # probe row whose spacecraft is also catalogued in SATCAT — e.g.
-        # NORAD 25008 + probe-88592384 both = Cassini), reuse it instead of
-        # minting a parallel norad_satcat-N row. Load every Object cospar in
-        # one shot — IN-clause batching would blow past SQLite's variable
-        # limit when satcat has tens of thousands of unobjected rows.
-        cospar_to_object: dict[str, str] = {
-            c: oid
-            for c, oid in self.session.execute(
-                select(Object.cospar_id, Object.id).where(Object.cospar_id.is_not(None))
-            ).all()
-        }
-
         new_objects: list[dict] = []
         link_updates: list[dict] = []
+        reused = 0
         for norad, name, cospar, sotype in rows:
-            reuse_id = cospar_to_object.get(cospar) if cospar else None
+            # Inactive sat whose spacecraft is already a probe row — reuse it.
+            reuse_id = self.cospar_to_probe.get(cospar) if cospar else None
             if reuse_id:
                 link_updates.append({"NORAD_CAT_ID": norad, "object_id": reuse_id})
+                reused += 1
                 continue
             object_id = make_object_id(ID_TYPES.NORAD_SATCAT, norad)
             object_type = (
@@ -275,9 +328,9 @@ class CelesTrakIngestor:
             self.session.execute(update(Satcat), link_updates[i : i + self.BATCH])
         self.session.commit()
         logger.info(
-            "Backfilled %d inactive SATCAT Object stubs, reused %d existing Objects via COSPAR",
+            "Backfilled %d inactive SATCAT Object stubs, reused %d existing probe Objects via COSPAR",
             len(new_objects),
-            len(link_updates) - len(new_objects),
+            reused,
         )
 
 
@@ -288,51 +341,3 @@ def _count_csv_rows(path: Path) -> int:
 
 def ingest(download_dir: Path) -> None:
     CelesTrakIngestor(download_dir).run()
-
-
-def link_satcat_to_probes() -> None:
-    """Re-point ``Satcat.object_id`` at the matching probe-* Object via COSPAR.
-
-    Runs after the probes ingest (which writes probe-* Objects with
-    cospar_id). Without this step, a SATCAT row's ``object_id`` stays
-    pinned to its ``norad_satcat-N`` stub, and downstream lookups
-    (notably ModelProcessor's mission resolution) attach metadata to the
-    wrong Object — e.g. Kepler's 3D model would land on
-    ``norad_satcat-34380`` instead of ``probe-96198656`` and never render
-    when the user focuses Kepler via its probe-id URL.
-
-    The ``norad_satcat-N`` Object itself stays in place — it still holds
-    the CelesTrak row + daily TLE overlay used by the Earth-zone export.
-    Only the Satcat→Object pointer moves.
-    """
-    session = get_session()
-    cospar_to_probe: dict[str, str] = {
-        c: oid
-        for c, oid in session.execute(
-            select(Object.cospar_id, Object.id).where(
-                Object.cospar_id.is_not(None), Object.id.like("probe-%")
-            )
-        ).all()
-    }
-    if not cospar_to_probe:
-        return
-
-    rows = session.execute(
-        select(Satcat.NORAD_CAT_ID, Satcat.COSPAR_ID, Satcat.object_id).where(
-            Satcat.COSPAR_ID.is_not(None)
-        )
-    ).all()
-    updates: list[dict] = []
-    for norad, cospar, current_oid in rows:
-        probe_id = cospar_to_probe.get(cospar)
-        if probe_id is None or current_oid == probe_id:
-            continue
-        updates.append({"NORAD_CAT_ID": norad, "object_id": probe_id})
-
-    if not updates:
-        return
-    BATCH = 10_000
-    for i in range(0, len(updates), BATCH):
-        session.execute(update(Satcat), updates[i : i + BATCH])
-    session.commit()
-    logger.info("Re-pointed %d SATCAT rows at matching probe-* Objects", len(updates))
