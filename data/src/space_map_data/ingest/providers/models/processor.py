@@ -613,7 +613,9 @@ class ModelProcessor:
         """Per-tier ``{source, source_url, attribution, downloaded_at}``.
 
         Pulls the per-file ``source`` from merged-manifest entries; falls
-        back to the doc-level ``source`` for single-source manifests.
+        back to the doc-level ``source`` for single-source manifests. One-off
+        manual downloads can specify ``source_url`` + ``attribution`` inline
+        on the file entry instead of registering a MODEL_CATALOGS catalog.
         """
         doc = next((d for p, d in self._yaml_docs if p == yaml_path), None) or {}
         doc_source = doc.get("source") or {}
@@ -628,17 +630,29 @@ class ModelProcessor:
                 )
                 return {}
             catalog = config.MODEL_CATALOGS.get(name)
+            inline_url = f.get("source_url")
+            inline_attribution = f.get("attribution")
             out: dict = {"source": name}
-            if catalog:
+            if inline_url:
+                out["source_url"] = inline_url
+            elif catalog:
                 out["source_url"] = catalog["url"]
-                # Per-file/per-manifest attribution overrides the catalog default.
-                attribution = (
+            if inline_attribution:
+                out["attribution"] = inline_attribution
+            elif catalog:
+                # Per-manifest attribution overrides the catalog default.
+                manifest_attribution = (
                     doc_source.get("attribution") if name == doc_name else None
                 )
                 out["attribution"] = (
-                    attribution
-                    if isinstance(attribution, str)
+                    manifest_attribution
+                    if isinstance(manifest_attribution, str)
                     else catalog["default_attribution"]
+                )
+            if not catalog and not (inline_url and inline_attribution):
+                self._global_warnings.append(
+                    f"file {f.get('path')!r}: source {name!r} not in MODEL_CATALOGS "
+                    f"and missing inline source_url/attribution"
                 )
             ts = self._catalog_downloaded_at.get(name)
             if ts:
