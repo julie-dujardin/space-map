@@ -157,20 +157,30 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
 
     Per-body model lists aren't worth the noise on the credits page — the
     catalog license (NASA's Image Use, ESA's SciFleet terms) is what
-    matters. Bundles whose ``source`` doesn't appear in ``MODEL_CATALOGS``
-    get a warning so the catalog list stays maintained as new sources arrive.
+    matters. Each bundle's per-tier ``exports.{tier}.source`` carries the
+    catalog name (the two tiers may originate in different catalogs for
+    merged-manifest entries); the union across all tiers contributes to
+    the credits aggregate. Unrecognised names are warned about so
+    ``MODEL_CATALOGS`` stays maintained as new sources arrive.
     """
     matched: set[str] = set()
     for slug, meta in model_metadata.items():
-        source = meta.get("source")
-        if not source or source not in MODEL_CATALOGS:
-            logger.warning(
-                "Model %s has unrecognised source %r — add it to MODEL_CATALOGS",
-                slug,
-                source,
-            )
+        names: list[str] = []
+        for tier in (meta.get("exports") or {}).values():
+            if isinstance(tier, dict) and isinstance(tier.get("source"), str):
+                names.append(tier["source"])
+        if not names:
+            logger.warning("Model %s has no source field on any tier", slug)
             continue
-        matched.add(source)
+        for name in names:
+            if name not in MODEL_CATALOGS:
+                logger.warning(
+                    "Model %s has unrecognised source %r — add it to MODEL_CATALOGS",
+                    slug,
+                    name,
+                )
+                continue
+            matched.add(name)
     return [
         {"name": name, "url": catalog["url"]}
         for name, catalog in MODEL_CATALOGS.items()

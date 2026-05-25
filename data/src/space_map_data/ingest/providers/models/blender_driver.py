@@ -78,13 +78,24 @@ def _import(path: str) -> None:
 
 
 def _export_glb(path: str) -> None:
+    """Export the scene as a glb without animations or morph targets.
+
+    The frontend renders all spacecraft models as static meshes, so
+    animation data is dead weight. Disabling it also sidesteps a Blender
+    5.x glTF exporter crash on meshes with animation data but no shape
+    keys (``NoneType`` has no ``key_blocks`` — e.g. NASA's InSight Cruise
+    Lander .blend variants); the operator catches that AttributeError
+    internally and returns ``CANCELLED``, so Python-side try/except can't
+    recover.
+    """
     bpy.ops.export_scene.gltf(
         filepath=path,
         export_format="GLB",
         export_apply=True,
         export_yup=True,
         export_extras=False,
-        export_animations=True,
+        export_animations=False,
+        export_morph=False,
         export_image_format="AUTO",
     )
 

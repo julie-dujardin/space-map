@@ -250,7 +250,12 @@ def _iter_non_sbdb_zone_snapshots(
         ),
     ]
     for zone, zoom, q in specs:
-        objects = q.order_by(Object.random_int).limit(limit_per_zone).all()
+        # Model-pointed Objects first (see _run_earth_zones for rationale).
+        objects = (
+            q.order_by(Object.model_name.is_(None), Object.random_int)
+            .limit(limit_per_zone)
+            .all()
+        )
         if not objects:
             logger.info("  %s zoom=%d: empty, skipping", zone, zoom)
             continue
@@ -350,9 +355,15 @@ def _run_earth_zones(
         (0, ~is_constellation),
         (1, is_constellation),
     ):
+        # Order: Objects pointing at a 3D model bundle first, then the rest by
+        # random_int. Without this, the random sample can drop a model-pointed
+        # satellite (HST, Kepler, ISS, …) on the floor — its bundle ships to
+        # the CDN but the per-object data file doesn't reference it, so the
+        # frontend never loads the model. Model-pointed Earth sats are < 1k,
+        # well below limit_per_zone, so this is a no-op for the limit.
         base_objects = (
             earth_base.filter(zoom_filter)
-            .order_by(Object.random_int)
+            .order_by(Object.model_name.is_(None), Object.random_int)
             .limit(limit_per_zone)
             .all()
         )

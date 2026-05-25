@@ -41,6 +41,7 @@ PAGE_URL = "https://scifleet.esa.int/model-downloads"
 
 TARGET_DIR = DOWNLOAD_DIR / "3d" / "ESA-SciFleet"
 DIR_LABEL = "ESA-SciFleet"  # used in model paths (relative to DOWNLOAD_DIR/3d/)
+MERGED_MANIFEST = DOWNLOAD_DIR / "3d" / "merged.yaml"
 
 # Formats to fetch and the `type:` label written into metadata.yaml.
 WANTED_FORMATS: dict[str, str] = {
@@ -70,6 +71,66 @@ def _strip_html(text: str | None) -> str | None:
     return text or None
 
 
+def _load_claimed_esa_slugs() -> set[str]:
+    """ESA slugs claimed by other manifests — to be skipped on metadata write.
+
+    A slug is "claimed" if its corresponding file (``<slug>.<ext>``) appears
+    in the ``files:`` list of an entry that's NOT itself that slug — meaning
+    another entry has folded those files in.
+
+    Sources:
+    - ``merged.yaml`` — cross-catalog consolidations (e.g. ``cassini`` in
+      merged.yaml uses ``ESA-SciFleet/cassini_huygens/cassini.fbx``).
+    - Existing per-catalog ``metadata.yaml`` files — intra-ESA folds (e.g.
+      ESA ``schiaparelli`` has ``edm.fbx`` folded in, claiming ``edm``).
+
+    Files are still downloaded — they're referenced by path — but the
+    standalone entry doesn't appear in the per-catalog metadata so the
+    slug-uniqueness check on the ingest side doesn't fire.
+    """
+    claimed: set[str] = set()
+
+    # 1. merged.yaml claims (cross-catalog).
+    if MERGED_MANIFEST.is_file():
+        try:
+            doc = yaml.safe_load(MERGED_MANIFEST.read_text())
+        except yaml.YAMLError as e:
+            logger.warning(
+                "Failed to parse %s: %s — no merged exclusions applied",
+                MERGED_MANIFEST,
+                e,
+            )
+            doc = None
+        for entry in (doc or {}).get("entries") or []:
+            for f in entry.get("files") or []:
+                path = f.get("path") or ""
+                if path.startswith(f"{DIR_LABEL}/"):
+                    claimed.add(Path(path).stem)
+
+    # 2. Intra-ESA folds: a file basename that differs from its host entry's
+    # slug is folded foreign content (e.g. schiaparelli's files contain
+    # edm.fbx → claims `edm`). Walk every existing ESA metadata.yaml.
+    if TARGET_DIR.exists():
+        for sub in TARGET_DIR.iterdir():
+            meta = sub / "metadata.yaml"
+            if not meta.is_file():
+                continue
+            try:
+                doc = yaml.safe_load(meta.read_text())
+            except yaml.YAMLError:
+                continue
+            for entry in (doc or {}).get("entries") or []:
+                entry_slug = entry.get("slug")
+                if not entry_slug:
+                    continue
+                for f in entry.get("files") or []:
+                    stem = Path(f.get("path") or "").stem
+                    if stem and stem != entry_slug:
+                        claimed.add(stem)
+
+    return claimed
+
+
 class ESA3DDownloader(Downloader):
     """Mirror scifleet.esa.int 3D models."""
 
@@ -80,6 +141,13 @@ class ESA3DDownloader(Downloader):
         self.client = client
         self.out_dir = TARGET_DIR
         TARGET_DIR.mkdir(parents=True, exist_ok=True)
+        self._claimed_slugs = _load_claimed_esa_slugs()
+        if self._claimed_slugs:
+            logger.info(
+                "merged.yaml claims %d ESA slug(s): %s",
+                len(self._claimed_slugs),
+                sorted(self._claimed_slugs),
+            )
 
     def is_complete(self, limit: int | None) -> bool:
         # Always re-run; per-file skip handles incremental downloads.
@@ -139,7 +207,13 @@ class ESA3DDownloader(Downloader):
         dir_path = TARGET_DIR / root
         dir_path.mkdir(parents=True, exist_ok=True)
 
+        # Preserve hand-edits (canonical, notes, wikidata_qid, missions, …)
+        # across rewrites by indexing the existing metadata.yaml by slug.
+        out = dir_path / "metadata.yaml"
+        existing_by_slug = self._load_existing_entries(out)
+
         entries: list[dict] = []
+        seen_slugs: set[str] = set()
         for slug in sorted(members):
             entry = catalog[slug]
             downloads = entry.get("downloads", {}) or {}
@@ -165,31 +239,141 @@ class ESA3DDownloader(Downloader):
                 )
             if not files:
                 logger.warning("No models downloaded for %s", slug)
-            entries.append(self._build_entry(slug, entry, files))
+            seen_slugs.add(slug)
+            if slug in self._claimed_slugs:
+                # Files were still downloaded so the claiming entry's path
+                # references resolve; the standalone entry just doesn't
+                # appear in this metadata.yaml (would otherwise trip
+                # slug-uniqueness on the ingest side).
+                if existing_by_slug.get(slug, {}).get("canonical"):
+                    logger.warning(
+                        "ESA slug %r marked canonical AND claimed elsewhere — "
+                        "dropping standalone entry; review your manifest",
+                        slug,
+                    )
+                else:
+                    logger.info("ESA slug %r excluded — claimed elsewhere", slug)
+                continue
+            entries.append(
+                self._build_entry(slug, entry, files, existing_by_slug.get(slug))
+            )
+
+        # Carry over entries whose slug no longer appears in the API response
+        # (verbatim) instead of dropping them — the user's hand-edits and any
+        # still-on-disk files stay useful. Warn so the divergence is visible.
+        # Claimed slugs are still excluded.
+        for stale_slug, stale_entry in existing_by_slug.items():
+            if stale_slug in seen_slugs:
+                continue
+            if stale_slug in self._claimed_slugs:
+                continue
+            logger.warning(
+                "ESA slug %r no longer in catalog API — keeping existing entry as-is",
+                stale_slug,
+            )
+            entries.append(stale_entry)
+        # Restore alphabetical ordering after the verbatim appends.
+        entries.sort(key=lambda e: e.get("slug") or "")
+
+        if not entries:
+            # Every member is claimed → no per-catalog manifest makes sense
+            # for this root. Drop any stale file from a previous run.
+            if out.exists():
+                out.unlink()
+                logger.info(
+                    "Removed stale %s (all members claimed elsewhere)",
+                    out.relative_to(TARGET_DIR.parent),
+                )
+            else:
+                logger.info(
+                    "Skipping metadata write for %s (all members claimed elsewhere)",
+                    dir_path.relative_to(TARGET_DIR.parent),
+                )
+            return
 
         self._write_metadata(dir_path, root, entries)
 
-    def _build_entry(self, slug: str, raw: dict, files: list[dict]) -> dict:
+    def _load_existing_entries(self, path: Path) -> dict[str, dict]:
+        if not path.is_file():
+            return {}
+        try:
+            doc = yaml.safe_load(path.read_text())
+        except yaml.YAMLError as e:
+            logger.warning(
+                "Existing %s unreadable (%s); hand-edits won't be preserved this run",
+                path,
+                e,
+            )
+            return {}
         return {
-            "slug": slug,
-            "kind": "probe",
-            "wikidata_qid": None,
-            "esa_catalog": {
-                "id": slug,
-                "parent": raw.get("parent"),
-                "label": raw.get("label"),
-                "launch_year": raw.get("launch_year") or None,
-                "status": raw.get("status") or None,
-                "category_filter": raw.get("category_filter") or None,
-                "description": _strip_html(raw.get("description")),
-            },
-            "files": files,
-            # IDs (naif_id, probe_id, norad_cat_id, cospar_id, name) per mission
-            # are filled in manually after download — the SciFleet API doesn't
-            # expose them. Multi-mission entries (Cluster, Double Star, Proba-3)
-            # grow extra rows under `missions:`.
-            "missions": [],
+            entry["slug"]: entry
+            for entry in ((doc or {}).get("entries") or [])
+            if entry.get("slug")
         }
+
+    def _build_entry(
+        self, slug: str, raw: dict, files: list[dict], existing: dict | None
+    ) -> dict:
+        """Build a metadata entry, preserving hand-edits across rewrites.
+
+        Downloader-owned (always refreshed): ``slug``, ``esa_catalog``. The
+        ``files`` list is API-derived but carries over any *foreign-stem*
+        entries from ``existing`` (e.g. ``rosetta`` keeps its folded-in
+        ``rosetta_sc.fbx`` across re-downloads — without that, the fold
+        relationship erodes and the foreign slug pops back as standalone
+        on the next run).
+
+        Defaulted-if-absent but preserved-if-set: ``kind`` (default
+        ``"probe"``), ``wikidata_qid`` (default ``None``), ``missions``
+        (default ``[]``). Everything else (``canonical``, ``notes``, unknown
+        future fields) is carried over verbatim from ``existing``.
+
+        Field order in the output is fixed so diffs stay readable across runs.
+        """
+        existing = existing or {}
+        entry: dict = {"slug": slug, "kind": existing.get("kind", "probe")}
+        if existing.get("canonical"):
+            entry["canonical"] = existing["canonical"]
+        if existing.get("notes"):
+            entry["notes"] = existing["notes"]
+        entry["wikidata_qid"] = existing.get("wikidata_qid")
+        entry["esa_catalog"] = {
+            "id": slug,
+            "parent": raw.get("parent"),
+            "label": raw.get("label"),
+            "launch_year": raw.get("launch_year") or None,
+            "status": raw.get("status") or None,
+            "category_filter": raw.get("category_filter") or None,
+            "description": _strip_html(raw.get("description")),
+        }
+        # Carry over folded-in files (basename ≠ own slug) so the fold relation
+        # survives rewrites. Without this, _load_claimed_esa_slugs loses its
+        # only signal that the foreign slug is claimed.
+        folded = [
+            f
+            for f in (existing.get("files") or [])
+            if Path(f.get("path", "")).stem != slug
+            and not any(f.get("path") == nf["path"] for nf in files)
+        ]
+        if folded:
+            logger.info(
+                "preserving %d folded file(s) on ESA entry %r: %s",
+                len(folded),
+                slug,
+                [Path(f["path"]).name for f in folded],
+            )
+        entry["files"] = files + folded
+        # IDs (naif_id, probe_id, norad_cat_id, cospar_id, name) per mission
+        # are filled in manually after download — the SciFleet API doesn't
+        # expose them. Multi-mission entries (Cluster, Double Star, Proba-3)
+        # grow extra rows under `missions:`.
+        entry["missions"] = existing.get("missions") or []
+        # Carry over any other user-added fields that the downloader doesn't
+        # know about, after the canonical-ordered ones.
+        for k, v in existing.items():
+            if k not in entry:
+                entry[k] = v
+        return entry
 
     def _write_metadata(self, dir_path: Path, root: str, entries: list[dict]) -> None:
         meta = {

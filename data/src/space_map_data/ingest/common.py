@@ -44,6 +44,11 @@ def ingest_objects(download_dir: Path) -> None:
     # Spacecraft Object rows from `missions/*/_index.json`. Their IDs are
     # `probe-<int>` rather than `naif-<int>` because NAIF IDs are recycled.
     probes.ingest(download_dir)
+    # Probes ingest runs AFTER CelesTrak — re-point SATCAT rows at the matching
+    # probe-* Object now that they exist, so downstream lookups (model_name
+    # assignment, focus URL resolution) land on the probe Object rather than
+    # the parallel norad_satcat-N stub.
+    celestrak.link_satcat_to_probes()
 
 
 def ingest_features(download_dir: Path) -> None:

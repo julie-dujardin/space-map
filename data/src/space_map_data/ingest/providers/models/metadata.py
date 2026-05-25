@@ -44,36 +44,14 @@ def resolve_mission_object_id(
     return None
 
 
-def pick_tier_sources(files: list[dict]) -> tuple[dict | None, dict | None]:
-    """Pick (high_source, low_source_or_None) from a manifest entry's ``files:`` list.
+def convertible_files(files: list[dict]) -> list[dict]:
+    """Return entry files whose ``type`` is in ``CONVERTIBLE_FORMATS``.
 
-    Filters out unsupported formats. Sorts convertible files by source-format
-    priority then by size; largest = high. A second source is treated as a
-    hand-authored low tier only when it's at most ``LOW_TIER_AUTHORED_MAX_RATIO``
-    of the high tier's size — otherwise it's likely a variant (different
-    resolution authored independently) and ``low`` is synthesised from ``high``
-    downstream.
+    Replaces the old format-priority picker — actual tier picking now
+    happens post-compression, after every candidate has been cached. See
+    ``processor._pick_tiers_from_cached``.
     """
-    candidates = [m for m in files if m.get("type") in config.CONVERTIBLE_FORMATS]
-    if not candidates:
-        return None, None
-
-    def rank(m: dict) -> tuple[int, int]:
-        fmt_rank = config.FORMAT_PRIORITY.index(m["type"])
-        return (fmt_rank, -int(m.get("size") or 0))
-
-    candidates.sort(key=rank)
-    high = candidates[0]
-
-    if len(candidates) == 1:
-        return high, None
-
-    smallest = min(candidates[1:], key=lambda m: int(m.get("size") or 0))
-    high_size = int(high.get("size") or 0)
-    small_size = int(smallest.get("size") or 0)
-    if high_size > 0 and small_size <= high_size * config.LOW_TIER_AUTHORED_MAX_RATIO:
-        return high, smallest
-    return high, None
+    return [m for m in files if m.get("type") in config.CONVERTIBLE_FORMATS]
 
 
 def sha256_file(path: Path) -> str:

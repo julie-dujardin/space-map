@@ -1,31 +1,28 @@
 """ModelProcessor: read 3D manifests, convert + optimise, emit per-slug glTF bundles.
 
-Mirrors ``TextureProcessor`` in shape: reset DB pointer → walk manifests →
-per entry, ``_try_skip`` against the on-disk metadata.json → otherwise
-convert + optimise → write metadata.json + point each mission's
-``Object.model_name`` at the slug.
+Pipeline:
+1. Convert every convertible source file in every manifest entry to a
+   compressed (high+low knobs) GLB in ``CONVERTED_DIR`` — caches across runs.
+2. Per entry, compare cached candidates' post-compression sizes and pick:
+   - high = largest ``.high.glb`` ≤ ``MAX_FILE_BYTES``
+   - low  = smallest ``.low.glb`` ≤ ``MAX_FILE_BYTES``
+   When no candidate's high fits under the cap, the slug is skipped with a
+   warning (don't ship something that won't deploy to Pages).
+3. Hardlink the picks into ``EXPORT_DIR/v1/models/{slug}/{high,low}.glb``
+   (copy fallback on cross-fs); write slim per-tier prod metadata.json.
+4. Write a debug sidecar to ``EXPORT_METADATA_DIR/v1/models/{slug}/`` with
+   every candidate's size/sha + the pick reasoning + invalidation key.
+5. Point each mission's ``Object.model_name`` at its winning slug.
 
-Each manifest entry produces one bundle under ``EXPORT_DIR/v1/models/{slug}/``.
-The slug is the user-facing name for the model on disk and on the DB rows
-that point at it; many missions may share a single slug (Viking 1/2
-orbiter, Cluster II constellation). Slugs are unique across all catalogs —
-collisions are a hard error.
-
-Source ladder:
-- ``.glb`` source — passes straight to gltf-transform.
-- ``.fbx``/``.blend``/``.obj``/``.3ds`` — Blender headless → intermediate
-  ``.glb`` → gltf-transform.
-
-External deps (Blender + ``@gltf-transform/cli``) are optional: missing
-deps are logged once at startup, and unconvertible entries are skipped.
+Slugs are unique across all manifests (NASA + ESA + merged.yaml). Merged
+entries win for ``Object.model_name`` since their manifest loads first.
 """
 
 import json
 import logging
+import os
 import shutil
 import subprocess
-import tempfile
-import zipfile
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,9 +30,12 @@ from pathlib import Path
 from ruamel.yaml import YAML
 from tqdm import tqdm
 
-from space_map_data.ingest.providers.models import config, conversion, metadata
+from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
+from space_map_data.ingest.providers.models import cache, config, conversion, metadata
 from space_map_data.models.object import Object
+from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
+from space_map_data.utils.paths import EXPORT_METADATA_DIR
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +79,7 @@ def _nasa_checkout_iso() -> str | None:
 class ModelProcessor:
     def __init__(self) -> None:
         self._yaml_docs: list[tuple[Path, dict]] = []
+        self._catalog_downloaded_at: dict[str, str] = {}
         self._global_warnings: list[str] = []
         self._has_blender = conversion.blender_available()
         self._has_gltf_transform = conversion.gltf_transform_available()
@@ -99,6 +100,8 @@ class ModelProcessor:
         self._global_warnings = []
         self._load_manifests()
         self._check_slug_uniqueness()
+        self._prune_stale_bundles()
+        self._prune_stale_caches()
         self._reset_model_pointer()
 
         # Build the mission_id → slug map *before* doing any conversion work:
@@ -107,6 +110,14 @@ class ModelProcessor:
         # mission winner selection when several slugs depict the same mission
         # (e.g. "cassini-with-huygens" vs "cassini").
         self._satcat_norad_to_object_id = self._load_satcat_object_ids()
+        self._satcat_name_to_norad = self._load_satcat_name_to_norad()
+        # model_slug → bus spec; lets us treat a manifest entry as "wanted"
+        # when a SATELLITE_BUS spec depends on it.
+        self._buses_by_model_slug: dict[str, list] = defaultdict(list)
+        for spec in SATELLITE_BUSES:
+            if spec.model_slug:
+                self._buses_by_model_slug[spec.model_slug].append(spec)
+
         mission_winners = self._assign_mission_winners()
         db_object_ids = self._load_db_object_ids()
 
@@ -120,6 +131,7 @@ class ModelProcessor:
             self._process_entry(entry, yaml_path, force=force)
 
         self._write_mission_pointers(mission_winners)
+        self._write_bus_pointers()
 
         warnings_file = config.MODELS_DOWNLOAD_DIR / "warnings.json"
         warnings_file.write_text(json.dumps(self._global_warnings, indent=2))
@@ -131,8 +143,18 @@ class ModelProcessor:
             )
 
     def _load_manifests(self) -> None:
-        """Discover every 3D manifest under ``MODELS_DOWNLOAD_DIR``."""
+        """Discover every 3D manifest under ``MODELS_DOWNLOAD_DIR``.
+
+        Load order matters for ``_assign_mission_winners`` (first slug per
+        mission wins): merged → NASA → ESA. Merged entries pull files from
+        multiple catalogs and represent the curated canonical choice, so
+        they should win over the equivalent per-catalog entries.
+        """
         self._yaml_docs = []
+        if config.MERGED_MANIFEST.exists():
+            self._yaml_docs.append(
+                (config.MERGED_MANIFEST, _yaml.load(config.MERGED_MANIFEST.read_text()))
+            )
         if config.NASA_MANIFEST.exists():
             self._yaml_docs.append(
                 (config.NASA_MANIFEST, _yaml.load(config.NASA_MANIFEST.read_text()))
@@ -144,6 +166,67 @@ class ModelProcessor:
                 meta = sub / "metadata.yaml"
                 if meta.is_file():
                     self._yaml_docs.append((meta, _yaml.load(meta.read_text())))
+
+        # Cache catalog-name → downloaded_at so merged-manifest entries
+        # (which lack a top-level source) can still surface freshness per file.
+        self._catalog_downloaded_at = {}
+        for _path, doc in self._yaml_docs:
+            source = doc.get("source") or {}
+            name = source.get("name") or source.get("catalog")
+            ts = source.get("downloaded_at")
+            if name and ts:
+                self._catalog_downloaded_at[name] = ts
+        if self._nasa_downloaded_at:
+            self._catalog_downloaded_at.setdefault(
+                "NASA-3D-Resources", self._nasa_downloaded_at
+            )
+
+    def _prune_stale_bundles(self) -> None:
+        """Delete dirs no longer in any manifest from PROCESSED_DIR and the sidecar mirror.
+
+        Keeps the export tree (and its debug sidecar mirror) in sync with
+        manifest truth: when a slug is renamed or removed (e.g.
+        ``aqua-a``/``-b``/``-c`` consolidated to ``aqua``), the old bundle
+        dir would otherwise persist and ship as an orphan asset on the
+        next CDN upload.
+        """
+        manifest_slugs = self._manifest_slugs()
+        for root, label in (
+            (config.PROCESSED_DIR, "model bundle"),
+            (EXPORT_METADATA_DIR / "v1" / "models", "model sidecar"),
+        ):
+            if not root.exists():
+                continue
+            pruned = 0
+            for slug_dir in root.iterdir():
+                if not slug_dir.is_dir() or slug_dir.name.startswith("."):
+                    continue
+                if slug_dir.name in manifest_slugs:
+                    continue
+                log.info("pruning stale %s: %s", label, slug_dir.name)
+                shutil.rmtree(slug_dir)
+                pruned += 1
+            if pruned:
+                log.info("pruned %d stale %s(s)", pruned, label)
+
+    def _prune_stale_caches(self) -> None:
+        """Drop converted-cache subdirs whose slug is no longer in any manifest.
+
+        Per-source orphans (one file removed from an entry that still
+        exists) are handled per-entry inside ``_process_entry`` since we
+        need the live ``file_id`` set there anyway.
+        """
+        pruned = cache.prune_slug_dirs(self._manifest_slugs())
+        if pruned:
+            log.info("pruned %d stale converted-cache slug dir(s)", pruned)
+
+    def _manifest_slugs(self) -> set[str]:
+        return {
+            entry["slug"]
+            for _path, doc in self._yaml_docs
+            for entry in (doc.get("entries") or [])
+            if entry.get("slug")
+        }
 
     def _check_slug_uniqueness(self) -> None:
         """Hard-fail if two entries (any catalog) share a slug.
@@ -168,36 +251,57 @@ class ModelProcessor:
     def _assign_mission_winners(self) -> dict[str, str]:
         """Build {object_id: slug} for every mission across all manifests.
 
-        When a single mission has multiple candidate slugs (e.g.
-        ``cassini-with-huygens`` and ``cassini``), the first one encountered
-        in iteration order wins. TODO: replace with an explicit canonical
-        flag in the manifest once we know how the frontend wants to pick.
+        Tiebreak when one mission has multiple candidate slugs:
+        - entries flagged ``canonical: true`` win over un-flagged peers;
+        - among equally-flagged entries, first-encountered wins (load order
+          is merged.yaml → NASA → ESA alphabetical).
+
+        A canonical-vs-canonical conflict on the same mission is a config
+        error and logs at warning level — both can't be the primary model.
         """
-        candidates: dict[str, list[str]] = defaultdict(list)
+        candidates: dict[str, list[tuple[str, bool]]] = defaultdict(list)
         for _yaml_path, doc in self._yaml_docs:
             for entry in doc.get("entries") or []:
                 slug = entry.get("slug")
                 if not slug:
                     continue
+                canonical = bool(entry.get("canonical"))
                 for mission in entry.get("missions") or []:
                     oid = metadata.resolve_mission_object_id(
                         mission, self._satcat_norad_to_object_id
                     )
                     if oid is None:
                         continue
-                    candidates[oid].append(slug)
+                    candidates[oid].append((slug, canonical))
 
         winners: dict[str, str] = {}
-        for oid, slugs in candidates.items():
-            winners[oid] = slugs[0]
-            if len(slugs) > 1:
-                log.warning(
-                    "mission %s has multiple model slugs %s — picking %s "
-                    "(TODO: explicit canonical selection)",
-                    oid,
-                    slugs,
-                    slugs[0],
-                )
+        for oid, entries in candidates.items():
+            # `canonical=True` first, then preserve load order — stable sort
+            # keys preserve original order within each canonical/non-canonical
+            # group, so first-encountered still wins inside each bucket.
+            sorted_entries = sorted(entries, key=lambda e: not e[1])
+            winners[oid] = sorted_entries[0][0]
+            if len(entries) > 1:
+                canonical_count = sum(1 for _s, c in entries if c)
+                if canonical_count > 1:
+                    log.warning(
+                        "mission %s has %d entries with canonical=true %s — "
+                        "picking %s (load order); fix the manifest",
+                        oid,
+                        canonical_count,
+                        [s for s, c in entries if c],
+                        sorted_entries[0][0],
+                    )
+                else:
+                    log.info(
+                        "mission %s has multiple model slugs %s — picking %s%s",
+                        oid,
+                        [s for s, _c in entries],
+                        sorted_entries[0][0],
+                        " (canonical flag)"
+                        if sorted_entries[0][1]
+                        else " (first in load order)",
+                    )
         return winners
 
     def _reset_model_pointer(self) -> None:
@@ -230,7 +334,14 @@ class ModelProcessor:
     def _entry_has_db_mission(self, entry: dict, db_object_ids: set[str]) -> bool:
         """Skip entries that resolve to no Object row — saves Blender/gltf work
         on generic catalog assets (tools, ground infra, unbuilt concepts) that
-        no mission would ever reference."""
+        no mission would ever reference. An entry is also kept when a
+        ``SatelliteBusSpec.model_slug`` points at it and at least one of the
+        bus's ``known_satellites`` exists in the Object table."""
+        slug = entry.get("slug")
+        if slug is not None:
+            for spec in self._buses_by_model_slug.get(slug, ()):
+                if self._bus_object_ids(spec, db_object_ids):
+                    return True
         for mission in entry.get("missions") or []:
             oid = metadata.resolve_mission_object_id(
                 mission, self._satcat_norad_to_object_id
@@ -238,6 +349,53 @@ class ModelProcessor:
             if oid is not None and oid in db_object_ids:
                 return True
         return False
+
+    def _bus_object_ids(self, spec, db_object_ids: set[str]) -> list[str]:
+        """Object IDs for every ``known_satellites`` entry currently in DB."""
+        out: list[str] = []
+        for name in spec.known_satellites:
+            norad = self._satcat_name_to_norad.get(name.strip())
+            if norad is None:
+                continue
+            oid = self._satcat_norad_to_object_id.get(norad)
+            if oid is not None and oid in db_object_ids:
+                out.append(oid)
+        return out
+
+    def _load_satcat_name_to_norad(self) -> dict[str, int]:
+        session = get_session()
+        return {
+            name: norad
+            for norad, name in session.query(
+                Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME
+            ).all()
+            if name
+        }
+
+    def _write_bus_pointers(self) -> None:
+        """Apply ``SatelliteBusSpec.model_slug`` to every bus satellite.
+
+        Runs after ``_write_mission_pointers`` so explicit per-mission
+        manifest assignments win — bus assignments only fill empty slots."""
+        session = get_session()
+        db_object_ids = {row[0] for row in session.query(Object.id).all()}
+        assigned = 0
+        for spec in SATELLITE_BUSES:
+            if not spec.model_slug:
+                continue
+            oids = self._bus_object_ids(spec, db_object_ids)
+            if not oids:
+                continue
+            for oid in oids:
+                rowcount = (
+                    session.query(Object)
+                    .filter(Object.id == oid, Object.model_name.is_(None))
+                    .update({Object.model_name: spec.model_slug})
+                )
+                assigned += int(rowcount or 0)
+        session.commit()
+        if assigned:
+            log.info("bus pointers: wrote model_name on %d Objects", assigned)
 
     def _write_mission_pointers(self, winners: dict[str, str]) -> None:
         """Write the resolved ``model_name`` pointer for every mission winner.
@@ -263,242 +421,239 @@ class ModelProcessor:
             )
             return
 
-        high_src, low_src = metadata.pick_tier_sources(entry.get("files") or [])
-        if high_src is None:
+        candidates = metadata.convertible_files(entry.get("files") or [])
+        if not candidates:
             msg = f"{slug}: no convertible file in entry (have: {[m.get('type') for m in entry.get('files') or []]})"
             log.info(msg)
             self._global_warnings.append(msg)
             return
 
-        source_root = config.MODELS_DOWNLOAD_DIR
-        high_path = source_root / high_src["path"]
-        high_type: str = high_src["type"]
-        if not high_path.exists():
-            self._global_warnings.append(f"{slug}: missing source {high_src['path']}")
-            return
-        if high_type != "glb" and not self._has_blender:
-            log.info(
-                "skipping %s: high source is .%s but Blender is missing",
-                slug,
-                high_type,
+        # Materialise (cache-or-build) every candidate's compressed pair.
+        cached: list[tuple[dict, cache.Cached]] = []
+        for f in candidates:
+            src_path = config.MODELS_DOWNLOAD_DIR / f["path"]
+            if not src_path.exists():
+                self._global_warnings.append(f"{slug}: missing source {f['path']}")
+                continue
+            try:
+                c = cache.ensure_cached(
+                    slug=slug,
+                    source_path=src_path,
+                    source_type=f["type"],
+                    has_blender=self._has_blender,
+                    has_gltf_transform=self._has_gltf_transform,
+                )
+            except subprocess.CalledProcessError as exc:
+                stderr = (exc.stderr or "")[-500:]
+                # Per-candidate failure isn't fatal — the picker still picks
+                # from whatever else converted. Logged at info so the slug-
+                # level outcome (succeeded with fewer candidates, or skipped
+                # because none worked) is what shows in warnings.json.
+                self._global_warnings.append(
+                    f"{slug}: candidate {f['path']} skipped after conversion failure "
+                    f"({exc.cmd[0]}): {stderr}"
+                )
+                log.info("candidate skipped for %s/%s: %s", slug, f["path"], stderr)
+                continue
+            if c is None:
+                continue
+            cached.append((f, c))
+
+        # Drop cache files for sources that disappeared from this entry.
+        cache.prune_orphan_files(slug, {c.file_id for _f, c in cached})
+
+        if not cached:
+            self._global_warnings.append(
+                f"{slug}: no candidate produced a converted GLB"
             )
             return
 
-        # When the manifest supplies a hand-authored low tier, validate it and
-        # carry path+type as one item so the downstream call site doesn't have
-        # to re-check the None-ness of two parallel variables.
-        low: tuple[Path, str] | None = None
-        if low_src is not None:
-            candidate = source_root / low_src["path"]
-            low_type: str = low_src["type"]
-            if not candidate.exists():
-                self._global_warnings.append(
-                    f"{slug}: missing low source {low_src['path']}"
-                )
-            elif low_type != "glb" and not self._has_blender:
-                pass  # Blender absent → synthesise low from high downstream
-            else:
-                low = (candidate, low_type)
+        # Pick by post-compression size. Filter by Cloudflare cap on high
+        # tier; if nothing fits, skip the slug — partial deploys aren't worth
+        # the half-rendered bodies in prod.
+        eligible = [
+            (f, c) for f, c in cached if 0 < c.size("high") <= config.MAX_FILE_BYTES
+        ]
+        if not eligible:
+            sizes = ", ".join(f"{c.file_id}={c.size('high')}B" for _f, c in cached)
+            msg = (
+                f"{slug}: skipping — no candidate ≤ {config.MAX_FILE_BYTES}B "
+                f"after compression ({sizes})"
+            )
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            # Still write a sidecar so debugging the rejection is possible.
+            self._write_sidecar_metadata(
+                slug=slug,
+                entry=entry,
+                yaml_path=yaml_path,
+                cached=cached,
+                high_pick=None,
+                low_pick=None,
+            )
+            # And clear any stale prod bundle (slug used to ship, no longer does).
+            _rm_export_bundle(slug)
+            return
+
+        # high = largest (best fidelity); low = smallest (fast load).
+        high_pick = max(eligible, key=lambda fc: fc[1].size("high"))
+        low_pick = min(eligible, key=lambda fc: fc[1].size("low"))
+        # If the low candidate's `.low.glb` is also over cap, fall back to
+        # using its `.high.glb` (gltf-transform missing or it bloated). The
+        # picker's cap guarantee only covers the high tier.
+        if (
+            low_pick[1].size("low") > config.MAX_FILE_BYTES
+            or low_pick[1].size("low") == 0
+        ):
+            low_pick = high_pick  # share with high; .low.glb is what gets hardlinked
 
         out_dir = config.PROCESSED_DIR / slug
-        meta_path = out_dir / "metadata.json"
-
-        source_hashes = {"high": metadata.sha256_file(high_path)}
-        if low is not None:
-            source_hashes["low"] = metadata.sha256_file(low[0])
-
-        if not force and self._try_skip(meta_path, source_hashes):
+        cap_hash = self._cap_hash(cached, high_pick, low_pick)
+        if not force and self._sidecar_says_unchanged(slug, cap_hash):
             return
 
-        try:
-            high_glb, low_glb = self._build_tiers(
-                slug=slug,
-                high_path=high_path,
-                high_type=high_type,
-                low=low,
-                out_dir=out_dir,
-            )
-        except subprocess.CalledProcessError as exc:
-            stderr = (exc.stderr or "")[-500:]
-            self._global_warnings.append(
-                f"{slug}: conversion failed ({exc.cmd[0]}): {stderr}"
-            )
-            log.error("conversion failed for %s: %s", slug, stderr)
-            return
+        _link_into_export(high_pick[1].high_glb, out_dir / "high.glb")
+        low_source = low_pick[1].low_glb or low_pick[1].high_glb
+        _link_into_export(low_source, out_dir / "low.glb")
 
-        catalog = self._catalog_info(yaml_path)
-        exports = self._export_record(
-            high_glb=high_glb,
-            high_type=high_type,
-            low_glb=low_glb,
-            low_type=low[1] if low is not None else high_type,
+        catalog_by_tier = self._catalog_by_tier(yaml_path, high_pick[0], low_pick[0])
+        exports = {
+            "high": self._tier_record(
+                out_dir / "high.glb", high_pick, catalog_by_tier["high"]
+            ),
+            "low": self._tier_record(
+                out_dir / "low.glb", low_pick, catalog_by_tier["low"]
+            ),
+        }
+        self._write_prod_metadata(
+            out_dir=out_dir, slug=slug, entry=entry, exports=exports
         )
-        self._write_metadata(
-            out_dir=out_dir,
+        self._write_sidecar_metadata(
             slug=slug,
             entry=entry,
-            catalog=catalog,
-            exports=exports,
-            source_hashes=source_hashes,
+            yaml_path=yaml_path,
+            cached=cached,
+            high_pick=high_pick,
+            low_pick=low_pick,
         )
-        log.info("processed %s", slug)
+        log.info(
+            "processed %s (high=%s, low=%s)",
+            slug,
+            high_pick[1].file_id,
+            low_pick[1].file_id,
+        )
 
-    def _try_skip(self, meta_path: Path, source_hashes: dict[str, str]) -> bool:
-        if not meta_path.exists():
+    def _cap_hash(
+        self,
+        cached: list[tuple[dict, cache.Cached]],
+        high_pick: tuple[dict, cache.Cached],
+        low_pick: tuple[dict, cache.Cached],
+    ) -> dict:
+        """Build the invalidation key the next run compares against the sidecar.
+
+        Includes every cached candidate's source-sha — so if a previously
+        rejected oversize file is replaced with a smaller version, the
+        rerun picks it up. Also includes the picks themselves so a manual
+        retune of MAX_FILE_BYTES forces a re-link.
+        """
+        return {
+            "schema": config.SCHEMA_VERSION,
+            "knobs": config.COMPRESSION_KNOBS_VERSION,
+            "max_file_bytes": config.MAX_FILE_BYTES,
+            "candidates": sorted(
+                {c.file_id: c.source_sha256 for _f, c in cached}.items()
+            ),
+            "high": high_pick[1].file_id,
+            "low": low_pick[1].file_id,
+        }
+
+    def _sidecar_says_unchanged(self, slug: str, cap_hash: dict) -> bool:
+        sidecar_path = _sidecar_path(slug)
+        if not sidecar_path.exists():
+            return False
+        # Must also confirm the public bundle still exists — sidecar could
+        # outlive a manually-deleted EXPORT_DIR slug dir.
+        if not (config.PROCESSED_DIR / slug / "high.glb").exists():
             return False
         try:
-            existing = json.loads(meta_path.read_text())
+            existing = json.loads(sidecar_path.read_text())
         except (OSError, json.JSONDecodeError):
             return False
-        if existing.get("schema") != config.SCHEMA_VERSION:
-            return False
-        if existing.get("source_hashes") != source_hashes:
-            return False
-        return True
+        return existing.get("invalidation") == cap_hash
 
-    def _build_tiers(
+    def _tier_record(
         self,
-        *,
-        slug: str,
-        high_path: Path,
-        high_type: str,
-        low: tuple[Path, str] | None,
-        out_dir: Path,
-    ) -> tuple[Path, Path | None]:
-        """Produce ``out_dir/high.glb`` (always) and ``out_dir/low.glb`` (optional)."""
-        out_dir.mkdir(parents=True, exist_ok=True)
-        high_glb_final = out_dir / "high.glb"
-        low_glb_final: Path | None = out_dir / "low.glb"
+        glb_path: Path,
+        pick: tuple[dict, cache.Cached],
+        catalog: dict,
+    ) -> dict:
+        """Per-tier prod metadata: file stats + per-tier catalog provenance.
 
-        # tmpdir is under DOWNLOAD_DIR (not /tmp) so Flatpak'd Blender can
-        # see and write into it — see _to_glb's comment.
-        tmp_root = config.MODELS_DOWNLOAD_DIR / ".staging"
-        tmp_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(
-            prefix=f"smd-model-{slug}-", dir=tmp_root
-        ) as tmp_str:
-            tmp = Path(tmp_str)
-            high_intermediate = (
-                high_path
-                if high_type == "glb"
-                else self._to_glb(high_path, tmp / "high_in.glb")
-            )
-            self._optimize(high_intermediate, high_glb_final, tier="high")
-
-            if low is not None:
-                low_path, low_type = low
-                low_intermediate = (
-                    low_path
-                    if low_type == "glb"
-                    else self._to_glb(low_path, tmp / "low_in.glb")
-                )
-                self._optimize(low_intermediate, low_glb_final, tier="low")
-            elif self._has_gltf_transform:
-                self._optimize(high_glb_final, low_glb_final, tier="low")
-            else:
-                low_glb_final = None  # no compressor, no low tier
-
-        return high_glb_final, low_glb_final
-
-    def _to_glb(self, src: Path, dst: Path) -> Path:
-        """Convert ``src`` to ``dst`` via Blender, staging textures.zip if present.
-
-        ESA SciFleet sources ship as ``foo.fbx`` + ``foo_textures.zip``; the
-        FBX references texture filenames that only resolve when ``textures/``
-        sits alongside the .fbx (Blender's FBX import walks the source's
-        directory for relative paths). Stage source + extracted textures
-        into a tmpdir before invoking Blender.
-
-        Staging lives under ``DOWNLOAD_DIR`` rather than ``/tmp`` because
-        Flatpak'd Blender mounts its own ``/tmp`` — host ``/tmp`` paths are
-        invisible to it. ``DOWNLOAD_DIR`` is under ``$HOME`` which Flatpak
-        manifests typically expose via ``--filesystem=host``.
+        Catalog fields live per-tier (not at the top level) because high
+        and low may originate in different catalogs for merged entries.
         """
-        staging_root = config.MODELS_DOWNLOAD_DIR / ".staging"
-        staging_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(
-            prefix="smd-blender-", dir=staging_root
-        ) as staging_str:
-            staging = Path(staging_str)
-            staged_src = staging / src.name
-            shutil.copyfile(src, staged_src)
-            for textures_zip in src.parent.glob("*_textures.zip"):
-                with zipfile.ZipFile(textures_zip) as zf:
-                    zf.extractall(staging)
-            conversion.blender_to_glb(staged_src, dst)
-        return dst
-
-    def _optimize(self, src: Path, dst: Path, *, tier: str) -> None:
-        if self._has_gltf_transform:
-            conversion.gltf_transform_optimize(src, dst, tier=tier)
-        else:
-            # No optimiser — pass through verbatim. The .glb won't be Meshopt/
-            # WebP-compressed, but it's still loadable by Three.js' GLTFLoader.
-            shutil.copyfile(src, dst)
-
-    def _export_record(
-        self,
-        *,
-        high_glb: Path,
-        high_type: str,
-        low_glb: Path | None,
-        low_type: str,
-    ) -> dict[str, dict]:
-        exports: dict[str, dict] = {"high": self._tier_record(high_glb, high_type)}
-        if low_glb is not None and low_glb.exists():
-            exports["low"] = self._tier_record(low_glb, low_type)
-        return exports
-
-    def _tier_record(self, glb: Path, source_type: str) -> dict:
-        """Per-tier export entry: file metadata + glTF content stats."""
+        f, c = pick
         record: dict = {
-            "size_bytes": glb.stat().st_size,
-            "sha256": metadata.sha256_file(glb),
-            "source_type": source_type,
+            "size_bytes": glb_path.stat().st_size,
+            "sha256": metadata.sha256_file(glb_path),
+            "source_type": c.source_type,
+            **catalog,
         }
-        stats = metadata.gltf_stats(glb)
+        stats = metadata.gltf_stats(glb_path)
         if stats:
             record["stats"] = stats
         return record
 
-    def _catalog_info(self, yaml_path: Path) -> dict:
-        """Resolve catalog name / URL / downloaded_at / attribution for a doc.
+    def _catalog_by_tier(
+        self,
+        yaml_path: Path,
+        high_src: dict,
+        low_src: dict,
+    ) -> dict[str, dict]:
+        """Per-tier ``{source, source_url, attribution, downloaded_at}``.
 
-        Each manifest's top-level ``source`` block carries a name (NASA uses
-        ``source.name``, ESA uses ``source.catalog``). The known names map
-        to URL + default-attribution in ``MODEL_CATALOGS``. ``downloaded_at``
-        comes from ``source.downloaded_at`` (ESA's downloader stamps it) or
-        from the NASA checkout's git HEAD commit time as a fallback.
+        Pulls the per-file ``source`` from merged-manifest entries; falls
+        back to the doc-level ``source`` for single-source manifests.
         """
         doc = next((d for p, d in self._yaml_docs if p == yaml_path), None) or {}
-        source = doc.get("source") or {}
-        name = source.get("name") or source.get("catalog")
-        catalog = config.MODEL_CATALOGS.get(name) if name else None
+        doc_source = doc.get("source") or {}
+        doc_name = doc_source.get("name") or doc_source.get("catalog")
 
-        attribution = source.get("attribution")
-        if not isinstance(attribution, str):
-            attribution = catalog["default_attribution"] if catalog else None
+        def resolve(f: dict) -> dict:
+            name = f.get("source") or doc_name
+            if not name:
+                self._global_warnings.append(
+                    f"file {f.get('path')!r} has no source and parent manifest "
+                    f"{yaml_path.name} has no top-level source"
+                )
+                return {}
+            catalog = config.MODEL_CATALOGS.get(name)
+            out: dict = {"source": name}
+            if catalog:
+                out["source_url"] = catalog["url"]
+                # Per-file/per-manifest attribution overrides the catalog default.
+                attribution = (
+                    doc_source.get("attribution") if name == doc_name else None
+                )
+                out["attribution"] = (
+                    attribution
+                    if isinstance(attribution, str)
+                    else catalog["default_attribution"]
+                )
+            ts = self._catalog_downloaded_at.get(name)
+            if ts:
+                out["downloaded_at"] = ts
+            return out
 
-        downloaded_at = source.get("downloaded_at")
-        if not downloaded_at and name == "NASA-3D-Resources":
-            downloaded_at = self._nasa_downloaded_at
-
-        info: dict = {}
-        if name:
-            info["source"] = name
-        if catalog:
-            info["source_url"] = catalog["url"]
-        if attribution:
-            info["attribution"] = attribution
-        if downloaded_at:
-            info["downloaded_at"] = downloaded_at
-        return info
+        return {"high": resolve(high_src), "low": resolve(low_src)}
 
     def _missions_block(self, entry: dict) -> list[dict]:
         """Convert ``missions:`` to ``[{object_id, name?}, …]``, dropping unresolvable."""
         out: list[dict] = []
         for mission in entry.get("missions") or []:
-            oid = metadata.resolve_mission_object_id(mission)
+            oid = metadata.resolve_mission_object_id(
+                mission, self._satcat_norad_to_object_id
+            )
             if oid is None:
                 continue
             item: dict = {"object_id": oid}
@@ -507,26 +662,112 @@ class ModelProcessor:
             out.append(item)
         return out
 
-    def _write_metadata(
+    def _write_prod_metadata(
         self,
         *,
         out_dir: Path,
         slug: str,
         entry: dict,
-        catalog: dict,
         exports: dict[str, dict],
-        source_hashes: dict[str, str],
     ) -> None:
+        """Write the public ``EXPORT_DIR/v1/models/{slug}/metadata.json``.
+
+        Slim: slug + schema + kind + missions + per-tier exports. No
+        invalidation keys or candidate lists — those live in the sidecar so
+        the CDN page doesn't ship debug noise.
+        """
         out_dir.mkdir(parents=True, exist_ok=True)
-        meta: dict = {
+        payload: dict = {
             "slug": slug,
             "schema": config.SCHEMA_VERSION,
-            **catalog,
-            "type": entry.get("type"),
+            "kind": entry.get("kind") or entry.get("type"),
             "missions": self._missions_block(entry),
             "tiers": sorted(exports.keys()),
             "exports": exports,
-            "source_hashes": source_hashes,
             "processed_at": datetime.now(UTC).isoformat(),
         }
-        (out_dir / "metadata.json").write_text(json.dumps(meta, indent=2))
+        (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
+
+    def _write_sidecar_metadata(
+        self,
+        *,
+        slug: str,
+        entry: dict,
+        yaml_path: Path,
+        cached: list[tuple[dict, cache.Cached]],
+        high_pick: tuple[dict, cache.Cached] | None,
+        low_pick: tuple[dict, cache.Cached] | None,
+    ) -> None:
+        """Write the build-side debug sidecar under ``EXPORT_METADATA_DIR``.
+
+        Carries every candidate's converted size/sha + rejection reason +
+        the invalidation key. Doubles as the ``_try_skip`` substitute on
+        the next run so we don't have to inspect the prod metadata.
+        """
+        sidecar_path = _sidecar_path(slug)
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+
+        candidates: list[dict] = []
+        for f, c in cached:
+            high_sz = c.size("high")
+            low_sz = c.size("low")
+            rejection = None
+            if high_sz == 0:
+                rejection = "high conversion missing"
+            elif high_sz > config.MAX_FILE_BYTES:
+                rejection = f"high size {high_sz} > cap {config.MAX_FILE_BYTES}"
+            candidates.append(
+                {
+                    "source_path": f["path"],
+                    "source_catalog": f.get("source"),  # merged-manifest only
+                    "source_type": c.source_type,
+                    "source_sha256": c.source_sha256,
+                    "file_id": c.file_id,
+                    "high_size": high_sz,
+                    "low_size": low_sz,
+                    "rejected": rejection,
+                }
+            )
+
+        picks = None
+        if high_pick is not None and low_pick is not None:
+            picks = {"high": high_pick[1].file_id, "low": low_pick[1].file_id}
+
+        payload: dict = {
+            "slug": slug,
+            "schema": config.SCHEMA_VERSION,
+            "manifest": str(yaml_path.relative_to(config.MODELS_DOWNLOAD_DIR)),
+            "candidates": candidates,
+            "picks": picks,
+            "invalidation": (
+                self._cap_hash(cached, high_pick, low_pick)
+                if high_pick is not None and low_pick is not None
+                else None
+            ),
+            "processed_at": datetime.now(UTC).isoformat(),
+        }
+        sidecar_path.write_text(json.dumps(payload, indent=2))
+
+
+def _sidecar_path(slug: str) -> Path:
+    return EXPORT_METADATA_DIR / "v1" / "models" / slug / "metadata.json"
+
+
+def _link_into_export(src: Path, dst: Path) -> None:
+    """Hardlink ``src`` → ``dst``; fall back to copy on cross-fs (EXDEV)."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() or dst.is_symlink():
+        dst.unlink()
+    try:
+        os.link(src, dst)
+    except OSError as exc:
+        if exc.errno not in (18,):  # EXDEV = cross-device link not permitted
+            raise
+        shutil.copyfile(src, dst)
+
+
+def _rm_export_bundle(slug: str) -> None:
+    """Remove a prod bundle dir if it exists (skipped slugs shouldn't ship)."""
+    bundle = config.PROCESSED_DIR / slug
+    if bundle.exists():
+        shutil.rmtree(bundle)

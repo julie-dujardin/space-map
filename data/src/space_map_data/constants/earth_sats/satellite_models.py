@@ -68,6 +68,11 @@ class SatelliteBusSpec:
     model_url: str | None = None
     model_format: str | None = None
     model_license: str | None = None
+    # Slug of a model bundle under EXPORT_DIR/v1/models/ to apply to every
+    # entry in known_satellites. The models ingest sets each matching Object's
+    # model_name to this slug as a post-pass after explicit per-mission
+    # assignments win first.
+    model_slug: str | None = None
     notes: str | None = None
 
 
@@ -299,6 +304,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         model_url="https://nasa3d.arc.nasa.gov/detail/eoss-tdrs",
         model_format="glTF",
         model_license="NASA Public Domain",
+        model_slug="tracking-and-data-relay-satellites-tdrs-a",
         notes="First Hughes 3-axis-stabilized commsat; modular propulsion+payload boxes. "
         "76 launched 1992-2017. NASA 3D Resources TDRS model represents the 601HP variant. "
         "Sketchfab mirror: sketchfab.com/3d-models/tracking-and-data-relay-satellite-3d-printable-ae3ac90c4eff404bbe914838d7b5f29b",
@@ -702,6 +708,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         model_url="https://science.nasa.gov/3d-resources/space-systems-loral-ssl-1300/",
         model_format="glTF/OBJ",
         model_license="NASA Public Domain",
+        model_slug="space-systems-loral-ssl-1300",
         notes="3-axis box + two solar wings, GEO. First Western commsat with electric propulsion "
         "(MBSat 2004). Rebranded Lanteris 1300 Oct 2025 after Intuitive Machines acquisition. "
         "Sketchfab community model: sketchfab.com/3d-models/loral-ssl-1300-satellite-b3fddca0b88346cfad87b2bb0700549f",

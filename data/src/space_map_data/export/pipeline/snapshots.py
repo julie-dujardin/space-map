@@ -76,7 +76,8 @@ def _overlay_celestrak_elements(
     relation.
     """
     kept: list[Object] = []
-    dropped = 0
+    dropped_no_elements = 0
+    dropped_no_celestrak_row = 0
     for obj in objects:
         elements = (
             elements_by_norad.get(obj.norad_cat_id)
@@ -84,25 +85,37 @@ def _overlay_celestrak_elements(
             else None
         )
         if elements is None:
-            dropped += 1
+            dropped_no_elements += 1
+            continue
+        # Earth-zone Objects can come from two ingest paths: CelesTrak (creates
+        # Object + CelesTrak row in lockstep) and Satcat (creates Object alone
+        # — for catalogued debris no longer actively tracked, etc.). The writer
+        # reads SGP4 extras through the CelesTrak relation, so satcat-only
+        # Objects can't be exported even when the daily elements file mentions
+        # them. Skip with a count rather than asserting.
+        ct = obj.celestrak
+        if ct is None:
+            dropped_no_celestrak_row += 1
             continue
         obj._daily_kepler = elements  # type: ignore[attr-defined]
-        # Earth-zone Objects come from the CelesTrak ingest path, which inserts
-        # an Object + CelesTrak row in lockstep — the relation is invariant-
-        # non-None here, even though the schema doesn't enforce it.
-        ct = obj.celestrak
-        assert ct is not None, f"{obj.id}: missing celestrak relation"
         ct.BSTAR = elements["BSTAR"]
         ct.MEAN_MOTION_DOT = elements["MEAN_MOTION_DOT"]
         ct.MEAN_MOTION_DDOT = elements["MEAN_MOTION_DDOT"]
         ct.ELEMENT_SET_NO = elements["ELEMENT_SET_NO"]
         ct.REV_AT_EPOCH = elements["REV_AT_EPOCH"]
         kept.append(obj)
-    if dropped and log_dropped:
-        logger.info(
-            "Dropped %d Earth satellites with no matching elements on disk",
-            dropped,
-        )
+    if log_dropped:
+        if dropped_no_elements:
+            logger.info(
+                "Dropped %d Earth satellites with no matching elements on disk",
+                dropped_no_elements,
+            )
+        if dropped_no_celestrak_row:
+            logger.info(
+                "Dropped %d Earth satellites with daily elements but no CelesTrak row "
+                "(satcat-only, can't overlay SGP4 extras)",
+                dropped_no_celestrak_row,
+            )
     return kept
 
 

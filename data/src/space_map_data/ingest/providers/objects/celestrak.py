@@ -288,3 +288,51 @@ def _count_csv_rows(path: Path) -> int:
 
 def ingest(download_dir: Path) -> None:
     CelesTrakIngestor(download_dir).run()
+
+
+def link_satcat_to_probes() -> None:
+    """Re-point ``Satcat.object_id`` at the matching probe-* Object via COSPAR.
+
+    Runs after the probes ingest (which writes probe-* Objects with
+    cospar_id). Without this step, a SATCAT row's ``object_id`` stays
+    pinned to its ``norad_satcat-N`` stub, and downstream lookups
+    (notably ModelProcessor's mission resolution) attach metadata to the
+    wrong Object — e.g. Kepler's 3D model would land on
+    ``norad_satcat-34380`` instead of ``probe-96198656`` and never render
+    when the user focuses Kepler via its probe-id URL.
+
+    The ``norad_satcat-N`` Object itself stays in place — it still holds
+    the CelesTrak row + daily TLE overlay used by the Earth-zone export.
+    Only the Satcat→Object pointer moves.
+    """
+    session = get_session()
+    cospar_to_probe: dict[str, str] = {
+        c: oid
+        for c, oid in session.execute(
+            select(Object.cospar_id, Object.id).where(
+                Object.cospar_id.is_not(None), Object.id.like("probe-%")
+            )
+        ).all()
+    }
+    if not cospar_to_probe:
+        return
+
+    rows = session.execute(
+        select(Satcat.NORAD_CAT_ID, Satcat.COSPAR_ID, Satcat.object_id).where(
+            Satcat.COSPAR_ID.is_not(None)
+        )
+    ).all()
+    updates: list[dict] = []
+    for norad, cospar, current_oid in rows:
+        probe_id = cospar_to_probe.get(cospar)
+        if probe_id is None or current_oid == probe_id:
+            continue
+        updates.append({"NORAD_CAT_ID": norad, "object_id": probe_id})
+
+    if not updates:
+        return
+    BATCH = 10_000
+    for i in range(0, len(updates), BATCH):
+        session.execute(update(Satcat), updates[i : i + BATCH])
+    session.commit()
+    logger.info("Re-pointed %d SATCAT rows at matching probe-* Objects", len(updates))
