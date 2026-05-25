@@ -17,11 +17,17 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '../../types';
 
 /** Subset of `metadata.json` (per-model public bundle) that's needed to
- *  register the focused-body credit. The exporter writes more fields, but
- *  the scene only needs the catalog landing page + name. */
+ *  register the focused-body credit. The exporter writes more fields per
+ *  tier, but the scene only needs the catalog landing page + name for the
+ *  high tier (which is what loadBodyModel fetches). For merged-manifest
+ *  entries the low tier may originate in a different catalog. */
 interface ModelBundleMeta {
-	source: string;
-	source_url: string;
+	exports: {
+		high: {
+			source: string;
+			source_url: string;
+		};
+	};
 }
 
 const _loader = new GLTFLoader();
@@ -95,8 +101,8 @@ export async function loadBodyModel(
 				const meta = await metaPromise;
 				ctx.credits.registerModel({
 					bodyId: bo.body.data.id,
-					source: meta.source_url,
-					organisation: meta.source
+					source: meta.exports.high.source_url,
+					organisation: meta.exports.high.source
 				});
 			} catch (e) {
 				// Credits are a nice-to-have; a missing/corrupt metadata.json
