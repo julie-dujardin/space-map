@@ -331,7 +331,6 @@ def _run_earth_zones(
     out_dir: Path,
     ctx: ObjectDataContext,
     celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
-    limit_per_zone: int,
     agg: _Aggregators,
 ) -> None:
     """Run Earth-zone exports inline (synchronous).
@@ -355,18 +354,10 @@ def _run_earth_zones(
         (0, ~is_constellation),
         (1, is_constellation),
     ):
-        # Order: Objects pointing at a 3D model bundle first, then the rest by
-        # random_int. Without this, the random sample can drop a model-pointed
-        # satellite (HST, Kepler, ISS, …) on the floor — its bundle ships to
-        # the CDN but the per-object data file doesn't reference it, so the
-        # frontend never loads the model. Model-pointed Earth sats are < 1k,
-        # well below limit_per_zone, so this is a no-op for the limit.
-        base_objects = (
-            earth_base.filter(zoom_filter)
-            .order_by(Object.model_name.is_(None), Object.random_int)
-            .limit(limit_per_zone)
-            .all()
-        )
+        # Earth zones are uncapped: per-day CelesTrak sidecars (see
+        # `build_earth_part_signature`) make re-export incremental. random_int
+        # ordering is kept for deterministic chunking.
+        base_objects = earth_base.filter(zoom_filter).order_by(Object.random_int).all()
         if not base_objects:
             logger.info("  earth zoom=%d: empty, skipping", zoom_label)
             continue
@@ -426,7 +417,7 @@ def _drive_zone_exports(
             session, cheb_covered_ids
         ):
             submit_zone(zone, zoom, snapshots)
-        _run_earth_zones(session, out_dir, ctx, celestrak_days, limit_per_zone, agg)
+        _run_earth_zones(session, out_dir, ctx, celestrak_days, agg)
         # executor joins here — session still open so ORM objects remain valid
     return futures
 

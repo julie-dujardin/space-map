@@ -121,9 +121,10 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         # the expected lifespan — these are sats, never probes.
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
-        "norad_satcat-43435",  # TESS
-        "norad_satcat-25867",  # CXO (Chandra)
         "norad_satcat-48274",  # CSS Tianhe (Tiangong)
+        # TESS and CXO have SPICE kernels and land in the probe namespace.
+        "probe-109834240",  # TESS (mission HORIZONS-SYNTH, naif -95)
+        "probe-81858560",  # Chandra X-ray Observatory (mission CHANDRA, naif -151)
         # Asteroids (visited, hazardous, or otherwise famous)
         "spkid-20000002",  # 2 Pallas
         "spkid-20000003",  # 3 Juno
