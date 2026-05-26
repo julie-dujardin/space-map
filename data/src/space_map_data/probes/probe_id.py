@@ -16,14 +16,15 @@ of V-2 / early rocket trajectories). 20-bit date × 12-bit dedupe fits int32 and
 covers up to year ~4817 with 4096 distinct probes per inception day.
 
 Inception date is the start of the spacecraft's longest contiguous SPK
-coverage interval at first ingest. Cached to a JSON file under `DOWNLOAD_DIR`
-since the DB is rebuilt regularly — the cache pins each (mission, naif_id) to
-a `probe_id` so the value is stable across re-ingests even if new kernels add
-earlier coverage later.
+coverage interval at first registration. Persisted to `REGISTRY_PATH` so
+probe_ids stay stable across DB rebuilds even when new kernels arrive that
+shift the longest interval.
 
-The same cache also carries a manually-curated `wikidata_qid` per row,
-since probes don't share an external ID property with Wikidata (P247/COSPAR
-isn't on the Object row for probes) and would otherwise be unresolvable.
+The registry file is the curated source of truth for probe identity. It's
+not a cache — once an entry is written it persists, and identity fields
+(`name`, `cospar_id`, `norad_cat_id`, `wikidata_qid`) are hand-edited or
+filled by `scripts/populate_probe_registry.py`. Ingest reads from it; it
+never gets regenerated from scratch.
 """
 
 import json
@@ -43,7 +44,10 @@ MAX_DEDUPE = DEDUPE_MASK
 DATE_BITS = 32 - DEDUPE_BITS  # 20 bits
 MAX_DATE_OFFSET = (1 << DATE_BITS) - 1  # ~2872 years past 1945
 
-CACHE_PATH = DOWNLOAD_DIR / "spice" / "probe_ids.json"
+REGISTRY_PATH = DOWNLOAD_DIR / "spice" / "probe_ids.json"
+# Back-compat alias for callers that still import the old name. Remove after
+# everything outside this module is updated.
+CACHE_PATH = REGISTRY_PATH
 
 # ET (TDB seconds past J2000) → MJD. J2000 = MJD 51544.5.
 _J2000_MJD = 51544.5
@@ -61,13 +65,17 @@ class ProbeIdRecord:
     naif_id: int
     inception_mjd: int
     dedupe: int
+    # Human-readable name used as `Object.name`. The export's per-language
+    # bundle overrides this with the Wikidata label at display time, so this
+    # is mostly the search-fallback and the in-DB identifier of last resort.
+    name: str | None = None
     wikidata_qid: str | None = None
     # Cross-references for spacecraft also catalogued by CelesTrak/SATCAT.
-    # When set, the celestrak ingest skips minting a parallel norad_satcat-N
-    # Object for this spacecraft and re-points its CelesTrak/Satcat rows at
-    # this probe-* row instead. Mostly used for sub-spacecraft that share
-    # their launch's NORAD with the parent (Huygens↔Cassini, LICIACube↔DART)
-    # and for entries whose Horizons MB designation lacks a COSPAR.
+    # The satcat-side ingest matches on these to point Satcat / CelesTrak
+    # rows at this probe-* Object instead of minting a parallel
+    # `norad_satcat-N`. Sub-spacecraft sharing a launch with the parent
+    # (Huygens ↔ Cassini, LICIACube ↔ DART) and entries whose Horizons MB
+    # designation is missing also need these patched in by hand.
     cospar_id: str | None = None
     norad_cat_id: int | None = None
 
@@ -99,26 +107,34 @@ def decode(probe_id: int) -> tuple[int, int]:
     return MJD_EPOCH + offset, dedupe
 
 
-def _load_cache() -> dict[str, dict]:
-    """Read the on-disk cache. Returns {} if missing or unreadable."""
-    if not CACHE_PATH.exists():
+def load_registry() -> dict[str, dict]:
+    """Read the on-disk probe registry. Returns {} if missing or unreadable."""
+    if not REGISTRY_PATH.exists():
         return {}
     try:
-        return json.loads(CACHE_PATH.read_text())
+        return json.loads(REGISTRY_PATH.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning(
-            "probe_id cache at %s unreadable (%s); rebuilding", CACHE_PATH, exc
+            "probe registry at %s unreadable (%s); treating as empty",
+            REGISTRY_PATH,
+            exc,
         )
         return {}
 
 
-def _save_cache(cache: dict[str, dict]) -> None:
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(json.dumps(cache, indent=2, sort_keys=True))
+def save_registry(registry: dict[str, dict]) -> None:
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REGISTRY_PATH.write_text(json.dumps(registry, indent=2, sort_keys=True))
 
 
-def _cache_key(mission: str, naif_id: int) -> str:
+def registry_key(mission: str, naif_id: int) -> str:
     return f"{mission}/{naif_id}"
+
+
+# Back-compat aliases. Prefer the new names in new code.
+_load_cache = load_registry
+_save_cache = save_registry
+_cache_key = registry_key
 
 
 def load_probe_labels() -> dict[int, str]:
@@ -131,8 +147,8 @@ def load_probe_labels() -> dict[int, str]:
     in the diagnostic scripts). Falls back gracefully when the synth index
     is missing or unreadable.
     """
-    cache = _load_cache()
-    labels: dict[int, str] = {int(r["probe_id"]): key for key, r in cache.items()}
+    registry = load_registry()
+    labels: dict[int, str] = {int(r["probe_id"]): key for key, r in registry.items()}
 
     synth_idx = (
         DOWNLOAD_DIR
@@ -154,7 +170,7 @@ def load_probe_labels() -> dict[int, str]:
         for t in f.get("targets", [])
         if f.get("name_horizons")
     }
-    for r in cache.values():
+    for r in registry.values():
         if r.get("mission") != "HORIZONS-SYNTH":
             continue
         nm = naif_to_name.get(int(r["naif_id"]))
@@ -163,77 +179,82 @@ def load_probe_labels() -> dict[int, str]:
     return labels
 
 
+def _record_from_entry(mission: str, naif_id: int, entry: dict) -> ProbeIdRecord:
+    return ProbeIdRecord(
+        mission=mission,
+        naif_id=naif_id,
+        inception_mjd=int(entry["inception_mjd"]),
+        dedupe=int(entry["dedupe"]),
+        name=entry.get("name"),
+        wikidata_qid=entry.get("wikidata_qid"),
+        cospar_id=entry.get("cospar_id"),
+        norad_cat_id=entry.get("norad_cat_id"),
+    )
+
+
 def assign(
     mission: str,
     naif_id: int,
     inception_mjd: int,
-    cache: dict[str, dict] | None = None,
+    registry: dict[str, dict] | None = None,
 ) -> ProbeIdRecord:
     """Return a stable probe_id for `(mission, naif_id)`.
 
-    First call for a key allocates a dedupe slot (the lowest unused integer for
-    the inception date, deterministic across runs) and caches the result. Later
-    calls return the cached value even if `inception_mjd` shifts — the cached
-    inception MJD wins, so adding earlier-coverage kernels later doesn't
-    renumber existing probes.
+    First call for a key allocates a dedupe slot (the lowest unused integer
+    for the inception date, deterministic across runs) and persists the
+    entry. Later calls return the persisted value even if `inception_mjd`
+    shifts — the registered inception MJD wins, so adding earlier-coverage
+    kernels later doesn't renumber existing probes.
     """
-    owned = cache is None
-    if cache is None:
-        cache = _load_cache()
-    key = _cache_key(mission, naif_id)
-    if key in cache:
-        rec = cache[key]
-        return ProbeIdRecord(
-            mission=mission,
-            naif_id=naif_id,
-            inception_mjd=int(rec["inception_mjd"]),
-            dedupe=int(rec["dedupe"]),
-            wikidata_qid=rec.get("wikidata_qid"),
-            cospar_id=rec.get("cospar_id"),
-            norad_cat_id=rec.get("norad_cat_id"),
-        )
+    owned = registry is None
+    if registry is None:
+        registry = load_registry()
+    key = registry_key(mission, naif_id)
+    if key in registry:
+        return _record_from_entry(mission, naif_id, registry[key])
 
     used = {
         int(r["dedupe"])
-        for r in cache.values()
+        for r in registry.values()
         if int(r["inception_mjd"]) == inception_mjd
     }
     dedupe = next(i for i in range(MAX_DEDUPE + 1) if i not in used)
     record = ProbeIdRecord(mission, naif_id, inception_mjd, dedupe)
-    cache[key] = {
+    registry[key] = {
         "mission": mission,
         "naif_id": naif_id,
         "inception_mjd": inception_mjd,
         "dedupe": dedupe,
         "probe_id": record.probe_id,
+        "name": None,
         "wikidata_qid": None,
         "cospar_id": None,
         "norad_cat_id": None,
     }
     if owned:
-        _save_cache(cache)
+        save_registry(registry)
     return record
 
 
 def load_qids() -> set[str]:
-    """Return every non-null `wikidata_qid` from the on-disk probe cache."""
-    return {qid for rec in _load_cache().values() if (qid := rec.get("wikidata_qid"))}
+    """Return every non-null `wikidata_qid` in the probe registry."""
+    return {qid for rec in load_registry().values() if (qid := rec.get("wikidata_qid"))}
 
 
 def assign_many(
     items: list[tuple[str, int, int]],
 ) -> dict[tuple[str, int], ProbeIdRecord]:
-    """Bulk-assign probe IDs. Loads & saves the cache once.
+    """Bulk-assign probe IDs. Loads & saves the registry once.
 
     `items` is a list of `(mission, naif_id, inception_mjd)`. Deterministic
     over input order — when two items share an inception date and neither is
-    in the cache yet, dedupe slots are assigned in the order they appear in
+    registered yet, dedupe slots are assigned in the order they appear in
     `items`. Callers should pre-sort by `(inception_mjd, naif_id)` for stable
     output across runs.
     """
-    cache = _load_cache()
+    registry = load_registry()
     out: dict[tuple[str, int], ProbeIdRecord] = {}
     for mission, naif_id, mjd in items:
-        out[(mission, naif_id)] = assign(mission, naif_id, mjd, cache=cache)
-    _save_cache(cache)
+        out[(mission, naif_id)] = assign(mission, naif_id, mjd, registry=registry)
+    save_registry(registry)
     return out

@@ -48,7 +48,7 @@ from space_map_data.download.providers.spice.probes import (  # noqa: E402
 from space_map_data.export.position.probes.writer import (  # noqa: E402
     _collect_generic_kernels,
 )
-from space_map_data.probes.probe_id import _load_cache as _load_probe_cache  # noqa: E402
+from space_map_data.probes.probe_id import load_registry as _load_probe_cache  # noqa: E402
 from space_map_data.probes.trace import _IAU_FRAME, classify_trace  # noqa: E402
 from space_map_data.probes.zones import PLANETARY_ZONES  # noqa: E402
 from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402

@@ -496,7 +496,26 @@ class ModelProcessor:
             return
 
         # high = largest (best fidelity); low = smallest (fast load).
-        high_pick = max(eligible, key=lambda fc: fc[1].size("high"))
+        # A file may set `preferred: true` to override the size-based high
+        # pick (the largest isn't always the best — sometimes it's the most
+        # cluttered). When the preferred file's high tier blows the cap,
+        # warn and fall back to size-based pick.
+        preferred = [(f, c) for f, c in eligible if f.get("preferred")]
+        if len(preferred) > 1:
+            self._global_warnings.append(
+                f"{slug}: multiple files marked preferred: true "
+                f"{[f['path'] for f, _c in preferred]} — using first"
+            )
+        if preferred:
+            high_pick = preferred[0]
+        else:
+            over_cap_preferred = [f for f, _c in cached if f.get("preferred")]
+            if over_cap_preferred:
+                self._global_warnings.append(
+                    f"{slug}: preferred file(s) {over_cap_preferred} exceeded cap "
+                    f"after compression — falling back to size-based pick"
+                )
+            high_pick = max(eligible, key=lambda fc: fc[1].size("high"))
         low_pick = min(eligible, key=lambda fc: fc[1].size("low"))
         # If the low candidate's `.low.glb` is also over cap, fall back to
         # using its `.high.glb` (gltf-transform missing or it bloated). The
@@ -649,10 +668,10 @@ class ModelProcessor:
                     if isinstance(manifest_attribution, str)
                     else catalog["default_attribution"]
                 )
-            if not catalog and not (inline_url and inline_attribution):
+            if not catalog and not inline_attribution:
                 self._global_warnings.append(
                     f"file {f.get('path')!r}: source {name!r} not in MODEL_CATALOGS "
-                    f"and missing inline source_url/attribution"
+                    f"and missing inline attribution"
                 )
             ts = self._catalog_downloaded_at.get(name)
             if ts:

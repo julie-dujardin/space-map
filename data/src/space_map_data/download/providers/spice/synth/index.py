@@ -31,6 +31,16 @@ _NAME_DROP_PATTERNS: tuple[re.Pattern, ...] = tuple(
     )
 )
 
+# Spacecraft we deliberately exclude from the synth pipeline because CelesTrak
+# ships reliable daily SGP4 elements covering their entire expected lifespan.
+# Those live in our system as `norad_satcat-N` rows; making a synth-probe twin
+# would just produce a parallel, lower-accuracy duplicate.
+_NAIF_BLOCKLIST: frozenset[int] = frozenset(
+    {
+        -48,  # Hubble Space Telescope (NORAD 20580) — long-term LEO, daily TLEs
+    }
+)
+
 
 def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
     """Parse Horizons MB listing → [(naif_id, name)] for real spacecraft only."""
@@ -52,6 +62,8 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
         if not name:
             continue
         if any(p.search(name) for p in _NAME_DROP_PATTERNS):
+            continue
+        if naif_id in _NAIF_BLOCKLIST:
             continue
         out.append((naif_id, name))
     return sorted(out, key=lambda r: -abs(r[0]))
@@ -75,10 +87,10 @@ def qid_deduped_synth_naifs(cache: dict[str, dict] | None = None) -> set[int]:
     deduping a synth against them would leave the probe with no trajectory
     at all (e.g. Tianwen-1 has only the Horizons synth at NAIF -86).
     """
-    from space_map_data.probes.probe_id import _load_cache
+    from space_map_data.probes.probe_id import load_registry
 
     if cache is None:
-        cache = _load_cache()
+        cache = load_registry()
     missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
     spk_missions: set[str] = set()
     if missions_dir.exists():

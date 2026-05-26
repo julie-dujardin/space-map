@@ -14,23 +14,21 @@ The primary key is `probe-<probe_id>` so the row survives NAIF-ID recycling
 probe_ids). `naif_id` is still stored on the row but as an attribute, not
 the primary key.
 
-Inception MJDs are cached at `spice/probe_ids.json` (see
-`probes/probe_id.py`) so probe_ids stay stable across DB rebuilds.
+Identity fields (`name`, `cospar_id`, `norad_cat_id`, `wikidata_qid`) come
+from the probe registry at `spice/probe_ids.json` — never from MB-by-NAIF,
+which would give every recycled-NAIF entry the *current* tenant's identity.
+Use `scripts/populate_probe_registry.py` to fill registry gaps for new
+entries before they ingest.
 """
 
 import json
 import logging
-import re
 from pathlib import Path
 
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
-from space_map_data.download.providers.spice.bodies.names import (
-    HorizonsAlias,
-    load_horizons_names,
-)
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.probes.probe_id import ProbeIdRecord, assign_many, et_to_mjd
 from space_map_data.probes.trace import inception_et
@@ -38,17 +36,6 @@ from space_map_data.utils.db import get_session
 
 logger = logging.getLogger(__name__)
 
-_COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
-
-# Probes whose position truth is CelesTrak's daily TLE snapshot rather than the
-# Horizons-synthesized chebyshev fit. The probe-* Object is still the canonical
-# row (so /p/N URLs and 3D model assignment resolve to it), but it rides the
-# Earth-zone export with SGP4 elements instead of the probe-zone chunk binaries.
-# Currently just HST: HORIZONS-SYNTH has a kernel for naif=-48 but its temporal
-# resolution is monthly-ish, whereas CelesTrak ships daily TLEs for NORAD 20580.
-_CELESTRAK_PROBE_NAIF_IDS: frozenset[int] = frozenset({-48})
-
-_EARTH_OBJECT_ID = "naif-399"
 _SUN_OBJECT_ID = "naif-10"
 
 # Kernels we never want to feed `_coverage()`: they park a destroyed/landed
@@ -194,11 +181,6 @@ class ProbesIngestor:
         self.landed_missions_dir = (
             download_dir / PROVIDERS.SPICE / "kernels" / "landed_missions"
         )
-        # Used to backfill name + COSPAR onto probe Object rows; agency SPK
-        # indexes don't carry a polished name and never carry COSPAR.
-        self.horizons_aliases: dict[int, HorizonsAlias] = load_horizons_names(
-            download_dir / PROVIDERS.SPICE
-        )
 
     def _clear(self) -> None:
         """Drop previously-ingested probe rows. Safe: probes live under their
@@ -208,54 +190,43 @@ class ProbesIngestor:
         )
         self.session.commit()
 
-    def _mb_identity(self, naif_id: int) -> tuple[str | None, str | None]:
-        """Return ``(name, cospar)`` from the Horizons MB list, or ``(None, None)``.
-
-        ``cospar`` is only set when the MB designation column matches the
-        COSPAR pattern; planet/asteroid/PDC rows leave it None.
-        """
-        alias = self.horizons_aliases.get(naif_id)
-        if alias is None:
-            return None, None
-        cospar = None
-        if alias.designation and _COSPAR_RE.match(alias.designation):
-            cospar = alias.designation
-        return alias.name, cospar
-
     def _build_row(self, record: dict, rec: ProbeIdRecord) -> dict:
         object_pk = make_object_id(ID_TYPES.PROBE, rec.probe_id)
-        mb_name, mb_cospar = self._mb_identity(record["naif_id"])
+        # Identity fields come from the registry, not MB. MB is keyed by NAIF
+        # only — under NAIF recycling it gives the *current* tenant's name to
+        # every entry sharing that NAIF, so M10/-76 ends up labelled MSL etc.
+        # The registry's `name` field is the human-curated answer; populate
+        # it via `scripts/populate_probe_registry.py` for any new entry.
         name = (
-            mb_name
+            rec.name
             or record.get("name_hint")
-            or f"{record['mission']} ({record['naif_id']})"
+            or f"{record['mission']}/{record['naif_id']}"
         )
-        # Cache cospar wins over MB (lets us override MB's "K"-suffixed weirdness
-        # for spacecraft like Hayabusa 2 where MB diverges from satcat's primary
-        # designator).
-        cospar = rec.cospar_id or mb_cospar
-        on_earth = record["naif_id"] in _CELESTRAK_PROBE_NAIF_IDS
+        if rec.name is None and not record.get("name_hint"):
+            logger.warning(
+                "probe %s has no name in registry — falling back to %s; "
+                "run scripts/populate_probe_registry.py or hand-edit",
+                object_pk,
+                name,
+            )
         return {
             "id": object_pk,
             "name": name,
             "object_type": ObjectType.spacecraft,
             "naif_id": record["naif_id"],
-            "cospar_id": cospar,
+            "cospar_id": rec.cospar_id,
             "norad_cat_id": rec.norad_cat_id,
             "probe_id": rec.probe_id,
             # Parent_id is decoration for probe rows — the frontend reads the
-            # actual parent from the position file at render time. Default to
-            # the Sun (matches SBDB's heliocentric convention); celestrak-driven
-            # probes get Earth so the Earth-zone export query picks them up.
-            "parent_id": _EARTH_OBJECT_ID if on_earth else _SUN_OBJECT_ID,
-            "orbital_source": (
-                OrbitalSource.celestrak if on_earth else OrbitalSource.spice_probe
-            ),
+            # actual parent from the position file at render time. Probes
+            # always heliocenter; satellite-class objects (HST, ISS) live as
+            # `norad_satcat-N` rows in the sat namespace instead.
+            "parent_id": _SUN_OBJECT_ID,
+            "orbital_source": OrbitalSource.spice_probe,
             "wikidata_qid": rec.wikidata_qid,
-            # `has_position=True` for celestrak-routed probes so the elements
-            # writer ships them; default probes ride the probes/ zone (chunk
-            # binaries) which reads kernels directly, hence False.
-            "has_position": on_earth,
+            # Probes ride the probes/ zone (chunk binaries) which reads
+            # kernels directly, so the elements writer doesn't ship them.
+            "has_position": False,
         }
 
     def run(self) -> None:

@@ -77,9 +77,9 @@ from space_map_data.probes.fit_centers import (
     load_candidates,
 )
 from space_map_data.probes.probe_id import (
-    _load_cache as _load_probe_id_cache,
     assign,
     et_to_mjd,
+    load_registry,
 )
 from space_map_data.probes.trace import _IAU_FRAME, classify_trace, inception_et
 from space_map_data.probes.zones import ALL_ZONES, ZONES_BY_KEY, Zone
@@ -711,7 +711,7 @@ def _classify_worker(
 ) -> dict:
     """Per-probe classification done in a worker process.
 
-    Returns a serialisable dict — the main process owns `probe_id_cache` and
+    Returns a serialisable dict — the main process owns `probe_id_registry` and
     plan construction. Possible statuses:
       * `no_coverage` — no SPK covers this naif_id
       * `ok` — payload includes `inception_et`, flying-phase zone `intervals`
@@ -745,7 +745,7 @@ def _classify_worker(
 
 
 def _classify_pass(
-    probe_id_cache: dict,
+    probe_id_registry: dict,
     metas_by_probe_id: dict[int, _ProbeMeta],
     excluded_probe_ids: set[int],
     lsk_pck_paths: list[Path],
@@ -757,7 +757,7 @@ def _classify_pass(
     SPICE state is per-process, so each worker gets its own kernel pool —
     no contention with the parent and no GIL bottleneck on the spkpos loop.
     `probe_id` assignment runs serially in the main process because
-    `probe_id_cache` is mutable and the order in which IDs are allocated
+    `probe_id_registry` is mutable and the order in which IDs are allocated
     must match the deterministic `(inception_mjd, naif_id)` policy in
     `probes.probe_id.assign`.
 
@@ -817,7 +817,7 @@ def _classify_pass(
                 mission=mdir.name,
                 naif_id=naif_id,
                 inception_mjd=et_to_mjd(t0),
-                cache=probe_id_cache,
+                registry=probe_id_registry,
             )
             probe_id = rec.probe_id
             if probe_id in excluded_probe_ids:
@@ -1301,7 +1301,7 @@ def write_probes(
         logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)
         return {}
 
-    probe_id_cache = _load_probe_id_cache()
+    probe_id_registry = load_registry()
     metas_by_probe_id, excluded_probe_ids = _build_probe_metas(session, has_localized)
     start_jd = _year_to_jd(_PROBE_EXPORT_START_YEAR)
     end_jd = _year_to_jd(_PROBE_EXPORT_END_YEAR)
@@ -1336,7 +1336,7 @@ def write_probes(
 
     try:
         plans, chunk_index = _classify_pass(
-            probe_id_cache,
+            probe_id_registry,
             metas_by_probe_id,
             excluded_probe_ids,
             lsk_pck_paths,
