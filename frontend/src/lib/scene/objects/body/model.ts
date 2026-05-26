@@ -14,7 +14,23 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
+
+/** Body types whose placeholder sphere is meaningless and should be hidden
+ *  the moment a load starts (rather than waiting for the detail fetch to
+ *  confirm `model_name`). Probes carry their own catalog; spacecraft/debris
+ *  belong to the same family. Planets and moons never enter this branch, so
+ *  their sphere doesn't flicker during focus. */
+function isModelBearing(body: PositionedBody): boolean {
+	const t = body.data.objectType;
+	return (
+		t === ObjectType.SPACECRAFT ||
+		t === ObjectType.DEBRIS ||
+		body.data.orbitalSource === OrbitalSource.SPICE_PROBE
+	);
+}
 
 /** Subset of `metadata.json` (per-model public bundle) that's needed to
  *  register the focused-body credit. The exporter writes more fields per
@@ -75,12 +91,26 @@ export async function loadBodyModel(
 	if (bo.model || bo.modelLoading) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
+	// Pre-hide the sphere for body types that ship 3D models — avoids a
+	// one-frame placeholder flash during the detail fetch. Planets/moons skip
+	// this branch so their sphere doesn't briefly disappear when focused.
+	const preHide = isModelBearing(bo.body) && bo.mesh?.visible === true;
+	if (preHide && bo.mesh) bo.mesh.visible = false;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
-		if (!slug) return;
+		if (!slug) {
+			if (preHide && bo.mesh) bo.mesh.visible = true;
+			return;
+		}
 		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
 		if ((bo.modelLoadEpoch ?? 0) !== epoch) return;
+		// Swap the halo for the spinner so the model can snap in cleanly.
+		// The halo's loading state is owned exclusively by these load-start /
+		// load-end branches; nothing else (notably the per-frame culling) is
+		// allowed to touch it.
+		if (bo.mesh) bo.mesh.visible = false;
+		setHaloLoading(bo, true);
 		// Kick the bundle metadata fetch alongside the GLB — small and
 		// cacheable. Registering the credit as the model becomes visible
 		// keeps the attribution bar/popover in lockstep with what's on screen.
@@ -96,7 +126,7 @@ export async function loadBodyModel(
 		modelScene.add(root);
 		bo.model = root;
 		bo.modelName = slug;
-		bo.mesh.visible = false;
+		setHaloLoading(bo, false);
 		if (ctx) {
 			try {
 				const meta = await metaPromise;
@@ -112,6 +142,12 @@ export async function loadBodyModel(
 			}
 		}
 	} finally {
+		// Load aborted before the GLB attached — put the sphere back and
+		// restore the halo so the body stays visible.
+		if (!bo.model) {
+			if (bo.mesh) bo.mesh.visible = true;
+			setHaloLoading(bo, false);
+		}
 		bo.modelLoading = false;
 	}
 }
@@ -122,13 +158,35 @@ export async function loadBodyModel(
  */
 export function unloadBodyModel(bo: BodyObjects): void {
 	bo.modelLoadEpoch = (bo.modelLoadEpoch ?? 0) + 1;
+	setHaloLoading(bo, false);
 	const root = bo.model;
-	if (!root) return;
+	if (!root) {
+		if (bo.mesh) bo.mesh.visible = true;
+		return;
+	}
 	root.parent?.remove(root);
 	disposeGltf(root);
 	bo.model = null;
 	bo.modelName = undefined;
 	if (bo.mesh) bo.mesh.visible = true;
+}
+
+/** Create or remove the body's loading spinner. It's a plain DOM element
+ *  pinned to the viewport (see `.scene-label__loader` CSS) — outside the
+ *  scene graph entirely so it doesn't drift with the focused body's
+ *  per-frame world-position updates. Per-frame culling toggles `display`. */
+function setHaloLoading(bo: BodyObjects, loading: boolean): void {
+	if (loading) {
+		if (bo.loadingEl) return;
+		const el = document.createElement('div');
+		el.className = 'scene-label__loader';
+		el.style.display = 'none';
+		document.body.appendChild(el);
+		bo.loadingEl = el;
+	} else if (bo.loadingEl) {
+		bo.loadingEl.remove();
+		bo.loadingEl = null;
+	}
 }
 
 /**

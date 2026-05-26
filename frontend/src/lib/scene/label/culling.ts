@@ -97,6 +97,10 @@ export function applyLabelDisplay(
 
 	label.visible = show;
 	if (labelHalo) labelHalo.style.visibility = hideHaloRing ? 'hidden' : '';
+	// Loader DOM node only exists while a model is loading (managed by
+	// `setHaloLoading`). Show it exactly when the halo would be hidden by
+	// the close-zoom rule — it sits at the viewport centre.
+	if (bo.loadingEl) bo.loadingEl.style.display = hideHaloRing ? '' : 'none';
 	label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
 }
 

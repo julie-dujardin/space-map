@@ -172,6 +172,7 @@ export function buildMajorBodies(
 			mesh,
 			label,
 			labelHalo,
+			loadingEl: null,
 			extraObjects,
 			corona: starExtras?.corona ?? null,
 			starPoint: starExtras?.starPoint ?? null,

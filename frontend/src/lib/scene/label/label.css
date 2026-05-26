@@ -24,6 +24,30 @@
 	overflow: visible;
 }
 
+/* Spinner shown while a body's GLB is loading. Pinned to the viewport so it
+ * stays put even as the focused body drifts on its orbit — the focused body
+ * is already screen-centered, so viewport-centre matches body-centre at the
+ * scales where the loader is visible. */
+.scene-label__loader {
+	position: fixed;
+	inset: 0;
+	margin: auto;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	border: 2px solid rgba(255, 255, 255, 0.2);
+	border-top-color: white;
+	border-right-color: white;
+	box-sizing: border-box;
+	pointer-events: none;
+	animation: scene-label-loader-spin 0.9s linear infinite;
+}
+@keyframes scene-label-loader-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 .scene-label__name {
 	padding-left: 8px;
 	position: absolute;

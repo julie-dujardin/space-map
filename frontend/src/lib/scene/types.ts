@@ -32,6 +32,11 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
+	/** Viewport-pinned loading spinner. Created by `setHaloLoading` only
+	 *  while a GLB is in flight; visibility per-frame follows the close-zoom
+	 *  rule (shown when the halo would be hidden). Lives outside the scene
+	 *  graph so it doesn't drift with the focused body's per-frame motion. */
+	loadingEl: HTMLElement | null;
 	/** Top-level scene objects that track this body's position (corona, starPoint). */
 	extraObjects: Object3D[];
 	/** Star corona glow sprite (for manual occlusion). */
