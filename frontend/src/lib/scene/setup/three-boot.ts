@@ -2,6 +2,7 @@ import {
 	ACESFilmicToneMapping,
 	AmbientLight,
 	DirectionalLight,
+	PCFSoftShadowMap,
 	PerspectiveCamera,
 	Scene,
 	Vector2,
@@ -43,6 +44,11 @@ export function bootThree(
 	const renderer = new WebGLRenderer({ canvas, logarithmicDepthBuffer: true, antialias: true });
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+	// Shadow maps are enabled globally for the model-overlay scene's directional
+	// sun (see renderer.ts). Main-scene lights keep `castShadow = false`, so the
+	// cost is paid only when a focused body has a 3D model attached.
+	renderer.shadowMap.enabled = true;
+	renderer.shadowMap.type = PCFSoftShadowMap;
 	// ACES rolls the Sun's HDR output to saturated white. LDR overlays (trails,
 	// halos) are scaled in their own builders to compensate.
 	renderer.toneMapping = ACESFilmicToneMapping;

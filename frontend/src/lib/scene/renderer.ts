@@ -192,6 +192,20 @@ export class SceneRenderer {
 		// (see `renderModelOverlay`).
 		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
 		this.modelLight = new DirectionalLightClass(0xffffff, 3.0);
+		// Model is normalised to a unit-radius sphere at origin (see
+		// `fitToUnitRadius` in model.ts) and the light sits at distance 10 from
+		// origin (`renderModelOverlay`). Ortho frustum covers the silhouette
+		// (radius 1 + margin); near/far bracket the sphere along the light axis.
+		this.modelLight.castShadow = true;
+		this.modelLight.shadow.mapSize.set(2048, 2048);
+		this.modelLight.shadow.camera.left = -1.5;
+		this.modelLight.shadow.camera.right = 1.5;
+		this.modelLight.shadow.camera.top = 1.5;
+		this.modelLight.shadow.camera.bottom = -1.5;
+		this.modelLight.shadow.camera.near = 8;
+		this.modelLight.shadow.camera.far = 12;
+		this.modelLight.shadow.bias = -0.0001;
+		this.modelLight.shadow.normalBias = 0.02;
 		this.modelScene.add(this.modelLight);
 		this.modelScene.add(this.modelLight.target);
 

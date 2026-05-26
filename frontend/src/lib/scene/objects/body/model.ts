@@ -92,6 +92,7 @@ export async function loadBodyModel(
 		}
 		const root = gltf.scene;
 		fitToUnitRadius(root);
+		enableShadows(root);
 		modelScene.add(root);
 		bo.model = root;
 		bo.modelName = slug;
@@ -147,6 +148,14 @@ function fitToUnitRadius(root: Object3D): void {
 	const k = 2 / maxDim;
 	root.scale.multiplyScalar(k);
 	root.position.copy(center).multiplyScalar(-k);
+}
+
+function enableShadows(root: Object3D): void {
+	root.traverse((obj) => {
+		if (!(obj instanceof Mesh)) return;
+		obj.castShadow = true;
+		obj.receiveShadow = true;
+	});
 }
 
 function disposeGltf(root: Object3D): void {
