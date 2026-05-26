@@ -10,6 +10,7 @@ import {
 	isMeshUpgradable,
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
+import { unloadBodyModel } from '$lib/scene/objects/body/model';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
@@ -156,10 +157,17 @@ export class FocusController {
 		// sphere mesh (and a/c their trail) only while focused; reverting
 		// to halo-only on un-focus keeps the unfocused scene cheap. minDistance
 		// below reads the focused body's mesh radius, so do the swap first.
+		// Always unload the prev body's overlay model — it isn't tied to the
+		// sphere mesh, so non-upgradable bodies would otherwise leak GLBs.
 		const prev = this.focusedBody;
-		if (prev && prev.data.id !== body.data.id && isMeshUpgradable(prev)) {
+		if (prev && prev.data.id !== body.data.id) {
 			const prevBo = bodyObjects.get(prev.data.id);
-			if (prevBo) downgradeBodyMesh(prevBo, scene, clickables, meshToBody);
+			if (prevBo) {
+				unloadBodyModel(prevBo);
+				if (isMeshUpgradable(prev)) {
+					downgradeBodyMesh(prevBo, scene, clickables, meshToBody);
+				}
+			}
 		}
 		if (isMeshUpgradable(body)) {
 			const bo = bodyObjects.get(body.data.id);

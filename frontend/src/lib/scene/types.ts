@@ -134,6 +134,9 @@ export interface BodyObjects {
 	modelName?: string;
 	/** Guard against re-entering `loadBodyModel` while a fetch is in flight. */
 	modelLoading?: boolean;
+	/** Bumped by `unloadBodyModel`; in-flight `loadBodyModel` invocations
+	 *  re-check it after each await and abort if it changed. */
+	modelLoadEpoch?: number;
 }
 
 export interface Callbacks {

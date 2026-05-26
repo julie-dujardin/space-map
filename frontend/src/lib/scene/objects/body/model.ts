@@ -73,20 +73,20 @@ export async function loadBodyModel(
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.model || bo.modelLoading) return;
+	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) return;
-		// Body was un-focused (mesh torn down) while the bundle fetch was in
-		// flight. Drop the load so we don't attach a stray model.
-		if (!bo.mesh) return;
+		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
+		if ((bo.modelLoadEpoch ?? 0) !== epoch) return;
 		// Kick the bundle metadata fetch alongside the GLB — small and
 		// cacheable. Registering the credit as the model becomes visible
 		// keeps the attribution bar/popover in lockstep with what's on screen.
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(`${DATA_BASE}/v1/models/${slug}/high.glb`);
-		if (!bo.mesh) {
+		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
 			disposeGltf(gltf.scene);
 			return;
 		}
@@ -117,11 +117,11 @@ export async function loadBodyModel(
 }
 
 /**
- * Dispose the loaded model and restore the placeholder sphere. No-op when
- * no model is attached. Called from `downgradeBodyMesh`. Removes the model
- * from whichever scene it was parented to (the overlay's modelScene).
+ * Dispose the loaded model and restore the placeholder sphere. Bumps the
+ * load epoch so any concurrent `loadBodyModel` for `bo` aborts.
  */
 export function unloadBodyModel(bo: BodyObjects): void {
+	bo.modelLoadEpoch = (bo.modelLoadEpoch ?? 0) + 1;
 	const root = bo.model;
 	if (!root) return;
 	root.parent?.remove(root);
