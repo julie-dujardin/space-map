@@ -16,6 +16,7 @@ import { DATA_BASE } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
+import { buildFallbackSpacecraftModel } from './fallback-model';
 import type { BodyObjects } from '../../types';
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
@@ -100,7 +101,19 @@ export async function loadBodyModel(
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) {
-			if (preHide && bo.mesh) bo.mesh.visible = true;
+			// Spacecraft-like types (the pre-hide set) get a gray cuboid
+			// placeholder in the overlay instead of the silly tiny sphere.
+			// Planets/moons/etc. that landed here have no `isModelBearing`
+			// match — restore their sphere as before.
+			if (preHide) {
+				if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) return;
+				const fallback = buildFallbackSpacecraftModel();
+				fitToUnitRadius(fallback);
+				modelScene.add(fallback);
+				bo.model = fallback;
+			} else if (bo.mesh) {
+				bo.mesh.visible = true;
+			}
 			return;
 		}
 		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
