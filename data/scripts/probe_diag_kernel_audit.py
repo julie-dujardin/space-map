@@ -24,9 +24,9 @@ sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 import spiceypy  # noqa: E402
 
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
-from space_map_data.export.position.probes.writer import (  # noqa: E402
-    _STATIONARY_PATTERNS,
-    _collect_generic_kernels,
+from space_map_data.export.position.probes.kernels import (  # noqa: E402
+    STATIONARY_PATTERNS,
+    collect_generic_kernels,
 )
 from space_map_data.utils.paths import DOWNLOAD_DIR  # noqa: E402
 
@@ -43,7 +43,7 @@ def _all_bsps(mdir: Path) -> list[Path]:
     return [
         k
         for k in (sorted(mdir.glob("*.bsp")) + sorted(mdir.glob("*.BSP")))
-        if not any(p in k.name for p in _STATIONARY_PATTERNS)
+        if not any(p in k.name for p in STATIONARY_PATTERNS)
     ]
 
 
@@ -83,7 +83,7 @@ def _spacecraft_coverage(kernel: Path) -> dict[int, list[tuple[float, float]]]:
 
 def main() -> int:
     KR = DOWNLOAD_DIR / "spice" / "kernels"
-    lsk_pck, generic_spk = _collect_generic_kernels(KR)
+    lsk_pck, generic_spk = collect_generic_kernels(KR)
     for p in lsk_pck:
         spiceypy.furnsh(str(p))
 

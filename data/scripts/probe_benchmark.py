@@ -54,8 +54,8 @@ from space_map_data.export.position.format import (  # noqa: E402
     VERSION,
 )
 from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
-from space_map_data.export.position.probes.writer import (  # noqa: E402
-    _kernels_from_index,
+from space_map_data.export.position.probes.kernels import (  # noqa: E402
+    kernels_from_index,
 )
 from space_map_data.probes.probe_id import (  # noqa: E402
     REGISTRY_PATH as PROBE_ID_CACHE,
@@ -358,7 +358,7 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
     mission kernel at once would let SPICE's last-furnshed-wins return the
     wrong probe's truth.
 
-    Reads via `_kernels_from_index` — same `_index.json` + MISSION_INCLUDE
+    Reads via `kernels_from_index` — same `_index.json` + MISSION_INCLUDE
     + precedence-sort path the writer uses, so any kernel the writer fit
     against is the same kernel the benchmark evaluates against. Previously
     this globbed the mission directory and picked up extras the writer
@@ -377,9 +377,7 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
     def _kernels_for(mission: str) -> list[Path]:
         if mission not in mission_kernels:
             mdir = MISSIONS_DIR / mission
-            mission_kernels[mission] = (
-                _kernels_from_index(mdir) if mdir.exists() else []
-            )
+            mission_kernels[mission] = kernels_from_index(mdir) if mdir.exists() else []
         return mission_kernels[mission]
 
     for entry in registry:
@@ -441,7 +439,7 @@ def _bench_worker(
     samples_per_subchunk: int,
 ) -> tuple[int, list[float]]:
     """Per-probe per-zone worker. Furnshes mission then generic SPKs (matching
-    `writer._fit_pass` precedence so modern DE wins for shared planetary
+    `fit.fit_pass` precedence so modern DE wins for shared planetary
     targets), evaluates each sub-chunk vs SPICE truth, unloads, returns errors.
 
     `mu` is resolved per sub-chunk from `fit_center_naif` (cached in-worker
@@ -597,7 +595,7 @@ def main() -> int:
         "Benchmarking %d zones across %d worker processes; each worker "
         "pre-furnishes %d LSK/PCK kernels and re-furnishes %d mission + "
         "generic SPKs per probe (mission first, generic last — matches "
-        "writer._fit_pass precedence)",
+        "fit.fit_pass precedence)",
         len(probe_zones),
         n_workers,
         len(lsk_pck_paths),

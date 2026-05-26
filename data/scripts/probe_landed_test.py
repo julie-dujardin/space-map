@@ -45,8 +45,8 @@ from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.download.providers.spice.probes import (  # noqa: E402
     LANDED_MISSIONS_DIR,
 )
-from space_map_data.export.position.probes.writer import (  # noqa: E402
-    _collect_generic_kernels,
+from space_map_data.export.position.probes.kernels import (  # noqa: E402
+    collect_generic_kernels,
 )
 from space_map_data.probes.probe_id import load_registry as _load_probe_cache  # noqa: E402
 from space_map_data.probes.trace import _IAU_FRAME, classify_trace  # noqa: E402
@@ -382,7 +382,7 @@ def _summarize(
     )
 
 
-# ── Multiprocessing wiring (mirrors writer._classify_pass) ──────────────
+# ── Multiprocessing wiring (mirrors classify.classify_pass) ──────────────
 
 
 def _worker_init(kernel_paths: list[str]) -> None:
@@ -559,7 +559,7 @@ def main() -> int:
         print("No probes match the filter.")
         return 1
 
-    lsk_pck, generic_spk = _collect_generic_kernels(_KERNELS_ROOT)
+    lsk_pck, generic_spk = collect_generic_kernels(_KERNELS_ROOT)
     init_paths = [str(p) for p in (lsk_pck + generic_spk)]
     logger.info(
         "Scanning %d probes across %d workers for landed phases…",

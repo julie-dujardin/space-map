@@ -25,9 +25,9 @@ import spiceypy  # noqa: E402
 import scripts.probe_benchmark as pb  # noqa: E402
 from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
-from space_map_data.export.position.probes.writer import (  # noqa: E402
-    _STATIONARY_PATTERNS,
-    _kernels_from_index,
+from space_map_data.export.position.probes.kernels import (  # noqa: E402
+    STATIONARY_PATTERNS,
+    kernels_from_index,
 )
 from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_ID_CACHE  # noqa: E402
 
@@ -40,7 +40,7 @@ def _glob_kernels(mdir: Path) -> list[Path]:
     return [
         k
         for k in (sorted(mdir.glob("*.bsp")) + sorted(mdir.glob("*.BSP")))
-        if not any(p in k.name for p in _STATIONARY_PATTERNS)
+        if not any(p in k.name for p in STATIONARY_PATTERNS)
     ]
 
 
@@ -104,12 +104,12 @@ def main() -> int:
         int(r["probe_id"]): (int(r["naif_id"]), r["mission"]) for r in cache.values()
     }
 
-    # Mission kernels per probe via writer (`_kernels_from_index`) or
+    # Mission kernels per probe via writer (`kernels_from_index`) or
     # diagnostic glob.
     def mission_kernels_for(mission: str) -> list[Path]:
         mdir = MISSIONS_DIR / mission
         if args.source == "index":
-            return _kernels_from_index(mdir)
+            return kernels_from_index(mdir)
         return _glob_kernels(mdir)
 
     # Scan probe zones.
