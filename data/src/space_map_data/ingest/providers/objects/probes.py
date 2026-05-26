@@ -17,8 +17,7 @@ the primary key.
 Identity fields (`name`, `cospar_id`, `norad_cat_id`, `wikidata_qid`) come
 from the probe registry at `spice/probe_ids.json` — never from MB-by-NAIF,
 which would give every recycled-NAIF entry the *current* tenant's identity.
-Use `scripts/populate_probe_registry.py` to fill registry gaps for new
-entries before they ingest.
+Hand-edit the registry to fill gaps for new entries before they ingest.
 """
 
 import json
@@ -230,8 +229,7 @@ class ProbesIngestor:
         # Identity fields come from the registry, not MB. MB is keyed by NAIF
         # only — under NAIF recycling it gives the *current* tenant's name to
         # every entry sharing that NAIF, so M10/-76 ends up labelled MSL etc.
-        # The registry's `name` field is the human-curated answer; populate
-        # it via `scripts/populate_probe_registry.py` for any new entry.
+        # The registry's `name` field is the human-curated answer.
         name = (
             rec.name
             or record.get("name_hint")
@@ -239,8 +237,8 @@ class ProbesIngestor:
         )
         if rec.name is None and not record.get("name_hint"):
             logger.warning(
-                "probe %s has no name in registry — falling back to %s; "
-                "run scripts/populate_probe_registry.py or hand-edit",
+                "probe %s has no name in registry — falling back to %s; hand-edit "
+                "spice/probe_ids.json to set a name",
                 object_pk,
                 name,
             )

@@ -33,14 +33,14 @@ the SPICE tree contribute kernels to this probe — joint-mission folders
 sources on the same canonical entry rather than minting two probe rows.
 
 The registry is the curated source of truth for probe identity. It's not a
-cache — once an entry exists it persists, identity fields are hand-edited or
-filled by `scripts/populate_probe_registry.py`, and frozen fields
-(`probe_id`, `inception_mjd`, `dedupe`) are never overwritten.
+cache — once an entry exists it persists, identity fields are hand-edited,
+and frozen fields (`probe_id`, `inception_mjd`, `dedupe`) are never
+overwritten.
 """
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
@@ -76,7 +76,7 @@ class ProbeIdRecord:
     # Tuple of (mission, naif_id) pairs naming every kernel-folder source that
     # contributes trajectory data to this probe. Length ≥ 1. The first source
     # is canonical (used as the "mission" identity in legacy contexts).
-    kernel_sources: tuple[tuple[str, int], ...] = field(default_factory=tuple)
+    kernel_sources: tuple[tuple[str, int], ...]
     name: str | None = None
     wikidata_qid: str | None = None
     # Cross-references for spacecraft also catalogued by CelesTrak/SATCAT.
@@ -127,8 +127,7 @@ def load_registry() -> list[dict]:
         return []
     if not isinstance(data, list):
         raise ValueError(
-            f"probe registry at {REGISTRY_PATH} is not a list (run "
-            f"scripts/migrate_probe_registry.py to convert)"
+            f"probe registry at {REGISTRY_PATH} must be a JSON list of entries"
         )
     return data
 

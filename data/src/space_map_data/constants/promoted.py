@@ -118,9 +118,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-112132096",  # Spitzer Space Telescope (mission SIRTF, naif -79)
         "probe-101912576",  # Dawn (mission DAWN, naif -203)
         # Earth-orbiting (NORAD/CelesTrak TLEs). Daily SGP4 elements cover
-        # the expected lifespan — these are sats, never probes. (HST used to
-        # also carry a HORIZONS-SYNTH probe twin; that was dropped from the
-        # probe registry along with its kernel.)
+        # the expected lifespan — these are sats, never probes.
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
         "norad_satcat-43435",  # TESS
