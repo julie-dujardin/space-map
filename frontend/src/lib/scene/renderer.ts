@@ -46,6 +46,7 @@ import { PositionDiagnostics } from './position/diagnostics';
 import { updateRingShaders } from './shaders/ring-uniforms';
 import { updateAtmosphereShaders } from './shaders/atmosphere-uniforms';
 import { updateEclipseUniforms } from './shaders/eclipse-uniforms';
+import { evaluateEclipseFactor } from './objects/surface/eclipse-shadow';
 import { updateSunShadowLight } from './shaders/sun-shadow-light';
 import { updateSphereLOD } from './lod/sphere-lod';
 import { updateTextureLOD } from './lod/texture-lod';
@@ -58,6 +59,15 @@ import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/** Base intensity of the model-overlay directional light. Scaled down per
+ *  frame by the eclipse factor at the focused body's center. */
+const MODEL_LIGHT_BASE_INTENSITY = 3.0;
+/** Base intensity of the model-overlay IBL — just enough so metallic
+ *  surfaces have something to reflect (without it, full-metalness panels
+ *  read as pure black). Scaled by the same eclipse factor as the
+ *  directional sun so metals darken alongside the lit hemisphere. */
+const MODEL_ENV_BASE_INTENSITY = 0.04;
 
 // --- SceneRenderer ---
 
@@ -181,17 +191,16 @@ export class SceneRenderer {
 		// happy until the first frame.
 		this.modelScene = new SceneClass();
 		this.modelScene.environment = makeModelEnvMap(this.renderer);
-		// Heavily dimmed IBL — just enough so metallic surfaces have something
-		// to reflect (without it, full-metalness panels read as pure black),
-		// without washing out the directional sun's shadow.
-		this.modelScene.environmentIntensity = 0.04;
+		// Heavily dimmed IBL — see MODEL_ENV_BASE_INTENSITY. Per-frame scaling
+		// by the eclipse factor happens in renderModelOverlay.
+		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY;
 		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
 		this.modelScene.add(this.modelCamera);
 		// Thin ambient floor + a directional sun whose position is set
 		// per-frame to the body→Sun direction in the main scene
 		// (see `renderModelOverlay`).
 		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
-		this.modelLight = new DirectionalLightClass(0xffffff, 3.0);
+		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
 		// Model is normalised to a unit-radius sphere at origin (see
 		// `fitToUnitRadius` in model.ts) and the light sits at distance 10 from
 		// origin (`renderModelOverlay`). Ortho frustum covers the silhouette
@@ -643,6 +652,15 @@ export class SceneRenderer {
 			this._tmpV3.set(sx - fx, sy - fy, sz - fz).normalize();
 			this.modelLight.position.copy(this._tmpV3).multiplyScalar(10);
 		}
+
+		// Dim the directional sun by the analytical sun-disc occlusion at the
+		// focused body's center (= focus origin in focus-relative coords). The
+		// model is small enough that per-fragment variation is irrelevant —
+		// see `evaluateEclipseFactor` docstring.
+		this._tmpV3.set(0, 0, 0);
+		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
+		this.modelLight.intensity = MODEL_LIGHT_BASE_INTENSITY * factor;
+		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY * factor;
 
 		this.renderer.autoClear = false;
 		this.renderer.clearDepth();

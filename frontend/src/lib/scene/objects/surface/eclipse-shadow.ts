@@ -73,6 +73,72 @@ export interface EclipseSelfUniforms {
 }
 
 /**
+ * CPU port of the GLSL `eclipseFactor()` defined below. Reads the same
+ * `SHARED` uniforms the shader does, so call after `updateEclipseUniforms`.
+ *
+ * Used for the spacecraft 3D-model overlay: the model lives in a parallel
+ * scene with its own coordinates, so the per-fragment shader path can't run
+ * on it. A single ray from the focused body's center is sufficient — at
+ * spacecraft scale the penumbra is uniform across the model.
+ *
+ * Any change to the GLSL formula below MUST be mirrored here, and the
+ * vitest cases in `eclipse-shadow.test.ts` are the contract that keeps the
+ * two in sync.
+ */
+export function evaluateEclipseFactor(receiverPos: Vector3, selfPos: Vector3): number {
+	const aSun = SHARED.uSunAngularRadius.value;
+	if (aSun <= 0) return 1;
+	const sunDir = SHARED.uSunDir.value;
+	const count = SHARED.uOccluderCount.value;
+	const occluders = SHARED.uOccluders.value;
+	let result = 1;
+	for (let i = 0; i < count; i++) {
+		const oc = occluders[i];
+		const r = oc.w;
+		if (r <= 0) continue;
+		const dxSelf = oc.x - selfPos.x;
+		const dySelf = oc.y - selfPos.y;
+		const dzSelf = oc.z - selfPos.z;
+		if (Math.hypot(dxSelf, dySelf, dzSelf) < r * 0.5) continue;
+		const tx = oc.x - receiverPos.x;
+		const ty = oc.y - receiverPos.y;
+		const tz = oc.z - receiverPos.z;
+		const dOc = Math.hypot(tx, ty, tz);
+		if (dOc < 1e-5) continue;
+		const aOc = Math.asin(Math.min(r / dOc, 1));
+		const cosSep = Math.max(-1, Math.min(1, (sunDir.x * tx + sunDir.y * ty + sunDir.z * tz) / dOc));
+		const sep = Math.acos(cosSep);
+
+		if (aOc > 10 * aSun) {
+			const t = (aOc - sep) / aSun;
+			if (t >= 1) return 0;
+			if (t <= -1) continue;
+			const covered = (Math.acos(-t) + t * Math.sqrt(Math.max(1 - t * t, 0))) / Math.PI;
+			result *= 1 - covered;
+			continue;
+		}
+
+		if (sep >= aSun + aOc) continue;
+		if (sep + aSun <= aOc) return 0;
+		if (sep + aOc <= aSun) {
+			result *= 1 - (aOc * aOc) / (aSun * aSun);
+			continue;
+		}
+		const a = aSun;
+		const b = aOc;
+		const c = sep;
+		const x = (c * c + a * a - b * b) / (2 * c);
+		const y = Math.sqrt(Math.max(a * a - x * x, 0));
+		const A =
+			a * a * Math.acos(Math.max(-1, Math.min(1, x / a))) +
+			b * b * Math.acos(Math.max(-1, Math.min(1, (c - x) / b))) -
+			c * y;
+		result *= 1 - A / (Math.PI * a * a);
+	}
+	return result;
+}
+
+/**
  * Inject the analytical sun-disc occlusion path into a
  * {@link MeshStandardMaterial}. Chains the existing `onBeforeCompile` so
  * other shader modifiers (e.g. `attachRingShadowToPlanet`) can stack on
@@ -118,7 +184,9 @@ export function attachEclipseShadowToBody(
 				uniform vec3 uEclipseSelfPos;
 				varying vec3 vEclipseWorldPos;
 
-				// Closed-form Sun-disc obscuration. Two regimes:
+				// Closed-form Sun-disc obscuration. Two regimes.
+				// Mirrored on the CPU by evaluateEclipseFactor above;
+				// keep both in sync (eclipse-shadow.test.ts is the contract).
 				//
 				//  (1) Comparable angular sizes (e.g. solar eclipse on Earth:
 				//      aSun ≈ aMoon): use the standard two-circle intersection
