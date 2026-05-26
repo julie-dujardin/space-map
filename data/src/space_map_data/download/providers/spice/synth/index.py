@@ -69,7 +69,7 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
     return sorted(out, key=lambda r: -abs(r[0]))
 
 
-def qid_deduped_synth_naifs(cache: dict[str, dict] | None = None) -> set[int]:
+def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
     """NAIF IDs of HORIZONS-SYNTH probes whose QID matches an SPK-backed agency probe.
 
     Resolves cases where Horizons assigns its own NAIF to a spacecraft already
@@ -86,11 +86,13 @@ def qid_deduped_synth_naifs(cache: dict[str, dict] | None = None) -> set[int]:
     only buckets like EVENTS-DB carry probe-events but no ephemeris, so
     deduping a synth against them would leave the probe with no trajectory
     at all (e.g. Tianwen-1 has only the Horizons synth at NAIF -86).
+
+    A registry entry's "mission" is its canonical (first) kernel_source.
     """
     from space_map_data.probes.probe_id import load_registry
 
-    if cache is None:
-        cache = load_registry()
+    if registry is None:
+        registry = load_registry()
     missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
     spk_missions: set[str] = set()
     if missions_dir.exists():
@@ -101,15 +103,21 @@ def qid_deduped_synth_naifs(cache: dict[str, dict] | None = None) -> set[int]:
             and p.name != "HORIZONS-SYNTH"
             and (p / "_index.json").exists()
         }
+
+    def _primary_mission(entry: dict) -> str | None:
+        sources = entry.get("kernel_sources") or []
+        return sources[0]["mission"] if sources else None
+
     agency_qids: set[str] = {
-        r["wikidata_qid"]
-        for r in cache.values()
-        if r.get("mission") in spk_missions and r.get("wikidata_qid")
+        entry["wikidata_qid"]
+        for entry in registry
+        if _primary_mission(entry) in spk_missions and entry.get("wikidata_qid")
     }
     return {
-        int(r["naif_id"])
-        for r in cache.values()
-        if r.get("mission") == "HORIZONS-SYNTH" and r.get("wikidata_qid") in agency_qids
+        int(entry["naif_id"])
+        for entry in registry
+        if _primary_mission(entry) == "HORIZONS-SYNTH"
+        and entry.get("wikidata_qid") in agency_qids
     }
 
 

@@ -79,6 +79,7 @@ from space_map_data.probes.fit_centers import (
 from space_map_data.probes.probe_id import (
     assign,
     et_to_mjd,
+    index_by_source,
     load_registry,
 )
 from space_map_data.probes.trace import _IAU_FRAME, classify_trace, inception_et
@@ -745,7 +746,7 @@ def _classify_worker(
 
 
 def _classify_pass(
-    probe_id_registry: dict,
+    probe_id_registry: list[dict],
     metas_by_probe_id: dict[int, _ProbeMeta],
     excluded_probe_ids: set[int],
     lsk_pck_paths: list[Path],
@@ -778,6 +779,9 @@ def _classify_pass(
     chunk_index: dict[str, dict[int, list[_ProbePlan]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    # Cached source-index — assign() mutates the registry, so we update this
+    # in-place after each new-entry allocation.
+    source_index = index_by_source(probe_id_registry)
 
     # LSK first so SPK Type 10 (SGP4) probes — HST's hst_edited.bsp uses
     # this format — can convert TLE epochs to ET; PCK for body-fixed-frame
@@ -818,6 +822,7 @@ def _classify_pass(
                 naif_id=naif_id,
                 inception_mjd=et_to_mjd(t0),
                 registry=probe_id_registry,
+                source_index=source_index,
             )
             probe_id = rec.probe_id
             if probe_id in excluded_probe_ids:

@@ -360,79 +360,55 @@ class TestQidDedupedSynthNaifs:
             (missions / n / "_index.json").write_text("{}")
         return missions
 
+    @staticmethod
+    def _entry(mission: str, naif_id: int, qid: str | None) -> dict:
+        return {
+            "naif_id": naif_id,
+            "wikidata_qid": qid,
+            "kernel_sources": [{"mission": mission, "naif_id": naif_id}],
+        }
+
     def test_dedups_synth_naif_against_spk_backed_agency(self, tmp_path, monkeypatch):
         # INTEGRAL case: ESA SPK at -275, Horizons synth at -198, both Q50021.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
         monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
-        cache = {
-            "INTEGRAL/-275": {
-                "mission": "INTEGRAL",
-                "naif_id": -275,
-                "wikidata_qid": "Q50021",
-            },
-            "HORIZONS-SYNTH/-198": {
-                "mission": "HORIZONS-SYNTH",
-                "naif_id": -198,
-                "wikidata_qid": "Q50021",
-            },
-        }
-        assert index.qid_deduped_synth_naifs(cache) == {-198}
+        registry = [
+            self._entry("INTEGRAL", -275, "Q50021"),
+            self._entry("HORIZONS-SYNTH", -198, "Q50021"),
+        ]
+        assert index.qid_deduped_synth_naifs(registry) == {-198}
 
     def test_ignores_metadata_only_buckets(self, tmp_path, monkeypatch):
         # EVENTS-DB has no `missions/EVENTS-DB/` SPK dir, so it must not act
         # as an agency match — Tianwen-1's only ephemeris is the synth.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])  # arbitrary; not the match
         monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
-        cache = {
-            "EVENTS-DB/-90000051": {
-                "mission": "EVENTS-DB",
-                "naif_id": -90000051,
-                "wikidata_qid": "Q49011",
-            },
-            "HORIZONS-SYNTH/-86": {
-                "mission": "HORIZONS-SYNTH",
-                "naif_id": -86,
-                "wikidata_qid": "Q49011",
-            },
-        }
-        assert index.qid_deduped_synth_naifs(cache) == set()
+        registry = [
+            self._entry("EVENTS-DB", -90000051, "Q49011"),
+            self._entry("HORIZONS-SYNTH", -86, "Q49011"),
+        ]
+        assert index.qid_deduped_synth_naifs(registry) == set()
 
     def test_no_match_when_qids_differ(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["JUNO"])
         monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
-        cache = {
-            "JUNO/-61": {
-                "mission": "JUNO",
-                "naif_id": -61,
-                "wikidata_qid": "Q186287",
-            },
-            "HORIZONS-SYNTH/-227": {
-                "mission": "HORIZONS-SYNTH",
-                "naif_id": -227,
-                "wikidata_qid": "Q15839",  # Kepler, no collision
-            },
-        }
-        assert index.qid_deduped_synth_naifs(cache) == set()
+        registry = [
+            self._entry("JUNO", -61, "Q186287"),
+            self._entry("HORIZONS-SYNTH", -227, "Q15839"),  # Kepler, no collision
+        ]
+        assert index.qid_deduped_synth_naifs(registry) == set()
 
-    def test_empty_cache_returns_empty_set(self, tmp_path, monkeypatch):
+    def test_empty_registry_returns_empty_set(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
         monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
-        assert index.qid_deduped_synth_naifs({}) == set()
+        assert index.qid_deduped_synth_naifs([]) == set()
 
     def test_synth_without_qid_is_kept(self, tmp_path, monkeypatch):
         # Brand-new synth entries lack a curated QID — never dedup them.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
         monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
-        cache = {
-            "INTEGRAL/-275": {
-                "mission": "INTEGRAL",
-                "naif_id": -275,
-                "wikidata_qid": "Q50021",
-            },
-            "HORIZONS-SYNTH/-198": {
-                "mission": "HORIZONS-SYNTH",
-                "naif_id": -198,
-                "wikidata_qid": None,
-            },
-        }
-        assert index.qid_deduped_synth_naifs(cache) == set()
+        registry = [
+            self._entry("INTEGRAL", -275, "Q50021"),
+            self._entry("HORIZONS-SYNTH", -198, None),
+        ]
+        assert index.qid_deduped_synth_naifs(registry) == set()

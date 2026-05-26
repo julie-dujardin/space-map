@@ -16,20 +16,31 @@ of V-2 / early rocket trajectories). 20-bit date × 12-bit dedupe fits int32 and
 covers up to year ~4817 with 4096 distinct probes per inception day.
 
 Inception date is the start of the spacecraft's longest contiguous SPK
-coverage interval at first registration. Persisted to `REGISTRY_PATH` so
-probe_ids stay stable across DB rebuilds even when new kernels arrive that
-shift the longest interval.
+coverage interval at first registration. Persisted to `REGISTRY_PATH` and
+**frozen** thereafter — `assign()` reuses the stored value rather than
+recomputing, so adding earlier-coverage kernels later doesn't shift
+`probe_id`, which would break URL stability.
 
-The registry file is the curated source of truth for probe identity. It's
-not a cache — once an entry is written it persists, and identity fields
-(`name`, `cospar_id`, `norad_cat_id`, `wikidata_qid`) are hand-edited or
-filled by `scripts/populate_probe_registry.py`. Ingest reads from it; it
-never gets regenerated from scratch.
+File shape: a JSON list of entries. Each entry has
+
+    probe_id, name, naif_id, inception_mjd, dedupe,
+    wikidata_qid, cospar_id, norad_cat_id,
+    kernel_sources: [{"mission": ..., "naif_id": ...}, ...]
+
+`kernel_sources` is the source of truth for which (mission, naif_id) pairs in
+the SPICE tree contribute kernels to this probe — joint-mission folders
+(Cassini orbiter exposed under both CASSINI/-82 and HUYGENS/-82) declare both
+sources on the same canonical entry rather than minting two probe rows.
+
+The registry is the curated source of truth for probe identity. It's not a
+cache — once an entry exists it persists, identity fields are hand-edited or
+filled by `scripts/populate_probe_registry.py`, and frozen fields
+(`probe_id`, `inception_mjd`, `dedupe`) are never overwritten.
 """
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
@@ -45,9 +56,6 @@ DATE_BITS = 32 - DEDUPE_BITS  # 20 bits
 MAX_DATE_OFFSET = (1 << DATE_BITS) - 1  # ~2872 years past 1945
 
 REGISTRY_PATH = DOWNLOAD_DIR / "spice" / "probe_ids.json"
-# Back-compat alias for callers that still import the old name. Remove after
-# everything outside this module is updated.
-CACHE_PATH = REGISTRY_PATH
 
 # ET (TDB seconds past J2000) → MJD. J2000 = MJD 51544.5.
 _J2000_MJD = 51544.5
@@ -61,27 +69,24 @@ def et_to_mjd(et: float) -> int:
 
 @dataclass(frozen=True)
 class ProbeIdRecord:
-    mission: str
+    probe_id: int
     naif_id: int
     inception_mjd: int
     dedupe: int
-    # Human-readable name used as `Object.name`. The export's per-language
-    # bundle overrides this with the Wikidata label at display time, so this
-    # is mostly the search-fallback and the in-DB identifier of last resort.
+    # Tuple of (mission, naif_id) pairs naming every kernel-folder source that
+    # contributes trajectory data to this probe. Length ≥ 1. The first source
+    # is canonical (used as the "mission" identity in legacy contexts).
+    kernel_sources: tuple[tuple[str, int], ...] = field(default_factory=tuple)
     name: str | None = None
     wikidata_qid: str | None = None
     # Cross-references for spacecraft also catalogued by CelesTrak/SATCAT.
-    # The satcat-side ingest matches on these to point Satcat / CelesTrak
-    # rows at this probe-* Object instead of minting a parallel
-    # `norad_satcat-N`. Sub-spacecraft sharing a launch with the parent
-    # (Huygens ↔ Cassini, LICIACube ↔ DART) and entries whose Horizons MB
-    # designation is missing also need these patched in by hand.
     cospar_id: str | None = None
     norad_cat_id: int | None = None
 
     @property
-    def probe_id(self) -> int:
-        return encode(self.inception_mjd, self.dedupe)
+    def mission(self) -> str:
+        """Canonical mission (first kernel source's mission folder)."""
+        return self.kernel_sources[0][0]
 
 
 def encode(inception_mjd: int, dedupe: int) -> int:
@@ -107,48 +112,59 @@ def decode(probe_id: int) -> tuple[int, int]:
     return MJD_EPOCH + offset, dedupe
 
 
-def load_registry() -> dict[str, dict]:
-    """Read the on-disk probe registry. Returns {} if missing or unreadable."""
+def load_registry() -> list[dict]:
+    """Read the on-disk probe registry. Returns [] if missing or unreadable."""
     if not REGISTRY_PATH.exists():
-        return {}
+        return []
     try:
-        return json.loads(REGISTRY_PATH.read_text())
+        data = json.loads(REGISTRY_PATH.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning(
             "probe registry at %s unreadable (%s); treating as empty",
             REGISTRY_PATH,
             exc,
         )
-        return {}
+        return []
+    if not isinstance(data, list):
+        raise ValueError(
+            f"probe registry at {REGISTRY_PATH} is not a list (run "
+            f"scripts/migrate_probe_registry.py to convert)"
+        )
+    return data
 
 
-def save_registry(registry: dict[str, dict]) -> None:
+def save_registry(registry: list[dict]) -> None:
+    """Persist the registry. Entries are sorted by probe_id for stable diffs."""
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2, sort_keys=True))
+    REGISTRY_PATH.write_text(
+        json.dumps(sorted(registry, key=lambda e: e["probe_id"]), indent=2)
+    )
 
 
-def registry_key(mission: str, naif_id: int) -> str:
-    return f"{mission}/{naif_id}"
-
-
-# Back-compat aliases. Prefer the new names in new code.
-_load_cache = load_registry
-_save_cache = save_registry
-_cache_key = registry_key
+def index_by_source(registry: list[dict]) -> dict[tuple[str, int], dict]:
+    """Build a `(mission, naif_id) → entry` lookup from every kernel source."""
+    out: dict[tuple[str, int], dict] = {}
+    for entry in registry:
+        for src in entry["kernel_sources"]:
+            out[(src["mission"], int(src["naif_id"]))] = entry
+    return out
 
 
 def load_probe_labels() -> dict[int, str]:
-    """`probe_id → "Label/naif"` for the on-disk cache.
+    """`probe_id → "<canonical-name>/<naif>"` for diagnostic scripts.
 
-    Label is the mission folder name by default, except for HORIZONS-SYNTH
-    where the umbrella name is replaced with the per-naif Horizons
-    spacecraft name from `missions/HORIZONS-SYNTH/_index.json` (so probes
-    read as "Aditya-L1 (spacecraft)/-156" rather than "HORIZONS-SYNTH/-156"
-    in the diagnostic scripts). Falls back gracefully when the synth index
-    is missing or unreadable.
+    Label is the canonical mission folder name by default, except for
+    HORIZONS-SYNTH where the umbrella name is replaced with the per-naif
+    Horizons spacecraft name from `missions/HORIZONS-SYNTH/_index.json` (so
+    probes read as "Aditya-L1 (spacecraft)/-156" rather than
+    "HORIZONS-SYNTH/-156"). Falls back gracefully when the synth index is
+    missing or unreadable.
     """
     registry = load_registry()
-    labels: dict[int, str] = {int(r["probe_id"]): key for key, r in registry.items()}
+    labels: dict[int, str] = {}
+    for entry in registry:
+        mission, naif_id = entry["kernel_sources"][0]["mission"], entry["naif_id"]
+        labels[int(entry["probe_id"])] = f"{mission}/{naif_id}"
 
     synth_idx = (
         DOWNLOAD_DIR
@@ -170,21 +186,28 @@ def load_probe_labels() -> dict[int, str]:
         for t in f.get("targets", [])
         if f.get("name_horizons")
     }
-    for r in registry.values():
-        if r.get("mission") != "HORIZONS-SYNTH":
+    for entry in registry:
+        # Only relabel entries whose first (canonical) kernel source is the
+        # synth folder — agency-canonical probes that happen to ALSO include
+        # a HORIZONS-SYNTH source keep their agency name.
+        if entry["kernel_sources"][0]["mission"] != "HORIZONS-SYNTH":
             continue
-        nm = naif_to_name.get(int(r["naif_id"]))
+        nm = naif_to_name.get(int(entry["naif_id"]))
         if nm:
-            labels[int(r["probe_id"])] = f"{nm}/{r['naif_id']}"
+            labels[int(entry["probe_id"])] = f"{nm}/{entry['naif_id']}"
     return labels
 
 
-def _record_from_entry(mission: str, naif_id: int, entry: dict) -> ProbeIdRecord:
+def _record_from_entry(entry: dict) -> ProbeIdRecord:
+    sources = tuple(
+        (src["mission"], int(src["naif_id"])) for src in entry["kernel_sources"]
+    )
     return ProbeIdRecord(
-        mission=mission,
-        naif_id=naif_id,
+        probe_id=int(entry["probe_id"]),
+        naif_id=int(entry["naif_id"]),
         inception_mjd=int(entry["inception_mjd"]),
         dedupe=int(entry["dedupe"]),
+        kernel_sources=sources,
         name=entry.get("name"),
         wikidata_qid=entry.get("wikidata_qid"),
         cospar_id=entry.get("cospar_id"),
@@ -196,49 +219,58 @@ def assign(
     mission: str,
     naif_id: int,
     inception_mjd: int,
-    registry: dict[str, dict] | None = None,
+    registry: list[dict] | None = None,
+    source_index: dict[tuple[str, int], dict] | None = None,
 ) -> ProbeIdRecord:
     """Return a stable probe_id for `(mission, naif_id)`.
 
-    First call for a key allocates a dedupe slot (the lowest unused integer
-    for the inception date, deterministic across runs) and persists the
-    entry. Later calls return the persisted value even if `inception_mjd`
-    shifts — the registered inception MJD wins, so adding earlier-coverage
-    kernels later doesn't renumber existing probes.
+    Looks up an existing entry whose `kernel_sources` contains the given
+    (mission, naif_id). If found, returns it verbatim — `probe_id`,
+    `inception_mjd`, and `dedupe` are frozen on the persisted entry, so
+    re-computed inception drift doesn't renumber existing probes.
+
+    Otherwise allocates a new entry: the lowest unused dedupe slot for the
+    inception MJD, with the new `(mission, naif_id)` as the sole
+    kernel_source. The caller is responsible for save_registry() if
+    `registry` is supplied; in stand-alone mode (registry=None) this
+    function loads + saves.
     """
     owned = registry is None
     if registry is None:
         registry = load_registry()
-    key = registry_key(mission, naif_id)
-    if key in registry:
-        return _record_from_entry(mission, naif_id, registry[key])
+    if source_index is None:
+        source_index = index_by_source(registry)
+
+    existing = source_index.get((mission, naif_id))
+    if existing is not None:
+        return _record_from_entry(existing)
 
     used = {
-        int(r["dedupe"])
-        for r in registry.values()
-        if int(r["inception_mjd"]) == inception_mjd
+        int(e["dedupe"]) for e in registry if int(e["inception_mjd"]) == inception_mjd
     }
     dedupe = next(i for i in range(MAX_DEDUPE + 1) if i not in used)
-    record = ProbeIdRecord(mission, naif_id, inception_mjd, dedupe)
-    registry[key] = {
-        "mission": mission,
+    probe_id = encode(inception_mjd, dedupe)
+    entry = {
+        "probe_id": probe_id,
+        "name": None,
         "naif_id": naif_id,
         "inception_mjd": inception_mjd,
         "dedupe": dedupe,
-        "probe_id": record.probe_id,
-        "name": None,
         "wikidata_qid": None,
         "cospar_id": None,
         "norad_cat_id": None,
+        "kernel_sources": [{"mission": mission, "naif_id": naif_id}],
     }
+    registry.append(entry)
+    source_index[(mission, naif_id)] = entry
     if owned:
         save_registry(registry)
-    return record
+    return _record_from_entry(entry)
 
 
 def load_qids() -> set[str]:
     """Return every non-null `wikidata_qid` in the probe registry."""
-    return {qid for rec in load_registry().values() if (qid := rec.get("wikidata_qid"))}
+    return {qid for entry in load_registry() if (qid := entry.get("wikidata_qid"))}
 
 
 def assign_many(
@@ -253,8 +285,11 @@ def assign_many(
     output across runs.
     """
     registry = load_registry()
+    source_index = index_by_source(registry)
     out: dict[tuple[str, int], ProbeIdRecord] = {}
     for mission, naif_id, mjd in items:
-        out[(mission, naif_id)] = assign(mission, naif_id, mjd, registry=registry)
+        out[(mission, naif_id)] = assign(
+            mission, naif_id, mjd, registry=registry, source_index=source_index
+        )
     save_registry(registry)
     return out

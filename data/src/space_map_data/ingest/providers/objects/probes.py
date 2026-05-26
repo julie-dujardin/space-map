@@ -30,7 +30,12 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
-from space_map_data.probes.probe_id import ProbeIdRecord, assign_many, et_to_mjd
+from space_map_data.probes.probe_id import (
+    ProbeIdRecord,
+    assign_many,
+    et_to_mjd,
+    load_registry,
+)
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
 
@@ -85,7 +90,21 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
     Landed-only probes (Viking landers, future Soviet/Chinese stuff) get
     rows from `landed_missions/` alone — the binary export will emit just
     a trailing METHOD_LANDED record for each chunk they occupy.
+
+    Cross-mission merging: when the registry declares multiple
+    `kernel_sources` for a probe (e.g. Cassini lives in both CASSINI/-82
+    and HUYGENS/-82), kernels from every declared source contribute to the
+    canonical bucket — keyed on the entry's *first* kernel_source. So one
+    probe row gets the union of kernels rather than minting parallel rows.
     """
+    registry = load_registry()
+    source_to_canonical: dict[tuple[str, int], tuple[str, int]] = {}
+    for entry in registry:
+        sources = entry["kernel_sources"]
+        canonical = (sources[0]["mission"], int(sources[0]["naif_id"]))
+        for src in sources:
+            source_to_canonical[(src["mission"], int(src["naif_id"]))] = canonical
+
     per_mission_naifs: dict[tuple[str, int], dict] = {}
     name_hints: dict[tuple[str, int], str] = {}
 
@@ -141,9 +160,16 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
                 )
                 if not kpaths:
                     continue
+                bucket_key = source_to_canonical.get(
+                    (mdir.name, naif_id), (mdir.name, naif_id)
+                )
                 rec = per_mission_naifs.setdefault(
-                    (mdir.name, naif_id),
-                    {"mission": mdir.name, "naif_id": naif_id, "kpaths": []},
+                    bucket_key,
+                    {
+                        "mission": bucket_key[0],
+                        "naif_id": bucket_key[1],
+                        "kpaths": [],
+                    },
                 )
                 rec["kpaths"].extend(kpaths)
 

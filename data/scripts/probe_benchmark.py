@@ -58,7 +58,7 @@ from space_map_data.export.position.probes.writer import (  # noqa: E402
     _kernels_from_index,
 )
 from space_map_data.probes.probe_id import (  # noqa: E402
-    CACHE_PATH as PROBE_ID_CACHE,
+    REGISTRY_PATH as PROBE_ID_CACHE,
     load_probe_labels,
 )
 from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
@@ -332,9 +332,9 @@ class SampleResult:
 def _invert_probe_id_cache() -> dict[int, tuple[str, int]]:
     """`probe_id → (label, naif_id)` with HORIZONS-SYNTH names resolved
     per-spacecraft via `load_probe_labels`."""
-    cache = json.loads(PROBE_ID_CACHE.read_text())
+    registry = json.loads(PROBE_ID_CACHE.read_text())
     naif_by_pid: dict[int, int] = {
-        int(r["probe_id"]): int(r["naif_id"]) for r in cache.values()
+        int(entry["probe_id"]): int(entry["naif_id"]) for entry in registry
     }
     labels = load_probe_labels()
     out: dict[int, tuple[str, int]] = {}
@@ -364,18 +364,33 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
     this globbed the mission directory and picked up extras the writer
     intentionally excluded (e.g. MEX's ORMM monthlies, DEEPIMPACT's EPOXI
     re-targeting kernels), inflating reported errors by orders of magnitude.
+
+    Joint missions: probes with multiple `kernel_sources` (Cassini in
+    CASSINI + HUYGENS) get the union across all source folders, matching
+    the writer which classifies once per (mission, naif_id) but always
+    resolves to the same canonical probe_id via `assign`.
     """
-    cache = json.loads(PROBE_ID_CACHE.read_text())
+    registry = json.loads(PROBE_ID_CACHE.read_text())
     mission_kernels: dict[str, list[Path]] = {}
     out: dict[int, list[Path]] = {}
-    for rec in cache.values():
-        mission = rec["mission"]
+
+    def _kernels_for(mission: str) -> list[Path]:
         if mission not in mission_kernels:
             mdir = MISSIONS_DIR / mission
             mission_kernels[mission] = (
                 _kernels_from_index(mdir) if mdir.exists() else []
             )
-        out[int(rec["probe_id"])] = mission_kernels[mission]
+        return mission_kernels[mission]
+
+    for entry in registry:
+        union: list[Path] = []
+        seen: set[Path] = set()
+        for src in entry["kernel_sources"]:
+            for k in _kernels_for(src["mission"]):
+                if k not in seen:
+                    seen.add(k)
+                    union.append(k)
+        out[int(entry["probe_id"])] = union
     return out
 
 

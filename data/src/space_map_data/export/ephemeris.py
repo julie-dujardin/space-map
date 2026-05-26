@@ -14,7 +14,7 @@ from space_map_data.download.providers.spice.probes import (
     MISSIONS_DIR,
 )
 from space_map_data.models.object import Object, OrbitalSource
-from space_map_data.probes.probe_id import CACHE_PATH as PROBE_IDS_CACHE
+from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_IDS_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,13 @@ def _read_mission_server(mission_dir: Path) -> str | None:
 
 def load_probe_kernel_sources() -> dict[int, str]:
     """Build `{probe_id → archive_id}` by joining mission `_index.json` servers
-    against the probe_ids cache."""
-    if not PROBE_IDS_CACHE.exists():
+    against the probe registry. When a probe lists multiple kernel sources
+    (joint missions like Cassini in CASSINI + HUYGENS), the canonical (first)
+    source's server determines the archive credit."""
+    if not PROBE_IDS_REGISTRY.exists():
         logger.info(
-            "probe_ids cache missing at %s; no probe sources to map", PROBE_IDS_CACHE
+            "probe_ids registry missing at %s; no probe sources to map",
+            PROBE_IDS_REGISTRY,
         )
         return {}
 
@@ -83,17 +86,20 @@ def load_probe_kernel_sources() -> dict[int, str]:
                 mission_to_server[mdir.name] = server
 
     try:
-        cache = json.loads(PROBE_IDS_CACHE.read_text())
+        registry = json.loads(PROBE_IDS_REGISTRY.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("probe_ids cache at %s unreadable (%s)", PROBE_IDS_CACHE, exc)
+        logger.warning("probe registry at %s unreadable (%s)", PROBE_IDS_REGISTRY, exc)
         return {}
 
     out: dict[int, str] = {}
     unmapped_servers: set[str] = set()
     missing_missions: set[str] = set()
-    for rec in cache.values():
-        mission = rec.get("mission")
-        probe_id = rec.get("probe_id")
+    for entry in registry:
+        sources = entry.get("kernel_sources") or []
+        if not sources:
+            continue
+        mission = sources[0].get("mission")
+        probe_id = entry.get("probe_id")
         if mission is None or probe_id is None:
             continue
         server = mission_to_server.get(mission)

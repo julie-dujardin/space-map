@@ -29,7 +29,7 @@ from space_map_data.export.position.probes.writer import (  # noqa: E402
     _STATIONARY_PATTERNS,
     _kernels_from_index,
 )
-from space_map_data.probes.probe_id import CACHE_PATH as PROBE_ID_CACHE  # noqa: E402
+from space_map_data.probes.probe_id import REGISTRY_PATH as PROBE_ID_CACHE  # noqa: E402
 
 
 def _glob_kernels(mdir: Path) -> list[Path]:
