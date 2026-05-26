@@ -66,16 +66,20 @@ class CelesTrakIngestor:
         )
 
     def _load_cospar_to_probe(self) -> None:
-        """{cospar_id: probe-* Object.id} for already-ingested probe rows."""
-        self.cospar_to_probe = {
-            c: oid
-            for c, oid in self.session.execute(
-                select(Object.cospar_id, Object.id).where(
-                    Object.id.like("probe-%"),
-                    Object.cospar_id.is_not(None),
-                )
-            ).all()
-        }
+        """{cospar_id: probe-* Object.id} for already-ingested probe rows.
+
+        First-row-wins on collision; joint-launch siblings (Cassini+Huygens
+        both at 1997-061A) get a deterministic pick here, but only ONE probe
+        Object ends up claiming the satcat/celestrak rows.
+        """
+        self.cospar_to_probe = {}
+        for cospar, oid in self.session.execute(
+            select(Object.cospar_id, Object.id).where(
+                Object.id.like("probe-%"),
+                Object.cospar_id.is_not(None),
+            )
+        ).all():
+            self.cospar_to_probe.setdefault(cospar, oid)
         logger.info(
             "Loaded %d probe COSPAR cross-references for consolidation",
             len(self.cospar_to_probe),
@@ -99,12 +103,13 @@ class CelesTrakIngestor:
         )
 
         # If a probe row already owns this COSPAR (Cassini, HST, Kepler, …),
-        # consolidate: no parallel `norad_satcat-N` Object, the CelesTrak row
-        # and Satcat link both point at the probe row.
+        # consolidate: no parallel `norad_satcat-N` Object — the probe row's
+        # `satcat_norad_cat_id` / `celestrak_norad_cat_id` FKs claim the NORAD.
         probe_object_id = self.cospar_to_probe.get(cospar) if cospar else None
+        has_satcat = norad in self.satcat_object_types
         if probe_object_id is not None:
             obj = None
-            ct_object_id = probe_object_id
+            claim_object_id = probe_object_id
         else:
             object_id = make_object_id(ID_TYPES.NORAD_SATCAT, row["NORAD_CAT_ID"])
             obj = dict(
@@ -113,6 +118,10 @@ class CelesTrakIngestor:
                 object_type=object_type,
                 norad_cat_id=norad,
                 cospar_id=cospar,
+                # FK claims: celestrak row is being minted right now;
+                # satcat row may or may not exist for this NORAD.
+                celestrak_norad_cat_id=norad,
+                satcat_norad_cat_id=norad if has_satcat else None,
                 scale=ElementsScale.planet,
                 parent_id="naif-399",
                 orbital_source=OrbitalSource.celestrak,
@@ -120,14 +129,13 @@ class CelesTrakIngestor:
                 # current TLE are dropped at overlay time, not here.
                 has_position=True,
             )
-            ct_object_id = object_id
+            claim_object_id = object_id
         # Orbital elements proper (epoch, mean motion, eccentricity, etc.) are
         # not persisted: the export reads fresh values from the daily snapshot
         # files. Keep only metadata + SGP4 extras the writer reads at export
         # time (those get overwritten per-day too, but ingest seeds them so
         # consumers querying the DB outside export still see something).
         ct = dict(
-            object_id=ct_object_id,
             OBJECT_NAME=row["OBJECT_NAME"],
             TRAK_OBJECT_ID=row["OBJECT_ID"],
             EPHEMERIS_TYPE=int_or_none(row["EPHEMERIS_TYPE"]),
@@ -143,7 +151,8 @@ class CelesTrakIngestor:
             "object": obj,
             "celestrak": ct,
             "norad": norad,
-            "satcat_link_id": ct_object_id,
+            "claim_object_id": claim_object_id,
+            "has_satcat": has_satcat,
         }
 
     def _insert(self, rows: list[dict]) -> None:
@@ -156,43 +165,47 @@ class CelesTrakIngestor:
         self.session.execute(insert(CelesTrakRow), ct_rows)
         self.session.commit()
 
-    def _link_satcat(self, rows: list[dict]) -> None:
-        """Set Satcat.object_id for satellites tracked by CelesTrak.
+    def _link_probe_claims(self, rows: list[dict]) -> None:
+        """Set FK claim on probe rows consolidating against this batch.
 
-        For consolidated rows the link points at the probe-* Object; otherwise
-        at the freshly-minted `norad_satcat-N`. Skipped when satcat has no row
-        for the NORAD (group-only debris, etc.) — the bulk UPDATE's strict
-        rowcount check would raise StaleDataError otherwise.
+        For rows whose Object is None (consolidated onto a probe via COSPAR
+        match), set the probe Object's `celestrak_norad_cat_id` and — if a
+        satcat row exists for the NORAD — `satcat_norad_cat_id`. New
+        `norad_satcat-N` rows already have these set at insert time.
         """
-        link_updates = [
-            {"NORAD_CAT_ID": r["norad"], "object_id": r["satcat_link_id"]}
-            for r in rows
-            if r["norad"] in self.satcat_object_types
-        ]
-        skipped = len(rows) - len(link_updates)
-        if skipped:
-            logger.info(
-                "Skipping satcat link for %d NORAD(s) without a satcat row", skipped
+        ct_updates: list[dict] = []
+        sat_updates: list[dict] = []
+        for r in rows:
+            if r["object"] is not None:
+                continue
+            ct_updates.append(
+                {"id": r["claim_object_id"], "celestrak_norad_cat_id": r["norad"]}
             )
-        if link_updates:
-            self.session.execute(update(Satcat), link_updates)
+            if r["has_satcat"]:
+                sat_updates.append(
+                    {"id": r["claim_object_id"], "satcat_norad_cat_id": r["norad"]}
+                )
+        if ct_updates:
+            self.session.execute(update(Object), ct_updates)
+        if sat_updates:
+            self.session.execute(update(Object), sat_updates)
+        if ct_updates or sat_updates:
             self.session.commit()
 
     def _clear(self) -> None:
+        # CelesTrak rows are recomputed from scratch each ingest.
         self.session.execute(delete(CelesTrakRow))
-        # Reset satcat object_id links for all NORAD-backed objects (both
-        # celestrak-tracked active sats and inactive satcat-backfilled stubs)
-        # before deleting those objects. Probe-* links are reset too so a
-        # stale link from a previous run can't survive when its NORAD now
-        # appears in gp-active (the consolidation path will re-set it).
+        # Probe rows survive (re-inserted by their own ingest); clear any
+        # stale claim FKs so a previous run's consolidation can't bleed
+        # through. Probe rows that should still claim a NORAD will be
+        # re-linked by `_link_probe_claims` below.
         self.session.execute(
-            update(Satcat)
-            .where(
-                Satcat.object_id.like("norad_satcat-%")
-                | Satcat.object_id.like("probe-%")
-            )
-            .values(object_id=None)
+            update(Object)
+            .where(Object.id.like("probe-%"))
+            .values(satcat_norad_cat_id=None, celestrak_norad_cat_id=None)
         )
+        # `norad_satcat-%` rows are owned entirely by this ingest — drop them
+        # and re-mint as needed.
         self.session.execute(delete(Object).where(Object.id.like("norad_satcat-%")))
         self.session.commit()
 
@@ -221,10 +234,10 @@ class CelesTrakIngestor:
 
                 if len(batch) >= self.BATCH:
                     self._insert(batch)
-                    self._link_satcat(batch)
+                    self._link_probe_claims(batch)
                     batch = []
         self._insert(batch)
-        self._link_satcat(batch)
+        self._link_probe_claims(batch)
 
         # Sats present only in group CSVs (e.g. debris not on the active list).
         batch = []
@@ -246,10 +259,10 @@ class CelesTrakIngestor:
             group_only += 1
             if len(batch) >= self.BATCH:
                 self._insert(batch)
-                self._link_satcat(batch)
+                self._link_probe_claims(batch)
                 batch = []
         self._insert(batch)
-        self._link_satcat(batch)
+        self._link_probe_claims(batch)
 
         logger.info(
             "Ingested %d CelesTrak satellites (%d from group CSVs only)",
@@ -270,35 +283,53 @@ class CelesTrakIngestor:
         self._backfill_inactive_satcat()
 
     def _backfill_inactive_satcat(self) -> None:
-        """Mint `norad_satcat-N` rows for satcat entries CelesTrak doesn't cover.
+        """Mint `norad_satcat-N` rows for satcat entries no Object yet claims.
 
-        Active sats and inactive sats with a probe match were both handled
-        inline during `_parse_row` (no parallel rows minted), so anything
-        still lacking an `object_id` here is genuinely satcat-only: decayed
-        debris, retired birds without current TLEs, satcat dust. Mint stubs
-        with no `orbital_source` / `has_position` so the export skips them
-        but downstream consumers (model ingest, focus URLs) can still link
-        in via NORAD.
+        Active sats and inactive sats consolidated onto a probe via COSPAR
+        were both handled inline above. Anything still unclaimed here is
+        genuinely satcat-only: decayed debris, retired birds without current
+        TLEs, satcat dust. Two paths:
+
+        * Cospar matches a probe row that didn't get linked yet (no current
+          TLE so the gp-active loop skipped it) — set the probe's
+          `satcat_norad_cat_id` FK; no parallel row minted.
+        * No cospar match — mint a `norad_satcat-N` Object with the satcat
+          FK set, no `orbital_source` / `has_position`, so the export
+          skips it but model ingest + focus URLs can still link via NORAD.
         """
+        # Satcat NORADs already claimed by some Object via the new FK.
+        claimed = {
+            n
+            for (n,) in self.session.execute(
+                select(Object.satcat_norad_cat_id).where(
+                    Object.satcat_norad_cat_id.is_not(None)
+                )
+            ).all()
+        }
         rows = self.session.execute(
             select(
                 Satcat.NORAD_CAT_ID,
                 Satcat.OBJECT_NAME,
                 Satcat.COSPAR_ID,
                 Satcat.object_type,
-            ).where(Satcat.object_id.is_(None))
+            )
         ).all()
+        rows = [r for r in rows if r[0] not in claimed]
         if not rows:
             return
 
         new_objects: list[dict] = []
-        link_updates: list[dict] = []
+        probe_claim_updates: list[dict] = []
         reused = 0
         for norad, name, cospar, sotype in rows:
-            # Inactive sat whose spacecraft is already a probe row — reuse it.
+            # Inactive sat whose spacecraft is already a probe row — reuse it
+            # via cospar match. The probe row claims the satcat FK; no new
+            # Object minted.
             reuse_id = self.cospar_to_probe.get(cospar) if cospar else None
             if reuse_id:
-                link_updates.append({"NORAD_CAT_ID": norad, "object_id": reuse_id})
+                probe_claim_updates.append(
+                    {"id": reuse_id, "satcat_norad_cat_id": norad}
+                )
                 reused += 1
                 continue
             object_id = make_object_id(ID_TYPES.NORAD_SATCAT, norad)
@@ -314,18 +345,18 @@ class CelesTrakIngestor:
                     object_type=object_type,
                     norad_cat_id=norad,
                     cospar_id=cospar,
+                    satcat_norad_cat_id=norad,
                     scale=ElementsScale.planet,
                     parent_id="naif-399",
                     orbital_source=None,
                     has_position=False,
                 )
             )
-            link_updates.append({"NORAD_CAT_ID": norad, "object_id": object_id})
 
         for i in range(0, len(new_objects), self.BATCH):
             self.session.execute(insert(Object), new_objects[i : i + self.BATCH])
-        for i in range(0, len(link_updates), self.BATCH):
-            self.session.execute(update(Satcat), link_updates[i : i + self.BATCH])
+        if probe_claim_updates:
+            self.session.execute(update(Object), probe_claim_updates)
         self.session.commit()
         logger.info(
             "Backfilled %d inactive SATCAT Object stubs, reused %d existing probe Objects via COSPAR",

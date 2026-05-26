@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from space_map_data.constants.providers import PROVIDERS
@@ -150,6 +150,23 @@ class Object(Base):
     )  # int32 ID packing inception MJD + dedupe for spacecraft (see probes/probe_id.py).
     # Used because NAIF IDs are recycled across missions (e.g. -76 was Mariner 10, now MSL).
 
+    # Namespace-claim FKs into the Earth-sat tables. Non-unique at the column
+    # level: joint-launch sub-spacecraft (Cassini orbiter + Huygens probe both
+    # tracked under NORAD 25008) each get their own probe Object pointing at
+    # the same satcat row. A partial unique index (below) enforces uniqueness
+    # within the `norad_satcat-%` namespace so two sat-only Object rows can't
+    # claim the same satcat/celestrak row.
+    satcat_norad_cat_id: Mapped[int | None] = mapped_column(
+        ForeignKey("satcat.NORAD_CAT_ID"),
+        default=None,
+        index=True,
+    )
+    celestrak_norad_cat_id: Mapped[int | None] = mapped_column(
+        ForeignKey("celestrak.NORAD_CAT_ID"),
+        default=None,
+        index=True,
+    )
+
     # Orbital element scale + central body. Kepler elements themselves live
     # on the sub-tables (Horizons / SBDB / CelesTrak); join via orbital_source.
     scale: Mapped[ElementsScale] = mapped_column(
@@ -183,8 +200,10 @@ class Object(Base):
     # Relationships
     horizons: Mapped["Horizons | None"] = relationship(back_populates="object")
     sbdb: Mapped["SBDB | None"] = relationship(back_populates="object")
-    celestrak: Mapped["CelesTrak | None"] = relationship(back_populates="object")
-    satcat: Mapped["Satcat | None"] = relationship(back_populates="object")
+    celestrak: Mapped["CelesTrak | None"] = relationship(
+        foreign_keys=[celestrak_norad_cat_id]
+    )
+    satcat: Mapped["Satcat | None"] = relationship(foreign_keys=[satcat_norad_cat_id])
     sbdb_moon: Mapped["SBDBMoon | None"] = relationship(
         foreign_keys="SBDBMoon.object_id", back_populates="object"
     )
@@ -195,4 +214,16 @@ class Object(Base):
     __table_args__ = (
         Index("idx_objects_type", "object_type"),
         Index("idx_objects_parent", "parent_id"),
+        Index(
+            "idx_objects_satcat_norad_unique",
+            "satcat_norad_cat_id",
+            unique=True,
+            sqlite_where=text("id LIKE 'norad_satcat-%'"),
+        ),
+        Index(
+            "idx_objects_celestrak_norad_unique",
+            "celestrak_norad_cat_id",
+            unique=True,
+            sqlite_where=text("id LIKE 'norad_satcat-%'"),
+        ),
     )

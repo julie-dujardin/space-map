@@ -316,20 +316,25 @@ class ModelProcessor:
     def _load_satcat_object_ids(self) -> dict[int, str]:
         """Map every satcat NORAD → its actual ``Object.id``.
 
-        After CelesTrak ingest, Satcat.object_id is set to either the
-        ``norad_satcat-N`` stub or — when consolidated via COSPAR — to the
-        existing probe Object (e.g. NORAD 25008 → ``probe-88592384``). We
-        consult this map when resolving model-mission NORADs so consolidated
-        entries land on the same Object as the probe row.
+        After CelesTrak ingest, each satcat NORAD is claimed by exactly one
+        Object via ``Object.satcat_norad_cat_id`` — either a ``norad_satcat-N``
+        stub or, when consolidated via COSPAR, an existing probe Object
+        (e.g. NORAD 25008 → ``probe-88592384``). For joint launches that
+        produce multiple probe claims sharing a NORAD, we pick the first
+        one returned by the query (deterministic in practice via DB row
+        order — Phase 5 will tighten this).
         """
-        from space_map_data.models.object.satcat import Satcat
+        from space_map_data.models.object.main import Object
 
         session = get_session()
-        return {
-            norad: oid
-            for norad, oid in session.query(Satcat.NORAD_CAT_ID, Satcat.object_id).all()
-            if oid is not None
-        }
+        out: dict[int, str] = {}
+        for norad, oid in (
+            session.query(Object.satcat_norad_cat_id, Object.id)
+            .where(Object.satcat_norad_cat_id.is_not(None))
+            .all()
+        ):
+            out.setdefault(norad, oid)
+        return out
 
     def _entry_has_db_mission(self, entry: dict, db_object_ids: set[str]) -> bool:
         """Skip entries that resolve to no Object row — saves Blender/gltf work

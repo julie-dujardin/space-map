@@ -1,11 +1,7 @@
 """SQLAlchemy ORM model for the SATCAT table (CelesTrak satellite catalogue)."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-from sqlalchemy import JSON, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import JSON, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from space_map_data.constants.earth_sats.satcat import (
     DataStatus,
@@ -16,19 +12,18 @@ from space_map_data.constants.earth_sats.satcat import (
 )
 from space_map_data.models.object.base import Base
 
-if TYPE_CHECKING:
-    from space_map_data.models.object.main import Object
-
 
 class Satcat(Base):
-    """Full mirror of CelesTrak satcat.csv — all ~65 k entries."""
+    """Full mirror of CelesTrak satcat.csv — all ~65 k entries.
+
+    The Object→Satcat link lives on the Object side (`Object.satcat_norad_cat_id`).
+    Multiple Objects can claim the same Satcat row when a joint launch (e.g.
+    Cassini+Huygens, NORAD 25008) gets one probe row per sub-spacecraft.
+    """
 
     __tablename__ = "satcat"
 
     NORAD_CAT_ID: Mapped[int] = mapped_column(primary_key=True)
-    object_id: Mapped[str | None] = mapped_column(
-        ForeignKey("objects.id"), unique=True, default=None
-    )
 
     OBJECT_NAME: Mapped[str | None] = mapped_column(default=None)
     COSPAR_ID: Mapped[str | None] = mapped_column(default=None)
@@ -55,5 +50,3 @@ class Satcat(Base):
     operator_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
     country_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
     wikidata_qid: Mapped[str | None] = mapped_column(default=None, index=True)
-
-    object: Mapped["Object | None"] = relationship(back_populates="satcat")

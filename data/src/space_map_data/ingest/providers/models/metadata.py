@@ -21,9 +21,9 @@ def resolve_mission_object_id(
     Returns None when nothing resolves, so the caller can skip that mission.
 
     When ``satcat_norad_to_object_id`` is provided, a NORAD lookup follows
-    ``Satcat.object_id`` — which may have been consolidated onto a probe Object
-    (e.g. NORAD 25008 → ``probe-88592384`` for Cassini) rather than minted as
-    a standalone ``norad_satcat-N`` stub.
+    the reverse of ``Object.satcat_norad_cat_id`` — which may have been
+    consolidated onto a probe Object (e.g. NORAD 25008 → ``probe-88592384``
+    for Cassini) rather than minted as a standalone ``norad_satcat-N`` stub.
     """
     probe_id = mission.get("probe_id")
     if probe_id is not None:

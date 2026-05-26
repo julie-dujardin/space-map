@@ -383,8 +383,12 @@ class WikidataIdResolver:
         obj_stmt = select(Object.norad_cat_id, Object.name).where(
             Object.norad_cat_id.is_not(None)
         )
+        # Satcat rows not claimed by any Object via the satcat FK.
+        claimed_subq = select(Object.satcat_norad_cat_id).where(
+            Object.satcat_norad_cat_id.is_not(None)
+        )
         satcat_stmt = select(Satcat.NORAD_CAT_ID, Satcat.OBJECT_NAME).where(
-            Satcat.object_id.is_(None)
+            Satcat.NORAD_CAT_ID.notin_(claimed_subq)
         )
         if count_only:
             # Approximate — includes constellations, but close enough for progress
@@ -454,8 +458,11 @@ class WikidataIdResolver:
         obj_stmt = select(Object.cospar_id, Object.name).where(
             Object.cospar_id.is_not(None)
         )
+        claimed_subq = select(Object.satcat_norad_cat_id).where(
+            Object.satcat_norad_cat_id.is_not(None)
+        )
         satcat_stmt = select(Satcat.COSPAR_ID, Satcat.OBJECT_NAME).where(
-            Satcat.object_id.is_(None),
+            Satcat.NORAD_CAT_ID.notin_(claimed_subq),
             Satcat.COSPAR_ID.is_not(None),
         )
         if count_only:

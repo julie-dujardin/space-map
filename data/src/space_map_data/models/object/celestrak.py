@@ -1,16 +1,8 @@
 """SQLAlchemy ORM model for CelesTrak TLE/GP orbital elements."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from space_map_data.models.object.base import Base
-
-if TYPE_CHECKING:
-    from space_map_data.models.object.main import Object
 
 
 class CelesTrak(Base):
@@ -24,12 +16,14 @@ class CelesTrak(Base):
     metadata and the SGP4 extras (BSTAR, MEAN_MOTION_DOT/DDOT, ELEMENT_SET_NO,
     REV_AT_EPOCH) that the SGP4 writer reads. The export overlay overwrites
     those too with the per-day snapshot values before writing.
+
+    The Object→CelesTrak link lives on the Object side
+    (``Object.celestrak_norad_cat_id``).
     """
 
     __tablename__ = "celestrak"
 
     NORAD_CAT_ID: Mapped[int] = mapped_column(primary_key=True)  # NORAD catalog number
-    object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), unique=True)
 
     OBJECT_NAME: Mapped[str | None] = mapped_column(default=None)  # satellite name
     TRAK_OBJECT_ID: Mapped[str | None] = mapped_column(
@@ -56,5 +50,3 @@ class CelesTrak(Base):
     MEAN_MOTION_DDOT: Mapped[float | None] = mapped_column(
         default=None
     )  # second derivative of mean motion [rev/d³]
-
-    object: Mapped["Object"] = relationship(back_populates="celestrak")
