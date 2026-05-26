@@ -27,30 +27,34 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_objects(download_dir: Path) -> None:
-    """Ingest orbital bodies: SBDB, CelesTrak, SPICE, spacecraft.
+    """Ingest orbital bodies: SBDB, SPICE, spacecraft.
+
+    Order: naturals first (sbdb → spice → sbdb_moons), then artificial
+    earth-sat / spacecraft (satcat → probes → celestrak).
 
     Kepler elements for natural NAIF-keyed bodies land on the Horizons
     sub-table via SPICE ingest (the table name is historical; SPICE is now
     the only writer).
 
-    Probes ingest before satcat/celestrak so that celestrak can consolidate
-    its NORAD-keyed Object rows onto pre-existing probe-* rows via COSPAR
-    matching (HST, Cassini, Kepler, Voyager, …). Without that, a spacecraft
-    catalogued in both SPICE kernels and CelesTrak would end up with two
-    parallel Object rows and the user-facing 3D model would attach to the
-    wrong one.
+    Satcat ingests before probes so probe rows can FK their
+    `satcat_norad_cat_id` directly against existing satcat rows at insert
+    time. CelesTrak runs last so it can claim the celestrak FK on the
+    appropriate probe row (or mint `norad_satcat-N` when no probe matches).
     """
+    # --- Natural bodies ---
     sbdb.ingest(download_dir)
+    spice.ingest(download_dir)
+    # sbdb_moons runs after spice so the name-match against Horizons/SPICE
+    # moons can find existing rows (e.g. Pluto's Charon) and merge SBDB
+    # metadata onto them instead of producing duplicate Object rows.
+    sbdb_moons.ingest(download_dir)
+    # --- Artificial / earth-sat objects ---
+    satcat.ingest(download_dir)
     # Spacecraft Object rows from `missions/*/_index.json`. Their IDs are
     # `probe-<int>` rather than `naif-<int>` because NAIF IDs are recycled.
+    # Sets `satcat_norad_cat_id` FK against the satcat table populated above.
     probes.ingest(download_dir)
-    satcat.ingest(download_dir)
     celestrak.ingest(download_dir)
-    spice.ingest(download_dir)
-    # Runs last so the name-match against Horizons/SPICE moons can find
-    # existing rows (e.g. Pluto's Charon) and merge SBDB metadata onto
-    # them instead of producing duplicate Object rows.
-    sbdb_moons.ingest(download_dir)
 
 
 def ingest_features(download_dir: Path) -> None:

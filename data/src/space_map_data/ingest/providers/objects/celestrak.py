@@ -49,10 +49,15 @@ class CelesTrakIngestor:
         self.missing_satcat = 0
         # Pre-loaded from the satcat DB table (ingested earlier).
         self.satcat_object_types: dict[int, SatcatObjectType | None] = {}
-        # COSPAR → existing probe-* Object.id. Built once in `run()` before
-        # any row is parsed; lets us consolidate this row onto the pre-existing
-        # probe row instead of minting a parallel `norad_satcat-N` stub for
-        # spacecraft tracked under both providers (HST, Cassini, Kepler, …).
+        # NORAD → probe-* Object.id. Primary lookup: when a probe registers a
+        # NORAD (via its satcat FK), this celestrak row consolidates onto it
+        # instead of minting a parallel `norad_satcat-N`. Joint-launch
+        # siblings (Cassini + Huygens at 25008) tiebreak on lowest probe_id
+        # (= lowest inception_mjd) — only the primary spacecraft owns the
+        # active TLE.
+        self.norad_to_probe: dict[int, str] = {}
+        # COSPAR → probe-* Object.id, fallback for probes whose registry
+        # entry has cospar but no NORAD (S-IVB upper stages etc.).
         self.cospar_to_probe: dict[str, str] = {}
 
     def _load_satcat_object_types(self) -> None:
@@ -65,23 +70,46 @@ class CelesTrakIngestor:
             "Loaded %d SATCAT object types from DB", len(self.satcat_object_types)
         )
 
-    def _load_cospar_to_probe(self) -> None:
-        """{cospar_id: probe-* Object.id} for already-ingested probe rows.
+    def _load_probe_claims(self) -> None:
+        """Build NORAD/COSPAR → probe-* lookups for celestrak consolidation.
 
-        First-row-wins on collision; joint-launch siblings (Cassini+Huygens
-        both at 1997-061A) get a deterministic pick here, but only ONE probe
-        Object ends up claiming the satcat/celestrak rows.
+        Multiple probes can share a NORAD (joint-launch siblings); the lowest
+        probe_id wins ownership of the celestrak row, which represents the
+        physically tracked primary spacecraft. Probe rows already carry the
+        satcat FK (set by probe ingest); celestrak only adds the celestrak
+        FK on top.
+
+        COSPAR fallback covers registry entries with cospar but no NORAD
+        (Apollo S-IVB stages etc.).
         """
-        self.cospar_to_probe = {}
-        for cospar, oid in self.session.execute(
-            select(Object.cospar_id, Object.id).where(
-                Object.id.like("probe-%"),
-                Object.cospar_id.is_not(None),
+        rows = self.session.execute(
+            select(Object.norad_cat_id, Object.cospar_id, Object.probe_id, Object.id)
+            .where(Object.id.like("probe-%"))
+            .order_by(Object.probe_id.asc())
+        ).all()
+        norad_collisions: dict[int, list[str]] = {}
+        for norad, cospar, _probe_id, oid in rows:
+            if norad is not None:
+                if norad in self.norad_to_probe:
+                    norad_collisions.setdefault(
+                        norad, [self.norad_to_probe[norad]]
+                    ).append(oid)
+                else:
+                    self.norad_to_probe[norad] = oid
+            if cospar is not None and norad is None:
+                # Cospar fallback only for probes without NORAD claim.
+                self.cospar_to_probe.setdefault(cospar, oid)
+        for norad, claimants in norad_collisions.items():
+            logger.info(
+                "joint-launch NORAD %d claimed by multiple probes %s — "
+                "owner of celestrak row: %s",
+                norad,
+                claimants,
+                claimants[0],
             )
-        ).all():
-            self.cospar_to_probe.setdefault(cospar, oid)
         logger.info(
-            "Loaded %d probe COSPAR cross-references for consolidation",
+            "Loaded %d NORAD + %d COSPAR probe claims for consolidation",
+            len(self.norad_to_probe),
             len(self.cospar_to_probe),
         )
 
@@ -102,10 +130,14 @@ class CelesTrakIngestor:
             else ObjectType.spacecraft
         )
 
-        # If a probe row already owns this COSPAR (Cassini, HST, Kepler, …),
-        # consolidate: no parallel `norad_satcat-N` Object — the probe row's
-        # `satcat_norad_cat_id` / `celestrak_norad_cat_id` FKs claim the NORAD.
-        probe_object_id = self.cospar_to_probe.get(cospar) if cospar else None
+        # If a probe row already owns this NORAD (or, fallback, this COSPAR),
+        # consolidate: no parallel `norad_satcat-N` Object — the probe row
+        # claims the celestrak FK in `_link_celestrak_to_probes`. The probe's
+        # `satcat_norad_cat_id` was set at probe-ingest time and isn't touched
+        # here.
+        probe_object_id = self.norad_to_probe.get(norad)
+        if probe_object_id is None and cospar:
+            probe_object_id = self.cospar_to_probe.get(cospar)
         has_satcat = norad in self.satcat_object_types
         if probe_object_id is not None:
             obj = None
@@ -118,8 +150,8 @@ class CelesTrakIngestor:
                 object_type=object_type,
                 norad_cat_id=norad,
                 cospar_id=cospar,
-                # FK claims: celestrak row is being minted right now;
-                # satcat row may or may not exist for this NORAD.
+                # CelesTrak row is being minted right now; satcat row may or
+                # may not exist for this NORAD.
                 celestrak_norad_cat_id=norad,
                 satcat_norad_cat_id=norad if has_satcat else None,
                 scale=ElementsScale.planet,
@@ -195,14 +227,14 @@ class CelesTrakIngestor:
     def _clear(self) -> None:
         # CelesTrak rows are recomputed from scratch each ingest.
         self.session.execute(delete(CelesTrakRow))
-        # Probe rows survive (re-inserted by their own ingest); clear any
-        # stale claim FKs so a previous run's consolidation can't bleed
-        # through. Probe rows that should still claim a NORAD will be
-        # re-linked by `_link_probe_claims` below.
+        # Reset stale celestrak claims on probe rows. The satcat FK is owned
+        # by probe ingest (which ran before celestrak in the new order) and
+        # must not be cleared here — a probe whose celestrak row is gone may
+        # still legitimately FK its satcat row.
         self.session.execute(
             update(Object)
             .where(Object.id.like("probe-%"))
-            .values(satcat_norad_cat_id=None, celestrak_norad_cat_id=None)
+            .values(celestrak_norad_cat_id=None)
         )
         # `norad_satcat-%` rows are owned entirely by this ingest — drop them
         # and re-mint as needed.
@@ -215,7 +247,7 @@ class CelesTrakIngestor:
             return
         self._clear()
         self._load_satcat_object_types()
-        self._load_cospar_to_probe()
+        self._load_probe_claims()
         group_data = load_groups(self.groups_dir)
 
         total = _count_csv_rows(self.csv_path)
@@ -285,14 +317,15 @@ class CelesTrakIngestor:
     def _backfill_inactive_satcat(self) -> None:
         """Mint `norad_satcat-N` rows for satcat entries no Object yet claims.
 
-        Active sats and inactive sats consolidated onto a probe via COSPAR
-        were both handled inline above. Anything still unclaimed here is
-        genuinely satcat-only: decayed debris, retired birds without current
-        TLEs, satcat dust. Two paths:
+        Probe ingest already FK'd every probe whose registry NORAD matches a
+        satcat row. The active-celestrak loop set the FK on probes whose
+        cospar-only entry matched a satcat row via cospar. Anything still
+        unclaimed here is genuinely satcat-only — decayed debris, retired
+        birds without current TLEs, satcat dust. Two paths:
 
-        * Cospar matches a probe row that didn't get linked yet (no current
-          TLE so the gp-active loop skipped it) — set the probe's
-          `satcat_norad_cat_id` FK; no parallel row minted.
+        * Cospar matches a probe row that lacks a NORAD in the registry
+          (Apollo S-IVB stages etc.) — set the probe's `satcat_norad_cat_id`
+          FK; no parallel row minted.
         * No cospar match — mint a `norad_satcat-N` Object with the satcat
           FK set, no `orbital_source` / `has_position`, so the export
           skips it but model ingest + focus URLs can still link via NORAD.

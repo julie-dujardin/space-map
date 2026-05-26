@@ -25,11 +25,11 @@ import json
 import logging
 from pathlib import Path
 
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
-from space_map_data.models.object import Object, ObjectType, OrbitalSource
+from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
 from space_map_data.probes.probe_id import (
     ProbeIdRecord,
     assign_many,
@@ -207,6 +207,15 @@ class ProbesIngestor:
         self.landed_missions_dir = (
             download_dir / PROVIDERS.SPICE / "kernels" / "landed_missions"
         )
+        # Pre-loaded set of satcat NORADs; consulted in `_build_row` to decide
+        # whether to set the satcat FK. Without this guard, probes whose
+        # registry NORAD doesn't exist in satcat would trip the FK constraint.
+        self.satcat_norads: set[int] = set()
+
+    def _load_satcat_norads(self) -> None:
+        self.satcat_norads = {
+            n for (n,) in self.session.execute(select(Satcat.NORAD_CAT_ID)).all()
+        }
 
     def _clear(self) -> None:
         """Drop previously-ingested probe rows. Safe: probes live under their
@@ -235,14 +244,22 @@ class ProbesIngestor:
                 object_pk,
                 name,
             )
+        norad = rec.norad_cat_id
+        satcat_fk = norad if norad is not None and norad in self.satcat_norads else None
         return {
             "id": object_pk,
             "name": name,
             "object_type": ObjectType.spacecraft,
             "naif_id": record["naif_id"],
             "cospar_id": rec.cospar_id,
-            "norad_cat_id": rec.norad_cat_id,
+            "norad_cat_id": norad,
             "probe_id": rec.probe_id,
+            # Claim the satcat row when the registry knows the NORAD and the
+            # satcat table has a matching row. Joint-launch siblings can both
+            # claim the same NORAD (Cassini + Huygens both at 25008); the FK
+            # column is non-unique on the probe side and the partial-unique
+            # index applies only to `norad_satcat-%` rows.
+            "satcat_norad_cat_id": satcat_fk,
             # Parent_id is decoration for probe rows — the frontend reads the
             # actual parent from the position file at render time. Probes
             # always heliocenter; satellite-class objects (HST, ISS) live as
@@ -273,6 +290,7 @@ class ProbesIngestor:
         )
 
         self._clear()
+        self._load_satcat_norads()
 
         rows: list[dict] = []
         for r in tqdm(records, desc="Probes ingest"):
