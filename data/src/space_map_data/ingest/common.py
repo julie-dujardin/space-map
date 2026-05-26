@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import func
 
+from space_map_data.ingest.checks import assert_no_namespace_collision
 from space_map_data.models.object import Object
 from space_map_data.ingest.providers import iau_nomenclature, image_selection, wikipedia
 from space_map_data.ingest.providers.objects import (
@@ -55,6 +56,9 @@ def ingest_objects(download_dir: Path) -> None:
     # Sets `satcat_norad_cat_id` FK against the satcat table populated above.
     probes.ingest(download_dir)
     celestrak.ingest(download_dir)
+    # Post-ingest invariants: probe-* and norad_satcat-* must be disjoint by
+    # NORAD + COSPAR, and the FK ↔ denormalized norad_cat_id must agree.
+    assert_no_namespace_collision(get_session())
 
 
 def ingest_features(download_dir: Path) -> None:
