@@ -77,6 +77,46 @@ def _import(path: str) -> None:
         raise SystemExit(f"unsupported source format: {ext}")
 
 
+def _force_double_sided() -> None:
+    """Mark every material double-sided so glTF won't cull back faces.
+
+    Several source FBX files (e.g. ESA's INTEGRAL) have parts whose
+    face winding points inward — under glTF's default single-sided
+    rendering the visible outside ends up culled and the textured inside
+    bleeds through. Disabling backface culling on every material maps to
+    ``doubleSided: true`` in the exported glTF and renders both sides,
+    sidestepping the per-mesh normal inversion without having to detect
+    which parts are wrong.
+    """
+    for mat in bpy.data.materials:
+        mat.use_backface_culling = False
+
+
+def _force_opaque() -> None:
+    """Force every Principled BSDF's Alpha back to 1.0.
+
+    The Blender FBX importer wires up the Alpha input from each
+    texture's alpha channel even when the source PNGs are opaque RGBA
+    with garbage in A — the exported glTF then carries ``alphaMode:
+    BLEND``, so Three.js renders the whole spacecraft semi-transparent
+    (visible "see-through outside" symptom on ESA's INTEGRAL). None of
+    the catalog models are actually meant to have alpha; forcing alpha
+    back to 1.0 and re-deriving ``alphaMode: OPAQUE`` is the right call.
+    """
+    for mat in bpy.data.materials:
+        if not mat.use_nodes or mat.node_tree is None:
+            continue
+        for node in mat.node_tree.nodes:
+            if node.type != "BSDF_PRINCIPLED":
+                continue
+            alpha = node.inputs.get("Alpha")
+            if alpha is None:
+                continue
+            for link in list(alpha.links):
+                mat.node_tree.links.remove(link)
+            alpha.default_value = 1.0
+
+
 def _export_glb(path: str) -> None:
     """Export the scene as a glb without animations or morph targets.
 
@@ -104,6 +144,8 @@ def main() -> None:
     src, dst = _parse_args()
     _clear_scene()
     _import(src)
+    _force_double_sided()
+    _force_opaque()
     os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
     _export_glb(dst)
 

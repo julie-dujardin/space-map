@@ -20,7 +20,7 @@ CONVERTED_DIR = MODELS_DOWNLOAD_DIR / "converted"
 SCHEMA_VERSION = 4
 # Bump when gltf-transform invocation flags change. Caches with a different
 # value reconvert from source.
-COMPRESSION_KNOBS_VERSION = "v1-meshopt-webp"
+COMPRESSION_KNOBS_VERSION = "v3-meshopt-webp-doublesided-opaque"
 
 # Catalog metadata propagated into each model's metadata.json and into the
 # credits.json aggregate. Keyed by the manifest's top-level ``source.name``
