@@ -60,7 +60,7 @@ AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
 
 # Each source maps to: (id_type, db_query_func_name, label)
 SOURCES = (
-    (ID_TYPES.NAIF, "_query_naif_ids", "Natural bodies (NAIF)"),
+    # Very few matches (ID_TYPES.NAIF, "_query_naif_ids", "Natural bodies (NAIF)"),  TODO only do majors/moons of majors
     (ID_TYPES.SPKID, "_query_small_body_spkids", "Small bodies (SPK-ID)"),
     # (  Too many IDs
     #     ID_TYPES.MPC_DESIGNATION,
