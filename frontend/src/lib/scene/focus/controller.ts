@@ -172,9 +172,8 @@ export class FocusController {
 			const bo = bodyObjects.get(body.data.id);
 			if (bo) {
 				upgradeBodyMesh(bo, scene, clickables, meshToBody);
-				// Asteroids/comets had no trail as halo-only; this picks it
-				// up now that `bo.mesh` is set. Probes already had one — the
-				// "already built" guard inside buildTrails skips them.
+				// Mesh-upgradable bodies (asteroids/comets/probes) had no trail
+				// as halo-only; this picks it up now that `bo.mesh` is set.
 				buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
 				assignMapLayerToTrails();
 			}

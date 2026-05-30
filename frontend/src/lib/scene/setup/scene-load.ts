@@ -200,6 +200,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// the BodyObject the renderer kept holds onto fresh elements without us
 	// needing to reseat references anywhere.
 	const placeholderById = new Map<string, PositionedBody>();
+	// Ids added to a pending bucket since the last flush — drained at flush
+	// time to feed `BodyIndex.notifyBodiesAdded` so the promotion registry
+	// picks up curated asteroids/spacecraft without polling.
+	const addedSinceFlush = new Set<string>();
 
 	const flush = () => {
 		// Re-wrap each inner Map so the outer reference changes for any
@@ -208,6 +212,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		ctx.bodies.asteroidBodiesByZone = cloneOuter(pendingAsteroids);
 		ctx.bodies.spacecraftByParent = cloneOuter(pendingSpacecraft);
 		ctx.bodies.minorBodyVersion++;
+		if (addedSinceFlush.size > 0) {
+			ctx.bodies.notifyBodiesAdded([...addedSinceFlush]);
+			addedSinceFlush.clear();
+		}
 	};
 
 	// If the target body wasn't in majors/moons, resolve it from the global
@@ -225,12 +233,14 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				if (!bucket) pendingSpacecraft.set(key, (bucket = new Map()));
 				bucket.set(body.data.id, body);
 				placeholderById.set(body.data.id, body);
+				addedSinceFlush.add(body.data.id);
 				ctx.bodies.dirtySpacecraftGroups.add(key);
 			} else if (zone) {
 				let bucket = pendingAsteroids.get(zone);
 				if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
 				bucket.set(body.data.id, body);
 				placeholderById.set(body.data.id, body);
+				addedSinceFlush.add(body.data.id);
 				ctx.bodies.dirtyAsteroidZones.add(zone);
 			} else {
 				// Major / undocumented / wikidata-only — no zone to route into,
@@ -296,11 +306,13 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 						if (b.data.objectType === ObjectType.SPACECRAFT) {
 							let bucket = pendingSpacecraft.get(b.data.parentId);
 							if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
+							if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
 							bucket.set(b.data.id, b);
 							ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
 						} else {
 							let bucket = pendingAsteroids.get(zone);
 							if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
+							if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
 							bucket.set(b.data.id, b);
 							ctx.bodies.dirtyAsteroidZones.add(zone);
 						}

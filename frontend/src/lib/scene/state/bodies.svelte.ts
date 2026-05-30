@@ -52,6 +52,26 @@ export class BodyIndex {
 	 *  shadow camera frustum and to gate point-cloud visibility. */
 	private readonly moonMaxAByParent = new Map<string, number>();
 
+	/** Subscribers notified after any bucket gains new ids — drives promotion
+	 *  matching without per-frame zone scans. */
+	private readonly addListeners = new Set<(ids: readonly string[]) => void>();
+
+	/** Subscribe to bulk additions across any bucket (bodiesById, zone buckets,
+	 *  spacecraft buckets). The callback fires with the freshly-added ids only;
+	 *  updates to existing entries are not announced. */
+	onBodiesAdded(cb: (ids: readonly string[]) => void): () => void {
+		this.addListeners.add(cb);
+		return () => this.addListeners.delete(cb);
+	}
+
+	/** Fire `onBodiesAdded` listeners. Called by `addBodies` for bodiesById
+	 *  insertions, and directly by loaders that mutate the zone buckets
+	 *  (scene-load flush, zone-refresher merges). */
+	notifyBodiesAdded(ids: readonly string[]): void {
+		if (ids.length === 0 || this.addListeners.size === 0) return;
+		for (const cb of this.addListeners) cb(ids);
+	}
+
 	/**
 	 * Look up any body by ID. Pass `zone` (parent id for spacecraft groups,
 	 * OrbitClass name for asteroid zones) when you already know the bucket —
@@ -81,7 +101,9 @@ export class BodyIndex {
 	 *  index, and the per-parent moon-max-a tracker. Orbit-source attribution
 	 *  is the caller's responsibility (see CreditsStore.recordOrbitSources). */
 	addBodies(bodies: PositionedBody[]): void {
+		const addedIds: string[] = [];
 		for (const b of bodies) {
+			if (!this.bodiesById.has(b.data.id)) addedIds.push(b.data.id);
 			this.bodiesById.set(b.data.id, b);
 
 			const set = this.childrenByParent.get(b.data.parentId) ?? new Set<string>();
@@ -92,6 +114,7 @@ export class BodyIndex {
 				if (b.data.a > prev) this.moonMaxAByParent.set(b.data.parentId, b.data.a);
 			}
 		}
+		this.notifyBodiesAdded(addedIds);
 	}
 
 	/** Children of `parentId` (object ids), or undefined if none registered. */

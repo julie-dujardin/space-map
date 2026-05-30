@@ -208,6 +208,7 @@ export class ZoneRefresher {
 			let added = 0;
 			let updated = 0;
 			let removed = 0;
+			const addedIds: string[] = [];
 
 			for (const [key, freshBodies] of newBuckets) {
 				const existing = this.ctx.bodies.spacecraftByParent.get(key);
@@ -230,6 +231,7 @@ export class ZoneRefresher {
 						updated++;
 					} else {
 						merged.set(id, b);
+						addedIds.push(id);
 						added++;
 					}
 				}
@@ -257,6 +259,7 @@ export class ZoneRefresher {
 			z.knownBuckets = new Set(newBuckets.keys());
 			z.currentTime = time;
 			this.ctx.bodies.minorBodyVersion++;
+			this.ctx.bodies.notifyBodiesAdded(addedIds);
 			console.log(
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);

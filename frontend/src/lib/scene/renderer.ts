@@ -536,8 +536,9 @@ export class SceneRenderer {
 			this._tmpV3
 		);
 
-		// One auto-promotion + one point-cloud upload per frame to spread GPU cost.
-		this.focusController.promotion.drainOneAutoPromote();
+		// One point-cloud upload per frame to spread GPU cost. Auto-promotion
+		// now happens push-style at chunk-arrival time (PromotionRegistry
+		// listens on `BodyIndex.onBodiesAdded`).
 		this.pointClouds.drainOnePendingSceneAdd();
 
 		this.composer.render();

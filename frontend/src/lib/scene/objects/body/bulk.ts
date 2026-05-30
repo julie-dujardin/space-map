@@ -1,11 +1,12 @@
 import { type CanvasTexture, type Points, type PointsMaterial, type Scene } from 'three';
 import { resolveBodyColor } from '$lib/utils';
 import { BODY_COLORS } from '$lib/constants';
-import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '../../types';
 import { asteroidPointSize, makePointCloud } from '../pointcloud';
 import { makeTrail } from '../trail/builder';
+import { isMeshUpgradable } from './lifecycle';
 
 function excludePromoted(
 	bodies: Iterable<PositionedBody>,
@@ -45,11 +46,13 @@ export function buildTrails(
 	for (const [, bo] of bodyObjects) {
 		if (bo.trail !== null) continue;
 		const { body } = bo;
-		// STAR is the Sun — no trail. Halo-only asteroids/comets get no
-		// trail until focus upgrades them to a full mesh (handled by
-		// `upgradeBodyMesh`); barycenters, Lagrange points, and probes are
-		// halo-only too but keep their trails.
+		// STAR is the Sun — no trail. Halo-only mesh-upgradable bodies
+		// (asteroids, comets, probes) render as halo + label only by design,
+		// so we skip trail build until focus runs `upgradeBodyMesh` — building
+		// it would burn ~512 Kepler solves per body for nothing. Barycenters
+		// and Lagrange points stay halo-only forever and keep their trails.
 		if (body.data.objectType === ObjectType.STAR) continue;
+		if (!bo.mesh && isMeshUpgradable(body)) continue;
 		// Probes whose elements were null at processProbes time (typically
 		// because systems-global GMs hadn't landed yet) carry a rederive
 		// callback — retry it now so the trail self-heals on the next
@@ -64,9 +67,6 @@ export function buildTrails(
 		// have no `orbitElements` (the buffer takes over the trail entirely),
 		// so they take this branch via the buffer instead.
 		if (!body.orbitElements && !body.trailBuffer) continue;
-		const t = body.data.objectType;
-		const isHaloOnlySmallBody = !bo.mesh && (isAsteroid(t) || t === ObjectType.COMET);
-		if (isHaloOnlySmallBody) continue;
 		const color = resolveBodyColor(body.data);
 		const line = makeTrail(body, color, basisPos, jd, trailWidthFor(body));
 		scene.add(line);

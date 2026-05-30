@@ -42,28 +42,36 @@ export interface PromotionDeps {
  * promote/teardown lifecycle for both.
  */
 export class PromotionRegistry {
-	/** Bodies queued for auto-promotion — drained one per frame in {@link drainOneAutoPromote}. */
+	/** Curated ids waiting for their body to arrive — promoted directly when
+	 *  {@link onBodiesAdded} fires for a matching id. */
 	private readonly pendingDefaults = new Set<string>();
-	/** Stable curated set: labels-file keys ∪ MINOR_PROMOTED_IDS. Never drained. */
+	/** Stable curated set: labels-file keys ∪ MINOR_PROMOTED_IDS. */
 	private readonly defaults = new Set<string>();
 	/** Click/URL-promoted bodies (not in the curated set). */
 	private readonly userPromoted = new Set<string>();
 
 	constructor(private readonly deps: PromotionDeps) {
-		// Promoted set = keys of the global per-language labels file. Fire-and-
-		// forget: drainOneAutoPromote is a no-op until labels resolve a few
-		// hundred ms later.
+		deps.ctx.bodies.onBodiesAdded((ids) => this.onBodiesAdded(ids));
+		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
+		// until labels resolve a few hundred ms later, defaults is empty so the
+		// notification handler matches nothing.
 		void fetchLabels().then((labels) => {
-			for (const id of labels.keys()) {
-				this.pendingDefaults.add(id);
-				this.defaults.add(id);
-			}
+			const alreadyLoaded: PositionedBody[] = [];
+			const add = (id: string) => {
+				if (!this.defaults.add(id)) return;
+				if (this.deps.bodyObjects.has(id)) return;
+				const body = this.deps.ctx.getBody(id);
+				if (!body) {
+					this.pendingDefaults.add(id);
+					return;
+				}
+				if (this.shouldAutoPromote(body, id)) alreadyLoaded.push(body);
+			};
+			for (const id of labels.keys()) add(id);
 			// Minor-promoted bodies still need a halo. They may or may not be
 			// in the labels file (cheb-covered ones are); add idempotently.
-			for (const id of MINOR_PROMOTED_IDS) {
-				this.pendingDefaults.add(id);
-				this.defaults.add(id);
-			}
+			for (const id of MINOR_PROMOTED_IDS) add(id);
+			this.buildBatch(alreadyLoaded);
 			// URL navigation that landed before labels resolved may have flagged
 			// a curated body as user-promoted; reconcile now.
 			let pruned = false;
@@ -75,6 +83,32 @@ export class PromotionRegistry {
 			}
 			if (pruned) this.emitUserPromotedCount();
 		});
+	}
+
+	/** Notification hook from {@link BodyIndex}. Promotes any newly-arrived
+	 *  curated bodies in a single batch (shared post-processing pass). */
+	private onBodiesAdded(ids: readonly string[]): void {
+		if (this.pendingDefaults.size === 0) return;
+		const matched: PositionedBody[] = [];
+		for (const id of ids) {
+			if (!this.pendingDefaults.delete(id)) continue;
+			const body = this.deps.ctx.getBody(id);
+			if (body && this.shouldAutoPromote(body, id)) matched.push(body);
+		}
+		this.buildBatch(matched);
+	}
+
+	/** Barycenters and Lagrange points share the labels file with promoted
+	 *  bodies (their names are needed for URL navigation), but they aren't
+	 *  rendered by default — except those listed in MINOR_PROMOTED_IDS, which
+	 *  render as collapsed halos so the user sees the SSB / Pluto-Charon offset. */
+	private shouldAutoPromote(body: PositionedBody, id: string): boolean {
+		if (
+			body.data.objectType !== ObjectType.BARYCENTER &&
+			body.data.objectType !== ObjectType.LAGRANGE_POINT
+		)
+			return true;
+		return MINOR_PROMOTED_IDS.has(id);
 	}
 
 	isDefault(id: string): boolean {
@@ -91,9 +125,16 @@ export class PromotionRegistry {
 
 	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
+		if (!this.buildBodyInstance(body)) return;
+		this.finalizeBuilds();
+	}
+
+	/** Build mesh, label, halo, and dirty markers for one body. Returns false
+	 *  if the body was already promoted (caller can skip `finalizeBuilds`). */
+	private buildBodyInstance(body: PositionedBody): boolean {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
 			this.deps;
-		if (bodyObjects.has(body.data.id)) return;
+		if (bodyObjects.has(body.data.id)) return false;
 		// Point-cloud bodies aren't touched by updatePositions — their CPU
 		// position is frozen at load. Refresh before building so the mesh,
 		// halo, and trail spawn at the current jd instead of jumping
@@ -121,28 +162,47 @@ export class PromotionRegistry {
 			(id, hovered) =>
 				hovered ? this.deps.hoveredBodyIds.add(id) : this.deps.hoveredBodyIds.delete(id)
 		);
-		buildTrails(bodyObjects, scene, this.deps.pointClouds.basis(), clock.jd);
-		this.deps.assignMapLayerToTrails();
-		this.deps.repositionAll();
-
 		// Click-promoted minor bodies start unnamed; fire-and-forget the bundle fetch.
 		const bo = bodyObjects.get(body.data.id);
 		if (bo && !body.data.name) loadBodyLabel(bo);
-
-		// Rebuild the body's point-cloud group so its dot disappears.
+		// Mark the body's point-cloud group dirty so its dot disappears on the
+		// next `rebuildMinor` pass.
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			ctx.bodies.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
 			const zone = this.findAsteroidZone(body.data.id);
 			if (zone) ctx.bodies.dirtyAsteroidZones.add(zone);
 		}
-		this.deps.pointClouds.rebuildMinor();
-
-		// Track click/URL-promoted bodies so the user can revert them via clearUserPromoted.
 		if (!this.defaults.has(body.data.id)) {
 			this.userPromoted.add(body.data.id);
 			this.emitUserPromotedCount();
 		}
+		return true;
+	}
+
+	/** Global post-processing shared by all bodies built in a batch — trail
+	 *  setup, layer/position resync, point-cloud rebuild. Walks every
+	 *  bodyObject, so calling once per batch instead of once per body keeps
+	 *  bulk promotions (curated asteroids landing in a single chunk) cheap. */
+	private finalizeBuilds(): void {
+		buildTrails(
+			this.deps.bodyObjects,
+			this.deps.scene,
+			this.deps.pointClouds.basis(),
+			this.deps.clock.jd
+		);
+		this.deps.assignMapLayerToTrails();
+		this.deps.repositionAll();
+		this.deps.pointClouds.rebuildMinor();
+	}
+
+	/** Build a batch of bodies with a single shared post-processing pass. */
+	private buildBatch(bodies: Iterable<PositionedBody>): void {
+		let built = false;
+		for (const body of bodies) {
+			if (this.buildBodyInstance(body)) built = true;
+		}
+		if (built) this.finalizeBuilds();
 	}
 
 	/** Tear down every user-promoted body except the focused one, reverting them to point-cloud dots. */
@@ -215,39 +275,5 @@ export class PromotionRegistry {
 		let count = this.userPromoted.size;
 		if (focusedId && this.userPromoted.has(focusedId)) count--;
 		this.deps.onUserPromotedChange(count);
-	}
-
-	/** Drain one auto-promote candidate per frame to spread GPU work. */
-	drainOneAutoPromote(): void {
-		if (this.pendingDefaults.size === 0) return;
-		const { bodyObjects, ctx } = this.deps;
-		for (const id of this.pendingDefaults) {
-			if (bodyObjects.has(id)) {
-				this.pendingDefaults.delete(id);
-				continue;
-			}
-			// Skip ids not yet in bodiesById — getBody would otherwise walk every
-			// spacecraft + asteroid bucket per call, and probes (the common pending
-			// case) live in neither. Next drain picks them up once the chunk lands.
-			if (!ctx.bodies.bodiesById.has(id)) continue;
-			const body = ctx.getBody(id);
-			if (!body) continue; // not loaded yet — retry on a later frame
-			this.pendingDefaults.delete(id);
-			// Barycenters and Lagrange points share the labels file with promoted
-			// bodies (their names are needed for URL navigation), but they aren't
-			// shown by default — except those listed in MINOR_PROMOTED_IDS, which
-			// render as collapsed halos so the user sees the SSB / Pluto-Charon offset.
-			if (
-				(body.data.objectType === ObjectType.BARYCENTER ||
-					body.data.objectType === ObjectType.LAGRANGE_POINT) &&
-				!MINOR_PROMOTED_IDS.has(id)
-			)
-				continue;
-			// Asteroids, comets, and probes auto-promote to a halo + label only
-			// (no sphere mesh, no trail) via buildMajorBodies's isHaloOnly
-			// branch. Full-mesh upgrade on focus is a follow-up.
-			this.ensureBodyObjects(body);
-			break; // one per frame
-		}
 	}
 }
