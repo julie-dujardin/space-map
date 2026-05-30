@@ -366,9 +366,7 @@ class WikidataIdResolver:
         self, *, count_only: bool = False
     ) -> int | Iterator[list[str]]:
         """SPK-IDs for named small bodies → P716."""
-        stmt = select(SBDB.spkid).where(
-            SBDB.name.is_not(None), SBDB.name != "", SBDB.spkid.is_not(None)
-        )
+        stmt = select(SBDB.spkid).where(SBDB.spkid.is_not(None))
         if count_only:
             return (
                 self.session.scalar(select(func.count()).select_from(stmt.subquery()))
