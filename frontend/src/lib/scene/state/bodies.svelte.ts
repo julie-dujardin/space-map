@@ -153,7 +153,7 @@ export class BodyIndex {
 		return this.childrenByParent.get(sysId)?.has(parentId) ?? false;
 	}
 
-	/** Live bucket counts for the debug overlay. */
+	/** Live bucket counts for the debug menu. */
 	getObjectCounts(): {
 		planets: number;
 		moons: number;

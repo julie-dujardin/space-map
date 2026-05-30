@@ -194,7 +194,7 @@ export class SceneRenderer {
 		this.modelScene.add(this.modelLight);
 		this.modelScene.add(this.modelLight.target);
 
-		// Seed skybox rotation synchronously so frame 1 is correct and a debug-overlay
+		// Seed skybox rotation synchronously so frame 1 is correct and a debug-menu
 		// setSkyboxAdjust isn't clobbered by the async load.
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);

@@ -26,6 +26,7 @@ interface Persisted {
 	showDebugInfo?: boolean;
 	showSkyboxAlign?: boolean;
 	viewMode?: ViewMode;
+	maxPartsPerZone?: number;
 }
 
 function readPersisted(): Persisted {
@@ -51,6 +52,9 @@ class SettingsState {
 	showDebugInfo = $state(false);
 	showSkyboxAlign = $state(false);
 	viewMode = $state<ViewMode>('map');
+	/** Debug cap on parts loaded per zone. 0 = unlimited. Only takes effect on
+	 *  the next page load — already-resident chunks aren't unloaded. */
+	maxPartsPerZone = $state(0);
 	#systemDark = $state(false);
 
 	constructor() {
@@ -62,6 +66,7 @@ class SettingsState {
 		this.showDebugInfo = stored.showDebugInfo ?? false;
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 		this.viewMode = stored.viewMode ?? 'map';
+		this.maxPartsPerZone = stored.maxPartsPerZone ?? 0;
 
 		if (typeof window !== 'undefined' && window.matchMedia) {
 			const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -97,6 +102,11 @@ class SettingsState {
 
 	setViewMode(v: ViewMode) {
 		this.viewMode = v;
+		this.persist();
+	}
+
+	setMaxPartsPerZone(v: number) {
+		this.maxPartsPerZone = Math.max(0, Math.floor(v));
 		this.persist();
 	}
 
@@ -149,7 +159,8 @@ class SettingsState {
 				language: this.language,
 				showDebugInfo: this.showDebugInfo,
 				showSkyboxAlign: this.showSkyboxAlign,
-				viewMode: this.viewMode
+				viewMode: this.viewMode,
+				maxPartsPerZone: this.maxPartsPerZone
 			};
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 		} catch {

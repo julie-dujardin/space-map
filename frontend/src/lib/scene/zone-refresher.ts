@@ -31,6 +31,7 @@ import {
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { dateToJD } from '$lib/format/date';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { getSettings } from '$lib/state/settings.svelte';
 
 const MIN_LOAD_INTERVAL_MS = 2000;
 
@@ -86,6 +87,7 @@ export class ZoneRefresher {
 		initialDate: Date
 	) {
 		const initialJd = dateToJD(initialDate);
+		const cap = getSettings().maxPartsPerZone;
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 			// Probe zones load through ProbeStore, not this refresher.
 			if (isProbeZone(zoneData)) continue;
@@ -95,7 +97,7 @@ export class ZoneRefresher {
 				// ChebyshevStore, not this refresher; static-parted zones don't
 				// fan out over time, so they don't need a refresher entry either.
 				if (zoomData.shape === 'chunked' || zoomData.shape === 'parted') continue;
-				const parts = zoomData.parts;
+				const parts = cap > 0 ? Math.min(zoomData.parts, cap) : zoomData.parts;
 				const parentIdType = zoneData.parent_id_type ?? 'naif';
 				if (isDateSegmented(zoomData)) {
 					const state: TimeZoneState = {

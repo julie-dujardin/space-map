@@ -21,6 +21,7 @@ import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { getSettings } from '$lib/state/settings.svelte';
 
 interface MinorChunkArg {
 	zone: string;
@@ -36,6 +37,7 @@ interface MinorChunkArg {
  * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev (ChebyshevStore).
  */
 function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
+	const cap = getSettings().maxPartsPerZone;
 	const args: MinorChunkArg[] = [];
 	for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 		if (zone === 'major' || zone === 'moons') continue;
@@ -47,7 +49,8 @@ function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 			if (zoomData.shape === 'chunked') continue;
 			// Date-segmented zones (earth): pick snapshot nearest the sim time so SGP4's window covers it.
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
-			for (let part = 0; part < zoomData.parts; part++) {
+			const limit = cap > 0 ? Math.min(zoomData.parts, cap) : zoomData.parts;
+			for (let part = 0; part < limit; part++) {
 				args.push({ zone, zoom, part, time, parentIdType });
 				ChunkLoader.prefetch(zone, zoom, part, time);
 			}

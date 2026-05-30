@@ -22,7 +22,7 @@ export interface DebugStats {
 	pixelRatio: number;
 }
 
-/** Snapshot of renderer internals for the debug overlay. Read on demand. */
+/** Snapshot of renderer internals for the debug menu. Read on demand. */
 export function collectDebugStats(params: {
 	fps: number;
 	orbitPool: OrbitWorkerPool;

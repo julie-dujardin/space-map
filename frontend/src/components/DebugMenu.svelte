@@ -141,7 +141,7 @@
 		<span class="text-end tabular-nums">{clock.jd.toFixed(3)}</span>
 	</div>
 
-	<div class="mt-2 pt-2 border-t border-border/40">
+	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
 		<label class="flex items-center gap-2 cursor-pointer">
 			<input
 				type="checkbox"
@@ -149,6 +149,18 @@
 				onchange={(e) => settings.setShowSkyboxAlign(e.currentTarget.checked)}
 			/>
 			<span>Skybox alignment tool</span>
+		</label>
+		<label class="flex items-center gap-2">
+			<span>Max parts/zone</span>
+			<input
+				type="number"
+				min="0"
+				step="1"
+				class="w-16 px-1 py-0.5 rounded bg-background border border-border/60 text-end tabular-nums"
+				value={settings.maxPartsPerZone}
+				onchange={(e) => settings.setMaxPartsPerZone(Number(e.currentTarget.value))}
+			/>
+			<span class="text-muted-foreground">0 = ∞, reload to apply</span>
 		</label>
 	</div>
 </div>
