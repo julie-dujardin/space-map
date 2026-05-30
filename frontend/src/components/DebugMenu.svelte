@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -73,7 +74,18 @@
 	role="status"
 	aria-live="off"
 >
-	<div class="font-semibold text-foreground mb-1">{m.debug_title()}</div>
+	<div class="flex items-start justify-between gap-2 mb-1">
+		<div class="font-semibold text-foreground">{m.debug_title()}</div>
+		<button
+			type="button"
+			class="-mt-0.5 -me-1 inline-flex items-center justify-center
+				w-5 h-5 rounded hover:bg-accent transition-colors cursor-pointer"
+			onclick={() => settings.setShowDebugInfo(false)}
+			aria-label={m.close()}
+		>
+			<XIcon class="size-3.5" />
+		</button>
+	</div>
 
 	<div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
 		<span class="text-muted-foreground">{m.debug_fps()}</span>
