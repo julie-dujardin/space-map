@@ -23,6 +23,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree } from './setup/three-boot';
 import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
@@ -60,16 +61,11 @@ import { createUserLocationMarker, removeUserLocationMarker } from './user-locat
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
-/** Base intensity of the model-overlay directional light. Scaled down per
- *  frame by the eclipse factor at the focused body's center. */
+/** Base intensity of the model-overlay directional light. Scaled by the eclipse factor. */
 const MODEL_LIGHT_BASE_INTENSITY = 3.0;
-/** Base intensity of the model-overlay IBL — just enough so metallic
- *  surfaces have something to reflect (without it, full-metalness panels
- *  read as pure black). Scaled by the same eclipse factor as the
- *  directional sun so metals darken alongside the lit hemisphere. */
+/** Base intensity of the model-overlay IBL. Heavily dimmed so metals have something
+ *  to reflect without overwhelming the sun. Scaled by the eclipse factor. */
 const MODEL_ENV_BASE_INTENSITY = 0.04;
-
-// --- SceneRenderer ---
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
@@ -102,16 +98,10 @@ export class SceneRenderer {
 	private readonly _tmpV3 = new Vector3();
 
 	/**
-	 * Isolated overlay scene + camera for spacecraft 3D models. The main scene
-	 * uses `logarithmicDepthBuffer: true` to span sub-meter probe details and
-	 * AU-scale orbits in one go — but inside the focused body's ~10⁻¹⁰
-	 * scene-unit bubble, log depth precision collapses and a thin tubular
-	 * structure (Euclid's baffle, Gaia's antenna shell) Z-fights with itself
-	 * and reads as "outside-in". Rendering the model in its own scene with a
-	 * tightly-fit near/far avoids the precision cliff entirely. The model
-	 * lives at scene-unit-1 scale here (vs ~10⁻¹⁰ in the main scene); the
-	 * camera mirrors the main camera's orientation but at a scaled distance so
-	 * the model appears at the same on-screen position as the focused body.
+	 * Isolated overlay scene for spacecraft 3D models. Main scene's log depth
+	 * buffer collapses inside the focused body's ~10⁻¹⁰-scene-unit bubble and
+	 * Z-fights thin structures. The overlay renders the model at unit scale
+	 * with a tight near/far, projected to the same on-screen position.
 	 */
 	private modelScene!: Scene;
 	private modelCamera!: PerspectiveCamera;
@@ -121,7 +111,6 @@ export class SceneRenderer {
 	private skyboxAdjuster!: SkyboxAdjuster;
 	private skyDebugMarkers!: SkyDebugMarkers;
 
-	// Focus/fly animation state (mutated by animation module)
 	private readonly focus: FocusState = {
 		focusTruePos: [0, 0, 0],
 		focusOriginWorld: [0, 0, 0],
@@ -137,15 +126,12 @@ export class SceneRenderer {
 	};
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
-	// Per-frame position-map scratch — reused to avoid Map churn on every tick.
-	// Cleared at the start of updatePositions; never escapes the call.
 	private readonly _positionMapScratch = new Map<string, Vec3>();
 
 	private rafId = 0;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
-	// FPS ring buffer: timestamps of the last `FPS_SAMPLE_FRAMES` ticks. fps =
-	// (n - 1) / (last - first) seconds, which stays stable down to ~5 fps.
+	/** Ring buffer of recent tick timestamps; fps = (n-1) / (last - first). */
 	private static readonly FPS_SAMPLE_FRAMES = 30;
 	private fpsSamples: number[] = [];
 	private fpsSampleHead = 0;
@@ -185,26 +171,16 @@ export class SceneRenderer {
 		this.bloomPass = boot.bloomPass;
 		this.shadowLight = boot.shadowLight;
 
-		// Standalone scene + camera for the model overlay pass. The camera's
-		// near/far are recomputed per-frame to bracket the current view distance
-		// (see `renderModelOverlay`); the initial values just keep three.js
-		// happy until the first frame.
 		this.modelScene = new SceneClass();
 		this.modelScene.environment = makeModelEnvMap(this.renderer);
-		// Heavily dimmed IBL — see MODEL_ENV_BASE_INTENSITY. Per-frame scaling
-		// by the eclipse factor happens in renderModelOverlay.
 		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY;
 		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
 		this.modelScene.add(this.modelCamera);
-		// Thin ambient floor + a directional sun whose position is set
-		// per-frame to the body→Sun direction in the main scene
-		// (see `renderModelOverlay`).
 		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
 		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
-		// Model is normalised to a unit-radius sphere at origin (see
-		// `fitToUnitRadius` in model.ts) and the light sits at distance 10 from
-		// origin (`renderModelOverlay`). Ortho frustum covers the silhouette
-		// (radius 1 + margin); near/far bracket the sphere along the light axis.
+		// Model is normalised to unit-radius (see model.ts `fitToUnitRadius`); the
+		// light sits at distance 10 from origin (see `renderModelOverlay`). Ortho
+		// frustum covers the silhouette with a small margin.
 		this.modelLight.castShadow = true;
 		this.modelLight.shadow.mapSize.set(2048, 2048);
 		this.modelLight.shadow.camera.left = -1.5;
@@ -218,15 +194,14 @@ export class SceneRenderer {
 		this.modelScene.add(this.modelLight);
 		this.modelScene.add(this.modelLight.target);
 
-		// Skybox: seed rotation synchronously so it's correct from frame 1 (so a
-		// debug-overlay setSkyboxAdjust can't be clobbered by the async load).
+		// Seed skybox rotation synchronously so frame 1 is correct and a debug-overlay
+		// setSkyboxAdjust isn't clobbered by the async load.
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
 
-		// Set initial camera position from URL state
-		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === 'naif-10');
+		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID);
 		const matchedBody = ctx.getBody(initialView.id);
 		const focusBody = matchedBody ?? sunBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
@@ -310,26 +285,20 @@ export class SceneRenderer {
 			zoom: initialView.zoom
 		});
 
-		// Sync context initial state
 		if (focusBody) ctx.visibility.setFocused(focusBody);
 		ctx.visibility.updateCamera(initialView.zoom);
 
-		// Notify initial focus
 		callbacks.onFocusChange(focusBody);
 
-		// Build all scene objects
 		this.buildScene();
 
-		// Grab reference to Sun's PointLight for shadow swap
-		const sunBo = this.bodyObjects.get('naif-10');
+		const sunBo = this.bodyObjects.get(SUN_ID);
 		this.sunPointLight = sunBo?.extraObjects.find((o): o is PointLight => o instanceof PointLight);
 
-		// If focused body has no visual objects (e.g. placeholder from global file), build them.
 		if (focusBody) this.focusController.promotion.ensureBodyObjects(focusBody);
 
-		// Initial focus on a halo-only type (asteroid/comet/probe) needs its
-		// mesh built immediately — setFocusTarget handles this on subsequent
-		// focus changes, but the init path skips that helper.
+		// Initial focus on a halo-only type (asteroid/comet/probe) builds its mesh
+		// immediately; setFocusTarget handles subsequent focus changes.
 		if (focusBody && isMeshUpgradable(focusBody)) {
 			const bo = this.bodyObjects.get(focusBody.data.id);
 			if (bo) {
@@ -339,10 +308,8 @@ export class SceneRenderer {
 			}
 		}
 
-		// Apply focus-relative positions to all scene objects
 		this.repositionAll();
 
-		// Load textures for initial focus (bodyObjects is now populated)
 		if (focusBody) this.maybeLoadTexture(focusBody);
 		this.systemData.syncToFocus();
 
@@ -358,11 +325,8 @@ export class SceneRenderer {
 		);
 		this.pointerInteraction.attach();
 
-		// Start loop
 		this.tick();
 	}
-
-	// --- Scene construction ---
 
 	private buildScene(): void {
 		buildMajorBodies(
@@ -413,8 +377,6 @@ export class SceneRenderer {
 		this.pointClouds.rebuildMinor();
 	}
 
-	// --- Focus-relative positioning ---
-
 	private repositionAll(): void {
 		this.repositionBodies();
 		this.rebuildTrailBasis();
@@ -435,21 +397,17 @@ export class SceneRenderer {
 	}
 
 	/**
-	 * Rebase the cached orbit-local vertices against the current focus (no
-	 * Kepler recompute). Used by focus animation paths; the per-jd path goes
-	 * through {@link refreshTrail} instead.
+	 * Rebase cached orbit-local vertices against the current focus. No Kepler
+	 * recompute; the per-jd path uses {@link refreshTrail} instead.
 	 */
 	private rebuildTrailBasis(): void {
 		const basis = this.focus.focusTruePos;
 		const [fx, fy, fz] = basis;
 		for (const bo of this.bodyObjects.values()) {
 			const line = bo.trail;
-			// Don't gate on line.visible — newly-built lines are visible=false
-			// but will be flipped visible later this frame by updateBodyVisibility;
-			// their vertices must be rebased against the new focus before first render.
+			// New lines have visible=false until updateBodyVisibility flips them
+			// later this frame, so don't gate on .visible — they still need rebase.
 			if (!line) continue;
-			// Trail-buffer lines have no cached `trailLocalPositions` — re-read
-			// the buffer instead, which already holds parent-relative samples.
 			const trailBuffer = line.userData.trailBuffer as TrailBuffer | undefined;
 			if (trailBuffer) {
 				refreshBufferTrail(bo.body, line, trailBuffer, basis);
@@ -464,13 +422,9 @@ export class SceneRenderer {
 		}
 	}
 
-	// --- RAF loop ---
-
 	private tick = (): void => {
 		this.rafId = requestAnimationFrame(this.tick);
 
-		// FPS ring buffer — ~16 bytes per sample, only read when the debug
-		// overlay is open. Cheap enough to always keep current.
 		const nowMs = performance.now();
 		if (this.fpsSamples.length < SceneRenderer.FPS_SAMPLE_FRAMES) {
 			this.fpsSamples.push(nowMs);
@@ -481,15 +435,13 @@ export class SceneRenderer {
 
 		this.cameraUp.update(this.clock.jd);
 
-		// Snap controls target on first frame
 		if (this.firstFrame) {
 			this.firstFrame = false;
 			this.controls.target.set(0, 0, 0);
 			this.controls.update();
 		}
 
-		// Gate body updates on jd actually changing — fires for play, pause→now,
-		// and manual setJD alike; skips work while paused.
+		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());
 		if (this.clock.jd !== this.lastUpdatedJd) {
 			this.lastUpdatedJd = this.clock.jd;
@@ -504,7 +456,7 @@ export class SceneRenderer {
 				diagnostics: this.positionDiagnostics
 			});
 			this.pointClouds.updateForJd(this.clock.jd);
-			// When animating, stepFocusAnimation below does repositionAll already.
+			// stepFocusAnimation handles repositionAll while animating.
 			const elapsed = performance.now() - this.focus.focusStartTime;
 			if (elapsed >= this.focus.focusDurationMs) {
 				this.repositionBodies();
@@ -512,7 +464,6 @@ export class SceneRenderer {
 			}
 		}
 
-		// Animate focus/fly
 		const controlsSettled = stepFocusAnimation(
 			this.focus,
 			this.camera,
@@ -526,10 +477,7 @@ export class SceneRenderer {
 			this.callbacks.onCameraPosition?.(latitude, longitude, distance);
 		}
 
-		// Once the most recent focus animation has run its course, release the
-		// textures of any system the user navigated away from. Deferred (rather
-		// than disposed at click time) so a fly that gets reversed mid-way
-		// doesn't thrash the GPU.
+		// Deferred system-data unload so a reversed mid-fly doesn't thrash the GPU.
 		if (
 			this.systemData.hasPendingUnloads() &&
 			performance.now() - this.focus.focusStartTime >= this.focus.focusDurationMs
@@ -537,11 +485,9 @@ export class SceneRenderer {
 			this.systemData.drainPendingUnloads();
 		}
 
-		// Camera state → visibility decisions
 		const { distance } = this.getCameraState();
 		this.ctx.visibility.updateCamera(distance);
 
-		// Per-frame visibility, label, and trail updates
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
@@ -558,16 +504,14 @@ export class SceneRenderer {
 			this._tmpV3
 		);
 
-		// Catch lines that updatePositions skipped (visible=false last frame)
-		// but updateBodyVisibility just flipped on, so they don't render at a
-		// stale basis for one frame.
+		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility
+		// just flipped on, so they don't render at a stale basis for one frame.
 		refreshDeferredTrails(this.bodyObjects, this.focus, this.lastUpdatedJd);
 
 		updateRingShaders(this.bodyObjects, this.focus.focusTruePos);
 		updateAtmosphereShaders(this.bodyObjects);
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
-		// Hide the user-location dot when it rotates around to Earth's far side.
 		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
 
 		const focusedIdLod = this.focusController.current?.data.id;
@@ -592,10 +536,8 @@ export class SceneRenderer {
 			this._tmpV3
 		);
 
-		// Auto-promote one default-important minor body per frame.
+		// One auto-promotion + one point-cloud upload per frame to spread GPU cost.
 		this.focusController.promotion.drainOneAutoPromote();
-
-		// Stagger new point cloud additions: one per frame to spread GPU upload cost.
 		this.pointClouds.drainOnePendingSceneAdd();
 
 		this.composer.render();
@@ -604,13 +546,10 @@ export class SceneRenderer {
 	};
 
 	/**
-	 * Composite the focused body's 3D model on top of the main render. The
-	 * model lives in `modelScene` at unit scale; we mirror the main camera's
-	 * orientation and place the overlay camera at a distance chosen so the
-	 * model occupies the same screen footprint as the focused body (which is
-	 * 10⁻¹⁰-scale in the main scene). Near/far are tight around the model, so
-	 * depth precision stays good — independent of the main scene's
-	 * `logarithmicDepthBuffer` regime.
+	 * Composite the focused body's 3D model on top of the main render. The model
+	 * lives in `modelScene` at unit scale; the overlay camera mirrors the main
+	 * camera's orientation at a distance that keeps the model's screen footprint
+	 * matching what the body sphere occupied, with tight near/far for depth.
 	 */
 	private renderModelOverlay(): void {
 		const focusBody = this.focusController.current;
@@ -618,34 +557,20 @@ export class SceneRenderer {
 		const bo = this.bodyObjects.get(focusBody.data.id);
 		if (!bo?.model) return;
 
-		// Main camera target is the focused body, which sits at scene origin in
-		// focus-relative coords; the camera's distance from origin is the
-		// distance-to-body that orbit controls expose.
 		const camDist = this.camera.position.length();
-		// Model bounds in modelScene are normalised to extent 2 (radius 1)
-		// during load — see `loadBodyModel`. Picking `overlayDist = camDist /
-		// (2 * radiusScene)` keeps the on-screen size identical to what the
-		// (invisible) placeholder sphere would have occupied, so the model
-		// snaps in where the halo was.
+		// Model is normalised to radius 1 in modelScene; this overlayDist matches
+		// the screen size the focused body's sphere had.
 		const overlayDist = camDist / (2 * bo.radiusScene);
 		this.modelCamera.position.copy(this.camera.position).normalize().multiplyScalar(overlayDist);
 		this.modelCamera.quaternion.copy(this.camera.quaternion);
 		this.modelCamera.aspect = this.camera.aspect;
-		// Bracket the unit-radius model around `overlayDist` with a generous
-		// margin so partial-zoom-in doesn't clip and the depth-buffer range
-		// stays sensible. 24-bit depth across this range gives sub-mm
-		// precision within the model.
 		this.modelCamera.near = Math.max(0.01, overlayDist - 5);
 		this.modelCamera.far = overlayDist + 50;
 		this.modelCamera.updateProjectionMatrix();
 
-		// Mirror the scene's sun direction onto the overlay's directional
-		// light so the model is lit on the same side as the rest of the
-		// scene. Sun direction = (sunPos - focusPos) normalised, computed in
-		// world coords; the overlay scene is independent so we apply the unit
-		// vector directly. Light position is the source of the rays (target
-		// is origin where the model sits); arbitrary positive distance.
-		const sunBody = this.bodyObjects.get('naif-10')?.body;
+		// Sun direction in the overlay = (sun - focus) normalised, applied as
+		// the directional light position (target at origin, distance arbitrary).
+		const sunBody = this.bodyObjects.get(SUN_ID)?.body;
 		if (sunBody) {
 			const [sx, sy, sz] = sunBody.position;
 			const [fx, fy, fz] = focusBody.position;
@@ -653,10 +578,7 @@ export class SceneRenderer {
 			this.modelLight.position.copy(this._tmpV3).multiplyScalar(10);
 		}
 
-		// Dim the directional sun by the analytical sun-disc occlusion at the
-		// focused body's center (= focus origin in focus-relative coords). The
-		// model is small enough that per-fragment variation is irrelevant —
-		// see `evaluateEclipseFactor` docstring.
+		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
 		this._tmpV3.set(0, 0, 0);
 		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
 		this.modelLight.intensity = MODEL_LIGHT_BASE_INTENSITY * factor;
@@ -667,8 +589,6 @@ export class SceneRenderer {
 		this.renderer.render(this.modelScene, this.modelCamera);
 		this.renderer.autoClear = true;
 	}
-
-	// --- Interaction ---
 
 	private getCameraState() {
 		const cam = this.camera.position;
@@ -689,12 +609,9 @@ export class SceneRenderer {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
 		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
-		// Spacecraft 3D model — gated on `global.model_name` inside loadBodyModel,
-		// so cheap no-op for every body that doesn't have a model bundle.
+		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		loadBodyModel(bo, this.modelScene, this.ctx);
 	}
-
-	// --- Public API ---
 
 	clearUserPromoted(): void {
 		this.focusController.promotion.clearUserPromoted();
@@ -712,20 +629,10 @@ export class SceneRenderer {
 		return this.focusController.current;
 	}
 
-	/**
-	 * Snapshot of internals for the debug overlay. Read on demand; nothing
-	 * here is hot, but the call lives behind a settings toggle so the
-	 * GC-pressure of one allocation per frame is fine.
-	 *
-	 * `fps` is averaged across the ring buffer (~0.5s at 60Hz); when the tab
-	 * is backgrounded RAF is throttled and the buffer ages out — that's
-	 * accurate, not stale.
-	 */
 	getDebugStats(): DebugStats {
 		const samples = this.fpsSamples;
 		let fps = 0;
 		if (samples.length >= 2) {
-			// Reassemble the ring buffer in chronological order.
 			const head = samples.length < SceneRenderer.FPS_SAMPLE_FRAMES ? 0 : this.fpsSampleHead;
 			const oldest = samples[head];
 			const newest = samples[(head - 1 + samples.length) % samples.length];
@@ -758,13 +665,9 @@ export class SceneRenderer {
 		this.skyDebugMarkers.setVisible(visible);
 	}
 
-	/**
-	 * Drop a "you are here" pin at lat/lon on Earth. Re-pins if already set.
-	 * Parented to Earth's mesh, so it inherits Earth's rotation and the dot
-	 * stays glued to the same ground point as the planet spins.
-	 */
+	/** Drop a "you are here" pin at lat/lon on Earth; re-pins if already set. */
 	setUserLocation(latitude: number, longitude: number): void {
-		const earth = this.bodyObjects.get('naif-399');
+		const earth = this.bodyObjects.get(EARTH_ID);
 		if (!earth?.mesh) return;
 		if (this.userLocationMarker) removeUserLocationMarker(this.userLocationMarker);
 		this.userLocationMarker = createUserLocationMarker(

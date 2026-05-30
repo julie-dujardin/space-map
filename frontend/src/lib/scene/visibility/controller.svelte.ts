@@ -2,6 +2,7 @@ import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/object
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
+import { SUN_ID } from '$lib/constants';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -16,38 +17,19 @@ import {
 
 /**
  * Owns focus state and turns camera distance + focus into per-body visibility
- * decisions. Reads body topology (parent/child graph, moon extents) from
- * {@link BodyIndex}; produces VISIBILITY values that `visibility/update.ts`
- * and `visibility/flags.ts` translate into Three.js side effects.
- *
- * Two parallel focus mirrors: `focusedBodyId`/`focusedSystemId` are reactive
- * (`$state`) for Svelte consumers (attribution bar, popover); the `*Plain`
- * variants are plain fields read by hot per-frame loops, where every `$state`
- * getter would otherwise fire a reactive-source tag + proxy trap.
+ * decisions. Reads body topology from {@link BodyIndex}. Plain mirrors of the
+ * reactive fields exist because every `$state` getter trips a reactive-source
+ * tag in dev mode, dominating the per-body hot loop.
  */
 export class VisibilityController {
-	/**
-	 * Currently focused body. Reactive so the attribution bar can show texture
-	 * credits for standalone bodies (asteroids like Bennu, dwarf planets like
-	 * Ceres) that aren't part of a loaded planetary system.
-	 */
-	focusedBodyId = $state<string>('naif-10');
-	/**
-	 * Always set from focused body — drives moon visibility regardless of zoom.
-	 * Reactive so the attribution bar can derive the active imagery credits
-	 * from whichever planetary system the camera is in.
-	 */
+	/** Reactive — Svelte consumers read this (attribution bar, popover). */
+	focusedBodyId = $state<string>(SUN_ID);
 	focusedSystemId = $state<string | null>(null);
 	/** Set only when zoomed in — drives hiding of other systems. */
 	activeSystemId: string | null = null;
 	isZoomedIn = false;
 
-	// Plain mirrors of the reactive focus fields above. Hot per-frame loops
-	// (visibility, sphere/texture LOD, ring shaders) read these instead of the
-	// $state-tracked versions — in dev mode every $state getter fires a
-	// reactive-source tag + `get_proxied_value` trap, and the per-body loops
-	// turned that into the dominant cost.
-	private focusedBodyIdPlain: string = 'naif-10';
+	private focusedBodyIdPlain: string = SUN_ID;
 	private focusedSystemIdPlain: string | null = null;
 	private cameraDistThreeJS = 0;
 	private lastRecomputeDist = -1;
@@ -189,8 +171,9 @@ export class VisibilityController {
 			}
 		}
 		if (!refA || refA < 0) {
-			if (refA >= 0 && body.data.e < 0.9) {
-				console.log(
+			// e < 0.9 → not a comet, so a zero/missing a is a data problem worth surfacing.
+			if (refA === 0 && body.data.e < 0.9) {
+				console.warn(
 					`No semi-major axis available for body ${body.data.id} (${body.data.name}), falling back to FULL visibility`
 				);
 			}

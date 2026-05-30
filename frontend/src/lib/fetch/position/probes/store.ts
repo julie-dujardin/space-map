@@ -23,8 +23,8 @@ import {
 	probePositionScene
 } from '$lib/fetch/position/probes/propagate';
 import type { Probe } from '$lib/fetch/position/probes/parse';
+import { chunkIndexForJd } from '$lib/fetch/metadata';
 
-const DAYS_PER_YEAR = 365.25;
 const NEIGHBOR_WINDOW = 1;
 
 /** Per-zone params lifted from `metadata.position.zones[zone]` (flat, no
@@ -68,12 +68,6 @@ export interface ProbeWithWindow {
 	probe: Probe;
 	startJd: number;
 	endJd: number;
-}
-
-function chunkIndexForJd(zone: ProbeZoneParams, jd: number): number {
-	const dt = jd - zone.start_jd;
-	const idx = Math.floor(dt / (zone.chunk_years * DAYS_PER_YEAR));
-	return Math.max(0, Math.min(zone.chunks - 1, idx));
 }
 
 interface ProbeLocation {

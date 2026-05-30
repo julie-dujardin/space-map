@@ -16,7 +16,7 @@
  */
 
 import type { OrbitalElements } from '$lib/types/objects';
-import { AU_KM, KM3_S2_TO_AU3_DAY2 } from '$lib/math/units';
+import { AU_KM, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY } from '$lib/math/units';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import {
 	PROBE_METHOD_CHEBYSHEV,
@@ -30,7 +30,6 @@ import { findSubChunkIndex, jdToEt, probeStateKm } from '$lib/fetch/position/pro
 const RAD2DEG = 180 / Math.PI;
 const SECONDS_PER_DAY = 86400;
 const JD_J2000 = 2451545.0;
-const KM_DAY_TO_AU_DAY = 1 / AU_KM;
 
 function etToJd(et: number): number {
 	return et / SECONDS_PER_DAY + JD_J2000;

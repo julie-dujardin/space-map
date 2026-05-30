@@ -29,10 +29,7 @@
 	let viewportRef = $state<HTMLElement | null>(null);
 	let truncated = $state(false);
 
-	// Reset on slide change. The bare `image;` is a dependency read — Svelte
-	// tracks property accesses inside an effect, so reading it here is what
-	// makes the effect re-run when the slide changes. ESLint can't see that
-	// intent, hence the disable.
+	// Bare `image;` is a Svelte effect dep read; eslint can't see the intent.
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		image;
@@ -44,12 +41,8 @@
 	);
 	const hasExplicitBreaks = $derived((attribution?.description ?? '').includes('\n'));
 
-	// Re-measure overflow whenever the viewport's content or size changes.
-	// The viewport's max-height stays constant when paragraphs grow, so
-	// ResizeObserver alone wouldn't fire — we explicitly read paragraphs/
-	// hasExplicitBreaks as dependencies to force the effect to re-run.
-	// ESLint flags those bare reads as unused; disabled because the read
-	// itself is the side effect (Svelte dep tracking).
+	// Bare reads below are Svelte deps; ResizeObserver alone wouldn't fire when
+	// max-height stays constant but paragraphs grow.
 	$effect(() => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		paragraphs;

@@ -6,7 +6,7 @@ import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
-import { buildMajorBodies } from '$lib/scene/objects/body/lifecycle';
+import { buildMajorBodies, disposeMaterial } from '$lib/scene/objects/body/lifecycle';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { loadBodyLabel } from '$lib/scene/objects/body/textures';
 import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
@@ -81,6 +81,14 @@ export class PromotionRegistry {
 		return this.defaults.has(id);
 	}
 
+	/** Find the asteroid/comet zone holding `id`, or undefined for non-belt bodies. */
+	private findAsteroidZone(id: string): string | undefined {
+		for (const [zone, byId] of this.deps.ctx.bodies.asteroidBodiesByZone) {
+			if (byId.has(id)) return zone;
+		}
+		return undefined;
+	}
+
 	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
 		const { bodyObjects, ctx, clock, scene, clickables, meshToBody, circleTexture, renderer } =
@@ -117,9 +125,7 @@ export class PromotionRegistry {
 		this.deps.assignMapLayerToTrails();
 		this.deps.repositionAll();
 
-		// Click-promoted minor bodies enter unnamed (global labels file only
-		// carries the curated set). Fire-and-forget the detail bundle fetch
-		// so the label fills in once Wikidata arrives.
+		// Click-promoted minor bodies start unnamed; fire-and-forget the bundle fetch.
 		const bo = bodyObjects.get(body.data.id);
 		if (bo && !body.data.name) loadBodyLabel(bo);
 
@@ -127,12 +133,8 @@ export class PromotionRegistry {
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			ctx.bodies.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
-			for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
-				if (byId.has(body.data.id)) {
-					ctx.bodies.dirtyAsteroidZones.add(zone);
-					break;
-				}
-			}
+			const zone = this.findAsteroidZone(body.data.id);
+			if (zone) ctx.bodies.dirtyAsteroidZones.add(zone);
 		}
 		this.deps.pointClouds.rebuildMinor();
 
@@ -171,18 +173,14 @@ export class PromotionRegistry {
 
 			if (bo.mesh) {
 				bo.mesh.geometry.dispose();
-				const mat = bo.mesh.material;
-				if (Array.isArray(mat)) for (const m of mat) m.dispose();
-				else mat.dispose();
+				disposeMaterial(bo.mesh.material);
 				const idx = clickables.indexOf(bo.mesh);
 				if (idx >= 0) clickables.splice(idx, 1);
 				meshToBody.delete(bo.mesh);
 			}
 			if (bo.trail) {
 				bo.trail.geometry.dispose();
-				const mat = bo.trail.material;
-				if (Array.isArray(mat)) for (const m of mat) m.dispose();
-				else mat.dispose();
+				disposeMaterial(bo.trail.material);
 			}
 
 			// Mark the body's point-cloud group dirty so the dot reappears.
@@ -190,12 +188,8 @@ export class PromotionRegistry {
 			if (objectType === ObjectType.SPACECRAFT) {
 				dirtySpacecraftParents.add(bo.body.data.parentId);
 			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
-				for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
-					if (byId.has(id)) {
-						dirtyAsteroidZones.add(zone);
-						break;
-					}
-				}
+				const zone = this.findAsteroidZone(id);
+				if (zone) dirtyAsteroidZones.add(zone);
 			}
 
 			bodyObjects.delete(id);

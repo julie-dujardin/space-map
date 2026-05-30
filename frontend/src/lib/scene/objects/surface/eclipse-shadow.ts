@@ -24,20 +24,17 @@ import { type MeshStandardMaterial, Vector3, Vector4 } from 'three';
  *  moon set with headroom; bigger systems can bump this. */
 export const MAX_OCCLUDERS = 32;
 
-/** Scene-wide eclipse uniforms — a single instance shared by every body's
- *  fragment shader, mutated in place by the renderer once per frame.
+/**
+ * Scene-wide eclipse uniforms — one instance shared by every body's fragment
+ * shader, mutated in place each frame.
  *
- *  Why `uSunDir` + `uSunAngularRadius` rather than `uSunPos` + `uSunRadius`:
- *  in scene units the Sun sits ~1 AU away while a receiver fragment is at
- *  most a body-radius from the focus origin, so `uSunPos - vWorldPos` is
- *  dominated by `uSunPos` and float32 snaps the tiny per-fragment offset
- *  to a handful of quantised directions. Doing one normalise on the CPU
- *  in float64 keeps the direction smooth across the whole body, which the
- *  angle math in the fragment shader depends on for clean penumbra
- *  gradients (otherwise the gradient bands into stripes). The same
- *  approximation also collapses the per-fragment `dSun` (variation across
- *  a body is ~r/AU ≈ 1e-5, far below the Sun's angular size) so we can
- *  precompute `asin(R_sun / dSun)` once per frame too. */
+ * `uSunDir`/`uSunAngularRadius` instead of `uSunPos`/`uSunRadius`: in scene
+ * units the Sun sits ~1 AU away while a receiver fragment is at most a
+ * body-radius from focus origin, so float32 quantises `uSunPos - vWorldPos`
+ * into stripes. CPU-normalising once in float64 keeps the direction smooth
+ * across the whole body, and the per-fragment `dSun` variation (~1e-5) is far
+ * below the Sun's angular size, so `asin(R_sun / dSun)` is also precomputed.
+ */
 export interface EclipseSceneUniforms {
 	/** Unit vector from the focus origin toward the Sun. */
 	uSunDir: { value: Vector3 };

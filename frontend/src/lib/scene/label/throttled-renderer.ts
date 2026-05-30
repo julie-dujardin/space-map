@@ -1,19 +1,7 @@
 /**
- * Drop-in replacement for three/addons/renderers/CSS2DRenderer with per-element
- * write caching. Same traversal/projection semantics; skips style.transform,
- * style.display, and style.zIndex writes when the target value matches what we
- * last wrote.
- *
- * Why: CSS2DRenderer rewrites style.transform for every visible label every
- * frame, even when the label hasn't moved. On Firefox/Android style recalc is
- * the slow path and the per-frame churn is a major flicker contributor during
- * steady state (paused time, still camera). When nothing has changed the
- * throttle skips the DOM write entirely.
- *
- * Sub-pixel-equality is intentionally exact (not rounded): when nothing moves,
- * matrix multiplies are bit-stable across frames, so exact compare catches the
- * static case. When the camera or body is moving the values differ on every
- * frame and the write happens — same as upstream, no animation loss.
+ * CSS2DRenderer drop-in that caches per-element style writes so static labels
+ * skip DOM writes — avoids Firefox/Android style recalc churn on still frames.
+ * Transform compare is exact (matrix multiplies are bit-stable when nothing moves).
  */
 import { Matrix4, Vector3, type Camera, type Object3D } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -59,14 +47,6 @@ export class ThrottledCSS2DRenderer {
 	private readonly _visibleBuf: CSS2DLike[] = [];
 	private _visibleCount = 0;
 
-	// telemetry — populated each render; readable from devtools for tuning
-	skippedTransformWrites = 0;
-	skippedDisplayWrites = 0;
-	skippedZIndexWrites = 0;
-	totalTransformWrites = 0;
-	totalDisplayWrites = 0;
-	totalZIndexWrites = 0;
-
 	constructor(parameters: { element?: HTMLElement } = {}) {
 		this.domElement = parameters.element ?? document.createElement('div');
 		this.domElement.style.overflow = 'hidden';
@@ -98,13 +78,6 @@ export class ThrottledCSS2DRenderer {
 
 		this._viewMatrix.copy(camera.matrixWorldInverse);
 		this._viewProjectionMatrix.multiplyMatrices(camera.projectionMatrix, this._viewMatrix);
-
-		this.skippedTransformWrites = 0;
-		this.skippedDisplayWrites = 0;
-		this.skippedZIndexWrites = 0;
-		this.totalTransformWrites = 0;
-		this.totalDisplayWrites = 0;
-		this.totalZIndexWrites = 0;
 
 		this._visibleCount = 0;
 		this.renderObject(scene, camera);
@@ -152,16 +125,9 @@ export class ThrottledCSS2DRenderer {
 			if (cache.display !== targetDisplay) {
 				element.style.display = targetDisplay;
 				cache.display = targetDisplay;
-				this.totalDisplayWrites++;
-			} else {
-				this.skippedDisplayWrites++;
 			}
 
 			if (visible) {
-				// Upstream calls object.onBeforeRender / onAfterRender here. Our
-				// CSS2DObjects never override these (they're Object3D no-ops in
-				// factory.ts), so we skip the calls to avoid the wrong-signature
-				// cast and a per-label function dispatch.
 				const tx = this._vector.x * this._wHalf + this._wHalf;
 				const ty = -this._vector.y * this._hHalf + this._hHalf;
 				const cx = object.center.x;
@@ -174,9 +140,6 @@ export class ThrottledCSS2DRenderer {
 					cache.ty = ty;
 					cache.cx = cx;
 					cache.cy = cy;
-					this.totalTransformWrites++;
-				} else {
-					this.skippedTransformWrites++;
 				}
 
 				if (element.parentNode !== this.domElement) {
@@ -213,9 +176,6 @@ export class ThrottledCSS2DRenderer {
 			if (cache.display !== 'none') {
 				element.style.display = 'none';
 				cache.display = 'none';
-				this.totalDisplayWrites++;
-			} else {
-				this.skippedDisplayWrites++;
 			}
 		}
 		const children = object.children;
@@ -250,14 +210,9 @@ export class ThrottledCSS2DRenderer {
 			if (cache.zIndex !== target) {
 				obj.element.style.zIndex = String(target);
 				cache.zIndex = target;
-				this.totalZIndexWrites++;
-			} else {
-				this.skippedZIndexWrites++;
 			}
 		}
 	}
 }
 
-// Re-export the CSS2DObject type so callers can swap renderers without changing
-// imports. CSS2DObject is still constructed via the upstream addon module.
 export type { CSS2DObject };

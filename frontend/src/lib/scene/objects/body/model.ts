@@ -61,12 +61,9 @@ function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 }
 
 /**
- * Build the neutral environment cubemap used by the model-overlay scene.
- * Mirrors gltf-viewer's `RoomEnvironment` + PMREM setup — needed so PBR
- * metals/specular surfaces have something to reflect. The overlay scene
- * dims this aggressively via `environmentIntensity` because in deep space
- * we want the sun's directional shadow to dominate; the env's only job
- * here is to keep metallics from going pure black.
+ * Neutral IBL cubemap for the model-overlay scene so PBR metals have something
+ * to reflect. The overlay heavily dims it via `environmentIntensity` — the sun
+ * dominates; this just keeps metallics from going pure black.
  */
 export function makeModelEnvMap(renderer: WebGLRenderer): Texture {
 	const pmrem = new PMREMGenerator(renderer);
@@ -76,13 +73,8 @@ export function makeModelEnvMap(renderer: WebGLRenderer): Texture {
 }
 
 /**
- * Fetch and attach the spacecraft 3D model for `bo` if its global JSON
- * carries `model_name`. The model is added to `modelScene` (a sibling scene
- * rendered in its own pass with linear-depth-friendly near/far) at
- * unit-radius scale around origin. `repositionBodies` doesn't touch the
- * overlay scene — the main camera mirrors orientation onto the overlay
- * camera per frame instead. Hides the focused body's placeholder sphere
- * so the model takes its visual slot.
+ * Fetch and attach the spacecraft 3D model into the overlay scene at unit-radius
+ * scale, hiding the placeholder sphere. No-op when the body has no `model_name`.
  */
 export async function loadBodyModel(
 	bo: BodyObjects,
@@ -92,19 +84,15 @@ export async function loadBodyModel(
 	if (bo.model || bo.modelLoading) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
-	// Pre-hide the sphere for body types that ship 3D models — avoids a
-	// one-frame placeholder flash during the detail fetch. Planets/moons skip
-	// this branch so their sphere doesn't briefly disappear when focused.
+	// Pre-hide for model-bearing types (avoids placeholder flash); planets/moons skip this.
 	const preHide = isModelBearing(bo.body) && bo.mesh?.visible === true;
 	if (preHide && bo.mesh) bo.mesh.visible = false;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) {
-			// Spacecraft-like types (the pre-hide set) get a gray cuboid
-			// placeholder in the overlay instead of the silly tiny sphere.
-			// Planets/moons/etc. that landed here have no `isModelBearing`
-			// match — restore their sphere as before.
+			// Spacecraft-like types (pre-hide set) get a gray cuboid placeholder;
+			// non-model-bearing bodies restore their sphere.
 			if (preHide) {
 				if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) return;
 				const fallback = buildFallbackSpacecraftModel();
@@ -118,15 +106,11 @@ export async function loadBodyModel(
 		}
 		// Cancelled by a focus change mid-fetch; don't stack a stale overlay.
 		if ((bo.modelLoadEpoch ?? 0) !== epoch) return;
-		// Swap the halo for the spinner so the model can snap in cleanly.
-		// The halo's loading state is owned exclusively by these load-start /
-		// load-end branches; nothing else (notably the per-frame culling) is
-		// allowed to touch it.
+		// Swap halo → spinner so the model can snap in cleanly. The halo's loading
+		// state is owned exclusively here; per-frame culling must not touch it.
 		if (bo.mesh) bo.mesh.visible = false;
 		setHaloLoading(bo, true);
-		// Kick the bundle metadata fetch alongside the GLB — small and
-		// cacheable. Registering the credit as the model becomes visible
-		// keeps the attribution bar/popover in lockstep with what's on screen.
+		// Bundle metadata fires alongside the GLB so credit registers atomically.
 		const metaPromise = fetchBundleMeta(slug);
 		const gltf = await _loader.loadAsync(`${DATA_BASE}/v1/models/${slug}/high.glb`);
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {

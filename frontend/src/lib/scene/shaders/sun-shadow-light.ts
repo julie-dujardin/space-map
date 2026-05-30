@@ -3,6 +3,7 @@ import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
+import { SUN_ID } from '$lib/constants';
 
 const LIGHT_DIST = 10;
 
@@ -27,7 +28,7 @@ export function updateSunShadowLight(
 		return;
 	}
 
-	const sunPos = bodyObjects.get('naif-10')?.body.position;
+	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	const [fx, fy, fz] = focusTruePos;
 	const sunRelX = (sunPos?.[0] ?? 0) - fx;
 	const sunRelY = (sunPos?.[1] ?? 0) - fy;

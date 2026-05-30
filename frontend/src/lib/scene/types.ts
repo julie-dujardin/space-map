@@ -6,10 +6,10 @@ import type { CloudNode } from './objects/surface/clouds';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
 
-// For focused objects:
-// Body/halo size ratio at which the label should be hidden
+/** Body/halo size ratio above which the label is hidden (focused only). */
 export const HIDE_LABEL_BODY_HALO_FACTOR = 20;
-export const HALO_RADIUS_PX = 16; // halo indicator is 32px diameter
+/** Halo indicator radius — diameter is 32px. */
+export const HALO_RADIUS_PX = 16;
 
 export function typePriority(type: ObjectType): number {
 	switch (type) {
@@ -32,115 +32,54 @@ export interface BodyObjects {
 	mesh: Mesh | null;
 	label: CSS2DObject | null;
 	labelHalo: HTMLElement | null;
-	/** Viewport-pinned loading spinner. Created by `setHaloLoading` only
-	 *  while a GLB is in flight; visibility per-frame follows the close-zoom
-	 *  rule (shown when the halo would be hidden). Lives outside the scene
-	 *  graph so it doesn't drift with the focused body's per-frame motion. */
+	/** Viewport-pinned model-load spinner, shown when the halo would be hidden. */
 	loadingEl: HTMLElement | null;
-	/** Top-level scene objects that track this body's position (corona, starPoint). */
+	/** Top-level scene objects that track this body's position. */
 	extraObjects: Object3D[];
-	/** Star corona glow sprite (for manual occlusion). */
 	corona: Sprite | null;
-	/** Fixed-size star dot shown when the mesh is sub-pixel. */
 	starPoint: Points | null;
-	/** Thin trails are a `Line`; bodies with `lineWidth > 1` use a `Mesh` of expanded quads instead. */
+	/** Thin trails use `Line`; wider trails use a `Mesh` of expanded quads. */
 	trail: Line | Mesh | null;
 	radiusScene: number;
 	/**
-	 * True once the body's SPICE triaxial radii (`global.radii` or system meta
-	 * `radii`) have been applied to the mesh as a non-uniform scale. Gates
-	 * double-application: re-scaling against the now-bumped `radiusScene`
-	 * would produce a stretched ellipsoid. Reset on mesh teardown.
+	 * True once SPICE triaxial radii have been applied as a non-uniform scale.
+	 * Gates re-application against the now-bumped `radiusScene`. Reset on mesh teardown.
 	 */
 	radiiApplied?: boolean;
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
-	/**
-	 * Width/height segment count of the mesh's current `SphereGeometry`. The
-	 * per-frame sphere LOD pass swaps the geometry when the desired count
-	 * changes; `undefined` for virtual bodies (no mesh).
-	 */
+	/** Width/height segment count of the mesh's current SphereGeometry; undefined for virtual bodies. */
 	currentSegments?: number;
 	/**
-	 * True when the current simulation `jd` is outside this body's chunk
-	 * validity window — set by `computePosition` each frame and read by
-	 * `updateBodyVisibility` to force the group hidden. Keeps the mesh at its
-	 * last valid position instead of letting SGP4 diverge / freezing a stuck
-	 * satellite onscreen.
+	 * True when jd is outside this body's chunk validity window. `updateBodyVisibility`
+	 * forces the group hidden so SGP4 doesn't diverge / a stale satellite stays onscreen.
 	 */
 	outOfRange?: boolean;
-	/** Texture resolution tiers available for this body (e.g. ['low', 'medium', 'high']). */
 	availableTiers?: string[];
-	/** Currently loaded texture tier name. */
 	textureTier?: string;
-	/**
-	 * Frame count for `cylindrical_monthly` textures (12 today). Undefined for
-	 * single-frame bodies. The renderer reloads the texture when the simulation
-	 * date crosses into the next frame's slot.
-	 */
+	/** Frame count for `cylindrical_monthly` textures; undefined for single-frame bodies. */
 	availableFrames?: number;
-	/** Currently loaded 1-based frame index for monthly textures (1..availableFrames). */
+	/** Currently loaded 1-based frame index (1..availableFrames). */
 	textureFrame?: number;
-	/** Guard: a tier or frame swap is currently in flight. */
+	/** A tier or frame swap is currently in flight. */
 	textureLoading?: boolean;
-	/** Cached screen-pixel width of the label name text (measured once). */
+	/** Cached screen-pixel width of the label name text. */
 	labelTextWidth?: number;
-	/**
-	 * Minor-promoted halo: rendered as a small ring (no name, no trail) by
-	 * default; expands and reveals its label on hover; trail draws on focus.
-	 * Membership is fixed at construction from {@link MINOR_PROMOTED_IDS}.
-	 */
+	/** Minor-promoted halo: rendered as a small ring; expands on hover. From {@link MINOR_PROMOTED_IDS}. */
 	isMinor: boolean;
-	/**
-	 * Planetary-ring annulus mesh + shader, populated by `loadSystemData` when
-	 * the body's system metadata carries a `rings` block. The renderer keeps
-	 * its position synced with the body and its orientation aligned with the
-	 * body's pole each frame; `material.uniforms.uSunDir` is updated alongside.
-	 */
 	rings: RingNode | null;
-	/**
-	 * Cloud-overlay sphere, populated by `loadSystemData` when the body's
-	 * system metadata carries a `clouds` block. Parented to `mesh`, so it
-	 * inherits the body's flattening + IAU rotation automatically. Tier swaps
-	 * are driven by the same LOD pass that upgrades the surface texture.
-	 */
 	clouds: CloudNode | null;
-	/**
-	 * Atmospheric-scattering shell, built at construction for bodies listed in
-	 * `ATMOSPHERE_PARAMS` (Earth today). A sibling scene object kept at the
-	 * body's centre via `extraObjects`; the renderer pushes the body→Sun
-	 * direction onto its `material.uniforms.uSunDir` each frame.
-	 */
 	atmosphere: AtmosphereNode | null;
-	/**
-	 * Loaded specular/roughness map, populated by `loadSystemData` when the
-	 * body's system metadata carries a `specular` block. Bound to the body's
-	 * material as a `roughnessMap` with a shader patch that inverts the
-	 * sampled value — held here for disposal on system unload. Stays at the
-	 * low tier today; the binary mask doesn't benefit from LOD upgrades.
-	 */
+	/** Specular/roughness map. Stays at the low tier — binary mask doesn't benefit from LOD. */
 	specularMap: Texture | null;
-	/**
-	 * Per-body eclipse-shadow uniforms — present on every non-star body,
-	 * `null` on stars and barycenters. The renderer mutates
-	 * `uEclipseSelfPos` each frame so the body's fragment shader can skip
-	 * self-occlusion when scanning the scene-wide occluder array.
-	 */
+	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
-	/**
-	 * Loaded GLTF root for spacecraft 3D models. Populated by `loadBodyModel`
-	 * on focus when the body's global JSON carries `model_name`; `null` when
-	 * the body has no model or hasn't been focused yet. Tracked alongside the
-	 * body's position via `extraObjects` so {@link repositionBodies} keeps it
-	 * locked to the body each frame. Disposed in `unloadBodyModel`.
-	 */
+	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
-	/** Slug of the currently loaded model bundle (matches `global.model_name`). */
+	/** Slug of the currently loaded model bundle. */
 	modelName?: string;
-	/** Guard against re-entering `loadBodyModel` while a fetch is in flight. */
 	modelLoading?: boolean;
-	/** Bumped by `unloadBodyModel`; in-flight `loadBodyModel` invocations
-	 *  re-check it after each await and abort if it changed. */
+	/** Bumped by unload; in-flight loads re-check after each await and abort if it changed. */
 	modelLoadEpoch?: number;
 }
 

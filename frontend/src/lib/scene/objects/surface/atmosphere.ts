@@ -1,38 +1,15 @@
 /**
- * Per-body atmospheric-scattering shell: a sphere a little larger than the
- * planet, drawn with an additive {@link ShaderMaterial} that ray-marches the
- * single-scattered sunlight (Rayleigh + Mie, with an ozone absorption layer)
- * along the slice of atmosphere each view ray passes through and adds the
- * in-scattered radiance on top of the already-rendered scene.
+ * Per-body atmospheric-scattering shell. Additive sphere drawn just outside the
+ * planet; the fragment shader ray-marches single-scattered sunlight (Rayleigh +
+ * Mie + ozone). Coordinates run in planet-radius-normalised units to keep
+ * float32 well-conditioned — Earth's 8 km scale height in scene units is mush.
  *
- * From space this reads as the planet's limb glow / blue rim plus a
- * forward-scattered haze on the sunward edge; over the lit disc it adds the
- * faint dayside airglow. The shell does not (yet) tint or darken the surface
- * seen *through* it — that's aerial perspective, which the LUT-based pipeline
- * handles.
+ * Recipe follows Maxime Heckel's "On rendering realistic-looking skies, sunsets,
+ * and planets" (which distills Bruneton/Hillaire); brute-force per-fragment
+ * march is fine because the shell only ever covers the planet's screen footprint.
  *
- * Coordinates: the scattering integral runs in planet-radius-normalised units
- * (planet = unit sphere, atmosphere top = {@link uAtmosphereRatio}), not scene
- * units. Earth's radius is ~4e-4 scene units and its 8 km Rayleigh scale
- * height is ~6e-7 of that — squarely in float32 mush — whereas normalised it's
- * ~1.3e-3 and every density/optical-depth term stays smooth. The only scene-
- * unit input is `cameraPosition - planetCenter`, divided by the planet radius
- * up front.
- *
- * The single-scatter recipe — primary march, nested light march toward the
- * Sun, Cornette–Shanks Mie phase, exponential Rayleigh/Mie density layers, a
- * tent-shaped ozone layer, Beer–Lambert transmittance — follows the approach
- * walked through in Maxime Heckel's "On rendering realistic-looking skies,
- * sunsets, and planets"
- * (https://blog.maximeheckel.com/posts/on-rendering-the-sky-sunsets-and-planets/),
- * which in turn distills the Bruneton / Hillaire precomputed-scattering model.
- * Here it stays a brute-force per-fragment march: the shell only ever covers a
- * planet's screen footprint, so there's no need for the precomputed LUTs.
- *
- * Limitation: `side: FrontSide` assumes the camera is *outside* the shell.
- * That's the only regime this path is wired for; viewing from within the
- * atmosphere needs a different coverage primitive (and the full LUT /
- * composition pipeline).
+ * `side: FrontSide` — camera must be outside the shell. Viewing from within
+ * needs a different coverage primitive (not wired).
  */
 
 import {

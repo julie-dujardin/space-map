@@ -20,6 +20,7 @@
 import { fetchChebyshev, type FetchedChebyshev } from '$lib/fetch/position/chebyshev/fetch';
 import { chebyshevPositionScene } from '$lib/fetch/position/chebyshev/propagate';
 import type { ChebyshevBody } from '$lib/fetch/position/chebyshev/parse';
+import { chunkIndexForJd } from '$lib/fetch/metadata';
 
 /** Walk the chunk for jd in every loaded zone and yield each body alongside
  *  the chunk's validity window (used by callers that build PositionedBody).
@@ -41,18 +42,7 @@ export interface ChebyshevZoneParams {
 	end_jd: number;
 }
 
-const DAYS_PER_YEAR = 365.25;
 const NEIGHBOR_WINDOW = 1;
-
-/**
- * Resolve a JD to a chunk index inside one zone, clamped to the valid range so
- * boundary JDs map onto the last chunk instead of returning -1.
- */
-export function chunkIndexForJd(zone: ChebyshevZoneParams, jd: number): number {
-	const dt = jd - zone.start_jd;
-	const idx = Math.floor(dt / (zone.chunk_years * DAYS_PER_YEAR));
-	return Math.max(0, Math.min(zone.chunks - 1, idx));
-}
 
 interface BodyLocation {
 	zone: string;

@@ -51,34 +51,29 @@
 		).map(({ entry }) => entry());
 	});
 
-	// Scoped to what's actually on screen: the focused planetary system plus
-	// the focused body itself (covers standalones like Bennu/Ceres whose
-	// credits come via loadBodyTexture, not loadSystemData).
+	// Scoped to the focused system + focused body (covers standalones like
+	// Bennu/Ceres that are credited body-by-body, not system-by-system).
+	function scopedCredits<T extends { bodyId: string; systemId?: string | null }>(
+		all: Iterable<T>
+	): T[] {
+		const sysId = ctx.visibility.focusedSystemId;
+		const bodyId = ctx.visibility.focusedBodyId;
+		return [...all]
+			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
+			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+	}
+
 	const textureList = $derived.by(() => {
 		void ctx.credits.textureVersion;
-		const sysId = ctx.visibility.focusedSystemId;
-		const bodyId = ctx.visibility.focusedBodyId;
-		return [...ctx.credits.texture.values()]
-			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
-			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+		return scopedCredits(ctx.credits.texture.values());
 	});
-
 	const ringList = $derived.by(() => {
 		void ctx.credits.ringVersion;
-		const sysId = ctx.visibility.focusedSystemId;
-		const bodyId = ctx.visibility.focusedBodyId;
-		return [...ctx.credits.ring.values()]
-			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
-			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+		return scopedCredits(ctx.credits.ring.values());
 	});
-
 	const cloudList = $derived.by(() => {
 		void ctx.credits.cloudVersion;
-		const sysId = ctx.visibility.focusedSystemId;
-		const bodyId = ctx.visibility.focusedBodyId;
-		return [...ctx.credits.cloud.values()]
-			.filter((c) => c.bodyId === bodyId || (sysId && c.systemId === sysId))
-			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
+		return scopedCredits(ctx.credits.cloud.values());
 	});
 
 	// 3D models are body-scoped (only the focused probe's model is in the

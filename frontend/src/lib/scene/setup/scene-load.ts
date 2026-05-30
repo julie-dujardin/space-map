@@ -31,15 +31,9 @@ interface MinorChunkArg {
 }
 
 /**
- * Walk every minor zone in metadata and produce the chunk-fetch plan for
- * phase 2. Also fires `ChunkLoader.prefetch` for each entry so the HTTP cache
- * is warm by the time phase 2 awaits its `loader.process` call.
- *
- * Skipped zones:
- *  - `major` / `moons`: phase 1 territory.
- *  - `spacecraft`: legacy Sun-orbiter Kepler-fallback zone, now shipped via probes.
- *  - Probe zones: loaded through ProbeStore, not ChunkLoader.
- *  - Chebyshev zones (`shape: chunked`): loaded through ChebyshevStore.
+ * Build the chunk-fetch plan for phase 2 (minor zones). Fires `ChunkLoader.prefetch`
+ * so the HTTP cache is warm by the time phase 2 awaits each `loader.process` call.
+ * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev (ChebyshevStore).
  */
 function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 	const args: MinorChunkArg[] = [];
@@ -51,9 +45,7 @@ function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 		for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 			const zoom = Number(zoomStr);
 			if (zoomData.shape === 'chunked') continue;
-			// Date-segmented zones (earth) ship one chunk set per ISO date —
-			// pick the snapshot nearest the simulated time so SGP4's tight
-			// validity window covers it. Static-parted zones use a single set.
+			// Date-segmented zones (earth): pick snapshot nearest the sim time so SGP4's window covers it.
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
 			for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
 				args.push({ zone, zoom, part, time, parentIdType });
@@ -64,12 +56,7 @@ function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 	return args;
 }
 
-/**
- * Build the probe ephemeris store from metadata, or return null when the
- * export ships no probe zones. Logs zone counts on success and warns about
- * any zones missing a `fit_center_naif_id` (a re-export will refresh the
- * field).
- */
+/** Build the probe ephemeris store from metadata, or null when no probe zones ship. */
 async function buildProbeStore(metadata: Metadata, jd: number): Promise<ProbeStore | null> {
 	const params = probeZoneParams(metadata);
 	if (params.size === 0) return null;
@@ -96,21 +83,12 @@ async function buildProbeStore(metadata: Metadata, jd: number): Promise<ProbeSto
 }
 
 /**
- * Phase 1 majors. Bodies arrive from four sources, in dependency order:
- *  - Chebyshev (`loader.processChebyshev`): Sun, planets/dwarves with SPK
- *    kernels, perturber asteroids, whitelisted moons. Runs first so its
- *    barycenters/Sun land in `loader.positions` before kepler-fallback
- *    dwarves (which parent on those barycenters) try to resolve.
- *  - `major/1` elements: horizons-sourced majors not in chebyshev — in
- *    practice this catches dwarf planets with Horizons ephemerides but no
- *    SPK kernel.
- *  - `major/2` elements: SBDB-only dwarves (Eris, Makemake, Quaoar, …) that
- *    aren't in any SPK kernel either.
- *  - `moons` elements: non-whitelisted moons (Method-C secular elements,
- *    chunk-indexed).
- *
- * Zoom 0 is reserved for chebyshev — kepler fallbacks live at higher zooms
- * so the per-zoom shape stays single-payload.
+ * Phase 1 majors, loaded in dependency order: chebyshev first (Sun + planets +
+ * perturbers + whitelisted moons) so its positions are in `loader.positions`
+ * before kepler-fallback dwarves try to resolve their parents; then
+ * `major/1` (Horizons no-SPK), `major/2` (SBDB-only dwarves), `moons`
+ * (non-whitelisted, Method-C secular).
+ * Zoom 0 is reserved for chebyshev so per-zoom shape stays single-payload.
  */
 async function loadMajorBodies(
 	ctx: ContextManager,

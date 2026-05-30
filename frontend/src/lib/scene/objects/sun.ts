@@ -14,55 +14,22 @@ import {
 } from 'three';
 
 /**
- * HDR over-bright multiplier the photosphere fragment shader writes for each
- * pixel of the sun's disc (modulated by Eddington limb darkening). The bloom
- * pass + ACES tonemap above 1.0 turn this into the saturated white + halo
- * look. Shared with the star-point handoff calc so the dot's brightness
- * tracks the mesh's whenever this is tuned.
+ * Photosphere → star-point bloom handoff constants. Tuned together so the
+ * star-point's per-pixel HDR at handoff matches the mesh's disc-averaged HDR:
+ *   uIntensity · STAR_POINT_TEXEL_ALPHA = SUN_HDR_MULTIPLIER · EDDINGTON_DISC_AVG
+ *
+ * EDDINGTON_DISC_AVG = 1 − u/3 = 0.8 (limb-darkening law I(μ) = I₀(1 − u + u·μ), u = 0.6).
+ * STAR_POINT_TEXEL_ALPHA = 0.3 is the circle-texture fill alpha (`makeCircleTexture`).
+ * STAR_POINT_FLOOR_INTENSITY sits just above the bloom threshold so faint stars
+ * still get a halo rather than reading as a hard LDR speck.
  */
 export const SUN_HDR_MULTIPLIER = 6;
-/**
- * Disc-averaged intensity factor for the Eddington limb-darkening law
- * `I(μ) = I₀(1 − u + u·μ)` with `u = 0.6`. Closed-form integral over the
- * projected disc: `⟨I⟩/I₀ = 1 − u/3 = 0.8`. Used to convert the centre-pixel
- * HDR (`SUN_HDR_MULTIPLIER`) into the average per-pixel HDR the star-point
- * needs to deliver for a smooth bloom handoff.
- */
 const EDDINGTON_DISC_AVG = 0.8;
-/**
- * Pixel diameter of the star-point sprite. The visibility pass switches from
- * mesh to point when the mesh's projected radius drops below `SIZE/2` — i.e.
- * the moment their on-screen areas coincide.
- */
+/** Switch mesh → point when projected radius drops below SIZE/2 (equal areas). */
 export const STAR_POINT_SIZE_PX = 4;
-/**
- * Uniform alpha of the circle texture sampled by the star-point shader
- * (`makeCircleTexture` fills with `globalAlpha = 0.3`). Under normal alpha
- * blending against a near-black background, the framebuffer ends up at
- * `uColor · uIntensity · texelAlpha`, so this divides out of the handoff
- * intensity calculation.
- */
 const STAR_POINT_TEXEL_ALPHA = 0.3;
-/**
- * HDR `uIntensity` the star-point shader emits at the handoff moment
- * (`screenR == STAR_POINT_SIZE_PX/2`, where mesh and point cover the same
- * area). Derived so the point's average per-pixel framebuffer HDR matches
- * the mesh's disc-averaged HDR:
- *
- *     uIntensity · texelAlpha = SUN_HDR_MULTIPLIER · EDDINGTON_DISC_AVG
- *
- * giving a continuous bloom contribution across the handoff. The visibility
- * pass scales this down as `(screenR / (SIZE/2))²` once past the handoff for
- * the inverse-square apparent-brightness fall-off with distance.
- */
 export const STAR_POINT_HANDOFF_INTENSITY =
 	(SUN_HDR_MULTIPLIER * EDDINGTON_DISC_AVG) / STAR_POINT_TEXEL_ALPHA;
-/**
- * Lower bound on the star-point HDR uniform. Sits just above the bloom
- * threshold (1.0) so even at apparent fluxes well below handoff, the dot
- * still picks up a faint halo — roughly how a bright distant star reads on
- * a real-camera exposure rather than a hard LDR speck.
- */
 export const STAR_POINT_FLOOR_INTENSITY = 3;
 
 /** Bundle of scene objects the Sun contributes beyond the photosphere sphere. */

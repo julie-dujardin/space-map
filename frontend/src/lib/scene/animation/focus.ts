@@ -30,6 +30,8 @@ const _lookAtMatrix = new Matrix4();
 const _lookAtEye = new Vector3();
 const _lookAtTarget = new Vector3();
 const _lookAtQuat = new Quaternion();
+const _slerpQ = new Quaternion();
+const _lookAtQ = new Quaternion();
 
 /** Compute the orientation a camera at `eye` would have when looking at `target`, without mutating any camera. */
 function lookAtQuaternion(eye: Vec3, target: Vec3, up: Vector3): Quaternion {
@@ -77,14 +79,14 @@ export function stepFocusAnimation(
 			if (focusChanging) {
 				// Approaching: blend from slerp (turn) to lookAt (keep centered)
 				camera.quaternion.slerpQuaternions(state.flyQ0!, state.flyQ1!, s);
-				const slerpQ = camera.quaternion.clone();
+				_slerpQ.copy(camera.quaternion);
 				camera.lookAt(
 					state.focusTargetWorld[0] - state.focusTruePos[0],
 					state.focusTargetWorld[1] - state.focusTruePos[1],
 					state.focusTargetWorld[2] - state.focusTruePos[2]
 				);
-				const lookAtQ = camera.quaternion.clone();
-				camera.quaternion.slerpQuaternions(slerpQ, lookAtQ, s);
+				_lookAtQ.copy(camera.quaternion);
+				camera.quaternion.slerpQuaternions(_slerpQ, _lookAtQ, s);
 			} else {
 				// Already focused: pure lookAt
 				camera.lookAt(

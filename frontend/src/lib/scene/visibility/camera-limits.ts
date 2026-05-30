@@ -18,14 +18,8 @@ const SURFACE_CLEARANCE_KM: Partial<Record<ObjectType, number>> = {
 };
 const DEFAULT_CLEARANCE_KM = 0.01; // 10 m
 
-/** Per-body overrides for surface clearance (km). Keyed by body id (e.g. "naif-10"). */
-const BODY_CLEARANCE_OVERRIDES: Record<string, number> = {};
-
 export function minCameraDistance(body: PositionedBody): number {
 	const radiusKm = effectiveRadiusKm(body.data);
-	const clearance =
-		BODY_CLEARANCE_OVERRIDES[body.data.id] ??
-		SURFACE_CLEARANCE_KM[body.data.objectType] ??
-		DEFAULT_CLEARANCE_KM;
+	const clearance = SURFACE_CLEARANCE_KM[body.data.objectType] ?? DEFAULT_CLEARANCE_KM;
 	return kmToScene(radiusKm + clearance);
 }

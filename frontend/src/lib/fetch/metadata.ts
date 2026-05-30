@@ -102,13 +102,20 @@ export function isChebyshev(zoom: ZoomMetadata): zoom is ChebyshevZoom {
 
 const DAYS_PER_YEAR = 365.25;
 
+/** Minimal shape needed to map a JD to a chunk index. */
+export interface ChunkRange {
+	chunks: number;
+	chunk_years: number;
+	start_jd: number;
+}
+
 /**
- * Resolve a JD to a chunk index for a chunk-indexed zoom, clamped so boundary
- * JDs map onto the last chunk instead of overflowing.
+ * Resolve a JD to a chunk index, clamped so boundary JDs map onto the last
+ * chunk instead of overflowing.
  */
-export function chunkIndexForJd(zoom: ChunkIndexedZoom, jd: number): number {
-	const idx = Math.floor((jd - zoom.start_jd) / (zoom.chunk_years * DAYS_PER_YEAR));
-	return Math.max(0, Math.min(zoom.chunks - 1, idx));
+export function chunkIndexForJd(zone: ChunkRange, jd: number): number {
+	const idx = Math.floor((jd - zone.start_jd) / (zone.chunk_years * DAYS_PER_YEAR));
+	return Math.max(0, Math.min(zone.chunks - 1, idx));
 }
 
 export interface ZoneMetadata {

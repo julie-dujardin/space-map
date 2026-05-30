@@ -1,6 +1,7 @@
 import {
 	CanvasTexture,
 	Group,
+	type Material,
 	Mesh,
 	MeshStandardMaterial,
 	type Object3D,
@@ -19,6 +20,15 @@ import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/
 import { unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
 
+export function disposeMaterial(mat: Material | Material[]): void {
+	if (Array.isArray(mat)) for (const m of mat) m.dispose();
+	else mat.dispose();
+}
+
+const DRAG_THRESHOLD_PX = 3;
+const STAR_SPHERE_SEGMENTS = 96;
+const BODY_SPHERE_SEGMENTS = 64;
+
 export function buildMajorBodies(
 	bodies: PositionedBody[],
 	scene: Scene,
@@ -32,14 +42,8 @@ export function buildMajorBodies(
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
-		// "Halo-only" types render as a label + halo with no sphere mesh and
-		// (handled by `buildTrails` below) no trail: barycenters and
-		// Lagrange points have no physical body, and asteroids/comets/probes
-		// are too small to be visually meaningful at planetary scale — the
-		// halo carries the name + click target. Per-frame iteration loops
-		// (visibility, sphere/texture LOD, ring shaders) skip entries with
-		// `mesh === null`, so this keeps the body's slot in `bodyObjects`
-		// effectively free.
+		// Halo-only types render as label + halo without a sphere mesh; trails are
+		// built separately. Per-frame loops skip entries with mesh === null.
 		const t = body.data.objectType;
 		const isVirtual =
 			t === ObjectType.BARYCENTER ||
@@ -52,7 +56,7 @@ export function buildMajorBodies(
 		const isStar = t === ObjectType.STAR;
 
 		const group = new Group();
-		// Position set to origin — repositionAll() applies focus-relative offset each frame
+		// repositionAll() applies the focus-relative offset each frame.
 		group.position.set(0, 0, 0);
 
 		let mesh: Mesh | null = null;
@@ -66,15 +70,12 @@ export function buildMajorBodies(
 				extraObjects.push(starExtras.light, starExtras.corona, starExtras.starPoint);
 			}
 
-			const segments = isStar ? 96 : 64;
+			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
 			const material = isStar ? makeStarSurfaceMaterial() : new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
 			if (!isStar) {
-				// Body-on-body shadows are computed analytically by the
-				// eclipse-shadow path inside this material's fragment shader,
-				// so the directional shadow map isn't involved — no cast/receive
-				// flags needed.
+				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
 			}
 			scene.add(mesh);
@@ -83,10 +84,7 @@ export function buildMajorBodies(
 			clickables.push(mesh);
 			meshToBody.set(mesh, body);
 
-			// Atmospheric-scattering shell, for bodies that have one. A sibling
-			// scene object kept at the body's centre by `repositionBodies`
-			// (hence the `extraObjects` membership); its sun direction is
-			// refreshed each frame in the renderer.
+			// Scattering shell, kept centred on the body via extraObjects.
 			const atmoParams = isStar ? undefined : ATMOSPHERE_PARAMS[id];
 			if (atmoParams) {
 				atmosphere = buildAtmosphereNode(atmoParams, radius, effectiveRadiusKm(body.data));
@@ -95,13 +93,9 @@ export function buildMajorBodies(
 			}
 		}
 
-		// CSS2D label
 		const variant = getLabelVariant(body);
 		const isLarge = isStar || t === ObjectType.PLANET;
-		// Two minor sources: the curated barycenter/asteroid list (frontend-only),
-		// and the data-driven `m` flag the labels file ships for designation-only
-		// moons (e.g. naif-65289/S2020 S48). Both render the same way — collapsed
-		// halo by default, expand-and-name on hover.
+		// Curated frontend list ∪ data-driven `m` flag for designation-only moons.
 		const isMinor = MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(
 			color,
@@ -113,7 +107,9 @@ export function buildMajorBodies(
 			isMinor
 		);
 		if (label) {
-			// Forward wheel events so OrbitControls zoom still works when hovering a label
+			// Forward wheel/pointer events to the canvas so OrbitControls keeps working
+			// when the user starts a gesture over a label. Pointer events are deferred
+			// past DRAG_THRESHOLD_PX so a tap on the label still fires its click.
 			label.element.addEventListener(
 				'wheel',
 				(e: Event) => {
@@ -130,10 +126,6 @@ export function buildMajorBodies(
 				},
 				{ passive: false }
 			);
-			// Forward pointer events so OrbitControls can pan/pinch from labels.
-			// Defer until pointer moves >3px so taps still fire click on
-			// the label. Once forwarded, setPointerCapture on the canvas steals
-			// subsequent events, which suppresses the label's click
 			label.element.addEventListener('pointerdown', (e: PointerEvent) => {
 				const downX = e.clientX;
 				const downY = e.clientY;
@@ -141,7 +133,7 @@ export function buildMajorBodies(
 				const onMove = (me: PointerEvent) => {
 					const dx = me.clientX - downX;
 					const dy = me.clientY - downY;
-					if (dx * dx + dy * dy > 9) {
+					if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
 						cleanup();
 						rendererElement.dispatchEvent(new PointerEvent('pointerdown', savedDown));
 						rendererElement.dispatchEvent(new PointerEvent('pointermove', me));
@@ -158,9 +150,6 @@ export function buildMajorBodies(
 			group.add(label);
 		}
 
-		// Trail — built later in buildTrails() to defer 100K+ Kepler solves
-		const trail = null;
-
 		scene.add(group);
 		const labelHalo = label ? (label.element.firstElementChild as HTMLElement) : null;
 		if (labelHalo) {
@@ -176,10 +165,11 @@ export function buildMajorBodies(
 			extraObjects,
 			corona: starExtras?.corona ?? null,
 			starPoint: starExtras?.starPoint ?? null,
-			trail,
+			// Trail is built later via buildTrails() to defer 100K+ Kepler solves.
+			trail: null,
 			radiusScene: radius,
 			cachedDist: 0,
-			currentSegments: isVirtual ? undefined : isStar ? 96 : 64,
+			currentSegments: isVirtual ? undefined : isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS,
 			isMinor,
 			rings: null,
 			clouds: null,
@@ -219,7 +209,7 @@ export function upgradeBodyMesh(
 	if (bo.mesh !== null) return;
 	const { body, radiusScene } = bo;
 	const color = resolveBodyColor(body.data);
-	const segments = 64;
+	const segments = BODY_SPHERE_SEGMENTS;
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
 	const material = new MeshStandardMaterial({ color });
 	const mesh = new Mesh(geometry, material);
@@ -258,9 +248,7 @@ export function downgradeBodyMesh(
 	if (mesh) {
 		scene.remove(mesh);
 		mesh.geometry.dispose();
-		const mat = mesh.material;
-		if (Array.isArray(mat)) for (const m of mat) m.dispose();
-		else mat.dispose();
+		disposeMaterial(mesh.material);
 		const idx = clickables.indexOf(mesh);
 		if (idx >= 0) clickables.splice(idx, 1);
 		meshToBody.delete(mesh);
@@ -282,9 +270,7 @@ export function downgradeBodyMesh(
 		const ai = bo.extraObjects.indexOf(atmoMesh);
 		if (ai >= 0) bo.extraObjects.splice(ai, 1);
 		atmoMesh.geometry.dispose();
-		const m = atmoMesh.material;
-		if (Array.isArray(m)) for (const mm of m) mm.dispose();
-		else m.dispose();
+		disposeMaterial(atmoMesh.material);
 		bo.atmosphere = null;
 	}
 
@@ -292,9 +278,7 @@ export function downgradeBodyMesh(
 	if (bo.trail && !isProbe) {
 		scene.remove(bo.trail);
 		bo.trail.geometry.dispose();
-		const lm = bo.trail.material;
-		if (Array.isArray(lm)) for (const mm of lm) mm.dispose();
-		else lm.dispose();
+		disposeMaterial(bo.trail.material);
 		bo.trail = null;
 	}
 }

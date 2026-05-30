@@ -16,8 +16,7 @@ export type TierName = (typeof TIER_NAMES)[number];
 /** Numeric rank for `tier` (0=low … 2=high), or -1 if unrecognised. */
 export function tierRank(tier: string | undefined): number {
 	if (tier === undefined) return -1;
-	const r = TIER_NAMES.indexOf(tier as TierName);
-	return r;
+	return TIER_NAMES.indexOf(tier as TierName);
 }
 
 /**
@@ -167,7 +166,7 @@ export async function loadBodyTexture(
 		});
 	}
 	if (bo.textureTier || bo.textureLoading) return;
-	bo.availableTiers ??= ['low', 'medium', 'high'];
+	bo.availableTiers ??= [...TIER_NAMES];
 	bo.availableFrames = detail.global.texture?.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);
 }

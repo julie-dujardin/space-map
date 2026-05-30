@@ -1,32 +1,27 @@
 /**
- * Warn-once sets for transient position-update failures. Without these the
- * console floods at 60 fps. Each channel surfaces one message per body id;
- * the probe channel allows clearing when the body recovers.
+ * Warn-once-per-(channel, id) for transient position-update failures. Without
+ * this the console floods at 60 fps. Probes can clear on recovery so they
+ * re-warn after a future drop.
  */
+type Channel = 'cheb-null' | 'probe-unavailable' | 'non-finite';
+
 export class PositionDiagnostics {
-	private readonly chebNull = new Set<string>();
-	private readonly probeUnavailable = new Set<string>();
-	private readonly nonFinite = new Set<string>();
+	private readonly seen = new Map<Channel, Set<string>>();
 
-	warnChebNull(id: string, makeMessage: () => string): void {
-		if (this.chebNull.has(id)) return;
-		this.chebNull.add(id);
+	private bucket(channel: Channel): Set<string> {
+		let s = this.seen.get(channel);
+		if (!s) this.seen.set(channel, (s = new Set()));
+		return s;
+	}
+
+	warnOnce(channel: Channel, id: string, makeMessage: () => string): void {
+		const s = this.bucket(channel);
+		if (s.has(id)) return;
+		s.add(id);
 		console.warn(makeMessage());
 	}
 
-	warnProbeUnavailable(id: string, makeMessage: () => string): void {
-		if (this.probeUnavailable.has(id)) return;
-		this.probeUnavailable.add(id);
-		console.warn(makeMessage());
-	}
-
-	clearProbeUnavailable(id: string): void {
-		this.probeUnavailable.delete(id);
-	}
-
-	warnNonFinite(id: string, makeMessage: () => string): void {
-		if (this.nonFinite.has(id)) return;
-		this.nonFinite.add(id);
-		console.warn(makeMessage());
+	clear(channel: Channel, id: string): void {
+		this.seen.get(channel)?.delete(id);
 	}
 }

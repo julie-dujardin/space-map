@@ -8,8 +8,8 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import { Calendar } from '$lib/components/ui/calendar';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { CalendarDate, type DateValue } from '@internationalized/date';
-	import { dateToJD, jdToDate, formatJulianDateTime } from '$lib/format/date';
+	import { type DateValue } from '@internationalized/date';
+	import { formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
@@ -20,6 +20,12 @@
 	} from '$lib/scene/time-scales';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { untrack } from 'svelte';
+	import {
+		applyDateToClock,
+		applyTimeToClock,
+		clockTimeValue,
+		jdToCalendarDate
+	} from './clock-pickers';
 
 	interface Props {
 		clock: SimClock;
@@ -31,11 +37,6 @@
 	let showCalendar = $state(false);
 	let pickerValue = $state<DateValue | undefined>(undefined);
 	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
-
-	function jdToCalendarDate(jd: number): CalendarDate {
-		const d = jdToDate(jd);
-		return new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
-	}
 
 	$effect(() => {
 		if (showCalendar) {
@@ -49,25 +50,9 @@
 		if (!open) showCalendar = false;
 	});
 
-	function handleDateChange(v: DateValue | undefined) {
-		if (!v) return;
-		const next = jdToDate(clock.jd);
-		next.setFullYear(v.year, v.month - 1, v.day);
-		clock.setJD(dateToJD(next));
-	}
-
-	let timeValue = $derived.by(() => {
-		const d = jdToDate(clock.jd);
-		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-	});
-
-	function handleTimeChange(e: Event) {
-		const match = (e.currentTarget as HTMLInputElement).value.match(/^(\d{2}):(\d{2})$/);
-		if (!match) return;
-		const next = jdToDate(clock.jd);
-		next.setHours(Number(match[1]), Number(match[2]), 0, 0);
-		clock.setJD(dateToJD(next));
-	}
+	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
+	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
+	let timeValue = $derived(clockTimeValue(clock.jd));
 
 	let dateLabel = $derived(formatJulianDateTime(clock.jd, TIME_DATE_OPTS));
 	let activeScale = $derived(
