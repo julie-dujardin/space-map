@@ -95,7 +95,7 @@ export class ZoneRefresher {
 				// ChebyshevStore, not this refresher; static-parted zones don't
 				// fan out over time, so they don't need a refresher entry either.
 				if (zoomData.shape === 'chunked' || zoomData.shape === 'parted') continue;
-				const parts = Math.min(zoomData.parts, 20);
+				const parts = zoomData.parts;
 				const parentIdType = zoneData.parent_id_type ?? 'naif';
 				if (isDateSegmented(zoomData)) {
 					const state: TimeZoneState = {

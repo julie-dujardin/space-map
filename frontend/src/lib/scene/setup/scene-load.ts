@@ -47,7 +47,7 @@ function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 			if (zoomData.shape === 'chunked') continue;
 			// Date-segmented zones (earth): pick snapshot nearest the sim time so SGP4's window covers it.
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
-			for (let part = 0; part < Math.min(zoomData.parts, 20); part++) {
+			for (let part = 0; part < zoomData.parts; part++) {
 				args.push({ zone, zoom, part, time, parentIdType });
 				ChunkLoader.prefetch(zone, zoom, part, time);
 			}
