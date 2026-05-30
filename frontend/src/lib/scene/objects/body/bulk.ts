@@ -7,7 +7,7 @@ import type { BodyObjects } from '../../types';
 import { asteroidPointSize, makePointCloud } from '../pointcloud';
 import { makeTrail } from '../trail/builder';
 import { isMeshUpgradable } from './lifecycle';
-import { partitionByHash } from '$lib/math/orbit/partition';
+import { partitionForWorkers } from '$lib/math/orbit/partition';
 
 function excludePromoted(
 	bodies: Iterable<PositionedBody>,
@@ -91,15 +91,15 @@ export function buildPointClouds(
 	const spacecraftPoints = new Map<string, Points>();
 	const moonPoints = new Map<string, Points>();
 
-	// Asteroid point clouds: each zone hash-partitioned into K=workerCount
-	// subgroups (`${zone}#${i}`) so OrbitWorkerPool's round-robin lands each
-	// subgroup on a different worker — spreads per-frame Kepler load evenly.
+	// Asteroid point clouds: each zone hash-partitioned via partitionForWorkers
+	// — big zones split into K=workerCount subgroups (`${zone}#${i}`) so each
+	// rides its own worker, small zones stay single-bucket on one worker.
 	const asteroidSize = asteroidPointSize();
 	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
 		const color = resolveBodyColor(filtered[0].data);
-		const buckets = partitionByHash(filtered, workerCount);
+		const { buckets } = partitionForWorkers(zone, filtered, workerCount);
 		for (let i = 0; i < buckets.length; i++) {
 			const bucket = buckets[i];
 			if (bucket.length === 0) continue;
@@ -116,7 +116,7 @@ export function buildPointClouds(
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
 		const color = resolveBodyColor(filtered[0].data);
-		const buckets = partitionByHash(filtered, workerCount);
+		const { buckets } = partitionForWorkers(groupParentId, filtered, workerCount);
 		for (let i = 0; i < buckets.length; i++) {
 			const bucket = buckets[i];
 			if (bucket.length === 0) continue;

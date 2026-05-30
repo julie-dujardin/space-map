@@ -13,7 +13,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
-import { partitionByHash, parentIdFromSubkey } from '$lib/math/orbit/partition';
+import { partitionForWorkers, parentIdFromSubkey } from '$lib/math/orbit/partition';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
@@ -116,11 +116,13 @@ export class PointCloudSystem {
 		for (const zone of this.ctx.bodies.dirtyAsteroidZones) {
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
-			const partitions = partitionByHash(allBodies, k);
+			const { buckets, baseWorker } = partitionForWorkers(zone, allBodies, k);
+			// Iterate full K (not buckets.length) so subgroups #1..#K-1 get
+			// unwired when a zone shrinks below the split threshold.
 			for (let i = 0; i < k; i++) {
 				const key = `${zone}#${i}`;
 				const groupId = `asteroid:${key}`;
-				const bodies = partitions[i];
+				const bodies = i < buckets.length ? buckets[i] : [];
 				if (bodies.length === 0) {
 					this.orbitPool.unwireOne(groupId);
 					const stale = this.asteroidPoints.get(key);
@@ -130,7 +132,7 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				this.orbitPool.rewireOne(groupId, bodies, skip, i);
+				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
@@ -157,11 +159,11 @@ export class PointCloudSystem {
 		for (const gid of this.ctx.bodies.dirtySpacecraftGroups) {
 			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
-			const partitions = partitionByHash(allBodies, k);
+			const { buckets, baseWorker } = partitionForWorkers(gid, allBodies, k);
 			for (let i = 0; i < k; i++) {
 				const key = `${gid}#${i}`;
 				const groupId = `spacecraft:${key}`;
-				const bodies = partitions[i];
+				const bodies = i < buckets.length ? buckets[i] : [];
 				if (bodies.length === 0) {
 					this.orbitPool.unwireOne(groupId);
 					const stale = this.spacecraftPoints.get(key);
@@ -171,7 +173,7 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				this.orbitPool.rewireOne(groupId, bodies, skip, i);
+				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
 				const existing = this.spacecraftPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
