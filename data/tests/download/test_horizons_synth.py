@@ -287,6 +287,16 @@ class TestComputeMajorBodyHillKm:
 
     @pytest.fixture(autouse=True)
     def _spice(self):
+        from space_map_data.utils.paths import DOWNLOAD_DIR
+
+        kernels_root = DOWNLOAD_DIR / "spice" / "kernels"
+        required = [
+            kernels_root / "lsk" / "naif0012.tls",
+            kernels_root / "spk" / "planets" / "de440.bsp",
+        ]
+        missing = [p for p in required if not p.exists()]
+        if missing:
+            pytest.skip(f"SPICE kernels not downloaded: {missing}")
         # Clear the cache so each test recomputes against freshly-furnished kernels.
         refine._HILL_CACHE = None
         paths = refine._furnish_planets()
