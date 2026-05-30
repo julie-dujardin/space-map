@@ -1,25 +1,16 @@
 /**
- * Ring annulus node: a flat disc whose albedo is sampled from 1-D radial
- * profile WebPs (`backscattered`, `forwardscattered`, `unlitside`,
- * `transparency`, `color`) shipped per body under `v1/rings/{id}/`.
+ * Ring annulus disc, albedo sampled from 1-D radial-profile WebPs shipped per
+ * body under `v1/rings/{id}/` (backscattered, forwardscattered, unlitside,
+ * transparency=1−opacity, color).
  *
- * The mesh is added directly to the scene as a sibling of the body's mesh
- * (not a child) so the planet's triaxial-flattening scale doesn't distort the
- * circular profile; the renderer reapplies its position and orientation each
- * frame in step with the body, then writes per-frame `uSunDir` so the
- * fragment shader can pick lit-side vs unlit-side at the right cadence and
- * compute the phase-angle blend between back/unlit/forward scatter.
+ * Mesh is a scene-level sibling of the body (not a child) so the planet's
+ * triaxial-flattening scale doesn't distort the circular profile. The renderer
+ * tracks position/orientation and writes per-frame `uSunDir`.
  *
- * References:
- *  - Björn Jónsson's source page documents the channel meanings, the
- *    transparency convention (1 = empty, 0 = opaque), the warning that the
- *    color profile is calibrated against backscatter only, and the warm
- *    near-white tint suggestion for the unlit branch:
- *    https://bjj.mmedia.is/data/s_rings/index.html
- *  - John Spencer's ring-render notes (SwRI) describe the radial-profile
- *    rendering recipe and the Beer–Lambert-with-slant-correction shadow
- *    formulation used by {@link attachRingShadowToPlanet}:
- *    https://www2.boulder.swri.edu/~spencer/ringrender.html
+ * Refs: Björn Jónsson https://bjj.mmedia.is/data/s_rings/index.html (channel
+ * meanings, color calibrated against backscatter only, warm-white unlit hint);
+ * John Spencer https://www2.boulder.swri.edu/~spencer/ringrender.html (radial-
+ * profile recipe + Beer–Lambert ring-shadow formulation used by {@link attachRingShadowToPlanet}).
  */
 
 import {
@@ -103,19 +94,11 @@ export interface PlanetShadowOnRingUniforms {
 const RING_ANGULAR_SEGMENTS = 256;
 
 async function loadTexture(url: string, srgb: boolean, maxTextureSize: number): Promise<Texture> {
-	// We decode via fetch + createImageBitmap + a 2-tall canvas (rather than
-	// three.js's TextureLoader/HTMLImageElement path) so we can both
-	// (a) sidestep an Android-Chrome bug where the HTMLImageElement →
-	//     texImage2D path produces all-zero samples for these 1-pixel-tall
-	//     VP8L WebPs, and
-	// (b) downscale when the radial profile (~13177 px wide on Saturn) would
-	//     exceed the device's GL MAX_TEXTURE_SIZE. On smaller-cap GPUs
-	//     (Adreno 5xx is 4096) an over-cap upload is silently "incomplete"
-	//     and every sample returns vec4(0,0,0,1), painting the rings solid
-	//     black with an opaque black shadow.
-	// The 2-tall canvas also dodges the 1-tall mipmap-chain edge case
-	// reported in the wild; the shader samples at v = 0.5 so the doubled row
-	// is transparent to it.
+	// Decode via fetch + createImageBitmap + 2-tall canvas (not TextureLoader): (a)
+	// works around an Android-Chrome bug that gives all-zero samples for 1-px-tall
+	// VP8L WebPs, (b) lets us downscale past GL MAX_TEXTURE_SIZE (Saturn's profile
+	// is ~13177 px; Adreno 5xx caps at 4096 and silently uploads incomplete textures).
+	// The doubled row lets mipmap generation succeed; shader samples at v = 0.5.
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`);

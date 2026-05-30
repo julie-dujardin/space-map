@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { BodyObjects } from '$lib/scene/types';
+import { EARTH_ID } from '$lib/constants';
 
 const _tmp = new Vector3();
 
@@ -15,7 +16,7 @@ export function updateUserLocationOcclusion(
 	camera: PerspectiveCamera
 ): void {
 	if (!marker) return;
-	const earth = bodyObjects.get('naif-399');
+	const earth = bodyObjects.get(EARTH_ID);
 	if (!earth?.mesh) return;
 	// Earth-center → marker, in scene-frame coords (focus-relative).
 	_tmp.copy(marker.position).applyQuaternion(earth.mesh.quaternion);

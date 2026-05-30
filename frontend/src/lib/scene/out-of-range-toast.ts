@@ -89,9 +89,3 @@ export function updateOutOfRangeToast(state: OutOfRangeState): void {
 		duration: Number.POSITIVE_INFINITY
 	});
 }
-
-/** Reset module state — for tests and for scene teardown. */
-export function resetOutOfRangeToast(): void {
-	lastSignature = null;
-	toast.dismiss(TOAST_ID);
-}

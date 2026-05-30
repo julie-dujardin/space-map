@@ -3,12 +3,8 @@ import { dateToJD } from '$lib/format/date';
 const MS_PER_DAY = 86_400_000;
 
 /**
- * Simulation clock. Advances Julian Date by real elapsed time * timeScale.
- * timeScale === 0 means paused. Read `jd` each frame (reactive).
- *
- * TODO: when time-varying elements land (osculating / SPK interpolation),
- * trail curves will need regeneration once sim-time drifts too far
- * from the curve's epoch. Fixed Keplerian elements don't require this.
+ * Simulation clock. Advances Julian Date by real elapsed time × timeScale;
+ * timeScale === 0 means paused. `play()` re-resumes the previous non-zero scale.
  */
 export class SimClock {
 	jd = $state(0);

@@ -58,12 +58,9 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	};
 	const focusedId = focusedBody?.data.id;
 
-	// Pre-seed every body's last-known position so a parent that early-returns
-	// (chunk mid-load, segment gap, non-finite) leaves its children reading
-	// the previous-frame value instead of the [0,0,0] fallback. The seed
-	// stores the SAME body.position reference that computePosition mutates,
-	// so successful updates remain visible without re-seeding. Failure mode
-	// bounded to "child one frame stale" instead of "child teleports to SSB".
+	// Pre-seed last-known positions so a child reads the previous-frame value
+	// (not [0,0,0]) when a parent early-returns. Seed stores body.position by
+	// reference, so successful updates remain visible without re-seeding.
 	positionMap.clear();
 	positionMap.set('naif-0', [0, 0, 0]);
 	for (const body of ctx.bodies.bodiesById.values()) {
@@ -133,7 +130,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 				// any child whose own chebOffset is `[0,0,0]` lands at finite-zero
 				// world coords this frame. Log once per body so we know which chunk
 				// dropped out (positionMap pre-seed handles the child's own pos).
-				diagnostics.warnChebNull(d.id, () => {
+				diagnostics.warnOnce('cheb-null', d.id, () => {
 					const insideCoverage = coverage ? jd >= coverage.start && jd <= coverage.end : undefined;
 					const cov = coverage
 						? `[${coverage.start.toFixed(1)},${coverage.end.toFixed(1)}]`
@@ -158,7 +155,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			if (!located) {
 				if (bo) bo.outOfRange = true;
 				if (d.id === focusedId) oorState.focusedOutOfRange = true;
-				diagnostics.warnProbeUnavailable(d.id, () => {
+				diagnostics.warnOnce('probe-unavailable', d.id, () => {
 					const reason = !ctx.probeStore
 						? 'no ProbeStore'
 						: 'no zone has both a loaded chunk and a sub-chunk covering this jd';
@@ -176,7 +173,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 					if (d.id === focusedId) oorState.focusedOutOfRange = true;
 					return;
 				}
-				diagnostics.clearProbeUnavailable(d.id);
+				diagnostics.clear('probe-unavailable', d.id);
 				if (bo) bo.outOfRange = false;
 				body.position[0] = landedRender.x;
 				body.position[1] = landedRender.y;
@@ -214,7 +211,8 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			if (!probeOffsetKm) {
 				if (bo) bo.outOfRange = true;
 				if (d.id === focusedId) oorState.focusedOutOfRange = true;
-				diagnostics.warnProbeUnavailable(
+				diagnostics.warnOnce(
+					'probe-unavailable',
 					d.id,
 					() =>
 						`probe ${d.id} (${d.name ?? 'unnamed'}): hidden — sub-chunk evaluation returned ` +
@@ -222,7 +220,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 				);
 				return;
 			}
-			diagnostics.clearProbeUnavailable(d.id);
+			diagnostics.clear('probe-unavailable', d.id);
 			// Reseed the trail buffer (when present) before flipping parentId,
 			// so the back-population samples against the OLD parent's frame are
 			// dropped and the new frame starts fresh. Skip on first-ever resolve
@@ -290,7 +288,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		body.position[1] = y;
 		body.position[2] = z;
 		if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-			diagnostics.warnNonFinite(d.id, () => {
+			diagnostics.warnOnce('non-finite', d.id, () => {
 				const parentInMap = positionMap.has(d.parentId);
 				return (
 					`computePosition[${d.id}] non-finite: pos=[${x},${y},${z}] ` +
@@ -377,14 +375,9 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		}
 	}
 
-	// Refresh trail geometry against the fresh focus basis. Doing it
-	// inside computePosition would store vertices against the previous frame's
-	// focus, shifting every trail by focus-velocity * dt — visible as trails
-	// "preceding" the body along the focus's own orbit. Skip invisible lines:
-	// GPU buffer uploads dominate this path (~6 KB × needsUpdate per line) and
-	// most lines are off. Newly-built lines default visible=false and would
-	// render at construction-time basis for one frame after visibility flips
-	// them on — mark them `refreshDeferred` for {@link refreshDeferredTrails}.
+	// Refresh trails against the fresh focus basis. Doing it inside computePosition
+	// would shift trails by focus-velocity * dt. Invisible lines defer to
+	// {@link refreshDeferredTrails} to avoid GPU uploads for off-screen trails.
 	const basis = focus.focusTruePos;
 	for (const bo of bodyObjects.values()) {
 		const line = bo.trail;

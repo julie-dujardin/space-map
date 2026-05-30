@@ -71,20 +71,11 @@ export function updateBodyVisibility(
 		focusTruePos[2] + camera.position.z
 	];
 
-	// Pre-pass: for each body with a label and a finite radius, compute the
-	// visible-disc center on screen and offset `label.position` so the CSS2D
-	// label renders at that center (not the projected body-center, which can
-	// be tens of pixels off-disc for a close off-axis body — Earth seen from a
-	// LEO sat, Saturn seen from one of its moons).
-	//
-	// Math: for a sphere at camera-frame position (Bx, By, Bz) with radius r,
-	// the silhouette is a 3D circle whose projection to screen is an ellipse
-	// whose center is at body_NDC · β where β = Bz²/(Bz²−r²). (Derived from
-	// the tangent-cone conic — the body's geometric center projection is *not*
-	// the ellipse center under perspective; it's shifted radially inward.)
-	// To realise this with CSS2DRenderer, the label local position in camera
-	// frame is ((β−1)·Bx, (β−1)·By, 0); rotated by camera.quaternion it
-	// becomes the scene-frame offset stored on label.position.
+	// Pre-pass: offset each body's label to its silhouette-disc center on
+	// screen, not the projected body center (which is tens of pixels off-disc
+	// for close off-axis bodies — LEO sat seeing Earth, moon seeing Saturn).
+	// Silhouette-ellipse center under perspective = body_NDC · β where
+	// β = Bz²/(Bz²−r²); local-frame offset is ((β−1)·Bx, (β−1)·By, 0).
 	const fp = focusTruePos;
 	const cameraInverse = camera.matrixWorldInverse;
 	for (const bo of bodyObjects.values()) {
@@ -112,11 +103,9 @@ export function updateBodyVisibility(
 		label.position.copy(tmpV3);
 	}
 
-	// Build screen-space occluder list: bodies whose sphere fills enough of
-	// the screen to hide labels behind them. Disc radius uses the ellipse's
-	// perpendicular axis (r·f / √(Bz²−r²)) — the smaller of the two for
-	// off-axis bodies, so we don't over-occlude. The center is the projected
-	// label position (already silhouette-corrected above).
+	// Screen occluders: bodies large enough on-screen to hide labels behind them.
+	// Uses the ellipse's minor axis radius (r·f / √(Bz²−r²)) to avoid over-occluding
+	// off-axis bodies. Center = already-silhouette-corrected label position.
 	const screenOccluders = _occluderPool;
 	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {

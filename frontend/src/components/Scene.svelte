@@ -31,11 +31,7 @@
 	let canvas: HTMLCanvasElement;
 	let labelContainer: HTMLDivElement;
 	let renderer: SceneRenderer | undefined;
-	// `.raw` so the body's inner fields (position arrays, satrec internals)
-	// aren't deep-proxied — the renderer mutates `position` every frame and
-	// SGP4 mutates `satrec` internals, neither of which should trigger Svelte
-	// reactivity (and the proxy would also trip state_unsafe_mutation when
-	// SGP4 is invoked from a `$derived`, e.g. the sub-point lat/lon).
+	// `.raw` to skip deep proxying — renderer mutates `position`/satrec internals every frame.
 	let focusedBody = $state.raw<PositionedBody | undefined>();
 
 	export function focusOnBody(
@@ -56,12 +52,8 @@
 	}
 
 	function isLive(): boolean {
-		const jd = clock.jd;
-		const wallJd = dateToJD(new Date());
-		// Within ~1 day of wall clock and playing at 1× → treat as "live".
-		// Keeps the URL showing "now" for a normally-running session and
-		// preserves shareable snapshots when the user has scrubbed or paused.
-		return clock.timeScale === 1 && Math.abs(jd - wallJd) < 1;
+		// Within ~1 day of wall clock and playing at 1× → URL omits the time.
+		return clock.timeScale === 1 && Math.abs(clock.jd - dateToJD(new Date())) < 1;
 	}
 
 	function syncCameraToUrl(latitude: number, longitude: number, zoom: number) {
@@ -83,8 +75,7 @@
 					appState.setFocus({
 						type: urlTypeFromId(body.data.id),
 						id: body.data.id,
-						// Empty while the localized name is still loading; the drawer
-						// fills it in via replaceFocusName once the detail bundle resolves.
+						// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
 						name: body.data.name ?? ''
 					});
 				}
@@ -100,8 +91,7 @@
 		});
 		ro.observe(canvas);
 
-		// Keep the URL's time stamp in sync with the sim clock so reload/share
-		// preserves the current moment. Same 250ms debounce as camera sync.
+		// Keep the URL's time stamp in sync with the sim clock so reload/share preserves the moment.
 		const clockSyncId = setInterval(() => {
 			if (!focusedBody) return;
 			appState.setDate(jdToDate(clock.jd), isLive());

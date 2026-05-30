@@ -1,4 +1,4 @@
-import { cookieName, getLocale, locales, setLocale, type Locale } from '$lib/paraglide/runtime.js';
+import { cookieName, getLocale, setLocale, type Locale } from '$lib/paraglide/runtime.js';
 
 /**
  * User-tunable display settings, persisted to localStorage. A module-level
@@ -137,11 +137,6 @@ class SettingsState {
 	get browserLanguage(): string {
 		if (typeof navigator === 'undefined') return 'en';
 		return navigator.language || 'en';
-	}
-
-	/** Locale list for the language picker (excludes 'auto'). */
-	get availableLocales(): readonly Locale[] {
-		return locales;
 	}
 
 	private persist() {

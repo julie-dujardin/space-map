@@ -1,41 +1,20 @@
 /**
- * Hot-reload driver for zones whose data is sliced by sim time. Two slicings:
- *   - **time-segmented** (`earth` SGP4 sats): one chunk set per ISO `YYYY-MM-DD`
- *     snapshot; the desired snapshot is chosen by clamping the sim date into
- *     the zoom's date range.
- *   - **chunk-indexed** (`moons` Method-C secular elements): one chunk set per
- *     `chunk_years` window starting at `start_jd`; the desired index is
- *     `floor((jd - start_jd) / (chunk_years * 365.25))`.
+ * Hot-reload driver for time-sliced zones. Two slicings:
+ *   - time-segmented (`earth` SGP4 sats): one chunk set per ISO date snapshot.
+ *   - chunk-indexed (`moons` Method-C secular elements): one chunk set per
+ *     `chunk_years` window from `start_jd`.
  *
- * On each `tick(date)`, every registered zone checks whether the desired slice
- * has diverged from what's resident; if so, it loads the new slice and
- * reconciles into the ContextManager. Reconciliation differs by zone type:
- *   - time-segmented: bucket by parentId in `spacecraftByParent` (membership
- *     can change across snapshots — added/removed satellites).
- *   - chunk-indexed: mutate existing bodies in `bodiesById` in place by id
- *     (membership is stable across chunks; only the orbital elements change).
+ * Reconciliation: time-segmented buckets by parentId in `spacecraftByParent`
+ * (membership flips across snapshots); chunk-indexed mutates `bodiesById` in
+ * place (stable membership, only elements change).
  *
- * Pre-loading strategies (the asymmetry exists because off-window propagation
- * behaves very differently):
- *   - Chunk-indexed: **full preload** — `loader.process()` is fired ahead for
- *     `[idx-1, idx+1]` and the resolved `PositionedBody[][]` is held in
- *     `state.preloads`. On a boundary crossing the swap awaits this already-
- *     resolved promise, so the new elements land in the same microtask and
- *     no frame propagates with stale Method-C elements. (Stale Method-C
- *     extrapolates ~chunk_years of secular drift in `om`/`w`, sending moons
- *     to nonsense positions — visible as "moons disappear".)
- *   - Time-segmented: **HTTP-cache prefetch** of `[prev-day, next-day]` only.
- *     Earth has 20 parts × ~25K rows per snapshot; full preload would cost
- *     ~hundreds of MB. SGP4 propagators degrade gracefully past TLE epoch
- *     so the visible artifact is "sats lag behind" for the fetch+decode
- *     window, not catastrophic disappearance — HTTP warm is enough to
- *     shorten that window without holding parsed copies in memory.
+ * Pre-loading is asymmetric: chunk-indexed full-preloads parsed PositionedBody[][]
+ * for `[idx-1, idx+1]` because stale Method-C secular drift sends moons to
+ * nonsense after one chunk; time-segmented only HTTP-prefetches `[prev-day, next-day]`
+ * (full preload would cost hundreds of MB) since SGP4 degrades gracefully past TLE epoch.
  *
- * Concurrency is per-zone (`inFlight`); zones don't block each other. Time-
- * segmented zones additionally rate-limit load *starts* to
- * `MIN_LOAD_INTERVAL_MS` to avoid hammering during fast clock drag. Chunk-
- * indexed zones rely on single-flight only — preload covers most cases, and
- * stale chunks must not be allowed to linger.
+ * Concurrency: per-zone single-flight. Time-segmented zones additionally
+ * rate-limit load starts to `MIN_LOAD_INTERVAL_MS` against fast clock drag.
  */
 
 import { ObjectType, type PositionedBody } from '$lib/types/objects';

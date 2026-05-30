@@ -78,46 +78,31 @@ export interface BodyData extends OrbitalElements {
 export interface PositionedBody {
 	data: BodyData;
 	position: [number, number, number];
-	/** Orbital elements to use for drawing the orbit (may differ from data's own elements, e.g. barycenter elements for planets) */
+	/** Elements used for orbit drawing — may differ from `data` (e.g. planets borrowing barycenter elements). */
 	orbitElements?: OrbitalElements;
 	/** World-space center of the orbit (parent position). Defaults to origin. */
 	orbitCenter?: [number, number, number];
 	/**
-	 * World-space point the trail's brightest end should sit on, when it
-	 * differs from `position`. Set for bodies that draw the orbit using a
-	 * *parent's* elements (planets borrowing their barycenter's heliocentric
-	 * orbit): the curve passes through the barycenter's location, so the
-	 * trail head must too — anchoring at the body itself produces a kink
-	 * between the body's offset position and the curve. Mutated each frame
-	 * by `updatePositions` to track the parent's live position.
+	 * Where the trail's brightest end sits when `position` is offset from the
+	 * orbit curve (planets borrowing barycenter elements: curve passes through
+	 * the barycenter so the trail head must too, or it kinks). Updated each frame.
 	 */
 	trailAnchor?: [number, number, number];
 	/**
-	 * Re-derive `orbitElements` at a new `jd`. Set for chebyshev-source bodies
-	 * so the trail refresh path can periodically re-snapshot the
-	 * osculating elements as the body progresses through its chunk — keeping
-	 * the drawn ellipse aligned with the actual chebyshev path instead of
-	 * frozen at the chunk-load snapshot. Returns null on the same conditions
-	 * the construction-time derivation does (missing GM, sample miss,
-	 * degenerate state); callers leave the existing elements alone in that
-	 * case.
+	 * Re-derive `orbitElements` at a new `jd`. Set on chebyshev bodies so the
+	 * trail can periodically re-snapshot osculating elements as the body
+	 * progresses through its chunk. Returns null on missing GM / sample miss /
+	 * degenerate state; callers keep existing elements then.
 	 */
 	rederiveElements?: (jd: number) => OrbitalElements | null;
 	/**
-	 * Past-position ring buffer used to draw the orbit trail when the body's
-	 * motion can't be summarized by a single Kepler ellipse — set for probes
-	 * whose current chunk has at least one chebyshev sub-chunk. The buffer
-	 * holds fit-center-relative scene-space samples; the renderer adds the
-	 * current parent position at draw time. When present, the trail
-	 * builder takes the buffer codepath and ignores `orbitElements`.
+	 * Past-position ring buffer for probes whose chunk has any chebyshev sub-chunk
+	 * (single-Kepler trails are wrong during flyby/capture). Buffer holds
+	 * fit-center-relative samples; renderer adds the parent position at draw.
+	 * Takes precedence over `orbitElements` in the trail builder.
 	 */
 	trailBuffer?: TrailBuffer;
-	/**
-	 * IAU pole + spin polynomial. Populated by `loadSystemData` for major
-	 * planetary-system bodies (planets, moons), which the renderer uses to
-	 * orient the mesh each frame. Components read it to derive body-fixed
-	 * coordinates (e.g. sub-point lat/lon for satellites).
-	 */
+	/** IAU pole + spin polynomial. Drives mesh orientation and body-fixed coords. */
 	orientation?: Orientation;
 	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
 	nutPrec?: NutPrec;

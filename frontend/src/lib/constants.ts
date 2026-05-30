@@ -49,6 +49,11 @@ export const TYPE_COLOR_PROBE = '#d5cfe7';
 
 export const GITHUB_REPO_URL = 'https://github.com/julie-dujardin/space-map';
 
+/** Common NAIF ids referenced by name across the renderer. */
+export const SUN_ID = 'naif-10';
+export const EARTH_ID = 'naif-399';
+export const SSB_ID = 'naif-0';
+
 /**
  * Bodies rendered as halos but with no label or trail by default — label
  * appears on hover (alongside the existing halo scale), trail draws as usual

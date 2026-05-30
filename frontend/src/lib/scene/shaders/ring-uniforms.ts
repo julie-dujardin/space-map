@@ -1,10 +1,11 @@
 import { Vector3 } from 'three';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
+import { SUN_ID } from '$lib/constants';
 
 /** Refresh per-frame ring + planet-ring-shadow uniforms (sun dir, planet center, pole). */
 export function updateRingShaders(bodyObjects: Map<string, BodyObjects>, focusTruePos: Vec3): void {
-	const sunPos = bodyObjects.get('naif-10')?.body.position;
+	const sunPos = bodyObjects.get(SUN_ID)?.body.position;
 	if (!sunPos) return;
 	const [fx, fy, fz] = focusTruePos;
 	for (const bo of bodyObjects.values()) {

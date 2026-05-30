@@ -2,6 +2,7 @@ import type { Vec3 } from '$lib/scene/animation/math';
 import type { BodyObjects } from '$lib/scene/types';
 import { ObjectType } from '$lib/types/objects';
 import { getEclipseSceneUniforms, MAX_OCCLUDERS } from '$lib/scene/objects/surface/eclipse-shadow';
+import { SUN_ID } from '$lib/constants';
 
 // Reused across frames; trimmed to active prefix each call.
 const _candidatesScratch: BodyObjects[] = [];
@@ -17,7 +18,7 @@ export function updateEclipseUniforms(
 	focusTruePos: Vec3
 ): void {
 	const eclipse = getEclipseSceneUniforms();
-	const sunBo = bodyObjects.get('naif-10');
+	const sunBo = bodyObjects.get(SUN_ID);
 	if (!sunBo) {
 		eclipse.uSunAngularRadius.value = 0;
 		eclipse.uOccluderCount.value = 0;

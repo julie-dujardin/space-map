@@ -4,13 +4,13 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import RewindIcon from '@lucide/svelte/icons/rewind';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
-	import { dateToJD, jdToDate, formatJulianDateTime } from '$lib/format/date';
+	import { dateToJD, formatJulianDateTime } from '$lib/format/date';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Calendar } from '$lib/components/ui/calendar';
-	import { CalendarDate, type DateValue } from '@internationalized/date';
+	import { type DateValue } from '@internationalized/date';
 	import { untrack } from 'svelte';
 	import {
 		TIME_SCALES,
@@ -18,6 +18,12 @@
 		PICKER_MIN_DATE,
 		PICKER_MAX_DATE
 	} from '$lib/scene/time-scales';
+	import {
+		applyDateToClock,
+		applyTimeToClock,
+		clockTimeValue,
+		jdToCalendarDate
+	} from './clock-pickers';
 
 	interface Props {
 		clock: SimClock;
@@ -29,11 +35,6 @@
 	let pickerValue = $state<DateValue | undefined>(undefined);
 	let pickerPlaceholder = $state<DateValue | undefined>(undefined);
 
-	function jdToCalendarDate(jd: number): CalendarDate {
-		const d = jdToDate(jd);
-		return new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
-	}
-
 	$effect(() => {
 		if (pickerOpen) {
 			const cd = untrack(() => jdToCalendarDate(clock.jd));
@@ -42,25 +43,9 @@
 		}
 	});
 
-	function handleDateChange(v: DateValue | undefined) {
-		if (!v) return;
-		const next = jdToDate(clock.jd);
-		next.setFullYear(v.year, v.month - 1, v.day);
-		clock.setJD(dateToJD(next));
-	}
-
-	let timeValue = $derived.by(() => {
-		const d = jdToDate(clock.jd);
-		return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-	});
-
-	function handleTimeChange(e: Event) {
-		const match = (e.currentTarget as HTMLInputElement).value.match(/^(\d{2}):(\d{2})$/);
-		if (!match) return;
-		const next = jdToDate(clock.jd);
-		next.setHours(Number(match[1]), Number(match[2]), 0, 0);
-		clock.setJD(dateToJD(next));
-	}
+	const handleDateChange = (v: DateValue | undefined) => applyDateToClock(clock, v);
+	const handleTimeChange = (e: Event) => applyTimeToClock(clock, e);
+	let timeValue = $derived(clockTimeValue(clock.jd));
 
 	// Width fixtures: cover the variants that change rendered length —
 	// month-abbreviation outliers, meridiem/hour boundaries, and day digit count.

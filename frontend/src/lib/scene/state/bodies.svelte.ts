@@ -1,8 +1,9 @@
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
 export function isTopLevelParent(parentId: string): boolean {
-	return parentId === 'naif-0' || parentId === 'naif-10';
+	return parentId === SSB_ID || parentId === SUN_ID;
 }
 
 /**
@@ -52,20 +53,10 @@ export class BodyIndex {
 	private readonly moonMaxAByParent = new Map<string, number>();
 
 	/**
-	 * Look up any body by ID.
-	 *
-	 * `zone` is an optional hint. When provided the search is restricted to
-	 * that zone — use it from per-zone iteration paths (chunk reconciliation,
-	 * picking results) where you already know which bucket the body lives in.
-	 * The zone string is the same key the body was filed under: a `naif-X`
-	 * parent id for spacecraft groups, or an OrbitClass enum name (e.g. `MBA`)
-	 * for asteroid zones; we probe both maps so callers don't have to
-	 * disambiguate.
-	 *
-	 * Without a hint: bodiesById → spacecraftByParent → asteroidBodiesByZone.
-	 * Spacecraft come before asteroid zones because there are far fewer
-	 * groups (a handful of parents vs. ~20 zones with thousands of bodies),
-	 * so the linear scan finishes faster on a miss.
+	 * Look up any body by ID. Pass `zone` (parent id for spacecraft groups,
+	 * OrbitClass name for asteroid zones) when you already know the bucket —
+	 * skips the linear scan. Without a hint: bodiesById → spacecraftByParent →
+	 * asteroidBodiesByZone.
 	 */
 	getBody(id: string, zone?: string): PositionedBody | undefined {
 		const major = this.bodiesById.get(id);
@@ -139,20 +130,7 @@ export class BodyIndex {
 		return this.childrenByParent.get(sysId)?.has(parentId) ?? false;
 	}
 
-	/**
-	 * High-level object counts for the debug overlay. Walks the live maps
-	 * directly so it always reflects whatever's loaded, including bodies that
-	 * arrived after first paint.
-	 *
-	 * Buckets:
-	 *  - `planets`: planets + dwarf planets (anything in bodiesById of those types).
-	 *  - `moons`: bodies in bodiesById typed MOON.
-	 *  - `probes`: SPICE-tracked spacecraft (orbitalSource = SPICE_PROBE) plus
-	 *    any spacecraft groups not orbiting Earth.
-	 *  - `earthSatellites`: spacecraft/debris bucketed under Earth (naif-399).
-	 *  - `smallBodies`: asteroid + comet zone totals (excluding the 'earth'
-	 *    zone, which holds debris/rocket-bodies).
-	 */
+	/** Live bucket counts for the debug overlay. */
 	getObjectCounts(): {
 		planets: number;
 		moons: number;
@@ -169,10 +147,10 @@ export class BodyIndex {
 			else if (t === ObjectType.MOON) moons++;
 			else if (t === ObjectType.SPACECRAFT) probes++;
 		}
-		let earthSatellites = this.spacecraftByParent.get('naif-399')?.size ?? 0;
+		let earthSatellites = this.spacecraftByParent.get(EARTH_ID)?.size ?? 0;
 		earthSatellites += this.asteroidBodiesByZone.get('earth')?.size ?? 0;
 		for (const [parentId, bucket] of this.spacecraftByParent) {
-			if (parentId === 'naif-399') continue;
+			if (parentId === EARTH_ID) continue;
 			probes += bucket.size;
 		}
 		let smallBodies = 0;

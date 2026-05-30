@@ -14,7 +14,6 @@ import { unloadBodyModel } from '$lib/scene/objects/body/model';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
-	FOCUS_DURATION_MS,
 	prepareFlyToCamera,
 	prepareFocusTarget,
 	type FocusState
@@ -283,5 +282,3 @@ export class FocusController {
 		this.pendingInitialView = null;
 	}
 }
-
-export { FOCUS_DURATION_MS };

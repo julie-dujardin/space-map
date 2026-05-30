@@ -10,8 +10,10 @@ export const EARTH_OBLIQUITY_DEG = 23.4392911;
  * in AU and `n` in rad/day).
  */
 export const KM3_S2_TO_AU3_DAY2 = 86400 ** 2 / AU_KM ** 3;
-/** Convert km to scene units */
+/** Convert a velocity in km/day to AU/day. */
+export const KM_DAY_TO_AU_DAY = 1 / AU_KM;
 
+/** Convert km to scene units */
 export function kmToScene(km: number): number {
 	return (km / AU_KM) * AU_SCALE;
 }

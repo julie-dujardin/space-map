@@ -3,6 +3,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { SSB_ID } from '$lib/constants';
 
 /**
  * A camera "north" reference. `id === null` is the always-available
@@ -18,7 +19,8 @@ export interface NorthChoice {
 /** Sentinel id for the galactic-north choice. Distinct from any NAIF/SBDB id. */
 export const GALACTIC_REF_ID = 'galactic';
 
-const SCENE_UP = new Vector3(0, 1, 0);
+/** Scene-frame +Y. Shared by the camera-up controller and body-pole math. */
+export const SCENE_UP = new Vector3(0, 1, 0);
 
 /**
  * Galactic north pole direction in the Three.js scene frame.
@@ -101,7 +103,7 @@ export function getNorthChoices(
 			choices.splice(1, 0, { id: chosen.data.id, name: chosen.data.name });
 		}
 
-		if (cur.data.parentId === 'naif-0') break;
+		if (cur.data.parentId === SSB_ID) break;
 		cur = ctx.getBody(cur.data.parentId);
 	}
 	// galactic north: always first

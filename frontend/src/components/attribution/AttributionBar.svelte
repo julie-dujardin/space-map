@@ -10,9 +10,7 @@
 
 	const ctx = getContext<ContextManager>('ctx');
 
-	// Horizons / SBDB / NASA SPICE are all NASA-produced — collapse them into a
-	// single "NASA" chip so the bar reads "NASA · CelesTrak" instead of listing
-	// every sub-product. `ORBIT_ORDER` pins display order post-dedup.
+	// All NASA-produced sources collapse to a single "NASA" chip; ORBIT_ORDER pins display order post-dedup.
 	const ORBIT_LABELS: Record<Exclude<OrbitalSource, OrbitalSource.UNKNOWN>, () => string> = {
 		[OrbitalSource.HORIZONS]: m.provider_nasa,
 		[OrbitalSource.SBDB]: m.provider_nasa,
@@ -32,8 +30,7 @@
 	];
 
 	const orbitLabels = $derived.by(() => {
-		// CelesTrak only covers Earth satellites — hide its credit everywhere
-		// except the Earth-Moon system, where those bodies are actually drawn.
+		// CelesTrak only covers Earth satellites — hide outside the Earth-Moon system.
 		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		const seen = new Set<string>();
 		const out: string[] = [];
@@ -48,12 +45,8 @@
 		return out;
 	});
 
-	// Include credits from (a) the focused planetary system — so the Jupiter
-	// system shows every textured Galilean — AND (b) the focused body itself —
-	// so standalones like Bennu or Ceres, which never get a systems/{bary}.json
-	// entry, still credit their imagery once loadBodyTexture has run. Rings,
-	// clouds, and 3D models share the imagery chip in the bar (per-source
-	// attribution gets its own section in the popover and on the credits page).
+	// Scoped to the focused system + focused body; rings/clouds/models share the
+	// imagery chip here (per-source breakout lives in the popover / credits page).
 	const textureOrgs = $derived.by(() => {
 		void ctx.credits.textureVersion;
 		void ctx.credits.ringVersion;

@@ -11,9 +11,7 @@ function excludePromoted(
 	bodies: Iterable<PositionedBody>,
 	promotedIds?: Set<string>
 ): PositionedBody[] {
-	if (!promotedIds || promotedIds.size === 0) {
-		return Array.isArray(bodies) ? bodies : Array.from(bodies);
-	}
+	if (!promotedIds || promotedIds.size === 0) return [...bodies];
 	const out: PositionedBody[] = [];
 	for (const b of bodies) {
 		if (!promotedIds.has(b.data.id)) out.push(b);

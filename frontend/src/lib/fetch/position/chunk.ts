@@ -13,7 +13,7 @@ import { ObjectType } from '$lib/types/objects';
 import { OrbitalSource, Scale, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
-import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, kmToScene } from '$lib/math/units';
+import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { chebyshevPositionScene, chebyshevStateKm } from '$lib/fetch/position/chebyshev/propagate';
@@ -27,14 +27,7 @@ import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
-import {
-	PROBE_METHOD_CHEBYSHEV,
-	PROBE_METHOD_KEPLER_DRIFT,
-	PROBE_METHOD_KEPLER_PURE,
-	PROBE_METHOD_UNCOVERABLE
-} from '$lib/fetch/position/format';
-
-const KM_DAY_TO_AU_DAY = 1 / AU_KM;
+import { PROBE_METHOD_CHEBYSHEV } from '$lib/fetch/position/format';
 
 /**
  * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
@@ -269,16 +262,11 @@ export class ChunkLoader {
 		fetch(elementsUrl(zone, zoom, part, time));
 	}
 
-	// Track positions by full Object.id (e.g. "naif-399", "spkid-2000004") for
-	// parent lookups (not reactive — local computation only). String-keyed so
-	// zones with different parent prefixes (small_body_moons under spkid, moons
-	// under naif, …) don't collide on the numeric portion.
+	/** Positions by full Object.id (e.g. "naif-399", "spkid-2000004"). String-keyed
+	 *  so zones with different parent prefixes don't collide on the numeric portion. */
 	positions = new Map<string, [number, number, number]>();
-	// Store barycenter orbital elements for planet orbit drawing. Populated by
-	// both `processChebyshev` (osculating elements derived from the polynomial
-	// state) and `process` (elements ride-along from the binary chunks); the
-	// chebyshev pass runs first so `process` sees barycenter elements when it
-	// resolves a planet's parent.
+	/** Barycenter elements used for planet orbit drawing. `processChebyshev`
+	 *  populates first (so `process` sees them when resolving planet parents). */
 	barycenters = new Map<string, OrbitalElements>();
 
 	/**
@@ -296,25 +284,12 @@ export class ChunkLoader {
 	}
 
 	/**
-	 * Build PositionedBody[] for every body in the chebyshev store covered by
-	 * `date`. Skipped zones (chunk not loaded yet) drop their bodies — callers
-	 * must `await store.ensure(jd).done` first.
-	 *
-	 * Walks bodies in two passes so children find their parents in `positions`:
-	 *
-	 *   1. Sort bodies so barycenters (object_type=BARYCENTER, naif_id < 100)
-	 *      land before everything else — Earth-Moon barycenter (naif-3) is
-	 *      Earth's parent, Sun (naif-10) is the parent of the planet
-	 *      barycenters, SSB (naif-0) is the implicit root at scene origin.
-	 *   2. For each body, evaluate its parent-relative chebyshev position,
-	 *      shift by the parent's world position, and emit a PositionedBody.
-	 *
-	 * The body's `data` carries osculating Keplerian elements derived from the
-	 * Chebyshev state (position + velocity) at `jd` plus the parent's GM. This
-	 * is the same shape the SBDB/Horizons elements path produces, so the
-	 * trail builder draws a closed kepler curve through the unified path
-	 * in {@link makeTrail}. `a` from the derivation also serves the
-	 * visibility-ratio code (`getMoonVisibility`, `getPlanetVisibility`).
+	 * Build PositionedBody[] for every chebyshev body covered by `date`. Caller
+	 * must `await store.ensure(jd).done` first; zones with no loaded chunk are
+	 * skipped. Walks in barycenter-first order so children resolve parents from
+	 * `positions`. Each body carries osculating Keplerian elements derived from
+	 * the chebyshev state + parent GM, matching the SBDB/Horizons shape so the
+	 * trail builder uses the unified kepler curve in {@link makeTrail}.
 	 */
 	processChebyshev(date: Date, labels: LabelMap): PositionedBody[] {
 		if (!this.cheb) return [];
@@ -506,34 +481,18 @@ export class ChunkLoader {
 	processProbes(probeStore: ProbeStore, date: Date, labels: LabelMap): PositionedBody[] {
 		const jd = dateToJD(date);
 		const result: PositionedBody[] = [];
-		const perZone = new Map<
-			string,
-			{ count: number; center: number | undefined; methodCounts: Map<number, number> }
-		>();
 		const missingParents = new Map<string, Set<string>>(); // parentKey → probe ids
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
 		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
-		// Dedupe by probe.id: a flyby probe is in BOTH interplanetary and the
-		// planet zone at the same jd (intentional — see trace.py / zones.py), so
-		// `probesAt` yields it twice. Cold-start picks the first zone the store
-		// iterates (metadata insertion order); the per-frame propagator re-resolves
-		// the live zone via `probeWithCenter`, flipping parentId in place when the
-		// active zone changes.
+		// Dedupe by probe.id: a flyby probe is in BOTH interplanetary and the planet
+		// zone at the same jd, so `probesAt` yields it twice. The per-frame
+		// propagator re-resolves the live zone via `probeWithCenter`.
 		const seenProbeIds = new Set<string>();
-		for (const { zone, probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
+		for (const { probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
 			if (!probe.id) continue;
 			if (seenProbeIds.has(probe.id)) continue;
 			seenProbeIds.add(probe.id);
-			let zoneStats = perZone.get(zone);
-			if (!zoneStats) {
-				zoneStats = { count: 0, center: zoneCenterNaifId, methodCounts: new Map() };
-				perZone.set(zone, zoneStats);
-			}
-			zoneStats.count++;
-			for (const sc of probe.subChunks) {
-				zoneStats.methodCounts.set(sc.method, (zoneStats.methodCounts.get(sc.method) ?? 0) + 1);
-			}
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
 			// Resolve the probe's *actual* fit center: the writer-stamped
@@ -645,31 +604,8 @@ export class ChunkLoader {
 				trailBuffer
 			});
 		}
-		// Diagnostics — without these, the only signal a probe didn't render
-		// is "you don't see it on screen". Surface every silent-drop path
-		// once, deduped to keep the console legible.
-		const methodName = (m: number) =>
-			m === PROBE_METHOD_KEPLER_PURE
-				? 'kepler_pure'
-				: m === PROBE_METHOD_KEPLER_DRIFT
-					? 'kepler_drift'
-					: m === PROBE_METHOD_CHEBYSHEV
-						? 'chebyshev'
-						: m === PROBE_METHOD_UNCOVERABLE
-							? 'uncoverable'
-							: `method=${m}`;
-		const totalProbes = Array.from(perZone.values()).reduce((a, s) => a + s.count, 0);
-		const zoneLines = Array.from(perZone)
-			.map(([z, s]) => {
-				const methods = Array.from(s.methodCounts)
-					.map(([m, n]) => `${methodName(m)}=${n}`)
-					.join('/');
-				return `  ${z}: ${s.count} probe(s), fit_center=naif-${s.center}, sub-chunks: ${methods}`;
-			})
-			.join('\n');
-		console.log(
-			`processProbes: loaded ${totalProbes} probe(s) across ${perZone.size} zone(s) for jd=${jd.toFixed(3)}\n${zoneLines}`
-		);
+		// Surface every silent-drop path so missing probes don't render as just
+		// "you don't see it on screen". Deduped to keep the console legible.
 		if (undefinedCenterProbes.size > 0) {
 			console.error(
 				`processProbes: ${undefinedCenterProbes.size} probe(s) have undefined fit_center_naif_id ` +
@@ -721,10 +657,6 @@ export class ChunkLoader {
 		]);
 		const idMap = cols.idMap;
 
-		console.log(
-			`Loaded ${cols.rowCount} ${cols.kind} object(s) from ${zone}/${zoom}/${part}` +
-				(time ? `/${time}` : '')
-		);
 		const isParabolic = cols.kind === 'parabolic';
 		const isSGP4 = cols.kind === 'sgp4';
 		const jd = dateToJD(date);
@@ -747,7 +679,7 @@ export class ChunkLoader {
 
 			const parentKey = `${parentIdType}-${cols.parentId[idx]}`;
 			if (!this.positions.has(parentKey)) {
-				console.warn(`Parent position not found for ${parentKey}, falling back to origin`);
+				console.warn(`Parent position not found for ${parentKey}, falling back to SSB`);
 			}
 			const parentPos = this.positions.get(parentKey) ?? this.positions.get('naif-0')!;
 

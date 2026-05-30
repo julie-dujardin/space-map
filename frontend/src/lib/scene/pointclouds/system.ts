@@ -15,6 +15,7 @@ import { OrbitWorkerPool } from '$lib/math/orbit/pool';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
+import { SUN_ID } from '$lib/constants';
 
 const REBASE_THRESHOLD_AU = 0.01;
 
@@ -215,7 +216,7 @@ export class PointCloudSystem {
 		// Per-frame reposition only runs on jd-change, so without this a worker
 		// result arriving while paused would render the cloud at a stale offset.
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const parentNowId = kind === 'asteroid' ? 'naif-10' : key;
+		const parentNowId = kind === 'asteroid' ? SUN_ID : key;
 		const parentNow = this.ctx.getBody(parentNowId)?.position;
 		const sx = parentNow ? parentNow[0] - parentUsed[0] : 0;
 		const sy = parentNow ? parentNow[1] - parentUsed[1] : 0;
@@ -235,7 +236,7 @@ export class PointCloudSystem {
 		const currentBasis = this.basisPos;
 		for (const [zone, pts] of this.asteroidPoints) {
 			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
-			const [sx, sy, sz] = this.parentShift(`asteroid:${zone}`, 'naif-10');
+			const [sx, sy, sz] = this.parentShift(`asteroid:${zone}`, SUN_ID);
 			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
 		}
 		for (const [gid, pts] of this.spacecraftPoints) {
@@ -292,7 +293,7 @@ export class PointCloudSystem {
 
 		const parents = this._parentsScratch;
 		parents.clear();
-		const sunPos = this.ctx.getBody('naif-10')?.position ?? ([0, 0, 0] as Vec3);
+		const sunPos = this.ctx.getBody(SUN_ID)?.position ?? ([0, 0, 0] as Vec3);
 		for (const [zone] of this.ctx.bodies.asteroidBodiesByZone) {
 			parents.set(`asteroid:${zone}`, [sunPos[0], sunPos[1], sunPos[2]]);
 		}

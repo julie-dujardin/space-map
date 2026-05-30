@@ -1,10 +1,9 @@
 import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from './north-reference';
+import { SCENE_UP, bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from './north-reference';
 
 const UP_ANIM_DURATION_MS = 400;
-const SCENE_UP = new Vector3(0, 1, 0);
 
 /**
  * Drives `camera.up` from a north reference (ecliptic Y / galactic / body
