@@ -13,6 +13,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
+import { partitionByHash, parentIdFromSubkey } from '$lib/math/orbit/partition';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
@@ -74,7 +75,8 @@ export class PointCloudSystem {
 			this.scene,
 			this.circleTexture,
 			this.basisPos,
-			promotedIds
+			promotedIds,
+			this.orbitPool.workerCount
 		);
 		this.asteroidPoints = pts.asteroidPoints;
 		this.spacecraftPoints = pts.spacecraftPoints;
@@ -109,70 +111,86 @@ export class PointCloudSystem {
 		}
 		const skip = new Set(this.bodyObjects.keys());
 		const seedBasis: Vec3 = [this.basisPos[0], this.basisPos[1], this.basisPos[2]];
+		const k = this.orbitPool.workerCount;
 
 		for (const zone of this.ctx.bodies.dirtyAsteroidZones) {
-			const groupId = `asteroid:${zone}`;
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
-			if (!bucket || bucket.size === 0) {
-				this.orbitPool.unwireOne(groupId);
-				const stale = this.asteroidPoints.get(zone);
-				if (stale) {
-					this.scene.remove(stale);
-					this.asteroidPoints.delete(zone);
+			const allBodies = bucket ? Array.from(bucket.values()) : [];
+			const partitions = partitionByHash(allBodies, k);
+			for (let i = 0; i < k; i++) {
+				const key = `${zone}#${i}`;
+				const groupId = `asteroid:${key}`;
+				const bodies = partitions[i];
+				if (bodies.length === 0) {
+					this.orbitPool.unwireOne(groupId);
+					const stale = this.asteroidPoints.get(key);
+					if (stale) {
+						this.scene.remove(stale);
+						this.asteroidPoints.delete(key);
+					}
+					continue;
 				}
-				continue;
-			}
-			const bodies = Array.from(bucket.values());
-			this.orbitPool.rewireOne(groupId, bodies, skip);
-			const existing = this.asteroidPoints.get(zone);
-			if (existing) {
-				this.resizeGeometryIfNeeded(existing.geometry, bodies);
-			} else {
-				const arr = new Float32Array(bodies.length * 3);
-				this.seedGeometryArray(arr, bodies);
-				const pts = makePointCloudFromBuffer(
-					arr,
-					bodies.length,
-					this.circleTexture,
-					resolveBodyColor(bodies[0].data),
-					asteroidPointSize()
-				);
-				pts.userData.frontBasis = seedBasis;
-				this.asteroidPoints.set(zone, pts);
-				this.pendingSceneAdds.push(pts);
+				this.orbitPool.rewireOne(groupId, bodies, skip, i);
+				const existing = this.asteroidPoints.get(key);
+				if (existing) {
+					this.resizeGeometryIfNeeded(existing.geometry, bodies);
+				} else {
+					const arr = new Float32Array(bodies.length * 3);
+					this.seedGeometryArray(arr, bodies);
+					const pts = makePointCloudFromBuffer(
+						arr,
+						bodies.length,
+						this.circleTexture,
+						resolveBodyColor(bodies[0].data),
+						asteroidPointSize()
+					);
+					pts.userData.frontBasis = seedBasis;
+					pts.userData.groupId = groupId;
+					pts.userData.parentVec = [0, 0, 0] as Vec3;
+					this.asteroidPoints.set(key, pts);
+					this.pendingSceneAdds.push(pts);
+				}
 			}
 		}
 		this.ctx.bodies.dirtyAsteroidZones.clear();
 
 		for (const gid of this.ctx.bodies.dirtySpacecraftGroups) {
-			const groupId = `spacecraft:${gid}`;
 			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
-			if (!bucket || bucket.size === 0) {
-				this.orbitPool.unwireOne(groupId);
-				const stale = this.spacecraftPoints.get(gid);
-				if (stale) {
-					this.scene.remove(stale);
-					this.spacecraftPoints.delete(gid);
+			const allBodies = bucket ? Array.from(bucket.values()) : [];
+			const partitions = partitionByHash(allBodies, k);
+			for (let i = 0; i < k; i++) {
+				const key = `${gid}#${i}`;
+				const groupId = `spacecraft:${key}`;
+				const bodies = partitions[i];
+				if (bodies.length === 0) {
+					this.orbitPool.unwireOne(groupId);
+					const stale = this.spacecraftPoints.get(key);
+					if (stale) {
+						this.scene.remove(stale);
+						this.spacecraftPoints.delete(key);
+					}
+					continue;
 				}
-				continue;
-			}
-			const bodies = Array.from(bucket.values());
-			this.orbitPool.rewireOne(groupId, bodies, skip);
-			const existing = this.spacecraftPoints.get(gid);
-			if (existing) {
-				this.resizeGeometryIfNeeded(existing.geometry, bodies);
-			} else {
-				const arr = new Float32Array(bodies.length * 3);
-				this.seedGeometryArray(arr, bodies);
-				const pts = makePointCloudFromBuffer(
-					arr,
-					bodies.length,
-					this.circleTexture,
-					resolveBodyColor(bodies[0].data)
-				);
-				pts.userData.frontBasis = seedBasis;
-				this.spacecraftPoints.set(gid, pts);
-				this.pendingSceneAdds.push(pts);
+				this.orbitPool.rewireOne(groupId, bodies, skip, i);
+				const existing = this.spacecraftPoints.get(key);
+				if (existing) {
+					this.resizeGeometryIfNeeded(existing.geometry, bodies);
+				} else {
+					const arr = new Float32Array(bodies.length * 3);
+					this.seedGeometryArray(arr, bodies);
+					const pts = makePointCloudFromBuffer(
+						arr,
+						bodies.length,
+						this.circleTexture,
+						resolveBodyColor(bodies[0].data)
+					);
+					pts.userData.frontBasis = seedBasis;
+					pts.userData.groupId = groupId;
+					pts.userData.parentBodyId = gid;
+					pts.userData.parentVec = [0, 0, 0] as Vec3;
+					this.spacecraftPoints.set(key, pts);
+					this.pendingSceneAdds.push(pts);
+				}
 			}
 		}
 		this.ctx.bodies.dirtySpacecraftGroups.clear();
@@ -243,7 +261,7 @@ export class PointCloudSystem {
 		// Per-frame reposition only runs on jd-change, so without this a worker
 		// result arriving while paused would render the cloud at a stale offset.
 		const [fx, fy, fz] = this.focus.focusTruePos;
-		const parentNowId = kind === 'asteroid' ? SUN_ID : key;
+		const parentNowId = kind === 'asteroid' ? SUN_ID : parentIdFromSubkey(key);
 		const parentNow = this.ctx.getBody(parentNowId)?.position;
 		const sx = parentNow ? parentNow[0] - parentUsed[0] : 0;
 		const sy = parentNow ? parentNow[1] - parentUsed[1] : 0;
@@ -261,14 +279,14 @@ export class PointCloudSystem {
 	reposition(): void {
 		const [fx, fy, fz] = this.focus.focusTruePos;
 		const currentBasis = this.basisPos;
-		for (const [zone, pts] of this.asteroidPoints) {
+		for (const [key, pts] of this.asteroidPoints) {
 			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
-			const [sx, sy, sz] = this.parentShift(`asteroid:${zone}`, SUN_ID);
+			const [sx, sy, sz] = this.parentShift(`asteroid:${key}`, SUN_ID);
 			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
 		}
-		for (const [gid, pts] of this.spacecraftPoints) {
+		for (const [key, pts] of this.spacecraftPoints) {
 			const b = (pts.userData.frontBasis as Vec3 | undefined) ?? currentBasis;
-			const [sx, sy, sz] = this.parentShift(`spacecraft:${gid}`, gid);
+			const [sx, sy, sz] = this.parentShift(`spacecraft:${key}`, parentIdFromSubkey(key));
 			pts.position.set(b[0] - fx + sx, b[1] - fy + sy, b[2] - fz + sz);
 		}
 		const [bx, by, bz] = currentBasis;
@@ -299,8 +317,15 @@ export class PointCloudSystem {
 
 	rebuildBasis(): void {
 		this.basisPos = [...this.focus.focusTruePos];
-		for (const zone of this.asteroidPoints.keys()) this.ctx.bodies.dirtyAsteroidZones.add(zone);
-		for (const gid of this.spacecraftPoints.keys()) this.ctx.bodies.dirtySpacecraftGroups.add(gid);
+		// Iterate the data buckets (zone/parent keyed) so each parent enters the
+		// dirty set once. Points map keys are subgroup-suffixed and would add
+		// each parent K times — Set dedups but the work is wasted.
+		for (const zone of this.ctx.bodies.asteroidBodiesByZone.keys()) {
+			this.ctx.bodies.dirtyAsteroidZones.add(zone);
+		}
+		for (const gid of this.ctx.bodies.spacecraftByParent.keys()) {
+			this.ctx.bodies.dirtySpacecraftGroups.add(gid);
+		}
 		this.rebuildMinor();
 		// Don't reset parent snapshots: vertex buffers were rewritten from the
 		// stale `body.position` left over from the last round-robin write, so
@@ -321,12 +346,29 @@ export class PointCloudSystem {
 		const parents = this._parentsScratch;
 		parents.clear();
 		const sunPos = this.ctx.getBody(SUN_ID)?.position ?? ([0, 0, 0] as Vec3);
-		for (const [zone] of this.ctx.bodies.asteroidBodiesByZone) {
-			parents.set(`asteroid:${zone}`, [sunPos[0], sunPos[1], sunPos[2]]);
+		// groupId string and parentVec tuple are cached on each Points' userData
+		// (set at creation) so the per-frame loop doesn't reallocate either —
+		// just mutates the existing Vec3 in place and re-binds it in the map.
+		for (const pts of this.asteroidPoints.values()) {
+			const v = pts.userData.parentVec as Vec3;
+			v[0] = sunPos[0];
+			v[1] = sunPos[1];
+			v[2] = sunPos[2];
+			parents.set(pts.userData.groupId as string, v);
 		}
-		for (const [gid] of this.ctx.bodies.spacecraftByParent) {
-			const pp = this.ctx.getBody(gid)?.position ?? ([0, 0, 0] as Vec3);
-			parents.set(`spacecraft:${gid}`, [pp[0], pp[1], pp[2]]);
+		for (const pts of this.spacecraftPoints.values()) {
+			const pp = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
+			const v = pts.userData.parentVec as Vec3;
+			if (pp) {
+				v[0] = pp[0];
+				v[1] = pp[1];
+				v[2] = pp[2];
+			} else {
+				v[0] = 0;
+				v[1] = 0;
+				v[2] = 0;
+			}
+			parents.set(pts.userData.groupId as string, v);
 		}
 		this.orbitPool.tick(jd, this.basisPos, parents);
 	}

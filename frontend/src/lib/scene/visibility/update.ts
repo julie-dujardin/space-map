@@ -12,6 +12,7 @@ import {
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
 import { f64dist, type Vec3 } from '../animation/math';
+import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
 	STAR_POINT_FLOOR_INTENSITY,
 	STAR_POINT_HANDOFF_INTENSITY,
@@ -255,11 +256,12 @@ export function updateBodyVisibility(
 		applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
 	}
 
-	for (const [zone, pts] of asteroidPoints) {
-		pts.visible = ctx.visibility.isAsteroidGroupVisible(zone);
+	// Keys are subgroup keys (`${zone}#${i}`) from PointCloudSystem's hash-split.
+	for (const [key, pts] of asteroidPoints) {
+		pts.visible = ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key));
 	}
-	for (const [gid, pts] of spacecraftPoints) {
-		pts.visible = ctx.visibility.isSpacecraftGroupVisible(gid);
+	for (const [key, pts] of spacecraftPoints) {
+		pts.visible = ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key));
 	}
 	for (const [parentId, pts] of moonPoints) {
 		pts.visible = ctx.visibility.isMoonGroupVisible(parentId);

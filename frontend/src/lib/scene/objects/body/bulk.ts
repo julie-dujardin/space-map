@@ -7,6 +7,7 @@ import type { BodyObjects } from '../../types';
 import { asteroidPointSize, makePointCloud } from '../pointcloud';
 import { makeTrail } from '../trail/builder';
 import { isMeshUpgradable } from './lifecycle';
+import { partitionByHash } from '$lib/math/orbit/partition';
 
 function excludePromoted(
 	bodies: Iterable<PositionedBody>,
@@ -79,7 +80,8 @@ export function buildPointClouds(
 	scene: Scene,
 	circleTexture: CanvasTexture,
 	basisPos: [number, number, number] = [0, 0, 0],
-	promotedIds?: Set<string>
+	promotedIds: Set<string> | undefined,
+	workerCount: number
 ): {
 	asteroidPoints: Map<string, Points>;
 	spacecraftPoints: Map<string, Points>;
@@ -89,35 +91,42 @@ export function buildPointClouds(
 	const spacecraftPoints = new Map<string, Points>();
 	const moonPoints = new Map<string, Points>();
 
-	// Asteroid point clouds (one per zone)
+	// Asteroid point clouds: each zone hash-partitioned into K=workerCount
+	// subgroups (`${zone}#${i}`) so OrbitWorkerPool's round-robin lands each
+	// subgroup on a different worker — spreads per-frame Kepler load evenly.
 	const asteroidSize = asteroidPointSize();
 	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
-		if (filtered.length > 0) {
-			const pts = makePointCloud(
-				filtered,
-				circleTexture,
-				resolveBodyColor(filtered[0].data),
-				basisPos,
-				asteroidSize
-			);
-			asteroidPoints.set(zone, pts);
+		if (filtered.length === 0) continue;
+		const color = resolveBodyColor(filtered[0].data);
+		const buckets = partitionByHash(filtered, workerCount);
+		for (let i = 0; i < buckets.length; i++) {
+			const bucket = buckets[i];
+			if (bucket.length === 0) continue;
+			const pts = makePointCloud(bucket, circleTexture, color, basisPos, asteroidSize);
+			pts.userData.groupId = `asteroid:${zone}#${i}`;
+			pts.userData.parentVec = [0, 0, 0];
+			asteroidPoints.set(`${zone}#${i}`, pts);
 			scene.add(pts);
 		}
 	}
 
-	// Spacecraft point clouds (one per parent body)
+	// Spacecraft point clouds: same hash-partition as asteroids.
 	for (const [groupParentId, byId] of ctx.bodies.spacecraftByParent.entries()) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
-		const points = makePointCloud(
-			filtered,
-			circleTexture,
-			resolveBodyColor(filtered[0].data),
-			basisPos
-		);
-		spacecraftPoints.set(groupParentId, points);
-		scene.add(points);
+		const color = resolveBodyColor(filtered[0].data);
+		const buckets = partitionByHash(filtered, workerCount);
+		for (let i = 0; i < buckets.length; i++) {
+			const bucket = buckets[i];
+			if (bucket.length === 0) continue;
+			const points = makePointCloud(bucket, circleTexture, color, basisPos);
+			points.userData.groupId = `spacecraft:${groupParentId}#${i}`;
+			points.userData.parentBodyId = groupParentId;
+			points.userData.parentVec = [0, 0, 0];
+			spacecraftPoints.set(`${groupParentId}#${i}`, points);
+			scene.add(points);
+		}
 	}
 
 	// Moon point clouds (one per parent body, initially hidden)

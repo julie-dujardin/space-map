@@ -57,7 +57,6 @@ export class OrbitWorkerPool {
 	private workers: Worker[];
 	private groups = new Map<string, GroupState>();
 	private onResult: GroupResultHandler | null = null;
-	private nextWorker = 0;
 
 	constructor(size: number = navigator.hardwareConcurrency ?? 4) {
 		// Floor at 2 so even 2-core phones (hardwareConcurrency=2) get parallel
@@ -94,13 +93,13 @@ export class OrbitWorkerPool {
 	 * Letting back stay null defers the next dispatch until the in-flight
 	 * tick lands naturally.
 	 */
-	rewireOne(id: string, bodies: PositionedBody[], skip: Set<string>): void {
+	rewireOne(id: string, bodies: PositionedBody[], skip: Set<string>, workerHint: number): void {
 		if (bodies.length === 0) {
 			this.unwireOne(id);
 			return;
 		}
 		const prev = this.groups.get(id);
-		const workerIdx = prev?.workerIdx ?? this.nextWorker++ % this.workers.length;
+		const workerIdx = prev?.workerIdx ?? workerHint % this.workers.length;
 		const capacity = bodies.length;
 
 		let front: Float32Array;
