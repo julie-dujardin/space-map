@@ -226,6 +226,10 @@ export class PromotionRegistry {
 				this.pendingDefaults.delete(id);
 				continue;
 			}
+			// Skip ids not yet in bodiesById — getBody would otherwise walk every
+			// spacecraft + asteroid bucket per call, and probes (the common pending
+			// case) live in neither. Next drain picks them up once the chunk lands.
+			if (!ctx.bodies.bodiesById.has(id)) continue;
 			const body = ctx.getBody(id);
 			if (!body) continue; // not loaded yet — retry on a later frame
 			this.pendingDefaults.delete(id);
