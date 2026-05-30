@@ -85,22 +85,7 @@ export class OrbitWorkerPool {
 	}
 
 	/**
-	 * Return the current front-buffer for a group. Caller binds this to the
-	 * geometry's position attribute after calling {@link rewire}.
-	 */
-	front(id: string): Float32Array | undefined {
-		return this.groups.get(id)?.front;
-	}
-
-	/**
-	 * Add or replace one group's SoA element columns. Empty bodies → unwire
-	 * (drops geometry binding upstream).
-	 *
-	 * Reuses the previous front buffer whenever capacity matches — even if a
-	 * tick is currently in flight (prev.back === null). Allocating a fresh
-	 * zero-filled front here would make the geometry blank out between
-	 * rewire and the next worker result, which at high time rates (frequent
-	 * rebases triggering rewires) reads as constant cloud-flicker.
+	 * Add or replace one group's SoA element columns. Empty bodies → unwire.
 	 *
 	 * We do NOT allocate a fresh back when one is in flight: doing so would
 	 * let a new tick dispatch before the old one returns, and the old

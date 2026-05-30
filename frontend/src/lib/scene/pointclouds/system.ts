@@ -2,6 +2,7 @@ import {
 	BufferAttribute,
 	Float32BufferAttribute,
 	Points,
+	type BufferGeometry,
 	type CanvasTexture,
 	type Scene
 } from 'three';
@@ -93,9 +94,11 @@ export class PointCloudSystem {
 	 * New chunks landing, the promoted set changing, and basis rebuilds all
 	 * add to dirty markers — this drains them.
 	 *
-	 * Existing groups keep the pool's worker-computed front buffer (over-
-	 * writing would clobber fresh data with stale load-time positions and
-	 * flicker on rebase). New zones get a Points seeded from `body.position`.
+	 * Each Points' geometry owns a persistent `Float32Array`: only resized
+	 * when the body count changes, otherwise left in place so a worker result
+	 * can `.set()` into it under the same `BufferAttribute`. That stable
+	 * attribute identity lets Three.js reuse the WebGL VBO instead of
+	 * `createBuffer`-ing a fresh one every tick.
 	 */
 	rebuildMinor(): void {
 		if (
@@ -121,15 +124,14 @@ export class PointCloudSystem {
 			}
 			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
-			const front = this.orbitPool.front(groupId);
-			if (!front) continue;
 			const existing = this.asteroidPoints.get(zone);
 			if (existing) {
-				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
+				this.resizeGeometryIfNeeded(existing.geometry, bodies);
 			} else {
-				this.seedFront(front, bodies);
+				const arr = new Float32Array(bodies.length * 3);
+				this.seedGeometryArray(arr, bodies);
 				const pts = makePointCloudFromBuffer(
-					front,
+					arr,
 					bodies.length,
 					this.circleTexture,
 					resolveBodyColor(bodies[0].data),
@@ -156,15 +158,14 @@ export class PointCloudSystem {
 			}
 			const bodies = Array.from(bucket.values());
 			this.orbitPool.rewireOne(groupId, bodies, skip);
-			const front = this.orbitPool.front(groupId);
-			if (!front) continue;
 			const existing = this.spacecraftPoints.get(gid);
 			if (existing) {
-				existing.geometry.setAttribute('position', new BufferAttribute(front, 3));
+				this.resizeGeometryIfNeeded(existing.geometry, bodies);
 			} else {
-				this.seedFront(front, bodies);
+				const arr = new Float32Array(bodies.length * 3);
+				this.seedGeometryArray(arr, bodies);
 				const pts = makePointCloudFromBuffer(
-					front,
+					arr,
 					bodies.length,
 					this.circleTexture,
 					resolveBodyColor(bodies[0].data)
@@ -177,16 +178,34 @@ export class PointCloudSystem {
 		this.ctx.bodies.dirtySpacecraftGroups.clear();
 	}
 
-	/** Fill a pool-owned Float32Array with basis-relative positions for the 1-2 frames before the first worker result. */
-	private seedFront(front: Float32Array, bodies: PositionedBody[]): void {
+	/** Write basis-relative positions for `bodies` into the first `bodies.length*3` slots of `arr`. */
+	private seedGeometryArray(arr: Float32Array, bodies: PositionedBody[]): void {
 		const [bx, by, bz] = this.basisPos;
-		const n = Math.min(bodies.length, front.length / 3);
+		const n = Math.min(bodies.length, arr.length / 3);
 		for (let i = 0; i < n; i++) {
 			const p = bodies[i].position;
-			front[i * 3] = p[0] - bx;
-			front[i * 3 + 1] = p[1] - by;
-			front[i * 3 + 2] = p[2] - bz;
+			arr[i * 3] = p[0] - bx;
+			arr[i * 3 + 1] = p[1] - by;
+			arr[i * 3 + 2] = p[2] - bz;
 		}
+	}
+
+	/** If the geometry's position array no longer matches the body count, swap
+	 *  in a freshly-seeded array (size change is rare — only on rewire with
+	 *  membership change). Same-capacity rewires leave the attribute alone so
+	 *  the next worker result updates it in place. */
+	private resizeGeometryIfNeeded(geometry: BufferGeometry, bodies: PositionedBody[]): void {
+		const need = bodies.length * 3;
+		const posAttr = geometry.getAttribute('position') as BufferAttribute;
+		const arr = posAttr.array as Float32Array;
+		if (arr.length === need) {
+			geometry.setDrawRange(0, bodies.length);
+			return;
+		}
+		const fresh = new Float32Array(need);
+		this.seedGeometryArray(fresh, bodies);
+		geometry.setAttribute('position', new BufferAttribute(fresh, 3));
+		geometry.setDrawRange(0, bodies.length);
 	}
 
 	private onPoolResult = (
@@ -199,7 +218,15 @@ export class PointCloudSystem {
 		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
 		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
 		if (!pts) return;
-		pts.geometry.setAttribute('position', new BufferAttribute(positions, 3));
+		const posAttr = pts.geometry.getAttribute('position') as BufferAttribute;
+		const arr = posAttr.array as Float32Array;
+		// Drop results whose capacity doesn't match the geometry — happens when
+		// a worker tick for an old body set lands after a mid-flight rewire
+		// resized the group. The next tick under the new set will overwrite
+		// this array; in the meantime rebuildMinor's seeded values are correct.
+		if (arr.length !== positions.length) return;
+		arr.set(positions);
+		posAttr.needsUpdate = true;
 		pts.geometry.setDrawRange(0, count);
 		// Record the basis the worker used so reposition() can use it per-group:
 		// a mid-flight rebase would otherwise misplace the cloud for the frame

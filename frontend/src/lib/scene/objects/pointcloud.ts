@@ -90,9 +90,9 @@ export function makePointCloud(
 
 /**
  * Build a Points object whose position attribute is backed by a caller-owned
- * Float32Array. Used by the orbit worker pool, which swaps the backing array
- * each time a worker returns a fresh tick result — so the geometry buffer IS
- * the pool's front buffer, no copy per frame.
+ * Float32Array. The same array is kept for the Points' lifetime — callers
+ * mutate it in place and set `position.needsUpdate = true` so Three.js reuses
+ * the same WebGL VBO (`bufferSubData`) instead of allocating a fresh one.
  *
  * `drawCount` controls the initial draw range; the caller updates it via
  * geometry.setDrawRange() when a worker returns a different valid count.
