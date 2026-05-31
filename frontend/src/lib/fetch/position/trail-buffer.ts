@@ -6,22 +6,40 @@
  *
  * Capacity is a constant; `append` overwrites the oldest entry when full. The
  * buffer is agnostic to time speed — callers sample positions at jd values
- * spaced by `stepDays`, so the trail covers one orbital period once full and
- * keeps that time-coverage regardless of how fast sim time moves.
+ * spaced by `stepDays` on average, so the trail covers one orbital period once
+ * full and keeps that time-coverage regardless of how fast sim time moves.
+ *
+ * When `epsilonScene` is finite, callers may sample non-uniformly via chord-error
+ * adaptive subdivision (dense near periapsis/gravity assists, sparse near
+ * apoapsis). `stepDays` then sets the *canonical/average* step — derived bounds
+ * `ADAPTIVE_MIN_STEP_FACTOR` and `ADAPTIVE_MAX_STEP_FACTOR` bracket how far an
+ * individual segment can deviate from that average.
  */
+
+/** Per-segment bounds for adaptive sampling, as multipliers of `stepDays`. */
+export const ADAPTIVE_MAX_STEP_FACTOR = 16;
+export const ADAPTIVE_MIN_STEP_FACTOR = 1 / 32;
+
 export class TrailBuffer {
 	readonly capacity: number;
-	/** Target time between consecutive samples (days). */
+	/** Canonical/average time between consecutive samples (days). */
 	readonly stepDays: number;
+	/**
+	 * Chord-error tolerance in scene units for adaptive subdivision. `Infinity`
+	 * disables adaptive sampling — callers fall back to uniform `stepDays`
+	 * spacing, which is the legacy behaviour.
+	 */
+	readonly epsilonScene: number;
 	private readonly positions: Float32Array;
 	private readonly jds: Float64Array;
 	/** Index of the next write slot. `(head − 1) mod capacity` is the newest. */
 	private head = 0;
 	private _count = 0;
 
-	constructor(capacity: number, stepDays: number) {
+	constructor(capacity: number, stepDays: number, epsilonScene = Infinity) {
 		this.capacity = capacity;
 		this.stepDays = stepDays;
+		this.epsilonScene = epsilonScene;
 		this.positions = new Float32Array(capacity * 3);
 		this.jds = new Float64Array(capacity);
 	}
@@ -35,6 +53,20 @@ export class TrailBuffer {
 		if (this._count === 0) return NaN;
 		const idx = (this.head - 1 + this.capacity) % this.capacity;
 		return this.jds[idx];
+	}
+
+	/**
+	 * Write the newest sample's position into `out`. Returns true on success,
+	 * false when the buffer is empty (in which case `out` is untouched).
+	 */
+	readNewestPos(out: [number, number, number]): boolean {
+		if (this._count === 0) return false;
+		const idx = (this.head - 1 + this.capacity) % this.capacity;
+		const base = idx * 3;
+		out[0] = this.positions[base];
+		out[1] = this.positions[base + 1];
+		out[2] = this.positions[base + 2];
+		return true;
 	}
 
 	append(jd: number, x: number, y: number, z: number): void {

@@ -8,6 +8,10 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
+import {
+	ADAPTIVE_MAX_STEP_FACTOR,
+	ADAPTIVE_MIN_STEP_FACTOR
+} from '$lib/fetch/position/trail-buffer';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -21,6 +25,11 @@ import {
 import { refreshTrail } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
 import type { PositionDiagnostics } from './diagnostics';
+
+/** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
+ *  threaded and the buffer is consumed within one probe iteration, so reusing
+ *  one allocation across all probes per frame is safe and avoids GC churn. */
+const newestPosScratch: [number, number, number] = [0, 0, 0];
 
 export interface UpdatePositionsParams {
 	jd: number;
@@ -256,10 +265,14 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			x = parentPos[0] + probeOffsetX;
 			y = parentPos[1] + probeOffsetY;
 			z = parentPos[2] + probeOffsetZ;
-			// Trail-buffer maintenance: append at canonical stepDays intervals
-			// since the last sample. A backwards jump or a gap > capacity*step
-			// invalidates the existing samples — reseed via back-populate so
-			// the trail comes back instantly instead of growing from empty.
+			// Trail-buffer maintenance: append the current sample when chord
+			// error from the last sample exceeds the buffer's tolerance, so the
+			// polyline densifies near periapsis/gravity assists and stays sparse
+			// near apoapsis. Bracketed by minStep/maxStep to avoid degenerate
+			// cases (over-fine subdivision near singularities, sparse cruise
+			// arcs). A backwards jump or a gap > one full span invalidates the
+			// existing samples — reseed via back-populate so the trail comes
+			// back instantly instead of growing from empty.
 			const tb = body.trailBuffer;
 			if (tb) {
 				const last = tb.newestJd;
@@ -276,7 +289,32 @@ export function updatePositions(params: UpdatePositionsParams): void {
 						jd,
 						probeZonePreference
 					);
-				} else if (!isFinite(tb.newestJd) || jd - tb.newestJd >= tb.stepDays) {
+				} else if (!isFinite(last)) {
+					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
+				} else if (isFinite(tb.epsilonScene)) {
+					const maxStep = tb.stepDays * ADAPTIVE_MAX_STEP_FACTOR;
+					const minStep = tb.stepDays * ADAPTIVE_MIN_STEP_FACTOR;
+					if (dt >= maxStep) {
+						tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
+					} else if (dt >= minStep && tb.readNewestPos(newestPosScratch)) {
+						const midKm = probePositionKm(located.probe, (last + jd) / 2, primaryMu);
+						if (midKm) {
+							const midX = kmToScene(midKm[0]);
+							const midY = kmToScene(midKm[2]);
+							const midZ = -kmToScene(midKm[1]);
+							const cx = (newestPosScratch[0] + probeOffsetX) / 2;
+							const cy = (newestPosScratch[1] + probeOffsetY) / 2;
+							const cz = (newestPosScratch[2] + probeOffsetZ) / 2;
+							const ex = midX - cx;
+							const ey = midY - cy;
+							const ez = midZ - cz;
+							const eps = tb.epsilonScene;
+							if (ex * ex + ey * ey + ez * ez > eps * eps) {
+								tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
+							}
+						}
+					}
+				} else if (dt >= tb.stepDays) {
 					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);
 				}
 			}

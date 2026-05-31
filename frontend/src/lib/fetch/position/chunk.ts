@@ -579,11 +579,17 @@ export class ChunkLoader {
 			if (hasChebyshev) {
 				const periodDays = elements && elements.n > 0 ? 360 / elements.n : endJd - startJd;
 				const stepDays = periodDays > 0 ? periodDays / NUM_TRAIL_POINTS : 1;
+				// Chord-error tolerance for adaptive trail sampling: a small
+				// fraction of the orbit's semi-major axis (in scene units).
+				// Falls back to Infinity (uniform sampling) when osculating
+				// elements aren't available yet — the next periodic re-derive
+				// will rebuild with proper ε.
+				const epsilonScene = elements && elements.a > 0 ? elements.a * AU_SCALE * 0.0001 : Infinity;
 				const cached = this.probeBuffers.get(probe.id);
 				if (cached && cached.parentKey === primaryKey) {
 					trailBuffer = cached.buffer;
 				} else {
-					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays);
+					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene);
 					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, probe.id, primaryKey, jd);
 					this.probeBuffers.set(probe.id, { buffer: trailBuffer, parentKey: primaryKey });
 				}

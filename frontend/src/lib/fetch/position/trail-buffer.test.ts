@@ -72,6 +72,28 @@ describe('TrailBuffer', () => {
 		expect(buf.newestJd).toBe(10);
 	});
 
+	it('readNewestPos returns the latest sample', () => {
+		const buf = new TrailBuffer(3, 1);
+		const out: [number, number, number] = [-1, -1, -1];
+		expect(buf.readNewestPos(out)).toBe(false);
+		expect(out).toEqual([-1, -1, -1]); // untouched when empty
+		buf.append(1, 10, 20, 30);
+		buf.append(2, 11, 21, 31);
+		expect(buf.readNewestPos(out)).toBe(true);
+		expect(out).toEqual([11, 21, 31]);
+		buf.append(3, 12, 22, 32);
+		buf.append(4, 13, 23, 33); // wraps, evicting jd=1
+		expect(buf.readNewestPos(out)).toBe(true);
+		expect(out).toEqual([13, 23, 33]);
+	});
+
+	it('defaults epsilonScene to Infinity (legacy uniform sampling)', () => {
+		const buf = new TrailBuffer(3, 1);
+		expect(buf.epsilonScene).toBe(Infinity);
+		const adaptive = new TrailBuffer(3, 1, 0.25);
+		expect(adaptive.epsilonScene).toBe(0.25);
+	});
+
 	it('partial fill (fewer appends than capacity)', () => {
 		const buf = new TrailBuffer(5, 1);
 		buf.append(1, 1, 0, 0);
