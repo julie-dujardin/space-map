@@ -5,8 +5,15 @@ Raise errors for invalid values, and convert empty/whitespace-only strings to No
 
 import datetime
 import math
+from pathlib import Path
 
 GM_EARTH = 398600.4418  # km^3/s^2
+
+
+def count_csv_rows(path: Path) -> int:
+    """Count data rows in a CSV file (excludes header)."""
+    with open(path) as f:
+        return sum(1 for _ in f) - 1
 
 
 def string_or_none(val: str | None) -> str | None:

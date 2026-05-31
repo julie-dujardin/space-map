@@ -8,7 +8,7 @@ from sqlalchemy import delete, insert
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
-from space_map_data.ingest.convert import int_or_none, string_or_none
+from space_map_data.ingest.convert import count_csv_rows, int_or_none, string_or_none
 from space_map_data.ingest.providers.objects.enrichment import (
     GroupData,
     groups_for,
@@ -90,7 +90,7 @@ class SatcatIngestor:
         self._clear()
         group_data = load_groups(self.groups_dir)
 
-        total = _count_csv_rows(self.satcat_path)
+        total = count_csv_rows(self.satcat_path)
         batch: list[dict] = []
 
         with open(self.satcat_path, newline="") as f:
@@ -112,11 +112,6 @@ class SatcatIngestor:
                 self.missing_operator,
                 self.total_rows,
             )
-
-
-def _count_csv_rows(path: Path) -> int:
-    with open(path) as f:
-        return sum(1 for _ in f) - 1
 
 
 def ingest(download_dir: Path) -> None:

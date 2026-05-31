@@ -20,6 +20,7 @@ from space_map_data.models.object import (
 )
 from space_map_data.ingest.convert import (
     bool_or_none,
+    count_csv_rows,
     float_or_none,
     int_or_none,
     normalize_partial_date,
@@ -348,12 +349,6 @@ def _parse_chunk_star(args: tuple) -> list[dict]:
     return _parse_chunk(path, skip_rows=skip, max_rows=max_rows)
 
 
-def _count_csv_rows(path: Path) -> int:
-    """Count data rows in a CSV file (excludes header)."""
-    with open(path) as f:
-        return sum(1 for _ in f) - 1
-
-
 class SBDBIngestor:
     BATCH = 50_000
 
@@ -400,7 +395,7 @@ class SBDBIngestor:
         # Build sub-chunk work items: (file, skip_rows, max_rows)
         work_items: list[tuple[Path, int, int]] = []
         for chunk_path in chunks:
-            n_rows = _count_csv_rows(chunk_path)
+            n_rows = count_csv_rows(chunk_path)
             for offset in range(0, n_rows, SUB_CHUNK_SIZE):
                 work_items.append((chunk_path, offset, SUB_CHUNK_SIZE))
 

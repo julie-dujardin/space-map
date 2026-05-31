@@ -10,6 +10,7 @@ from tqdm import tqdm
 from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.ingest.convert import (
+    count_csv_rows,
     float_or_none,
     int_or_none,
     string_or_none,
@@ -250,7 +251,7 @@ class CelesTrakIngestor:
         self._load_probe_claims()
         group_data = load_groups(self.groups_dir)
 
-        total = _count_csv_rows(self.csv_path)
+        total = count_csv_rows(self.csv_path)
 
         batch: list[dict] = []
         seen_norad: set[int] = set()
@@ -396,11 +397,6 @@ class CelesTrakIngestor:
             len(new_objects),
             reused,
         )
-
-
-def _count_csv_rows(path: Path) -> int:
-    with open(path) as f:
-        return sum(1 for _ in f) - 1
 
 
 def ingest(download_dir: Path) -> None:

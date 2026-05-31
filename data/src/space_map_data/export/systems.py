@@ -445,13 +445,11 @@ def write_system_metadata(
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     specular_metadata: dict[str, dict],
-) -> dict[int, dict]:
+) -> None:
     """Generate one metadata file per planetary system.
 
     Each file is keyed by body ID and contains texture tiers (if available)
     and orientation data (if available from SPICE PCK).
-
-    Returns the orientation lookup for use by object detail export.
     """
     # Build barycenter Object.id set (planetary system barycenters parented
     # directly on SSB / Sun).
@@ -559,5 +557,3 @@ def write_system_metadata(
         if bodies:
             (systems_dir / f"{sys_id}.json").write_bytes(orjson.dumps(bodies))
             logger.info("System metadata %s: %d bodies", sys_id, len(bodies))
-
-    return orientation

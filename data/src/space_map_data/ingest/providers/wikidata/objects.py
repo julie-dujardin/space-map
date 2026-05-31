@@ -129,7 +129,7 @@ def _insert_unambiguous(
     updated = 0
     pending = 0
 
-    for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):  # noqa: F821
+    for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):
         if len(qids) != 1:
             continue
         (qid,) = qids

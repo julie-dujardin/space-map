@@ -273,6 +273,5 @@ class MajorBody:
     parent_id: int
     object_type: ObjectType
     designation: str | None = None
-    extra: str | None = None
     iau_roman_designation: str | None = None
     naif_id_extended: int | None = None

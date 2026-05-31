@@ -112,14 +112,3 @@ def log_db_summary(start_time: float | None = None) -> None:
     logger.info("Total: %d objects", total)
     if start_time is not None:
         logger.info("Elapsed: %.1fs", time.perf_counter() - start_time)
-
-
-def ingest(download_dir: Path) -> None:
-    """Rebuild SQLite DB from downloaded CSVs. Idempotent (drops & recreates)."""
-    ingest_objects(download_dir)
-    ingest_features(download_dir)
-    ingest_wikidata(download_dir)
-    ingest_images()
-    ingest_wikipedia()
-    log_db_summary()
-    logger.info("Database ready.")
