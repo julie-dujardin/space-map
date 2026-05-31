@@ -23,6 +23,7 @@ from space_map_data.export.position.format import (
     pack_probe_header,
     pack_probes_header,
     pack_subchunk_record,
+    pack_system_interval,
 )
 from space_map_data.export.position.probes import sidecar
 from space_map_data.export.position.probes.landed import LandedFit
@@ -271,12 +272,15 @@ def write_pass(
                         has_landed_record=rec.landed is not None,
                         fit_center_id_value=rec.fit_center_id_value,
                         fit_center_id_type=rec.fit_center_id_type,
+                        n_system_intervals=len(rec.system_intervals),
                     )
                 )
                 for sc in flying:
                     buf.append(_pack_subchunk(sc, zone))
                 if rec.landed is not None:
                     buf.append(_pack_landed_subchunk(rec.landed))
+                for s_et, e_et, sys_naif in rec.system_intervals:
+                    buf.append(pack_system_interval(s_et, e_et, sys_naif))
             compressed = gzip.compress(b"".join(buf))
             sidecar.write_atomic(binary_path, compressed)
             sidecar.write_sidecar(sidecar_path, dirty[zone_key][chunk_idx])

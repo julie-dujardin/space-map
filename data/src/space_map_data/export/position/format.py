@@ -44,7 +44,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 8
+VERSION = 9
 
 # Common header at offset 0..23, format extension at 24..31.
 COMMON_HEADER_SIZE = 24
@@ -204,13 +204,22 @@ def pack_probes_header(
 #                                         to; MISSING_INT32 = use zone default)
 # 16      uint8    fit_center_id_type    (ID_TYPE_ORDINAL for fit_center_id_value;
 #                                         MISSING_ID_TYPE = use zone default)
-# 17      uint8[3] reserved              (zero pad to 4-aligned)
+# 17      uint8    n_system_intervals    (count of trailing SYSTEM_INTERVAL records,
+#                                         interplanetary chunks only; 0 elsewhere)
+# 18      uint8[2] reserved              (zero pad to 4-aligned)
 #
 # fit_center lets a probe fit against its dominant primary (Moon, Titan,
 # Vesta, …) instead of the zone center. NAIF for moons/planets, SPKID for
 # asteroids — renderer composes `world = fit_center_world + probe_offset`.
+#
+# `n_system_intervals` annotates the interplanetary record with "this probe is
+# physically inside planet X's system from ET t0 to t1" spans (Mars flyby,
+# Jupiter encounter, …). Only emitted on interplanetary chunks — planet-zone
+# records imply their system via zone identity, and the frontend always loads
+# interplanetary, so a flyby probe's heliocentric record exposes the planet-
+# system fact without the planet zone chunk needing to be loaded.
 PROBE_HEADER_SIZE = 20
-_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBxxx")
+_PROBE_HEADER_STRUCT = struct.Struct("<iBBBBHHiBBxx")
 assert _PROBE_HEADER_STRUCT.size == PROBE_HEADER_SIZE
 
 
@@ -223,6 +232,7 @@ def pack_probe_header(
     has_landed_record: bool = False,
     fit_center_id_value: int = MISSING_INT32,
     fit_center_id_type: int = MISSING_ID_TYPE,
+    n_system_intervals: int = 0,
 ) -> bytes:
     flags = PROBE_FLAG_HAS_LANDED_RECORD if has_landed_record else 0
     return _PROBE_HEADER_STRUCT.pack(
@@ -235,6 +245,29 @@ def pack_probe_header(
         first_subchunk_offset,
         fit_center_id_value,
         fit_center_id_type,
+        n_system_intervals,
+    )
+
+
+# Per-system-interval record (17 bytes, written one after another, no padding):
+#
+#   0   float64  start_et            (TDB seconds past J2000)
+#   8   float64  end_et              (TDB seconds past J2000, half-open: t < end_et)
+#   16  uint8    system_naif_id      (barycenter NAIF: 1 Mercury, 2 Venus, 3 Earth-Moon,
+#                                     4 Mars, 5 Jupiter, 6 Saturn, 7 Uranus, 8 Neptune,
+#                                     9 Pluto)
+#
+# Intervals are clipped to the chunk's ET window at write time; they're sorted
+# by `start_et` and non-overlapping (the classify pass merges adjacent same-
+# system spans before chunk-clipping).
+SYSTEM_INTERVAL_SIZE = 17
+_SYSTEM_INTERVAL_STRUCT = struct.Struct("<ddB")
+assert _SYSTEM_INTERVAL_STRUCT.size == SYSTEM_INTERVAL_SIZE
+
+
+def pack_system_interval(start_et: float, end_et: float, system_naif_id: int) -> bytes:
+    return _SYSTEM_INTERVAL_STRUCT.pack(
+        float(start_et), float(end_et), int(system_naif_id)
     )
 
 

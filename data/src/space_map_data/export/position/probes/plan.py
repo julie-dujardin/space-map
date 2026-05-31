@@ -64,20 +64,29 @@ class ChunkContribution:
 @dataclass
 class ProbePlan:
     """All chunks one probe touches + the kernels needed to fit them.
-    Built in the classify pass; consumed in the fit pass."""
+    Built in the classify pass; consumed in the fit pass.
+
+    `system_intervals` lists every (start_et, end_et, system_barycenter_naif)
+    span where the probe is physically inside a planet's system — derived
+    from the planetary `zone_intervals` and `landed_phases` of the trace.
+    Used by the fit pass to stamp interplanetary chunk records so the
+    frontend can route focus/visibility without loading the planet zone."""
 
     probe_id: int
     naif_id: int
     kernels: list[Path]
     contributions: list[ChunkContribution] = field(default_factory=list)
+    system_intervals: list[tuple[float, float, int]] = field(default_factory=list)
 
 
 @dataclass
 class ChunkProbeRecord:
     """One probe's contribution to one chunk, packing-ready. Holds the
     fitted flying sub-chunks (may be empty if landed-only), an optional
-    trailing `METHOD_LANDED`, and the fit center to encode in the header
-    (sentinel pair = stay on the zone's stored center)."""
+    trailing `METHOD_LANDED`, the fit center to encode in the header
+    (sentinel pair = stay on the zone's stored center), and any
+    interplanetary system-interval annotations clipped to this chunk's
+    window (empty on planet-zone records)."""
 
     probe_id: int
     first_offset: int
@@ -85,6 +94,7 @@ class ChunkProbeRecord:
     fit_center_id_type: int = MISSING_ID_TYPE
     flying: list[SubChunkFit] = field(default_factory=list)
     landed: "LandedFit | None" = None
+    system_intervals: list[tuple[float, float, int]] = field(default_factory=list)
 
 
 def build_probe_metas(
@@ -132,3 +142,12 @@ def zone_for_landed_body(body_naif_id: int) -> Zone | None:
     if body_naif_id in LANDED_BODY_TO_ZONE:
         return ZONES_BY_KEY.get(LANDED_BODY_TO_ZONE[body_naif_id])
     return None
+
+
+def system_naif_for_landed_body(body_naif_id: int) -> int | None:
+    """System barycenter NAIF for a landed phase on `body_naif_id` — the
+    same naif the frontend uses to identify the focused system (Mars=4,
+    Earth-Moon=3, Saturn=6). Routed through `zone_for_landed_body` so the
+    mapping table stays in one place."""
+    z = zone_for_landed_body(body_naif_id)
+    return z.barycenter_naif_id if z else None

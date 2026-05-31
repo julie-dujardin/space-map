@@ -3,18 +3,16 @@
 Each chunk file `{zone}/{chunk_idx}.bin.gz` has a companion JSON sidecar
 `{chunk_idx}.meta.json` recording the inputs that produced it:
 
-  * `fit_version` — bumped manually whenever sizing.py / writer.py / format.py
-    probe-encoding logic changes. Mismatch invalidates every chunk.
-  * `zone_hash` — content hash of the zone parameters that affect fit
-    output (chunk_years, subchunk_days, threshold, float64, fit_center, …).
-    Catches zone-config edits without a manual bump.
-  * `probes` — `{probe_id: [{path, mtime_ns, size}, …]}` for every kernel
-    that fed into this chunk. Adding/removing/editing a kernel invalidates
-    only the chunks that probe contributes to.
+  * `binary_version` — `format.VERSION` mirror; wire-format bumps
+    auto-invalidate every chunk.
+  * `fit_version` — manual bump for fit-internal changes at the same
+    wire format (e.g. retuning a sizing threshold).
+  * `zone_hash` — content hash of fit-affecting zone params.
+  * `probes` — `{probe_id: [{path, mtime_ns, size}, …]}` per kernel.
+    Kernel edits invalidate only the chunks the probe contributes to.
 
 Atomic writes: binary then sidecar, each tempfile + rename. A partially-
-completed run can leave a chunk with a stale sidecar (or none) — both are
-treated as "regenerate" on the next run.
+completed run leaves the chunk in "regenerate next run" state.
 
 `mtime_ns + size` is good enough as long as kernels are never rewritten
 in place. Our downloader writes once; if that ever changes, switch to a
@@ -25,6 +23,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     matches,
     mirror_path,
@@ -35,8 +34,8 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 from space_map_data.probes.zones import Zone
 
 
-# Bump when sizing.py / writer.py / format.py probe-encoding logic changes —
-# any chunk whose stored sidecar's `fit_version` doesn't match is re-fitted.
+# Bump for fit-internal changes at the same wire format. Wire-format bumps
+# travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
 FIT_VERSION = 14
 
 
@@ -103,6 +102,7 @@ def build_chunk_signature(
             "has_localized": has_localized,
         }
     return {
+        "binary_version": BINARY_VERSION,
         "fit_version": FIT_VERSION,
         "zone_hash": zone_signature(zone),
         "candidates_hash": candidates_hash,

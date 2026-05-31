@@ -18,6 +18,7 @@ from space_map_data.export.position.probes.plan import (
     ChunkContribution,
     ProbeMeta,
     ProbePlan,
+    system_naif_for_landed_body,
     zone_for_landed_body,
 )
 from space_map_data.export.position.probes.time_grid import (
@@ -26,7 +27,7 @@ from space_map_data.export.position.probes.time_grid import (
 )
 from space_map_data.probes.probe_id import assign, et_to_mjd
 from space_map_data.probes.trace import classify_trace, inception_et
-from space_map_data.probes.zones import ZONES_BY_KEY
+from space_map_data.probes.zones import INTERPLANETARY, ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,46 @@ def _classify_worker(
     finally:
         for k in kernel_paths:
             spiceypy.unload(k)
+
+
+def _compute_system_intervals(
+    intervals: list[tuple[str, float, float]],
+    landed_phases: list[tuple[int, float, float]],
+) -> list[tuple[float, float, int]]:
+    """Derive per-time-span 'containing planet system NAIF' annotations from
+    a probe's classified trace.
+
+    Combines flying spans inside planetary zones (zone.barycenter_naif_id)
+    with landed phases (body→system map). Adjacent same-system spans are
+    merged so the writer emits one interval per continuous Mars/Jupiter/…
+    presence instead of N tiny tiles. Returns intervals sorted by start_et,
+    non-overlapping (assuming the input zone_intervals are non-overlapping
+    within each zone, which `_classify_flying_subrange` guarantees).
+    """
+    raw: list[tuple[float, float, int]] = []
+    for zone_key, s, e in intervals:
+        if zone_key == INTERPLANETARY.key:
+            continue
+        zone = ZONES_BY_KEY.get(zone_key)
+        if zone is None:
+            continue
+        raw.append((float(s), float(e), int(zone.barycenter_naif_id)))
+    for body_naif, s, e in landed_phases:
+        sys_naif = system_naif_for_landed_body(int(body_naif))
+        if sys_naif is None:
+            continue
+        raw.append((float(s), float(e), int(sys_naif)))
+    if not raw:
+        return []
+    raw.sort()
+    merged: list[list[float | int]] = [list(raw[0])]
+    for s, e, sn in raw[1:]:
+        last = merged[-1]
+        if sn == last[2] and s <= last[1]:
+            last[1] = max(last[1], e)
+        else:
+            merged.append([s, e, sn])
+    return [(float(s), float(e), int(sn)) for s, e, sn in merged]
 
 
 def classify_pass(
@@ -175,7 +216,15 @@ def classify_pass(
                 )
                 continue
 
-            plan = ProbePlan(probe_id=probe_id, naif_id=naif_id, kernels=kernels)
+            landed_phases = result.get("landed_phases", [])
+            plan = ProbePlan(
+                probe_id=probe_id,
+                naif_id=naif_id,
+                kernels=kernels,
+                system_intervals=_compute_system_intervals(
+                    result["intervals"], landed_phases
+                ),
+            )
             for zone_key, iv_start, iv_end in result["intervals"]:
                 zone = ZONES_BY_KEY[zone_key]
                 for chunk_idx, c_start, c_end in chunk_aligned_range(
@@ -192,7 +241,6 @@ def classify_pass(
             # Landed phases — each gets one trailing `METHOD_LANDED` record
             # per streaming chunk it overlaps. Routes to the body's parent
             # planet zone (Mars 499 → mars zone, Titan 606 → saturn, …).
-            landed_phases = result.get("landed_phases", [])
             for body_naif, ph_start, ph_end in landed_phases:
                 zone = zone_for_landed_body(int(body_naif))
                 if zone is None:

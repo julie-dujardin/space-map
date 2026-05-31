@@ -29,9 +29,27 @@ from space_map_data.probes.fit_centers import (
     detect_fit_center,
     fit_center_header_fields,
 )
-from space_map_data.probes.zones import ZONES_BY_KEY
+from space_map_data.probes.zones import INTERPLANETARY, ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
+
+
+def _clip_system_intervals(
+    intervals: list[tuple[float, float, int]],
+    chunk_start_et: float,
+    chunk_end_et: float,
+) -> list[tuple[float, float, int]]:
+    """Intersect each system-interval with `[chunk_start_et, chunk_end_et)`,
+    dropping any that fall entirely outside. Used to slice a probe's full-
+    trajectory annotations down to what the current interplanetary chunk
+    needs to ship."""
+    out: list[tuple[float, float, int]] = []
+    for s, e, sn in intervals:
+        cs = s if s > chunk_start_et else chunk_start_et
+        ce = e if e < chunk_end_et else chunk_end_et
+        if ce > cs:
+            out.append((cs, ce, sn))
+    return out
 
 
 def decide_dirty(
@@ -204,6 +222,18 @@ def fit_pass(
                         by_chunk[key] = rec
                     rec.landed = landed_fit
             for (zone_key, chunk_idx), rec in by_chunk.items():
+                if zone_key == INTERPLANETARY.key and plan.system_intervals:
+                    zone = ZONES_BY_KEY[zone_key]
+                    chunk_start_et = (
+                        jd_to_et(start_jd)
+                        + chunk_idx * zone.chunk_years * 365.25 * S_PER_DAY
+                    )
+                    chunk_end_et = (
+                        chunk_start_et + zone.chunk_years * 365.25 * S_PER_DAY
+                    )
+                    rec.system_intervals = _clip_system_intervals(
+                        plan.system_intervals, chunk_start_et, chunk_end_et
+                    )
                 by_zone_chunk[zone_key][chunk_idx].append(rec)
             logger.info(
                 "[%d/%d] fit probe_id=%d naif=%d → %d dirty (zone, chunk) entries",
