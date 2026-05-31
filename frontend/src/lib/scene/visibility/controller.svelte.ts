@@ -221,13 +221,20 @@ export class VisibilityController {
 		);
 	}
 
-	/** Binary FULL/HIDE for probes: heliocentric view → FULL; otherwise gated
-	 *  on focused-system membership AND a moon-style ratio against the probe's
-	 *  current distance-to-parent (substituting for the missing osculating `a`). */
+	/** Probe visibility splits on the probe's current dynamical regime
+	 *  (per `systemIntervals`, the source of truth — `parentId` can lag during
+	 *  flyby chunk-load gaps). Heliocentric cruise → sun-orbiting style: ratio
+	 *  against heliocentric distance with `scaledSystem` thresholds, no
+	 *  focused-system gate (parallels how asteroids/comets are treated). Inside
+	 *  a planetary system → moon style: focused-system gate + ratio against
+	 *  distance-to-parent (a stand-in for the missing osculating `a`). */
 	private getProbeVisibility(body: PositionedBody): VISIBILITY {
-		const sysId = this.focusedSystemIdPlain;
-		if (!sysId) return VISIBILITY.FULL;
-		if (!this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
+		const ps = this.getProbeStore();
+		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
+		const isHeliocentric = inSysNaif === null;
+
+		if (!isHeliocentric && !this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
+
 		const parent = this.bodies.bodiesById.get(body.data.parentId);
 		if (!parent) return VISIBILITY.FULL;
 		const dx = body.position[0] - parent.position[0];
@@ -237,6 +244,16 @@ export class VisibilityController {
 		if (distToParent === 0) return VISIBILITY.FULL;
 		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
 		const isFocused = body.data.id === this.focusedBodyIdPlain;
+
+		if (isHeliocentric) {
+			return computeVisibilityFromRatio(
+				ratio,
+				this.scaledSystem,
+				FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
+				isFocused
+			);
+		}
+
 		const fullThreshold =
 			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
 		return ratio <= fullThreshold ? VISIBILITY.FULL : VISIBILITY.HIDE;
