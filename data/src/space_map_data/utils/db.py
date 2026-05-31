@@ -65,10 +65,12 @@ def session_scope(create_db: bool = False) -> Generator[Session]:
         Base.metadata.create_all(engine)
 
     _session = Session(engine)
-    yield _session
-    _session.close()
-    _session = None
-    engine.dispose()
+    try:
+        yield _session
+    finally:
+        _session.close()
+        _session = None
+        engine.dispose()
 
 
 def get_session() -> Session:

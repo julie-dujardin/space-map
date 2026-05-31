@@ -37,11 +37,6 @@ DWARF_PLANETS = {
 
 class ObjectType(StrEnum):
     barycenter = "barycenter"
-    # TODO: drop `lagrange_point` — Horizons doesn't emit Lagrange-point
-    # ephemerides and we don't synthesize them either, so this enum value is
-    # never produced. Removing it requires also clearing the few constants /
-    # export filters that reference it (search for the type name).
-    lagrange_point = "lagrange_point"
     star = "star"
     planet = "planet"
     dwarf_planet = "dwarf_planet"

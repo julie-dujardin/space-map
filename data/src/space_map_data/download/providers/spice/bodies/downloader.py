@@ -178,7 +178,7 @@ class SpiceDownloader(Downloader):
         # Time-chunked Method C fits for non-whitelisted moons: one sidecar
         # .npz per moon with per-chunk secular elements, consumed by the
         # elements export to write per-chunk binary files.
-        chunk_count = self._extract_moon_chunks(moon_chunk_targets, epoch_jd, epoch)
+        chunk_count = self._extract_moon_chunks(moon_chunk_targets)
         logger.info(
             "Time-chunked Method C fits: %d moons × ~%d chunks",
             len(moon_chunk_targets),
@@ -243,7 +243,7 @@ class SpiceDownloader(Downloader):
             alias = resolve_name(naif_id, horizons_names)
             try:
                 obj_type, parent_id = classify_object(
-                    naif_id, alias.name or "", alias.name or "", None
+                    naif_id, alias.name or "", alias.name or ""
                 )
             except ValueError:
                 logger.warning(
@@ -459,8 +459,6 @@ class SpiceDownloader(Downloader):
     def _extract_moon_chunks(
         self,
         targets: list[tuple[int, int, float]],
-        epoch_jd: float,
-        epoch: date,
     ) -> int:
         """Compute time-chunked Method C secular elements for non-whitelisted moons.
 
@@ -512,9 +510,6 @@ class SpiceDownloader(Downloader):
                 skipped,
                 len(targets),
             )
-        # epoch_jd is unused here but kept in the signature for future
-        # chunk-grid alignment (e.g. snapping the grid to the download epoch).
-        del epoch_jd, epoch
         return n_chunks
 
     def _write_csv(self, name: str, fieldnames: list[str], rows: list[dict]) -> None:

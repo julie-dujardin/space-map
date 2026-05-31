@@ -99,65 +99,6 @@ _LANDED_ALT_KM = 50.0
 _LANDED_VBF_M_PER_S = 10.0
 
 
-def is_landed_probe(
-    naif_id: int, kernel_paths: list[str], altitude_threshold_km: float = 50.0
-) -> tuple[bool, int | None]:
-    """Detect probes that spend their whole coverage parked on a body's surface.
-
-    Heuristic: sample the probe's state at a handful of times across its
-    coverage. If at every sample its altitude above some major body is
-    below `altitude_threshold_km`, treat it as landed. Returns
-    `(True, landing_body_naif_id)` or `(False, None)`.
-
-    Atmospheric / descent probes that crash within hours (Pioneer Venus
-    probes, Huygens) are deliberately *not* skipped — their kernels cover
-    the entry phase which is real trajectory data. Returns False unless
-    every sample is at the surface.
-
-    Probes with gapped coverage (e.g. NH's Sep-2007 → Dec-2014 hole between
-    Jupiter-flyby and Pluto-approach kernels) are sampled per-interval —
-    samples in the gap would produce SPICE errors, and a probe that's in
-    flight in any interval is by definition not landed.
-    """
-    intervals = _merged_intervals(naif_id, kernel_paths)
-    if not intervals:
-        return False, None
-    n_per_interval = 5
-    sample_ets: list[float] = []
-    for t0, t1 in intervals:
-        if t1 - t0 < 120:  # interval too short to leave 60 s margins on both ends
-            continue
-        sample_ets.extend(np.linspace(t0 + 60, t1 - 60, n_per_interval))
-    if not sample_ets:
-        return False, None
-
-    # For each candidate body, count how many samples are within altitude.
-    counts: dict[int, int] = {}
-    for et in sample_ets:
-        for body_naif in _LANDING_TARGETS:
-            try:
-                state, _ = spiceypy.spkezr(
-                    str(naif_id), float(et), "ECLIPJ2000", "NONE", str(body_naif)
-                )
-            except spiceypy.exceptions.SpiceyError:
-                continue
-            dist = float(np.linalg.norm(state[:3]))
-            try:
-                radii = spiceypy.bodvrd(str(body_naif), "RADII", 3)[1]
-            except spiceypy.exceptions.SpiceyError:
-                continue
-            r_max = float(max(radii))
-            if (dist - r_max) < altitude_threshold_km:
-                counts[body_naif] = counts.get(body_naif, 0) + 1
-                break  # one body match per sample is enough
-    if not counts:
-        return False, None
-    best_body, best_n = max(counts.items(), key=lambda kv: kv[1])
-    if best_n == len(sample_ets):
-        return True, best_body
-    return False, None
-
-
 def _merged_intervals(
     naif_id: int, kernel_paths: list[str]
 ) -> list[tuple[float, float]]:

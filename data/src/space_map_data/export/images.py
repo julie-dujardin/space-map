@@ -359,10 +359,6 @@ def _generate_variants(
     return variants, dims
 
 
-def _output_exists(stem: Path, ext: str) -> bool:
-    return stem.with_suffix(f".{ext}").exists()
-
-
 def _write_webp(img: Image.Image, max_dim: int, target: Path) -> None:
     """Resize (preserving aspect) to ``max_dim`` on the longest side and save as lossy webp."""
     w, h = img.size
@@ -704,23 +700,8 @@ def clear_export_cache() -> None:
         _FILE_LOCKS.clear()
 
 
-# --- Sanity helpers for tests / migration --------------------------------
-
-
-def export_image_dir(filename: str) -> Path:
-    """Directory under EXPORT_DIR/v1/images/ that holds variants+metadata for a file."""
-    return _EXPORT_IMAGES_DIR / filename
-
-
-def downloaded_source_exists(filename: str) -> bool:
-    """Convenience wrapper for ``source_path(filename).exists()``."""
-    return source_path(filename).exists()
-
-
 __all__ = [
     "collect_object_images",
     "clear_export_cache",
-    "export_image_dir",
-    "downloaded_source_exists",
     "DOWNLOADS_IMAGES_DIR",
 ]

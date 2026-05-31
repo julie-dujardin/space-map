@@ -81,10 +81,29 @@ SUBFORMAT_SGP4 = 2
 UNBOUNDED_START_JD = -math.inf
 UNBOUNDED_END_JD = math.inf
 
-OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {t: i for i, t in enumerate(ObjectType)}
+# Pinned by name so the frontend mirror can't drift on Python enum re-ordering
+# or value removal. Ordinal 1 used to belong to a now-removed `lagrange_point`
+# type; not reassigned so frontends stay backwards-compatible with previously-
+# shipped files.
+OBJECT_TYPE_ORDINAL: dict[ObjectType, int] = {
+    ObjectType.barycenter: 0,
+    ObjectType.star: 2,
+    ObjectType.planet: 3,
+    ObjectType.dwarf_planet: 4,
+    ObjectType.moon: 5,
+    ObjectType.asteroid: 6,
+    ObjectType.asteroid_inner: 7,
+    ObjectType.asteroid_main_belt: 8,
+    ObjectType.asteroid_trojan: 9,
+    ObjectType.asteroid_centaur: 10,
+    ObjectType.asteroid_tno: 11,
+    ObjectType.comet: 12,
+    ObjectType.spacecraft: 13,
+    ObjectType.debris: 14,
+    ObjectType.undocumented: 15,
+}
 SCALE_ORDINAL: dict[ElementsScale, int] = {s: i for i, s in enumerate(ElementsScale)}
 
-# Pinned by name so the frontend mirror can't drift on Python enum re-ordering.
 # Ordinal 0 used to belong to a now-removed `horizons` source; not reassigned
 # so frontends stay backwards-compatible with previously-shipped files.
 SOURCE_ORDINAL: dict[OrbitalSource, int] = {

@@ -82,9 +82,23 @@ def fit_pass(
     flying + landed contributions, return `by_zone_chunk[zone][chunk_idx]`.
 
     Fit-center detection runs per (probe, chunk) while the probe's kernels
-    are furnshed. The first flying contribution to a chunk pins the center;
-    later contributions to the same chunk reuse it so one probe header
-    encodes one center.
+    are furnshed. `fit_center_naif_by_key` caches the chosen center per
+    `(zone_key, chunk_idx)`, scoped to this probe (re-allocated each outer
+    iteration). The first flying contribution that visits a key runs
+    ``detect_fit_center`` on its own ``(c_start_et, c_end_et)`` window and
+    pins the center; subsequent flying contributions to the same key reuse
+    it so one probe header encodes one center.
+
+    Why "first wins" is correct here: a probe can have multiple flying
+    contributions to the same chunk when its SPK coverage is split across
+    intervals with a gap (e.g. New Horizons' Sep-2007 → Dec-2014 hole could
+    produce two flying intervals that each touch the same chunk on the
+    boundary). ``classify.py`` appends contributions per-interval in time
+    order, so "first" is the earliest sub-window — pinning the center there
+    is fine because a probe's dominant primary inside a single streaming
+    chunk doesn't switch (chunks are sized below typical Hill-traversal
+    timescales). Landed contributions don't consult the cache; their fit
+    center is implicit in the landing body.
     """
     by_zone_chunk: dict[str, dict[int, list[ChunkProbeRecord]]] = defaultdict(
         lambda: defaultdict(list)

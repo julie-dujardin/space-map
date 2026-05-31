@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import update
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
@@ -38,18 +39,6 @@ PID_TO_COLUMNS = {
 BATCH = 1000
 
 
-def _read_ids_csv(csv_path: Path) -> dict[str, list[str]]:
-    """Read a property CSV into a {search_term: [qids]} mapping."""
-    mapping: dict[str, list[str]] = {}
-    for row in csv.reader(io.StringIO(csv_path.read_text())):
-        if not row:
-            continue
-        search_term = row[0]
-        qids = row[1].split() if len(row) > 1 and row[1] else []
-        mapping[search_term] = qids
-    return mapping
-
-
 def _build_mappings(
     session, ids_dir: Path
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -68,7 +57,7 @@ def _build_mappings(
             logger.debug("Skipping unknown PID %s", pid)
             continue
 
-        id_to_qids = _read_ids_csv(csv_path)
+        id_to_qids = read_ids_csv(csv_path)
 
         for column, converter in PID_TO_COLUMNS[pid]:
             # Batch-lookup: convert search terms and find matching objects
@@ -102,7 +91,7 @@ def _build_mappings(
     # Process name-based CSV
     name_csv = matches_dir / "name.csv"
     if name_csv.exists():
-        name_to_qids = _read_ids_csv(name_csv)
+        name_to_qids = read_ids_csv(name_csv)
         names = [n for n, qids in name_to_qids.items() if qids]
 
         for i in range(0, len(names), BATCH):
@@ -129,7 +118,7 @@ def _insert_unambiguous(
     updated = 0
     pending = 0
 
-    for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):  # noqa: F821
+    for obj_id, qids in tqdm(obj_to_qids.items(), desc="wikipedia IDs"):
         if len(qids) != 1:
             continue
         (qid,) = qids
@@ -226,7 +215,7 @@ def _build_satcat_mappings(
         if pid not in PID_TO_SATCAT_COLUMNS:
             continue
 
-        id_to_qids = _read_ids_csv(csv_path)
+        id_to_qids = read_ids_csv(csv_path)
 
         for column, converter in PID_TO_SATCAT_COLUMNS[pid]:
             converted: dict = {}  # converted_value → [qids]

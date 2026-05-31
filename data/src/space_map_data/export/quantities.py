@@ -4,13 +4,10 @@ Builds unit ladders from Wikidata P2370 (conversion factor) and P31 (instance of
 claims on preloaded unit entities, replacing hardcoded conversion tables.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
-if TYPE_CHECKING:
-    from space_map_data.export.wikidata import WikidataEntityCache
+from space_map_data.export.wikidata import WikidataEntityCache
 
 logger = logging.getLogger(__name__)
 

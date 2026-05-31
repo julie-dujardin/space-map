@@ -9,7 +9,12 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
-from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
+from space_map_data.ingest.convert import (
+    count_csv_rows,
+    float_or_none,
+    int_or_none,
+    string_or_none,
+)
 from space_map_data.models.object import (
     Horizons as HorizonsRow,
     Object,
@@ -24,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 AUTHORITATIVE_ON = (
     ObjectType.barycenter,
-    ObjectType.lagrange_point,
     ObjectType.star,
     ObjectType.planet,
     ObjectType.dwarf_planet,
@@ -171,7 +175,7 @@ class SpiceIngestor:
             return
         self._clear()
 
-        total = _count_csv_rows(self.csv_path)
+        total = count_csv_rows(self.csv_path)
 
         batch: list[dict] = []
         with open(self.csv_path, newline="") as f:
@@ -187,11 +191,6 @@ class SpiceIngestor:
 
         self._insert(batch)
         logger.info("Ingested %d SPICE bodies", self.total_rows)
-
-
-def _count_csv_rows(path: Path) -> int:
-    with open(path) as f:
-        return sum(1 for _ in f) - 1
 
 
 def ingest(download_dir: Path) -> None:

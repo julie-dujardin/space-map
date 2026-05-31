@@ -24,7 +24,6 @@ PROMOTED_TYPES: frozenset[ObjectType] = frozenset(
         ObjectType.moon,
         ObjectType.star,
         ObjectType.barycenter,
-        ObjectType.lagrange_point,
     }
 )
 
