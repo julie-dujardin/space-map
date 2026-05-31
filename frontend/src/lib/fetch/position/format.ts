@@ -12,7 +12,7 @@
 import { DATA_BASE } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 8;
+export const VERSION = 9;
 
 export const COMMON_HEADER_SIZE = 24;
 export const EXTENSION_SIZE = 8;
@@ -50,6 +50,8 @@ export const PROBE_METHOD_LANDED = 4;
 export const PROBE_HEADER_SIZE = 20;
 /** Per-sub-chunk record header size (preceding the method-specific payload). */
 export const SUBCHUNK_HEADER_SIZE = 8;
+/** Per-system-interval record size (f64 startEt, f64 endEt, u8 systemNaifId). */
+export const SYSTEM_INTERVAL_SIZE = 17;
 
 /** Probe-header flags byte (offset 7) bit assignments. */
 export const PROBE_FLAG_HAS_LANDED_RECORD = 0x01;

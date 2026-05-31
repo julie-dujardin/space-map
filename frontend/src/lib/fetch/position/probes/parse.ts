@@ -28,6 +28,7 @@ import {
 	PROBE_METHOD_LANDED,
 	PROBE_METHOD_UNCOVERABLE,
 	SUBCHUNK_HEADER_SIZE,
+	SYSTEM_INTERVAL_SIZE,
 	buildObjectId
 } from '$lib/fetch/position/format';
 
@@ -107,6 +108,24 @@ export interface LandedRecord {
 	sampleAltM: Float32Array;
 }
 
+/**
+ * One "this probe is currently inside planet X's system" span, attached to
+ * interplanetary chunk records. Lets the frontend route focus + visibility
+ * for flyby probes (Psyche through Mars, Voyager through Jupiter) without
+ * needing the planet zone's chunk to be loaded — the heliocentric record
+ * carries the planetary-system fact directly.
+ *
+ * `systemNaifId` is the barycenter NAIF (1 Mercury, 2 Venus, 3 Earth-Moon,
+ * 4 Mars, 5 Jupiter, 6 Saturn, 7 Uranus, 8 Neptune, 9 Pluto), matching
+ * `focusedSystemId`'s `"naif-{n}"` form. Intervals are sorted by `startEt`,
+ * half-open (`t < endEt`), non-overlapping.
+ */
+export interface SystemInterval {
+	startEt: number;
+	endEt: number;
+	systemNaifId: number;
+}
+
 export interface Probe {
 	/** Full Object ID (`probe-<value>`), reconstructed from the header. */
 	id: string;
@@ -129,6 +148,10 @@ export interface Probe {
 	/** Optional trailing landed record — present when the probe was on a body's
 	 *  surface for part or all of this chunk. */
 	landed?: LandedRecord;
+	/** Planetary-system membership spans within this chunk's window. Only
+	 *  emitted on interplanetary records by the writer — planet-zone records
+	 *  imply their system via zone identity, so this stays empty there. */
+	systemIntervals: SystemInterval[];
 }
 
 export interface ProbeChunk {
@@ -319,6 +342,7 @@ export function parseProbesPayload(
 		const firstSubchunkOffset = view.getUint16(offset + 10, true);
 		const fitCenterIdValue = view.getInt32(offset + 12, true);
 		const fitCenterIdType = view.getUint8(offset + 16);
+		const nSystemIntervals = view.getUint8(offset + 17);
 		offset += PROBE_HEADER_SIZE;
 
 		const id = buildObjectId(idTypeOrdinal, objIdValue) ?? '';
@@ -382,6 +406,20 @@ export function parseProbesPayload(
 			offset = po + payloadLen;
 		}
 
+		// Trailing system-interval list — interplanetary chunks tag flyby spans
+		// (Psyche through Mars, Voyager through Jupiter) so focus + visibility
+		// can route to the planet's system without the planet zone's chunk
+		// being loaded. Planet-zone records emit zero intervals.
+		const systemIntervals: SystemInterval[] = new Array(nSystemIntervals);
+		for (let k = 0; k < nSystemIntervals; k++) {
+			systemIntervals[k] = {
+				startEt: view.getFloat64(offset, true),
+				endEt: view.getFloat64(offset + 8, true),
+				systemNaifId: view.getUint8(offset + 16)
+			};
+			offset += SYSTEM_INTERVAL_SIZE;
+		}
+
 		probes.push({
 			id,
 			probeId: objIdValue,
@@ -391,7 +429,8 @@ export function parseProbesPayload(
 			subStartEt,
 			subEndEt,
 			subChunks,
-			landed
+			landed,
+			systemIntervals
 		});
 	}
 

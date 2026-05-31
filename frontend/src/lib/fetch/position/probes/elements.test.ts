@@ -24,7 +24,8 @@ function makeProbe(subStartEt: number[], subEndEt: number[], subChunks: SubChunk
 		fitCenter: null,
 		subStartEt,
 		subEndEt,
-		subChunks
+		subChunks,
+		systemIntervals: []
 	};
 }
 

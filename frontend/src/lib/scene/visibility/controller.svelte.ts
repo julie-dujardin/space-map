@@ -4,6 +4,7 @@ import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
+import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -34,6 +35,10 @@ export class VisibilityController {
 	private focusedSystemIdPlain: string | null = null;
 	private cameraDistThreeJS = 0;
 	private lastRecomputeDist = -1;
+	/** Latest jd from `updateCamera` — used by probe annotation lookups so the
+	 *  focused-system + visibility re-derivations always see the current time
+	 *  without each caller having to thread jd through.  */
+	private currentJd = 0;
 	/**
 	 * Camera distance (AU) below which the solar system hides so the focused
 	 * planetary system stands out. Computed from the focused body's satellites:
@@ -50,7 +55,10 @@ export class VisibilityController {
 	/** Per-frame cache for getMoonVisibility, cleared in updateCamera. */
 	private moonVisibilityCache = new Map<string, VISIBILITY>();
 
-	constructor(private readonly bodies: BodyIndex) {}
+	constructor(
+		private readonly bodies: BodyIndex,
+		private readonly getProbeStore: () => ProbeStore | null = () => null
+	) {}
 
 	/**
 	 * Call from resize() in SceneRenderer whenever the canvas dimensions change.
@@ -68,9 +76,17 @@ export class VisibilityController {
 	}
 
 	/** Call from useTask every frame. */
-	updateCamera(dist: number): void {
+	updateCamera(dist: number, jd: number): void {
 		this.cameraDistThreeJS = dist;
+		this.currentJd = jd;
 		this.moonVisibilityCache.clear();
+		// Probe focus: when the focused body is a probe, re-derive
+		// `focusedSystemId` from its writer-stamped annotation every frame —
+		// captured-at-setFocused state would go stale as jd advances past
+		// the flyby window (or as chunks load after a transient parentId
+		// flip during async ensure()). Cheap: one chunk lookup + interval
+		// scan against the focused id.
+		this.refreshProbeFocusedSystem();
 		// Probes move between frames, so the hide threshold is recomputed every
 		// frame (iterating direct children of one body is cheap).
 		this.hideThresholdAU = this.computeHideThreshold();
@@ -84,6 +100,25 @@ export class VisibilityController {
 			this.lastRecomputeDist = dist;
 			this.recomputeFullMoons();
 		}
+	}
+
+	/** Probe focus uses the writer-stamped `systemIntervals` annotation rather
+	 *  than the parentId-walk used for everything else: parentId on a flyby
+	 *  probe flips per-frame and can transiently disagree with the probe's
+	 *  actual system membership during chunk-load gaps. Falls back to the
+	 *  parentId-derived value when the focused body isn't a probe or no
+	 *  annotation is available. */
+	private refreshProbeFocusedSystem(): void {
+		const ps = this.getProbeStore();
+		if (!ps) return;
+		const focused = this.bodies.bodiesById.get(this.focusedBodyIdPlain);
+		if (!focused || focused.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return;
+		const sysNaif = ps.containingSystemAt(focused.data.id, this.currentJd);
+		const sysId = sysNaif !== null ? `naif-${sysNaif}` : null;
+		if (sysId === this.focusedSystemIdPlain) return;
+		this.focusedSystemId = sysId;
+		this.focusedSystemIdPlain = sysId;
+		this.lastRecomputeDist = -1; // force fullMoons recompute against the new system
 	}
 
 	setFocused(body: PositionedBody): void {
@@ -208,13 +243,25 @@ export class VisibilityController {
 		);
 	}
 
-	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in. */
+	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in.
+	 *  For probes, also consults the writer-stamped `systemIntervals` annotation —
+	 *  a flyby probe shows up as inside the active system even if its parentId hasn't
+	 *  flipped yet (chunk-load gap before the per-frame propagator re-resolves the
+	 *  preferred zone). */
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
-		return this.isInActiveSystem(
-			isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId
-		);
+		if (
+			this.isInActiveSystem(
+				isTopLevelParent(body.data.parentId) ? body.data.id : body.data.parentId
+			)
+		)
+			return true;
+		if (body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return false;
+		const ps = this.getProbeStore();
+		if (!ps) return false;
+		const sysNaif = ps.containingSystemAt(body.data.id, this.currentJd);
+		return sysNaif !== null && this.isInActiveSystem(`naif-${sysNaif}`);
 	}
 
 	/**

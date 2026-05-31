@@ -286,7 +286,7 @@ export class SceneRenderer {
 		});
 
 		if (focusBody) ctx.visibility.setFocused(focusBody);
-		ctx.visibility.updateCamera(initialView.zoom);
+		ctx.visibility.updateCamera(initialView.zoom, this.clock.jd);
 
 		callbacks.onFocusChange(focusBody);
 
@@ -486,7 +486,7 @@ export class SceneRenderer {
 		}
 
 		const { distance } = this.getCameraState();
-		this.ctx.visibility.updateCamera(distance);
+		this.ctx.visibility.updateCamera(distance, this.clock.jd);
 
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,

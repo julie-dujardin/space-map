@@ -24,7 +24,7 @@ export class ContextManager {
 	/** Focus state + per-frame visibility decisions. Reads body topology from
 	 *  {@link BodyIndex}; the rendering side in `visibility/update.ts` reads
 	 *  VISIBILITY values from here and applies them to Three.js objects. */
-	visibility = new VisibilityController(this.bodies);
+	visibility = new VisibilityController(this.bodies, () => this.probeStore);
 
 	loading = $state(true);
 	error = $state<string | null>(null);
