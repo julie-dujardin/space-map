@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 AUTHORITATIVE_ON = (
     ObjectType.barycenter,
-    ObjectType.lagrange_point,
     ObjectType.star,
     ObjectType.planet,
     ObjectType.dwarf_planet,

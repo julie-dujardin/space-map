@@ -14,21 +14,18 @@ from the same output.
 
 import json
 import logging
-from collections import defaultdict
 from datetime import datetime, timezone
 
 import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
-from space_map_data.constants.providers import LANGUAGES, PROVIDERS
+from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
-    canonical_filename,
-    is_excluded,
+    collect_qid_image_candidates,
     is_servable_on_disk,
-    parse_upload_url,
     read_download_metadata,
     read_manual_extras,
 )
@@ -78,7 +75,11 @@ def ingest() -> None:
 
 def _select_for_qid(qid: str, metadata_cache: dict[str, dict | None]) -> list[dict]:
     """Pick the best-of-tree image list for one QID."""
-    direct, kind_of, pageimage_count = _collect_candidates(qid)
+    direct, kind_of, pageimage_count = collect_qid_image_candidates(
+        qid,
+        wikidata_dir=DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects",
+        wiki_dir=DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA,
+    )
     if not direct:
         return []
 
@@ -115,88 +116,6 @@ def _select_for_qid(qid: str, metadata_cache: dict[str, dict | None]) -> list[di
         seen.add(best)
         out.append({"file": best, "kind": kind_of.get(best, "photo")})
     return out
-
-
-def _collect_candidates(
-    qid: str,
-) -> tuple[list[str], dict[str, str], dict[str, int]]:
-    """Return ``(direct_order, kind_of, pageimage_count)`` for a QID.
-
-    ``direct_order`` is the deduped, ordered list of canonical filenames
-    discovered as P18, then Wikipedia pageimages, then P154 (matching the
-    "primary first" semantics of :func:`collect_qid_commons_filenames`).
-    ``pageimage_count[name]`` counts how many language wikis picked
-    ``name`` as their pageimage for this object.
-    """
-    wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects"
-    wiki_dir = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA
-
-    photos_from_wikidata: list[str] = []
-    logos_from_wikidata: list[str] = []
-    entity_path = wikidata_dir / f"{qid}.json"
-    if entity_path.exists():
-        try:
-            entity = orjson.loads(entity_path.read_bytes())
-        except orjson.JSONDecodeError:
-            logger.warning("Corrupt Wikidata JSON, skipping: %s", entity_path)
-            entity = None
-        if entity:
-            claims = entity.get("claims", {})
-            for stmt in claims.get("P18", []):
-                if stmt.get("rank") == "deprecated":
-                    continue
-                v = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-                if isinstance(v, str) and v:
-                    photos_from_wikidata.append(canonical_filename(v))
-            for stmt in claims.get("P154", []):
-                if stmt.get("rank") == "deprecated":
-                    continue
-                v = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-                if isinstance(v, str) and v:
-                    logos_from_wikidata.append(canonical_filename(v))
-
-    photos_from_wikipedia: list[str] = []
-    pageimage_count: dict[str, int] = defaultdict(int)
-    for lang in LANGUAGES:
-        page_path = wiki_dir / lang / f"{qid}.json"
-        if not page_path.exists():
-            continue
-        try:
-            page = orjson.loads(page_path.read_bytes())
-        except orjson.JSONDecodeError:
-            continue
-        if page.get("missing"):
-            continue
-        src = (page.get("original") or {}).get("source")
-        if not src:
-            continue
-        parsed = parse_upload_url(src)
-        if parsed is None:
-            continue
-        repo, filename = parsed
-        if repo != "commons":
-            continue
-        canonical = canonical_filename(filename)
-        photos_from_wikipedia.append(canonical)
-        pageimage_count[canonical] += 1
-
-    direct: list[str] = []
-    seen: set[str] = set()
-    kind_of: dict[str, str] = {}
-    for name in photos_from_wikidata + photos_from_wikipedia:
-        if name in seen or is_excluded(name):
-            continue
-        seen.add(name)
-        kind_of[name] = "photo"
-        direct.append(name)
-    for name in logos_from_wikidata:
-        if name in seen or is_excluded(name):
-            continue
-        seen.add(name)
-        kind_of[name] = "logo"
-        direct.append(name)
-
-    return direct, kind_of, dict(pageimage_count)
 
 
 class _MetadataView:

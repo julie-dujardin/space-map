@@ -95,7 +95,6 @@ _SAT_TYPE_VALUES = [t.value for t in _SAT_CONTEXT_TYPES]
 _SUN_MAJOR_TYPES = {
     ObjectType.star,
     ObjectType.barycenter,
-    ObjectType.lagrange_point,
     ObjectType.planet,
     ObjectType.dwarf_planet,
 }

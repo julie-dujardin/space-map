@@ -188,7 +188,7 @@ def naif_id_from_spk(
 
 
 def classify_object(
-    naif_id: int, name: str, name_pretty: str, extra: str | None
+    naif_id: int, name: str, name_pretty: str
 ) -> tuple[ObjectType, int]:
     """Classify a body by its NAIF ID and name.
 
@@ -230,9 +230,6 @@ def classify_object(
     if 10_000 <= naif_id < 100_000:
         # Extended moon IDs: PXNNN (e.g. 65088 = 2004S17)
         return ObjectType.moon, naif_id // 10_000
-
-    if extra and "lagrange" in extra.lower():
-        return ObjectType.lagrange_point, 0
 
     if 1_000_000 <= naif_id < 2_000_000:
         return ObjectType.comet, 0

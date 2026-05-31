@@ -243,7 +243,7 @@ class SpiceDownloader(Downloader):
             alias = resolve_name(naif_id, horizons_names)
             try:
                 obj_type, parent_id = classify_object(
-                    naif_id, alias.name or "", alias.name or "", None
+                    naif_id, alias.name or "", alias.name or ""
                 )
             except ValueError:
                 logger.warning(

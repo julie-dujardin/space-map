@@ -116,19 +116,22 @@ def extract_wikidata_filenames(entity: dict) -> set[str]:
     }
 
 
-def collect_qid_commons_filenames(
+def collect_qid_image_candidates(
     qid: str,
     wikidata_dir: Path | None = None,
     wiki_dir: Path | None = None,
-) -> list[dict]:
-    """Return the ordered, deduped list of Commons-hosted images for a QID.
+) -> tuple[list[str], dict[str, str], dict[str, int]]:
+    """Return ``(direct, kind_of, pageimage_count)`` for a QID's Commons images.
 
-    Each entry is ``{"filename": str, "kind": "photo"|"logo"}``. Order is
-    Wikidata P18 (photo) → Wikipedia pageimages (photo) → Wikidata P154 (logo)
-    so the "first image" stays stable as Wikipedia sources come and go.
+    ``direct`` is the deduped, ordered list of canonical filenames discovered
+    as Wikidata P18 (photo) → Wikipedia pageimages (photo) → Wikidata P154
+    (logo) so the "first image" stays stable as Wikipedia sources come and go.
+    ``kind_of`` maps each filename to ``"photo"`` or ``"logo"``.
+    ``pageimage_count[name]`` counts how many language wikis picked that file
+    as their pageimage for this QID.
 
     Non-Commons Wikipedia images and excluded-prefix filenames are filtered
-    out here; callers see only servable candidates.
+    out; callers see only servable candidates.
     """
     wikidata_dir = wikidata_dir or (DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects")
     wiki_dir = wiki_dir or (DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA)
@@ -147,6 +150,7 @@ def collect_qid_commons_filenames(
             logo_from_wikidata = _wikidata_image_claims(entity, "P154")
 
     photo_from_wikipedia: list[str] = []
+    pageimage_count: dict[str, int] = {}
     for lang in LANGUAGES:
         page_path = wiki_dir / lang / f"{qid}.json"
         if not page_path.exists():
@@ -166,21 +170,41 @@ def collect_qid_commons_filenames(
         repo, filename = parsed
         if repo != "commons":
             continue
-        photo_from_wikipedia.append(canonical_filename(filename))
+        canonical = canonical_filename(filename)
+        photo_from_wikipedia.append(canonical)
+        pageimage_count[canonical] = pageimage_count.get(canonical, 0) + 1
 
+    direct: list[str] = []
     seen: set[str] = set()
-    out: list[dict] = []
+    kind_of: dict[str, str] = {}
     for name in photo_from_wikidata + photo_from_wikipedia:
         if name in seen or is_excluded(name):
             continue
         seen.add(name)
-        out.append({"filename": name, "kind": "photo"})
+        kind_of[name] = "photo"
+        direct.append(name)
     for name in logo_from_wikidata:
         if name in seen or is_excluded(name):
             continue
         seen.add(name)
-        out.append({"filename": name, "kind": "logo"})
-    return out
+        kind_of[name] = "logo"
+        direct.append(name)
+    return direct, kind_of, pageimage_count
+
+
+def collect_qid_commons_filenames(
+    qid: str,
+    wikidata_dir: Path | None = None,
+    wiki_dir: Path | None = None,
+) -> list[dict]:
+    """Return the ordered, deduped list of Commons-hosted images for a QID.
+
+    Each entry is ``{"filename": str, "kind": "photo"|"logo"}``. Thin wrapper
+    around :func:`collect_qid_image_candidates` for callers that don't need
+    the pageimage frequency map.
+    """
+    direct, kind_of, _ = collect_qid_image_candidates(qid, wikidata_dir, wiki_dir)
+    return [{"filename": name, "kind": kind_of[name]} for name in direct]
 
 
 def license_is_servable(extmetadata: dict) -> tuple[bool, str | None]:

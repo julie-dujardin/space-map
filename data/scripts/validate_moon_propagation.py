@@ -230,7 +230,7 @@ def enumerate_moons(kernel_paths: list[Path]) -> list[tuple[int, int, str]]:
             except spiceypy.exceptions.SpiceyError:
                 name = ""
             try:
-                obj_type, parent = classify_object(naif_id, name, name, None)
+                obj_type, parent = classify_object(naif_id, name, name)
             except ValueError:
                 continue
             if obj_type != ObjectType.moon:

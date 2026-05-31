@@ -36,10 +36,10 @@ import argparse
 import sys
 from urllib.parse import quote
 
-from space_map_data.ingest.providers.image_selection import _collect_candidates
 from space_map_data.models.object import Object
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
+    collect_qid_image_candidates,
     read_download_metadata,
 )
 from space_map_data.utils.db import session_scope, get_session
@@ -80,7 +80,7 @@ def main() -> int:
         ):
             continue
 
-        direct, kind_of, pageimage_count = _collect_candidates(qid)
+        direct, kind_of, pageimage_count = collect_qid_image_candidates(qid)
         if not direct:
             continue
 

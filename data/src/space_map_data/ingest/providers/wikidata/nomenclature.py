@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy import update
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.feature import Feature
 from space_map_data.utils.db import get_session
 from tqdm import tqdm
@@ -20,18 +21,6 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 BATCH = 1000
-
-
-def _read_ids_csv(csv_path: Path) -> dict[str, list[str]]:
-    """Read a property CSV into a {search_term: [qids]} mapping."""
-    mapping: dict[str, list[str]] = {}
-    for row in csv.reader(io.StringIO(csv_path.read_text())):
-        if not row:
-            continue
-        search_term = row[0]
-        qids = row[1].split() if len(row) > 1 and row[1] else []
-        mapping[search_term] = qids
-    return mapping
 
 
 def _read_conflict_resolution(csv_path: Path) -> dict[int, str]:
@@ -67,7 +56,7 @@ def ingest(download_dir: Path) -> None:
     session.execute(update(Feature).values(wikidata_qid=None))
     session.commit()
 
-    id_to_qids = _read_ids_csv(csv_path)
+    id_to_qids = read_ids_csv(csv_path)
 
     # Build bidirectional mappings: feature_id ↔ QID
     feat_to_qids: dict[int, set[str]] = defaultdict(set)
