@@ -307,23 +307,15 @@ export class ProbeStore {
 	}
 
 	/**
-	 * Planetary-system barycenter NAIF the probe is currently inside, or `null`
-	 * for heliocentric cruise / unknown. Lets focus + visibility route a flyby
-	 * probe (Psyche through Mars, Voyager through Jupiter) to the right system
-	 * synchronously, without waiting for the planet zone's chunk to land.
+	 * Planetary-system barycenter NAIF the probe is inside, or `null` for
+	 * heliocentric cruise / unknown. Sync; no chunk-load dependency beyond
+	 * the interplanetary chunk (which `ensure` warms regardless of view).
 	 *
-	 * Resolution order:
-	 *   1. Interplanetary chunk → consult `systemIntervals` (writer-stamped:
-	 *      "in Mars system from t0 to t1"). Half-open: `startEt ≤ et < endEt`.
-	 *      A hit returns the system NAIF; a miss means the probe is in
-	 *      interplanetary but in pure cruise → `null`.
-	 *   2. Fallback (probe is purely captured, e.g. MEX, MAVEN — not in
-	 *      interplanetary): walk planet zones; the zone identity *is* the
-	 *      system. Returns `barycenter_naif_id`, derived from the zone's
-	 *      `fit_center_naif_id` via integer-divide by 100 (199→1, 499→4, …).
-	 *
-	 * Returns `null` if no chunk has the probe at jd (mid-async-load, or the
-	 * probe simply doesn't exist at that jd).
+	 * Interplanetary first: a hit on the `systemIntervals` annotation wins;
+	 * a miss means pure cruise → `null`. Falls back to walking planet zones
+	 * for probes only present there (captured orbiters, MEX/MAVEN), where
+	 * the zone identity is the system — barycenter NAIF derived as
+	 * `floor(fit_center_naif_id / 100)` (199→1, 499→4, …).
 	 */
 	containingSystemAt(probeId: string, jd: number): number | null {
 		const et = jdToEt(jd);
@@ -356,8 +348,6 @@ export class ProbeStore {
 	}
 }
 
-/** Zone key for the heliocentric catch-all probe zone. The frontend treats it
- *  specially: it's always loaded (ensure() warms every zone), and its records
- *  carry the writer-stamped `systemIntervals` annotation that drives flyby
- *  focus + visibility without needing planet-zone chunks. */
+/** Heliocentric catch-all zone. Its records carry the `systemIntervals`
+ *  annotation that drives flyby focus + visibility. */
 const INTERPLANETARY_ZONE = 'probes/interplanetary';

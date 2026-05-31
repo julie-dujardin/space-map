@@ -48,12 +48,10 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	ctx.chebStore?.ensure(jd);
 	ctx.probeStore?.ensure(jd);
 
-	// Probe zone preference: when the user is zoomed into a planet, prefer
-	// that planet's zone over interplanetary so flyby probes (Psyche through
-	// Mars, Voyager through Jupiter) resolve to the planet-relative fit and
-	// their parentId flips to the planet barycenter — rendering correctly in
-	// the active-system view instead of being hidden as Sun-orbiting bodies.
-	// Null when zoomed out (no preference → interplanetary wins by default).
+	// When zoomed into a planet, prefer its zone over interplanetary so flyby
+	// probes (Psyche → Mars, Voyager → Jupiter) take the planet-relative fit
+	// and flip parentId to the planet. Null = no preference, interplanetary
+	// wins by default.
 	const activeSysId = ctx.visibility.activeSystemId;
 	const probeZonePreference = activeSysId
 		? (fitCenterNaif: number) => ctx.bodies.isInSystem(`naif-${fitCenterNaif}`, activeSysId)

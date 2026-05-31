@@ -39,10 +39,8 @@ def _clip_system_intervals(
     chunk_start_et: float,
     chunk_end_et: float,
 ) -> list[tuple[float, float, int]]:
-    """Intersect each system-interval with `[chunk_start_et, chunk_end_et)`,
-    dropping any that fall entirely outside. Used to slice a probe's full-
-    trajectory annotations down to what the current interplanetary chunk
-    needs to ship."""
+    """Intersect each interval with `[chunk_start_et, chunk_end_et)`, dropping
+    any that fall entirely outside."""
     out: list[tuple[float, float, int]] = []
     for s, e, sn in intervals:
         cs = s if s > chunk_start_et else chunk_start_et

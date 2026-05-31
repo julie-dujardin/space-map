@@ -93,16 +93,11 @@ def _compute_system_intervals(
     intervals: list[tuple[str, float, float]],
     landed_phases: list[tuple[int, float, float]],
 ) -> list[tuple[float, float, int]]:
-    """Derive per-time-span 'containing planet system NAIF' annotations from
-    a probe's classified trace.
-
-    Combines flying spans inside planetary zones (zone.barycenter_naif_id)
-    with landed phases (body→system map). Adjacent same-system spans are
-    merged so the writer emits one interval per continuous Mars/Jupiter/…
-    presence instead of N tiny tiles. Returns intervals sorted by start_et,
-    non-overlapping (assuming the input zone_intervals are non-overlapping
-    within each zone, which `_classify_flying_subrange` guarantees).
-    """
+    """Containing-system NAIF spans from a probe's classified trace: each
+    planetary zone interval contributes its `barycenter_naif_id`, each landed
+    phase its body→system map result. Adjacent same-system spans merge so a
+    flyby + immediate landing reads as one continuous Mars presence.
+    Sorted by start_et, non-overlapping."""
     raw: list[tuple[float, float, int]] = []
     for zone_key, s, e in intervals:
         if zone_key == INTERPLANETARY.key:

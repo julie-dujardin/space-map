@@ -109,16 +109,11 @@ export interface LandedRecord {
 }
 
 /**
- * One "this probe is currently inside planet X's system" span, attached to
- * interplanetary chunk records. Lets the frontend route focus + visibility
- * for flyby probes (Psyche through Mars, Voyager through Jupiter) without
- * needing the planet zone's chunk to be loaded — the heliocentric record
- * carries the planetary-system fact directly.
- *
- * `systemNaifId` is the barycenter NAIF (1 Mercury, 2 Venus, 3 Earth-Moon,
- * 4 Mars, 5 Jupiter, 6 Saturn, 7 Uranus, 8 Neptune, 9 Pluto), matching
- * `focusedSystemId`'s `"naif-{n}"` form. Intervals are sorted by `startEt`,
- * half-open (`t < endEt`), non-overlapping.
+ * One "probe inside planet X's system from `startEt` to `endEt`" span,
+ * attached to interplanetary records so flyby focus + visibility don't
+ * need the planet zone's chunk loaded. `systemNaifId` is the barycenter
+ * NAIF (Mars=4, Earth-Moon=3, …), matching `focusedSystemId`'s
+ * `"naif-{n}"` form. Half-open (`t < endEt`), sorted, non-overlapping.
  */
 export interface SystemInterval {
 	startEt: number;
@@ -148,9 +143,8 @@ export interface Probe {
 	/** Optional trailing landed record — present when the probe was on a body's
 	 *  surface for part or all of this chunk. */
 	landed?: LandedRecord;
-	/** Planetary-system membership spans within this chunk's window. Only
-	 *  emitted on interplanetary records by the writer — planet-zone records
-	 *  imply their system via zone identity, so this stays empty there. */
+	/** Planetary-system membership spans for the chunk's window. Empty on
+	 *  planet-zone records (their system is the zone identity). */
 	systemIntervals: SystemInterval[];
 }
 
@@ -406,10 +400,6 @@ export function parseProbesPayload(
 			offset = po + payloadLen;
 		}
 
-		// Trailing system-interval list — interplanetary chunks tag flyby spans
-		// (Psyche through Mars, Voyager through Jupiter) so focus + visibility
-		// can route to the planet's system without the planet zone's chunk
-		// being loaded. Planet-zone records emit zero intervals.
 		const systemIntervals: SystemInterval[] = new Array(nSystemIntervals);
 		for (let k = 0; k < nSystemIntervals; k++) {
 			systemIntervals[k] = {

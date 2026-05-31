@@ -66,11 +66,10 @@ class ProbePlan:
     """All chunks one probe touches + the kernels needed to fit them.
     Built in the classify pass; consumed in the fit pass.
 
-    `system_intervals` lists every (start_et, end_et, system_barycenter_naif)
-    span where the probe is physically inside a planet's system — derived
-    from the planetary `zone_intervals` and `landed_phases` of the trace.
-    Used by the fit pass to stamp interplanetary chunk records so the
-    frontend can route focus/visibility without loading the planet zone."""
+    `system_intervals` lists `(start_et, end_et, system_barycenter_naif)`
+    spans where the probe is inside a planet's system — the fit pass slices
+    them per interplanetary chunk for the frontend's focus/visibility routing.
+    """
 
     probe_id: int
     naif_id: int
@@ -81,12 +80,10 @@ class ProbePlan:
 
 @dataclass
 class ChunkProbeRecord:
-    """One probe's contribution to one chunk, packing-ready. Holds the
-    fitted flying sub-chunks (may be empty if landed-only), an optional
-    trailing `METHOD_LANDED`, the fit center to encode in the header
-    (sentinel pair = stay on the zone's stored center), and any
-    interplanetary system-interval annotations clipped to this chunk's
-    window (empty on planet-zone records)."""
+    """One probe's contribution to one chunk, packing-ready. Empty `flying`
+    when landed-only; `system_intervals` only populated on interplanetary
+    records (clipped to chunk window). `MISSING_INT32`/`MISSING_ID_TYPE`
+    fit-center pair = stay on the zone's stored center."""
 
     probe_id: int
     first_offset: int
@@ -145,9 +142,7 @@ def zone_for_landed_body(body_naif_id: int) -> Zone | None:
 
 
 def system_naif_for_landed_body(body_naif_id: int) -> int | None:
-    """System barycenter NAIF for a landed phase on `body_naif_id` — the
-    same naif the frontend uses to identify the focused system (Mars=4,
-    Earth-Moon=3, Saturn=6). Routed through `zone_for_landed_body` so the
-    mapping table stays in one place."""
+    """System barycenter NAIF for a landed phase (Mars=4, Earth-Moon=3, …).
+    Shares the `zone_for_landed_body` table so the mapping lives in one place."""
     z = zone_for_landed_body(body_naif_id)
     return z.barycenter_naif_id if z else None

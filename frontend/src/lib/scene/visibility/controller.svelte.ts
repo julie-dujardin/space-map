@@ -35,9 +35,8 @@ export class VisibilityController {
 	private focusedSystemIdPlain: string | null = null;
 	private cameraDistThreeJS = 0;
 	private lastRecomputeDist = -1;
-	/** Latest jd from `updateCamera` — used by probe annotation lookups so the
-	 *  focused-system + visibility re-derivations always see the current time
-	 *  without each caller having to thread jd through.  */
+	/** Latest jd from `updateCamera`. Used by probe annotation lookups so
+	 *  per-body callers don't have to thread jd through. */
 	private currentJd = 0;
 	/**
 	 * Camera distance (AU) below which the solar system hides so the focused
@@ -80,12 +79,9 @@ export class VisibilityController {
 		this.cameraDistThreeJS = dist;
 		this.currentJd = jd;
 		this.moonVisibilityCache.clear();
-		// Probe focus: when the focused body is a probe, re-derive
-		// `focusedSystemId` from its writer-stamped annotation every frame —
-		// captured-at-setFocused state would go stale as jd advances past
-		// the flyby window (or as chunks load after a transient parentId
-		// flip during async ensure()). Cheap: one chunk lookup + interval
-		// scan against the focused id.
+		// Refresh focused-system from the live annotation when focused on a
+		// probe — captured-at-setFocused state would go stale as jd advances
+		// past the flyby window or as chunks settle after an async ensure().
 		this.refreshProbeFocusedSystem();
 		// Probes move between frames, so the hide threshold is recomputed every
 		// frame (iterating direct children of one body is cheap).
@@ -102,12 +98,9 @@ export class VisibilityController {
 		}
 	}
 
-	/** Probe focus uses the writer-stamped `systemIntervals` annotation rather
-	 *  than the parentId-walk used for everything else: parentId on a flyby
-	 *  probe flips per-frame and can transiently disagree with the probe's
-	 *  actual system membership during chunk-load gaps. Falls back to the
-	 *  parentId-derived value when the focused body isn't a probe or no
-	 *  annotation is available. */
+	/** Probe focus reads the `systemIntervals` annotation instead of walking
+	 *  parentId — a flyby probe's parentId flips per-frame and can be stale
+	 *  during chunk-load gaps. No-op for non-probe focus. */
 	private refreshProbeFocusedSystem(): void {
 		const ps = this.getProbeStore();
 		if (!ps) return;
@@ -244,10 +237,8 @@ export class VisibilityController {
 	}
 
 	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in.
-	 *  For probes, also consults the writer-stamped `systemIntervals` annotation —
-	 *  a flyby probe shows up as inside the active system even if its parentId hasn't
-	 *  flipped yet (chunk-load gap before the per-frame propagator re-resolves the
-	 *  preferred zone). */
+	 *  Probes also pass via the `systemIntervals` annotation, so a flyby probe stays
+	 *  visible even when its parentId hasn't flipped yet (chunk-load gap). */
 	hasFullRendering(body: PositionedBody): boolean {
 		const sysId = this.activeSystemId;
 		if (!sysId) return true;
@@ -377,12 +368,9 @@ export class VisibilityController {
 					const v = FOCUS_HIDE_MOON_MULTIPLIER * child.data.a;
 					if (v > max) max = v;
 				} else if (ot === ObjectType.SPACECRAFT) {
-					// Flyby probes have parentId flipped by the per-frame propagator
-					// (heliocentric → planet during Mars gravity assist); their
-					// distance to the planet can reach 2× Hill, which would spike
-					// the threshold and keep the system "active" past the encounter.
-					// Skip them — only stable members (captured orbiters, moons)
-					// should set the system's scale.
+					// Skip flyby probes (loadParentId mismatches the current parentId
+					// flipped by the per-frame propagator) — their distance can reach
+					// 2× Hill and would spike the threshold past the encounter.
 					const lp = child.data.loadParentId;
 					if (lp && lp !== child.data.parentId) continue;
 					const parent = this.bodies.bodiesById.get(child.data.parentId);

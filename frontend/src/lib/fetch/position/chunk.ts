@@ -486,10 +486,9 @@ export class ChunkLoader {
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
 		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
-		// `probesAt` dedupes per probe.id; boot has no focused system yet, so the
-		// initial zone is whatever wins by metadata order (interplanetary first).
-		// The per-frame propagator re-resolves with the live focused-system
-		// predicate and flips parentId when the user zooms into a planet.
+		// `probesAt` dedupes per probe.id. At boot there's no focused system,
+		// so the initial zone wins by metadata order (interplanetary first);
+		// the per-frame propagator flips parentId when zooming into a planet.
 		for (const { probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
 			if (!probe.id) continue;
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);

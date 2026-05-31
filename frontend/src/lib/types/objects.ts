@@ -44,13 +44,9 @@ export interface BodyData extends OrbitalElements {
 	isMinor?: boolean;
 	objectType: ObjectType;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
-	/**
-	 * Probe-only: the parent set at scene-load (by `processProbes`), preserved
-	 * even as `parentId` flips per-frame across zone transitions. Lets the
-	 * focused-system hide-threshold skip flyby probes — a heliocentric Psyche
-	 * doing a Mars gravity assist has `loadParentId="naif-10"` while its live
-	 * `parentId` is `"naif-499"`, so it doesn't inflate Mars's system scale.
-	 */
+	/** Probe-only: parent set at scene-load, never mutated by the per-frame
+	 *  zone re-resolution. A mismatch with `parentId` marks the probe as
+	 *  flying past — used by the hide-threshold to skip transient flybys. */
 	loadParentId?: string;
 	radiusKm: number;
 	/** True iff the object has a localized detail bundle in at least one
