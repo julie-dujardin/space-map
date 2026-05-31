@@ -48,6 +48,17 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	ctx.chebStore?.ensure(jd);
 	ctx.probeStore?.ensure(jd);
 
+	// Probe zone preference: when the user is zoomed into a planet, prefer
+	// that planet's zone over interplanetary so flyby probes (Psyche through
+	// Mars, Voyager through Jupiter) resolve to the planet-relative fit and
+	// their parentId flips to the planet barycenter — rendering correctly in
+	// the active-system view instead of being hidden as Sun-orbiting bodies.
+	// Null when zoomed out (no preference → interplanetary wins by default).
+	const activeSysId = ctx.visibility.activeSystemId;
+	const probeZonePreference = activeSysId
+		? (fitCenterNaif: number) => ctx.bodies.isInSystem(`naif-${fitCenterNaif}`, activeSysId)
+		: undefined;
+
 	// Aggregate data-unavailability into a single summary toast — per-body
 	// toasts would be spammy at chunk boundaries.
 	const oorState: OutOfRangeState = {
@@ -151,7 +162,7 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			// zone's `fit_center_naif_id` — NOT d.parentId (which lags by a frame
 			// at cross-zone transitions). Re-resolve per frame, then flip parentId
 			// so trail geometry and trail-anchor writes follow the new parent.
-			const located = ctx.probeStore?.probeWithCenter(d.id, jd) ?? null;
+			const located = ctx.probeStore?.probeWithCenter(d.id, jd, probeZonePreference) ?? null;
 			if (!located) {
 				if (bo) bo.outOfRange = true;
 				if (d.id === focusedId) oorState.focusedOutOfRange = true;
@@ -235,7 +246,8 @@ export function updatePositions(params: UpdatePositionsParams): void {
 					ctx.chebStore ?? null,
 					d.id,
 					probeParentKey,
-					jd
+					jd,
+					probeZonePreference
 				);
 			}
 			if (probeParentChanged) d.parentId = probeParentKey;
@@ -263,7 +275,8 @@ export function updatePositions(params: UpdatePositionsParams): void {
 						ctx.chebStore ?? null,
 						d.id,
 						probeParentKey,
-						jd
+						jd,
+						probeZonePreference
 					);
 				} else if (!isFinite(tb.newestJd) || jd - tb.newestJd >= tb.stepDays) {
 					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);

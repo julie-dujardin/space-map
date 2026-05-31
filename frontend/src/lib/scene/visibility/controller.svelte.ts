@@ -38,10 +38,10 @@ export class VisibilityController {
 	 * Camera distance (AU) below which the solar system hides so the focused
 	 * planetary system stands out. Computed from the focused body's satellites:
 	 * 2×a for moons, instantaneous distance-to-parent for spacecraft (probes in
-	 * eccentric orbits don't carry a stable a). Infinity when the focused body
-	 * has no qualifying satellites — solar system never hides in that case.
+	 * eccentric orbits don't carry a stable a). Zero when the focused body has
+	 * no qualifying satellites — solar system never hides in that case.
 	 */
-	private hideThresholdAU = Infinity;
+	private hideThresholdAU = 0;
 	// Cached scaled thresholds — recomputed in updateViewport() on canvas resize.
 	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
 	private scaledSystem = SYSTEM_DISTANCE_RATIO_THRESHOLDS;
@@ -312,7 +312,7 @@ export class VisibilityController {
 	 * Camera distance (AU) below which the solar system is decluttered. Walks
 	 * direct children of the focused system root and direct children of the
 	 * focused planet (e.g. naif-399 under naif-3), summing in moons (2×a) and
-	 * spacecraft (instantaneous distance to parent). Returns Infinity when no
+	 * spacecraft (instantaneous distance to parent). Returns 0 when no
 	 * satellite qualifies — solar system never hides.
 	 */
 	private computeHideThreshold(): number {
@@ -330,6 +330,14 @@ export class VisibilityController {
 					const v = FOCUS_HIDE_MOON_MULTIPLIER * child.data.a;
 					if (v > max) max = v;
 				} else if (ot === ObjectType.SPACECRAFT) {
+					// Flyby probes have parentId flipped by the per-frame propagator
+					// (heliocentric → planet during Mars gravity assist); their
+					// distance to the planet can reach 2× Hill, which would spike
+					// the threshold and keep the system "active" past the encounter.
+					// Skip them — only stable members (captured orbiters, moons)
+					// should set the system's scale.
+					const lp = child.data.loadParentId;
+					if (lp && lp !== child.data.parentId) continue;
 					const parent = this.bodies.bodiesById.get(child.data.parentId);
 					if (!parent) continue;
 					const v = f64dist(child.position, parent.position) / AU_SCALE;
@@ -343,6 +351,6 @@ export class VisibilityController {
 			}
 		};
 		visit(sysId, true);
-		return max > 0 ? max : Infinity;
+		return max;
 	}
 }

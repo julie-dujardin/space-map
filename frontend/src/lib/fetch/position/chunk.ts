@@ -446,10 +446,11 @@ export class ChunkLoader {
 	 * Build PositionedBody[] for every probe whose current chunk is resident
 	 * in `probeStore`. Mirrors `processChebyshev` but for spacecraft probes:
 	 *
-	 *   1. Iterate `probeStore.probesAt(jd)` — yields one entry per (zone, probe)
-	 *      whose chunk for jd is loaded. The same probe_id can appear under
-	 *      multiple zones (cruise + captured-orbit phases); the renderer
-	 *      handles cross-zone routing per frame via store dispatch.
+	 *   1. Iterate `probeStore.probesAt(jd)` — yields one entry per probe whose
+	 *      chunk for jd is loaded, deduped across zones (a flyby probe lives in
+	 *      both the planet zone and interplanetary; the store collapses them).
+	 *      The per-frame propagator re-resolves with the focused-system filter
+	 *      and flips parentId when the user zooms into a planet's zone.
 	 *   2. Resolve the fit-center body (Sun for `probes/interplanetary`,
 	 *      Mercury for `probes/mercury`, …) in `this.positions` — chebyshev
 	 *      must have run first so these are present.
@@ -485,14 +486,12 @@ export class ChunkLoader {
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
 		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
-		// Dedupe by probe.id: a flyby probe is in BOTH interplanetary and the planet
-		// zone at the same jd, so `probesAt` yields it twice. The per-frame
-		// propagator re-resolves the live zone via `probeWithCenter`.
-		const seenProbeIds = new Set<string>();
+		// `probesAt` dedupes per probe.id; boot has no focused system yet, so the
+		// initial zone is whatever wins by metadata order (interplanetary first).
+		// The per-frame propagator re-resolves with the live focused-system
+		// predicate and flips parentId when the user zooms into a planet.
 		for (const { probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
 			if (!probe.id) continue;
-			if (seenProbeIds.has(probe.id)) continue;
-			seenProbeIds.add(probe.id);
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
 			// Resolve the probe's *actual* fit center: the writer-stamped
@@ -534,6 +533,7 @@ export class ChunkLoader {
 				hasLocalized: probe.hasLocalized,
 				objectType: probe.objectType as ObjectType,
 				parentId: primaryKey,
+				loadParentId: primaryKey,
 				radiusKm: NaN, // probes have no physical-radius column; renderer falls back
 				a: 0,
 				e: 0,

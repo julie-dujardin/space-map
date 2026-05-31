@@ -3,11 +3,15 @@
  * (`probes/interplanetary`, `probes/mercury`, …, `probes/pluto`); each ships
  * `position/probes/{zone}/{chunkIdx}.bin.gz` with no zoom segment.
  *
- * Unlike chebyshev, a probe can appear in *multiple* zone files at different
- * times — cruise samples land in `probes/interplanetary`, captured-orbit
- * samples land in `probes/{planet}`. The same `probe_id` therefore re-appears
- * across zones with disjoint sub-chunk coverage; the store picks the right
- * zone+chunk for the current jd by ET-window match.
+ * Unlike chebyshev, a probe can appear in *multiple* zone files: cruise
+ * samples land in `probes/interplanetary`, captured-orbit samples land in
+ * `probes/{planet}`, and a flyby probe lives in BOTH at once (the planet
+ * zone over the encounter, interplanetary across the whole flying phase —
+ * see data/probes/trace.py). When zones overlap at a jd, the resolver picks
+ * the zone the caller asks for via the optional `isPreferred` predicate
+ * (typically "is this zone's fit center inside the user's focused system?")
+ * and falls through to the metadata-iteration order (interplanetary first →
+ * heliocentric fit for the solar view) when nothing matches.
  *
  * Eager-loads the chunk containing the current JD plus its two neighbors
  * across every zone (same policy as `ChebyshevStore`). Sub-chunks within a
@@ -168,26 +172,45 @@ export class ProbeStore {
 	}
 
 	/**
-	 * Iterate every probe whose chunk for `jd` is loaded, across every zone.
-	 * The same `probe_id` can appear in multiple zones (cruise + captured
-	 * orbit) at different jd windows — sub-chunk presence is the gate, not
-	 * zone membership. Callers must `await ensure(jd).done` first.
+	 * Iterate every probe whose chunk for `jd` is loaded, deduped to one entry
+	 * per `probe.id`. When `isPreferred` is supplied, the zone whose fit center
+	 * passes the predicate wins; otherwise the first zone in metadata order
+	 * (interplanetary first) wins. Sub-chunk coverage is NOT checked here —
+	 * callers needing coverage gate via `resolve` / `probeWithCenter`. Callers
+	 * must `await ensure(jd).done` first.
 	 */
-	*probesAt(jd: number): IterableIterator<ProbeWithWindow> {
+	*probesAt(
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): IterableIterator<ProbeWithWindow> {
+		const best = new Map<string, ProbeWithWindow>();
+		const preferred = new Set<string>();
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx);
 			if (!chunk) continue;
-			for (const probe of chunk.probes) {
-				yield {
+			const zonePreferred = isPreferred?.(params.fit_center_naif_id) ?? false;
+			for (let i = 0; i < chunk.probes.length; i++) {
+				const probe = chunk.probes[i];
+				const id = probe.id;
+				if (!id) continue;
+				if (preferred.has(id)) continue;
+				const entry: ProbeWithWindow = {
 					zone,
 					zoneCenterNaifId: params.fit_center_naif_id,
 					probe,
 					startJd: chunk.startJd,
 					endJd: chunk.endJd
 				};
+				if (zonePreferred) {
+					best.set(id, entry);
+					preferred.add(id);
+				} else if (!best.has(id)) {
+					best.set(id, entry);
+				}
 			}
 		}
+		yield* best.values();
 	}
 
 	/** Iterate zones in metadata order; for each, find every record matching
@@ -198,9 +221,19 @@ export class ProbeStore {
 	 *  transitions (cruise → captured orbit at a flyby/capture boundary): the
 	 *  interplanetary chunk lists the probe up to the boundary, the planet
 	 *  chunk picks up from there, and the renderer follows the live one without
-	 *  a frame where the probe is hidden. */
-	private resolve(objectId: string, jd: number): ProbeLocation | null {
+	 *  a frame where the probe is hidden.
+	 *
+	 *  When `isPreferred` is supplied, a covering record in a preferred zone
+	 *  beats a covering record in any other zone — so a Mars-flyby probe gets
+	 *  its Mars-relative fit (and parentId=Mars) when the user is zoomed into
+	 *  Mars, but its heliocentric fit otherwise. */
+	private resolve(
+		objectId: string,
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): ProbeLocation | null {
 		const et = jdToEt(jd);
+		let firstMatch: ProbeLocation | null = null;
 		for (const [zone, params] of this.zoneParams) {
 			const chunkIdx = chunkIndexForJd(params, jd);
 			const chunk = this.chunks.get(zone)?.get(chunkIdx);
@@ -214,24 +247,35 @@ export class ProbeStore {
 				// Either path matches — the renderer dispatches between flying
 				// sub-chunks (kepler/chebyshev) and the trailing landed record.
 				if (!hasFlying && !hasLanded) continue;
-				return { zone, probe, params };
+				const loc: ProbeLocation = { zone, probe, params };
+				if (isPreferred?.(params.fit_center_naif_id)) return loc;
+				firstMatch ??= loc;
+				break;
 			}
 		}
-		return null;
+		return firstMatch;
 	}
 
 	/** Parsed probe record for `objectId` at `jd`, across every loaded zone.
 	 *  Returns null if no zone's chunk for jd lists this probe. */
-	probe(objectId: string, jd: number): Probe | null {
-		return this.resolve(objectId, jd)?.probe ?? null;
+	probe(
+		objectId: string,
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): Probe | null {
+		return this.resolve(objectId, jd, isPreferred)?.probe ?? null;
 	}
 
 	/** Parsed probe record + zone fit-center NAIF ID at `jd`. Use this when the
 	 *  caller needs to follow cross-zone transitions (e.g. cruise → captured
 	 *  orbit changes the fit center from Sun to a planet, and Kepler-pure mean
 	 *  motion `sqrt(mu/a³)` is mu-sensitive). */
-	probeWithCenter(objectId: string, jd: number): { probe: Probe; fitCenterNaifId: number } | null {
-		const loc = this.resolve(objectId, jd);
+	probeWithCenter(
+		objectId: string,
+		jd: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): { probe: Probe; fitCenterNaifId: number } | null {
+		const loc = this.resolve(objectId, jd, isPreferred);
 		if (!loc) return null;
 		return { probe: loc.probe, fitCenterNaifId: loc.params.fit_center_naif_id };
 	}
@@ -239,15 +283,25 @@ export class ProbeStore {
 	/** Parent-relative probe position in km at `jd`, with `mu` (km³/s²) of the
 	 *  zone's fit center supplied by the caller. Returns null if the probe
 	 *  isn't loaded or jd is outside any sub-chunk's window. */
-	positionKm(objectId: string, jd: number, muKm3S2: number): [number, number, number] | null {
-		const loc = this.resolve(objectId, jd);
+	positionKm(
+		objectId: string,
+		jd: number,
+		muKm3S2: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): [number, number, number] | null {
+		const loc = this.resolve(objectId, jd, isPreferred);
 		if (!loc) return null;
 		return probePositionKm(loc.probe, jd, muKm3S2);
 	}
 
 	/** Parent-relative probe position in Three.js scene units. */
-	positionScene(objectId: string, jd: number, muKm3S2: number): [number, number, number] | null {
-		const loc = this.resolve(objectId, jd);
+	positionScene(
+		objectId: string,
+		jd: number,
+		muKm3S2: number,
+		isPreferred?: (fitCenterNaif: number) => boolean
+	): [number, number, number] | null {
+		const loc = this.resolve(objectId, jd, isPreferred);
 		if (!loc) return null;
 		return probePositionScene(loc.probe, jd, muKm3S2);
 	}

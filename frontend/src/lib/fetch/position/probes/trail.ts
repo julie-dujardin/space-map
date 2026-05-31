@@ -24,11 +24,12 @@ export function populateProbeTrailBuffer(
 	cheb: ChebyshevStore | null,
 	probeId: string,
 	currentParentKey: string,
-	centerJd: number
+	centerJd: number,
+	isPreferred?: (fitCenterNaif: number) => boolean
 ): void {
 	for (let k = buf.capacity - 1; k >= 0; k--) {
 		const t = centerJd - k * buf.stepDays;
-		const located = probeStore.probeWithCenter(probeId, t);
+		const located = probeStore.probeWithCenter(probeId, t, isPreferred);
 		if (!located) continue;
 		const pastZoneKey = `naif-${located.fitCenterNaifId}`;
 		const pastOverride = resolvePrimaryOverride(located.probe, t, pastZoneKey, cheb);
