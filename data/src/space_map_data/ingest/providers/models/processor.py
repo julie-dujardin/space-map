@@ -324,8 +324,6 @@ class ModelProcessor:
         one returned by the query (deterministic in practice via DB row
         order — Phase 5 will tighten this).
         """
-        from space_map_data.models.object.main import Object
-
         session = get_session()
         out: dict[int, str] = {}
         for norad, oid in (

@@ -97,18 +97,23 @@ def parse_upload_url(url: str) -> tuple[str, str] | None:
     return repo, filename
 
 
+def _wikidata_image_claims(entity: dict, pid: str) -> list[str]:
+    """Canonical filenames from one image-claim PID, skipping deprecated statements."""
+    out: list[str] = []
+    for stmt in entity.get("claims", {}).get(pid, []):
+        if stmt.get("rank") == "deprecated":
+            continue
+        val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
+        if isinstance(val, str) and val:
+            out.append(canonical_filename(val))
+    return out
+
+
 def extract_wikidata_filenames(entity: dict) -> set[str]:
     """Extract unique Commons image filenames from P18 and P154 claims."""
-    filenames: set[str] = set()
-    claims = entity.get("claims", {})
-    for pid in _WIKIDATA_IMAGE_PIDS:
-        for stmt in claims.get(pid, []):
-            if stmt.get("rank") == "deprecated":
-                continue
-            val = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-            if isinstance(val, str) and val:
-                filenames.add(canonical_filename(val))
-    return filenames
+    return {
+        fn for pid in _WIKIDATA_IMAGE_PIDS for fn in _wikidata_image_claims(entity, pid)
+    }
 
 
 def collect_qid_commons_filenames(
@@ -135,21 +140,11 @@ def collect_qid_commons_filenames(
         try:
             entity = orjson.loads(entity_path.read_bytes())
         except orjson.JSONDecodeError:
+            logger.warning("Corrupt Wikidata JSON, skipping: %s", entity_path)
             entity = None
         if entity:
-            claims = entity.get("claims", {})
-            for stmt in claims.get("P18", []):
-                if stmt.get("rank") == "deprecated":
-                    continue
-                v = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-                if isinstance(v, str) and v:
-                    photo_from_wikidata.append(canonical_filename(v))
-            for stmt in claims.get("P154", []):
-                if stmt.get("rank") == "deprecated":
-                    continue
-                v = stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
-                if isinstance(v, str) and v:
-                    logo_from_wikidata.append(canonical_filename(v))
+            photo_from_wikidata = _wikidata_image_claims(entity, "P18")
+            logo_from_wikidata = _wikidata_image_claims(entity, "P154")
 
     photo_from_wikipedia: list[str] = []
     for lang in LANGUAGES:

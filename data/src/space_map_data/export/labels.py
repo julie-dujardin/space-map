@@ -14,10 +14,6 @@ probes outside the curated :data:`PROMOTED_EXTRA_IDS` list (every probe still
 ships in the probe export, but only the flagship ones label on first paint).
 The frontend fetches one file at app start (or on locale change) and uses
 its keys as the authoritative promoted set.
-
-Replaces the old per-chunk ``{part}.loc.{lang}.gz`` layout, which scaled with
-chunks × languages × time-snapshots and was wasted bytes on the (vast
-majority) of objects that never get a pre-interaction label.
 """
 
 import gzip

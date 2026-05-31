@@ -128,7 +128,11 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
                     try:
                         name_hints.setdefault((mdir.name, int(t)), hint)
                     except (TypeError, ValueError):
-                        pass
+                        logger.warning(
+                            "skipping non-int NAIF target %r in %s",
+                            t,
+                            idx_path,
+                        )
             # Any negative NAIF ID is a spacecraft per SPICE convention.
             # Modern commercial missions exceed the legacy -1..-999 range
             # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.).

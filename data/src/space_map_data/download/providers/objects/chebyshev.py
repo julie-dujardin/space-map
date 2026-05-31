@@ -84,6 +84,7 @@ def _native_params(
         try:
             spk = SPK.open(str(path))
         except Exception:
+            logger.warning("Failed to open SPK %s; skipping", path, exc_info=True)
             continue
         try:
             for seg in spk.segments:

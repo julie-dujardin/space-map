@@ -101,7 +101,7 @@ PLANETARY_ZONES: tuple[Zone, ...] = (
         "mars", 4, 499, 2.2e6, 1 / 12, 10.0, 1.0
     ),  # ~1-month chunks; Viking-era orbiters need short windows
     Zone("jupiter", 5, 599, 102.0e6, 1.0, 10.0, 1.0),
-    Zone("saturn", 6, 699, 130.0e6, 1.0, 10.0, 1.0),  # 1y chunks (was 5y)
+    Zone("saturn", 6, 699, 130.0e6, 1.0, 10.0, 1.0),
     Zone("uranus", 7, 799, 140.0e6, 5.0, 10.0, 1.0),
     Zone("neptune", 8, 899, 232.0e6, 5.0, 10.0, 1.0),
     Zone("pluto", 9, 999, 12.8e6, 5.0, 10.0, 1.0),

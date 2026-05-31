@@ -17,7 +17,6 @@ from space_map_data.utils.db import get_session
 logger = logging.getLogger(__name__)
 
 KML_NS = "{http://www.opengis.net/kml/2.2}"
-BATCH = 10_000
 
 
 def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:

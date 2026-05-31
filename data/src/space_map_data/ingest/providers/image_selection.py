@@ -138,6 +138,7 @@ def _collect_candidates(
         try:
             entity = orjson.loads(entity_path.read_bytes())
         except orjson.JSONDecodeError:
+            logger.warning("Corrupt Wikidata JSON, skipping: %s", entity_path)
             entity = None
         if entity:
             claims = entity.get("claims", {})
