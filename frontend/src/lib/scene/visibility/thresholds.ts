@@ -37,7 +37,7 @@ export const SYSTEM_DISTANCE_RATIO_THRESHOLDS = {
 
 /** Multiplier applied to the FULL threshold for the currently focused body. */
 export const FOCUSED_FULL_MULTIPLIER_MOON = 5;
-export const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacecraft that orbit farther than GEO
+export const FOCUSED_FULL_MULTIPLIER_SUN_ORBITING = 50;
 
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 20;

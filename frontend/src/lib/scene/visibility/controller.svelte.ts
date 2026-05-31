@@ -11,7 +11,7 @@ import {
 	PLANETARY_DISTANCE_RATIO_THRESHOLDS,
 	SYSTEM_DISTANCE_RATIO_THRESHOLDS,
 	FOCUSED_FULL_MULTIPLIER_MOON,
-	FOCUSED_FULL_MULTIPLIER_SPACECRAFT,
+	FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
 	MAX_FULL_MOONS,
 	FOCUS_HIDE_MOON_MULTIPLIER,
 	computeVisibilityFromRatio
@@ -180,39 +180,28 @@ export class VisibilityController {
 
 	/**
 	 * Distance-ratio based visibility for non-moon, non-star bodies.
-	 * Bodies orbiting a planet (spacecraft, debris) are gated on the focused system,
-	 * like moons. Sun-orbiting bodies use the solar-orbit semi-major axis ratio.
-	 * Spacecraft use distance to focused body (like moons) so they appear/disappear
-	 * uniformly by zoom level; planets use distance to the body itself.
+	 * Probes get moon-style ratio gating using instantaneous distance-to-parent
+	 * as their characteristic length (no stable osculating `a`). Other planet-
+	 * orbiting bodies are binary FULL/HIDE on focused-system membership. Sun-
+	 * orbiting asteroids/comets/planets use the solar-orbit semi-major axis ratio.
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
-		// Planet-orbiting bodies: only visible when their system is focused.
+		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
+		// which would otherwise satisfy isSystemBody and short-circuit to FULL.
+		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
+			return this.getProbeVisibility(body);
+		}
+
 		if (this.bodies.isSystemBody(body)) {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
 			return VISIBILITY.FULL;
 		}
 
-		// Probes carry a=0 by design — their positions come from per-sub-chunk
-		// methods (kepler_pure/drift/chebyshev), not an osculating ellipse — so
-		// approximate refA from the current body→parent distance (≈ semi-major
-		// axis for near-circular orbits, which most probes follow once captured;
-		// cruise probes parent on the Sun and end up with a heliocentric-scale
-		// refA naturally).
-		let refA: number;
-		if (body.data.orbitalSource === OrbitalSource.SPICE_PROBE) {
+		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
+		let refA = body.data.a;
+		if (!isTopLevelParent(body.data.parentId)) {
 			const parent = this.bodies.bodiesById.get(body.data.parentId);
-			if (!parent) return VISIBILITY.FULL;
-			const dx = body.position[0] - parent.position[0];
-			const dy = body.position[1] - parent.position[1];
-			const dz = body.position[2] - parent.position[2];
-			refA = Math.sqrt(dx * dx + dy * dy + dz * dz) / AU_SCALE / 2;
-		} else {
-			// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
-			refA = body.data.a;
-			if (!isTopLevelParent(body.data.parentId)) {
-				const parent = this.bodies.bodiesById.get(body.data.parentId);
-				if (parent?.data.a) refA = parent.data.a;
-			}
+			if (parent?.data.a) refA = parent.data.a;
 		}
 		if (!refA || refA < 0) {
 			// e < 0.9 → not a comet, so a zero/missing a is a data problem worth surfacing.
@@ -223,17 +212,46 @@ export class VisibilityController {
 			}
 			return VISIBILITY.FULL;
 		}
-		// Spacecraft use distance to focused body (uniform visibility by zoom level),
-		// planets use distance to the body itself.
-		const dist =
-			body.data.objectType === ObjectType.SPACECRAFT ? this.cameraDistThreeJS : camDistThreeJS;
 		const isFocused = body.data.id === this.focusedBodyIdPlain;
 		return computeVisibilityFromRatio(
-			dist / AU_SCALE / refA,
+			camDistThreeJS / AU_SCALE / refA,
 			this.scaledSystem,
-			FOCUSED_FULL_MULTIPLIER_SPACECRAFT,
+			FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
 			isFocused
 		);
+	}
+
+	/** Binary FULL/HIDE for probes: heliocentric view → FULL; otherwise gated
+	 *  on focused-system membership AND a moon-style ratio against the probe's
+	 *  current distance-to-parent (substituting for the missing osculating `a`). */
+	private getProbeVisibility(body: PositionedBody): VISIBILITY {
+		const sysId = this.focusedSystemIdPlain;
+		if (!sysId) return VISIBILITY.FULL;
+		if (!this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
+		const parent = this.bodies.bodiesById.get(body.data.parentId);
+		if (!parent) return VISIBILITY.FULL;
+		const dx = body.position[0] - parent.position[0];
+		const dy = body.position[1] - parent.position[1];
+		const dz = body.position[2] - parent.position[2];
+		const distToParent = Math.sqrt(dx * dx + dy * dy + dz * dz) / AU_SCALE;
+		if (distToParent === 0) return VISIBILITY.FULL;
+		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
+		const isFocused = body.data.id === this.focusedBodyIdPlain;
+		const fullThreshold =
+			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
+		return ratio <= fullThreshold ? VISIBILITY.FULL : VISIBILITY.HIDE;
+	}
+
+	/** True when the probe is in the focused planetary system. Checks `parentId`
+	 *  first, then falls back to the `systemIntervals` annotation so flyby probes
+	 *  whose parent hasn't flipped yet still count as in-system. */
+	private isProbeInFocusedSystem(body: PositionedBody): boolean {
+		const parentId = body.data.parentId;
+		if (!isTopLevelParent(parentId) && this.isInFocusedSystem(parentId)) return true;
+		const ps = this.getProbeStore();
+		if (!ps) return false;
+		const sysNaif = ps.containingSystemAt(body.data.id, this.currentJd);
+		return sysNaif !== null && this.isInFocusedSystem(`naif-${sysNaif}`);
 	}
 
 	/** Full rendering = halo + trail. Suppressed for out-of-system bodies when zoomed in.
