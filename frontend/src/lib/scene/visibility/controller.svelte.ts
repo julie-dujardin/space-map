@@ -3,6 +3,7 @@ import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { SUN_ID } from '$lib/constants';
+import { f64dist } from '$lib/scene/animation/math';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -11,8 +12,8 @@ import {
 	FOCUSED_FULL_MULTIPLIER_MOON,
 	FOCUSED_FULL_MULTIPLIER_SPACECRAFT,
 	MAX_FULL_MOONS,
-	computeVisibilityFromRatio,
-	ZOOM_THRESHOLD_AU
+	FOCUS_HIDE_MOON_MULTIPLIER,
+	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
 
 /**
@@ -33,6 +34,14 @@ export class VisibilityController {
 	private focusedSystemIdPlain: string | null = null;
 	private cameraDistThreeJS = 0;
 	private lastRecomputeDist = -1;
+	/**
+	 * Camera distance (AU) below which the solar system hides so the focused
+	 * planetary system stands out. Computed from the focused body's satellites:
+	 * 2×a for moons, instantaneous distance-to-parent for spacecraft (probes in
+	 * eccentric orbits don't carry a stable a). Infinity when the focused body
+	 * has no qualifying satellites — solar system never hides in that case.
+	 */
+	private hideThresholdAU = Infinity;
 	// Cached scaled thresholds — recomputed in updateViewport() on canvas resize.
 	private scaledPlanetary = PLANETARY_DISTANCE_RATIO_THRESHOLDS;
 	private scaledSystem = SYSTEM_DISTANCE_RATIO_THRESHOLDS;
@@ -62,7 +71,10 @@ export class VisibilityController {
 	updateCamera(dist: number): void {
 		this.cameraDistThreeJS = dist;
 		this.moonVisibilityCache.clear();
-		const zoomed = dist <= ZOOM_THRESHOLD_AU * AU_SCALE;
+		// Probes move between frames, so the hide threshold is recomputed every
+		// frame (iterating direct children of one body is cheap).
+		this.hideThresholdAU = this.computeHideThreshold();
+		const zoomed = dist / AU_SCALE < this.hideThresholdAU;
 		if (zoomed !== this.isZoomedIn) {
 			this.isZoomedIn = zoomed;
 			this.activeSystemId = this.isZoomedIn ? this.focusedSystemIdPlain : null;
@@ -105,6 +117,10 @@ export class VisibilityController {
 		}
 		this.focusedSystemId = sysId;
 		this.focusedSystemIdPlain = sysId;
+		// Refresh the hide threshold against the new focus before deciding
+		// whether the existing camera distance counts as "zoomed in".
+		this.hideThresholdAU = this.computeHideThreshold();
+		this.isZoomedIn = this.cameraDistThreeJS / AU_SCALE < this.hideThresholdAU;
 		this.activeSystemId = this.isZoomedIn ? sysId : null;
 		this.lastRecomputeDist = -1; // force recompute on next updateCamera
 		this.recomputeFullMoons();
@@ -290,5 +306,43 @@ export class VisibilityController {
 			.sort((a, b) => a.data.a - b.data.a)
 			.slice(0, MAX_FULL_MOONS)
 			.forEach((m) => this.fullMoonIds.add(m.data.id));
+	}
+
+	/**
+	 * Camera distance (AU) below which the solar system is decluttered. Walks
+	 * direct children of the focused system root and direct children of the
+	 * focused planet (e.g. naif-399 under naif-3), summing in moons (2×a) and
+	 * spacecraft (instantaneous distance to parent). Returns Infinity when no
+	 * satellite qualifies — solar system never hides.
+	 */
+	private computeHideThreshold(): number {
+		const sysId = this.focusedSystemIdPlain;
+		if (!sysId) return Infinity;
+		let max = 0;
+		const visit = (parentId: string, recurse: boolean): void => {
+			const childIds = this.bodies.getChildren(parentId);
+			if (!childIds) return;
+			for (const id of childIds) {
+				const child = this.bodies.bodiesById.get(id);
+				if (!child) continue;
+				const ot = child.data.objectType;
+				if (ot === ObjectType.MOON) {
+					const v = FOCUS_HIDE_MOON_MULTIPLIER * child.data.a;
+					if (v > max) max = v;
+				} else if (ot === ObjectType.SPACECRAFT) {
+					const parent = this.bodies.bodiesById.get(child.data.parentId);
+					if (!parent) continue;
+					const v = f64dist(child.position, parent.position) / AU_SCALE;
+					if (v > max) max = v;
+				} else if (recurse && (ot === ObjectType.PLANET || ot === ObjectType.DWARF_PLANET)) {
+					// Spacecraft typically parent on the planet itself (naif-X99),
+					// not the system barycenter — walk one extra level so LEO/GEO
+					// sats and similar planet-orbiters are picked up.
+					visit(child.data.id, false);
+				}
+			}
+		};
+		visit(sysId, true);
+		return max > 0 ? max : Infinity;
 	}
 }

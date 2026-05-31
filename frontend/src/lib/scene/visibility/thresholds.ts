@@ -42,8 +42,14 @@ export const FOCUSED_FULL_MULTIPLIER_SPACECRAFT = 50; // TODO: check with spacec
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
 export const MAX_FULL_MOONS = 20;
 
-/** Below this distance, hide other systems (halos, orbits, spacecraft). */
-export const ZOOM_THRESHOLD_AU = 0.05;
+/**
+ * Moon semi-major axes are multiplied by this when contributing to the
+ * focus hide threshold, matching the convention that the threshold reflects
+ * a satellite's full orbital extent (≈ 2a for circular moons; raw distance
+ * for eccentric probes). Higher value = solar system stays visible longer
+ * after zooming into a planet (bigger overlap).
+ */
+export const FOCUS_HIDE_MOON_MULTIPLIER = 2;
 
 /** Shared ratio→VISIBILITY mapping used by both moon and planet/spacecraft visibility. */
 export function computeVisibilityFromRatio(
