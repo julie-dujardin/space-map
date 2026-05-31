@@ -182,8 +182,9 @@ export class VisibilityController {
 	 * Distance-ratio based visibility for non-moon, non-star bodies.
 	 * Probes get moon-style ratio gating using instantaneous distance-to-parent
 	 * as their characteristic length (no stable osculating `a`). Other planet-
-	 * orbiting bodies are binary FULL/HIDE on focused-system membership. Sun-
-	 * orbiting asteroids/comets/planets use the solar-orbit semi-major axis ratio.
+	 * orbiting bodies (promoted Earth sats etc.) get moon-style ratio gating
+	 * against their planet-relative `a`. Sun-orbiting asteroids/comets/planets
+	 * use the solar-orbit semi-major axis ratio.
 	 */
 	getPlanetVisibility(body: PositionedBody, camDistThreeJS: number): VISIBILITY {
 		// Check SPICE_PROBE before isSystemBody — Mars-zone probes carry parentId=naif-499,
@@ -194,7 +195,15 @@ export class VisibilityController {
 
 		if (this.bodies.isSystemBody(body)) {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
-			return VISIBILITY.FULL;
+			const refA = body.data.a;
+			if (!refA || refA <= 0) return VISIBILITY.FULL;
+			const isFocused = body.data.id === this.focusedBodyIdPlain;
+			return computeVisibilityFromRatio(
+				camDistThreeJS / AU_SCALE / refA,
+				this.scaledPlanetary,
+				FOCUSED_FULL_MULTIPLIER_MOON,
+				isFocused
+			);
 		}
 
 		// Sun-orbiting: walk up to the barycenter to find solar-orbit semi-major axis.
