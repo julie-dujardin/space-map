@@ -63,6 +63,7 @@ from space_map_data.export.systems import (
     load_clouds_metadata,
     load_gms,
     load_model_metadata,
+    load_night_metadata,
     load_nut_prec,
     load_nut_prec_angles,
     load_orientation,
@@ -555,6 +556,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     ring_metadata = load_ring_metadata(out_dir)
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
+    night_metadata = load_night_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
     model_metadata = load_model_metadata(out_dir)
     probe_kernel_sources = load_probe_kernel_sources()
@@ -609,6 +611,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             ring_metadata,
             clouds_metadata,
             specular_metadata,
+            night_metadata,
         )
         write_credits(
             session,

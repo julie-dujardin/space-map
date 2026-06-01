@@ -95,7 +95,12 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
     ``_try_skip`` (own snapshot-set comparison), so they aren't handled here.
     """
     type_ = entry.get("type")
-    if type_ in ("cylindrical", "cylindrical_monthly", "cylindrical_specular"):
+    if type_ in (
+        "cylindrical",
+        "cylindrical_monthly",
+        "cylindrical_specular",
+        "cylindrical_night_lights",
+    ):
         cur_align = existing.get("alignment") or DEFAULT_ALIGNMENT
         if cur_align != entry_alignment(entry):
             return "alignment changed"

@@ -19,6 +19,10 @@ EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
 # Suffix on the export directory holding a body's specular/roughness bundle —
 # sibling of the surface texture, mirrors the `_clouds` convention.
 SPECULAR_SUFFIX = "_specular"
+# Sibling bundle for an emissive night-lights map (e.g. NASA Black Marble for
+# Earth). Same shape as `_specular`: single-frame, served from
+# `{body}{NIGHT_SUFFIX}/{tier}.webp`.
+NIGHT_SUFFIX = "_night"
 
 # Cubemap face order, matching Three.js' CubeTextureLoader expectation
 # (+X, -X, +Y, -Y, +Z, -Z).

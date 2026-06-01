@@ -26,6 +26,9 @@ _CLOUDS_SUFFIX = "_clouds"
 # Sibling bundle holding a specular/roughness map for the host body
 # (e.g. naif-399_specular carries Earth's ocean mask).
 _SPECULAR_SUFFIX = "_specular"
+# Sibling bundle holding an emissive night-lights map for the host body
+# (e.g. naif-399_night carries NASA Black Marble for Earth).
+_NIGHT_SUFFIX = "_night"
 # Top-level celestial-sphere texture directory — `textures/stars/`. Holds the
 # cubemap-skybox bundle the renderer drops behind the whole scene as
 # `scene.background`. Not tied to any NAIF body.
@@ -137,8 +140,8 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
     """Load all per-body surface texture metadata.json files from the export tree.
 
     Returns {object_id: metadata_dict}. Sibling bundles whose directory ends
-    in ``_clouds`` or ``_specular`` are filtered out; use the dedicated
-    loaders for those.
+    in ``_clouds``, ``_specular`` or ``_night`` are filtered out; use the
+    dedicated loaders for those.
 
     Body ids come from the data dir (``out_dir/textures``) but metadata.json
     is read from the mirror dir; ingest writes the texture's webp variants
@@ -150,7 +153,7 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
         return result
     for body_dir in textures_dir.iterdir():
         if not body_dir.is_dir() or body_dir.name.endswith(
-            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX)
+            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX)
         ):
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
@@ -237,6 +240,50 @@ def specular_block(meta: dict) -> dict:
     Carries the export's own id (sibling directory of the surface texture),
     the available tier list, and attribution. The frontend composes URLs as
     ``/v1/textures/{specular.id}/{tier}.webp`` — single-frame, no per-frame
+    suffix.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "tiers": _tiers_from_meta(meta),
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
+
+
+def load_night_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load per-body night-lights metadata.json files from the export tree.
+
+    Returns {host_object_id: metadata_dict} keyed by the surface body's id
+    (e.g. ``naif-399`` for ``textures/naif-399_night/``). The full export
+    id is preserved in the metadata's own ``id`` field for URL composition.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, dict] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in textures_dir.iterdir():
+        if not body_dir.is_dir() or not body_dir.name.endswith(_NIGHT_SUFFIX):
+            continue
+        meta_file = mirror_path(body_dir / "metadata.json")
+        if meta_file.exists():
+            host_id = body_dir.name.removesuffix(_NIGHT_SUFFIX)
+            result[host_id] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded night-lights metadata for %d bodies", len(result))
+    return result
+
+
+def night_block(meta: dict) -> dict:
+    """Build the per-body ``night`` block emitted into systems/{bary}.json.
+
+    Carries the export's own id (sibling directory of the surface texture),
+    the available tier list, and attribution. The frontend composes URLs as
+    ``/v1/textures/{night.id}/{tier}.webp`` — single-frame, no per-frame
     suffix.
     """
     block: dict = {
@@ -445,6 +492,7 @@ def write_system_metadata(
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     specular_metadata: dict[str, dict],
+    night_metadata: dict[str, dict],
 ) -> None:
     """Generate one metadata file per planetary system.
 
@@ -550,6 +598,12 @@ def write_system_metadata(
             spec_meta = specular_metadata.get(obj.id)
             if spec_meta is not None:
                 entry["specular"] = specular_block(spec_meta)
+
+            # Night-lights emissive map (separate single-frame bundle
+            # parallel to the surface; e.g. naif-399 → NASA Black Marble).
+            night_meta = night_metadata.get(obj.id)
+            if night_meta is not None:
+                entry["night"] = night_block(night_meta)
 
             if entry:
                 bodies[obj.id] = entry

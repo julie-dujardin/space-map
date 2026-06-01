@@ -6,7 +6,9 @@ from space_map_data.export.systems import (
     _tiers_from_meta,
     clouds_block,
     load_clouds_metadata,
+    load_night_metadata,
     load_texture_metadata,
+    night_block,
     texture_attribution,
 )
 
@@ -158,3 +160,76 @@ class TestLoadTextureMetadataFiltersClouds:
         )
         result = load_texture_metadata(tmp_path)
         assert set(result.keys()) == {"naif-399"}
+
+    def test_skips_night_directory(self, tmp_path):
+        (tmp_path / "textures" / "naif-399").mkdir(parents=True)
+        (tmp_path / "textures" / "naif-399" / "metadata.json").write_text(
+            json.dumps({"id": "naif-399", "type": "cylindrical"})
+        )
+        (tmp_path / "textures" / "naif-399_night").mkdir(parents=True)
+        (tmp_path / "textures" / "naif-399_night" / "metadata.json").write_text(
+            json.dumps({"id": "naif-399_night", "type": "cylindrical_night_lights"})
+        )
+        result = load_texture_metadata(tmp_path)
+        assert set(result.keys()) == {"naif-399"}
+
+
+class TestNightBlock:
+    """night_block carries the export id, tiers, and attribution fields."""
+
+    def test_carries_export_id_tiers_and_required_fields(self):
+        meta = {
+            "id": "naif-399_night",
+            "source": "https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/",
+            "organisation": "NASA",
+            "type": "cylindrical_night_lights",
+            "exports": {"low": {"size_bytes": 1}, "high": {"size_bytes": 1}},
+        }
+        block = night_block(meta)
+        assert block["id"] == "naif-399_night"
+        assert block["tiers"] == ["high", "low"]
+        assert block["organisation"] == "NASA"
+        assert block["type"] == "cylindrical_night_lights"
+        assert "attribution" not in block
+        assert "description" not in block
+
+    def test_carries_optional_attribution_and_description(self):
+        block = night_block(
+            {
+                "id": "naif-399_night",
+                "source": "https://example.com",
+                "organisation": "NASA",
+                "type": "cylindrical_night_lights",
+                "attribution": "NASA Earth Observatory — Black Marble 2016.",
+                "description": "Emissive sibling.",
+                "exports": {"low": {"size_bytes": 1}},
+            }
+        )
+        assert block["attribution"].startswith("NASA Earth Observatory")
+        assert block["description"] == "Emissive sibling."
+
+
+class TestLoadNightMetadata:
+    """load_night_metadata strips the `_night` suffix and isolates the bundle."""
+
+    def _seed(self, out_dir, body_dir_name: str, meta: dict) -> None:
+        body = out_dir / "textures" / body_dir_name
+        body.mkdir(parents=True)
+        (body / "metadata.json").write_text(json.dumps(meta))
+
+    def test_keys_by_host_body_id(self, tmp_path):
+        self._seed(
+            tmp_path,
+            "naif-399_night",
+            {"id": "naif-399_night", "type": "cylindrical_night_lights"},
+        )
+        result = load_night_metadata(tmp_path)
+        assert set(result.keys()) == {"naif-399"}
+        assert result["naif-399"]["id"] == "naif-399_night"
+
+    def test_ignores_regular_texture_directories(self, tmp_path):
+        self._seed(tmp_path, "naif-499", {"id": "naif-499", "type": "cylindrical"})
+        assert load_night_metadata(tmp_path) == {}
+
+    def test_missing_textures_dir_returns_empty(self, tmp_path):
+        assert load_night_metadata(tmp_path) == {}

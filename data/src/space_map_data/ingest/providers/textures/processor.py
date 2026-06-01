@@ -223,6 +223,9 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_specular":
                 self._process_specular(entry, force=force)
                 continue
+            if entry.get("type") == "cylindrical_night_lights":
+                self._process_night_lights(entry, force=force)
+                continue
             if entry.get("type") == "cubemap_skybox":
                 self._process_skybox(entry, force=force)
                 continue
@@ -344,6 +347,58 @@ class TextureProcessor:
         )
         log.info(
             "processed specular %s → %s (%d exports)", src.name, object_id, len(exports)
+        )
+        return out_dir
+
+    def _process_night_lights(self, entry: dict, force: bool = False) -> Path:
+        """Process a `cylindrical_night_lights` entry — emissive sibling.
+
+        Output goes to ``{body}_night/`` — a sibling of the surface texture,
+        same single-frame shape as ``_specular``. The image is treated as a
+        plain RGB cylindrical map; the renderer samples it as an emissive
+        contribution multiplied by the body's unlit fraction.
+        """
+        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        if not src.exists():
+            msg = f"night-lights source missing: {entry['file']}"
+            log.warning(msg)
+            self._global_warnings.append(msg)
+            return config.PROCESSED_DIR
+
+        object_id = f"{entry['body']}{config.NIGHT_SUFFIX}"
+        out_dir = config.PROCESSED_DIR / object_id
+
+        # Helpers key off entry["body"]; override to the suffixed export id so
+        # the on-disk metadata.json's `id` matches the directory — same trick
+        # `_process_specular` and `_process_clouds` use.
+        entry = {**entry, "body": object_id}
+
+        if not force and self._try_skip(
+            out_dir, entry, attribution_file=src.name, label=object_id
+        ):
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img = open_image(src)
+        source_dims = [img.width, img.height]
+        img = align_cylindrical(img, **entry_alignment(entry))
+        exports, warnings = self._export(img, object_id, out_dir)
+        self._global_warnings.extend(warnings)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=src.name,
+            attribution_file=src.name,
+            source_dims=source_dims,
+            exports=exports,
+            extra_fields={"alignment": entry_alignment(entry)},
+        )
+        log.info(
+            "processed night-lights %s → %s (%d exports)",
+            src.name,
+            object_id,
+            len(exports),
         )
         return out_dir
 
