@@ -23,14 +23,18 @@ export interface NightMeta {
  * Black Marble composite is already pretty bright; trim it down so cities
  * don't read as a second illuminated hemisphere.
  */
-const NIGHT_INTENSITY = 1.2;
+const NIGHT_INTENSITY = 0.2;
 /**
  * Soft cutoff (in `dot(outward, sunDir)`) around the terminator. Negative
- * dot is the unlit side; positive is the lit side. The smoothstep band
- * gives the dusk strip a few-degree fade instead of a hard edge.
+ * dot is the unlit side; positive is the lit side. The band is biased
+ * heavily onto the lit side so emission has nearly reached full strength
+ * by the time `cos θ` Lambert falloff has driven the diffuse contribution
+ * to zero (around `dotNL ≈ 0`). Without that bias the diffuse term goes
+ * dark before the emissive term lights up, leaving a black wedge at the
+ * terminator.
  */
-const TERMINATOR_LOW = -0.15;
-const TERMINATOR_HIGH = 0.05;
+const TERMINATOR_LOW = -0.125;
+const TERMINATOR_HIGH = 0.1;
 
 const NIGHT_HOOK = Symbol('night-lights-hook');
 
@@ -93,10 +97,7 @@ export async function attachNightLights(
 			// Normalising in the fragment shader keeps the direction smooth
 			// across triaxial bodies.
 			shader.vertexShader = shader.vertexShader
-				.replace(
-					'#include <common>',
-					'#include <common>\nvarying vec3 vNightOutwardWorld;'
-				)
+				.replace('#include <common>', '#include <common>\nvarying vec3 vNightOutwardWorld;')
 				.replace(
 					'#include <begin_vertex>',
 					'#include <begin_vertex>\nvNightOutwardWorld = mat3(modelMatrix) * position;'
@@ -105,8 +106,10 @@ export async function attachNightLights(
 			shader.fragmentShader = shader.fragmentShader
 				.replace(
 					'#include <common>',
+					// `uSunDir` is declared by the eclipse-shadow hook we
+					// chain after; redeclaring would fail shader compilation
+					// with "'uSunDir' : redefinition".
 					`#include <common>
-					uniform vec3 uSunDir;
 					uniform float uNightIntensity;
 					varying vec3 vNightOutwardWorld;`
 				)
