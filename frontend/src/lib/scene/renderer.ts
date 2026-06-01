@@ -31,6 +31,7 @@ import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
+import { attachNomenclatureLabels } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
@@ -612,6 +613,9 @@ export class SceneRenderer {
 		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		loadBodyModel(bo, this.modelScene, this.ctx);
+		// Nomenclature labels are focus-scoped — only the focused body fetches
+		// and attaches them. Idempotent.
+		void attachNomenclatureLabels(bo);
 	}
 
 	clearUserPromoted(): void {

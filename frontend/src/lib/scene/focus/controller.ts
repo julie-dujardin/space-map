@@ -11,6 +11,7 @@ import {
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
 import { unloadBodyModel } from '$lib/scene/objects/body/model';
+import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
@@ -163,6 +164,7 @@ export class FocusController {
 			const prevBo = bodyObjects.get(prev.data.id);
 			if (prevBo) {
 				unloadBodyModel(prevBo);
+				disposeNomenclatureLabels(prevBo);
 				if (isMeshUpgradable(prev)) {
 					downgradeBodyMesh(prevBo, scene, clickables, meshToBody);
 				}

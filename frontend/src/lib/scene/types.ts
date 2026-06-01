@@ -77,6 +77,8 @@ export interface BodyObjects {
 	emissiveMap: Texture | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
+	/** IAU nomenclature labels attached to the body mesh; null when not loaded. */
+	nomenclatureLabels: CSS2DObject[] | null;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
 	/** Slug of the currently loaded model bundle. */

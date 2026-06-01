@@ -69,3 +69,16 @@
 .scene-label__name--large {
 	font-size: 16px;
 }
+
+/* IAU surface-feature labels — created by surface/nomenclature.ts. Smaller,
+ * dimmer than body labels; no halo, no interaction. */
+.scene-feature-label {
+	color: rgba(255, 255, 255, 0.7);
+	font-size: 10px;
+	white-space: nowrap;
+	pointer-events: none;
+	user-select: none;
+	text-shadow:
+		0 0 2px #000,
+		0 0 2px #000;
+}

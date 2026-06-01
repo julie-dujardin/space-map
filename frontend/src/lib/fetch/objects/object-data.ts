@@ -52,6 +52,9 @@ export interface GlobalObjectData {
 	id: string;
 	type: string;
 	name?: string;
+	/** True when this body has IAU planetary nomenclature features exported.
+	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
+	has_nomenclature?: true;
 	map_texture_available?: boolean;
 	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
 	texture?: TextureAttribution;

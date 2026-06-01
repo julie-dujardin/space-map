@@ -177,6 +177,7 @@ export function buildMajorBodies(
 			specularMap: null,
 			emissiveMap: null,
 			eclipseShadow,
+			nomenclatureLabels: null,
 			model: null
 		});
 	}

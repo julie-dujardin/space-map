@@ -11,6 +11,7 @@ import {
 } from '../label/culling';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
+import { updateNomenclatureVisibility } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
@@ -254,6 +255,9 @@ export function updateBodyVisibility(
 		}
 
 		applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
+
+		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
+		updateNomenclatureVisibility(bo, isFocused, nomScreenR, camera);
 	}
 
 	// Keys are subgroup keys (`${zone}#${i}`) from PointCloudSystem's hash-split.

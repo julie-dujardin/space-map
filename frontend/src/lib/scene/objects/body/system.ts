@@ -27,6 +27,7 @@ import {
 	disposeNightLightsFromMaterial,
 	type NightMeta
 } from '../surface/night-lights';
+import { disposeNomenclatureLabels } from '../surface/nomenclature';
 import type { BodyObjects } from '../../types';
 import {
 	applyRadiiToMesh,
@@ -349,5 +350,6 @@ export function unloadSystemTextures(
 			disposeCloudNode(cloud);
 			bo.clouds = null;
 		}
+		disposeNomenclatureLabels(bo);
 	}
 }
