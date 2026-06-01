@@ -189,6 +189,16 @@ export async function loadSystemData(
 		// scene uniforms for the sun direction.
 		if (bodyMeta.night && !bo.emissiveMap && bo.mesh) {
 			const nightMeta = bodyMeta.night;
+			if (ctx) {
+				ctx.credits.registerNight({
+					bodyId,
+					systemId: barycenterId,
+					source: nightMeta.source,
+					organisation: nightMeta.organisation,
+					attribution: nightMeta.attribution,
+					description: nightMeta.description
+				});
+			}
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
 				attachNightLights(material, nightMeta, 'low', textureLoader).then((tex) => {

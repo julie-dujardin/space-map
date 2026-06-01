@@ -625,6 +625,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             texture_metadata,
             ring_metadata,
             clouds_metadata,
+            night_metadata,
             skybox_metadata,
             model_metadata,
         )

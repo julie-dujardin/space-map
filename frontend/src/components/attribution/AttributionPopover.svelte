@@ -75,6 +75,10 @@
 		void ctx.credits.cloudVersion;
 		return scopedCredits(ctx.credits.cloud.values());
 	});
+	const nightList = $derived.by(() => {
+		void ctx.credits.nightVersion;
+		return scopedCredits(ctx.credits.night.values());
+	});
 
 	// 3D models are body-scoped (only the focused probe's model is in the
 	// scene). The popover shows the focused body's model credit directly.
@@ -159,6 +163,17 @@
 			<ul class="space-y-0.5">
 				{#each cloudList as c (c.bodyId)}
 					<li>{@render link(c.source, bodyName(c.bodyId), c.organisation)}</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if nightList.length > 0}
+		<section class="space-y-1">
+			{@render sectionHeader(m.attribution_section_night())}
+			<ul class="space-y-0.5">
+				{#each nightList as n (n.bodyId)}
+					<li>{@render link(n.source, bodyName(n.bodyId), n.organisation)}</li>
 				{/each}
 			</ul>
 		</section>

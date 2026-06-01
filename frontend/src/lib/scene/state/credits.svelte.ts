@@ -49,6 +49,21 @@ export interface CloudCredit {
 }
 
 /**
+ * Per-body night-lights attribution recorded when its system metadata loads.
+ * Sibling to {@link CloudCredit} — same scoping rules apply. Earth is the
+ * only producer today; the credits page surfaces these under their own
+ * "Night lights" section.
+ */
+export interface NightCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Per-body spacecraft-model attribution, recorded when its GLB finishes
  * loading. Scoped to the focused body only — the popover/bar surface this
  * for the single focused probe (vs. textures, which spread across a whole
@@ -91,6 +106,8 @@ export class CreditsStore {
 	ringVersion = $state(0);
 	cloud = new Map<string, CloudCredit>();
 	cloudVersion = $state(0);
+	night = new Map<string, NightCredit>();
+	nightVersion = $state(0);
 	model = new Map<string, ModelCredit>();
 	modelVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
@@ -119,6 +136,12 @@ export class CreditsStore {
 		if (this.cloud.has(credit.bodyId)) return;
 		this.cloud.set(credit.bodyId, credit);
 		this.cloudVersion++;
+	}
+
+	registerNight(credit: NightCredit): void {
+		if (this.night.has(credit.bodyId)) return;
+		this.night.set(credit.bodyId, credit);
+		this.nightVersion++;
 	}
 
 	registerModel(credit: ModelCredit): void {

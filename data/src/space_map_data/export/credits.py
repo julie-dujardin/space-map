@@ -194,6 +194,7 @@ def write_credits(
     texture_metadata: dict[str, dict],
     ring_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    night_metadata: dict[str, dict],
     skybox_metadata: dict | None,
     model_metadata: dict[str, dict],
 ) -> None:
@@ -204,14 +205,19 @@ def write_credits(
     alphabetical list. A final null-id group collects standalones (sun-
     orbiting asteroids and dwarf planets like Bennu or Ceres) that don't
     belong to a system. Each system bucket carries sibling `textures`,
-    `rings`, and `clouds` arrays — all optional; only populated arrays are
-    emitted. The whole-sky cubemap skybox is a one-off backdrop with no host
-    body, so it rides at the top level alongside `systems`.
+    `rings`, `clouds`, and `night` arrays — all optional; only populated
+    arrays are emitted. The whole-sky cubemap skybox is a one-off backdrop
+    with no host body, so it rides at the top level alongside `systems`.
     """
     # Model metadata is keyed by slug, not object_id — those keys aren't
     # Object.id values and would just produce empty rows on the DB lookup
     # below, so they're excluded from the body_ids set.
-    body_ids = set(texture_metadata) | set(ring_metadata) | set(clouds_metadata)
+    body_ids = (
+        set(texture_metadata)
+        | set(ring_metadata)
+        | set(clouds_metadata)
+        | set(night_metadata)
+    )
     objects = session.query(Object).filter(Object.id.in_(body_ids)).all()
     by_id = {obj.id: obj for obj in objects}
 
@@ -267,16 +273,35 @@ def write_credits(
             _sibling_credit_entry(body_id, _body_name(obj), meta)
         )
 
+    night_grouped: dict[str | None, list[dict]] = {}
+    for body_id, meta in night_metadata.items():
+        obj = by_id.get(body_id)
+        if obj is None:
+            logger.warning(
+                "Night-lights metadata for %s has no matching Object row; skipping",
+                body_id,
+            )
+            continue
+        sys_id = _resolve_system_id(obj, bary_by_id, child_to_bary)
+        night_grouped.setdefault(sys_id, []).append(
+            _sibling_credit_entry(body_id, _body_name(obj), meta)
+        )
+
     for entries in textures_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
     for entries in rings_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
     for entries in clouds_grouped.values():
         entries.sort(key=lambda e: e["name"].lower())
+    for entries in night_grouped.values():
+        entries.sort(key=lambda e: e["name"].lower())
 
     # Systems first, in Mercury → Pluto order; standalones last.
     sys_ids: set[str | None] = (
-        set(textures_grouped) | set(rings_grouped) | set(clouds_grouped)
+        set(textures_grouped)
+        | set(rings_grouped)
+        | set(clouds_grouped)
+        | set(night_grouped)
     )
     systems_out: list[dict] = []
     for sys_id in sorted(
@@ -293,6 +318,8 @@ def write_credits(
             bucket["rings"] = rings_grouped[sys_id]
         if sys_id in clouds_grouped:
             bucket["clouds"] = clouds_grouped[sys_id]
+        if sys_id in night_grouped:
+            bucket["night"] = night_grouped[sys_id]
         systems_out.append(bucket)
     if None in sys_ids:
         bucket = {"id": None, "name": None}
@@ -302,6 +329,8 @@ def write_credits(
             bucket["rings"] = rings_grouped[None]
         if None in clouds_grouped:
             bucket["clouds"] = clouds_grouped[None]
+        if None in night_grouped:
+            bucket["night"] = night_grouped[None]
         systems_out.append(bucket)
 
     models_out = _build_models_credits(model_metadata)
@@ -320,12 +349,14 @@ def write_credits(
     n_textures = sum(len(g) for g in textures_grouped.values())
     n_rings = sum(len(g) for g in rings_grouped.values())
     n_clouds = sum(len(g) for g in clouds_grouped.values())
+    n_night = sum(len(g) for g in night_grouped.values())
     logger.info(
-        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded bodies, %d model source%s%s)",
+        "Wrote credits.json (%d systems, %d textured / %d ringed / %d clouded / %d night-lit bodies, %d model source%s%s)",
         len(systems_out),
         n_textures,
         n_rings,
         n_clouds,
+        n_night,
         len(models_out),
         "" if len(models_out) == 1 else "s",
         ", + skybox" if skybox_metadata is not None else "",

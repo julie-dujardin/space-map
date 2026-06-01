@@ -45,6 +45,19 @@ export interface CloudCredit {
 }
 
 /**
+ * Per-body night-lights credit — same shape as {@link CloudCredit}; the
+ * array name disambiguates it from surface imagery.
+ */
+export interface NightCredit {
+	body_id: string;
+	name: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Credit-worthy bodies grouped by planetary system. `id`/`name` are null for
  * the standalone bucket (sun-orbiting bodies like Bennu or Ceres that don't
  * belong to any planetary system). `textures`, `rings`, and `clouds` are all
@@ -56,6 +69,7 @@ export interface SystemGroup {
 	textures?: TextureCredit[];
 	rings?: RingCredit[];
 	clouds?: CloudCredit[];
+	night?: NightCredit[];
 }
 
 /**

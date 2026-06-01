@@ -158,6 +158,29 @@
 			</section>
 		{/if}
 
+		{#if credits.systems.some((g) => g.night && g.night.length > 0)}
+			<section>
+				{@render sectionHeader(m.attribution_section_night())}
+				{#each credits.systems as group (group.id ?? '__standalone__')}
+					{#if group.night && group.night.length > 0}
+						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
+							{group.name ?? m.credits_other_bodies()}
+						</h3>
+						<ul class="space-y-1">
+							{#each group.night as n (n.body_id)}
+								<li>
+									{@render link(n.source, n.name, n.organisation)}
+									{#if n.attribution}
+										<div class="text-xs text-muted-foreground mt-0.5">{n.attribution}</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/each}
+			</section>
+		{/if}
+
 		{#if credits.systems.some((g) => g.textures && g.textures.length > 0)}
 			<section>
 				{@render sectionHeader(m.attribution_section_imagery())}
