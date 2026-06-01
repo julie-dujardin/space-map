@@ -17,7 +17,11 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
-from space_map_data.export.nomenclature.format import pack_header, pack_record
+from space_map_data.export.nomenclature.format import (
+    pack_header,
+    pack_record,
+    quantize_lon_e7,
+)
 from space_map_data.export.position.format import quantize_deg
 from space_map_data.models.feature import Feature
 
@@ -81,7 +85,7 @@ def _build_positions(features: list[Feature]) -> bytes:
             pack_record(
                 feature_id=f.feature_id,
                 center_lat_e7=quantize_deg(f.center_lat),
-                center_lon_e7=quantize_deg(f.center_lon),
+                center_lon_e7=quantize_lon_e7(f.center_lon),
                 diameter_m=max(0, int(round(diameter_km * 1000.0))),
                 type_code=f.feature_type_code,
             )

@@ -17,15 +17,17 @@ Per-feature record (20 bytes, 4-aligned):
 
     Offset  Type     Field
     0       uint32   feature_id
-    4       int32    center_lat_e7        (deg × 1e7)
-    8       int32    center_lon_e7        (deg × 1e7; planetographic)
+    4       int32    center_lat_e7        (deg × 1e7; planetographic, ±90)
+    8       uint32   center_lon_e7        (deg × 1e7; planetographic, east-positive 0..360)
     12      uint32   diameter_m           (metres; 0 when unknown)
     16      char[2]  type_code            (ASCII IAU 2-letter code)
     18      uint8    flags                (reserved)
     19      uint8    reserved (0)
 
-Lat/lon quantisation reuses ``quantize_deg`` from ``export/position/format.py``
-so the encoding stays consistent with landed-probe records.
+Latitude reuses ``quantize_deg`` from ``export/position/format.py`` (int32×1e7,
+matches landed-probe records). Longitude is uint32×1e7 — IAU planetographic
+ships east-positive 0..360, and the unsigned range fits the full 360°
+(int32×1e7 would saturate above ~214.75°).
 """
 
 import struct
@@ -39,8 +41,18 @@ RECORD_SIZE = 20
 _HEADER_STRUCT = struct.Struct("<4sHBBII")
 assert _HEADER_STRUCT.size == HEADER_SIZE
 
-_RECORD_STRUCT = struct.Struct("<IiiI2sBB")
+_RECORD_STRUCT = struct.Struct("<IiII2sBB")
 assert _RECORD_STRUCT.size == RECORD_SIZE
+
+
+def quantize_lon_e7(lon_deg: float) -> int:
+    """Lon degrees → uint32×1e7, wrapped to east-positive [0, 360).
+
+    Tolerant of ±180 inputs (Python's ``%`` returns non-negative for a
+    positive divisor) — any body's lon convention round-trips into the
+    SMNF east-positive form.
+    """
+    return int(round((lon_deg % 360.0) * 1e7))
 
 
 def pack_header(feature_count: int) -> bytes:
@@ -62,7 +74,8 @@ def pack_record(
     type_code: str,
     flags: int = 0,
 ) -> bytes:
-    """Pack one per-feature record. Lat/lon already quantised by caller."""
+    """Pack one per-feature record. Lat is int32, lon is uint32 (0..360°),
+    both already quantised at 1e7 by caller."""
     return _RECORD_STRUCT.pack(
         feature_id,
         center_lat_e7,

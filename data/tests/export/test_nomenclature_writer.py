@@ -5,6 +5,7 @@ import struct
 from unittest.mock import MagicMock
 
 import orjson
+import pytest
 
 from space_map_data.export.nomenclature.format import HEADER_SIZE, RECORD_SIZE
 from space_map_data.export.nomenclature.writer import (
@@ -43,7 +44,7 @@ class TestBuildPositions:
         count = struct.unpack("<I", buf[8:12])[0]
         assert count == 2
         rec0 = buf[HEADER_SIZE : HEADER_SIZE + RECORD_SIZE]
-        fid, lat, lon, diam, code, _flags, _r = struct.unpack("<IiiI2sBB", rec0)
+        fid, lat, lon, diam, code, _flags, _r = struct.unpack("<IiII2sBB", rec0)
         assert fid == 10
         assert lat == 0
         assert lon == 0
@@ -55,6 +56,19 @@ class TestBuildPositions:
         buf = _build_positions(feats)
         diam = struct.unpack("<I", buf[HEADER_SIZE + 12 : HEADER_SIZE + 16])[0]
         assert diam == 0
+
+    def test_iau_360_longitudes_round_trip(self):
+        # IAU KML ships most bodies east-positive 0..360; uint32×1e7 fits.
+        feats = [_feat(feature_id=42, center_lon=358.1489)]
+        buf = _build_positions(feats)
+        lon_e7 = struct.unpack("<I", buf[HEADER_SIZE + 8 : HEADER_SIZE + 12])[0]
+        assert lon_e7 / 1e7 == pytest.approx(358.1489, abs=1e-4)
+
+    def test_negative_longitudes_wrap_to_east_positive(self):
+        feats = [_feat(feature_id=43, center_lon=-11.36)]
+        buf = _build_positions(feats)
+        lon_e7 = struct.unpack("<I", buf[HEADER_SIZE + 8 : HEADER_SIZE + 12])[0]
+        assert lon_e7 / 1e7 == pytest.approx(348.64, abs=1e-4)
 
 
 class TestBuildGlobal:

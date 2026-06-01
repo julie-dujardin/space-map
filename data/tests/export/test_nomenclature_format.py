@@ -10,6 +10,7 @@ from space_map_data.export.nomenclature.format import (
     _encode_type_code,
     pack_header,
     pack_record,
+    quantize_lon_e7,
 )
 
 
@@ -33,15 +34,15 @@ class TestPackRecord:
         buf = pack_record(
             feature_id=15600,
             center_lat_e7=-203_000_000,
-            center_lon_e7=105_000_000,
+            center_lon_e7=3_500_000_000,
             diameter_m=92_000,
             type_code="AA",
         )
         assert len(buf) == RECORD_SIZE
-        fid, lat, lon, diam, code, flags, _r = struct.unpack("<IiiI2sBB", buf)
+        fid, lat, lon, diam, code, flags, _r = struct.unpack("<IiII2sBB", buf)
         assert fid == 15600
         assert lat == -203_000_000
-        assert lon == 105_000_000
+        assert lon == 3_500_000_000
         assert diam == 92_000
         assert code == b"AA"
         assert flags == 0
@@ -50,6 +51,20 @@ class TestPackRecord:
         buf = pack_record(1, 0, 0, 0, "MO", flags=1)
         flags = buf[18]
         assert flags == 1
+
+
+class TestQuantizeLon:
+    def test_east_positive_passes_through(self):
+        assert quantize_lon_e7(358.1489) == 3_581_489_000
+
+    def test_negative_wraps_to_east_positive(self):
+        assert quantize_lon_e7(-11.36) == round((360.0 - 11.36) * 1e7)
+
+    def test_zero(self):
+        assert quantize_lon_e7(0.0) == 0
+
+    def test_360_wraps_to_zero(self):
+        assert quantize_lon_e7(360.0) == 0
 
 
 class TestEncodeTypeCode:
