@@ -38,6 +38,7 @@ class ObjectDataContext:
     texture_metadata: dict[str, dict]
     clouds_metadata: dict[str, dict]
     probe_kernel_sources: dict[int, str]
+    nomenclature_body_ids: set[str]
 
 
 @dataclass
@@ -110,6 +111,7 @@ def build_zone_object_data(
         texture_metadata=ctx.texture_metadata,
         clouds_metadata=ctx.clouds_metadata,
         probe_kernel_sources=ctx.probe_kernel_sources,
+        nomenclature_body_ids=ctx.nomenclature_body_ids,
     )
 
 

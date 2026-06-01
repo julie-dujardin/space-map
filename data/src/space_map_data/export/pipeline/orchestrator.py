@@ -26,6 +26,10 @@ from space_map_data.export.credits import write_credits
 from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
+from space_map_data.export.nomenclature.writer import (
+    build_nomenclature,
+    write_nomenclature_files,
+)
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     write_object_bundles,
@@ -541,6 +545,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     t0 = time.monotonic()
     with Session(engine) as session:
         precheck_tables(session)
+        nomenclature_payload = build_nomenclature(session)
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
     remove_old_outputs(out_dir)
@@ -572,6 +577,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         texture_metadata=texture_metadata,
         clouds_metadata=clouds_metadata,
         probe_kernel_sources=probe_kernel_sources,
+        nomenclature_body_ids=set(nomenclature_payload.keys()),
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)
@@ -646,6 +652,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     bundle_ns = write_object_bundles(
         out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
     )
+    write_nomenclature_files(out_dir, nomenclature_payload)
     write_global_labels(
         out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
     )

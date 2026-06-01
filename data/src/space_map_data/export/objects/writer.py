@@ -203,6 +203,7 @@ def build_chunk_object_data(
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str],
+    nomenclature_body_ids: set[str],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -247,6 +248,7 @@ def build_chunk_object_data(
             texture_metadata,
             clouds_metadata,
             probe_kernel_sources,
+            nomenclature_body_ids,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -332,6 +334,7 @@ def _build_global(
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str],
+    nomenclature_body_ids: set[str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -354,6 +357,8 @@ def _build_global(
         data["clouds"] = clouds_block(clouds_meta)
     if obj.has_rings:
         data["has_rings"] = True
+    if obj.id in nomenclature_body_ids:
+        data["has_nomenclature"] = True
     if obj.name is not None:
         data["name"] = obj.name
     if obj.mpc_designation is not None:

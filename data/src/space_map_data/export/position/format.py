@@ -364,7 +364,7 @@ LANDED_FLAG_STATIC = 0x01
 LANDED_LATLNG_SCALE = 10_000_000  # 1e7
 
 
-def _quantize_deg(deg: float) -> int:
+def quantize_deg(deg: float) -> int:
     """Lat/lng degrees → int32 with 1e7 scale, clamped to int32 range."""
     return max(
         -2_147_483_647, min(2_147_483_647, int(round(deg * LANDED_LATLNG_SCALE)))
@@ -402,8 +402,8 @@ def pack_landed_payload(
         b"\x00\x00\x00",
         int(start_offset_s),
         int(end_offset_s),
-        _quantize_deg(lat_ref_deg),
-        _quantize_deg(lng_ref_deg),
+        quantize_deg(lat_ref_deg),
+        quantize_deg(lng_ref_deg),
         _quantize_alt_m(alt_ref_m),
         len(samples),
     )
@@ -415,8 +415,8 @@ def pack_landed_payload(
             sample_buf,
             i * LANDED_SAMPLE_SIZE,
             int(et_offset_s),
-            _quantize_deg(lat_deg),
-            _quantize_deg(lng_deg),
+            quantize_deg(lat_deg),
+            quantize_deg(lng_deg),
             _quantize_alt_m(alt_m),
         )
     return header + bytes(sample_buf)
