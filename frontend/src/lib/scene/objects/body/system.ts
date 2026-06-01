@@ -22,6 +22,11 @@ import {
 	disposeSpecularFromMaterial,
 	type SpecularMeta
 } from '../surface/specular';
+import {
+	attachNightLights,
+	disposeNightLightsFromMaterial,
+	type NightMeta
+} from '../surface/night-lights';
 import type { BodyObjects } from '../../types';
 import {
 	applyRadiiToMesh,
@@ -73,6 +78,12 @@ interface SystemBodyMeta {
 	 * URLs as `/v1/textures/{specular.id}/{tier}.webp` (id ends in `_specular`).
 	 */
 	specular?: SpecularMeta;
+	/**
+	 * Night-lights emissive sibling bundle — present only on bodies whose
+	 * ingest produced one (Earth today). Single-frame; the renderer composes
+	 * URLs as `/v1/textures/{night.id}/{tier}.webp` (id ends in `_night`).
+	 */
+	night?: NightMeta;
 }
 
 /**
@@ -168,6 +179,25 @@ export async function loadSystemData(
 						return;
 					}
 					bo.specularMap = tex;
+				})
+			);
+		}
+
+		// Night-lights emissive sibling — patches the body's material so the
+		// unlit hemisphere glows with city lights. Same idempotent pattern
+		// as the specular branch; the shader hook reuses the eclipse-shadow
+		// scene uniforms for the sun direction.
+		if (bodyMeta.night && !bo.emissiveMap && bo.mesh) {
+			const nightMeta = bodyMeta.night;
+			const material = bo.mesh.material as MeshStandardMaterial;
+			promises.push(
+				attachNightLights(material, nightMeta, 'low', textureLoader).then((tex) => {
+					if (!tex) return;
+					if (bo.emissiveMap) {
+						tex.dispose();
+						return;
+					}
+					bo.emissiveMap = tex;
 				})
 			);
 		}
@@ -290,6 +320,10 @@ export function unloadSystemTextures(
 		if (bo.specularMap && bo.mesh) {
 			disposeSpecularFromMaterial(bo.mesh.material as MeshStandardMaterial);
 			bo.specularMap = null;
+		}
+		if (bo.emissiveMap && bo.mesh) {
+			disposeNightLightsFromMaterial(bo.mesh.material as MeshStandardMaterial);
+			bo.emissiveMap = null;
 		}
 		const ring = bo.rings;
 		if (ring) {

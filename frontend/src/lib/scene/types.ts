@@ -72,6 +72,9 @@ export interface BodyObjects {
 	atmosphere: AtmosphereNode | null;
 	/** Specular/roughness map. Stays at the low tier — binary mask doesn't benefit from LOD. */
 	specularMap: Texture | null;
+	/** Emissive night-lights map. Stays at the low tier — only sampled on the
+	 *  unlit side, so fine detail isn't worth the bandwidth. */
+	emissiveMap: Texture | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */

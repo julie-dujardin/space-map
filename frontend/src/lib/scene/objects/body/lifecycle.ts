@@ -175,6 +175,7 @@ export function buildMajorBodies(
 			clouds: null,
 			atmosphere,
 			specularMap: null,
+			emissiveMap: null,
 			eclipseShadow,
 			model: null
 		});
