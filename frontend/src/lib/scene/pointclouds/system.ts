@@ -319,25 +319,13 @@ export class PointCloudSystem {
 
 	rebuildBasis(): void {
 		this.basisPos = [...this.focus.focusTruePos];
-		// Iterate the data buckets (zone/parent keyed) so each parent enters the
-		// dirty set once. Points map keys are subgroup-suffixed and would add
-		// each parent K times — Set dedups but the work is wasted.
-		for (const zone of this.ctx.bodies.asteroidBodiesByZone.keys()) {
-			this.ctx.bodies.dirtyAsteroidZones.add(zone);
-		}
-		for (const gid of this.ctx.bodies.spacecraftByParent.keys()) {
-			this.ctx.bodies.dirtySpacecraftGroups.add(gid);
-		}
-		this.rebuildMinor();
-		// Don't reset parent snapshots: vertex buffers were rewritten from the
-		// stale `body.position` left over from the last round-robin write, so
-		// the snapshot must stay pinned to that same moment. Resetting it would
-		// make parentShift undercompensate and the cluster would jump.
+		// Asteroid/spacecraft cols are basis-independent — the worker picks up
+		// `basisPos` from each `orbitPool.tick`, and each Points renders against
+		// its pinned `frontBasis` until the new result lands, so no re-pack here.
 		this.rebuildMoons();
 		this.onBasisRebuilt();
-		// (basis − focus) = 0 now, but parentShift is non-zero. Repositioning
-		// applies the shift; hardcoding 0 misplaces clusters by ~parentShift
-		// for one frame — reads as a visibility flicker at high time rates.
+		// parentShift is non-zero even with (basis − focus) = 0; reposition()
+		// applies it to avoid a one-frame cluster jump at high time rates.
 		this.reposition();
 	}
 
