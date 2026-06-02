@@ -102,6 +102,8 @@ def _build_global(features: list[Feature]) -> dict[str, dict]:
             entry["approval_date"] = f.approval_date.isoformat()
         if f.origin:
             entry["origin"] = f.origin
+        if f.parent_feature_id is not None:
+            entry["parent_feature_id"] = f.parent_feature_id
         out[str(f.feature_id)] = entry
     return out
 
