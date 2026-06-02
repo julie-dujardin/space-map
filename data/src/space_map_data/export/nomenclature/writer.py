@@ -99,9 +99,7 @@ def _build_global(features: list[Feature]) -> dict[str, dict]:
     for f in features:
         entry: dict = {"name": f.unicode_name or f.name}
         if f.approval_date:
-            entry["approval_date"] = f.approval_date
-        if f.approval_status:
-            entry["approval_status"] = f.approval_status
+            entry["approval_date"] = f.approval_date.isoformat()
         if f.origin:
             entry["origin"] = f.origin
         out[str(f.feature_id)] = entry

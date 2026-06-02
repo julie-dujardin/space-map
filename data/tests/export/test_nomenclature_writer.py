@@ -1,5 +1,6 @@
 """Tests for the nomenclature export writer."""
 
+import datetime
 import gzip
 import struct
 from unittest.mock import MagicMock
@@ -26,7 +27,6 @@ def _feat(**kwargs) -> Feature:
         "center_lat": -43.31,
         "center_lon": -11.36,
         "diameter": 85.29,
-        "feature_type": "Crater, craters",
         "feature_type_code": "AA",
     }
     defaults.update(kwargs)
@@ -73,13 +73,19 @@ class TestBuildPositions:
 
 class TestBuildGlobal:
     def test_picks_unicode_name(self):
-        feats = [_feat(name="Plain", unicode_name="Plàin", approval_date="1935")]
+        feats = [
+            _feat(
+                name="Plain",
+                unicode_name="Plàin",
+                approval_date=datetime.date(1935, 1, 1),
+            )
+        ]
         out = _build_global(feats)
         assert out["1"]["name"] == "Plàin"
-        assert out["1"]["approval_date"] == "1935"
+        assert out["1"]["approval_date"] == "1935-01-01"
 
     def test_omits_none_fields(self):
-        feats = [_feat(approval_date=None, origin=None, approval_status=None)]
+        feats = [_feat(approval_date=None, origin=None)]
         out = _build_global(feats)
         assert out["1"] == {"name": "Tycho"}
 

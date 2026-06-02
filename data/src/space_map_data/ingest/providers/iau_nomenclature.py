@@ -1,5 +1,6 @@
 """Ingest IAU planetary nomenclature KML data into the database."""
 
+import datetime
 import logging
 import xml.etree.ElementTree as ET
 import zipfile
@@ -8,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import delete, func, insert, update
 from tqdm import tqdm
 
+from space_map_data.constants.continents import Continent
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.convert import float_or_none, string_or_none
 from space_map_data.models.feature import Feature
@@ -17,6 +19,31 @@ from space_map_data.utils.db import get_session
 logger = logging.getLogger(__name__)
 
 KML_NS = "{http://www.opengis.net/kml/2.2}"
+
+
+def _parse_approval_date(val: str) -> datetime.date | None:
+    """KML ``approvaldt`` is ``'YYYY/MM/DD HH:MM:SS'`` (time always midnight)."""
+    val = (val or "").strip()
+    if not val:
+        return None
+    date_part = val.split(" ", 1)[0]
+    try:
+        return datetime.datetime.strptime(date_part, "%Y/%m/%d").date()
+    except ValueError:
+        logger.warning("Unparseable IAU approval_date %r, dropping", val)
+        return None
+
+
+def _parse_continent(val: str) -> Continent | None:
+    """Normalize the KML ``continent`` label to the Continent enum."""
+    val = (val or "").strip()
+    if not val:
+        return None
+    try:
+        return Continent(val)
+    except ValueError:
+        logger.warning("Unknown IAU continent %r, dropping", val)
+        return None
 
 
 def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:
@@ -51,20 +78,18 @@ def _parse_kml(kml_bytes: bytes, target: str) -> list[dict]:
                 name=fields.get("clean_name", name_el.text),
                 unicode_name=name_el.text,
                 target=target,
-                approval_date=string_or_none(fields.get("approvaldt", "")),
+                approval_date=_parse_approval_date(fields.get("approvaldt", "")),
                 origin=string_or_none(fields.get("origin", "")),
                 diameter=float_or_none(fields.get("diameter", "")),
                 center_lon=float_or_none(fields.get("center_lon", "")),
                 center_lat=float_or_none(fields.get("center_lat", "")),
-                feature_type=string_or_none(fields.get("type", "")),
                 feature_type_code=string_or_none(fields.get("code", "")),
-                approval_status=string_or_none(fields.get("approval", "")),
                 min_lon=float_or_none(fields.get("min_lon", "")),
                 max_lon=float_or_none(fields.get("max_lon", "")),
                 min_lat=float_or_none(fields.get("min_lat", "")),
                 max_lat=float_or_none(fields.get("max_lat", "")),
                 ethnicity=string_or_none(fields.get("ethnicity", "")),
-                continent=string_or_none(fields.get("continent", "")),
+                continent=_parse_continent(fields.get("continent", "")),
                 quad_name=string_or_none(fields.get("quad_name", "")),
                 quad_code=string_or_none(fields.get("quad_code", "")),
             )

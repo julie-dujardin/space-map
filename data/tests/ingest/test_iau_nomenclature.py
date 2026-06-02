@@ -1,8 +1,15 @@
 """Unit tests for IAU nomenclature KML parsing."""
 
+import datetime
+
 import pytest
 
-from space_map_data.ingest.providers.iau_nomenclature import _parse_kml
+from space_map_data.constants.continents import Continent
+from space_map_data.ingest.providers.iau_nomenclature import (
+    _parse_approval_date,
+    _parse_continent,
+    _parse_kml,
+)
 
 KML_NS = "http://www.opengis.net/kml/2.2"
 
@@ -25,8 +32,9 @@ def _make_placemark(
     *,
     clean_name: str | None = None,
     diameter: str = "100.0",
-    feature_type: str = "Crater",
-    approval: str = "Adopted",
+    code: str = "AA",
+    approvaldt: str = "",
+    continent: str = "",
 ) -> str:
     """Build a single Placemark XML fragment."""
     clean_name_field = (
@@ -40,8 +48,9 @@ def _make_placemark(
       {clean_name_field}
       <SimpleData name="link">https://planetarynames.usgs.gov/Feature/{feature_id}</SimpleData>
       <SimpleData name="diameter">{diameter}</SimpleData>
-      <SimpleData name="type">{feature_type}</SimpleData>
-      <SimpleData name="approval">{approval}</SimpleData>
+      <SimpleData name="code">{code}</SimpleData>
+      <SimpleData name="approvaldt">{approvaldt}</SimpleData>
+      <SimpleData name="continent">{continent}</SimpleData>
       <SimpleData name="center_lon">10.5</SimpleData>
       <SimpleData name="center_lat">-20.3</SimpleData>
     </SchemaData>
@@ -118,3 +127,43 @@ class TestParseKml:
         kml = _make_kml()
         rows = _parse_kml(kml, "ceres")
         assert rows == []
+
+    def test_approval_date_and_continent_parsed(self):
+        kml = _make_kml(
+            _make_placemark(
+                "Occator",
+                15600,
+                approvaldt="2014/07/03 00:00:00",
+                continent="Europe",
+            )
+        )
+        rows = _parse_kml(kml, "ceres")
+        assert rows[0]["approval_date"] == datetime.date(2014, 7, 3)
+        assert rows[0]["continent"] is Continent.EUROPE
+
+
+class TestParseApprovalDate:
+    def test_iau_format(self):
+        assert _parse_approval_date("2014/07/03 00:00:00") == datetime.date(2014, 7, 3)
+
+    def test_empty(self):
+        assert _parse_approval_date("") is None
+        assert _parse_approval_date("   ") is None
+
+    def test_garbage_returns_none(self):
+        assert _parse_approval_date("not a date") is None
+
+
+class TestParseContinent:
+    def test_known(self):
+        assert _parse_continent("Europe") is Continent.EUROPE
+        assert _parse_continent("South and Central America") is (
+            Continent.SOUTH_AND_CENTRAL_AMERICA
+        )
+
+    def test_empty(self):
+        assert _parse_continent("") is None
+        assert _parse_continent("  ") is None
+
+    def test_unknown_returns_none(self):
+        assert _parse_continent("Atlantis") is None
