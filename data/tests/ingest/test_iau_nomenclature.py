@@ -1,11 +1,17 @@
 """Unit tests for IAU nomenclature KML parsing."""
 
 import datetime
+from collections import defaultdict
+from types import SimpleNamespace
 
 import pytest
 
 from space_map_data.constants.continents import Continent
 from space_map_data.ingest.providers.iau_nomenclature import (
+    IAUNomenclatureIngestor,
+    _derive_sf_stem,
+    _haversine_km,
+    _normalize_name,
     _parse_approval_date,
     _parse_continent,
     _parse_kml,
@@ -167,3 +173,110 @@ class TestParseContinent:
 
     def test_unknown_returns_none(self):
         assert _parse_continent("Atlantis") is None
+
+
+class TestDeriveSfStem:
+    def test_single_letter_suffix(self):
+        assert _derive_sf_stem("Abel J") == "Abel"
+
+    def test_two_letter_suffix(self):
+        assert _derive_sf_stem("Abulfeda BA") == "Abulfeda"
+
+    def test_inner_then_letter(self):
+        assert _derive_sf_stem("Gerard Q Inner") == "Gerard"
+        assert _derive_sf_stem("Gerard Q Outer") == "Gerard"
+
+    def test_no_suffix_returns_none(self):
+        assert _derive_sf_stem("Abulfeda") is None
+
+    def test_lowercase_suffix_not_stripped(self):
+        assert _derive_sf_stem("Foo bar") is None
+
+
+class TestNormalizeName:
+    def test_strips_apostrophes(self):
+        assert _normalize_name("Bel'kovich") == "Belkovich"
+
+    def test_collapses_double_spaces(self):
+        assert _normalize_name("Engel gardt  Engelhardt") == "Engel gardt Engelhardt"
+
+
+class TestHaversine:
+    def test_zero_distance(self):
+        assert _haversine_km(10.0, 20.0, 10.0, 20.0) == pytest.approx(0.0)
+
+    def test_one_degree_lat_on_moon(self):
+        # 1° latitude on a 1737.4 km Moon ≈ 30.3 km
+        assert _haversine_km(0.0, 0.0, 0.0, 1.0) == pytest.approx(30.32, abs=0.1)
+
+
+def _fake_row(
+    feature_id: int,
+    name: str,
+    target: str = "moon",
+    code: str | None = None,
+    origin: str | None = None,
+    unicode_name: str | None = None,
+):
+    return SimpleNamespace(
+        feature_id=feature_id,
+        name=name,
+        unicode_name=unicode_name,
+        target=target,
+        feature_type_code=code,
+        origin=origin,
+        center_lon=0.0,
+        center_lat=0.0,
+        diameter=10.0,
+    )
+
+
+def _build_indexes(rows):
+    by_name: dict[tuple[str, str], list[int]] = defaultdict(list)
+    by_norm: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for r in rows:
+        by_name[(r.target, r.name)].append(r.feature_id)
+        if r.unicode_name:
+            by_norm[(r.target, _normalize_name(r.unicode_name))].append(r.feature_id)
+    return by_name, by_norm
+
+
+class TestResolveSfParent:
+    def test_exact_stem_match(self):
+        parent = _fake_row(1, "Abulfeda", code="AA")
+        child = _fake_row(2, "Abulfeda A", code="SF")
+        by_name, by_norm = _build_indexes([parent, child])
+        assert IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) == 1
+
+    def test_origin_overrides_stem(self):
+        mons = _fake_row(10, "Mons Bradley", code="MO")
+        rima = _fake_row(11, "Rima Bradley", code="RI")
+        child = _fake_row(12, "Bradley H", code="SF", origin="Named for Rima Bradley.")
+        by_name, by_norm = _build_indexes([mons, rima, child])
+        assert IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) == 11
+
+    def test_latin_prefix_fallback(self):
+        parent = _fake_row(20, "Mons Pico", code="MO")
+        child = _fake_row(21, "Pico B", code="SF")
+        by_name, by_norm = _build_indexes([parent, child])
+        assert IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) == 20
+
+    def test_apostrophe_via_unicode_norm(self):
+        parent = _fake_row(30, "Belkovich", code="AA", unicode_name="Bel'kovich")
+        child = _fake_row(31, "Bel kovich A", code="SF", unicode_name="Bel'kovich A")
+        by_name, by_norm = _build_indexes([parent, child])
+        assert IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) == 30
+
+    def test_no_match_returns_none(self):
+        child = _fake_row(40, "Mystery A", code="SF")
+        by_name, by_norm = _build_indexes([child])
+        assert (
+            IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) is None
+        )
+
+    def test_no_stem_returns_none(self):
+        child = _fake_row(50, "JustACrater", code="SF")
+        by_name, by_norm = _build_indexes([child])
+        assert (
+            IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) is None
+        )

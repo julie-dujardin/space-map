@@ -22,6 +22,9 @@ class Feature(Base):
     object_id: Mapped[str | None] = mapped_column(
         ForeignKey("objects.id"), default=None, index=True
     )  # parent body in objects table
+    parent_feature_id: Mapped[int | None] = mapped_column(
+        ForeignKey("features.feature_id"), default=None, index=True
+    )  # parent feature (e.g. crater for a Satellite Feature)
     wikidata_qid: Mapped[str | None] = mapped_column(
         default=None, index=True
     )  # Wikidata entity QID

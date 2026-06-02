@@ -2,8 +2,11 @@
 
 import datetime
 import logging
+import math
+import re
 import xml.etree.ElementTree as ET
 import zipfile
+from collections import defaultdict
 from pathlib import Path
 
 from sqlalchemy import delete, func, insert, update
@@ -19,6 +22,49 @@ from space_map_data.utils.db import get_session
 logger = logging.getLogger(__name__)
 
 KML_NS = "{http://www.opengis.net/kml/2.2}"
+
+# Satellite-feature (SF) -> parent matching.
+# SF names look like "<Parent> <A>" / "<Parent> <AB>", sometimes with
+# "Inner"/"Outer" tacked on, or with a Latin parent prefix dropped
+# ("Pico B" -> "Mons Pico"). When the simple stem misses, the IAU
+# ``origin`` field often spells out the parent verbatim.
+_SF_SUFFIX_RE = re.compile(r" [A-Z]{1,2}$")
+_SF_ORIGIN_RE = re.compile(
+    r"^Named (?:for|after)\b[^.()]*?(?:\(([^)]+)\)|\s+([A-Z][^.]+?))\.\s*$"
+)
+_SF_LATIN_PREFIXES = ("Mons ", "Montes ", "Promontorium ", "Vallis ", "Rupes ", "Rima ")
+# Mean radius of the body that owns these features. Only the Moon has SFs.
+_SF_MOON_RADIUS_KM = 1737.4
+# Beyond this absolute distance the SF can't plausibly be a child of the
+# matched parent; treat as a name collision and abort.
+_SF_MAX_DISTANCE_KM = 500.0
+# Soft warn threshold for small-parent edge cases (Linne, Censorinus, ...)
+# where the ratio is huge but the absolute distance is still IAU-plausible.
+_SF_WARN_RATIO = 30.0
+
+
+def _normalize_name(s: str) -> str:
+    """Drop apostrophes and collapse whitespace for fuzzy parent matching."""
+    return re.sub(r"\s+", " ", s.replace("'", "").replace("'", "")).strip()
+
+
+def _derive_sf_stem(name: str) -> str | None:
+    """Strip Inner/Outer + trailing 1-2 letter SF suffix to get the parent stem."""
+    if name.endswith(" Inner"):
+        name = name[: -len(" Inner")]
+    elif name.endswith(" Outer"):
+        name = name[: -len(" Outer")]
+    stripped = _SF_SUFFIX_RE.sub("", name)
+    return stripped if stripped != name else None
+
+
+def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Great-circle distance on the Moon."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = p2 - p1
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlam / 2) ** 2
+    return 2 * _SF_MOON_RADIUS_KM * math.asin(math.sqrt(a))
 
 
 def _parse_approval_date(val: str) -> datetime.date | None:
@@ -144,6 +190,143 @@ class IAUNomenclatureIngestor:
 
         self._insert(batch)
 
+    def _match_satellite_features(self) -> int:
+        """Link each Satellite Feature to its parent (the named crater/mons/...).
+
+        Raises if any SF ends up > _SF_MAX_DISTANCE_KM from the matched
+        parent — that signals a name collision, not a real sub-feature.
+        """
+        rows = self.session.query(
+            Feature.feature_id,
+            Feature.name,
+            Feature.unicode_name,
+            Feature.target,
+            Feature.feature_type_code,
+            Feature.origin,
+            Feature.center_lon,
+            Feature.center_lat,
+            Feature.diameter,
+        ).all()
+
+        by_id = {r.feature_id: r for r in rows}
+        by_name: dict[tuple[str, str], list[int]] = defaultdict(list)
+        by_norm_unicode: dict[tuple[str, str], list[int]] = defaultdict(list)
+        for r in rows:
+            by_name[(r.target, r.name)].append(r.feature_id)
+            if r.unicode_name:
+                by_norm_unicode[(r.target, _normalize_name(r.unicode_name))].append(
+                    r.feature_id
+                )
+
+        updates: list[dict] = []
+        too_far: list[str] = []
+        for r in rows:
+            if r.feature_type_code != "SF":
+                continue
+            parent_id = self._resolve_sf_parent(r, by_name, by_norm_unicode)
+            if parent_id is None:
+                logger.warning(
+                    "SF %d %r has no parent on %s, skipping",
+                    r.feature_id,
+                    r.name,
+                    r.target,
+                )
+                continue
+
+            parent = by_id[parent_id]
+            if (
+                r.center_lon is not None
+                and r.center_lat is not None
+                and parent.center_lon is not None
+                and parent.center_lat is not None
+            ):
+                dist = _haversine_km(
+                    parent.center_lon, parent.center_lat, r.center_lon, r.center_lat
+                )
+                parent_r = (parent.diameter or 0.0) / 2.0
+                if dist > _SF_MAX_DISTANCE_KM:
+                    too_far.append(
+                        f"  feature {r.feature_id} {r.name!r} -> "
+                        f"{parent_id} {parent.name!r}: {dist:.0f}km"
+                    )
+                    continue
+                if parent_r > 0 and (dist / parent_r) > _SF_WARN_RATIO:
+                    logger.warning(
+                        "SF %d %r is %.0fkm from parent %r (%.1fx parent radius); "
+                        "keeping the link",
+                        r.feature_id,
+                        r.name,
+                        dist,
+                        parent.name,
+                        dist / parent_r,
+                    )
+            updates.append({"feature_id": r.feature_id, "parent_feature_id": parent_id})
+
+        if too_far:
+            raise RuntimeError(
+                f"{len(too_far)} satellite feature(s) matched to a parent "
+                f"> {_SF_MAX_DISTANCE_KM:.0f}km away (likely name collision):\n"
+                + "\n".join(too_far)
+            )
+
+        for batch_start in range(0, len(updates), self.BATCH):
+            self.session.execute(
+                update(Feature),
+                updates[batch_start : batch_start + self.BATCH],
+            )
+        self.session.commit()
+        return len(updates)
+
+    @staticmethod
+    def _resolve_sf_parent(
+        row,
+        by_name: dict[tuple[str, str], list[int]],
+        by_norm_unicode: dict[tuple[str, str], list[int]],
+    ) -> int | None:
+        """Find the parent feature for one SF row.
+
+        Priority: explicit ``origin`` text > exact stem match > normalized
+        unicode_name match > stem + Latin prefix in conventional order.
+        """
+        stem = _derive_sf_stem(row.name)
+        if stem is None:
+            return None
+
+        # Origin text is authoritative: "Named for Rima Bradley." wins over
+        # a naive "Bradley" -> "Mons Bradley" stem guess.
+        if row.origin:
+            m = _SF_ORIGIN_RE.match(row.origin)
+            if m:
+                extracted = (m.group(1) or m.group(2) or "").strip()
+                hits = by_name.get((row.target, extracted), []) or by_norm_unicode.get(
+                    (row.target, _normalize_name(extracted)), []
+                )
+                hits = [h for h in hits if h != row.feature_id]
+                if hits:
+                    return hits[0]
+
+        hits = by_name.get((row.target, stem), [])
+        if hits:
+            return hits[0]
+
+        if row.unicode_name:
+            norm = _normalize_name(row.unicode_name)
+            stem_norm = _derive_sf_stem(norm) or norm
+            hits = [
+                h
+                for h in by_norm_unicode.get((row.target, stem_norm), [])
+                if h != row.feature_id
+            ]
+            if hits:
+                return hits[0]
+
+        for prefix in _SF_LATIN_PREFIXES:
+            hits = by_name.get((row.target, prefix + stem), [])
+            if hits:
+                return hits[0]
+
+        return None
+
     def _match_to_objects(self) -> int:
         # IAU nomenclature only covers natural bodies, so exclude man-made
         # objects to prevent e.g. the "DEIMOS" Earth-observation satellite
@@ -188,10 +371,13 @@ class IAUNomenclatureIngestor:
         self.session.commit()
         self._insert_features()
         matched = self._match_to_objects()
+        sf_linked = self._match_satellite_features()
         logger.info(
-            "Ingested %d IAU nomenclature features (%d matched to objects)",
+            "Ingested %d IAU nomenclature features (%d matched to objects, "
+            "%d satellite features linked to parent)",
             self.total_rows,
             matched,
+            sf_linked,
         )
 
 
