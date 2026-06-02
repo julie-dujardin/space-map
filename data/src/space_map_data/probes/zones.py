@@ -69,6 +69,30 @@ class Zone:
 
     short_orbit_period_s: float = 12 * 3600  # 12 hours
 
+    def __post_init__(self) -> None:
+        # Sub-chunks tile the chunk on an integer-offset grid of width
+        # `kepler_subchunk_days`. If `chunk_years * 365.25` isn't an integer
+        # multiple of `kepler_subchunk_days`, the trailing fractional sub-chunk
+        # is silently dropped and every chunk ends with an uncovered tail —
+        # probes vanish whenever the playback jd lands in that gap. Catch the
+        # mismatch at Zone construction so future tweaks can't reintroduce it.
+        chunk_days = self.chunk_years * 365.25
+        n_subs = chunk_days / self.kepler_subchunk_days
+        if abs(n_subs - round(n_subs)) > 1e-6:
+            tail_days = (n_subs - int(n_subs)) * self.kepler_subchunk_days
+            raise ValueError(
+                f"Zone {self.key}: chunk_years × 365.25 = {chunk_days} days is "
+                f"not an integer multiple of kepler_subchunk_days = "
+                f"{self.kepler_subchunk_days}. Would leave a "
+                f"{tail_days:.3f}-day uncovered tail per chunk."
+            )
+
+
+# Chunk durations are expressed as `<days>/365.25` so the chunk window is an
+# integer number of days, divisible by the zone's `kepler_subchunk_days`. The
+# sub-chunk grid then exactly tiles the chunk — no trailing fractional sub-chunk
+# to drop. Frontends multiply back by 365.25 and the round-trip stays within
+# 1 ulp, well below the sub-chunk grid step.
 
 # Catch-all zone for trajectories outside every planet's Hill sphere. Fit
 # center is the Sun: cruise orbits are heliocentric ellipses (or shallow
@@ -78,7 +102,7 @@ INTERPLANETARY = Zone(
     barycenter_naif_id=0,
     fit_center_naif_id=10,
     r_zone_km=None,
-    chunk_years=1.0,  # 1-y chunks at 1y/s playback = 1s per chunk swap
+    chunk_years=364 / 365.25,  # 364 d = 52 × 7-day sub-chunks (~1-y playback unit)
     accuracy_threshold_km=1000.0,
     kepler_subchunk_days=7.0,
     float64_coeffs=True,  # Voyager/Pioneer at 100+ AU need float64 to clear the float32 floor
@@ -94,17 +118,17 @@ PLANETARY_ZONES: tuple[Zone, ...] = (
     # orbiters' J2 drift moves Ω/ω several degrees per week, so we want
     # frequent re-snapshots), 7 days for interplanetary (slow Sun-relative
     # motion + N-body wobbles dominated by other planets).
-    Zone("mercury", 1, 199, 0.44e6, 0.5, 10.0, 1.0),
-    Zone("venus", 2, 299, 2.0e6, 0.5, 10.0, 1.0),
-    Zone("earth-moon", 3, 399, 3.0e6, 1 / 12, 10.0, 0.5),  # ~1-month chunks
+    Zone("mercury", 1, 199, 0.44e6, 183 / 365.25, 10.0, 1.0),  # 183 d ≈ 0.5 y
+    Zone("venus", 2, 299, 2.0e6, 183 / 365.25, 10.0, 1.0),
+    Zone("earth-moon", 3, 399, 3.0e6, 30 / 365.25, 10.0, 0.5),  # 30 d = 60 × 0.5-d subs
     Zone(
-        "mars", 4, 499, 2.2e6, 1 / 12, 10.0, 1.0
-    ),  # ~1-month chunks; Viking-era orbiters need short windows
-    Zone("jupiter", 5, 599, 102.0e6, 1.0, 10.0, 1.0),
-    Zone("saturn", 6, 699, 130.0e6, 1.0, 10.0, 1.0),
-    Zone("uranus", 7, 799, 140.0e6, 5.0, 10.0, 1.0),
-    Zone("neptune", 8, 899, 232.0e6, 5.0, 10.0, 1.0),
-    Zone("pluto", 9, 999, 12.8e6, 5.0, 10.0, 1.0),
+        "mars", 4, 499, 2.2e6, 30 / 365.25, 10.0, 1.0
+    ),  # 30 d; Viking-era orbiters need short windows
+    Zone("jupiter", 5, 599, 102.0e6, 365 / 365.25, 10.0, 1.0),  # 365 d ≈ 1 y
+    Zone("saturn", 6, 699, 130.0e6, 365 / 365.25, 10.0, 1.0),
+    Zone("uranus", 7, 799, 140.0e6, 1826 / 365.25, 10.0, 1.0),  # 1826 d ≈ 5 y
+    Zone("neptune", 8, 899, 232.0e6, 1826 / 365.25, 10.0, 1.0),
+    Zone("pluto", 9, 999, 12.8e6, 1826 / 365.25, 10.0, 1.0),
 )
 
 ALL_ZONES: tuple[Zone, ...] = (INTERPLANETARY, *PLANETARY_ZONES)
