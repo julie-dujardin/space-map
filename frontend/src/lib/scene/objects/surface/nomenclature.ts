@@ -26,7 +26,11 @@ const MIN_BODY_SCREEN_RADIUS_PX = 128;
 const DEG2RAD = Math.PI / 180;
 
 /** Cap per body so dense surfaces (Moon at 9k features) stay legible. */
-const MAX_LABELS_PER_BODY = 80;
+const MAX_LABELS_PER_BODY = 200;
+
+/** Fraction of the focused body's disc radius within which labels render. The
+ *  outer ring is dropped because occlusion at grazing angles is noisy. */
+const LABEL_DISC_FRACTION = 0.9;
 
 /** Feature types whose geometry isn't usefully approximated by a center+radius
  *  circle. Hidden until a dedicated vector layer can render them properly. */
@@ -102,6 +106,8 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 const _bodyWorld = new Vector3();
 const _camWorld = new Vector3();
 const _labelWorld = new Vector3();
+const _bodyNdc = new Vector3();
+const _labelNdc = new Vector3();
 
 /**
  * Per-frame visibility for feature labels. Gated on:
@@ -110,14 +116,16 @@ const _labelWorld = new Vector3();
  *      not navigational context for the rest of the system,
  *   2. body screen radius ≥ {@link MIN_BODY_SCREEN_RADIUS_PX} — the sphere is
  *      big enough on screen that a per-feature surface offset is meaningful,
- *   3. backface culling per label — far-hemisphere features hidden via a
- *      camera-from-body / label-outward dot product.
+ *   3. front hemisphere AND inside {@link LABEL_DISC_FRACTION} of the projected
+ *      disc — far-hemisphere points and the noisy limb band are both dropped.
  */
 export function updateNomenclatureVisibility(
 	bo: BodyObjects,
 	isFocused: boolean,
 	screenR: number,
-	camera: Camera
+	camera: Camera,
+	screenW: number,
+	screenH: number
 ): void {
 	const labels = bo.nomenclatureLabels;
 	if (!labels) return;
@@ -133,11 +141,36 @@ export function updateNomenclatureVisibility(
 	const cdy = _camWorld.y - _bodyWorld.y;
 	const cdz = _camWorld.z - _bodyWorld.z;
 
+	_bodyNdc.copy(_bodyWorld).project(camera);
+	// `screenR` from the caller is R/D · f (small-angle). The true projected
+	// disc radius is R·f / √(D² − R²) = screenR / √(1 − (R/D)²) — equal to
+	// screenR when D ≫ R, but visibly larger as the camera closes in.
+	// Without this correction the limb labels get clipped on zoom-in.
+	const distSq = cdx * cdx + cdy * cdy + cdz * cdz;
+	const rSq = bo.radiusScene * bo.radiusScene;
+	const trueDiscR = screenR / Math.sqrt(Math.max(1 - rSq / distSq, 1e-6));
+	const maxPxSq = (LABEL_DISC_FRACTION * trueDiscR) ** 2;
+	const halfW = 0.5 * screenW;
+	const halfH = 0.5 * screenH;
+
 	for (const lbl of labels) {
 		lbl.getWorldPosition(_labelWorld);
 		const lx = _labelWorld.x - _bodyWorld.x;
 		const ly = _labelWorld.y - _bodyWorld.y;
 		const lz = _labelWorld.z - _bodyWorld.z;
-		lbl.visible = lx * cdx + ly * cdy + lz * cdz > 0;
+		// Perspective horizon reject: P is on the visible cap iff its outward
+		// normal faces camera, (K − P) · (P − C) > 0, i.e. K'·L > L·L. Strictly
+		// tighter than the `> 0` hemisphere check, which would let points just
+		// behind the perspective limb leak through and project into the disc.
+		const dot = lx * cdx + ly * cdy + lz * cdz;
+		const lenSqL = lx * lx + ly * ly + lz * lz;
+		if (dot <= lenSqL) {
+			lbl.visible = false;
+			continue;
+		}
+		_labelNdc.copy(_labelWorld).project(camera);
+		const dx = (_labelNdc.x - _bodyNdc.x) * halfW;
+		const dy = (_labelNdc.y - _bodyNdc.y) * halfH;
+		lbl.visible = dx * dx + dy * dy < maxPxSq;
 	}
 }

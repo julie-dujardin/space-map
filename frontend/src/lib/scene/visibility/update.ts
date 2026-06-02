@@ -257,7 +257,7 @@ export function updateBodyVisibility(
 		applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
-		updateNomenclatureVisibility(bo, isFocused, nomScreenR, camera);
+		updateNomenclatureVisibility(bo, isFocused, nomScreenR, camera, screenW, screenH);
 	}
 
 	// Keys are subgroup keys (`${zone}#${i}`) from PointCloudSystem's hash-split.
