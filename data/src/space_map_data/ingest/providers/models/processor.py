@@ -540,8 +540,12 @@ class ModelProcessor:
         ):
             low_pick = high_pick  # share with high; .low.glb is what gets hardlinked
 
+        # Resolve catalog metadata up-front so cap_hash sees it: tweaks to
+        # _catalog_by_tier (e.g. rewriting non-catalog source → attribution)
+        # then invalidate existing sidecars and force a re-emit.
+        catalog_by_tier = self._catalog_by_tier(yaml_path, high_pick[0], low_pick[0])
         out_dir = config.PROCESSED_DIR / slug
-        cap_hash = self._cap_hash(cached, high_pick, low_pick)
+        cap_hash = self._cap_hash(cached, high_pick, low_pick, catalog_by_tier)
         if not force and self._sidecar_says_unchanged(slug, cap_hash):
             return
 
@@ -549,7 +553,6 @@ class ModelProcessor:
         low_source = low_pick[1].low_glb or low_pick[1].high_glb
         _link_into_export(low_source, out_dir / "low.glb")
 
-        catalog_by_tier = self._catalog_by_tier(yaml_path, high_pick[0], low_pick[0])
         exports = {
             "high": self._tier_record(
                 out_dir / "high.glb", high_pick, catalog_by_tier["high"]
@@ -568,6 +571,7 @@ class ModelProcessor:
             cached=cached,
             high_pick=high_pick,
             low_pick=low_pick,
+            catalog_by_tier=catalog_by_tier,
         )
         log.info(
             "processed %s (high=%s, low=%s)",
@@ -581,13 +585,16 @@ class ModelProcessor:
         cached: list[tuple[dict, cache.Cached]],
         high_pick: tuple[dict, cache.Cached],
         low_pick: tuple[dict, cache.Cached],
+        catalog_by_tier: dict[str, dict],
     ) -> dict:
         """Build the invalidation key the next run compares against the sidecar.
 
         Includes every cached candidate's source-sha — so if a previously
         rejected oversize file is replaced with a smaller version, the
         rerun picks it up. Also includes the picks themselves so a manual
-        retune of MAX_FILE_BYTES forces a re-link.
+        retune of MAX_FILE_BYTES forces a re-link, and the resolved
+        per-tier catalog dict so any change to ``_catalog_by_tier``
+        output (source/attribution/url) re-emits the bundle.
         """
         return {
             "schema": config.SCHEMA_VERSION,
@@ -598,6 +605,10 @@ class ModelProcessor:
             ),
             "high": high_pick[1].file_id,
             "low": low_pick[1].file_id,
+            "catalog": {
+                "high": sorted(catalog_by_tier["high"].items()),
+                "low": sorted(catalog_by_tier["low"].items()),
+            },
         }
 
     def _sidecar_says_unchanged(self, slug: str, cap_hash: dict) -> bool:
@@ -687,6 +698,12 @@ class ModelProcessor:
                     f"file {f.get('path')!r}: source {name!r} not in MODEL_CATALOGS "
                     f"and missing inline attribution"
                 )
+            # Non-catalog sources (one-off NASA resource pages, Google rehosts)
+            # surface as the attribution in the frontend chip — the source
+            # name in those cases is just where the file was fetched, not the
+            # creator. Catalog entries keep their catalog name as ``source``.
+            if not catalog and isinstance(out.get("attribution"), str):
+                out["source"] = out["attribution"]
             ts = self._catalog_downloaded_at.get(name)
             if ts:
                 out["downloaded_at"] = ts
@@ -744,6 +761,7 @@ class ModelProcessor:
         cached: list[tuple[dict, cache.Cached]],
         high_pick: tuple[dict, cache.Cached] | None,
         low_pick: tuple[dict, cache.Cached] | None,
+        catalog_by_tier: dict[str, dict] | None = None,
     ) -> None:
         """Write the build-side debug sidecar under ``EXPORT_METADATA_DIR``.
 
@@ -787,8 +805,10 @@ class ModelProcessor:
             "candidates": candidates,
             "picks": picks,
             "invalidation": (
-                self._cap_hash(cached, high_pick, low_pick)
-                if high_pick is not None and low_pick is not None
+                self._cap_hash(cached, high_pick, low_pick, catalog_by_tier or {})
+                if high_pick is not None
+                and low_pick is not None
+                and catalog_by_tier is not None
                 else None
             ),
             "processed_at": datetime.now(UTC).isoformat(),
