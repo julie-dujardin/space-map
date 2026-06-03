@@ -9,7 +9,7 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-from sqlalchemy import delete, func, insert, update
+from sqlalchemy import case, delete, func, insert, update
 from tqdm import tqdm
 
 from space_map_data.constants.continents import Continent
@@ -332,7 +332,15 @@ class IAUNomenclatureIngestor:
         # objects to prevent e.g. the "DEIMOS" Earth-observation satellite
         # shadowing naif-402 (the moon). Also match against SBDB.name so
         # asteroid targets like "bennu" match objects named "101955 Bennu".
+        # Prefer planets/moons/dwarf planets over asteroids on name ties so
+        # e.g. "titania" hits the Uranian moon, not asteroid 593 Titania.
         excluded = {ObjectType.spacecraft, ObjectType.debris, ObjectType.undocumented}
+        priority = case(
+            (Object.object_type == ObjectType.planet, 0),
+            (Object.object_type == ObjectType.moon, 1),
+            (Object.object_type == ObjectType.dwarf_planet, 2),
+            else_=3,
+        )
         targets = [t for (t,) in self.session.query(Feature.target).distinct().all()]
         matched = 0
         for target in targets:
@@ -344,6 +352,7 @@ class IAUNomenclatureIngestor:
                     (func.lower(Object.name) == target)
                     | (func.lower(SBDB.name) == target)
                 )
+                .order_by(priority, Object.id)
                 .first()
             )
             if obj is None:

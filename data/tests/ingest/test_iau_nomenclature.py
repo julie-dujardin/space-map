@@ -2,9 +2,12 @@
 
 import datetime
 from collections import defaultdict
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from space_map_data.constants.continents import Continent
 from space_map_data.ingest.providers.iau_nomenclature import (
@@ -16,6 +19,10 @@ from space_map_data.ingest.providers.iau_nomenclature import (
     _parse_continent,
     _parse_kml,
 )
+from space_map_data.models.feature import Feature
+from space_map_data.models.object import SBDB, Object, ObjectType
+from space_map_data.models.object.sbdb import OrbitClass
+from space_map_data.models.object.base import Base
 
 KML_NS = "http://www.opengis.net/kml/2.2"
 
@@ -280,3 +287,88 @@ class TestResolveSfParent:
         assert (
             IAUNomenclatureIngestor._resolve_sf_parent(child, by_name, by_norm) is None
         )
+
+
+@pytest.fixture
+def session(monkeypatch, tmp_path) -> Iterator[Session]:
+    """Fresh in-memory SQLite installed as the global session."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sess = Session(engine)
+    monkeypatch.setattr("space_map_data.utils.db._session", sess)
+    yield sess
+    sess.close()
+
+
+class TestMatchToObjects:
+    def test_prefers_moon_over_asteroid(self, session: Session, tmp_path) -> None:
+        """Moon Titania wins over asteroid 593 Titania on name collision."""
+        # Insert the asteroid first so a naive query would return it.
+        session.add(
+            Object(
+                id="spkid-2000593",
+                name="593 Titania",
+                object_type=ObjectType.asteroid,
+            )
+        )
+        session.add(
+            SBDB(
+                spkid="2000593",
+                object_id="spkid-2000593",
+                name="Titania",
+                class_=OrbitClass.MBA,
+            )
+        )
+        session.add(Object(id="naif-703", name="Titania", object_type=ObjectType.moon))
+        session.add(Feature(feature_id=1, name="Belmont", target="titania"))
+        session.commit()
+
+        ingestor = IAUNomenclatureIngestor(tmp_path)
+        matched = ingestor._match_to_objects()
+
+        feature = session.get(Feature, 1)
+        assert feature is not None
+        assert feature.object_id == "naif-703"
+        assert matched == 1
+
+    def test_planet_match(self, session: Session, tmp_path) -> None:
+        """Planet target still matches when no name collision exists."""
+        session.add(Object(id="naif-499", name="Mars", object_type=ObjectType.planet))
+        session.add(Feature(feature_id=2, name="Olympus Mons", target="mars"))
+        session.commit()
+
+        ingestor = IAUNomenclatureIngestor(tmp_path)
+        matched = ingestor._match_to_objects()
+
+        feature = session.get(Feature, 2)
+        assert feature is not None
+        assert feature.object_id == "naif-499"
+        assert matched == 1
+
+    def test_asteroid_via_sbdb_name(self, session: Session, tmp_path) -> None:
+        """SBDB-named asteroid target (e.g. "bennu") still matches."""
+        session.add(
+            Object(
+                id="spkid-2101955",
+                name="101955 Bennu (1999 RQ36)",
+                object_type=ObjectType.asteroid,
+            )
+        )
+        session.add(
+            SBDB(
+                spkid="2101955",
+                object_id="spkid-2101955",
+                name="Bennu",
+                class_=OrbitClass.APO,
+            )
+        )
+        session.add(Feature(feature_id=3, name="Nightingale", target="bennu"))
+        session.commit()
+
+        ingestor = IAUNomenclatureIngestor(tmp_path)
+        matched = ingestor._match_to_objects()
+
+        feature = session.get(Feature, 3)
+        assert feature is not None
+        assert feature.object_id == "spkid-2101955"
+        assert matched == 1
