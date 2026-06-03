@@ -24,8 +24,8 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@inlang/paraglide-js':
-        specifier: ^2.15.1
-        version: 2.15.1
+        specifier: ^2.18.2
+        version: 2.18.2(typescript@5.9.3)
       '@internationalized/date':
         specifier: ^3.12.0
         version: 3.12.0
@@ -796,12 +796,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@inlang/paraglide-js@2.15.1':
+  '@inlang/paraglide-js@2.18.2':
     resolution:
       {
-        integrity: sha512-7wWKbLWwLx1dkkYz55TnVp+39atKXf7rnlHnL8adSmM73UaAdB9fXDzo24GHSY/6FPGFKSkgHdT2qyJv2whWsA==
+        integrity: sha512-H2ksOE2dy9M4iJ+oDu8VPgk+B52C+OCFQpuJHBol0ZYLs3H17PCewVWIppkJNC36ClmLZnGhF+URjbcglTM8XQ==
       }
     hasBin: true
+    peerDependencies:
+      typescript: '>=5.6'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   '@inlang/recommend-sherlock@0.2.1':
     resolution:
@@ -809,10 +814,10 @@ packages:
         integrity: sha512-ckv8HvHy/iTqaVAEKrr+gnl+p3XFNwe5D2+6w6wJk2ORV2XkcRkKOJ/XsTUJbPSiyi4PI+p+T3bqbmNx/rDUlg==
       }
 
-  '@inlang/sdk@2.9.1':
+  '@inlang/sdk@2.9.3':
     resolution:
       {
-        integrity: sha512-y0C3xaKo6pSGDr3p5OdreRVT3THJpgKVe1lLvG3BE4v9lskp3UfI9cPCbN8X2dpfLt/4ljtehMb5SykpMfJrMg==
+        integrity: sha512-E/SxcSji8WIt4DqQG9APlOs6tVtJxrrOUS3dE4ho3pWRCLLIY0PIVzgNwSukuFT+m8LuJDFwpRY5VY3ryzyGWQ==
       }
     engines: { node: '>=20.0.0' }
 
@@ -859,10 +864,10 @@ packages:
         integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==
       }
 
-  '@lix-js/sdk@0.4.9':
+  '@lix-js/sdk@0.4.10':
     resolution:
       {
-        integrity: sha512-30mDkXpx704359oRrJI42bjfCspCiaMItngVBbPkiTGypS7xX4jYbHWQkXI8XuJ7VDB69D0MsVU6xfrBAIrM4A==
+        integrity: sha512-0dMInAJK/67guTG5rRZaCEhvzC5cCXENOjaePA5AqMXrCE97kaY7SRor9e2vnoGsFIiGqXKlT0MCIoZj36G0gg==
       }
     engines: { node: '>=18' }
 
@@ -3026,18 +3031,10 @@ packages:
         integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==
       }
 
-  uuid@10.0.0:
+  uuid@14.0.0:
     resolution:
       {
-        integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==
-      }
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
-    hasBin: true
-
-  uuid@13.0.2:
-    resolution:
-      {
-        integrity: sha512-vzi9uRZ926x4XV73S/4qQaTwPXM2JBj6/6lI/byHH1jOpCzb0zDbfytgA9LcN/hzb2l7WQSQnxITOVx5un/wGw==
+        integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==
       }
     hasBin: true
 
@@ -3535,15 +3532,17 @@ snapshots:
   '@img/sharp-win32-x64@0.34.5':
     optional: true
 
-  '@inlang/paraglide-js@2.15.1':
+  '@inlang/paraglide-js@2.18.2(typescript@5.9.3)':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
-      '@inlang/sdk': 2.9.1
+      '@inlang/sdk': 2.9.3
       commander: 11.1.0
       consola: 3.4.0
       json5: 2.2.3
       unplugin: 2.3.11
       urlpattern-polyfill: 10.1.0
+    optionalDependencies:
+      typescript: 5.9.3
     transitivePeerDependencies:
       - babel-plugin-macros
 
@@ -3551,13 +3550,13 @@ snapshots:
     dependencies:
       comment-json: 4.6.2
 
-  '@inlang/sdk@2.9.1':
+  '@inlang/sdk@2.9.3':
     dependencies:
-      '@lix-js/sdk': 0.4.9
+      '@lix-js/sdk': 0.4.10
       '@sinclair/typebox': 0.31.28
       kysely: 0.28.17
       sqlite-wasm-kysely: 0.3.0(kysely@0.28.17)
-      uuid: 13.0.2
+      uuid: 14.0.0
     transitivePeerDependencies:
       - babel-plugin-macros
 
@@ -3589,7 +3588,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@lix-js/sdk@0.4.9':
+  '@lix-js/sdk@0.4.10':
     dependencies:
       '@lix-js/server-protocol-schema': 0.1.1
       dedent: 1.5.1
@@ -3597,7 +3596,7 @@ snapshots:
       js-sha256: 0.11.1
       kysely: 0.28.17
       sqlite-wasm-kysely: 0.3.0(kysely@0.28.17)
-      uuid: 10.0.0
+      uuid: 14.0.0
     transitivePeerDependencies:
       - babel-plugin-macros
 
@@ -4814,9 +4813,7 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  uuid@10.0.0: {}
-
-  uuid@13.0.2: {}
+  uuid@14.0.0: {}
 
   vaul-svelte@1.0.0-next.7(svelte@5.56.1(@typescript-eslint/types@8.57.0)):
     dependencies:
