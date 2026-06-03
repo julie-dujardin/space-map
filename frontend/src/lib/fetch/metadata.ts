@@ -43,7 +43,7 @@ export interface ChunkIndexedZoom {
 	shape: 'chunked-parted';
 	label: 'index';
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 	parts: number;
 }
@@ -53,7 +53,7 @@ export interface ChunkIndexedZoom {
 export interface ChebyshevZoom {
 	shape: 'chunked';
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
 }
@@ -63,7 +63,7 @@ export interface ChebyshevZoom {
 export interface ProbeZoneMetadata {
 	shape: 'chunked';
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
 	subchunk_days: number;
@@ -100,12 +100,10 @@ export function isChebyshev(zoom: ZoomMetadata): zoom is ChebyshevZoom {
 	return zoom.shape === 'chunked';
 }
 
-const DAYS_PER_YEAR = 365.25;
-
 /** Minimal shape needed to map a JD to a chunk index. */
 export interface ChunkRange {
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 }
 
@@ -114,7 +112,7 @@ export interface ChunkRange {
  * chunk instead of overflowing.
  */
 export function chunkIndexForJd(zone: ChunkRange, jd: number): number {
-	const idx = Math.floor((jd - zone.start_jd) / (zone.chunk_years * DAYS_PER_YEAR));
+	const idx = Math.floor((jd - zone.start_jd) / zone.chunk_days);
 	return Math.max(0, Math.min(zone.chunks - 1, idx));
 }
 
@@ -204,7 +202,7 @@ export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZonePa
 		if (!zoom0 || zoom0.shape !== 'chunked') continue;
 		out.set(zone, {
 			chunks: zoom0.chunks,
-			chunk_years: zoom0.chunk_years,
+			chunk_days: zoom0.chunk_days,
 			start_jd: zoom0.start_jd,
 			end_jd: zoom0.end_jd
 		});
@@ -238,7 +236,7 @@ export function probeZoneParams(meta: Metadata): Map<string, ProbeZoneParams> {
 		if (!isProbeZone(zoneData)) continue;
 		out.set(zone, {
 			chunks: zoneData.chunks,
-			chunk_years: zoneData.chunk_years,
+			chunk_days: zoneData.chunk_days,
 			start_jd: zoneData.start_jd,
 			end_jd: zoneData.end_jd,
 			float64_coeffs: zoneData.float64_coeffs,

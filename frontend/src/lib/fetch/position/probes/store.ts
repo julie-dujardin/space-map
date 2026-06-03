@@ -45,7 +45,7 @@ const NEIGHBOR_WINDOW = 1;
  *  `present` before issuing any GET so absent chunks cost zero round-trips. */
 export interface ProbeZoneParams {
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
 	float64_coeffs: boolean;

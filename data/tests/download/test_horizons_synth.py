@@ -23,7 +23,7 @@ class TestTimeHelpers:
     def test_et_jd_round_trip(self):
         for jd in (2451545.0, 2443376.148, 2461110.5, 2415020.5):
             et = (jd - 2451545.0) * 86400.0
-            assert horizons_api._et_to_jd(et) == pytest.approx(jd)
+            assert horizons_api.et_to_jd(et) == pytest.approx(jd)
 
 
 class TestCoarseStepFor:

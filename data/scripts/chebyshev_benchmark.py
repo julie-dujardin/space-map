@@ -232,10 +232,10 @@ def _format_err(km: float) -> str:
     return f"{km:.1e}km"
 
 
-def _format_chunk_span(years: float) -> str:
-    if years < 1:
-        return f"{years * 12:.0f}mo"
-    return f"{years:.0f}y"
+def _format_chunk_span(days: float) -> str:
+    if days < 365:
+        return f"{days:.0f}d"
+    return f"{days / 365.25:.0f}y"
 
 
 def _discover_chebyshev_zones(manifest: dict) -> dict[str, dict]:
@@ -269,7 +269,7 @@ def main() -> int:
     per_zone_errs: dict[str, list[float]] = defaultdict(list)
     per_zone_files: dict[str, list[int]] = defaultdict(list)
     per_zone_segments: dict[str, int] = defaultdict(int)
-    per_zone_chunk_years: dict[str, float] = {}
+    per_zone_chunk_days: dict[str, float] = {}
     per_zone_float64: dict[str, bool] = {}
     # (zone, naif_id) → errs, plus parent_id snapshot for labeling.
     per_body_errs: dict[tuple[str, int], list[float]] = defaultdict(list)
@@ -279,7 +279,7 @@ def main() -> int:
 
     try:
         for zone_key, zone_entry in sorted(cheb_zones.items()):
-            per_zone_chunk_years[zone_key] = float(zone_entry.get("chunk_years", 0.0))
+            per_zone_chunk_days[zone_key] = float(zone_entry.get("chunk_days", 0.0))
             zone_dir = position_root / zone_key / "0"
             if not zone_dir.is_dir():
                 logger.warning(
@@ -322,7 +322,7 @@ def main() -> int:
         zone_rows.append(
             {
                 "zone": zone_key,
-                "chunk_years": per_zone_chunk_years.get(zone_key, 0.0),
+                "chunk_days": per_zone_chunk_days.get(zone_key, 0.0),
                 "coeffs": "f64" if per_zone_float64.get(zone_key) else "f32",
                 "files": len(sizes),
                 "bodies": len(bodies_in_zone),
@@ -368,7 +368,7 @@ def main() -> int:
     print("-" * 130)
     for r in zone_rows:
         print(
-            f"{r['zone']:<22} {_format_chunk_span(r['chunk_years']):>5} "
+            f"{r['zone']:<22} {_format_chunk_span(r['chunk_days']):>5} "
             f"{r['coeffs']:>4} {r['files']:>5} {r['bodies']:>6} {r['segments']:>8}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M"
@@ -426,7 +426,7 @@ def _write_markdown(
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in zone_rows:
         lines.append(
-            f"| `{r['zone']}` | {_format_chunk_span(r['chunk_years'])} | "
+            f"| `{r['zone']}` | {_format_chunk_span(r['chunk_days'])} | "
             f"{r['coeffs']} | "
             f"{r['files']} | {r['bodies']} | {r['segments']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "

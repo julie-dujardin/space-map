@@ -11,8 +11,8 @@ camera focus), and within a chunk dispatches per sub-chunk on the method
 byte to evaluate position(t).
 
 Time-axis alignment: chunks align to a global `start_jd` (1950-01-01) so the
-chunk index for a given JD is `floor((jd - start_jd) / chunk_years / 365.25)`,
-matching the chebyshev exporter's convention.
+chunk index for a given JD is `floor((jd - start_jd) / chunk_days)`, matching
+the chebyshev exporter's convention.
 
 Incremental: each chunk emits a JSON sidecar with `(fit_version, zone_hash,
 probes→kernel mtime+size)`. On re-export we recompute that signature and
@@ -39,9 +39,9 @@ from space_map_data.export.position.probes.plan import build_probe_metas
 from space_map_data.export.position.probes.time_grid import (
     PROBE_EXPORT_END_YEAR,
     PROBE_EXPORT_START_YEAR,
-    year_to_jd,
 )
 from space_map_data.export.position.probes.write import write_pass
+from space_map_data.utils.time import year_to_jd
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     candidates_for_zone,
@@ -71,7 +71,7 @@ def write_probes(
          expensive `size_chunk` fits only on those (probe, chunk) pairs.
       4. Pack + atomic-write binary + sidecar per dirty chunk.
 
-    Returns `{zone_key_with_prefix: {chunks, chunk_years, start_jd, end_jd}}`
+    Returns `{zone_key_with_prefix: {chunks, chunk_days, start_jd, end_jd}}`
     so `_build_position_metadata` can fold it into the manifest.
     """
     if not MISSIONS_DIR.exists():

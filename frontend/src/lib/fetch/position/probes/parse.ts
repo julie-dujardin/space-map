@@ -31,8 +31,7 @@ import {
 	SYSTEM_INTERVAL_SIZE,
 	buildObjectId
 } from '$lib/fetch/position/format';
-
-const SECONDS_PER_DAY = 86400;
+import { SECONDS_PER_DAY, jdToEt } from '$lib/time/jd';
 
 /** Kepler-pure / Kepler-drift element block (units match the writer). */
 export interface KeplerPureElts {
@@ -155,16 +154,6 @@ export interface ProbeChunk {
 	/** Sub-chunk width in days — shared across every probe in the file. */
 	subchunkDays: number;
 	probes: Probe[];
-}
-
-const JD_J2000 = 2451545.0;
-
-/** Convert JD (TDB) → seconds past J2000. The probes writer stores sub-chunk
- *  boundaries implicitly via JD start of the chunk + offsets in sub-chunk
- *  units; we expand them eagerly to ET so the propagator can compute `dt`
- *  in seconds without re-doing JD arithmetic per evaluation. */
-function jdToEt(jd: number): number {
-	return (jd - JD_J2000) * SECONDS_PER_DAY;
 }
 
 function readFloats(

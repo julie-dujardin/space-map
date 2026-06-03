@@ -26,14 +26,9 @@ import {
 } from '$lib/fetch/position/format';
 import type { KeplerDriftElts, KeplerPureElts, Probe } from '$lib/fetch/position/probes/parse';
 import { findSubChunkIndex, jdToEt, probeStateKm } from '$lib/fetch/position/probes/propagate';
+import { SECONDS_PER_DAY, etToJd } from '$lib/time/jd';
 
 const RAD2DEG = 180 / Math.PI;
-const SECONDS_PER_DAY = 86400;
-const JD_J2000 = 2451545.0;
-
-function etToJd(et: number): number {
-	return et / SECONDS_PER_DAY + JD_J2000;
-}
 
 function keplerPureElements(
 	sub: KeplerPureElts,

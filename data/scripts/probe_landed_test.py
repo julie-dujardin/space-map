@@ -82,20 +82,20 @@ _NON_PLANET_BODY_TO_ZONE: dict[int, str] = {
 
 
 def _zone_for_body(body_naif_id: int) -> tuple[str, float]:
-    """(zone_key, chunk_years) for the streaming chunks the landed phase will
+    """(zone_key, chunk_days) for the streaming chunks the landed phase will
     land in. Direct match against `fit_center_naif_id` for planet-centric
     bodies (Mars 499 → mars zone, Earth 399 → earth-moon, etc.), explicit
     mapping for moons (Titan, Luna). Falls back to a 1-yr default if a new
     body shows up that we haven't classified yet."""
     for z in PLANETARY_ZONES:
         if z.fit_center_naif_id == body_naif_id:
-            return z.key, z.chunk_years
+            return z.key, z.chunk_days
     if body_naif_id in _NON_PLANET_BODY_TO_ZONE:
         key = _NON_PLANET_BODY_TO_ZONE[body_naif_id]
         for z in PLANETARY_ZONES:
             if z.key == key:
-                return z.key, z.chunk_years
-    return "unknown", 1.0
+                return z.key, z.chunk_days
+    return "unknown", 365.25
 
 
 def _phase_export_size(
@@ -103,7 +103,7 @@ def _phase_export_size(
     end_et: float,
     is_static: bool,
     n_samples: int,
-    chunk_years: float,
+    chunk_days: float,
 ) -> tuple[int, int]:
     """(total_bytes, n_chunks) the phase contributes to its zone's streaming
     chunks, summed across every chunk it overlaps.
@@ -115,7 +115,7 @@ def _phase_export_size(
     Moving phase: same 40-B chunk overhead + 16 B per kept sample. We spread
     `n_samples` evenly across chunks; motion-triggered extras are rare
     (10 over 87 yr for MSL), so the approximation is tight."""
-    chunk_s = chunk_years * 365.25 * _S_PER_DAY
+    chunk_s = chunk_days * _S_PER_DAY
     n_chunks = max(1, int(math.ceil((end_et - start_et) / chunk_s)))
     overhead = n_chunks * (_BYTES_SUBCHUNK_HDR + _BYTES_LANDED_HDR)
     if is_static:
@@ -167,7 +167,7 @@ class PhaseResult:
     peak_step_m: float
     total_path_m: float
     zone_key: str  # streaming-chunk zone this phase falls into ("mars" etc.)
-    chunk_years: float  # streaming-chunk span for that zone
+    chunk_days: float  # streaming-chunk span for that zone
     n_chunks: int  # streaming chunks the phase overlaps
     export_bytes: int  # METHOD_LANDED bytes added across all chunks (incl. headers)
     lat_min_deg: float
@@ -342,13 +342,13 @@ def _summarize(
     lons = [s.lon_deg for s in fine_samples]
     alts = [s.alt_km for s in fine_samples]
 
-    zone_key, chunk_years = _zone_for_body(body_naif_id)
+    zone_key, chunk_days = _zone_for_body(body_naif_id)
     export_bytes, n_chunks = _phase_export_size(
         start_et=phase_start_et,
         end_et=phase_end_et,
         is_static=is_stationary,
         n_samples=len(kept),
-        chunk_years=chunk_years,
+        chunk_days=chunk_days,
     )
 
     return PhaseResult(
@@ -369,7 +369,7 @@ def _summarize(
         peak_step_m=peak_step,
         total_path_m=total_path,
         zone_key=zone_key,
-        chunk_years=chunk_years,
+        chunk_days=chunk_days,
         n_chunks=n_chunks,
         export_bytes=export_bytes,
         lat_min_deg=min(lats),

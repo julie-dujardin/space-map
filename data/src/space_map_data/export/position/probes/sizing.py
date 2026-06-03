@@ -23,11 +23,10 @@ import numpy as np
 import spiceypy
 
 from space_map_data.probes.zones import Zone, threshold_for
+from space_map_data.utils.time import S_PER_DAY
 
 logger = logging.getLogger(__name__)
 
-_S_PER_DAY = 86400.0
-_J2000_JD = 2451545.0
 _AU_KM = 149_597_870.7
 
 # Sub-interval sweep, coarsest first. We pick the largest intlen whose max
@@ -92,7 +91,7 @@ SAMPLES_PER_CHUNK = 50
 # long-period secular trends but assumes the orbit is well-approximated by
 # linear drift over the window. ±0.5y is a reasonable middle ground for
 # spacecraft (vs ±5y for natural moons whose perturbations are tiny).
-METHOD_C_HALF_WINDOW_S = 0.5 * 365.25 * _S_PER_DAY
+METHOD_C_HALF_WINDOW_S = 0.5 * 365.25 * S_PER_DAY
 
 
 @dataclass(frozen=True)
@@ -427,7 +426,7 @@ def _fit_sub_chunk(
     # lunar surface). Scaling the half-window to ~2 orbital periods preserves
     # statistical power for the Ω̇/ω̇/Ṁ fit while keeping the linear assumption
     # locally valid (~150 km median for the same probes, never below surface).
-    default_half_s = max(2.0 * sub_s, 2 * _S_PER_DAY)
+    default_half_s = max(2.0 * sub_s, 2 * S_PER_DAY)
     # Estimate the orbital period from multi-sample oscelt over a wide window.
     # A single oscelt at sub_mid is unreliable for high-e orbits — INTEGRAL's
     # instantaneous osculating period collapses to ~3 h near perigee even
@@ -437,7 +436,7 @@ def _fit_sub_chunk(
     # samples biases toward apogee-side samples where the osculating elements
     # are stable. For genuinely short-period orbits every sample agrees on
     # the period, so the max equals the actual.
-    prelim_window_s = max(default_half_s, 15 * _S_PER_DAY)
+    prelim_window_s = max(default_half_s, 15 * S_PER_DAY)
     prelim_ets = np.linspace(sub_mid - prelim_window_s, sub_mid + prelim_window_s, 21)
     max_period_s = 0.0
     for et in prelim_ets:
@@ -459,7 +458,7 @@ def _fit_sub_chunk(
     # wide window so the fit samples span a meaningful arc of the orbit
     # rather than just the near-perigee fast pass.
     if max_period_s > 0:
-        fit_half_s = max(0.25 * _S_PER_DAY, min(default_half_s, 2.0 * max_period_s))
+        fit_half_s = max(0.25 * S_PER_DAY, min(default_half_s, 2.0 * max_period_s))
     else:
         fit_half_s = default_half_s
     # 200 fit samples gives Nyquist-clean coverage at any reasonable window.
@@ -530,7 +529,7 @@ def _fit_sub_chunk(
     best_under: tuple[float, float, np.ndarray] | None = None
     best_over: tuple[float, float, np.ndarray] | None = None
     for intlen_d in INTLEN_SWEEP_DAYS:
-        intlen_s = intlen_d * _S_PER_DAY
+        intlen_s = intlen_d * S_PER_DAY
         seg_s = min(intlen_s, sub_s)
         result = _fit_chebyshev_subchunk(
             naif_id, fit_center_naif_id, sub_t_start, sub_t_end, seg_s
@@ -574,7 +573,7 @@ def _fit_sub_chunk(
         bytes=coeffs.shape[0] * cheb_bytes_per_seg,
         max_err_km=err,
         detail=detail,
-        chebyshev_intlen_s=intlen_d * _S_PER_DAY,
+        chebyshev_intlen_s=intlen_d * S_PER_DAY,
         chebyshev_coeffs=coeffs,
     )
 
@@ -611,7 +610,7 @@ def size_chunk(
         return ChunkSizing(0, 0, 0, 1, float("inf"), [])
 
     base_threshold_km = threshold_for(zone, naif_id)
-    sub_s = zone.kepler_subchunk_days * _S_PER_DAY
+    sub_s = zone.kepler_subchunk_days * S_PER_DAY
 
     sub_chunks: list[SubChunkFit] = []
     cur = t_start

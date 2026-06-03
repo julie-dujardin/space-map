@@ -223,7 +223,7 @@ def classify_pass(
             for zone_key, iv_start, iv_end in result["intervals"]:
                 zone = ZONES_BY_KEY[zone_key]
                 for chunk_idx, c_start, c_end in chunk_aligned_range(
-                    zone.chunk_years,
+                    zone.chunk_days,
                     zone.kepler_subchunk_days,
                     iv_start,
                     iv_end,
@@ -250,7 +250,7 @@ def classify_pass(
                     )
                     continue
                 for chunk_idx, c_start, c_end in landed_chunk_range(
-                    zone.chunk_years, ph_start, ph_end, start_jd
+                    zone.chunk_days, ph_start, ph_end, start_jd
                 ):
                     contrib = ChunkContribution(
                         zone_key=zone.key,

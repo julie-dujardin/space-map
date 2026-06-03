@@ -2,7 +2,7 @@
  * Hot-reload driver for time-sliced zones. Two slicings:
  *   - time-segmented (`earth` SGP4 sats): one chunk set per ISO date snapshot.
  *   - chunk-indexed (`moons` Method-C secular elements): one chunk set per
- *     `chunk_years` window from `start_jd`.
+ *     `chunk_days` window from `start_jd`.
  *
  * Reconciliation: time-segmented buckets by parentId in `spacecraftByParent`
  * (membership flips across snapshots); chunk-indexed mutates `bodiesById` in
@@ -157,7 +157,7 @@ export class ZoneRefresher {
 				});
 			} else {
 				// Drain as many ready preloads as the user has scrubbed across in
-				// one frame. Uncommon (chunks span chunk_years of sim time) but
+				// one frame. Uncommon (chunks span chunk_days of sim time) but
 				// keeps fast-scrub semantics tight.
 				while (true) {
 					const target = chunkIndexForJd(state.zoomData, jd);

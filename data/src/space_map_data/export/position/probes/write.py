@@ -39,7 +39,7 @@ from space_map_data.export.position.probes.sizing import (
     METHOD_UNCOVERABLE as SZ_METHOD_UNCOVERABLE,
     SubChunkFit,
 )
-from space_map_data.export.position.probes.time_grid import S_PER_DAY, jd_to_et
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 from space_map_data.probes.zones import ALL_ZONES, Zone
 
 logger = logging.getLogger(__name__)
@@ -242,8 +242,8 @@ def write_pass(
                 continue
 
             probe_records.sort(key=lambda r: r.probe_id)
-            chunk_start_jd = start_jd + chunk_idx * zone.chunk_years * 365.25
-            chunk_end_jd = chunk_start_jd + zone.chunk_years * 365.25
+            chunk_start_jd = start_jd + chunk_idx * zone.chunk_days
+            chunk_end_jd = chunk_start_jd + zone.chunk_days
             chunk_start_et = jd_to_et(chunk_start_jd)
             sub_s = zone.kepler_subchunk_days * S_PER_DAY
 
@@ -287,9 +287,7 @@ def write_pass(
             total_bytes += len(compressed)
             n_emit += 1
 
-        total_window_chunks = max(
-            1, math.ceil((end_jd - start_jd) / (zone.chunk_years * 365.25))
-        )
+        total_window_chunks = max(1, math.ceil((end_jd - start_jd) / zone.chunk_days))
         present = n_emit + n_skip
         avg_kb = (total_bytes // present) // 1024 if present else 0
         logger.info(
@@ -307,7 +305,7 @@ def write_pass(
         )
         manifest[f"probes/{zone_key}"] = {
             "chunks": total_window_chunks,
-            "chunk_years": zone.chunk_years,
+            "chunk_days": zone.chunk_days,
             "start_jd": start_jd,
             "end_jd": end_jd,
             "subchunk_days": zone.kepler_subchunk_days,

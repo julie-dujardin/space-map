@@ -16,6 +16,7 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
 from space_map_data.models.object import ObjectType
+from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
 from space_map_data.utils.naif import (
     CHEBYSHEV_MOON_WHITELIST,
     MajorBody,
@@ -474,12 +475,12 @@ class SpiceDownloader(Downloader):
         start_year = int(cheb_cfg["start_year"])
         end_year = int(cheb_cfg["end_year"])
         chunk_years = MOON_CHUNK_YEARS
+        chunk_days = chunk_years * DAYS_PER_YEAR
 
         n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
-        # Civil-year start as JD TDB (matches chebyshev export's `_year_to_jd`).
-        start_jd = date(start_year, 1, 1).toordinal() + 1721424.5
+        start_jd = year_to_jd(start_year)
         chunk_midpoints_jd = [
-            start_jd + (i + 0.5) * chunk_years * 365.25 for i in range(n_chunks)
+            start_jd + (i + 0.5) * chunk_days for i in range(n_chunks)
         ]
 
         out_dir = self.out_dir / "moon_chunks"

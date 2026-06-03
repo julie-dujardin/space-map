@@ -4,9 +4,9 @@
  * The export ships per-zone, per-time-chunk binaries under
  * `/data/v1/position/{zone}/0/{chunkIdx}.bin.gz`. Each chebyshev zone in
  * `metadata.position.zones` (those with `shape: "chunked"`) declares its
- * own `chunks`, `chunk_years`, and `start_jd` — Saturn's 0.125-year cadence
- * and Pluto's 2-year cadence coexist with no global tier metadata. A zone's
- * chunk index for any JD is `floor((jd - start_jd) / (chunk_years * 365.25))`.
+ * own `chunks`, `chunk_days`, and `start_jd` — Saturn's ~46-day cadence
+ * and Pluto's ~730-day cadence coexist with no global tier metadata. A zone's
+ * chunk index for any JD is `floor((jd - start_jd) / chunk_days)`.
  *
  * For now we eager-load the chunk containing the current JD plus its two
  * neighbors across every zone. Time scrubbing advances one chunk at a time, so
@@ -37,7 +37,7 @@ export interface BodyWithWindow {
  *  when the entry's `shape` is `"chunked"`. */
 export interface ChebyshevZoneParams {
 	chunks: number;
-	chunk_years: number;
+	chunk_days: number;
 	start_jd: number;
 	end_jd: number;
 }

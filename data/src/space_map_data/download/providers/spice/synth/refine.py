@@ -10,7 +10,9 @@ import spiceypy
 
 from space_map_data.utils.paths import DOWNLOAD_DIR
 
-from .horizons_api import Sample, _et_to_jd, _jd_to_iso
+from space_map_data.utils.time import et_to_jd
+
+from .horizons_api import Sample, _jd_to_iso
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +202,8 @@ def _identify_refinement_windows(
         j = i
         while j < n and near[j]:
             j += 1
-        a_jd = _et_to_jd(samples[i].et) - REFINE_PAD_DAYS
-        b_jd = _et_to_jd(samples[j - 1].et) + REFINE_PAD_DAYS
+        a_jd = et_to_jd(samples[i].et) - REFINE_PAD_DAYS
+        b_jd = et_to_jd(samples[j - 1].et) + REFINE_PAD_DAYS
         a = max(cov_start, datetime.fromisoformat(_jd_to_iso(a_jd)).date())
         b = min(cov_end, datetime.fromisoformat(_jd_to_iso(b_jd)).date())
         if a < b:
