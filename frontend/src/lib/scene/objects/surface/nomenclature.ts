@@ -6,31 +6,50 @@
  * coordinates use the orientation basis (pole on +Y, prime meridian on +X,
  * planetographic longitude increasing east).
  *
- * Non-circular feature types (linear features, valleys, ridges, lineae) are
- * dropped client-side until the planned vector dataset can render their
- * actual geometry. The exclusion set is hardcoded here so swapping the layer
- * over once that lands is a one-file change.
+ * Each label is shown only when its on-screen diameter falls in the
+ * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band; survivors are
+ * passed through a greedy AABB collision cull, iterated in priority order
+ * (largest effective diameter first — fixed at attach so the per-frame loop
+ * is sort-free). Non-circular feature types (linear features, valleys,
+ * ridges, lineae) are dropped client-side until the planned vector dataset
+ * can render their actual geometry. Zero-diameter records (mostly Mars
+ * albedo features) fall back to {@link DEFAULT_FEATURE_DIAMETER_M}.
  */
 
 import { Vector3, type Camera, type SphereGeometry } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
+import { effectiveRadiusKm } from '$lib/types/objects';
 import type { BodyObjects } from '$lib/scene/types';
-
-/** Body screen radius (px) at which feature labels start drawing. Roughly
- *  the point where a landed-probe-sized surface offset is large enough on
- *  screen to actually distinguish individual features. */
-const MIN_BODY_SCREEN_RADIUS_PX = 128;
 
 const DEG2RAD = Math.PI / 180;
 
-/** Cap per body so dense surfaces (Moon at 9k features) stay legible. */
-const MAX_LABELS_PER_BODY = 200;
+/** Body screen radius (px) below which we skip feature labels entirely. Cheap
+ *  early-out before the per-feature projection loop. */
+const MIN_BODY_SCREEN_RADIUS_PX = 128;
 
 /** Fraction of the focused body's disc radius within which labels render. The
  *  outer ring is dropped because occlusion at grazing angles is noisy. */
 const LABEL_DISC_FRACTION = 0.9;
+
+/** Minimum on-screen feature diameter (px) for the label to draw. Below this
+ *  the label text would be wider than the feature it names. */
+const MIN_FEATURE_PX = 24;
+
+/** Maximum on-screen feature diameter as a fraction of `min(screenW, screenH)`.
+ *  Beyond this the feature dominates the view and naming it is redundant —
+ *  hiding the big one lets contained sub-features compete in the collision pass. */
+const MAX_FEATURE_FRACTION = 0.2;
+
+/** Fallback diameter assigned to IAU records with no recorded extent (mostly
+ *  Mars/Triton/Rhea albedo features). Small enough that they only surface at
+ *  extreme zoom — accurate sizes would need a separate dataset. */
+const DEFAULT_FEATURE_DIAMETER_M = 100;
+
+/** Approximate text-box height (px) of `.scene-feature-label` (10px font +
+ *  line-height + shadow). Used as the y-overlap threshold in the collision cull. */
+const FEATURE_LINE_H = 14;
 
 /** Feature types whose geometry isn't usefully approximated by a center+radius
  *  circle. Hidden until a dedicated vector layer can render them properly. */
@@ -67,13 +86,26 @@ export async function attachNomenclatureLabels(bo: BodyObjects): Promise<void> {
 	const r = geometry.parameters?.radius;
 	if (!r) return; // not a SphereGeometry (model-based body — can't place features)
 
-	const renderable = features
-		.filter((f) => !NON_CIRCULAR_TYPE_CODES.has(f.typeCode))
-		.sort((a, b) => b.diameterM - a.diameterM)
-		.slice(0, MAX_LABELS_PER_BODY);
+	const renderable = features.filter((f) => !NON_CIRCULAR_TYPE_CODES.has(f.typeCode));
+	renderable.sort((a, b) => {
+		const da = a.diameterM > 0 ? a.diameterM : DEFAULT_FEATURE_DIAMETER_M;
+		const db = b.diameterM > 0 ? b.diameterM : DEFAULT_FEATURE_DIAMETER_M;
+		return db - da;
+	});
 
-	const labels: CSS2DObject[] = [];
-	for (const feature of renderable) {
+	const n = renderable.length;
+	const labels: CSS2DObject[] = new Array(n);
+	const diamsM = new Float32Array(n);
+	const widths = new Float32Array(n).fill(-1);
+	const sx = new Float32Array(n).fill(NaN);
+	const sy = new Float32Array(n).fill(NaN);
+
+	let fallbackCount = 0;
+	for (let i = 0; i < n; i++) {
+		const feature = renderable[i];
+		const effDiam = feature.diameterM > 0 ? feature.diameterM : DEFAULT_FEATURE_DIAMETER_M;
+		if (feature.diameterM <= 0) fallbackCount++;
+
 		const el = document.createElement('div');
 		el.className = 'scene-feature-label';
 		el.textContent = feature.name;
@@ -89,9 +121,21 @@ export async function attachNomenclatureLabels(bo: BodyObjects): Promise<void> {
 			-r * cosLat * Math.sin(lonRad)
 		);
 		bo.mesh.add(obj);
-		labels.push(obj);
+		labels[i] = obj;
+		diamsM[i] = effDiam;
 	}
+
+	if (fallbackCount > 0) {
+		console.log(
+			`[nomenclature] ${bo.body.data.id}: ${fallbackCount}/${n} features have no diameter — using ${DEFAULT_FEATURE_DIAMETER_M}m fallback`
+		);
+	}
+
 	bo.nomenclatureLabels = labels;
+	bo.nomenclatureDiamsM = diamsM;
+	bo.nomenclatureWidths = widths;
+	bo.nomenclatureSX = sx;
+	bo.nomenclatureSY = sy;
 }
 
 export function disposeNomenclatureLabels(bo: BodyObjects): void {
@@ -101,6 +145,10 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 		label.parent?.remove(label);
 	}
 	bo.nomenclatureLabels = null;
+	bo.nomenclatureDiamsM = undefined;
+	bo.nomenclatureWidths = undefined;
+	bo.nomenclatureSX = undefined;
+	bo.nomenclatureSY = undefined;
 }
 
 const _bodyWorld = new Vector3();
@@ -110,14 +158,14 @@ const _bodyNdc = new Vector3();
 const _labelNdc = new Vector3();
 
 /**
- * Per-frame visibility for feature labels. Gated on:
+ * Per-frame visibility for feature labels. A label survives when its body is
+ * focused and projects to at least {@link MIN_BODY_SCREEN_RADIUS_PX}, the
+ * label is on the front hemisphere, sits inside {@link LABEL_DISC_FRACTION}
+ * of the projected disc, and its on-screen diameter falls in the
+ * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · min(screenW, screenH)]` band.
  *
- *   1. focused body only — features are detail for what the user is looking at,
- *      not navigational context for the rest of the system,
- *   2. body screen radius ≥ {@link MIN_BODY_SCREEN_RADIUS_PX} — the sphere is
- *      big enough on screen that a per-feature surface offset is meaningful,
- *   3. front hemisphere AND inside {@link LABEL_DISC_FRACTION} of the projected
- *      disc — far-hemisphere points and the noisy limb band are both dropped.
+ * Survivors get their screen-space center written to `bo.nomenclatureSX/SY`
+ * for the collision pass; hidden labels get `NaN` so the cull skips them.
  */
 export function updateNomenclatureVisibility(
 	bo: BodyObjects,
@@ -131,6 +179,23 @@ export function updateNomenclatureVisibility(
 	if (!labels) return;
 
 	if (!isFocused || screenR < MIN_BODY_SCREEN_RADIUS_PX) {
+		for (const lbl of labels) lbl.visible = false;
+		return;
+	}
+
+	const diamsM = bo.nomenclatureDiamsM!;
+	const sxA = bo.nomenclatureSX!;
+	const syA = bo.nomenclatureSY!;
+	const n = labels.length;
+
+	const realRadiusM = effectiveRadiusKm(bo.body.data) * 1000;
+	const pxPerMeter = screenR / realRadiusM;
+	const maxFeaturePx = MAX_FEATURE_FRACTION * Math.min(screenW, screenH);
+
+	// Fast path: labels are pre-sorted by effective diameter desc, so if the
+	// largest feature can't clear MIN_FEATURE_PX, none can — skip the whole
+	// projection loop.
+	if (n === 0 || diamsM[0] * pxPerMeter < MIN_FEATURE_PX) {
 		for (const lbl of labels) lbl.visible = false;
 		return;
 	}
@@ -153,7 +218,15 @@ export function updateNomenclatureVisibility(
 	const halfW = 0.5 * screenW;
 	const halfH = 0.5 * screenH;
 
-	for (const lbl of labels) {
+	for (let i = 0; i < n; i++) {
+		const lbl = labels[i];
+		const featurePx = diamsM[i] * pxPerMeter;
+		if (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx) {
+			lbl.visible = false;
+			sxA[i] = NaN;
+			syA[i] = NaN;
+			continue;
+		}
 		lbl.getWorldPosition(_labelWorld);
 		const lx = _labelWorld.x - _bodyWorld.x;
 		const ly = _labelWorld.y - _bodyWorld.y;
@@ -166,11 +239,91 @@ export function updateNomenclatureVisibility(
 		const lenSqL = lx * lx + ly * ly + lz * lz;
 		if (dot <= lenSqL) {
 			lbl.visible = false;
+			sxA[i] = NaN;
+			syA[i] = NaN;
 			continue;
 		}
 		_labelNdc.copy(_labelWorld).project(camera);
-		const dx = (_labelNdc.x - _bodyNdc.x) * halfW;
-		const dy = (_labelNdc.y - _bodyNdc.y) * halfH;
-		lbl.visible = dx * dx + dy * dy < maxPxSq;
+		const dxPx = (_labelNdc.x - _bodyNdc.x) * halfW;
+		const dyPx = (_labelNdc.y - _bodyNdc.y) * halfH;
+		if (dxPx * dxPx + dyPx * dyPx >= maxPxSq) {
+			lbl.visible = false;
+			sxA[i] = NaN;
+			syA[i] = NaN;
+			continue;
+		}
+		lbl.visible = true;
+		sxA[i] = (_labelNdc.x * 0.5 + 0.5) * screenW;
+		syA[i] = (-_labelNdc.y * 0.5 + 0.5) * screenH;
+	}
+}
+
+// AABB pool for the collision cull. Module-level — only one focused body's
+// labels go through here per frame, so a single pool is fine.
+type Rect = { left: number; right: number; y: number };
+const _acceptedNom: Rect[] = [];
+
+function ensureRect(idx: number): Rect {
+	let r = _acceptedNom[idx];
+	if (!r) {
+		r = { left: 0, right: 0, y: 0 };
+		_acceptedNom[idx] = r;
+	}
+	return r;
+}
+
+/**
+ * Greedy AABB collision cull for the focused body's feature labels. Labels
+ * are iterated in pre-sorted priority order (largest effective diameter
+ * first); each accepts unless its box overlaps an already-accepted box, in
+ * which case it's hidden for the frame. Text widths are measured lazily on
+ * the first frame the label is in DOM (first measure may return 0; we retry
+ * next frame with a 60px fallback).
+ */
+export function cullOverlappingNomenclatureLabels(bo: BodyObjects): void {
+	const labels = bo.nomenclatureLabels;
+	if (!labels) return;
+	const sxA = bo.nomenclatureSX!;
+	const syA = bo.nomenclatureSY!;
+	const widths = bo.nomenclatureWidths!;
+
+	let acceptedCount = 0;
+	for (let i = 0; i < labels.length; i++) {
+		const lbl = labels[i];
+		if (!lbl.visible) continue;
+		const cx = sxA[i];
+		const cy = syA[i];
+		if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
+		let w = widths[i];
+		if (w < 0) {
+			const measured = lbl.element.offsetWidth;
+			if (measured > 0) {
+				widths[i] = measured;
+				w = measured;
+			} else {
+				// CSS2DRenderer hasn't appended the element yet — fall back this
+				// frame; the cache stays at -1 so we re-measure next frame.
+				w = 60;
+			}
+		}
+		const halfW = w * 0.5;
+		const left = cx - halfW;
+		const right = cx + halfW;
+		let overlaps = false;
+		for (let j = 0; j < acceptedCount; j++) {
+			const a = _acceptedNom[j];
+			if (left < a.right && right > a.left && Math.abs(cy - a.y) < FEATURE_LINE_H) {
+				overlaps = true;
+				break;
+			}
+		}
+		if (overlaps) {
+			lbl.visible = false;
+		} else {
+			const a = ensureRect(acceptedCount++);
+			a.left = left;
+			a.right = right;
+			a.y = cy;
+		}
 	}
 }

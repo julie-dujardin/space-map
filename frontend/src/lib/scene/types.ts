@@ -79,6 +79,17 @@ export interface BodyObjects {
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** IAU nomenclature labels attached to the body mesh; null when not loaded. */
 	nomenclatureLabels: CSS2DObject[] | null;
+	/** Parallel to {@link nomenclatureLabels}: effective feature diameter in metres,
+	 *  with a fallback applied for IAU records that omit it. */
+	nomenclatureDiamsM?: Float32Array;
+	/** Parallel to {@link nomenclatureLabels}: cached label text width in px; `-1`
+	 *  until first successful `offsetWidth` measurement. */
+	nomenclatureWidths?: Float32Array;
+	/** Parallel to {@link nomenclatureLabels}: last computed screen-space center
+	 *  written by the visibility pass; `NaN` when the label is hidden. Read by
+	 *  the collision cull. */
+	nomenclatureSX?: Float32Array;
+	nomenclatureSY?: Float32Array;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
 	/** Slug of the currently loaded model bundle. */

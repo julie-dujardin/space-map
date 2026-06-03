@@ -11,7 +11,10 @@ import {
 } from '../label/culling';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
 import { moonVisFlags, bodyVisFlags } from './flags';
-import { updateNomenclatureVisibility } from '../objects/surface/nomenclature';
+import {
+	updateNomenclatureVisibility,
+	cullOverlappingNomenclatureLabels
+} from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
@@ -308,6 +311,16 @@ export function updateBodyVisibility(
 			screenOccluders,
 			focusTruePos
 		);
+	}
+
+	// Feature-label collision cull runs every frame for the focused body only
+	// (small N — visible labels per body, after size band, typically < 200).
+	// Running every frame keeps it in sync with the per-frame size-band pass,
+	// so labels that swap in/out of visibility don't flicker against a stale
+	// throttled cull result.
+	if (focusedBodyId) {
+		const focusedBo = bodyObjects.get(focusedBodyId);
+		if (focusedBo) cullOverlappingNomenclatureLabels(focusedBo);
 	}
 
 	// Update camera-relative offset uniforms for trail lines (prevents float32 precision flicker)
