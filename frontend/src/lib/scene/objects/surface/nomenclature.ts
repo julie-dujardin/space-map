@@ -47,9 +47,9 @@ const MAX_FEATURE_FRACTION = 0.2;
  *  extreme zoom — accurate sizes would need a separate dataset. */
 const DEFAULT_FEATURE_DIAMETER_M = 100;
 
-/** Approximate text-box height (px) of `.scene-feature-label` (10px font +
+/** Approximate text-box height (px) of `.scene-feature-label` (12px font +
  *  line-height + shadow). Used as the y-overlap threshold in the collision cull. */
-const FEATURE_LINE_H = 14;
+const FEATURE_LINE_H = 16;
 
 /** Feature types whose geometry isn't usefully approximated by a center+radius
  *  circle. Hidden until a dedicated vector layer can render them properly. */

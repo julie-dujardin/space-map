@@ -9,6 +9,7 @@
 	touch-action: none; /* prevent browser pinch-zoom; 2nd-finger pointerdown forwarded to canvas */
 	width: 32px;
 	height: 32px;
+	z-index: 1; /* sit above .scene-feature-label */
 }
 
 .scene-label__halo {
@@ -74,11 +75,12 @@
  * dimmer than body labels; no halo, no interaction. */
 .scene-feature-label {
 	color: rgba(255, 255, 255, 0.7);
-	font-size: 10px;
+	font-size: 12px;
 	white-space: nowrap;
 	pointer-events: none;
 	user-select: none;
 	text-shadow:
 		0 0 2px #000,
 		0 0 2px #000;
+	z-index: 0; /* sit below .scene-label (body/spacecraft labels) */
 }
