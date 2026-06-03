@@ -586,7 +586,7 @@ _ALL_SITES = {*_HTML_PARSERS.keys(), "nasa_svs"}
 def _site_for(url: str) -> str | None:
     host = (urlparse(url).hostname or "").lower()
     path = urlparse(url).path.lower()
-    if host.endswith("astrogeology.usgs.gov"):
+    if host == "astrogeology.usgs.gov" or host.endswith(".astrogeology.usgs.gov"):
         return "usgs_astrogeology"
     if host == "svs.gsfc.nasa.gov":
         return "nasa_svs"

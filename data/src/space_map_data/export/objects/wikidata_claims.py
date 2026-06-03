@@ -2,7 +2,7 @@
 
 import logging
 from typing import Literal, NamedTuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
@@ -311,7 +311,10 @@ def _has_nasa_ref_url(stmt: dict) -> bool:
     for ref in stmt.get("references", []):
         for snak in ref.get("snaks", {}).get("P854", []):
             url = snak.get("datavalue", {}).get("value", "")
-            if isinstance(url, str) and ".nasa.gov" in url:
+            if not isinstance(url, str):
+                continue
+            host = (urlparse(url).hostname or "").lower()
+            if host == "nasa.gov" or host.endswith(".nasa.gov"):
                 return True
     return False
 
