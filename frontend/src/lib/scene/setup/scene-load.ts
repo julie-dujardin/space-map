@@ -275,52 +275,72 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// minorChunkArgsPromise has been running in parallel; files are likely cached already.
 	const minorChunkArgs = await minorChunkArgsPromise;
 
+	// `small_body_moons` parents (asteroid hosts) live in `small_bodies/*`
+	// zones, not in chebyshev — without seeding, the asteroid pass would not
+	// retain their positions and the moons would skip on the parent lookup.
+	// Seed first, then process parent zones, then process moons.
+	const moonArgs = minorChunkArgs.filter((a) => a.zone === 'small_body_moons');
+	const otherArgs = minorChunkArgs.filter((a) => a.zone !== 'small_body_moons');
+	for (const arg of moonArgs) {
+		await loader.seedNeededParents(arg.zone, arg.zoom, arg.part, arg.time, arg.parentIdType);
+	}
+
 	const intervalId = setInterval(flush, 500);
+
+	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
+		ctx.credits.recordOrbitSources(chunk);
+		for (const b of chunk) {
+			const placeholder = placeholderById.get(b.data.id);
+			if (placeholder) {
+				// Mutate in place so the renderer's BodyObject keeps a stable
+				// PositionedBody ref. Don't overwrite optional fields with
+				// undefined — non-major chunks leave them unset, and the
+				// placeholder's orbitCenter array is what the per-frame loop
+				// mutates to keep the focused sat's trail tracking parent motion.
+				placeholder.data = b.data;
+				placeholder.position = b.position;
+				if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
+				if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
+				placeholderById.delete(b.data.id);
+				if (b.data.objectType === ObjectType.SPACECRAFT) {
+					ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
+				} else {
+					ctx.bodies.dirtyAsteroidZones.add(zone);
+				}
+				continue;
+			}
+			if (b.data.objectType === ObjectType.SPACECRAFT) {
+				let bucket = pendingSpacecraft.get(b.data.parentId);
+				if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
+				if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
+				bucket.set(b.data.id, b);
+				ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
+			} else {
+				let bucket = pendingAsteroids.get(zone);
+				if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
+				if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
+				bucket.set(b.data.id, b);
+				ctx.bodies.dirtyAsteroidZones.add(zone);
+			}
+		}
+	};
 
 	try {
 		await Promise.all(
-			minorChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
-				loader.process(zone, zoom, part, date, time, parentIdType).then((chunk) => {
-					ctx.credits.recordOrbitSources(chunk);
-					for (const b of chunk) {
-						const placeholder = placeholderById.get(b.data.id);
-						if (placeholder) {
-							// Mutate in place so the renderer's BodyObject keeps a
-							// stable PositionedBody ref. Per-zone dirty marker is
-							// already set from placeholder routing; bumping it again
-							// here ensures the worker re-packs with the fresh satrec.
-							placeholder.data = b.data;
-							placeholder.position = b.position;
-							// Optional fields stay set if the chunk doesn't carry
-							// them — chunk.ts leaves orbitElements/orbitCenter unset
-							// for non-major bodies, but the placeholder's orbitCenter
-							// array is what the per-frame loop mutates to keep the
-							// focused sat's trail tracking parent motion.
-							if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
-							if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
-							placeholderById.delete(b.data.id);
-							if (b.data.objectType === ObjectType.SPACECRAFT) {
-								ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
-							} else {
-								ctx.bodies.dirtyAsteroidZones.add(zone);
-							}
-							continue;
-						}
-						if (b.data.objectType === ObjectType.SPACECRAFT) {
-							let bucket = pendingSpacecraft.get(b.data.parentId);
-							if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
-							if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
-							bucket.set(b.data.id, b);
-							ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
-						} else {
-							let bucket = pendingAsteroids.get(zone);
-							if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
-							if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
-							bucket.set(b.data.id, b);
-							ctx.bodies.dirtyAsteroidZones.add(zone);
-						}
-					}
-				})
+			otherArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+				loader
+					.process(zone, zoom, part, date, time, parentIdType)
+					.then((chunk) => handleChunk(zone, chunk))
+			)
+		);
+		// Moons last: by now their parent asteroids have populated
+		// `loader.positions` via the seeded `neededParentIds` set, so
+		// `process()` can resolve them instead of skipping.
+		await Promise.all(
+			moonArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+				loader
+					.process(zone, zoom, part, date, time, parentIdType)
+					.then((chunk) => handleChunk(zone, chunk))
 			)
 		);
 	} finally {

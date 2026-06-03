@@ -268,6 +268,13 @@ export class ChunkLoader {
 	/** Barycenter elements used for planet orbit drawing. `processChebyshev`
 	 *  populates first (so `process` sees them when resolving planet parents). */
 	barycenters = new Map<string, OrbitalElements>();
+	/** Body IDs whose positions must be retained even when the body would
+	 *  normally be skipped from `positions` (writePositions=false / non-major).
+	 *  Seeded by the orchestrator with the parent IDs needed by downstream zones
+	 *  (e.g. `small_body_moons` parents whose asteroid bodies live in
+	 *  `small_bodies/*` zones — without this set, asteroid-moon parents would
+	 *  never end up in `positions` and the moons would skip / fall back). */
+	neededParentIds = new Set<string>();
 
 	/**
 	 * Past-position ring buffers for probes whose chunk has at least one
@@ -328,7 +335,19 @@ export class ChunkLoader {
 			if (!offset) continue;
 			chebBodiesByNaif.set(body.naifId, body);
 			const parentKey = `naif-${body.parentId}`;
-			const parentPos = this.positions.get(parentKey) ?? this.positions.get('naif-0')!;
+			const parentPos = this.positions.get(parentKey);
+			if (!parentPos) {
+				// Chebyshev bodies are sorted parents-first so the parent should
+				// always be resolved by the time we reach this child. A miss
+				// here means the ephemeris carries a body whose parent isn't in
+				// the chebyshev set — hide it rather than anchoring it at the
+				// origin (which would visually misplace the body and pollute
+				// trail derivation).
+				console.warn(
+					`processChebyshev: parent ${parentKey} not in positions for ${body.id} — hiding`
+				);
+				continue;
+			}
 			const pos: [number, number, number] = [
 				parentPos[0] + offset[0],
 				parentPos[1] + offset[1],
@@ -645,6 +664,26 @@ export class ChunkLoader {
 		return result;
 	}
 
+	/**
+	 * Fetch + parse a zone's elements file and register every row's parent ID
+	 * in `neededParentIds`. Call before processing zones whose parents live in
+	 * a different zone (e.g. `small_body_moons` parents in `small_bodies/*`) —
+	 * without pre-registration, the parent's `process()` pass drops the
+	 * position and the dependent body would skip.
+	 */
+	async seedNeededParents(
+		zone: string,
+		zoom: number,
+		part: number,
+		time: string | null,
+		parentIdType: string
+	): Promise<void> {
+		const cols = await fetchElements(zone, zoom, part, time);
+		for (let i = 0; i < cols.rowCount; i++) {
+			this.neededParentIds.add(`${parentIdType}-${cols.parentId[i]}`);
+		}
+	}
+
 	async process(
 		zone: string,
 		zoom: number,
@@ -655,6 +694,7 @@ export class ChunkLoader {
 	): Promise<PositionedBody[]> {
 		const writePositions = this.barycenters.size === 0;
 		const bodies: PositionedBody[] = [];
+		const skippedMissingParent = new Map<string, number>();
 
 		const [cols, labels] = await Promise.all([
 			fetchElements(zone, zoom, part, time),
@@ -683,10 +723,15 @@ export class ChunkLoader {
 			}
 
 			const parentKey = `${parentIdType}-${cols.parentId[idx]}`;
-			if (!this.positions.has(parentKey)) {
-				console.warn(`Parent position not found for ${parentKey}, falling back to SSB`);
+			const parentPos = this.positions.get(parentKey);
+			if (!parentPos) {
+				// Hide the body: the SSB fallback used to anchor it at the
+				// origin, which placed asteroid moons (whose NEO parents aren't
+				// chebyshev perturbers) at the wrong scene location. Tally by
+				// parent so the post-loop log groups them.
+				skippedMissingParent.set(parentKey, (skippedMissingParent.get(parentKey) ?? 0) + 1);
+				continue;
 			}
-			const parentPos = this.positions.get(parentKey) ?? this.positions.get('naif-0')!;
 
 			const body = isParabolic
 				? parabolicToBody(cols as ParabolicColumns, idx, labels, idMap, parentIdType)
@@ -721,6 +766,15 @@ export class ChunkLoader {
 				parentPos[1] + offset[1],
 				parentPos[2] + offset[2]
 			];
+
+			// Retain positions of bodies that downstream zones need as parents
+			// (e.g. asteroid hosts of `small_body_moons`). The normal stores
+			// below only fire for barycenters / Lagrange points / major bodies,
+			// so without this an asteroid parent would never land in
+			// `this.positions`.
+			if (this.neededParentIds.has(body.id)) {
+				this.positions.set(body.id, pos);
+			}
 
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {
 				if (writePositions) {
@@ -764,6 +818,15 @@ export class ChunkLoader {
 					position: pos
 				});
 			}
+		}
+		if (skippedMissingParent.size > 0) {
+			const total = Array.from(skippedMissingParent.values()).reduce((a, b) => a + b, 0);
+			const entries = Array.from(skippedMissingParent.entries())
+				.map(([k, n]) => `${k}×${n}`)
+				.join(', ');
+			console.warn(
+				`process(${zone}/${zoom}/${part}): hid ${total} body(ies) with unresolved parent — ${entries}`
+			);
 		}
 		return bodies;
 	}
