@@ -19,7 +19,7 @@ from space_map_data.export.position.probes.plan import (
     ProbePlan,
 )
 from space_map_data.export.position.probes.sizing import size_chunk
-from space_map_data.export.position.probes.time_grid import S_PER_DAY, jd_to_et
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 from space_map_data.export.position.format import (
     MISSING_ID_TYPE,
     MISSING_INT32,
@@ -148,8 +148,7 @@ def fit_pass(
                     continue
                 zone = ZONES_BY_KEY[c.zone_key]
                 chunk_start_et = (
-                    jd_to_et(start_jd)
-                    + c.chunk_idx * zone.chunk_years * 365.25 * S_PER_DAY
+                    jd_to_et(start_jd) + c.chunk_idx * zone.chunk_days * S_PER_DAY
                 )
                 key = (c.zone_key, c.chunk_idx)
                 rec = by_chunk.get(key)
@@ -223,12 +222,9 @@ def fit_pass(
                 if zone_key == INTERPLANETARY.key and plan.system_intervals:
                     zone = ZONES_BY_KEY[zone_key]
                     chunk_start_et = (
-                        jd_to_et(start_jd)
-                        + chunk_idx * zone.chunk_years * 365.25 * S_PER_DAY
+                        jd_to_et(start_jd) + chunk_idx * zone.chunk_days * S_PER_DAY
                     )
-                    chunk_end_et = (
-                        chunk_start_et + zone.chunk_years * 365.25 * S_PER_DAY
-                    )
+                    chunk_end_et = chunk_start_et + zone.chunk_days * S_PER_DAY
                     rec.system_intervals = _clip_system_intervals(
                         plan.system_intervals, chunk_start_et, chunk_end_et
                     )

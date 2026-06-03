@@ -31,15 +31,9 @@ import type {
 	Probe,
 	SubChunk
 } from '$lib/fetch/position/probes/parse';
+import { SECONDS_PER_DAY, jdToEt } from '$lib/time/jd';
 
-const SECONDS_PER_DAY = 86400;
-const JD_J2000 = 2451545.0;
-
-/** JD (TDB) → seconds past J2000. Shared with the parser; defined here too so
- *  callers don't have to thread the parser's private helper through. */
-export function jdToEt(jd: number): number {
-	return (jd - JD_J2000) * SECONDS_PER_DAY;
-}
+export { jdToEt };
 
 /** Binary search for the largest `i` with `subStartEt[i] <= et < subEndEt[i]`,
  *  or -1 when `et` falls outside the probe's covered range. Assumes sub-chunks

@@ -26,7 +26,7 @@ class Snapshot:
     untimed zones, an ISO date for Earth sats, a numeric index for the
     time-chunked moons zone. `validity_start_jd` / `validity_end_jd` go into
     the binary header so consumers know when to draw and propagate.
-    `chunk_years` is set by zones that fan out as a fixed-cadence chunk grid
+    `chunk_days` is set by zones that fan out as a fixed-cadence chunk grid
     (moons) and unset for date-segmented zones (Earth) — it tells the
     manifest builder to emit a chunk-indexed shape rather than a date-range
     shape, regardless of label format.
@@ -36,7 +36,7 @@ class Snapshot:
     objects: list[Object]
     validity_start_jd: float = UNBOUNDED_START_JD
     validity_end_jd: float = UNBOUNDED_END_JD
-    chunk_years: float | None = None
+    chunk_days: float | None = None
 
 
 @dataclass
@@ -189,10 +189,11 @@ def moons_snapshots(
 
     n_chunks = midpoints_jd.shape[0]
     # Half-width of each chunk's validity window. Uniform grid → constant.
+    # Single-chunk fallback uses a quarter-year window (~91.3 d).
     half_width_jd = float(
         (midpoints_jd[1] - midpoints_jd[0]) / 2 if n_chunks > 1 else 365.25 / 4
     )
-    chunk_years = (2 * half_width_jd) / 365.25
+    chunk_days = 2 * half_width_jd
 
     # Moons are spice/horizons-source — kepler elements live on the Horizons
     # sub-table, so the overlay mutates ``h.*`` in place. The query path
@@ -261,7 +262,7 @@ def moons_snapshots(
                 objects=kept,
                 validity_start_jd=mid - half_width_jd,
                 validity_end_jd=mid + half_width_jd,
-                chunk_years=chunk_years,
+                chunk_days=chunk_days,
             )
 
     return ZoneSnapshots(base=base, iterate=iterate)

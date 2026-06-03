@@ -68,7 +68,7 @@ async function buildProbeStore(metadata: Metadata, jd: number): Promise<ProbeSto
 			Array.from(params)
 				.map(
 					([zone, p]) =>
-						`  ${zone}: chunks=${p.chunks} chunk_years=${p.chunk_years} ` +
+						`  ${zone}: chunks=${p.chunks} chunk_days=${p.chunk_days} ` +
 						`fit_center=naif-${p.fit_center_naif_id} float64=${p.float64_coeffs}`
 				)
 				.join('\n')

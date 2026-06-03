@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from space_map_data.utils.time import et_to_jd, jd_to_et
+
 logger = logging.getLogger(__name__)
 
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
@@ -35,12 +37,8 @@ class HorizonsObj:
 
 def _jd_to_iso(jd: float) -> str:
     """Convert JD-TDB → ISO calendar date (UTC, ±69s precision)."""
-    dt = _J2000_DATE + timedelta(seconds=(jd - 2451545.0) * 86400.0)
+    dt = _J2000_DATE + timedelta(seconds=jd_to_et(jd))
     return dt.date().isoformat()
-
-
-def _et_to_jd(et: float) -> float:
-    return et / 86400.0 + 2451545.0
 
 
 def _parse_horizons_csv(text: str) -> list[Sample]:
@@ -62,7 +60,7 @@ def _parse_horizons_csv(text: str) -> list[Sample]:
             vz = float(parts[7])
         except ValueError:
             continue
-        et = (jdtdb - 2451545.0) * 86400.0
+        et = jd_to_et(jdtdb)
         rows.append(Sample(et, (x, y, z, vx, vy, vz)))
     return rows
 
@@ -229,8 +227,8 @@ def detect_window(client: httpx.Client, naif_id: int) -> tuple[str, str]:
         samples = _parse_horizons_csv(text)
         if samples:
             return (
-                _jd_to_iso(_et_to_jd(samples[0].et)),
-                _jd_to_iso(_et_to_jd(samples[-1].et)),
+                _jd_to_iso(et_to_jd(samples[0].et)),
+                _jd_to_iso(et_to_jd(samples[-1].et)),
             )
         m_prior = _NO_EPHEM_PRIOR_RE.search(text)
         m_after = _NO_EPHEM_AFTER_RE.search(text)

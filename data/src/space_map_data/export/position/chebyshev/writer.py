@@ -41,10 +41,9 @@ from space_map_data.utils.naif import (
     spk_id_from_naif,
 )
 
-logger = logging.getLogger(__name__)
+from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
 
-_S_PER_DAY = 86400.0
-_J2000_JD = 2451545.0
+logger = logging.getLogger(__name__)
 
 # Zone routing: core bodies + asteroids go to flat `major` / `major_asteroids`
 # zones at a coarse chunk cadence (planets + sun barely move over years).
@@ -78,14 +77,6 @@ _PARENT_NAMES = {
 # hundreds of km of quantization error. Moon zones are parent-relative and stay
 # well below the float32 limit, so they keep the cheaper dtype.
 _FLOAT64_ZONES = frozenset({"major", "major_asteroids"})
-
-
-def _year_to_jd(year: int) -> float:
-    """Civil year start (Jan 1) → Julian Date TDB (approximate, good to seconds)."""
-    import datetime
-
-    d = datetime.date(year, 1, 1)
-    return d.toordinal() + 1721424.5
 
 
 def _load_body_npz(
@@ -284,7 +275,7 @@ def write_chebyshev(
     Chunk parameters come from the SPICE download metadata so the export
     matches exactly what was extracted.
 
-    Returns a dict mapping zone → `{chunks, chunk_years, start_jd, end_jd}`.
+    Returns a dict mapping zone → `{chunks, chunk_days, start_jd, end_jd}`.
     The caller folds these per-zone into the unified position manifest with
     `shape="chunked"`. Returns `{}` when there's nothing to export.
     """
@@ -303,8 +294,8 @@ def write_chebyshev(
     start_year = int(meta.get("chebyshev_start_year", 1950))
     end_year = int(meta.get("chebyshev_end_year", 2050))
     core_chunk_years = float(meta.get("chebyshev_chunk_years", 5))
-    start_jd_total = _year_to_jd(start_year)
-    end_jd_total = _year_to_jd(end_year)
+    start_jd_total = year_to_jd(start_year)
+    end_jd_total = year_to_jd(end_year)
     logger.info(
         "Exporting Chebyshev: %d→%d (core %.1fy chunks; moons per-parent)",
         start_year,
@@ -354,12 +345,13 @@ def write_chebyshev(
             chunk_years = CHEBYSHEV_PARENT_CHUNK_YEARS.get(parent_id or 0, 0.5)
         else:
             chunk_years = core_chunk_years
+        chunk_days = chunk_years * DAYS_PER_YEAR
         float64_coeffs = zone in _FLOAT64_ZONES
         n_chunks = max(1, math.ceil((end_year - start_year) / chunk_years))
         total_bytes = 0
         for chunk_idx in range(n_chunks):
-            chunk_start_jd = start_jd_total + chunk_idx * chunk_years * 365.25
-            chunk_end_jd = chunk_start_jd + chunk_years * 365.25
+            chunk_start_jd = start_jd_total + chunk_idx * chunk_days
+            chunk_end_jd = chunk_start_jd + chunk_days
             if chunk_idx == n_chunks - 1:
                 chunk_end_jd = end_jd_total  # absorb rounding at the tail
             chunk_bodies: list = []
@@ -414,7 +406,7 @@ def write_chebyshev(
         )
         zone_manifest[zone] = {
             "chunks": n_chunks,
-            "chunk_years": chunk_years,
+            "chunk_days": chunk_days,
             "start_jd": start_jd_total,
             "end_jd": end_jd_total,
             "float64_coeffs": float64_coeffs,

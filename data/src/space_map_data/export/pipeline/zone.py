@@ -45,8 +45,8 @@ class ObjectDataContext:
 class SnapshotResult:
     """Per-snapshot stats produced by :func:`export_zone`.
 
-    `chunk_years` carries through from the source `Snapshot` so the manifest
-    builder can choose a chunk-indexed shape (`{chunks, chunk_years, …}`)
+    `chunk_days` carries through from the source `Snapshot` so the manifest
+    builder can choose a chunk-indexed shape (`{chunks, chunk_days, …}`)
     versus the date-segmented shape (`{start_date, end_date, …}`) without
     parsing label strings — one explicit field, set per snapshot.
     """
@@ -54,7 +54,7 @@ class SnapshotResult:
     time: str | None
     count: int
     num_parts: int
-    chunk_years: float | None = None
+    chunk_days: float | None = None
     validity_start_jd: float = UNBOUNDED_START_JD
     validity_end_jd: float = UNBOUNDED_END_JD
 
@@ -249,7 +249,7 @@ def export_zone(
                 time=snap.label,
                 count=len(snap.objects),
                 num_parts=num_parts,
-                chunk_years=snap.chunk_years,
+                chunk_days=snap.chunk_days,
                 validity_start_jd=snap.validity_start_jd,
                 validity_end_jd=snap.validity_end_jd,
             )

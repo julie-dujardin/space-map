@@ -2,7 +2,7 @@
 
 Three input shapes (static / chunk-indexed / date-segmented) drive three
 output shapes plus the chebyshev-only `chunked` shape folded in from the
-chebyshev manifest fragment. Dispatch is on `SnapshotResult.chunk_years`
+chebyshev manifest fragment. Dispatch is on `SnapshotResult.chunk_days`
 (and on whether `time` is None), not on label format — these tests pin
 that contract so a future refactor can't silently regress to label-format
 heuristics.
@@ -25,7 +25,7 @@ def _result(
     *,
     time: str | None = None,
     num_parts: int = 1,
-    chunk_years: float | None = None,
+    chunk_days: float | None = None,
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
 ) -> SnapshotResult:
@@ -33,7 +33,7 @@ def _result(
         time=time,
         count=0,
         num_parts=num_parts,
-        chunk_years=chunk_years,
+        chunk_days=chunk_days,
         validity_start_jd=validity_start_jd,
         validity_end_jd=validity_end_jd,
     )
@@ -67,28 +67,28 @@ class TestStaticShape:
 
 
 class TestChunkIndexedShape:
-    """Snapshots carrying ``chunk_years`` → chunked-parted with label=index."""
+    """Snapshots carrying ``chunk_days`` → chunked-parted with label=index."""
 
     def test_emits_chunk_indexed_keys(self):
         zoom = _zoom(
             _result(
                 time="0",
                 num_parts=1,
-                chunk_years=0.5,
+                chunk_days=0.5,
                 validity_start_jd=2433282.5,
                 validity_end_jd=2433465.125,
             ),
             _result(
                 time="1",
                 num_parts=1,
-                chunk_years=0.5,
+                chunk_days=0.5,
                 validity_start_jd=2433465.125,
                 validity_end_jd=2433647.75,
             ),
             _result(
                 time="2",
                 num_parts=1,
-                chunk_years=0.5,
+                chunk_days=0.5,
                 validity_start_jd=2433647.75,
                 validity_end_jd=2433830.375,
             ),
@@ -98,7 +98,7 @@ class TestChunkIndexedShape:
             "shape": "chunked-parted",
             "label": "index",
             "chunks": 3,
-            "chunk_years": 0.5,
+            "chunk_days": 0.5,
             "start_jd": 2433282.5,
             "parts": 1,
         }
@@ -109,19 +109,19 @@ class TestChunkIndexedShape:
         zoom = _zoom(
             _result(
                 time="100",
-                chunk_years=2.0,
+                chunk_days=2.0,
                 validity_start_jd=2400000.0,
                 validity_end_jd=2400730.0,
             ),
             _result(
                 time="0",
-                chunk_years=2.0,
+                chunk_days=2.0,
                 validity_start_jd=2300000.0,
                 validity_end_jd=2300730.0,
             ),
             _result(
                 time="50",
-                chunk_years=2.0,
+                chunk_days=2.0,
                 validity_start_jd=2350000.0,
                 validity_end_jd=2350730.0,
             ),
@@ -130,18 +130,18 @@ class TestChunkIndexedShape:
         assert meta["zones"]["moons/pluto"]["zooms"]["0"]["start_jd"] == 2300000.0
         assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunks"] == 3
 
-    def test_rejects_mixed_chunk_years(self):
+    def test_rejects_mixed_chunk_days(self):
         zoom = _zoom(
-            _result(time="0", chunk_years=0.5),
-            _result(time="1", chunk_years=1.0),
+            _result(time="0", chunk_days=0.5),
+            _result(time="1", chunk_days=1.0),
         )
-        with pytest.raises(ValueError, match="mixes chunk_years"):
+        with pytest.raises(ValueError, match="mixes chunk_days"):
             build_position_metadata({"moons": {0: zoom}}, {})
 
     def test_rejects_uneven_parts(self):
         zoom = _zoom(
-            _result(time="0", num_parts=1, chunk_years=0.5),
-            _result(time="1", num_parts=2, chunk_years=0.5),
+            _result(time="0", num_parts=1, chunk_days=0.5),
+            _result(time="1", num_parts=2, chunk_days=0.5),
         )
         with pytest.raises(ValueError, match="uneven parts"):
             build_position_metadata({"moons": {0: zoom}}, {})
@@ -151,14 +151,14 @@ class TestChunkIndexedShape:
         # manifest dispatch can't pick a shape so we fail loudly.
         zoom = _zoom(
             _result(time=None, num_parts=1),
-            _result(time="0", chunk_years=0.5),
+            _result(time="0", chunk_days=0.5),
         )
         with pytest.raises(ValueError, match="mixes timed snapshots"):
             build_position_metadata({"moons": {0: zoom}}, {})
 
 
 class TestDateSegmentedShape:
-    """ISO-date labels with no ``chunk_years`` → chunked-parted with label=date."""
+    """ISO-date labels with no ``chunk_days`` → chunked-parted with label=date."""
 
     def test_emits_date_range(self):
         zoom = _zoom(
@@ -198,7 +198,7 @@ class TestChebyshevShape:
             {
                 "major": {
                     "chunks": 20,
-                    "chunk_years": 5.0,
+                    "chunk_days": 5.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
                 }
@@ -207,32 +207,32 @@ class TestChebyshevShape:
         assert meta["zones"]["major"]["zooms"]["0"] == {
             "shape": "chunked",
             "chunks": 20,
-            "chunk_years": 5.0,
+            "chunk_days": 5.0,
             "start_jd": 2433282.5,
             "end_jd": 2469807.5,
         }
 
     def test_per_zone_cadence(self):
-        """Different zones can ship different chunk_years (Saturn 0.125, Pluto 2)."""
+        """Different zones can ship different chunk_days (Saturn 0.125, Pluto 2)."""
         meta = build_position_metadata(
             {},
             {
                 "moons/saturn": {
                     "chunks": 800,
-                    "chunk_years": 0.125,
+                    "chunk_days": 0.125,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
                 },
                 "moons/pluto": {
                     "chunks": 50,
-                    "chunk_years": 2.0,
+                    "chunk_days": 2.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
                 },
             },
         )
-        assert meta["zones"]["moons/saturn"]["zooms"]["0"]["chunk_years"] == 0.125
-        assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunk_years"] == 2.0
+        assert meta["zones"]["moons/saturn"]["zooms"]["0"]["chunk_days"] == 0.125
+        assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunk_days"] == 2.0
 
 
 class TestMixedZones:
@@ -252,7 +252,7 @@ class TestMixedZones:
                     0: _zoom(
                         _result(
                             time="0",
-                            chunk_years=0.5,
+                            chunk_days=0.5,
                             validity_start_jd=2433282.5,
                         ),
                     )
@@ -261,7 +261,7 @@ class TestMixedZones:
             {
                 "major": {
                     "chunks": 20,
-                    "chunk_years": 5.0,
+                    "chunk_days": 5.0,
                     "start_jd": 2433282.5,
                     "end_jd": 2469807.5,
                 }
@@ -282,7 +282,7 @@ class TestMixedZones:
                 {
                     "major": {
                         "chunks": 20,
-                        "chunk_years": 5.0,
+                        "chunk_days": 5.0,
                         "start_jd": 0.0,
                         "end_jd": 1.0,
                     }

@@ -12,7 +12,7 @@ class ZoomSnapshots:
     `build_position_metadata`'s output shape lives entirely in the snapshots — empty
     means a hole, one with ``time is None`` is the static case, otherwise the
     list is the chunk-indexed or date-segmented stream depending on
-    `SnapshotResult.chunk_years`.
+    `SnapshotResult.chunk_days`.
     """
 
     snapshots: list[SnapshotResult] = field(default_factory=list)
@@ -29,7 +29,7 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
     * ``chunked-parted`` with ``label="index"`` — chunk-indexed elements
       (the moons elements zone). URL:
       ``position/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz``. Entry:
-      ``{shape, label, chunks, chunk_years, start_jd, parts}``.
+      ``{shape, label, chunks, chunk_days, start_jd, parts}``.
     * ``chunked-parted`` with ``label="date"`` — date-segmented elements
       (the earth zone). URL: ``position/{zone}/{zoom}/{date}/{part}.bin.gz``.
       Entry: ``{shape, label, start_date, end_date, parts}``.
@@ -53,14 +53,14 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
             f"{parts_set}; the slim metadata shape assumes uniform parts"
         )
     parts = next(iter(parts_set))
-    chunk_years_set = {s.chunk_years for s in snaps}
-    if len(chunk_years_set) > 1:
+    chunk_days_set = {s.chunk_days for s in snaps}
+    if len(chunk_days_set) > 1:
         raise ValueError(
-            f"{zone} zoom={zoom} mixes chunk_years values "
-            f"{chunk_years_set}; one snapshot stream must use a single cadence"
+            f"{zone} zoom={zoom} mixes chunk_days values "
+            f"{chunk_days_set}; one snapshot stream must use a single cadence"
         )
-    chunk_years = next(iter(chunk_years_set))
-    if chunk_years is not None:
+    chunk_days = next(iter(chunk_days_set))
+    if chunk_days is not None:
         # Chunk-indexed: derive start_jd from the earliest snapshot's
         # validity window. Sorting by validity_start_jd avoids relying on
         # label format.
@@ -69,7 +69,7 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
             "shape": "chunked-parted",
             "label": "index",
             "chunks": len(snaps_sorted),
-            "chunk_years": chunk_years,
+            "chunk_days": chunk_days,
             "start_jd": snaps_sorted[0].validity_start_jd,
             "parts": parts,
         }
@@ -138,7 +138,7 @@ def build_position_metadata(
         zone_entry["zooms"]["0"] = {
             "shape": "chunked",
             "chunks": params["chunks"],
-            "chunk_years": params["chunk_years"],
+            "chunk_days": params["chunk_days"],
             "start_jd": params["start_jd"],
             "end_jd": params["end_jd"],
         }
@@ -155,7 +155,7 @@ def build_position_metadata(
         zones[zone] = {
             "shape": "chunked",
             "chunks": params["chunks"],
-            "chunk_years": params["chunk_years"],
+            "chunk_days": params["chunk_days"],
             "start_jd": params["start_jd"],
             "end_jd": params["end_jd"],
             "subchunk_days": params["subchunk_days"],

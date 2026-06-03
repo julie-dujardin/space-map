@@ -134,7 +134,7 @@ CHEBYSHEV_ASTEROID_WHITELIST: frozenset[int] = frozenset(
 # Saturn's 24 whitelisted moons are densest and need ~1.5-month chunks; Pluto's
 # five moons can comfortably pack into 2-year chunks. Earth has only the Moon
 # and inherits the slow-mover (5-year) cadence — there is nothing to chunk
-# more finely. Frontend reads this from the manifest's `moons.zones[].chunk_years`
+# more finely. Frontend reads this from the manifest's `moons.zones[].chunk_days`
 # so each zone can be indexed independently.
 CHEBYSHEV_PARENT_CHUNK_YEARS: dict[int, float] = {
     3: 5.0,  # Earth (Moon only)

@@ -555,11 +555,11 @@ def _format_err(km: float) -> str:
     return f"{km:.1e}km"
 
 
-def _format_chunk_span(years: float) -> str:
-    """Human-friendly streaming-chunk duration: months under 1 y, else years."""
-    if years < 1:
-        return f"{years * 12:.0f}mo"
-    return f"{years:.0f}y"
+def _format_chunk_span(days: float) -> str:
+    """Human-friendly streaming-chunk duration: days under a year, else years."""
+    if days < 365:
+        return f"{days:.0f}d"
+    return f"{days / 365.25:.0f}y"
 
 
 def main() -> int:
@@ -734,7 +734,7 @@ def main() -> int:
         zone_rows.append(
             {
                 "zone": zone_key,
-                "chunk_years": ZONES_BY_KEY[zone_key].chunk_years,
+                "chunk_days": ZONES_BY_KEY[zone_key].chunk_days,
                 "coeff_dtype": "f64"
                 if ZONES_BY_KEY[zone_key].float64_coeffs
                 else "f32",
@@ -758,7 +758,7 @@ def main() -> int:
     # combined error/size lists rather than averaged from per-zone numbers,
     # so a small handful of huge errors in one zone don't get hidden by
     # mean-of-means dilution.
-    # total_row omits `zone`/`chunk_years`/`coeff_dtype` (rendered as blanks
+    # total_row omits `zone`/`chunk_days`/`coeff_dtype` (rendered as blanks
     # at print time) so every entry is numeric — keeps the value type a
     # single union of int|float and avoids float()-cast noise downstream.
     if zone_rows:
@@ -807,7 +807,7 @@ def main() -> int:
     for r in zone_rows:
         mix = f"{r['kpure']:>5} / {r['kdrift']:>5} / {r['cheb']:>5} / {r['uncov']:>3}"
         print(
-            f"{r['zone']:<14} {_format_chunk_span(r['chunk_years']):>5} "
+            f"{r['zone']:<14} {_format_chunk_span(r['chunk_days']):>5} "
             f"{r['coeff_dtype']:>4} {r['files']:>5} {r['n_sub']:>10}  "
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M  {mix}"
@@ -878,7 +878,7 @@ def _write_markdown(
     )
     for r in zone_rows:
         lines.append(
-            f"| `{r['zone']}` | {_format_chunk_span(r['chunk_years'])} | "
+            f"| `{r['zone']}` | {_format_chunk_span(r['chunk_days'])} | "
             f"`{r['coeff_dtype']}` | "
             f"{r['files']} | {r['n_sub']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "

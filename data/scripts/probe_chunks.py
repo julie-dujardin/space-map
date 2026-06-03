@@ -3,7 +3,7 @@
 Walks `EXPORT_DIR/v1/position/probes/{zone}/*.meta.json`, reads the probe-id
 list out of each sidecar, and prints a table grouped by zone → probe → run
 of consecutive chunk indices. Date columns are derived from each zone's
-`start_jd` + `chunk_years * 365.25` in the manifest.
+`start_jd` + `chunk_days` in the manifest.
 
 Run from data/:
     uv run python scripts/probe_chunks.py
@@ -119,7 +119,7 @@ def main() -> int:
         for zone_key, idxs in by_zone.items():
             info = zones_meta[zone_key]
             start_jd = info["start_jd"]
-            chunk_days = info["chunk_years"] * 365.25
+            chunk_days = info["chunk_days"]
             for a, b in _collapse_runs(idxs):
                 t0 = start_jd + a * chunk_days
                 t1 = start_jd + (b + 1) * chunk_days

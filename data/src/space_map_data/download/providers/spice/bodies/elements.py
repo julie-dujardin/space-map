@@ -18,15 +18,13 @@ import tomllib
 import numpy as np
 import spiceypy
 
+from space_map_data.utils.time import S_PER_DAY, jd_to_et
 from space_map_data.utils.paths import CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
 # AU in km
 AU_KM = 149_597_870.7
-
-_S_PER_DAY = 86400.0
-_J2000_JD_TDB = 2451545.0
 
 _CHEBYSHEV_DEFAULTS: dict[str, int | float] = {
     "start_year": 1950,
@@ -284,7 +282,7 @@ def fit_moon_chunked_elements(
     """
     if not chunk_midpoints_jd:
         return None
-    midpoints_et = [_jd_to_et(jd) for jd in chunk_midpoints_jd]
+    midpoints_et = [jd_to_et(jd) for jd in chunk_midpoints_jd]
     et_min = min(midpoints_et) - _MOON_CHUNK_FIT_HALF_WINDOW_S
     et_max = max(midpoints_et) + _MOON_CHUNK_FIT_HALF_WINDOW_S
 
@@ -359,7 +357,7 @@ def fit_moon_chunked_elements(
     w_un = np.unwrap(w_arr)
     M_un = np.unwrap(M_arr)
 
-    deg_per_day_per_rad_per_s = math.degrees(1.0) * _S_PER_DAY
+    deg_per_day_per_rad_per_s = math.degrees(1.0) * S_PER_DAY
     out = np.empty((len(midpoints_et), 9), dtype=np.float64)
     for idx, midpoint_et in enumerate(midpoints_et):
         mask = (times >= midpoint_et - _MOON_CHUNK_FIT_HALF_WINDOW_S) & (
@@ -385,7 +383,3 @@ def fit_moon_chunked_elements(
         out[idx, 8] = float(w_dot) * deg_per_day_per_rad_per_s
 
     return np.asarray(chunk_midpoints_jd, dtype=np.float64), out
-
-
-def _jd_to_et(jd: float) -> float:
-    return (jd - _J2000_JD_TDB) * _S_PER_DAY

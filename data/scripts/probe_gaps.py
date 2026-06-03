@@ -75,7 +75,7 @@ def _collect_intervals(
         if not zone_dir.exists():
             continue
         start_jd = info["start_jd"]
-        chunk_days = info["chunk_years"] * 365.25
+        chunk_days = info["chunk_days"]
         for meta_path in zone_dir.glob("*.meta.json"):
             chunk_idx = int(meta_path.stem.split(".")[0])
             try:

@@ -21,6 +21,7 @@ from jplephem.spk import SPK
 from tqdm import tqdm
 
 from space_map_data.models.object import ObjectType
+from space_map_data.utils.time import S_PER_DAY, et_to_jd
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
     CHEBYSHEV_MOON_WHITELIST,
@@ -28,9 +29,6 @@ from space_map_data.utils.naif import (
 )
 
 logger = logging.getLogger(__name__)
-
-_S_PER_DAY = 86400.0
-_J2000_JD = 2451545.0
 
 # Cap coefficient count per segment to keep binary packing predictable.
 _MAX_DEGREE = 20
@@ -53,17 +51,12 @@ _CORE_BODY_TYPES = frozenset(
 # visualization). For a surface-feature body the orbital period is always ≥ a
 # few hours, so a 0.5-day sub-interval still sits well below Nyquist for any
 # whitelisted moon while cutting per-chunk size 2–5×. Error stays sub-km.
-_MOON_MIN_INTLEN_S = 0.5 * _S_PER_DAY
+_MOON_MIN_INTLEN_S = 0.5 * S_PER_DAY
 
 # Slow-moving bodies (planets, asteroids, barycenters) can share a kernel with
 # fast-moving ones (e.g. Mars 499 lives in mar099.bsp alongside Phobos). The
 # floor avoids inheriting those fast-sibling intervals.
-_SLOW_BODY_MIN_INTLEN_S = 8 * _S_PER_DAY
-
-
-def _et_to_jd(et: float) -> float:
-    """SPICE ET (TDB seconds past J2000) → Julian Date TDB."""
-    return _J2000_JD + et / _S_PER_DAY
+_SLOW_BODY_MIN_INTLEN_S = 8 * S_PER_DAY
 
 
 def _native_params(
@@ -93,7 +86,7 @@ def _native_params(
                 if seg.data_type not in (2, 3):
                     continue
                 _init_jd, intlen_days, coeffs = seg.load_array()
-                intlen_s = float(intlen_days) * _S_PER_DAY
+                intlen_s = float(intlen_days) * S_PER_DAY
                 degree = int(coeffs.shape[2]) - 1
                 return intlen_s, degree
         finally:
@@ -136,8 +129,8 @@ def _cache_is_valid(
         return False
     if int(meta[2]) != degree:
         return False
-    expected_start_jd = _et_to_jd(start_et)
-    expected_end_jd = _et_to_jd(end_et)
+    expected_start_jd = et_to_jd(start_et)
+    expected_end_jd = et_to_jd(end_et)
     # JD-day comparisons need only sub-second precision; 1e-6 d ≈ 0.09 s.
     if abs(float(params[0]) - expected_start_jd) > 1e-6:
         return False
@@ -208,8 +201,8 @@ def _sample_body(
                 nodes_tau, positions[:, axis], degree
             )
 
-        start_jds[i] = _et_to_jd(seg_start_et)
-        end_jds[i] = _et_to_jd(seg_end_et)
+        start_jds[i] = et_to_jd(seg_start_et)
+        end_jds[i] = et_to_jd(seg_end_et)
 
     return start_jds, end_jds, coeffs
 
@@ -268,7 +261,7 @@ def extract_chebyshev(
         "Extracting Chebyshev ephemeris: %d → %d (%.1f days covered)",
         start_year,
         end_year,
-        (end_et - start_et) / _S_PER_DAY,
+        (end_et - start_et) / S_PER_DAY,
     )
 
     # Plan first so we can report the work split (extract vs. cache vs. skip)
@@ -368,7 +361,7 @@ def extract_chebyshev(
                 dtype=np.int64,
             ),
             params=np.array(
-                [_et_to_jd(start_et), _et_to_jd(end_et), intlen_s],
+                [et_to_jd(start_et), et_to_jd(end_et), intlen_s],
                 dtype=np.float64,
             ),
         )

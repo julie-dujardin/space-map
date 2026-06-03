@@ -24,12 +24,12 @@ const ZOOM: ChunkIndexedZoom = {
 	shape: 'chunked-parted',
 	label: 'index',
 	chunks: 200,
-	chunk_years: 0.5,
+	chunk_days: 182.625,
 	start_jd: 2433282.5,
 	parts: 1
 };
 
-const CHUNK_DAYS = ZOOM.chunk_years * 365.25;
+const CHUNK_DAYS = ZOOM.chunk_days;
 
 describe('chunkIndexForJd', () => {
 	it('returns 0 for jd exactly at start_jd', () => {
@@ -64,7 +64,7 @@ describe('chunkIndexForJd', () => {
 	it('crosses cleanly at chunk boundaries', () => {
 		// At exactly start + n * w the index becomes n. floor((n*w - n*w) / w)
 		// = 0 for n=0 (covered above) and = n for n>0 with no FP slop, since
-		// multiplication and division use the same `chunk_years * 365.25`.
+		// multiplication and division use the same `chunk_days`.
 		for (const n of [1, 50, 100, 199]) {
 			const boundaryJd = ZOOM.start_jd + n * CHUNK_DAYS;
 			expect(chunkIndexForJd(ZOOM, boundaryJd)).toBe(n);
@@ -76,7 +76,7 @@ describe('chunkIndexForJd', () => {
 			shape: 'chunked-parted',
 			label: 'index',
 			chunks: 1,
-			chunk_years: 5.0,
+			chunk_days: 1826.25,
 			start_jd: 2400000.0,
 			parts: 1
 		};
@@ -98,7 +98,7 @@ describe('zoom-shape discriminators', () => {
 	const cheb: ChebyshevZoom = {
 		shape: 'chunked',
 		chunks: 20,
-		chunk_years: 5.0,
+		chunk_days: 1826.25,
 		start_jd: 2433282.5,
 		end_jd: 2469807.5
 	};

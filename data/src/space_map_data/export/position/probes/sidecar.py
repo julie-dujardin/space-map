@@ -43,7 +43,7 @@ def zone_signature(zone: Zone) -> str:
     """Stable short hash of the zone parameters that affect fit output."""
     payload = json.dumps(
         {
-            "chunk_years": zone.chunk_years,
+            "chunk_days": zone.chunk_days,
             "kepler_subchunk_days": zone.kepler_subchunk_days,
             "accuracy_threshold_km": zone.accuracy_threshold_km,
             "short_orbit_threshold_km": zone.short_orbit_threshold_km,
