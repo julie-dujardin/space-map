@@ -14,14 +14,12 @@ import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclat
 interface NomenclatureGlobalEntry {
 	name?: string;
 	approval_date?: string;
-	approval_status?: string;
 	origin?: string;
 }
 
 export interface NomenclatureFeature extends NomenclatureRecord {
 	name: string;
 	approvalDate?: string;
-	approvalStatus?: string;
 	origin?: string;
 }
 
@@ -64,7 +62,6 @@ export function fetchBodyNomenclature(bodyId: string): Promise<NomenclatureFeatu
 					...rec,
 					name: entry.name ?? `Feature ${rec.featureId}`,
 					approvalDate: entry.approval_date,
-					approvalStatus: entry.approval_status,
 					origin: entry.origin
 				};
 			});

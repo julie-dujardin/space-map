@@ -89,6 +89,11 @@ class TestBuildGlobal:
         out = _build_global(feats)
         assert out["1"] == {"name": "Tycho"}
 
+    def test_parent_feature_id_included_when_set(self):
+        feats = [_feat(feature_id=10, parent_feature_id=5)]
+        out = _build_global(feats)
+        assert out["10"]["parent_feature_id"] == 5
+
 
 class TestBuildNomenclature:
     def test_groups_by_body_and_skips_invalid(self):
