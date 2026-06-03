@@ -160,27 +160,19 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
     matters. Each bundle's per-tier ``exports.{tier}.source`` carries the
     catalog name (the two tiers may originate in different catalogs for
     merged-manifest entries); the union across all tiers contributes to
-    the credits aggregate. Unrecognised names are warned about so
-    ``MODEL_CATALOGS`` stays maintained as new sources arrive.
+    the credits aggregate. Sources outside ``MODEL_CATALOGS`` (one-off
+    NASA resource pages, Google Arts & Culture re-hosts, …) are treated
+    as secondary — the per-tier ``attribution`` + ``source_url`` stay in
+    the model's own metadata.json, but they don't roll up into this list.
     """
     matched: set[str] = set()
-    for slug, meta in model_metadata.items():
-        names: list[str] = []
+    for meta in model_metadata.values():
         for tier in (meta.get("exports") or {}).values():
-            if isinstance(tier, dict) and isinstance(tier.get("source"), str):
-                names.append(tier["source"])
-        if not names:
-            logger.warning("Model %s has no source field on any tier", slug)
-            continue
-        for name in names:
-            if name not in MODEL_CATALOGS:
-                logger.warning(
-                    "Model %s has unrecognised source %r — add it to MODEL_CATALOGS",
-                    slug,
-                    name,
-                )
+            if not isinstance(tier, dict):
                 continue
-            matched.add(name)
+            name = tier.get("source")
+            if isinstance(name, str) and name in MODEL_CATALOGS:
+                matched.add(name)
     return [
         {"name": name, "url": catalog["url"]}
         for name, catalog in MODEL_CATALOGS.items()

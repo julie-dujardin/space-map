@@ -100,15 +100,11 @@ class ModelProcessor:
         self._global_warnings = []
         self._load_manifests()
         self._check_slug_uniqueness()
-        self._prune_stale_bundles()
-        self._prune_stale_caches()
-        self._reset_model_pointer()
 
-        # Build the mission_id → slug map *before* doing any conversion work:
-        # the first slug to claim a mission wins, and the assignment is what
-        # we'll write to the DB at the end. Future-work TODO: explicit per-
-        # mission winner selection when several slugs depict the same mission
-        # (e.g. "cassini-with-huygens" vs "cassini").
+        # DB + bus context up-front so the prune pass below sees which slugs
+        # actually wire up to a runtime Object. Without this, entries whose
+        # missions only carry a `name:` (no probe_id/naif_id/norad/spkid)
+        # would leave orphan bundles shipping on the CDN forever.
         self._satcat_norad_to_object_id = self._load_satcat_object_ids()
         self._satcat_name_to_norad = self._load_satcat_name_to_norad()
         # model_slug → bus spec; lets us treat a manifest entry as "wanted"
@@ -117,9 +113,24 @@ class ModelProcessor:
         for spec in SATELLITE_BUSES:
             if spec.model_slug:
                 self._buses_by_model_slug[spec.model_slug].append(spec)
-
-        mission_winners = self._assign_mission_winners()
         db_object_ids = self._load_db_object_ids()
+
+        wanted_slugs = {
+            entry["slug"]
+            for _yaml_path, doc in self._yaml_docs
+            for entry in doc.get("entries") or []
+            if entry.get("slug") and self._entry_has_db_mission(entry, db_object_ids)
+        }
+
+        self._prune_stale_bundles(wanted_slugs)
+        self._prune_stale_caches()
+        self._reset_model_pointer()
+
+        # First slug to claim a mission wins; assignment becomes Object.model_name
+        # at the end. Future-work TODO: explicit per-mission winner selection
+        # when several slugs depict the same mission (e.g. "cassini-with-huygens"
+        # vs "cassini").
+        mission_winners = self._assign_mission_winners()
 
         all_entries: list[tuple[Path, dict]] = [
             (yaml_path, entry)
@@ -181,16 +192,16 @@ class ModelProcessor:
                 "NASA-3D-Resources", self._nasa_downloaded_at
             )
 
-    def _prune_stale_bundles(self) -> None:
-        """Delete dirs no longer in any manifest from PROCESSED_DIR and the sidecar mirror.
+    def _prune_stale_bundles(self, wanted_slugs: set[str]) -> None:
+        """Delete bundle and sidecar dirs whose slug isn't a wanted-shipping target.
 
-        Keeps the export tree (and its debug sidecar mirror) in sync with
-        manifest truth: when a slug is renamed or removed (e.g.
-        ``aqua-a``/``-b``/``-c`` consolidated to ``aqua``), the old bundle
-        dir would otherwise persist and ship as an orphan asset on the
-        next CDN upload.
+        "Wanted" = slug is declared in a manifest **and** its entry resolves
+        to at least one DB Object (or bus member). Entries whose missions
+        only carry a ``name:`` (no probe_id/naif_id/norad/spkid — e.g.
+        ARIEL, SMILE) are no-ops at runtime, so their bundles shouldn't
+        ship. Renamed / removed slugs (``aqua-a``/``-b``/``-c`` → ``aqua``)
+        also get cleaned up here.
         """
-        manifest_slugs = self._manifest_slugs()
         for root, label in (
             (config.PROCESSED_DIR, "model bundle"),
             (EXPORT_METADATA_DIR / "v1" / "models", "model sidecar"),
@@ -201,7 +212,7 @@ class ModelProcessor:
             for slug_dir in root.iterdir():
                 if not slug_dir.is_dir() or slug_dir.name.startswith("."):
                     continue
-                if slug_dir.name in manifest_slugs:
+                if slug_dir.name in wanted_slugs:
                     continue
                 log.info("pruning stale %s: %s", label, slug_dir.name)
                 shutil.rmtree(slug_dir)
