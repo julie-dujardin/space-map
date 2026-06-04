@@ -616,7 +616,9 @@ export class SceneRenderer {
 		loadBodyModel(bo, this.modelScene, this.ctx);
 		// Nomenclature labels are focus-scoped — only the focused body fetches
 		// and attaches them. Idempotent.
-		void attachNomenclatureLabels(bo);
+		void attachNomenclatureLabels(bo, (featureId, lat, lon, diameterM) =>
+			this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
+		);
 	}
 
 	clearUserPromoted(): void {

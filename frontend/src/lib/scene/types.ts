@@ -105,4 +105,15 @@ export interface Callbacks {
 	/** Number of user-promoted bodies that can be cleared (excludes the focused
 	 *  body — clearing it would leave the camera pointed at a torn-down mesh). */
 	onUserPromotedChange?(count: number): void;
+	/** Click on a nomenclature surface-feature label. bodyId is the parent
+	 *  (prefixed, e.g. "naif-301"); featureId is the IAU id; lat/lon/diameterM
+	 *  come from the feature record so the caller can fly the camera without
+	 *  another lookup. */
+	onFeatureSelect?(
+		bodyId: string,
+		featureId: number,
+		lat: number,
+		lon: number,
+		diameterM: number
+	): void;
 }

@@ -67,7 +67,20 @@ const NON_CIRCULAR_TYPE_CODES = new Set([
 	'CH' // chasma, chasmata — deep elongated depressions
 ]);
 
-export async function attachNomenclatureLabels(bo: BodyObjects): Promise<void> {
+/** Click on a feature label — fired with the feature's id and the lat/lon
+ *  the camera should fly to. Diameter is forwarded so the caller can pick a
+ *  zoom level (small features need to fly closer than large ones). */
+export type OnFeatureSelect = (
+	featureId: number,
+	lat: number,
+	lon: number,
+	diameterM: number
+) => void;
+
+export async function attachNomenclatureLabels(
+	bo: BodyObjects,
+	onFeatureSelect?: OnFeatureSelect
+): Promise<void> {
 	if (bo.nomenclatureLabels || !bo.mesh) return;
 
 	const detail = await fetchObjectDetail(bo.body.data.id, false);
@@ -109,6 +122,26 @@ export async function attachNomenclatureLabels(bo: BodyObjects): Promise<void> {
 		const el = document.createElement('div');
 		el.className = 'scene-feature-label';
 		el.textContent = feature.name;
+		el.dataset.featureId = String(feature.featureId);
+
+		if (onFeatureSelect) {
+			// Click-vs-drag guard mirroring the body-label pattern in
+			// label/factory.ts:127–150. Without this, dragging the camera while
+			// the pointer happens to start on a label would register as a click.
+			let downX = 0;
+			let downY = 0;
+			el.addEventListener('pointerdown', (e: PointerEvent) => {
+				downX = e.clientX;
+				downY = e.clientY;
+			});
+			el.addEventListener('click', (e: MouseEvent) => {
+				e.stopPropagation();
+				const dx = e.clientX - downX;
+				const dy = e.clientY - downY;
+				if (dx * dx + dy * dy > 9) return;
+				onFeatureSelect(feature.featureId, feature.lat, feature.lon, effDiam);
+			});
+		}
 
 		const latRad = feature.lat * DEG2RAD;
 		const lonRad = feature.lon * DEG2RAD;

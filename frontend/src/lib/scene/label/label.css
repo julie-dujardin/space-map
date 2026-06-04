@@ -72,15 +72,23 @@
 }
 
 /* IAU surface-feature labels — created by surface/nomenclature.ts. Smaller,
- * dimmer than body labels; no halo, no interaction. */
+ * dimmer than body labels; clickable to open the feature drawer. */
 .scene-feature-label {
 	color: rgba(255, 255, 255, 0.7);
 	font-size: 12px;
 	white-space: nowrap;
-	pointer-events: none;
+	pointer-events: auto;
+	cursor: pointer;
 	user-select: none;
 	text-shadow:
 		0 0 2px #000,
 		0 0 2px #000;
 	z-index: 0; /* sit below .scene-label (body/spacecraft labels) */
+	transition: color 0.1s;
+}
+.scene-feature-label:hover {
+	color: white;
+	text-shadow:
+		0 0 3px #000,
+		0 0 3px #000;
 }

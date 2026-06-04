@@ -1,5 +1,5 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
-import { DEFAULT_VIEW, type MapViewState } from './view';
+import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 import { parseUrl, serializeUrl } from './url';
 
 const WRITE_DEBOUNCE_MS = 250;
@@ -54,8 +54,33 @@ export class AppState {
 	}
 
 	setFocus(focus: { type: string; id: string; name: string }) {
-		// New object = any previously-open image viewer is no longer meaningful.
-		this.view = { ...this.view, ...focus, imageIndex: null };
+		// New object = any previously-open image viewer or feature selection is
+		// no longer meaningful.
+		this.view = { ...this.view, ...focus, imageIndex: null, featureId: null };
+		this.pushNow();
+	}
+
+	/** Open a nomenclature feature on its parent body. */
+	setFeature(focus: { bodyId: string; featureId: number; featureName: string }) {
+		this.view = {
+			...this.view,
+			type: UrlType.Feature,
+			id: focus.bodyId,
+			name: focus.featureName,
+			featureId: focus.featureId,
+			imageIndex: null
+		};
+		this.pushNow();
+	}
+
+	/** Return the URL to the parent-body view of the currently-selected feature. */
+	clearFeature(bodyName: string) {
+		this.view = {
+			...this.view,
+			type: UrlType.Body,
+			name: bodyName,
+			featureId: null
+		};
 		this.pushNow();
 	}
 

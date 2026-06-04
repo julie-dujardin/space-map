@@ -3,7 +3,9 @@
 	import { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
-	import type { PositionedBody } from '$lib/types/objects';
+	import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
+	import { kmToScene } from '$lib/math/units';
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
@@ -20,9 +22,22 @@
 		northRefId?: string | null;
 		onFocusChange?: (body: PositionedBody | undefined) => void;
 		onUserPromotedChange?: (count: number) => void;
+		onFeatureSelect?: (
+			bodyId: string,
+			featureId: number,
+			lat: number,
+			lon: number,
+			diameterM: number
+		) => void;
 	}
 
-	let { clock, northRefId = null, onFocusChange, onUserPromotedChange }: Props = $props();
+	let {
+		clock,
+		northRefId = null,
+		onFocusChange,
+		onUserPromotedChange,
+		onFeatureSelect
+	}: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -41,6 +56,27 @@
 		longitude?: number
 	): number {
 		return renderer?.focusOnBody(id, zoom, latitude, longitude) ?? 0;
+	}
+
+	/** Fly the camera onto a surface feature. Picks a zoom that frames the
+	 *  feature: small craters get pulled in close, ocean-sized features stay
+	 *  pulled back so they fit on screen. Clamped to the body's own min camera
+	 *  distance below and a fraction of its radius above. All distances are
+	 *  in scene units — `focusOnBody` writes camera positions in scene space,
+	 *  so the km-side numbers go through `kmToScene` first. */
+	export function focusOnFeature(
+		bodyId: string,
+		lat: number,
+		lon: number,
+		diameterM: number
+	): number {
+		const body = ctx.getBody(bodyId);
+		if (!body) return 0;
+		const minDist = minCameraDistance(body);
+		const idealScene = kmToScene((diameterM * 4) / 1000);
+		const maxScene = kmToScene(effectiveRadiusKm(body.data) * 5);
+		const zoom = Math.min(Math.max(idealScene, minDist * 2), maxScene);
+		return renderer?.focusOnBody(bodyId, zoom, lat, lon) ?? 0;
 	}
 
 	export function setUserLocation(latitude: number, longitude: number): void {
@@ -83,6 +119,9 @@
 			onCameraPosition: syncCameraToUrl,
 			onUserPromotedChange(count) {
 				onUserPromotedChange?.(count);
+			},
+			onFeatureSelect(bodyId, featureId, lat, lon, diameterM) {
+				onFeatureSelect?.(bodyId, featureId, lat, lon, diameterM);
 			}
 		});
 

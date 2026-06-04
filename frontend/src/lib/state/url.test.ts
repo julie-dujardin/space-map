@@ -5,6 +5,8 @@ vi.mock('$app/paths', () => ({
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
+			.replace('[bodyId]', params.bodyId ?? '')
+			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
 
@@ -24,7 +26,8 @@ const baseView: MapViewState = {
 	latitude: 45,
 	longitude: 0,
 	zoom: 42.43,
-	imageIndex: null
+	imageIndex: null,
+	featureId: null
 };
 
 describe('serializeUrl', () => {

@@ -10,13 +10,13 @@
 	import Share2Icon from '@lucide/svelte/icons/share-2';
 	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
-	import type { PositionedBody } from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './ImageGallery.svelte';
@@ -25,15 +25,20 @@
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
+	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
-	// per body across the session — survives drawer remounts and effect re-runs.
+	// per focusable across the session — survives drawer remounts and effect
+	// re-runs.
 	const nameMissingLogged = new Set<string>();
 
 	interface Props {
-		body: PositionedBody;
+		/** What the drawer is focused on. Always carries a host body (camera +
+		 *  share URL need it); the `kind` selects which property panels render
+		 *  and what falls back when the detail bundle is still loading. */
+		focusable: Focusable;
 		clock: SimClock;
 		onClose: () => void;
 		onMaximize: () => void;
@@ -41,7 +46,11 @@
 		onSheetResize?: (heightDvh: number) => void;
 	}
 
-	let { body, clock, onClose, onMaximize, onMinimize, onSheetResize }: Props = $props();
+	let { focusable, clock, onClose, onMaximize, onMinimize, onSheetResize }: Props = $props();
+
+	let body = $derived(focusable.body);
+	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
+	let isFeatureMode = $derived(focusable.kind === 'feature');
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -78,12 +87,28 @@
 	});
 
 	$effect(() => {
-		const id = body.data.id;
+		const key = focusableKey(focusable);
 		loading = true;
 		data = null;
-		fetchObjectDetail(id, body.data.hasLocalized)
+		// Feature focusable: we don't have a feature-detail bundle yet
+		// (Wikipedia extract, images, links etc. will land on the export side
+		// later). For now, synthesize a minimal ObjectDetailData so the header
+		// has a name and the other panels see empty data. The IAU fields
+		// render via <FeatureProperties feature={…}> from the prop directly.
+		if (focusable.kind === 'feature') {
+			const f = focusable.feature;
+			data = {
+				global: { id: `feature-${f.featureId}`, type: 'feature', name: f.name },
+				localized: null
+			};
+			loading = false;
+			return;
+		}
+		const bodyId = focusable.body.data.id;
+		const hasLocalized = focusable.body.data.hasLocalized;
+		fetchObjectDetail(bodyId, hasLocalized)
 			.then((result) => {
-				if (body.data.id === id) {
+				if (focusableKey(focusable) === key) {
 					data = result;
 					loading = false;
 				}
@@ -150,23 +175,23 @@
 		onSheetResize?.(dvh);
 	});
 
-	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? body.data.name);
-	let displayName = $derived(resolvedName ?? (loading ? m.loading() : body.data.id));
+	let fallbackName = $derived(focusableFallbackName(focusable));
+	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
+	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
 
 	// Once the detail bundle resolves, push the now-known name into the URL
 	// (and via that, the page title). On permanent failure — bundle resolved
-	// without any name — log once per body and fall back to the id, so the user
-	// sees *something* identifiable instead of an empty drawer header (and the
-	// console isn't spammed by repeated effect re-runs for the same body).
+	// without any name — log once per focusable and fall back to its key, so
+	// the user sees *something* identifiable instead of an empty drawer header
+	// (and the console isn't spammed by repeated effect re-runs).
 	$effect(() => {
 		if (loading) return;
-		if (!resolvedName && !nameMissingLogged.has(body.data.id)) {
-			nameMissingLogged.add(body.data.id);
-			console.warn(
-				`No name resolved for ${body.data.id} after detail fetch; using id as fallback.`
-			);
+		const key = focusableKey(focusable);
+		if (!resolvedName && !nameMissingLogged.has(key)) {
+			nameMissingLogged.add(key);
+			console.warn(`No name resolved for ${key} after detail fetch; using id as fallback.`);
 		}
-		appState.replaceFocusName(resolvedName ?? body.data.id);
+		appState.replaceFocusName(resolvedName ?? key);
 	});
 	// Flip to the minimize button well before the maximize target distance, so
 	// that finishing a maximize fly-to lands the camera comfortably inside the
@@ -245,7 +270,7 @@
 			<ObjectHeader
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
-				fallbackName={body.data.name}
+				{fallbackName}
 				onShowGallery={() => {
 					activeTab = 'images';
 					appState.setImage(0);
@@ -256,17 +281,21 @@
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
 			/>
-			<Physical global={data?.global ?? null} />
-			<Orbital
-				global={data?.global ?? null}
-				localized={data?.localized ?? null}
-				{body}
-				orbitElements={drawerOrbitElements}
-				{parentBody}
-				jd={sampledJd}
-			/>
-			<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
-			<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			{#if feature}
+				<FeatureProperties {feature} />
+			{:else}
+				<Physical global={data?.global ?? null} />
+				<Orbital
+					global={data?.global ?? null}
+					localized={data?.localized ?? null}
+					{body}
+					orbitElements={drawerOrbitElements}
+					{parentBody}
+					jd={sampledJd}
+				/>
+				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
+				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			{/if}
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
 	{/if}
@@ -302,26 +331,28 @@
 								<Share2Icon />
 								<span class="sr-only">{m.share()}</span>
 							</Button>
-							{#if isMinimized}
-								<Button
-									variant="secondary"
-									size="icon-lg"
-									class="rounded-full"
-									onclick={onMinimize}
-								>
-									<MinimizeIcon />
-									<span class="sr-only">{m.zoom_out_to_system()}</span>
-								</Button>
-							{:else}
-								<Button
-									variant="secondary"
-									size="icon-lg"
-									class="rounded-full"
-									onclick={onMaximize}
-								>
-									<MaximizeIcon />
-									<span class="sr-only">{m.go_to_object()}</span>
-								</Button>
+							{#if !isFeatureMode}
+								{#if isMinimized}
+									<Button
+										variant="secondary"
+										size="icon-lg"
+										class="rounded-full"
+										onclick={onMinimize}
+									>
+										<MinimizeIcon />
+										<span class="sr-only">{m.zoom_out_to_system()}</span>
+									</Button>
+								{:else}
+									<Button
+										variant="secondary"
+										size="icon-lg"
+										class="rounded-full"
+										onclick={onMaximize}
+									>
+										<MaximizeIcon />
+										<span class="sr-only">{m.go_to_object()}</span>
+									</Button>
+								{/if}
 							{/if}
 							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 								<XIcon />
@@ -358,16 +389,18 @@
 					<Share2Icon />
 					<span class="sr-only">{m.share()}</span>
 				</Button>
-				{#if isMinimized}
-					<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMinimize}>
-						<MinimizeIcon />
-						<span class="sr-only">{m.zoom_out_to_system()}</span>
-					</Button>
-				{:else}
-					<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMaximize}>
-						<MaximizeIcon />
-						<span class="sr-only">{m.go_to_object()}</span>
-					</Button>
+				{#if !isFeatureMode}
+					{#if isMinimized}
+						<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMinimize}>
+							<MinimizeIcon />
+							<span class="sr-only">{m.zoom_out_to_system()}</span>
+						</Button>
+					{:else}
+						<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMaximize}>
+							<MaximizeIcon />
+							<span class="sr-only">{m.go_to_object()}</span>
+						</Button>
+					{/if}
 				{/if}
 				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 					<XIcon />
