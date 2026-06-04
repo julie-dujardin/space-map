@@ -1,4 +1,5 @@
 import type { SatRec } from 'satellite.js';
+import { DEFAULT_FALLBACK_RADIUS_KM } from '$lib/constants';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation } from '$lib/math/orientation';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -168,9 +169,9 @@ const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005
 };
 const FALLBACK_RADIUS_KM_BY_SOURCE: Partial<Record<number, number>> = {
-	[OrbitalSource.SPICE_PROBE]: 0.005
+	[OrbitalSource.SPICE_PROBE]: 0.005,
+	[OrbitalSource.SBDB_MOON]: 0.1 * DEFAULT_FALLBACK_RADIUS_KM
 };
-const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
 
 /** Effective radius in km, using a fallback when the data has no known positive value. */
 export function effectiveRadiusKm(data: BodyData): number {

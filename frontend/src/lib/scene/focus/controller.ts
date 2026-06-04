@@ -1,6 +1,6 @@
 import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { PositionedBody } from '$lib/types/objects';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -155,7 +155,9 @@ export class FocusController {
 
 		// Halo-only-with-mesh-on-focus: asteroids/comets/probes build their
 		// sphere mesh (and a/c their trail) only while focused; reverting
-		// to halo-only on un-focus keeps the unfocused scene cheap. minDistance
+		// to halo-only on un-focus keeps the unfocused scene cheap. Asteroid
+		// moons extend the upgrade set to their parent so the parent stays
+		// visible (mesh + trail) while the user orbits the moon. minDistance
 		// below reads the focused body's mesh radius, so do the swap first.
 		// Always unload the prev body's overlay model — it isn't tied to the
 		// sphere mesh, so non-upgradable bodies would otherwise leak GLBs.
@@ -165,20 +167,32 @@ export class FocusController {
 			if (prevBo) {
 				unloadBodyModel(prevBo);
 				disposeNomenclatureLabels(prevBo);
-				if (isMeshUpgradable(prev)) {
-					downgradeBodyMesh(prevBo, scene, clickables, meshToBody);
-				}
 			}
 		}
-		if (isMeshUpgradable(body)) {
-			const bo = bodyObjects.get(body.data.id);
-			if (bo) {
-				upgradeBodyMesh(bo, scene, clickables, meshToBody);
-				// Mesh-upgradable bodies (asteroids/comets/probes) had no trail
-				// as halo-only; this picks it up now that `bo.mesh` is set.
-				buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
-				assignMapLayerToTrails();
+		const prevTargets = upgradeTargets(prev, ctx);
+		const newTargets = upgradeTargets(body, ctx);
+		const prevIds = new Set(prevTargets.map((b) => b.data.id));
+		const newIds = new Set(newTargets.map((b) => b.data.id));
+		for (const t of prevTargets) {
+			if (newIds.has(t.data.id)) continue;
+			const tBo = bodyObjects.get(t.data.id);
+			if (tBo) downgradeBodyMesh(tBo, scene, clickables, meshToBody);
+		}
+		let didUpgrade = false;
+		for (const t of newTargets) {
+			if (prevIds.has(t.data.id)) continue;
+			this.promotion.ensureBodyObjects(t);
+			const tBo = bodyObjects.get(t.data.id);
+			if (tBo) {
+				upgradeBodyMesh(tBo, scene, clickables, meshToBody);
+				didUpgrade = true;
 			}
+		}
+		if (didUpgrade) {
+			// Mesh-upgradable bodies had no trail as halo-only; this picks them
+			// up now that `bo.mesh` is set.
+			buildTrails(bodyObjects, scene, pointClouds.basis(), clock.jd);
+			assignMapLayerToTrails();
 		}
 
 		this.focusedBody = body;
@@ -282,4 +296,19 @@ export class FocusController {
 		this.deps.controls.update();
 		this.pendingInitialView = null;
 	}
+}
+
+/** Bodies whose mesh should be upgraded while `focus` is the focused body.
+ *  Always includes the focus itself if it's mesh-upgradable; for asteroid moons
+ *  also includes the parent asteroid, so the parent stays as a sphere + trail
+ *  instead of dropping back to a label-only halo. */
+function upgradeTargets(focus: PositionedBody | undefined, ctx: ContextManager): PositionedBody[] {
+	if (!focus) return [];
+	const out: PositionedBody[] = [];
+	if (isMeshUpgradable(focus)) out.push(focus);
+	if (focus.data.objectType === ObjectType.MOON) {
+		const parent = ctx.getBody(focus.data.parentId);
+		if (parent && isMeshUpgradable(parent)) out.push(parent);
+	}
+	return out;
 }

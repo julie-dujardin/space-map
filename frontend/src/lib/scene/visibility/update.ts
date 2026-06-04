@@ -144,6 +144,10 @@ export function updateBodyVisibility(
 	// values but are invisible to length-bounded iteration; no per-frame alloc.
 	screenOccluders.length = occluderCount;
 
+	// When the focused body is an asteroid moon, the parent asteroid becomes the
+	// focused-system root. Treating it as "focused" for visibility keeps its trail
+	// from being suppressed by the CLOSE-and-not-focused gate in bodyVisFlags.
+	const focusedSystemId = ctx.visibility.focusedSystemId;
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
@@ -151,6 +155,7 @@ export function updateBodyVisibility(
 		let showLabel: boolean;
 		let isClose: boolean;
 		const isFocused = body.data.id === focusedBodyId;
+		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
 
 		if (bo.mesh === null) {
 			// Halo-only bodies fall into two categories with different gates:
@@ -194,7 +199,7 @@ export function updateBodyVisibility(
 				: ctx.visibility.getPlanetVisibility(body, dist);
 			const vf = isMoon
 				? moonVisFlags(vis, hideCappedMoonLabels, isFocused)
-				: bodyVisFlags(vis, ctx.visibility.hasFullRendering(body), isFocused);
+				: bodyVisFlags(vis, ctx.visibility.hasFullRendering(body), isFocused || isSystemRoot);
 			group.visible = vf.groupVisible;
 			if (trail) trail.visible = vf.orbitVisible;
 			showLabel = vf.showLabel;

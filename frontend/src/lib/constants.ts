@@ -54,6 +54,9 @@ export const SUN_ID = 'naif-10';
 export const EARTH_ID = 'naif-399';
 export const SSB_ID = 'naif-0';
 
+/** Default visual radius (km) for bodies whose radius isn't known. */
+export const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
+
 /**
  * Bodies rendered as halos but with no label or trail by default — label
  * appears on hover (alongside the existing halo scale), trail draws as usual
