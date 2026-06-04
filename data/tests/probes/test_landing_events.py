@@ -388,6 +388,84 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
     assert phases[0].end_et == _INDEFINITE_END
 
 
+def test_longitude_wrapped_to_signed_range(events_root: Path) -> None:
+    """Soviet files (Venera, Vega) record longitude in 0–360°E. Raw 351
+    overflows the int32×1e7 quantisation in the wire format (3.51e9 > int32
+    max), collapsing to ~214.7° and stacking every wrapped Venera on one
+    meridian. Loader normalises to [-180, 180] so the encoded value stays
+    within int32 range and round-trips faithfully."""
+    _write(
+        events_root,
+        "soviet.json",
+        [
+            {
+                "probe_id": 60000000,
+                "name": "Venera 7",
+                "mission_type": "venus_lander",
+                "events": [
+                    {
+                        "type": "landing",
+                        "date": "1970-12-15T05:37:10Z",
+                        "metadata": {
+                            "landing_coordinates": {
+                                "latitude": -5.0,
+                                "longitude": 351.0,
+                            }
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    phases = landing_events.load_phases(_INDEFINITE_END)
+    assert len(phases) == 1
+    # 351°E → -9°E after wrap; sin/cos are periodic so the rendered point is
+    # identical, but the encoded int32 now fits without clamping.
+    assert phases[0].lng_deg == pytest.approx(-9.0)
+    assert phases[0].lat_deg == pytest.approx(-5.0)
+
+
+def test_spk_covered_probe_skipped_by_cospar(
+    events_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Viking 1/2 Landers have BOTH an events-DB registry entry (mission
+    name, no kernels) and an SPK entry (VIKING/-327, VIKING/-330). The
+    events JSON's `cospar_id` matches the SPK probe's COSPAR; the loader
+    must skip the events phase so the SPICE pipeline owns the landing.
+    """
+    monkeypatch.setattr(
+        landing_events,
+        "_spk_covered_cospars",
+        lambda: {"1975-075C"},
+    )
+    _write(
+        events_root,
+        "mars.json",
+        [
+            {
+                "probe_id": 46006272,
+                "name": "Viking 1 Lander",
+                "cospar_id": "1975-075C",
+                "mission_type": "mars_lander",
+                "events": [
+                    {
+                        "type": "landing",
+                        "date": "1976-07-20T11:53:06Z",
+                        "metadata": {
+                            "landing_coordinates": {
+                                "lat_deg": 22.697,
+                                "lon_deg": -48.222,
+                            },
+                            "target_body_naif": 499,
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    assert landing_events.load_phases(_INDEFINITE_END) == []
+
+
 def test_parse_iso_handles_partial_dates() -> None:
     """Loader must accept YYYY / YYYY-MM / YYYY-MM-DD / full timestamps."""
     assert landing_events._parse_iso_to_jd("2024") == pytest.approx(

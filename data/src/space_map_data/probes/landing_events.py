@@ -120,7 +120,14 @@ def _parse_iso_to_jd(s: str) -> float:
 def _coords(event: dict) -> tuple[float, float] | None:
     """Two equivalent shapes in the source: ``{latitude, longitude}`` (Soviet/
     Apollo files) and ``{lat_deg, lon_deg}`` (Mars/Spirit/Curiosity files).
-    Accept both."""
+    Both are accepted.
+
+    Longitude is normalised to ``[-180, 180]`` because the wire format packs
+    it as ``int32 × 1e7``: 351°E quantises to 3.51e9, which overflows int32
+    (max 2.15e9) and clamps to ~214.7°. Source files mix conventions —
+    Apollo lunar coords are already signed (``-23.42157``), Soviet Venus
+    coords use 0–360°E (``351``, ``291.64``) — so we standardise here.
+    """
     meta = event.get("metadata") or {}
     c = meta.get("landing_coordinates") or meta.get("touchdown_coordinates")
     if not isinstance(c, dict):
@@ -134,9 +141,13 @@ def _coords(event: dict) -> tuple[float, float] | None:
     if lat is None or lng is None:
         return None
     try:
-        return float(lat), float(lng)
+        lat_f = float(lat)
+        lng_f = float(lng)
     except (TypeError, ValueError):
         return None
+    # Wrap to [-180, 180] regardless of input convention.
+    lng_f = ((lng_f + 180.0) % 360.0) - 180.0
+    return lat_f, lng_f
 
 
 def _resolve_body(event: dict, mission_type: str) -> tuple[int, int] | None:
@@ -203,6 +214,28 @@ def _phase_end_et(
     return None
 
 
+def _spk_covered_cospars() -> set[str]:
+    """COSPAR IDs already owned by an SPK-covered probe in the registry.
+
+    Used to skip events-driven phases for missions that also publish a SPICE
+    landed kernel — Viking 1/2 have both an events-DB registry entry (named
+    after the mission) and an SPK entry (named after the lander), pointing at
+    the same physical lander via COSPAR. The SPICE landed pipeline already
+    emits METHOD_LANDED for the SPK probe; emitting another phase here would
+    double-render the spacecraft.
+    """
+    from space_map_data.probes.probe_id import load_registry
+
+    out: set[str] = set()
+    for entry in load_registry():
+        if all(s["mission"] == "EVENTS-DB" for s in entry["kernel_sources"]):
+            continue
+        cospar = entry.get("cospar_id")
+        if cospar:
+            out.add(cospar)
+    return out
+
+
 def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
     """Read every events JSON; emit one ``LandingPhase`` per resolvable
     landing/touchdown. ``end_et_for_indefinite`` is the upper bound for
@@ -212,9 +245,11 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
     if not EVENTS_DIR.exists():
         logger.info("No events dir at %s; no events-driven landings", EVENTS_DIR)
         return []
+    spk_cospars = _spk_covered_cospars()
     out: list[LandingPhase] = []
     skipped_no_body = 0
     skipped_no_coords = 0
+    skipped_spk_covered = 0
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
             data = json.loads(path.read_text())
@@ -228,6 +263,18 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
             if pid is None:
                 logger.warning(
                     "events: probe %r in %s has no probe_id", name, path.name
+                )
+                continue
+            # SPK-covered missions (Viking 1/2 Lander, …) are handled by the
+            # SPICE landed pipeline; the events file carries them too for
+            # completeness but they'd double-render if we emitted phases.
+            cospar = probe.get("cospar_id")
+            if cospar and cospar in spk_cospars:
+                skipped_spk_covered += 1
+                logger.info(
+                    "events: %s has SPK coverage (COSPAR %s); deferring to SPICE pipeline",
+                    name,
+                    cospar,
                 )
                 continue
             events = probe.get("events", [])
@@ -284,11 +331,12 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     )
                 )
     logger.info(
-        "events: loaded %d landed phases (%d skipped: %d no body, %d no coords)",
+        "events: loaded %d landed phases (skipped: %d no body, %d no coords, "
+        "%d deferred to SPICE)",
         len(out),
-        skipped_no_body + skipped_no_coords,
         skipped_no_body,
         skipped_no_coords,
+        skipped_spk_covered,
     )
     return out
 
