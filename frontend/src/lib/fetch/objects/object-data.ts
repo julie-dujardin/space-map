@@ -28,7 +28,11 @@ export type ImageVariants = Partial<Record<'s' | 'm' | 'xl', string>>;
 export interface ObjectImage {
 	file: string;
 	source_url: string;
-	kind: 'photo' | 'logo';
+	/** `photo` (P18 / Wikipedia pageimage) and `logo` (P154) are the object-side
+	 *  kinds; `locator` (P242) is feature-only — IAU outline maps for surface
+	 *  features. New kinds may appear; consumers should treat unknown values as
+	 *  generic photos. */
+	kind: 'photo' | 'logo' | 'locator';
 	variants: ImageVariants;
 	/** Source pixel dimensions. Omitted for passthrough sources (SVG/WebM)
 	 *  where the exporter never decoded a raster — clients should fall back

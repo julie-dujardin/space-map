@@ -15,6 +15,7 @@
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
+	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
@@ -75,6 +76,7 @@
 	});
 
 	let data = $state<ObjectDetailData | null>(null);
+	let featureDetail = $state<FeatureDetailData | null>(null);
 	let loading = $state(true);
 	let isMobile = $state(false);
 
@@ -90,18 +92,47 @@
 		const key = focusableKey(focusable);
 		loading = true;
 		data = null;
-		// Feature focusable: we don't have a feature-detail bundle yet
-		// (Wikipedia extract, images, links etc. will land on the export side
-		// later). For now, synthesize a minimal ObjectDetailData so the header
-		// has a name and the other panels see empty data. The IAU fields
-		// render via <FeatureProperties feature={…}> from the prop directly.
+		featureDetail = null;
+		// Features fetch from the nomenclature details tier (hash-bucketed,
+		// keyed by `${bodyId}:${featureId}`); we then synthesize an
+		// ObjectDetailData so ObjectHeader / ObjectDescription / ImageGallery /
+		// ObjectLinks can render unchanged. Feature-only fields (length, depth,
+		// instance_of refs, named_after refs, …) flow into FeatureProperties
+		// via the raw FeatureDetailData prop.
 		if (focusable.kind === 'feature') {
 			const f = focusable.feature;
-			data = {
-				global: { id: `feature-${f.featureId}`, type: 'feature', name: f.name },
-				localized: null
-			};
-			loading = false;
+			const bodyId = focusable.body.data.id;
+			fetchFeatureDetail(bodyId, f.featureId)
+				.then((detail) => {
+					if (focusableKey(focusable) !== key) return;
+					featureDetail = detail;
+					data = {
+						global: {
+							id: `feature-${f.featureId}`,
+							type: 'feature',
+							name: f.name,
+							images: detail.global?.images,
+							cross_refs: detail.global?.wikidata_qid
+								? { wikidata_qid: detail.global.wikidata_qid }
+								: undefined
+						},
+						localized: detail.localized
+							? {
+									name: detail.localized.name,
+									description: detail.localized.description,
+									aliases: detail.localized.aliases,
+									instance_of: detail.localized.instance_of,
+									named_after: detail.localized.named_after,
+									wikipedia: detail.localized.wikipedia
+								}
+							: null
+					};
+					loading = false;
+				})
+				.catch((err) => {
+					loading = false;
+					throw err;
+				});
 			return;
 		}
 		const bodyId = focusable.body.data.id;
@@ -282,7 +313,7 @@
 				wikipediaUrl={data?.localized?.wikipedia?.url}
 			/>
 			{#if feature}
-				<FeatureProperties {feature} />
+				<FeatureProperties {feature} detail={featureDetail} />
 			{:else}
 				<Physical global={data?.global ?? null} />
 				<Orbital

@@ -174,6 +174,12 @@ export interface SkyboxMetadata {
 export interface Metadata {
 	position: PositionMetadata;
 	object_bundles: ObjectBundles;
+	/** Bucket counts for `nomenclature/details/{__global__|<lang>}/{bucket}.json.gz`.
+	 *  Keyed identically to `object_bundles`. Bucket id is computed from
+	 *  `hash("${bodyId}:${featureId}") % N` so a body's features cluster into one
+	 *  bundle — opening one feature warms the rest. Optional so frontends
+	 *  loading a pre-feature-details export degrade gracefully. */
+	feature_bundles?: ObjectBundles;
 	skybox?: SkyboxMetadata;
 }
 
