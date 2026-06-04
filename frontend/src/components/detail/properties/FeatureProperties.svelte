@@ -3,6 +3,7 @@
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { nomenclatureTypeLabel } from '$lib/types/nomenclature';
 	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
+	import { formatIsoDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
@@ -56,7 +57,7 @@
 		<Row label="Elevation" value={formatQuantity(wd.elevation)} />
 	{/if}
 	{#if feature.approvalDate}
-		<Row label="Named" value={feature.approvalDate} />
+		<Row label="Named" value={formatIsoDate(feature.approvalDate)} />
 	{/if}
 	{#if feature.origin}
 		<Row label="Origin">
