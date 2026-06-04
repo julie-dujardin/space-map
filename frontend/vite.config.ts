@@ -2,9 +2,20 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
-const dataTarget = process.env.DATA_SERVER_URL ?? 'http://localhost:8080';
+// If PUBLIC_DATA_URL is an absolute URL (e.g. https://static.spacemap.co), route
+// it through the dev proxy: the browser keeps hitting /data (same-origin, no
+// preflight) while the proxy fetches from the remote without forwarding Origin.
+const envFromFiles = loadEnv(process.env.NODE_ENV ?? 'development', process.cwd(), '');
+const configuredDataUrl = process.env.PUBLIC_DATA_URL ?? envFromFiles.PUBLIC_DATA_URL ?? '/data';
+const isRemoteDataUrl = /^https?:\/\//i.test(configuredDataUrl);
+const dataTarget = isRemoteDataUrl
+	? configuredDataUrl
+	: (process.env.DATA_SERVER_URL ?? 'http://localhost:8080');
+if (isRemoteDataUrl) {
+	process.env.PUBLIC_DATA_URL = '/data';
+}
 
 export default defineConfig({
 	test: {
@@ -35,7 +46,13 @@ export default defineConfig({
 			'/data': {
 				target: dataTarget,
 				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/data/, '')
+				rewrite: (path) => path.replace(/^\/data/, ''),
+				configure: (proxy) => {
+					proxy.on('proxyReq', (proxyReq) => {
+						proxyReq.removeHeader('origin');
+						proxyReq.removeHeader('referer');
+					});
+				}
 			}
 		}
 	}
