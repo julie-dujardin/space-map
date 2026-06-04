@@ -95,17 +95,39 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	// the focused body's own position is known below.
 	const computePosition = (body: PositionedBody) => {
 		const d = body.data;
-		// `let` because the probe branch may re-parent (cruise → captured orbit
-		// picks up under the planet's fit center) and the trail / trail-
-		// anchor writes below need the resolved parent's position.
-		let parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
+		const bo = bodyObjects.get(d.id);
+		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
+		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
+		// Probes re-resolve their fit center below (cruise → captured orbit can
+		// flip parentId), so let the probe branch handle parent lookup; for
+		// everything else, the parent must be in the per-frame positionMap. A
+		// miss means the parent isn't tracked this frame (e.g. URL-loaded a
+		// moon-of-asteroid before the host's chunk lands, or the host lives in
+		// `asteroidBodiesByZone` which the frame loop doesn't pre-seed). Hide
+		// rather than fall back to SSB — anchoring at the origin places
+		// asteroid-moons at the Sun.
+		let parentPos: Vec3;
+		if (isProbe) {
+			parentPos = positionMap.get(d.parentId) ?? ([0, 0, 0] as Vec3);
+		} else {
+			const lookup = positionMap.get(d.parentId);
+			if (!lookup) {
+				if (bo) bo.outOfRange = true;
+				if (d.id === focusedId) oorState.focusedOutOfRange = true;
+				diagnostics.warnOnce(
+					'missing-parent',
+					d.id,
+					() => `computePosition[${d.id}]: parent ${d.parentId} not in positionMap — hiding`
+				);
+				return;
+			}
+			parentPos = lookup;
+			diagnostics.clear('missing-parent', d.id);
+		}
 		const isParabolic = d.q != null;
 		// Validity gate: hide SGP4/parabolic bodies outside their stated window.
 		// Skipped for chebyshev (validityStart/End is the startup chunk's window,
 		// not the full segment range) — its `positionScene` is the gate instead.
-		const bo = bodyObjects.get(d.id);
-		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
-		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
 		if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
 			if (bo) bo.outOfRange = true;
 			// SGP4 is the only source with a finite validity here (TLE epoch

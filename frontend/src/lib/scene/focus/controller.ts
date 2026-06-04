@@ -118,6 +118,26 @@ export class FocusController {
 		];
 	}
 
+	/** Initial-focus mesh upgrade: walks {@link upgradeTargets} so the focused
+	 *  body AND (for moons-of-asteroids) the parent host get a sphere mesh on
+	 *  first paint, not just the focused body itself. Used by the renderer at
+	 *  scene-build time; subsequent focus changes go through
+	 *  {@link setFocusTarget}, which handles upgrade/downgrade symmetrically.
+	 *  Returns true if any mesh was upgraded so the caller can rebuild trails. */
+	upgradeMeshTargets(body: PositionedBody): boolean {
+		const { ctx, scene, clickables, meshToBody, bodyObjects } = this.deps;
+		let didUpgrade = false;
+		for (const t of upgradeTargets(body, ctx)) {
+			this.promotion.ensureBodyObjects(t);
+			const tBo = bodyObjects.get(t.data.id);
+			if (!tBo) continue;
+			const hadMesh = tBo.mesh !== null;
+			upgradeBodyMesh(tBo, scene, clickables, meshToBody);
+			if (!hadMesh && tBo.mesh !== null) didUpgrade = true;
+		}
+		return didUpgrade;
+	}
+
 	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera. */
 	handleFocus(body: PositionedBody): void {
 		if (this.focusedBody?.data.id === body.data.id) {

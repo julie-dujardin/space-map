@@ -1,4 +1,4 @@
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -226,10 +226,31 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// land in — keeps a single source of truth and lets phase 2 reconcile
 	// in place when the chunk arrives.
 	if (targetId && !ctx.getBody(targetId)) {
-		const placeholder = await createPlaceholderBody(targetId, date, loader);
-		if (placeholder) {
-			const { body, zone } = placeholder;
+		// Returns the chain ancestors→target when the target's parent isn't
+		// yet in `loader.positions` (e.g. moon-of-asteroid URL load before
+		// phase 2). Each ancestor needs the same routing pass so it shows up
+		// immediately instead of being invisible until its own chunk lands.
+		// All entries go through the same per-type routing — asteroid-moons
+		// are steered into `small_body_moons` so they match the regular
+		// chunk-load path (PromotionRegistry's asteroid-moon auto-promote
+		// picks them up and the parent asteroid along with them).
+		const placeholders = await createPlaceholderBody(targetId, date, loader);
+		for (let i = 0; i < placeholders.length; i++) {
+			const { body, zone } = placeholders[i];
+			if (ctx.getBody(body.data.id)) continue;
 			const type = body.data.objectType;
+			const parentEntry = i > 0 ? placeholders[i - 1] : null;
+			// Moons whose parent is an asteroid live in the
+			// `small_body_moons` zone in the regular chunk-load path. Steer
+			// the placeholder there too so it's reconciled in place when the
+			// real chunk arrives AND so it ends up in `bodyObjects` via the
+			// asteroid-moon auto-promote — NOT in `bodiesById`, where the
+			// per-frame moon `inSystem` filter (intended for major moons)
+			// would freeze it whenever focus moves off the moon.
+			const resolvedZone =
+				type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)
+					? 'small_body_moons'
+					: zone;
 			if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
 				const key = body.data.parentId;
 				let bucket = pendingSpacecraft.get(key);
@@ -238,21 +259,21 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				placeholderById.set(body.data.id, body);
 				addedSinceFlush.add(body.data.id);
 				ctx.bodies.dirtySpacecraftGroups.add(key);
-			} else if (zone) {
-				let bucket = pendingAsteroids.get(zone);
-				if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
+			} else if (resolvedZone) {
+				let bucket = pendingAsteroids.get(resolvedZone);
+				if (!bucket) pendingAsteroids.set(resolvedZone, (bucket = new Map()));
 				bucket.set(body.data.id, body);
 				placeholderById.set(body.data.id, body);
 				addedSinceFlush.add(body.data.id);
-				ctx.bodies.dirtyAsteroidZones.add(zone);
+				ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
 			} else {
 				// Major / undocumented / wikidata-only — no zone to route into,
 				// fall back to bodiesById so getBody() still finds it.
 				ctx.bodies.addBodies([body]);
 			}
 			ctx.credits.recordOrbitSources([body]);
-			flush();
 		}
+		if (placeholders.length > 0) flush();
 	}
 
 	// Probes ride bodiesById (so getBody / URL focus / placeholder routing

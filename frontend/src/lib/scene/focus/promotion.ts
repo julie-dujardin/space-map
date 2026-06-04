@@ -55,6 +55,9 @@ export class PromotionRegistry {
 			this.onBodiesAdded(ids);
 			this.autoPromoteAsteroidMoons(ids);
 		});
+		// URL-loaded placeholders flushed before this registry was wired up
+		// don't fire the live `onBodiesAdded` listener — sweep them now.
+		this.promoteExistingAsteroidMoons();
 		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
 		// until labels resolve a few hundred ms later, defaults is empty so the
 		// notification handler matches nothing.
@@ -91,18 +94,41 @@ export class PromotionRegistry {
 	/** Moons whose parent is an asteroid land in `asteroidBodiesByZone` (point-cloud
 	 *  bucket), not `bodiesById`, so the curated/labels-driven promotion path skips
 	 *  them — they'd only get halos/trails after the user clicked. Auto-promote on
-	 *  arrival so they show by default. Sparse in the catalog (handful of bodies). */
+	 *  arrival so they show by default. Sparse in the catalog (handful of bodies).
+	 *  Also promotes the parent asteroid when it's been pre-routed to `bodiesById`
+	 *  (URL-loaded moon-of-asteroid: scene-load adds the host as a placeholder so
+	 *  the moon's per-frame parent lookup resolves) — without this the host would
+	 *  stay invisible while its moon renders. */
 	private autoPromoteAsteroidMoons(ids: readonly string[]): void {
 		const matched: PositionedBody[] = [];
+		const seenParents = new Set<string>();
 		for (const id of ids) {
 			const body = this.deps.ctx.getBody(id);
 			if (!body || body.data.objectType !== ObjectType.MOON) continue;
 			const parent = this.deps.ctx.getBody(body.data.parentId);
 			if (!parent || !isAsteroid(parent.data.objectType)) continue;
-			if (this.deps.bodyObjects.has(id)) continue;
-			matched.push(body);
+			// Parent first so it lands earlier in the `bodyObjects` insertion
+			// order — the per-frame loop iterates in insertion order, so the
+			// moon's parent lookup hits a freshly-computed position rather
+			// than the previous frame's value.
+			if (!this.deps.bodyObjects.has(parent.data.id) && !seenParents.has(parent.data.id)) {
+				seenParents.add(parent.data.id);
+				matched.push(parent);
+			}
+			if (!this.deps.bodyObjects.has(id)) matched.push(body);
 		}
 		this.buildBatch(matched);
+	}
+
+	/** Scan existing asteroid-moon buckets and promote any moon (+ parent)
+	 *  already present at registry construction time. The `onBodiesAdded` hook
+	 *  catches future arrivals, but URL-loaded placeholders are added in
+	 *  `loadScene` *before* this registry exists, so the live hook misses
+	 *  them. */
+	private promoteExistingAsteroidMoons(): void {
+		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
+		if (!moonBucket || moonBucket.size === 0) return;
+		this.autoPromoteAsteroidMoons(Array.from(moonBucket.keys()));
 	}
 
 	/** Notification hook from {@link BodyIndex}. Promotes any newly-arrived

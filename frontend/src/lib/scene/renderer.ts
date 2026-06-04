@@ -28,7 +28,7 @@ import { bootThree } from './setup/three-boot';
 import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
-import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
+import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
@@ -303,11 +303,12 @@ export class SceneRenderer {
 		if (focusBody) this.focusController.promotion.ensureBodyObjects(focusBody);
 
 		// Initial focus on a halo-only type (asteroid/comet/probe) builds its mesh
-		// immediately; setFocusTarget handles subsequent focus changes.
-		if (focusBody && isMeshUpgradable(focusBody)) {
-			const bo = this.bodyObjects.get(focusBody.data.id);
-			if (bo) {
-				upgradeBodyMesh(bo, this.scene, this.clickables, this.meshToBody);
+		// immediately; for moons-of-asteroids `upgradeMeshTargets` also upgrades
+		// the parent host so it appears as a sphere alongside the focused moon.
+		// setFocusTarget handles subsequent focus changes symmetrically.
+		if (focusBody) {
+			const didUpgrade = this.focusController.upgradeMeshTargets(focusBody);
+			if (didUpgrade) {
 				buildTrails(this.bodyObjects, this.scene, this.pointClouds.basis(), this.clock.jd);
 				this.assignMapLayerToTrails();
 			}

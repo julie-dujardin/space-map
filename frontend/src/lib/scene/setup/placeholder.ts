@@ -32,27 +32,45 @@ function parseOrbitalSource(name: string | undefined): OrbitalSource {
 }
 
 /**
- * Create a placeholder PositionedBody from the __global__ object file along
- * with the SBDB-class zone id (e.g. `"MBA"`) for routing — null when the
- * object has no SBDB record, in which case the caller falls back to
- * `parentId`-based routing (spacecraft/debris) or `bodiesById` (majors).
+ * Create placeholder PositionedBodies from the __global__ object file. When
+ * the target's parent isn't yet in `loader.positions` (e.g. URL-loading a
+ * moon-of-asteroid before phase 2 lands the host asteroid's chunk), recurses
+ * up the chain — each ancestor placeholder is added to the returned list AND
+ * registered in `loader.positions` so the target can anchor on a real point
+ * rather than the SSB. Returns an empty array when the chain can't close
+ * (missing global data, missing orbit, cycle), in which case the body is
+ * silently hidden until its real chunk lands. The last entry is always the
+ * target; earlier entries (if any) are ancestors the caller should also
+ * route.
  *
- * Returns null if the object doesn't exist or has no orbit data.
+ * Each entry's `zone` is the SBDB-class zone id (e.g. `"APO"`) used for
+ * routing — null when the body has no SBDB record (moons, majors), in which
+ * case the caller falls back to `parentId`-based routing (spacecraft/debris)
+ * or `bodiesById` (majors / moons).
  */
 export async function createPlaceholderBody(
 	targetId: string,
 	date: Date,
-	loader: ChunkLoader
-): Promise<{ body: PositionedBody; zone: string | null } | null> {
+	loader: ChunkLoader,
+	visited: Set<string> = new Set()
+): Promise<Array<{ body: PositionedBody; zone: string | null }>> {
+	if (visited.has(targetId)) {
+		console.warn(`createPlaceholderBody: cycle detected at ${targetId} — hiding`);
+		return [];
+	}
+	visited.add(targetId);
 	let detail: Awaited<ReturnType<typeof fetchObjectDetail>>;
 	try {
 		detail = await fetchObjectDetail(targetId);
 	} catch {
-		console.warn(`Failed to fetch global data for ${targetId}`);
-		return null;
+		console.warn(`createPlaceholderBody: failed to fetch global data for ${targetId} — hiding`);
+		return [];
 	}
 	const global = detail.global;
-	if (!global?.orbit) return null;
+	if (!global?.orbit) {
+		console.warn(`createPlaceholderBody: no orbit data for ${targetId} — hiding`);
+		return [];
+	}
 
 	const orbit = global.orbit;
 	const isPlanetScale = orbit.scale === 'planet';
@@ -128,7 +146,29 @@ export async function createPlaceholderBody(
 		...(satrec ? { satrec } : {})
 	};
 
-	const parentPos = loader.positions.get(orbit.parent_id) ?? [0, 0, 0];
+	const ancestors: Array<{ body: PositionedBody; zone: string | null }> = [];
+	let parentPos = loader.positions.get(orbit.parent_id);
+	if (!parentPos) {
+		// Recurse up the chain so e.g. a moon-of-asteroid can anchor on a
+		// placeholder of its host before the asteroid's real chunk lands. The
+		// recursive call registers the parent's position in `loader.positions`
+		// (via the `loader.positions.set` below) so siblings down the chain
+		// share the same anchor. If the chain can't close — the parent has no
+		// global data or no orbit — hide rather than dump at SSB (the old
+		// fallback placed asteroid moons at the origin, visually orbiting the
+		// Sun-system center instead of their host).
+		const parentChain = await createPlaceholderBody(orbit.parent_id, date, loader, visited);
+		if (parentChain.length === 0) {
+			console.warn(
+				`createPlaceholderBody: parent ${orbit.parent_id} of ${targetId} not resolvable — hiding`
+			);
+			return [];
+		}
+		const parentEntry = parentChain[parentChain.length - 1];
+		parentPos = parentEntry.body.position;
+		loader.positions.set(orbit.parent_id, parentPos);
+		ancestors.push(...parentChain);
+	}
 	const offset = satrec
 		? sgp4PositionScene(satrec, dateToJD(date))
 		: isParabolic
@@ -136,7 +176,7 @@ export async function createPlaceholderBody(
 			: orbitalElementsToPosition(data, date);
 	if (!offset) {
 		console.warn(`Failed to compute position for ${targetId} (e=${data.e})`);
-		return null;
+		return ancestors;
 	}
 	const position: [number, number, number] = [
 		parentPos[0] + offset[0],
@@ -144,8 +184,9 @@ export async function createPlaceholderBody(
 		parentPos[2] + offset[2]
 	];
 
-	return {
+	ancestors.push({
 		body: { data, position, orbitElements: data, orbitCenter: parentPos },
 		zone: global.sbdb?.class ?? null
-	};
+	});
+	return ancestors;
 }
