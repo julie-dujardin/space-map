@@ -262,6 +262,11 @@ _PREFERRED_CRITERIA: dict[str, list[str]] = {
         "Q854248",  # takeoff
         "Q65088056",  # Gross mass
     ],
+    "P2044": [  # Elevation: prefer the highest-point measurement, then average
+        "Q3393392",  # highest point
+        _QID_AVERAGE,
+        _QID_MEAN,
+    ],
 }
 _TRUSTED_PROVIDERS = [
     "Q4026990",  # JPL SBDB
@@ -497,7 +502,8 @@ def _resolve_quantity(
         if len(mean) == 1:
             return mean[0][1]
 
-    # Prefer by qualifier value (checked across P1013, P518, P3831)
+    # Prefer by qualifier value (checked across the common disambiguation
+    # qualifiers Wikidata uses for "what kind of measurement is this").
     for crit_qid in _PREFERRED_CRITERIA.get(prop, []):
         matched = [
             (s, p)
@@ -508,6 +514,7 @@ def _resolve_quantity(
                 _qualifier_qid(s, "P518"),  # applies to part
                 _qualifier_qid(s, "P3831"),  # object of statement has role
                 _qualifier_qid(s, "P1552"),  # has characteristic
+                _qualifier_qid(s, "P31"),  # instance of (value's kind)
             )
         ]
         if len(matched) == 1:
