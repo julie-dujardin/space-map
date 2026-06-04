@@ -63,21 +63,83 @@
 			.sort((a, b) => bodyName(a.bodyId).localeCompare(bodyName(b.bodyId)));
 	}
 
-	const textureList = $derived.by(() => {
+	// Merged imagery rows: skybox + per-body texture/cloud/night/ring credits.
+	// When a single body contributes more than one kind (e.g. Earth: surface +
+	// clouds + night, Saturn: surface + rings), each row gets a type qualifier
+	// in parentheses; otherwise the body name alone is enough.
+	interface ImageryRow {
+		key: string;
+		label: string;
+		qualifier?: string;
+		source: string;
+		organisation: string;
+	}
+
+	const imageryRows = $derived.by<ImageryRow[]>(() => {
 		void ctx.credits.textureVersion;
-		return scopedCredits(ctx.credits.texture.values());
-	});
-	const ringList = $derived.by(() => {
-		void ctx.credits.ringVersion;
-		return scopedCredits(ctx.credits.ring.values());
-	});
-	const cloudList = $derived.by(() => {
 		void ctx.credits.cloudVersion;
-		return scopedCredits(ctx.credits.cloud.values());
-	});
-	const nightList = $derived.by(() => {
 		void ctx.credits.nightVersion;
-		return scopedCredits(ctx.credits.night.values());
+		void ctx.credits.ringVersion;
+
+		// Per-body ordering within the imagery list: surface → clouds → night → rings.
+		const byBody = new Map<
+			string,
+			Array<{
+				typeKey: 'surface' | 'clouds' | 'night' | 'rings';
+				source: string;
+				organisation: string;
+			}>
+		>();
+		const push = (
+			bodyId: string,
+			typeKey: 'surface' | 'clouds' | 'night' | 'rings',
+			source: string,
+			organisation: string
+		) => {
+			const arr = byBody.get(bodyId) ?? [];
+			arr.push({ typeKey, source, organisation });
+			byBody.set(bodyId, arr);
+		};
+		for (const c of scopedCredits(ctx.credits.texture.values()))
+			push(c.bodyId, 'surface', c.source, c.organisation);
+		for (const c of scopedCredits(ctx.credits.cloud.values()))
+			push(c.bodyId, 'clouds', c.source, c.organisation);
+		for (const c of scopedCredits(ctx.credits.night.values()))
+			push(c.bodyId, 'night', c.source, c.organisation);
+		for (const c of scopedCredits(ctx.credits.ring.values()))
+			push(c.bodyId, 'rings', c.source, c.organisation);
+
+		const typeLabel = (k: 'surface' | 'clouds' | 'night' | 'rings'): string => {
+			if (k === 'surface') return m.attribution_type_surface();
+			if (k === 'clouds') return m.attribution_type_clouds();
+			if (k === 'night') return m.attribution_type_night();
+			return m.attribution_type_rings();
+		};
+
+		const rows: ImageryRow[] = [];
+		if (ctx.credits.skybox) {
+			rows.push({
+				key: 'skybox',
+				label: m.attribution_section_skybox(),
+				source: ctx.credits.skybox.source,
+				organisation: ctx.credits.skybox.organisation
+			});
+		}
+		const bodies = [...byBody.keys()].sort((a, b) => bodyName(a).localeCompare(bodyName(b)));
+		for (const bodyId of bodies) {
+			const items = byBody.get(bodyId)!;
+			const multi = items.length > 1;
+			for (const it of items) {
+				rows.push({
+					key: `${bodyId}-${it.typeKey}`,
+					label: bodyName(bodyId),
+					qualifier: multi ? typeLabel(it.typeKey) : undefined,
+					source: it.source,
+					organisation: it.organisation
+				});
+			}
+		}
+		return rows;
 	});
 
 	// 3D models are body-scoped (only the focused probe's model is in the
@@ -137,54 +199,18 @@
 		</ul>
 	</section>
 
-	{#if ctx.credits.skybox}
+	{#if imageryRows.length > 0}
 		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_skybox())}
+			{@render sectionHeader(m.attribution_section_imagery_all())}
 			<ul class="space-y-0.5">
-				<li>{@render link(ctx.credits.skybox.source, ctx.credits.skybox.organisation)}</li>
-			</ul>
-		</section>
-	{/if}
-
-	{#if ringList.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_rings())}
-			<ul class="space-y-0.5">
-				{#each ringList as r (r.bodyId)}
-					<li>{@render link(r.source, bodyName(r.bodyId), r.organisation)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
-	{#if cloudList.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_clouds())}
-			<ul class="space-y-0.5">
-				{#each cloudList as c (c.bodyId)}
-					<li>{@render link(c.source, bodyName(c.bodyId), c.organisation)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
-	{#if nightList.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_night())}
-			<ul class="space-y-0.5">
-				{#each nightList as n (n.bodyId)}
-					<li>{@render link(n.source, bodyName(n.bodyId), n.organisation)}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
-	{#if textureList.length > 0}
-		<section class="space-y-1">
-			{@render sectionHeader(m.attribution_section_imagery())}
-			<ul class="space-y-0.5">
-				{#each textureList as t (t.bodyId)}
-					<li>{@render link(t.source, bodyName(t.bodyId), t.organisation)}</li>
+				{#each imageryRows as r (r.key)}
+					<li>
+						{@render link(
+							r.source,
+							r.qualifier ? `${r.label} (${r.qualifier})` : r.label,
+							r.organisation
+						)}
+					</li>
 				{/each}
 			</ul>
 		</section>
