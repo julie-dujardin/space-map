@@ -139,7 +139,9 @@ export enum IdType {
 	NAIF = 0,
 	SPKID = 1,
 	NORAD_SATCAT = 2,
-	SBDB_MOON = 3,
+	// Ordinal 3 used to belong to a now-removed `sbdb_moon` id-type
+	// (asteroid moons now ship as `spkid-N20xxxxxx`); not reassigned so
+	// previously-shipped files stay parseable.
 	PROBE = 4,
 	UNKNOWN = 255
 }
@@ -149,7 +151,6 @@ const ID_TYPE_PREFIX: Record<number, string> = {
 	[IdType.NAIF]: 'naif',
 	[IdType.SPKID]: 'spkid',
 	[IdType.NORAD_SATCAT]: 'norad_satcat',
-	[IdType.SBDB_MOON]: 'sbdb_moon',
 	[IdType.PROBE]: 'probe'
 };
 
@@ -157,18 +158,8 @@ const ID_TYPE_PREFIX: Record<number, string> = {
  * Rebuild a full `Object.id` string from the id-type byte plus a numeric
  * value. Returns null when the type is unknown — caller should treat the row
  * as unidentifiable rather than ship a malformed ID.
- *
- * For `SBDB_MOON`, the numeric is the per-parent `sat_index`; the full id
- * needs the parent's numeric prefix too. Use `buildSbdbMoonId(parent, sat)`
- * instead of this helper.
  */
 export function buildObjectId(idType: number, value: number): string | null {
-	if (idType === IdType.SBDB_MOON) return null;
 	const prefix = ID_TYPE_PREFIX[idType];
 	return prefix ? `${prefix}-${value}` : null;
-}
-
-/** Compose the compound `sbdb_moon-<parent_spkid>-<sat_index>` form. */
-export function buildSbdbMoonId(parentSpkid: number, satIndex: number): string {
-	return `sbdb_moon-${parentSpkid}-${satIndex}`;
 }

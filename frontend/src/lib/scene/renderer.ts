@@ -648,6 +648,10 @@ export class SceneRenderer {
 		return this.focusController.focusOnBody(id, zoom, latitude, longitude);
 	}
 
+	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
+		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
+	}
+
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.focusController.setFocusTarget(body, camPos);
 	}

@@ -269,6 +269,28 @@ export class FocusController {
 		return focus.focusDurationMs;
 	}
 
+	/** Snap the camera to a body-fixed lat/lon/zoom without any fly animation.
+	 *  Used for URL-load deep links where the user expects the page to open
+	 *  already framed on the target. If orientation hasn't loaded yet, the
+	 *  request is queued as a pendingInitialView replay so it lands in the
+	 *  right frame as soon as the body has a quat. */
+	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
+		const body = this.focusedBody;
+		if (!body) return;
+		const { camera, controls, callbacks } = this.deps;
+		const quat = this.focusedBodyQuat(body);
+		if (!quat || (quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1)) {
+			// Orientation not ready — defer to the replay path. Replaces whatever
+			// the URL's at= had queued, since the caller's framing is more specific.
+			this.pendingInitialView = { latitude, longitude, zoom };
+			return;
+		}
+		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
+		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
+		controls.update();
+		callbacks.onCameraPosition?.(latitude, longitude, zoom);
+	}
+
 	/**
 	 * Re-place the camera using the URL's body-fixed lat/lon once the focused
 	 * body's orientation has loaded. The initial placement in the ctor runs

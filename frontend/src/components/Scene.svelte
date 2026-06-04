@@ -63,12 +63,18 @@
 	 *  pulled back so they fit on screen. Clamped to the body's own min camera
 	 *  distance below and a fraction of its radius above. All distances are
 	 *  in scene units — `focusOnBody` writes camera positions in scene space,
-	 *  so the km-side numbers go through `kmToScene` first. */
+	 *  so the km-side numbers go through `kmToScene` first.
+	 *
+	 *  `snap`: skip the fly animation and place the camera at the feature
+	 *  framing immediately. Used on URL-load (`/f/<bodyId>/<featureId>/…`) so
+	 *  the page opens already framed on the feature, not animating in from
+	 *  the URL's `at=` framing. */
 	export function focusOnFeature(
 		bodyId: string,
 		lat: number,
 		lon: number,
-		diameterM: number
+		diameterM: number,
+		snap = false
 	): number {
 		const body = ctx.getBody(bodyId);
 		if (!body) return 0;
@@ -76,6 +82,10 @@
 		const idealScene = kmToScene((diameterM * 4) / 1000);
 		const maxScene = kmToScene(effectiveRadiusKm(body.data) * 5);
 		const zoom = Math.min(Math.max(idealScene, minDist * 2), maxScene);
+		if (snap) {
+			renderer?.snapToBodyFrame(lat, lon, zoom);
+			return 0;
+		}
 		return renderer?.focusOnBody(bodyId, zoom, lat, lon) ?? 0;
 	}
 

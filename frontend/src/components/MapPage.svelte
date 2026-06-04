@@ -46,6 +46,11 @@
 	// Resolved feature record for the currently URL-pinned featureId. Driven by
 	// the effect below; cleared when the URL has no feature or the lookup fails.
 	let activeFeature = $state.raw<NomenclatureFeature | null>(null);
+	// Plain (non-reactive) flag — first feature resolve after mount snaps the
+	// camera so URL-load lands already-framed; later resolves (label clicks,
+	// browser navigation) fly. Not a `$state` so toggling it inside the effect
+	// doesn't re-trigger.
+	let firstFeatureResolve = true;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
@@ -80,7 +85,8 @@
 				if (found) {
 					activeFeature = found;
 					scene?.setSelectedFeature(fid);
-					scene?.focusOnFeature(bodyId, found.lat, found.lon, found.diameterM);
+					scene?.focusOnFeature(bodyId, found.lat, found.lon, found.diameterM, firstFeatureResolve);
+					firstFeatureResolve = false;
 				} else {
 					console.warn(
 						`[map] Feature ${fid} not found on ${bodyId}; clearing URL feature selection.`

@@ -10,8 +10,7 @@ import {
 	SUBFORMAT_KEPLERIAN,
 	SUBFORMAT_PARABOLIC,
 	SUBFORMAT_SGP4,
-	buildObjectId,
-	buildSbdbMoonId
+	buildObjectId
 } from '$lib/fetch/position/format';
 
 /**
@@ -143,16 +142,8 @@ function parseExtension(view: DataView): {
  * crashing) when the file's id-type is unknown — the row remains numerically
  * usable but keyed lookups against object bundles will fail, so the consumer
  * sees the warning and the missing entry rather than a corrupted-looking ID.
- *
- * For ``sbdb_moon`` files, the row's full id is a compound
- * ``sbdb_moon-<parent_spkid>-<sat_index>`` — col 0 is the sat_index and the
- * parent SPK-ID rides in col 2 (parentId), so this builder needs both.
  */
-function buildIdMap(
-	idCol: Int32Array,
-	idType: IdType,
-	parentIdCol: Int32Array
-): Map<number, string> {
+function buildIdMap(idCol: Int32Array, idType: IdType): Map<number, string> {
 	const map = new Map<number, string>();
 	if (idType === IdType.UNKNOWN) {
 		if (idCol.length > 0) {
@@ -163,10 +154,7 @@ function buildIdMap(
 		return map;
 	}
 	for (let i = 0; i < idCol.length; i++) {
-		const id =
-			idType === IdType.SBDB_MOON
-				? buildSbdbMoonId(parentIdCol[i], idCol[i])
-				: buildObjectId(idType, idCol[i]);
+		const id = buildObjectId(idType, idCol[i]);
 		if (id !== null) map.set(i, id);
 	}
 	return map;
@@ -285,7 +273,7 @@ export function parseElementsPayload(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType, parentId)
+		idMap: buildIdMap(id, idType)
 	};
 
 	return {
@@ -332,7 +320,7 @@ function parseSGP4Elements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType, parentId)
+		idMap: buildIdMap(id, idType)
 	};
 
 	// Columns 13–15: bstar, mean_motion_dot, mean_motion_ddot (float32)
@@ -397,7 +385,7 @@ function parseParabolicElements(
 		validityStart,
 		validityEnd,
 		source,
-		idMap: buildIdMap(id, idType, parentId)
+		idMap: buildIdMap(id, idType)
 	};
 
 	// Column 4: epoch_jd (float64 — Julian Dates need full precision)
