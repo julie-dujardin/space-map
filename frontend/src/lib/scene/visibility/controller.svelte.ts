@@ -1,4 +1,4 @@
-import { ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
+import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
@@ -154,12 +154,17 @@ export class VisibilityController {
 		this.recomputeFullMoons();
 	}
 
-	/** Ratio-based visibility for a moon. Gated on the focused system (no zoom threshold). */
+	/** Ratio-based visibility for a moon. Gated on the focused system, except for
+	 *  asteroid moons — their parent is sun-orbiting, so setFocused never sets a
+	 *  system root to gate on; they also skip the crowding cap (sparse per parent). */
 	getMoonVisibility(moon: PositionedBody): VISIBILITY {
 		const cached = this.moonVisibilityCache.get(moon.data.id);
 		if (cached !== undefined) return cached;
 		let vis: VISIBILITY;
-		if (!this.isInFocusedSystem(moon.data.parentId)) {
+		// Asteroid parents live in `asteroidBodiesByZone`, not `bodiesById`, so go through getBody.
+		const parent = this.bodies.getBody(moon.data.parentId);
+		const isAsteroidMoon = parent !== undefined && isAsteroid(parent.data.objectType);
+		if (!isAsteroidMoon && !this.isInFocusedSystem(moon.data.parentId)) {
 			vis = VISIBILITY.HIDE;
 		} else {
 			const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
@@ -171,7 +176,12 @@ export class VisibilityController {
 				isFocused
 			);
 			// Crowding cap: demote FULL → CAPPED if not in the top-N set
-			if (vis === VISIBILITY.FULL && !this.fullMoonIds.has(moon.data.id) && !isFocused)
+			if (
+				!isAsteroidMoon &&
+				vis === VISIBILITY.FULL &&
+				!this.fullMoonIds.has(moon.data.id) &&
+				!isFocused
+			)
 				vis = VISIBILITY.CAPPED;
 		}
 		this.moonVisibilityCache.set(moon.data.id, vis);

@@ -51,7 +51,10 @@ export class PromotionRegistry {
 	private readonly userPromoted = new Set<string>();
 
 	constructor(private readonly deps: PromotionDeps) {
-		deps.ctx.bodies.onBodiesAdded((ids) => this.onBodiesAdded(ids));
+		deps.ctx.bodies.onBodiesAdded((ids) => {
+			this.onBodiesAdded(ids);
+			this.autoPromoteAsteroidMoons(ids);
+		});
 		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
 		// until labels resolve a few hundred ms later, defaults is empty so the
 		// notification handler matches nothing.
@@ -83,6 +86,23 @@ export class PromotionRegistry {
 			}
 			if (pruned) this.emitUserPromotedCount();
 		});
+	}
+
+	/** Moons whose parent is an asteroid land in `asteroidBodiesByZone` (point-cloud
+	 *  bucket), not `bodiesById`, so the curated/labels-driven promotion path skips
+	 *  them — they'd only get halos/trails after the user clicked. Auto-promote on
+	 *  arrival so they show by default. Sparse in the catalog (handful of bodies). */
+	private autoPromoteAsteroidMoons(ids: readonly string[]): void {
+		const matched: PositionedBody[] = [];
+		for (const id of ids) {
+			const body = this.deps.ctx.getBody(id);
+			if (!body || body.data.objectType !== ObjectType.MOON) continue;
+			const parent = this.deps.ctx.getBody(body.data.parentId);
+			if (!parent || !isAsteroid(parent.data.objectType)) continue;
+			if (this.deps.bodyObjects.has(id)) continue;
+			matched.push(body);
+		}
+		this.buildBatch(matched);
 	}
 
 	/** Notification hook from {@link BodyIndex}. Promotes any newly-arrived
