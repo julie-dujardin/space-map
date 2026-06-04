@@ -87,6 +87,10 @@
 		renderer?.clearUserPromoted();
 	}
 
+	export function setSelectedFeature(featureId: number | null): void {
+		renderer?.setSelectedFeature(featureId);
+	}
+
 	function isLive(): boolean {
 		// Within ~1 day of wall clock and playing at 1× → URL omits the time.
 		return clock.timeScale === 1 && Math.abs(clock.jd - dateToJD(new Date())) < 1;

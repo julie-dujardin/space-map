@@ -90,6 +90,11 @@ export interface BodyObjects {
 	 *  the collision cull. */
 	nomenclatureSX?: Float32Array;
 	nomenclatureSY?: Float32Array;
+	/** Index into {@link nomenclatureLabels} of the URL-selected feature, or
+	 *  `-1` when none. The visibility + collision passes exempt this label
+	 *  from per-feature size / hemisphere / overlap rejection so the focused
+	 *  feature is always shown while the body-level zoom gate passes. */
+	nomenclatureActiveIndex?: number;
 	/** Loaded GLTF root for spacecraft 3D models; null when not focused or no model bundle. */
 	model: Object3D | null;
 	/** Slug of the currently loaded model bundle. */

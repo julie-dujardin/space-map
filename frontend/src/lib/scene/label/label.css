@@ -92,3 +92,8 @@
 		0 0 3px #000,
 		0 0 3px #000;
 }
+.scene-feature-label--active {
+	color: white;
+	font-size: 14px;
+	font-weight: 600;
+}

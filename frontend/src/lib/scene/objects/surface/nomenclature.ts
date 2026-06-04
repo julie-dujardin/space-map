@@ -176,6 +176,25 @@ export async function attachNomenclatureLabels(
 	bo.nomenclatureWidths = widths;
 	bo.nomenclatureSX = sx;
 	bo.nomenclatureSY = sy;
+	bo.nomenclatureActiveIndex = -1;
+}
+
+/** Flip the `--active` class on the focused body's feature labels so the
+ *  currently-selected feature renders larger/bolder. No-op when labels haven't
+ *  attached yet — the renderer calls this again after attach via the
+ *  `selectedFeatureId` arg of {@link attachNomenclatureLabels}. */
+export function setActiveFeatureLabel(bo: BodyObjects, featureId: number | null): void {
+	const labels = bo.nomenclatureLabels;
+	if (!labels) return;
+	const target = featureId === null ? null : String(featureId);
+	let activeIdx = -1;
+	for (let i = 0; i < labels.length; i++) {
+		const el = labels[i].element as HTMLElement;
+		const isActive = el.dataset.featureId === target;
+		el.classList.toggle('scene-feature-label--active', isActive);
+		if (isActive) activeIdx = i;
+	}
+	bo.nomenclatureActiveIndex = activeIdx;
 }
 
 export function disposeNomenclatureLabels(bo: BodyObjects): void {
@@ -189,6 +208,7 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 	bo.nomenclatureWidths = undefined;
 	bo.nomenclatureSX = undefined;
 	bo.nomenclatureSY = undefined;
+	bo.nomenclatureActiveIndex = undefined;
 }
 
 const _bodyWorld = new Vector3();
@@ -203,6 +223,10 @@ const _labelNdc = new Vector3();
  * label is on the front hemisphere, sits inside {@link LABEL_DISC_FRACTION}
  * of the projected disc, and its on-screen diameter falls in the
  * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · min(screenW, screenH)]` band.
+ *
+ * The URL-selected feature (`bo.nomenclatureActiveIndex`) is exempted from
+ * the per-feature size / hemisphere / disc-fraction checks — it always shows
+ * once the body-level zoom gate passes.
  *
  * Survivors get their screen-space center written to `bo.nomenclatureSX/SY`
  * for the collision pass; hidden labels get `NaN` so the cull skips them.
@@ -226,6 +250,7 @@ export function updateNomenclatureVisibility(
 	const diamsM = bo.nomenclatureDiamsM!;
 	const sxA = bo.nomenclatureSX!;
 	const syA = bo.nomenclatureSY!;
+	const activeIdx = bo.nomenclatureActiveIndex ?? -1;
 	const n = labels.length;
 
 	const realRadiusM = effectiveRadiusKm(bo.body.data) * 1000;
@@ -233,9 +258,9 @@ export function updateNomenclatureVisibility(
 	const maxFeaturePx = MAX_FEATURE_FRACTION * Math.min(screenW, screenH);
 
 	// Fast path: labels are pre-sorted by effective diameter desc, so if the
-	// largest feature can't clear MIN_FEATURE_PX, none can — skip the whole
-	// projection loop.
-	if (n === 0 || diamsM[0] * pxPerMeter < MIN_FEATURE_PX) {
+	// largest feature can't clear MIN_FEATURE_PX, none can. Skipped when an
+	// active feature is set so its label still gets projected + shown.
+	if (activeIdx < 0 && (n === 0 || diamsM[0] * pxPerMeter < MIN_FEATURE_PX)) {
 		for (const lbl of labels) lbl.visible = false;
 		return;
 	}
@@ -260,8 +285,9 @@ export function updateNomenclatureVisibility(
 
 	for (let i = 0; i < n; i++) {
 		const lbl = labels[i];
+		const isActive = i === activeIdx;
 		const featurePx = diamsM[i] * pxPerMeter;
-		if (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx) {
+		if (!isActive && (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx)) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;
@@ -277,7 +303,7 @@ export function updateNomenclatureVisibility(
 		// behind the perspective limb leak through and project into the disc.
 		const dot = lx * cdx + ly * cdy + lz * cdz;
 		const lenSqL = lx * lx + ly * ly + lz * lz;
-		if (dot <= lenSqL) {
+		if (!isActive && dot <= lenSqL) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;
@@ -286,7 +312,7 @@ export function updateNomenclatureVisibility(
 		_labelNdc.copy(_labelWorld).project(camera);
 		const dxPx = (_labelNdc.x - _bodyNdc.x) * halfW;
 		const dyPx = (_labelNdc.y - _bodyNdc.y) * halfH;
-		if (dxPx * dxPx + dyPx * dyPx >= maxPxSq) {
+		if (!isActive && dxPx * dxPx + dyPx * dyPx >= maxPxSq) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;
@@ -312,58 +338,73 @@ function ensureRect(idx: number): Rect {
 	return r;
 }
 
+/** Try to accept label `i` into the running accepted set. With `forceAccept`,
+ *  overlap is ignored and the label is added regardless — used so the focused
+ *  feature claims its rect first, and every other label has to defer to it. */
+function tryAcceptNomenclature(
+	bo: BodyObjects,
+	i: number,
+	forceAccept: boolean,
+	acceptedCount: number
+): number {
+	const labels = bo.nomenclatureLabels!;
+	const lbl = labels[i];
+	if (!lbl.visible) return acceptedCount;
+	const cx = bo.nomenclatureSX![i];
+	const cy = bo.nomenclatureSY![i];
+	if (Number.isNaN(cx) || Number.isNaN(cy)) return acceptedCount;
+	const widths = bo.nomenclatureWidths!;
+	let w = widths[i];
+	if (w < 0) {
+		const measured = lbl.element.offsetWidth;
+		if (measured > 0) {
+			widths[i] = measured;
+			w = measured;
+		} else {
+			// CSS2DRenderer hasn't appended the element yet — fall back this
+			// frame; the cache stays at -1 so we re-measure next frame.
+			w = 60;
+		}
+	}
+	const halfW = w * 0.5;
+	const left = cx - halfW;
+	const right = cx + halfW;
+	if (!forceAccept) {
+		for (let j = 0; j < acceptedCount; j++) {
+			const a = _acceptedNom[j];
+			if (left < a.right && right > a.left && Math.abs(cy - a.y) < FEATURE_LINE_H) {
+				lbl.visible = false;
+				return acceptedCount;
+			}
+		}
+	}
+	const a = ensureRect(acceptedCount);
+	a.left = left;
+	a.right = right;
+	a.y = cy;
+	return acceptedCount + 1;
+}
+
 /**
  * Greedy AABB collision cull for the focused body's feature labels. Labels
  * are iterated in pre-sorted priority order (largest effective diameter
  * first); each accepts unless its box overlaps an already-accepted box, in
- * which case it's hidden for the frame. Text widths are measured lazily on
- * the first frame the label is in DOM (first measure may return 0; we retry
- * next frame with a 60px fallback).
+ * which case it's hidden for the frame. The active feature (if any) is
+ * accepted first and force-accepted so it always survives and others defer
+ * to it. Text widths are measured lazily on the first frame the label is in
+ * DOM (first measure may return 0; we retry next frame with a 60px fallback).
  */
 export function cullOverlappingNomenclatureLabels(bo: BodyObjects): void {
 	const labels = bo.nomenclatureLabels;
 	if (!labels) return;
-	const sxA = bo.nomenclatureSX!;
-	const syA = bo.nomenclatureSY!;
-	const widths = bo.nomenclatureWidths!;
+	const activeIdx = bo.nomenclatureActiveIndex ?? -1;
 
 	let acceptedCount = 0;
+	if (activeIdx >= 0) {
+		acceptedCount = tryAcceptNomenclature(bo, activeIdx, true, acceptedCount);
+	}
 	for (let i = 0; i < labels.length; i++) {
-		const lbl = labels[i];
-		if (!lbl.visible) continue;
-		const cx = sxA[i];
-		const cy = syA[i];
-		if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
-		let w = widths[i];
-		if (w < 0) {
-			const measured = lbl.element.offsetWidth;
-			if (measured > 0) {
-				widths[i] = measured;
-				w = measured;
-			} else {
-				// CSS2DRenderer hasn't appended the element yet — fall back this
-				// frame; the cache stays at -1 so we re-measure next frame.
-				w = 60;
-			}
-		}
-		const halfW = w * 0.5;
-		const left = cx - halfW;
-		const right = cx + halfW;
-		let overlaps = false;
-		for (let j = 0; j < acceptedCount; j++) {
-			const a = _acceptedNom[j];
-			if (left < a.right && right > a.left && Math.abs(cy - a.y) < FEATURE_LINE_H) {
-				overlaps = true;
-				break;
-			}
-		}
-		if (overlaps) {
-			lbl.visible = false;
-		} else {
-			const a = ensureRect(acceptedCount++);
-			a.left = left;
-			a.right = right;
-			a.y = cy;
-		}
+		if (i === activeIdx) continue;
+		acceptedCount = tryAcceptNomenclature(bo, i, false, acceptedCount);
 	}
 }

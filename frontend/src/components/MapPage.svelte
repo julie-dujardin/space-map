@@ -66,6 +66,7 @@
 		const body = selectedBody;
 		if (fid === null || !body) {
 			activeFeature = null;
+			scene?.setSelectedFeature(null);
 			return;
 		}
 		// Same feature already resolved — skip the refetch.
@@ -78,6 +79,7 @@
 				const found = features.find((f) => f.featureId === fid);
 				if (found) {
 					activeFeature = found;
+					scene?.setSelectedFeature(fid);
 					scene?.focusOnFeature(bodyId, found.lat, found.lon, found.diameterM);
 				} else {
 					console.warn(

@@ -31,7 +31,7 @@ import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies, isMeshUpgradable, upgradeBodyMesh } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
-import { attachNomenclatureLabels } from './objects/surface/nomenclature';
+import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
 import { SystemDataLoader } from './system-data/loader';
@@ -82,6 +82,7 @@ export class SceneRenderer {
 	private ctx: ContextManager;
 	private clock: SimClock;
 	private callbacks: Callbacks;
+	private selectedFeatureId: number | null = null;
 
 	private bodyObjects = new Map<string, BodyObjects>();
 	private circleTexture = makeCircleTexture();
@@ -617,10 +618,26 @@ export class SceneRenderer {
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		loadBodyModel(bo, this.modelScene, this.ctx);
 		// Nomenclature labels are focus-scoped — only the focused body fetches
-		// and attaches them. Idempotent.
+		// and attaches them. Idempotent. Re-tag the active label after attach
+		// resolves: `setSelectedFeature` may have run during the in-flight
+		// detail+positions fetch (URL-load case), and that earlier call would
+		// have no-op'd because labels weren't on `bo` yet.
 		void attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
 			this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
-		);
+		).then(() => {
+			if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
+		});
+	}
+
+	/** Update which surface-feature label renders as "active" (larger, bolder).
+	 *  Tracked on the renderer so a body's labels picked up after a fly-in still
+	 *  see the right selection. */
+	setSelectedFeature(featureId: number | null): void {
+		this.selectedFeatureId = featureId;
+		const focused = this.focusController.current;
+		if (!focused) return;
+		const bo = this.bodyObjects.get(focused.data.id);
+		if (bo) setActiveFeatureLabel(bo, featureId);
 	}
 
 	clearUserPromoted(): void {
