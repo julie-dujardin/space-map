@@ -12,7 +12,11 @@ from datetime import datetime, timedelta
 import numpy as np
 import spiceypy
 
+from space_map_data.constants.providers import ID_TYPES
+from space_map_data.export.position.format import ID_TYPE_ORDINAL
 from space_map_data.probes.trace import _IAU_FRAME
+
+_NAIF_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 
 _LANDED_FINE_DT_S = 3600.0  # 1-hour sub-sampling between daily anchors
 _LANDED_MOTION_M = 100.0
@@ -21,9 +25,15 @@ _LANDED_STATIONARY_M = 100.0
 
 @dataclass(frozen=True)
 class LandedFit:
-    """Sampled landed-phase data for one streaming chunk."""
+    """Sampled landed-phase data for one streaming chunk.
 
-    body_naif_id: int
+    ``body_id_value`` + ``body_id_type`` together identify the landing body —
+    NAIF for planet/moon, SPKID for asteroid/comet. The SPICE-driven fitter
+    always emits NAIF; the events-driven path may emit either.
+    """
+
+    body_id_value: int
+    body_id_type: int
     is_static: bool
     start_offset_s: int  # seconds from chunk_start_jd
     end_offset_s: int
@@ -137,7 +147,8 @@ def fit_landed_chunk(
                 last_xyz = xyz_m
 
     return LandedFit(
-        body_naif_id=body_naif_id,
+        body_id_value=body_naif_id,
+        body_id_type=_NAIF_ORDINAL,
         is_static=is_static,
         start_offset_s=int(round(c_start_et - chunk_start_et)),
         end_offset_s=int(round(c_end_et - chunk_start_et)),

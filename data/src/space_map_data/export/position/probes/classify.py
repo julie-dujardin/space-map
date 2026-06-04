@@ -13,6 +13,8 @@ from pathlib import Path
 
 import spiceypy
 
+from space_map_data.constants.providers import ID_TYPES
+from space_map_data.export.position.format import ID_TYPE_ORDINAL
 from space_map_data.export.position.probes.kernels import enumerate_probes
 from space_map_data.export.position.probes.plan import (
     ChunkContribution,
@@ -30,6 +32,8 @@ from space_map_data.probes.trace import classify_trace, inception_et
 from space_map_data.probes.zones import INTERPLANETARY, ZONES_BY_KEY
 
 logger = logging.getLogger(__name__)
+
+_NAIF_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 
 
 def _classify_worker_init(kernel_paths: list[str]) -> None:
@@ -258,7 +262,8 @@ def classify_pass(
                         c_start_et=c_start,
                         c_end_et=c_end,
                         kind="landed",
-                        landed_body_naif_id=int(body_naif),
+                        landed_body_id_value=int(body_naif),
+                        landed_body_id_type=_NAIF_ORDINAL,
                     )
                     plan.contributions.append(contrib)
                     chunk_index[zone.key][chunk_idx].append(plan)

@@ -46,11 +46,17 @@ class ChunkContribution:
     `kind="flying"` contributions go through `size_chunk` (Kepler/Chebyshev
     sub-chunks, sub-chunk-grid-aligned).
 
-    `kind="landed"` contributions carry the landing body's NAIF; the fit
-    pass samples lat/lng at fine cadence + decimates to daily-00:00-UTC
-    anchors + 100 m motion thresholds, packing as a single trailing
-    `METHOD_LANDED` record. Landed contributions don't snap to the sub-
-    chunk grid — they cover the literal phase-within-chunk window.
+    `kind="landed"` contributions carry the landing body's id; the fit pass
+    packs them as a single trailing `METHOD_LANDED` record. Landed
+    contributions don't snap to the sub-chunk grid — they cover the literal
+    phase-within-chunk window.
+
+    Two flavours of landed contribution:
+      * SPICE-driven: `static_lat_lng=None`; fit pass samples body-fixed
+        position via `fit_landed_chunk` (existing Moon/Mars/etc. probes).
+      * Events-driven: `static_lat_lng=(lat, lng)`; fit pass synthesises a
+        static `LandedFit` directly with no SPICE call (events-only probes
+        like Apollo descent stages, Veneras, Mars Pathfinder, …).
     """
 
     zone_key: str
@@ -58,7 +64,9 @@ class ChunkContribution:
     c_start_et: float
     c_end_et: float
     kind: str = "flying"  # "flying" | "landed"
-    landed_body_naif_id: int | None = None
+    landed_body_id_value: int | None = None
+    landed_body_id_type: int | None = None
+    static_lat_lng: tuple[float, float] | None = None
 
 
 @dataclass

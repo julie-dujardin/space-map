@@ -334,9 +334,10 @@ def align8(size: int) -> int:
 # flying sub-chunks when `PROBE_FLAG_HAS_LANDED_RECORD` is set:
 #
 # Offset  Type     Field
-# 0       int32    body_naif_id      (body the probe sits on; 499 Mars, 606 Titan, …)
+# 0       int32    body_id_value     (NAIF for planet/moon, SPKID for asteroid/comet)
 # 4       uint8    flags             (bit 0 = is_static)
-# 5       uint8[3] reserved          (zero pad to 4-aligned)
+# 5       uint8    body_id_type      (ID_TYPE_ORDINAL — NAIF=0, SPKID=1, …)
+# 6       uint8[2] reserved          (zero pad to 4-aligned)
 # 8       uint32   start_offset_s    (seconds from chunk start_jd; phase entry within chunk)
 # 12      uint32   end_offset_s      (seconds from chunk start_jd; phase exit within chunk)
 # 16      int32    lat_ref_e7        (round(lat° × 1e7); reference / static position)
@@ -345,11 +346,17 @@ def align8(size: int) -> int:
 # 28      uint32   sample_count      (0 for static — ref *is* the position)
 # 32      sample_count × LANDED_SAMPLE_STRUCT (16 B each: et_offset_s + lat/lng/alt)
 #
+# Byte 5 used to be the first of three reserved zero bytes; old files
+# decode it as NAIF (=0), preserving previous behaviour without a version
+# bump. Asteroid/comet landings now encode SPKID + the asteroid's
+# SBDB-numbered id so the frontend can look up the body via `spkid-N`.
+#
 # Decode: lat° = lat_e7 / 1e7 → ~1.1 cm precision at Earth, 0.7 cm at Mars,
-# well under the 0.1-m target on every body in `_IAU_FRAME`. The reference
-# position uses the same encoding so the decoder never crosses encodings.
+# well under the 0.1-m target on every body the renderer supports. The
+# reference position uses the same encoding so the decoder never crosses
+# encodings.
 LANDED_HEADER_SIZE = 32
-_LANDED_HEADER_STRUCT = struct.Struct("<iB3sIIiiiI")
+_LANDED_HEADER_STRUCT = struct.Struct("<iBB2sIIiiiI")
 assert _LANDED_HEADER_STRUCT.size == LANDED_HEADER_SIZE
 
 LANDED_SAMPLE_SIZE = 16
@@ -377,7 +384,8 @@ def _quantize_alt_m(alt_m: float) -> int:
 
 
 def pack_landed_payload(
-    body_naif_id: int,
+    body_id_value: int,
+    body_id_type: int,
     is_static: bool,
     start_offset_s: int,
     end_offset_s: int,
@@ -388,18 +396,20 @@ def pack_landed_payload(
 ) -> bytes:
     """Pack one METHOD_LANDED record.
 
-    `samples` is a list of `(et_offset_s_from_chunk_start, lat_deg, lng_deg,
-    alt_m)` tuples. For static phases pass an empty list — the reference
-    fields carry the fixed position.
+    `body_id_value` + `body_id_type` together identify the landing body —
+    NAIF for planet/moon (DB row `naif-N`), SPKID for asteroid/comet (DB
+    row `spkid-N`). `samples` is a list of `(et_offset_s_from_chunk_start,
+    lat_deg, lng_deg, alt_m)` tuples; pass an empty list for static phases.
 
     Quantises to int32 × 1e7 for lat/lng (~1 cm precision globally) and
     int32 millimetres for altitude.
     """
     flags = LANDED_FLAG_STATIC if is_static else 0
     header = _LANDED_HEADER_STRUCT.pack(
-        body_naif_id,
+        body_id_value,
         flags,
-        b"\x00\x00\x00",
+        body_id_type,
+        b"\x00\x00",
         int(start_offset_s),
         int(end_offset_s),
         quantize_deg(lat_ref_deg),

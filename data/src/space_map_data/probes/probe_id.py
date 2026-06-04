@@ -197,7 +197,7 @@ def load_probe_labels() -> dict[int, str]:
     return labels
 
 
-def _record_from_entry(entry: dict) -> ProbeIdRecord:
+def record_from_entry(entry: dict) -> ProbeIdRecord:
     sources = tuple(
         (src["mission"], int(src["naif_id"])) for src in entry["kernel_sources"]
     )
@@ -242,7 +242,7 @@ def assign(
 
     existing = source_index.get((mission, naif_id))
     if existing is not None:
-        return _record_from_entry(existing)
+        return record_from_entry(existing)
 
     used = {
         int(e["dedupe"]) for e in registry if int(e["inception_mjd"]) == inception_mjd
@@ -264,7 +264,7 @@ def assign(
     source_index[(mission, naif_id)] = entry
     if owned:
         save_registry(registry)
-    return _record_from_entry(entry)
+    return record_from_entry(entry)
 
 
 def load_qids() -> set[str]:

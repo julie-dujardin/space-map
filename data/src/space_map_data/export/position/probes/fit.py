@@ -12,7 +12,7 @@ from pathlib import Path
 import spiceypy
 
 from space_map_data.export.position.probes import sidecar
-from space_map_data.export.position.probes.landed import fit_landed_chunk
+from space_map_data.export.position.probes.landed import LandedFit, fit_landed_chunk
 from space_map_data.export.position.probes.plan import (
     ChunkProbeRecord,
     ProbeMeta,
@@ -62,6 +62,7 @@ def decide_dirty(
     for chunks that need re-fitting."""
     probes_dir = out_dir / "position" / "probes"
     dirty: dict[str, dict[int, dict]] = defaultdict(dict)
+    events_hash = sidecar.events_files_hash()
     for zone_key, chunks in chunk_index.items():
         zone_obj = ZONES_BY_KEY[zone_key]
         zone_out = probes_dir / zone_key
@@ -77,7 +78,7 @@ def decide_dirty(
                 for p in plan_list
             ]
             new_sig = sidecar.build_chunk_signature(
-                zone_obj, probes_for_sig, download_dir, cand_hash
+                zone_obj, probes_for_sig, download_dir, cand_hash, events_hash
             )
             binary_path = zone_out / f"{chunk_idx}.bin.gz"
             sidecar_path = sidecar.mirror_path(zone_out / f"{chunk_idx}.meta.json")
@@ -204,14 +205,34 @@ def fit_pass(
                         by_chunk[key] = rec
                     rec.flying.extend(chunk_sizing.sub_chunks)
                 elif c.kind == "landed":
-                    assert c.landed_body_naif_id is not None
-                    landed_fit = fit_landed_chunk(
-                        probe_naif_id=plan.naif_id,
-                        body_naif_id=c.landed_body_naif_id,
-                        chunk_start_et=chunk_start_et,
-                        c_start_et=c.c_start_et,
-                        c_end_et=c.c_end_et,
-                    )
+                    assert c.landed_body_id_value is not None
+                    assert c.landed_body_id_type is not None
+                    if c.static_lat_lng is not None:
+                        # Events-driven landing: no SPICE, lat/lng come from
+                        # the curated events JSON. Phase is implicitly static
+                        # (probes that move on the surface have SPICE coverage
+                        # and use the fit_landed_chunk path).
+                        lat, lng = c.static_lat_lng
+                        landed_fit = LandedFit(
+                            body_id_value=c.landed_body_id_value,
+                            body_id_type=c.landed_body_id_type,
+                            is_static=True,
+                            start_offset_s=int(round(c.c_start_et - chunk_start_et)),
+                            end_offset_s=int(round(c.c_end_et - chunk_start_et)),
+                            lat_ref_deg=lat,
+                            lng_ref_deg=lng,
+                            alt_ref_m=0.0,
+                            samples=[],
+                            peak_displacement_m=0.0,
+                        )
+                    else:
+                        landed_fit = fit_landed_chunk(
+                            probe_naif_id=plan.naif_id,
+                            body_naif_id=c.landed_body_id_value,
+                            chunk_start_et=chunk_start_et,
+                            c_start_et=c.c_start_et,
+                            c_end_et=c.c_end_et,
+                        )
                     if landed_fit is None:
                         continue
                     if rec is None:

@@ -31,6 +31,7 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     write_atomic,
     write_sidecar,
 )
+from space_map_data.probes.landing_events import EVENTS_DIR
 from space_map_data.probes.zones import Zone
 
 
@@ -56,6 +57,19 @@ def zone_signature(zone: Zone) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+def events_files_hash() -> str:
+    """Hash every events JSON's `(name, mtime_ns, size)` so an edit anywhere
+    in the events folder invalidates every chunk that consults them. Empty
+    string when the folder is absent (CI / first run)."""
+    if not EVENTS_DIR.exists():
+        return ""
+    entries = [
+        {"name": p.name, "mtime_ns": p.stat().st_mtime_ns, "size": p.stat().st_size}
+        for p in sorted(EVENTS_DIR.glob("*.json"))
+    ]
+    return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()[:16]
+
+
 def _kernel_entry(path: Path, download_dir: Path) -> dict:
     """One kernel as `{path, mtime_ns, size}`, with the path made relative
     to `download_dir` so the sidecar survives moving the data tree."""
@@ -72,6 +86,7 @@ def build_chunk_signature(
     probes: list[tuple[int, list[Path], int, bool]],
     download_dir: Path,
     candidates_hash: str,
+    events_hash: str,
 ) -> dict:
     """Compute the expected sidecar contents from the *planned* probe set.
 
@@ -89,6 +104,11 @@ def build_chunk_signature(
     (moons / asteroids) that detection considered. Changes — adding a
     moon to chebyshev, removing an asteroid — invalidate every chunk so
     detection re-runs.
+
+    `events_hash` summarises the events JSON folder so events-driven
+    landed records re-emit whenever any events file is edited. Global
+    rather than per-chunk because we don't track which events file
+    contributes to which (probe, chunk).
     """
     probe_block: dict[str, dict] = {}
     for probe_id, kernels, object_type_ordinal, has_localized in probes:
@@ -106,5 +126,6 @@ def build_chunk_signature(
         "fit_version": FIT_VERSION,
         "zone_hash": zone_signature(zone),
         "candidates_hash": candidates_hash,
+        "events_hash": events_hash,
         "probes": dict(sorted(probe_block.items())),
     }

@@ -78,17 +78,13 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         "LRO",  # PDS3
         "MESSENGER",  # PDS3
         "MGS",  # PDS3
-        # TODO(landed-events): Mars Pathfinder has no usable SPK. NAIF only
-        # hosts a 3-minute EDL kernel (MPF/misc/pwithers/mpf_edl_mpam_v01.bsp,
-        # NAIF -53, 1997-07-04 16:51:45→16:54:40 UTC) that cuts off at ~7 km
-        # altitude before touchdown, and the expected PDS3 dataset
-        # mpf-m-spice-6-v1.0 doesn't exist at /pub/naif/pds/data/. Sojourner
-        # never got a NAIF ID at all. Pathfinder and Sojourner go through the
-        # same path as other archive-gap landers (most Luna/Venera, Chang'e,
-        # Yutu, Zhurong, Tianwen-1 lander, Beagle 2, Schiaparelli, Hope,
-        # Mangalyaan, MPL/DS2, Fobos-Grunt, etc.): emit a static lat/lng from
-        # the `landing_site` block in research/probe-events/*.json instead of
-        # synthesizing an SPK. That path isn't built yet.
+        # Mars Pathfinder has no usable SPK (NAIF's 3-minute EDL kernel cuts
+        # off ~7 km up); Sojourner never got a NAIF ID. Same archive-gap
+        # bucket as most Luna/Venera, Chang'e/Yutu, Zhurong, Tianwen-1
+        # lander, Beagle 2, Schiaparelli, Hope, Mangalyaan, MPL/DS2,
+        # Fobos-Grunt, etc. — these come in via `probes/landing_events.py`,
+        # which reads the curated `space-map-downloads/probes/events/*.json`
+        # files and emits static METHOD_LANDED records without an SPK.
         "MPF",
         "NEAR",  # PDS3
         "NEWHORIZONS",  # PDS3

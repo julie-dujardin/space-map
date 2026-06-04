@@ -33,6 +33,9 @@ from sqlalchemy.orm import Session
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR
 from space_map_data.export.position.probes.classify import classify_pass
+from space_map_data.export.position.probes.events_classify import (
+    classify_events_phases,
+)
 from space_map_data.export.position.probes.fit import decide_dirty, fit_pass
 from space_map_data.export.position.probes.kernels import collect_generic_kernels
 from space_map_data.export.position.probes.plan import build_probe_metas
@@ -41,13 +44,14 @@ from space_map_data.export.position.probes.time_grid import (
     PROBE_EXPORT_START_YEAR,
 )
 from space_map_data.export.position.probes.write import write_pass
-from space_map_data.utils.time import year_to_jd
+from space_map_data.utils.time import jd_to_et, year_to_jd
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     candidates_for_zone,
     candidates_hash,
     load_candidates,
 )
+from space_map_data.probes.landing_events import load_phases as load_landing_phases
 from space_map_data.probes.probe_id import index_by_source, load_registry
 from space_map_data.probes.zones import ALL_ZONES
 
@@ -121,6 +125,23 @@ def write_probes(
             generic_spk_paths,
             start_jd,
         )
+
+        # Events-driven landings for probes without SPK coverage (Apollo
+        # descent stages, Veneras, Pathfinder, Beagle 2, …). Synthesised
+        # plans have empty kernels; the fit pass detects that and builds
+        # a static LandedFit directly from the events JSON's lat/lng.
+        events_phases = load_landing_phases(jd_to_et(end_jd))
+        events_plans, events_chunk_index = classify_events_phases(
+            events_phases,
+            probe_registry,
+            metas_by_probe_id,
+            start_jd,
+        )
+        plans.extend(events_plans)
+        for zone_key, by_chunk in events_chunk_index.items():
+            for chunk_idx, plan_list in by_chunk.items():
+                chunk_index[zone_key][chunk_idx].extend(plan_list)
+
         dirty = decide_dirty(
             chunk_index,
             metas_by_probe_id,

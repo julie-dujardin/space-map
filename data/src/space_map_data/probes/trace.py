@@ -38,22 +38,10 @@ class ZoneInterval:
 
 @dataclass(frozen=True)
 class LandedPhase:
-    """A contiguous window where the probe sits on a body's surface.
-
-    TODO(landed-export): emit per-phase lat/lng samples in IAU_<BODY> frame
-    so the frontend can pin landers on the surface. Detection is in place
-    and `scripts/probe_landed_test.py` validates the body-fixed sampling +
-    100m / 1-day decimation against published lander coordinates for all
-    9 SPK-covered landers (Huygens, InSight, MARS2020, MER×2, MSL,
-    Phoenix, Viking×2); the export-side writer doesn't ship anything for
-    these yet.
-
-    TODO(landed-events): merge in landers that have no usable SPK at all
-    (Mars Pathfinder, Sojourner, most Luna/Venera, Chang'e/Yutu, Zhurong,
-    Tianwen-1 lander, Beagle 2, Schiaparelli, Hope, Mangalyaan, MPL, DS2,
-    Fobos-Grunt, etc.) by reading `landing_site` blocks from
-    research/probe-events/*.json and emitting them as static phases.
-    """
+    """A contiguous window where the probe sits on a body's surface,
+    derived from body-fixed SPK motion in `classify_trace`. The events-
+    driven counterpart (no SPK, lat/lng straight from curated JSON) lives
+    in `probes/landing_events.py`."""
 
     body_naif_id: int
     start_et: float

@@ -29,14 +29,18 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
+from space_map_data.export.position.probes.time_grid import PROBE_EXPORT_END_YEAR
+from space_map_data.probes.landing_events import probe_ids_with_phases
 from space_map_data.probes.probe_id import (
     ProbeIdRecord,
+    record_from_entry,
     assign_many,
     et_to_mjd,
     load_registry,
 )
 from space_map_data.probes.trace import inception_et
 from space_map_data.utils.db import get_session
+from space_map_data.utils.time import jd_to_et, year_to_jd
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +278,36 @@ class ProbesIngestor:
             "has_position": False,
         }
 
+    def _events_only_records(
+        self, spk_keys: set[tuple[str, int]]
+    ) -> list[tuple[dict, ProbeIdRecord]]:
+        """Synthesise ingest records for registry entries whose only
+        ``kernel_sources`` is ``EVENTS-DB`` and which have at least one
+        landed phase in the events JSONs. Skips entries already covered by
+        an SPK-walk record (``spk_keys``)."""
+        registry = load_registry()
+        end_et = jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))
+        pids_with_phases = probe_ids_with_phases(end_et)
+        out: list[tuple[dict, ProbeIdRecord]] = []
+        for entry in registry:
+            sources = entry["kernel_sources"]
+            if not all(s["mission"] == "EVENTS-DB" for s in sources):
+                continue
+            if int(entry["probe_id"]) not in pids_with_phases:
+                continue
+            mission = sources[0]["mission"]
+            naif_id = int(sources[0]["naif_id"])
+            if (mission, naif_id) in spk_keys:
+                continue
+            record = {
+                "mission": mission,
+                "naif_id": naif_id,
+                "inception_mjd": int(entry["inception_mjd"]),
+                "name_hint": None,
+            }
+            out.append((record, record_from_entry(entry)))
+        return out
+
     def run(self) -> None:
         if not self.missions_dir.exists() and not self.landed_missions_dir.exists():
             logger.warning(
@@ -291,6 +325,14 @@ class ProbesIngestor:
             [(r["mission"], r["naif_id"], r["inception_mjd"]) for r in records]
         )
 
+        # Events-only probes (Apollo descent stages, Veneras, Pathfinder, …)
+        # have registry entries but no SPK kernels, so `_collect_probes`
+        # doesn't see them. Add Object rows for any whose `landing_events`
+        # yields a resolvable phase; without a row the position writer
+        # would skip them at fit time.
+        spk_keys = {(r["mission"], r["naif_id"]) for r in records}
+        events_records = self._events_only_records(spk_keys)
+
         self._clear()
         self._load_satcat_norads()
 
@@ -301,10 +343,20 @@ class ProbesIngestor:
             if len(rows) >= self.BATCH:
                 self.session.execute(insert(Object), rows)
                 rows = []
+        for r, rec in events_records:
+            rows.append(self._build_row(r, rec))
+            if len(rows) >= self.BATCH:
+                self.session.execute(insert(Object), rows)
+                rows = []
         if rows:
             self.session.execute(insert(Object), rows)
         self.session.commit()
-        logger.info("Ingested %d probe Objects", len(records))
+        logger.info(
+            "Ingested %d probe Objects (%d SPK-driven + %d events-only)",
+            len(records) + len(events_records),
+            len(records),
+            len(events_records),
+        )
 
 
 def ingest(download_dir: Path) -> None:
