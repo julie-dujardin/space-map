@@ -32,14 +32,14 @@
 	let coordsText = $derived(`${formatNumber(feature.lat)}°, ${formatNumber(feature.lon)}°`);
 </script>
 
-<Section title="Surface feature">
-	<Row label="Type" value={typeLabel} />
-	<Row label="Coordinates" value={coordsText} />
+<Section title={m.surface_feature()}>
+	<Row label={m.feature_type()} value={typeLabel} />
+	<Row label={m.coordinates()} value={coordsText} />
 	{#if diameterText}
-		<Row label="Diameter" value={diameterText} />
+		<Row label={m.diameter()} value={diameterText} />
 	{/if}
 	{#if wd?.vertical_depth}
-		<Row label="Depth" value={formatQuantity(wd.vertical_depth)} />
+		<Row label={m.feature_depth()} value={formatQuantity(wd.vertical_depth)} />
 	{/if}
 	{#if wd?.length}
 		<Row label={m.property_name_length()} value={formatQuantity(wd.length)} />
@@ -48,19 +48,19 @@
 		<Row label={m.property_name_width()} value={formatQuantity(wd.width)} />
 	{/if}
 	{#if wd?.height}
-		<Row label="Height" value={formatQuantity(wd.height)} />
+		<Row label={m.feature_height()} value={formatQuantity(wd.height)} />
 	{/if}
 	{#if wd?.area}
-		<Row label="Area" value={formatQuantity(wd.area)} />
+		<Row label={m.feature_area()} value={formatQuantity(wd.area)} />
 	{/if}
 	{#if wd?.elevation}
-		<Row label="Elevation" value={formatQuantity(wd.elevation)} />
+		<Row label={m.feature_elevation()} value={formatQuantity(wd.elevation)} />
 	{/if}
 	{#if feature.approvalDate}
-		<Row label="Named" value={formatIsoDate(feature.approvalDate)} />
+		<Row label={m.feature_named_date()} value={formatIsoDate(feature.approvalDate)} />
 	{/if}
 	{#if feature.origin}
-		<Row label="Origin">
+		<Row label={m.feature_origin()}>
 			<span class="block whitespace-normal text-end">{feature.origin}</span>
 		</Row>
 	{/if}
@@ -70,12 +70,12 @@
 		</Row>
 	{/if}
 	{#if loc?.location?.length}
-		<Row label="Region">
+		<Row label={m.feature_region()}>
 			<EntityLinks entities={loc.location} />
 		</Row>
 	{/if}
 	{#if loc?.located_on_physical_feature?.length}
-		<Row label="Located on">
+		<Row label={m.feature_located_on()}>
 			<EntityLinks entities={loc.located_on_physical_feature} />
 		</Row>
 	{/if}
