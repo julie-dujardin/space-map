@@ -47,7 +47,7 @@ export interface FeatureLocalizedData {
 	instance_of?: EntityRef[];
 	named_after?: EntityRef[];
 	location?: EntityRef[];
-	located_on_physical_feature?: EntityRef;
+	located_on_physical_feature?: EntityRef[];
 	wikipedia?: {
 		extract?: string;
 		description?: string;

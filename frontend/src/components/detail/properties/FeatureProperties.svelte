@@ -74,9 +74,9 @@
 			<EntityLinks entities={loc.location} />
 		</Row>
 	{/if}
-	{#if loc?.located_on_physical_feature}
+	{#if loc?.located_on_physical_feature?.length}
 		<Row label="Located on">
-			<EntityLinks entities={[loc.located_on_physical_feature]} />
+			<EntityLinks entities={loc.located_on_physical_feature} />
 		</Row>
 	{/if}
 </Section>
