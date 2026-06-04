@@ -14,6 +14,7 @@ import { kmToScene } from '$lib/math/units';
 import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { createLabel, getLabelVariant } from '../../label/factory';
+import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
@@ -25,7 +26,6 @@ export function disposeMaterial(mat: Material | Material[]): void {
 	else mat.dispose();
 }
 
-const DRAG_THRESHOLD_PX = 3;
 const STAR_SPHERE_SEGMENTS = 96;
 const BODY_SPHERE_SEGMENTS = 64;
 
@@ -107,46 +107,7 @@ export function buildMajorBodies(
 			isMinor
 		);
 		if (label) {
-			// Forward wheel/pointer events to the canvas so OrbitControls keeps working
-			// when the user starts a gesture over a label. Pointer events are deferred
-			// past DRAG_THRESHOLD_PX so a tap on the label still fires its click.
-			label.element.addEventListener(
-				'wheel',
-				(e: Event) => {
-					const we = e as WheelEvent;
-					rendererElement.dispatchEvent(
-						new WheelEvent('wheel', {
-							deltaY: we.deltaY,
-							deltaMode: we.deltaMode,
-							bubbles: true,
-							cancelable: true
-						})
-					);
-					we.preventDefault();
-				},
-				{ passive: false }
-			);
-			label.element.addEventListener('pointerdown', (e: PointerEvent) => {
-				const downX = e.clientX;
-				const downY = e.clientY;
-				const savedDown = e; // keep the original event for deferred forwarding
-				const onMove = (me: PointerEvent) => {
-					const dx = me.clientX - downX;
-					const dy = me.clientY - downY;
-					if (dx * dx + dy * dy > DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
-						cleanup();
-						rendererElement.dispatchEvent(new PointerEvent('pointerdown', savedDown));
-						rendererElement.dispatchEvent(new PointerEvent('pointermove', me));
-					}
-				};
-				const onUp = () => cleanup();
-				const cleanup = () => {
-					window.removeEventListener('pointermove', onMove);
-					window.removeEventListener('pointerup', onUp);
-				};
-				window.addEventListener('pointermove', onMove);
-				window.addEventListener('pointerup', onUp);
-			});
+			attachCanvasForwarders(label.element, rendererElement);
 			group.add(label);
 		}
 

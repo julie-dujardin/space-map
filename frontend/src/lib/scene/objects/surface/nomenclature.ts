@@ -21,6 +21,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { effectiveRadiusKm } from '$lib/types/objects';
+import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import type { BodyObjects } from '$lib/scene/types';
 
 const DEG2RAD = Math.PI / 180;
@@ -79,6 +80,7 @@ export type OnFeatureSelect = (
 
 export async function attachNomenclatureLabels(
 	bo: BodyObjects,
+	canvas: HTMLCanvasElement,
 	onFeatureSelect?: OnFeatureSelect
 ): Promise<void> {
 	if (bo.nomenclatureLabels || !bo.mesh) return;
@@ -123,6 +125,11 @@ export async function attachNomenclatureLabels(
 		el.className = 'scene-feature-label';
 		el.textContent = feature.name;
 		el.dataset.featureId = String(feature.featureId);
+
+		// Re-dispatch wheel / drag gestures to the canvas — matches body labels
+		// so scroll-zoom and orbit-drag keep working when the pointer is over a
+		// feature label.
+		attachCanvasForwarders(el, canvas);
 
 		if (onFeatureSelect) {
 			// Click-vs-drag guard mirroring the body-label pattern in

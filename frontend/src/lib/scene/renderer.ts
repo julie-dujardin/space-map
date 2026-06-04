@@ -78,6 +78,7 @@ export class SceneRenderer {
 	private controls: OrbitControls;
 	private pointerInteraction!: PointerInteraction;
 
+	private canvas: HTMLCanvasElement;
 	private ctx: ContextManager;
 	private clock: SimClock;
 	private callbacks: Callbacks;
@@ -159,6 +160,7 @@ export class SceneRenderer {
 		initialView: MapViewState,
 		callbacks: Callbacks
 	) {
+		this.canvas = canvas;
 		this.ctx = ctx;
 		this.clock = clock;
 		this.callbacks = callbacks;
@@ -616,7 +618,7 @@ export class SceneRenderer {
 		loadBodyModel(bo, this.modelScene, this.ctx);
 		// Nomenclature labels are focus-scoped — only the focused body fetches
 		// and attaches them. Idempotent.
-		void attachNomenclatureLabels(bo, (featureId, lat, lon, diameterM) =>
+		void attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
 			this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
 		);
 	}
