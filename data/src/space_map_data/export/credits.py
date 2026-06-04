@@ -157,20 +157,20 @@ def _build_models_credits(model_metadata: dict[str, dict]) -> list[dict]:
 
     Per-body model lists aren't worth the noise on the credits page — the
     catalog license (NASA's Image Use, ESA's SciFleet terms) is what
-    matters. Each bundle's per-tier ``exports.{tier}.source`` carries the
-    catalog name (the two tiers may originate in different catalogs for
-    merged-manifest entries); the union across all tiers contributes to
-    the credits aggregate. Sources outside ``MODEL_CATALOGS`` (one-off
-    NASA resource pages, Google Arts & Culture re-hosts, …) are treated
-    as secondary — the per-tier ``attribution`` + ``source_url`` stay in
-    the model's own metadata.json, but they don't roll up into this list.
+    matters. Each bundle's per-tier ``exports.{tier}.catalog`` is the
+    catalog name when the file came from one in ``MODEL_CATALOGS`` (two
+    tiers may originate in different catalogs for merged-manifest
+    entries); the union across all tiers contributes to the aggregate.
+    One-off sources (NASA Science resource pages, Google rehosts, …)
+    omit ``catalog`` entirely and credit through ``credit.name`` on the
+    bundle's own metadata.json instead of rolling up here.
     """
     matched: set[str] = set()
     for meta in model_metadata.values():
         for tier in (meta.get("exports") or {}).values():
             if not isinstance(tier, dict):
                 continue
-            name = tier.get("source")
+            name = tier.get("catalog")
             if isinstance(name, str) and name in MODEL_CATALOGS:
                 matched.add(name)
     return [

@@ -30,7 +30,7 @@ v1/
   rings/{id}/{channel}.webp                       channel = backscattered | forwardscattered | unlitside | transparency | color
   rings/{id}/metadata.json                        ring source + geometry + per-channel files
   models/{slug}/{tier}.glb                          tier = low | high — Meshopt geometry + WebP textures
-  models/{slug}/metadata.json                       model source + attribution + per-tier exports
+  models/{slug}/metadata.json                       model kind + missions + per-tier exports (incl. credit)
   systems/global.json                             (not gzipped) always-loaded: per-body GMs + IAU nutation angles
   systems/{barycenter_id}.json                    per-system body metadata, loaded on system entry
 ```
@@ -1227,44 +1227,48 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 
 ```json
 {
-  "slug": "mars-odyssey",
-  "schema": 3,
-  "source": "NASA-3D-Resources",
-  "source_url": "https://www.nasa.gov/3d-resources/",
-  "attribution": "NASA",
-  "downloaded_at": "2025-06-03T09:00:30-07:00",
-  "type": "probe",
+  "slug": "curiosity-rover-msl",
+  "schema": 4,
+  "kind": "lander",
   "missions": [
-    { "object_id": "probe-84353024", "name": "2001 Mars Odyssey" }
+    { "object_id": "probe-100265984", "name": "Curiosity (MSL)" }
   ],
   "tiers": ["high", "low"],
   "exports": {
     "high": {
-      "size_bytes": 404220,
+      "size_bytes": 1057528,
       "sha256": "abc123…",
       "source_type": "glb",
-      "stats": { "triangles": 8642, "meshes": 9, "nodes": 9, "textures": 9, "animations": 0 }
+      "credit": {
+        "name": "NASA",
+        "url": "https://science.nasa.gov/resource/curiosity-rover-3d-model/"
+      },
+      "stats": { "triangles": 51305, "meshes": 1, "nodes": 1, "textures": 7, "animations": 0 }
     },
     "low": {
-      "size_bytes": 391024,
+      "size_bytes": 648820,
       "sha256": "def456…",
-      "source_type": "glb",
-      "stats": { "triangles": 8068, "meshes": 9, "nodes": 9, "textures": 9, "animations": 0 }
+      "source_type": "blend",
+      "credit": {
+        "name": "NASA",
+        "url": "https://www.nasa.gov/3d-resources/"
+      },
+      "catalog": "NASA-3D-Resources",
+      "downloaded_at": "2025-06-03T09:00:30-07:00",
+      "stats": { "triangles": 50228, "meshes": 6, "nodes": 6, "textures": 2, "animations": 0 }
     }
   },
-  "source_hashes": { "high": "…", "low": "…" },
-  "processed_at": "2026-05-24T16:31:15+00:00"
+  "processed_at": "2026-06-04T12:37:45+00:00"
 }
 ```
 
-- `source` / `source_url` — catalog the bundle came from (`"NASA-3D-Resources"` / `"ESA SciFleet"`) and its user-facing landing page. Keys must appear in `MODEL_CATALOGS` (see `ingest/providers/models/config.py`); credits-page emission warns and drops unrecognised sources.
-- `attribution` — credit line (NASA's catalog or ESA's "ESA / scifleet.esa.int"); flows through to the credit aggregator.
-- `downloaded_at` — when the source bytes were last fetched. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
-- `type` — coarse category from the manifest: `probe`, `earth_sat`, `station`, `lander`, `rocket`, `asteroid`, `astronomical_object`, `ground_infrastructure`, `equipment`, `instrument`, `subassembly`, `aircraft`, `submersible`, `robot`, `generic_sat`, `concept`. Lets the frontend filter the model browser without re-deriving from mission data.
+- `kind` — coarse category from the manifest (`probe`, `earth_sat`, `station`, `lander`, `rocket`, `asteroid`, `astronomical_object`, `ground_infrastructure`, `equipment`, `instrument`, `subassembly`, `aircraft`, `submersible`, `robot`, `generic_sat`, `concept`). Lets the frontend filter the model browser without re-deriving from mission data.
 - `missions` — every Object whose `model_name` points at this slug; `name` is whatever the manifest entry supplied. Mission resolution priority: `probe_id` → `naif_id` → `norad_cat_id` → `spkid` (the last for asteroids).
 - `exports.{tier}.source_type` — the original file format the tier was converted from (`"glb"`, `"fbx"`, `"blend"`, `"obj"`, `"3ds"`). `"glb"` means pass-through, anything else means a Blender import happened.
+- `exports.{tier}.credit` — the display text and link target for the attribution bar/popover. `name` is always the attribution (`"NASA"`, `"ESA / scifleet.esa.int"`, `"NASA (via Google Arts & Culture)"`, …) so chips stay consistent across catalogs. `url` is the specific resource page when one was given inline in the manifest, else the catalog's landing page.
+- `exports.{tier}.catalog` — present only when the file came from a key in `MODEL_CATALOGS` (`"NASA-3D-Resources"`, `"ESA SciFleet"`). The credits page uses the union across all tiers to pick which primary catalogs to surface; one-off resources (NASA Science pages, Google rehosts) omit this and credit through `credit.name` alone.
+- `exports.{tier}.downloaded_at` — when the source bytes were last fetched, when known. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.
-- `source_hashes` — sha256 of each tier's source file at conversion time; ingest uses these together with `schema` to skip re-conversion on idempotent re-runs.
 - Real-world scale (metres) is **not** persisted today — source models use arbitrary authoring units and there's no reliable auto-conversion. A future iteration will add an optional `scale_meters` override in the YAML manifest for frontends that need to size the mesh against scene units.
 
 ## Systems global (`systems/global.json`)

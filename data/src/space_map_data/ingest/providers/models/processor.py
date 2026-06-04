@@ -654,12 +654,16 @@ class ModelProcessor:
         high_src: dict,
         low_src: dict,
     ) -> dict[str, dict]:
-        """Per-tier ``{source, source_url, attribution, downloaded_at}``.
+        """Per-tier ``{credit: {name, url}, catalog?, downloaded_at?}``.
 
-        Pulls the per-file ``source`` from merged-manifest entries; falls
-        back to the doc-level ``source`` for single-source manifests. One-off
-        manual downloads can specify ``source_url`` + ``attribution`` inline
-        on the file entry instead of registering a MODEL_CATALOGS catalog.
+        ``credit.name`` is always the attribution (inline or catalog
+        default), so the frontend chip says e.g. "NASA" regardless of
+        whether the file came from NASA-3D-Resources, a one-off NASA
+        Science resource page, or a Google rehost. ``credit.url`` prefers
+        the inline ``source_url`` (specific resource page) and falls back
+        to the catalog landing page. ``catalog`` is only emitted when
+        the file's source matches a key in ``MODEL_CATALOGS`` — the
+        credits.json roll-up uses it to pick primary catalog credits.
         """
         doc = next((d for p, d in self._yaml_docs if p == yaml_path), None) or {}
         doc_source = doc.get("source") or {}
@@ -676,34 +680,28 @@ class ModelProcessor:
             catalog = config.MODEL_CATALOGS.get(name)
             inline_url = f.get("source_url")
             inline_attribution = f.get("attribution")
-            out: dict = {"source": name}
-            if inline_url:
-                out["source_url"] = inline_url
-            elif catalog:
-                out["source_url"] = catalog["url"]
             if inline_attribution:
-                out["attribution"] = inline_attribution
+                credit_name = inline_attribution
             elif catalog:
                 # Per-manifest attribution overrides the catalog default.
                 manifest_attribution = (
                     doc_source.get("attribution") if name == doc_name else None
                 )
-                out["attribution"] = (
+                credit_name = (
                     manifest_attribution
                     if isinstance(manifest_attribution, str)
                     else catalog["default_attribution"]
                 )
-            if not catalog and not inline_attribution:
+            else:
                 self._global_warnings.append(
                     f"file {f.get('path')!r}: source {name!r} not in MODEL_CATALOGS "
                     f"and missing inline attribution"
                 )
-            # Non-catalog sources (one-off NASA resource pages, Google rehosts)
-            # surface as the attribution in the frontend chip — the source
-            # name in those cases is just where the file was fetched, not the
-            # creator. Catalog entries keep their catalog name as ``source``.
-            if not catalog and isinstance(out.get("attribution"), str):
-                out["source"] = out["attribution"]
+                return {}
+            credit_url = inline_url or (catalog["url"] if catalog else None)
+            out: dict = {"credit": {"name": credit_name, "url": credit_url}}
+            if catalog:
+                out["catalog"] = name
             ts = self._catalog_downloaded_at.get(name)
             if ts:
                 out["downloaded_at"] = ts

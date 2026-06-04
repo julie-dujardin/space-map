@@ -35,14 +35,15 @@ function isModelBearing(body: PositionedBody): boolean {
 
 /** Subset of `metadata.json` (per-model public bundle) that's needed to
  *  register the focused-body credit. The exporter writes more fields per
- *  tier, but the scene only needs the catalog landing page + name for the
- *  high tier (which is what loadBodyModel fetches). For merged-manifest
- *  entries the low tier may originate in a different catalog. */
+ *  tier (size/sha/stats/catalog/…), but the scene only needs the credit
+ *  block for the high tier — that's the GLB we fetched. */
 interface ModelBundleMeta {
 	exports: {
 		high: {
-			source: string;
-			source_url: string;
+			credit: {
+				name: string;
+				url: string;
+			};
 		};
 	};
 }
@@ -129,8 +130,8 @@ export async function loadBodyModel(
 				const meta = await metaPromise;
 				ctx.credits.registerModel({
 					bodyId: bo.body.data.id,
-					source: meta.exports.high.source_url,
-					organisation: meta.exports.high.source
+					source: meta.exports.high.credit.url,
+					organisation: meta.exports.high.credit.name
 				});
 			} catch (e) {
 				// Credits are a nice-to-have; a missing/corrupt metadata.json
