@@ -13,6 +13,9 @@ from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
+from space_map_data.export.nomenclature.wikidata_claims import (
+    FEATURE_ENTITY_REF_CLAIMS,
+)
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -87,13 +90,20 @@ class WikidataDownloader(Downloader):
             fetch_desc="earth-sat catalogs",
         )
 
-        # Second pass: fetch referenced entities and units
+        # Second pass: fetch referenced entities and units. Each primary tier
+        # specifies its own follow set — nomenclature features add P276/P706
+        # on top of the shared object refs without bloating the object scan.
         units_dir = self.out_dir / "units"
         units_dir.mkdir(exist_ok=True)
-        primary_dirs = [objects_dir, nomenclature_dir]
-        all_dirs = [*primary_dirs, referenced_dir, units_dir]
+        shared_follow = tuple(c.pid for c in ENTITY_REF_CLAIMS)
+        feature_follow = shared_follow + tuple(c.pid for c in FEATURE_ENTITY_REF_CLAIMS)
+        primary_scans = [
+            (objects_dir, shared_follow),
+            (nomenclature_dir, feature_follow),
+        ]
+        all_dirs = [objects_dir, nomenclature_dir, referenced_dir, units_dir]
         referenced_qids, unit_qids = self._collect_secondary_qids(
-            primary_dirs, all_dirs
+            primary_scans, all_dirs
         )
         if referenced_qids:
             logger.info(
@@ -137,40 +147,60 @@ class WikidataDownloader(Downloader):
         return {f.stem for d in dirs for f in d.glob("Q*.json")}
 
     def _collect_secondary_qids(
-        self, primary_dirs: list[Path], all_dirs: list[Path]
+        self,
+        primary_scans: list[tuple[Path, tuple[str, ...]]],
+        all_dirs: list[Path],
     ) -> tuple[set[str], set[str]]:
-        """Scan downloaded entities and return (referenced_qids, unit_qids)."""
+        """Scan downloaded entities and return (referenced_qids, unit_qids).
+
+        Each primary scan is ``(dir, follow_pids)`` so different entity classes
+        can follow different reference properties (e.g. nomenclature adds
+        ``P276``/``P706``).
+        """
         referenced: set[str] = set()
         units: set[str] = set()
-        for entity_file in (f for d in primary_dirs for f in d.glob("Q*.json")):
-            try:
-                entity = json.loads(entity_file.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Failed to read %s: %s", entity_file, exc)
-                continue
-            claims = entity.get("claims", {})
-            for prop in (c.pid for c in ENTITY_REF_CLAIMS):
-                for stmt in claims.get(prop, []):
-                    dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-                    if isinstance(dv, dict) and "id" in dv:
-                        referenced.add(dv["id"])
-            # P4241 (refine date) qualifier targets an event entity whose own time
-            # claim provides a more precise timestamp. It can appear on any time
-            # property (e.g. P619 launch_date, P575 discovery_date).
-            time_props = (c.pid for c in GLOBAL_CLAIMS if c.kind == "time")
-            for prop in time_props:
-                for stmt in claims.get(prop, []):
-                    for snak in stmt.get("qualifiers", {}).get("P4241", []):
-                        dv = snak.get("datavalue", {}).get("value", {})
+        time_pids = tuple(c.pid for c in GLOBAL_CLAIMS if c.kind == "time")
+        for primary_dir, follow_pids in primary_scans:
+            for entity_file in primary_dir.glob("Q*.json"):
+                try:
+                    entity = json.loads(entity_file.read_text())
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Failed to read %s: %s", entity_file, exc)
+                    continue
+                claims = entity.get("claims", {})
+                for prop in follow_pids:
+                    for stmt in claims.get(prop, []):
+                        dv = (
+                            stmt.get("mainsnak", {})
+                            .get("datavalue", {})
+                            .get("value", {})
+                        )
                         if isinstance(dv, dict) and "id" in dv:
                             referenced.add(dv["id"])
-            for prop_stmts in claims.values():
-                for stmt in prop_stmts:
-                    dv = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
-                    if isinstance(dv, dict) and "unit" in dv:
-                        unit = dv["unit"]
-                        if isinstance(unit, str) and "wikidata.org/entity/Q" in unit:
-                            units.add(unit.rsplit("/", 1)[-1])
+                # P4241 (refine date) qualifier targets an event entity whose own
+                # time claim provides a more precise timestamp. It can appear on
+                # any time property (e.g. P619 launch_date, P575 discovery_date).
+                for prop in time_pids:
+                    for stmt in claims.get(prop, []):
+                        for snak in stmt.get("qualifiers", {}).get("P4241", []):
+                            dv = snak.get("datavalue", {}).get("value", {})
+                            if isinstance(dv, dict) and "id" in dv:
+                                referenced.add(dv["id"])
+                for prop_stmts in claims.values():
+                    for stmt in prop_stmts:
+                        dv = (
+                            stmt.get("mainsnak", {})
+                            .get("datavalue", {})
+                            .get("value", {})
+                        )
+                        if isinstance(dv, dict) and "unit" in dv:
+                            unit = dv["unit"]
+                            if (
+                                isinstance(unit, str)
+                                and "wikidata.org/entity/Q" in unit
+                            ):
+                                units.add(unit.rsplit("/", 1)[-1])
+        primary_dirs = [d for d, _ in primary_scans]
         on_disk = self._on_disk(all_dirs)
         # Unit QIDs should not be skipped just because they exist in referenced/.
         # A QID in referenced/ is not usable as a unit (localization only scans

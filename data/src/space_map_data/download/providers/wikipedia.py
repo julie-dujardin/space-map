@@ -34,15 +34,22 @@ def _batched(
 class WikipediaDownloader(Downloader):
     name = PROVIDERS.WIKIPEDIA
 
+    # Wikidata entity subdirs to scan for sitelinks. Each holds a different
+    # primary entity class (objects / IAU nomenclature features); both expose
+    # `sitelinks.<lang>wiki`, so the task collector treats them uniformly.
+    _ENTITY_SUBDIRS = ("objects", "nomenclature")
+
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_entities_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects"
-        if not wikidata_entities_dir.exists():
+        wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA
+        entity_dirs = [wikidata_dir / sub for sub in self._ENTITY_SUBDIRS]
+        present = [d for d in entity_dirs if d.exists()]
+        if not present:
             raise FileNotFoundError(
-                f"Wikidata objects not found at {wikidata_entities_dir} "
-                "— download wikidata first"
+                f"None of the Wikidata entity dirs exist under {wikidata_dir} "
+                f"({', '.join(self._ENTITY_SUBDIRS)}) — download wikidata first"
             )
 
-        tasks_by_lang = self._collect_tasks(wikidata_entities_dir)
+        tasks_by_lang = self._collect_tasks(present)
         if not tasks_by_lang:
             logger.info("No summaries to fetch")
             return
@@ -56,16 +63,20 @@ class WikipediaDownloader(Downloader):
             complete=False,  # No global complete is needed
         )
 
-    def _collect_tasks(self, wikidata_dir: Path) -> dict[str, list[tuple[str, str]]]:
+    def _collect_tasks(
+        self, wikidata_dirs: list[Path]
+    ) -> dict[str, list[tuple[str, str]]]:
         """Read Wikidata entity files and extract sitelinks for target languages.
 
-        Skips already-downloaded summaries.
+        Scans every dir in *wikidata_dirs*, skipping already-downloaded
+        summaries and de-duplicating tasks on (qid, lang) across dirs.
         Returns dict mapping language code to list of (qid, title) tuples.
         """
         by_lang: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        seen: set[tuple[str, str]] = set()
         skipped = 0
 
-        entity_files = sorted(wikidata_dir.glob("Q*.json"))
+        entity_files = sorted(f for d in wikidata_dirs for f in d.glob("Q*.json"))
         for entity_file in tqdm(
             entity_files, desc="Collecting Wikipedia tasks", unit="entity"
         ):
@@ -75,19 +86,25 @@ class WikipediaDownloader(Downloader):
 
             for lang in LANGUAGES:
                 wiki_key = f"{lang}wiki"
-                if wiki_key in sitelinks:
-                    if (self.out_dir / lang / f"{qid}.json").exists():
-                        skipped += 1
-                        continue
-                    title = sitelinks[wiki_key]["title"]
-                    by_lang[lang].append((qid, title))
+                if wiki_key not in sitelinks:
+                    continue
+                if (qid, lang) in seen:
+                    continue
+                seen.add((qid, lang))
+                if (self.out_dir / lang / f"{qid}.json").exists():
+                    skipped += 1
+                    continue
+                title = sitelinks[wiki_key]["title"]
+                by_lang[lang].append((qid, title))
 
         total = sum(len(items) for items in by_lang.values())
         logger.info(
-            "Found %s summaries to fetch (%s already on disk) from %d entities",
+            "Found %s summaries to fetch (%s already on disk) from %d entities "
+            "across %d dir(s)",
             f"{total:,}",
             f"{skipped:,}",
             len(entity_files),
+            len(wikidata_dirs),
         )
         return by_lang
 
