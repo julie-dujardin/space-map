@@ -31,6 +31,9 @@ IMAGES_DIR = DOWNLOAD_DIR / "commons" / "images"
 MANUAL_EXTRA_PATH = DOWNLOAD_DIR / "commons" / "manual-extra.json"
 
 _WIKIDATA_IMAGE_PIDS = ("P18", "P154")
+# P18 photo + P242 locator map (USGS-style IAU feature outline). Logo (P154)
+# isn't meaningful for surface features.
+FEATURE_WIKIDATA_IMAGE_PIDS = ("P18", "P242")
 # Auto-generated orbit diagrams on ru.wiki that flood the pageimages set.
 EXCLUDED_FILENAME_PREFIXES = ("Орбита_астероида_", "Орбита_кометы_")
 
@@ -109,26 +112,32 @@ def _wikidata_image_claims(entity: dict, pid: str) -> list[str]:
     return out
 
 
-def extract_wikidata_filenames(entity: dict) -> set[str]:
-    """Extract unique Commons image filenames from P18 and P154 claims."""
-    return {
-        fn for pid in _WIKIDATA_IMAGE_PIDS for fn in _wikidata_image_claims(entity, pid)
-    }
+def extract_wikidata_filenames(
+    entity: dict, pids: tuple[str, ...] = _WIKIDATA_IMAGE_PIDS
+) -> set[str]:
+    """Extract unique Commons image filenames from image-claim properties."""
+    return {fn for pid in pids for fn in _wikidata_image_claims(entity, pid)}
 
 
 def collect_qid_image_candidates(
     qid: str,
     wikidata_dir: Path | None = None,
     wiki_dir: Path | None = None,
+    *,
+    aux_pid: str = "P154",
+    aux_kind: str = "logo",
 ) -> tuple[list[str], dict[str, str], dict[str, int]]:
     """Return ``(direct, kind_of, pageimage_count)`` for a QID's Commons images.
 
     ``direct`` is the deduped, ordered list of canonical filenames discovered
-    as Wikidata P18 (photo) → Wikipedia pageimages (photo) → Wikidata P154
-    (logo) so the "first image" stays stable as Wikipedia sources come and go.
-    ``kind_of`` maps each filename to ``"photo"`` or ``"logo"``.
-    ``pageimage_count[name]`` counts how many language wikis picked that file
-    as their pageimage for this QID.
+    as Wikidata P18 (photo) → Wikipedia pageimages (photo) → Wikidata
+    ``aux_pid`` (``aux_kind``) so the "first image" stays stable as Wikipedia
+    sources come and go. ``kind_of`` maps each filename to ``"photo"`` or
+    ``aux_kind``. ``pageimage_count[name]`` counts how many language wikis
+    picked that file as their pageimage for this QID.
+
+    The default ``aux_pid``/``aux_kind`` model objects (P154 logo); pass
+    ``aux_pid="P242", aux_kind="locator"`` to model IAU nomenclature features.
 
     Non-Commons Wikipedia images and excluded-prefix filenames are filtered
     out; callers see only servable candidates.
@@ -137,7 +146,7 @@ def collect_qid_image_candidates(
     wiki_dir = wiki_dir or (DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA)
 
     photo_from_wikidata: list[str] = []
-    logo_from_wikidata: list[str] = []
+    aux_from_wikidata: list[str] = []
     entity_path = wikidata_dir / f"{qid}.json"
     if entity_path.exists():
         try:
@@ -147,7 +156,7 @@ def collect_qid_image_candidates(
             entity = None
         if entity:
             photo_from_wikidata = _wikidata_image_claims(entity, "P18")
-            logo_from_wikidata = _wikidata_image_claims(entity, "P154")
+            aux_from_wikidata = _wikidata_image_claims(entity, aux_pid)
 
     photo_from_wikipedia: list[str] = []
     pageimage_count: dict[str, int] = {}
@@ -183,11 +192,11 @@ def collect_qid_image_candidates(
         seen.add(name)
         kind_of[name] = "photo"
         direct.append(name)
-    for name in logo_from_wikidata:
+    for name in aux_from_wikidata:
         if name in seen or is_excluded(name):
             continue
         seen.add(name)
-        kind_of[name] = "logo"
+        kind_of[name] = aux_kind
         direct.append(name)
     return direct, kind_of, pageimage_count
 

@@ -16,6 +16,10 @@ v1/
     probes/{zone}/{chunk}.bin.gz                  time-chunked, no zoom segment — interplanetary probes (format byte = 2)
   objects/__global__/{bucket}.json.gz             global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                 localized details, hash-bucketed
+  nomenclature/positions/{body_id}.bin.gz         IAU surface-feature marker positions (SMNF format)
+  nomenclature/__global__/{body_id}.json.gz       lean per-body marker metadata (name, approval_date, origin, parent_feature_id)
+  nomenclature/details/__global__/{bucket}.json.gz   feature detail bundles, hash-bucketed by `{body_id}:{feature_id}`
+  nomenclature/details/{lang}/{bucket}.json.gz       localized feature details, hash-bucketed
   v1/images/{filename}/{label}.{ext}              thumbnail variants (label = s | m | xl)
   v1/images/{filename}/metadata.json.gz           per-image license + variants map
   textures/{id}/{tier}.webp                       tier = low | medium | high (single-frame)
@@ -129,6 +133,10 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
   "object_bundles": {
     "global": 1093,
     "en": 208, "fr": 208, "ja": 208, "ar": 201, "ru": 208, "zh": 208
+  },
+  "feature_bundles": {
+    "global": 90,
+    "en": 17, "fr": 12, "ja": 2, "ar": 2, "ru": 10, "zh": 13
   },
   "skybox": {
     "id": "stars",
@@ -1000,9 +1008,87 @@ interface LocalizedObjectData {
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 ```
 
+## IAU planetary nomenclature
+
+Surface features (craters, maria, valles, …) live in two tiers so the marker
+render path stays cheap.
+
+### Marker tier (eager, per body)
+
+Loaded when a body's surface comes into view. Two files per body that has any
+feature:
+
+- `nomenclature/positions/{body_id}.bin.gz` — **SMNF** binary
+  (`feature_id` + center lat/lon + diameter + 2-letter IAU type code per
+  record; see `data/src/space_map_data/export/nomenclature/format.py`).
+- `nomenclature/__global__/{body_id}.json.gz` — gzipped JSON, keyed by
+  string `feature_id`:
+
+  ```typescript
+  interface NomenclatureGlobalEntry {
+    name: string;
+    approval_date?: string;       // ISO date
+    origin?: string;              // IAU "Named for ..." prose
+    parent_feature_id?: number;   // IAU satellite-feature parent
+  }
+  ```
+
+Features missing `object_id`, `center_lat`/`center_lon`, or `feature_type_code`
+are dropped at build time (with a single aggregate log line per cause).
+
+### Detail tier (lazy, hash-bucketed)
+
+Fetched on drawer open. Bucket key is `{body_id}:{feature_id}` so features on
+the same body cluster — opening one warms the bundle for its neighbours. Bucket
+counts ship in `metadata.json → feature_bundles` so a frontend can recompute
+the bucket from a URL.
+
+- `nomenclature/details/__global__/{bucket}.json.gz` — global per-feature
+  enrichment (image manifest with `kind: 'photo' | 'locator'`, Wikidata
+  cross-link, physical-quantity claims):
+
+  ```typescript
+  interface FeatureGlobalData {
+    wikidata_qid?: string;
+    images?: ObjectImage[];        // P18 → 'photo', P242 → 'locator'
+    wikidata?: {
+      length?: QuantityWithUnit;
+      width?: QuantityWithUnit;
+      height?: QuantityWithUnit;
+      area?: QuantityWithUnit;
+      elevation?: QuantityWithUnit;
+      vertical_depth?: QuantityWithUnit;
+    };
+  }
+  ```
+
+- `nomenclature/details/{lang}/{bucket}.json.gz` — per-language overlay; a
+  feature appears here only when it has at least one localized field in that
+  language.
+
+  ```typescript
+  interface FeatureLocalizedData {
+    name?: string;                 // only when Wikidata's label differs
+                                   // from the IAU canonical (`unicode_name`)
+    description?: string;
+    aliases?: string[];
+    instance_of?: EntityRef[];     // resolved P31 refs
+    named_after?: EntityRef[];     // resolved P138 refs
+    location?: EntityRef[];        // resolved P276 refs
+    located_on_physical_feature?: EntityRef;
+    wikipedia?: { extract?: string; description?: string; url?: string };
+  }
+  ```
+
+The IAU `parent_feature_id` graph (from the satellite-feature matching pass)
+takes priority over Wikidata `P706` as the canonical "this feature sits on
+that one" link — `P706` is much sparser (~1%) and is included as supplemental
+metadata via `located_on_physical_feature` rather than as the authoritative
+parent.
+
 ## Images
 
-Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo) and Wikipedia pageimages across all supported languages. Downloaded during the `commons` download step; the export step generates per-image thumbnail bundles.
+Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo for objects; P18 image + P242 locator map for IAU nomenclature features) and Wikipedia pageimages across all supported languages. Downloaded during the `commons` download step; the export step generates per-image thumbnail bundles.
 
 **Path:** `v1/images/{filename}/{label}.{ext}` + `v1/images/{filename}/metadata.json.gz`
 

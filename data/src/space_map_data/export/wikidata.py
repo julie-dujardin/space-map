@@ -46,13 +46,19 @@ class WikidataEntityCache:
     def __init__(self) -> None:
         wikidata_dir = DOWNLOAD_DIR / "wikidata"
         self._entities_dir = wikidata_dir / "objects"
+        self._nomenclature_dir = wikidata_dir / "nomenclature"
         self._referenced_dir = wikidata_dir / "referenced"
         self._units: dict[str, WikidataEntity] = {}
         self._properties: dict[str, WikidataEntity] = {}
 
         if not any(
             d.exists()
-            for d in (self._entities_dir, self._referenced_dir, wikidata_dir / "units")
+            for d in (
+                self._entities_dir,
+                self._nomenclature_dir,
+                self._referenced_dir,
+                wikidata_dir / "units",
+            )
         ):
             logger.info("No wikidata entities found, labels will use object names only")
             return
@@ -82,6 +88,12 @@ class WikidataEntityCache:
         if not qid:
             return None
         return self._load(qid, self._entities_dir)
+
+    def get_feature_entity(self, qid: str | None) -> WikidataEntity | None:
+        """Look up an IAU feature's own Wikidata entity (from nomenclature/)."""
+        if not qid:
+            return None
+        return self._load(qid, self._nomenclature_dir)
 
     def get_referenced(self, qid: str | None) -> WikidataEntity | None:
         """Look up a referenced entity from claims (from referenced/ or units)."""

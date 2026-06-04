@@ -28,6 +28,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.commons_images import (
+    FEATURE_WIKIDATA_IMAGE_PIDS,
     IMAGES_DIR,
     canonical_filename,
     download_metadata_path,
@@ -62,16 +63,21 @@ class CommonsDownloader(Downloader):
     name = PROVIDERS.COMMONS
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects"
-        if not wikidata_dir.exists():
+        wikidata_root = DOWNLOAD_DIR / PROVIDERS.WIKIDATA
+        objects_dir = wikidata_root / "objects"
+        nomenclature_dir = wikidata_root / "nomenclature"
+        if not objects_dir.exists() and not nomenclature_dir.exists():
             raise FileNotFoundError(
-                f"Wikidata objects not found at {wikidata_dir} "
-                "— download wikidata first"
+                f"None of the Wikidata entity dirs exist under {wikidata_root} "
+                "(objects, nomenclature) — download wikidata first"
             )
 
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-        commons_filenames, non_commons = self._collect_filenames(wikidata_dir)
+        commons_filenames, non_commons = self._collect_filenames(
+            objects_dir if objects_dir.exists() else None,
+            nomenclature_dir if nomenclature_dir.exists() else None,
+        )
         self._write_non_commons_skipped(non_commons)
 
         discovered = sorted(commons_filenames)
@@ -97,27 +103,42 @@ class CommonsDownloader(Downloader):
         )
 
     def _collect_filenames(
-        self, wikidata_dir: Path
+        self,
+        objects_dir: Path | None,
+        nomenclature_dir: Path | None,
     ) -> tuple[set[str], dict[str, dict]]:
         """Collect image filenames from Wikidata claims and Wikipedia summaries.
 
         Returns ``(commons_filenames, non_commons)`` where ``non_commons`` maps filename
-        to ``{"url", "repo", "referenced_from": [lang/QID, ...]}``.
+        to ``{"url", "repo", "referenced_from": [lang/QID, ...]}``. Objects contribute
+        P18/P154; nomenclature features contribute P18/P242 (locator maps).
         """
         commons: set[str] = set()
         non_commons: dict[str, dict] = {}
 
-        # 1) Wikidata P18/P154 claims — always Commons filenames by policy.
-        entity_files = sorted(wikidata_dir.glob("Q*.json"))
-        for entity_file in tqdm(
-            entity_files, desc="Scanning Wikidata for images", unit="entity"
-        ):
-            try:
-                entity = json.loads(entity_file.read_text())
-            except json.JSONDecodeError:
-                logger.warning("Skipping invalid entity file %s", entity_file)
-                continue
-            commons |= extract_wikidata_filenames(entity)
+        # 1) Wikidata image claims — always Commons filenames by policy.
+        # Object entities ship P18 (photo) + P154 (logo); nomenclature
+        # features ship P18 (photo) + P242 (locator map).
+        scans: list[tuple[str, Path, tuple[str, ...]]] = []
+        if objects_dir is not None:
+            scans.append(("objects", objects_dir, ("P18", "P154")))
+        if nomenclature_dir is not None:
+            scans.append(
+                ("nomenclature", nomenclature_dir, FEATURE_WIKIDATA_IMAGE_PIDS)
+            )
+        for label, scan_dir, pids in scans:
+            entity_files = sorted(scan_dir.glob("Q*.json"))
+            for entity_file in tqdm(
+                entity_files,
+                desc=f"Scanning Wikidata ({label}) for images",
+                unit="entity",
+            ):
+                try:
+                    entity = json.loads(entity_file.read_text())
+                except json.JSONDecodeError:
+                    logger.warning("Skipping invalid entity file %s", entity_file)
+                    continue
+                commons |= extract_wikidata_filenames(entity, pids)
 
         # 2) Wikipedia pageimages — split commons vs local wiki based on URL.
         wiki_dir = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA

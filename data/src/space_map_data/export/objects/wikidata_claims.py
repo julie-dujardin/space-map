@@ -125,41 +125,51 @@ def extract_claims(
     claims: dict,
     qid: str,
     wikidata_entities: WikidataEntityCache | None = None,
+    *,
+    global_claims: tuple[GlobalClaim, ...] = GLOBAL_CLAIMS,
+    entity_ref_claims: tuple[EntityRefClaim, ...] = ENTITY_REF_CLAIMS,
+    route_temperature: bool = True,
 ) -> dict:
     """Extract target properties from raw Wikidata claims.
 
     Returns a flat dict with parsed values (not the raw claim structure).
+    Pass alternative ``global_claims``/``entity_ref_claims`` tuples to drive
+    extraction for a different entity class (e.g. IAU nomenclature features).
+    ``route_temperature`` controls the object-specific P2076 nature-of-value
+    routing — features have no temperature claims to disambiguate.
     """
     result: dict = {}
 
-    for claim in GLOBAL_CLAIMS:
+    for claim in global_claims:
         v = _extract_global(claims, claim, qid, wikidata_entities)
         if v:
             result[claim.key] = v
 
-    # P2076 (temperature): group by P1480/P5102 qualifier, then disambiguate each group.
-    # P7422/P6591 from the loop above take priority via setdefault.
-    _NATURE_ROUTE = {
-        _QID_MINIMUM: "min_temperature",
-        _QID_MAXIMUM: "max_temperature",
-        _QID_AVERAGE: "temperature",
-        _QID_MEAN: "temperature",
-    }
-    grouped: dict[str, list[dict]] = {}
-    for stmt in active_statements(claims, "P2076"):
-        nature = (
-            _qualifier_qid(stmt, "P1480")
-            or _qualifier_qid(stmt, "P5102")
-            or _qualifier_qid(stmt, "P518")
-        )
-        key = _NATURE_ROUTE.get(nature, "temperature") if nature else "temperature"
-        grouped.setdefault(key, []).append(stmt)
-    for key, stmts in grouped.items():
-        v = _resolve_quantity(_qty_pairs(stmts), "P2076", qid=qid)
-        if v:
-            result.setdefault(key, v)
+    if route_temperature:
+        # P2076 (temperature): group by P1480/P5102 qualifier, then
+        # disambiguate each group. P7422/P6591 from the loop above take
+        # priority via setdefault.
+        _NATURE_ROUTE = {
+            _QID_MINIMUM: "min_temperature",
+            _QID_MAXIMUM: "max_temperature",
+            _QID_AVERAGE: "temperature",
+            _QID_MEAN: "temperature",
+        }
+        grouped: dict[str, list[dict]] = {}
+        for stmt in active_statements(claims, "P2076"):
+            nature = (
+                _qualifier_qid(stmt, "P1480")
+                or _qualifier_qid(stmt, "P5102")
+                or _qualifier_qid(stmt, "P518")
+            )
+            key = _NATURE_ROUTE.get(nature, "temperature") if nature else "temperature"
+            grouped.setdefault(key, []).append(stmt)
+        for key, stmts in grouped.items():
+            v = _resolve_quantity(_qty_pairs(stmts), "P2076", qid=qid)
+            if v:
+                result.setdefault(key, v)
 
-    for claim in ENTITY_REF_CLAIMS:
+    for claim in entity_ref_claims:
         if claim.multiple:
             qids = [
                 q

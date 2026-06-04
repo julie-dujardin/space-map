@@ -41,6 +41,7 @@ import shutil
 import threading
 import uuid
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
 
@@ -156,7 +157,24 @@ def collect_object_images(object_id: str) -> list[dict] | None:
     has not been generated). Excluded-prefix names, missing source bytes,
     and non-servable licenses are filtered defensively.
     """
-    selections = _object_images_cache().get(object_id) or []
+    return _collect_images_from_cache(object_id, _object_images_cache)
+
+
+def collect_feature_images(feature_id: int | str) -> list[dict] | None:
+    """Build the ``images`` array for a single IAU nomenclature feature.
+
+    Same shape as :func:`collect_object_images` but keyed by ``feature_id``
+    and may include ``kind: 'locator'`` entries for P242 locator maps.
+    """
+    return _collect_images_from_cache(str(feature_id), _feature_images_cache)
+
+
+def _collect_images_from_cache(
+    key: str,
+    cache_loader: Callable[[], dict[str, list[dict]]],
+) -> list[dict] | None:
+    """Shared body of ``collect_object_images`` / ``collect_feature_images``."""
+    selections = cache_loader().get(key) or []
     out: list[dict] = []
     for entry in selections:
         name = canonical_filename(entry["file"])
@@ -188,7 +206,25 @@ def _object_images_cache() -> dict[str, list[dict]]:
     return _OBJECT_IMAGES_CACHE
 
 
+def _feature_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``feature_images.json`` for the export run."""
+    global _FEATURE_IMAGES_CACHE
+    if _FEATURE_IMAGES_CACHE is None:
+        from space_map_data.ingest.providers.image_selection import (
+            read_feature_images,
+        )
+
+        _FEATURE_IMAGES_CACHE = read_feature_images()
+        if not _FEATURE_IMAGES_CACHE:
+            logger.warning(
+                "feature_images.json missing or empty — run `space-map-ingest "
+                "--targets images` first; export will emit no feature images"
+            )
+    return _FEATURE_IMAGES_CACHE
+
+
 _OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
+_FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
 def _make_entry(filename: str, kind: str) -> dict | None:
@@ -694,14 +730,16 @@ def _locale_field(field: dict | None) -> str | dict[str, str] | None:
 
 def clear_export_cache() -> None:
     """Reset per-export caches. For tests that monkeypatch paths."""
-    global _OBJECT_IMAGES_CACHE
+    global _OBJECT_IMAGES_CACHE, _FEATURE_IMAGES_CACHE
     _OBJECT_IMAGES_CACHE = None
+    _FEATURE_IMAGES_CACHE = None
     with _FILE_LOCKS_GUARD:
         _FILE_LOCKS.clear()
 
 
 __all__ = [
     "collect_object_images",
+    "collect_feature_images",
     "clear_export_cache",
     "DOWNLOADS_IMAGES_DIR",
 ]

@@ -27,7 +27,9 @@ from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
 from space_map_data.export.nomenclature.writer import (
+    build_feature_details,
     build_nomenclature,
+    write_feature_detail_bundles,
     write_nomenclature_files,
 )
 from space_map_data.export.objects.writer import (
@@ -526,13 +528,18 @@ def _write_metadata_json(
     chebyshev_zones: dict,
     probe_zones: dict,
     bundle_ns: dict,
+    feature_bundle_ns: dict,
     skybox_metadata: dict | None,
 ) -> None:
     """Emit the top-level metadata.json (position manifest + bundles + skybox)."""
     position_metadata = build_position_metadata(
         zone_structure, chebyshev_zones, probe_zones
     )
-    metadata: dict = {"position": position_metadata, "object_bundles": bundle_ns}
+    metadata: dict = {
+        "position": position_metadata,
+        "object_bundles": bundle_ns,
+        "feature_bundles": feature_bundle_ns,
+    }
     if skybox_metadata is not None:
         metadata["skybox"] = skybox_block(skybox_metadata)
     (out_dir / "metadata.json").write_bytes(
@@ -654,6 +661,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
     )
     write_nomenclature_files(out_dir, nomenclature_payload)
+    # Feature details are built after object data so the unit converter has
+    # already absorbed object-side `used_units`; nomenclature claims may add
+    # more (km, m, ...) that the localization writer needs to see below.
+    with Session(engine) as session:
+        feature_details = build_feature_details(session, wikidata_entities, units)
+    feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
     write_global_labels(
         out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
     )
@@ -665,6 +678,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         chebyshev_zones,
         probe_zones,
         bundle_ns,
+        feature_bundle_ns,
         skybox_metadata,
     )
 

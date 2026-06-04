@@ -10,9 +10,13 @@ import pytest
 
 from space_map_data.export.nomenclature.format import HEADER_SIZE, RECORD_SIZE
 from space_map_data.export.nomenclature.writer import (
+    FeatureDetailData,
     _build_global,
     _build_positions,
     build_nomenclature,
+    feature_bucket_key,
+    hash_bucket,
+    write_feature_detail_bundles,
     write_nomenclature_files,
 )
 from space_map_data.models.feature import Feature
@@ -149,3 +153,71 @@ class TestWriteFiles:
     def test_no_output_when_empty(self, tmp_path):
         write_nomenclature_files(tmp_path, {})
         assert not (tmp_path / "nomenclature").exists()
+
+
+class TestBucketKey:
+    """feature_bucket_key + hash_bucket"""
+
+    def test_key_format(self):
+        assert feature_bucket_key("naif-301", 42) == "naif-301:42"
+
+    def test_hash_bucket_deterministic(self):
+        # The frontend reproduces this from the URL — the bucket math must
+        # be stable across runs.
+        for n in (1, 8, 50, 200):
+            assert hash_bucket("naif-301:1234", n) == hash_bucket("naif-301:1234", n)
+
+    def test_hash_bucket_range(self):
+        for n in (1, 8, 50, 200):
+            for fid in (1, 50, 1000, 999999):
+                bucket = hash_bucket(feature_bucket_key("naif-499", fid), n)
+                assert 0 <= bucket < n
+
+    def test_features_distribute(self):
+        # Hash dispersion across bodies & feature ids should be near-uniform —
+        # not a perfect chi-squared but at least uses many buckets.
+        n = 50
+        used = {
+            hash_bucket(feature_bucket_key(f"naif-{body}", fid), n)
+            for body in (199, 299, 301, 499, 599)
+            for fid in range(0, 200)
+        }
+        assert len(used) >= n - 5  # allow a few empty buckets
+
+
+class TestWriteFeatureDetailBundles:
+    def test_emits_bucket_files_keyed_correctly(self, tmp_path):
+        details = FeatureDetailData()
+        details.global_data["naif-301:1"] = {"wikidata_qid": "Q1000036"}
+        details.global_data["naif-301:2"] = {"wikidata_qid": "Q9999"}
+        details.localized_data["en"]["naif-301:1"] = {"description": "lunar crater"}
+
+        ns = write_feature_detail_bundles(tmp_path, details)
+
+        assert ns["global"] >= 1
+        assert ns["en"] >= 1
+        # Every other lang should report 0 buckets
+        for lang in ("ar", "fr", "ja", "ru", "zh"):
+            assert ns[lang] == 0
+
+        # Decompose what we wrote: bucket file names match the hashed key
+        global_dir = tmp_path / "nomenclature" / "details" / "__global__"
+        assert global_dir.exists()
+        gathered: dict[str, dict] = {}
+        for f in global_dir.glob("*.json.gz"):
+            gathered.update(orjson.loads(gzip.decompress(f.read_bytes())))
+        assert gathered == details.global_data
+
+        en_dir = tmp_path / "nomenclature" / "details" / "en"
+        assert en_dir.exists()
+        en_gathered: dict[str, dict] = {}
+        for f in en_dir.glob("*.json.gz"):
+            en_gathered.update(orjson.loads(gzip.decompress(f.read_bytes())))
+        assert en_gathered == details.localized_data["en"]
+
+    def test_empty_details_writes_nothing(self, tmp_path):
+        ns = write_feature_detail_bundles(tmp_path, FeatureDetailData())
+        assert ns["global"] == 0
+        for lang in ("ar", "en", "fr", "ja", "ru", "zh"):
+            assert ns[lang] == 0
+        assert not (tmp_path / "nomenclature" / "details").exists()

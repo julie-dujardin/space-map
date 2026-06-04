@@ -108,38 +108,56 @@ def _stage_metadata(
 
 class TestSelectForQid:
     def test_no_data_returns_empty(self, layout):
-        assert image_selection._select_for_qid("Q1234", {}) == []
+        assert (
+            image_selection._select_for_qid(
+                "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+            )
+            == []
+        )
 
     def test_single_p18_pass_through(self, layout):
         _stage_wikidata(layout, "Q1234", p18=["A.jpg"])
         _stage_metadata(layout, "A.jpg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "A.jpg", "kind": "photo"}]
 
     def test_canonicalizes_space_to_underscore(self, layout):
         _stage_wikidata(layout, "Q1234", p18=["My File.jpg"])
         _stage_metadata(layout, "My_File.jpg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "My_File.jpg", "kind": "photo"}]
 
     def test_p154_logo_kind(self, layout):
         _stage_wikidata(layout, "Q1234", p154=["Logo.svg"])
         _stage_metadata(layout, "Logo.svg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "Logo.svg", "kind": "logo"}]
 
     def test_dedupes_p18_and_pageimage(self, layout):
         _stage_wikidata(layout, "Q1234", p18=["Hero.jpg"])
         _stage_pageimage(layout, LANGUAGES[0], "Q1234", "Hero.jpg")
         _stage_metadata(layout, "Hero.jpg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "Hero.jpg", "kind": "photo"}]
 
     def test_excluded_prefix_skipped(self, layout):
         # Russian-wiki orbit-diagram noise filenames are dropped at discovery.
         _stage_pageimage(layout, "ru", "Q1234", "Орбита_астероида_1234.png")
         _stage_metadata(layout, "Орбита_астероида_1234.png")
-        assert image_selection._select_for_qid("Q1234", {}) == []
+        assert (
+            image_selection._select_for_qid(
+                "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+            )
+            == []
+        )
 
     def test_picks_featured_tree_member_over_direct_pageimage(self, layout):
         # The un-centered raw is the Wikidata pageimage; the centered crop
@@ -152,7 +170,9 @@ class TestSelectForQid:
         _stage_metadata(
             layout, "Mercury_centered.jpg", assessments="featured", globalusage=2000
         )
-        result = image_selection._select_for_qid("Q308", {})
+        result = image_selection._select_for_qid(
+            "Q308", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "Mercury_centered.jpg", "kind": "photo"}]
 
     def test_pageimage_count_breaks_assessment_tie(self, layout):
@@ -166,7 +186,9 @@ class TestSelectForQid:
         _stage_metadata(layout, "primary.jpg", derived_from=["common-parent.jpg"])
         _stage_metadata(layout, "secondary.jpg", derived_from=["common-parent.jpg"])
         _stage_metadata(layout, "common-parent.jpg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         # One tree → one selection; primary.jpg has 4 (P18 + 3 pageimages),
         # secondary 1, common-parent 0. Primary wins.
         assert result == [{"file": "primary.jpg", "kind": "photo"}]
@@ -177,7 +199,9 @@ class TestSelectForQid:
         _stage_pageimage(layout, "en", "Q1234", "photo-2.jpg")
         _stage_metadata(layout, "photo-1.jpg")
         _stage_metadata(layout, "photo-2.jpg")
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [
             {"file": "photo-1.jpg", "kind": "photo"},
             {"file": "photo-2.jpg", "kind": "photo"},
@@ -195,7 +219,9 @@ class TestSelectForQid:
             assessments="featured",
             license_servable=False,
         )
-        result = image_selection._select_for_qid("Q1234", {})
+        result = image_selection._select_for_qid(
+            "Q1234", {}, layout["wikidata"], aux_pid="P154", aux_kind="logo"
+        )
         assert result == [{"file": "raw.jpg", "kind": "photo"}]
 
 
@@ -208,14 +234,18 @@ class TestReadObjectImages:
             "naif-199": [{"file": "Mercury.jpg", "kind": "photo"}],
             "naif-299": [{"file": "Venus.jpg", "kind": "photo"}],
         }
-        image_selection._write_cache(selections)
+        image_selection._write_cache(
+            image_selection.OBJECT_IMAGES_PATH, "objects", selections
+        )
         assert image_selection.read_object_images() == selections
 
     def test_keys_are_full_object_ids(self, layout):
         # Sanity-check the schema: keys carry the namespace prefix
         # (naif-, spkid-, norad-, ...), not bare numeric values.
         image_selection._write_cache(
-            {"naif-399": [{"file": "Earth.jpg", "kind": "photo"}]}
+            image_selection.OBJECT_IMAGES_PATH,
+            "objects",
+            {"naif-399": [{"file": "Earth.jpg", "kind": "photo"}]},
         )
         payload = json.loads(image_selection.OBJECT_IMAGES_PATH.read_text())
         assert "naif-399" in payload["objects"]

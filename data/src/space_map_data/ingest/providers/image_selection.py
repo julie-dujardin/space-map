@@ -1,26 +1,33 @@
-"""Compute the per-object best Commons image and cache it to disk.
+"""Compute the per-object and per-feature best Commons image, cache to disk.
 
-For each object that has a Wikidata QID we discover the direct image
-candidates (P18 ∪ P154 ∪ Wikipedia pageimages across LANGUAGES), group them
+For each object/feature that has a Wikidata QID we discover the direct image
+candidates (P18 ∪ {aux} ∪ Wikipedia pageimages across LANGUAGES — aux is P154
+"logo" for objects and P242 "locator" for nomenclature features), group them
 into derivative-tree components via on-disk metadata, and pick the highest-
-scoring file per tree (assessment > pageimage-frequency > globalusage —
-see :mod:`space_map_data.utils.image_scoring`).
+scoring file per tree (assessment > pageimage-frequency > globalusage — see
+:mod:`space_map_data.utils.image_scoring`).
 
-The result is cached at ``DOWNLOAD_DIR/commons/object_images.json`` keyed by
-``Object.id`` (e.g. ``naif-199``). The export reads this cache instead of
-re-walking sources, and the existing ``image_available`` flag is derived
-from the same output.
+The results are cached at:
+
+* ``DOWNLOAD_DIR/commons/object_images.json`` keyed by ``Object.id`` (e.g.
+  ``naif-199``). Drives the ``image_available`` flag on Object rows.
+* ``DOWNLOAD_DIR/commons/feature_images.json`` keyed by IAU
+  ``Feature.feature_id`` (stringified).
+
+Exports read these caches instead of re-walking sources.
 """
 
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
+from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
@@ -35,35 +42,41 @@ from space_map_data.utils.paths import DOWNLOAD_DIR
 logger = logging.getLogger(__name__)
 
 OBJECT_IMAGES_PATH = DOWNLOAD_DIR / PROVIDERS.COMMONS / "object_images.json"
+FEATURE_IMAGES_PATH = DOWNLOAD_DIR / PROVIDERS.COMMONS / "feature_images.json"
 
 SCHEMA_VERSION = 1
 
 
 def ingest() -> None:
-    """Build ``object_images.json`` and update ``image_available`` accordingly."""
+    """Build object/feature image caches and update ``image_available``."""
     session = get_session()
+    metadata_cache: dict[str, dict | None] = {}
 
     objects = (
         session.query(Object.id, Object.wikidata_qid)
         .filter(Object.wikidata_qid.is_not(None))
         .all()
     )
-
-    metadata_cache: dict[str, dict | None] = {}
     qid_cache: dict[str, list[dict]] = {}
     selections: dict[str, list[dict]] = {}
 
     for obj_id, qid in tqdm(objects, desc="Selecting per-object images", unit="obj"):
         selected = qid_cache.get(qid)
         if selected is None:
-            selected = _select_for_qid(qid, metadata_cache)
+            selected = _select_for_qid(
+                qid,
+                metadata_cache,
+                DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects",
+                aux_pid="P154",
+                aux_kind="logo",
+            )
             qid_cache[qid] = selected
         if selected:
             selections[obj_id] = selected
 
     _merge_manual_extras(selections)
 
-    _write_cache(selections)
+    _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
     _update_image_available_flag(session, set(selections))
     logger.info(
         "Wrote %s with images for %d / %d QID-linked objects",
@@ -72,13 +85,54 @@ def ingest() -> None:
         len(objects),
     )
 
+    # Features ride on the same selection logic but key by feature_id and pull
+    # P242 (locator map) instead of P154 (logo) as the aux image kind.
+    feature_rows = (
+        session.query(Feature.feature_id, Feature.wikidata_qid)
+        .filter(Feature.wikidata_qid.is_not(None))
+        .all()
+    )
+    feature_qid_cache: dict[str, list[dict]] = {}
+    feature_selections: dict[str, list[dict]] = {}
+    for feature_id, qid in tqdm(
+        feature_rows, desc="Selecting per-feature images", unit="feat"
+    ):
+        selected = feature_qid_cache.get(qid)
+        if selected is None:
+            selected = _select_for_qid(
+                qid,
+                metadata_cache,
+                DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "nomenclature",
+                aux_pid="P242",
+                aux_kind="locator",
+            )
+            feature_qid_cache[qid] = selected
+        if selected:
+            feature_selections[str(feature_id)] = selected
+    _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
+    logger.info(
+        "Wrote %s with images for %d / %d QID-linked features",
+        FEATURE_IMAGES_PATH.name,
+        len(feature_selections),
+        len(feature_rows),
+    )
 
-def _select_for_qid(qid: str, metadata_cache: dict[str, dict | None]) -> list[dict]:
+
+def _select_for_qid(
+    qid: str,
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
+    *,
+    aux_pid: str,
+    aux_kind: str,
+) -> list[dict]:
     """Pick the best-of-tree image list for one QID."""
     direct, kind_of, pageimage_count = collect_qid_image_candidates(
         qid,
-        wikidata_dir=DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects",
+        wikidata_dir=wikidata_dir,
         wiki_dir=DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA,
+        aux_pid=aux_pid,
+        aux_kind=aux_kind,
     )
     if not direct:
         return []
@@ -167,14 +221,16 @@ def _merge_manual_extras(selections: dict[str, list[dict]]) -> None:
             selections.pop(obj_id, None)
 
 
-def _write_cache(selections: dict[str, list[dict]]) -> None:
-    OBJECT_IMAGES_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _write_cache(
+    out_path: Path, payload_key: str, selections: dict[str, list[dict]]
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "objects": dict(sorted(selections.items())),
+        payload_key: dict(sorted(selections.items())),
     }
-    OBJECT_IMAGES_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def _update_image_available_flag(session, ids_with_images: set[str]) -> None:
@@ -196,11 +252,20 @@ def read_object_images() -> dict[str, list[dict]]:
     runs before ingest; or a fresh checkout). Callers fall back to no
     images, matching the previous behaviour.
     """
-    if not OBJECT_IMAGES_PATH.exists():
+    return _read_cache(OBJECT_IMAGES_PATH, "objects")
+
+
+def read_feature_images() -> dict[str, list[dict]]:
+    """Return the cached ``{feature_id: [{file, kind}, ...]}`` mapping."""
+    return _read_cache(FEATURE_IMAGES_PATH, "features")
+
+
+def _read_cache(path: Path, payload_key: str) -> dict[str, list[dict]]:
+    if not path.exists():
         return {}
     try:
-        payload = orjson.loads(OBJECT_IMAGES_PATH.read_bytes())
+        payload = orjson.loads(path.read_bytes())
     except orjson.JSONDecodeError:
-        logger.warning("Corrupt %s; ignoring", OBJECT_IMAGES_PATH)
+        logger.warning("Corrupt %s; ignoring", path)
         return {}
-    return payload.get("objects") or {}
+    return payload.get(payload_key) or {}

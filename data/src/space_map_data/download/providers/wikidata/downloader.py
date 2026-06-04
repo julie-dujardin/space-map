@@ -15,6 +15,7 @@ from space_map_data.download.providers.wikidata.id_resolver import WikidataIdRes
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
 from space_map_data.export.nomenclature.wikidata_claims import (
     FEATURE_ENTITY_REF_CLAIMS,
+    FEATURE_PID_TO_KEY,
 )
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
@@ -96,7 +97,13 @@ class WikidataDownloader(Downloader):
         units_dir = self.out_dir / "units"
         units_dir.mkdir(exist_ok=True)
         shared_follow = tuple(c.pid for c in ENTITY_REF_CLAIMS)
-        feature_follow = shared_follow + tuple(c.pid for c in FEATURE_ENTITY_REF_CLAIMS)
+        # Dedup since FEATURE_ENTITY_REF_CLAIMS overlaps with the shared set
+        # (P31, P138) — extracting twice would just hit the same statements.
+        feature_follow = tuple(
+            dict.fromkeys(
+                shared_follow + tuple(c.pid for c in FEATURE_ENTITY_REF_CLAIMS)
+            )
+        )
         primary_scans = [
             (objects_dir, shared_follow),
             (nomenclature_dir, feature_follow),
@@ -123,9 +130,8 @@ class WikidataDownloader(Downloader):
         # Fetch property entities (P-IDs) for label localization
         properties_dir = self.out_dir / "properties"
         properties_dir.mkdir(exist_ok=True)
-        property_pids = PID_TO_KEY.keys() - {
-            f.stem for f in properties_dir.glob("P*.json")
-        }
+        all_pids = PID_TO_KEY.keys() | FEATURE_PID_TO_KEY.keys()
+        property_pids = all_pids - {f.stem for f in properties_dir.glob("P*.json")}
         if property_pids:
             logger.info("Fetching %d property entities", len(property_pids))
             self._fetch_entities(
