@@ -158,6 +158,25 @@ class TestBestUnit:
         conv = _build_mass_converter()
         assert conv.best_unit(100, "temperature") is None
 
+    def test_negative_value_picks_by_magnitude(self):
+        # Regression: ``value > 1.1`` would always be false for negatives, so
+        # an elevation of -90 m used to tumble down to the smallest unit
+        # (e.g. attometre × 1e19) instead of staying as -90 m.
+        conv = _build_mass_converter()
+        result = conv.best_unit(-5000, "mass")
+        assert result is not None
+        assert result["unit"] == "kilogram"
+        assert result["value"] == -5.0
+
+    def test_negative_value_threshold_is_magnitude(self):
+        # |value/factor| just above 1.1 should still pick the larger unit
+        # the same as positive values do.
+        conv = _build_mass_converter()
+        result = conv.best_unit(-1200, "mass")
+        assert result is not None
+        assert result["unit"] == "kilogram"
+        assert result["value"] == -1.2
+
 
 class TestConvert:
     def test_known_unit(self):

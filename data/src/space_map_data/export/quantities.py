@@ -179,7 +179,7 @@ class UnitConverter:
         strip = self._strip_trailing_zeros
         for entry in ladder:
             value = value_in_base / entry.factor
-            if value > 1.1:
+            if abs(value) > 1.1:
                 self.used_units.add(entry.label)
                 return {"value": strip(value), "unit": entry.label}
         # Fallback: use the smallest unit in the ladder
