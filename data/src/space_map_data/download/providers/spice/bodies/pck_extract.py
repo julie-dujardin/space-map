@@ -178,7 +178,7 @@ def extract_radii() -> list[dict]:
     for naif_id in sorted(naif_ids):
         canonical = _canonical_naif(naif_id)
         if canonical is None:
-            continue  # binary-satellite NAIF form (no Object to attach to)
+            continue
         if canonical in rows_by_canonical:
             continue  # NAIF-canonical form was already emitted first
         try:
@@ -271,7 +271,7 @@ def extract_gravity_field() -> list[dict]:
 
 
 def _canonical_naif(naif_id: int) -> int | None:
-    """Normalize numbered-asteroid NAIF IDs to the canonical `2_000_000 + n` form.
+    """Normalize numbered-asteroid NAIF IDs to the canonical form used by Object rows.
 
     Some mission PCKs use non-standard NAIF ID conventions for asteroids:
 
@@ -284,19 +284,15 @@ def _canonical_naif(naif_id: int) -> int | None:
       down to `2_000_000 + n` (Donaldjohanson → 2052246).
     * **Lucy / DART** for the binary secondary use `1_<spkid>` (e.g.
       `BODY120000617_RADII` = Menoetius, `BODY120065803_RADII` = Dimorphos).
-      These are asteroid satellites; their Object rows live in `SBDBMoon`
-      with non-NAIF object IDs, so we have no `Object.naif_id` to attach
-      to. Returns None — caller drops the entry and the satellite stays
-      shape-less for now. Wiring satellites up properly needs a join via
-      `SBDBMoon.parent_spkid + iau_num` instead of NAIF ID.
+      SBDB moon ingest creates Object rows with `naif_id == spkid` in this
+      range, so the value passes through unchanged.
     """
     # Binary primary: 9_20XXXXXX → 2_XXXXXX. Same offset as the solo form
     # plus a leading "9", so subtract (9-2) * 10^8 + 18M = 918_000_000.
     if 920_000_000 <= naif_id < 930_000_000:
         return naif_id - 918_000_000
-    # Binary secondary: 1_20XXXXXX → no NAIF mapping (see docstring).
-    if 120_000_000 <= naif_id < 130_000_000:
-        return None
+    # Binary secondary: 1_20XXXXXX — sbdb_moons ingest assigns the same
+    # value to Object.naif_id, so we pass it through.
     # Solo asteroid SBDB spkid form: 20_000_000 + n → 2_000_000 + n.
     if 20_000_000 <= naif_id < 30_000_000:
         return naif_id - 18_000_000

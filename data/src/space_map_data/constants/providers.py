@@ -23,7 +23,6 @@ class PROVIDERS(StrEnum):
 class ID_TYPES(StrEnum):
     NAIF = "naif"
     SPKID = "spkid"
-    SBDB_MOON = "sbdb_moon"
     MPC_DESIGNATION = "mpc_designation"
     NORAD_SATCAT = "norad_satcat"
     COSPAR = "cospar"

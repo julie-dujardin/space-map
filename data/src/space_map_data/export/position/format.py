@@ -118,7 +118,9 @@ ID_TYPE_ORDINAL: dict[ID_TYPES, int] = {
     ID_TYPES.NAIF: 0,
     ID_TYPES.SPKID: 1,
     ID_TYPES.NORAD_SATCAT: 2,
-    ID_TYPES.SBDB_MOON: 3,
+    # Ordinal 3 used to belong to a now-removed `sbdb_moon` id-type
+    # (asteroid moons now ship as `spkid-N20xxxxxx`); not reassigned so
+    # frontends stay backwards-compatible with previously-shipped files.
     ID_TYPES.PROBE: 4,
 }
 

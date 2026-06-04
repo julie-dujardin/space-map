@@ -3,8 +3,11 @@
 Reads the per-parent JSON files written by `SBDBMoonsDownloader`
 (`space-map-downloads/sbdb_moons/{parent_spkid}.json`) and writes:
 
-  - One ``Object`` row per *new* satellite, keyed
-    ``sbdb_moon-<parent_spkid>-<sat_index>``.
+  - One ``Object`` row per *new* satellite, keyed ``spkid-<synth_spkid>``
+    where ``synth_spkid = (sat_index + 1) * 100_000_000 + parent_spkid``.
+    This matches the SPICE NAIF convention for asteroid satellites — moon
+    N of asteroid ``20xxxxxx`` is ``N20xxxxxx`` (e.g. Dimorphos =
+    ``120065803``, Dactyl = ``120000243``).
   - One ``SBDBMoon`` row per satellite, holding identity + orbital
     elements + uncertainties + provenance.
 
@@ -69,6 +72,12 @@ _ELEMENT_SIGMA_COLS = {
 # of these can't ship in the small_body_moons position file; the ingest
 # sets ``Object.has_position`` accordingly.
 _KEPLER_REQUIRED = ("epoch_jd", "a_km", "e", "i", "om", "w", "ma", "n")
+
+# Max sat_index that fits the synthetic-spkid scheme: prefix = sat_index + 1
+# must stay in 1..8. Prefix 9 is reserved for the SPICE binary-primary slot
+# (``920xxxxxx``, used by Lucy/DART PCKs). No real asteroid system has more
+# than 3 known moons; the cap is defensive.
+_MAX_SAT_INDEX = 7
 
 
 def _coerce_int(val: int | str | None) -> int | None:
@@ -177,6 +186,7 @@ class SBDBMoonsIngestor:
         self.merged_count = 0
         self.no_parent_files = 0
         self.alt_orbits_dropped = 0
+        self.over_cap_count = 0
 
     def _clear(self) -> None:
         # Clears all SBDBMoon rows (including ones merge-attached to
@@ -248,6 +258,7 @@ class SBDBMoonsIngestor:
     def _build_new_object_row(
         self,
         sat_id: str,
+        synth_spkid: int,
         sat: dict,
         tree_parent_object_id: str | None,
         sat_row: dict,
@@ -267,6 +278,11 @@ class SBDBMoonsIngestor:
             name=display_name,
             object_type=ObjectType.moon,
             provisional_designation=prov_des,
+            # naif_id == spkid in the binary-satellite range (no Horizons offset);
+            # populating both lets PCK lookups (keyed on naif_id) attach radii
+            # for catalogued binaries like Dimorphos and Menoetius.
+            spkid=synth_spkid,
+            naif_id=synth_spkid,
             scale=ElementsScale.system,
             parent_id=tree_parent_object_id,
             orbital_source=OrbitalSource.sbdb_moon.value,
@@ -366,7 +382,17 @@ class SBDBMoonsIngestor:
                         existing_id,
                     )
                 else:
-                    sat_id = make_object_id(ID_TYPES.SBDB_MOON, f"{parent_spkid}-{idx}")
+                    if idx > _MAX_SAT_INDEX:
+                        self.over_cap_count += 1
+                        logger.warning(
+                            "%s sat %d: exceeds synthetic-spkid cap (prefix would clash "
+                            "with the binary-primary slot); skipping",
+                            path.name,
+                            idx,
+                        )
+                        continue
+                    synth_spkid = (idx + 1) * 100_000_000 + parent_spkid
+                    sat_id = make_object_id(ID_TYPES.SPKID, synth_spkid)
                     sat_row = self._build_sat_row(
                         sat_id,
                         parent_object_id,
@@ -376,7 +402,7 @@ class SBDBMoonsIngestor:
                         include_orbit=True,
                     )
                     obj_row = self._build_new_object_row(
-                        sat_id, sat, tree_parent_object_id, sat_row
+                        sat_id, synth_spkid, sat, tree_parent_object_id, sat_row
                     )
                     objects.append(obj_row)
                     sats.append(sat_row)
@@ -405,6 +431,12 @@ class SBDBMoonsIngestor:
             logger.info(
                 "%d alternate orbit solutions dropped (kept first per sat)",
                 self.alt_orbits_dropped,
+            )
+        if self.over_cap_count:
+            logger.warning(
+                "%d satellite(s) skipped: sat_index exceeded synthetic-spkid cap (%d)",
+                self.over_cap_count,
+                _MAX_SAT_INDEX,
             )
 
 

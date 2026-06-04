@@ -102,10 +102,10 @@ class ParsedElementsFile:
 def _id_to_naif(id_value: int, id_type_ordinal: int) -> int | None:
     """Return a SPICE-addressable NAIF id, or None when no mapping exists.
 
-    ID_TYPE_ORDINAL: 0=NAIF, 1=SPKID, 2=NORAD_SATCAT, 3=SBDB_MOON, 4=PROBE.
+    ID_TYPE_ORDINAL: 0=NAIF, 1=SPKID, 2=NORAD_SATCAT, 4=PROBE (3 retired).
     Asteroids ship as SPK-IDs (20XXXXXX); SPICE addresses them as NAIF
     (2XXXXXX), so subtract the 18M offset. Comets use 1XXXXXX in both
-    schemes (no offset). NORAD/SBDB_MOON have no NAIF analogue here.
+    schemes (no offset). NORAD has no NAIF analogue here.
     """
     if id_type_ordinal == 0:  # NAIF
         return id_value

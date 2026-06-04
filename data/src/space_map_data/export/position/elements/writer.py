@@ -379,21 +379,13 @@ def _parse_numeric_id(obj: Object) -> int:
     """Return the source-specific numeric ID for the binary export.
 
     Uses the proper column (naif_id, spkid, or norad_cat_id) based on the
-    Object.id prefix (ID_TYPE). For the ``sbdb_moon`` prefix we ship the
-    sat_index (per-parent ordinal) rather than the compound id tail — the
-    frontend rebuilds the full id from parent_id + sat_index.
+    Object.id prefix (ID_TYPE).
     """
     pos = obj.id.find("-")
     if pos == -1:
         logger.warning("%s: no separator in object ID", obj.id)
         return MISSING_INT32
     id_type = obj.id[:pos]
-
-    if id_type == "sbdb_moon":
-        if obj.sbdb_moon is None:
-            logger.warning("%s: missing sbdb_moon relation for binary export", obj.id)
-            return MISSING_INT32
-        return obj.sbdb_moon.sat_index
 
     attr = _ID_TYPE_ATTR.get(id_type)
     if attr is not None:
