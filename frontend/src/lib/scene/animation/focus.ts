@@ -22,6 +22,10 @@ export interface FocusState {
 	flyQ0: Quaternion | null;
 	flyQ1: Quaternion | null;
 	orbitFly: boolean;
+	/** Lock camera world position to `camTargetWorld` (body-tracking) for the
+	 *  whole animation instead of easing from `camOriginWorld` — for plain focus
+	 *  switches the `focusTruePos` smoothstep alone carries the scene transition. */
+	cameraStaysOnBody: boolean;
 	focusStartTime: number;
 	focusDurationMs: number;
 }
@@ -96,14 +100,19 @@ export function stepFocusAnimation(
 				);
 			}
 		} else {
-			// Slerp camera orientation toward a lookAt that tracks the body's *current*
-			// position each frame — without this, animation ends pointed at the body's
-			// start-of-animation position and snaps when controls re-center on settle.
-			const lookAtQ = lookAtQuaternion(state.camOriginWorld!, state.focusTargetWorld, camera.up);
+			let camWorld: Vec3;
+			if (state.cameraStaysOnBody) {
+				camWorld = state.camTargetWorld!;
+			} else {
+				// Camera world position eases in so rotation is visible first
+				const sCam = t * t * t; // cubic ease-in
+				camWorld = f64lerp(state.camOriginWorld!, state.camTargetWorld!, sCam);
+			}
+			// Slerp toward a lookAt recomputed each frame from the actual camera
+			// world position; freezing the source would drift the body off-centre
+			// when the camera is body-tracking.
+			const lookAtQ = lookAtQuaternion(camWorld, state.focusTargetWorld, camera.up);
 			camera.quaternion.slerpQuaternions(state.flyQ0!, lookAtQ, s);
-			// Camera world position eases in so rotation is visible first
-			const sCam = t * t * t; // cubic ease-in
-			const camWorld = f64lerp(state.camOriginWorld!, state.camTargetWorld!, sCam);
 			camera.position.set(
 				camWorld[0] - state.focusTruePos[0],
 				camWorld[1] - state.focusTruePos[1],
@@ -142,6 +151,7 @@ export function stepFocusAnimation(
 		state.flyQ0 = null;
 		state.flyQ1 = null;
 		state.orbitFly = false;
+		state.cameraStaysOnBody = false;
 	}
 	return !controls.update();
 }
@@ -168,6 +178,7 @@ export function prepareFocusTarget(
 			camPos[1] - bodyPosition[1],
 			camPos[2] - bodyPosition[2]
 		];
+		state.cameraStaysOnBody = false;
 		state.focusDurationMs = FLY_DURATION_MS;
 		// Capture start orientation, compute end orientation for slerp
 		state.flyQ0 = camera.quaternion.clone();
@@ -188,13 +199,17 @@ export function prepareFocusTarget(
 		camera.position.copy(savedPos);
 		camera.quaternion.copy(state.flyQ0);
 	} else {
-		// Camera stays at current world position, only rotates toward new focus.
-		// camTargetOffset stays null — the camera target is world-fixed (camera
-		// doesn't move); the orientation slerp recomputes its lookAt each frame
-		// against the body's current position in stepFocusAnimation.
+		// Camera tracks the new body via camTargetOffset so small systems with
+		// large solar velocity (asteroids at fast time) don't slip away during
+		// the rotation.
 		state.camOriginWorld = cameraTruePos;
 		state.camTargetWorld = [...cameraTruePos];
-		state.camTargetOffset = null;
+		state.camTargetOffset = [
+			cameraTruePos[0] - bodyPosition[0],
+			cameraTruePos[1] - bodyPosition[1],
+			cameraTruePos[2] - bodyPosition[2]
+		];
+		state.cameraStaysOnBody = true;
 		state.focusDurationMs = FOCUS_DURATION_MS;
 		state.flyQ0 = camera.quaternion.clone();
 		// flyQ1 is unused on this path (orientation slerps to a per-frame lookAt
@@ -225,6 +240,7 @@ export function prepareFlyToCamera(
 	state.focusStartTime = performance.now();
 	state.focusDurationMs = FLY_DURATION_MS;
 	state.orbitFly = true;
+	state.cameraStaysOnBody = false;
 	// Set dummy quaternions so isFlying is true
 	state.flyQ0 = camera.quaternion.clone();
 	state.flyQ1 = camera.quaternion.clone();

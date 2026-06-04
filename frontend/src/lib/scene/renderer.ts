@@ -122,6 +122,7 @@ export class SceneRenderer {
 		flyQ0: null,
 		flyQ1: null,
 		orbitFly: false,
+		cameraStaysOnBody: false,
 		focusStartTime: 0,
 		focusDurationMs: FOCUS_DURATION_MS
 	};
