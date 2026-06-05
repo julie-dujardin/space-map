@@ -1,6 +1,7 @@
 """Wikidata claim extraction and entity-reference resolution."""
 
 import logging
+from dataclasses import dataclass
 from typing import Literal, NamedTuple
 from urllib.parse import quote, urlparse
 
@@ -12,6 +13,115 @@ from space_map_data.export.wikidata import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EntityRef:
+    """A resolved Wikidata reference, optionally pointing at a map focus target.
+
+    ``primary_*`` + ``secondary_*`` form an extensible path-like locator:
+    body alone → just primary (e.g. ``primary=(naif, 499)``); feature on a
+    body → primary names the body, secondary refines (e.g.
+    ``secondary=(feature, 12345)``). When ``primary_id`` is set the
+    ``wikipedia`` field is omitted on serialization — the frontend opens
+    the target's drawer instead.
+    """
+
+    name: str
+    short_name: str | None = None
+    wikipedia: str | None = None
+    primary_id: str | None = None
+    primary_type: str | None = None
+    secondary_id: str | None = None
+    secondary_type: str | None = None
+
+    def to_dict(self) -> dict:
+        out: dict = {"name": self.name}
+        if self.short_name:
+            out["short_name"] = self.short_name
+        if self.primary_id is not None:
+            out["primary_id"] = self.primary_id
+            out["primary_type"] = self.primary_type
+            if self.secondary_id is not None:
+                out["secondary_id"] = self.secondary_id
+                out["secondary_type"] = self.secondary_type
+        elif self.wikipedia:
+            out["wikipedia"] = self.wikipedia
+        return out
+
+
+@dataclass(frozen=True)
+class FocusTarget:
+    """A resolved map focus target with the display name to show in the ref."""
+
+    primary_type: str
+    primary_id: str
+    secondary_type: str | None
+    secondary_id: str | None
+    name: str
+
+
+class FocusResolver:
+    """Resolve referenced QIDs to map focus targets (body or feature).
+
+    ``located_on_physical_feature`` is same-body by construction in IAU
+    nomenclature; ``location`` is most often the parent body but may
+    occasionally name a sub-feature. The resolver tries feature (same
+    body) first, then any body, to honor the "most precise wins" rule.
+
+    The display name comes from canonical project data (IAU feature name
+    or Object.name) — not the referenced Wikidata entity — so resolution
+    works even when the parent's Wikidata payload only lives in
+    ``nomenclature/`` (not ``referenced/``), which is the common case.
+    """
+
+    def __init__(
+        self,
+        body_by_qid: dict[str, tuple[str, str | None]],
+        feature_by_qid_per_body: dict[str, dict[str, tuple[int, str]]],
+    ) -> None:
+        self._body_by_qid = body_by_qid
+        self._feature_by_qid_per_body = feature_by_qid_per_body
+
+    def resolve(self, qid: str, current_body_id: str) -> FocusTarget | None:
+        per_body = self._feature_by_qid_per_body.get(current_body_id)
+        if per_body and qid in per_body:
+            feature_id, feature_name = per_body[qid]
+            primary_type, primary_id = _split_object_id(current_body_id)
+            return FocusTarget(
+                primary_type=primary_type,
+                primary_id=primary_id,
+                secondary_type="feature",
+                secondary_id=str(feature_id),
+                name=feature_name,
+            )
+        target = self._body_by_qid.get(qid)
+        if target:
+            object_id, body_name = target
+            if body_name is None:
+                # Body row has no usable name to display — skip.
+                return None
+            primary_type, primary_id = _split_object_id(object_id)
+            return FocusTarget(
+                primary_type=primary_type,
+                primary_id=primary_id,
+                secondary_type=None,
+                secondary_id=None,
+                name=body_name,
+            )
+        return None
+
+
+def _split_object_id(object_id: str) -> tuple[str, str]:
+    """Split an ``<id_type>-<value>`` Object.id into its parts.
+
+    Handles negative NAIF values like ``naif--164`` (the ``str.partition``
+    split keeps everything after the first ``-`` intact).
+    """
+    prefix, sep, value = object_id.partition("-")
+    if not sep:
+        raise ValueError(f"Object id {object_id!r} missing id-type prefix")
+    return prefix, value
 
 
 _INSTANCE_OF_IGNORED = {
@@ -189,22 +299,47 @@ def resolve_entity_ref(
     qid: str,
     lang: str,
     wikidata_entities: WikidataEntityCache,
-) -> dict | None:
-    """Resolve a QID to {name, short_name?, wikipedia?} using downloaded entity data."""
+    *,
+    focus_resolver: FocusResolver | None = None,
+    focus_body_id: str | None = None,
+) -> EntityRef | None:
+    """Resolve a QID to an ``EntityRef`` using downloaded entity data.
+
+    When a ``focus_resolver`` is provided and the QID maps to a known map
+    target, the ref carries primary/secondary focus fields and the wiki
+    link is dropped — the frontend opens the target's drawer instead, and
+    that drawer already exposes the wiki link. Callers gate by claim key
+    (e.g. only ``located_on_*`` and ``location`` should be focus-resolved,
+    not ``named_after``). Focus targets get their display name from
+    canonical project data, so they don't require ``referenced/`` payload.
+    """
+    focus = None
+    if focus_resolver is not None and focus_body_id is not None:
+        focus = focus_resolver.resolve(qid, focus_body_id)
+    if focus is not None:
+        return EntityRef(
+            name=focus.name,
+            primary_type=focus.primary_type,
+            primary_id=focus.primary_id,
+            secondary_type=focus.secondary_type,
+            secondary_id=focus.secondary_id,
+        )
+
     wd = wikidata_entities.get_referenced(qid)
     if not wd:
         return None
     name = wd["labels"].get(lang)
     if not name:
         return None
-    result: dict = {"name": name}
+    ref = EntityRef(name=name)
     short = _shortest_ref_name(name, lang, wd)
     if short:
-        result["short_name"] = short
+        ref.short_name = short
     title = wd["sitelinks"].get(lang)
     if title:
-        result["wikipedia"] = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
-    return result
+        ref.wikipedia = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
+
+    return ref
 
 
 def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:

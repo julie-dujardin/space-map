@@ -906,7 +906,8 @@ class TestResolveEntityRef:
             }
         )
         result = resolve_entity_ref("Q3134", "en", cache)
-        assert result == {
+        assert result is not None
+        assert result.to_dict() == {
             "name": "Ceres",
             "wikipedia": "https://en.wikipedia.org/wiki/Ceres%20%28dwarf%20planet%29",
         }
@@ -919,7 +920,8 @@ class TestResolveEntityRef:
             }
         )
         result = resolve_entity_ref("Q2513", "en", cache)
-        assert result == {"name": "Hubble"}
+        assert result is not None
+        assert result.to_dict() == {"name": "Hubble"}
 
     def test_returns_none_when_not_found(self):
         cache = self._mock_cache(None)
@@ -945,8 +947,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == "Some Long Name"
-        assert result["short_name"] == "SLN"
+        assert result.name == "Some Long Name"
+        assert result.short_name == "SLN"
 
     def test_uses_p1813_short_name(self):
         """P1813 (short name) is exported as short_name; full label stays as name."""
@@ -961,8 +963,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q23548", "en", cache)
         assert result is not None
-        assert result["name"] == "National Aeronautics and Space Administration"
-        assert result["short_name"] == "NASA"
+        assert result.name == "National Aeronautics and Space Administration"
+        assert result.short_name == "NASA"
 
     def test_uses_shortest_alias(self):
         """When no P1813 exists, the shortest alias is used as short_name."""
@@ -975,8 +977,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q24256506", "en", cache)
         assert result is not None
-        assert result["name"] == "Kennedy Space Center Launch Complex 39B"
-        assert result["short_name"] == "LC39B"
+        assert result.name == "Kennedy Space Center Launch Complex 39B"
+        assert result.short_name == "LC39B"
 
     def test_p1813_preferred_over_longer_alias(self):
         """P1813 short name is considered alongside aliases; shortest wins."""
@@ -992,8 +994,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == "Some Very Long Organization Name Here"
-        assert result["short_name"] == "SV"
+        assert result.name == "Some Very Long Organization Name Here"
+        assert result.short_name == "SV"
 
     def test_p1813_wrong_language_ignored(self):
         """P1813 in a different language should not be used."""
@@ -1009,8 +1011,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "fr", cache)
         assert result is not None
-        assert result["name"] == "Très long nom d'organisation spatiale"
-        assert result["short_name"] == "TLNO"
+        assert result.name == "Très long nom d'organisation spatiale"
+        assert result.short_name == "TLNO"
 
     def test_no_shorter_form_keeps_original(self):
         """When all aliases are longer, no short_name is set."""
@@ -1024,8 +1026,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == long_name
-        assert "short_name" not in result
+        assert result.name == long_name
+        assert result.short_name is None
 
     def test_no_aliases_no_short_name(self):
         """When there are no aliases or P1813, no short_name is set."""
@@ -1037,8 +1039,8 @@ class TestResolveEntityRef:
         )
         result = resolve_entity_ref("Q1", "en", cache)
         assert result is not None
-        assert result["name"] == "International Space Station"
-        assert "short_name" not in result
+        assert result.name == "International Space Station"
+        assert result.short_name is None
 
 
 class TestResolveUnit:

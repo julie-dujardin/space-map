@@ -49,6 +49,7 @@ from space_map_data.export.nomenclature.wikidata_claims import (
     extract_feature_claims,
 )
 from space_map_data.export.objects.wikidata_claims import (
+    FocusResolver,
     resolve_entity_ref,
     resolve_unit,
 )
@@ -60,6 +61,15 @@ from space_map_data.export.position.format import quantize_deg
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.feature import Feature
+from space_map_data.models.object import Object
+
+
+# Entity-ref claim keys whose targets we attempt to resolve to in-map
+# focus links (body or feature). `named_after` and `instance_of` stay
+# wiki-only — they target people/myths/concepts, not mapped objects.
+FOCUS_RESOLVE_CLAIM_KEYS: frozenset[str] = frozenset(
+    {"location", "located_on_physical_feature"}
+)
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +237,8 @@ def build_feature_details(
     session: Session,
     wikidata_entities: WikidataEntityCache,
     units: UnitConverter,
+    *,
+    body_filter: str | None = None,
 ) -> FeatureDetailData:
     """Build the details tier for every IAU feature with extractable enrichment.
 
@@ -234,18 +246,33 @@ def build_feature_details(
     body) and either a Wikidata QID (claim extraction) or images in the
     feature-image cache. Features with neither don't get a details entry —
     the lean marker file is all the frontend will fetch for them.
+
+    Pass ``body_filter`` (e.g. ``"naif-301"``) to restrict the pass to one
+    body — used by the standalone inspect tool to look at sample output
+    without running a full export.
     """
     out = FeatureDetailData()
-    rows = (
-        session.query(Feature)
-        .filter(Feature.object_id.isnot(None))
-        .order_by(Feature.object_id, Feature.feature_id)
-        .all()
+
+    rows_q = session.query(Feature).filter(Feature.object_id.isnot(None))
+    if body_filter is not None:
+        rows_q = rows_q.filter(Feature.object_id == body_filter)
+    rows = rows_q.order_by(Feature.object_id, Feature.feature_id).all()
+
+    focus_resolver, feature_qid_to_id_per_body, name_lookup_per_body = (
+        _build_focus_indices(session, rows)
     )
+    # parent feature → set of child feature ids (both sources, dedup by set)
+    children_index: dict[tuple[str, int], set[int]] = {}
 
     skipped_no_enrichment = 0
     for f in rows:
         assert f.object_id is not None  # SQL filter
+
+        if f.parent_feature_id is not None:
+            children_index.setdefault((f.object_id, f.parent_feature_id), set()).add(
+                f.feature_id
+            )
+
         feature_qid = f.wikidata_qid
         wd = wikidata_entities.get_feature_entity(feature_qid)
 
@@ -261,6 +288,17 @@ def build_feature_details(
                     f.feature_id,
                     feature_qid,
                     exc,
+                )
+
+        # Wikidata-derived located_on_physical_feature edges: when a
+        # referenced QID resolves to a feature in the same body, register
+        # the inverse edge so the parent gets a `children` entry.
+        per_body_features = feature_qid_to_id_per_body.get(f.object_id, {})
+        for ref_qid in extracted.get("located_on_physical_feature", []):
+            parent_fid = per_body_features.get(ref_qid)
+            if parent_fid is not None and parent_fid != f.feature_id:
+                children_index.setdefault((f.object_id, parent_fid), set()).add(
+                    f.feature_id
                 )
 
         images = collect_feature_images(f.feature_id)
@@ -289,6 +327,7 @@ def build_feature_details(
                     extracted,
                     wikidata_entities,
                     wiki_summaries.get(lang),
+                    focus_resolver,
                 )
                 if lang_entry:
                     out.localized_data[lang][bucket_key] = lang_entry
@@ -298,7 +337,77 @@ def build_feature_details(
             "Skipped %d features with no detail-tier enrichment (no QID, no images)",
             skipped_no_enrichment,
         )
+
+    _attach_children(out, children_index, name_lookup_per_body)
     return out
+
+
+def _build_focus_indices(
+    session: Session,
+    rows: list[Feature],
+) -> tuple[FocusResolver, dict[str, dict[str, int]], dict[str, dict[int, str]]]:
+    """Build QID→body and per-body QID→feature maps used by focus resolution.
+
+    Also returns a per-body ``feature_id → name`` lookup, used downstream
+    when attaching children lists (sorted by name for stable order). The
+    same name lookup is plumbed into the resolver so resolved targets
+    display the IAU canonical name without needing a referenced/ payload.
+    """
+    body_q = session.query(Object.id, Object.name, Object.wikidata_qid).filter(
+        Object.wikidata_qid.isnot(None)
+    )
+    body_by_qid: dict[str, tuple[str, str | None]] = {}
+    for object_id, name, qid in body_q:
+        # Object.wikidata_qid isn't unique (some comet QIDs map to multiple
+        # rows). First win is fine — the focus target is approximate by
+        # nature, the precise feature path is what matters.
+        body_by_qid.setdefault(qid, (object_id, name))
+
+    feature_qid_to_id_per_body: dict[str, dict[str, int]] = {}
+    feature_by_qid_per_body: dict[str, dict[str, tuple[int, str]]] = {}
+    name_lookup_per_body: dict[str, dict[int, str]] = {}
+    for f in rows:
+        assert f.object_id is not None  # SQL filter at the caller
+        canonical = f.unicode_name or f.name
+        name_lookup_per_body.setdefault(f.object_id, {})[f.feature_id] = canonical
+        if f.wikidata_qid:
+            feature_qid_to_id_per_body.setdefault(f.object_id, {})[f.wikidata_qid] = (
+                f.feature_id
+            )
+            feature_by_qid_per_body.setdefault(f.object_id, {})[f.wikidata_qid] = (
+                f.feature_id,
+                canonical,
+            )
+
+    return (
+        FocusResolver(body_by_qid, feature_by_qid_per_body),
+        feature_qid_to_id_per_body,
+        name_lookup_per_body,
+    )
+
+
+def _attach_children(
+    out: FeatureDetailData,
+    children_index: dict[tuple[str, int], set[int]],
+    name_lookup_per_body: dict[str, dict[int, str]],
+) -> None:
+    """Attach a sorted ``children`` list to each parent's global entry.
+
+    Parents that had no enrichment pass (no QID/no images) but do have
+    children get a minimal global entry created here so the children list
+    still ships.
+    """
+    for (body_id, parent_fid), child_set in children_index.items():
+        names = name_lookup_per_body.get(body_id, {})
+        sorted_children = sorted(
+            (cid for cid in child_set if cid in names),
+            key=lambda cid: names[cid],
+        )
+        if not sorted_children:
+            continue
+        parent_key = feature_bucket_key(body_id, parent_fid)
+        entry = out.global_data.setdefault(parent_key, {})
+        entry["children"] = sorted_children
 
 
 def _build_detail_global(
@@ -342,6 +451,7 @@ def _build_detail_localized(
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
     wiki_summary: WikipediaSummary | None,
+    focus_resolver: FocusResolver,
 ) -> dict:
     """Build the per-language payload for one feature."""
     data: dict = {}
@@ -363,18 +473,34 @@ def _build_detail_localized(
     for claim in FEATURE_ENTITY_REF_CLAIMS:
         if claim.key not in extracted:
             continue
+        use_focus = focus_resolver if claim.key in FOCUS_RESOLVE_CLAIM_KEYS else None
+        focus_body = feature.object_id if use_focus is not None else None
         if claim.multiple:
             refs = [
-                r
+                r.to_dict()
                 for qid in extracted[claim.key]
-                if (r := resolve_entity_ref(qid, lang, wikidata_entities))
+                if (
+                    r := resolve_entity_ref(
+                        qid,
+                        lang,
+                        wikidata_entities,
+                        focus_resolver=use_focus,
+                        focus_body_id=focus_body,
+                    )
+                )
             ]
             if refs:
                 data[claim.key] = refs
         else:
-            ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
+            ref = resolve_entity_ref(
+                extracted[claim.key],
+                lang,
+                wikidata_entities,
+                focus_resolver=use_focus,
+                focus_body_id=focus_body,
+            )
             if ref:
-                data[claim.key] = ref
+                data[claim.key] = ref.to_dict()
 
     if wiki_summary is not None:
         data["wikipedia"] = wiki_summary.to_dict()

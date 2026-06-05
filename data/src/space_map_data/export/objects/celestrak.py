@@ -53,14 +53,14 @@ def build_satcat_localized(
         if spec is not None and spec.wikidata_qid is not None:
             ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
             if ref:
-                data["constellation"] = ref
+                data["constellation"] = ref.to_dict()
 
     if sat.launch_site_code is not None:
         site = LAUNCH_SITE_BY_CODE.get(sat.launch_site_code)
         if site is not None and site.wikidata_qid is not None:
             ref = resolve_entity_ref(site.wikidata_qid, lang, wikidata_entities)
             if ref:
-                data["launch_site"] = [ref]
+                data["launch_site"] = [ref.to_dict()]
 
     if sat.operator_qids:
         refs = resolve_operator_refs(sat.operator_qids, lang, wikidata_entities)
@@ -99,11 +99,12 @@ def resolve_operator_refs(
         ref = resolve_entity_ref(qid, lang, wikidata_entities)
         if ref is None:
             continue
+        ref_dict = ref.to_dict()
         spec = OPERATOR_BY_QID.get(qid)
         if spec is not None:
             if spec.active_from is not None:
-                ref["active_from"] = _serialize_active_date(spec.active_from)
+                ref_dict["active_from"] = _serialize_active_date(spec.active_from)
             if spec.active_until is not None:
-                ref["active_until"] = _serialize_active_date(spec.active_until)
-        refs.append(ref)
+                ref_dict["active_until"] = _serialize_active_date(spec.active_until)
+        refs.append(ref_dict)
     return refs
