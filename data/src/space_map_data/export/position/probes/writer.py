@@ -14,14 +14,15 @@ Time-axis alignment: chunks align to a global `start_jd` (1950-01-01) so the
 chunk index for a given JD is `floor((jd - start_jd) / chunk_days)`, matching
 the chebyshev exporter's convention.
 
-Incremental: each chunk emits a JSON sidecar with `(fit_version, zone_hash,
-probes→kernel mtime+size)`. On re-export we recompute that signature and
-skip the chunk if it matches what's on disk. See `sidecar.py`.
+Incremental: per-probe fits live in a cache under
+`EXPORT_METADATA_DIR/position/probes/_fits/{probe_id}/{zone}/{chunk_idx}.fit`.
+A change to one probe's kernels only invalidates that probe's fits; the
+chunk sidecar tracks per-probe fit-signature hashes and triggers a repack
+of just the chunks whose probe set changed. See `fit_cache.py` / `sidecar.py`.
 
 Pipeline split: kernel discovery in `kernels.py`, dataclasses in `plan.py`,
-landed-phase fits in `landed.py`, time math in `time_grid.py`, the three
-passes in `classify.py` / `fit.py` / `write.py`. This module is the
-top-level orchestrator.
+landed-phase fits in `landed.py`, time math in `time_grid.py`, the passes in
+`classify.py` / `fit.py` / `write.py`. This module is the top-level orchestrator.
 """
 
 import logging
@@ -36,7 +37,14 @@ from space_map_data.export.position.probes.classify import classify_pass
 from space_map_data.export.position.probes.events_classify import (
     classify_events_phases,
 )
-from space_map_data.export.position.probes.fit import decide_dirty, fit_pass
+from space_map_data.export.position.probes import fit_cache
+from space_map_data.export.position.probes.fit import (
+    build_fits,
+    collect_for_repack,
+    decide_dirty_chunks,
+    expected_fit_sigs,
+    stale_fits,
+)
 from space_map_data.export.position.probes.kernels import collect_generic_kernels
 from space_map_data.export.position.probes.plan import build_probe_metas
 from space_map_data.export.position.probes.time_grid import (
@@ -66,14 +74,17 @@ def write_probes(
 ) -> dict[str, dict]:
     """Build per-zone, per-chunk binary files for every probe on disk.
 
-    Three-pass incremental export:
-      1. Classify each probe (furnish + spkezr) to know which chunks it
-         touches. No fitting yet.
-      2. Compare planned-chunk signatures against on-disk sidecars; only
-         "dirty" chunks proceed.
-      3. Re-furnish each probe that touches a dirty chunk and run the
-         expensive `size_chunk` fits only on those (probe, chunk) pairs.
-      4. Pack + atomic-write binary + sidecar per dirty chunk.
+    Incremental export with per-probe fit caching:
+      1. Classify each probe (furnish + spkezr) to know which (zone, chunk)
+         pairs it touches. No fitting yet.
+      2. Compute the expected per-(probe, zone, chunk) signatures and pick
+         the stale ones (`stale_fits`).
+      3. Re-furnish each probe whose fits went stale and run the expensive
+         `size_chunk` / `fit_landed_chunk` work for just those entries,
+         saving each `ChunkProbeRecord` to the metadata-dir cache.
+      4. Compute expected chunk signatures from per-probe fit-sig hashes;
+         the chunks whose hashes changed are dirty. Load cached records
+         for each dirty chunk and pack + atomic-write binary + sidecar.
 
     Returns `{zone_key_with_prefix: {chunks, chunk_days, start_jd, end_jd}}`
     so `_build_position_metadata` can fold it into the manifest.
@@ -142,16 +153,12 @@ def write_probes(
             for chunk_idx, plan_list in by_chunk.items():
                 chunk_index[zone_key][chunk_idx].extend(plan_list)
 
-        dirty = decide_dirty(
-            chunk_index,
-            metas_by_probe_id,
-            out_dir,
-            download_dir,
-            candidates_hash_by_zone,
-        )
-        by_zone_chunk = fit_pass(
-            plans, dirty, generic_spk_paths, start_jd, candidates_by_zone
-        )
+        sigs = expected_fit_sigs(plans, download_dir, candidates_hash_by_zone)
+        stale = stale_fits(sigs)
+        build_fits(plans, stale, generic_spk_paths, start_jd, candidates_by_zone)
+        fit_cache.prune_orphans(set(sigs.keys()))
+        dirty = decide_dirty_chunks(chunk_index, sigs, metas_by_probe_id, out_dir)
+        by_zone_chunk = collect_for_repack(dirty, chunk_index)
     finally:
         spiceypy.kclear()
 

@@ -5,18 +5,21 @@ Each chunk file `{zone}/{chunk_idx}.bin.gz` has a companion JSON sidecar
 
   * `binary_version` — `format.VERSION` mirror; wire-format bumps
     auto-invalidate every chunk.
-  * `fit_version` — manual bump for fit-internal changes at the same
-    wire format (e.g. retuning a sizing threshold).
   * `zone_hash` — content hash of fit-affecting zone params.
-  * `probes` — `{probe_id: [{path, mtime_ns, size}, …]}` per kernel.
-    Kernel edits invalidate only the chunks the probe contributes to.
+  * `probes` — `{probe_id: {"fit": fit_sig_hash, "ord": int, "has_loc":
+    bool}}`. `fit` is a short hash of the per-probe fit signature stored
+    alongside the cached `.fit` payload under
+    `_fits/{probe_id}/{zone}/{chunk_idx}.fit.meta.json`; `ord` and
+    `has_loc` mirror the wire-header bits.
+
+`FIT_VERSION`, kernel mtimes, candidates_hash, and events_hash live inside
+the per-probe fit signature rather than this chunk sidecar — a change to
+any of them flips the affected probe's `fit` hash. An i18n / type-tag edit
+flips `has_loc` / `ord` without invalidating the cached fit, so the chunk
+repacks from cached trajectory data.
 
 Atomic writes: binary then sidecar, each tempfile + rename. A partially-
 completed run leaves the chunk in "regenerate next run" state.
-
-`mtime_ns + size` is good enough as long as kernels are never rewritten
-in place. Our downloader writes once; if that ever changes, switch to a
-content hash here.
 """
 
 import hashlib
@@ -59,8 +62,8 @@ def zone_signature(zone: Zone) -> str:
 
 def events_files_hash() -> str:
     """Hash every events JSON's `(name, mtime_ns, size)` so an edit anywhere
-    in the events folder invalidates every chunk that consults them. Empty
-    string when the folder is absent (CI / first run)."""
+    in the events folder invalidates every cached fit that consults them.
+    Empty string when the folder is absent (CI / first run)."""
     if not EVENTS_DIR.exists():
         return ""
     entries = [
@@ -83,49 +86,19 @@ def _kernel_entry(path: Path, download_dir: Path) -> dict:
 
 def build_chunk_signature(
     zone: Zone,
-    probes: list[tuple[int, list[Path], int, bool]],
-    download_dir: Path,
-    candidates_hash: str,
-    events_hash: str,
+    probe_block: dict[str, dict],
 ) -> dict:
-    """Compute the expected sidecar contents from the *planned* probe set.
+    """Chunk-level signature: zone params + per-probe `{fit, ord, has_loc}`.
 
-    `probes` is `[(probe_id, [kernel_path, ...], object_type_ordinal,
-    has_localized), ...]`. Duplicate probe_ids collapse to a single entry
-    (latest wins) — the planning pass can append a probe multiple times for
-    a chunk when its zone-membership intervals re-enter the chunk window.
-
-    Per-probe header bits (`object_type_ordinal`, `has_localized`) are
-    folded into the signature so that flipping either invalidates the
-    chunk — those bits live in each probe's binary header and a stale
-    chunk would otherwise keep the old values forever.
-
-    `candidates_hash` summarises the set of alternate fit centers
-    (moons / asteroids) that detection considered. Changes — adding a
-    moon to chebyshev, removing an asteroid — invalidate every chunk so
-    detection re-runs.
-
-    `events_hash` summarises the events JSON folder so events-driven
-    landed records re-emit whenever any events file is edited. Global
-    rather than per-chunk because we don't track which events file
-    contributes to which (probe, chunk).
+    `probe_block` is `{str(probe_id): {"fit": fit_sig_hash, "ord": int,
+    "has_loc": bool}}` — one entry per probe that contributes a
+    `ChunkProbeRecord` to this chunk. `fit` flips when the trajectory must
+    re-fit (kernels, candidates_hash, events_hash, FIT_VERSION, …); the
+    other two flip when only the wire-header bits change (i18n, type tag
+    edit) so the chunk repacks from cached fits without recomputing.
     """
-    probe_block: dict[str, dict] = {}
-    for probe_id, kernels, object_type_ordinal, has_localized in probes:
-        entries = sorted(
-            (_kernel_entry(k, download_dir) for k in kernels),
-            key=lambda d: d["path"],
-        )
-        probe_block[str(probe_id)] = {
-            "kernels": entries,
-            "object_type_ordinal": object_type_ordinal,
-            "has_localized": has_localized,
-        }
     return {
         "binary_version": BINARY_VERSION,
-        "fit_version": FIT_VERSION,
         "zone_hash": zone_signature(zone),
-        "candidates_hash": candidates_hash,
-        "events_hash": events_hash,
         "probes": dict(sorted(probe_block.items())),
     }
