@@ -70,6 +70,14 @@ def remove_old_outputs(out_dir: Path) -> None:
     p = out_dir / "objects"
     if p.exists():
         shutil.rmtree(p)
+    # Nomenclature details bucket count depends on K_GLOBAL / K_LOCALIZED;
+    # tuning either leaves stale-numbered files behind that the writer
+    # never touches. Marker tier (positions/, __global__/) uses stable
+    # per-body filenames and overwrites cleanly, so only details needs
+    # the wipe.
+    p = out_dir / "nomenclature" / "details"
+    if p.exists():
+        shutil.rmtree(p)
     # System metadata is regenerated each export (individual textures are not)
     for d in ("textures/systems", "systems"):
         p = out_dir / d
