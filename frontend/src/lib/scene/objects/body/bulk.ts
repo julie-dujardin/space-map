@@ -2,6 +2,7 @@ import { type CanvasTexture, type Points, type PointsMaterial, type Scene } from
 import { resolveBodyColor } from '$lib/utils';
 import { BODY_COLORS } from '$lib/constants';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { OrbitalSource } from '$lib/fetch/position/format';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { BodyObjects } from '../../types';
 import { asteroidPointSize, makePointCloud } from '../pointcloud';
@@ -48,12 +49,21 @@ export function buildTrails(
 		if (bo.trail !== null) continue;
 		const { body } = bo;
 		// STAR is the Sun — no trail. Halo-only mesh-upgradable bodies
-		// (asteroids, comets, probes) render as halo + label only by design,
-		// so we skip trail build until focus runs `upgradeBodyMesh` — building
-		// it would burn ~512 Kepler solves per body for nothing. Barycenters
-		// and Lagrange points stay halo-only forever and keep their trails.
+		// (asteroids, comets) render as halo + label only by design, so we skip
+		// trail build until focus runs `upgradeBodyMesh` — building it would
+		// burn ~512 Kepler solves per body for nothing. Barycenters and Lagrange
+		// points stay halo-only forever and keep their trails. Probes never get
+		// a sphere mesh (isVirtual in buildMajorBodies), so the mesh check would
+		// trap them forever — they get a trail as soon as they're promoted into
+		// bodyObjects, unless they're minor-promoted (halo-only, label/trail
+		// surface only when focused).
 		if (body.data.objectType === ObjectType.STAR) continue;
-		if (!bo.mesh && isMeshUpgradable(body)) continue;
+		const isProbe = body.data.orbitalSource === OrbitalSource.SPICE_PROBE;
+		if (isProbe) {
+			if (bo.isMinor && !bo.mesh) continue;
+		} else if (!bo.mesh && isMeshUpgradable(body)) {
+			continue;
+		}
 		// Probes whose elements were null at processProbes time (typically
 		// because systems-global GMs hadn't landed yet) carry a rederive
 		// callback — retry it now so the trail self-heals on the next
