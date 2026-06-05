@@ -36,7 +36,10 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
+from urllib.parse import quote
+
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.quadrangle_refs import QUADRANGLE_QIDS
 from space_map_data.export.images import collect_feature_images
 from space_map_data.export.nomenclature.format import (
     pack_header,
@@ -423,30 +426,31 @@ def build_feature_details(
             f, extracted, images, units, wikidata_entities, name_lookup_per_body
         )
         bucket_key = feature_bucket_key(f.object_id, f.feature_id)
-        out.global_data[bucket_key] = global_entry
+        if global_entry:
+            out.global_data[bucket_key] = global_entry
 
-        if wd:
-            wiki_summaries = (
-                load_wikipedia_summaries_for_qid(f.wikidata_qid)
-                if f.wikidata_qid
-                else {}
+        # Localized may have content (quadrangle, inside_of) even without a
+        # feature-level Wikidata entry — quadrangle just needs the seeded
+        # referenced/ payload; inside_of also has bbox/radius contributions.
+        wiki_summaries = (
+            load_wikipedia_summaries_for_qid(f.wikidata_qid) if f.wikidata_qid else {}
+        )
+        body_names = name_lookup_per_body.get(f.object_id, {})
+        inside_ids = inside_feature_ids.get(f.feature_id, set())
+        for lang in LANGUAGES:
+            lang_entry = _build_detail_localized(
+                f,
+                lang,
+                wd,
+                extracted,
+                wikidata_entities,
+                wiki_summaries.get(lang),
+                focus_resolver,
+                inside_ids,
+                body_names,
             )
-            body_names = name_lookup_per_body.get(f.object_id, {})
-            inside_ids = inside_feature_ids.get(f.feature_id, set())
-            for lang in LANGUAGES:
-                lang_entry = _build_detail_localized(
-                    f,
-                    lang,
-                    wd,
-                    extracted,
-                    wikidata_entities,
-                    wiki_summaries.get(lang),
-                    focus_resolver,
-                    inside_ids,
-                    body_names,
-                )
-                if lang_entry:
-                    out.localized_data[lang][bucket_key] = lang_entry
+            if lang_entry:
+                out.localized_data[lang][bucket_key] = lang_entry
 
     if skipped_no_enrichment:
         logger.info(
@@ -728,12 +732,6 @@ def _build_detail_global(
     data: dict = {}
     if feature.wikidata_qid:
         data["wikidata_qid"] = feature.wikidata_qid
-    if feature.quad_code and feature.quad_name:
-        # No focus target — quadrangles aren't mapped objects. ``wikipedia``
-        # will be populated once quadrangle QIDs are matched upstream.
-        data["quadrangle"] = EntityRef(
-            name=feature.quad_name, short_name=feature.quad_code
-        ).to_dict()
     if feature.parent_feature_id is not None:
         assert feature.object_id is not None
         parent_name = name_lookup_per_body.get(feature.object_id, {}).get(
@@ -769,7 +767,7 @@ def _build_detail_global(
 def _build_detail_localized(
     feature: Feature,
     lang: str,
-    wd: WikidataEntity,
+    wd: WikidataEntity | None,
     extracted: dict,
     wikidata_entities: WikidataEntityCache,
     wiki_summary: WikipediaSummary | None,
@@ -779,33 +777,34 @@ def _build_detail_localized(
 ) -> dict:
     """Build the per-language payload for one feature."""
     data: dict = {}
-    labels = wd["labels"]
-    canonical = feature.unicode_name or feature.name
-    if lang in labels and labels[lang] != canonical:
-        data["name"] = labels[lang]
+    if wd is not None:
+        labels = wd["labels"]
+        canonical = feature.unicode_name or feature.name
+        if lang in labels and labels[lang] != canonical:
+            data["name"] = labels[lang]
 
-    desc = wd["descriptions"].get(lang)
-    if desc:
-        data["description"] = desc
-    aliases = wd["aliases"].get(lang)
-    if aliases:
-        data["aliases"] = aliases
+        desc = wd["descriptions"].get(lang)
+        if desc:
+            data["description"] = desc
+        aliases = wd["aliases"].get(lang)
+        if aliases:
+            data["aliases"] = aliases
 
-    for claim in FEATURE_ENTITY_REF_CLAIMS:
-        if claim.key in _SPATIAL_CLAIM_KEYS or claim.key not in extracted:
-            continue
-        if claim.multiple:
-            refs = [
-                r.to_dict()
-                for qid in extracted[claim.key]
-                if (r := resolve_entity_ref(qid, lang, wikidata_entities))
-            ]
-            if refs:
-                data[claim.key] = refs
-        else:
-            ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
-            if ref:
-                data[claim.key] = ref.to_dict()
+        for claim in FEATURE_ENTITY_REF_CLAIMS:
+            if claim.key in _SPATIAL_CLAIM_KEYS or claim.key not in extracted:
+                continue
+            if claim.multiple:
+                refs = [
+                    r.to_dict()
+                    for qid in extracted[claim.key]
+                    if (r := resolve_entity_ref(qid, lang, wikidata_entities))
+                ]
+                if refs:
+                    data[claim.key] = refs
+            else:
+                ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
+                if ref:
+                    data[claim.key] = ref.to_dict()
 
     inside_of = _build_inside_of(
         feature,
@@ -818,6 +817,22 @@ def _build_detail_localized(
     )
     if inside_of:
         data["inside_of"] = inside_of
+
+    if feature.quad_code and feature.quad_name:
+        assert feature.object_id is not None
+        wiki_url: str | None = None
+        quad_qid = QUADRANGLE_QIDS.get((feature.object_id, feature.quad_code))
+        if quad_qid is not None:
+            quad_wd = wikidata_entities.get_referenced(quad_qid)
+            if quad_wd:
+                title = quad_wd["sitelinks"].get(lang)
+                if title:
+                    wiki_url = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
+        data["quadrangle"] = EntityRef(
+            name=feature.quad_name,
+            short_name=feature.quad_code,
+            wikipedia=wiki_url,
+        ).to_dict()
 
     if wiki_summary is not None:
         data["wikipedia"] = wiki_summary.to_dict()

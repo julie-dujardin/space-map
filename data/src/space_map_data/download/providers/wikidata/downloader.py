@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.constants.quadrangle_refs import quadrangle_qids
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
@@ -89,6 +90,15 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="earth-sat catalogs",
+        )
+        # IAU planetary quadrangles (Mercury/Mars/Venus). Not reachable via
+        # feature claims — features carry quad_code/quad_name from the IAU
+        # XML, not a P706/P276 link to the quadrangle's Wikidata entity.
+        self._fetch_entities(
+            quadrangle_qids(),
+            referenced_dir,
+            limit=None,
+            fetch_desc="quadrangles",
         )
 
         # Second pass: fetch referenced entities and units. Each primary tier
