@@ -49,7 +49,9 @@ from space_map_data.export.nomenclature.wikidata_claims import (
     extract_feature_claims,
 )
 from space_map_data.export.objects.wikidata_claims import (
+    EntityRef,
     FocusResolver,
+    make_feature_entityref,
     resolve_entity_ref,
     resolve_unit,
 )
@@ -64,21 +66,33 @@ from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object
 
 
-# Entity-ref claim keys whose targets we attempt to resolve to in-map
-# focus links (body or feature). `named_after` and `instance_of` stay
-# wiki-only — they target people/myths/concepts, not mapped objects.
-FOCUS_RESOLVE_CLAIM_KEYS: frozenset[str] = frozenset(
-    {"location", "located_on_physical_feature"}
+# Wikidata claim keys folded into the unified ``inside_of`` list:
+# P706 (located_on_physical_feature) and P361 (part_of). P276
+# (`location`) is dropped for now — almost all values are IAU
+# quadrangles, which the dedicated ``quadrangle`` field handles once
+# their QIDs are matched upstream; until then we'd be shipping noise.
+INSIDE_OF_CLAIM_KEYS: tuple[str, ...] = ("located_on_physical_feature", "part_of")
+
+# Claim keys handled by the inside_of builder — these are skipped in the
+# regular per-claim EntityRef loop so they don't get re-emitted.
+_SPATIAL_CLAIM_KEYS: frozenset[str] = frozenset(
+    {"location", "located_on_physical_feature", "part_of"}
 )
+
+# Bbox area threshold (in deg² × cos(midlat) proxy) below which a feature
+# is considered too small to act as a useful spatial container. Filters
+# out point-like features that happen to carry a tiny bbox.
+_MIN_CONTAINER_BBOX_AREA = 0.01
 
 logger = logging.getLogger(__name__)
 
 
-# Target average members per bundle, mirroring the objects writer. Bucket
-# count = ceil(total / K) so the per-bundle size stays roughly constant as
-# the dataset grows.
-K_GLOBAL = 100
-K_LOCALIZED = 200
+# Target average members per bundle. Global entries are mostly small
+# (quadrangle + parent_feature + occasional wikidata claims), localized
+# entries carry text. K is tuned to land post-gzip bundle size around
+# the target 200–300 KiB so the frontend keeps file count low.
+K_GLOBAL = 10000
+K_LOCALIZED = 1100
 
 
 def hash_bucket(key: str, n_buckets: int) -> int:
@@ -239,17 +253,22 @@ def build_feature_details(
     units: UnitConverter,
     *,
     body_filter: str | None = None,
+    body_radii_km: dict[str, float] | None = None,
+    trace_sources: dict[int, dict[str, set[int]]] | None = None,
 ) -> FeatureDetailData:
     """Build the details tier for every IAU feature with extractable enrichment.
 
-    Source set: every Feature with ``object_id`` set (so the bucket key has a
-    body) and either a Wikidata QID (claim extraction) or images in the
-    feature-image cache. Features with neither don't get a details entry —
-    the lean marker file is all the frontend will fetch for them.
+    Source set: features with ``object_id`` set plus at least one of: a
+    Wikidata QID (claim extraction), images in the feature-image cache,
+    IAU quadrangle assignment, an IAU satellite-feature link, or any
+    derived spatial relationship. Features with none of those still get
+    their lean marker entry, just no details bundle entry.
 
-    Pass ``body_filter`` (e.g. ``"naif-301"``) to restrict the pass to one
-    body — used by the standalone inspect tool to look at sample output
-    without running a full export.
+    ``body_radii_km`` enables circle (center+diameter) containment in
+    addition to the bbox check; missing bodies fall back to bbox-only.
+    ``trace_sources`` collects per-feature attribution
+    (``{feature_id: {source_key: {container_fid, …}}}``) when supplied —
+    inspector-only, the production export passes ``None``.
     """
     out = FeatureDetailData()
 
@@ -261,64 +280,125 @@ def build_feature_details(
     focus_resolver, feature_qid_to_id_per_body, name_lookup_per_body = (
         _build_focus_indices(session, rows)
     )
-    # parent feature → set of child feature ids (both sources, dedup by set)
-    children_index: dict[tuple[str, int], set[int]] = {}
+    container_candidates_per_body = _container_candidates_per_body(rows)
 
-    skipped_no_enrichment = 0
+    # Cache Wikidata extraction (used twice: inside_of pre-pass + per-feature build)
+    extracted_by_feature: dict[int, dict] = {}
+    wd_by_feature: dict[int, WikidataEntity | None] = {}
     for f in rows:
-        assert f.object_id is not None  # SQL filter
-
-        if f.parent_feature_id is not None:
-            children_index.setdefault((f.object_id, f.parent_feature_id), set()).add(
-                f.feature_id
-            )
-
-        feature_qid = f.wikidata_qid
-        wd = wikidata_entities.get_feature_entity(feature_qid)
-
-        extracted: dict = {}
-        if feature_qid and wd:
+        wd = wikidata_entities.get_feature_entity(f.wikidata_qid)
+        wd_by_feature[f.feature_id] = wd
+        if f.wikidata_qid and wd:
             try:
-                extracted = extract_feature_claims(
-                    wd["claims"], qid=feature_qid, wikidata_entities=wikidata_entities
+                extracted_by_feature[f.feature_id] = extract_feature_claims(
+                    wd["claims"],
+                    qid=f.wikidata_qid,
+                    wikidata_entities=wikidata_entities,
                 )
             except Exception as exc:
                 logger.error(
                     "Error extracting claims for feature %d (%s): %s",
                     f.feature_id,
-                    feature_qid,
+                    f.wikidata_qid,
                     exc,
                 )
 
-        # Wikidata-derived located_on_physical_feature edges: when a
-        # referenced QID resolves to a feature in the same body, register
-        # the inverse edge so the parent gets a `children` entry.
-        per_body_features = feature_qid_to_id_per_body.get(f.object_id, {})
-        for ref_qid in extracted.get("located_on_physical_feature", []):
-            parent_fid = per_body_features.get(ref_qid)
-            if parent_fid is not None and parent_fid != f.feature_id:
-                children_index.setdefault((f.object_id, parent_fid), set()).add(
-                    f.feature_id
-                )
+    # Same-body feature ids each feature is inside (Wikidata-resolved +
+    # bbox-derived, dedup'd against parent_feature_id). Powers both the
+    # per-feature inside_of list and the inverse `contains` index.
+    inside_feature_ids: dict[int, set[int]] = {}
+    sat_index: dict[tuple[str, int], set[int]] = {}
+    contains_index: dict[tuple[str, int], set[int]] = {}
 
+    for f in rows:
+        assert f.object_id is not None
+
+        if f.parent_feature_id is not None:
+            sat_index.setdefault((f.object_id, f.parent_feature_id), set()).add(
+                f.feature_id
+            )
+
+        extracted = extracted_by_feature.get(f.feature_id, {})
+        per_body_qid_map = feature_qid_to_id_per_body.get(f.object_id, {})
+        traces: dict[str, set[int]] | None = None
+        if trace_sources is not None:
+            traces = {}
+            trace_sources[f.feature_id] = traces
+
+        same_body_inside: set[int] = set()
+        for key in INSIDE_OF_CLAIM_KEYS:
+            for qid in extracted.get(key, []):
+                tgt = per_body_qid_map.get(qid)
+                if tgt is not None and tgt != f.feature_id:
+                    same_body_inside.add(tgt)
+                    if traces is not None:
+                        traces.setdefault(key, set()).add(tgt)
+
+        # SF children inherit their spatial placement through the
+        # parent_feature link — running bbox/radius would double-count
+        # them in every ancestor's contains list. Wikidata-declared
+        # edges still flow through (above) since those are explicit.
+        if f.parent_feature_id is None:
+            spatial = _spatial_inside_of(
+                f,
+                container_candidates_per_body.get(f.object_id, []),
+                body_radii_km.get(f.object_id) if body_radii_km else None,
+            )
+            for fid, source in spatial:
+                same_body_inside.add(fid)
+                if traces is not None:
+                    traces.setdefault(source, set()).add(fid)
+
+        if f.parent_feature_id is not None:
+            # Belt-and-suspenders: a Wikidata edge to F's SF parent
+            # belongs in `parent_feature`, not echoed here.
+            same_body_inside.discard(f.parent_feature_id)
+
+        inside_feature_ids[f.feature_id] = same_body_inside
+
+        for parent_fid in same_body_inside:
+            contains_index.setdefault((f.object_id, parent_fid), set()).add(
+                f.feature_id
+            )
+
+    # IAU SF naming hierarchy wins over spatial containment when a child
+    # could be in both — keeps satellite_features and contains disjoint.
+    for parent_key, sf_set in sat_index.items():
+        if parent_key in contains_index:
+            contains_index[parent_key] -= sf_set
+
+    skipped_no_enrichment = 0
+    for f in rows:
+        assert f.object_id is not None  # SQL filter
+        extracted = extracted_by_feature.get(f.feature_id, {})
+        wd = wd_by_feature[f.feature_id]
         images = collect_feature_images(f.feature_id)
+        has_quadrangle = bool(f.quad_code and f.quad_name)
 
-        # Skip features that have neither images nor extractable claims —
-        # there's nothing for the details bundle to carry.
-        if not images and not extracted and not feature_qid:
+        if (
+            not images
+            and not extracted
+            and not f.wikidata_qid
+            and not has_quadrangle
+            and f.parent_feature_id is None
+        ):
             skipped_no_enrichment += 1
             continue
 
         global_entry = _build_detail_global(
-            f, extracted, images, units, wikidata_entities
+            f, extracted, images, units, wikidata_entities, name_lookup_per_body
         )
         bucket_key = feature_bucket_key(f.object_id, f.feature_id)
         out.global_data[bucket_key] = global_entry
 
         if wd:
             wiki_summaries = (
-                load_wikipedia_summaries_for_qid(feature_qid) if feature_qid else {}
+                load_wikipedia_summaries_for_qid(f.wikidata_qid)
+                if f.wikidata_qid
+                else {}
             )
+            body_names = name_lookup_per_body.get(f.object_id, {})
+            inside_ids = inside_feature_ids.get(f.feature_id, set())
             for lang in LANGUAGES:
                 lang_entry = _build_detail_localized(
                     f,
@@ -328,17 +408,21 @@ def build_feature_details(
                     wikidata_entities,
                     wiki_summaries.get(lang),
                     focus_resolver,
+                    inside_ids,
+                    body_names,
                 )
                 if lang_entry:
                     out.localized_data[lang][bucket_key] = lang_entry
 
     if skipped_no_enrichment:
         logger.info(
-            "Skipped %d features with no detail-tier enrichment (no QID, no images)",
+            "Skipped %d features with no detail-tier enrichment (no QID, no images, "
+            "no quadrangle, no SF parent)",
             skipped_no_enrichment,
         )
 
-    _attach_children(out, children_index, name_lookup_per_body)
+    _attach_inverse_lists(out, "satellite_features", sat_index, name_lookup_per_body)
+    _attach_inverse_lists(out, "contains", contains_index, name_lookup_per_body)
     return out
 
 
@@ -349,25 +433,20 @@ def _build_focus_indices(
     """Build QID→body and per-body QID→feature maps used by focus resolution.
 
     Also returns a per-body ``feature_id → name`` lookup, used downstream
-    when attaching children lists (sorted by name for stable order). The
-    same name lookup is plumbed into the resolver so resolved targets
-    display the IAU canonical name without needing a referenced/ payload.
+    when attaching inverse lists and building same-body EntityRefs.
     """
     body_q = session.query(Object.id, Object.name, Object.wikidata_qid).filter(
         Object.wikidata_qid.isnot(None)
     )
     body_by_qid: dict[str, tuple[str, str | None]] = {}
     for object_id, name, qid in body_q:
-        # Object.wikidata_qid isn't unique (some comet QIDs map to multiple
-        # rows). First win is fine — the focus target is approximate by
-        # nature, the precise feature path is what matters.
         body_by_qid.setdefault(qid, (object_id, name))
 
     feature_qid_to_id_per_body: dict[str, dict[str, int]] = {}
     feature_by_qid_per_body: dict[str, dict[str, tuple[int, str]]] = {}
     name_lookup_per_body: dict[str, dict[int, str]] = {}
     for f in rows:
-        assert f.object_id is not None  # SQL filter at the caller
+        assert f.object_id is not None
         canonical = f.unicode_name or f.name
         name_lookup_per_body.setdefault(f.object_id, {})[f.feature_id] = canonical
         if f.wikidata_qid:
@@ -386,18 +465,18 @@ def _build_focus_indices(
     )
 
 
-def _attach_children(
+def _attach_inverse_lists(
     out: FeatureDetailData,
-    children_index: dict[tuple[str, int], set[int]],
+    field: str,
+    index: dict[tuple[str, int], set[int]],
     name_lookup_per_body: dict[str, dict[int, str]],
 ) -> None:
-    """Attach a sorted ``children`` list to each parent's global entry.
+    """Attach a sorted EntityRef[] list under ``field`` to each parent's global entry.
 
-    Parents that had no enrichment pass (no QID/no images) but do have
-    children get a minimal global entry created here so the children list
-    still ships.
+    Parents without other enrichment but with children get a minimal
+    global entry created here so the list still ships.
     """
-    for (body_id, parent_fid), child_set in children_index.items():
+    for (body_id, parent_fid), child_set in index.items():
         names = name_lookup_per_body.get(body_id, {})
         sorted_children = sorted(
             (cid for cid in child_set if cid in names),
@@ -407,7 +486,198 @@ def _attach_children(
             continue
         parent_key = feature_bucket_key(body_id, parent_fid)
         entry = out.global_data.setdefault(parent_key, {})
-        entry["children"] = sorted_children
+        entry[field] = [
+            make_feature_entityref(body_id, cid, names[cid]).to_dict()
+            for cid in sorted_children
+        ]
+
+
+# -- Spatial containment (bbox + radius) -------------------------------------
+
+
+def _container_candidates_per_body(rows: list[Feature]) -> dict[str, list[Feature]]:
+    """Group features that could act as containers (bbox OR center+diameter).
+
+    Tiny bbox-only features are filtered out — a sub-degree bbox is
+    typically a point-feature placeholder, not a real region.
+    """
+    out: dict[str, list[Feature]] = {}
+    for f in rows:
+        has_bbox = (
+            f.min_lat is not None
+            and f.max_lat is not None
+            and f.min_lon is not None
+            and f.max_lon is not None
+            and _bbox_area(f.min_lat, f.max_lat, f.min_lon, f.max_lon)
+            >= _MIN_CONTAINER_BBOX_AREA
+        )
+        has_circle = (
+            f.center_lat is not None
+            and f.center_lon is not None
+            and f.diameter is not None
+            and f.diameter > 0.0
+        )
+        if has_bbox or has_circle:
+            assert f.object_id is not None
+            out.setdefault(f.object_id, []).append(f)
+    return out
+
+
+def _bbox_contains(
+    lat_min: float,
+    lat_max: float,
+    lon_min: float,
+    lon_max: float,
+    p_lat: float,
+    p_lon: float,
+) -> bool:
+    """Point-in-rectangle on a sphere; ``lon_min > lon_max`` means antimeridian-crossing."""
+    if not (lat_min <= p_lat <= lat_max):
+        return False
+    if lon_min <= lon_max:
+        return lon_min <= p_lon <= lon_max
+    return p_lon >= lon_min or p_lon <= lon_max
+
+
+def _bbox_area(lat_min: float, lat_max: float, lon_min: float, lon_max: float) -> float:
+    """Rough deg² with cosine-of-midlat correction — good enough for ranking."""
+    lat_span = lat_max - lat_min
+    if lon_min <= lon_max:
+        lon_span = lon_max - lon_min
+    else:
+        lon_span = (360.0 - lon_min) + lon_max
+    midlat = (lat_min + lat_max) / 2.0
+    return lat_span * lon_span * math.cos(math.radians(midlat))
+
+
+def _haversine_km(
+    lat1: float, lon1: float, lat2: float, lon2: float, radius_km: float
+) -> float:
+    """Great-circle distance between two lat/lon points on a sphere of *radius_km*."""
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
+    return 2.0 * radius_km * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _circle_area_deg2(diameter_km: float, body_radius_km: float) -> float:
+    """Approximate area of a feature's circular footprint, in deg² on its body."""
+    angular_r_deg = (diameter_km / 2.0) / body_radius_km * (180.0 / math.pi)
+    return math.pi * angular_r_deg * angular_r_deg
+
+
+def _container_metrics(
+    c: Feature, body_radius_km: float | None
+) -> tuple[float, bool] | None:
+    """Return ``(area_deg2, is_bbox)`` for a candidate container, or None if unusable.
+
+    Bbox wins when present (more precise than a circle approximation);
+    falls back to (center, diameter) when only the circle is available.
+    """
+    if (
+        c.min_lat is not None
+        and c.max_lat is not None
+        and c.min_lon is not None
+        and c.max_lon is not None
+    ):
+        return _bbox_area(c.min_lat, c.max_lat, c.min_lon, c.max_lon), True
+    if (
+        body_radius_km is not None
+        and c.center_lat is not None
+        and c.center_lon is not None
+        and c.diameter is not None
+        and c.diameter > 0.0
+    ):
+        return _circle_area_deg2(c.diameter, body_radius_km), False
+    return None
+
+
+def _spatial_inside_of(
+    feature: Feature,
+    candidates: list[Feature],
+    body_radius_km: float | None,
+) -> list[tuple[int, str]]:
+    """Containers whose bbox/circle contains ``feature.center``, with source tag.
+
+    Same-type candidates collapse to the smallest (most precise). When
+    the feature itself has bbox or circle, candidates must be strictly
+    larger — keeps a small bright spot from claiming a giant region as
+    its parent just because both happen to overlap.
+    Returns ``[(feature_id, "bbox" | "radius"), …]``.
+    """
+    if feature.center_lat is None or feature.center_lon is None:
+        return []
+
+    feature_area: float | None = None
+    if (
+        feature.min_lat is not None
+        and feature.max_lat is not None
+        and feature.min_lon is not None
+        and feature.max_lon is not None
+    ):
+        feature_area = _bbox_area(
+            feature.min_lat, feature.max_lat, feature.min_lon, feature.max_lon
+        )
+    elif (
+        body_radius_km is not None
+        and feature.diameter is not None
+        and feature.diameter > 0.0
+    ):
+        feature_area = _circle_area_deg2(feature.diameter, body_radius_km)
+
+    best_by_type: dict[str, tuple[int, float, str]] = {}
+    for c in candidates:
+        if c.feature_id == feature.feature_id:
+            continue
+        metrics = _container_metrics(c, body_radius_km)
+        if metrics is None:
+            continue
+        c_area, c_has_bbox = metrics
+        if feature_area is not None and c_area <= feature_area:
+            continue
+
+        if c_has_bbox:
+            assert c.min_lat is not None
+            assert c.max_lat is not None
+            assert c.min_lon is not None
+            assert c.max_lon is not None
+            inside = _bbox_contains(
+                c.min_lat,
+                c.max_lat,
+                c.min_lon,
+                c.max_lon,
+                feature.center_lat,
+                feature.center_lon,
+            )
+            source = "bbox"
+        else:
+            assert c.center_lat is not None
+            assert c.center_lon is not None
+            assert c.diameter is not None
+            assert body_radius_km is not None
+            d_km = _haversine_km(
+                c.center_lat,
+                c.center_lon,
+                feature.center_lat,
+                feature.center_lon,
+                body_radius_km,
+            )
+            inside = d_km <= c.diameter / 2.0
+            source = "radius"
+
+        if not inside:
+            continue
+
+        type_code = c.feature_type_code or ""
+        prev = best_by_type.get(type_code)
+        if prev is None or c_area < prev[1]:
+            best_by_type[type_code] = (c.feature_id, c_area, source)
+    return [(fid, src) for fid, _, src in best_by_type.values()]
 
 
 def _build_detail_global(
@@ -416,11 +686,27 @@ def _build_detail_global(
     images: list[dict] | None,
     units: UnitConverter,
     wikidata_entities: WikidataEntityCache,
+    name_lookup_per_body: dict[str, dict[int, str]],
 ) -> dict:
     """Build the per-language-independent payload for one feature."""
     data: dict = {}
     if feature.wikidata_qid:
         data["wikidata_qid"] = feature.wikidata_qid
+    if feature.quad_code and feature.quad_name:
+        # No focus target — quadrangles aren't mapped objects. ``wikipedia``
+        # will be populated once quadrangle QIDs are matched upstream.
+        data["quadrangle"] = EntityRef(
+            name=feature.quad_name, short_name=feature.quad_code
+        ).to_dict()
+    if feature.parent_feature_id is not None:
+        assert feature.object_id is not None
+        parent_name = name_lookup_per_body.get(feature.object_id, {}).get(
+            feature.parent_feature_id
+        )
+        if parent_name is not None:
+            data["parent_feature"] = make_feature_entityref(
+                feature.object_id, feature.parent_feature_id, parent_name
+            ).to_dict()
     if images:
         data["images"] = images
     if extracted:
@@ -452,14 +738,13 @@ def _build_detail_localized(
     wikidata_entities: WikidataEntityCache,
     wiki_summary: WikipediaSummary | None,
     focus_resolver: FocusResolver,
+    inside_feature_ids: set[int],
+    body_name_lookup: dict[int, str],
 ) -> dict:
     """Build the per-language payload for one feature."""
     data: dict = {}
     labels = wd["labels"]
     canonical = feature.unicode_name or feature.name
-    # Only ship a localized name when it actually differs from the IAU
-    # canonical form — the marker file already carries `name`, no point
-    # double-shipping identical strings.
     if lang in labels and labels[lang] != canonical:
         data["name"] = labels[lang]
 
@@ -471,41 +756,102 @@ def _build_detail_localized(
         data["aliases"] = aliases
 
     for claim in FEATURE_ENTITY_REF_CLAIMS:
-        if claim.key not in extracted:
+        if claim.key in _SPATIAL_CLAIM_KEYS or claim.key not in extracted:
             continue
-        use_focus = focus_resolver if claim.key in FOCUS_RESOLVE_CLAIM_KEYS else None
-        focus_body = feature.object_id if use_focus is not None else None
         if claim.multiple:
             refs = [
                 r.to_dict()
                 for qid in extracted[claim.key]
-                if (
-                    r := resolve_entity_ref(
-                        qid,
-                        lang,
-                        wikidata_entities,
-                        focus_resolver=use_focus,
-                        focus_body_id=focus_body,
-                    )
-                )
+                if (r := resolve_entity_ref(qid, lang, wikidata_entities))
             ]
             if refs:
                 data[claim.key] = refs
         else:
-            ref = resolve_entity_ref(
-                extracted[claim.key],
-                lang,
-                wikidata_entities,
-                focus_resolver=use_focus,
-                focus_body_id=focus_body,
-            )
+            ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
             if ref:
                 data[claim.key] = ref.to_dict()
+
+    inside_of = _build_inside_of(
+        feature,
+        lang,
+        extracted,
+        wikidata_entities,
+        focus_resolver,
+        inside_feature_ids,
+        body_name_lookup,
+    )
+    if inside_of:
+        data["inside_of"] = inside_of
 
     if wiki_summary is not None:
         data["wikipedia"] = wiki_summary.to_dict()
 
     return data
+
+
+def _build_inside_of(
+    feature: Feature,
+    lang: str,
+    extracted: dict,
+    wikidata_entities: WikidataEntityCache,
+    focus_resolver: FocusResolver,
+    inside_feature_ids: set[int],
+    body_name_lookup: dict[int, str],
+) -> list[dict]:
+    """Merge Wikidata (P706/P361) + bbox-derived containers into one EntityRef[].
+
+    Wikidata refs may resolve to bodies, features, or unmapped concepts;
+    bbox-derived refs always target same-body features. Dedup is keyed by
+    (primary/secondary id, name) so duplicate sources collapse cleanly.
+    The IAU SF parent is excluded — that lives in ``parent_feature``.
+    """
+    assert feature.object_id is not None
+    refs: list[dict] = []
+    seen: set[tuple[str | None, str | None, str | None, str | None, str]] = set()
+    parent_fid_str = (
+        str(feature.parent_feature_id)
+        if feature.parent_feature_id is not None
+        else None
+    )
+
+    def _add(ref: EntityRef) -> None:
+        if (
+            ref.secondary_type == "feature"
+            and parent_fid_str is not None
+            and ref.secondary_id == parent_fid_str
+        ):
+            return
+        key = (
+            ref.primary_type,
+            ref.primary_id,
+            ref.secondary_type,
+            ref.secondary_id,
+            ref.name,
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        refs.append(ref.to_dict())
+
+    for claim_key in INSIDE_OF_CLAIM_KEYS:
+        for qid in extracted.get(claim_key, []):
+            ref = resolve_entity_ref(
+                qid,
+                lang,
+                wikidata_entities,
+                focus_resolver=focus_resolver,
+                focus_body_id=feature.object_id,
+            )
+            if ref is not None:
+                _add(ref)
+
+    for fid in sorted(inside_feature_ids, key=lambda i: body_name_lookup.get(i, "")):
+        name = body_name_lookup.get(fid)
+        if name is None:
+            continue
+        _add(make_feature_entityref(feature.object_id, fid, name))
+
+    return refs
 
 
 def write_feature_detail_bundles(

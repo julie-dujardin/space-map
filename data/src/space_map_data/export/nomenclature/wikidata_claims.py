@@ -36,6 +36,7 @@ FEATURE_ENTITY_REF_CLAIMS: tuple[EntityRefClaim, ...] = (
     EntityRefClaim("named_after", "P138", multiple=True),
     EntityRefClaim("location", "P276", multiple=True),
     EntityRefClaim("located_on_physical_feature", "P706", multiple=True),
+    EntityRefClaim("part_of", "P361", multiple=True),
 )
 
 

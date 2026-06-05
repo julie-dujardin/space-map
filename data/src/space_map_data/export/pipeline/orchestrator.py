@@ -664,8 +664,14 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     # Feature details are built after object data so the unit converter has
     # already absorbed object-side `used_units`; nomenclature claims may add
     # more (km, m, ...) that the localization writer needs to see below.
+    body_radii_km = {
+        f"naif-{naif_id}": (r["a"] + r["b"] + r["c"]) / 3.0
+        for naif_id, r in radii.items()
+    }
     with Session(engine) as session:
-        feature_details = build_feature_details(session, wikidata_entities, units)
+        feature_details = build_feature_details(
+            session, wikidata_entities, units, body_radii_km=body_radii_km
+        )
     feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
     write_global_labels(
         out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids

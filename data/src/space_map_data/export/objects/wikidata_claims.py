@@ -124,6 +124,24 @@ def _split_object_id(object_id: str) -> tuple[str, str]:
     return prefix, value
 
 
+def make_feature_entityref(body_id: str, feature_id: int, name: str) -> EntityRef:
+    """EntityRef pointing at a feature on ``body_id``."""
+    prefix, value = _split_object_id(body_id)
+    return EntityRef(
+        name=name,
+        primary_type=prefix,
+        primary_id=value,
+        secondary_type="feature",
+        secondary_id=str(feature_id),
+    )
+
+
+def make_body_entityref(object_id: str, name: str) -> EntityRef:
+    """EntityRef pointing at a body (no secondary)."""
+    prefix, value = _split_object_id(object_id)
+    return EntityRef(name=name, primary_type=prefix, primary_id=value)
+
+
 _INSTANCE_OF_IGNORED = {
     "Q3901935",  # superior planet (orbits further from the Sun)
     "Q844911",  # inferior planet (orbits closer to the Sun)
