@@ -18,15 +18,24 @@ _NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
 
 def open_image(path: Path) -> Image.Image:
     try:
-        return Image.open(path)
+        img = Image.open(path)
     except Exception:
         log.debug(
             "PIL could not open %s, falling back to tifffile", path.name, exc_info=True
         )
+    else:
+        if img.mode != "RGB":
+            log.info("converting %s from %s to RGB", path.name, img.mode)
+            img = img.convert("RGB")
+        return img
 
     arr = tifffile.imread(str(path))
     if arr.dtype.kind != "f":
         raise ValueError(f"tifffile loaded {path.name} as {arr.dtype}, expected float")
+
+    # Promote single-channel (H, W) so the channel-aware logic below works.
+    if arr.ndim == 2:
+        arr = arr[..., None]
 
     nodata_mask = arr < _NODATA_THRESHOLD
     arr = np.clip(arr, 0.0, None)
@@ -43,6 +52,13 @@ def open_image(path: Path) -> Image.Image:
     arr = linear_to_srgb(arr)
 
     arr = (arr * 255.0).astype(np.uint8)
+    if arr.shape[-1] == 1:
+        log.info("broadcasting single-channel %s to RGB", path.name)
+        arr = np.repeat(arr, 3, axis=-1)
+    if arr.ndim != 3 or arr.shape[-1] != 3:
+        raise ValueError(
+            f"{path.name}: expected an (H, W, 3) RGB array but got shape {arr.shape}."
+        )
     return Image.fromarray(arr, mode="RGB")
 
 
