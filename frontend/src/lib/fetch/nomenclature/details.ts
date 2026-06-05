@@ -25,9 +25,6 @@ export interface FeatureGlobalData {
 	wikidata_qid?: string;
 	/** Photo (P18) and locator (P242) image manifest. `kind` distinguishes. */
 	images?: ObjectImage[];
-	/** IAU quadrangle this feature sits in (name + code). Wikipedia sitelink
-	 *  gets populated once quadrangle QIDs are matched upstream. */
-	quadrangle?: EntityRef;
 	/** IAU satellite-feature parent (e.g. "Abel A" → "Abel"). Single ref. */
 	parent_feature?: EntityRef;
 	/** Inverse of `parent_feature` — IAU SF children of this feature. */
@@ -59,6 +56,10 @@ export interface FeatureLocalizedData {
 	/** Spatial parents — features/bodies this one is inside (Wikidata P706 +
 	 *  P361 + bbox/radius derivation, minus its IAU SF parent). */
 	inside_of?: EntityRef[];
+	/** IAU quadrangle this feature sits in. ``wikipedia`` is the sitelink
+	 *  for the loaded language when its QID is in
+	 *  ``constants/quadrangle_refs.py`` and the entity has been downloaded. */
+	quadrangle?: EntityRef;
 	wikipedia?: {
 		extract?: string;
 		description?: string;

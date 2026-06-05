@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
-	import { nomenclatureTypeLabel } from '$lib/types/nomenclature';
+	import { nomenclatureTypeDescription, nomenclatureTypeLabel } from '$lib/types/nomenclature';
 	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
 	import { formatIsoDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -21,6 +22,7 @@
 	let loc = $derived(detail?.localized);
 
 	let typeLabel = $derived(nomenclatureTypeLabel(feature.typeCode));
+	let typeDescription = $derived(nomenclatureTypeDescription(feature.typeCode));
 	let diameterText = $derived.by(() => {
 		if (!feature.diameterM || feature.diameterM <= 0) return null;
 		// IAU diameters span metres (small craters) to thousands of km (maria),
@@ -34,7 +36,22 @@
 </script>
 
 <Section title={m.surface_feature()}>
-	<Row label={m.feature_type()} value={typeLabel} />
+	<Row label={m.feature_type()}>
+		{#if typeDescription}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<span class="cursor-help decoration-dotted underline underline-offset-2" {...props}>
+							{typeLabel}
+						</span>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>{typeDescription}</Tooltip.Content>
+			</Tooltip.Root>
+		{:else}
+			{typeLabel}
+		{/if}
+	</Row>
 	<Row label={m.coordinates()} value={coordsText} />
 	{#if diameterText}
 		<Row label={m.diameter()} value={diameterText} />
@@ -75,9 +92,9 @@
 			<EntityLinks entities={[glb.parent_feature]} />
 		</Row>
 	{/if}
-	{#if glb?.quadrangle}
+	{#if loc?.quadrangle}
 		<Row label={m.feature_quadrangle()}>
-			<EntityLinks entities={[glb.quadrangle]} />
+			<EntityLinks entities={[loc.quadrangle]} />
 		</Row>
 	{/if}
 	{#if loc?.inside_of?.length}
