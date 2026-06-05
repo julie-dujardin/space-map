@@ -84,6 +84,40 @@ _SPATIAL_CLAIM_KEYS: frozenset[str] = frozenset(
 # out point-like features that happen to carry a tiny bbox.
 _MIN_CONTAINER_BBOX_AREA = 0.01
 
+# Feature-type codes that are inherently 1D (linear) or point-like and
+# shouldn't act as spatial containers — "X is inside a cliff/ridge/chain"
+# reads wrong in the sidebar even when the bbox math happens to fit.
+_NON_CONTAINER_TYPES: frozenset[str] = frozenset(
+    {
+        # Linear / 1D features
+        "AR",
+        "CA",
+        "DO",
+        "FE",
+        "LI",
+        "PR",
+        "RI",
+        "RU",
+        "SC",
+        "SE",
+        "SU",
+        "VI",
+        # Point features (landing sites, single boulders, single eruptive centers)
+        "ER",
+        "LF",
+        "SA",
+        "ST",
+    }
+)
+
+# TODO(data-quality): some features — notably AL-type albedo regions like
+# Adiri on Titan — carry a degenerate bbox (min == max == center) and
+# diameter=0 from the IAU XML. Without size info the "container must be
+# bigger" guard can't fire, so they get spuriously placed inside small
+# overlapping features. Needs a Wikidata-claim radius fallback at ingest
+# time, or per-feature size overrides for known-bad entries. Re-export
+# afterwards.
+
 logger = logging.getLogger(__name__)
 
 
@@ -268,7 +302,7 @@ def build_feature_details(
     addition to the bbox check; missing bodies fall back to bbox-only.
     ``trace_sources`` collects per-feature attribution
     (``{feature_id: {source_key: {container_fid, …}}}``) when supplied —
-    inspector-only, the production export passes ``None``.
+    diagnostics-only, the production export passes ``None``.
     """
     out = FeatureDetailData()
 
@@ -498,11 +532,13 @@ def _attach_inverse_lists(
 def _container_candidates_per_body(rows: list[Feature]) -> dict[str, list[Feature]]:
     """Group features that could act as containers (bbox OR center+diameter).
 
-    Tiny bbox-only features are filtered out — a sub-degree bbox is
-    typically a point-feature placeholder, not a real region.
+    Tiny bbox-only features are filtered out (sub-degree placeholders),
+    as are 1D/point feature types — see ``_NON_CONTAINER_TYPES``.
     """
     out: dict[str, list[Feature]] = {}
     for f in rows:
+        if f.feature_type_code in _NON_CONTAINER_TYPES:
+            continue
         has_bbox = (
             f.min_lat is not None
             and f.max_lat is not None
