@@ -43,6 +43,23 @@ _yaml = YAML()
 _yaml.preserve_quotes = True
 _yaml.width = 4096  # don't reflow long URLs/notes
 
+# Only artificial-object kinds get a 3D model. Naturally-occurring bodies
+# (asteroid, astronomical_object) render with their real shape/texture, even
+# when a manifest entry resolves them to a DB Object via spkid/naif_id.
+SPACECRAFT_KINDS = frozenset(
+    {
+        "earth_sat",
+        "probe",
+        "lander",
+        "generic_sat",
+        "station",
+        "rocket",
+        "robot",
+        "submersible",
+        "aircraft",
+    }
+)
+
 
 class SlugConflictError(RuntimeError):
     """Two manifest entries share the same slug — names must be globally unique."""
@@ -276,6 +293,9 @@ class ModelProcessor:
                 slug = entry.get("slug")
                 if not slug:
                     continue
+                kind = entry.get("kind") or entry.get("type")
+                if kind not in SPACECRAFT_KINDS:
+                    continue
                 canonical = bool(entry.get("canonical"))
                 for mission in entry.get("missions") or []:
                     oid = metadata.resolve_mission_object_id(
@@ -350,7 +370,14 @@ class ModelProcessor:
         on generic catalog assets (tools, ground infra, unbuilt concepts) that
         no mission would ever reference. An entry is also kept when a
         ``SatelliteBusSpec.model_slug`` points at it and at least one of the
-        bus's ``known_satellites`` exists in the Object table."""
+        bus's ``known_satellites`` exists in the Object table.
+
+        Also drops naturally-occurring bodies (asteroid, astronomical_object)
+        even when they resolve cleanly — those should render with their actual
+        shape/texture, not a NASA 3D asset."""
+        kind = entry.get("kind") or entry.get("type")
+        if kind not in SPACECRAFT_KINDS:
+            return False
         slug = entry.get("slug")
         if slug is not None:
             for spec in self._buses_by_model_slug.get(slug, ()):
