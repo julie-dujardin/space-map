@@ -22,6 +22,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { effectiveRadiusKm } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
+import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
 import type { BodyObjects } from '$lib/scene/types';
 
 const DEG2RAD = Math.PI / 180;
@@ -225,8 +226,9 @@ const _labelNdc = new Vector3();
  * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · min(screenW, screenH)]` band.
  *
  * The URL-selected feature (`bo.nomenclatureActiveIndex`) is exempted from
- * the per-feature size / hemisphere / disc-fraction checks — it always shows
- * once the body-level zoom gate passes.
+ * the per-feature size / disc-fraction checks so a tiny or near-limb selected
+ * feature is still shown — but the hemisphere check still applies so the
+ * label doesn't bleed through the planet from the far side.
  *
  * Survivors get their screen-space center written to `bo.nomenclatureSX/SY`
  * for the collision pass; hidden labels get `NaN` so the cull skips them.
@@ -301,9 +303,11 @@ export function updateNomenclatureVisibility(
 		// normal faces camera, (K − P) · (P − C) > 0, i.e. K'·L > L·L. Strictly
 		// tighter than the `> 0` hemisphere check, which would let points just
 		// behind the perspective limb leak through and project into the disc.
+		// Applies to the active feature too — otherwise its DOM label bleeds
+		// through the planet from the far side (CSS2D doesn't depth-test).
 		const dot = lx * cdx + ly * cdy + lz * cdz;
 		const lenSqL = lx * lx + ly * ly + lz * lz;
-		if (!isActive && dot <= lenSqL) {
+		if (dot <= lenSqL) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;
@@ -325,14 +329,16 @@ export function updateNomenclatureVisibility(
 }
 
 // AABB pool for the collision cull. Module-level — only one focused body's
-// labels go through here per frame, so a single pool is fine.
-type Rect = { left: number; right: number; y: number };
+// labels go through here per frame, so a single pool is fine. `h` carries the
+// rect's vertical extent so mixed body-label (22px) and feature-label (16px)
+// rects can be checked for box overlap rather than a single fixed threshold.
+type Rect = { left: number; right: number; y: number; h: number };
 const _acceptedNom: Rect[] = [];
 
 function ensureRect(idx: number): Rect {
 	let r = _acceptedNom[idx];
 	if (!r) {
-		r = { left: 0, right: 0, y: 0 };
+		r = { left: 0, right: 0, y: 0, h: 0 };
 		_acceptedNom[idx] = r;
 	}
 	return r;
@@ -372,7 +378,8 @@ function tryAcceptNomenclature(
 	if (!forceAccept) {
 		for (let j = 0; j < acceptedCount; j++) {
 			const a = _acceptedNom[j];
-			if (left < a.right && right > a.left && Math.abs(cy - a.y) < FEATURE_LINE_H) {
+			const yThreshold = (a.h + FEATURE_LINE_H) * 0.5;
+			if (left < a.right && right > a.left && Math.abs(cy - a.y) < yThreshold) {
 				lbl.visible = false;
 				return acceptedCount;
 			}
@@ -382,6 +389,7 @@ function tryAcceptNomenclature(
 	a.left = left;
 	a.right = right;
 	a.y = cy;
+	a.h = FEATURE_LINE_H;
 	return acceptedCount + 1;
 }
 
@@ -391,8 +399,10 @@ function tryAcceptNomenclature(
  * first); each accepts unless its box overlaps an already-accepted box, in
  * which case it's hidden for the frame. The active feature (if any) is
  * accepted first and force-accepted so it always survives and others defer
- * to it. Text widths are measured lazily on the first frame the label is in
- * DOM (first measure may return 0; we retry next frame with a 60px fallback).
+ * to it. The accepted pool is pre-seeded with the body-label cull's accepted
+ * rects so feature labels lose to any body label. Text widths are measured
+ * lazily on the first frame the label is in DOM (first measure may return 0;
+ * we retry next frame with a 60px fallback).
  */
 export function cullOverlappingNomenclatureLabels(bo: BodyObjects): void {
 	const labels = bo.nomenclatureLabels;
@@ -400,6 +410,19 @@ export function cullOverlappingNomenclatureLabels(bo: BodyObjects): void {
 	const activeIdx = bo.nomenclatureActiveIndex ?? -1;
 
 	let acceptedCount = 0;
+	// Seed with body-label rects from the last body cull (every-3rd-frame; the
+	// rects drift slightly between culls, accepted) so features get hidden
+	// whenever their box would overlap any body label.
+	const bodyRects = acceptedBodyLabelRects;
+	const bodyCount = bodyRects.count;
+	for (let i = 0; i < bodyCount; i++) {
+		const b = bodyRects.rects[i];
+		const a = ensureRect(acceptedCount++);
+		a.left = b.left;
+		a.right = b.right;
+		a.y = b.y;
+		a.h = b.h;
+	}
 	if (activeIdx >= 0) {
 		acceptedCount = tryAcceptNomenclature(bo, activeIdx, true, acceptedCount);
 	}

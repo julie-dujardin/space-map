@@ -7,6 +7,7 @@ import {
 	applyLabelDisplay,
 	isScreenOccluded,
 	cullOverlappingLabels,
+	refreshVisibleBodyLabelRects,
 	type ScreenOccluder
 } from '../label/culling';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
@@ -317,6 +318,12 @@ export function updateBodyVisibility(
 			focusTruePos
 		);
 	}
+
+	// Re-project every visible+maximized body label every frame so the
+	// nomenclature cull below sees fresh body rects, not the 0–2-frame-stale
+	// snapshot from the throttled body cull above. Without this, feature
+	// labels flicker briefly at the transition as a body label slides over.
+	refreshVisibleBodyLabelRects(bodyObjects, screenW, screenH, camera, focusTruePos);
 
 	// Feature-label collision cull runs every frame for the focused body only
 	// (small N — visible labels per body, after size band, typically < 200).

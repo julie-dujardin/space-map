@@ -24,6 +24,7 @@ import {
 } from '$lib/scene/out-of-range-toast';
 import { refreshTrail } from '$lib/scene/objects/trail/refresh';
 import { renderLandedProbe } from './landed-probe';
+import { setSpacecraftLanded } from '$lib/scene/label/factory';
 import type { PositionDiagnostics } from './diagnostics';
 
 /** Module-scope scratch for adaptive trail chord-error sampling. JS is single-
@@ -214,7 +215,13 @@ export function updatePositions(params: UpdatePositionsParams): void {
 					return;
 				}
 				diagnostics.clear('probe-unavailable', d.id);
-				if (bo) bo.outOfRange = false;
+				if (bo) {
+					bo.outOfRange = false;
+					if (!bo.isLanded) {
+						setSpacecraftLanded(bo.labelHalo, true);
+						bo.isLanded = true;
+					}
+				}
 				body.position[0] = landedRender.x;
 				body.position[1] = landedRender.y;
 				body.position[2] = landedRender.z;
@@ -261,6 +268,10 @@ export function updatePositions(params: UpdatePositionsParams): void {
 				return;
 			}
 			diagnostics.clear('probe-unavailable', d.id);
+			if (bo?.isLanded) {
+				setSpacecraftLanded(bo.labelHalo, false);
+				bo.isLanded = false;
+			}
 			// Reseed the trail buffer (when present) before flipping parentId,
 			// so the back-population samples against the OLD parent's frame are
 			// dropped and the new frame starts fresh. Skip on first-ever resolve
