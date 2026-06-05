@@ -203,6 +203,12 @@ export interface EntityRef {
 	name: string;
 	short_name?: string;
 	wikipedia?: string;
+	/** ID-scheme for the focus target (e.g. "naif", "spkid"). */
+	primary_type?: string;
+	primary_id?: string;
+	/** Refines the target within ``primary`` (currently always "feature"). */
+	secondary_type?: string;
+	secondary_id?: string;
 }
 
 export interface LocalizedObjectData {

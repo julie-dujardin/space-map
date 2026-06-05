@@ -1,15 +1,36 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { UrlType } from '$lib/state/view';
+	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		entities: EntityRef[];
 	}
 
 	let { entities }: Props = $props();
+	const appState = getContext<AppState | undefined>('appState');
 	let truncated = $state<Record<string, boolean>>({});
 	let shortened = $state<Record<string, boolean>>({});
+
+	function focusEntity(ref: EntityRef) {
+		if (!appState || !ref.primary_id || !ref.primary_type) return;
+		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
+		if (ref.secondary_type === 'feature' && ref.secondary_id) {
+			appState.setFeature({
+				bodyId,
+				featureId: parseInt(ref.secondary_id, 10),
+				featureName: ref.name
+			});
+		} else {
+			const urlType = ref.primary_type === 'spkid' ? UrlType.SmallBody : UrlType.Body;
+			appState.setFocus({ type: urlType, id: bodyId, name: ref.name });
+		}
+	}
 
 	function detectTruncation(node: HTMLElement, name: string) {
 		// Measure with a hidden clone that always contains the full name,
@@ -45,7 +66,15 @@
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
 					<span class="min-w-0 truncate" use:detectTruncation={entity.name} {...props}>
-						{#if entity.wikipedia}
+						{#if entity.primary_id && appState}
+							<button
+								type="button"
+								onclick={() => focusEntity(entity)}
+								aria-label={m.entity_focus_in_map()}
+								class="underline hover:text-foreground inline-flex items-center gap-1"
+								>{display}<LocateFixedIcon class="size-3 shrink-0" /></button
+							>
+						{:else if entity.wikipedia}
 							<a
 								href={entity.wikipedia}
 								target="_blank"

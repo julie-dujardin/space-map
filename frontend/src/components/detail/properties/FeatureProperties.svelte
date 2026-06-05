@@ -16,6 +16,7 @@
 
 	let { feature, detail }: Props = $props();
 
+	let glb = $derived(detail?.global);
 	let wd = $derived(detail?.global?.wikidata);
 	let loc = $derived(detail?.localized);
 
@@ -69,14 +70,29 @@
 			<EntityLinks entities={loc.named_after} />
 		</Row>
 	{/if}
-	{#if loc?.location?.length}
-		<Row label={m.feature_region()}>
-			<EntityLinks entities={loc.location} />
+	{#if glb?.parent_feature}
+		<Row label={m.feature_parent_feature()}>
+			<EntityLinks entities={[glb.parent_feature]} />
 		</Row>
 	{/if}
-	{#if loc?.located_on_physical_feature?.length}
-		<Row label={m.feature_located_on()}>
-			<EntityLinks entities={loc.located_on_physical_feature} />
+	{#if glb?.quadrangle}
+		<Row label={m.feature_quadrangle()}>
+			<EntityLinks entities={[glb.quadrangle]} />
+		</Row>
+	{/if}
+	{#if loc?.inside_of?.length}
+		<Row label={m.feature_inside_of()}>
+			<EntityLinks entities={loc.inside_of} />
+		</Row>
+	{/if}
+	{#if glb?.contains?.length}
+		<Row label={m.feature_contains()}>
+			<EntityLinks entities={glb.contains} />
+		</Row>
+	{/if}
+	{#if glb?.satellite_features?.length}
+		<Row label={m.feature_satellite_features()}>
+			<EntityLinks entities={glb.satellite_features} />
 		</Row>
 	{/if}
 </Section>
