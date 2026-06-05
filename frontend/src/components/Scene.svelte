@@ -66,7 +66,7 @@
 	 *  so the km-side numbers go through `kmToScene` first.
 	 *
 	 *  `snap`: skip the fly animation and place the camera at the feature
-	 *  framing immediately. Used on URL-load (`/f/<bodyId>/<featureId>/…`) so
+	 *  framing immediately. Used on URL-load (`/<type>/<bodyId>/f/<featureId>/…`) so
 	 *  the page opens already framed on the feature, not animating in from
 	 *  the URL's `at=` framing. */
 	export function focusOnFeature(

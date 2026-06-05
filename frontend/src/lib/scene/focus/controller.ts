@@ -291,24 +291,30 @@ export class FocusController {
 
 	/** Snap the camera to a body-fixed lat/lon/zoom without any fly animation.
 	 *  Used for URL-load deep links where the user expects the page to open
-	 *  already framed on the target. If orientation hasn't loaded yet, the
-	 *  request is queued as a pendingInitialView replay so it lands in the
-	 *  right frame as soon as the body has a quat. */
+	 *  already framed on the target. Applies immediately with the current quat
+	 *  (identity if not loaded yet — fine for asteroids whose mesh is identity-
+	 *  oriented, matches where feature labels are placed). For bodies whose
+	 *  orientation arrives async, also queues a replay so the framing snaps to
+	 *  the right angle once the real quat lands. */
 	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
 		const body = this.focusedBody;
 		if (!body) return;
 		const { camera, controls, callbacks } = this.deps;
-		const quat = this.focusedBodyQuat(body);
-		if (!quat || (quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1)) {
-			// Orientation not ready — defer to the replay path. Replaces whatever
-			// the URL's at= had queued, since the caller's framing is more specific.
-			this.pendingInitialView = { latitude, longitude, zoom };
-			return;
-		}
+		const quat = this.focusedBodyQuat(body) ?? [0, 0, 0, 1];
 		const camOffset = sphericalToCartesian([0, 0, 0], latitude, longitude, zoom, quat);
 		camera.position.set(camOffset[0], camOffset[1], camOffset[2]);
 		controls.update();
-		callbacks.onCameraPosition?.(latitude, longitude, zoom);
+		// Read back via cartesianToSpherical so the URL writeback matches the
+		// canonical (-180, 180] longitude the fly-settle path produces — feature
+		// lon is stored in 0..360 and would otherwise leak straight to the URL.
+		const settled = cartesianToSpherical(camOffset, [0, 0, 0], quat);
+		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
+		const isIdentity = quat[0] === 0 && quat[1] === 0 && quat[2] === 0 && quat[3] === 1;
+		if (isIdentity) {
+			// Replaces whatever the URL's at= had queued — the feature framing
+			// is more specific than the URL's body-level at=.
+			this.pendingInitialView = { latitude, longitude, zoom };
+		}
 	}
 
 	/**

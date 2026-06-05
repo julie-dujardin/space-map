@@ -30,6 +30,7 @@ import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
+import { applyOrientation } from '$lib/math/orientation';
 import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
@@ -615,7 +616,18 @@ export class SceneRenderer {
 	private maybeLoadTexture(body: PositionedBody): void {
 		const bo = this.bodyObjects.get(body.data.id);
 		if (!bo) return;
-		loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx);
+		void loadBodyTexture(bo, this.textureLoader, this.clock.jd, this.ctx).then(() => {
+			// Standalone focus (asteroids, comets) doesn't go through
+			// systemData.onLoaded, so the URL-load snap initially runs with an
+			// identity mesh quat and any queued pendingInitialView never gets
+			// replayed. Force-apply orientation now and trigger reapply so the
+			// camera lands on the body-fixed feature once orientation arrives.
+			if (this.focusController.current?.data.id !== body.data.id) return;
+			if (body.orientation && bo.mesh) {
+				applyOrientation(bo.mesh, body.orientation, this.clock.jd, body.nutPrec);
+				this.focusController.reapplyInitialViewIfPending();
+			}
+		});
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		loadBodyModel(bo, this.modelScene, this.ctx);
 		// Nomenclature labels are focus-scoped — only the focused body fetches

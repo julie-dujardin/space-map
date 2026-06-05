@@ -5,7 +5,6 @@ vi.mock('$app/paths', () => ({
 		route
 			.replace('[type]', params.type ?? '')
 			.replace('[id]', params.id ?? '')
-			.replace('[bodyId]', params.bodyId ?? '')
 			.replace('[featureId]', params.featureId ?? '')
 			.replace('/[[name]]', params.name ? `/${params.name}` : '')
 }));
@@ -50,6 +49,28 @@ describe('serializeUrl', () => {
 	it('uses the norad_satcat- URL prefix for satellites', () => {
 		const url = serializeUrl({ ...baseView, type: 'e', id: 'norad_satcat-25544', name: 'ISS' });
 		expect(url.startsWith('/e/25544/ISS?at=')).toBe(true);
+	});
+
+	it('nests features under the body route with the body type segment', () => {
+		const url = serializeUrl({
+			...baseView,
+			type: 'f',
+			id: 'naif-301',
+			featureId: 14940,
+			name: 'Tycho'
+		});
+		expect(url.startsWith('/b/301/f/14940/Tycho?at=')).toBe(true);
+	});
+
+	it('uses the s/ type segment for features on small bodies', () => {
+		const url = serializeUrl({
+			...baseView,
+			type: 'f',
+			id: 'spkid-20000004',
+			featureId: 14940,
+			name: 'Licinia'
+		});
+		expect(url.startsWith('/s/20000004/f/14940/Licinia?at=')).toBe(true);
 	});
 
 	describe('imageIndex serialization', () => {

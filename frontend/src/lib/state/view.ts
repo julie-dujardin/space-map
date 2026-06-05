@@ -1,6 +1,6 @@
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
- *  sub-selection on top of a body and uses a different route shape
- *  (/f/<bodyId>/<featureId>/<name>). */
+ *  sub-selection on top of a body and uses a nested route shape
+ *  (/<type>/<bodyId>/f/<featureId>/<name>). */
 export enum UrlType {
 	Body = 'b', // naif-
 	SmallBody = 's', // spkid-
