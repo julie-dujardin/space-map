@@ -54,7 +54,6 @@ class TextureProcessor:
                     bodies.append(entry)
 
         self._raw_meta: list[dict] = bodies
-        self._global_warnings: list[str] = []
 
     def _reset_texture_available(self) -> None:
         session = get_session()
@@ -74,7 +73,7 @@ class TextureProcessor:
         object_id: str,
         out_dir: Path,
         filename_suffix: str = "",
-    ) -> tuple[dict[str, dict], list[str]]:
+    ) -> dict[str, dict]:
         """Export image at applicable sizes; promotes largest to lossless high if source is below the high tier.
 
         ``filename_suffix`` is appended to each tier name in the on-disk file
@@ -88,7 +87,6 @@ class TextureProcessor:
         sizes.append(capped)
 
         exports: dict[str, dict] = {}
-        warnings: list[str] = []
 
         for size in sizes:
             tier = tier_for_size(size)
@@ -100,9 +98,14 @@ class TextureProcessor:
 
             target = size_target(size)
             if target and rec["size_bytes"] > target:
-                msg = f"{object_id}/{tier}{filename_suffix}.webp: {rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
-                log.warning(msg)
-                warnings.append(msg)
+                log.warning(
+                    "%s/%s%s.webp: %.0f KiB exceeds %d KiB target",
+                    object_id,
+                    tier,
+                    filename_suffix,
+                    rec["size_bytes"] / 1024,
+                    target // 1024,
+                )
 
         # If no high was produced (source ≤ 8192), promote the largest export to high
         # as a lossless copy — but only if it's small enough to be worth it
@@ -115,7 +118,7 @@ class TextureProcessor:
                     lossless=True,
                 )
 
-        return exports, warnings
+        return exports
 
     def _try_skip(
         self,
@@ -202,9 +205,7 @@ class TextureProcessor:
         """Process all textures listed in download-metadata.yaml.
 
         Warns about any image files in RAW_DIR not referenced by the metadata.
-        Writes a global warnings file to the textures download directory.
         """
-        self._global_warnings = []
         self._reset_texture_available()
         # `known_files` only gates the RAW_DIR untracked-files check below, so
         # we restrict it to entries actually sourced from raw/. misc/ entries
@@ -231,9 +232,7 @@ class TextureProcessor:
                 continue
             src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
             if not src.exists():
-                msg = f"listed in metadata but not found: {entry['file']}"
-                log.warning(msg)
-                self._global_warnings.append(msg)
+                log.warning("listed in metadata but not found: %s", entry["file"])
                 continue
             self.process(src, force=force)
 
@@ -241,18 +240,7 @@ class TextureProcessor:
 
         for f in sorted(config.RAW_DIR.iterdir()):
             if f.suffix.lower() in config.IMAGE_EXTS and f.name not in known_files:
-                msg = f"untracked file not in download-metadata.yaml: {f.name}"
-                log.warning(msg)
-                self._global_warnings.append(msg)
-
-        warnings_file = config.RAW_DIR.parent / "warnings.json"
-        warnings_file.write_text(json.dumps(self._global_warnings, indent=2))
-        if self._global_warnings:
-            log.warning(
-                "%d global texture warning(s) — see %s",
-                len(self._global_warnings),
-                warnings_file,
-            )
+                log.warning("untracked file not in download-metadata.yaml: %s", f.name)
 
     def process(self, src: Path | str, force: bool = False) -> Path:
         """Process a raw texture into WebP exports.
@@ -264,9 +252,7 @@ class TextureProcessor:
         src = Path(src)
         entry = next((b for b in self._raw_meta if b["file"] == src.name), None)
         if entry is None:
-            msg = f"{src.name} not found in download-metadata.yaml"
-            log.warning(msg)
-            self._global_warnings.append(msg)
+            log.warning("%s not found in download-metadata.yaml", src.name)
             return config.PROCESSED_DIR
         if entry.get("skip"):
             log.debug("skipping %s (marked skip in download-metadata.yaml)", src.name)
@@ -284,8 +270,7 @@ class TextureProcessor:
         img = open_image(src)
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
-        exports, warnings = self._export(img, object_id, out_dir)
-        self._global_warnings.extend(warnings)
+        exports = self._export(img, object_id, out_dir)
 
         self._write_metadata(
             out_dir,
@@ -309,9 +294,7 @@ class TextureProcessor:
         """
         src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
         if not src.exists():
-            msg = f"specular source missing: {entry['file']}"
-            log.warning(msg)
-            self._global_warnings.append(msg)
+            log.warning("specular source missing: %s", entry["file"])
             return config.PROCESSED_DIR
 
         object_id = f"{entry['body']}{config.SPECULAR_SUFFIX}"
@@ -333,8 +316,7 @@ class TextureProcessor:
         img = open_specular_source(src)
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
-        exports, warnings = self._export(img, object_id, out_dir)
-        self._global_warnings.extend(warnings)
+        exports = self._export(img, object_id, out_dir)
 
         self._write_metadata(
             out_dir,
@@ -360,9 +342,7 @@ class TextureProcessor:
         """
         src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
         if not src.exists():
-            msg = f"night-lights source missing: {entry['file']}"
-            log.warning(msg)
-            self._global_warnings.append(msg)
+            log.warning("night-lights source missing: %s", entry["file"])
             return config.PROCESSED_DIR
 
         object_id = f"{entry['body']}{config.NIGHT_SUFFIX}"
@@ -382,8 +362,7 @@ class TextureProcessor:
         img = open_image(src)
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
-        exports, warnings = self._export(img, object_id, out_dir)
-        self._global_warnings.extend(warnings)
+        exports = self._export(img, object_id, out_dir)
 
         self._write_metadata(
             out_dir,
@@ -418,9 +397,7 @@ class TextureProcessor:
         """
         src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
         if not src.exists():
-            msg = f"skybox source missing: {entry['file']}"
-            log.warning(msg)
-            self._global_warnings.append(msg)
+            log.warning("skybox source missing: %s", entry["file"])
             return config.PROCESSED_DIR
 
         object_id = entry["body"]
@@ -438,13 +415,13 @@ class TextureProcessor:
         SKYBOX_MIN_AVAILABLE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
         avail = skybox.mem_available_bytes()
         if avail is not None and avail < SKYBOX_MIN_AVAILABLE_BYTES:
-            msg = (
-                f"skybox {object_id}: insufficient memory "
-                f"({avail / 1024**3:.1f} GiB available, need ≥{SKYBOX_MIN_AVAILABLE_BYTES / 1024**3:.0f} GiB); "
-                f"close other apps and rerun"
+            log.error(
+                "skybox %s: insufficient memory (%.1f GiB available, need ≥%d GiB); "
+                "close other apps and rerun",
+                object_id,
+                avail / 1024**3,
+                SKYBOX_MIN_AVAILABLE_BYTES / 1024**3,
             )
-            log.error(msg)
-            self._global_warnings.append(msg)
             return config.PROCESSED_DIR
 
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -459,7 +436,6 @@ class TextureProcessor:
         gc.collect()
 
         exports: dict[str, dict[str, dict]] = {}
-        warnings: list[str] = []
         high_size = config.SKYBOX_TIER_SIZES["high"]
         log.info("extracting cubemap faces at %dpx (high tier)…", high_size)
         # Single e2c pass at high tier; downsample for lower tiers below.
@@ -482,16 +458,17 @@ class TextureProcessor:
 
                 target = size_target(face_size)
                 if target and rec["size_bytes"] > target:
-                    msg = (
-                        f"{object_id}/{tier}_{face}.webp: "
-                        f"{rec['size_bytes'] / 1024:.0f} KiB exceeds {target // 1024} KiB target"
+                    log.warning(
+                        "%s/%s_%s.webp: %.0f KiB exceeds %d KiB target",
+                        object_id,
+                        tier,
+                        face,
+                        rec["size_bytes"] / 1024,
+                        target // 1024,
                     )
-                    log.warning(msg)
-                    warnings.append(msg)
             exports[tier] = tier_exports
         del high_faces
         gc.collect()
-        self._global_warnings.extend(warnings)
 
         self._write_metadata(
             out_dir,
@@ -542,9 +519,7 @@ class TextureProcessor:
         missing = [f for f in expected_files if not (source_dir / f).exists()]
         if missing:
             for f in missing:
-                msg = f"monthly source missing: {f}"
-                log.warning(msg)
-                self._global_warnings.append(msg)
+                log.warning("monthly source missing: %s", f)
             if len(missing) == months:
                 # Nothing to process at all; bail before touching out_dir.
                 return config.PROCESSED_DIR
@@ -582,9 +557,8 @@ class TextureProcessor:
                 source_dims = [img.width, img.height]
             img = align_cylindrical(img, **align)
             suffix = f"_{m:02d}"
-            exports, warnings = self._export(img, object_id, out_dir, suffix)
+            exports = self._export(img, object_id, out_dir, suffix)
             all_exports[f"{m:02d}"] = exports
-            self._global_warnings.extend(warnings)
 
         if not all_exports:
             # Every source was missing — we logged per-file warnings above.
@@ -632,9 +606,7 @@ class TextureProcessor:
 
         pngs = sorted(config.EARTH_CLOUDS_DIR.rglob("*.png"))
         if not pngs:
-            msg = f"no earth_clouds snapshots in {config.EARTH_CLOUDS_DIR}"
-            log.warning(msg)
-            self._global_warnings.append(msg)
+            log.warning("no earth_clouds snapshots in %s", config.EARTH_CLOUDS_DIR)
             return config.PROCESSED_DIR
 
         inputs: list[tuple[str, Path]] = []
@@ -642,9 +614,10 @@ class TextureProcessor:
         for p in pngs:
             fid = cloud_frame_id(p)
             if fid is None:
-                msg = f"cloud snapshot at unexpected path: {p.relative_to(config.EARTH_CLOUDS_DIR).as_posix()}"
-                log.warning(msg)
-                self._global_warnings.append(msg)
+                log.warning(
+                    "cloud snapshot at unexpected path: %s",
+                    p.relative_to(config.EARTH_CLOUDS_DIR).as_posix(),
+                )
                 continue
             if fid in seen:
                 continue
@@ -700,10 +673,7 @@ class TextureProcessor:
                 # match), or the post-loop fallback below.
                 continue
             img = open_image(src)
-            exports, warnings = self._export(
-                img, config.EARTH_CLOUDS_OBJECT_ID, out_dir, suffix
-            )
-            self._global_warnings.extend(warnings)
+            exports = self._export(img, config.EARTH_CLOUDS_OBJECT_ID, out_dir, suffix)
             if not tiers:
                 tiers = sorted(exports.keys())
 

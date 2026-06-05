@@ -220,7 +220,6 @@ class TestProcessMonthly:
         monkeypatch.setattr(config, "PROCESSED_DIR", processed)
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = [entry]
-        proc._global_warnings = []
         # Skip the DB writes; the texture-availability flag is exercised by the
         # full ingest harness, not this unit test.
         proc._mark_texture_available = lambda object_id: None  # noqa: ARG005
@@ -311,7 +310,7 @@ class TestProcessMonthly:
         )
         assert sorted(meta["exports"].keys()) == ["01", "03"]
         assert any("monthly source missing" in r.message for r in caplog.records)
-        assert any("m.02.tif" in w for w in proc._global_warnings)
+        assert any("m.02.tif" in r.message for r in caplog.records)
 
     def test_reprocess_when_yaml_shape_changes(self, tmp_path, monkeypatch):
         """If the yaml entry switches `months` or template, the body must
@@ -359,7 +358,6 @@ class TestProcessClouds:
         monkeypatch.setattr(config, "PROCESSED_DIR", processed)
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = []
-        proc._global_warnings = []
         proc._mark_texture_available = lambda _object_id: None
         proc._reset_texture_available = lambda: None
         return proc
@@ -469,13 +467,13 @@ class TestProcessClouds:
         result = proc._process_clouds()
         assert result == config.PROCESSED_DIR
         assert any("no earth_clouds snapshots" in r.message for r in caplog.records)
-        assert any("no earth_clouds snapshots" in w for w in proc._global_warnings)
 
-    def test_missing_clouds_dir_is_silent_noop(self, tmp_path, monkeypatch):
+    def test_missing_clouds_dir_is_silent_noop(self, tmp_path, monkeypatch, caplog):
+        caplog.set_level("WARNING")
         proc = self._make_processor(monkeypatch, tmp_path)
         # Remove the dir created by _make_processor.
         config.EARTH_CLOUDS_DIR.rmdir()
 
         result = proc._process_clouds()
         assert result == config.PROCESSED_DIR
-        assert proc._global_warnings == []
+        assert not caplog.records

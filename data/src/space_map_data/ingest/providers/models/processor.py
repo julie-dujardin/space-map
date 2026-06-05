@@ -97,7 +97,6 @@ class ModelProcessor:
     def __init__(self) -> None:
         self._yaml_docs: list[tuple[Path, dict]] = []
         self._catalog_downloaded_at: dict[str, str] = {}
-        self._global_warnings: list[str] = []
         self._has_blender = conversion.blender_available()
         self._has_gltf_transform = conversion.gltf_transform_available()
         self._nasa_downloaded_at = _nasa_checkout_iso()
@@ -114,7 +113,6 @@ class ModelProcessor:
             )
 
     def process_all(self, force: bool = False) -> None:
-        self._global_warnings = []
         self._load_manifests()
         self._check_slug_uniqueness()
 
@@ -160,15 +158,6 @@ class ModelProcessor:
 
         self._write_mission_pointers(mission_winners)
         self._write_bus_pointers()
-
-        warnings_file = config.MODELS_DOWNLOAD_DIR / "warnings.json"
-        warnings_file.write_text(json.dumps(self._global_warnings, indent=2))
-        if self._global_warnings:
-            log.warning(
-                "%d model warning(s) — see %s",
-                len(self._global_warnings),
-                warnings_file,
-            )
 
     def _load_manifests(self) -> None:
         """Discover every 3D manifest under ``MODELS_DOWNLOAD_DIR``.
@@ -457,16 +446,16 @@ class ModelProcessor:
     def _process_entry(self, entry: dict, yaml_path: Path, *, force: bool) -> None:
         slug = entry.get("slug")
         if not slug:
-            self._global_warnings.append(
-                f"{yaml_path.name}: entry without slug — skipping"
-            )
+            log.warning("%s: entry without slug — skipping", yaml_path.name)
             return
 
         candidates = metadata.convertible_files(entry.get("files") or [])
         if not candidates:
-            msg = f"{slug}: no convertible file in entry (have: {[m.get('type') for m in entry.get('files') or []]})"
-            log.info(msg)
-            self._global_warnings.append(msg)
+            log.warning(
+                "%s: no convertible file in entry (have: %s)",
+                slug,
+                [m.get("type") for m in entry.get("files") or []],
+            )
             return
 
         # Materialise (cache-or-build) every candidate's compressed pair.
@@ -474,7 +463,7 @@ class ModelProcessor:
         for f in candidates:
             src_path = config.MODELS_DOWNLOAD_DIR / f["path"]
             if not src_path.exists():
-                self._global_warnings.append(f"{slug}: missing source {f['path']}")
+                log.warning("%s: missing source %s", slug, f["path"])
                 continue
             try:
                 c = cache.ensure_cached(
@@ -487,13 +476,7 @@ class ModelProcessor:
             except subprocess.CalledProcessError as exc:
                 stderr = (exc.stderr or "")[-500:]
                 # Per-candidate failure isn't fatal — the picker still picks
-                # from whatever else converted. Logged at info so the slug-
-                # level outcome (succeeded with fewer candidates, or skipped
-                # because none worked) is what shows in warnings.json.
-                self._global_warnings.append(
-                    f"{slug}: candidate {f['path']} skipped after conversion failure "
-                    f"({exc.cmd[0]}): {stderr}"
-                )
+                # from whatever else converted.
                 log.info("candidate skipped for %s/%s: %s", slug, f["path"], stderr)
                 continue
             if c is None:
@@ -504,9 +487,7 @@ class ModelProcessor:
         cache.prune_orphan_files(slug, {c.file_id for _f, c in cached})
 
         if not cached:
-            self._global_warnings.append(
-                f"{slug}: no candidate produced a converted GLB"
-            )
+            log.warning("%s: no candidate produced a converted GLB", slug)
             return
 
         # Pick by post-compression size. Filter by Cloudflare cap on high
@@ -517,12 +498,12 @@ class ModelProcessor:
         ]
         if not eligible:
             sizes = ", ".join(f"{c.file_id}={c.size('high')}B" for _f, c in cached)
-            msg = (
-                f"{slug}: skipping — no candidate ≤ {config.MAX_FILE_BYTES}B "
-                f"after compression ({sizes})"
+            log.warning(
+                "%s: skipping — no candidate ≤ %dB after compression (%s)",
+                slug,
+                config.MAX_FILE_BYTES,
+                sizes,
             )
-            log.warning(msg)
-            self._global_warnings.append(msg)
             # Still write a sidecar so debugging the rejection is possible.
             self._write_sidecar_metadata(
                 slug=slug,
@@ -543,18 +524,21 @@ class ModelProcessor:
         # warn and fall back to size-based pick.
         preferred = [(f, c) for f, c in eligible if f.get("preferred")]
         if len(preferred) > 1:
-            self._global_warnings.append(
-                f"{slug}: multiple files marked preferred: true "
-                f"{[f['path'] for f, _c in preferred]} — using first"
+            log.warning(
+                "%s: multiple files marked preferred: true %s — using first",
+                slug,
+                [f["path"] for f, _c in preferred],
             )
         if preferred:
             high_pick = preferred[0]
         else:
             over_cap_preferred = [f for f, _c in cached if f.get("preferred")]
             if over_cap_preferred:
-                self._global_warnings.append(
-                    f"{slug}: preferred file(s) {over_cap_preferred} exceeded cap "
-                    f"after compression — falling back to size-based pick"
+                log.warning(
+                    "%s: preferred file(s) %s exceeded cap after compression — "
+                    "falling back to size-based pick",
+                    slug,
+                    over_cap_preferred,
                 )
             high_pick = max(eligible, key=lambda fc: fc[1].size("high"))
         low_pick = min(eligible, key=lambda fc: fc[1].size("low"))
@@ -699,9 +683,10 @@ class ModelProcessor:
         def resolve(f: dict) -> dict:
             name = f.get("source") or doc_name
             if not name:
-                self._global_warnings.append(
-                    f"file {f.get('path')!r} has no source and parent manifest "
-                    f"{yaml_path.name} has no top-level source"
+                log.warning(
+                    "file %r has no source and parent manifest %s has no top-level source",
+                    f.get("path"),
+                    yaml_path.name,
                 )
                 return {}
             catalog = config.MODEL_CATALOGS.get(name)
@@ -720,9 +705,10 @@ class ModelProcessor:
                     else catalog["default_attribution"]
                 )
             else:
-                self._global_warnings.append(
-                    f"file {f.get('path')!r}: source {name!r} not in MODEL_CATALOGS "
-                    f"and missing inline attribution"
+                log.warning(
+                    "file %r: source %r not in MODEL_CATALOGS and missing inline attribution",
+                    f.get("path"),
+                    name,
                 )
                 return {}
             credit_url = inline_url or (catalog["url"] if catalog else None)
