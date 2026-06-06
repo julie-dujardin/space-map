@@ -31,6 +31,7 @@ import gzip
 import hashlib
 import logging
 import math
+import re
 from pathlib import Path
 
 import orjson
@@ -122,6 +123,12 @@ _NON_CONTAINER_TYPES: frozenset[str] = frozenset(
 # afterwards.
 
 logger = logging.getLogger(__name__)
+
+
+# Drops a trailing '.' even when it sits before closing quote(s)/paren(s)
+# — IAU origin strings ship with a sentence-final period that reads as
+# clutter in the UI, including in nested cases like `(…Armínski.)`.
+_TRAILING_ORIGIN_DOT_RE = re.compile(r"\.(?=[)\]\"'»”]*$)")
 
 
 # Target average members per bundle. Global entries are mostly small
@@ -225,7 +232,7 @@ def _build_global(features: list[Feature]) -> dict[str, dict]:
         if f.approval_date:
             entry["approval_date"] = f.approval_date.isoformat()
         if f.origin:
-            entry["origin"] = f.origin
+            entry["origin"] = _TRAILING_ORIGIN_DOT_RE.sub("", f.origin)
         if f.parent_feature_id is not None:
             entry["parent_feature_id"] = f.parent_feature_id
         out[str(f.feature_id)] = entry

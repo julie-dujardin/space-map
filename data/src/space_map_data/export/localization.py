@@ -160,9 +160,9 @@ def _collect_feature_type_labels(
         if entity:
             for lang in LANGUAGES:
                 if label := entity["labels"].get(lang):
-                    result[lang][label_key] = label
+                    result[lang][label_key] = label[:1].upper() + label[1:]
                 if desc := entity["descriptions"].get(lang):
-                    result[lang][desc_key] = desc
+                    result[lang][desc_key] = desc[:1].upper() + desc[1:]
 
         # Fall back to the in-repo IAU constants for the baseLocale where
         # Wikidata didn't provide a value (or had no entity at all).
