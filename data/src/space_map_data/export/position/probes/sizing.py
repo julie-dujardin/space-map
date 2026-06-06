@@ -223,21 +223,38 @@ def _fit_method_c(
     # --- "Drift" variant: linear-fit Ω̇, ω̇, n_mean over the sample window. ---
     # Best for J2-perturbed orbits — MAVEN-class probes drop from 159 km
     # worst-day error to 21 km with drift on. We use the *fitted* mean
-    # motion (rather than sqrt(mu/a³)) so any J2 Ṁ correction is captured.
+    # motion when polyfit is well-behaved (captures the J2 Ṁ correction),
+    # else fall back to the analytic Kepler rate.
+    #
+    # Why the fallback: for short-period orbits (LEO, lunar orbiters) the
+    # M-list wraps several times across the fit window. `np.unwrap`'s
+    # default π threshold can miss wraps when sample spacing approaches
+    # Nyquist, and the polyfit returns a meaningless slope (sometimes
+    # negative). Without a drift variant, the caller is left with `pure`
+    # only — which has no J2 Ω̇/ω̇ and accumulates km/h of along-track
+    # error on Sun-sync orbits. Falling back to `n_kepler = sqrt(mu/a³)`
+    # at least preserves the Keplerian rate; the polyfit-derived Ω̇/ω̇
+    # still capture the dominant J2 nodal/apsidal precession.
     times_rel = valid_ts_arr - t_snap
     om_un = np.unwrap(np.asarray(om_list))
     w_un = np.unwrap(np.asarray(w_list))
     m_un = np.unwrap(np.asarray(m_list))
     om_dot, _ = np.polyfit(times_rel, om_un, 1)
     w_dot, _ = np.polyfit(times_rel, w_un, 1)
-    n_mean, _ = np.polyfit(times_rel, m_un, 1)
-    if n_mean <= 0:
-        return [pure]  # only the pure variant is usable
+    n_mean_fit, _ = np.polyfit(times_rel, m_un, 1)
+    a_snap = a_list[snap_idx]
+    n_kepler = math.sqrt(mu / a_snap**3) if a_snap > 0 else 0.0
+    if 0.5 * n_kepler < n_mean_fit < 1.5 * n_kepler:
+        n_mean = float(n_mean_fit)
+    elif n_kepler > 0:
+        n_mean = float(n_kepler)
+    else:
+        return [pure]
     drift = {
         **base,
         "om_dot": float(om_dot),
         "w_dot": float(w_dot),
-        "n_mean_rad_s": float(n_mean),
+        "n_mean_rad_s": n_mean,
         "mode": "drift",
     }
     return [pure, drift]
@@ -452,13 +469,15 @@ def _fit_sub_chunk(
         period_s = 2.0 * math.pi * math.sqrt((rp_p / (1 - ecc_p)) ** 3 / mu)
         max_period_s = max(max_period_s, period_s)
     # Fit window scales to ~2 orbital periods so the Method-C linear-drift
-    # assumption stays locally valid. Short-period orbits (lunar orbiters)
-    # get a narrow window (averaging over many mascon-perturbed orbits
-    # collapses the fit). Long-period orbits (INTEGRAL, halo orbits) get a
-    # wide window so the fit samples span a meaningful arc of the orbit
-    # rather than just the near-perigee fast pass.
+    # assumption stays locally valid. Short-period orbits (lunar orbiters,
+    # WISE/LEO) get a narrow window — averaging over many mascon- or J2-
+    # perturbed orbits collapses the fit, and a 6-hour-class window puts
+    # M past the np.unwrap reliability edge (4+ wraps near Nyquist).
+    # Long-period orbits (INTEGRAL, halo) get a wide default window so
+    # the fit samples span a meaningful arc of the orbit rather than just
+    # the near-perigee fast pass.
     if max_period_s > 0:
-        fit_half_s = max(0.25 * S_PER_DAY, min(default_half_s, 2.0 * max_period_s))
+        fit_half_s = min(default_half_s, 2.0 * max_period_s)
     else:
         fit_half_s = default_half_s
     # 200 fit samples gives Nyquist-clean coverage at any reasonable window.

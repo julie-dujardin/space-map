@@ -160,6 +160,32 @@ def build_fits(
     chunk doesn't switch (chunks are sized below typical Hill-traversal
     timescales). Landed contributions don't consult the cache; their fit
     center is implicit in the landing body.
+
+    Per-plan flying dedupe: when a probe has multiple plans (registry
+    `kernel_sources` listing more than one mission — e.g. INTEGRAL's real
+    SPK + HORIZONS-SYNTH backfill, Cassini in CASSINI + HUYGENS), each
+    plan's coverage often overlaps the others'. Without dedupe both plans
+    fit the same (zone, chunk) and ``rec.flying.extend`` packs **double**
+    the sub-chunks (verified: INTEGRAL earth-moon chunks had 120/60
+    sub-chunks). The writer's grid padder then assigns those duplicates
+    adjacent slots, so the decoder reads each duplicate's payload at the
+    wrong time — yields catastrophic errors. The first plan to fit a
+    (zone, chunk) claims it; subsequent plans skip flying contributions
+    for that key. Intra-plan gap contributions still accumulate because
+    they come from the same plan.
+
+    TODO(source-priority-for-glitchy-kernels): the multi-source probes
+    can still ship bad data on specific chunks when their primary SPK
+    has a brief glitch and the dedupe lets the primary win. INTEGRAL's
+    ``integral_sc_ssm`` reports the spacecraft at 58e6 km from Earth for
+    ~2 days around 2021-09-27, then snaps back to LEO — chunk 873 max-err
+    is 6e7 km because Kepler faithfully fits the glitch. HORIZONS-SYNTH
+    ``-198.bsp`` covers the same span cleanly. Two ways out: (a) reorder
+    each affected probe's ``kernel_sources`` so HORIZONS-SYNTH wins and
+    bump the canonical naif accordingly (registry-layer change), or
+    (b) detect outlier spans in ``classify_trace`` (large jumps in r
+    between consecutive samples) and drop them. Both apply to the same
+    short list — INTEGRAL/-275, Cassini/-82, Venus Express/-248.
     """
     stale_by_probe: dict[int, set[tuple[str, int]]] = defaultdict(set)
     for probe_id, zone_key, chunk_idx in stale_sigs:
@@ -182,6 +208,11 @@ def build_fits(
         stale_keys = stale_by_probe[probe_id]
         by_chunk: dict[tuple[str, int], ChunkProbeRecord] = {}
         fit_center_naif_by_key: dict[tuple[str, int], int] = {}
+        # Per-key plan ownership: the first plan to fit a (zone, chunk)
+        # claims it. Subsequent plans for the same probe skip flying
+        # contributions to that key (see class docstring on multi-source
+        # dedupe). Intra-plan gap contributions still accumulate.
+        flying_owner_by_key: dict[tuple[str, int], int] = {}
         # Track which plans actually contributed flying data to each
         # (zone, chunk), so system_intervals can be drawn only from
         # plans that had coverage there (using ALL plans' intervals
@@ -199,6 +230,10 @@ def build_fits(
                     key = (c.zone_key, c.chunk_idx)
                     if key not in stale_keys:
                         continue
+                    if c.kind == "flying":
+                        owner = flying_owner_by_key.get(key)
+                        if owner is not None and owner != id(plan):
+                            continue
                     zone = ZONES_BY_KEY[c.zone_key]
                     chunk_start_et = (
                         jd_to_et(start_jd) + c.chunk_idx * zone.chunk_days * S_PER_DAY
@@ -255,6 +290,7 @@ def build_fits(
                             )
                             by_chunk[key] = rec
                         rec.flying.extend(chunk_sizing.sub_chunks)
+                        flying_owner_by_key.setdefault(key, id(plan))
                         if plan not in contributing_plans[key]:
                             contributing_plans[key].append(plan)
                     elif c.kind == "landed":

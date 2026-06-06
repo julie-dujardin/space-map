@@ -40,7 +40,7 @@ from space_map_data.probes.zones import Zone
 
 # Bump for fit-internal changes at the same wire format. Wire-format bumps
 # travel via `BINARY_VERSION` in the signature dict — don't bump here for those.
-FIT_VERSION = 14
+FIT_VERSION = 15
 
 
 def zone_signature(zone: Zone) -> str:

@@ -33,7 +33,6 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR  # noqa: E402
 from space_map_data.constants.providers import ID_TYPES  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
@@ -51,10 +50,12 @@ from space_map_data.export.position.format import (  # noqa: E402
     PROBE_FLAG_HAS_LANDED_RECORD,
     PROBE_HEADER_SIZE,
     SUBCHUNK_HEADER_SIZE,
+    SYSTEM_INTERVAL_SIZE,
     VERSION,
 )
 from space_map_data.export.position.probes.sizing import CHEBYSHEV_DEGREE  # noqa: E402
 from space_map_data.export.position.probes.kernels import (  # noqa: E402
+    collect_generic_kernels,
     kernels_from_index,
 )
 from space_map_data.probes.probe_id import (  # noqa: E402
@@ -63,7 +64,7 @@ from space_map_data.probes.probe_id import (  # noqa: E402
 )
 from space_map_data.probes.zones import ZONES_BY_KEY  # noqa: E402
 from space_map_data.utils.naif import naif_id_from_spk  # noqa: E402
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR  # noqa: E402
 
 _NAIF_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 _SPKID_ID_TYPE_ORDINAL = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
@@ -73,7 +74,7 @@ logger = logging.getLogger(__name__)
 
 _S_PER_DAY = 86400.0
 _J2000_JD = 2451545.0
-_KERNELS_ROOT = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels"
+_KERNELS_ROOT = SOURCES_POSITION_DIR / "spice-kernels"
 
 
 def _probes_root(export_root: Path) -> Path:
@@ -168,7 +169,8 @@ def _parse_chunk(path: Path) -> ParsedChunk:
             first_off,
             fit_center_id_value,
             fit_center_id_type,
-        ) = struct.unpack("<iBBBBHHiBxxx", data[off : off + PROBE_HEADER_SIZE])
+            n_system_intervals,
+        ) = struct.unpack("<iBBBBHHiBBxx", data[off : off + PROBE_HEADER_SIZE])
         off += PROBE_HEADER_SIZE
         sub_chunks: list[SubChunkRecord] = []
         for i in range(n_sub):
@@ -194,6 +196,10 @@ def _parse_chunk(path: Path) -> ParsedChunk:
                 f"{path}: probe flagged has_landed but trailing record method={method}"
             )
             off += SUBCHUNK_HEADER_SIZE + payload_len
+        # Trailing system-interval records (interplanetary chunks only). The
+        # benchmark doesn't validate them — they tag flyby spans for the
+        # renderer — so skip past their fixed-size span.
+        off += n_system_intervals * SYSTEM_INTERVAL_SIZE
         probes.append(
             ProbeChunkRecord(
                 obj_id_value,
@@ -392,32 +398,6 @@ def _build_probe_kernels() -> dict[int, list[Path]]:
     return out
 
 
-def _collect_kernels() -> tuple[list[Path], list[Path]]:
-    """Return `(lsk_pck_paths, generic_spk_paths)` — same split as the writer.
-
-    LSK/PCK are leapseconds + physical constants, no SPK precedence
-    implications. Generic SPKs are planetary DEs and satellite ephemerides
-    (de440, sat441, …). The writer furnshes generic SPKs AFTER mission
-    kernels so they win for shared targets like Saturn (699), since pre-
-    de440-era mission kernels (p11-a.bsp, vg2_sat.bsp, …) carry their own
-    1970s-vintage planetary data which would otherwise contaminate the fit.
-    The benchmark mirrors that ordering per probe.
-    """
-    skip_dirs = {"missions", "probes"}
-    lsk_pck: list[Path] = []
-    generic_spk: list[Path] = []
-    for path in sorted(_KERNELS_ROOT.rglob("*")):
-        if not path.is_file():
-            continue
-        rel_parts = path.relative_to(_KERNELS_ROOT).parts
-        suffix = path.suffix.lower()
-        if suffix in (".tls", ".tpc"):
-            lsk_pck.append(path)
-        elif suffix == ".bsp" and not any(p in skip_dirs for p in rel_parts):
-            generic_spk.append(path)
-    return lsk_pck, generic_spk
-
-
 def _sample_ets(sub: SubChunkRecord, n: int) -> np.ndarray:
     return np.linspace(sub.t_start_et, sub.t_end_et, n)
 
@@ -583,7 +563,7 @@ def main() -> int:
 
     probe_id_to_naif = _invert_probe_id_cache()
     probe_kernels = _build_probe_kernels()
-    lsk_pck_paths, generic_spk_paths = _collect_kernels()
+    lsk_pck_paths, generic_spk_paths = collect_generic_kernels(_KERNELS_ROOT)
     lsk_pck_str = [str(p) for p in lsk_pck_paths]
     generic_str = [str(p) for p in generic_spk_paths]
     # Main process furnshes LSK/PCK to keep symmetry with the writer — worker
