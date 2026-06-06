@@ -242,7 +242,7 @@
 				{m.settings_section_developer()}
 			</h3>
 
-			<div class="flex items-center justify-between gap-3">
+			<label class="flex items-center justify-between gap-3 cursor-pointer">
 				<div class="min-w-0">
 					<div class="text-sm font-medium">{m.settings_debug_info()}</div>
 					<div class="text-xs text-muted-foreground mt-0.5">{m.settings_debug_info_desc()}</div>
@@ -262,7 +262,7 @@
 							{settings.showDebugInfo ? 'translate-x-4' : 'translate-x-0.5'}"
 					></span>
 				</button>
-			</div>
+			</label>
 		</section>
 	</div>
 </div>

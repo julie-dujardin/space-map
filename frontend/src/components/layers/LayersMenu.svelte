@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { Switch } from '$lib/components/ui/switch';
 	import { getSettings, type ViewMode } from '$lib/state/settings.svelte';
 
 	const settings = getSettings();
@@ -51,19 +52,13 @@
 			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
 				{m.layers_section_layers()}
 			</h3>
-			<button
-				type="button"
-				role="switch"
-				aria-checked={settings.showClouds}
-				class="text-start rounded-md border p-3 transition-colors cursor-pointer
-					{settings.showClouds
-					? 'border-primary bg-primary/5'
-					: 'border-input hover:bg-accent hover:text-accent-foreground'}"
-				onclick={() => settings.setShowClouds(!settings.showClouds)}
-			>
-				<div class="text-sm font-medium">{m.layers_clouds()}</div>
-				<div class="text-xs text-muted-foreground mt-0.5">{m.layers_clouds_desc()}</div>
-			</button>
+			<label class="flex items-center justify-between gap-3 cursor-pointer">
+				<div class="flex flex-col min-w-0">
+					<span class="text-sm font-medium">{m.layers_clouds()}</span>
+					<span class="text-xs text-muted-foreground">{m.layers_clouds_desc()}</span>
+				</div>
+				<Switch checked={settings.showClouds} onCheckedChange={(v) => settings.setShowClouds(v)} />
+			</label>
 		</section>
 	</div>
 </div>

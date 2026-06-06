@@ -196,7 +196,7 @@
 	"layers_view_immersive_desc": "天体と星のみ — 操作は難しくなります",
 	"layers_section_layers": "レイヤー",
 	"layers_clouds": "雲",
-	"layers_clouds_desc": "地球と金星の雲のオーバーレイ",
+	"layers_clouds_desc": "大気の雲のオーバーレイ",
 	"settings_title": "設定",
 	"settings_stored_locally": "このデバイスにローカル保存",
 	"settings_section_display": "表示",
