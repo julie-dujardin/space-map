@@ -1,19 +1,18 @@
 """Mirror per-mission CK + FK + SCLK from NAIF / ESA.
 
-The probe SPK downloader already runs per `MissionSource`; the attitude
-downloader plugs into the same per-mission loop. For each mission that
-has a curated `AttitudePattern`:
+Drives a two-phase attitude download:
 
-  1. List `kernels/{ck,fk,sclk}/` on the mirror.
-  2. Filter CK by `ck_glob` (typically the SC-bus pattern — `mro_sc_*`).
-  3. Pick the lex-last FK matching `fk_glob` and SCLK matching `sclk_glob`.
-  4. Download all matched files into `MISSIONS_DIR/<MISSION>/`.
-  5. Write `_attitude_index.json` listing what's on disk + the chosen
-     frame name + bus instrument ID so the extractor can skip a re-walk.
+  1. `download_attitude_for(client, source)` — pulls one mission's
+     curated kernel set (CK + FK + SCLK). Per-mission contract: returns
+     a `DownloadResult` regardless of outcome so the orchestrator can
+     decide whether to surface failures.
 
-Missions without a pattern are silently skipped — the orchestrator can
-log this once for visibility but it's not an error (we expect PDS3/PDS4
-missions to land via a separate path).
+  2. `download_attitude_capped(client, sources, max_total_mib)` — orders
+     the sources by `AttitudePattern.estimated_total_mib`, runs each
+     mission through `download_attitude_for`, and skips remaining
+     missions once cumulative *newly-downloaded* bytes exceed the cap.
+     Files already present on disk (from a previous run) don't count —
+     the cap reflects what we spent on this run's network calls.
 """
 
 import fnmatch
@@ -42,7 +41,8 @@ class DownloadResult:
     mission: str
     n_ck: int
     n_total_files: int
-    total_bytes: int
+    total_bytes: int  # on-disk bytes of the full kernel set after run
+    new_bytes: int  # bytes actually fetched this run (skip-on-match)
     skipped_reason: str | None = None
 
 
@@ -68,6 +68,7 @@ def download_attitude_for(
             n_ck=0,
             n_total_files=0,
             total_bytes=0,
+            new_bytes=0,
             skipped_reason="no curated pattern",
         )
 
@@ -75,7 +76,7 @@ def download_attitude_for(
     mission_dir = MISSIONS_DIR / source.mission
     mission_dir.mkdir(parents=True, exist_ok=True)
 
-    ck_files = _download_matching(
+    ck_files, ck_new = _download_matching(
         client, f"{base}/ck/", mission_dir, pattern.ck_glob, take_all=True
     )
     if not ck_files:
@@ -84,13 +85,14 @@ def download_attitude_for(
             n_ck=0,
             n_total_files=0,
             total_bytes=0,
+            new_bytes=ck_new,
             skipped_reason="no CK matches",
         )
 
-    fk_files = _download_matching(
+    fk_files, fk_new = _download_matching(
         client, f"{base}/fk/", mission_dir, pattern.fk_glob, take_all=False
     )
-    sclk_files = _download_matching(
+    sclk_files, sclk_new = _download_matching(
         client, f"{base}/sclk/", mission_dir, pattern.sclk_glob, take_all=False
     )
     if not fk_files or not sclk_files:
@@ -99,6 +101,7 @@ def download_attitude_for(
             n_ck=len(ck_files),
             n_total_files=len(ck_files),
             total_bytes=sum(p.stat().st_size for p in ck_files),
+            new_bytes=ck_new + fk_new + sclk_new,
             skipped_reason="missing FK or SCLK",
         )
 
@@ -119,13 +122,98 @@ def download_attitude_for(
         n_ck=len(ck_files),
         n_total_files=len(all_files),
         total_bytes=sum(p.stat().st_size for p in all_files),
+        new_bytes=ck_new + fk_new + sclk_new,
     )
+
+
+def download_attitude_capped(
+    client: httpx.Client,
+    sources: list[MissionSource],
+    max_total_mib: float | None,
+) -> list[DownloadResult]:
+    """Run `download_attitude_for` on every source in size-ascending order,
+    short-circuiting once cumulative *new* bytes exceed `max_total_mib`.
+
+    Missions without a pattern are skipped entirely (no listing call). The
+    ordering means we tackle GAIA / ORX / SIRTF first and only get to MRO
+    if the cap allows it — so a fresh run does the cheap missions in full
+    instead of running out of budget on the alphabetical-first one.
+    """
+    targets: list[tuple[int, MissionSource]] = []
+    for source in sources:
+        pattern = PATTERNS.get(source.mission)
+        if pattern is None:
+            continue
+        # Dedupe — BepiColombo / JUICE show up at both NAIF and ESA mirrors
+        # but the patterns table is keyed by mission, so the second source
+        # would re-download the same files. Skip the second occurrence.
+        if any(s.mission == source.mission for _, s in targets):
+            continue
+        targets.append((pattern.estimated_total_mib, source))
+
+    targets.sort(key=lambda t: t[0])
+
+    results: list[DownloadResult] = []
+    total_new_mib = 0.0
+    cap = max_total_mib
+    for est_mib, source in targets:
+        # Predictive cap: skip a mission if its estimated download would
+        # push the running total over the budget. Estimates can be off by
+        # 50 %, so this keeps the actual run close to the target without
+        # one giant mission blowing through the cap halfway in.
+        if cap is not None and total_new_mib + est_mib > cap:
+            logger.info(
+                "attitude: skipping %s (est %d MiB would push %.1f → %.1f MiB, cap %.1f)",
+                source.mission,
+                est_mib,
+                total_new_mib,
+                total_new_mib + est_mib,
+                cap,
+            )
+            results.append(
+                DownloadResult(
+                    mission=source.mission,
+                    n_ck=0,
+                    n_total_files=0,
+                    total_bytes=0,
+                    new_bytes=0,
+                    skipped_reason="global cap",
+                )
+            )
+            continue
+        logger.info(
+            "attitude: %s (est %d MiB) — running total %.1f / %s MiB",
+            source.mission,
+            est_mib,
+            total_new_mib,
+            f"{cap:.0f}" if cap is not None else "∞",
+        )
+        result = download_attitude_for(client, source)
+        results.append(result)
+        total_new_mib += result.new_bytes / (1024 * 1024)
+        if result.n_total_files:
+            logger.info(
+                "attitude: %s done — %d CK, %.1f MiB new, %.1f MiB on disk",
+                source.mission,
+                result.n_ck,
+                result.new_bytes / (1024 * 1024),
+                result.total_bytes / (1024 * 1024),
+            )
+        elif result.skipped_reason:
+            logger.info(
+                "attitude: %s skipped — %s", source.mission, result.skipped_reason
+            )
+    return results
 
 
 def _download_matching(
     client: httpx.Client, url: str, dest_dir: Path, glob: str, *, take_all: bool
-) -> list[Path]:
-    """List `url`, pick files matching `glob`, download into `dest_dir`.
+) -> tuple[list[Path], int]:
+    """List `url`, download files matching `glob` into `dest_dir`.
+
+    Returns `(local_paths, bytes_newly_downloaded)` — paths covers both
+    cached and freshly-downloaded files, while the byte count only sums
+    the network spend so the cap reflects what we actually fetched.
 
     `take_all=True` → download every match (used for CK — every bus file
     contributes attitude coverage). `take_all=False` → download just the
@@ -135,7 +223,7 @@ def _download_matching(
         hrefs = list_naif_dir(client, url)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
-            return []
+            return [], 0
         raise
     matches = sorted(
         h
@@ -145,11 +233,12 @@ def _download_matching(
         and fnmatch.fnmatch(h, glob)
     )
     if not matches:
-        return []
+        return [], 0
     if not take_all:
         matches = [matches[-1]]
 
     out: list[Path] = []
+    new_bytes = 0
     for name in matches:
         local = dest_dir / name
         file_url = url + name
@@ -162,6 +251,7 @@ def _download_matching(
                 continue
             stream_to(client, file_url, local, expected)
             out.append(local)
+            new_bytes += local.stat().st_size
         except httpx.HTTPError as exc:
             logger.warning("download failed for %s: %s", file_url, exc)
-    return out
+    return out, new_bytes

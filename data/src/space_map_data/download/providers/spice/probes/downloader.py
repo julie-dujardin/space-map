@@ -15,8 +15,7 @@ from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
 from ..naif_http import spk_targets, stream_to
-from .attitude.ck_kernels import DownloadResult as AttitudeDownloadResult
-from .attitude.ck_kernels import download_attitude_for
+from .attitude.ck_kernels import download_attitude_capped
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .listings import list_mission_pcks, list_mission_spks
 from .sources import (
@@ -26,6 +25,14 @@ from .sources import (
     MissionSource,
     discover_all_sources,
 )
+
+# Cap on attitude bytes newly downloaded per run. Sized so a fresh run on
+# an empty disk targets ~100 GiB of CK data — enough to cover the smaller
+# Phase 2 missions in full before bumping up against the budget. Override
+# via env var `SPACE_MAP_ATTITUDE_MAX_GIB` for one-off larger runs.
+import os as _os
+
+_ATTITUDE_MAX_GIB = float(_os.environ.get("SPACE_MAP_ATTITUDE_MAX_GIB", "100"))
 
 logger = logging.getLogger(__name__)
 
@@ -66,19 +73,37 @@ class ProbesDownloader(Downloader):
         selected = set(missions) if missions else None
         sources = discover_all_sources(self.client)
 
+        # Phase 1: SPK + PCK mirror, in discovery (alphabetical) order.
         results: list[dict] = []
         for source in sources:
             if selected is not None and source.mission not in selected:
                 continue
             results.append(self._process_mission(source, max_mib))
 
+        # Phase 2: Attitude CK + FK + SCLK, in size-ascending order, capped
+        # at `_ATTITUDE_MAX_GIB`. Runs as a separate pass so the small
+        # missions land first regardless of where they fall alphabetically.
+        attitude_sources = [
+            s for s in sources if selected is None or s.mission in selected
+        ]
+        att_results = download_attitude_capped(
+            self.client, attitude_sources, _ATTITUDE_MAX_GIB * 1024
+        )
+        att_new_mib = sum(r.new_bytes for r in att_results) / (1024 * 1024)
+        att_total_mib = sum(r.total_bytes for r in att_results) / (1024 * 1024)
+
         total_files = sum(r.get("files", 0) for r in results if not r.get("skipped"))
         total_mib = sum(r.get("mib", 0.0) for r in results if not r.get("skipped"))
+        att_files = sum(r.n_total_files for r in att_results)
         logger.info(
-            "ProbesDownloader: %d missions, %d files, %.1f MiB",
+            "ProbesDownloader: %d missions, %d SPK/PCK files (%.1f MiB), "
+            "%d attitude files (%.1f MiB new / %.1f MiB on disk)",
             sum(1 for r in results if r.get("files")),
             total_files,
             total_mib,
+            att_files,
+            att_new_mib,
+            att_total_mib,
         )
 
         self._save_metadata(
@@ -187,44 +212,9 @@ class ProbesDownloader(Downloader):
                 pck_bytes / 1024,
             )
 
-        # Attitude kernels (CK + FK + SCLK for the SC bus frame) are pulled
-        # via a curated per-mission pattern table. Missions without a pattern
-        # are quietly skipped — the table grows as we validate new missions.
-        att_result = download_attitude_for(self.client, source)
-        if att_result.n_total_files:
-            logger.info(
-                "%s/%s: %d attitude files (%d CK, %.1f MiB)",
-                source.server,
-                source.mission,
-                att_result.n_total_files,
-                att_result.n_ck,
-                att_result.total_bytes / 1024 / 1024,
-            )
-        elif (
-            att_result.skipped_reason
-            and att_result.skipped_reason != "no curated pattern"
-        ):
-            logger.warning(
-                "%s/%s: attitude download skipped: %s",
-                source.server,
-                source.mission,
-                att_result.skipped_reason,
-            )
-
         return {
             "mission": source.mission,
             "skipped": False,
-            "mib": (total_bytes + pck_bytes + att_result.total_bytes) / 1024 / 1024,
-            "files": total_files + len(pck_files) + att_result.n_total_files,
-            "attitude": _attitude_summary(att_result),
+            "mib": (total_bytes + pck_bytes) / 1024 / 1024,
+            "files": total_files + len(pck_files),
         }
-
-
-def _attitude_summary(result: AttitudeDownloadResult) -> dict | None:
-    """Compact summary surfaced in the per-mission download metadata."""
-    if not result.n_total_files:
-        return None
-    return {
-        "n_ck": result.n_ck,
-        "total_bytes": result.total_bytes,
-    }

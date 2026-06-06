@@ -18,10 +18,10 @@ convention is `<MISSION>_SPACECRAFT` but older or smaller missions use
 their own names (Cassini's `CASSINI_SC_COORD`, Solar Orbiter's
 `SOLO_PRF`).
 
-TODO(phase 2): seed the 13 other missions the sweep benchmarked
-successfully (CASSINI, DAWN, JUNO, EUROPACLIPPER, ORX, SMAP, SIRTF,
-LADEE, MCO, INTEGRAL, PHSRM, GAIA, SOLAR-ORBITER). Patterns and frames
-captured below in commented-out form for the addition pass.
+`estimated_total_mib` orders the downloader's per-mission pass so small
+missions land first under a global cap. Values are rough — sweep-observed
+sample sizes × estimated file counts. Off by a factor of 2 in either
+direction is fine; the cap check stops us before damage.
 
 TODO(phase 3): PDS3 (Cassini, NEAR, NH, Messenger, MGS, LRO, GRAIL,
 HAYABUSA) and PDS4 (DART, HYB2, VCO, CLPS) mission attitude — those
@@ -45,44 +45,138 @@ class AttitudePattern:
     fk_glob: str
     sclk_glob: str
     frame_name: str
+    # Rough total CK download size, used to order missions ascending under
+    # a global cap. ±50 % accuracy is fine — the cap stops us anyway.
+    estimated_total_mib: int
 
 
+# Per-mission glob conventions, after sweep observation:
+#
+#   * Reconstructed bus CKs are what we want for shipped attitude — they're
+#     the post-flight true record. Predicted CKs (`*_p`, `*_pred_`, `_pa_`,
+#     `_pb_`) duplicate the same windows with less accuracy.
+#   * Instrument-articulation CKs share the mission's CK dir but carry
+#     non-bus frames (HGA pointing, solar array, camera gimbals). The bus
+#     glob below avoids them by sticking to mission-specific naming.
+#   * For still-flying missions where reconstructed isn't published yet
+#     (Europa Clipper, late JUNO), predicted is the best we can ship; we
+#     accept both rather than skip the mission.
 PATTERNS: dict[str, AttitudePattern] = {
+    "GAIA": AttitudePattern(
+        # State-machine reconstructed bus attitude, one file per year.
+        ck_glob="gaia_sc_ssm_*.bc",
+        fk_glob="gaia_v*.tf",
+        sclk_glob="gaia_fict_*.tsc",
+        frame_name="GAIA_SPACECRAFT",
+        estimated_total_mib=1_500,
+    ),
+    "ORX": AttitudePattern(
+        # `_r_` = reconstructed; per-orbit-arc files. Skips `_p_` predicted
+        # (each of which has many ~tcm/ort/intsci variants per window).
+        ck_glob="orx_r_*.bc",
+        fk_glob="orx_v*.tf",
+        sclk_glob="ORX_SCLKSCET.*.tsc",
+        frame_name="ORX_SPACECRAFT",
+        estimated_total_mib=2_000,
+    ),
+    "MCO": AttitudePattern(
+        # Lost mission — only 3 CKs exist; no filter needed.
+        ck_glob="mco_*.bc",
+        fk_glob="mco*.tf",
+        sclk_glob="MCO_SCLKSCET.*.tsc",
+        frame_name="MCO_SPACECRAFT",
+        estimated_total_mib=300,
+    ),
+    "SIRTF": AttitudePattern(
+        # Spitzer reconstructed attitude — `ts*.bc` is the standard naming.
+        ck_glob="ts*.bc",
+        fk_glob="sirtf_v*.tf",
+        sclk_glob="STF_SCLKSCET.*.tsc",
+        frame_name="SIRTF_SC_BUS",
+        estimated_total_mib=500,
+    ),
+    "PHSRM": AttitudePattern(
+        ck_glob="phsrm_sc_*.bc",
+        fk_glob="phsrm_v*.tf",
+        sclk_glob="phsrm_*.tsc",
+        frame_name="PHSRM_SPACECRAFT",
+        estimated_total_mib=500,
+    ),
+    "INTEGRAL": AttitudePattern(
+        # One huge single file covers the entire mission.
+        ck_glob="integral_sc_*.bc",
+        fk_glob="integral_v*.tf",
+        sclk_glob="integral_fict_*.tsc",
+        frame_name="INTEGRAL_SPACECRAFT",
+        estimated_total_mib=500,
+    ),
+    "EUROPACLIPPER": AttitudePattern(
+        # Still in cruise — no `_rec_` yet, so we take both `_pa_` (predicted)
+        # and any future `_rec_` files. Versioned filename matches both.
+        ck_glob="clipper_sc_*_v??.bc",
+        fk_glob="clipper_v*.tf",
+        sclk_glob="europaclipper_*.tsc",
+        frame_name="EUROPAM_SPACECRAFT",
+        estimated_total_mib=2_000,
+    ),
+    "LADEE": AttitudePattern(
+        # LADEE used `<YYJJJ_YYJJJ_vNN>.bc` — leading digit excludes test/cal CKs.
+        ck_glob="ladee_1?????_1?????_v??.bc",
+        fk_glob="ladee_frames_*.tf",
+        sclk_glob="ladee_clkcor_*.tsc",
+        frame_name="LADEE_SC_PROP",
+        estimated_total_mib=2_000,
+    ),
+    "CASSINI": AttitudePattern(
+        # `*ra.bc` is the "reconstructed attitude" suffix — already filtered.
+        ck_glob="*ra.bc",
+        fk_glob="cas_v*.tf",
+        sclk_glob="cas*.tsc",
+        frame_name="CASSINI_SC_COORD",
+        estimated_total_mib=2_000,
+    ),
+    "SOLAR-ORBITER": AttitudePattern(
+        # `att-stp` = attitude step (per-period reconstructed). Skips `att-pred-stp`.
+        ck_glob="solo_ANC_soc-default-att-stp_*.bc",
+        fk_glob="solo_ANC_soc-sc-fk_V*.tf",
+        sclk_glob="solo_ANC_soc-sclk_*.tsc",
+        frame_name="SOLO_PRF",
+        estimated_total_mib=8_000,
+    ),
+    "SMAP": AttitudePattern(
+        # `at` = attitude, versioned (`_vNN`) = pick latest revisions.
+        ck_glob="smap_at_*_v??.bc",
+        fk_glob="smap_pf_v*.tf",
+        sclk_glob="smap_cl_v*.tsc",
+        frame_name="SMAP_SC",
+        estimated_total_mib=20_000,
+    ),
+    "JUNO": AttitudePattern(
+        # `_rec_` already means reconstructed; no predicted in this set.
+        ck_glob="juno_sc_rec_*.bc",
+        fk_glob="juno_v*.tf",
+        sclk_glob="JNO_SCLKSCET.*.tsc",
+        frame_name="JUNO_SPACECRAFT",
+        estimated_total_mib=15_000,
+    ),
+    "DAWN": AttitudePattern(
+        # Skip `dawn_sc_pred_*` (predicted attitude during planning).
+        ck_glob="dawn_sc_rec_*.bc",
+        fk_glob="dawn_v*.tf",
+        sclk_glob="dawn_sclkscet_*.tsc",
+        frame_name="DAWN_SPACECRAFT",
+        estimated_total_mib=20_000,
+    ),
     "MRO": AttitudePattern(
-        ck_glob="mro_sc_psp_*.bc",
+        # MRO files end either `..._YYDDD_YYDDD.bc` (reconstructed) or
+        # `..._YYDDD_YYDDDp.bc` (predicted). The `??????_??????.bc` shape
+        # (no extra char before `.bc`) excludes the predicted suffix.
+        ck_glob="mro_sc_psp_??????_??????.bc",
         fk_glob="mro_v*.tf",
         sclk_glob="MRO_SCLKSCET.*.tsc",
         frame_name="MRO_SPACECRAFT",
+        estimated_total_mib=80_000,
     ),
-    # Phase 2 entries (validated by the sweep — uncomment after Phase 1 land):
-    #
-    # "JUNO": AttitudePattern("juno_sc_rec_*.bc", "juno_v*.tf",
-    #                         "JNO_SCLKSCET.*.tsc", "JUNO_SPACECRAFT"),
-    # "CASSINI": AttitudePattern("*ra.bc", "cas_v*.tf",
-    #                            "cas*.tsc", "CASSINI_SC_COORD"),
-    # "DAWN": AttitudePattern("dawn_sc_*.bc", "dawn_v*.tf",
-    #                         "dawn_sclkscet_*.tsc", "DAWN_SPACECRAFT"),
-    # "EUROPACLIPPER": AttitudePattern("clipper_sc_*.bc", "clipper_v*.tf",
-    #                                  "europaclipper_*.tsc", "EUROPAM_SPACECRAFT"),
-    # "ORX": AttitudePattern("orx_*.bc", "orx_v*.tf",
-    #                        "ORX_SCLKSCET.*.tsc", "ORX_SPACECRAFT"),
-    # "SMAP": AttitudePattern("smap_at_*.bc", "smap_pf_v*.tf",
-    #                         "smap_cl_v*.tsc", "SMAP_SC"),
-    # "SIRTF": AttitudePattern("ts*.bc", "sirtf_v*.tf",
-    #                          "STF_SCLKSCET.*.tsc", "SIRTF_SC_BUS"),
-    # "LADEE": AttitudePattern("ladee_*.bc", "ladee_frames_*.tf",
-    #                          "ladee_clkcor_*.tsc", "LADEE_SC_PROP"),
-    # "MCO": AttitudePattern("mco_*.bc", "mco*.tf",
-    #                        "MCO_SCLKSCET.*.tsc", "MCO_SPACECRAFT"),
-    # "INTEGRAL": AttitudePattern("integral_sc_*.bc", "integral_v*.tf",
-    #                             "integral_fict_*.tsc", "INTEGRAL_SPACECRAFT"),
-    # "PHSRM": AttitudePattern("phsrm_sc_*.bc", "phsrm_v*.tf",
-    #                          "phsrm_*.tsc", "PHSRM_SPACECRAFT"),
-    # "GAIA": AttitudePattern("gaia_sc_*.bc", "gaia_v*.tf",
-    #                         "gaia_fict_*.tsc", "GAIA_SPACECRAFT"),
-    # "SOLAR-ORBITER": AttitudePattern("solo_ANC_soc-default-att-stp_*.bc",
-    #                                  "solo_ANC_soc-sc-fk_V*.tf",
-    #                                  "solo_ANC_soc-sclk_*.tsc", "SOLO_PRF"),
 }
 
 
