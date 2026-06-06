@@ -16,8 +16,28 @@ PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 # Per-texture scraped source metadata (written by the texture_sources downloader);
 # used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
 SOURCE_METADATA_PARSED_DIR = DERIVED_TEXTURES_DIR / "source-metadata" / "parsed"
-# Date-partitioned snapshots written by the earth_clouds downloader at 3h cadence.
-EARTH_CLOUDS_DIR = SOURCES_TEXTURES_DIR / "clouds" / "earth"
+# Per-body cloud source directories. Earth's is date-partitioned (3h cadence
+# from the earth_clouds downloader); other bodies are single static images
+# next to a `metadata.json` describing the source.
+CLOUDS_DIR = SOURCES_TEXTURES_DIR / "clouds"
+EARTH_CLOUDS_DIR = CLOUDS_DIR / "earth"
+
+# Maps cloud subdirectory name → NAIF body id. Each entry's processed bundle
+# lands at `PROCESSED_DIR / f"{body_id}_clouds"`.
+CLOUD_SOURCES: dict[str, str] = {
+    "earth": "naif-399",
+    "venus": "naif-299",
+}
+
+# User-facing organisation + description for static cloud bundles. The
+# downloaded sidecar's `description` is a rendering hint, not credit copy,
+# so we override it here. Keyed by NAIF body id.
+CLOUDS_STATIC_META: dict[str, tuple[str, str]] = {
+    "naif-299": (
+        "Björn Jónsson",
+        "Ultraviolet cloud map mosaicked from Galileo SSI flyby imagery.",
+    ),
+}
 
 
 def iter_extra_asset_yamls() -> Iterator[Path]:
@@ -36,8 +56,17 @@ def iter_extra_asset_yamls() -> Iterator[Path]:
     yield from SOURCES_TEXTURES_DIR.glob("*/*/download-metadata.yaml")
 
 
+# Suffix appended to a body id to name its processed cloud bundle directory.
+CLOUDS_SUFFIX = "_clouds"
 # Parallel to the Earth surface texture; the renderer layers it on top of naif-399.
-EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
+EARTH_CLOUDS_OBJECT_ID = f"{CLOUD_SOURCES['earth']}{CLOUDS_SUFFIX}"
+
+
+def clouds_object_id(body_id: str) -> str:
+    """Bundle directory name for a body's cloud overlay (sibling of its surface texture)."""
+    return f"{body_id}{CLOUDS_SUFFIX}"
+
+
 # Suffix on the export directory holding a body's specular/roughness bundle —
 # sibling of the surface texture, mirrors the `_clouds` convention.
 SPECULAR_SUFFIX = "_specular"

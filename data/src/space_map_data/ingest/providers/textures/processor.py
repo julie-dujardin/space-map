@@ -579,14 +579,41 @@ class TextureProcessor:
         )
         return out_dir
 
-    def _process_clouds(self, force: bool = False) -> Path:
-        """Process every Earth cloud-cover snapshot into per-frame WebP exports.
+    def _process_clouds(self, force: bool = False) -> None:
+        """Dispatch each entry in ``CLOUD_SOURCES`` to the timeseries or static path.
 
-        Walks every PNG under ``EARTH_CLOUDS_DIR`` (date tree written by the
-        earth_clouds downloader at 3h cadence), derives a sortable
+        Per-body cloud sources live under ``CLOUDS_DIR/<name>/``; the name
+        maps to a NAIF body id, and the processed bundle lands at
+        ``PROCESSED_DIR/<body_id>_clouds/``. Directories with image files at
+        the top level are treated as a single static texture (e.g. Venus);
+        directories holding a date tree of snapshots go through the
+        timeseries path (e.g. Earth).
+        """
+        for subdir_name, body_id in config.CLOUD_SOURCES.items():
+            src_dir = config.CLOUDS_DIR / subdir_name
+            if not src_dir.exists():
+                log.debug("clouds: %s does not exist, skipping", src_dir)
+                continue
+            top_images = [
+                p
+                for p in src_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in config.IMAGE_EXTS
+            ]
+            if top_images:
+                self._process_clouds_static(body_id, src_dir, top_images, force=force)
+            else:
+                self._process_clouds_timeseries(body_id, src_dir, force=force)
+
+    def _process_clouds_timeseries(
+        self, body_id: str, src_dir: Path, force: bool = False
+    ) -> Path:
+        """Process a date-tree of cloud-cover snapshots into per-frame WebP exports.
+
+        Walks every PNG under ``src_dir`` (a ``YYYY/MM/DD/HH.png`` tree
+        written by a snapshot downloader), derives a sortable
         ``YYYYMMDDHH`` frame id from each path, and exports as
-        ``{tier}_{frame_id}.webp`` alongside the Earth surface texture. A
-        single top-level metadata.json carries the union of frames; per-frame
+        ``{tier}_{frame_id}.webp`` under ``{body_id}_clouds/``. A single
+        top-level metadata.json carries the union of frames; per-frame
         ``size_bytes`` / ``source_file`` are intentionally omitted — they'd
         just repeat across thousands of snapshots.
 
@@ -596,13 +623,9 @@ class TextureProcessor:
         outputs for vanished snapshots are deleted. ``force=True``
         re-encodes every frame.
         """
-        if not config.EARTH_CLOUDS_DIR.exists():
-            log.debug("clouds: %s does not exist, skipping", config.EARTH_CLOUDS_DIR)
-            return config.PROCESSED_DIR
-
-        pngs = sorted(config.EARTH_CLOUDS_DIR.rglob("*.png"))
+        pngs = sorted(src_dir.rglob("*.png"))
         if not pngs:
-            log.warning("no earth_clouds snapshots in %s", config.EARTH_CLOUDS_DIR)
+            log.warning("no cloud snapshots in %s", src_dir)
             return config.PROCESSED_DIR
 
         inputs: list[tuple[str, Path]] = []
@@ -612,7 +635,7 @@ class TextureProcessor:
             if fid is None:
                 log.warning(
                     "cloud snapshot at unexpected path: %s",
-                    p.relative_to(config.EARTH_CLOUDS_DIR).as_posix(),
+                    p.relative_to(src_dir).as_posix(),
                 )
                 continue
             if fid in seen:
@@ -621,17 +644,18 @@ class TextureProcessor:
             inputs.append((fid, p))
         target_frames = [fid for fid, _ in inputs]
 
-        out_dir = config.PROCESSED_DIR / config.EARTH_CLOUDS_OBJECT_ID
+        object_id = config.clouds_object_id(body_id)
+        out_dir = config.PROCESSED_DIR / object_id
         meta_path = mirror_path(out_dir / "metadata.json")
 
-        download_meta_path = config.EARTH_CLOUDS_DIR / "metadata.json"
+        download_meta_path = src_dir / "metadata.json"
         download_meta: dict = {}
         if download_meta_path.exists():
             try:
                 download_meta = json.loads(download_meta_path.read_text())
             except (OSError, json.JSONDecodeError):
                 log.warning(
-                    "failed to read earth_clouds metadata at %s", download_meta_path
+                    "failed to read clouds download metadata at %s", download_meta_path
                 )
 
         if not force and meta_path.exists():
@@ -644,7 +668,7 @@ class TextureProcessor:
                     "skipping clouds (already processed %d frames, use force=True to reprocess)",
                     len(target_frames),
                 )
-                self._mark_texture_available(config.EARTH_CLOUDS_OBJECT_ID)
+                self._mark_texture_available(object_id)
                 return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -669,7 +693,7 @@ class TextureProcessor:
                 # match), or the post-loop fallback below.
                 continue
             img = open_image(src)
-            exports = self._export(img, config.EARTH_CLOUDS_OBJECT_ID, out_dir, suffix)
+            exports = self._export(img, object_id, out_dir, suffix)
             if not tiers:
                 tiers = sorted(exports.keys())
 
@@ -683,9 +707,9 @@ class TextureProcessor:
                 if (out_dir / f"{t}_{first_fid}.webp").exists()
             )
 
-        self._mark_texture_available(config.EARTH_CLOUDS_OBJECT_ID)
+        self._mark_texture_available(object_id)
         metadata: dict = {
-            "id": config.EARTH_CLOUDS_OBJECT_ID,
+            "id": object_id,
             "source": download_meta.get("source_url", ""),
             "organisation": "EUMETSAT",
             "attribution": download_meta.get("attribution"),
@@ -699,8 +723,87 @@ class TextureProcessor:
         meta_path.write_text(json.dumps(metadata, indent=2))
         log.info(
             "processed clouds → %s (%d frames × %d tiers)",
-            config.EARTH_CLOUDS_OBJECT_ID,
+            object_id,
             len(target_frames),
+            len(tiers),
+        )
+        return out_dir
+
+    def _process_clouds_static(
+        self,
+        body_id: str,
+        src_dir: Path,
+        images: list[Path],
+        force: bool = False,
+    ) -> Path:
+        """Process a single static cloud texture into ``{tier}_static.webp`` exports.
+
+        ``src_dir`` holds one cylindrical image plus a ``metadata.json``
+        sidecar from the downloader (source URL, attribution, description).
+        The output mirrors the timeseries layout — same URL template
+        ``{tier}_{frame}.webp`` — using ``"static"`` as the sentinel frame
+        id so the frontend's cloud loader needs no special-case branch.
+        """
+        if len(images) > 1:
+            log.warning(
+                "static clouds %s: expected 1 image, found %d (using %s)",
+                src_dir,
+                len(images),
+                images[0].name,
+            )
+        src = images[0]
+
+        object_id = config.clouds_object_id(body_id)
+        out_dir = config.PROCESSED_DIR / object_id
+        meta_path = mirror_path(out_dir / "metadata.json")
+
+        download_meta_path = src_dir / "metadata.json"
+        download_meta: dict = {}
+        if download_meta_path.exists():
+            try:
+                download_meta = json.loads(download_meta_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                log.warning(
+                    "failed to read clouds download metadata at %s", download_meta_path
+                )
+
+        if not force and meta_path.exists() and (out_dir / "low_static.webp").exists():
+            log.debug(
+                "skipping static clouds %s (already processed, use force=True to reprocess)",
+                object_id,
+            )
+            self._mark_texture_available(object_id)
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img = open_image(src)
+        source_dims = [img.width, img.height]
+        exports = self._export(img, object_id, out_dir, filename_suffix="_static")
+        tiers = sorted(exports.keys())
+
+        self._mark_texture_available(object_id)
+        organisation, description = config.CLOUDS_STATIC_META.get(
+            body_id, ("Unknown", "Cloud overlay.")
+        )
+        metadata: dict = {
+            "id": object_id,
+            "source": download_meta.get("source_url", ""),
+            "organisation": organisation,
+            "attribution": download_meta.get("attribution"),
+            "description": description,
+            "type": "clouds_overlay",
+            "tiers": tiers,
+            "frames": ["static"],
+            "source_file": src.name,
+            "source_dimensions": source_dims,
+            "processed_at": datetime.now(UTC).isoformat(),
+        }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(metadata, indent=2))
+        log.info(
+            "processed static clouds %s → %s (%d tiers)",
+            src.name,
+            object_id,
             len(tiers),
         )
         return out_dir
