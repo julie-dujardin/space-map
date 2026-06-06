@@ -7,6 +7,7 @@ class PROVIDERS(StrEnum):
     SBDB_MOONS = "sbdb_moons"
     SPICE = "spice"
     SPICE_PROBES = "spice_probes"
+    SPICE_PROBES_PROPAGATION = "spice_probes_propagation"
     SPICE_HORIZONS_SYNTH = "spice_horizons_synth"
     WIKIDATA = "wikidata"
     WIKIPEDIA = "wikipedia"

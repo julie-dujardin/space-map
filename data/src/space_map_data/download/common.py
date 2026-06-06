@@ -14,6 +14,7 @@ from space_map_data.download.providers.objects.celestrak import CelesTrakDownloa
 from space_map_data.download.providers.spice import (
     HorizonsSyntheticDownloader,
     ProbesDownloader,
+    PropagationDownloader,
     SpiceDownloader,
 )
 from space_map_data.download.providers.iau_nomenclature import IAUNomenclatureDownloader
@@ -45,6 +46,7 @@ PROVIDERS_CLASSES = [
     SpiceDownloader,
     ProbesDownloader,
     HorizonsSyntheticDownloader,
+    PropagationDownloader,
     WikidataDownloader,
     WikipediaDownloader,
     CommonsDownloader,

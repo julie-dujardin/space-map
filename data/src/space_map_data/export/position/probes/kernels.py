@@ -34,7 +34,7 @@ _RECON_TOKENS: frozenset[str] = frozenset(
     {"rec", "recon", "reconstruction", "reconstructed", "fcp", "final"}
 )
 _PREDICT_TOKENS: frozenset[str] = frozenset(
-    {"pre", "pred", "predict", "predicted", "flp", "ref", "forecast"}
+    {"pre", "pred", "predict", "predicted", "flp", "ref", "forecast", "extrap"}
 )
 
 
@@ -112,7 +112,16 @@ def _kernels_from_index_with(
             continue
         if skip_stationary and any(p in name for p in STATIONARY_PATTERNS):
             continue
-        if include_pats and not any(p.match(name) for p in include_pats):
+        # Synthesised extrap kernels (Type 5 two-body extensions written by
+        # `download/providers/spice/probes/propagation.py`) bypass the
+        # include pattern — they're emitted by us, not downloaded, so the
+        # per-mission whitelist that gates upstream archives doesn't apply.
+        is_extrap = name.endswith("-extrap.bsp")
+        if (
+            not is_extrap
+            and include_pats
+            and not any(p.match(name) for p in include_pats)
+        ):
             logger.debug(
                 "drop %s/%s: no longer matches include patterns", mdir.name, name
             )

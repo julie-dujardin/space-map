@@ -8,7 +8,12 @@ into the same on-disk SPICE tree under `DOWNLOAD_DIR/spice/`.
 """
 
 from .bodies import SpiceDownloader
-from .probes import ProbesDownloader
+from .probes import ProbesDownloader, PropagationDownloader
 from .synth import HorizonsSyntheticDownloader
 
-__all__ = ["HorizonsSyntheticDownloader", "ProbesDownloader", "SpiceDownloader"]
+__all__ = [
+    "HorizonsSyntheticDownloader",
+    "ProbesDownloader",
+    "PropagationDownloader",
+    "SpiceDownloader",
+]
