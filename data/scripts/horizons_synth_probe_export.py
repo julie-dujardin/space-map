@@ -36,7 +36,9 @@ def main() -> None:
             # `has_localized` is the cross-Wikidata map of which probe rows
             # have IAU-named landing sites; we don't need it here, empty dict
             # means every probe is treated as un-localized (trajectory only).
-            zones = write_probes(session, DOWNLOAD_DIR, out_dir, has_localized={})
+            zones, coverage = write_probes(
+                session, DOWNLOAD_DIR, out_dir, has_localized={}
+            )
             log.info(
                 "Probe export complete: %d zones produced (%s)",
                 len(zones),
@@ -54,7 +56,10 @@ def main() -> None:
             manifest = json.loads(manifest_path.read_text())
         except json.JSONDecodeError:
             manifest = {}
-    manifest.setdefault("position", {}).setdefault("zones", {}).update(zones)
+    position = manifest.setdefault("position", {})
+    position.setdefault("zones", {}).update(zones)
+    if coverage:
+        position.setdefault("probe_coverage", {}).update(coverage)
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
     log.info("Wrote manifest %s with %d zones", manifest_path, len(zones))
 

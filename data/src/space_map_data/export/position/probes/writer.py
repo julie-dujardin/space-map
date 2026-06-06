@@ -45,13 +45,17 @@ from space_map_data.export.position.probes.fit import (
     stale_fits,
 )
 from space_map_data.export.position.probes.kernels import collect_generic_kernels
-from space_map_data.export.position.probes.plan import build_probe_metas
+from space_map_data.export.position.probes.plan import (
+    ProbeMeta,
+    ProbePlan,
+    build_probe_metas,
+)
 from space_map_data.export.position.probes.time_grid import (
     PROBE_EXPORT_END_YEAR,
     PROBE_EXPORT_START_YEAR,
 )
 from space_map_data.export.position.probes.write import write_pass
-from space_map_data.utils.time import jd_to_et, year_to_jd
+from space_map_data.utils.time import et_to_jd, jd_to_et, year_to_jd
 from space_map_data.probes.fit_centers import (
     FitCenterCandidate,
     candidates_for_zone,
@@ -65,12 +69,51 @@ from space_map_data.probes.zones import ALL_ZONES
 logger = logging.getLogger(__name__)
 
 
+def _compute_probe_coverage(
+    plans: list[ProbePlan],
+    metas_by_probe_id: dict[int, ProbeMeta],
+) -> dict[str, dict[str, float]]:
+    """Per-probe outermost coverage envelope across every (zone, chunk_idx).
+
+    Union of every `ChunkContribution`'s `(c_start_et, c_end_et)` for the
+    probe; covers both flying and landed contributions and across zones
+    (cruise + captured-orbit). Frontend keys this by `Object.id` so a
+    focused probe's coverage end is one lookup away.
+    """
+    bounds_by_probe: dict[int, tuple[float, float]] = {}
+    for plan in plans:
+        for c in plan.contributions:
+            cur = bounds_by_probe.get(plan.probe_id)
+            if cur is None:
+                bounds_by_probe[plan.probe_id] = (c.c_start_et, c.c_end_et)
+            else:
+                bounds_by_probe[plan.probe_id] = (
+                    min(cur[0], c.c_start_et),
+                    max(cur[1], c.c_end_et),
+                )
+    coverage: dict[str, dict[str, float]] = {}
+    for probe_id, (s_et, e_et) in bounds_by_probe.items():
+        meta = metas_by_probe_id.get(probe_id)
+        if meta is None:
+            logger.warning(
+                "probe_coverage: probe_id=%d has contributions but no ProbeMeta; "
+                "dropping from coverage manifest",
+                probe_id,
+            )
+            continue
+        coverage[meta.obj_id] = {
+            "start_jd": et_to_jd(s_et),
+            "end_jd": et_to_jd(e_et),
+        }
+    return coverage
+
+
 def write_probes(
     session: Session,
     download_dir: Path,
     out_dir: Path,
     has_localized: dict[str, bool],
-) -> dict[str, dict]:
+) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
     """Build per-zone, per-chunk binary files for every probe on disk.
 
     Incremental export with per-probe fit caching:
@@ -85,12 +128,16 @@ def write_probes(
          the chunks whose hashes changed are dirty. Load cached records
          for each dirty chunk and pack + atomic-write binary + sidecar.
 
-    Returns `{zone_key_with_prefix: {chunks, chunk_days, start_jd, end_jd}}`
-    so `_build_position_metadata` can fold it into the manifest.
+    Returns `(zone_manifest, probe_coverage)`. `zone_manifest` is
+    `{zone_key_with_prefix: {chunks, chunk_days, start_jd, end_jd, ...}}`
+    for `build_position_metadata`. `probe_coverage` is
+    `{Object.id: {start_jd, end_jd}}` — the union of every probe's
+    contributions across all zones — used by the frontend's coverage-end
+    pause to know exactly where the data runs out.
     """
     if not MISSIONS_DIR.exists():
         logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)
-        return {}
+        return {}, {}
 
     probe_registry = load_registry()
     probe_source_index = index_by_source(probe_registry)
@@ -161,7 +208,7 @@ def write_probes(
     finally:
         spiceypy.kclear()
 
-    return write_pass(
+    zone_manifest = write_pass(
         chunk_index,
         dirty,
         by_zone_chunk,
@@ -170,3 +217,5 @@ def write_probes(
         start_jd,
         end_jd,
     )
+    coverage = _compute_probe_coverage(plans, metas_by_probe_id)
+    return zone_manifest, coverage

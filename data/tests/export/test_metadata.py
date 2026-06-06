@@ -288,3 +288,31 @@ class TestMixedZones:
                     }
                 },
             )
+
+
+class TestProbeCoverage:
+    """Per-probe coverage envelope folds in as `probe_coverage` alongside `zones`."""
+
+    def test_emits_sorted_coverage_map(self):
+        meta = build_position_metadata(
+            {},
+            {},
+            probe_zones=None,
+            probe_coverage={
+                "probe-9999": {"start_jd": 2455000.0, "end_jd": 2456000.0},
+                "probe-1111": {"start_jd": 2450000.0, "end_jd": 2451000.0},
+            },
+        )
+        assert list(meta["probe_coverage"].keys()) == ["probe-1111", "probe-9999"]
+        assert meta["probe_coverage"]["probe-1111"] == {
+            "start_jd": 2450000.0,
+            "end_jd": 2451000.0,
+        }
+
+    def test_omitted_when_empty(self):
+        meta = build_position_metadata({}, {}, probe_zones=None, probe_coverage={})
+        assert "probe_coverage" not in meta
+
+    def test_omitted_when_none(self):
+        meta = build_position_metadata({}, {})
+        assert "probe_coverage" not in meta

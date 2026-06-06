@@ -534,13 +534,14 @@ def _write_metadata_json(
     zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
     chebyshev_zones: dict,
     probe_zones: dict,
+    probe_coverage: dict[str, dict[str, float]],
     bundle_ns: dict,
     feature_bundle_ns: dict,
     skybox_metadata: dict | None,
 ) -> None:
     """Emit the top-level metadata.json (position manifest + bundles + skybox)."""
     position_metadata = build_position_metadata(
-        zone_structure, chebyshev_zones, probe_zones
+        zone_structure, chebyshev_zones, probe_zones, probe_coverage
     )
     metadata: dict = {
         "position": position_metadata,
@@ -658,7 +659,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         chebyshev_zones = write_chebyshev(
             session, DOWNLOAD_DIR, out_dir, radii, agg.all_objects.has_localized
         )
-        probe_zones = write_probes(
+        probe_zones, probe_coverage = write_probes(
             session, DOWNLOAD_DIR, out_dir, agg.all_objects.has_localized
         )
 
@@ -695,6 +696,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         agg.zone_structure,
         chebyshev_zones,
         probe_zones,
+        probe_coverage,
         bundle_ns,
         feature_bundle_ns,
         skybox_metadata,

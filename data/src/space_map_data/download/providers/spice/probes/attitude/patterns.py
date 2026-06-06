@@ -128,8 +128,10 @@ PATTERNS: dict[str, AttitudePattern] = {
         estimated_total_mib=2_000,
     ),
     "LADEE": AttitudePattern(
-        # LADEE used `<YYJJJ_YYJJJ_vNN>.bc` — leading digit excludes test/cal CKs.
-        ck_glob="ladee_1?????_1?????_v??.bc",
+        # LADEE used `<YYJJJ_YYJJJ_vNN>.bc` where YYJJJ is 5 chars (2-digit
+        # year + 3-digit day-of-year), e.g. `ladee_14030_14108_v04.bc`.
+        # The leading `1` excludes test/cal CKs from non-flight years.
+        ck_glob="ladee_1????_1????_v??.bc",
         fk_glob="ladee_frames_*.tf",
         sclk_glob="ladee_clkcor_*.tsc",
         frame_name="LADEE_SC_PROP",
