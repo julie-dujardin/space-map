@@ -8,6 +8,7 @@ import {
 	highestAvailableTier
 } from '$lib/scene/objects/body/textures';
 import { cloudFrameForJd, loadCloudTexture } from '$lib/scene/objects/surface/clouds';
+import { getSettings } from '$lib/state/settings.svelte';
 
 /** Per-frame texture LOD: upgrade tier by screen-space radius. One-way — prior tier disposed. */
 export function updateTextureLOD(
@@ -23,6 +24,14 @@ export function updateTextureLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
+	const showClouds = getSettings().showClouds;
+
+	// Sync cloud-mesh visibility unconditionally — the LOD gate below skips
+	// bodies outside the active system, but visibility needs to track every
+	// body that has a cloud node so the user toggle covers them all.
+	for (const bo of bodyObjects.values()) {
+		if (bo.clouds) bo.clouds.mesh.visible = showClouds;
+	}
 
 	for (const bo of bodyObjects.values()) {
 		if (!bo.mesh || !bo.radiusScene || !bo.group.visible) continue;

@@ -46,5 +46,24 @@
 				{/each}
 			</div>
 		</section>
+
+		<section class="flex flex-col gap-3">
+			<h3 class="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+				{m.layers_section_layers()}
+			</h3>
+			<button
+				type="button"
+				role="switch"
+				aria-checked={settings.showClouds}
+				class="text-start rounded-md border p-3 transition-colors cursor-pointer
+					{settings.showClouds
+					? 'border-primary bg-primary/5'
+					: 'border-input hover:bg-accent hover:text-accent-foreground'}"
+				onclick={() => settings.setShowClouds(!settings.showClouds)}
+			>
+				<div class="text-sm font-medium">{m.layers_clouds()}</div>
+				<div class="text-xs text-muted-foreground mt-0.5">{m.layers_clouds_desc()}</div>
+			</button>
+		</section>
 	</div>
 </div>
