@@ -121,32 +121,6 @@ def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
     }
 
 
-def _existing_agency_naifs() -> set[int]:
-    """NAIF IDs already covered by agency-published SPKs under `missions/`."""
-    missions_dir = SOURCES_POSITION_DIR / "spice-kernels" / "missions"
-    out: set[int] = set()
-    if not missions_dir.exists():
-        return out
-    for mdir in missions_dir.iterdir():
-        if not mdir.is_dir() or mdir.name == "HORIZONS-SYNTH":
-            continue
-        idx_path = mdir / "_index.json"
-        if not idx_path.exists():
-            continue
-        try:
-            idx = json.loads(idx_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        for t in idx.get("targets", {}):
-            try:
-                naif = int(t)
-            except ValueError:
-                continue
-            if naif < 0:
-                out.add(naif)
-    return out
-
-
 def _write_index(coverage: dict[int, str]) -> None:
     """Emit a `missions/HORIZONS-SYNTH/_index.json` so the agency ingest walker
     finds these kernels alongside the rest. Schema matches ProbesDownloader's

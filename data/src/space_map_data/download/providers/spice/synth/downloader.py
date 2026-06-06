@@ -13,7 +13,6 @@ from ..bodies.major_bodies import MB_FILENAME
 from .cache import fetch_one
 from .horizons_api import HORIZONS_URL
 from .index import (
-    _existing_agency_naifs,
     _parse_horizons_spacecraft,
     _write_index,
     qid_deduped_synth_naifs,
@@ -28,9 +27,11 @@ class HorizonsSyntheticDownloader(Downloader):
     """Synthesize per-spacecraft SPKs from Horizons VECTORS.
 
     Selection: walk the cached Horizons MB list, drop simulation/debris/
-    stage/booster entries, drop NAIF IDs already covered by an agency SPK in
-    `missions/`, then fetch+build the remainder. Cache-skip via OBJ_DATA's
-    `Revised :` header makes repeated runs cheap.
+    stage/booster entries, drop QID-matched agency duplicates, then
+    fetch+build the remainder. NAIF collisions aren't filtered — NAIF
+    recycles low-magnitude IDs across eras (e.g. -9 = Mariner 9 = ESCAPADE-Blue)
+    and the two ET windows don't overlap. Cache-skip via OBJ_DATA's `Revised :`
+    header makes repeated runs cheap.
     """
 
     name = PROVIDERS.SPICE_HORIZONS_SYNTH
@@ -50,16 +51,12 @@ class HorizonsSyntheticDownloader(Downloader):
                 f"Need {mb_path}; run `space-map-download --sources spice` first"
             )
         all_sc = _parse_horizons_spacecraft(mb_path.read_text())
-        agency = _existing_agency_naifs()
         qid_dups = qid_deduped_synth_naifs()
-        candidates = [
-            (n, nm) for n, nm in all_sc if n not in agency and n not in qid_dups
-        ]
+        candidates = [(n, nm) for n, nm in all_sc if n not in qid_dups]
         logger.info(
-            "horizons-synth: %d MB spacecraft - %d already in missions/ "
-            "- %d qid-deduped against agency = %d to synthesize",
+            "horizons-synth: %d MB spacecraft - %d qid-deduped against agency "
+            "= %d to synthesize",
             len(all_sc),
-            len(agency),
             len(qid_dups),
             len(candidates),
         )
