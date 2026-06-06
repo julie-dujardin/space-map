@@ -11,7 +11,7 @@
 		value = $bindable(),
 		placeholder = $bindable(),
 		class: className,
-		weekdayFormat = 'short',
+		weekdayFormat,
 		buttonVariant = 'ghost',
 		captionLayout = 'label',
 		locale = 'en-US',
@@ -37,6 +37,19 @@
 		if (captionLayout.startsWith('dropdown')) return 'short';
 		return 'long';
 	});
+
+	// `short` weekday names in some locales (e.g. Arabic, Hebrew, Vietnamese) are full
+	// words that share a common prefix, so slicing to 2 chars collides. Fall back to
+	// `narrow` (always single chars) when that happens.
+	const effectiveWeekdayFormat = $derived.by(() => {
+		if (weekdayFormat) return weekdayFormat;
+		const fmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+		const slices = new Set<string>();
+		for (let i = 0; i < 7; i++) {
+			slices.add(fmt.format(new Date(Date.UTC(2024, 0, 7 + i))).slice(0, 2));
+		}
+		return slices.size === 7 ? 'short' : 'narrow';
+	});
 </script>
 
 <!--
@@ -47,7 +60,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	bind:value={value as never}
 	bind:ref
 	bind:placeholder
-	{weekdayFormat}
+	weekdayFormat={effectiveWeekdayFormat}
 	{disableDaysOutsideMonth}
 	class={cn(
 		'p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] bg-background group/calendar in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
