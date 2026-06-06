@@ -63,6 +63,22 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         # Venus orbiters
         "probe-80683008",  # Magellan    (mission EVENTS-DB, naif -90000036)
         "probe-111718401",  # Akatsuki    (mission HORIZONS-SYNTH, naif -152)
+        # Venus landers (successful Soviet soft landings)
+        "probe-38514688",  # Venera 7    (mission EVENTS-DB, naif -90000225; first successful soft landing on another planet)
+        "probe-40923136",  # Venera 8    (mission EVENTS-DB, naif -90000226)
+        "probe-45707266",  # Venera 9 Lander  (mission EVENTS-DB, naif -90000276; first surface images)
+        "probe-45731842",  # Venera 10 Lander (mission EVENTS-DB, naif -90000277)
+        "probe-50577410",  # Venera 11 Lander (mission EVENTS-DB, naif -90000278)
+        "probe-50597890",  # Venera 12 Lander (mission EVENTS-DB, naif -90000279)
+        "probe-55275522",  # Venera 13 Lander (mission EVENTS-DB, naif -90000280; first colour panorama)
+        "probe-55296002",  # Venera 14 Lander (mission EVENTS-DB, naif -90000281)
+        "probe-60682241",  # Vega 1 Venus Lander (mission EVENTS-DB, naif -90000210)
+        "probe-60698624",  # Vega 2 Venus Lander (mission EVENTS-DB, naif -90000212)
+        # Pioneer Venus 2 (Multiprobe) descent probes — all four reached the surface
+        "probe-50446337",  # Pioneer Venus Large Probe (mission EVENTS-DB, naif -90000135)
+        "probe-50446338",  # Pioneer Venus North Probe (mission EVENTS-DB, naif -90000136)
+        "probe-50446339",  # Pioneer Venus Day Probe   (mission EVENTS-DB, naif -90000137; survived ~67 min on surface)
+        "probe-50446341",  # Pioneer Venus Night Probe (mission EVENTS-DB, naif -90000254)
         # Mars / planetary orbiters & landers
         "probe-93536256",  # Mars Express (mission MEX, naif -41)
         "probe-84353024",  # Mars Odyssey (mission M01, naif -53)
