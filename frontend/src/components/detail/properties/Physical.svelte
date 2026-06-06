@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
@@ -40,6 +41,31 @@
 			{ label: m.equatorial_radius(), value: equatorial },
 			{ label: m.polar_radius(), value: `${formatNumber(c)} ${unit}` }
 		];
+	});
+
+	// Surface area in km², derived from whichever size source the panel uses
+	// for the radius row. Triaxial bodies use Knud Thomsen's approximation
+	// (p=1.6075, ~1% error). Hidden for the Sun and gas/ice giants — their
+	// reported radius bounds a gas envelope, not a real surface.
+	let surfaceAreaKm2 = $derived.by(() => {
+		if (global && NO_SURFACE_BODY_IDS.has(global.id)) return null;
+		if (radii) {
+			const { a, b, c } = radii;
+			const p = 1.6075;
+			const mean = (Math.pow(a * b, p) + Math.pow(a * c, p) + Math.pow(b * c, p)) / 3;
+			return 4 * Math.PI * Math.pow(mean, 1 / p);
+		}
+		const radiusKm = wd?.radius
+			? wd.radius.unit === 'kilometre'
+				? wd.radius.value
+				: wd.radius.unit === 'metre'
+					? wd.radius.value / 1000
+					: null
+			: sbdb?.diameter
+				? sbdb.diameter / 2
+				: null;
+		if (radiusKm == null) return null;
+		return 4 * Math.PI * radiusKm * radiusKm;
 	});
 
 	let hasContent = $derived(
@@ -92,6 +118,12 @@
 		{/if}
 		{#if sbdb?.extent && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
+		{/if}
+		{#if surfaceAreaKm2 != null}
+			<Row
+				label={m.surface_area()}
+				value={formatQuantity({ value: surfaceAreaKm2, unit: 'square_kilometre' }, true)}
+			/>
 		{/if}
 		{#if wd?.density}
 			<Row label={m.property_name_density()} value={formatQuantity(wd.density)} />

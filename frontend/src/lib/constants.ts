@@ -58,6 +58,20 @@ export const SSB_ID = 'naif-0';
 export const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
 
 /**
+ * Bodies whose reported radius bounds a gas envelope or plasma (the Sun's
+ * photosphere, the giant planets' cloud tops) rather than a solid surface.
+ * Skip "Surface area" for these — the number is well-defined geometrically
+ * but misleading as a surface.
+ */
+export const NO_SURFACE_BODY_IDS: ReadonlySet<string> = new Set([
+	'naif-10', // Sun
+	'naif-599', // Jupiter
+	'naif-699', // Saturn
+	'naif-799', // Uranus
+	'naif-899' // Neptune
+]);
+
+/**
  * Bodies rendered as halos but with no label or trail by default — label
  * appears on hover (alongside the existing halo scale), trail draws as usual
  * when the body is selected (focused). Curated to keep the inner system from
