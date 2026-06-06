@@ -74,6 +74,7 @@
 /* IAU surface-feature labels — created by surface/nomenclature.ts. Smaller,
  * dimmer than body labels; clickable to open the feature drawer. */
 .scene-feature-label {
+	left: 0; /* see .scene-label — CSS2DRenderer's position:absolute + transform breaks in RTL without an explicit inset */
 	color: rgba(255, 255, 255, 0.7);
 	font-size: 12px;
 	white-space: nowrap;
