@@ -14,8 +14,8 @@ trace. Each mission lives at the same key in both trees, with its own
 _index.json.
 """
 
-from space_map_data.constants.providers import PROVIDERS
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
-MISSIONS_DIR = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels" / "missions"
-LANDED_MISSIONS_DIR = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels" / "landed_missions"
+_KERNELS_DIR = SOURCES_POSITION_DIR / "spice-kernels"
+MISSIONS_DIR = _KERNELS_DIR / "missions"
+LANDED_MISSIONS_DIR = _KERNELS_DIR / "landed-missions"

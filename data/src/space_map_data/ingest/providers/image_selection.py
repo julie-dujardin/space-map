@@ -9,10 +9,9 @@ scoring file per tree (assessment > pageimage-frequency > globalusage — see
 
 The results are cached at:
 
-* ``DOWNLOAD_DIR/commons/object_images.json`` keyed by ``Object.id`` (e.g.
-  ``naif-199``). Drives the ``image_available`` flag on Object rows.
-* ``DOWNLOAD_DIR/commons/feature_images.json`` keyed by IAU
-  ``Feature.feature_id`` (stringified).
+* ``OBJECT_IMAGES_PATH`` keyed by ``Object.id`` (e.g. ``naif-199``). Drives
+  the ``image_available`` flag on Object rows.
+* ``FEATURE_IMAGES_PATH`` keyed by IAU ``Feature.feature_id`` (stringified).
 
 Exports read these caches instead of re-walking sources.
 """
@@ -26,23 +25,23 @@ import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
+    COMMONS_DIR,
     collect_qid_image_candidates,
     is_servable_on_disk,
     read_download_metadata,
     read_manual_extras,
 )
 from space_map_data.utils.db import get_session
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
-OBJECT_IMAGES_PATH = DOWNLOAD_DIR / PROVIDERS.COMMONS / "object_images.json"
-FEATURE_IMAGES_PATH = DOWNLOAD_DIR / PROVIDERS.COMMONS / "feature_images.json"
+OBJECT_IMAGES_PATH = COMMONS_DIR / "object_images.json"
+FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
 
 SCHEMA_VERSION = 1
 
@@ -66,7 +65,7 @@ def ingest() -> None:
             selected = _select_for_qid(
                 qid,
                 metadata_cache,
-                DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects",
+                SOURCES_METADATA_DIR / "wikidata" / "objects",
                 aux_pid="P154",
                 aux_kind="logo",
             )
@@ -102,7 +101,7 @@ def ingest() -> None:
             selected = _select_for_qid(
                 qid,
                 metadata_cache,
-                DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "nomenclature",
+                SOURCES_METADATA_DIR / "wikidata" / "nomenclature",
                 aux_pid="P242",
                 aux_kind="locator",
             )
@@ -130,7 +129,7 @@ def _select_for_qid(
     direct, kind_of, pageimage_count = collect_qid_image_candidates(
         qid,
         wikidata_dir=wikidata_dir,
-        wiki_dir=DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA,
+        wiki_dir=SOURCES_METADATA_DIR / "wikipedia",
         aux_pid=aux_pid,
         aux_kind=aux_kind,
     )
@@ -173,7 +172,7 @@ def _select_for_qid(
 
 
 class _MetadataView:
-    """Dict-like lazy reader for ``DOWNLOAD_DIR/commons/images/<f>/metadata.json``.
+    """Dict-like lazy reader for ``IMAGES_DIR/<f>/metadata.json``.
 
     The scoring helpers only call ``.get(filename)``; routing every lookup
     through a shared cache means we touch each ``metadata.json`` at most

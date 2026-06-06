@@ -3,16 +3,19 @@ import time
 from posixpath import basename as url_basename
 from urllib.parse import urlparse
 
+import httpx
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.utils.paths import SOURCES_MAPS_DIR
 
 logger = logging.getLogger(__name__)
 
 DOWNLOAD_PAGE = "https://planetarynames.wr.usgs.gov/GIS_Downloads"
 REQUEST_DELAY = 5
+TARGET_DIR = SOURCES_MAPS_DIR / "iau-nomenclature"
 
 
 def _parse_download_links(html: str) -> dict[str, list[str]]:
@@ -30,6 +33,11 @@ def _parse_download_links(html: str) -> dict[str, list[str]]:
 
 class IAUNomenclatureDownloader(Downloader):
     name = PROVIDERS.IAU_NOMENCLATURE
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = TARGET_DIR
+        self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         logger.info("Fetching download page: %s", DOWNLOAD_PAGE)

@@ -1,19 +1,41 @@
 """Shared constants and paths for the textures provider."""
 
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+from collections.abc import Iterator
+from pathlib import Path
 
-RAW_DIR = DOWNLOAD_DIR / "textures" / "raw"
-# Per-asset subdirs under `misc/` carry their own download-metadata.yaml; used
-# for manually downloaded files (e.g. GEBCO bathymetry) that don't flow through
-# the auto-downloader. TextureProcessor merges every misc/*/download-metadata.yaml
-# into the main bodies list at startup.
-MISC_DIR = DOWNLOAD_DIR / "textures" / "misc"
+from space_map_data.utils.paths import (
+    DERIVED_TEXTURES_DIR,
+    EXPORT_DIR,
+    SOURCES_TEXTURES_DIR,
+)
+
+# Per-body surface textures (flat — filename encodes the body). The main
+# download-metadata.yaml at the SOURCES_TEXTURES_DIR root maps them.
+RAW_DIR = SOURCES_TEXTURES_DIR / "surfaces"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "textures"
 # Per-texture scraped source metadata (written by the texture_sources downloader);
 # used as a fallback for `attribution` when download-metadata.yaml doesn't provide one.
-SOURCE_METADATA_PARSED_DIR = DOWNLOAD_DIR / "textures" / "source_metadata" / "parsed"
+SOURCE_METADATA_PARSED_DIR = DERIVED_TEXTURES_DIR / "source-metadata" / "parsed"
 # Date-partitioned snapshots written by the earth_clouds downloader at 3h cadence.
-EARTH_CLOUDS_DIR = DOWNLOAD_DIR / "textures" / "earth_clouds"
+EARTH_CLOUDS_DIR = SOURCES_TEXTURES_DIR / "clouds" / "earth"
+
+
+def iter_extra_asset_yamls() -> Iterator[Path]:
+    """Yield per-asset download-metadata.yaml paths for non-surface textures.
+
+    Picks up:
+    * depth-1 bodyless assets (e.g. ``star-map/download-metadata.yaml``);
+    * depth-2 per-body assets (e.g. ``night/earth/download-metadata.yaml``,
+      ``bathymetry/earth/...``).
+
+    The yaml at the SOURCES_TEXTURES_DIR root (the main bodies manifest for
+    ``surfaces/``) is depth-0 and isn't matched. Special-cased trees
+    (``clouds/``, ``rings/``) use their own metadata filenames.
+    """
+    yield from SOURCES_TEXTURES_DIR.glob("*/download-metadata.yaml")
+    yield from SOURCES_TEXTURES_DIR.glob("*/*/download-metadata.yaml")
+
+
 # Parallel to the Earth surface texture; the renderer layers it on top of naif-399.
 EARTH_CLOUDS_OBJECT_ID = "naif-399_clouds"
 # Suffix on the export directory holding a body's specular/roughness bundle —

@@ -1,8 +1,12 @@
 """Paths, schema version, and per-tier knobs for the 3D-model provider."""
 
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+from space_map_data.utils.paths import (
+    DERIVED_MODELS_DIR,
+    EXPORT_DIR,
+    SOURCES_MODELS_DIR,
+)
 
-MODELS_DOWNLOAD_DIR = DOWNLOAD_DIR / "3d"
+MODELS_DOWNLOAD_DIR = SOURCES_MODELS_DIR
 NASA_MANIFEST = MODELS_DOWNLOAD_DIR / "nasa-3d-resources.yaml"
 NASA_CHECKOUT = MODELS_DOWNLOAD_DIR / "NASA-3D-Resources"
 ESA_DIR = MODELS_DOWNLOAD_DIR / "ESA-SciFleet"
@@ -13,7 +17,7 @@ MERGED_MANIFEST = MODELS_DOWNLOAD_DIR / "merged.yaml"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "models"
 # Compressed-GLB cache: one pair (high+low knobs) per manifest source file,
 # keyed by source sha256 + compression-knobs version. Survives across runs.
-CONVERTED_DIR = MODELS_DOWNLOAD_DIR / "converted"
+CONVERTED_DIR = DERIVED_MODELS_DIR / "converted"
 
 # Bump when the public per-slug metadata.json shape changes — _try_skip
 # treats older files as stale and reprocesses them.

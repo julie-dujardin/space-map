@@ -10,8 +10,8 @@ recorded in ``metadata.json`` for the texture-attribution pipeline.
 
 On-disk layout::
 
-    DOWNLOAD_DIR/textures/earth_clouds/yyyy/mm/dd/HH.png
-    DOWNLOAD_DIR/textures/earth_clouds/metadata.json
+    sources/textures/clouds/earth/yyyy/mm/dd/HH.png
+    sources/textures/clouds/earth/metadata.json
 """
 
 import logging
@@ -22,7 +22,7 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class EarthCloudsDownloader(Downloader):
 
     def __init__(self, client: httpx.Client) -> None:
         self.client = client
-        self.out_dir = DOWNLOAD_DIR / "textures" / "earth_clouds"
+        self.out_dir = SOURCES_TEXTURES_DIR / "clouds" / "earth"
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def _slot_path(self, now: datetime) -> Path:

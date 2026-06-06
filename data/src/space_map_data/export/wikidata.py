@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from space_map_data.models.object import Object
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class WikidataEntityCache:
     """
 
     def __init__(self) -> None:
-        wikidata_dir = DOWNLOAD_DIR / "wikidata"
+        wikidata_dir = SOURCES_METADATA_DIR / "wikidata"
         self._entities_dir = wikidata_dir / "objects"
         self._nomenclature_dir = wikidata_dir / "nomenclature"
         self._referenced_dir = wikidata_dir / "referenced"

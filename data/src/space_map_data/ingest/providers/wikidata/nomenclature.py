@@ -12,7 +12,6 @@ from pathlib import Path
 
 from sqlalchemy import update
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.feature import Feature
 from space_map_data.utils.db import get_session
@@ -37,14 +36,18 @@ def _read_conflict_resolution(csv_path: Path) -> dict[int, str]:
 
 
 def ingest(download_dir: Path) -> None:
-    ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
+    ids_dir = download_dir / "sources" / "metadata" / "wikidata" / "ids"
     csv_path = ids_dir / "matches" / "P2824.csv"
     if not csv_path.exists():
         logger.warning("Wikidata P2824.csv not found at %s, skipping", csv_path)
         return
 
     conflict_csv = (
-        download_dir / "iau_nomenclature" / "wikipedia_qid_conflict_resolution.csv"
+        download_dir
+        / "sources"
+        / "maps"
+        / "iau-nomenclature"
+        / "wikipedia_qid_conflict_resolution.csv"
     )
     overrides = _read_conflict_resolution(conflict_csv) if conflict_csv.exists() else {}
     if overrides:

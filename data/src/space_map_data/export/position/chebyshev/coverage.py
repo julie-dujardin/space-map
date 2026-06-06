@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.export.position.chebyshev.writer import (
     _object_for_naif_id,
     should_export,
@@ -23,12 +22,12 @@ def chebyshev_coverage(session: Session, download_dir: Path) -> set[str]:
     osculating Kepler elements from chebyshev positions when needed, so a
     duplicated kepler row is just dead bytes.
 
-    Walks `download_dir/spice/chebyshev/*.npz` and resolves each file's
+    Walks `derived/position/chebyshev/*.npz` and resolves each file's
     `naif_id` against the DB (with the SPK-ID fallback used by the cheb
     writer). Returns a set of `Object.id` strings (e.g. `naif-499`,
     `spkid-20134340`) so callers can filter on the prefixed form.
     """
-    cheb_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
+    cheb_dir = download_dir / "derived" / "position" / "chebyshev"
     if not cheb_dir.exists():
         return set()
     ids: set[str] = set()

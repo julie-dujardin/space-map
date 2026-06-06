@@ -231,7 +231,7 @@ def _should_extract(body: MajorBody) -> bool:
 
 
 def extract_chebyshev(
-    out_dir: Path,
+    cheb_dir: Path,
     bodies: list[MajorBody],
     kernel_paths: list[Path],
     start_year: int,
@@ -240,11 +240,11 @@ def extract_chebyshev(
     """Extract Chebyshev ephemeris for every body in `bodies` that we want to
     ship.
 
-    Writes one `.npz` per body under `out_dir / chebyshev / {naif_id}.npz`.
-    Bodies whose cached file still matches the requested time range, sampling
-    interval, and degree are skipped; stale files (filtered out, no SPK
-    coverage, or parameter mismatch) are removed at the end so the directory
-    always reflects the current filter policy.
+    Writes one `.npz` per body under `cheb_dir/{naif_id}.npz`. Bodies whose
+    cached file still matches the requested time range, sampling interval,
+    and degree are skipped; stale files (filtered out, no SPK coverage, or
+    parameter mismatch) are removed at the end so the directory always
+    reflects the current filter policy.
 
     Returns the number of bodies present in the output directory after the
     run (newly extracted plus cache hits).
@@ -252,8 +252,7 @@ def extract_chebyshev(
     Caller must have furnished all relevant kernels before invoking; we only
     read the SPK files here to discover native sub-interval parameters.
     """
-    cheb_dir = out_dir / "chebyshev"
-    cheb_dir.mkdir(exist_ok=True)
+    cheb_dir.mkdir(parents=True, exist_ok=True)
 
     start_et = spiceypy.str2et(f"{start_year}-01-01T00:00:00")
     end_et = spiceypy.str2et(f"{end_year}-01-01T00:00:00")

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from sqlalchemy import update
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
 from tqdm import tqdm
@@ -19,7 +18,9 @@ BATCH = 1000
 def ingest(download_dir: Path) -> None:
     csv_path = (
         download_dir
-        / PROVIDERS.WIKIDATA
+        / "sources"
+        / "metadata"
+        / "wikidata"
         / "ids"
         / "conflicts"
         / "resolved_conflicts.csv"

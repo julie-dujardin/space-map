@@ -7,7 +7,6 @@ from pathlib import Path
 from sqlalchemy import delete, insert
 from tqdm import tqdm
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.convert import count_csv_rows, int_or_none, string_or_none
 from space_map_data.ingest.providers.objects.enrichment import (
     GroupData,
@@ -31,7 +30,7 @@ class SatcatIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.provider_dir = download_dir / PROVIDERS.CELESTRAK
+        self.provider_dir = download_dir / "sources" / "position" / "celestrak"
         self.satcat_path = self.provider_dir / "satcat.csv"
         self.groups_dir = latest_day_dir(self.provider_dir) / "groups"
         self.total_rows = 0

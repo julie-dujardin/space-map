@@ -83,7 +83,7 @@ NAIF_MISSIONS_TO_SKIP: frozenset[str] = frozenset(
         # bucket as most Luna/Venera, Chang'e/Yutu, Zhurong, Tianwen-1
         # lander, Beagle 2, Schiaparelli, Hope, Mangalyaan, MPL/DS2,
         # Fobos-Grunt, etc. — these come in via `probes/landing_events.py`,
-        # which reads the curated `space-map-downloads/probes/events/*.json`
+        # which reads the curated `sources/position/probe-events/*.json`
         # files and emits static METHOD_LANDED records without an SPK.
         "MPF",
         "NEAR",  # PDS3

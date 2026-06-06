@@ -287,9 +287,9 @@ class TestComputeMajorBodyHillKm:
 
     @pytest.fixture(autouse=True)
     def _spice(self):
-        from space_map_data.utils.paths import DOWNLOAD_DIR
+        from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
-        kernels_root = DOWNLOAD_DIR / "spice" / "kernels"
+        kernels_root = SOURCES_POSITION_DIR / "spice-kernels"
         required = [
             kernels_root / "lsk" / "naif0012.tls",
             kernels_root / "spk" / "planets" / "de440.bsp",
@@ -363,7 +363,7 @@ class TestQidDedupedSynthNaifs:
     @staticmethod
     def _missions_dir_with(tmp_path, names):
         """Create stub mission dirs with empty `_index.json` for each name."""
-        missions = tmp_path / "spice" / "kernels" / "missions"
+        missions = tmp_path / "spice-kernels" / "missions"
         missions.mkdir(parents=True)
         for n in names:
             (missions / n).mkdir()
@@ -381,7 +381,7 @@ class TestQidDedupedSynthNaifs:
     def test_dedups_synth_naif_against_spk_backed_agency(self, tmp_path, monkeypatch):
         # INTEGRAL case: ESA SPK at -275, Horizons synth at -198, both Q50021.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         registry = [
             self._entry("INTEGRAL", -275, "Q50021"),
             self._entry("HORIZONS-SYNTH", -198, "Q50021"),
@@ -392,7 +392,7 @@ class TestQidDedupedSynthNaifs:
         # EVENTS-DB has no `missions/EVENTS-DB/` SPK dir, so it must not act
         # as an agency match — Tianwen-1's only ephemeris is the synth.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])  # arbitrary; not the match
-        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         registry = [
             self._entry("EVENTS-DB", -90000051, "Q49011"),
             self._entry("HORIZONS-SYNTH", -86, "Q49011"),
@@ -401,7 +401,7 @@ class TestQidDedupedSynthNaifs:
 
     def test_no_match_when_qids_differ(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["JUNO"])
-        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         registry = [
             self._entry("JUNO", -61, "Q186287"),
             self._entry("HORIZONS-SYNTH", -227, "Q15839"),  # Kepler, no collision
@@ -410,13 +410,13 @@ class TestQidDedupedSynthNaifs:
 
     def test_empty_registry_returns_empty_set(self, tmp_path, monkeypatch):
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         assert index.qid_deduped_synth_naifs([]) == set()
 
     def test_synth_without_qid_is_kept(self, tmp_path, monkeypatch):
         # Brand-new synth entries lack a curated QID — never dedup them.
         self._missions_dir_with(tmp_path, ["INTEGRAL"])
-        monkeypatch.setattr(index, "DOWNLOAD_DIR", tmp_path)
+        monkeypatch.setattr(index, "SOURCES_POSITION_DIR", tmp_path)
         registry = [
             self._entry("INTEGRAL", -275, "Q50021"),
             self._entry("HORIZONS-SYNTH", -198, None),

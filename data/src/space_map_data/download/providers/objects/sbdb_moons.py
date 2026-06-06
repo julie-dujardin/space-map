@@ -12,10 +12,12 @@ import json
 import logging
 import time
 
+import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,11 @@ PER_REQUEST_DELAY_SECONDS = 1
 
 class SBDBMoonsDownloader(Downloader):
     name = PROVIDERS.SBDB_MOONS
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = SOURCES_POSITION_DIR / "sbdb" / "moons"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def _list_parents(self) -> list[str]:
         """Return SPK-IDs of all small bodies that have known satellites."""

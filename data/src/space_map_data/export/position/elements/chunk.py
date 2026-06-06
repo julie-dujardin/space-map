@@ -3,7 +3,6 @@
 import logging
 from pathlib import Path
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.writer import (
     write_elements,
@@ -18,7 +17,7 @@ from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
 from space_map_data.models.object import Object, OrbitalSource
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import DOWNLOAD_DIR, SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +34,12 @@ def _earth_day_dir(date_iso: str) -> Path:
     """Map a snapshot's `YYYY-MM-DD` label to its CelesTrak day-dir on disk.
 
     The downloader stores each day at
-    `space-map-downloads/celestrak/{YYYY}/{MM}/{DD}/` (zero-padded month/day).
+    `sources/position/celestrak/{YYYY}/{MM}/{DD}/` (zero-padded month/day).
     The sidecar fingerprints the CSVs in that dir to decide whether to
     re-encode a part.
     """
     year, month, day = date_iso.split("-")
-    return DOWNLOAD_DIR / PROVIDERS.CELESTRAK / year / month / day
+    return SOURCES_POSITION_DIR / "celestrak" / year / month / day
 
 
 def _sgp4_validity_window(objects: list[Object]) -> tuple[float, float]:

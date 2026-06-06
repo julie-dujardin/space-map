@@ -3,10 +3,12 @@ import json
 import logging
 import time
 
+import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,11 @@ CHUNK_SIZE = 100_000
 
 class SBDBDownloader(Downloader):
     name = PROVIDERS.SBDB
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = SOURCES_POSITION_DIR / "sbdb"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def _fields_file(self):

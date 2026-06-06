@@ -7,8 +7,8 @@ Used by:
 
 The on-disk layout after download is::
 
-    DOWNLOAD_DIR/commons/images/<filename>/source.<ext>    # the source image bytes
-    DOWNLOAD_DIR/commons/images/<filename>/metadata.json   # Commons imageinfo + license_servable
+    IMAGES_DIR/<filename>/source.<ext>    # the source image bytes
+    IMAGES_DIR/<filename>/metadata.json   # Commons imageinfo + license_servable
 
 ``<filename>`` is the full canonical Commons filename (underscore form, including
 extension) — it is the stable Commons identity.
@@ -21,14 +21,15 @@ from urllib.parse import unquote, urlparse
 
 import orjson
 
-from space_map_data.constants.providers import LANGUAGES, PROVIDERS
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.constants.providers import LANGUAGES
+from space_map_data.utils.paths import SOURCES_IMAGES_DIR, SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
 
-IMAGES_DIR = DOWNLOAD_DIR / "commons" / "images"
-MANUAL_EXTRA_PATH = DOWNLOAD_DIR / "commons" / "manual-extra.json"
+COMMONS_DIR = SOURCES_IMAGES_DIR / "commons"
+IMAGES_DIR = COMMONS_DIR / "images"
+MANUAL_EXTRA_PATH = COMMONS_DIR / "manual-extra.json"
 
 _WIKIDATA_IMAGE_PIDS = ("P18", "P154")
 # P18 photo + P242 locator map (USGS-style IAU feature outline). Logo (P154)
@@ -68,7 +69,7 @@ def is_excluded(filename: str) -> bool:
 
 
 def image_dir(filename: str) -> Path:
-    """Per-image directory under DOWNLOAD_DIR/commons/images/."""
+    """Per-image directory under IMAGES_DIR."""
     return IMAGES_DIR / filename
 
 
@@ -142,8 +143,8 @@ def collect_qid_image_candidates(
     Non-Commons Wikipedia images and excluded-prefix filenames are filtered
     out; callers see only servable candidates.
     """
-    wikidata_dir = wikidata_dir or (DOWNLOAD_DIR / PROVIDERS.WIKIDATA / "objects")
-    wiki_dir = wiki_dir or (DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA)
+    wikidata_dir = wikidata_dir or (SOURCES_METADATA_DIR / "wikidata" / "objects")
+    wiki_dir = wiki_dir or (SOURCES_METADATA_DIR / "wikipedia")
 
     photo_from_wikidata: list[str] = []
     aux_from_wikidata: list[str] = []

@@ -3,7 +3,7 @@
 The SPICE classify pass (``classify.py``) walks mission kernel trees and
 derives landed phases from body-fixed motion. This module covers the
 complement: probes whose only registry source is ``EVENTS-DB`` and whose
-landings live in ``space-map-downloads/probes/events/*.json``. No SPICE,
+landings live in ``sources/position/probe-events/*.json``. No SPICE,
 no parallelism — pure JSON-to-plans.
 
 Routing:

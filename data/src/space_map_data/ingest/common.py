@@ -76,7 +76,7 @@ def ingest_wikidata(download_dir: Path) -> None:
 def ingest_images() -> None:
     """Compute the per-object best Commons image and set ``image_available``.
 
-    Writes ``DOWNLOAD_DIR/commons/object_images.json`` keyed by ``Object.id``,
+    Writes ``OBJECT_IMAGES_PATH`` keyed by ``Object.id``,
     with at most one filename per derivative-tree component (best by
     assessment > pageimage frequency > globalusage). Sets
     ``Object.image_available`` based on whether any image survives the

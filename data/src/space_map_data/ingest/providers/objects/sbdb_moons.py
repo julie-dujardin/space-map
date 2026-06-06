@@ -1,7 +1,7 @@
 """Ingest SBDB per-object satellite payloads (asteroid moons).
 
 Reads the per-parent JSON files written by `SBDBMoonsDownloader`
-(`space-map-downloads/sbdb_moons/{parent_spkid}.json`) and writes:
+(`sources/position/sbdb/moons/{parent_spkid}.json`) and writes:
 
   - One ``Object`` row per *new* satellite, keyed ``spkid-<synth_spkid>``
     where ``synth_spkid = (sat_index + 1) * 100_000_000 + parent_spkid``.
@@ -29,7 +29,7 @@ from pathlib import Path
 from sqlalchemy import delete, insert, select
 from tqdm import tqdm
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.ingest.convert import string_or_none
 from space_map_data.models.object import (
     ElementsScale,
@@ -181,7 +181,7 @@ class SBDBMoonsIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.dir = download_dir / PROVIDERS.SBDB_MOONS
+        self.dir = download_dir / "sources" / "position" / "sbdb" / "moons"
         self.new_objects = 0
         self.merged_count = 0
         self.no_parent_files = 0

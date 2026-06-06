@@ -8,7 +8,7 @@ modules, Cassini-Huygens's components, etc.) under a single root directory.
 
 Per-root layout::
 
-    DOWNLOAD_DIR/3d/ESA-SciFleet/<root>/
+    TARGET_DIR/<root>/
         <slug>.fbx, <slug>.blend, <slug>_textures.zip, ...
         metadata.yaml
 
@@ -31,7 +31,7 @@ import yaml
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_MODELS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +39,9 @@ CATALOG_URL = "https://scifleet.esa.int/data/satellites.json"
 DOWNLOADS_BASE = "https://scifleet.esa.int/downloads"
 PAGE_URL = "https://scifleet.esa.int/model-downloads"
 
-TARGET_DIR = DOWNLOAD_DIR / "3d" / "ESA-SciFleet"
-DIR_LABEL = "ESA-SciFleet"  # used in model paths (relative to DOWNLOAD_DIR/3d/)
-MERGED_MANIFEST = DOWNLOAD_DIR / "3d" / "merged.yaml"
+TARGET_DIR = SOURCES_MODELS_DIR / "ESA-SciFleet"
+DIR_LABEL = "ESA-SciFleet"  # used in model paths (relative to SOURCES_MODELS_DIR)
+MERGED_MANIFEST = SOURCES_MODELS_DIR / "merged.yaml"
 
 # Formats to fetch and the `type:` label written into metadata.yaml.
 WANTED_FORMATS: dict[str, str] = {
@@ -137,7 +137,7 @@ class ESA3DDownloader(Downloader):
     name = PROVIDERS.ESA_3D
 
     def __init__(self, client: httpx.Client) -> None:
-        # Skip base mkdir; we manage our own path under 3d/.
+        # Skip base mkdir; we manage our own path under sources/models/.
         self.client = client
         self.out_dir = TARGET_DIR
         TARGET_DIR.mkdir(parents=True, exist_ok=True)

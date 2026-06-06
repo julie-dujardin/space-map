@@ -13,7 +13,6 @@ from sqlalchemy import case, delete, func, insert, update
 from tqdm import tqdm
 
 from space_map_data.constants.continents import Continent
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.convert import float_or_none, string_or_none
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import SBDB, Object, ObjectType
@@ -149,7 +148,7 @@ class IAUNomenclatureIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.provider_dir = download_dir / PROVIDERS.IAU_NOMENCLATURE
+        self.provider_dir = download_dir / "sources" / "maps" / "iau-nomenclature"
         self.total_rows = 0
         self.seen_ids: set[int] = set()
 

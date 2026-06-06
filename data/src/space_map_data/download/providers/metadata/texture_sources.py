@@ -42,14 +42,13 @@ from bs4 import BeautifulSoup, Tag
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import DERIVED_TEXTURES_DIR, SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
 
-TEXTURES_DIR = DOWNLOAD_DIR / "textures"
+TEXTURES_DIR = SOURCES_TEXTURES_DIR
 DOWNLOAD_METADATA_YAML = TEXTURES_DIR / "download-metadata.yaml"
-MISC_DIR = TEXTURES_DIR / "misc"
-SOURCE_METADATA_DIR = TEXTURES_DIR / "source_metadata"
+SOURCE_METADATA_DIR = DERIVED_TEXTURES_DIR / "source-metadata"
 HTML_CACHE_DIR = SOURCE_METADATA_DIR / "html"
 PARSED_DIR = SOURCE_METADATA_DIR / "parsed"
 
@@ -614,10 +613,11 @@ class TextureSourcesDownloader(Downloader):
         PARSED_DIR.mkdir(parents=True, exist_ok=True)
 
     def _load_entries(self) -> list[dict]:
-        """Collect entries from the main yaml plus every `misc/*/download-metadata.yaml`.
+        """Collect entries from the main yaml plus every per-asset yaml.
 
         Mirrors TextureProcessor's startup merge so manually-staged textures
-        (e.g. `misc/star_map/`) get the same source-metadata treatment.
+        (e.g. ``star-map/``, ``night/earth/``) get the same source-metadata
+        treatment.
         """
         if not DOWNLOAD_METADATA_YAML.exists():
             raise FileNotFoundError(
@@ -626,15 +626,15 @@ class TextureSourcesDownloader(Downloader):
         entries: list[dict] = list(
             yaml.safe_load(DOWNLOAD_METADATA_YAML.read_text()).get("bodies", [])
         )
-        if MISC_DIR.is_dir():
-            for sub in sorted(MISC_DIR.iterdir()):
-                if not sub.is_dir():
-                    continue
-                sub_yaml = sub / "download-metadata.yaml"
-                if not sub_yaml.is_file():
-                    continue
-                data = yaml.safe_load(sub_yaml.read_text()) or {}
-                entries.extend(data.get("bodies") or [])
+        # Non-surface assets at depth 1 (bodyless, e.g. star-map/) or depth 2
+        # (per-body, e.g. night/earth/) carry their own yaml.
+        extra_yamls = sorted(
+            list(TEXTURES_DIR.glob("*/download-metadata.yaml"))
+            + list(TEXTURES_DIR.glob("*/*/download-metadata.yaml"))
+        )
+        for sub_yaml in extra_yamls:
+            data = yaml.safe_load(sub_yaml.read_text()) or {}
+            entries.extend(data.get("bodies") or [])
         dropped = sum(1 for e in entries if not isinstance(e, dict))
         if dropped:
             logger.warning(

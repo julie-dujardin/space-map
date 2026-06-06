@@ -6,7 +6,7 @@ import multiprocessing
 import re
 from pathlib import Path
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object.sbdb import OrbitClass
 from sqlalchemy import delete, insert
 from tqdm import tqdm
@@ -354,7 +354,7 @@ class SBDBIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.sbdb_dir = download_dir / PROVIDERS.SBDB
+        self.sbdb_dir = download_dir / "sources" / "position" / "sbdb"
         self.total_rows = 0
 
     def _find_chunks(self) -> list[Path]:

@@ -24,7 +24,6 @@ won't invalidate already-written position parts.
 import json
 from pathlib import Path
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
     matches,
@@ -97,7 +96,7 @@ def build_sbdb_part_signature(download_dir: Path) -> dict:
     partial/aborted download (`complete: false`) doesn't get conflated
     with a later complete one that happened to land at the same timestamp.
     """
-    meta_path = download_dir / PROVIDERS.SBDB / "metadata.json"
+    meta_path = download_dir / "sources" / "position" / "sbdb" / "metadata.json"
     meta = json.loads(meta_path.read_text())
     return {
         "format_version": FORMAT_VERSION,

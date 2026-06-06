@@ -2,7 +2,7 @@
 context metadata used to translate them.
 
 The downloader (``download.providers.deepl``) writes translations under
-``DOWNLOAD_DIR/deepl/{lang}.json`` as a nested mapping
+``DEEPL_DIR/{lang}.json`` as a nested mapping
 ``{context_label: {english_source: translation}}``. The context label comes
 from the message key's prefix (see ``PREFIX_TO_CONTEXT`` below) and is
 passed to DeepL as its ``context`` parameter, which lets the engine
@@ -10,7 +10,7 @@ disambiguate domain-specific terms (orbital classes named ``Amor`` are not
 ``Love``, ``undocumented`` is "not catalogued" not "without papers", etc.).
 
 When the prefix dictionaries change, the cache key changes and stale
-entries are simply ignored; deleting ``DOWNLOAD_DIR/deepl/`` forces a clean
+entries are simply ignored; deleting ``DEEPL_DIR`` forces a clean
 retranslation.
 """
 
@@ -21,11 +21,11 @@ from typing import TypedDict
 
 import orjson
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
-DEEPL_DIR = DOWNLOAD_DIR / "deepl"
+DEEPL_DIR = SOURCES_METADATA_DIR / "deepl"
 
 # Domain context for the DeepL `context` parameter. Plain-English sentences
 # describing the UI surface the strings appear on. DeepL uses these as

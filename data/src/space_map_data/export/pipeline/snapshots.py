@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
@@ -158,19 +157,19 @@ def moons_snapshots(
 ) -> ZoneSnapshots:
     """Snapshot stream for moons: one snapshot per Method C time chunk.
 
-    Reads pre-computed `moon_chunks/<naif_id>.npz` sidecars from the SPICE
-    download directory and applies each chunk's secular elements as an
-    overlay before the chunk is written. Whitelisted moons (those without a
-    sidecar — they're covered by Chebyshev) keep their single-epoch DB
-    elements unchanged across all chunks; the overlay is a no-op for them.
+    Reads pre-computed `moon-chunks/<naif_id>.npz` sidecars from the derived
+    position tree and applies each chunk's secular elements as an overlay
+    before the chunk is written. Whitelisted moons (those without a sidecar
+    — they're covered by Chebyshev) keep their single-epoch DB elements
+    unchanged across all chunks; the overlay is a no-op for them.
 
     Chunk grid is read from the first .npz file's `chunk_midpoints_jd`; all
     moons share the same grid (built in `_extract_moon_chunks`).
     """
-    cheb_dir = download_dir / PROVIDERS.SPICE / "moon_chunks"
+    cheb_dir = download_dir / "derived" / "position" / "moon-chunks"
     if not cheb_dir.exists():
         logger.info(
-            "No moon_chunks dir at %s; falling back to single snapshot", cheb_dir
+            "No moon-chunks dir at %s; falling back to single snapshot", cheb_dir
         )
         return single_snapshot(base)
 
@@ -184,7 +183,7 @@ def moons_snapshots(
         if midpoints_jd is None:
             midpoints_jd = np.asarray(data["chunk_midpoints_jd"], dtype=np.float64)
     if midpoints_jd is None or not overlays:
-        logger.info("No moon_chunks sidecars found; falling back to single snapshot")
+        logger.info("No moon-chunks sidecars found; falling back to single snapshot")
         return single_snapshot(base)
 
     n_chunks = midpoints_jd.shape[0]

@@ -10,7 +10,7 @@ from space_map_data.export.wikidata import (
     WikidataEntityCache,
     active_statements,
 )
-from space_map_data.utils.paths import DOWNLOAD_DIR, PROJECT_ROOT
+from space_map_data.utils.paths import PROJECT_ROOT, SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ _UNIT_FALLBACK_LABELS: dict[str, tuple[str, str]] = {
 
 def _unit_qids() -> set[str]:
     """Return QIDs present in the units/ download directory."""
-    units_dir = DOWNLOAD_DIR / "wikidata" / "units"
+    units_dir = SOURCES_METADATA_DIR / "wikidata" / "units"
     if not units_dir.exists():
         return set()
     return {f.stem for f in units_dir.glob("Q*.json")}
