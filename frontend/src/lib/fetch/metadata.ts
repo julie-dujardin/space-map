@@ -146,8 +146,19 @@ export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 	return new Date(clamped).toISOString().slice(0, 10);
 }
 
+/** Per-probe outermost coverage envelope (start, end JD) across every zone
+ *  the probe touches. Emitted by the writer at export time so the frontend
+ *  doesn't have to walk chunks (many of which aren't loaded) to find where
+ *  data runs out. Keyed by `Object.id` (e.g. `probe-12345`). Optional —
+ *  legacy exports without the field degrade to "no boundary stops". */
+export interface ProbeCoverage {
+	start_jd: number;
+	end_jd: number;
+}
+
 export interface PositionMetadata {
 	zones: Record<string, ZoneOrProbeMetadata>;
+	probe_coverage?: Record<string, ProbeCoverage>;
 }
 
 /**

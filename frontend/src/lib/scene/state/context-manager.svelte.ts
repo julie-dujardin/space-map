@@ -4,6 +4,7 @@ import { BodyIndex } from '$lib/scene/state/bodies.svelte';
 import { VisibilityController } from '$lib/scene/visibility/controller.svelte';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
+import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
 
@@ -42,6 +43,13 @@ export class ContextManager {
 	 * whose `orbitalSource === SPICE_PROBE`.
 	 */
 	probeStore: ProbeStore | null = null;
+	/**
+	 * Per-probe `(start_jd, end_jd)` from `metadata.position.probe_coverage`.
+	 * Empty map when the export ships no probes; null when the metadata
+	 * predates the field (legacy exports). Drives the focused-probe
+	 * coverage-end pause; the renderer reads it once at scene-build time.
+	 */
+	probeCoverage: Map<string, ProbeCoverage> | null = null;
 
 	/** Hot-reload driver for time-segmented (Earth SGP4 sats) and chunk-indexed
 	 *  (moons Method-C secular elements) zones. Set at the end of {@link loadScene}

@@ -57,6 +57,7 @@ import { type BodyObjects, type Callbacks } from './types';
 import type { Vec3 } from './animation/math';
 import { type FocusState, FOCUS_DURATION_MS, stepFocusAnimation } from './animation/focus';
 import { FocusController } from './focus/controller';
+import { ProbeCoverageWatch } from './probe-coverage-watch';
 import { minCameraDistance } from './visibility/camera-limits';
 import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
@@ -99,6 +100,8 @@ export class SceneRenderer {
 	hideCappedMoonLabels = false;
 
 	private focusController!: FocusController;
+	/** Null when the export ships no `probe_coverage` block (legacy). */
+	private coverageWatch: ProbeCoverageWatch | null = null;
 	private readonly _tmpV3 = new Vector3();
 
 	/**
@@ -276,6 +279,10 @@ export class SceneRenderer {
 			this.renderer
 		);
 
+		if (ctx.probeCoverage) {
+			this.coverageWatch = new ProbeCoverageWatch(clock, ctx.probeCoverage);
+		}
+
 		// Camera initial placement: focus-relative. lat/lon are body-fixed, but
 		// the mesh quaternion is still identity (orientation metadata hasn't
 		// loaded yet), so this falls back to scene-frame. Stash the requested
@@ -450,6 +457,11 @@ export class SceneRenderer {
 			this.controls.target.set(0, 0, 0);
 			this.controls.update();
 		}
+
+		// Arm coverage-end stops before the clock advances so a forward tick
+		// lands exactly on the focused probe's end_jd (and pauses) instead of
+		// flying past into the no-data region.
+		this.coverageWatch?.sync(this.focusController.current, this.clock.jd);
 
 		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());

@@ -190,6 +190,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const metadata = await metadataPromise;
 	ctx.chebStore = await chebPromise;
 	ctx.probeStore = await probePromise;
+	ctx.probeCoverage = metadata.position.probe_coverage
+		? new Map(Object.entries(metadata.position.probe_coverage))
+		: null;
 	const loader = new ChunkLoader(ctx.chebStore);
 
 	const major = await loadMajorBodies(ctx, loader, metadata, date, jd);
