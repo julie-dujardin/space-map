@@ -12,9 +12,12 @@ from tqdm import tqdm
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
 from space_map_data.constants.quadrangle_refs import quadrangle_qids
+from space_map_data.constants.wikidata_qids import (
+    FEATURE_TYPE_QIDS,
+    ORBIT_CLASS_QIDS,
+)
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
-from space_map_data.download.providers.wikidata.qids import ORBIT_CLASS_QIDS
 from space_map_data.export.nomenclature.wikidata_claims import (
     FEATURE_ENTITY_REF_CLAIMS,
     FEATURE_PID_TO_KEY,
@@ -85,6 +88,21 @@ class WikidataDownloader(Downloader):
         orbit_classes_dir.mkdir(exist_ok=True)
         self._fetch_entities(
             orbit_class_qids, orbit_classes_dir, limit=None, fetch_desc="orbit classes"
+        )
+
+        # Fetch IAU feature-type entities (one per 2-letter IAU code that has a
+        # Wikidata counterpart). Used at export time to emit localized
+        # label/description messages for the frontend nomenclature popover.
+        feature_type_qids = {
+            qid for qid in FEATURE_TYPE_QIDS.values() if qid is not None
+        }
+        feature_types_dir = self.out_dir / "feature_types"
+        feature_types_dir.mkdir(exist_ok=True)
+        self._fetch_entities(
+            feature_type_qids,
+            feature_types_dir,
+            limit=None,
+            fetch_desc="feature types",
         )
 
         # Fetch QIDs declared in earth-sat constant catalogs (operators,
