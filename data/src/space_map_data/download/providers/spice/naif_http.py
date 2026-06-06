@@ -98,3 +98,50 @@ def spk_targets(path: Path) -> set[int]:
         logger.warning("SPK open failed for %s: %s", path.name, exc)
         return set()
     return {int(naif) for naif in ids}
+
+
+def spk_coverage(path: Path, naif_id: int) -> list[tuple[float, float]]:
+    """ET coverage intervals for `naif_id` in `path`, merged and sorted.
+
+    Returns [] on read failure or if the NAIF isn't covered. Cell sized
+    for 100k intervals — SELENE's SGMI kernels can exceed 1k segments.
+    """
+    try:
+        cell = spiceypy.cell_double(200_000)
+        spiceypy.spkcov(str(path), naif_id, cell)
+    except spiceypy.exceptions.SpiceyError as exc:
+        logger.warning("spkcov failed for %s naif=%d: %s", path.name, naif_id, exc)
+        return []
+    out: list[tuple[float, float]] = []
+    for i in range(spiceypy.wncard(cell)):
+        start, stop = spiceypy.wnfetd(cell, i)
+        out.append((start, stop))
+    return merge_intervals(out)
+
+
+def merge_intervals(
+    intervals: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Merge overlapping/touching intervals; sorted by start."""
+    if not intervals:
+        return []
+    sorted_iv = sorted(intervals)
+    merged: list[tuple[float, float]] = [sorted_iv[0]]
+    for start, stop in sorted_iv[1:]:
+        last_start, last_stop = merged[-1]
+        if start <= last_stop:
+            merged[-1] = (last_start, max(last_stop, stop))
+        else:
+            merged.append((start, stop))
+    return merged
+
+
+def intervals_overlap(
+    a: list[tuple[float, float]], b: list[tuple[float, float]]
+) -> bool:
+    """True if any interval in `a` overlaps any interval in `b`."""
+    for s1, e1 in a:
+        for s2, e2 in b:
+            if max(s1, s2) < min(e1, e2):
+                return True
+    return False

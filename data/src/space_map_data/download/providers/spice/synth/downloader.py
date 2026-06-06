@@ -10,14 +10,16 @@ from space_map_data.download.downloader import DownloadError, Downloader
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
 
 from ..bodies.major_bodies import MB_FILENAME
+from ..naif_http import intervals_overlap, spk_coverage
 from .cache import fetch_one
 from .horizons_api import HORIZONS_URL
 from .index import (
     _parse_horizons_spacecraft,
     _write_index,
+    agency_naif_coverage,
     qid_deduped_synth_naifs,
 )
-from .layout import SYNTH_CACHE_ROOT
+from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
 from .spk import build_one
 
 logger = logging.getLogger(__name__)
@@ -27,10 +29,11 @@ class HorizonsSyntheticDownloader(Downloader):
     """Synthesize per-spacecraft SPKs from Horizons VECTORS.
 
     Selection: walk the cached Horizons MB list, drop simulation/debris/
-    stage/booster entries, drop QID-matched agency duplicates, then
-    fetch+build the remainder. NAIF collisions aren't filtered — NAIF
-    recycles low-magnitude IDs across eras (e.g. -9 = Mariner 9 = ESCAPADE-Blue)
-    and the two ET windows don't overlap. Cache-skip via OBJ_DATA's `Revised :`
+    stage/booster entries, drop QID-matched agency duplicates, fetch+build
+    the remainder, then drop builds whose ET coverage overlaps an agency
+    claim on the same NAIF (NAIF recycles low-magnitude IDs across eras —
+    e.g. -9 = Mariner 9 (1971) and ESCAPADE-Blue (2025); only same-era
+    collisions are real duplicates). Cache-skip via OBJ_DATA's `Revised :`
     header makes repeated runs cheap.
     """
 
@@ -67,6 +70,7 @@ class HorizonsSyntheticDownloader(Downloader):
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         candidates = self._candidates(limit)
+        agency_coverage = agency_naif_coverage(exclude_mission="HORIZONS-SYNTH")
         succeeded: dict[int, str] = {}
         skipped: list[tuple[int, str, str]] = []
         failed: list[tuple[int, str, str]] = []
@@ -91,6 +95,20 @@ class HorizonsSyntheticDownloader(Downloader):
                 logger.warning("naif %d build failed: %s", naif_id, exc)
                 skipped.append((naif_id, name, f"build: {exc}"))
                 continue
+            spk_path = SYNTH_KERNELS_DIR / f"{naif_id}.bsp"
+            agency_iv = agency_coverage.get(naif_id, [])
+            if agency_iv:
+                synth_iv = spk_coverage(spk_path, naif_id)
+                if synth_iv and intervals_overlap(synth_iv, agency_iv):
+                    logger.info(
+                        "naif %d (%s): synth coverage overlaps agency claim; "
+                        "dropping synth",
+                        naif_id,
+                        name,
+                    )
+                    spk_path.unlink(missing_ok=True)
+                    skipped.append((naif_id, name, "agency-window-collision"))
+                    continue
             succeeded[naif_id] = name
             # Light pacing between spacecraft.
             time.sleep(0.5)

@@ -3,11 +3,13 @@
 import json
 import logging
 import re
+from collections import defaultdict
 
 import orjson
 
 from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
+from ..naif_http import merge_intervals, spk_coverage
 from .horizons_api import HORIZONS_URL
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
 
@@ -121,6 +123,51 @@ def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
     }
 
 
+def agency_naif_coverage(
+    exclude_mission: str | None = None,
+) -> dict[int, list[tuple[float, float]]]:
+    """Merged ET coverage per negative NAIF across agency missions/.
+
+    Reads `targets_coverage` from each `_index.json`; falls back to opening
+    the SPKs with `spkcov` when an index predates the coverage field.
+    """
+    missions_dir = SOURCES_POSITION_DIR / "spice-kernels" / "missions"
+    by_naif: dict[int, list[tuple[float, float]]] = defaultdict(list)
+    if not missions_dir.exists():
+        return {}
+    for mdir in missions_dir.iterdir():
+        if not mdir.is_dir() or mdir.name == exclude_mission:
+            continue
+        idx_path = mdir / "_index.json"
+        if not idx_path.exists():
+            continue
+        try:
+            idx = json.loads(idx_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        tc = idx.get("targets_coverage")
+        if tc:
+            for naif_str, intervals in tc.items():
+                try:
+                    naif = int(naif_str)
+                except ValueError:
+                    continue
+                if naif >= 0:
+                    continue
+                by_naif[naif].extend((float(s), float(e)) for s, e in intervals)
+        else:
+            for naif_str, fnames in idx.get("targets", {}).items():
+                try:
+                    naif = int(naif_str)
+                except ValueError:
+                    continue
+                if naif >= 0:
+                    continue
+                for fname in fnames:
+                    by_naif[naif].extend(spk_coverage(mdir / fname, naif))
+    return {n: merge_intervals(iv) for n, iv in by_naif.items()}
+
+
 def _write_index(coverage: dict[int, str]) -> None:
     """Emit a `missions/HORIZONS-SYNTH/_index.json` so the agency ingest walker
     finds these kernels alongside the rest. Schema matches ProbesDownloader's
@@ -131,6 +178,7 @@ def _write_index(coverage: dict[int, str]) -> None:
     SYNTH_KERNELS_DIR.mkdir(parents=True, exist_ok=True)
     files = []
     targets: dict[str, list[str]] = {}
+    targets_coverage: dict[str, list[list[float]]] = {}
     for naif_id, name in sorted(coverage.items()):
         spk = SYNTH_KERNELS_DIR / f"{naif_id}.bsp"
         if not spk.exists():
@@ -152,6 +200,7 @@ def _write_index(coverage: dict[int, str]) -> None:
             }
         )
         targets[str(naif_id)] = [spk.name]
+        targets_coverage[str(naif_id)] = [list(iv) for iv in spk_coverage(spk, naif_id)]
     (SYNTH_KERNELS_DIR / "_index.json").write_text(
         json.dumps(
             {
@@ -160,6 +209,7 @@ def _write_index(coverage: dict[int, str]) -> None:
                 "spk_url": HORIZONS_URL,
                 "files": files,
                 "targets": targets,
+                "targets_coverage": targets_coverage,
             },
             indent=2,
             sort_keys=True,

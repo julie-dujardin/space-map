@@ -14,7 +14,7 @@ import httpx
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 
-from ..naif_http import spk_targets, stream_to
+from ..naif_http import merge_intervals, spk_coverage, spk_targets, stream_to
 from .attitude.ck_kernels import download_attitude_capped
 from .layout import LANDED_MISSIONS_DIR, MISSIONS_DIR
 from .listings import list_mission_pcks, list_mission_spks
@@ -152,6 +152,7 @@ class ProbesDownloader(Downloader):
             mission_dir = root / source.mission
             mission_dir.mkdir(parents=True, exist_ok=True)
             coverage_by_naif: dict[int, list[str]] = defaultdict(list)
+            intervals_by_naif: dict[int, list[tuple[float, float]]] = defaultdict(list)
             file_records: list[dict] = []
             for f in bucket:
                 local = mission_dir / f.name
@@ -163,6 +164,7 @@ class ProbesDownloader(Downloader):
                 targets = sorted(spk_targets(local))
                 for t in targets:
                     coverage_by_naif[t].append(f.name)
+                    intervals_by_naif[t].extend(spk_coverage(local, t))
                 file_records.append(
                     {
                         "name": f.name,
@@ -179,6 +181,10 @@ class ProbesDownloader(Downloader):
                 "targets": {
                     str(naif): sorted(set(names))
                     for naif, names in sorted(coverage_by_naif.items())
+                },
+                "targets_coverage": {
+                    str(naif): [list(iv) for iv in merge_intervals(intervals)]
+                    for naif, intervals in sorted(intervals_by_naif.items())
                 },
             }
             (mission_dir / "_index.json").write_text(
