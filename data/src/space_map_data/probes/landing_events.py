@@ -1,13 +1,29 @@
 """Load landed phases from probe event JSONs.
 
-Walks ``DOWNLOAD_DIR/probes/events/*.json``, yields one ``LandingPhase``
-per landing/touchdown event whose coordinates are known. Phase end =
-the next event in ``_DEPARTURE_TYPES`` (re-launch, departure, next
-touchdown, …) or ``end_date`` on the landing itself; otherwise the
-probe is considered landed forever (Apollo descent stages, Veneras,
-Surveyors, mission_end on the surface).
+Walks ``DOWNLOAD_DIR/probes/events/*.json``, yields one ``LandingPhase`` per
+``landing`` event on a probe that has a root ``landing_site`` block. Phase
+end = the next event in ``_DEPARTURE_TYPES`` (re-launch, departure, next
+landing, …) or ``end_date`` on the landing itself; otherwise the probe is
+considered landed forever (Apollo descent stages, Veneras, Surveyors).
 
-Asteroid landings use Horizons-NAIF in the source JSON
+Schema is the canonical one produced by ``scripts/normalize_probe_events.py``:
+
+    {
+      "name": "...",
+      "landing_site": {
+        "target_body_naif": 299,
+        "lat_deg": 7.5,
+        "lon_deg": 177.7,
+        "site_name": "..." | null
+      },
+      "events": [
+        ...,
+        {"type": "landing", "date": "...", "outcome": "...",
+         "intentional"?: bool, "end_date"?: "...", ...}
+      ]
+    }
+
+Asteroid landings use Horizons-NAIF in ``target_body_naif``
 (``2_000_000+n``); the body-id resolver maps to SBDB SPKID
 (``20_000_000+n``) so the encoded id matches the asteroid's row in the
 DB (keyed ``spkid-N``). Comets share the ``1_000_000+n`` scheme between
@@ -28,9 +44,9 @@ logger = logging.getLogger(__name__)
 
 EVENTS_DIR = SOURCES_POSITION_DIR / "probe-events"
 
-# Events that terminate a landed phase. `mission_end` / `contact_lost` are
+# Events that terminate a landed phase. ``mission_end`` / ``contact_lost`` are
 # deliberately excluded — a probe that dies on the surface (Apollo descent
-# stages, every Venera, Surveyor 1) is still landed. `stage_separation` is
+# stages, every Venera, Surveyor 1) is still landed. ``stage_separation`` is
 # also excluded: a piece falling off (heatshield, ascent stage release from
 # the descent stage's POV) doesn't move the probe whose row this is. Ascent
 # stages crash back to the surface as their own probe with their own
@@ -40,7 +56,6 @@ _DEPARTURE_TYPES = frozenset(
         "launch",
         "orbit_departure",
         "landing",
-        "touchdown",
         "impact",
         "flyby",
         "earth_flyby",
@@ -53,29 +68,8 @@ _DEPARTURE_TYPES = frozenset(
     }
 )
 
-# Mission-type → (body_id_type ordinal, body_id_value) for events without a
-# `metadata.target_body_naif`. Sample-return capsules etc. land on Earth.
 _NAIF = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 _SPKID = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
-_MISSION_TYPE_TO_BODY: dict[str, tuple[int, int]] = {
-    "lunar_lander": (_NAIF, 301),
-    "lunar_module_descent": (_NAIF, 301),
-    "lunar_rover": (_NAIF, 301),
-    "lunar_sample_return": (_NAIF, 301),
-    "commercial_lunar_lander": (_NAIF, 301),
-    "lunar_flyby_orbiter": (_NAIF, 301),
-    "mars_lander": (_NAIF, 499),
-    "mars_rover": (_NAIF, 499),
-    "venus_lander": (_NAIF, 299),
-    "venus_atmospheric_probe": (_NAIF, 299),
-    "titan_lander": (_NAIF, 606),
-    "phobos_sample_return": (_NAIF, 401),
-    "asteroid_sample_return_capsule": (_NAIF, 399),
-    "comet_sample_return_capsule": (_NAIF, 399),
-    "lunar_sample_return_capsule": (_NAIF, 399),
-    "circumlunar_test_capsule": (_NAIF, 399),
-    "sample_return_bus": (_NAIF, 399),
-}
 
 
 @dataclass(frozen=True)
@@ -117,64 +111,20 @@ def _parse_iso_to_jd(s: str) -> float:
     return dt.toordinal() + 1721424.5 + frac
 
 
-def _coords(event: dict) -> tuple[float, float] | None:
-    """Two equivalent shapes in the source: ``{latitude, longitude}`` (Soviet/
-    Apollo files) and ``{lat_deg, lon_deg}`` (Mars/Spirit/Curiosity files).
-    Both are accepted.
+def _resolve_body(naif: int) -> tuple[int, int]:
+    """Map ``target_body_naif`` (Horizons convention) to the renderer's
+    ``(id_type, id_value)`` pair.
 
-    Longitude is normalised to ``[-180, 180]`` because the wire format packs
-    it as ``int32 × 1e7``: 351°E quantises to 3.51e9, which overflows int32
-    (max 2.15e9) and clamps to ~214.7°. Source files mix conventions —
-    Apollo lunar coords are already signed (``-23.42157``), Soviet Venus
-    coords use 0–360°E (``351``, ``291.64``) — so we standardise here.
+    Numbered asteroids: Horizons ``2_000_000+i`` → SBDB SPKID ``20_000_000+i``
+    (different offsets per the SBDB mapping). Comets share the
+    ``1_000_000+i`` scheme between NAIF and SPKID; the value is identical,
+    only the id-type differs (DB rows for comets are spkid-keyed).
     """
-    meta = event.get("metadata") or {}
-    c = meta.get("landing_coordinates") or meta.get("touchdown_coordinates")
-    if not isinstance(c, dict):
-        # Outer-planets file has Huygens with a free-form "10.573°S, 192.335°W"
-        # string. Huygens has SPK coverage anyway; rather than parsing the
-        # string, skip the events-driven landing and let the SPICE pipeline
-        # handle it.
-        return None
-    lat = c.get("latitude", c.get("lat_deg"))
-    lng = c.get("longitude", c.get("lon_deg"))
-    if lat is None or lng is None:
-        return None
-    try:
-        lat_f = float(lat)
-        lng_f = float(lng)
-    except (TypeError, ValueError):
-        return None
-    # Wrap to [-180, 180] regardless of input convention.
-    lng_f = ((lng_f + 180.0) % 360.0) - 180.0
-    return lat_f, lng_f
-
-
-def _resolve_body(event: dict, mission_type: str) -> tuple[int, int] | None:
-    """Resolve ``(body_id_type, body_id_value)`` for a landing event.
-
-    Priority: explicit ``metadata.target_body_naif`` (Horizons-NAIF) →
-    ``mission_type`` table. ``target_body_name`` lookups are deferred (would
-    need DB access); affected bodies (67P, Didymos) are skipped + logged.
-    """
-    meta = event.get("metadata") or {}
-    naif = meta.get("target_body_naif")
-    if naif is not None:
-        n = int(naif)
-        # Numbered asteroids: Horizons 2_000_000+i → SBDB spkid 20_000_000+i
-        # (NAIF and SPKID use different offsets per the SBDB mapping memory).
-        if 2_000_000 < n < 3_000_000:
-            return _SPKID, n + 18_000_000
-        # Comets share the 1_000_000+i scheme between NAIF and SPKID; the
-        # value is identical, only the id-type differs (the DB rows for
-        # comets are spkid-keyed).
-        if 1_000_000 < n < 2_000_000:
-            return _SPKID, n
-        return _NAIF, n
-    body = _MISSION_TYPE_TO_BODY.get(mission_type)
-    if body is not None:
-        return body
-    return None
+    if 2_000_000 < naif < 3_000_000:
+        return _SPKID, naif + 18_000_000
+    if 1_000_000 < naif < 2_000_000:
+        return _SPKID, naif
+    return _NAIF, naif
 
 
 def _phase_end_et(
@@ -185,10 +135,9 @@ def _phase_end_et(
     surface). Priority: ``end_date`` on the landing event itself → next
     event in ``_DEPARTURE_TYPES`` whose parsed ET is strictly later than
     ``start_et`` (skip same-instant duplicates and same-day lower-precision
-    events that would otherwise compare equal or earlier — Vega landers have
-    duplicate ``landing``+``touchdown`` records at the same UTC; Chang'e
-    returners follow a timestamped ``landing`` with a date-only
-    ``sample_return`` that resolves to the day's 00:00).
+    events that would otherwise compare equal or earlier — Chang'e returners
+    follow a timestamped ``landing`` with a date-only ``sample_return`` that
+    resolves to the day's 00:00).
     """
     landing = events[landing_idx]
     if landing.get("end_date"):
@@ -237,18 +186,17 @@ def _spk_covered_cospars() -> set[str]:
 
 
 def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
-    """Read every events JSON; emit one ``LandingPhase`` per resolvable
-    landing/touchdown. ``end_et_for_indefinite`` is the upper bound for
-    probes that stay on the surface (caller passes
-    ``jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))``).
+    """Read every events JSON; emit one ``LandingPhase`` per ``landing`` event
+    on a probe that has a root ``landing_site`` block.
+    ``end_et_for_indefinite`` is the upper bound for probes that stay on the
+    surface (caller passes ``jd_to_et(year_to_jd(PROBE_EXPORT_END_YEAR))``).
     """
     if not EVENTS_DIR.exists():
         logger.info("No events dir at %s; no events-driven landings", EVENTS_DIR)
         return []
     spk_cospars = _spk_covered_cospars()
     out: list[LandingPhase] = []
-    skipped_no_body = 0
-    skipped_no_coords = 0
+    skipped_no_landing_site = 0
     skipped_spk_covered = 0
     for path in sorted(EVENTS_DIR.glob("*.json")):
         try:
@@ -259,7 +207,6 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
         for probe in data.get("probes", []):
             pid = probe.get("probe_id")
             name = probe.get("name", "?")
-            mt = probe.get("mission_type", "")
             if pid is None:
                 logger.warning(
                     "events: probe %r in %s has no probe_id", name, path.name
@@ -277,31 +224,34 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                     cospar,
                 )
                 continue
+            site = probe.get("landing_site")
+            if not isinstance(site, dict):
+                # Probes without a landing_site never reached a fixed surface
+                # point (burnups, ISO-orbit failures, orbit-only missions
+                # with end-of-mission impacts we couldn't resolve). Skip
+                # silently — the script flagged any surprises at migration.
+                continue
+            naif = site.get("target_body_naif")
+            lat = site.get("lat_deg")
+            lng = site.get("lon_deg")
+            if naif is None or lat is None or lng is None:
+                skipped_no_landing_site += 1
+                logger.info(
+                    "events: %s landing_site missing required field "
+                    "(target_body_naif/lat_deg/lon_deg); skipping",
+                    name,
+                )
+                continue
+            body_id_type, body_id_value = _resolve_body(int(naif))
+            site_name = site.get("site_name")
             events = probe.get("events", [])
             for i, ev in enumerate(events):
-                if ev.get("type") not in ("landing", "touchdown"):
+                if ev.get("type") != "landing":
                     continue
-                coords = _coords(ev)
-                if coords is None:
-                    skipped_no_coords += 1
-                    logger.info(
-                        "events: %s landing on %s has no coordinates; skipping",
-                        name,
-                        ev.get("date"),
-                    )
-                    continue
-                body = _resolve_body(ev, mt)
-                if body is None:
-                    skipped_no_body += 1
-                    meta = ev.get("metadata") or {}
-                    logger.warning(
-                        "events: %s landing on %s: cannot resolve body "
-                        "(mission_type=%r, target_body_name=%r); skipping",
-                        name,
-                        ev.get("date"),
-                        mt,
-                        meta.get("target_body_name"),
-                    )
+                if ev.get("outcome") == "burnup_above_surface":
+                    # Defensive: a landing event flagged as burnup shouldn't
+                    # coexist with a root landing_site, but if it does the
+                    # burnup outcome wins and the phase is suppressed.
                     continue
                 try:
                     start_et = jd_to_et(_parse_iso_to_jd(ev["date"]))
@@ -315,27 +265,24 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                 end_et = _phase_end_et(events, i, start_et)
                 if end_et is None:
                     end_et = end_et_for_indefinite
-                lat, lng = coords
-                meta = ev.get("metadata") or {}
                 out.append(
                     LandingPhase(
                         probe_id=int(pid),
                         probe_name=name,
-                        body_id_type=body[0],
-                        body_id_value=body[1],
-                        lat_deg=lat,
-                        lng_deg=lng,
+                        body_id_type=body_id_type,
+                        body_id_value=body_id_value,
+                        lat_deg=float(lat),
+                        lng_deg=float(lng),
                         start_et=start_et,
                         end_et=end_et,
-                        site_name=meta.get("landing_site_name"),
+                        site_name=site_name,
                     )
                 )
     logger.info(
-        "events: loaded %d landed phases (skipped: %d no body, %d no coords, "
+        "events: loaded %d landed phases (skipped: %d unresolvable landing_site, "
         "%d deferred to SPICE)",
         len(out),
-        skipped_no_body,
-        skipped_no_coords,
+        skipped_no_landing_site,
         skipped_spk_covered,
     )
     return out
