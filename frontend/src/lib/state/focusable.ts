@@ -22,8 +22,14 @@ export function focusableKey(f: Focusable): string {
 	return f.kind === 'feature' ? `feature-${f.feature.featureId}` : f.body.data.id;
 }
 
-/** Header fallback while the detail bundle is loading. Bodies prefer the
- *  chunk-parsed name; features always have a curated name on the record. */
+/** Header fallback while the detail bundle is loading. Nameless bodies show
+ *  the bare catalog number, not the prefixed Object.id. */
 export function focusableFallbackName(f: Focusable): string {
-	return f.kind === 'feature' ? f.feature.name : (f.body.data.name ?? f.body.data.id);
+	if (f.kind === 'feature') return f.feature.name;
+	return f.body.data.name ?? bodyIdNumber(f.body.data.id);
+}
+
+function bodyIdNumber(id: string): string {
+	const dash = id.indexOf('-');
+	return dash === -1 ? id : id.slice(dash + 1);
 }
