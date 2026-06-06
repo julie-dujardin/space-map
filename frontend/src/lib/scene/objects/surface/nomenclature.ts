@@ -20,10 +20,21 @@ import { Vector3, type Camera, type SphereGeometry } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
-import { effectiveRadiusKm } from '$lib/types/objects';
+import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
 import type { BodyObjects } from '$lib/scene/types';
+
+/** Effective focus for surface labels: a landed probe defers to its landing body. */
+export function nomenclatureBodyId(
+	focused: PositionedBody | undefined,
+	bodyObjects: Map<string, BodyObjects>
+): string | undefined {
+	if (!focused) return undefined;
+	const bo = bodyObjects.get(focused.data.id);
+	if (bo?.isLanded) return focused.data.parentId;
+	return focused.data.id;
+}
 
 const DEG2RAD = Math.PI / 180;
 

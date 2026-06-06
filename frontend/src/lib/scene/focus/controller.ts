@@ -11,7 +11,10 @@ import {
 	upgradeBodyMesh
 } from '$lib/scene/objects/body/lifecycle';
 import { unloadBodyModel } from '$lib/scene/objects/body/model';
-import { disposeNomenclatureLabels } from '$lib/scene/objects/surface/nomenclature';
+import {
+	disposeNomenclatureLabels,
+	nomenclatureBodyId
+} from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
@@ -182,12 +185,17 @@ export class FocusController {
 		// Always unload the prev body's overlay model — it isn't tied to the
 		// sphere mesh, so non-upgradable bodies would otherwise leak GLBs.
 		const prev = this.focusedBody;
+		// Labels live on the landing body, not the probe — only dispose when
+		// the effective nomenclature body actually changes.
+		const prevNomBodyId = nomenclatureBodyId(prev, bodyObjects);
+		const newNomBodyId = nomenclatureBodyId(body, bodyObjects);
 		if (prev && prev.data.id !== body.data.id) {
 			const prevBo = bodyObjects.get(prev.data.id);
-			if (prevBo) {
-				unloadBodyModel(prevBo);
-				disposeNomenclatureLabels(prevBo);
-			}
+			if (prevBo) unloadBodyModel(prevBo);
+		}
+		if (prevNomBodyId && prevNomBodyId !== newNomBodyId) {
+			const prevNomBo = bodyObjects.get(prevNomBodyId);
+			if (prevNomBo) disposeNomenclatureLabels(prevNomBo);
 		}
 		const prevTargets = upgradeTargets(prev, ctx);
 		const newTargets = upgradeTargets(body, ctx);
@@ -220,6 +228,11 @@ export class FocusController {
 		ctx.visibility.setFocused(body);
 		callbacks.onFocusChange(body);
 		loadTexture(body);
+		// Landed probe: also load the landing body so its nomenclature attaches.
+		if (newNomBodyId && newNomBodyId !== body.data.id) {
+			const landingBody = ctx.getBody(newNomBodyId);
+			if (landingBody) loadTexture(landingBody);
+		}
 		systemData.syncToFocus();
 		prepareFocusTarget(focus, [...body.position], camera, this.cameraTruePos(), camPos);
 		// Focus moved on/off a user-promoted body — re-emit so the clear button

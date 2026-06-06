@@ -149,6 +149,13 @@ export function updateBodyVisibility(
 	// focused-system root. Treating it as "focused" for visibility keeps its trail
 	// from being suppressed by the CLOSE-and-not-focused gate in bodyVisFlags.
 	const focusedSystemId = ctx.visibility.focusedSystemId;
+
+	// Landed probe defers to its landing body for surface-label focus.
+	let nomFocusedBodyId = focusedBodyId;
+	if (focusedBodyId) {
+		const focusedBo = bodyObjects.get(focusedBodyId);
+		if (focusedBo?.isLanded) nomFocusedBodyId = focusedBo.body.data.parentId;
+	}
 	for (const bo of bodyObjects.values()) {
 		const { body, group, trail } = bo;
 		const dist = bo.cachedDist;
@@ -266,7 +273,8 @@ export function updateBodyVisibility(
 		applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
-		updateNomenclatureVisibility(bo, isFocused, nomScreenR, camera, screenW, screenH);
+		const isNomFocused = body.data.id === nomFocusedBodyId;
+		updateNomenclatureVisibility(bo, isNomFocused, nomScreenR, camera, screenW, screenH);
 	}
 
 	// Keys are subgroup keys (`${zone}#${i}`) from PointCloudSystem's hash-split.
@@ -330,8 +338,8 @@ export function updateBodyVisibility(
 	// Running every frame keeps it in sync with the per-frame size-band pass,
 	// so labels that swap in/out of visibility don't flicker against a stale
 	// throttled cull result.
-	if (focusedBodyId) {
-		const focusedBo = bodyObjects.get(focusedBodyId);
+	if (nomFocusedBodyId) {
+		const focusedBo = bodyObjects.get(nomFocusedBodyId);
 		if (focusedBo) cullOverlappingNomenclatureLabels(focusedBo);
 	}
 

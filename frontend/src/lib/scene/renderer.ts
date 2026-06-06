@@ -132,6 +132,9 @@ export class SceneRenderer {
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
 	private readonly _positionMapScratch = new Map<string, Vec3>();
+	/** Landing body driven by the current landed focused probe; tracked so the
+	 *  attach fires only on transitions (URL-direct, land/launch mid-session). */
+	private landedNomBodyId: string | null = null;
 
 	private rafId = 0;
 	private firstFrame = true;
@@ -469,6 +472,7 @@ export class SceneRenderer {
 				this.repositionBodies();
 				this.pointClouds.maybeRebase();
 			}
+			this.syncLandedNomenclature();
 		}
 
 		const controlsSettled = stepFocusAnimation(
@@ -651,6 +655,19 @@ export class SceneRenderer {
 		if (!focused) return;
 		const bo = this.bodyObjects.get(focused.data.id);
 		if (bo) setActiveFeatureLabel(bo, featureId);
+	}
+
+	/** Attach landing-body nomenclature when the focused probe is landed —
+	 *  catches URL-direct focus (no position update yet) and land/launch transitions. */
+	private syncLandedNomenclature(): void {
+		const focused = this.focusController.current;
+		const fbo = focused ? this.bodyObjects.get(focused.data.id) : undefined;
+		const landingId = fbo?.isLanded ? focused!.data.parentId : null;
+		if (landingId === this.landedNomBodyId) return;
+		this.landedNomBodyId = landingId;
+		if (!landingId) return;
+		const landingBody = this.ctx.getBody(landingId);
+		if (landingBody) this.maybeLoadTexture(landingBody);
 	}
 
 	clearUserPromoted(): void {
