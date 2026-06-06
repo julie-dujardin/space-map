@@ -48,6 +48,11 @@ class AttitudePattern:
     # Rough total CK download size, used to order missions ascending under
     # a global cap. ±50 % accuracy is fine — the cap stops us anyway.
     estimated_total_mib: int
+    # Optional negative filter applied after `ck_glob`. Used when fnmatch
+    # can't express the desired set in one pattern (e.g. INTEGRAL ships
+    # both per-year files and huge cumulative-from-launch dumps that
+    # share the same prefix; the latter are redundant and excluded here).
+    ck_exclude_glob: str | None = None
 
 
 # Per-mission glob conventions, after sweep observation:
@@ -103,8 +108,11 @@ PATTERNS: dict[str, AttitudePattern] = {
         estimated_total_mib=500,
     ),
     "INTEGRAL": AttitudePattern(
-        # One huge single file covers the entire mission.
-        ck_glob="integral_sc_*.bc",
+        # Per-year reconstructed bus attitude. Exclude the eight cumulative-
+        # from-launch dumps (~500 MB each) that all start at 20021017 and
+        # overlap with the per-year set.
+        ck_glob="integral_sc_ssm_*.bc",
+        ck_exclude_glob="integral_sc_ssm_20021017_*.bc",
         fk_glob="integral_v*.tf",
         sclk_glob="integral_fict_*.tsc",
         frame_name="INTEGRAL_SPACECRAFT",

@@ -77,7 +77,12 @@ def download_attitude_for(
     mission_dir.mkdir(parents=True, exist_ok=True)
 
     ck_files, ck_new = _download_matching(
-        client, f"{base}/ck/", mission_dir, pattern.ck_glob, take_all=True
+        client,
+        f"{base}/ck/",
+        mission_dir,
+        pattern.ck_glob,
+        take_all=True,
+        exclude_glob=pattern.ck_exclude_glob,
     )
     if not ck_files:
         return DownloadResult(
@@ -207,7 +212,13 @@ def download_attitude_capped(
 
 
 def _download_matching(
-    client: httpx.Client, url: str, dest_dir: Path, glob: str, *, take_all: bool
+    client: httpx.Client,
+    url: str,
+    dest_dir: Path,
+    glob: str,
+    *,
+    take_all: bool,
+    exclude_glob: str | None = None,
 ) -> tuple[list[Path], int]:
     """List `url`, download files matching `glob` into `dest_dir`.
 
@@ -231,6 +242,7 @@ def _download_matching(
         if not h.endswith("/")
         and not h.startswith(("http://", "https://"))
         and fnmatch.fnmatch(h, glob)
+        and not (exclude_glob and fnmatch.fnmatch(h, exclude_glob))
     )
     if not matches:
         return [], 0
