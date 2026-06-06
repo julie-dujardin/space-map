@@ -1,6 +1,7 @@
 """Tests for space_map_data.ingest.providers.textures."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -348,19 +349,24 @@ class TestProcessClouds:
     helpers so the test doesn't need a session.
     """
 
-    @staticmethod
-    def _make_processor(monkeypatch, tmp_path) -> TextureProcessor:
-        clouds = tmp_path / "earth_clouds"
+    EARTH_BODY_ID = "naif-399"
+
+    @classmethod
+    def _make_processor(cls, monkeypatch, tmp_path) -> tuple[TextureProcessor, Path]:
+        clouds_root = tmp_path / "clouds"
+        src_dir = clouds_root / "earth"
         processed = tmp_path / "processed"
-        clouds.mkdir()
+        src_dir.mkdir(parents=True)
         processed.mkdir()
-        monkeypatch.setattr(config, "EARTH_CLOUDS_DIR", clouds)
+        monkeypatch.setattr(config, "CLOUDS_DIR", clouds_root)
+        monkeypatch.setattr(config, "EARTH_CLOUDS_DIR", src_dir)
         monkeypatch.setattr(config, "PROCESSED_DIR", processed)
+        monkeypatch.setattr(config, "CLOUD_SOURCES", {"earth": cls.EARTH_BODY_ID})
         proc = TextureProcessor.__new__(TextureProcessor)
         proc._raw_meta = []
         proc._mark_texture_available = lambda _object_id: None
         proc._reset_texture_available = lambda: None
-        return proc
+        return proc, src_dir
 
     @staticmethod
     def _seed_snapshot(clouds_dir, when: tuple[int, int, int, int]) -> str:
@@ -388,10 +394,10 @@ class TestProcessClouds:
         )
 
     def test_exports_every_snapshot_and_writes_metadata(self, tmp_path, monkeypatch):
-        proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(config.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0))
+        self._seed_snapshot(src_dir, (2026, 5, 5, 18))
 
         proc._process_clouds()
 
@@ -411,9 +417,9 @@ class TestProcessClouds:
             assert (out_dir / f"low_{fid}.webp").exists()
 
     def test_incrementally_adds_new_snapshot(self, tmp_path, monkeypatch):
-        proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(config.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0))
         proc._process_clouds()
 
         out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
@@ -421,7 +427,7 @@ class TestProcessClouds:
             "2026050500"
         ]
 
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        self._seed_snapshot(src_dir, (2026, 5, 5, 18))
         proc._process_clouds()
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["frames"] == ["2026050500", "2026050518"]
@@ -430,26 +436,26 @@ class TestProcessClouds:
         assert (out_dir / "low_2026050518.webp").exists()
 
     def test_purges_outputs_for_vanished_snapshots(self, tmp_path, monkeypatch):
-        proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(config.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 18))
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0))
+        self._seed_snapshot(src_dir, (2026, 5, 5, 18))
         proc._process_clouds()
 
         out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
         assert (out_dir / "low_2026050500.webp").exists()
 
         # Delete the older snapshot and reprocess; its outputs must go too.
-        (config.EARTH_CLOUDS_DIR / "2026" / "05" / "05" / "00.png").unlink()
+        (src_dir / "2026" / "05" / "05" / "00.png").unlink()
         proc._process_clouds()
         meta = json.loads((out_dir / "metadata.json").read_text())
         assert meta["frames"] == ["2026050518"]
         assert not (out_dir / "low_2026050500.webp").exists()
 
     def test_skips_when_frame_inventory_unchanged(self, tmp_path, monkeypatch):
-        proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(config.EARTH_CLOUDS_DIR)
-        self._seed_snapshot(config.EARTH_CLOUDS_DIR, (2026, 5, 5, 0))
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
+        self._seed_snapshot(src_dir, (2026, 5, 5, 0))
         proc._process_clouds()
 
         out_dir = config.PROCESSED_DIR / EARTH_CLOUDS_OBJECT_ID
@@ -461,19 +467,17 @@ class TestProcessClouds:
 
     def test_no_snapshots_warns_and_skips(self, tmp_path, monkeypatch, caplog):
         caplog.set_level("WARNING")
-        proc = self._make_processor(monkeypatch, tmp_path)
-        self._seed_metadata(config.EARTH_CLOUDS_DIR)
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
+        self._seed_metadata(src_dir)
 
-        result = proc._process_clouds()
-        assert result == config.PROCESSED_DIR
-        assert any("no earth_clouds snapshots" in r.message for r in caplog.records)
+        proc._process_clouds()
+        assert any("no cloud snapshots" in r.message for r in caplog.records)
 
     def test_missing_clouds_dir_is_silent_noop(self, tmp_path, monkeypatch, caplog):
         caplog.set_level("WARNING")
-        proc = self._make_processor(monkeypatch, tmp_path)
+        proc, src_dir = self._make_processor(monkeypatch, tmp_path)
         # Remove the dir created by _make_processor.
-        config.EARTH_CLOUDS_DIR.rmdir()
+        src_dir.rmdir()
 
-        result = proc._process_clouds()
-        assert result == config.PROCESSED_DIR
+        proc._process_clouds()
         assert not caplog.records
