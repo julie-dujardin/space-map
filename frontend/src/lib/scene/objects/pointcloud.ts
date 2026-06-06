@@ -11,6 +11,12 @@ import type { PositionedBody } from '$lib/types/objects';
 
 const F32_MAX = 3.4028235e38;
 
+// Render after the planet's transparent overlays (clouds=1, atmosphere=2). All
+// three are transparent + depthWrite=false; without an explicit order, points
+// (renderOrder 0) get painted over by the cloud sphere's dark-side fragments —
+// satellites geometrically in front of Earth visibly dim under the cloud layer.
+const POINT_CLOUD_RENDER_ORDER = 3;
+
 // Point-cloud dots read directly as the body's halo colour under ACES; scale
 // down so they render as a darker shade rather than matching the halo.
 function overlayColor(color: string): Color {
@@ -85,6 +91,7 @@ export function makePointCloud(
 	});
 	const points = new Points(geometry, material);
 	points.frustumCulled = false; // visibility managed by context-manager thresholds
+	points.renderOrder = POINT_CLOUD_RENDER_ORDER;
 	return points;
 }
 
@@ -118,5 +125,6 @@ export function makePointCloudFromBuffer(
 	});
 	const points = new Points(geometry, material);
 	points.frustumCulled = false;
+	points.renderOrder = POINT_CLOUD_RENDER_ORDER;
 	return points;
 }
