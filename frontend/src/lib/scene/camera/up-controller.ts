@@ -1,9 +1,8 @@
 import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { angularDuration, UP_PACING } from '$lib/scene/animation/pacing';
 import { SCENE_UP, bodyNorthVector, galacticNorthVector, GALACTIC_REF_ID } from './north-reference';
-
-const UP_ANIM_DURATION_MS = 400;
 
 /**
  * Drives `camera.up` from a north reference (ecliptic Y / galactic / body
@@ -17,6 +16,10 @@ export class CameraUpController {
 	private readonly targetVec = new Vector3(0, 1, 0);
 	private readonly currentVec = new Vector3(0, 1, 0);
 	private animStartTime = -Infinity;
+	private animDurationMs = UP_PACING.refMs;
+	/** True between `setNorthReference` and the next `update()` — defers the
+	 *  duration calc until we have `jd` to compute the target pole. */
+	private needsDurationCalc = false;
 	private readonly _quatA = new Quaternion();
 	private readonly _quatB = new Quaternion();
 
@@ -32,6 +35,7 @@ export class CameraUpController {
 		this.refId = id;
 		this.startVec.copy(this.currentVec);
 		this.animStartTime = performance.now();
+		this.needsDurationCalc = true;
 	}
 
 	update(jd: number): void {
@@ -43,11 +47,17 @@ export class CameraUpController {
 			else this.targetVec.copy(SCENE_UP);
 		}
 
+		if (this.needsDurationCalc) {
+			this.needsDurationCalc = false;
+			const angle = this.startVec.angleTo(this.targetVec);
+			this.animDurationMs = angularDuration(angle, UP_PACING);
+		}
+
 		const elapsed = performance.now() - this.animStartTime;
-		if (elapsed >= UP_ANIM_DURATION_MS) {
+		if (elapsed >= this.animDurationMs) {
 			this.currentVec.copy(this.targetVec);
 		} else {
-			const t = Math.max(0, elapsed / UP_ANIM_DURATION_MS);
+			const t = Math.max(0, elapsed / this.animDurationMs);
 			const s = t * t * (3 - 2 * t);
 			// Slerp via the rotation quaternions that map ecliptic Y → start/target.
 			this._quatA.setFromUnitVectors(SCENE_UP, this.startVec);

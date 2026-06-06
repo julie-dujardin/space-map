@@ -1,10 +1,17 @@
 import { Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Vec3 } from './math';
-import { f64lerp } from './math';
+import { f64dist, f64lerp } from './math';
+import {
+	angularDuration,
+	spatialDuration,
+	FLY_ROT_PACING,
+	FLY_TRANS_PACING,
+	FOCUS_ROT_PACING
+} from './pacing';
 
-export const FOCUS_DURATION_MS = 350;
-export const FLY_DURATION_MS = 1600;
+/** Initial-state default before the first real animation kicks in. */
+export const FOCUS_DURATION_MS = FOCUS_ROT_PACING.refMs;
 
 export interface FocusState {
 	focusTruePos: Vec3;
@@ -36,6 +43,8 @@ const _lookAtTarget = new Vector3();
 const _lookAtQuat = new Quaternion();
 const _slerpQ = new Quaternion();
 const _lookAtQ = new Quaternion();
+const _forwardA = new Vector3();
+const _forwardB = new Vector3();
 
 /** Compute the orientation a camera at `eye` would have when looking at `target`, without mutating any camera. */
 function lookAtQuaternion(eye: Vec3, target: Vec3, up: Vector3): Quaternion {
@@ -179,7 +188,6 @@ export function prepareFocusTarget(
 			camPos[2] - bodyPosition[2]
 		];
 		state.cameraStaysOnBody = false;
-		state.focusDurationMs = FLY_DURATION_MS;
 		// Capture start orientation, compute end orientation for slerp
 		state.flyQ0 = camera.quaternion.clone();
 		const savedPos = camera.position.clone();
@@ -198,6 +206,14 @@ export function prepareFocusTarget(
 		state.flyQ1 = camera.quaternion.clone();
 		camera.position.copy(savedPos);
 		camera.quaternion.copy(state.flyQ0);
+		// Pace by whichever of {linear travel, rotation} is larger — a small move
+		// with a big turn shouldn't snap; a big move with a small turn shouldn't drag.
+		const dist = f64dist(cameraTruePos, camPos);
+		const angle = state.flyQ0.angleTo(state.flyQ1);
+		state.focusDurationMs = Math.max(
+			spatialDuration(dist, FLY_TRANS_PACING),
+			angularDuration(angle, FLY_ROT_PACING)
+		);
 	} else {
 		// Camera tracks the new body via camTargetOffset so small systems with
 		// large solar velocity (asteroids at fast time) don't slip away during
@@ -210,12 +226,23 @@ export function prepareFocusTarget(
 			cameraTruePos[2] - bodyPosition[2]
 		];
 		state.cameraStaysOnBody = true;
-		state.focusDurationMs = FOCUS_DURATION_MS;
 		state.flyQ0 = camera.quaternion.clone();
 		// flyQ1 is unused on this path (orientation slerps to a per-frame lookAt
 		// against the body's current position); set it non-null so the isFlying
 		// gate in stepFocusAnimation passes.
 		state.flyQ1 = state.flyQ0.clone();
+		// Pace by the angle from current camera forward to the new body direction —
+		// that's what the per-frame lookAt slerp is actually sweeping through.
+		_forwardA.set(0, 0, -1).applyQuaternion(state.flyQ0);
+		_forwardB
+			.set(
+				bodyPosition[0] - cameraTruePos[0],
+				bodyPosition[1] - cameraTruePos[1],
+				bodyPosition[2] - cameraTruePos[2]
+			)
+			.normalize();
+		const angle = _forwardA.angleTo(_forwardB);
+		state.focusDurationMs = angularDuration(angle, FOCUS_ROT_PACING);
 	}
 }
 
@@ -238,10 +265,31 @@ export function prepareFlyToCamera(
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...state.focusTruePos];
 	state.focusStartTime = performance.now();
-	state.focusDurationMs = FLY_DURATION_MS;
 	state.orbitFly = true;
 	state.cameraStaysOnBody = false;
 	// Set dummy quaternions so isFlying is true
 	state.flyQ0 = camera.quaternion.clone();
 	state.flyQ1 = camera.quaternion.clone();
+	// Pace by translation distance or by the angular sweep around the focus
+	// (the camera lookAt re-targets each frame, so this is how much it'll rotate).
+	const dist = f64dist(cameraTruePos, camPos);
+	_forwardA
+		.set(
+			state.focusTruePos[0] - cameraTruePos[0],
+			state.focusTruePos[1] - cameraTruePos[1],
+			state.focusTruePos[2] - cameraTruePos[2]
+		)
+		.normalize();
+	_forwardB
+		.set(
+			state.focusTruePos[0] - camPos[0],
+			state.focusTruePos[1] - camPos[1],
+			state.focusTruePos[2] - camPos[2]
+		)
+		.normalize();
+	const angle = _forwardA.angleTo(_forwardB);
+	state.focusDurationMs = Math.max(
+		spatialDuration(dist, FLY_TRANS_PACING),
+		angularDuration(angle, FLY_ROT_PACING)
+	);
 }
