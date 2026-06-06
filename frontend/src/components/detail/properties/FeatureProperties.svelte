@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { FeatureDetailData } from '$lib/fetch/nomenclature/details';
-	import { nomenclatureTypeDescription, nomenclatureTypeLabel } from '$lib/types/nomenclature';
 	import { formatNumber, formatQuantity, formatUnit } from '$lib/format/quantities';
 	import { formatIsoDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
@@ -9,6 +8,10 @@
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
+
+	// Dynamic lookup for `feature_type_label_<CODE>` / `feature_type_description_<CODE>`
+	// messages — see data/.../export/localization.py for how they're generated.
+	const messages = m as unknown as Record<string, (() => string) | undefined>;
 
 	interface Props {
 		feature: NomenclatureFeature;
@@ -21,8 +24,12 @@
 	let wd = $derived(detail?.global?.wikidata);
 	let loc = $derived(detail?.localized);
 
-	let typeLabel = $derived(nomenclatureTypeLabel(feature.typeCode));
-	let typeDescription = $derived(nomenclatureTypeDescription(feature.typeCode));
+	let typeLabel = $derived(
+		messages[`feature_type_label_${feature.typeCode}`]?.() ?? feature.typeCode
+	);
+	let typeDescription = $derived(
+		messages[`feature_type_description_${feature.typeCode}`]?.() ?? null
+	);
 	let diameterText = $derived.by(() => {
 		if (!feature.diameterM || feature.diameterM <= 0) return null;
 		// IAU diameters span metres (small craters) to thousands of km (maria),
