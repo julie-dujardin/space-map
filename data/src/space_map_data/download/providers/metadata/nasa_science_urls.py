@@ -10,11 +10,11 @@ import re
 
 from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.utils.db import get_session
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
-NASA_SCIENCE_DIR = DOWNLOAD_DIR / "nasa-science-urls"
+NASA_SCIENCE_DIR = SOURCES_METADATA_DIR / "nasa-science-urls"
 INPUT_FILE = NASA_SCIENCE_DIR / "name-to-url.json"
 OUTPUT_FILE = NASA_SCIENCE_DIR / "pk-to-url.json"
 

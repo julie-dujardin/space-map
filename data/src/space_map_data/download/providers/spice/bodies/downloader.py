@@ -7,6 +7,7 @@ import shutil
 from datetime import date
 from pathlib import Path
 
+import httpx
 import numpy as np
 import orjson
 import spiceypy
@@ -15,6 +16,7 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
+from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
 from space_map_data.utils.naif import (
@@ -125,6 +127,25 @@ def _make_row(body: MajorBody, epoch_jd: float, elts: dict) -> dict:
 class SpiceDownloader(Downloader):
     name = PROVIDERS.SPICE
 
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        # SPICE writes raw kernels under sources/ and pipeline outputs (CSVs,
+        # nutation tables, chebyshev sidecars, moon-chunks fits) under derived/.
+        self.kernels_dir = SOURCES_POSITION_DIR / "spice-kernels"
+        self.tables_dir = DERIVED_POSITION_DIR / "tables"
+        self.chebyshev_dir = DERIVED_POSITION_DIR / "chebyshev"
+        self.moon_chunks_dir = DERIVED_POSITION_DIR / "moon-chunks"
+        # `out_dir` is where metadata.json lives — used by the base Downloader's
+        # is_complete check and _save_metadata.
+        self.out_dir = self.tables_dir
+        for d in (
+            self.kernels_dir,
+            self.tables_dir,
+            self.chebyshev_dir,
+            self.moon_chunks_dir,
+        ):
+            d.mkdir(parents=True, exist_ok=True)
+
     def download(
         self, limit: int | None = None, epoch: date | None = None, **kwargs: object
     ) -> None:
@@ -133,10 +154,10 @@ class SpiceDownloader(Downloader):
         epoch_jd = epoch.toordinal() + 1721424.5
         logger.info("Using epoch %s (JD %.1f)", epoch.isoformat(), epoch_jd)
 
-        fetch_major_bodies(self.client, self.out_dir)
+        fetch_major_bodies(self.client, self.tables_dir)
 
         kernels = resolve_kernels(self.client)
-        kernel_paths = download_kernels(self.client, self.out_dir, kernels)
+        kernel_paths = download_kernels(self.client, self.kernels_dir, kernels)
 
         # Mission PCKs furnish first so the generic kernel pool (pck00011,
         # gm_de440, Gravity.tpc) overrides any incidental planet/Sun entries —
@@ -204,7 +225,7 @@ class SpiceDownloader(Downloader):
         # perturber asteroids + whitelisted surface-feature moons.
         cheb_cfg = load_chebyshev_config()
         cheb_count = extract_chebyshev(
-            self.out_dir,
+            self.chebyshev_dir,
             all_bodies,
             kernel_paths,
             int(cheb_cfg["start_year"]),
@@ -237,7 +258,7 @@ class SpiceDownloader(Downloader):
         """
         spk_ids = self._enumerate_spk_bodies(kernel_paths)
         all_ids = spk_ids | set(_EXTRA_NAIF_IDS)
-        horizons_names = load_horizons_names(self.out_dir)
+        horizons_names = load_horizons_names(self.tables_dir)
 
         bodies: list[MajorBody] = []
         for naif_id in sorted(all_ids):
@@ -483,10 +504,10 @@ class SpiceDownloader(Downloader):
             start_jd + (i + 0.5) * chunk_days for i in range(n_chunks)
         ]
 
-        out_dir = self.out_dir / "moon_chunks"
+        out_dir = self.moon_chunks_dir
         if out_dir.exists():
             shutil.rmtree(out_dir)
-        out_dir.mkdir(exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
         skipped = 0
         for naif_id, parent_id, mu in tqdm(targets, desc="Moon chunks", unit="body"):

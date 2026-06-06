@@ -90,7 +90,11 @@ from space_map_data.models.object import (
     SBDB,
 )
 from space_map_data.models.object.sbdb import CometPrefix
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+from space_map_data.utils.paths import (
+    DOWNLOAD_DIR,
+    EXPORT_DIR,
+    SOURCES_METADATA_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -513,7 +517,7 @@ def _load_rendered_ids(session: Session) -> set[str]:
 
 def _load_nasa_science_urls() -> dict[str, str]:
     """Load the pk→URL map, returning {} if the download file is missing."""
-    path = DOWNLOAD_DIR / "nasa-science-urls" / "pk-to-url.json"
+    path = SOURCES_METADATA_DIR / "nasa-science-urls" / "pk-to-url.json"
     if path.exists():
         urls: dict[str, str] = orjson.loads(path.read_bytes())
         logger.info("Loaded %d NASA Science URLs", len(urls))

@@ -6,7 +6,7 @@ import re
 
 import orjson
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 from .horizons_api import HORIZONS_URL
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
@@ -93,7 +93,7 @@ def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
 
     if registry is None:
         registry = load_registry()
-    missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
+    missions_dir = SOURCES_POSITION_DIR / "spice-kernels" / "missions"
     spk_missions: set[str] = set()
     if missions_dir.exists():
         spk_missions = {
@@ -123,7 +123,7 @@ def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
 
 def _existing_agency_naifs() -> set[int]:
     """NAIF IDs already covered by agency-published SPKs under `missions/`."""
-    missions_dir = DOWNLOAD_DIR / "spice" / "kernels" / "missions"
+    missions_dir = SOURCES_POSITION_DIR / "spice-kernels" / "missions"
     out: set[int] = set()
     if not missions_dir.exists():
         return out

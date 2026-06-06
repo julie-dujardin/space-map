@@ -8,7 +8,7 @@ from sqlalchemy import delete, insert, select, update
 from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.satcat import SatcatObjectType
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.ingest.convert import (
     count_csv_rows,
     float_or_none,
@@ -37,7 +37,7 @@ class CelesTrakIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.provider_dir = download_dir / PROVIDERS.CELESTRAK
+        self.provider_dir = download_dir / "sources" / "position" / "celestrak"
         # The downloader writes daily snapshots under <year>/<month>/<day>/.
         # Ingest from the most-recent day so DB-side queries (object lists,
         # names, SGP4 extras) reflect the freshest element set; the export

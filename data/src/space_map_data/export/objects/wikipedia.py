@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class WikipediaSummary:
 
 def load_wikipedia_summaries_for_qid(qid: str) -> dict[str, WikipediaSummary]:
     """Load Wikipedia summaries for a single QID. Returns {lang: WikipediaSummary}."""
-    wiki_dir = DOWNLOAD_DIR / "wikipedia"
+    wiki_dir = SOURCES_METADATA_DIR / "wikipedia"
     result: dict[str, WikipediaSummary] = {}
     for lang in LANGUAGES:
         path = wiki_dir / lang / f"{qid}.json"

@@ -14,7 +14,6 @@ from pathlib import Path
 
 from sqlalchemy import update
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.providers.wikidata.csv_io import read_ids_csv
 from space_map_data.models.object import Object, OrbitalSource
 from space_map_data.models.object.satcat import Satcat
@@ -282,7 +281,7 @@ def _insert_satcat_unambiguous(
 
 
 def ingest(download_dir: Path) -> None:
-    ids_dir = download_dir / PROVIDERS.WIKIDATA / "ids"
+    ids_dir = download_dir / "sources" / "metadata" / "wikidata" / "ids"
     if not ids_dir.exists():
         logger.warning("Wikidata ids/ not found at %s, skipping", ids_dir)
         return

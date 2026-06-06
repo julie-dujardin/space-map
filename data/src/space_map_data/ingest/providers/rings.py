@@ -25,11 +25,11 @@ from PIL import Image
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_TEXTURES_DIR
 
 log = logging.getLogger(__name__)
 
-RAW_DIR = DOWNLOAD_DIR / "rings"
+RAW_DIR = SOURCES_TEXTURES_DIR / "rings"
 PROCESSED_DIR = EXPORT_DIR / "v1" / "rings"
 
 # 8-bit WebP lossless: source values are in [0, 1] with ~7 decimal digits of
@@ -108,9 +108,9 @@ class RingProcessor:
     def process_all(self, force: bool = False) -> None:
         """Process every ``rings/<body>/ring-metadata.yaml`` under DOWNLOAD_DIR.
 
-        Quietly no-ops when ``DOWNLOAD_DIR/rings`` doesn't exist yet (no
-        downloader has run). Each body is processed independently; a failing
-        entry is logged but doesn't abort the run.
+        Quietly no-ops when ``RAW_DIR`` doesn't exist yet (no downloader has
+        run). Each body is processed independently; a failing entry is logged
+        but doesn't abort the run.
         """
         self._reset_has_rings()
 

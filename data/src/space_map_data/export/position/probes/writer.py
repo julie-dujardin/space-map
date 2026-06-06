@@ -1,6 +1,6 @@
 """Export probe trajectories as zone-keyed chunk files.
 
-Walks `space-map-downloads/spice/kernels/missions/*/_index.json`, classifies
+Walks `sources/position/spice-kernels/missions/*/_index.json`, classifies
 each spacecraft's coverage into zone intervals, builds Method-C Kepler or
 Chebyshev fits per sub-chunk via `probes.sizing.size_chunk`, and emits one
 gzipped binary per (zone, chunk_idx) under `position/probes/{zone}/{chunk}.bin.gz`.
@@ -31,7 +31,6 @@ from pathlib import Path
 import spiceypy
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.providers.spice.probes import MISSIONS_DIR
 from space_map_data.export.position.probes.classify import classify_pass
 from space_map_data.export.position.probes.events_classify import (
@@ -100,7 +99,7 @@ def write_probes(
     end_jd = year_to_jd(PROBE_EXPORT_END_YEAR)
 
     lsk_pck_paths, generic_spk_paths = collect_generic_kernels(
-        download_dir / PROVIDERS.SPICE / "kernels"
+        download_dir / "sources" / "position" / "spice-kernels"
     )
     for p in lsk_pck_paths:
         spiceypy.furnsh(str(p))
@@ -112,7 +111,7 @@ def write_probes(
         len(generic_spk_paths),
     )
 
-    chebyshev_cache_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
+    chebyshev_cache_dir = download_dir / "derived" / "position" / "chebyshev"
     all_candidates = load_candidates(chebyshev_cache_dir)
     candidates_by_zone: dict[str, list[FitCenterCandidate]] = {}
     candidates_hash_by_zone: dict[str, str] = {}

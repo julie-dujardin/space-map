@@ -1,7 +1,7 @@
 """Per-object image list + thumbnail/metadata generation for export.
 
 Reads source images and their pre-decided license servability from the
-``DOWNLOAD_DIR/commons/images/<filename>/`` layout, then writes an export-side bundle
+``IMAGES_DIR/<filename>/`` layout, then writes an export-side bundle
 for each servable image::
 
     EXPORT_DIR/v1/images/<filename>/s.<ext>     # 512px (webp/avif, or verbatim jpg)
@@ -147,7 +147,7 @@ def collect_object_images(object_id: str) -> list[dict] | None:
     """Build the ``images`` array for a single object's global JSON.
 
     Reads the pre-computed selection from
-    ``DOWNLOAD_DIR/commons/object_images.json`` (written by the
+    ``OBJECT_IMAGES_PATH`` (written by the
     ``image_selection`` ingest provider) and turns each entry into an
     export bundle with thumbnails. Discovery, derivative-tree expansion,
     and best-of-tree scoring all happen at ingest time — this function

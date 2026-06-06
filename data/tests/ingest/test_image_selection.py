@@ -12,7 +12,7 @@ from collections.abc import Sequence
 import orjson
 import pytest
 
-from space_map_data.constants.providers import LANGUAGES, PROVIDERS
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.ingest.providers import image_selection
 from space_map_data.utils import commons_images as ci
 
@@ -21,17 +21,19 @@ from space_map_data.utils import commons_images as ci
 def layout(tmp_path, monkeypatch):
     """Re-root the various Commons / Wikidata / Wikipedia paths under tmp_path."""
     download_dir = tmp_path / "downloads"
-    images_dir = download_dir / PROVIDERS.COMMONS / "images"
-    wikidata_dir = download_dir / PROVIDERS.WIKIDATA / "objects"
-    wiki_dir = download_dir / PROVIDERS.WIKIPEDIA
+    sources_metadata_dir = download_dir / "sources" / "metadata"
+    commons_dir = download_dir / "sources" / "images" / "commons"
+    images_dir = commons_dir / "images"
+    wikidata_dir = sources_metadata_dir / "wikidata" / "objects"
+    wiki_dir = sources_metadata_dir / "wikipedia"
     images_dir.mkdir(parents=True)
     wikidata_dir.mkdir(parents=True)
     wiki_dir.mkdir(parents=True)
-    monkeypatch.setattr(image_selection, "DOWNLOAD_DIR", download_dir)
+    monkeypatch.setattr(image_selection, "SOURCES_METADATA_DIR", sources_metadata_dir)
     monkeypatch.setattr(
         image_selection,
         "OBJECT_IMAGES_PATH",
-        download_dir / PROVIDERS.COMMONS / "object_images.json",
+        commons_dir / "object_images.json",
     )
     monkeypatch.setattr(ci, "IMAGES_DIR", images_dir)
     return {

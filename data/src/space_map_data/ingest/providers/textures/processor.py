@@ -38,20 +38,16 @@ class TextureProcessor:
         for entry in bodies:
             entry["_source_dir"] = config.RAW_DIR
 
-        # Each misc/<asset>/ may carry its own download-metadata.yaml with the
-        # same schema; entries get stamped with `_source_dir` pointing at the
-        # subdir so the processor finds the file without a global `raw/` move.
-        if config.MISC_DIR.is_dir():
-            for sub in sorted(config.MISC_DIR.iterdir()):
-                if not sub.is_dir():
-                    continue
-                sub_yaml = sub / "download-metadata.yaml"
-                if not sub_yaml.is_file():
-                    continue
-                data = yaml.safe_load(sub_yaml.read_text()) or {}
-                for entry in data.get("bodies") or []:
-                    entry["_source_dir"] = sub
-                    bodies.append(entry)
+        # Each non-surface asset dir (e.g. star-map/, night/earth/) carries its
+        # own download-metadata.yaml with the same schema; entries get stamped
+        # with `_source_dir` pointing at the asset dir so the processor finds
+        # the file without a global flat-layout move.
+        for sub_yaml in sorted(config.iter_extra_asset_yamls()):
+            data = yaml.safe_load(sub_yaml.read_text()) or {}
+            sub = sub_yaml.parent
+            for entry in data.get("bodies") or []:
+                entry["_source_dir"] = sub
+                bodies.append(entry)
 
         self._raw_meta: list[dict] = bodies
 

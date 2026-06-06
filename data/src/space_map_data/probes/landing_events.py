@@ -21,12 +21,12 @@ from dataclasses import dataclass
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
 
-EVENTS_DIR = DOWNLOAD_DIR / "probes" / "events"
+EVENTS_DIR = SOURCES_POSITION_DIR / "probe-events"
 
 # Events that terminate a landed phase. `mission_end` / `contact_lost` are
 # deliberately excluded — a probe that dies on the surface (Apollo descent

@@ -8,9 +8,10 @@ from itertools import islice
 from pathlib import Path
 from typing import Iterator
 
+import httpx
 from httpx import Response
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
@@ -39,8 +40,13 @@ class WikipediaDownloader(Downloader):
     # `sitelinks.<lang>wiki`, so the task collector treats them uniformly.
     _ENTITY_SUBDIRS = ("objects", "nomenclature")
 
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = SOURCES_METADATA_DIR / "wikipedia"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_dir = DOWNLOAD_DIR / PROVIDERS.WIKIDATA
+        wikidata_dir = SOURCES_METADATA_DIR / "wikidata"
         entity_dirs = [wikidata_dir / sub for sub in self._ENTITY_SUBDIRS]
         present = [d for d in entity_dirs if d.exists()]
         if not present:

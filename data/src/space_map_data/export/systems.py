@@ -11,7 +11,6 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.export.sidecar_io import mirror_path
 from space_map_data.models.object import Object, ObjectType
 
@@ -51,7 +50,7 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
 
     Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
     """
-    csv_path = download_dir / PROVIDERS.SPICE / "orientation.csv"
+    csv_path = download_dir / "derived" / "position" / "tables" / "orientation.csv"
     if not csv_path.exists():
         logger.warning("No orientation CSV at %s", csv_path)
         return {}
@@ -77,7 +76,7 @@ def load_nut_prec(download_dir: Path) -> dict[int, dict[str, list[float]]]:
 
     Returns {naif_id: {"ra": [...], "dec": [...], "pm": [...]}}.
     """
-    json_path = download_dir / PROVIDERS.SPICE / "nut_prec.json"
+    json_path = download_dir / "derived" / "position" / "tables" / "nut_prec.json"
     if not json_path.exists():
         logger.warning("No nut_prec JSON at %s", json_path)
         return {}
@@ -92,7 +91,9 @@ def load_nut_prec_angles(download_dir: Path) -> dict[int, list[float]]:
 
     Returns {owner_naif_id: [θ₀_1, θ₁_1, θ₀_2, θ₁_2, ...]} (deg, deg/century).
     """
-    json_path = download_dir / PROVIDERS.SPICE / "nut_prec_angles.json"
+    json_path = (
+        download_dir / "derived" / "position" / "tables" / "nut_prec_angles.json"
+    )
     if not json_path.exists():
         logger.warning("No nut_prec_angles JSON at %s", json_path)
         return {}
@@ -411,7 +412,7 @@ def load_radii(download_dir: Path) -> dict[int, dict]:
 
     Returns {naif_id: {a, b, c}} in km along body-fixed X, Y, Z.
     """
-    csv_path = download_dir / PROVIDERS.SPICE / "radii.csv"
+    csv_path = download_dir / "derived" / "position" / "tables" / "radii.csv"
     if not csv_path.exists():
         logger.warning("No radii CSV at %s", csv_path)
         return {}
@@ -435,7 +436,7 @@ def load_gms(download_dir: Path) -> dict[int, float]:
     (naif_id 0) reusing the Sun's GM — see `_extract_gms` in the SPICE
     download module.
     """
-    csv_path = download_dir / PROVIDERS.SPICE / "gm.csv"
+    csv_path = download_dir / "derived" / "position" / "tables" / "gm.csv"
     if not csv_path.exists():
         logger.warning("No GM CSV at %s", csv_path)
         return {}

@@ -42,7 +42,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ MAX_DEDUPE = DEDUPE_MASK
 DATE_BITS = 32 - DEDUPE_BITS  # 20 bits
 MAX_DATE_OFFSET = (1 << DATE_BITS) - 1  # ~2872 years past 1945
 
-REGISTRY_PATH = DOWNLOAD_DIR / "spice" / "probe_ids.json"
+REGISTRY_PATH = DERIVED_POSITION_DIR / "tables" / "probe_ids.json"
 
 # ET (TDB seconds past J2000) → MJD. J2000 = MJD 51544.5.
 _J2000_MJD = 51544.5
@@ -166,9 +166,8 @@ def load_probe_labels() -> dict[int, str]:
         labels[int(entry["probe_id"])] = f"{mission}/{naif_id}"
 
     synth_idx = (
-        DOWNLOAD_DIR
-        / "spice"
-        / "kernels"
+        SOURCES_POSITION_DIR
+        / "spice-kernels"
         / "missions"
         / "HORIZONS-SYNTH"
         / "_index.json"

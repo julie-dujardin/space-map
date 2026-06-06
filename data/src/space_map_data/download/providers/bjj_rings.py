@@ -11,12 +11,13 @@ spanning 74 510 km – 140 390 km from Saturn's center:
 
 The data are publicly available with attribution per
 https://bjj.mmedia.is/acknow.html. See the ``ring-metadata.yaml``
-written alongside ``raw/`` for the canonical attribution string.
+written alongside the channel `.txt` files for the canonical
+attribution string.
 
 On-disk layout::
 
-    DOWNLOAD_DIR/rings/saturn/raw/{channel}.txt
-    DOWNLOAD_DIR/rings/saturn/ring-metadata.yaml
+    sources/textures/rings/saturn/{channel}.txt
+    sources/textures/rings/saturn/ring-metadata.yaml
 """
 
 import logging
@@ -28,7 +29,7 @@ import yaml
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_TEXTURES_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -71,19 +72,18 @@ class BJJRingsDownloader(Downloader):
 
     def __init__(self, client: httpx.Client) -> None:
         super().__init__(client)
-        self.out_dir = DOWNLOAD_DIR / "rings" / "saturn"
-        self.raw_dir = self.out_dir / "raw"
-        self.raw_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = SOURCES_TEXTURES_DIR / "rings" / "saturn"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
         self.metadata_yaml = self.out_dir / "ring-metadata.yaml"
 
     def is_complete(self, limit: int | None) -> bool:
         if not self.metadata_yaml.exists():
             return False
-        return all((self.raw_dir / fn).exists() for fn in CHANNELS.values())
+        return all((self.out_dir / fn).exists() for fn in CHANNELS.values())
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
         for i, (channel, filename) in enumerate(CHANNELS.items()):
-            target = self.raw_dir / filename
+            target = self.out_dir / filename
             url = f"{BASE_URL}/{filename}"
             if target.exists() and target.stat().st_size > 0:
                 logger.debug("skip %s (already downloaded)", filename)

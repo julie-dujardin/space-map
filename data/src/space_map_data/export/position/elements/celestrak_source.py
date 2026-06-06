@@ -11,7 +11,6 @@ import logging
 from pathlib import Path
 from typing import TypedDict
 
-from space_map_data.constants.providers import PROVIDERS
 from space_map_data.ingest.convert import (
     float_or_none,
     int_or_none,
@@ -133,7 +132,7 @@ def load_all_days(download_dir: Path) -> dict[str, dict[int, CelesTrakElements]]
     Outer keys are ``YYYY-MM-DD`` strings sorted oldest-first; inner values
     match :func:`_parse_row` output. Empty result if no day-dirs are present.
     """
-    celestrak_dir = download_dir / PROVIDERS.CELESTRAK
+    celestrak_dir = download_dir / "sources" / "position" / "celestrak"
     days = iter_day_dirs(celestrak_dir)
     if not days:
         logger.warning(

@@ -22,12 +22,14 @@ from itertools import batched
 from pathlib import Path
 from urllib.parse import quote
 
+import httpx
 from httpx import Response
 from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.utils.commons_images import (
+    COMMONS_DIR,
     FEATURE_WIKIDATA_IMAGE_PIDS,
     IMAGES_DIR,
     canonical_filename,
@@ -43,7 +45,7 @@ from space_map_data.utils.commons_images import (
     write_download_metadata,
 )
 from space_map_data.utils.commons_wikitext import parse_wikitext
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +64,13 @@ class CommonsDownloader(Downloader):
 
     name = PROVIDERS.COMMONS
 
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = COMMONS_DIR
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        wikidata_root = DOWNLOAD_DIR / PROVIDERS.WIKIDATA
+        wikidata_root = SOURCES_METADATA_DIR / "wikidata"
         objects_dir = wikidata_root / "objects"
         nomenclature_dir = wikidata_root / "nomenclature"
         if not objects_dir.exists() and not nomenclature_dir.exists():
@@ -141,7 +148,7 @@ class CommonsDownloader(Downloader):
                 commons |= extract_wikidata_filenames(entity, pids)
 
         # 2) Wikipedia pageimages — split commons vs local wiki based on URL.
-        wiki_dir = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA
+        wiki_dir = SOURCES_METADATA_DIR / "wikipedia"
         if wiki_dir.exists():
             summary_files = list(wiki_dir.glob("*/Q*.json"))
             for summary_file in tqdm(

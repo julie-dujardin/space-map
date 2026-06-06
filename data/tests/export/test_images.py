@@ -92,7 +92,7 @@ def _stage_download(
     other_versions: list[str] | None = None,
     sdc_statements: dict | None = None,
 ) -> None:
-    """Populate a fake ``DOWNLOAD_DIR/commons/images/<filename>/`` entry."""
+    """Populate a fake ``IMAGES_DIR/<filename>/`` entry."""
     ext = Path(filename).suffix.lower()
     d = tmp_path / "downloads" / "images" / filename
     d.mkdir(parents=True, exist_ok=True)

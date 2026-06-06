@@ -23,7 +23,7 @@ import numpy as np
 import orjson
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS
+from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import (
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
     ID_TYPE_ORDINAL,
@@ -279,12 +279,12 @@ def write_chebyshev(
     The caller folds these per-zone into the unified position manifest with
     `shape="chunked"`. Returns `{}` when there's nothing to export.
     """
-    cheb_dir = download_dir / PROVIDERS.SPICE / "chebyshev"
+    cheb_dir = download_dir / "derived" / "position" / "chebyshev"
     if not cheb_dir.exists():
         logger.info("No Chebyshev data in %s, skipping", cheb_dir)
         return {}
 
-    meta_path = download_dir / PROVIDERS.SPICE / "metadata.json"
+    meta_path = download_dir / "derived" / "position" / "tables" / "metadata.json"
     if not meta_path.exists():
         logger.warning(
             "SPICE metadata missing at %s, skipping Chebyshev export", meta_path

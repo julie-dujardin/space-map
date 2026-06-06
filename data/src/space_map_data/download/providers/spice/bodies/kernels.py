@@ -57,15 +57,14 @@ def resolve_kernels(client: httpx.Client) -> dict[str, str]:
 
 
 def download_kernels(
-    client: httpx.Client, out_dir: Path, kernels: dict[str, str]
+    client: httpx.Client, kernel_dir: Path, kernels: dict[str, str]
 ) -> list[Path]:
-    """Download `kernels` under `out_dir/kernels/<subdir>/<filename>`.
+    """Download `kernels` under `kernel_dir/<subdir>/<filename>`.
 
     Skips files that already exist with the expected size. Subdirs mirror
     NAIF's `generic_kernels/` layout (`lsk/`, `pck/`, `spk/planets/`, ...).
     """
-    kernel_dir = out_dir / "kernels"
-    kernel_dir.mkdir(exist_ok=True)
+    kernel_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
 
     for filename, url_path in tqdm(kernels.items(), desc="SPICE kernels", unit="file"):

@@ -6,6 +6,7 @@ import time
 from collections.abc import Collection
 from pathlib import Path
 
+import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
@@ -25,6 +26,7 @@ from space_map_data.export.objects.wikidata_claims import (
 )
 from space_map_data.probes.probe_id import load_qids as load_probe_qids
 from space_map_data.utils.db import get_session
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,11 @@ AFTER_REQUEST_DELAY_SECONDS = 2  # pls don't ban me
 
 class WikidataDownloader(Downloader):
     name = PROVIDERS.WIKIDATA
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = SOURCES_METADATA_DIR / "wikidata"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
 
     _OBJECT_ID_TYPES = [
         ID_TYPES.NAIF,

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import spiceypy
 
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 
 from space_map_data.utils.time import et_to_jd
 
@@ -113,7 +113,7 @@ _COARSE_STEP_S = 7 * 86400.0
 def _gm_table_km3_s2() -> dict[int, float]:
     """Read gm.csv → {naif_id: GM (km³/s²)}. Path matches export.systems.load_gms."""
     out: dict[int, float] = {}
-    with (DOWNLOAD_DIR / "spice" / "gm.csv").open(newline="") as f:
+    with (DERIVED_POSITION_DIR / "tables" / "gm.csv").open(newline="") as f:
         for row in csv.DictReader(f):
             out[int(row["naif_id"])] = float(row["gm_km3_s2"])
     return out
@@ -215,7 +215,7 @@ def _identify_refinement_windows(
 def _furnish_planets() -> list[Path]:
     """Furnish lsk + de440 so spkpos can return planet positions. Returns the
     paths so the caller can `spiceypy.unload` them when done."""
-    kernels_root = DOWNLOAD_DIR / "spice" / "kernels"
+    kernels_root = SOURCES_POSITION_DIR / "spice-kernels"
     paths = [
         kernels_root / "lsk" / "naif0012.tls",
         kernels_root / "spk" / "planets" / "de440.bsp",

@@ -8,7 +8,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.ingest.convert import (
     count_csv_rows,
     float_or_none,
@@ -41,7 +41,7 @@ class SpiceIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.csv_path = download_dir / PROVIDERS.SPICE / "bodies.csv"
+        self.csv_path = download_dir / "derived" / "position" / "tables" / "bodies.csv"
         self.total_rows = 0
 
     def _parse_row(self, row: dict[str, str]) -> dict | None:

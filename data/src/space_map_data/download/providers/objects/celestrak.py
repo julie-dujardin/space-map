@@ -3,12 +3,15 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import httpx
+
 from space_map_data.constants.earth_sats.constellations import (
     GROUP_TO_CATEGORY,
     GROUP_TO_SLUG,
 )
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
+from space_map_data.utils.paths import SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,11 @@ GROUPS: tuple[str, ...] = tuple({*GROUP_TO_SLUG.keys(), *GROUP_TO_CATEGORY.keys(
 
 class CelesTrakDownloader(Downloader):
     name = PROVIDERS.CELESTRAK
+
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
+        self.out_dir = SOURCES_POSITION_DIR / "celestrak"
+        self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def _day_dir(self, day: date) -> Path:
         return self.out_dir / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.day:02d}"

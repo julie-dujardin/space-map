@@ -27,7 +27,7 @@ from pathlib import Path
 from sqlalchemy import delete, insert, select
 from tqdm import tqdm
 
-from space_map_data.constants.providers import ID_TYPES, PROVIDERS, make_object_id
+from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.models.object import Object, ObjectType, OrbitalSource, Satcat
 from space_map_data.export.position.probes.time_grid import PROBE_EXPORT_END_YEAR
 from space_map_data.probes.landing_events import probe_ids_with_phases
@@ -210,10 +210,9 @@ class ProbesIngestor:
 
     def __init__(self, download_dir: Path) -> None:
         self.session = get_session()
-        self.missions_dir = download_dir / PROVIDERS.SPICE / "kernels" / "missions"
-        self.landed_missions_dir = (
-            download_dir / PROVIDERS.SPICE / "kernels" / "landed_missions"
-        )
+        kernels_dir = download_dir / "sources" / "position" / "spice-kernels"
+        self.missions_dir = kernels_dir / "missions"
+        self.landed_missions_dir = kernels_dir / "landed-missions"
         # Pre-loaded set of satcat NORADs; consulted in `_build_row` to decide
         # whether to set the satcat FK. Without this guard, probes whose
         # registry NORAD doesn't exist in satcat would trip the FK constraint.

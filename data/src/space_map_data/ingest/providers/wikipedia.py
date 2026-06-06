@@ -1,10 +1,10 @@
 """Set ``Object.has_wikipedia_description`` from downloaded Wikipedia summaries.
 
-Walks ``DOWNLOAD_DIR/wikipedia/<lang>/<qid>.json`` for every Object with a
-Wikidata QID; an Object is marked available when at least one language has a
-non-empty summary (extract, description, or fullurl) and is not flagged
-``missing``. Mirrors the reset-then-mark idempotency shape of
-``image_available`` and ``map_texture_available``.
+Walks ``WIKI_DIR/<lang>/<qid>.json`` for every Object with a Wikidata QID;
+an Object is marked available when at least one language has a non-empty
+summary (extract, description, or fullurl) and is not flagged ``missing``.
+Mirrors the reset-then-mark idempotency shape of ``image_available`` and
+``map_texture_available``.
 """
 
 import logging
@@ -13,14 +13,14 @@ import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
-from space_map_data.constants.providers import LANGUAGES, PROVIDERS
+from space_map_data.constants.providers import LANGUAGES
 from space_map_data.models.object import Object
 from space_map_data.utils.db import get_session
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
 
-WIKI_DIR = DOWNLOAD_DIR / PROVIDERS.WIKIPEDIA
+WIKI_DIR = SOURCES_METADATA_DIR / "wikipedia"
 
 # SQLite caps bind parameters per statement (default 32766; ~999 on older
 # builds). Chunk well below either ceiling.

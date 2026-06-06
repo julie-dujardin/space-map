@@ -7,7 +7,7 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
-from space_map_data.utils.paths import DOWNLOAD_DIR
+from space_map_data.utils.paths import DERIVED_POSITION_DIR
 
 from ..bodies.major_bodies import MB_FILENAME
 from .cache import fetch_one
@@ -44,7 +44,7 @@ class HorizonsSyntheticDownloader(Downloader):
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def _candidates(self, limit: int | None) -> list[tuple[int, str]]:
-        mb_path = DOWNLOAD_DIR / PROVIDERS.SPICE / MB_FILENAME
+        mb_path = DERIVED_POSITION_DIR / "tables" / MB_FILENAME
         if not mb_path.exists():
             raise DownloadError(
                 f"Need {mb_path}; run `space-map-download --sources spice` first"
