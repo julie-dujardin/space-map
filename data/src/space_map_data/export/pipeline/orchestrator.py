@@ -64,6 +64,9 @@ from space_map_data.export.position.elements.celestrak_source import (
     load_all_days,
 )
 from space_map_data.export.position.probes import write_probes
+from space_map_data.export.position.probes.attitude.orchestrator import (
+    write_attitude,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
     load_clouds_metadata,
@@ -660,6 +663,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
 
         rendered_ids = _load_rendered_ids(session)
+
+    # Attitude extraction runs after probe positions are written but before
+    # the global object bundles are sealed — it mutates `global_data` in
+    # place to inject the per-probe attitude manifest under `attitude`.
+    write_attitude(out_dir, agg.all_objects.global_data)
 
     bundle_ns = write_object_bundles(
         out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
