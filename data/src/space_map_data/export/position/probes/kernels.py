@@ -11,6 +11,9 @@ import logging
 import re
 from pathlib import Path
 
+from space_map_data.download.providers.spice.bodies.names import (
+    load_excluded_naif_ids,
+)
 from space_map_data.download.providers.spice.probes import (
     LANDED_INCLUDE,
     LANDED_MISSIONS_DIR,
@@ -18,6 +21,7 @@ from space_map_data.download.providers.spice.probes import (
     MISSIONS_DIR,
 )
 from space_map_data.download.providers.spice.synth import qid_deduped_synth_naifs
+from space_map_data.utils.paths import DERIVED_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -163,20 +167,12 @@ def collect_generic_kernels(
 
 
 def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
-    """Walk `missions/` and `landed_missions/` and return
-    `[(mission_dir, kernels, naif_id)]` for every spacecraft NAIF ID in
-    `[-999, -1]`.
+    """Return `[(mission_dir, kernels, naif_id)]` for every spacecraft NAIF.
 
-    The returned kernel list combines BOTH buckets (trajectory + landed) so
-    `classify_trace` sees the full picture for a probe whose timeline goes
-    cruise → EDL → surface. Spacecraft NAIFs come from the union of both
-    indexes — missions like MER carry the rover bodies (-253/-254) only in
-    the landed bucket. Probes whose only coverage is a landing-site NAIF
-    (`-X900` pattern) are not enumerated here yet; that path is reserved
-    for the events-JSON ingest of Soviet/Chinese / archive-gap landers.
-
-    See `kernels_from_index` / `landed_kernels_from_index` for filtering
-    and precedence rules.
+    Includes every negative target from trajectory + landed indexes (NAIF
+    reserves negatives for spacecraft), minus the simulation/debris set from
+    major_bodies.txt. Landing-site-only NAIFs (`-X900`) go through the
+    events-JSON ingest instead.
     """
     out: list[tuple[Path, list[Path], int]] = []
     mission_names: set[str] = set()
@@ -187,6 +183,7 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
             p.name for p in LANDED_MISSIONS_DIR.iterdir() if p.is_dir()
         )
     synth_qid_dups = qid_deduped_synth_naifs()
+    excluded_naif_ids = load_excluded_naif_ids(DERIVED_POSITION_DIR / "tables")
     for name in sorted(mission_names):
         mdir = MISSIONS_DIR / name
         trajectory_kernels = (
@@ -203,7 +200,17 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         if landed_idx_path.exists():
             landed_idx = json.loads(landed_idx_path.read_text())
             targets.update(int(s) for s in landed_idx.get("targets", {}))
-        spacecraft_ids = sorted(t for t in targets if -999 <= t <= -1)
+        spacecraft_ids = sorted(
+            t for t in targets if t < 0 and t not in excluded_naif_ids
+        )
+        filtered = sorted(set(targets) - set(spacecraft_ids))
+        if filtered:
+            logger.info(
+                "mission=%s: filtered %d non-spacecraft targets: %s",
+                name,
+                len(filtered),
+                filtered,
+            )
         # Furnish trajectory first then landed so landed wins under SPICE
         # last-loaded-wins where ET coverage overlaps (EDL window).
         combined = trajectory_kernels + landed_kernels

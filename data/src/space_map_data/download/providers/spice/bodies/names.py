@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _ROMAN_RE = re.compile(r"^[JSUNM][IVXLCDM]+$")
 _EXT_NAIF_RE = re.compile(r"^[0-9]{4,5}$")
+_EXCLUDED_CATEGORY_RE = re.compile(r"\((simulation|debris)\b", re.IGNORECASE)
 
 
 @dataclass
@@ -64,6 +65,37 @@ def load_horizons_names(spice_dir: Path) -> dict[int, HorizonsAlias]:
             result[naif_id] = alias
     logger.info("Loaded %d names from Horizons major_bodies.txt", len(result))
     return result
+
+
+def load_excluded_naif_ids(spice_dir: Path) -> set[int]:
+    """NAIF IDs tagged `(simulation)` or `(debris)` in major_bodies.txt.
+
+    PDC/TTX planetary-defense exercises and tracked debris fragments use
+    negative NAIFs but aren't real spacecraft trajectories.
+    """
+    path = spice_dir / MB_FILENAME
+    excluded: set[int] = set()
+    if not path.exists():
+        logger.warning("Horizons major_bodies.txt not found at %s", path)
+        return excluded
+    with path.open() as f:
+        in_data = False
+        for line in f:
+            if line.startswith("  -------"):
+                in_data = True
+                continue
+            if not in_data or len(line) < 11:
+                continue
+            id_str = line[0:9].strip()
+            if not id_str.lstrip("-").isdigit():
+                continue
+            if _EXCLUDED_CATEGORY_RE.search(line[11:45]):
+                excluded.add(int(id_str))
+    logger.info(
+        "Loaded %d simulation/debris NAIF exclusions from Horizons major_bodies.txt",
+        len(excluded),
+    )
+    return excluded
 
 
 def resolve_name(naif_id: int, horizons_map: dict[int, HorizonsAlias]) -> HorizonsAlias:
