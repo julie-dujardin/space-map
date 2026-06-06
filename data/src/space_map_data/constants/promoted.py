@@ -63,7 +63,7 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         # Venus orbiters
         "probe-80683008",  # Magellan    (mission EVENTS-DB, naif -90000036)
         "probe-111718401",  # Akatsuki    (mission HORIZONS-SYNTH, naif -152)
-        # Venus landers (successful Soviet soft landings)
+        # Venus landers (successful Soviet & US soft landings)
         "probe-38514688",  # Venera 7    (mission EVENTS-DB, naif -90000225; first successful soft landing on another planet)
         "probe-40923136",  # Venera 8    (mission EVENTS-DB, naif -90000226)
         "probe-45707266",  # Venera 9 Lander  (mission EVENTS-DB, naif -90000276; first surface images)
@@ -74,7 +74,6 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "probe-55296002",  # Venera 14 Lander (mission EVENTS-DB, naif -90000281)
         "probe-60682241",  # Vega 1 Venus Lander (mission EVENTS-DB, naif -90000210)
         "probe-60698624",  # Vega 2 Venus Lander (mission EVENTS-DB, naif -90000212)
-        # Pioneer Venus 2 (Multiprobe) descent probes — all four reached the surface
         "probe-50446337",  # Pioneer Venus Large Probe (mission EVENTS-DB, naif -90000135)
         "probe-50446338",  # Pioneer Venus North Probe (mission EVENTS-DB, naif -90000136)
         "probe-50446339",  # Pioneer Venus Day Probe   (mission EVENTS-DB, naif -90000137; survived ~67 min on surface)
