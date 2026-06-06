@@ -17,6 +17,7 @@ from .index import (
     _parse_horizons_spacecraft,
     _write_index,
     agency_naif_coverage,
+    celestrak_active_excludes,
     qid_deduped_synth_naifs,
 )
 from .layout import SYNTH_CACHE_ROOT, SYNTH_KERNELS_DIR
@@ -54,12 +55,18 @@ class HorizonsSyntheticDownloader(Downloader):
                 f"Need {mb_path}; run `space-map-download --sources spice` first"
             )
         all_sc = _parse_horizons_spacecraft(mb_path.read_text())
+        ct_excludes = celestrak_active_excludes(all_sc)
         qid_dups = qid_deduped_synth_naifs()
-        candidates = [(n, nm) for n, nm in all_sc if n not in qid_dups]
+        candidates = [
+            (n, nm)
+            for n, nm, _cospar in all_sc
+            if n not in ct_excludes and n not in qid_dups
+        ]
         logger.info(
-            "horizons-synth: %d MB spacecraft - %d qid-deduped against agency "
-            "= %d to synthesize",
+            "horizons-synth: %d MB spacecraft - %d celestrak-active "
+            "- %d qid-deduped against agency = %d to synthesize",
             len(all_sc),
+            len(ct_excludes),
             len(qid_dups),
             len(candidates),
         )

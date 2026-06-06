@@ -116,9 +116,9 @@ class TestParseChunks:
 _SAMPLE_MB = """\
    ID#      Name                               Designation  IAU/aliases/other
   -------  ---------------------------------- -----------  -------------------
-      -32  Voyager 2 (spacecraft)
-       -3  Mars Orbiter Mission (spacecraft)
-      -25  Lunar Prospector (LP) (spacecraft)
+      -32  Voyager 2 (spacecraft)             1977-076A    VGR2
+       -3  Mars Orbiter Mission (spacecraft)  2013-060A
+      -25  Lunar Prospector (LP) (spacecraft) 1998-001A
   -937001  2017 PDC (simulation)
   -999789  2023 NM (debris)
  -9901492  Luna-25 STAGE (spacecraft)
@@ -131,32 +131,39 @@ _SAMPLE_MB = """\
 class TestParseHorizonsSpacecraft:
     def test_keeps_real_spacecraft(self):
         out = index._parse_horizons_spacecraft(_SAMPLE_MB)
-        ids = {n for n, _ in out}
+        ids = {n for n, *_ in out}
         assert -32 in ids
         assert -3 in ids
         assert -25 in ids
 
     def test_drops_simulations(self):
         out = index._parse_horizons_spacecraft(_SAMPLE_MB)
-        ids = {n for n, _ in out}
+        ids = {n for n, *_ in out}
         assert -937001 not in ids
 
     def test_drops_debris(self):
         out = index._parse_horizons_spacecraft(_SAMPLE_MB)
-        ids = {n for n, _ in out}
+        ids = {n for n, *_ in out}
         assert -999789 not in ids
 
     def test_drops_stages_and_boosters(self):
         out = index._parse_horizons_spacecraft(_SAMPLE_MB)
-        ids = {n for n, _ in out}
+        ids = {n for n, *_ in out}
         assert -9901492 not in ids  # Luna-25 STAGE
         assert -54054450 not in ids  # Centaur RB
         assert -999742 not in ids  # Propulsion Module
 
     def test_drops_positive_ids(self):
         out = index._parse_horizons_spacecraft(_SAMPLE_MB)
-        ids = {n for n, _ in out}
+        ids = {n for n, *_ in out}
         assert 399 not in ids
+
+    def test_extracts_cospar_designator(self):
+        out = index._parse_horizons_spacecraft(_SAMPLE_MB)
+        cospars = {n: c for n, _, c in out}
+        assert cospars[-32] == "1977-076A"
+        assert cospars[-3] == "2013-060A"
+        assert cospars[-25] == "1998-001A"
 
 
 _VOYAGER_OBJ = {

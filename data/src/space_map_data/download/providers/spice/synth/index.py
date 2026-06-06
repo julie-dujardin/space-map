@@ -1,5 +1,6 @@
 """Bulk selection from the Horizons MB list + mission-index emission."""
 
+import csv
 import json
 import logging
 import re
@@ -33,20 +34,35 @@ _NAME_DROP_PATTERNS: tuple[re.Pattern, ...] = tuple(
     )
 )
 
-# Spacecraft we deliberately exclude from the synth pipeline because CelesTrak
-# ships reliable daily SGP4 elements covering their entire expected lifespan.
-# Those live in our system as `norad_satcat-N` rows; making a synth-probe twin
-# would just produce a parallel, lower-accuracy duplicate.
-_NAIF_BLOCKLIST: frozenset[int] = frozenset(
-    {
-        -48,  # Hubble Space Telescope (NORAD 20580) — long-term LEO, daily TLEs
-    }
-)
+# COSPAR designator format printed in the MB list's "Designation" column.
+_COSPAR_RE = re.compile(r"^\d{4}-\d{3}[A-Z]+$")
+
+# Hand-curated NAIF blocklist for entries the CelesTrak filter can't catch
+# (no COSPAR in the MB row, or a special-case override). Most CelesTrak-tracked
+# Earth orbiters are filtered automatically via `celestrak_active_excludes()`.
+_NAIF_BLOCKLIST: frozenset[int] = frozenset()
 
 
-def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
-    """Parse Horizons MB listing → [(naif_id, name)] for real spacecraft only."""
-    out: list[tuple[int, str]] = []
+class CelestrakWhitelistConflict(RuntimeError):
+    """Raised when a CelesTrak-active NAIF is ALSO claimed by an agency probe.
+
+    Means our probe registry and SATCAT/CelesTrak disagree about the same
+    spacecraft. Fix the data (drop the stale registry entry or update SATCAT
+    cross-references) instead of silently dropping the agency record.
+    """
+
+
+def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str, str | None]]:
+    """Parse Horizons MB listing → [(naif_id, name, cospar)] for real spacecraft.
+
+    `cospar` is the contents of the MB list's "Designation" column (cols 46-56)
+    when it matches `YYYY-NNNX`, else None. Name patterns from
+    `_NAME_DROP_PATTERNS` and the hand-curated `_NAIF_BLOCKLIST` are applied
+    here; the CelesTrak/SATCAT cross-reference filter runs separately at the
+    caller (it depends on on-disk CelesTrak snapshots and the probe registry,
+    which we don't want to couple to a pure parser).
+    """
+    out: list[tuple[int, str, str | None]] = []
     in_data = False
     for line in mb_text.splitlines():
         if line.startswith("  -------"):
@@ -67,8 +83,129 @@ def _parse_horizons_spacecraft(mb_text: str) -> list[tuple[int, str]]:
             continue
         if naif_id in _NAIF_BLOCKLIST:
             continue
-        out.append((naif_id, name))
+        designation = line[46:57].strip() if len(line) > 46 else ""
+        cospar = designation if _COSPAR_RE.match(designation) else None
+        out.append((naif_id, name, cospar))
     return sorted(out, key=lambda r: -abs(r[0]))
+
+
+def _latest_gp_active_norads() -> set[int]:
+    """NORAD IDs in the freshest `gp-active.csv` snapshot.
+
+    Empty set if no snapshot is on disk yet (e.g. CelesTrak hasn't been
+    downloaded) — the synth pipeline then falls back to the legacy behavior of
+    accepting every MB candidate.
+    """
+    celestrak_dir = SOURCES_POSITION_DIR / "celestrak"
+    paths = sorted(celestrak_dir.glob("*/*/*/gp-active.csv"))
+    if not paths:
+        logger.warning(
+            "no gp-active.csv under %s; skipping CelesTrak-active filter",
+            celestrak_dir,
+        )
+        return set()
+    norads: set[int] = set()
+    with paths[-1].open() as f:
+        for row in csv.DictReader(f):
+            try:
+                norads.add(int(row["NORAD_CAT_ID"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+    logger.info(
+        "loaded %d CelesTrak-active NORADs from %s",
+        len(norads),
+        paths[-1].relative_to(SOURCES_POSITION_DIR),
+    )
+    return norads
+
+
+def _satcat_cospar_to_norad() -> dict[str, int]:
+    """`COSPAR → NORAD CAT ID` from CelesTrak SATCAT. Empty if missing."""
+    satcat = SOURCES_POSITION_DIR / "celestrak" / "satcat.csv"
+    if not satcat.exists():
+        logger.warning("no satcat.csv at %s; cannot resolve COSPAR→NORAD", satcat)
+        return {}
+    out: dict[str, int] = {}
+    with satcat.open() as f:
+        for row in csv.DictReader(f):
+            cospar = (row.get("OBJECT_ID") or "").strip()
+            norad_s = (row.get("NORAD_CAT_ID") or "").strip()
+            if not cospar or not norad_s:
+                continue
+            try:
+                out[cospar] = int(norad_s)
+            except ValueError:
+                continue
+    return out
+
+
+def celestrak_active_excludes(
+    candidates: list[tuple[int, str, str | None]],
+    registry: list[dict] | None = None,
+) -> set[int]:
+    """NAIFs to drop because CelesTrak ships their NORAD as a daily-refreshed
+    SGP4 element (= no benefit from a parallel Horizons synth SPK).
+
+    Join: candidate COSPAR (MB designator) → NORAD (SATCAT) → membership in
+    the latest gp-active.csv snapshot. Candidates without a parseable COSPAR
+    are kept (no information to disqualify them).
+
+    Raises `CelestrakWhitelistConflict` if the resulting blacklist overlaps
+    the agency-backed probe registry whitelist — meaning two of our sources
+    claim the same NAIF and the discrepancy should be resolved before silently
+    dropping a probe with real agency SPK coverage.
+    """
+    from space_map_data.probes.probe_id import load_registry
+
+    active_norads = _latest_gp_active_norads()
+    if not active_norads:
+        return set()
+    cospar_to_norad = _satcat_cospar_to_norad()
+    if not cospar_to_norad:
+        return set()
+
+    excludes: set[int] = set()
+    for naif_id, _name, cospar in candidates:
+        if not cospar:
+            continue
+        norad = cospar_to_norad.get(cospar)
+        if norad is None:
+            continue
+        if norad in active_norads:
+            excludes.add(naif_id)
+
+    if registry is None:
+        registry = load_registry()
+    whitelist = {
+        int(entry["naif_id"])
+        for entry in registry
+        if (entry.get("kernel_sources") or [{"mission": "HORIZONS-SYNTH"}])[0][
+            "mission"
+        ]
+        != "HORIZONS-SYNTH"
+    }
+    conflict = excludes & whitelist
+    if conflict:
+        details = []
+        by_naif = {int(e["naif_id"]): e for e in registry}
+        for n in sorted(conflict):
+            entry = by_naif[n]
+            details.append(
+                f"naif={n} mission={entry['kernel_sources'][0]['mission']} "
+                f"name={entry.get('name')!r}"
+            )
+        raise CelestrakWhitelistConflict(
+            "CelesTrak-active filter would drop NAIFs that are agency-backed "
+            "in probe registry; resolve before merging. Conflicts:\n  "
+            + "\n  ".join(details)
+        )
+
+    logger.info(
+        "CelesTrak-active filter: dropping %d / %d candidates",
+        len(excludes),
+        len(candidates),
+    )
+    return excludes
 
 
 def qid_deduped_synth_naifs(registry: list[dict] | None = None) -> set[int]:
