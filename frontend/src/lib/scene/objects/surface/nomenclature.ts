@@ -230,6 +230,9 @@ const _labelNdc = new Vector3();
  * feature is still shown — but the hemisphere check still applies so the
  * label doesn't bleed through the planet from the far side.
  *
+ * When the body's cloud overlay is visible, non-active labels are hidden so
+ * they don't read through the clouds; the active feature still survives.
+ *
  * Survivors get their screen-space center written to `bo.nomenclatureSX/SY`
  * for the collision pass; hidden labels get `NaN` so the cull skips them.
  */
@@ -254,15 +257,17 @@ export function updateNomenclatureVisibility(
 	const syA = bo.nomenclatureSY!;
 	const activeIdx = bo.nomenclatureActiveIndex ?? -1;
 	const n = labels.length;
+	const cloudsVisible = !!bo.clouds?.mesh.visible;
 
 	const realRadiusM = effectiveRadiusKm(bo.body.data) * 1000;
 	const pxPerMeter = screenR / realRadiusM;
 	const maxFeaturePx = MAX_FEATURE_FRACTION * Math.min(screenW, screenH);
 
 	// Fast path: labels are pre-sorted by effective diameter desc, so if the
-	// largest feature can't clear MIN_FEATURE_PX, none can. Skipped when an
-	// active feature is set so its label still gets projected + shown.
-	if (activeIdx < 0 && (n === 0 || diamsM[0] * pxPerMeter < MIN_FEATURE_PX)) {
+	// largest feature can't clear MIN_FEATURE_PX, none can. Same shortcut when
+	// clouds occlude the surface — every non-active label is suppressed.
+	// Skipped when an active feature is set so its label still gets projected.
+	if (activeIdx < 0 && (n === 0 || cloudsVisible || diamsM[0] * pxPerMeter < MIN_FEATURE_PX)) {
 		for (const lbl of labels) lbl.visible = false;
 		return;
 	}
@@ -289,7 +294,8 @@ export function updateNomenclatureVisibility(
 		const lbl = labels[i];
 		const isActive = i === activeIdx;
 		const featurePx = diamsM[i] * pxPerMeter;
-		if (!isActive && (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx)) {
+		const occluded = cloudsVisible && !isActive;
+		if (occluded || (!isActive && (featurePx < MIN_FEATURE_PX || featurePx > maxFeaturePx))) {
 			lbl.visible = false;
 			sxA[i] = NaN;
 			syA[i] = NaN;
