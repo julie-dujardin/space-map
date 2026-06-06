@@ -50,6 +50,7 @@ class WikidataEntityCache:
         self._referenced_dir = wikidata_dir / "referenced"
         self._units: dict[str, WikidataEntity] = {}
         self._properties: dict[str, WikidataEntity] = {}
+        self._feature_types: dict[str, WikidataEntity] = {}
 
         if not any(
             d.exists()
@@ -75,6 +76,12 @@ class WikidataEntityCache:
                 self._properties[pid] = parsed
         logger.info("Preloaded %d property entities", len(self._properties))
 
+        for qid, entity in load_json_dir(wikidata_dir / "feature_types"):
+            parsed = _parse_entity(entity)
+            if parsed:
+                self._feature_types[qid] = parsed
+        logger.info("Preloaded %d feature type entities", len(self._feature_types))
+
     def unit_items(self) -> dict[str, WikidataEntity]:
         """Return all preloaded unit entities as {qid: entity}."""
         return self._units
@@ -82,6 +89,12 @@ class WikidataEntityCache:
     def property_items(self) -> dict[str, WikidataEntity]:
         """Return all preloaded property entities as {pid: entity}."""
         return self._properties
+
+    def get_feature_type(self, qid: str | None) -> WikidataEntity | None:
+        """Look up an IAU feature type entity (e.g. Q2066176 for Rupes)."""
+        if not qid:
+            return None
+        return self._feature_types.get(qid)
 
     def get_entity(self, qid: str | None) -> WikidataEntity | None:
         """Look up an object's own Wikidata entity (from entities/)."""

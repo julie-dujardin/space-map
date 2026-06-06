@@ -3,7 +3,9 @@
 import orjson
 import logging
 
+from space_map_data.constants.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -15,10 +17,17 @@ from space_map_data.utils.paths import PROJECT_ROOT, SOURCES_METADATA_DIR
 logger = logging.getLogger(__name__)
 
 MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
+BASE_LOCALE = "en"
 
 # All prefixes managed by this module — keys with these prefixes are removed
 # before writing fresh ones, so hand-written keys are never touched.
-GENERATED_PREFIXES = ("unit_name_", "unit_symbol_", "property_name_")
+GENERATED_PREFIXES = (
+    "unit_name_",
+    "unit_symbol_",
+    "property_name_",
+    "feature_type_label_",
+    "feature_type_description_",
+)
 
 _UNIT_SYMBOL_PID = "P5061"
 
@@ -129,6 +138,41 @@ def _collect_property_labels(
     return result
 
 
+def _collect_feature_type_labels(
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, dict[str, str]]:
+    """Return {lang: {key: value}} for IAU feature type labels and descriptions.
+
+    Only emits entries for locales that actually have a Wikidata
+    label/description — missing translations are left out so Paraglide's
+    compile-time baseLocale fallback fills them in. Codes without a Wikidata
+    QID (CL/LF/LO/ST) and any field gap in baseLocale itself are backfilled
+    from ``FEATURE_TYPES`` so the baseLocale JSON always has every key.
+    """
+    result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
+    base = result[BASE_LOCALE]
+
+    for code, qid in FEATURE_TYPE_QIDS.items():
+        label_key = f"feature_type_label_{code}"
+        desc_key = f"feature_type_description_{code}"
+        entity = wikidata_entities.get_feature_type(qid) if qid else None
+
+        if entity:
+            for lang in LANGUAGES:
+                if label := entity["labels"].get(lang):
+                    result[lang][label_key] = label
+                if desc := entity["descriptions"].get(lang):
+                    result[lang][desc_key] = desc
+
+        # Fall back to the in-repo IAU constants for the baseLocale where
+        # Wikidata didn't provide a value (or had no entity at all).
+        fallback = FEATURE_TYPES[code]
+        base.setdefault(label_key, fallback.singular)
+        base.setdefault(desc_key, fallback.description)
+
+    return result
+
+
 def write_messages(
     wikidata_entities: WikidataEntityCache,
     used_units: set[str],
@@ -136,6 +180,7 @@ def write_messages(
     """Collect unit + property labels and merge them into frontend message files."""
     unit_labels = _collect_unit_labels(wikidata_entities, used_units)
     property_labels = _collect_property_labels(wikidata_entities)
+    feature_type_labels = _collect_feature_type_labels(wikidata_entities)
 
     for lang in LANGUAGES:
         msg_file = MESSAGES_DIR / f"{lang}.json"
@@ -155,6 +200,7 @@ def write_messages(
         generated = {
             **unit_labels.get(lang, {}),
             **property_labels.get(lang, {}),
+            **feature_type_labels.get(lang, {}),
         }
         merged = {**manual, **dict(sorted(generated.items()))}
 
