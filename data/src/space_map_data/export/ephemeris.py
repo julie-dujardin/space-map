@@ -62,11 +62,12 @@ def _read_mission_server(mission_dir: Path) -> str | None:
         return None
 
 
-def load_probe_kernel_sources() -> dict[int, str]:
-    """Build `{probe_id → archive_id}` by joining mission `_index.json` servers
-    against the probe registry. When a probe lists multiple kernel sources
-    (joint missions like Cassini in CASSINI + HUYGENS), the canonical (first)
-    source's server determines the archive credit."""
+def load_probe_kernel_sources() -> dict[int, str | None]:
+    """Build `{probe_id → archive_id | None}` by joining mission `_index.json`
+    servers against the probe registry. Joint missions (Cassini in CASSINI +
+    HUYGENS) credit the canonical (first) source's server. `None` suppresses
+    the credit (EVENTS-DB-only entries); absent entries fall back to NAIF.
+    """
     if not PROBE_IDS_REGISTRY.exists():
         logger.info(
             "probe_ids registry missing at %s; no probe sources to map",
@@ -91,7 +92,7 @@ def load_probe_kernel_sources() -> dict[int, str]:
         logger.warning("probe registry at %s unreadable (%s)", PROBE_IDS_REGISTRY, exc)
         return {}
 
-    out: dict[int, str] = {}
+    out: dict[int, str | None] = {}
     unmapped_servers: set[str] = set()
     missing_missions: set[str] = set()
     for entry in registry:
@@ -101,6 +102,9 @@ def load_probe_kernel_sources() -> dict[int, str]:
         mission = sources[0].get("mission")
         probe_id = entry.get("probe_id")
         if mission is None or probe_id is None:
+            continue
+        if mission == "EVENTS-DB":
+            out[int(probe_id)] = None
             continue
         server = mission_to_server.get(mission)
         if server is None:
@@ -128,19 +132,16 @@ def load_probe_kernel_sources() -> dict[int, str]:
 
 
 def ephemeris_archive_for(
-    obj: Object, probe_kernel_sources: dict[int, str]
+    obj: Object, probe_kernel_sources: dict[int, str | None]
 ) -> str | None:
-    """Archive id crediting *obj*'s ephemeris, or None. Probes without a
-    mapped mission fall back to NAIF (every probe SPK we fetch passes through
-    a NAIF-hosted archive at minimum)."""
+    """Archive id crediting *obj*'s ephemeris, or None. A registered `None`
+    suppresses the credit; unregistered probes fall back to NAIF."""
     src = obj.orbital_source
     if src is None:
         return None
     if src == OrbitalSource.spice_probe:
-        if obj.probe_id is not None:
-            archive = probe_kernel_sources.get(obj.probe_id)
-            if archive is not None:
-                return archive
+        if obj.probe_id is not None and obj.probe_id in probe_kernel_sources:
+            return probe_kernel_sources[obj.probe_id]
         return ARCHIVE_NAIF
     return _NON_PROBE_ARCHIVE.get(src)
 

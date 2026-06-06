@@ -37,7 +37,7 @@ class ObjectDataContext:
     nut_prec: dict[int, dict[str, list[float]]]
     texture_metadata: dict[str, dict]
     clouds_metadata: dict[str, dict]
-    probe_kernel_sources: dict[int, str]
+    probe_kernel_sources: dict[int, str | None]
     nomenclature_body_ids: set[str]
 
 

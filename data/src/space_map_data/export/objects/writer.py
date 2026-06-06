@@ -202,7 +202,7 @@ def build_chunk_object_data(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
-    probe_kernel_sources: dict[int, str],
+    probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
@@ -333,7 +333,7 @@ def _build_global(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
-    probe_kernel_sources: dict[int, str],
+    probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
