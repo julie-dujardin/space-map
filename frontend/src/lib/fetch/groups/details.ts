@@ -7,7 +7,11 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { EntityRef, ObjectImage } from '$lib/fetch/objects/object-data';
-import type { GroupCategory, GroupType } from './registry';
+import type { GroupCategory, GroupType, SatelliteCategory } from './registry';
+
+export interface LaunchSiteEntry extends EntityRef {
+	n: number;
+}
 
 export interface GlobalGroupData {
 	slug: string;
@@ -19,8 +23,18 @@ export interface GlobalGroupData {
 	url?: string;
 	/** Wikidata P856 — official site. */
 	website?: string;
-	/** ISO ``YYYY-MM-DD`` — min launch date across SATCAT members. */
-	earliest_launch?: string;
+	/** Constellation-only: CelesTrak-style top-level use cases (communications, navigation, …). */
+	categories?: SatelliteCategory[];
+	/** Launches per year across SATCAT members, sorted by year ascending. */
+	launch_histogram?: Record<string, number>;
+	/** Members with ``ops_status`` operational/partial/extended and no decay. */
+	active_count?: number;
+	/** Members with a SATCAT decay_date. */
+	decayed_count?: number;
+	/** Wikidata P571 — programme/operator inception (ISO date string). */
+	inception?: string;
+	/** Wikidata P576 — programme dissolution (ISO date string). */
+	dissolved?: string;
 	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
 	images?: ObjectImage[];
 }
@@ -35,6 +49,9 @@ export interface LocalizedGroupData {
 	};
 	operators?: EntityRef[];
 	country_of_origin?: EntityRef[];
+	instance_of?: EntityRef[];
+	/** Top launch sites by member count, with localized name. */
+	launch_sites?: LaunchSiteEntry[];
 }
 
 export interface GroupDetailData {

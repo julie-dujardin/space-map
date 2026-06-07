@@ -10,9 +10,11 @@
 		localized: LocalizedObjectData | null;
 		fallbackName: string | null;
 		onShowGallery: () => void;
+		/** Pre-resolved badges shown before any auto-detected ones (groups use this). */
+		leadingBadges?: string[];
 	}
 
-	let { global, localized, fallbackName, onShowGallery }: Props = $props();
+	let { global, localized, fallbackName, onShowGallery, leadingBadges }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
@@ -90,7 +92,11 @@
 		</button>
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
-		{#if celestrakBadges}
+		{#if leadingBadges && leadingBadges.length > 0}
+			{#each leadingBadges as b, i (i)}
+				<Badge variant="secondary" class="shrink-0 text-xs">{b}</Badge>
+			{/each}
+		{:else if celestrakBadges}
 			{#each celestrakBadges as b, i (i)}
 				<Badge variant="secondary" class="shrink-0 text-xs">{b}</Badge>
 			{/each}

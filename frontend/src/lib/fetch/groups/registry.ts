@@ -9,6 +9,24 @@ import { DATA_BASE } from '$lib/fetch/data-base';
 export type GroupType = 'constellation';
 export type GroupCategory = 'earth_sat';
 
+/** Mirrors ``SatelliteCategory`` in ``data/constants/earth_sats/constellations.py``. */
+export type SatelliteCategory =
+	| 'disaster-sar'
+	| 'weather'
+	| 'observation'
+	| 'communications'
+	| 'navigation'
+	| 'science'
+	| 'military'
+	| 'debris'
+	| 'station'
+	| 'manned_capsule'
+	| 'unmanned_cargo'
+	| 'space_tug'
+	| 'rocket'
+	| 'upper_stage'
+	| 'miscellaneous';
+
 export interface GroupIndexEntry {
 	type: GroupType;
 	applies_to: GroupCategory;

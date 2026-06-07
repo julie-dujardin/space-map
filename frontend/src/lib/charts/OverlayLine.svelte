@@ -1,0 +1,50 @@
+<script lang="ts">
+	import { getContext } from 'svelte';
+	import type { Readable } from 'svelte/store';
+
+	interface BandScale {
+		(d: unknown): number;
+		bandwidth: () => number;
+	}
+	interface Ctx {
+		data: Readable<Array<Record<string, unknown>>>;
+		xScale: Readable<BandScale>;
+		height: Readable<number>;
+	}
+
+	interface Props {
+		/** Function returning the value plotted on the overlay's own y-scale. */
+		yAccessor: (d: Record<string, unknown>) => number;
+		/** Optional explicit max; defaults to the max of the accessor over the data. */
+		yMax?: number;
+	}
+	let { yAccessor, yMax }: Props = $props();
+
+	const { data, xScale, height } = getContext<Ctx>('LayerCake');
+
+	let resolvedMax = $derived(yMax ?? Math.max(1, ...$data.map((d) => yAccessor(d))));
+
+	let points = $derived(
+		$data
+			.map((d) => {
+				const cx = $xScale(d as unknown) + $xScale.bandwidth() / 2;
+				const cy = $height - (yAccessor(d) / resolvedMax) * $height;
+				return `${cx.toFixed(2)},${cy.toFixed(2)}`;
+			})
+			.join(' ')
+	);
+</script>
+
+{#if points}
+	<polyline {points} class="overlay-line" />
+{/if}
+
+<style>
+	.overlay-line {
+		fill: none;
+		stroke: var(--color-primary);
+		stroke-width: 1.5;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+</style>

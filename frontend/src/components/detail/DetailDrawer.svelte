@@ -5,6 +5,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { groupTypeLabel, satelliteCategoryLabel } from '$lib/format/group';
+	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -52,7 +54,13 @@
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
-	let memberCount = $state<number | null>(null);
+	let groupHeaderBadges = $derived.by(() => {
+		const g = groupDetail?.global;
+		if (!g) return undefined;
+		const out: string[] = [groupTypeLabel(g.type)];
+		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
+		return out;
+	});
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
@@ -104,7 +112,6 @@
 		data = null;
 		featureDetail = null;
 		groupDetail = null;
-		memberCount = null;
 		if (current.kind === 'feature') {
 			const f = current.feature;
 			const bodyId = current.body.data.id;
@@ -146,7 +153,6 @@
 				.then((detail) => {
 					if (focusableId !== key) return;
 					groupDetail = detail;
-					memberCount = detail.global?.member_count ?? 0;
 					const websites = [detail.global?.website, detail.global?.url].filter(
 						(u): u is string => !!u
 					);
@@ -348,17 +354,16 @@
 				global={data?.global ?? null}
 				localized={data?.localized ?? null}
 				{fallbackName}
+				leadingBadges={groupHeaderBadges}
 				onShowGallery={() => {
 					activeTab = 'images';
 					appState.setImage(0);
 				}}
 			/>
-			{#if isGroupMode && memberCount !== null}
-				<Badge variant="secondary" class="self-start text-xs">
-					{m.group_member_count({ count: memberCount })}
-				</Badge>
-			{/if}
 			{@render tabsBar()}
+			{#if isGroupMode && groupDetail?.global}
+				<GroupStatCards global={groupDetail.global} />
+			{/if}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
