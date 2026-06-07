@@ -72,10 +72,16 @@ def remove_old_outputs(out_dir: Path) -> None:
         shutil.rmtree(p)
     # Nomenclature details bucket count depends on K_GLOBAL / K_LOCALIZED;
     # tuning either leaves stale-numbered files behind that the writer
-    # never touches. Marker tier (positions/, __global__/) uses stable
-    # per-body filenames and overwrites cleanly, so only details needs
-    # the wipe.
+    # never touches. Positions / labels use stable per-body filenames and
+    # overwrite cleanly, so only details needs the wipe.
     p = out_dir / "nomenclature" / "details"
+    if p.exists():
+        shutil.rmtree(p)
+    # The previous schema shipped a per-body `__global__/{body}.json.gz`
+    # marker file alongside positions; the new schema replaces it with
+    # per-language label files. Drop the legacy dir so old artefacts
+    # don't linger on the CDN after an in-place re-export.
+    p = out_dir / "nomenclature" / "__global__"
     if p.exists():
         shutil.rmtree(p)
     # System metadata is regenerated each export (individual textures are not)

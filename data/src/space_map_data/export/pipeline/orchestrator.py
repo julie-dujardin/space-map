@@ -30,7 +30,8 @@ from space_map_data.export.nomenclature.writer import (
     build_feature_details,
     build_nomenclature,
     write_feature_detail_bundles,
-    write_nomenclature_files,
+    write_nomenclature_labels,
+    write_nomenclature_positions,
 )
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
@@ -560,7 +561,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     t0 = time.monotonic()
     with Session(engine) as session:
         precheck_tables(session)
-        nomenclature_payload = build_nomenclature(session)
+        nomenclature_by_body = build_nomenclature(session)
     out_dir = EXPORT_DIR / "v1"
     out_dir.mkdir(parents=True, exist_ok=True)
     remove_old_outputs(out_dir)
@@ -592,7 +593,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         texture_metadata=texture_metadata,
         clouds_metadata=clouds_metadata,
         probe_kernel_sources=probe_kernel_sources,
-        nomenclature_body_ids=set(nomenclature_payload.keys()),
+        nomenclature_body_ids=set(nomenclature_by_body.keys()),
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)
@@ -673,7 +674,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     bundle_ns = write_object_bundles(
         out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
     )
-    write_nomenclature_files(out_dir, nomenclature_payload)
+    write_nomenclature_positions(out_dir, nomenclature_by_body)
+    write_nomenclature_labels(out_dir, nomenclature_by_body, wikidata_entities)
     # Feature details are built after object data so the unit converter has
     # already absorbed object-side `used_units`; nomenclature claims may add
     # more (km, m, ...) that the localization writer needs to see below.

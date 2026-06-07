@@ -3,19 +3,23 @@
 Marker tier (loaded eagerly when a body's surface comes into view):
 
     nomenclature/positions/{body_id}.bin.gz       — SMNF-format binary
-    nomenclature/__global__/{body_id}.json.gz     — lean IAU canonical metadata
-                                                    (name, approval_date,
-                                                    origin, parent_feature_id)
+    nomenclature/labels/{lang}/{body_id}.txt.gz   — \\n-separated label per
+                                                    feature, ordered to match
+                                                    the positions binary. Each
+                                                    line is the Wikidata label
+                                                    in ``lang`` when present,
+                                                    falling back to ``Feature.name``.
 
 Details tier (lazy, fetched on drawer open, hash-bucketed):
 
     nomenclature/details/__global__/{bucket}.json.gz   — feature image manifest,
                                                          physical-quantity claims,
-                                                         wikidata cross-link, …
-    nomenclature/details/{lang}/{bucket}.json.gz       — localized name override,
-                                                         description, named_after /
-                                                         instance_of refs, wiki
-                                                         summary, …
+                                                         wikidata cross-link,
+                                                         approval_date, origin,
+                                                         parent_feature, …
+    nomenclature/details/{lang}/{bucket}.json.gz       — localized description,
+                                                         named_after / instance_of
+                                                         refs, wiki summary, …
 
 Bucket key = ``f"{object_id}:{feature_id}"`` so features on the same body
 cluster — fetching one feature's details warms the bundle for its siblings.
@@ -154,14 +158,12 @@ def feature_bucket_key(object_id: str, feature_id: int) -> str:
     return f"{object_id}:{feature_id}"
 
 
-def build_nomenclature(
-    session: Session,
-) -> dict[str, tuple[bytes, dict[str, dict]]]:
-    """Group features by parent body and produce (positions, global_dict) per body.
+def build_nomenclature(session: Session) -> dict[str, list[Feature]]:
+    """Group renderable features by parent body, in stable feature_id order.
 
-    The ``global_dict`` here is the lean marker payload (name / approval_date /
-    origin / parent_feature_id). Richer per-feature data ships separately via
-    :func:`build_feature_details`.
+    The same ordered list drives the positions binary and the per-language
+    label files — line i of every labels file refers to record i of the
+    positions binary. ``test_nomenclature_writer`` pins that invariant.
     """
     rows = (
         session.query(Feature)
@@ -197,10 +199,7 @@ def build_nomenclature(
             "Skipped %d nomenclature features missing type code", skipped_no_type
         )
 
-    return {
-        body_id: (_build_positions(feats), _build_global(feats))
-        for body_id, feats in by_body.items()
-    }
+    return by_body
 
 
 def _build_positions(features: list[Feature]) -> bytes:
@@ -224,48 +223,72 @@ def _build_positions(features: list[Feature]) -> bytes:
     return b"".join(parts)
 
 
-def _build_global(features: list[Feature]) -> dict[str, dict]:
-    """Per-feature canonical IAU metadata, keyed by string feature_id."""
-    out: dict[str, dict] = {}
+def _build_labels(
+    features: list[Feature],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> bytes:
+    """Pack one line per feature: Wikidata label in *lang*, else IAU ``name``.
+
+    Order matches :func:`_build_positions`, by contract — frontend joins by
+    index (positions[i] ↔ label_lines[i]).
+    """
+    lines: list[str] = []
     for f in features:
-        entry: dict = {"name": f.unicode_name or f.name}
-        if f.approval_date:
-            entry["approval_date"] = f.approval_date.isoformat()
-        if f.origin:
-            entry["origin"] = _TRAILING_ORIGIN_DOT_RE.sub("", f.origin)
-        if f.parent_feature_id is not None:
-            entry["parent_feature_id"] = f.parent_feature_id
-        out[str(f.feature_id)] = entry
-    return out
+        label = f.name
+        if f.wikidata_qid:
+            wd = wikidata_entities.get_feature_entity(f.wikidata_qid)
+            if wd is not None:
+                wd_label = wd["labels"].get(lang)
+                if wd_label:
+                    label = wd_label
+        lines.append(label)
+    return "\n".join(lines).encode("utf-8")
 
 
-def write_nomenclature_files(
-    out_dir: Path, payload: dict[str, tuple[bytes, dict[str, dict]]]
+def write_nomenclature_positions(
+    out_dir: Path, by_body: dict[str, list[Feature]]
 ) -> None:
-    """Dump positions and global JSON files for every body in *payload*."""
-    if not payload:
+    """Dump the SMNF positions binary for every body in *by_body*."""
+    if not by_body:
         logger.info("No nomenclature features to export")
         return
 
     positions_dir = out_dir / "nomenclature" / "positions"
-    global_dir = out_dir / "nomenclature" / "__global__"
     positions_dir.mkdir(parents=True, exist_ok=True)
-    global_dir.mkdir(parents=True, exist_ok=True)
-
     total_features = 0
-    for body_id, (positions_bytes, global_dict) in payload.items():
+    for body_id, feats in by_body.items():
         (positions_dir / f"{body_id}.bin.gz").write_bytes(
-            gzip.compress(positions_bytes)
+            gzip.compress(_build_positions(feats))
         )
-        (global_dir / f"{body_id}.json.gz").write_bytes(
-            gzip.compress(orjson.dumps(global_dict))
-        )
-        total_features += len(global_dict)
-
+        total_features += len(feats)
     logger.info(
-        "Wrote nomenclature for %d bodies (%d features total)",
-        len(payload),
+        "Wrote nomenclature positions for %d bodies (%d features total)",
+        len(by_body),
         total_features,
+    )
+
+
+def write_nomenclature_labels(
+    out_dir: Path,
+    by_body: dict[str, list[Feature]],
+    wikidata_entities: WikidataEntityCache,
+) -> None:
+    """Dump one ``labels/{lang}/{body_id}.txt.gz`` per (lang, body)."""
+    if not by_body:
+        return
+    labels_root = out_dir / "nomenclature" / "labels"
+    for lang in LANGUAGES:
+        lang_dir = labels_root / lang
+        lang_dir.mkdir(parents=True, exist_ok=True)
+        for body_id, feats in by_body.items():
+            (lang_dir / f"{body_id}.txt.gz").write_bytes(
+                gzip.compress(_build_labels(feats, lang, wikidata_entities))
+            )
+    logger.info(
+        "Wrote nomenclature labels for %d bodies × %d languages",
+        len(by_body),
+        len(LANGUAGES),
     )
 
 
@@ -419,12 +442,14 @@ def build_feature_details(
         images = collect_feature_images(f.feature_id)
         has_quadrangle = bool(f.quad_code and f.quad_name)
 
+        has_iau_meta = bool(f.approval_date or f.origin)
         if (
             not images
             and not extracted
             and not f.wikidata_qid
             and not has_quadrangle
             and f.parent_feature_id is None
+            and not has_iau_meta
         ):
             skipped_no_enrichment += 1
             continue
@@ -737,6 +762,10 @@ def _build_detail_global(
 ) -> dict:
     """Build the per-language-independent payload for one feature."""
     data: dict = {}
+    if feature.approval_date:
+        data["approval_date"] = feature.approval_date.isoformat()
+    if feature.origin:
+        data["origin"] = _TRAILING_ORIGIN_DOT_RE.sub("", feature.origin)
     if feature.wikidata_qid:
         data["wikidata_qid"] = feature.wikidata_qid
     if feature.parent_feature_id is not None:
@@ -785,11 +814,6 @@ def _build_detail_localized(
     """Build the per-language payload for one feature."""
     data: dict = {}
     if wd is not None:
-        labels = wd["labels"]
-        canonical = feature.unicode_name or feature.name
-        if lang in labels and labels[lang] != canonical:
-            data["name"] = labels[lang]
-
         desc = wd["descriptions"].get(lang)
         if desc:
             data["description"] = desc
