@@ -23,6 +23,7 @@
 	import LayersButton from './layers/LayersButton.svelte';
 	import SearchBar from './search/SearchBar.svelte';
 	import { localizedName } from '$lib/search/client';
+	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
@@ -202,13 +203,23 @@
 			<div class="fixed top-4 start-4 z-10 w-[min(360px,calc(100vw-7rem))] pointer-events-auto">
 				<SearchBar
 					onSelect={(hit) => {
-						const diameterM = (hit.diameter_km ?? 0) * 1000;
-						appState.setFeature({
-							bodyId: hit.body_id,
-							featureId: hit.feature_id,
-							featureName: localizedName(hit, getLocale())
-						});
-						scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
+						const name = localizedName(hit, getLocale());
+						if (hit.kind === 'feature') {
+							const diameterM = (hit.diameter_km ?? 0) * 1000;
+							appState.setFeature({
+								bodyId: hit.body_id,
+								featureId: hit.feature_id,
+								featureName: name
+							});
+							scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
+						} else {
+							appState.setFocus({
+								type: urlTypeFromId(hit.id),
+								id: hit.id,
+								name
+							});
+							scene?.focusOnBody(hit.id);
+						}
 					}}
 				/>
 			</div>

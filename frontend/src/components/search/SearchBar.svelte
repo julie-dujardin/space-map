@@ -4,16 +4,11 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import {
-		searchFeatures,
-		localizedName,
-		isSearchEnabled,
-		type FeatureHit
-	} from '$lib/search/client';
+	import { search, localizedName, isSearchEnabled, type SearchHit } from '$lib/search/client';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 	type Props = {
-		onSelect: (hit: FeatureHit) => void;
+		onSelect: (hit: SearchHit) => void;
 	};
 
 	let { onSelect }: Props = $props();
@@ -21,7 +16,7 @@
 	const ctx = getContext<ContextManager>('ctx');
 
 	let query = $state('');
-	let hits = $state<FeatureHit[]>([]);
+	let hits = $state<SearchHit[]>([]);
 	let open = $state(false);
 	let highlighted = $state(0);
 	let inputEl: HTMLInputElement | undefined = $state();
@@ -39,7 +34,7 @@
 			return;
 		}
 		try {
-			const result = await searchFeatures(trimmed, getLocale(), 8);
+			const result = await search(trimmed, getLocale(), 8);
 			if (token !== activeQueryToken) return;
 			hits = result;
 			highlighted = 0;
@@ -62,7 +57,13 @@
 		return ctx.getBody(bodyId)?.data.name ?? bodyId;
 	}
 
-	function pick(hit: FeatureHit) {
+	function secondaryText(hit: SearchHit): string {
+		if (hit.kind === 'feature') return bodyName(hit.body_id);
+		if (hit.parent_id) return bodyName(hit.parent_id);
+		return hit.type.replace(/_/g, ' ');
+	}
+
+	function pick(hit: SearchHit) {
 		onSelect(hit);
 		query = '';
 		hits = [];
@@ -160,8 +161,7 @@
 									<span class="text-sm text-foreground truncate"
 										>{localizedName(hit, getLocale())}</span
 									>
-									<span class="text-xs text-muted-foreground truncate">{bodyName(hit.body_id)}</span
-									>
+									<span class="text-xs text-muted-foreground truncate">{secondaryText(hit)}</span>
 								</button>
 							</li>
 						{/each}
