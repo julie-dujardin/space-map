@@ -3,11 +3,11 @@
 	import type { Readable } from 'svelte/store';
 
 	interface BandScale {
-		(d: unknown): number;
 		bandwidth: () => number;
 	}
 	interface Ctx {
 		data: Readable<Array<Record<string, unknown>>>;
+		xGet: Readable<(d: Record<string, unknown>) => number>;
 		xScale: Readable<BandScale>;
 		height: Readable<number>;
 	}
@@ -20,14 +20,14 @@
 	}
 	let { yAccessor, yMax }: Props = $props();
 
-	const { data, xScale, height } = getContext<Ctx>('LayerCake');
+	const { data, xGet, xScale, height } = getContext<Ctx>('LayerCake');
 
 	let resolvedMax = $derived(yMax ?? Math.max(1, ...$data.map((d) => yAccessor(d))));
 
 	let points = $derived(
 		$data
 			.map((d) => {
-				const cx = $xScale(d as unknown) + $xScale.bandwidth() / 2;
+				const cx = $xGet(d) + $xScale.bandwidth() / 2;
 				const cy = $height - (yAccessor(d) / resolvedMax) * $height;
 				return `${cx.toFixed(2)},${cy.toFixed(2)}`;
 			})
@@ -42,7 +42,7 @@
 <style>
 	.overlay-line {
 		fill: none;
-		stroke: var(--color-primary);
+		stroke: var(--color-sky-400);
 		stroke-width: 1.5;
 		stroke-linecap: round;
 		stroke-linejoin: round;

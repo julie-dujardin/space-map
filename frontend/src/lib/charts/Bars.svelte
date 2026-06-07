@@ -15,11 +15,9 @@
 	}
 
 	interface Props {
-		/** Optional zero-based index to highlight with the accent color. */
-		accentIndex?: number;
 		minBarHeightPx?: number;
 	}
-	let { accentIndex, minBarHeightPx = 2 }: Props = $props();
+	let { minBarHeightPx = 2 }: Props = $props();
 
 	const { data, xGet, yGet, xScale, height } = getContext<Ctx>('LayerCake');
 </script>
@@ -31,24 +29,13 @@
 		{@const w = $xScale.bandwidth()}
 		{@const rawH = $height - y}
 		{@const h = rawH > 0 ? Math.max(rawH, minBarHeightPx) : 0}
-		<rect
-			{x}
-			y={$height - h}
-			width={w}
-			height={h}
-			rx="1.5"
-			class={i === accentIndex ? 'accent' : 'bar'}
-		/>
+		<rect {x} y={$height - h} width={w} height={h} rx="1.5" class="bar" />
 	{/each}
 </g>
 
 <style>
 	.bar {
-		fill: var(--color-primary);
-		opacity: 0.55;
-	}
-	.accent {
-		fill: var(--color-primary);
-		opacity: 1;
+		fill: var(--color-foreground);
+		opacity: 0.7;
 	}
 </style>

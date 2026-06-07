@@ -23,7 +23,7 @@
 	"legend_cumulative": "cumulative",
 	"group_stat_members": "Members",
 	"group_stat_active": "Active",
-	"group_stat_decayed": "Decayed",
+	"group_stat_first_launch": "First launch",
 	"group_type_constellation": "Constellation",
 	"satellite_category_disaster_sar": "Disaster / SAR",
 	"satellite_category_weather": "Weather",

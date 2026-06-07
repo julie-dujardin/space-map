@@ -35,12 +35,6 @@
 		return out;
 	});
 
-	let peakIndex = $derived.by(() => {
-		if (series.length === 0) return -1;
-		let bestI = 0;
-		for (let i = 1; i < series.length; i++) if (series[i].count > series[bestI].count) bestI = i;
-		return bestI;
-	});
 	// Tick every other year once there are more than 8, so labels never overlap.
 	let tickEvery = $derived(series.length > 8 ? 2 : 1);
 
@@ -57,11 +51,11 @@
 	<div class="flex flex-col gap-1">
 		<div class="text-muted-foreground flex justify-end gap-2 text-[10px]">
 			<span class="flex items-center gap-1">
-				<span class="bg-primary inline-block size-2 rounded-[1px] opacity-55"></span>
+				<span class="bg-foreground inline-block size-2 rounded-[1px] opacity-70"></span>
 				{m.legend_per_year()}
 			</span>
 			<span class="flex items-center gap-1">
-				<span class="bg-primary inline-block h-px w-2.5"></span>
+				<span class="bg-sky-400 inline-block h-px w-2.5"></span>
 				{m.legend_cumulative()}
 			</span>
 		</div>
@@ -76,7 +70,7 @@
 				data={series}
 			>
 				<Svg>
-					<Bars accentIndex={peakIndex} />
+					<Bars />
 					<OverlayLine yAccessor={(d) => Number(d.cumulative)} />
 					<AxisX format={formatYear} every={tickEvery} />
 					<BarHover onHover={(i) => (hoveredIndex = i)} />
