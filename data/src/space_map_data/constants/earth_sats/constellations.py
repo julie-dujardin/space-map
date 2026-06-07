@@ -711,6 +711,20 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
             "COSMOS 2539",
         ],
     ),
+    # EKS / Tundra / Kupol: Russian early-warning constellation in Molniya orbits
+    ConstellationSpec(
+        "eks",
+        "Q5323248",
+        (SatelliteCategory.MILITARY, SatelliteCategory.COMMUNICATIONS),
+        satellites=[
+            "COSMOS 2510",
+            "COSMOS 2518",
+            "COSMOS 2541",
+            "COSMOS 2546",
+            "COSMOS 2552",
+            "COSMOS 2563",
+        ],
+    ),
     # Soviet sats, monitored van allen belts
     ConstellationSpec(
         "elektron",
