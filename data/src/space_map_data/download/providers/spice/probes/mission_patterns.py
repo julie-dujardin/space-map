@@ -153,7 +153,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # Newly enabled (previously skipped or accept-all). Patterns picked from a
     # fresh sweep of each NAIF/ESA `kernels/spk/` listing.
     "SIRTF": (r"^spk_191101_200134_220101_short\.bsp$",),  # Spitzer warm phase
-    "CHANDRA": (r"^chandra_merged\.bsp$",),
+    "CHANDRA": (),  # Earth-orbit (HEO); tracked via celestrak (norad_satcat-25867)
     "APOLLO": (r"^apollo15-1\.bsp$", r"^a16_subsat_ssd_lp150q\.bsp$"),
     "MPL": (r"^mpl_cruise\.bsp$",),  # Mars Polar Lander (lost during EDL)
     "PHSRM": (r"^phsrm_\d+_\d+_\d+_nom\d+\.bsp$",),  # Phobos-Grunt (planned)
@@ -208,10 +208,7 @@ MISSION_INCLUDE: dict[str, tuple[str, ...]] = {
     # Each `integral_sc_ssm_20021017_<asof>_v<NN>.bsp` re-spans launch→that
     # date; only the lex-last filename is needed (see `MISSION_LATEST_ONLY`).
     "INTEGRAL": (r"^integral_sc_ssm_20021017_\d+_v\d+\.bsp$",),
-    "XMM": (
-        r"^xmm_horizons_\d+_\d+_v\d+\.bsp$",
-        r"^xmm_ssm_\d+_\d+_v\d+\.bsp$",
-    ),
+    "XMM": (),  # Earth-orbit (HEO); tracked via celestrak (norad_satcat-25989)
     "LPF": (r"^lpfcmd\.bsp$",),  # LISA Pathfinder
     # LANDED phase moved to LANDED_INCLUDE so the trajectory pipeline doesn't
     # classify Huygens-on-Titan as a flying-then-landed sequence — surface

@@ -136,9 +136,44 @@ PROMOTED_EXTRA_IDS: frozenset[str] = frozenset(
         "norad_satcat-20580",  # HST (Hubble)
         "norad_satcat-25544",  # ISS (Zarya)
         "norad_satcat-48274",  # CSS Tianhe (Tiangong)
-        # TESS and CXO have SPICE kernels and land in the probe namespace.
+        # TESS has SPICE kernels and lands in the probe namespace.
         "probe-109834240",  # TESS (mission HORIZONS-SYNTH, naif -95)
-        "probe-81858560",  # Chandra X-ray Observatory (mission CHANDRA, naif -151)
+        "norad_satcat-25867",  # Chandra X-ray Observatory (Earth HEO; celestrak)
+        # Famous Earth-orbit science missions. Without these entries they'd be
+        # caught by `_low_earth_orbit_probe_ids` in export/labels.py and dropped
+        # alongside the GEO comsat noise. TODO: revisit when space-track
+        # integration lands — that catalog may surface them through
+        # `norad_satcat-*` and these probe-* curated overrides can move there.
+        "probe-97353728",  # WISE / NEOWISE          (mission HORIZONS-SYNTH, naif -163)
+        "probe-87433216",  # GALEX                   (mission HORIZONS-SYNTH, naif -53)
+        "probe-49655808",  # IUE (first major UV)    (mission HORIZONS-SYNTH, naif -12)
+        "probe-78147584",  # HALCA (VSOP/MUSES-B)    (mission HORIZONS-SYNTH, naif -10)
+        "probe-120102912",  # Odin (Swedish/Canadian) (mission HORIZONS-SYNTH, naif -2)
+        "probe-95129600",  # OSTM/Jason-2            (mission HORIZONS-SYNTH, naif -7)
+        "probe-85762048",  # GRACE-1                 (mission HORIZONS-SYNTH, naif -8)
+        "probe-91918336",  # CloudSat                (mission HORIZONS-SYNTH, naif -7)
+        "probe-83795968",  # EO-1                    (mission HORIZONS-SYNTH, naif -5)
+        "probe-123904000",  # NEO Surveyor (NEOSSAT)  (mission HORIZONS-SYNTH, naif -9)
+        # Space stations beyond those already covered above.
+        "probe-61722624",  # Mir                      (mission HORIZONS-SYNTH, naif -3)
+        "probe-100032512",  # Tiangong-1              (mission HORIZONS-SYNTH, naif -4)
+        # Lunar-trajectory attempts whose SATCAT row only records the Earth
+        # parking orbit (apogee filter would drop them). Multiple registry
+        # entries per cubesat — they get a probe_id per inception_mjd dedup,
+        # all listed so any rendered variant gets full-promoted.
+        "probe-104615936",  # Chang'e 5-T1            (lunar free-return test)
+        "probe-104615937",  # Chang'e 5-T1
+        "probe-104615938",  # Chang'e 5-T1 returner
+        "probe-115003392",  # Chang'e 5-T1
+        "probe-116682753",  # OMOTENASHI              (Artemis-1 cubesat)
+        "probe-116686852",  # OMOTENASHI
+        "probe-116682756",  # NEA Scout               (Artemis-1 cubesat)
+        "probe-116686850",  # NEA Scout
+        "probe-116682757",  # BioSentinel             (Artemis-1 cubesat)
+        "probe-116686848",  # BioSentinel
+        "probe-116682758",  # ArgoMoon                (Artemis-1 cubesat)
+        "probe-116682759",  # Lunar IceCube           (Artemis-1 cubesat)
+        "probe-140226560",  # M-MATISSE               (Artemis-1 secondary 2022-156E)
         # Asteroids (visited, hazardous, or otherwise famous)
         "spkid-20000002",  # 2 Pallas
         "spkid-20000003",  # 3 Juno
