@@ -9,8 +9,9 @@ to the fleet through one of two paths:
   isn't a SATCAT source but owns one or more constellations (SpaceX operates
   Starlink, Amazon operates Kuiper, EUMETSAT operates MetOp/Meteosat, ...).
 
-The per-source ``operator`` free-text field on ``SourceSpec`` was removed in
-favor of this structured form.
+``slug`` is the URL-friendly identifier used by the operator group page
+(prefixed with ``op-`` in the group registry to avoid collisions with
+constellation slugs).
 """
 
 from collections import defaultdict
@@ -22,10 +23,15 @@ from space_map_data.constants.earth_sats.constellations import SatelliteCategory
 # Year-only or exact date for operator active periods.
 ActiveDate = int | date
 
+# Group slug namespace: operator group slugs are ``f"{OPERATOR_SLUG_PREFIX}{op.slug}"``
+# so they never collide with bare constellation slugs in the group registry.
+OPERATOR_SLUG_PREFIX = "op-"
+
 
 @dataclass(frozen=True)
 class OperatorSpec:
     name: str
+    slug: str  # URL slug, unique within OPERATORS; group registry prefixes with "op-"
     wikidata_qid: str | None = None
     source: str | None = None  # SATCAT SOURCE/OWNER code, when one exists
     constellations: tuple[str, ...] = ()  # constellation slugs operated by this entity
@@ -68,65 +74,106 @@ def operator_overlaps(
 
 OPERATORS: tuple[OperatorSpec, ...] = (
     # Linked via a dedicated SATCAT SOURCE code
-    OperatorSpec("Arabsat", "Q65277396", source="AB", constellations=("arabsat",)),
     OperatorSpec(
-        "Asia Broadcast Satellite", "Q18238088", source="ABS", constellations=("abs",)
+        "Arabsat", "arabsat", "Q65277396", source="AB", constellations=("arabsat",)
     ),
-    OperatorSpec("AsiaSat", "Q726812", source="AC", constellations=("asiasat",)),
+    OperatorSpec(
+        "Asia Broadcast Satellite",
+        "abs",
+        "Q18238088",
+        source="ABS",
+        constellations=("abs",),
+    ),
+    OperatorSpec(
+        "AsiaSat", "asiasat", "Q726812", source="AC", constellations=("asiasat",)
+    ),
     OperatorSpec(
         "ESA - European Space Agency",
+        "esa",
         "Q42262",
         source="ESA",
         constellations=("iride", "iss", "sentinel"),
     ),
     OperatorSpec(
-        "JAXA", "Q179103", constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket")
+        "JAXA",
+        "jaxa",
+        "Q179103",
+        constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket"),
     ),
-    OperatorSpec("CSA", "Q212227", constellations=("iss",)),
-    OperatorSpec("Italian Space Agency", "Q392953", constellations=("iride",)),
-    OperatorSpec("European Space Research Organization", "Q473105", source="ESRO"),
-    OperatorSpec("ArianeGroup", "Q19951610", constellations=("ariane", "vega")),
+    OperatorSpec("CSA", "csa", "Q212227", constellations=("iss",)),
+    OperatorSpec("Italian Space Agency", "asi", "Q392953", constellations=("iride",)),
     OperatorSpec(
-        "EUMETSAT", "Q692163", source="EUME", constellations=("metop", "meteosat")
-    ),
-    OperatorSpec(
-        "Eutelsat", "Q848336", source="EUTE", constellations=("oneweb", "eutelsat")
+        "European Space Research Organization", "esro", "Q473105", source="ESRO"
     ),
     OperatorSpec(
-        "Globalstar", "Q1202533", source="GLOB", constellations=("globalstar",)
+        "ArianeGroup", "arianegroup", "Q19951610", constellations=("ariane", "vega")
+    ),
+    OperatorSpec(
+        "EUMETSAT",
+        "eumetsat",
+        "Q692163",
+        source="EUME",
+        constellations=("metop", "meteosat"),
+    ),
+    OperatorSpec(
+        "Eutelsat",
+        "eutelsat",
+        "Q848336",
+        source="EUTE",
+        constellations=("oneweb", "eutelsat"),
+    ),
+    OperatorSpec(
+        "Globalstar",
+        "globalstar",
+        "Q1202533",
+        source="GLOB",
+        constellations=("globalstar",),
     ),
     OperatorSpec(
         "Inmarsat",
+        "inmarsat",
         "Q827927",
         source="IM",
         constellations=("marecs", "marisat", "inmarsat"),
     ),
-    OperatorSpec("Iridium", "Q3154356", source="IRID", constellations=("iridium",)),
+    OperatorSpec(
+        "Iridium", "iridium", "Q3154356", source="IRID", constellations=("iridium",)
+    ),
     OperatorSpec(
         "Indian Space Research Organisation",
+        "isro",
         "Q229058",
         source="ISRO",
         constellations=("pslv", "gslv"),
     ),
     OperatorSpec(
         "Intelsat",
+        "intelsat",
         "Q778126",
         source="ITSO",
         constellations=("intelsat", "galaxy", "horizons"),
     ),
-    OperatorSpec("North Atlantic Treaty Organization", "Q7184", source="NATO"),
+    OperatorSpec("North Atlantic Treaty Organization", "nato", "Q7184", source="NATO"),
     OperatorSpec(
         "ICO Global Communications",
+        "ico",
         "Q3792482",
         source="NICO",
         constellations=("new-ico",),
     ),
-    OperatorSpec("Orbcomm", "Q16960684", source="ORB", constellations=("orbcomm",)),
     OperatorSpec(
-        "RascomStar-QAF", "Q3415056", source="RASC", constellations=("rascomstar",)
+        "Orbcomm", "orbcomm", "Q16960684", source="ORB", constellations=("orbcomm",)
+    ),
+    OperatorSpec(
+        "RascomStar-QAF",
+        "rascomstar-qaf",
+        "Q3415056",
+        source="RASC",
+        constellations=("rascomstar",),
     ),
     OperatorSpec(
         "SES",
+        "ses",
         "Q333025",
         source="SES",
         constellations=("ses", "o3b-gen1", "o3b-mpower", "amc", "astra", "nss"),
@@ -134,57 +181,71 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     # Linked only via constellation
     OperatorSpec(
         "SpaceX",
+        "spacex",
         "Q193701",
         constellations=("starlink", "crew-dragon", "falcon", "dragon"),
     ),
     OperatorSpec(
         "ULA - United Launch Alliance",
+        "ula",
         "Q1236833",
         constellations=("atlas", "delta", "vulcan"),
     ),
     OperatorSpec(
         "Boeing",
+        "boeing",
         "Q66",
         constellations=("ius",),
     ),
-    OperatorSpec("Rocket Lab", "Q116319", constellations=("electron",)),
-    OperatorSpec("Amazon", "Q3884", constellations=("kuiper",)),
+    OperatorSpec("Rocket Lab", "rocket-lab", "Q116319", constellations=("electron",)),
+    OperatorSpec("Amazon", "amazon", "Q3884", constellations=("kuiper",)),
     OperatorSpec(
-        "MEASAT Satellite Systems", "Q1881326", constellations=("measat", "africasat")
+        "MEASAT Satellite Systems",
+        "measat",
+        "Q1881326",
+        constellations=("measat", "africasat"),
     ),
-    OperatorSpec("Thaicom", "Q6903407", constellations=("thaicom",)),
+    OperatorSpec("Thaicom", "thaicom", "Q6903407", constellations=("thaicom",)),
     OperatorSpec(
         "Planet Labs",
+        "planet-labs",
         "Q17085620",
         constellations=("planet-flock", "planet-skysat", "planet-pelican"),
     ),
-    OperatorSpec("Spire Global", "Q19877982", constellations=("spire",)),
-    OperatorSpec("Telesat", "Q2401935", constellations=("telesat", "anik")),
-    OperatorSpec("Space Norway", "Q19389792", constellations=("thor",)),
-    OperatorSpec("SBS", "Q7426030", prefix=("SBS ", "SBS-")),
+    OperatorSpec("Spire Global", "spire", "Q19877982", constellations=("spire",)),
+    OperatorSpec("Telesat", "telesat", "Q2401935", constellations=("telesat", "anik")),
+    OperatorSpec("Space Norway", "space-norway", "Q19389792", constellations=("thor",)),
+    OperatorSpec("SBS", "sbs", "Q7426030", prefix=("SBS ", "SBS-")),
     OperatorSpec(
         "JSAT Corporation",
+        "jsat",
         "Q4355616",
         constellations=("jsat", "superbird", "dsn", "horizons"),
     ),
     OperatorSpec(
         "B-SAT - Broadcasting Satellite System Corporation",
+        "b-sat",
         "Q922482",
         prefix=("BSAT", "BS-3N"),
     ),
     OperatorSpec(
         "Telkom Indonesia",
+        "telkom",
         "Q2305438",
         prefix=("TELKOM",),
     ),
     OperatorSpec(
         "VNPT - Vietnam Posts and Telecommunications Group",
+        "vnpt",
         "Q7928543",
         prefix=("VINASAT-",),
     ),
-    OperatorSpec("Swarm Technologies", "Q103484515", constellations=("spacebee",)),
+    OperatorSpec(
+        "Swarm Technologies", "swarm", "Q103484515", constellations=("spacebee",)
+    ),
     OperatorSpec(
         "United States Space Force",
+        "us-space-force",
         "Q55088961",
         constellations=(
             "gps",
@@ -200,11 +261,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "S.P. Korolev Rocket and Space Corporation Energia - OKB-1",
+        "energia",
         "Q763402",
         constellations=("molniya",),
     ),
     OperatorSpec(
         "Soviet space program",
+        "soviet-space-program",
         "Q849730",
         constellations=(
             "elektron",
@@ -227,6 +290,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "Roscosmos",
+        "roscosmos",
         "Q190795",
         constellations=(
             "soyuz",
@@ -245,24 +309,30 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "Soviet Armed Forces",
+        "soviet-armed-forces",
         "Q7915590",
         constellations=("cosmos", "cis-classified", "resurs-"),
         active_until=1991,
     ),
     OperatorSpec(
         "Russian Aerospace Forces",
+        "russian-aerospace-forces",
         "Q21042210",
         constellations=("cosmos", "blagovest", "cis-classified", "resurs-"),
         active_from=1992,
     ),
     OperatorSpec(
         "European Union Agency for the Space Programme",
+        "euspa",
         "Q55610347",
         constellations=("galileo",),
     ),
-    OperatorSpec("Japan Self-Defense Forces", "Q275488", constellations=("dsn",)),
+    OperatorSpec(
+        "Japan Self-Defense Forces", "jsdf", "Q275488", constellations=("dsn",)
+    ),
     OperatorSpec(
         "NASA",
+        "nasa",
         "Q23548",
         constellations=(
             "explorer",
@@ -284,79 +354,110 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "syncom",
         ),
     ),
-    OperatorSpec("US Navy", "Q11220", constellations=("transit", "vanguard")),
+    OperatorSpec(
+        "US Navy", "us-navy", "Q11220", constellations=("transit", "vanguard")
+    ),
     OperatorSpec(
         "US Air Force",
+        "us-air-force",
         "Q11223",
         constellations=("us-ops-classified", "leasat", "titan-rocket"),
     ),
     OperatorSpec(
         "US DOD - Department of Defense",
+        "us-dod",
         "Q11209",
         constellations=("leasat",),
     ),  # Shared infra, couldn't find a more specific operator
     OperatorSpec(
         "CIA - Central Intelligence Agency",
+        "cia",
         "Q37230",
         constellations=("corona",),
     ),
-    OperatorSpec("Soviet Navy", "Q796754", constellations=("us-a",)),
+    OperatorSpec("Soviet Navy", "soviet-navy", "Q796754", constellations=("us-a",)),
     OperatorSpec(
-        "China Meteorological Administration", "Q1063933", constellations=("fengyun",)
+        "China Meteorological Administration",
+        "cma",
+        "Q1063933",
+        constellations=("fengyun",),
     ),
     OperatorSpec(
         "China National Space Administration",
+        "cnsa",
         "Q320644",
         constellations=("beidou", "gaofen", "tianlian", "chinese-space-station"),
     ),
     OperatorSpec(
         "Shanghai Spacecom Satellite Technology",
+        "shanghai-spacecom",
         "Q128693569",
         constellations=("qianfan",),
     ),
-    OperatorSpec("CNES", "Q48756", constellations=("argos", "jason", "diamant")),
-    OperatorSpec("Geespace", "Q125167295", constellations=("geesat",)),
-    OperatorSpec("ICS-Holding", "Q86669053", constellations=("rassvet",)),
-    OperatorSpec("Gazprom Space Systems", "Q4131791", constellations=("yamal",)),
+    OperatorSpec(
+        "CNES", "cnes", "Q48756", constellations=("argos", "jason", "diamant")
+    ),
+    OperatorSpec("Geespace", "geespace", "Q125167295", constellations=("geesat",)),
+    OperatorSpec(
+        "ICS-Holding", "ics-holding", "Q86669053", constellations=("rassvet",)
+    ),
+    OperatorSpec(
+        "Gazprom Space Systems",
+        "gazprom-space-systems",
+        "Q4131791",
+        constellations=("yamal",),
+    ),
     OperatorSpec(
         "Northrop Grumman",
+        "northrop-grumman",
         "Q86894155",
         constellations=("cygnus", "minotaur", "antares"),
     ),
     OperatorSpec(
         "Outpost Space",
+        "outpost-space",
         url="https://www.outpost.space/",
         prefix=("OUTPOST MISSION",),
         category=SatelliteCategory.UNMANNED_CARGO,
     ),
-    OperatorSpec("D-Orbit", wikidata_qid="Q116214401", constellations=("d-orbit-ion",)),
+    OperatorSpec(
+        "D-Orbit", "d-orbit", wikidata_qid="Q116214401", constellations=("d-orbit-ion",)
+    ),
     OperatorSpec(
         "Chang Guang Satellite Technology",
+        "chang-guang",
         "Q30259654",
         constellations=("jilin", "yunyao"),
     ),
     OperatorSpec(
         "Zhuhai Orbita Aerospace",
+        "zhuhai-orbita",
         None,
         constellations=("zhuhai",),
         url="https://www.obtdata.com/en/index.html",
     ),
     OperatorSpec(
         "Guodian Gaokeji",
+        "guodian-gaokeji",
         None,
         constellations=("tianqi",),
         url="https://www.guodiangaoke.com/web/dist/index.html#/",
     ),
     OperatorSpec(
-        "Beijing Future Navigation Technology", None, constellations=("centispace",)
+        "Beijing Future Navigation Technology",
+        "beijing-future-navigation",
+        None,
+        constellations=("centispace",),
     ),
     OperatorSpec(
         "China Satcom",
+        "china-satcom",
         "Q18243665",
         constellations=("tiantong", "zhongxing", "chinasat"),
     ),
     OperatorSpec(
         "People's Liberation Army",
+        "pla",
         "Q200106",
         constellations=(
             "yaogan",
@@ -371,6 +472,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "China Aerospace Science and Industry Corporation / CASIC",
+        "casic",
         "Q10874081",
         constellations=(
             "tianmu",
@@ -380,6 +482,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "Camsat - chinese amateur radio",
+        "camsat",
         None,
         constellations=(
             "xw",
@@ -388,6 +491,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "China Aerospace Science and Technology Corporation / CASC",
+        "casc",
         "Q2777589",
         constellations=(
             "shijian",
@@ -402,77 +506,103 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "Chinese Academy of Sciences / CAS",
+        "cas-academy",
         "Q530471",
         constellations=("lijian",),
     ),
     # US military
     OperatorSpec(
         "Space Development Agency",
+        "sda",
         "Q75746123",
         constellations=("sda", "sda-praetorian"),
     ),  # LEO missile tracking
-    OperatorSpec("DARPA", "Q207361", constellations=("blackjack",)),
+    OperatorSpec("DARPA", "darpa", "Q207361", constellations=("blackjack",)),
     OperatorSpec(
         "National Reconnaissance Office",
+        "nro",
         "Q427818",
         constellations=("usa-classified", "nemesis"),
         url="https://en.wikipedia.org/wiki/File:Nrol-39.jpg",
     ),
     # US civilian / weather
-    OperatorSpec("NOAA", "Q214700", constellations=("goes", "noaa", "jason")),
-    OperatorSpec("USGS", "Q193755", constellations=("landsat",)),
+    OperatorSpec("NOAA", "noaa", "Q214700", constellations=("goes", "noaa", "jason")),
+    OperatorSpec("USGS", "usgs", "Q193755", constellations=("landsat",)),
     # US commercial
-    OperatorSpec("HawkEye 360", "Q104845338", constellations=("hawkeye360",)),
-    OperatorSpec("Capella Space", "Q43401532", constellations=("capella",)),
-    OperatorSpec("Tomorrow.io", "Q30668374", constellations=("tomorrow-io",)),
-    OperatorSpec("EchoStar", "Q1280748", constellations=("echostar",)),
-    OperatorSpec("Viasat", "Q7924358", constellations=("viasat",)),
-    OperatorSpec("Lynk Global", "Q107675681", constellations=("lynk",)),
-    OperatorSpec("ICEYE", "Q31086161", constellations=("iceye",)),
+    OperatorSpec(
+        "HawkEye 360", "hawkeye-360", "Q104845338", constellations=("hawkeye360",)
+    ),
+    OperatorSpec(
+        "Capella Space", "capella-space", "Q43401532", constellations=("capella",)
+    ),
+    OperatorSpec(
+        "Tomorrow.io", "tomorrow-io", "Q30668374", constellations=("tomorrow-io",)
+    ),
+    OperatorSpec("EchoStar", "echostar", "Q1280748", constellations=("echostar",)),
+    OperatorSpec("Viasat", "viasat", "Q7924358", constellations=("viasat",)),
+    OperatorSpec("Lynk Global", "lynk-global", "Q107675681", constellations=("lynk",)),
+    OperatorSpec("ICEYE", "iceye", "Q31086161", constellations=("iceye",)),
     # Umbra: US commercial SAR startup constellation.
     OperatorSpec(
         "Umbra",
+        "umbra",
         None,
         prefix=("UMBRA",),
         category=SatelliteCategory.OBSERVATION,
         url="https://umbra.space/",
     ),
-    OperatorSpec("AST SpaceMobile", "Q112659289", constellations=("ast-spacemobile",)),
+    OperatorSpec(
+        "AST SpaceMobile",
+        "ast-spacemobile",
+        "Q112659289",
+        constellations=("ast-spacemobile",),
+    ),
     # Space radio
     OperatorSpec(
         "SiriusXM",
+        "siriusxm",
         "Q3277465",
         prefix=("FM-", "SXM"),
         category=SatelliteCategory.COMMUNICATIONS,
     ),
-    OperatorSpec("SpaceQuest", "Q7572201", constellations=("aprizesat",)),
-    OperatorSpec("The Aerospace Corporation", "Q7712741", constellations=("aerocube",)),
+    OperatorSpec("SpaceQuest", "spacequest", "Q7572201", constellations=("aprizesat",)),
     OperatorSpec(
-        "Vantor", "Q136461484", constellations=("worldView-legion",)
+        "The Aerospace Corporation",
+        "aerospace-corporation",
+        "Q7712741",
+        constellations=("aerocube",),
+    ),
+    OperatorSpec(
+        "Vantor", "vantor", "Q136461484", constellations=("worldView-legion",)
     ),  # PE spinoff of a maxar division
     # Foreign military / classified
     OperatorSpec(
         "Agency for Defense Development",
+        "add",
         "Q626610",
         constellations=("skor-classified",),
     ),  # South Korean defense R&D agency
     OperatorSpec(
         "IRGC Aerospace Force",
+        "irgc-aerospace-force",
         "Q4410582",
         constellations=("iran-classified",),
     ),
     OperatorSpec(
         "Iranian Space Agency",
+        "isa",
         "Q572596",
         constellations=("safir",),
     ),
     OperatorSpec(
         "IAI - Israel Aerospace Industries",
+        "iai",
         "Q876017",
         constellations=("shavit",),
     ),
     OperatorSpec(
         "Firefly Aerospace",
+        "firefly-aerospace",
         "Q17492679",
         constellations=("firefly",),
     ),
@@ -492,3 +622,7 @@ OPERATOR_BY_CONSTELLATION: dict[str, list[OperatorSpec]] = dict(_by_constellatio
 OPERATOR_BY_QID: dict[str, OperatorSpec] = {
     o.wikidata_qid: o for o in OPERATORS if o.wikidata_qid is not None
 }
+
+OPERATOR_BY_SLUG: dict[str, OperatorSpec] = {o.slug: o for o in OPERATORS}
+
+assert len(OPERATOR_BY_SLUG) == len(OPERATORS), "Duplicate operator slug"
