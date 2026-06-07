@@ -214,13 +214,22 @@
 							scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
 						} else if (hit.kind === 'group') {
 							appState.setGroup(hit.slug, name);
+							// Earth covers all Phase-1 groups (constellations); same
+							// distance as the drawer's maximize-to-system animation.
+							const earth = ctx.getBody('naif-399');
+							if (earth) scene?.focusOnBody('naif-399', minCameraDistance(earth) * 5);
 						} else {
 							appState.setFocus({
 								type: urlTypeFromId(hit.id),
 								id: hit.id,
 								name
 							});
-							scene?.focusOnBody(hit.id);
+							// Same framing as the drawer's maximize button when the body
+							// is already loaded; otherwise let the renderer pick a default
+							// after the chunk arrives.
+							const body = ctx.getBody(hit.id);
+							const zoom = body ? minCameraDistance(body) * 5 : undefined;
+							scene?.focusOnBody(hit.id, zoom);
 						}
 					}}
 				/>
