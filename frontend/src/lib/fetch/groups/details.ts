@@ -6,7 +6,15 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
+import type { EntityRef } from '$lib/fetch/objects/object-data';
 import type { GroupCategory, GroupType } from './registry';
+
+export interface GroupImage {
+	/** MediaWiki originalimage URL. */
+	url?: string;
+	/** MediaWiki pageimage thumbnail (~300px wide). */
+	thumbnail_url?: string;
+}
 
 export interface GlobalGroupData {
 	slug: string;
@@ -16,6 +24,11 @@ export interface GlobalGroupData {
 	wikidata_qid?: string;
 	/** Fallback external URL when a group has no Wikidata QID. */
 	url?: string;
+	/** Wikidata P856 — official site. */
+	website?: string;
+	/** ISO ``YYYY-MM-DD`` — min launch date across SATCAT members. */
+	earliest_launch?: string;
+	image?: GroupImage;
 }
 
 export interface LocalizedGroupData {
@@ -26,6 +39,8 @@ export interface LocalizedGroupData {
 		description?: string;
 		url?: string;
 	};
+	operators?: EntityRef[];
+	country_of_origin?: EntityRef[];
 }
 
 export interface GroupDetailData {

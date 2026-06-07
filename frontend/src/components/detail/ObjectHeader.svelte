@@ -10,9 +10,13 @@
 		localized: LocalizedObjectData | null;
 		fallbackName: string | null;
 		onShowGallery: () => void;
+		/** Passthrough preview URL (e.g. Wikipedia thumbnail for group pages) used
+		 *  when this object has no pipeline-generated ``images`` array. Click is a
+		 *  no-op since there's no gallery to open. */
+		imageOverride?: string;
 	}
 
-	let { global, localized, fallbackName, onShowGallery }: Props = $props();
+	let { global, localized, fallbackName, onShowGallery, imageOverride }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
@@ -20,7 +24,8 @@
 	// Sidebar preview is capped at max-h-48 (192 CSS px). Request ~600 device
 	// px to cover the highest-DPR phones with a single bucket — pickImageUrl
 	// returns `s` (512) when it exists, else the largest variant emitted.
-	let imageSrc = $derived(firstImage ? pickImageUrl(firstImage, 600) : undefined);
+	let imageSrc = $derived(firstImage ? pickImageUrl(firstImage, 600) : imageOverride);
+	let clickable = $derived(!!firstImage);
 	let celestrakBadges = $derived.by(() => {
 		const ct = global?.celestrak;
 		if (!ct) return null;
@@ -73,7 +78,7 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	{#if imageSrc && firstImage}
+	{#if imageSrc && clickable}
 		<button
 			type="button"
 			onclick={onShowGallery}
@@ -88,6 +93,16 @@
 				class="w-full max-h-48 object-cover"
 			/>
 		</button>
+	{:else if imageSrc}
+		<div class="overflow-hidden rounded-md">
+			<img
+				src={imageSrc}
+				alt={name}
+				loading="lazy"
+				decoding="async"
+				class="w-full max-h-48 object-cover"
+			/>
+		</div>
 	{/if}
 	<div class="flex flex-wrap items-start gap-2">
 		{#if celestrakBadges}

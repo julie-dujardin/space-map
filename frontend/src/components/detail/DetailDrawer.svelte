@@ -16,7 +16,7 @@
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
-	import { fetchGroupDetail } from '$lib/fetch/groups/details';
+	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
@@ -27,6 +27,7 @@
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
+	import GroupProperties from './properties/GroupProperties.svelte';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -79,6 +80,7 @@
 
 	let data = $state<ObjectDetailData | null>(null);
 	let featureDetail = $state<FeatureDetailData | null>(null);
+	let groupDetail = $state<GroupDetailData | null>(null);
 	let loading = $state(true);
 	let isMobile = $state(false);
 
@@ -95,6 +97,7 @@
 		loading = true;
 		data = null;
 		featureDetail = null;
+		groupDetail = null;
 		memberCount = null;
 		// Features fetch from the nomenclature details tier (hash-bucketed,
 		// keyed by `${bodyId}:${featureId}`); we then synthesize an
@@ -144,7 +147,11 @@
 			fetchGroupDetail(slug)
 				.then((detail) => {
 					if (focusableKey(focusable) !== key) return;
+					groupDetail = detail;
 					memberCount = detail.global?.member_count ?? 0;
+					const websites = [detail.global?.website, detail.global?.url].filter(
+						(u): u is string => !!u
+					);
 					data = {
 						global: {
 							id: `group-${slug}`,
@@ -153,7 +160,7 @@
 							cross_refs: detail.global?.wikidata_qid
 								? { wikidata_qid: detail.global.wikidata_qid }
 								: undefined,
-							wikidata: detail.global?.url ? { website: [detail.global.url] } : undefined
+							wikidata: websites.length > 0 ? { website: websites } : undefined
 						},
 						localized: detail.localized
 							? {
@@ -345,6 +352,7 @@
 					activeTab = 'images';
 					appState.setImage(0);
 				}}
+				imageOverride={groupDetail?.global?.image?.thumbnail_url ?? groupDetail?.global?.image?.url}
 			/>
 			{#if isGroupMode && memberCount !== null}
 				<Badge variant="secondary" class="self-start text-xs">
@@ -372,6 +380,11 @@
 				/>
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
+			{:else if isGroupMode}
+				<GroupProperties
+					global={groupDetail?.global ?? null}
+					localized={groupDetail?.localized ?? null}
+				/>
 			{/if}
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
 		</div>
