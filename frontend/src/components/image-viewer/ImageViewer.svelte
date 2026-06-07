@@ -75,7 +75,7 @@
 				arrowPrevTitle: m.image_previous(),
 				arrowNextTitle: m.image_next(),
 				// Desktop reserves the left 380px for the object sidebar (matches
-				// ObjectDrawer's `w-[380px]` aside on the same `(min-width: 768px)`
+				// DetailDrawer's `w-[380px]` aside on the same `(min-width: 768px)`
 				// breakpoint). Tell PhotoSwipe the inset width so its image fit
 				// math doesn't oversize past the visible viewer area.
 				getViewportSizeFn: () => ({
@@ -273,7 +273,7 @@
 	   controls live there). PhotoSwipe is body-level and otherwise fullscreen;
 	   we shift the start edge in and drop its `width: 100%` so the end edge
 	   stays at the viewport's right (otherwise the overlay overflows by 380px).
-	   Width matches ObjectDrawer's `w-[380px]` aside under the same breakpoint. */
+	   Width matches DetailDrawer's `w-[380px]` aside under the same breakpoint. */
 	@media (min-width: 768px) {
 		:global(.pswp.pswp-space-map) {
 			inset-inline-start: 380px;

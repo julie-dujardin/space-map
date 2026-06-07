@@ -313,7 +313,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 
 	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
 		ctx.credits.recordOrbitSources(chunk);
+		const earthFilter = zone === 'earth' ? ctx.earthSatFilter : null;
 		for (const b of chunk) {
+			if (earthFilter && !earthFilter.has(b.data.id)) continue;
 			const placeholder = placeholderById.get(b.data.id);
 			if (placeholder) {
 				// Mutate in place so the renderer's BodyObject keeps a stable

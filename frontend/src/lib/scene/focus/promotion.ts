@@ -190,7 +190,7 @@ export class PromotionRegistry {
 		// trails can be built. Skip probes: their `body.data` carries
 		// a=e=…=0 (positions come from per-sub-chunk dispatch), and assigning
 		// those zeros to `orbitElements` defeats the SPICE_PROBE guard in
-		// ObjectDrawer — currentStateFromElements would warn every frame.
+		// DetailDrawer — currentStateFromElements would warn every frame.
 		if (!body.orbitElements && body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) {
 			body.orbitElements = body.data;
 			const parent = bodyObjects.get(body.data.parentId);

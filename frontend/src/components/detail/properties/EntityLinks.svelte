@@ -19,6 +19,10 @@
 
 	function focusEntity(ref: EntityRef) {
 		if (!appState || !ref.primary_id || !ref.primary_type) return;
+		if (ref.primary_type === 'group') {
+			appState.setGroup(ref.primary_id, ref.name);
+			return;
+		}
 		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
 		if (ref.secondary_type === 'feature' && ref.secondary_id) {
 			appState.setFeature({

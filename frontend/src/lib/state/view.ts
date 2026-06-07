@@ -1,12 +1,15 @@
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
- *  (/<type>/<bodyId>/f/<featureId>/<name>). */
+ *  (/<type>/<bodyId>/f/<featureId>/<name>). Group is a top-level aggregation
+ *  view (/g/<slug>/<name>) that filters which bodies render but keeps a
+ *  default anchor body for camera framing. */
 export enum UrlType {
 	Body = 'b', // naif-
 	SmallBody = 's', // spkid-
 	EarthSatellite = 'e', // norad_satcat-
 	Probe = 'p', // probe-
-	Feature = 'f' // IAU nomenclature feature on a body
+	Feature = 'f', // IAU nomenclature feature on a body
+	Group = 'g' // /g/<slug>/<name> — constellation / operator / asteroid class / ...
 }
 
 /**
@@ -15,8 +18,8 @@ export enum UrlType {
  */
 export interface MapViewState {
 	type: string;
-	id: string; // prefixed body id, e.g. "naif-10", "spkid-20134340" — the renderer always focuses a body, even in feature mode
-	name: string; // active object's display name (body in body mode, feature in feature mode)
+	id: string; // prefixed body id, e.g. "naif-10", "spkid-20134340" — the renderer always focuses a body, even in feature/group mode
+	name: string; // active object's display name (body in body mode, feature in feature mode, group in group mode)
 	date: Date;
 	isNow: boolean;
 	latitude: number;
@@ -26,6 +29,8 @@ export interface MapViewState {
 	imageIndex: number | null;
 	/** IAU feature id when a surface feature is the active selection; null otherwise. */
 	featureId: number | null;
+	/** Slug when /g/<slug> is active; filters the group's applies_to category. */
+	groupSlug: string | null;
 }
 
 export const DEFAULT_VIEW: MapViewState = {
@@ -38,5 +43,6 @@ export const DEFAULT_VIEW: MapViewState = {
 	longitude: 0,
 	zoom: 42.43,
 	imageIndex: null,
-	featureId: null
+	featureId: null,
+	groupSlug: null
 };

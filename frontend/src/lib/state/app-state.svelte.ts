@@ -54,9 +54,28 @@ export class AppState {
 	}
 
 	setFocus(focus: { type: string; id: string; name: string }) {
-		// New object = any previously-open image viewer or feature selection is
-		// no longer meaningful.
-		this.view = { ...this.view, ...focus, imageIndex: null, featureId: null };
+		// New object = any previously-open image viewer / feature / group
+		// selection is no longer meaningful.
+		this.view = {
+			...this.view,
+			...focus,
+			imageIndex: null,
+			featureId: null,
+			groupSlug: null
+		};
+		this.pushNow();
+	}
+
+	/** Open the /g/<slug> group view. */
+	setGroup(slug: string, name: string) {
+		this.view = {
+			...this.view,
+			type: UrlType.Group,
+			groupSlug: slug,
+			name,
+			imageIndex: null,
+			featureId: null
+		};
 		this.pushNow();
 	}
 

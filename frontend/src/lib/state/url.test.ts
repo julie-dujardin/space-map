@@ -26,7 +26,8 @@ const baseView: MapViewState = {
 	longitude: 0,
 	zoom: 42.43,
 	imageIndex: null,
-	featureId: null
+	featureId: null,
+	groupSlug: null
 };
 
 describe('serializeUrl', () => {

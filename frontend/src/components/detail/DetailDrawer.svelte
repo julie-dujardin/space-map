@@ -16,6 +16,7 @@
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
+	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
@@ -36,9 +37,6 @@
 	const nameMissingLogged = new Set<string>();
 
 	interface Props {
-		/** What the drawer is focused on. Always carries a host body (camera +
-		 *  share URL need it); the `kind` selects which property panels render
-		 *  and what falls back when the detail bundle is still loading. */
 		focusable: Focusable;
 		clock: SimClock;
 		onClose: () => void;
@@ -49,21 +47,25 @@
 
 	let { focusable, clock, onClose, onMaximize, onMinimize, onSheetResize }: Props = $props();
 
-	let body = $derived(focusable.body);
+	let body = $derived(focusable.kind === 'group' ? null : focusable.body);
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
+	let isGroupMode = $derived(focusable.kind === 'group');
+	let memberCount = $state<number | null>(null);
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState>('appState');
-	let parentBody = $derived(ctx?.getBody(body.data.parentId));
+	let parentBody = $derived(body ? ctx?.getBody(body.data.parentId) : undefined);
 
 	// Probes carry a=e=i=…=0 in body.data (no osculating elements — their
 	// positions come from per-sub-chunk dispatch). Feeding those zeros to the
 	// Orbital panel triggers a per-frame non-finite-elements warning, so leave
 	// orbitElements undefined for probes; the panel hides the affected rows.
 	let drawerOrbitElements = $derived(
-		body.orbitElements ??
-			(body.data.orbitalSource === OrbitalSource.SPICE_PROBE ? undefined : body.data)
+		body
+			? (body.orbitElements ??
+					(body.data.orbitalSource === OrbitalSource.SPICE_PROBE ? undefined : body.data))
+			: undefined
 	);
 
 	// Sample sim time at 2 Hz so speed/altitude in the description update
@@ -93,6 +95,7 @@
 		loading = true;
 		data = null;
 		featureDetail = null;
+		memberCount = null;
 		// Features fetch from the nomenclature details tier (hash-bucketed,
 		// keyed by `${bodyId}:${featureId}`); we then synthesize an
 		// ObjectDetailData so ObjectHeader / ObjectDescription / ImageGallery /
@@ -122,6 +125,40 @@
 									aliases: detail.localized.aliases,
 									instance_of: detail.localized.instance_of,
 									named_after: detail.localized.named_after,
+									wikipedia: detail.localized.wikipedia
+								}
+							: null
+					};
+					loading = false;
+				})
+				.catch((err) => {
+					loading = false;
+					throw err;
+				});
+			return;
+		}
+		// Synthesize ObjectDetailData so the shared header / description / links
+		// render unchanged; member_count surfaces via a group-only badge below.
+		if (focusable.kind === 'group') {
+			const slug = focusable.slug;
+			fetchGroupDetail(slug)
+				.then((detail) => {
+					if (focusableKey(focusable) !== key) return;
+					memberCount = detail.global?.member_count ?? 0;
+					data = {
+						global: {
+							id: `group-${slug}`,
+							type: 'group',
+							name: detail.localized?.name ?? slug,
+							cross_refs: detail.global?.wikidata_qid
+								? { wikidata_qid: detail.global.wikidata_qid }
+								: undefined,
+							wikidata: detail.global?.url ? { website: [detail.global.url] } : undefined
+						},
+						localized: detail.localized
+							? {
+									name: detail.localized.name,
+									description: detail.localized.description,
 									wikipedia: detail.localized.wikipedia
 								}
 							: null
@@ -227,7 +264,10 @@
 	// that finishing a maximize fly-to lands the camera comfortably inside the
 	// minimize zone (and floating-point/animation overshoot can't leave it
 	// stuck on the maximize side of an exact threshold).
-	let isMinimized = $derived(appState ? appState.view.zoom <= minCameraDistance(body) * 20 : false);
+	let isMinimized = $derived(
+		appState && body ? appState.view.zoom <= minCameraDistance(body) * 20 : false
+	);
+	let showCameraButtons = $derived(!isFeatureMode && !isGroupMode);
 	let viewerImages = $derived(data?.global?.images);
 	let viewerIndex = $derived(appState?.view.imageIndex);
 	// Gate the viewer mount on a valid index AND a loaded images list. The
@@ -306,14 +346,21 @@
 					appState.setImage(0);
 				}}
 			/>
-			{@render tabsBar()}
+			{#if isGroupMode && memberCount !== null}
+				<Badge variant="secondary" class="self-start text-xs">
+					{m.group_member_count({ count: memberCount })}
+				</Badge>
+			{/if}
+			{#if !isGroupMode}
+				{@render tabsBar()}
+			{/if}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
 			/>
 			{#if feature}
 				<FeatureProperties {feature} detail={featureDetail} />
-			{:else}
+			{:else if body}
 				<Physical global={data?.global ?? null} />
 				<Orbital
 					global={data?.global ?? null}
@@ -361,7 +408,7 @@
 								<Share2Icon />
 								<span class="sr-only">{m.share()}</span>
 							</Button>
-							{#if !isFeatureMode}
+							{#if showCameraButtons}
 								{#if isMinimized}
 									<Button
 										variant="secondary"
@@ -419,7 +466,7 @@
 					<Share2Icon />
 					<span class="sr-only">{m.share()}</span>
 				</Button>
-				{#if !isFeatureMode}
+				{#if showCameraButtons}
 					{#if isMinimized}
 						<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMinimize}>
 							<MinimizeIcon />

@@ -191,6 +191,10 @@ export interface Metadata {
 	 *  bundle — opening one feature warms the rest. Optional so frontends
 	 *  loading a pre-feature-details export degrade gracefully. */
 	feature_bundles?: ObjectBundles;
+	/** Bucket counts for `groups/{__global__|<lang>}/{bucket}.json.gz`. Bucket
+	 *  id is `hashBucket(slug, N)`. Optional so frontends loading a pre-groups
+	 *  export degrade gracefully. */
+	group_bundles?: ObjectBundles;
 	skybox?: SkyboxMetadata;
 }
 

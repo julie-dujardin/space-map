@@ -1,31 +1,27 @@
-/**
- * What the drawer is currently focused on.
- *
- * A `Focusable` is always anchored to a host `PositionedBody` (camera framing,
- * share URL, minimize zoom all need it), but its variant decides what panels
- * the drawer renders and which fallback name shows in the header.
- *
- * Add a new variant when a future selection type ships (mission event, probe
- * landing site, IAU instrument footprint, …). The drawer narrows on `kind`
- * and the helpers below cover the "tell me X about whatever this is" lookups.
- */
+/** What the drawer is currently focused on. Body/feature variants anchor on
+ *  a host `PositionedBody`; the group variant has no body — it only filters
+ *  what renders. */
 
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PositionedBody } from '$lib/types/objects';
 
 export type Focusable =
 	| { kind: 'body'; body: PositionedBody }
-	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature };
+	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature }
+	| { kind: 'group'; slug: string };
 
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {
-	return f.kind === 'feature' ? `feature-${f.feature.featureId}` : f.body.data.id;
+	if (f.kind === 'feature') return `feature-${f.feature.featureId}`;
+	if (f.kind === 'group') return `group-${f.slug}`;
+	return f.body.data.id;
 }
 
 /** Header fallback while the detail bundle is loading. Nameless bodies show
  *  the bare catalog number, not the prefixed Object.id. */
 export function focusableFallbackName(f: Focusable): string {
 	if (f.kind === 'feature') return f.feature.name;
+	if (f.kind === 'group') return f.slug;
 	return f.body.data.name ?? bodyIdNumber(f.body.data.id);
 }
 

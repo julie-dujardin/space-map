@@ -7,11 +7,11 @@
 	import { dateToJD } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
-	import { DEFAULT_VIEW } from '$lib/state/view';
+	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable } from '$lib/state/focusable';
-	import ObjectDrawer from './detail/ObjectDrawer.svelte';
+	import DetailDrawer from './detail/DetailDrawer.svelte';
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
 	import CompassNorthSelector from './CompassNorthSelector.svelte';
@@ -55,6 +55,16 @@
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
 		return getNorthChoices(cameraFocus, ctx);
+	});
+
+	// Group route wins over body focus — camera may be parked on the anchor body.
+	const focusable = $derived.by((): Focusable | null => {
+		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
+			return { kind: 'group', slug: appState.view.groupSlug };
+		}
+		if (!selectedBody?.data.id) return null;
+		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
+		return { kind: 'body', body: selectedBody };
 	});
 
 	$effect(() => {
@@ -106,11 +116,24 @@
 
 	onMount(async () => {
 		const initialId = appState.view.id;
+		// Pre-load the filter so the first earth-zone pass lands filtered —
+		// no flash of full SATCAT before the reload kicks in.
+		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
+			await ctx.applyGroupFilter(appState.view.groupSlug);
+		}
 		await ctx.load(appState.view.date, initialId);
 		if (!ctx.getBody(initialId)) {
 			toast.warning(m.object_not_found({ id: initialId }));
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 		}
+	});
+
+	$effect(() => {
+		const slug =
+			appState.view.type === UrlType.Group && appState.view.groupSlug
+				? appState.view.groupSlug
+				: null;
+		void ctx.applyGroupFilter(slug);
 	});
 </script>
 
@@ -163,17 +186,20 @@
 				<SettingsButton />
 				<LayersButton />
 			</div>
-			{#if selectedBody?.data.id}
-				{@const focusable = (
-					activeFeature
-						? { kind: 'feature', body: selectedBody, feature: activeFeature }
-						: { kind: 'body', body: selectedBody }
-				) satisfies Focusable}
-				<ObjectDrawer
+			{#if focusable}
+				<DetailDrawer
 					{focusable}
 					{clock}
 					onClose={() => {
-						if (activeFeature && selectedBody) {
+						if (focusable.kind === 'group') {
+							const fallbackBody = selectedBody ?? ctx.getBody(DEFAULT_VIEW.id);
+							appState.setFocus({
+								type: DEFAULT_VIEW.type,
+								id: fallbackBody?.data.id ?? DEFAULT_VIEW.id,
+								name: fallbackBody?.data.name ?? DEFAULT_VIEW.name
+							});
+							drawerHeightDvh = 0;
+						} else if (activeFeature && selectedBody) {
 							appState.clearFeature(selectedBody.data.name ?? '');
 						} else {
 							selectedBody = undefined;

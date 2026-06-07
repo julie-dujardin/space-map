@@ -133,6 +133,15 @@ export class ZoneRefresher {
 		}
 	}
 
+	/** Clear a time-zone's loaded state so the next {@link tick} reloads it. */
+	invalidateZone(zoneName: string): void {
+		for (const z of this.zones) {
+			if (z.zone !== zoneName || z.kind !== 'time') continue;
+			z.currentTime = '';
+			z.knownBuckets = new Set();
+		}
+	}
+
 	/** Call from the renderer's per-frame loop on jd change. Cheap when nothing
 	 *  needs reloading: a couple of date ops and string/number compares.
 	 *
@@ -188,6 +197,8 @@ export class ZoneRefresher {
 				)
 			);
 
+			const earthFilter = z.zone === 'earth' ? this.ctx.earthSatFilter : null;
+			let filteredOut = 0;
 			const newBuckets = new Map<string, Map<string, PositionedBody>>();
 			for (const chunk of chunks) {
 				this.ctx.credits.recordOrbitSources(chunk);
@@ -200,11 +211,20 @@ export class ZoneRefresher {
 						);
 						continue;
 					}
+					if (earthFilter && !earthFilter.has(body.data.id)) {
+						filteredOut++;
+						continue;
+					}
 					const key = body.data.parentId;
 					let bucket = newBuckets.get(key);
 					if (!bucket) newBuckets.set(key, (bucket = new Map()));
 					bucket.set(body.data.id, body);
 				}
+			}
+			if (filteredOut > 0) {
+				console.log(
+					`zone-refresher: ${z.zone}@${time}: filtered out ${filteredOut} non-member bodies`
+				);
 			}
 
 			let added = 0;

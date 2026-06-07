@@ -54,7 +54,7 @@
 	{#if open}
 		<!-- Portal'd to escape the parent z-10 stacking context.
 		     pointer-events-auto overrides bits-ui's body-level scroll-lock while
-		     ObjectDrawer is open. -->
+		     DetailDrawer is open. -->
 		<Portal>
 			<div
 				class="fixed inset-0 z-[70] bg-background overflow-y-auto pointer-events-auto"

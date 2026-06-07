@@ -18,6 +18,10 @@ export function urlTypeFromId(id: string): UrlType {
 	return UrlType.Body; // naif-
 }
 
+/** Camera anchor when landing on /g/<slug> cold. Earth covers Phase-1 groups
+ *  (constellations); revisit once other applies_to categories ship. */
+const GROUP_DEFAULT_BODY = 'naif-399';
+
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
 	const type = page.params.type;
@@ -25,6 +29,20 @@ export function parseUrl(): MapViewState | null {
 	if (!type || !idStr) {
 		console.warn(`parseUrl: missing route params (type=${type}, id=${idStr})`);
 		return null;
+	}
+
+	// Groups ride the body route shape — [id] holds the slug, not a number.
+	if (type === UrlType.Group) {
+		const defaults: MapViewState = {
+			...DEFAULT_VIEW,
+			type: UrlType.Group,
+			id: GROUP_DEFAULT_BODY,
+			name: decodeURIComponent(page.params.name ?? ''),
+			groupSlug: idStr,
+			imageIndex: null,
+			featureId: null
+		};
+		return applyAtParam(defaults);
 	}
 
 	const numericId = Number(idStr);
@@ -89,12 +107,22 @@ function applyAtParam(defaults: MapViewState): MapViewState {
 }
 
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
- *  for bodies or `/<type>/<id>/f/<featureId>/<name>` for features — plus the
- *  shared `?at=<date>,<lat>,<lon>,<zoom>` query block. */
+ *  for bodies and groups (groups carry a slug in the id slot), or
+ *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared
+ *  `?at=<date>,<lat>,<lon>,<zoom>` query block. */
 export function serializeUrl(state: MapViewState): string {
 	const r = (n: number) => n.toFixed(5);
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
+
+	if (state.type === UrlType.Group && state.groupSlug !== null) {
+		const path = resolve('/[type]/[id]/[[name]]', {
+			type: state.type,
+			id: state.groupSlug,
+			name: state.name ? encodeURIComponent(state.name) : undefined
+		});
+		return `${path}?at=${at}`;
+	}
 
 	const bodyType = urlTypeFromId(state.id);
 	const prefix = `${urlTypeToIdPrefix(bodyType)}-`;

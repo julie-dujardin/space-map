@@ -37,7 +37,8 @@ const initialView: MapViewState = {
 	longitude: 0,
 	zoom: 42.43,
 	imageIndex: null,
-	featureId: null
+	featureId: null,
+	groupSlug: null
 };
 
 beforeEach(() => {

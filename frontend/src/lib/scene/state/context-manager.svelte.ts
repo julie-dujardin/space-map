@@ -7,6 +7,8 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
+import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
+import { EARTH_ID } from '$lib/constants';
 
 /**
  * Top-level state holder for the rendered scene. Composes four sub-stores —
@@ -56,6 +58,11 @@ export class ContextManager {
 	 *  once the loader and metadata are available. */
 	refresher: ZoneRefresher | null = null;
 
+	/** Intersect earth-zone chunks with this set before adding bodies so
+	 *  /g/<slug> pages render only group members. */
+	earthSatFilter: Set<string> | null = null;
+	private earthSatFilterSlug: string | null = null;
+
 	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
 	getBody(id: string, zone?: string): PositionedBody | undefined {
 		return this.bodies.getBody(id, zone);
@@ -75,5 +82,19 @@ export class ContextManager {
 	 *  zones (moons Method-C-fit elements expire each chunk). */
 	refreshTick(date: Date): void {
 		this.refresher?.tick(date);
+	}
+
+	/** Install or remove the earth-sat group filter, evicting + reloading the
+	 *  earth zone so the in-memory bucket matches. Safe to call before
+	 *  {@link load} — the first chunk pass picks it up. */
+	async applyGroupFilter(slug: string | null): Promise<void> {
+		if (slug === this.earthSatFilterSlug) return;
+		this.earthSatFilterSlug = slug;
+		this.earthSatFilter = slug ? await fetchEarthGroupMembers(slug) : null;
+		if (this.loading) return;
+		this.bodies.spacecraftByParent.delete(EARTH_ID);
+		this.bodies.dirtySpacecraftGroups.add(EARTH_ID);
+		this.bodies.minorBodyVersion++;
+		this.refresher?.invalidateZone('earth');
 	}
 }

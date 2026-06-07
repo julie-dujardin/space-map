@@ -41,7 +41,7 @@ export function makeCircleTexture(): CanvasTexture {
  * Screen-space point size for the asteroid clouds. Smaller on phones so the
  * 1.3M-asteroid main belt doesn't visually swamp the planets at typical
  * mobile viewport scales. 768px matches the breakpoint used elsewhere
- * (ObjectDrawer, SettingsButton).
+ * (DetailDrawer, SettingsButton).
  */
 export function asteroidPointSize(): number {
 	if (typeof window === 'undefined') return 3;
