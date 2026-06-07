@@ -155,6 +155,7 @@
 							id: `group-${slug}`,
 							type: 'group',
 							name: detail.localized?.name ?? slug,
+							images: detail.global?.images,
 							cross_refs: detail.global?.wikidata_qid
 								? { wikidata_qid: detail.global.wikidata_qid }
 								: undefined,
@@ -351,16 +352,13 @@
 					activeTab = 'images';
 					appState.setImage(0);
 				}}
-				imageOverride={groupDetail?.global?.image?.thumbnail_url ?? groupDetail?.global?.image?.url}
 			/>
 			{#if isGroupMode && memberCount !== null}
 				<Badge variant="secondary" class="self-start text-xs">
 					{m.group_member_count({ count: memberCount })}
 				</Badge>
 			{/if}
-			{#if !isGroupMode}
-				{@render tabsBar()}
-			{/if}
+			{@render tabsBar()}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}

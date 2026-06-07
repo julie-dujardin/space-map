@@ -6,15 +6,8 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
-import type { EntityRef } from '$lib/fetch/objects/object-data';
+import type { EntityRef, ObjectImage } from '$lib/fetch/objects/object-data';
 import type { GroupCategory, GroupType } from './registry';
-
-export interface GroupImage {
-	/** MediaWiki originalimage URL. */
-	url?: string;
-	/** MediaWiki pageimage thumbnail (~300px wide). */
-	thumbnail_url?: string;
-}
 
 export interface GlobalGroupData {
 	slug: string;
@@ -28,7 +21,8 @@ export interface GlobalGroupData {
 	website?: string;
 	/** ISO ``YYYY-MM-DD`` — min launch date across SATCAT members. */
 	earliest_launch?: string;
-	image?: GroupImage;
+	/** Same Commons pipeline / bundle layout as ``GlobalObjectData.images``. */
+	images?: ObjectImage[];
 }
 
 export interface LocalizedGroupData {
