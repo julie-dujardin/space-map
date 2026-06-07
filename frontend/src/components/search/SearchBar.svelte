@@ -57,10 +57,55 @@
 		return ctx.getBody(bodyId)?.data.name ?? bodyId;
 	}
 
+	// Dynamic `type_*` / `feature_type_label_*` lookup so we don't need a static
+	// switch per object/feature kind.
+	const messages = m as unknown as Record<
+		string,
+		((args?: Record<string, unknown>) => string) | undefined
+	>;
+
+	// Types that orbit the Sun/SSB directly — no need to spell out the parent.
+	const HELIOCENTRIC_TYPES = new Set([
+		'planet',
+		'dwarf_planet',
+		'comet',
+		'asteroid',
+		'asteroid_inner',
+		'asteroid_main_belt',
+		'asteroid_trojan',
+		'asteroid_centaur',
+		'asteroid_tno'
+	]);
+	// Types where mentioning a parent adds nothing useful.
+	const SELF_EXPLANATORY_TYPES = new Set(['star', 'spacecraft', 'undocumented']);
+
+	function typeLabel(type: string): string {
+		const key = type.startsWith('asteroid') ? 'type_asteroid' : `type_${type}`;
+		return messages[key]?.() ?? type.replace(/_/g, ' ');
+	}
+
+	function featureTypeLabel(code: string): string {
+		return messages[`feature_type_label_${code}`]?.() ?? code;
+	}
+
 	function secondaryText(hit: SearchHit): string {
-		if (hit.kind === 'feature') return bodyName(hit.body_id);
-		if (hit.parent_id) return bodyName(hit.parent_id);
-		return hit.type.replace(/_/g, ' ');
+		if (hit.kind === 'feature') {
+			return m.search_secondary_feature_on({
+				type: featureTypeLabel(hit.feature_type),
+				parent: bodyName(hit.body_id)
+			});
+		}
+		if (hit.id.startsWith('norad_satcat-')) {
+			return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
+		}
+		const label = typeLabel(hit.type);
+		if (HELIOCENTRIC_TYPES.has(hit.type) || SELF_EXPLANATORY_TYPES.has(hit.type)) {
+			return label;
+		}
+		if (hit.parent_id) {
+			return m.search_secondary_orbiting({ type: label, parent: bodyName(hit.parent_id) });
+		}
+		return label;
 	}
 
 	function pick(hit: SearchHit) {

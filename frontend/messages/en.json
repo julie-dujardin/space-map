@@ -2,6 +2,8 @@
 	"page_title": "Space Map",
 	"search_placeholder": "Search",
 	"search_no_results": "No matches",
+	"search_secondary_orbiting": "{type} of {parent}",
+	"search_secondary_feature_on": "{type} on {parent}",
 	"loading_data": "Loading data...",
 	"group_member_count": [
 		{
@@ -50,6 +52,8 @@
 	"type_barycenter": "barycenter",
 	"type_comet": "comet",
 	"type_debris": "debris",
+	"type_earth_satellite": "Earth satellite",
+	"type_earth_debris": "Earth debris",
 	"type_dwarf_planet": "dwarf planet",
 	"type_lagrange_point": "Lagrange point",
 	"type_moon": "moon",
