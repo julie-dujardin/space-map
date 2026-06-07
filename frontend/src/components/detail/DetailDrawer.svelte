@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import { Drawer as Vaul } from 'vaul-svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -82,6 +82,9 @@
 	let featureDetail = $state<FeatureDetailData | null>(null);
 	let groupDetail = $state<GroupDetailData | null>(null);
 	let loading = $state(true);
+	// String key so the load effect ignores parent re-derivations that return a
+	// new focusable ref with the same logical identity (replaceFocusName churn).
+	let focusableId = $derived(focusableKey(focusable));
 	let isMobile = $state(false);
 
 	$effect(() => {
@@ -93,24 +96,21 @@
 	});
 
 	$effect(() => {
-		const key = focusableKey(focusable);
+		// Track only the stable key — focusable identity churns on every view
+		// reassignment (camera/time/replaceFocusName) and would re-fetch.
+		const key = focusableId;
+		const current = untrack(() => focusable);
 		loading = true;
 		data = null;
 		featureDetail = null;
 		groupDetail = null;
 		memberCount = null;
-		// Features fetch from the nomenclature details tier (hash-bucketed,
-		// keyed by `${bodyId}:${featureId}`); we then synthesize an
-		// ObjectDetailData so ObjectHeader / ObjectDescription / ImageGallery /
-		// ObjectLinks can render unchanged. Feature-only fields (length, depth,
-		// instance_of refs, named_after refs, …) flow into FeatureProperties
-		// via the raw FeatureDetailData prop.
-		if (focusable.kind === 'feature') {
-			const f = focusable.feature;
-			const bodyId = focusable.body.data.id;
+		if (current.kind === 'feature') {
+			const f = current.feature;
+			const bodyId = current.body.data.id;
 			fetchFeatureDetail(bodyId, f.featureId)
 				.then((detail) => {
-					if (focusableKey(focusable) !== key) return;
+					if (focusableId !== key) return;
 					featureDetail = detail;
 					data = {
 						global: {
@@ -140,13 +140,11 @@
 				});
 			return;
 		}
-		// Synthesize ObjectDetailData so the shared header / description / links
-		// render unchanged; member_count surfaces via a group-only badge below.
-		if (focusable.kind === 'group') {
-			const slug = focusable.slug;
+		if (current.kind === 'group') {
+			const slug = current.slug;
 			fetchGroupDetail(slug)
 				.then((detail) => {
-					if (focusableKey(focusable) !== key) return;
+					if (focusableId !== key) return;
 					groupDetail = detail;
 					memberCount = detail.global?.member_count ?? 0;
 					const websites = [detail.global?.website, detail.global?.url].filter(
@@ -178,11 +176,11 @@
 				});
 			return;
 		}
-		const bodyId = focusable.body.data.id;
-		const hasLocalized = focusable.body.data.hasLocalized;
+		const bodyId = current.body.data.id;
+		const hasLocalized = current.body.data.hasLocalized;
 		fetchObjectDetail(bodyId, hasLocalized)
 			.then((result) => {
-				if (focusableKey(focusable) === key) {
+				if (focusableId === key) {
 					data = result;
 					loading = false;
 				}
@@ -260,7 +258,8 @@
 	// (and the console isn't spammed by repeated effect re-runs).
 	$effect(() => {
 		if (loading) return;
-		const key = focusableKey(focusable);
+		// Stable key — avoids re-firing (and ping-ponging via replaceFocusName) on view churn.
+		const key = focusableId;
 		if (!resolvedName && !nameMissingLogged.has(key)) {
 			nameMissingLogged.add(key);
 			console.warn(`No name resolved for ${key} after detail fetch; using id as fallback.`);

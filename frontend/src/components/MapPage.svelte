@@ -221,20 +221,12 @@
 					{focusable}
 					{clock}
 					onClose={() => {
-						if (focusable.kind === 'group') {
-							const fallbackBody = selectedBody ?? ctx.getBody(DEFAULT_VIEW.id);
-							appState.setFocus({
-								type: DEFAULT_VIEW.type,
-								id: fallbackBody?.data.id ?? DEFAULT_VIEW.id,
-								name: fallbackBody?.data.name ?? DEFAULT_VIEW.name
-							});
-							drawerHeightDvh = 0;
-						} else if (activeFeature && selectedBody) {
-							appState.clearFeature(selectedBody.data.name ?? '');
-						} else {
-							selectedBody = undefined;
-							drawerHeightDvh = 0;
-						}
+						// One teardown path — no second drawer left under a feature/group close.
+						const anchorId = selectedBody?.data.id ?? appState.view.id;
+						selectedBody = undefined;
+						activeFeature = null;
+						appState.closeDetail(anchorId);
+						drawerHeightDvh = 0;
 					}}
 					onMaximize={() => {
 						if (!selectedBody) return;

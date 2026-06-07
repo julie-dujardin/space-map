@@ -79,6 +79,20 @@ export class AppState {
 		this.pushNow();
 	}
 
+	/** Tear down every focus layer (group + feature + body); URL parks on
+	 *  anchorId so refresh still resolves somewhere. */
+	closeDetail(anchorId: string) {
+		this.view = {
+			...this.view,
+			type: UrlType.Body,
+			id: anchorId,
+			groupSlug: null,
+			featureId: null,
+			name: ''
+		};
+		this.pushNow();
+	}
+
 	/** Open a nomenclature feature on its parent body. */
 	setFeature(focus: { bodyId: string; featureId: number; featureName: string }) {
 		this.view = {
