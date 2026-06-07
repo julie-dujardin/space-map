@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 import orjson
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from space_map_data.models.object import Object, ObjectType
@@ -45,6 +46,31 @@ def build_earth_membership(session: Session) -> dict[str, list[str]]:
     for ids in membership.values():
         ids.sort()
     return membership
+
+
+def build_earth_earliest_launches(session: Session) -> dict[str, str]:
+    """Min launch_date per constellation slug, as ISO ``YYYY-MM-DD`` strings.
+
+    Same filter as ``build_earth_membership``; rows without a launch_date are
+    skipped by the IS NOT NULL guard so a single dateless member doesn't drag
+    the group's start to None.
+    """
+    rows = (
+        session.query(
+            Satcat.constellation_slug, func.min(Satcat.launch_date).label("first")
+        )
+        .join(Object.satcat)
+        .filter(
+            Object.spkid.is_(None),
+            Object.object_type.in_(_SAT_TYPE_VALUES),
+            Object.parent_id == _EARTH_OBJECT_ID,
+            Satcat.constellation_slug.is_not(None),
+            Satcat.launch_date.is_not(None),
+        )
+        .group_by(Satcat.constellation_slug)
+        .all()
+    )
+    return {slug: first for slug, first in rows if first}
 
 
 def write_earth_membership(out_dir: Path, membership: dict[str, list[str]]) -> None:
