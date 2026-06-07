@@ -24,6 +24,7 @@ from space_map_data.download.providers.wikidata.id_resolver import (
 )
 from space_map_data.export.credits import write_credits
 from space_map_data.export.ephemeris import load_probe_kernel_sources
+from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
 from space_map_data.export.nomenclature.writer import (
@@ -538,6 +539,7 @@ def _write_metadata_json(
     probe_coverage: dict[str, dict[str, float]],
     bundle_ns: dict,
     feature_bundle_ns: dict,
+    group_bundle_ns: dict,
     skybox_metadata: dict | None,
 ) -> None:
     """Emit the top-level metadata.json (position manifest + bundles + skybox)."""
@@ -548,6 +550,7 @@ def _write_metadata_json(
         "position": position_metadata,
         "object_bundles": bundle_ns,
         "feature_bundles": feature_bundle_ns,
+        "group_bundles": group_bundle_ns,
     }
     if skybox_metadata is not None:
         metadata["skybox"] = skybox_block(skybox_metadata)
@@ -692,6 +695,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
     )
     write_messages(wikidata_entities, units.used_units)
+    group_bundle_ns = run_groups_tier(engine, out_dir, wikidata_entities)
     prune_small_bodies(out_dir, agg.zone_structure)
     _write_metadata_json(
         out_dir,
@@ -701,6 +705,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         probe_coverage,
         bundle_ns,
         feature_bundle_ns,
+        group_bundle_ns,
         skybox_metadata,
     )
 

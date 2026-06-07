@@ -6,6 +6,7 @@ import logging
 from space_map_data.constants.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
+from space_map_data.export.groups.registry import GROUPS
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -27,6 +28,7 @@ GENERATED_PREFIXES = (
     "property_name_",
     "feature_type_label_",
     "feature_type_description_",
+    "group_name_",
 )
 
 _UNIT_SYMBOL_PID = "P5061"
@@ -173,6 +175,31 @@ def _collect_feature_type_labels(
     return result
 
 
+def _collect_group_name_labels(
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, dict[str, str]]:
+    """Return {lang: {group_name_<slug>: label}} for every registered group.
+
+    Falls back to the slug in baseLocale when no Wikidata QID is registered;
+    Paraglide's compile-time baseLocale fallback then fills the other locales.
+    """
+    result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
+    base = result[BASE_LOCALE]
+
+    for group in GROUPS:
+        key = f"group_name_{group.slug}"
+        if group.wikidata_qid:
+            entity = wikidata_entities.get_referenced(group.wikidata_qid)
+            if entity:
+                for lang in LANGUAGES:
+                    if label := entity["labels"].get(lang):
+                        result[lang][key] = label
+        # Always anchor the baseLocale so Paraglide has a known fallback.
+        base.setdefault(key, group.slug)
+
+    return result
+
+
 def write_messages(
     wikidata_entities: WikidataEntityCache,
     used_units: set[str],
@@ -181,6 +208,7 @@ def write_messages(
     unit_labels = _collect_unit_labels(wikidata_entities, used_units)
     property_labels = _collect_property_labels(wikidata_entities)
     feature_type_labels = _collect_feature_type_labels(wikidata_entities)
+    group_name_labels = _collect_group_name_labels(wikidata_entities)
 
     for lang in LANGUAGES:
         msg_file = MESSAGES_DIR / f"{lang}.json"
@@ -201,6 +229,7 @@ def write_messages(
             **unit_labels.get(lang, {}),
             **property_labels.get(lang, {}),
             **feature_type_labels.get(lang, {}),
+            **group_name_labels.get(lang, {}),
         }
         merged = {**manual, **dict(sorted(generated.items()))}
 
@@ -208,6 +237,32 @@ def write_messages(
         logger.info(
             "Wrote %d generated keys to %s (%d total)",
             len(generated),
+            msg_file.name,
+            len(merged),
+        )
+
+
+def write_group_messages(wikidata_entities: WikidataEntityCache) -> None:
+    """Refresh just ``group_name_*`` keys in each locale (additive runs).
+
+    Leaves unit/property/feature_type entries intact, so it's safe to call
+    from ``space-map-export --only=groups`` without re-running the units
+    pass.
+    """
+    group_name_labels = _collect_group_name_labels(wikidata_entities)
+
+    for lang in LANGUAGES:
+        msg_file = MESSAGES_DIR / f"{lang}.json"
+        existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
+        preserved = {
+            k: v for k, v in existing.items() if not k.startswith("group_name_")
+        }
+        fresh = group_name_labels.get(lang, {})
+        merged = {**preserved, **dict(sorted(fresh.items()))}
+        msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
+        logger.info(
+            "Refreshed %d group_name_* keys in %s (%d total)",
+            len(fresh),
             msg_file.name,
             len(merged),
         )

@@ -3,7 +3,7 @@
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID, ActiveDate
-from space_map_data.export.objects.wikidata_claims import resolve_entity_ref
+from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_entity_ref
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Satcat
 
@@ -49,11 +49,9 @@ def build_satcat_localized(
     data: dict = {}
 
     if sat.constellation_slug is not None:
-        spec = CONSTELLATION_BY_SLUG.get(sat.constellation_slug)
-        if spec is not None and spec.wikidata_qid is not None:
-            ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
-            if ref:
-                data["constellation"] = ref.to_dict()
+        ref = _constellation_group_ref(sat.constellation_slug, lang, wikidata_entities)
+        if ref is not None:
+            data["constellation"] = ref.to_dict()
 
     if sat.launch_site_code is not None:
         site = LAUNCH_SITE_BY_CODE.get(sat.launch_site_code)
@@ -68,6 +66,29 @@ def build_satcat_localized(
             data["operators"] = refs
 
     return data
+
+
+def _constellation_group_ref(
+    slug: str,
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> EntityRef | None:
+    """EntityRef for a constellation, pointing at /g/<slug> instead of Wikipedia.
+
+    Display name comes from Wikidata when a QID is registered; otherwise the
+    slug stands in. The group page renders the same fallback, so the chip and
+    the destination stay consistent.
+    """
+    spec = CONSTELLATION_BY_SLUG.get(slug)
+    if spec is None:
+        return None
+    if spec.wikidata_qid is not None:
+        ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+        if ref is not None:
+            ref.primary_type = "group"
+            ref.primary_id = slug
+            return ref
+    return EntityRef(name=slug, primary_type="group", primary_id=slug)
 
 
 def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
