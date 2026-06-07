@@ -13,7 +13,6 @@ from space_map_data.export.groups.membership import (
     build_earth_membership,
     write_earth_membership,
 )
-from space_map_data.export.localization import write_group_messages
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -47,6 +46,8 @@ def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) 
 
 def export_groups_only(engine: Engine) -> None:
     """Additive run: write groups + membership + patch metadata.json only."""
+    from space_map_data.export.localization import write_group_messages
+
     out_dir = EXPORT_DIR / "v1"
     if not out_dir.exists():
         raise SystemExit(f"Export dir {out_dir} missing — run a full export first.")

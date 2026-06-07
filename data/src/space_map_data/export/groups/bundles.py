@@ -15,6 +15,7 @@ import orjson
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.registry import GROUPS, Group, GroupType
+from space_map_data.export.images import collect_group_images
 from space_map_data.export.objects.wikidata_claims import (
     extract_claims,
     resolve_entity_ref,
@@ -37,8 +38,7 @@ def _build_global(
     member_count: int,
     extracted: dict | None,
     earliest_launch: str | None,
-    image_url: str | None,
-    thumbnail_url: str | None,
+    images: list[dict] | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -56,12 +56,8 @@ def _build_global(
         websites = extracted.get("website")
         if websites:
             data["website"] = websites[0]
-    if image_url or thumbnail_url:
-        data["image"] = {
-            k: v
-            for k, v in {"url": image_url, "thumbnail_url": thumbnail_url}.items()
-            if v
-        }
+    if images:
+        data["images"] = images
     return data
 
 
@@ -162,22 +158,13 @@ def write_group_bundles(
             else {}
         )
         extracted = _extract_group_claims(group, wikidata_entities)
-        # Prefer the English thumbnail/original; fall back to anything we have.
-        en_summary = wiki_summaries.get("en")
-        fallback = next(iter(wiki_summaries.values()), None)
-        image_url = (en_summary.image_url if en_summary else None) or (
-            fallback.image_url if fallback else None
-        )
-        thumbnail_url = (en_summary.thumbnail_url if en_summary else None) or (
-            fallback.thumbnail_url if fallback else None
-        )
+        images = collect_group_images(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
             extracted,
             earliest_launches.get(group.slug),
-            image_url,
-            thumbnail_url,
+            images,
         )
         for lang in LANGUAGES:
             lang_data = _build_localized(

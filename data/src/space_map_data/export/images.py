@@ -169,6 +169,14 @@ def collect_feature_images(feature_id: int | str) -> list[dict] | None:
     return _collect_images_from_cache(str(feature_id), _feature_images_cache)
 
 
+def collect_group_images(slug: str) -> list[dict] | None:
+    """Build the ``images`` array for a single group (constellation, ...).
+
+    Same shape as :func:`collect_object_images` but keyed by ``Group.slug``.
+    """
+    return _collect_images_from_cache(slug, _group_images_cache)
+
+
 def _collect_images_from_cache(
     key: str,
     cache_loader: Callable[[], dict[str, list[dict]]],
@@ -223,8 +231,26 @@ def _feature_images_cache() -> dict[str, list[dict]]:
     return _FEATURE_IMAGES_CACHE
 
 
+def _group_images_cache() -> dict[str, list[dict]]:
+    """Lazy-load and cache ``group_images.json`` for the export run."""
+    global _GROUP_IMAGES_CACHE
+    if _GROUP_IMAGES_CACHE is None:
+        from space_map_data.ingest.providers.image_selection import (
+            read_group_images,
+        )
+
+        _GROUP_IMAGES_CACHE = read_group_images()
+        if not _GROUP_IMAGES_CACHE:
+            logger.warning(
+                "group_images.json missing or empty — run `space-map-ingest "
+                "--targets images` first; export will emit no group images"
+            )
+    return _GROUP_IMAGES_CACHE
+
+
 _OBJECT_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
+_GROUP_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
 def _make_entry(filename: str, kind: str) -> dict | None:
@@ -730,9 +756,10 @@ def _locale_field(field: dict | None) -> str | dict[str, str] | None:
 
 def clear_export_cache() -> None:
     """Reset per-export caches. For tests that monkeypatch paths."""
-    global _OBJECT_IMAGES_CACHE, _FEATURE_IMAGES_CACHE
+    global _OBJECT_IMAGES_CACHE, _FEATURE_IMAGES_CACHE, _GROUP_IMAGES_CACHE
     _OBJECT_IMAGES_CACHE = None
     _FEATURE_IMAGES_CACHE = None
+    _GROUP_IMAGES_CACHE = None
     with _FILE_LOCKS_GUARD:
         _FILE_LOCKS.clear()
 
@@ -740,6 +767,7 @@ def clear_export_cache() -> None:
 __all__ = [
     "collect_object_images",
     "collect_feature_images",
+    "collect_group_images",
     "clear_export_cache",
     "DOWNLOADS_IMAGES_DIR",
 ]

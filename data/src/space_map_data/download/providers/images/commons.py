@@ -28,6 +28,7 @@ from tqdm import tqdm
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
+from space_map_data.export.groups.registry import GROUPS
 from space_map_data.utils.commons_images import (
     COMMONS_DIR,
     FEATURE_WIKIDATA_IMAGE_PIDS,
@@ -73,6 +74,7 @@ class CommonsDownloader(Downloader):
         wikidata_root = SOURCES_METADATA_DIR / "wikidata"
         objects_dir = wikidata_root / "objects"
         nomenclature_dir = wikidata_root / "nomenclature"
+        referenced_dir = wikidata_root / "referenced"
         if not objects_dir.exists() and not nomenclature_dir.exists():
             raise FileNotFoundError(
                 f"None of the Wikidata entity dirs exist under {wikidata_root} "
@@ -84,6 +86,7 @@ class CommonsDownloader(Downloader):
         commons_filenames, non_commons = self._collect_filenames(
             objects_dir if objects_dir.exists() else None,
             nomenclature_dir if nomenclature_dir.exists() else None,
+            referenced_dir if referenced_dir.exists() else None,
         )
         self._write_non_commons_skipped(non_commons)
 
@@ -113,28 +116,41 @@ class CommonsDownloader(Downloader):
         self,
         objects_dir: Path | None,
         nomenclature_dir: Path | None,
+        referenced_dir: Path | None,
     ) -> tuple[set[str], dict[str, dict]]:
         """Collect image filenames from Wikidata claims and Wikipedia summaries.
 
         Returns ``(commons_filenames, non_commons)`` where ``non_commons`` maps filename
         to ``{"url", "repo", "referenced_from": [lang/QID, ...]}``. Objects contribute
-        P18/P154; nomenclature features contribute P18/P242 (locator maps).
+        P18/P154; nomenclature features contribute P18/P242 (locator maps); groups
+        (constellations) contribute P18/P154 from their referenced entities.
         """
         commons: set[str] = set()
         non_commons: dict[str, dict] = {}
 
         # 1) Wikidata image claims — always Commons filenames by policy.
         # Object entities ship P18 (photo) + P154 (logo); nomenclature
-        # features ship P18 (photo) + P242 (locator map).
-        scans: list[tuple[str, Path, tuple[str, ...]]] = []
+        # features ship P18 (photo) + P242 (locator map); groups pull the
+        # same PIDs as objects but are registry-driven (referenced/ also
+        # holds operators/countries).
+        scans: list[tuple[str, list[Path], tuple[str, ...]]] = []
         if objects_dir is not None:
-            scans.append(("objects", objects_dir, ("P18", "P154")))
+            scans.append(
+                ("objects", sorted(objects_dir.glob("Q*.json")), ("P18", "P154"))
+            )
         if nomenclature_dir is not None:
             scans.append(
-                ("nomenclature", nomenclature_dir, FEATURE_WIKIDATA_IMAGE_PIDS)
+                (
+                    "nomenclature",
+                    sorted(nomenclature_dir.glob("Q*.json")),
+                    FEATURE_WIKIDATA_IMAGE_PIDS,
+                )
             )
-        for label, scan_dir, pids in scans:
-            entity_files = sorted(scan_dir.glob("Q*.json"))
+        if referenced_dir is not None:
+            scans.append(
+                ("groups", self._group_entity_files(referenced_dir), ("P18", "P154"))
+            )
+        for label, entity_files, pids in scans:
             for entity_file in tqdm(
                 entity_files,
                 desc=f"Scanning Wikidata ({label}) for images",
@@ -206,6 +222,18 @@ class CommonsDownloader(Downloader):
             f"{len(non_commons):,}",
         )
         return commons, non_commons
+
+    @staticmethod
+    def _group_entity_files(referenced_dir: Path) -> list[Path]:
+        """Resolve registered group QIDs to entity files under ``referenced/``."""
+        out: list[Path] = []
+        for group in GROUPS:
+            if group.wikidata_qid is None:
+                continue
+            path = referenced_dir / f"{group.wikidata_qid}.json"
+            if path.exists():
+                out.append(path)
+        return out
 
     def _write_non_commons_skipped(self, non_commons: dict[str, dict]) -> None:
         """Record locally-hosted images that we're skipping.

@@ -1,8 +1,8 @@
-"""Compute the per-object and per-feature best Commons image, cache to disk.
+"""Compute the per-object/feature/group best Commons image, cache to disk.
 
-For each object/feature that has a Wikidata QID we discover the direct image
-candidates (P18 ∪ {aux} ∪ Wikipedia pageimages across LANGUAGES — aux is P154
-"logo" for objects and P242 "locator" for nomenclature features), group them
+For each QID-linked entity we discover the direct image candidates (P18 ∪
+{aux} ∪ Wikipedia pageimages across LANGUAGES — aux is P154 "logo" for
+objects/groups and P242 "locator" for nomenclature features), group them
 into derivative-tree components via on-disk metadata, and pick the highest-
 scoring file per tree (assessment > pageimage-frequency > globalusage — see
 :mod:`space_map_data.utils.image_scoring`).
@@ -12,12 +12,14 @@ The results are cached at:
 * ``OBJECT_IMAGES_PATH`` keyed by ``Object.id`` (e.g. ``naif-199``). Drives
   the ``image_available`` flag on Object rows.
 * ``FEATURE_IMAGES_PATH`` keyed by IAU ``Feature.feature_id`` (stringified).
+* ``GROUP_IMAGES_PATH`` keyed by ``Group.slug``.
 
 Exports read these caches instead of re-walking sources.
 """
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +27,7 @@ import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
+from space_map_data.export.groups.registry import GROUPS
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object
 from space_map_data.utils import image_scoring
@@ -42,78 +45,108 @@ logger = logging.getLogger(__name__)
 
 OBJECT_IMAGES_PATH = COMMONS_DIR / "object_images.json"
 FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
+GROUP_IMAGES_PATH = COMMONS_DIR / "group_images.json"
 
 SCHEMA_VERSION = 1
 
 
 def ingest() -> None:
-    """Build object/feature image caches and update ``image_available``."""
+    """Build object/feature/group image caches and update ``image_available``."""
     session = get_session()
     metadata_cache: dict[str, dict | None] = {}
+    wikidata_root = SOURCES_METADATA_DIR / "wikidata"
 
-    objects = (
-        session.query(Object.id, Object.wikidata_qid)
+    objects = [
+        (oid, qid)
+        for oid, qid in session.query(Object.id, Object.wikidata_qid)
         .filter(Object.wikidata_qid.is_not(None))
         .all()
+    ]
+    selections = _select_for_qids(
+        objects,
+        metadata_cache,
+        wikidata_root / "objects",
+        aux_pid="P154",
+        aux_kind="logo",
+        desc="Selecting per-object images",
+        unit="obj",
     )
+    _merge_manual_extras(selections)
+    _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
+    _update_image_available_flag(session, set(selections))
+    _log_written(OBJECT_IMAGES_PATH, "objects", selections, objects)
+
+    # Nomenclature features key by feature_id and use P242 (locator map) as aux.
+    features = [
+        (str(fid), qid)
+        for fid, qid in session.query(Feature.feature_id, Feature.wikidata_qid)
+        .filter(Feature.wikidata_qid.is_not(None))
+        .all()
+    ]
+    feature_selections = _select_for_qids(
+        features,
+        metadata_cache,
+        wikidata_root / "nomenclature",
+        aux_pid="P242",
+        aux_kind="locator",
+        desc="Selecting per-feature images",
+        unit="feat",
+    )
+    _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
+    _log_written(FEATURE_IMAGES_PATH, "features", feature_selections, features)
+
+    # Groups: registry-driven (referenced/ also holds operators/countries).
+    groups = [(g.slug, g.wikidata_qid) for g in GROUPS if g.wikidata_qid]
+    group_selections = _select_for_qids(
+        groups,
+        metadata_cache,
+        wikidata_root / "referenced",
+        aux_pid="P154",
+        aux_kind="logo",
+        desc="Selecting per-group images",
+        unit="group",
+    )
+    _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
+    _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
+
+
+def _select_for_qids(
+    items: Sequence[tuple[str, str]],
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
+    *,
+    aux_pid: str,
+    aux_kind: str,
+    desc: str,
+    unit: str,
+) -> dict[str, list[dict]]:
+    """Run :func:`_select_for_qid` over ``(key, qid)`` pairs, deduping per QID."""
     qid_cache: dict[str, list[dict]] = {}
     selections: dict[str, list[dict]] = {}
-
-    for obj_id, qid in tqdm(objects, desc="Selecting per-object images", unit="obj"):
+    for key, qid in tqdm(items, desc=desc, unit=unit):
         selected = qid_cache.get(qid)
         if selected is None:
             selected = _select_for_qid(
-                qid,
-                metadata_cache,
-                SOURCES_METADATA_DIR / "wikidata" / "objects",
-                aux_pid="P154",
-                aux_kind="logo",
+                qid, metadata_cache, wikidata_dir, aux_pid=aux_pid, aux_kind=aux_kind
             )
             qid_cache[qid] = selected
         if selected:
-            selections[obj_id] = selected
+            selections[key] = selected
+    return selections
 
-    _merge_manual_extras(selections)
 
-    _write_cache(OBJECT_IMAGES_PATH, "objects", selections)
-    _update_image_available_flag(session, set(selections))
+def _log_written(
+    path: Path,
+    label: str,
+    selections: dict[str, list[dict]],
+    items: Sequence[tuple[str, str]],
+) -> None:
     logger.info(
-        "Wrote %s with images for %d / %d QID-linked objects",
-        OBJECT_IMAGES_PATH.name,
+        "Wrote %s with images for %d / %d QID-linked %s",
+        path.name,
         len(selections),
-        len(objects),
-    )
-
-    # Features ride on the same selection logic but key by feature_id and pull
-    # P242 (locator map) instead of P154 (logo) as the aux image kind.
-    feature_rows = (
-        session.query(Feature.feature_id, Feature.wikidata_qid)
-        .filter(Feature.wikidata_qid.is_not(None))
-        .all()
-    )
-    feature_qid_cache: dict[str, list[dict]] = {}
-    feature_selections: dict[str, list[dict]] = {}
-    for feature_id, qid in tqdm(
-        feature_rows, desc="Selecting per-feature images", unit="feat"
-    ):
-        selected = feature_qid_cache.get(qid)
-        if selected is None:
-            selected = _select_for_qid(
-                qid,
-                metadata_cache,
-                SOURCES_METADATA_DIR / "wikidata" / "nomenclature",
-                aux_pid="P242",
-                aux_kind="locator",
-            )
-            feature_qid_cache[qid] = selected
-        if selected:
-            feature_selections[str(feature_id)] = selected
-    _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
-    logger.info(
-        "Wrote %s with images for %d / %d QID-linked features",
-        FEATURE_IMAGES_PATH.name,
-        len(feature_selections),
-        len(feature_rows),
+        len(items),
+        label,
     )
 
 
@@ -257,6 +290,11 @@ def read_object_images() -> dict[str, list[dict]]:
 def read_feature_images() -> dict[str, list[dict]]:
     """Return the cached ``{feature_id: [{file, kind}, ...]}`` mapping."""
     return _read_cache(FEATURE_IMAGES_PATH, "features")
+
+
+def read_group_images() -> dict[str, list[dict]]:
+    """Return the cached ``{group_slug: [{file, kind}, ...]}`` mapping."""
+    return _read_cache(GROUP_IMAGES_PATH, "groups")
 
 
 def _read_cache(path: Path, payload_key: str) -> dict[str, list[dict]]:
