@@ -8,12 +8,13 @@ Phase 1 only emits constellation memberships for earth sats.
 
 import gzip
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import orjson
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.earth_sats.satcat import OpsStatus
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.satcat import Satcat
 
@@ -21,6 +22,25 @@ logger = logging.getLogger(__name__)
 
 _EARTH_OBJECT_ID = "naif-399"
 _SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
+_ACTIVE_OPS_STATUSES = {
+    OpsStatus.OPERATIONAL.value,
+    OpsStatus.PARTIAL.value,
+    OpsStatus.EXTENDED_MISSION.value,
+}
+
+
+@dataclass
+class GroupSatcatStats:
+    """Per-constellation roll-up consumed by the group bundle.
+
+    ``decayed`` and ``active`` are mutually exclusive: ``decay_date`` wins
+    even if ``ops_status`` still says operational (data lag).
+    """
+
+    launch_histogram: dict[int, int] = field(default_factory=dict)
+    active: int = 0
+    decayed: int = 0
+    launch_sites: dict[str, int] = field(default_factory=dict)
 
 
 def build_earth_membership(session: Session) -> dict[str, list[str]]:
@@ -48,16 +68,20 @@ def build_earth_membership(session: Session) -> dict[str, list[str]]:
     return membership
 
 
-def build_earth_earliest_launches(session: Session) -> dict[str, str]:
-    """Min launch_date per constellation slug, as ISO ``YYYY-MM-DD`` strings.
+def build_earth_group_stats(session: Session) -> dict[str, GroupSatcatStats]:
+    """Per-constellation launch histogram, status counts, and launch-site mix.
 
-    Same filter as ``build_earth_membership``; rows without a launch_date are
-    skipped by the IS NOT NULL guard so a single dateless member doesn't drag
-    the group's start to None.
+    Single SATCAT scan; same filter as ``build_earth_membership``. Years
+    come from ``launch_date[:4]`` so the rare malformed date is silently
+    skipped via ``ValueError`` rather than crashing the export.
     """
     rows = (
         session.query(
-            Satcat.constellation_slug, func.min(Satcat.launch_date).label("first")
+            Satcat.constellation_slug,
+            Satcat.launch_date,
+            Satcat.ops_status,
+            Satcat.decay_date,
+            Satcat.launch_site_code,
         )
         .join(Object.satcat)
         .filter(
@@ -65,12 +89,26 @@ def build_earth_earliest_launches(session: Session) -> dict[str, str]:
             Object.object_type.in_(_SAT_TYPE_VALUES),
             Object.parent_id == _EARTH_OBJECT_ID,
             Satcat.constellation_slug.is_not(None),
-            Satcat.launch_date.is_not(None),
         )
-        .group_by(Satcat.constellation_slug)
         .all()
     )
-    return {slug: first for slug, first in rows if first}
+    stats: dict[str, GroupSatcatStats] = {}
+    for slug, launch_date, ops_status, decay_date, site_code in rows:
+        s = stats.setdefault(slug, GroupSatcatStats())
+        if launch_date:
+            try:
+                year = int(launch_date[:4])
+            except ValueError:
+                logger.warning("Malformed launch_date %r for %s", launch_date, slug)
+            else:
+                s.launch_histogram[year] = s.launch_histogram.get(year, 0) + 1
+        if decay_date:
+            s.decayed += 1
+        elif ops_status in _ACTIVE_OPS_STATUSES:
+            s.active += 1
+        if site_code:
+            s.launch_sites[site_code] = s.launch_sites.get(site_code, 0) + 1
+    return stats
 
 
 def write_earth_membership(out_dir: Path, membership: dict[str, list[str]]) -> None:

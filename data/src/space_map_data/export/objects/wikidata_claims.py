@@ -183,6 +183,8 @@ GLOBAL_CLAIMS = (
     GlobalClaim("capital_cost", "P2130", "quantity"),
     GlobalClaim("length", "P2043", "quantity"),
     GlobalClaim("width", "P2049", "quantity"),
+    GlobalClaim("inception", "P571", "time"),
+    GlobalClaim("dissolved", "P576", "time"),
 )
 
 

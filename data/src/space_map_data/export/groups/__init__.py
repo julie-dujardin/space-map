@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.membership import (
-    build_earth_earliest_launches,
+    build_earth_group_stats,
     build_earth_membership,
     write_earth_membership,
 )
@@ -27,13 +27,11 @@ def run_groups_tier(
     """Build + write the groups tier; returns bucket counts for metadata.json."""
     with Session(engine) as session:
         membership = build_earth_membership(session)
-        earliest_launches = build_earth_earliest_launches(session)
+        satcat_stats = build_earth_group_stats(session)
     write_earth_membership(out_dir, membership)
 
     member_counts = {slug: len(ids) for slug, ids in membership.items()}
-    return write_group_bundles(
-        out_dir, wikidata_entities, member_counts, earliest_launches
-    )
+    return write_group_bundles(out_dir, wikidata_entities, member_counts, satcat_stats)
 
 
 def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) -> None:

@@ -12,8 +12,10 @@ from pathlib import Path
 
 import orjson
 
+from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import GROUPS, Group, GroupType
 from space_map_data.export.images import collect_group_images
 from space_map_data.export.objects.wikidata_claims import (
@@ -31,13 +33,14 @@ logger = logging.getLogger(__name__)
 
 K_GLOBAL = 100
 K_LOCALIZED = 200
+_TOP_LAUNCH_SITES = 5
 
 
 def _build_global(
     group: Group,
     member_count: int,
     extracted: dict | None,
-    earliest_launch: str | None,
+    stats: GroupSatcatStats | None,
     images: list[dict] | None,
 ) -> dict:
     data: dict = {
@@ -50,12 +53,23 @@ def _build_global(
         data["wikidata_qid"] = group.wikidata_qid
     if group.fallback_url:
         data["url"] = group.fallback_url
-    if earliest_launch:
-        data["earliest_launch"] = earliest_launch
+    if stats:
+        if stats.launch_histogram:
+            data["launch_histogram"] = {
+                str(year): n for year, n in sorted(stats.launch_histogram.items())
+            }
+        if stats.active:
+            data["active_count"] = stats.active
+        if stats.decayed:
+            data["decayed_count"] = stats.decayed
     if extracted:
         websites = extracted.get("website")
         if websites:
             data["website"] = websites[0]
+        if inception := extracted.get("inception"):
+            data["inception"] = inception
+        if dissolved := extracted.get("dissolved"):
+            data["dissolved"] = dissolved
     if images:
         data["images"] = images
     return data
@@ -67,6 +81,7 @@ def _build_localized(
     wikidata_entities: WikidataEntityCache,
     wiki_summaries: dict[str, WikipediaSummary],
     extracted: dict | None,
+    stats: GroupSatcatStats | None,
 ) -> dict:
     data: dict = {}
     if group.wikidata_qid:
@@ -94,7 +109,46 @@ def _build_localized(
             ]
             if country_refs:
                 data["country_of_origin"] = country_refs
+        instance_qids = extracted.get("instance_of")
+        if instance_qids:
+            instance_refs = [
+                r.to_dict()
+                for qid in instance_qids
+                if (r := resolve_entity_ref(qid, lang, wikidata_entities))
+            ]
+            if instance_refs:
+                data["instance_of"] = instance_refs
+    if stats and stats.launch_sites:
+        sites = _launch_site_refs(stats.launch_sites, lang, wikidata_entities)
+        if sites:
+            data["launch_sites"] = sites
     return data
+
+
+def _launch_site_refs(
+    counts: dict[str, int],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Top ``_TOP_LAUNCH_SITES`` sites with localized ref + count.
+
+    Unknown codes (not in ``LAUNCH_SITE_BY_CODE``) are dropped; codes
+    without a QID fall back to the CelesTrak short name.
+    """
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:_TOP_LAUNCH_SITES]
+    out: list[dict] = []
+    for code, n in top:
+        spec = LAUNCH_SITE_BY_CODE.get(code)
+        if not spec:
+            continue
+        entry: dict = {"n": n}
+        if spec.wikidata_qid:
+            ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+            if ref is not None:
+                entry.update(ref.to_dict())
+        entry.setdefault("name", spec.name)
+        out.append(entry)
+    return out
 
 
 def _extract_group_claims(
@@ -141,13 +195,13 @@ def write_group_bundles(
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
     member_counts: dict[str, int],
-    earliest_launches: dict[str, str] | None = None,
+    satcat_stats: dict[str, GroupSatcatStats] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
     Returns ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
-    earliest_launches = earliest_launches or {}
+    satcat_stats = satcat_stats or {}
     global_by_slug: dict[str, dict] = {}
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
@@ -159,16 +213,17 @@ def write_group_bundles(
         )
         extracted = _extract_group_claims(group, wikidata_entities)
         images = collect_group_images(group.slug)
+        stats = satcat_stats.get(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
             extracted,
-            earliest_launches.get(group.slug),
+            stats,
             images,
         )
         for lang in LANGUAGES:
             lang_data = _build_localized(
-                group, lang, wikidata_entities, wiki_summaries, extracted
+                group, lang, wikidata_entities, wiki_summaries, extracted, stats
             )
             if lang_data:
                 localized_by_slug[lang][group.slug] = lang_data
