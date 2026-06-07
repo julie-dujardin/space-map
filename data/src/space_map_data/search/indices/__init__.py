@@ -5,6 +5,9 @@ settings, and how to stream documents from the export.
 """
 
 from .features import FEATURES_INDEX, Index
+from .groups import GROUPS_INDEX
 from .objects import OBJECTS_INDEX
 
-ALL: dict[str, Index] = {idx.uid: idx for idx in [FEATURES_INDEX, OBJECTS_INDEX]}
+ALL: dict[str, Index] = {
+    idx.uid: idx for idx in [FEATURES_INDEX, OBJECTS_INDEX, GROUPS_INDEX]
+}
