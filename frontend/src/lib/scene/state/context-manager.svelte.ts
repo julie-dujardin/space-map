@@ -90,7 +90,10 @@ export class ContextManager {
 	async applyGroupFilter(slug: string | null): Promise<void> {
 		if (slug === this.earthSatFilterSlug) return;
 		this.earthSatFilterSlug = slug;
-		this.earthSatFilter = slug ? await fetchEarthGroupMembers(slug) : null;
+		const filter = slug ? await fetchEarthGroupMembers(slug) : null;
+		// Bail if a newer call superseded us during the fetch.
+		if (slug !== this.earthSatFilterSlug) return;
+		this.earthSatFilter = filter;
 		if (this.loading) return;
 		this.bodies.spacecraftByParent.delete(EARTH_ID);
 		this.bodies.dirtySpacecraftGroups.add(EARTH_ID);

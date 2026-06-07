@@ -48,9 +48,6 @@ interface TimeZoneState extends BaseZoneState {
 	zoomData: DateSegmentedZoom;
 	/** Snapshot date string of the currently loaded data. */
 	currentTime: string;
-	/** Bucket keys this zone wrote into on the last load — used to clean up
-	 *  buckets that vanish in a newer snapshot. Empty until the first refresh. */
-	knownBuckets: Set<string>;
 	lastLoadStartMs: number;
 }
 
@@ -79,6 +76,9 @@ type ZoneState = TimeZoneState | ChunkZoneState;
 
 export class ZoneRefresher {
 	private readonly zones: ZoneState[] = [];
+	/** Latest date seen by tick; lets {@link invalidateZone} re-fire without
+	 *  waiting for the renderer (which gates refreshTick on jd advancing). */
+	private latestDate: Date;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -86,6 +86,7 @@ export class ZoneRefresher {
 		private readonly loader: ChunkLoader,
 		initialDate: Date
 	) {
+		this.latestDate = initialDate;
 		const initialJd = dateToJD(initialDate);
 		const cap = getSettings().maxPartsPerZone;
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
@@ -108,7 +109,6 @@ export class ZoneRefresher {
 						parentIdType,
 						zoomData,
 						currentTime: snapshotDate(zoomData, initialDate),
-						knownBuckets: new Set(),
 						inFlight: null,
 						lastLoadStartMs: -Infinity
 					};
@@ -133,13 +133,15 @@ export class ZoneRefresher {
 		}
 	}
 
-	/** Clear a time-zone's loaded state so the next {@link tick} reloads it. */
+	/** Clear loaded state and re-fire {@link tick} now so paused-clock callers
+	 *  (group-filter toggle) don't have to wait for a jd advance. */
 	invalidateZone(zoneName: string): void {
 		for (const z of this.zones) {
 			if (z.zone !== zoneName || z.kind !== 'time') continue;
 			z.currentTime = '';
-			z.knownBuckets = new Set();
+			z.lastLoadStartMs = -Infinity;
 		}
+		this.tick(this.latestDate);
 	}
 
 	/** Call from the renderer's per-frame loop on jd change. Cheap when nothing
@@ -152,6 +154,7 @@ export class ZoneRefresher {
 	 *  rates. The async loadChunk path is reserved for the 'pending' and
 	 *  cold-miss cases. */
 	tick(date: Date): void {
+		this.latestDate = date;
 		const jd = dateToJD(date);
 		for (const state of this.zones) {
 			if (state.kind === 'time') {
@@ -229,15 +232,21 @@ export class ZoneRefresher {
 
 			let added = 0;
 			let updated = 0;
-			let removed = 0;
 			const addedIds: string[] = [];
 
+			// Mutate in place — sibling zooms feeding the same bucket key
+			// (earth zoom 0 + zoom 1 both go to naif-399) would otherwise
+			// clobber each other. No release path: CelesTrak's catalog is
+			// monotonically growing, and applyGroupFilter clears the bucket
+			// itself when membership shrinks.
 			for (const [key, freshBodies] of newBuckets) {
-				const existing = this.ctx.bodies.spacecraftByParent.get(key);
-				const merged = new Map<string, PositionedBody>();
-				const carriedIds = new Set<string>();
+				let bucket = this.ctx.bodies.spacecraftByParent.get(key);
+				if (!bucket) {
+					bucket = new Map();
+					this.ctx.bodies.spacecraftByParent.set(key, bucket);
+				}
 				for (const [id, b] of freshBodies) {
-					const e = existing?.get(id);
+					const e = bucket.get(id);
 					if (e) {
 						e.data = b.data;
 						e.position = b.position;
@@ -248,43 +257,20 @@ export class ZoneRefresher {
 						// motion and syncs the trail via that reference.
 						if (b.orbitElements !== undefined) e.orbitElements = b.orbitElements;
 						if (b.orbitCenter !== undefined) e.orbitCenter = b.orbitCenter;
-						merged.set(id, e);
-						carriedIds.add(id);
 						updated++;
 					} else {
-						merged.set(id, b);
+						bucket.set(id, b);
 						addedIds.push(id);
 						added++;
 					}
 				}
-				if (existing) {
-					for (const id of existing.keys()) {
-						if (!carriedIds.has(id)) removed++;
-					}
-				}
-				this.ctx.bodies.spacecraftByParent.set(key, merged);
 				this.ctx.bodies.dirtySpacecraftGroups.add(key);
 			}
 
-			// Buckets that existed last time but got nothing now: drop them so the
-			// renderer can unwire the corresponding worker group.
-			for (const key of z.knownBuckets) {
-				if (newBuckets.has(key)) continue;
-				const prev = this.ctx.bodies.spacecraftByParent.get(key);
-				if (prev) {
-					removed += prev.size;
-					this.ctx.bodies.spacecraftByParent.delete(key);
-					this.ctx.bodies.dirtySpacecraftGroups.add(key);
-				}
-			}
-
-			z.knownBuckets = new Set(newBuckets.keys());
 			z.currentTime = time;
 			this.ctx.bodies.minorBodyVersion++;
 			this.ctx.bodies.notifyBodiesAdded(addedIds);
-			console.log(
-				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
-			);
+			console.log(`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated})`);
 			this.prefetchTimeNeighbors(z, date);
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);

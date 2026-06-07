@@ -328,14 +328,16 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
 				if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
 				placeholderById.delete(b.data.id);
-				if (b.data.objectType === ObjectType.SPACECRAFT) {
+				const t = b.data.objectType;
+				if (t === ObjectType.SPACECRAFT || t === ObjectType.DEBRIS) {
 					ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
 				} else {
 					ctx.bodies.dirtyAsteroidZones.add(zone);
 				}
 				continue;
 			}
-			if (b.data.objectType === ObjectType.SPACECRAFT) {
+			const t = b.data.objectType;
+			if (t === ObjectType.SPACECRAFT || t === ObjectType.DEBRIS) {
 				let bucket = pendingSpacecraft.get(b.data.parentId);
 				if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
 				if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
