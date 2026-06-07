@@ -18,9 +18,9 @@ export function urlTypeFromId(id: string): UrlType {
 	return UrlType.Body; // naif-
 }
 
-/** Camera anchor when landing on /g/<slug> cold. Earth covers Phase-1 groups
+/** Camera anchor when landing on /g/<slug>. Earth covers Phase-1 groups
  *  (constellations); revisit once other applies_to categories ship. */
-const GROUP_DEFAULT_BODY = 'naif-399';
+export const GROUP_DEFAULT_BODY = 'naif-399';
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
 const GROUP_DEFAULT_ZOOM = 0.005;
 

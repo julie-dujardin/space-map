@@ -217,9 +217,11 @@
 						}
 						if (hit.kind === 'group') {
 							appState.setGroup(hit.slug, name);
-							// Earth covers all Phase-1 groups (constellations).
-							const earth = ctx.getBody('naif-399');
-							if (earth) scene?.focusOnBody('naif-399', minCameraDistance(earth) * 5);
+							// setGroup parked view.id on the group's camera anchor body;
+							// the sidebar still shows the constellation (focusable kind=group).
+							const anchorId = appState.view.id;
+							const anchor = ctx.getBody(anchorId);
+							if (anchor) scene?.focusOnBody(anchorId, minCameraDistance(anchor) * 5);
 							return;
 						}
 						// Snap into coverage first so the camera lands on a positioned body.
