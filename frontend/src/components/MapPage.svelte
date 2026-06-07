@@ -212,6 +212,8 @@
 								featureName: name
 							});
 							scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
+						} else if (hit.kind === 'group') {
+							appState.setGroup(hit.slug, name);
 						} else {
 							appState.setFocus({
 								type: urlTypeFromId(hit.id),

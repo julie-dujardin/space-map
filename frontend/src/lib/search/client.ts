@@ -40,7 +40,26 @@ export interface ObjectHit {
 	name_ru?: string;
 }
 
-export type SearchHit = FeatureHit | ObjectHit;
+/** Constellation / operator / asteroid-class collection. The Meili primary
+ *  key is ``slug``; we mirror it into ``id`` so the rest of the search UI
+ *  can treat all hit kinds uniformly. */
+export interface GroupHit {
+	kind: 'group';
+	id: string; // = slug
+	slug: string;
+	name: string;
+	type: string;
+	applies_to: string;
+	member_count: number;
+	name_en?: string;
+	name_fr?: string;
+	name_ja?: string;
+	name_zh?: string;
+	name_ar?: string;
+	name_ru?: string;
+}
+
+export type SearchHit = FeatureHit | ObjectHit | GroupHit;
 
 let client: Meilisearch | null = null;
 function getClient(): Meilisearch | null {
@@ -55,10 +74,10 @@ export function isSearchEnabled(): boolean {
 	return getClient() !== null;
 }
 
-/** Federated search across objects + features. Results from both indices are
- *  interleaved by Meili's per-query relevance ranking — the front of each
- *  bucket is roughly comparable, so a simple round-robin merge usually puts
- *  the best overall hit first. */
+/** Federated search across groups + objects + features. Groups are a small,
+ *  curated set of high-intent matches (constellations, operators, ...) and
+ *  lead the result list ahead of any object/feature hits, which are then
+ *  round-robined to mix the two indices fairly. */
 export async function search(
 	query: string,
 	locale: string,
@@ -68,15 +87,19 @@ export async function search(
 	if (!c || !query.trim()) return [];
 	const res = await c.multiSearch({
 		queries: [
+			{ indexUid: 'groups', q: query, limit, locales: [locale] },
 			{ indexUid: 'objects', q: query, limit, locales: [locale] },
 			{ indexUid: 'features', q: query, limit, locales: [locale] }
 		]
 	});
-	const objects = (res.results[0]?.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
-	const features = (res.results[1]?.hits ?? []).map(
+	const groups = (res.results[0]?.hits ?? []).map(
+		(h) => ({ ...h, kind: 'group', id: (h as { slug: string }).slug }) as GroupHit
+	);
+	const objects = (res.results[1]?.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
+	const features = (res.results[2]?.hits ?? []).map(
 		(h) => ({ ...h, kind: 'feature' }) as FeatureHit
 	);
-	return interleave(objects, features).slice(0, limit);
+	return [...groups, ...interleave(objects, features)].slice(0, limit);
 }
 
 /** Round-robin two ranked lists into one. Cheap stand-in for cross-index

@@ -5,6 +5,22 @@
 	"search_secondary_orbiting": "{type} de {parent}",
 	"search_secondary_feature_on": "{type} sur {parent}",
 	"loading_data": "Chargement des données…",
+	"group_member_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} membre",
+				"countPlural=other": "{count} membres"
+			}
+		}
+	],
+	"group_no_summary": "Aucune description disponible.",
+	"group_launch_activity": "Activité de lancement",
+	"group_launches_per_year": "Lancements par année",
+	"group_active": "Actifs",
+	"group_decayed": "Désintégrés",
+	"group_launch_sites": "Principaux sites de lancement",
 	"time_header": "Temps",
 	"time_speed_label": "Vitesse",
 	"time_play": "Lecture",

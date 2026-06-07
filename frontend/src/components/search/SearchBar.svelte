@@ -95,6 +95,9 @@
 				parent: bodyName(hit.body_id)
 			});
 		}
+		if (hit.kind === 'group') {
+			return m.group_member_count({ count: hit.member_count });
+		}
 		if (hit.id.startsWith('norad_satcat-')) {
 			return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
 		}

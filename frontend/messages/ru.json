@@ -5,6 +5,24 @@
 	"search_secondary_orbiting": "{type}: {parent}",
 	"search_secondary_feature_on": "{type} на {parent}",
 	"loading_data": "Загрузка данных…",
+	"group_member_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} объект",
+				"countPlural=few": "{count} объекта",
+				"countPlural=many": "{count} объектов",
+				"countPlural=other": "{count} объекта"
+			}
+		}
+	],
+	"group_no_summary": "Описание отсутствует.",
+	"group_launch_activity": "Запуски",
+	"group_launches_per_year": "Запусков в год",
+	"group_active": "Действующие",
+	"group_decayed": "Сошедшие с орбиты",
+	"group_launch_sites": "Основные стартовые площадки",
 	"time_header": "Время",
 	"time_speed_label": "Скорость",
 	"time_play": "Воспроизвести",
