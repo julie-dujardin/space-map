@@ -12,6 +12,7 @@ from pathlib import Path
 
 import orjson
 
+from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
 from space_map_data.constants.providers import LANGUAGES
@@ -53,6 +54,10 @@ def _build_global(
         data["wikidata_qid"] = group.wikidata_qid
     if group.fallback_url:
         data["url"] = group.fallback_url
+    if group.type is GroupType.CONSTELLATION:
+        spec = CONSTELLATION_BY_SLUG.get(group.slug)
+        if spec and spec.category:
+            data["categories"] = [str(c) for c in spec.category]
     if stats:
         if stats.launch_histogram:
             data["launch_histogram"] = {
