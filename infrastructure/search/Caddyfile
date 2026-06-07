@@ -1,0 +1,41 @@
+# Caddyfile for the Meilisearch search service.
+#
+# Env vars (set in docker-compose):
+#   SEARCH_DOMAIN     — public hostname, e.g. search.space-map.example
+#   ALLOWED_ORIGINS   — Pages origin(s), comma-separated, no protocol
+#                       (e.g. "space-map.example,preview.space-map.pages.dev")
+#   VPN_CIDR          — CIDR block for admin access (e.g. 10.8.0.0/24)
+
+{$SEARCH_DOMAIN} {
+	encode gzip
+
+	# CORS: reflect Origin only if it's in the allowlist. Multiple origins
+	# are joined with `|` to form an alternation regex.
+	@allowed_origin header_regexp Origin ^https?://({$ALLOWED_ORIGINS})(:\d+)?$
+	header @allowed_origin {
+		Access-Control-Allow-Origin "{http.request.header.Origin}"
+		Access-Control-Allow-Headers "Authorization,Content-Type,X-Meilisearch-Client"
+		Access-Control-Allow-Methods "GET,POST,OPTIONS"
+		Access-Control-Max-Age "86400"
+		Vary "Origin"
+		defer
+	}
+
+	@preflight method OPTIONS
+	respond @preflight 204
+
+	# Public surface: search endpoints + health probe.
+	@search {
+		path /indexes/*/search
+		path /multi-search
+		path /health
+	}
+	reverse_proxy @search meili:7700
+
+	# Admin surface: everything else (settings, tasks, keys, dumps, swap,
+	# metrics, raw document CRUD). VPN-only.
+	@vpn remote_ip {$VPN_CIDR}
+	reverse_proxy @vpn meili:7700
+
+	respond 403
+}

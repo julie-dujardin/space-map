@@ -6,6 +6,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "httpx",
     "jplephem>=2.24",
+    "meilisearch>=0.41.0",
     "openexr>=3.4.11",
     "orjson>=3.11.8",
     "pillow>=12.2.0",
@@ -23,6 +24,7 @@ space-map-download = "space_map_data.download.__main__:cli"
 space-map-ingest = "space_map_data.ingest.__main__:cli"
 space-map-export = "space_map_data.export.__main__:cli"
 space-map-scheduler = "space_map_data.scheduler.__main__:main"
+space-map-search = "space_map_data.search.__main__:cli"
 
 [build-system]
 requires = ["hatchling"]

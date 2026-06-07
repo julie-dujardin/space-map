@@ -1,0 +1,42 @@
+services:
+  meili:
+    image: getmeili/meilisearch:v1.21
+    container_name: space-map-meili
+    restart: unless-stopped
+    environment:
+      - MEILI_ENV=production
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - ${MEILI_DATA_HOST_DIR:-/srv/space-map/meili_data}:/meili_data
+    expose:
+      - "7700"
+    networks:
+      - search
+
+  caddy:
+    image: caddy:2.10
+    container_name: space-map-search-caddy
+    restart: unless-stopped
+    environment:
+      - SEARCH_DOMAIN=${SEARCH_DOMAIN}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - VPN_CIDR=${VPN_CIDR}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - meili
+    networks:
+      - search
+
+networks:
+  search:
+
+volumes:
+  caddy_data:
+  caddy_config:
