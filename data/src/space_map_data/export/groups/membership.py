@@ -41,6 +41,7 @@ class GroupSatcatStats:
     active: int = 0
     decayed: int = 0
     launch_sites: dict[str, int] = field(default_factory=dict)
+    first_launch_date: str | None = None
 
 
 def build_earth_membership(session: Session) -> dict[str, list[str]]:
@@ -102,6 +103,8 @@ def build_earth_group_stats(session: Session) -> dict[str, GroupSatcatStats]:
                 logger.warning("Malformed launch_date %r for %s", launch_date, slug)
             else:
                 s.launch_histogram[year] = s.launch_histogram.get(year, 0) + 1
+                if s.first_launch_date is None or launch_date < s.first_launch_date:
+                    s.first_launch_date = launch_date
         if decay_date:
             s.decayed += 1
         elif ops_status in _ACTIVE_OPS_STATUSES:

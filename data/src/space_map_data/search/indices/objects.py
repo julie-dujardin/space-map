@@ -45,8 +45,7 @@ _ALWAYS_INDEX = frozenset(
     }
 )
 
-# Search results say "moon of Saturn", not "moon of Saturn Barycenter" — swap
-# planet-barycenter NAIF ids for the planet body before they reach the index.
+# Show "moon of Saturn", not "moon of Saturn Barycenter".
 _PLANET_BY_BARYCENTER = {
     "naif-1": "naif-199",
     "naif-2": "naif-299",

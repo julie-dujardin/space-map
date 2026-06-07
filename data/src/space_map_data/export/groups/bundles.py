@@ -63,6 +63,8 @@ def _build_global(
             data["launch_histogram"] = {
                 str(year): n for year, n in sorted(stats.launch_histogram.items())
             }
+        if stats.first_launch_date:
+            data["first_launch_date"] = stats.first_launch_date
         if stats.active:
             data["active_count"] = stats.active
         if stats.decayed:
