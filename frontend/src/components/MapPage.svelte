@@ -49,11 +49,11 @@
 	// Resolved feature record for the currently URL-pinned featureId. Driven by
 	// the effect below; cleared when the URL has no feature or the lookup fails.
 	let activeFeature = $state.raw<NomenclatureFeature | null>(null);
-	// Plain (non-reactive) flag — first feature resolve after mount snaps the
-	// camera so URL-load lands already-framed; later resolves (label clicks,
-	// browser navigation) fly. Not a `$state` so toggling it inside the effect
+	// Plain (non-reactive) flag — only the URL-load case snaps the camera so
+	// the page opens already-framed; in-session picks (search, label clicks,
+	// browser nav) fly. Not a `$state` so toggling it inside the effect
 	// doesn't re-trigger.
-	let firstFeatureResolve = true;
+	let firstFeatureResolve = appState.view.featureId !== null;
 
 	const northChoices = $derived.by(() => {
 		void ctx.bodies.orientationVersion; // re-run when system data lands orientation
@@ -75,6 +75,15 @@
 		if (!northChoices.some((c) => c.id === northRefId)) northRefId = null;
 	});
 
+	// Repopulate selectedBody from ctx when a pinned featureId outlives a
+	// drawer close — same-body picks emit no onFocusChange to do it for us.
+	$effect(() => {
+		if (selectedBody) return;
+		if (appState.view.featureId === null) return;
+		const target = ctx.getBody(appState.view.id);
+		if (target) selectedBody = target;
+	});
+
 	// Resolve `view.featureId` → `activeFeature` whenever either the URL's
 	// featureId or the currently-selected body changes. Stale URLs (feature id
 	// not in the body's nomenclature, or body has no nomenclature) get cleaned
@@ -89,6 +98,11 @@
 		}
 		// Same feature already resolved — skip the refetch.
 		if (activeFeature?.featureId === fid) return;
+		// Cross-body pick: URL already names the new body but the camera
+		// hasn't landed yet, so selectedBody is stale. Bail and wait for the
+		// onFocusChange that flips selectedBody; the effect re-fires and
+		// resolves against the right nomenclature then.
+		if (body.data.id !== appState.view.id) return;
 		const bodyId = body.data.id;
 		let cancelled = false;
 		fetchBodyNomenclature(bodyId)
