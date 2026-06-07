@@ -1,6 +1,8 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
+	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
 
 	interface Props {
@@ -11,10 +13,17 @@
 	interface Stat {
 		label: string;
 		value: string;
+		tooltip?: string;
 		dot: string;
 	}
 
-	let firstLaunchYear = $derived.by(() => {
+	let firstLaunch = $derived.by<{ year: string; full?: string } | null>(() => {
+		const iso = global?.first_launch_date;
+		if (iso) {
+			const year = iso.slice(0, 4);
+			if (!Number.isFinite(parseInt(year, 10))) return null;
+			return { year, full: formatIsoDate(iso) };
+		}
 		const h = global?.launch_histogram;
 		if (!h) return null;
 		let best: number | null = null;
@@ -24,7 +33,7 @@
 			if (!Number.isFinite(year)) continue;
 			if (best == null || year < best) best = year;
 		}
-		return best;
+		return best == null ? null : { year: String(best) };
 	});
 
 	let stats = $derived.by<Stat[]>(() => {
@@ -42,10 +51,11 @@
 				value: formatNumber(global.active_count),
 				dot: 'bg-emerald-400'
 			});
-		if (firstLaunchYear != null)
+		if (firstLaunch != null)
 			out.push({
 				label: m.group_stat_first_launch(),
-				value: String(firstLaunchYear),
+				value: firstLaunch.year,
+				tooltip: firstLaunch.full,
 				dot: 'bg-zinc-500'
 			});
 		return out;
@@ -60,7 +70,23 @@
 					<span class="inline-block size-1.5 rounded-full {s.dot}"></span>
 					{s.label}
 				</div>
-				<div class="text-lg font-semibold tabular-nums">{s.value}</div>
+				{#if s.tooltip}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<div
+									class="cursor-help text-lg font-semibold tabular-nums decoration-dotted underline-offset-2 hover:underline"
+									{...props}
+								>
+									{s.value}
+								</div>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{s.tooltip}</Tooltip.Content>
+					</Tooltip.Root>
+				{:else}
+					<div class="text-lg font-semibold tabular-nums">{s.value}</div>
+				{/if}
 			</div>
 		{/each}
 	</div>

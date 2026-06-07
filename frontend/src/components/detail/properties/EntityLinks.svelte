@@ -64,7 +64,7 @@
 </script>
 
 <span class="text-muted-foreground flex flex-wrap justify-end gap-x-2">
-	{#each entities as entity (entity.name)}
+	{#each entities as entity (`${entity.name}|${entity.wikipedia ?? ''}|${entity.primary_type ?? ''}|${entity.primary_id ?? ''}`)}
 		{@const display = shortened[entity.name] && entity.short_name ? entity.short_name : entity.name}
 		<Tooltip.Root disabled={!truncated[entity.name]}>
 			<Tooltip.Trigger>

@@ -27,6 +27,8 @@ export interface GlobalGroupData {
 	categories?: SatelliteCategory[];
 	/** Launches per year across SATCAT members, sorted by year ascending. */
 	launch_histogram?: Record<string, number>;
+	/** Earliest SATCAT ``launch_date`` across members (ISO date string, precision may vary). */
+	first_launch_date?: string;
 	/** Members with ``ops_status`` operational/partial/extended and no decay. */
 	active_count?: number;
 	/** Members with a SATCAT decay_date. */
