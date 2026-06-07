@@ -45,6 +45,20 @@ _ALWAYS_INDEX = frozenset(
     }
 )
 
+# Search results say "moon of Saturn", not "moon of Saturn Barycenter" — swap
+# planet-barycenter NAIF ids for the planet body before they reach the index.
+_PLANET_BY_BARYCENTER = {
+    "naif-1": "naif-199",
+    "naif-2": "naif-299",
+    "naif-3": "naif-399",
+    "naif-4": "naif-499",
+    "naif-5": "naif-599",
+    "naif-6": "naif-699",
+    "naif-7": "naif-799",
+    "naif-8": "naif-899",
+    "naif-9": "naif-999",
+}
+
 # Type → ranking weight (higher = surfaces first when scores tie). Lets a
 # query like "mars" prefer the planet over the dozens of probes that share
 # the word.
@@ -157,7 +171,7 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
             parent_id = (g.get("orbit") or {}).get("parent_id")
             if parent_id:
-                doc["parent_id"] = parent_id
+                doc["parent_id"] = _PLANET_BY_BARYCENTER.get(parent_id, parent_id)
 
             designations = _designations(g)
             if designations:
