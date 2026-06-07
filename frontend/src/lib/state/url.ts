@@ -21,6 +21,8 @@ export function urlTypeFromId(id: string): UrlType {
 /** Camera anchor when landing on /g/<slug> cold. Earth covers Phase-1 groups
  *  (constellations); revisit once other applies_to categories ship. */
 const GROUP_DEFAULT_BODY = 'naif-399';
+/** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
+const GROUP_DEFAULT_ZOOM = 0.005;
 
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
@@ -37,6 +39,7 @@ export function parseUrl(): MapViewState | null {
 			...DEFAULT_VIEW,
 			type: UrlType.Group,
 			id: GROUP_DEFAULT_BODY,
+			zoom: GROUP_DEFAULT_ZOOM,
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: null,
