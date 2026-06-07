@@ -76,13 +76,16 @@ PATTERNS: dict[str, AttitudePattern] = {
         estimated_total_mib=1_500,
     ),
     "ORX": AttitudePattern(
-        # `_r_` = reconstructed; per-orbit-arc files. Skips `_p_` predicted
-        # (each of which has many ~tcm/ort/intsci variants per window).
-        ck_glob="orx_r_*.bc",
+        # `_r_` = reconstructed, `_v01` = first revision. v02+ are localised
+        # refits over specific windows (~30 % of files, ~80 GiB) — losing
+        # them costs us the most-recent attitude correction in a few arcs
+        # but keeps the dataset tractable. v01 alone is ~167 GiB across
+        # 3.5 k files, so the per-file cap below stops us cleanly.
+        ck_glob="orx_r_??????_??????_v01.bc",
         fk_glob="orx_v*.tf",
         sclk_glob="ORX_SCLKSCET.*.tsc",
         frame_name="ORX_SPACECRAFT",
-        estimated_total_mib=2_000,
+        estimated_total_mib=170_000,
     ),
     "MCO": AttitudePattern(
         # Lost mission — only 3 CKs exist; no filter needed.

@@ -52,9 +52,16 @@ def _kernels_base_url(server: str, mission: str) -> str:
 
 
 def download_attitude_for(
-    client: httpx.Client, source: MissionSource
+    client: httpx.Client,
+    source: MissionSource,
+    *,
+    max_new_bytes: int | None = None,
 ) -> DownloadResult:
     """Download the curated attitude kernel set for one mission.
+
+    `max_new_bytes` caps newly-fetched CK bytes for this mission; once
+    exceeded, the CK loop stops mid-way and we still write the index for
+    whatever CKs landed. FK/SCLK are uncapped since they're KB-MB scale.
 
     Returns a result regardless of outcome — callers can decide whether to
     log skip reasons or surface them. We return rather than raise because
@@ -76,13 +83,14 @@ def download_attitude_for(
     mission_dir = MISSIONS_DIR / source.mission
     mission_dir.mkdir(parents=True, exist_ok=True)
 
-    ck_files, ck_new = _download_matching(
+    ck_files, ck_new, ck_truncated = _download_matching(
         client,
         f"{base}/ck/",
         mission_dir,
         pattern.ck_glob,
         take_all=True,
         exclude_glob=pattern.ck_exclude_glob,
+        max_new_bytes=max_new_bytes,
     )
     if not ck_files:
         return DownloadResult(
@@ -91,13 +99,15 @@ def download_attitude_for(
             n_total_files=0,
             total_bytes=0,
             new_bytes=ck_new,
-            skipped_reason="no CK matches",
+            skipped_reason="cap reached before any CK"
+            if ck_truncated
+            else "no CK matches",
         )
 
-    fk_files, fk_new = _download_matching(
+    fk_files, fk_new, _ = _download_matching(
         client, f"{base}/fk/", mission_dir, pattern.fk_glob, take_all=False
     )
-    sclk_files, sclk_new = _download_matching(
+    sclk_files, sclk_new, _ = _download_matching(
         client, f"{base}/sclk/", mission_dir, pattern.sclk_glob, take_all=False
     )
     if not fk_files or not sclk_files:
@@ -128,6 +138,9 @@ def download_attitude_for(
         n_total_files=len(all_files),
         total_bytes=sum(p.stat().st_size for p in all_files),
         new_bytes=ck_new + fk_new + sclk_new,
+        skipped_reason="cap reached mid-CK (partial coverage)"
+        if ck_truncated
+        else None,
     )
 
 
@@ -162,19 +175,12 @@ def download_attitude_capped(
     total_new_mib = 0.0
     cap = max_total_mib
     for est_mib, source in targets:
-        # Predictive cap: skip a mission if its estimated download would
-        # push the running total over the budget. Estimates can be off by
-        # 50 %, so this keeps the actual run close to the target without
-        # one giant mission blowing through the cap halfway in.
-        if cap is not None and total_new_mib + est_mib > cap:
-            logger.info(
-                "attitude: skipping %s (est %d MiB would push %.1f → %.1f MiB, cap %.1f)",
-                source.mission,
-                est_mib,
-                total_new_mib,
-                total_new_mib + est_mib,
-                cap,
-            )
+        # Hard cap: once the running total has hit the budget, skip the
+        # rest entirely. No predictive check anymore — that was unreliable
+        # when estimates undershot (e.g. ORX at 2 GiB estimated, 260 GiB
+        # actual). Instead we let the per-file cap below stop a runaway
+        # mid-mission and check the running total here on entry.
+        if cap is not None and total_new_mib >= cap:
             results.append(
                 DownloadResult(
                     mission=source.mission,
@@ -186,6 +192,7 @@ def download_attitude_capped(
                 )
             )
             continue
+        remaining_mib = (cap - total_new_mib) if cap is not None else None
         logger.info(
             "attitude: %s (est %d MiB) — running total %.1f / %s MiB",
             source.mission,
@@ -193,7 +200,12 @@ def download_attitude_capped(
             total_new_mib,
             f"{cap:.0f}" if cap is not None else "∞",
         )
-        result = download_attitude_for(client, source)
+        # Pass remaining budget to CK loop so a single mission can't blow
+        # past the cap. Convert MiB → bytes for the per-file accumulator.
+        max_new_bytes = (
+            int(remaining_mib * 1024 * 1024) if remaining_mib is not None else None
+        )
+        result = download_attitude_for(client, source, max_new_bytes=max_new_bytes)
         results.append(result)
         total_new_mib += result.new_bytes / (1024 * 1024)
         if result.n_total_files:
@@ -219,12 +231,14 @@ def _download_matching(
     *,
     take_all: bool,
     exclude_glob: str | None = None,
-) -> tuple[list[Path], int]:
+    max_new_bytes: int | None = None,
+) -> tuple[list[Path], int, bool]:
     """List `url`, download files matching `glob` into `dest_dir`.
 
-    Returns `(local_paths, bytes_newly_downloaded)` — paths covers both
-    cached and freshly-downloaded files, while the byte count only sums
-    the network spend so the cap reflects what we actually fetched.
+    Returns `(local_paths, bytes_newly_downloaded, truncated)`. `paths`
+    covers both cached and freshly-downloaded files. The byte count only
+    sums the network spend. `truncated=True` means `max_new_bytes` cut us
+    off before we'd processed every match.
 
     `take_all=True` → download every match (used for CK — every bus file
     contributes attitude coverage). `take_all=False` → download just the
@@ -234,7 +248,7 @@ def _download_matching(
         hrefs = list_naif_dir(client, url)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
-            return [], 0
+            return [], 0, False
         raise
     matches = sorted(
         h
@@ -245,13 +259,27 @@ def _download_matching(
         and not (exclude_glob and fnmatch.fnmatch(h, exclude_glob))
     )
     if not matches:
-        return [], 0
+        return [], 0, False
     if not take_all:
         matches = [matches[-1]]
 
     out: list[Path] = []
     new_bytes = 0
-    for name in matches:
+    truncated = False
+    for i, name in enumerate(matches):
+        # Per-file cap check: stop before fetching another file once we've
+        # already spent the budget. Cached files are free, so an existing
+        # local file is still added to `out` even after the cap is hit.
+        if max_new_bytes is not None and new_bytes >= max_new_bytes:
+            logger.info(
+                "download cap hit at %.1f MiB new (%d of %d files), stopping listing of %s",
+                new_bytes / (1024 * 1024),
+                i,
+                len(matches),
+                url,
+            )
+            truncated = True
+            break
         local = dest_dir / name
         file_url = url + name
         try:
@@ -266,4 +294,4 @@ def _download_matching(
             new_bytes += local.stat().st_size
         except httpx.HTTPError as exc:
             logger.warning("download failed for %s: %s", file_url, exc)
-    return out, new_bytes
+    return out, new_bytes, truncated
