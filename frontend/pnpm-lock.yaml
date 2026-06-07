@@ -10,6 +10,9 @@ overrides:
 importers:
   .:
     dependencies:
+      meilisearch:
+        specifier: ^0.58.0
+        version: 0.58.0
       photoswipe:
         specifier: ^5.4.4
         version: 5.4.4
@@ -2415,6 +2418,13 @@ packages:
         integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==
       }
 
+  meilisearch@0.58.0:
+    resolution:
+      {
+        integrity: sha512-MXFlU+JVG2I3tDI4brS3UHxEv2fjOROP24TPP16c8dGHTulb1kxMgXvKP0x4ImvUcsVVJFi4QXP0JNDS/TaWaw==
+      }
+    engines: { node: ^20.19.0 || >=22.12.0 }
+
   meshoptimizer@1.0.1:
     resolution:
       {
@@ -4438,6 +4448,8 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  meilisearch@0.58.0: {}
 
   meshoptimizer@1.0.1: {}
 

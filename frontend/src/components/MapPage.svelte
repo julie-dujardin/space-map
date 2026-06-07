@@ -21,6 +21,9 @@
 	import MobileTimeControls from './time/MobileTimeControls.svelte';
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
+	import SearchBar from './search/SearchBar.svelte';
+	import { localizedName } from '$lib/search/client';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
@@ -182,6 +185,19 @@
 				onUserPromotedChange={(count) => (userPromotedCount = count)}
 			/>
 			<TimeControls {clock} />
+			<div class="fixed top-4 start-4 z-10 w-[min(360px,calc(100vw-7rem))] pointer-events-auto">
+				<SearchBar
+					onSelect={(hit) => {
+						const diameterM = (hit.diameter_km ?? 0) * 1000;
+						appState.setFeature({
+							bodyId: hit.body_id,
+							featureId: hit.feature_id,
+							featureName: localizedName(hit, getLocale())
+						});
+						scene?.focusOnFeature(hit.body_id, hit.center_lat, hit.center_lon, diameterM);
+					}}
+				/>
+			</div>
 			<div class="fixed top-4 end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto">
 				<SettingsButton />
 				<LayersButton />

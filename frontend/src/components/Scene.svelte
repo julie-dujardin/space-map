@@ -121,7 +121,11 @@
 				isInitialFocus = false;
 				focusedBody = body;
 				onFocusChange?.(body);
-				if (!wasInitial && !isNavigatingBack && body) {
+				// Skip the auto-setFocus when the URL already names this body:
+				// programmatic navigators (search, deep links) push their target
+				// state first and would otherwise have featureId/groupSlug wiped
+				// out by setFocus the moment the camera lands.
+				if (!wasInitial && !isNavigatingBack && body && body.data.id !== appState.view.id) {
 					appState.setFocus({
 						type: urlTypeFromId(body.data.id),
 						id: body.data.id,
