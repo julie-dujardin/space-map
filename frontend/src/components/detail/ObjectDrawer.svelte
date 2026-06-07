@@ -118,7 +118,6 @@
 						},
 						localized: detail.localized
 							? {
-									name: detail.localized.name,
 									description: detail.localized.description,
 									aliases: detail.localized.aliases,
 									instance_of: detail.localized.instance_of,

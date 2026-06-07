@@ -21,6 +21,10 @@ import type {
 
 /** Global per-feature payload. Mirrors `_build_detail_global` on the writer. */
 export interface FeatureGlobalData {
+	/** IAU approval date (ISO yyyy-mm-dd). */
+	approval_date?: string;
+	/** IAU name-origin / etymology blurb (English; trailing period stripped). */
+	origin?: string;
 	/** Wikidata QID of the feature itself (drives the "view on Wikidata" link). */
 	wikidata_qid?: string;
 	/** Photo (P18) and locator (P242) image manifest. `kind` distinguishes. */
@@ -47,8 +51,6 @@ export interface FeatureGlobalData {
 
 /** Per-language overlay. Mirrors `_build_detail_localized` on the writer. */
 export interface FeatureLocalizedData {
-	/** Only set when Wikidata's label differs from the IAU canonical name. */
-	name?: string;
 	description?: string;
 	aliases?: string[];
 	instance_of?: EntityRef[];

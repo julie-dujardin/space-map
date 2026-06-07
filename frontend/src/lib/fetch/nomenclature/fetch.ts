@@ -1,6 +1,9 @@
 /**
  * Per-body IAU nomenclature loader: fetches the SMNF positions blob and the
- * canonical-metadata JSON in parallel, then joins them by `feature_id`.
+ * matching per-language label file in parallel, joining them by *position
+ * index* — line i of `labels/{lang}/{bodyId}.txt.gz` names record i of
+ * `positions/{bodyId}.bin.gz`. The writer pins that order invariant
+ * (`test_labels_order_matches_positions_order`).
  *
  * Callers should gate on `objectGlobal.has_nomenclature` before calling — a
  * body without features ships no files, and we'd hit a guaranteed 404. A 404
@@ -8,19 +11,12 @@
  * if the gate is ever bypassed.
  */
 
+import { getLocale } from '$lib/paraglide/runtime.js';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclature/parse';
 
-interface NomenclatureGlobalEntry {
-	name?: string;
-	approval_date?: string;
-	origin?: string;
-}
-
 export interface NomenclatureFeature extends NomenclatureRecord {
 	name: string;
-	approvalDate?: string;
-	origin?: string;
 }
 
 const cache = new Map<string, Promise<NomenclatureFeature[]>>();
@@ -37,36 +33,37 @@ async function fetchPositions(bodyId: string): Promise<NomenclatureRecord[]> {
 	return parseNomenclature(buffer);
 }
 
-async function fetchGlobal(bodyId: string): Promise<Record<string, NomenclatureGlobalEntry>> {
-	const url = `${DATA_BASE}/v1/nomenclature/__global__/${bodyId}.json.gz`;
+async function fetchLabels(bodyId: string, lang: string): Promise<string[]> {
+	const url = `${DATA_BASE}/v1/nomenclature/labels/${lang}/${bodyId}.txt.gz`;
 	const res = await fetch(url);
 	if (!res.ok) {
-		if (res.status === 404) return {};
-		throw new Error(`fetchNomenclatureGlobal: ${url} returned ${res.status} ${res.statusText}`);
+		if (res.status === 404) return [];
+		throw new Error(`fetchNomenclatureLabels: ${url} returned ${res.status} ${res.statusText}`);
 	}
 	const ds = new DecompressionStream('gzip');
-	return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<
-		string,
-		NomenclatureGlobalEntry
-	>;
+	const text = await new Response(res.body!.pipeThrough(ds)).text();
+	// "".split("\n") returns [""] (one empty line) — empty bodies stay empty.
+	return text === '' ? [] : text.split('\n');
 }
 
-export function fetchBodyNomenclature(bodyId: string): Promise<NomenclatureFeature[]> {
-	let p = cache.get(bodyId);
+export function fetchBodyNomenclature(
+	bodyId: string,
+	lang: string = getLocale()
+): Promise<NomenclatureFeature[]> {
+	const key = `${bodyId}:${lang}`;
+	let p = cache.get(key);
 	if (!p) {
 		p = (async () => {
-			const [records, meta] = await Promise.all([fetchPositions(bodyId), fetchGlobal(bodyId)]);
-			return records.map((rec) => {
-				const entry = meta[String(rec.featureId)] ?? {};
-				return {
-					...rec,
-					name: entry.name ?? `Feature ${rec.featureId}`,
-					approvalDate: entry.approval_date,
-					origin: entry.origin
-				};
-			});
+			const [records, labels] = await Promise.all([
+				fetchPositions(bodyId),
+				fetchLabels(bodyId, lang)
+			]);
+			return records.map((rec, i) => ({
+				...rec,
+				name: labels[i] ?? `Feature ${rec.featureId}`
+			}));
 		})();
-		cache.set(bodyId, p);
+		cache.set(key, p);
 	}
 	return p;
 }

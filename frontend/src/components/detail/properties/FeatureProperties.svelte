@@ -81,12 +81,12 @@
 	{#if wd?.elevation}
 		<Row label={m.feature_elevation()} value={formatQuantity(wd.elevation)} />
 	{/if}
-	{#if feature.approvalDate}
-		<Row label={m.feature_named_date()} value={formatIsoDate(feature.approvalDate)} />
+	{#if glb?.approval_date}
+		<Row label={m.feature_named_date()} value={formatIsoDate(glb.approval_date)} />
 	{/if}
-	{#if feature.origin}
+	{#if glb?.origin}
 		<Row label={m.feature_origin()}>
-			<span class="block whitespace-normal text-end">{feature.origin}</span>
+			<span class="block whitespace-normal text-end">{glb.origin}</span>
 		</Row>
 	{/if}
 	{#if loc?.named_after?.length}
