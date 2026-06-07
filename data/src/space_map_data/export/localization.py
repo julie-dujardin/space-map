@@ -178,11 +178,7 @@ def _collect_feature_type_labels(
 def _collect_group_name_labels(
     wikidata_entities: WikidataEntityCache,
 ) -> dict[str, dict[str, str]]:
-    """Return {lang: {group_name_<slug>: label}} for every registered group.
-
-    Falls back to the slug in baseLocale when no Wikidata QID is registered;
-    Paraglide's compile-time baseLocale fallback then fills the other locales.
-    """
+    """Return {lang: {group_name_<slug>: label}}; slug as baseLocale fallback."""
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
 
@@ -194,7 +190,6 @@ def _collect_group_name_labels(
                 for lang in LANGUAGES:
                     if label := entity["labels"].get(lang):
                         result[lang][key] = label
-        # Always anchor the baseLocale so Paraglide has a known fallback.
         base.setdefault(key, group.slug)
 
     return result
@@ -243,12 +238,7 @@ def write_messages(
 
 
 def write_group_messages(wikidata_entities: WikidataEntityCache) -> None:
-    """Refresh just ``group_name_*`` keys in each locale (additive runs).
-
-    Leaves unit/property/feature_type entries intact, so it's safe to call
-    from ``space-map-export --only=groups`` without re-running the units
-    pass.
-    """
+    """Refresh only ``group_name_*`` keys; leave other generated keys intact."""
     group_name_labels = _collect_group_name_labels(wikidata_entities)
 
     for lang in LANGUAGES:

@@ -11,6 +11,7 @@ from typing import Iterator
 import httpx
 from httpx import Response
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.registry import GROUPS
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
 from tqdm import tqdm
 
@@ -55,7 +56,7 @@ class WikipediaDownloader(Downloader):
                 f"({', '.join(self._ENTITY_SUBDIRS)}) — download wikidata first"
             )
 
-        tasks_by_lang = self._collect_tasks(present)
+        tasks_by_lang = self._collect_tasks(present, self._group_entity_files())
         if not tasks_by_lang:
             logger.info("No summaries to fetch")
             return
@@ -69,13 +70,28 @@ class WikipediaDownloader(Downloader):
             complete=False,  # No global complete is needed
         )
 
+    def _group_entity_files(self) -> list[Path]:
+        """Group QIDs are stored alongside other referenced entities, not in the
+        scanned subdirs — pick them out explicitly from the GROUPS registry."""
+        referenced = SOURCES_METADATA_DIR / "wikidata" / "referenced"
+        files: list[Path] = []
+        for group in GROUPS:
+            if group.wikidata_qid is None:
+                continue
+            path = referenced / f"{group.wikidata_qid}.json"
+            if path.exists():
+                files.append(path)
+        return files
+
     def _collect_tasks(
-        self, wikidata_dirs: list[Path]
+        self,
+        wikidata_dirs: list[Path],
+        extra_files: list[Path] | None = None,
     ) -> dict[str, list[tuple[str, str]]]:
         """Read Wikidata entity files and extract sitelinks for target languages.
 
-        Scans every dir in *wikidata_dirs*, skipping already-downloaded
-        summaries and de-duplicating tasks on (qid, lang) across dirs.
+        Scans every dir in *wikidata_dirs* plus any *extra_files*, skipping
+        already-downloaded summaries and de-duplicating tasks on (qid, lang).
         Returns dict mapping language code to list of (qid, title) tuples.
         """
         by_lang: dict[str, list[tuple[str, str]]] = defaultdict(list)
@@ -83,6 +99,7 @@ class WikipediaDownloader(Downloader):
         skipped = 0
 
         entity_files = sorted(f for d in wikidata_dirs for f in d.glob("Q*.json"))
+        entity_files.extend(extra_files or [])
         for entity_file in tqdm(
             entity_files, desc="Collecting Wikipedia tasks", unit="entity"
         ):
