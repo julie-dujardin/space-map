@@ -4,7 +4,13 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import { search, localizedName, isSearchEnabled, type SearchHit } from '$lib/search/client';
+	import {
+		search,
+		localizedName,
+		localizedDescription,
+		isSearchEnabled,
+		type SearchHit
+	} from '$lib/search/client';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 	type Props = {
@@ -89,6 +95,8 @@
 	}
 
 	function secondaryText(hit: SearchHit): string {
+		const desc = localizedDescription(hit, getLocale());
+		if (desc) return desc;
 		if (hit.kind === 'feature') {
 			return m.search_secondary_feature_on({
 				type: featureTypeLabel(hit.feature_type),
