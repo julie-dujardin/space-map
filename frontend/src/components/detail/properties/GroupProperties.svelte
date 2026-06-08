@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
+	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import { groupTypeLabel } from '$lib/format/group';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
@@ -8,6 +11,8 @@
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
 	import LaunchActivityChart from './LaunchActivityChart.svelte';
+
+	const appState = getContext<AppState | undefined>('appState');
 
 	interface Props {
 		global: GlobalGroupData | null;
@@ -91,7 +96,19 @@
 			{#each launchSites as site (site.name)}
 				<li class="flex flex-col gap-1">
 					<div class="flex items-baseline justify-between gap-2">
-						{#if site.wikipedia}
+						{#if appState && site.primary_type === 'group' && site.primary_id}
+							{@const slug = site.primary_id}
+							{@const name = site.name}
+							<button
+								type="button"
+								onclick={() => appState.setGroup(slug, name)}
+								aria-label={m.entity_focus_in_map()}
+								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
+								><span class="truncate">{site.name}</span><LocateFixedIcon
+									class="size-3 shrink-0"
+								/></button
+							>
+						{:else if site.wikipedia}
 							<a
 								href={site.wikipedia}
 								target="_blank"
