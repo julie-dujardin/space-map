@@ -60,23 +60,45 @@ export function pickPointCloudBody(
 		}
 	};
 
-	// Visible asteroid zones
-	for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
-		if (!ctx.visibility.isAsteroidGroupVisible(zone)) continue;
-		for (const body of byId.values()) testBody(body);
-	}
+	// A definitive hit (cursor effectively on a dot) lets us bail before
+	// scanning the long tail — MBA alone holds ~1.3M asteroids.
+	const DEFINITIVE_PX = pointerType === 'touch' || pointerType === 'pen' ? 16 : 8;
 
-	// Visible spacecraft groups
-	for (const [gid, byId] of ctx.bodies.spacecraftByParent) {
-		if (!ctx.visibility.isSpacecraftGroupVisible(gid)) continue;
-		for (const body of byId.values()) testBody(body);
-	}
-
-	// Visible moon point-cloud groups (moons shown as dots when zoomed out)
+	// Moons are few; test them all up front so they outrank overlapping
+	// asteroid dots in dense regions.
 	for (const body of ctx.bodies.majorBodies) {
 		if (body.data.objectType !== ObjectType.MOON) continue;
 		if (!ctx.visibility.isMoonGroupVisible(body.data.parentId)) continue;
 		testBody(body);
+	}
+
+	// Round-robin asteroid zones + spacecraft groups one loader-chunk
+	// (10k bodies) at a time, so every visible bucket gets sampled before
+	// we commit to a deep scan of any one zone. Bail at the end of each
+	// bucket's slice once we have a definitive hit.
+	if (bestScreenDist > DEFINITIVE_PX) {
+		const CHUNK_BAIL_SIZE = 10_000;
+		const iters: IterableIterator<PositionedBody>[] = [];
+		for (const [zone, byId] of ctx.bodies.asteroidBodiesByZone) {
+			if (ctx.visibility.isAsteroidGroupVisible(zone)) iters.push(byId.values());
+		}
+		for (const [gid, byId] of ctx.bodies.spacecraftByParent) {
+			if (ctx.visibility.isSpacecraftGroupVisible(gid)) iters.push(byId.values());
+		}
+
+		let anyProgress = true;
+		outer: while (anyProgress) {
+			anyProgress = false;
+			for (const it of iters) {
+				for (let i = 0; i < CHUNK_BAIL_SIZE; i++) {
+					const next = it.next();
+					if (next.done) break;
+					testBody(next.value);
+					anyProgress = true;
+				}
+				if (bestScreenDist <= DEFINITIVE_PX) break outer;
+			}
+		}
 	}
 
 	if (!bestBody) return null;
