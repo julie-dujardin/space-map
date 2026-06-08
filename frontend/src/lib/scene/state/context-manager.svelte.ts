@@ -66,6 +66,17 @@ export class ContextManager {
 	 *  /g/<slug> pages render only group members. */
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
+	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
+	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
+	 *  members when the count is small. */
+	private readonly groupFilterListeners = new Set<(filter: ReadonlySet<string> | null) => void>();
+
+	/** Subscribe to filter changes. The callback fires on each `applyGroupFilter`
+	 *  completion. Returns an unsubscribe. */
+	onGroupFilterChange(cb: (filter: ReadonlySet<string> | null) => void): () => void {
+		this.groupFilterListeners.add(cb);
+		return () => this.groupFilterListeners.delete(cb);
+	}
 
 	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
 	getBody(id: string, zone?: string): PositionedBody | undefined {
@@ -98,6 +109,7 @@ export class ContextManager {
 		// Bail if a newer call superseded us during the fetch.
 		if (slug !== this.earthSatFilterSlug) return;
 		this.earthSatFilter = filter;
+		for (const cb of this.groupFilterListeners) cb(filter);
 		if (this.loading) return;
 		this.bodies.spacecraftByParent.delete(EARTH_ID);
 		this.bodies.dirtySpacecraftGroups.add(EARTH_ID);

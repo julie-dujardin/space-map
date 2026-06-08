@@ -5,6 +5,7 @@ import {
 	Points,
 	type BufferGeometry,
 	type CanvasTexture,
+	type PointsMaterial,
 	type Scene
 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -18,9 +19,33 @@ import { partitionForWorkers, parentIdFromSubkey } from '$lib/math/orbit/partiti
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
-import { SUN_ID } from '$lib/constants';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
 
 const REBASE_THRESHOLD_AU = 0.01;
+
+function clamp01(x: number): number {
+	return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/** Earth-sat cloud emphasis bands. Stage 1 brightens (alpha + color); stage 2
+ *  enlarges. Below stage 2 the cloud is irrelevant because members are
+ *  half/full-promoted (handled in PromotionRegistry). */
+const EMPHASIS_ALPHA_HI = 10000;
+const EMPHASIS_ALPHA_LO = 500;
+const EMPHASIS_SIZE_HI = EMPHASIS_ALPHA_LO;
+const EMPHASIS_SIZE_LO = 50;
+/** Baseline earth-sat cloud knobs (mirror `makePointCloudFromBuffer` defaults).
+ *  Color is 0.5 because the spacecraft cloud uses vertex colors and the
+ *  material colour is the 0.5 dim multiplier. */
+const EMPHASIS_BASE_SIZE = 4;
+const EMPHASIS_BASE_DIM = 0.5;
+const EMPHASIS_MAX_SIZE = 10;
+const EMPHASIS_MAX_DIM = 1.0;
+/** Texture alpha is baked at ~0.3; boost opacity past 1 to wash it out toward
+ *  fully opaque when only a few members remain. NormalBlending clamps src.a
+ *  during compositing, so >1 here just maps to "fully opaque dot". */
+const EMPHASIS_BASE_OPACITY = 1.0;
+const EMPHASIS_MAX_OPACITY = 3.5;
 
 /**
  * Owns every minor-body point cloud (asteroid zones, spacecraft groups, moon
@@ -47,6 +72,13 @@ export class PointCloudSystem {
 	private readonly _parentsScratch = new Map<string, Vec3>();
 	/** Memoized moon → parent grouping; invalidated when majorBodies count changes. */
 	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
+	/** Last earth-sat emphasis values applied. Used to re-apply to newly-built
+	 *  earth sub-clouds (rebuildMinor recreates them after a group filter swap). */
+	private earthSatEmphasis = {
+		size: EMPHASIS_BASE_SIZE,
+		dim: EMPHASIS_BASE_DIM,
+		opacity: EMPHASIS_BASE_OPACITY
+	};
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -63,6 +95,46 @@ export class PointCloudSystem {
 
 	basis(): Vec3 {
 		return this.basisPos;
+	}
+
+	/** Ramp earth-sat cloud size + alpha when only a few members remain. `count`
+	 *  is the active group's member count; `null` resets to baseline. Stage 1
+	 *  (2000 → 500) raises alpha + brightness; stage 2 (500 → 50) raises size. */
+	setEarthSatEmphasis(count: number | null): void {
+		this.earthSatEmphasis = this.computeEarthSatEmphasis(count);
+		for (const [key, pts] of this.spacecraftPoints) {
+			if (parentIdFromSubkey(key) !== EARTH_ID) continue;
+			this.applyEarthSatEmphasis(pts);
+		}
+	}
+
+	private computeEarthSatEmphasis(count: number | null): {
+		size: number;
+		dim: number;
+		opacity: number;
+	} {
+		if (count === null) {
+			return {
+				size: EMPHASIS_BASE_SIZE,
+				dim: EMPHASIS_BASE_DIM,
+				opacity: EMPHASIS_BASE_OPACITY
+			};
+		}
+		const tBright = clamp01((EMPHASIS_ALPHA_HI - count) / (EMPHASIS_ALPHA_HI - EMPHASIS_ALPHA_LO));
+		const tSize = clamp01((EMPHASIS_SIZE_HI - count) / (EMPHASIS_SIZE_HI - EMPHASIS_SIZE_LO));
+		return {
+			size: EMPHASIS_BASE_SIZE + (EMPHASIS_MAX_SIZE - EMPHASIS_BASE_SIZE) * tSize,
+			dim: EMPHASIS_BASE_DIM + (EMPHASIS_MAX_DIM - EMPHASIS_BASE_DIM) * tBright,
+			opacity: EMPHASIS_BASE_OPACITY + (EMPHASIS_MAX_OPACITY - EMPHASIS_BASE_OPACITY) * tBright
+		};
+	}
+
+	private applyEarthSatEmphasis(pts: Points): void {
+		const mat = pts.material as PointsMaterial;
+		const { size, dim, opacity } = this.earthSatEmphasis;
+		mat.size = size;
+		mat.color.setRGB(dim, dim, dim);
+		mat.opacity = opacity;
 	}
 
 	seedBasis(p: Vec3): void {
@@ -82,6 +154,11 @@ export class PointCloudSystem {
 		this.asteroidPoints = pts.asteroidPoints;
 		this.spacecraftPoints = pts.spacecraftPoints;
 		this.moonPoints = pts.moonPoints;
+		// PromotionRegistry stores emphasis before this build runs, so re-apply
+		// to the freshly-created earth sub-clouds.
+		for (const [key, p] of this.spacecraftPoints) {
+			if (parentIdFromSubkey(key) === EARTH_ID) this.applyEarthSatEmphasis(p);
+		}
 		this.assignMapLayer();
 	}
 
@@ -197,6 +274,7 @@ export class PointCloudSystem {
 					pts.userData.groupId = groupId;
 					pts.userData.parentBodyId = gid;
 					pts.userData.parentVec = [0, 0, 0] as Vec3;
+					if (gid === EARTH_ID) this.applyEarthSatEmphasis(pts);
 					this.spacecraftPoints.set(key, pts);
 					this.pendingSceneAdds.push(pts);
 				}

@@ -38,14 +38,20 @@ export function buildMajorBodies(
 	circleTexture: CanvasTexture,
 	rendererElement: HTMLCanvasElement,
 	handleFocus: (body: PositionedBody) => void,
-	onHoverChange?: (id: string, hovered: boolean) => void
+	onHoverChange?: (id: string, hovered: boolean) => void,
+	/** Force halo-only + minor treatment for these ids regardless of object type.
+	 *  Used by group half-promotion so otherwise-meshy SPACECRAFT entries render
+	 *  as a collapsed halo + on-hover label, no trail. */
+	halfPromoteIds?: ReadonlySet<string>
 ): void {
 	for (const body of bodies) {
 		const id = body.data.id;
+		const isHalfPromoted = halfPromoteIds?.has(id) ?? false;
 		// Halo-only types render as label + halo without a sphere mesh; trails are
 		// built separately. Per-frame loops skip entries with mesh === null.
 		const t = body.data.objectType;
 		const isVirtual =
+			isHalfPromoted ||
 			t === ObjectType.BARYCENTER ||
 			t === ObjectType.LAGRANGE_POINT ||
 			t === ObjectType.COMET ||
@@ -96,7 +102,7 @@ export function buildMajorBodies(
 		const variant = getLabelVariant(body);
 		const isLarge = isStar || t === ObjectType.PLANET;
 		// Curated frontend list ∪ data-driven `m` flag for designation-only moons.
-		const isMinor = MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
+		const isMinor = isHalfPromoted || MINOR_PROMOTED_IDS.has(id) || body.data.isMinor === true;
 		const label = createLabel(
 			color,
 			body.data.name ?? '',
