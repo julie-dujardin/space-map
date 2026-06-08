@@ -36,8 +36,8 @@ jobs:
       - name: Build
         env:
           PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}
-          PUBLIC_MEILI_URL: ${{ vars.PUBLIC_MEILI_URL }}
-          PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
+          PUBLIC_MEILI_URL: ""
+          PUBLIC_MEILI_SEARCH_KEY: ""
         run: cd frontend && pnpm build
 
       - name: Deploy to Cloudflare Pages
