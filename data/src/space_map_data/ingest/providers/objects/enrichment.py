@@ -21,6 +21,9 @@ from space_map_data.constants.earth_sats.constellations import (
     slug_from_name,
 )
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_BY_CONSTELLATION,
+)
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_CONSTELLATION,
     OPERATOR_BY_SOURCE,
@@ -217,6 +220,22 @@ def resolve_operator_qids(
             if op.wikidata_qid is not None:
                 if operator_overlaps(op, launch_date, decay_date):
                     qids.add(op.wikidata_qid)
+    return sorted(qids)
+
+
+def resolve_manufacturer_qids(constellation: str | None) -> list[str]:
+    """QIDs of primes that build hardware for this constellation.
+
+    Manufacturer is resolved only via constellation slug — no SATCAT OWNER
+    fallback, since OWNER reflects who operates the satellite, not who built
+    it (and the two often differ; see ``manufacturers.py`` docstring).
+    """
+    if constellation is None:
+        return []
+    qids: set[str] = set()
+    for mfr in MANUFACTURER_BY_CONSTELLATION.get(constellation, ()):
+        if mfr.wikidata_qid is not None:
+            qids.add(mfr.wikidata_qid)
     return sorted(qids)
 
 

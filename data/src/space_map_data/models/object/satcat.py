@@ -48,5 +48,6 @@ class Satcat(Base):
     constellation_slug: Mapped[str | None] = mapped_column(default=None)
     categories: Mapped[list[str]] = mapped_column(JSON, default=list)
     operator_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    manufacturer_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
     country_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
     wikidata_qid: Mapped[str | None] = mapped_column(default=None, index=True)

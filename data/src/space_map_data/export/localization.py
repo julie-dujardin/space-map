@@ -4,12 +4,14 @@ import orjson
 import logging
 
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
+from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_SLUG
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_SLUG
 from space_map_data.constants.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
+    MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
     GROUPS,
     GroupType,
@@ -188,15 +190,24 @@ def _collect_group_name_labels(
     """Return {lang: {group_name_<slug>: label}}.
 
     Wikidata labels win per language. The baseLocale fallback uses the
-    underlying ``OperatorSpec`` / ``LaunchSiteSpec`` name when available so
+    underlying spec name (Operator/LaunchSite/Manufacturer) when available so
     QID-less groups don't render as their internal slug.
+
+    When the same QID appears across multiple groups (a company that is both
+    operator and manufacturer of its own hardware), only the first group's
+    slug gets a label — the others share the same display name and would only
+    duplicate the entry in the locale JSON.
     """
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
+    seen_qids: set[str] = set()
 
     for group in GROUPS:
+        if group.wikidata_qid and group.wikidata_qid in seen_qids:
+            continue
         key = f"group_name_{group.slug}"
         if group.wikidata_qid:
+            seen_qids.add(group.wikidata_qid)
             entity = wikidata_entities.get_referenced(group.wikidata_qid)
             if entity:
                 for lang in LANGUAGES:
@@ -216,6 +227,12 @@ def _group_fallback_name(group) -> str:
         site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
         if site is not None:
             return site.name
+    elif group.type is GroupType.MANUFACTURER:
+        mfr = MANUFACTURER_BY_SLUG.get(
+            group.slug.removeprefix(MANUFACTURER_SLUG_PREFIX)
+        )
+        if mfr is not None:
+            return mfr.name
     return group.slug
 
 

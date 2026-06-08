@@ -16,10 +16,12 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
+from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.satcat import OpsStatus
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
+    MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
     GroupType,
 )
@@ -78,6 +80,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             Object.id,
             Satcat.constellation_slug,
             Satcat.operator_qids,
+            Satcat.manufacturer_qids,
             Satcat.launch_site_code,
             Satcat.launch_date,
             Satcat.ops_status,
@@ -94,7 +97,17 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
 
     build = GroupTierBuild()
     unknown_operator_qids: set[str] = set()
-    for obj_id, c_slug, op_qids, site_code, launch_date, ops_status, decay_date in rows:
+    unknown_manufacturer_qids: set[str] = set()
+    for (
+        obj_id,
+        c_slug,
+        op_qids,
+        mfr_qids,
+        site_code,
+        launch_date,
+        ops_status,
+        decay_date,
+    ) in rows:
         slugs: list[tuple[GroupType, str]] = []
         if c_slug:
             slugs.append((GroupType.CONSTELLATION, c_slug))
@@ -104,6 +117,14 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
                 unknown_operator_qids.add(qid)
                 continue
             slugs.append((GroupType.OPERATOR, f"{OPERATOR_SLUG_PREFIX}{op.slug}"))
+        for qid in mfr_qids or ():
+            mfr = MANUFACTURER_BY_QID.get(qid)
+            if mfr is None:
+                unknown_manufacturer_qids.add(qid)
+                continue
+            slugs.append(
+                (GroupType.MANUFACTURER, f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}")
+            )
         if site_code:
             site = LAUNCH_SITE_BY_CODE.get(site_code)
             if site is not None:
@@ -129,6 +150,12 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             "Dropped %d unknown operator QID(s) during group build: %s",
             len(unknown_operator_qids),
             sorted(unknown_operator_qids),
+        )
+    if unknown_manufacturer_qids:
+        logger.warning(
+            "Dropped %d unknown manufacturer QID(s) during group build: %s",
+            len(unknown_manufacturer_qids),
+            sorted(unknown_manufacturer_qids),
         )
     return build
 
@@ -163,8 +190,8 @@ def write_earth_membership(
     """Write one gzipped inverted index merging all earth-sat group types.
 
     Group slugs are globally unique across types (constellation slugs are
-    bare, operator slugs ``op-*``, launch-site slugs ``site-*``) so a single
-    flat file resolves any /g/<slug> page.
+    bare, operator slugs ``op-*``, launch-site slugs ``site-*``, manufacturer
+    slugs ``mfr-*``) so a single flat file resolves any /g/<slug> page.
     """
     merged: dict[str, list[str]] = {
         slug: ids for mem in membership_by_type.values() for slug, ids in mem.items()

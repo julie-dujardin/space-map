@@ -12,13 +12,19 @@ from pathlib import Path
 
 import orjson
 
+from collections import defaultdict
+
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_BY_CONSTELLATION,
+)
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
+    MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
     GROUPS,
     Group,
@@ -95,6 +101,7 @@ def _build_localized(
     wiki_summaries: dict[str, WikipediaSummary],
     extracted: dict | None,
     stats: GroupSatcatStats | None,
+    related_by_qid: dict[str, list[Group]],
 ) -> dict:
     data: dict = {}
     if group.wikidata_qid:
@@ -112,6 +119,12 @@ def _build_localized(
     operators = _operator_refs_for_group(group, lang, wikidata_entities)
     if operators:
         data["operators"] = operators
+    manufacturers = _manufacturer_refs_for_group(group, lang, wikidata_entities)
+    if manufacturers:
+        data["manufacturers"] = manufacturers
+    related = _related_role_refs(group, related_by_qid, lang, wikidata_entities)
+    if related:
+        data["related_groups"] = related
     if extracted:
         country_qids = extracted.get("country_of_origin")
         if country_qids:
@@ -132,8 +145,8 @@ def _build_localized(
             if instance_refs:
                 data["instance_of"] = instance_refs
     # Top-launch-sites breakdown is meaningless for launch-site groups (always
-    # 100% itself), so skip it there. Constellation and operator groups show
-    # where their fleet flew from.
+    # 100% itself), so skip it there. Constellation / operator / manufacturer
+    # groups show where their fleet flew from.
     if stats and stats.launch_sites and group.type is not GroupType.LAUNCH_SITE:
         sites = _launch_site_refs(stats.launch_sites, lang, wikidata_entities)
         if sites:
@@ -223,6 +236,78 @@ def _operator_refs_for_group(
     return refs
 
 
+def _manufacturer_refs_for_group(
+    group: Group,
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Constellation manufacturers sourced from constants, resolved as EntityRefs."""
+    if group.type is not GroupType.CONSTELLATION:
+        return []
+    manufacturers = MANUFACTURER_BY_CONSTELLATION.get(group.slug, [])
+    refs: list[dict] = []
+    for mfr in manufacturers:
+        mfr_group_slug = f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}"
+        name = mfr.name
+        if mfr.wikidata_qid:
+            ref = resolve_entity_ref(mfr.wikidata_qid, lang, wikidata_entities)
+            if ref is not None and ref.name:
+                name = ref.name
+        refs.append(
+            {
+                "name": name,
+                "primary_type": "group",
+                "primary_id": mfr_group_slug,
+            }
+        )
+    return refs
+
+
+def _related_role_refs(
+    group: Group,
+    related_by_qid: dict[str, list[Group]],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Cross-links to other groups sharing this group's Wikidata QID.
+
+    SpaceX-as-operator (``op-spacex``) and SpaceX-as-manufacturer
+    (``mfr-spacex``) are the same company, so each side carries a link to the
+    other to help users jump between roles. Skips entries whose only sibling
+    is the group itself.
+    """
+    if not group.wikidata_qid:
+        return []
+    siblings = related_by_qid.get(group.wikidata_qid, [])
+    refs: list[dict] = []
+    for sibling in siblings:
+        if sibling.slug == group.slug:
+            continue
+        name: str | None = None
+        if sibling.wikidata_qid:
+            ref = resolve_entity_ref(sibling.wikidata_qid, lang, wikidata_entities)
+            if ref is not None and ref.name:
+                name = ref.name
+        refs.append(
+            {
+                "name": name or sibling.slug,
+                "primary_type": "group",
+                "primary_id": sibling.slug,
+                "role": str(sibling.type),
+            }
+        )
+    return refs
+
+
+def _build_related_by_qid() -> dict[str, list[Group]]:
+    """QID → list of groups sharing it across types (typically op + mfr pair)."""
+    by_qid: dict[str, list[Group]] = defaultdict(list)
+    for g in GROUPS:
+        if g.wikidata_qid:
+            by_qid[g.wikidata_qid].append(g)
+    return {qid: gs for qid, gs in by_qid.items() if len(gs) > 1}
+
+
 def _flatten_membership(
     membership_by_type: dict[GroupType, dict[str, list[str]]],
 ) -> dict[str, int]:
@@ -256,6 +341,7 @@ def write_group_bundles(
     """
     member_counts = _flatten_membership(membership_by_type)
     satcat_stats = _flatten_stats(stats_by_type)
+    related_by_qid = _build_related_by_qid()
     global_by_slug: dict[str, dict] = {}
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
@@ -277,7 +363,13 @@ def write_group_bundles(
         )
         for lang in LANGUAGES:
             lang_data = _build_localized(
-                group, lang, wikidata_entities, wiki_summaries, extracted, stats
+                group,
+                lang,
+                wikidata_entities,
+                wiki_summaries,
+                extracted,
+                stats,
+                related_by_qid,
             )
             if lang_data:
                 localized_by_slug[lang][group.slug] = lang_data

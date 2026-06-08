@@ -1,13 +1,15 @@
 """Group registry: unified view of aggregation entities behind /g/<slug>.
 
 A Group is a user-facing collection of objects (constellation, operator,
-launch site, ...). ``applies_to`` is the object category the group can
-filter — determines which membership file the frontend consults.
+launch site, manufacturer, ...). ``applies_to`` is the object category the
+group can filter — determines which membership file the frontend consults.
 
 Group slugs share a single global namespace. Constellations keep bare slugs
-("starlink") for backwards compatibility; operators and launch sites are
-namespaced (``op-spacex``, ``site-baikonur``) so the constant tables can
-reuse natural identifiers without colliding.
+("starlink") for backwards compatibility; operators, launch sites and
+manufacturers are namespaced (``op-spacex``, ``site-baikonur``,
+``mfr-spacex``) so the constant tables can reuse natural identifiers without
+colliding — and so a single company appearing as both operator and
+manufacturer keeps two honest, role-scoped pages.
 """
 
 from dataclasses import dataclass
@@ -17,6 +19,10 @@ from space_map_data.constants.earth_sats.constellations import CONSTELLATIONS
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_SITES,
+)
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_SLUG_PREFIX,
+    MANUFACTURERS,
 )
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_SLUG_PREFIX,
@@ -28,6 +34,7 @@ class GroupType(StrEnum):
     CONSTELLATION = "constellation"
     OPERATOR = "operator"
     LAUNCH_SITE = "launch_site"
+    MANUFACTURER = "manufacturer"
 
 
 class GroupCategory(StrEnum):
@@ -43,6 +50,7 @@ __all__ = [
     "GroupCategory",
     "GroupType",
     "LAUNCH_SITE_SLUG_PREFIX",
+    "MANUFACTURER_SLUG_PREFIX",
     "OPERATOR_SLUG_PREFIX",
 ]
 
@@ -86,7 +94,16 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for s in LAUNCH_SITES
     )
-    return constellations + operators + launch_sites
+    manufacturers = tuple(
+        Group(
+            slug=f"{MANUFACTURER_SLUG_PREFIX}{m.slug}",
+            type=GroupType.MANUFACTURER,
+            applies_to=GroupCategory.EARTH_SAT,
+            wikidata_qid=m.wikidata_qid,
+        )
+        for m in MANUFACTURERS
+    )
+    return constellations + operators + launch_sites + manufacturers
 
 
 GROUPS: tuple[Group, ...] = _build_groups()

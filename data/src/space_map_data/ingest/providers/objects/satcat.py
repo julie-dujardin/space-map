@@ -17,6 +17,7 @@ from space_map_data.ingest.providers.objects.enrichment import (
     resolve_categories,
     resolve_constellation,
     resolve_country_codes,
+    resolve_manufacturer_qids,
     resolve_operator_qids,
 )
 from space_map_data.models.object.satcat import Satcat
@@ -56,6 +57,7 @@ class SatcatIngestor:
         operator_qids = resolve_operator_qids(
             owner, constellation, fields["launch_date"], fields["decay_date"]
         )
+        manufacturer_qids = resolve_manufacturer_qids(constellation)
         country_codes = resolve_country_codes(owner)
         if not operator_qids:
             self.missing_operator += 1
@@ -67,6 +69,7 @@ class SatcatIngestor:
             constellation_slug=constellation,
             categories=categories,
             operator_qids=operator_qids,
+            manufacturer_qids=manufacturer_qids,
             country_codes=country_codes,
             **fields,
         )

@@ -52,6 +52,9 @@ logger = logging.getLogger(__name__)
 
 AFTER_REQUEST_DELAY_SECONDS = 1
 METADATA_BATCH_SIZE = 50
+# Without this, a flag or logo on 100k+ pages can churn a single batch through
+# thousands of requests; scoring only uses len(entries), so saturation is fine.
+GLOBALUSAGE_MAX_PAGES_PER_BATCH = 5
 
 # TODO: locally-hosted (non-Commons) images are currently recorded in
 # ``non_commons_skipped.json`` and skipped. To actually include them we'd need to hit each
@@ -506,15 +509,9 @@ class CommonsDownloader(Downloader):
     def _fetch_globalusage(self, filenames: list[str]) -> None:
         """Fetch globalusage (cross-wiki page references) per file.
 
-        ``gulimit`` is a TOTAL cap across all titles in a query, not
-        per-title — so popular files (e.g. Earth.jpg) saturate the budget
-        and the rest of the batch comes back empty. We work around this
-        with ``gucontinue`` pagination: keep calling until every title is
-        exhausted, accumulating entries per filename across pages.
-
-        Persists the raw list under ``metadata["globalusage"]``. Downstream
-        can derive total count, distinct-wiki count, namespace filtering,
-        etc. Files already on disk with the field are skipped — resumable.
+        Persists entries under ``metadata["globalusage"]``. Resumable — files
+        with the field already set are skipped. Counts may saturate for very
+        popular files; scoring only uses ``len(entries)`` so that's fine.
         """
         targets: list[str] = []
         for f in filenames:
@@ -539,7 +536,11 @@ class CommonsDownloader(Downloader):
                 time.sleep(AFTER_REQUEST_DELAY_SECONDS)
 
     def _fetch_globalusage_batch(self, filenames: list[str]) -> None:
-        """Paginate ``globalusage`` for one batch and merge into metadata.json."""
+        """Paginate ``globalusage`` for one batch and merge into metadata.json.
+
+        Capped at ``GLOBALUSAGE_MAX_PAGES_PER_BATCH``; titles the cursor
+        never reached are retried one at a time.
+        """
         titles = "|".join(f"File:{f}" for f in filenames)
         params: dict[str, object] = {
             "action": "query",
@@ -552,6 +553,8 @@ class CommonsDownloader(Downloader):
         # Accumulate across continuation pages: filename -> list of entries.
         accumulated: dict[str, list[dict]] = {f: [] for f in filenames}
         normalized_map: dict[str, str] = {}
+        pages_fetched = 0
+        capped = False
 
         while True:
             try:
@@ -566,6 +569,7 @@ class CommonsDownloader(Downloader):
                 return
 
             data = response.json()
+            pages_fetched += 1
             for n in data.get("query", {}).get("normalized", []) or []:
                 normalized_map[n["to"]] = n["from"]
             for page in data.get("query", {}).get("pages", []) or []:
@@ -580,6 +584,9 @@ class CommonsDownloader(Downloader):
             cont = data.get("continue")
             if not cont:
                 break
+            if pages_fetched >= GLOBALUSAGE_MAX_PAGES_PER_BATCH:
+                capped = True
+                break
             # Carry continuation tokens forward; replace any prior values.
             params = {**params, **cont}
             time.sleep(AFTER_REQUEST_DELAY_SECONDS)
@@ -590,6 +597,22 @@ class CommonsDownloader(Downloader):
                 continue
             meta["globalusage"] = entries
             write_download_metadata(filename, meta)
+
+        if not capped:
+            return
+        # Cursor parked inside a popular file; titles after it never got served.
+        blocked = [f for f in filenames if not accumulated[f]]
+        if not blocked:
+            return
+        logger.info(
+            "Commons globalusage: batch capped after %d pages; "
+            "retrying %d blocked files individually",
+            pages_fetched,
+            len(blocked),
+        )
+        for f in blocked:
+            time.sleep(AFTER_REQUEST_DELAY_SECONDS)
+            self._fetch_globalusage_batch([f])
 
     def _fetch_sdc(self, filenames: list[str]) -> None:
         """Fetch Structured Data on Commons (SDC) for each downloaded file.

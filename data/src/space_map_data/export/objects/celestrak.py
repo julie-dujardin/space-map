@@ -5,6 +5,10 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
 )
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_BY_QID,
+    MANUFACTURER_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_QID,
     OPERATOR_SLUG_PREFIX,
@@ -82,6 +86,15 @@ def build_satcat_localized(
         if refs:
             data["operators"] = refs
 
+    if sat.manufacturer_qids:
+        mfr_refs = resolve_manufacturer_refs(
+            sat.manufacturer_qids, lang, wikidata_entities
+        )
+        if mfr_refs:
+            # Same key as ``EntityRefClaim("manufacturer", "P176")`` so SATCAT
+            # refs override the Wikidata-resolved ones (which lack /g/mfr-* links).
+            data["manufacturer"] = mfr_refs
+
     return data
 
 
@@ -156,4 +169,27 @@ def resolve_operator_refs(
         if spec.active_until is not None:
             ref_dict["active_until"] = _serialize_active_date(spec.active_until)
         refs.append(ref_dict)
+    return refs
+
+
+def resolve_manufacturer_refs(
+    qids: list[str],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Resolve manufacturer QIDs to entity refs, linked to /g/mfr-<slug>."""
+    refs = []
+    for qid in qids:
+        spec = MANUFACTURER_BY_QID.get(qid)
+        if spec is None:
+            continue
+        ref = resolve_entity_ref(qid, lang, wikidata_entities)
+        name = ref.name if ref is not None and ref.name else spec.name
+        refs.append(
+            {
+                "name": name,
+                "primary_type": "group",
+                "primary_id": f"{MANUFACTURER_SLUG_PREFIX}{spec.slug}",
+            }
+        )
     return refs
