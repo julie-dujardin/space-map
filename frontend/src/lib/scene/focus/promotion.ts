@@ -197,14 +197,6 @@ export class PromotionRegistry {
 		return this.defaults.has(id);
 	}
 
-	/** Find the asteroid/comet zone holding `id`, or undefined for non-belt bodies. */
-	private findAsteroidZone(id: string): string | undefined {
-		for (const [zone, byId] of this.deps.ctx.bodies.asteroidBodiesByZone) {
-			if (byId.has(id)) return zone;
-		}
-		return undefined;
-	}
-
 	/** Build mesh, label, halo, and trail for a body that only existed as a point-cloud dot. */
 	ensureBodyObjects(body: PositionedBody): void {
 		if (!this.buildBodyInstance(body)) return;
@@ -255,7 +247,7 @@ export class PromotionRegistry {
 		if (body.data.objectType === ObjectType.SPACECRAFT) {
 			ctx.bodies.dirtySpacecraftGroups.add(body.data.parentId);
 		} else if (isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) {
-			const zone = this.findAsteroidZone(body.data.id);
+			const zone = this.deps.ctx.bodies.findAsteroidZone(body.data.id);
 			if (zone) ctx.bodies.dirtyAsteroidZones.add(zone);
 		}
 		const id = body.data.id;
@@ -432,7 +424,7 @@ export class PromotionRegistry {
 			if (objectType === ObjectType.SPACECRAFT) {
 				dirtySpacecraftParents.add(bo.body.data.parentId);
 			} else if (isAsteroid(objectType) || objectType === ObjectType.COMET) {
-				const zone = this.findAsteroidZone(id);
+				const zone = this.deps.ctx.bodies.findAsteroidZone(id);
 				if (zone) dirtyAsteroidZones.add(zone);
 			}
 			bodyObjects.delete(id);

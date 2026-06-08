@@ -122,6 +122,17 @@ export class BodyIndex {
 		return this.childrenByParent.get(parentId);
 	}
 
+	/** Zone holding an asteroid/comet body (e.g. `small_bodies/MBA`,
+	 *  `small_body_moons`, `earth`), or undefined for non-belt bodies. Linear
+	 *  scan across zone buckets — fine for the promoted-body cardinality the
+	 *  visibility loop and promotion bookkeeping run on. */
+	findAsteroidZone(id: string): string | undefined {
+		for (const [zone, byId] of this.asteroidBodiesByZone) {
+			if (byId.has(id)) return zone;
+		}
+		return undefined;
+	}
+
 	/** Max moon-orbit semi-major axis (AU) under `parentId`, or undefined. */
 	maxMoonA(parentId: string): number | undefined {
 		return this.moonMaxAByParent.get(parentId);

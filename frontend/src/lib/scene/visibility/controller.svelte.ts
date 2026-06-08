@@ -23,6 +23,8 @@ import {
 const GEO_RADIUS_KM = 42_164;
 const PROBE_NEAR_EARTH_HIDE_SCENE_SQR = kmToScene(GEO_RADIUS_KM * 1.2) ** 2;
 
+const SMALL_BODY_ZONE_PREFIX = 'small_bodies/';
+
 /**
  * Owns focus state and turns camera distance + focus into per-body visibility
  * decisions. Reads body topology from {@link BodyIndex}. Plain mirrors of the
@@ -174,6 +176,10 @@ export class VisibilityController {
 		const isAsteroidMoon = parent !== undefined && isAsteroid(parent.data.objectType);
 		if (!isAsteroidMoon && !this.isInFocusedSystem(moon.data.parentId)) {
 			vis = VISIBILITY.HIDE;
+		} else if (isAsteroidMoon && !this.matchesSmallBodyClass(moon.data.parentId)) {
+			// Asteroid moon inherits its parent's class — hide when the parent's
+			// zone is filtered out.
+			vis = VISIBILITY.HIDE;
 		} else {
 			const ratio = this.cameraDistThreeJS / AU_SCALE / moon.data.a; // Three.js units → AU
 			const isFocused = moon.data.id === this.focusedBodyIdPlain;
@@ -216,6 +222,16 @@ export class VisibilityController {
 		// go through the chunk-time filter.
 		const earthFilter = this.getEarthSatGroupFilter();
 		if (earthFilter && body.data.parentId === EARTH_ID && !earthFilter.has(body.data.id)) {
+			return VISIBILITY.HIDE;
+		}
+
+		// Small-body class focus: promoted asteroids/comets (curated defaults,
+		// URL-loaded standalones, clicks) bypass the point-cloud render-time mask
+		// in isAsteroidGroupVisible, so apply the same zone check here.
+		if (
+			(isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) &&
+			!this.matchesSmallBodyClass(body.data.id)
+		) {
 			return VISIBILITY.HIDE;
 		}
 
@@ -414,6 +430,19 @@ export class VisibilityController {
 
 	private isInFocusedSystem(parentId: string): boolean {
 		return this.bodies.isInSystem(parentId, this.focusedSystemIdPlain);
+	}
+
+	/** True when no class filter is active, or when the body's asteroid zone
+	 *  matches the filter. Bodies outside `small_bodies/*` (asteroid moons in
+	 *  `small_body_moons`, URL-loaded standalones in `bodiesById` only, etc.)
+	 *  fall through — callers handle them via parent lookup or treat them as
+	 *  unscoped. */
+	private matchesSmallBodyClass(id: string): boolean {
+		const classFilter = this.getSmallBodyClassFilter();
+		if (classFilter === null) return true;
+		const zone = this.bodies.findAsteroidZone(id);
+		if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return true;
+		return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === classFilter;
 	}
 
 	/**
