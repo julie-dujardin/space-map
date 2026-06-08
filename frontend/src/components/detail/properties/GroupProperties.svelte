@@ -45,6 +45,28 @@
 			countries.length > 0 ||
 			related.length > 0
 	);
+
+	let groupType = $derived(global?.type);
+	let sectionTitle = $derived(
+		groupType === 'constellation' ? m.group_section_programme() : m.group_section_about()
+	);
+	let inceptionLabel = $derived(
+		groupType === 'launch_site'
+			? m.group_label_opened()
+			: groupType === 'constellation'
+				? m.group_label_started()
+				: m.group_label_founded()
+	);
+	let dissolvedLabel = $derived(
+		groupType === 'launch_site'
+			? m.group_label_closed()
+			: groupType === 'constellation'
+				? m.group_label_retired()
+				: m.group_label_dissolved()
+	);
+	let countryLabel = $derived(
+		groupType === 'launch_site' ? m.group_label_country() : m.group_label_country_of_origin()
+	);
 </script>
 
 {#if histogram}
@@ -58,25 +80,25 @@
 {/if}
 
 {#if hasMission}
-	<Section title={m.mission()}>
+	<Section title={sectionTitle}>
 		{#if inception}
-			<Row label={m.property_name_inception()} value={formatIsoDate(inception)} />
+			<Row label={inceptionLabel} value={formatIsoDate(inception)} />
 		{/if}
 		{#if dissolved}
-			<Row label={m.property_name_dissolved()} value={formatIsoDate(dissolved)} />
+			<Row label={dissolvedLabel} value={formatIsoDate(dissolved)} />
 		{/if}
 		{#if operators.length > 0}
-			<Row label={m.property_name_operators()}>
+			<Row label={m.group_label_operators()}>
 				<EntityLinks entities={operators} />
 			</Row>
 		{/if}
 		{#if manufacturers.length > 0}
-			<Row label={m.property_name_manufacturer()}>
+			<Row label={m.group_label_manufacturers()}>
 				<EntityLinks entities={manufacturers} />
 			</Row>
 		{/if}
 		{#if countries.length > 0}
-			<Row label={m.property_name_country_of_origin()}>
+			<Row label={countryLabel}>
 				<EntityLinks entities={countries} />
 			</Row>
 		{/if}
