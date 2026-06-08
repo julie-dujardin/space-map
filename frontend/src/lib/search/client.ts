@@ -4,6 +4,18 @@
 
 import { Meilisearch } from 'meilisearch';
 import { PUBLIC_MEILI_URL, PUBLIC_MEILI_SEARCH_KEY } from '$env/static/public';
+import { DATA_BASE } from '$lib/fetch/data-base';
+
+/** Pre-resolved thumbnail descriptor written by the search indexer.
+ *  Already narrowed to a single emitted variant — the frontend doesn't pick
+ *  a size here, the dropdown always wants the smallest available. */
+export interface SearchThumbnail {
+	file: string;
+	/** Variant bucket: `s` (512px) when emitted, `m` / `xl` for sources that
+	 *  skipped smaller buckets (e.g. SVG/WebM passthrough → `xl` only). */
+	label: 's' | 'm' | 'xl';
+	ext: string;
+}
 
 export interface FeatureHit {
 	kind: 'feature';
@@ -44,6 +56,7 @@ export interface ObjectHit {
 	description_zh?: string;
 	description_ar?: string;
 	description_ru?: string;
+	thumbnail?: SearchThumbnail;
 }
 
 /** Constellation / operator / asteroid-class collection. The Meili primary
@@ -69,6 +82,7 @@ export interface GroupHit {
 	description_zh?: string;
 	description_ar?: string;
 	description_ru?: string;
+	thumbnail?: SearchThumbnail;
 }
 
 export type SearchHit = FeatureHit | ObjectHit | GroupHit;
@@ -145,4 +159,13 @@ export function localizedDescription(hit: SearchHit, locale: string): string | u
 	const en = hit.description_en;
 	if (typeof en === 'string' && en) return en;
 	return undefined;
+}
+
+/** URL for the dropdown thumbnail, or undefined when the hit has no image.
+ *  Mirrors the bundle layout used by `pickImageUrl` in `lib/fetch/objects/images.ts`. */
+export function thumbnailUrl(hit: SearchHit): string | undefined {
+	if (hit.kind === 'feature') return undefined;
+	const t = hit.thumbnail;
+	if (!t) return undefined;
+	return `${DATA_BASE}/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`;
 }

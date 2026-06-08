@@ -8,6 +8,7 @@
 		search,
 		localizedName,
 		localizedDescription,
+		thumbnailUrl,
 		isSearchEnabled,
 		type SearchHit
 	} from '$lib/search/client';
@@ -207,17 +208,30 @@
 							<li>
 								<button
 									type="button"
-									class="w-full text-start px-4 py-2 flex flex-col gap-0.5 transition-colors {i ===
+									class="w-full text-start px-4 py-2 flex items-center gap-3 transition-colors {i ===
 									highlighted
 										? 'bg-accent'
 										: 'hover:bg-accent'}"
 									onmouseenter={() => (highlighted = i)}
 									onclick={() => pick(hit)}
 								>
-									<span class="text-sm text-foreground truncate"
-										>{localizedName(hit, getLocale())}</span
-									>
-									<span class="text-xs text-muted-foreground truncate">{secondaryText(hit)}</span>
+									{#if thumbnailUrl(hit)}
+										<img
+											src={thumbnailUrl(hit)}
+											alt=""
+											loading="lazy"
+											decoding="async"
+											class="size-9 rounded-md object-cover bg-muted shrink-0"
+										/>
+									{:else}
+										<div class="size-9 rounded-md bg-muted shrink-0"></div>
+									{/if}
+									<div class="flex flex-col gap-0.5 min-w-0 flex-1">
+										<span class="text-sm text-foreground truncate"
+											>{localizedName(hit, getLocale())}</span
+										>
+										<span class="text-xs text-muted-foreground truncate">{secondaryText(hit)}</span>
+									</div>
 								</button>
 							</li>
 						{/each}
