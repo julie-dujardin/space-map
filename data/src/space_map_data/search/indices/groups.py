@@ -18,7 +18,7 @@ from typing import Any
 
 from space_map_data.constants.providers import LANGUAGES
 
-from .features import Index
+from .features import Index, pick_thumbnail
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,9 @@ def _build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             "applies_to": g["applies_to"],
             "member_count": g.get("member_count", 0),
         }
+        thumb = pick_thumbnail(g.get("images"))
+        if thumb:
+            doc["thumbnail"] = thumb
         for lang in LANGUAGES:
             entry = localized[lang].get(slug)
             if not entry:

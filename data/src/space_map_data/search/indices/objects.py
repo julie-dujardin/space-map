@@ -23,7 +23,7 @@ from typing import Any
 
 from space_map_data.constants.providers import LANGUAGES
 
-from .features import Index
+from .features import Index, pick_thumbnail
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,10 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             ct = g.get("celestrak") or {}
             if ct.get("ops_status"):
                 doc["ops_status"] = ct["ops_status"]
+
+            thumb = pick_thumbnail(g.get("images"))
+            if thumb:
+                doc["thumbnail"] = thumb
 
             for lang in LANGUAGES:
                 entry = localized[lang].get(obj_id)
