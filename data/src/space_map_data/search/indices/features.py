@@ -5,11 +5,14 @@ Source files (per body):
     v1/nomenclature/positions/{body_id}.bin.gz   — SMNF binary
     v1/nomenclature/labels/{lang}/{body_id}.txt.gz — one label per record,
                                                      ordered to match positions
+    v1/nomenclature/details/{lang}/{bucket}.json.gz — per-language details
+                                                      (description, aliases, …)
 
 One document per feature, all language variants on the same document.
 """
 
 import gzip
+import json
 import logging
 import struct
 from collections.abc import Iterator
@@ -102,6 +105,31 @@ def _read_labels(path: Path, expected: int) -> list[str]:
     return lines
 
 
+def _load_localized_details(
+    export_dir: Path,
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Return ``{lang: {bucket_key: detail_entry}}`` from the details tier.
+
+    Localized bundles are small (~15 buckets per lang, hundreds of KiB each),
+    so we slurp them into RAM and join against the streamed features below.
+    Detail entries are missing for features without any enrichment — that's
+    fine, they just won't carry a description.
+    """
+    details_root = export_dir / "v1" / "nomenclature" / "details"
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for lang in LANGUAGES:
+        lang_dir = details_root / lang
+        if not lang_dir.exists():
+            out[lang] = {}
+            continue
+        merged: dict[str, dict[str, Any]] = {}
+        for bundle in sorted(lang_dir.glob("*.json.gz")):
+            merged.update(json.loads(gzip.decompress(bundle.read_bytes())))
+        out[lang] = merged
+        logger.info("Loaded %d feature detail entries for %s", len(merged), lang)
+    return out
+
+
 def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     positions_dir = export_dir / "v1" / "nomenclature" / "positions"
     labels_root = export_dir / "v1" / "nomenclature" / "labels"
@@ -111,6 +139,7 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         )
         return
 
+    details_by_lang = _load_localized_details(export_dir)
     body_files = sorted(positions_dir.glob("*.bin.gz"))
     logger.info("Indexing features from %d bodies", len(body_files))
 
@@ -153,10 +182,16 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             }
             if dia_m:
                 doc["diameter_km"] = round(dia_m / 1000.0, 3)
+            # Detail-tier bundles use ``{body}:{fid}`` as the key — mirrors
+            # ``feature_bucket_key`` in the nomenclature writer.
+            detail_key = f"{body_id}:{fid}"
             for lang in LANGUAGES:
                 label = labels_by_lang[lang][i]
                 if label:
                     doc[f"name_{lang}"] = label
+                desc = (details_by_lang[lang].get(detail_key) or {}).get("description")
+                if desc:
+                    doc[f"description_{lang}"] = desc
             yield doc
             total += 1
 
@@ -165,12 +200,19 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
 def _features_settings() -> dict[str, Any]:
     name_fields = ["name"] + [f"name_{lang}" for lang in LANGUAGES]
+    description_fields = [f"description_{lang}" for lang in LANGUAGES]
     return {
-        "searchableAttributes": name_fields,
+        # Names outrank descriptions via the "attribute" ranking rule, so
+        # a query like "olympus" still surfaces Olympus Mons even though
+        # the word also appears in many other features' descriptions.
+        "searchableAttributes": name_fields + description_fields,
         "filterableAttributes": ["body_id", "feature_type"],
         "sortableAttributes": ["diameter_km"],
         "localizedAttributes": [
-            {"locales": [lang], "attributePatterns": [f"name_{lang}"]}
+            {
+                "locales": [lang],
+                "attributePatterns": [f"name_{lang}", f"description_{lang}"],
+            }
             for lang in LANGUAGES
         ],
         # Prefer larger features when relevancy is otherwise tied — Olympus

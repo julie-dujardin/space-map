@@ -33,6 +33,12 @@ export interface FeatureHit {
 	name_zh?: string;
 	name_ar?: string;
 	name_ru?: string;
+	description_en?: string;
+	description_fr?: string;
+	description_ja?: string;
+	description_zh?: string;
+	description_ar?: string;
+	description_ru?: string;
 }
 
 export interface ObjectHit {
@@ -148,11 +154,9 @@ export function localizedName(hit: SearchHit, locale: string): string {
 	return hit.name;
 }
 
-/** Localized Wikidata/Wikipedia description for a hit, or undefined.
- *  Only objects and groups carry descriptions; features do not. Falls back
- *  to English when the active locale has no description. */
+/** Localized Wikidata description for a hit, or undefined. Falls back to
+ *  English when the active locale has no description. */
 export function localizedDescription(hit: SearchHit, locale: string): string | undefined {
-	if (hit.kind === 'feature') return undefined;
 	const field = `description_${locale}` as keyof typeof hit;
 	const v = hit[field];
 	if (typeof v === 'string' && v) return v;
