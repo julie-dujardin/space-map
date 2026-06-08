@@ -21,6 +21,7 @@
 	"group_type_operator": "运营方",
 	"group_type_launch_site": "发射场",
 	"group_type_manufacturer": "制造商",
+	"group_type_country": "国家",
 	"satellite_category_disaster_sar": "灾害 / SAR",
 	"satellite_category_weather": "气象",
 	"satellite_category_observation": "对地观测",

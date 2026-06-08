@@ -21,6 +21,7 @@
 	"group_type_operator": "المُشغّل",
 	"group_type_launch_site": "موقع الإطلاق",
 	"group_type_manufacturer": "الشركة المُصنِّعة",
+	"group_type_country": "الدولة",
 	"satellite_category_disaster_sar": "الكوارث / SAR",
 	"satellite_category_weather": "الأرصاد",
 	"satellite_category_observation": "الرصد",

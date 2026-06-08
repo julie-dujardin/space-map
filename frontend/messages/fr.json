@@ -39,6 +39,7 @@
 	"group_type_operator": "Opérateur",
 	"group_type_launch_site": "Site de lancement",
 	"group_type_manufacturer": "Constructeur",
+	"group_type_country": "Pays",
 	"satellite_category_disaster_sar": "Catastrophes / SAR",
 	"satellite_category_weather": "Météorologie",
 	"satellite_category_observation": "Observation",

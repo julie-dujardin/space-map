@@ -190,13 +190,17 @@ def _collect_group_name_labels(
     """Return {lang: {group_name_<slug>: label}}, deduped by QID.
 
     A company that is both operator and manufacturer ships under one slug
-    only — its sibling shares the same display name.
+    only — its sibling shares the same display name. Country groups are
+    skipped: the frontend resolves their names from the ISO code in the
+    slug via ``Intl.DisplayNames``.
     """
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
     seen_qids: set[str] = set()
 
     for group in GROUPS:
+        if group.type is GroupType.COUNTRY:
+            continue
         if group.wikidata_qid and group.wikidata_qid in seen_qids:
             continue
         key = f"group_name_{group.slug}"

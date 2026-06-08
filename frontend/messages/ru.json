@@ -43,6 +43,7 @@
 	"group_type_operator": "Оператор",
 	"group_type_launch_site": "Космодром",
 	"group_type_manufacturer": "Производитель",
+	"group_type_country": "Страна",
 	"satellite_category_disaster_sar": "Катастрофы / РСА",
 	"satellite_category_weather": "Метеорологические",
 	"satellite_category_observation": "Наблюдение Земли",

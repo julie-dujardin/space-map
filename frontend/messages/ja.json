@@ -21,6 +21,7 @@
 	"group_type_operator": "運用者",
 	"group_type_launch_site": "射場",
 	"group_type_manufacturer": "製造元",
+	"group_type_country": "国",
 	"satellite_category_disaster_sar": "災害 / SAR",
 	"satellite_category_weather": "気象",
 	"satellite_category_observation": "地球観測",
