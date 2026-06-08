@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type {
 		GlobalObjectData,
@@ -8,9 +9,12 @@
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatCurrency, formatNumber } from '$lib/format/quantities';
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
+
+	const appState = getContext<AppState | undefined>('appState');
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -144,7 +148,19 @@
 			<Row label={countries.length === 1 ? m.country() : m.countries()}>
 				<span class="flex flex-wrap justify-end gap-1.5">
 					{#each countries as cc (cc)}
-						<span title={cc}>{countryFlag(cc)} {formatCountry(cc)}</span>
+						{@const name = formatCountry(cc)}
+						<span title={cc}
+							>{countryFlag(cc)}
+							{#if appState}
+								<button
+									type="button"
+									onclick={() => appState.setGroup(`country-${cc.toLowerCase()}`, name)}
+									class="pointer-events-auto underline hover:text-foreground">{name}</button
+								>
+							{:else}
+								{name}
+							{/if}</span
+						>
 					{/each}
 				</span>
 			</Row>
