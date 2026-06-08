@@ -5,6 +5,10 @@ export function groupTypeLabel(type: GroupType): string {
 	switch (type) {
 		case 'constellation':
 			return m.group_type_constellation();
+		case 'operator':
+			return m.group_type_operator();
+		case 'launch_site':
+			return m.group_type_launch_site();
 	}
 }
 
