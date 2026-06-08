@@ -32,6 +32,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.images import collect_group_images
 from space_map_data.export.objects.wikidata_claims import (
+    attach_country_group_link,
     extract_claims,
     resolve_entity_ref,
 )
@@ -127,15 +128,19 @@ def _build_localized(
     if related:
         data["related_groups"] = related
     if extracted:
-        country_qids = extracted.get("country_of_origin")
-        if country_qids:
-            country_refs = [
-                r.to_dict()
-                for qid in country_qids
-                if (r := resolve_entity_ref(qid, lang, wikidata_entities))
-            ]
-            if country_refs:
-                data["country_of_origin"] = country_refs
+        # Country pages don't show their own country of origin (it's themselves).
+        if group.type is not GroupType.COUNTRY:
+            country_qids = extracted.get("country_of_origin")
+            if country_qids:
+                country_refs: list[dict] = []
+                for qid in country_qids:
+                    ref = resolve_entity_ref(qid, lang, wikidata_entities)
+                    if ref is None:
+                        continue
+                    attach_country_group_link(ref, qid)
+                    country_refs.append(ref.to_dict())
+                if country_refs:
+                    data["country_of_origin"] = country_refs
         instance_qids = extracted.get("instance_of")
         if instance_qids:
             instance_refs = [
@@ -221,6 +226,11 @@ def _extract_group_claims(
     group: Group, wikidata_entities: WikidataEntityCache
 ) -> dict | None:
     """Run the shared object-claim extractor on the group's Wikidata entity."""
+    # Country entities carry many object-style claims (population, area, …)
+    # that the shared extractor can't disambiguate; none are surfaced on the
+    # country-page UI anyway.
+    if group.type is GroupType.COUNTRY:
+        return None
     if not group.wikidata_qid:
         return None
     wd = wikidata_entities.get_referenced(group.wikidata_qid)

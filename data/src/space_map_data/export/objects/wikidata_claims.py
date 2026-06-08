@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal, NamedTuple
 from urllib.parse import quote, urlparse
 
+from space_map_data.constants.countries import COUNTRY_BY_QID, COUNTRY_SLUG_PREFIX
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -360,6 +361,15 @@ def resolve_entity_ref(
         ref.wikipedia = f"https://{lang}.wikipedia.org/wiki/{quote(title)}"
 
     return ref
+
+
+def attach_country_group_link(ref: EntityRef, qid: str) -> None:
+    """If ``qid`` is a known country, point the ref at its /g/country-<slug> page."""
+    country = COUNTRY_BY_QID.get(qid)
+    if country is None:
+        return
+    ref.primary_type = "group"
+    ref.primary_id = f"{COUNTRY_SLUG_PREFIX}{country.slug}"
 
 
 def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:

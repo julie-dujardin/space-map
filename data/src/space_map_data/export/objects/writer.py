@@ -42,6 +42,7 @@ from space_map_data.export.systems import clouds_block, texture_attribution
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
+    attach_country_group_link,
     extract_claims,
     resolve_entity_ref,
     resolve_unit,
@@ -511,16 +512,20 @@ def _build_localized(
             if claim.key not in extracted:
                 continue
             if claim.multiple:
-                refs = [
-                    r.to_dict()
-                    for qid in extracted[claim.key]
-                    if (r := resolve_entity_ref(qid, lang, wikidata_entities))
-                ]
+                refs: list[dict] = []
+                for qid in extracted[claim.key]:
+                    ref = resolve_entity_ref(qid, lang, wikidata_entities)
+                    if ref is None:
+                        continue
+                    attach_country_group_link(ref, qid)
+                    refs.append(ref.to_dict())
                 if refs:
                     data[claim.key] = refs
             else:
-                ref = resolve_entity_ref(extracted[claim.key], lang, wikidata_entities)
+                qid = extracted[claim.key]
+                ref = resolve_entity_ref(qid, lang, wikidata_entities)
                 if ref:
+                    attach_country_group_link(ref, qid)
                     data[claim.key] = ref.to_dict()
 
     if obj.norad_cat_id is not None and obj.satcat is not None:

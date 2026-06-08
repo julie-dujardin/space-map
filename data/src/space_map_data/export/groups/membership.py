@@ -15,11 +15,13 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.countries import COUNTRY_BY_CODE
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.satcat import OpsStatus
 from space_map_data.export.groups.registry import (
+    COUNTRY_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
@@ -83,6 +85,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             Satcat.operator_qids,
             Satcat.manufacturer_qids,
             Satcat.launch_site_code,
+            Satcat.country_codes,
             Satcat.launch_date,
             Satcat.ops_status,
             Satcat.decay_date,
@@ -99,12 +102,14 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
     build = GroupTierBuild()
     unknown_operator_qids: set[str] = set()
     unknown_manufacturer_qids: set[str] = set()
+    unknown_country_codes: set[str] = set()
     for (
         obj_id,
         c_slug,
         op_qids,
         mfr_qids,
         site_code,
+        country_codes,
         launch_date,
         ops_status,
         decay_date,
@@ -132,6 +137,12 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
                 slugs.append(
                     (GroupType.LAUNCH_SITE, f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}")
                 )
+        for code in country_codes or ():
+            country = COUNTRY_BY_CODE.get(code)
+            if country is None:
+                unknown_country_codes.add(code)
+                continue
+            slugs.append((GroupType.COUNTRY, f"{COUNTRY_SLUG_PREFIX}{country.slug}"))
 
         for group_type, group_slug in slugs:
             stats = build.add(group_type, group_slug, obj_id)
@@ -157,6 +168,12 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             "Dropped %d unknown manufacturer QID(s) during group build: %s",
             len(unknown_manufacturer_qids),
             sorted(unknown_manufacturer_qids),
+        )
+    if unknown_country_codes:
+        logger.warning(
+            "Dropped %d unknown country code(s) during group build: %s",
+            len(unknown_country_codes),
+            sorted(unknown_country_codes),
         )
     return build
 

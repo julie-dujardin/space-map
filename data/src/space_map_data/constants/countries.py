@@ -133,8 +133,11 @@ COUNTRIES: tuple[CountrySpec, ...] = (
 )
 
 
+COUNTRY_SLUG_PREFIX = "country-"
+
 COUNTRY_BY_CODE: dict[str, CountrySpec] = {c.code: c for c in COUNTRIES}
 COUNTRY_BY_SLUG: dict[str, CountrySpec] = {c.slug: c for c in COUNTRIES}
+COUNTRY_BY_QID: dict[str, CountrySpec] = {c.wikidata_qid: c for c in COUNTRIES}
 
 assert len(COUNTRY_BY_CODE) == len(COUNTRIES), "Duplicate country code"
 assert len(COUNTRY_BY_SLUG) == len(COUNTRIES), "Duplicate country slug"

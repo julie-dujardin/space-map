@@ -1,13 +1,14 @@
 """Group registry: aggregation entities behind /g/<slug>.
 
-Constellations keep bare slugs; operators, launch sites, and manufacturers
-are prefixed (``op-``/``site-``/``mfr-``) so a single company can appear in
-multiple roles without slug collisions.
+Constellations keep bare slugs; operators, launch sites, manufacturers, and
+countries are prefixed (``op-``/``site-``/``mfr-``/``country-``) so the
+same entity can appear in multiple roles without slug collisions.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 
+from space_map_data.constants.countries import COUNTRIES, COUNTRY_SLUG_PREFIX
 from space_map_data.constants.earth_sats.constellations import CONSTELLATIONS
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
@@ -28,6 +29,7 @@ class GroupType(StrEnum):
     OPERATOR = "operator"
     LAUNCH_SITE = "launch_site"
     MANUFACTURER = "manufacturer"
+    COUNTRY = "country"
 
 
 class GroupCategory(StrEnum):
@@ -37,6 +39,7 @@ class GroupCategory(StrEnum):
 
 
 __all__ = [
+    "COUNTRY_SLUG_PREFIX",
     "GROUPS",
     "GROUP_BY_SLUG",
     "Group",
@@ -96,7 +99,16 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for m in MANUFACTURERS
     )
-    return constellations + operators + launch_sites + manufacturers
+    countries = tuple(
+        Group(
+            slug=f"{COUNTRY_SLUG_PREFIX}{c.slug}",
+            type=GroupType.COUNTRY,
+            applies_to=GroupCategory.EARTH_SAT,
+            wikidata_qid=c.wikidata_qid,
+        )
+        for c in COUNTRIES
+    )
+    return constellations + operators + launch_sites + manufacturers + countries
 
 
 GROUPS: tuple[Group, ...] = _build_groups()
