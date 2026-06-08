@@ -241,7 +241,7 @@ def _extract_global(
             return _launch_date(claims, wikidata_entities)
         if multiple:
             return _all_times(claims, pid, wikidata_entities)
-        return _single_time(claims, pid, wikidata_entities)
+        return _single_time(claims, pid, qid, wikidata_entities)
     if kind == "quantity":
         return _single_quantity(claims, pid, needs_unit=needs_unit, qid=qid)
     if kind == "image":
@@ -309,7 +309,7 @@ def extract_claims(
             if qids:
                 result[claim.key] = qids
         else:
-            if ref_qid := _single_entity_qid(claims, claim.pid):
+            if ref_qid := _single_entity_qid(claims, claim.pid, qid):
                 result[claim.key] = ref_qid
 
     return result
@@ -442,6 +442,10 @@ _DISCARD: set[tuple[str, str]] = {
 }
 # Properties where the largest value wins when multiple remain after filtering.
 _PICK_MAX: set[str] = {"P2043", "P2049"}  # length, width
+# Time properties where the earliest value wins when multiple remain at the
+# same precision — e.g. an organisation's inception date often spans a
+# predecessor founding and a later restructuring; we want the longer history.
+_PICK_EARLIEST_TIME: set[str] = {"P571"}  # inception
 
 
 def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
@@ -571,13 +575,22 @@ def _all_times(
 
 
 def _single_time(
-    claims: dict, prop: str, wikidata_entities: WikidataEntityCache | None = None
+    claims: dict,
+    prop: str,
+    qid: str,
+    wikidata_entities: WikidataEntityCache | None = None,
 ) -> str | None:
-    """Extract the single time value from a claim as an ISO date string."""
+    """Extract the single time value from a claim as an ISO date string.
+
+    Times sort lexicographically (ISO format with leading sign + zero-padded
+    year), so ``min(vals)`` gives the earliest moment.
+    """
     vals = list(dict.fromkeys(_all_times(claims, prop, wikidata_entities)))
     if len(vals) > 1:
+        if prop in _PICK_EARLIEST_TIME:
+            return min(vals)
         key = PID_TO_KEY.get(prop, prop)
-        raise MultipleClaimValues(f"Multiple time values for {key}: {vals}")
+        raise MultipleClaimValues(f"Multiple time values for {key} on {qid}: {vals}")
     return vals[0] if vals else None
 
 
@@ -704,7 +717,7 @@ def _resolve_quantity(
 
     key = PID_TO_KEY.get(prop, prop)
     raise MultipleClaimValues(
-        f"Multiple quantity values for {key}: {[p for _, p in pairs]}"
+        f"Multiple quantity values for {key} on {qid}: {[p for _, p in pairs]}"
     )
 
 
@@ -724,7 +737,7 @@ def _single_quantity(
     return _resolve_quantity(pairs, prop, qid=qid)
 
 
-def _single_entity_qid(claims: dict, prop: str) -> str | None:
+def _single_entity_qid(claims: dict, prop: str, qid: str) -> str | None:
     """Extract the single entity QID from a claim."""
     vals = list(
         dict.fromkeys(
@@ -735,7 +748,7 @@ def _single_entity_qid(claims: dict, prop: str) -> str | None:
     )
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
-        raise MultipleClaimValues(f"Multiple entity values for {key}: {vals}")
+        raise MultipleClaimValues(f"Multiple entity values for {key} on {qid}: {vals}")
     return vals[0] if vals else None
 
 

@@ -1,8 +1,15 @@
 """SATCAT metadata export helpers (exported under the "celestrak" JSON key)."""
 
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
-from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
-from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID, ActiveDate
+from space_map_data.constants.earth_sats.launch_sites import (
+    LAUNCH_SITE_BY_CODE,
+    LAUNCH_SITE_SLUG_PREFIX,
+)
+from space_map_data.constants.earth_sats.operators import (
+    OPERATOR_BY_QID,
+    OPERATOR_SLUG_PREFIX,
+    ActiveDate,
+)
 from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_entity_ref
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Satcat
@@ -55,10 +62,20 @@ def build_satcat_localized(
 
     if sat.launch_site_code is not None:
         site = LAUNCH_SITE_BY_CODE.get(sat.launch_site_code)
-        if site is not None and site.wikidata_qid is not None:
-            ref = resolve_entity_ref(site.wikidata_qid, lang, wikidata_entities)
-            if ref:
-                data["launch_site"] = [ref.to_dict()]
+        if site is not None:
+            site_group_slug = f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}"
+            name = site.name
+            if site.wikidata_qid is not None:
+                ref = resolve_entity_ref(site.wikidata_qid, lang, wikidata_entities)
+                if ref is not None and ref.name:
+                    name = ref.name
+            data["launch_site"] = [
+                {
+                    "name": name,
+                    "primary_type": "group",
+                    "primary_id": site_group_slug,
+                }
+            ]
 
     if sat.operator_qids:
         refs = resolve_operator_refs(sat.operator_qids, lang, wikidata_entities)
@@ -114,18 +131,29 @@ def resolve_operator_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Resolve operator QIDs to entity refs with optional active_from/active_until."""
+    """Resolve operator QIDs to entity refs, linked to /g/op-<slug>.
+
+    Falls back to the Wikidata label for the visible name. ``active_from`` /
+    ``active_until`` (when set on the OperatorSpec) ride along so the satellite
+    detail page can show the operator's tenure window.
+    """
     refs = []
     for qid in qids:
         ref = resolve_entity_ref(qid, lang, wikidata_entities)
-        if ref is None:
-            continue
-        ref_dict = ref.to_dict()
         spec = OPERATOR_BY_QID.get(qid)
-        if spec is not None:
-            if spec.active_from is not None:
-                ref_dict["active_from"] = _serialize_active_date(spec.active_from)
-            if spec.active_until is not None:
-                ref_dict["active_until"] = _serialize_active_date(spec.active_until)
+        # We need the OperatorSpec to make the group link — without it we can't
+        # name the destination so just drop the ref entirely.
+        if spec is None:
+            continue
+        name = ref.name if ref is not None and ref.name else spec.name
+        ref_dict: dict = {
+            "name": name,
+            "primary_type": "group",
+            "primary_id": f"{OPERATOR_SLUG_PREFIX}{spec.slug}",
+        }
+        if spec.active_from is not None:
+            ref_dict["active_from"] = _serialize_active_date(spec.active_from)
+        if spec.active_until is not None:
+            ref_dict["active_until"] = _serialize_active_date(spec.active_until)
         refs.append(ref_dict)
     return refs

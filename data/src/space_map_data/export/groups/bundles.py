@@ -17,7 +17,13 @@ from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.membership import GroupSatcatStats
-from space_map_data.export.groups.registry import GROUPS, Group, GroupType
+from space_map_data.export.groups.registry import (
+    LAUNCH_SITE_SLUG_PREFIX,
+    OPERATOR_SLUG_PREFIX,
+    GROUPS,
+    Group,
+    GroupType,
+)
 from space_map_data.export.images import collect_group_images
 from space_map_data.export.objects.wikidata_claims import (
     extract_claims,
@@ -125,7 +131,10 @@ def _build_localized(
             ]
             if instance_refs:
                 data["instance_of"] = instance_refs
-    if stats and stats.launch_sites:
+    # Top-launch-sites breakdown is meaningless for launch-site groups (always
+    # 100% itself), so skip it there. Constellation and operator groups show
+    # where their fleet flew from.
+    if stats and stats.launch_sites and group.type is not GroupType.LAUNCH_SITE:
         sites = _launch_site_refs(stats.launch_sites, lang, wikidata_entities)
         if sites:
             data["launch_sites"] = sites
@@ -148,13 +157,21 @@ def _launch_site_refs(
         spec = LAUNCH_SITE_BY_CODE.get(code)
         if not spec:
             continue
-        entry: dict = {"n": n}
+        # Link the entry to its own /g/site-<slug> page so the frontend can
+        # navigate from a constellation/operator drawer into the launch-site group.
+        name = spec.name
         if spec.wikidata_qid:
             ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
-            if ref is not None:
-                entry.update(ref.to_dict())
-        entry.setdefault("name", spec.name)
-        out.append(entry)
+            if ref is not None and ref.name:
+                name = ref.name
+        out.append(
+            {
+                "n": n,
+                "name": name,
+                "primary_type": "group",
+                "primary_id": f"{LAUNCH_SITE_SLUG_PREFIX}{spec.slug}",
+            }
+        )
     return out
 
 
@@ -182,33 +199,63 @@ def _operator_refs_for_group(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Operators sourced from constants (not Wikidata P137) and resolved as
-    EntityRefs. Only constellation groups have an operator table entry today."""
+    """Constellation operators sourced from constants (not Wikidata P137), resolved
+    as EntityRefs. Returns refs only for constellation groups — operator groups
+    *are* the operator and launch-site groups don't have a single operator."""
     if group.type is not GroupType.CONSTELLATION:
         return []
     operators = OPERATOR_BY_CONSTELLATION.get(group.slug, [])
     refs: list[dict] = []
     for op in operators:
+        op_group_slug = f"{OPERATOR_SLUG_PREFIX}{op.slug}"
+        name = op.name
         if op.wikidata_qid:
             ref = resolve_entity_ref(op.wikidata_qid, lang, wikidata_entities)
-            if ref is not None:
-                refs.append(ref.to_dict())
-                continue
-        refs.append({"name": op.name})
+            if ref is not None and ref.name:
+                name = ref.name
+        refs.append(
+            {
+                "name": name,
+                "primary_type": "group",
+                "primary_id": op_group_slug,
+            }
+        )
     return refs
+
+
+def _flatten_membership(
+    membership_by_type: dict[GroupType, dict[str, list[str]]],
+) -> dict[str, int]:
+    """Collapse per-type membership into a single {slug: count} map."""
+    return {
+        slug: len(ids)
+        for mem in membership_by_type.values()
+        for slug, ids in mem.items()
+    }
+
+
+def _flatten_stats(
+    stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
+) -> dict[str, GroupSatcatStats]:
+    return {
+        slug: stats
+        for per_type in stats_by_type.values()
+        for slug, stats in per_type.items()
+    }
 
 
 def write_group_bundles(
     out_dir: Path,
     wikidata_entities: WikidataEntityCache,
-    member_counts: dict[str, int],
-    satcat_stats: dict[str, GroupSatcatStats] | None = None,
+    membership_by_type: dict[GroupType, dict[str, list[str]]],
+    stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
     Returns ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
-    satcat_stats = satcat_stats or {}
+    member_counts = _flatten_membership(membership_by_type)
+    satcat_stats = _flatten_stats(stats_by_type)
     global_by_slug: dict[str, dict] = {}
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 

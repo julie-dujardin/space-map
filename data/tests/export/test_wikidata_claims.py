@@ -297,10 +297,10 @@ class TestTimeClaims:
 
     def test_single_time_returns_value(self):
         claims = {"P619": [_stmt(_time_snak("+1990-04-24T00:00:00Z"))]}
-        assert _single_time(claims, "P619") == "+1990-04-24T00:00:00Z"
+        assert _single_time(claims, "P619", "Q1") == "+1990-04-24T00:00:00Z"
 
     def test_single_time_empty(self):
-        assert _single_time({}, "P619") is None
+        assert _single_time({}, "P619", "Q1") is None
 
     def test_single_time_raises_on_multiple(self):
         claims = {
@@ -309,8 +309,19 @@ class TestTimeClaims:
                 _stmt(_time_snak("+1991-01-01T00:00:00Z", precision=11)),
             ]
         }
-        with pytest.raises(MultipleClaimValues, match="launch_date"):
-            _single_time(claims, "P619")
+        with pytest.raises(MultipleClaimValues, match="launch_date.*Q1"):
+            _single_time(claims, "P619", "Q1")
+
+    def test_single_time_inception_picks_earliest(self):
+        # Predecessor founding (1884) + restructuring (1991) — the older
+        # date wins so the group page shows the longer history.
+        claims = {
+            "P571": [
+                _stmt(_time_snak("+1884-00-00T00:00:00Z", precision=9)),
+                _stmt(_time_snak("+1991-00-00T00:00:00Z", precision=9)),
+            ]
+        }
+        assert _single_time(claims, "P571", "Q1") == "+1884-00-00T00:00:00Z"
 
 
 class TestParseQuantity:
@@ -525,10 +536,10 @@ class TestEntityQids:
 
     def test_single_entity_qid(self):
         claims = {"P744": [_stmt(_entity_snak("Q123456"))]}
-        assert _single_entity_qid(claims, "P744") == "Q123456"
+        assert _single_entity_qid(claims, "P744", "Q1") == "Q123456"
 
     def test_single_entity_qid_empty(self):
-        assert _single_entity_qid({}, "P744") is None
+        assert _single_entity_qid({}, "P744", "Q1") is None
 
     def test_single_entity_qid_deduplicates(self):
         claims = {
@@ -537,7 +548,7 @@ class TestEntityQids:
                 _stmt(_entity_snak("Q123456")),
             ]
         }
-        assert _single_entity_qid(claims, "P744") == "Q123456"
+        assert _single_entity_qid(claims, "P744", "Q1") == "Q123456"
 
     def test_single_entity_qid_raises_on_multiple(self):
         claims = {
@@ -546,8 +557,8 @@ class TestEntityQids:
                 _stmt(_entity_snak("Q456")),
             ]
         }
-        with pytest.raises(MultipleClaimValues, match="asteroid_family"):
-            _single_entity_qid(claims, "P744")
+        with pytest.raises(MultipleClaimValues, match="asteroid_family.*Q1"):
+            _single_entity_qid(claims, "P744", "Q1")
 
 
 class TestExtractClaims:

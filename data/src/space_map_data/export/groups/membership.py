@@ -3,7 +3,8 @@
 Static across snapshots — keyed by stable object id, not row position — so
 one file per zone suffices. Frontend fetches it only when a /g/<slug> page
 is active, then intersects with whatever positions are currently loaded.
-Phase 1 only emits constellation memberships for earth sats.
+A single SATCAT scan emits the constellation, operator and launch-site
+groupings together to keep the export cheap.
 """
 
 import gzip
@@ -14,7 +15,14 @@ from pathlib import Path
 import orjson
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
+from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.satcat import OpsStatus
+from space_map_data.export.groups.registry import (
+    LAUNCH_SITE_SLUG_PREFIX,
+    OPERATOR_SLUG_PREFIX,
+    GroupType,
+)
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.satcat import Satcat
 
@@ -31,7 +39,7 @@ _ACTIVE_OPS_STATUSES = {
 
 @dataclass
 class GroupSatcatStats:
-    """Per-constellation roll-up consumed by the group bundle.
+    """Per-group SATCAT roll-up consumed by the group bundle.
 
     ``decayed`` and ``active`` are mutually exclusive: ``decay_date`` wins
     even if ``ops_status`` still says operational (data lag).
@@ -44,85 +52,131 @@ class GroupSatcatStats:
     first_launch_date: str | None = None
 
 
-def build_earth_membership(session: Session) -> dict[str, list[str]]:
-    """Build {slug: sorted [object_id]} of constellation memberships.
+@dataclass
+class GroupTierBuild:
+    """Per-type membership + stats produced from a single SATCAT scan."""
 
-    Filter mirrors ``_run_earth_zones`` so the same row set ships in
-    position files. ``constellation_slug`` is populated at ingest.
-    """
-    rows = (
-        session.query(Object.id, Satcat.constellation_slug)
-        .join(Object.satcat)
-        .filter(
-            Object.spkid.is_(None),
-            Object.object_type.in_(_SAT_TYPE_VALUES),
-            Object.parent_id == _EARTH_OBJECT_ID,
-            Satcat.constellation_slug.is_not(None),
+    membership: dict[GroupType, dict[str, list[str]]] = field(default_factory=dict)
+    stats: dict[GroupType, dict[str, GroupSatcatStats]] = field(default_factory=dict)
+
+    def add(self, group_type: GroupType, slug: str, obj_id: str) -> GroupSatcatStats:
+        self.membership.setdefault(group_type, {}).setdefault(slug, []).append(obj_id)
+        return self.stats.setdefault(group_type, {}).setdefault(
+            slug, GroupSatcatStats()
         )
-        .all()
-    )
-    membership: dict[str, list[str]] = {}
-    for obj_id, slug in rows:
-        membership.setdefault(slug, []).append(obj_id)
-    for ids in membership.values():
-        ids.sort()
-    return membership
 
 
-def build_earth_group_stats(session: Session) -> dict[str, GroupSatcatStats]:
-    """Per-constellation launch histogram, status counts, and launch-site mix.
+def build_earth_groups_data(session: Session) -> GroupTierBuild:
+    """Build membership + stats for every earth-sat group type in one scan.
 
-    Single SATCAT scan; same filter as ``build_earth_membership``. Years
-    come from ``launch_date[:4]`` so the rare malformed date is silently
-    skipped via ``ValueError`` rather than crashing the export.
+    Mirrors the ``_run_earth_zones`` filter so the row set matches the
+    positions shipped in the earth zone. Skips malformed launch dates with
+    a warning rather than crashing.
     """
     rows = (
         session.query(
+            Object.id,
             Satcat.constellation_slug,
+            Satcat.operator_qids,
+            Satcat.launch_site_code,
             Satcat.launch_date,
             Satcat.ops_status,
             Satcat.decay_date,
-            Satcat.launch_site_code,
         )
         .join(Object.satcat)
         .filter(
             Object.spkid.is_(None),
             Object.object_type.in_(_SAT_TYPE_VALUES),
             Object.parent_id == _EARTH_OBJECT_ID,
-            Satcat.constellation_slug.is_not(None),
         )
         .all()
     )
-    stats: dict[str, GroupSatcatStats] = {}
-    for slug, launch_date, ops_status, decay_date, site_code in rows:
-        s = stats.setdefault(slug, GroupSatcatStats())
-        if launch_date:
-            try:
-                year = int(launch_date[:4])
-            except ValueError:
-                logger.warning("Malformed launch_date %r for %s", launch_date, slug)
-            else:
-                s.launch_histogram[year] = s.launch_histogram.get(year, 0) + 1
-                if s.first_launch_date is None or launch_date < s.first_launch_date:
-                    s.first_launch_date = launch_date
-        if decay_date:
-            s.decayed += 1
-        elif ops_status in _ACTIVE_OPS_STATUSES:
-            s.active += 1
+
+    build = GroupTierBuild()
+    unknown_operator_qids: set[str] = set()
+    for obj_id, c_slug, op_qids, site_code, launch_date, ops_status, decay_date in rows:
+        slugs: list[tuple[GroupType, str]] = []
+        if c_slug:
+            slugs.append((GroupType.CONSTELLATION, c_slug))
+        for qid in op_qids or ():
+            op = OPERATOR_BY_QID.get(qid)
+            if op is None:
+                unknown_operator_qids.add(qid)
+                continue
+            slugs.append((GroupType.OPERATOR, f"{OPERATOR_SLUG_PREFIX}{op.slug}"))
         if site_code:
-            s.launch_sites[site_code] = s.launch_sites.get(site_code, 0) + 1
-    return stats
+            site = LAUNCH_SITE_BY_CODE.get(site_code)
+            if site is not None:
+                slugs.append(
+                    (GroupType.LAUNCH_SITE, f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}")
+                )
+
+        for group_type, group_slug in slugs:
+            stats = build.add(group_type, group_slug, obj_id)
+            _accumulate(stats, launch_date, ops_status, decay_date, site_code)
+
+    for group_type, mem in build.membership.items():
+        for ids in mem.values():
+            ids.sort()
+        logger.info(
+            "Built %s membership: %d groups, %d tags",
+            group_type.value,
+            len(mem),
+            sum(len(ids) for ids in mem.values()),
+        )
+    if unknown_operator_qids:
+        logger.warning(
+            "Dropped %d unknown operator QID(s) during group build: %s",
+            len(unknown_operator_qids),
+            sorted(unknown_operator_qids),
+        )
+    return build
 
 
-def write_earth_membership(out_dir: Path, membership: dict[str, list[str]]) -> None:
-    """Write the gzipped inverted index."""
+def _accumulate(
+    stats: GroupSatcatStats,
+    launch_date: str | None,
+    ops_status: str | None,
+    decay_date: str | None,
+    site_code: str | None,
+) -> None:
+    if launch_date:
+        try:
+            year = int(launch_date[:4])
+        except ValueError:
+            logger.warning("Malformed launch_date %r", launch_date)
+        else:
+            stats.launch_histogram[year] = stats.launch_histogram.get(year, 0) + 1
+            if stats.first_launch_date is None or launch_date < stats.first_launch_date:
+                stats.first_launch_date = launch_date
+    if decay_date:
+        stats.decayed += 1
+    elif ops_status in _ACTIVE_OPS_STATUSES:
+        stats.active += 1
+    if site_code:
+        stats.launch_sites[site_code] = stats.launch_sites.get(site_code, 0) + 1
+
+
+def write_earth_membership(
+    out_dir: Path, membership_by_type: dict[GroupType, dict[str, list[str]]]
+) -> None:
+    """Write one gzipped inverted index merging all earth-sat group types.
+
+    Group slugs are globally unique across types (constellation slugs are
+    bare, operator slugs ``op-*``, launch-site slugs ``site-*``) so a single
+    flat file resolves any /g/<slug> page.
+    """
+    merged: dict[str, list[str]] = {
+        slug: ids for mem in membership_by_type.values() for slug, ids in mem.items()
+    }
+
     path = out_dir / "membership" / "earth.json.gz"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(gzip.compress(orjson.dumps(membership)))
-    total = sum(len(ids) for ids in membership.values())
+    path.write_bytes(gzip.compress(orjson.dumps(merged)))
+    total = sum(len(ids) for ids in merged.values())
     logger.info(
         "Wrote earth membership: %d groups, %d sat-tags, %d bytes gzipped",
-        len(membership),
+        len(merged),
         total,
         path.stat().st_size,
     )

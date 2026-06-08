@@ -3,10 +3,17 @@
 import orjson
 import logging
 
+from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
+from space_map_data.constants.earth_sats.operators import OPERATOR_BY_SLUG
 from space_map_data.constants.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
-from space_map_data.export.groups.registry import GROUPS
+from space_map_data.export.groups.registry import (
+    LAUNCH_SITE_SLUG_PREFIX,
+    OPERATOR_SLUG_PREFIX,
+    GROUPS,
+    GroupType,
+)
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -178,7 +185,12 @@ def _collect_feature_type_labels(
 def _collect_group_name_labels(
     wikidata_entities: WikidataEntityCache,
 ) -> dict[str, dict[str, str]]:
-    """Return {lang: {group_name_<slug>: label}}; slug as baseLocale fallback."""
+    """Return {lang: {group_name_<slug>: label}}.
+
+    Wikidata labels win per language. The baseLocale fallback uses the
+    underlying ``OperatorSpec`` / ``LaunchSiteSpec`` name when available so
+    QID-less groups don't render as their internal slug.
+    """
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
 
@@ -190,9 +202,21 @@ def _collect_group_name_labels(
                 for lang in LANGUAGES:
                     if label := entity["labels"].get(lang):
                         result[lang][key] = label
-        base.setdefault(key, group.slug)
+        base.setdefault(key, _group_fallback_name(group))
 
     return result
+
+
+def _group_fallback_name(group) -> str:
+    if group.type is GroupType.OPERATOR:
+        op = OPERATOR_BY_SLUG.get(group.slug.removeprefix(OPERATOR_SLUG_PREFIX))
+        if op is not None:
+            return op.name
+    elif group.type is GroupType.LAUNCH_SITE:
+        site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
+        if site is not None:
+            return site.name
+    return group.slug
 
 
 def write_messages(
