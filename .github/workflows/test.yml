@@ -37,5 +37,9 @@ jobs:
         run: cd frontend && pnpm install --frozen-lockfile
 
       - uses: pre-commit/action@v3.0.1
+        env:
+          PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}
+          PUBLIC_MEILI_URL: ${{ vars.PUBLIC_MEILI_URL }}
+          PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
         with:
           extra_args: --all-files --hook-stage manual
