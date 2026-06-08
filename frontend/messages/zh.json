@@ -12,6 +12,7 @@
 	"satellites_label": "卫星",
 	"legend_per_year": "每年",
 	"legend_cumulative": "累计",
+	"tooltip_launches_count": "{count} 次发射",
 	"group_stat_members": "成员",
 	"group_stat_active": "运行中",
 	"group_stat_first_launch": "首次发射",

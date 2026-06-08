@@ -80,8 +80,7 @@
 						{#snippet body(d)}
 							<div class="font-semibold tabular-nums">{d.year}</div>
 							<div class="text-muted-foreground tabular-nums">
-								{formatNumber(d.count as number)}
-								{m.legend_per_year()}
+								{m.tooltip_launches_count({ count: d.count as number })}
 							</div>
 							<div class="text-muted-foreground tabular-nums">
 								{formatNumber(d.cumulative as number)}

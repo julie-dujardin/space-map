@@ -23,6 +23,18 @@
 	"satellites_label": "спутников",
 	"legend_per_year": "в год",
 	"legend_cumulative": "всего",
+	"tooltip_launches_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} запуск",
+				"countPlural=few": "{count} запуска",
+				"countPlural=many": "{count} запусков",
+				"countPlural=other": "{count} запуска"
+			}
+		}
+	],
 	"group_stat_members": "Аппараты",
 	"group_stat_active": "Действующие",
 	"group_stat_first_launch": "Первый запуск",

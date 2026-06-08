@@ -12,6 +12,7 @@
 	"satellites_label": "أقمار صناعية",
 	"legend_per_year": "سنويًا",
 	"legend_cumulative": "تراكميًا",
+	"tooltip_launches_count": "{count} عملية إطلاق",
 	"group_stat_members": "الأعضاء",
 	"group_stat_active": "نشط",
 	"group_stat_first_launch": "أول إطلاق",

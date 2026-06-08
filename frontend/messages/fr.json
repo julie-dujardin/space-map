@@ -21,6 +21,16 @@
 	"satellites_label": "satellites",
 	"legend_per_year": "par année",
 	"legend_cumulative": "cumulé",
+	"tooltip_launches_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} lancement",
+				"countPlural=other": "{count} lancements"
+			}
+		}
+	],
 	"group_stat_members": "Membres",
 	"group_stat_active": "Actifs",
 	"group_stat_first_launch": "Premier lancement",
