@@ -69,25 +69,29 @@
 		<Tooltip.Root disabled={!truncated[entity.name]}>
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
-					<span class="min-w-0 truncate" use:detectTruncation={entity.name} {...props}>
+					<span class="min-w-0 max-w-full" use:detectTruncation={entity.name} {...props}>
 						{#if entity.primary_id && appState}
 							<button
 								type="button"
 								onclick={() => focusEntity(entity)}
 								aria-label={m.entity_focus_in_map()}
-								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1"
-								>{display}<LocateFixedIcon class="size-3 shrink-0" /></button
+								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
+								><span class="truncate">{display}</span><LocateFixedIcon
+									class="size-3 shrink-0"
+								/></button
 							>
 						{:else if entity.wikipedia}
 							<a
 								href={entity.wikipedia}
 								target="_blank"
 								rel="noopener"
-								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1"
-								>{display}<ExternalLinkIcon class="size-3 shrink-0" /></a
+								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
+								><span class="truncate">{display}</span><ExternalLinkIcon
+									class="size-3 shrink-0"
+								/></a
 							>
 						{:else}
-							{display}
+							<span class="truncate block">{display}</span>
 						{/if}
 					</span>
 				{/snippet}

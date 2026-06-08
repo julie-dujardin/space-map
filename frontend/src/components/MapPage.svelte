@@ -22,7 +22,7 @@
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
 	import SearchBar from './search/SearchBar.svelte';
-	import { localizedName } from '$lib/search/client';
+	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
 	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -31,6 +31,8 @@
 
 	const ctx = new ContextManager();
 	setContext('ctx', ctx);
+
+	const searchEnabled = isSearchEnabled();
 
 	const appState = createAppState();
 	setContext('appState', appState);
@@ -201,7 +203,9 @@
 				onUserPromotedChange={(count) => (userPromotedCount = count)}
 			/>
 			<TimeControls {clock} />
-			<div class="fixed top-4 start-4 z-10 w-[min(360px,calc(100vw-7rem))] pointer-events-auto">
+			<div
+				class="fixed top-4 start-4 end-4 z-10 pointer-events-auto md:end-auto md:w-[min(360px,calc(100vw-7rem))]"
+			>
 				<SearchBar
 					onSelect={async (hit) => {
 						const name = localizedName(hit, getLocale());
@@ -242,7 +246,11 @@
 					}}
 				/>
 			</div>
-			<div class="fixed top-4 end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto">
+			<div
+				class="fixed end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
+					? 'top-[4.25rem] md:top-4'
+					: 'top-4'}"
+			>
 				<SettingsButton />
 				<LayersButton />
 			</div>
