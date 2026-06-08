@@ -100,6 +100,20 @@ export class ContextManager {
 		return this.bodies.getBody(id, zone);
 	}
 
+	/** True when an /g/<slug> view is active and the given body belongs to it.
+	 *  Used by Scene.svelte's click handler to keep the group view sticky when
+	 *  the user clicks a member — the camera moves, the URL stays. Earth-sat
+	 *  members live in `earthSatFilter`; small-body class members are matched
+	 *  by their `asteroidBodiesByZone` bucket against `smallBodyClassFilter`. */
+	isMemberOfActiveGroup(bodyId: string): boolean {
+		if (this.earthSatFilter?.has(bodyId) === true) return true;
+		if (this.smallBodyClassFilter !== null) {
+			const zone = this.bodies.findAsteroidZone(bodyId);
+			if (zone === `small_bodies/${this.smallBodyClassFilter}`) return true;
+		}
+		return false;
+	}
+
 	async load(date: Date, targetId?: string): Promise<void> {
 		try {
 			await loadScene(this, date, targetId);

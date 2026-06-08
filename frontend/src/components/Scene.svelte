@@ -132,7 +132,7 @@
 					const inActiveGroup =
 						appState.view.type === UrlType.Group &&
 						appState.view.groupSlug !== null &&
-						ctx.earthSatFilter?.has(body.data.id) === true;
+						ctx.isMemberOfActiveGroup(body.data.id);
 					if (!inActiveGroup) {
 						appState.setFocus({
 							type: urlTypeFromId(body.data.id),

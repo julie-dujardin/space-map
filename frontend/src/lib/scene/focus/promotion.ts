@@ -79,12 +79,16 @@ export class PromotionRegistry {
 	private readonly groupPromoted = new Set<string>();
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
+	/** Full zone key (`small_bodies/<class>`) tracked for emphasis count
+	 *  re-evaluation as chunks land. Null when no class filter is active. */
+	private smallBodyZone: string | null = null;
 
 	constructor(private readonly deps: PromotionDeps) {
 		deps.ctx.bodies.onBodiesAdded((ids) => {
 			this.onBodiesAdded(ids);
 			this.autoPromoteAsteroidMoons(ids);
 			this.onBodiesAddedGroup();
+			if (this.smallBodyZone !== null) this.refreshSmallBodyEmphasis();
 		});
 		// URL-loaded placeholders flushed before this registry was wired up
 		// don't fire the live `onBodiesAdded` listener — sweep them now.
@@ -297,11 +301,26 @@ export class PromotionRegistry {
 	}
 
 	/** Small-body class focus: tell the point-cloud system which `small_bodies/<class>`
-	 *  zone to emphasize. No body-promotion side: asteroid clouds are dense enough
+	 *  zone to emphasize, ramped against the bucket's body count (same thresholds
+	 *  as earth-sat). No body-promotion side: asteroid clouds are dense enough
 	 *  that the earth-style bulk-promote-on-small-count doesn't apply. */
 	private applySmallBodyClassFilter(cls: string | null): void {
-		const zone = cls ? `small_bodies/${cls}` : null;
-		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone);
+		this.smallBodyZone = cls ? `small_bodies/${cls}` : null;
+		this.refreshSmallBodyEmphasis();
+	}
+
+	/** Recompute the emphasized zone's count from the current bucket and push it
+	 *  to the point-cloud system. Called on filter change and whenever new
+	 *  bodies land — chunk-time additions can move a class through the ramp
+	 *  thresholds as more members arrive. */
+	private refreshSmallBodyEmphasis(): void {
+		const zone = this.smallBodyZone;
+		if (zone === null) {
+			this.deps.pointClouds.setEmphasizedSmallBodyZone(null, null);
+			return;
+		}
+		const count = this.deps.ctx.bodies.asteroidBodiesByZone.get(zone)?.size ?? 0;
+		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone, count);
 	}
 
 	/** Chunk-flush hook: every time a new earth-zone segment lands (or any

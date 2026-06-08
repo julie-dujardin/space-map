@@ -27,6 +27,18 @@ function clamp01(x: number): number {
 	return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
+/** Shared count → ramp intensities for cloud emphasis. `tBright` ramps over
+ *  count 10000 → 500 (stage 1), `tSize` over 500 → 50 (stage 2). `null` = no
+ *  emphasis (both 0). Earth-sat and small-body class consumers each apply these
+ *  to their own size/color/opacity ranges. */
+function emphasisIntensity(count: number | null): { tBright: number; tSize: number } {
+	if (count === null) return { tBright: 0, tSize: 0 };
+	return {
+		tBright: clamp01((EMPHASIS_ALPHA_HI - count) / (EMPHASIS_ALPHA_HI - EMPHASIS_ALPHA_LO)),
+		tSize: clamp01((EMPHASIS_SIZE_HI - count) / (EMPHASIS_SIZE_HI - EMPHASIS_SIZE_LO))
+	};
+}
+
 /** Earth-sat cloud emphasis bands. Stage 1 brightens (alpha + color); stage 2
  *  enlarges. Below stage 2 the cloud is irrelevant because members are
  *  half/full-promoted (handled in PromotionRegistry). */
@@ -47,14 +59,13 @@ const EMPHASIS_MAX_DIM = 1.0;
 const EMPHASIS_BASE_OPACITY = 1.0;
 const EMPHASIS_MAX_OPACITY = 3.5;
 
-/** Asteroid-class emphasis: size + opacity boost applied to the focused
- *  `small_bodies/<class>` zone (e.g. when /g/class-NEA is active). Asteroid
- *  zones span four orders of magnitude in cardinality (CEN ~hundreds vs MBA
- *  >10k), so the earth-sat count-based ramp isn't a fit — a single fixed boost
- *  delivers consistent visual emphasis. Color stays at the material's baseline
- *  `overlayColor(c) = c · 0.5`; only size + opacity move. */
-const SMALL_BODY_EMPHASIS_SIZE_MULT = 2.5;
-const SMALL_BODY_EMPHASIS_OPACITY = 2.5;
+/** Asteroid-class emphasis multipliers at max ramp. Ramp curve is shared with
+ *  earth-sat (count thresholds 10000/500/50). Asteroid clouds use a single
+ *  material color rather than vertex colors, so brightness applies as a scalar
+ *  multiply against the cached baseline `overlayColor(c)` instead of a setRGB. */
+const SMALL_BODY_SIZE_MULT_MAX = 2.5;
+const SMALL_BODY_BRIGHT_MULT_MAX = 2.0;
+const SMALL_BODY_MAX_OPACITY = EMPHASIS_MAX_OPACITY;
 
 /**
  * Owns every minor-body point cloud (asteroid zones, spacecraft groups, moon
@@ -92,6 +103,15 @@ export class PointCloudSystem {
 	 *  while a /g/class-* page is focused; null otherwise. New sub-clouds spawned
 	 *  in rebuildMinor pick this up automatically. */
 	private emphasizedSmallBodyZone: string | null = null;
+	/** Current ramp values for the emphasized zone, recomputed from the bucket's
+	 *  body count. Mirrors the earth-sat ramp curve so a sparse class (CEN ~few
+	 *  hundred) lands at max embiggen while dense ones (MBA >10k) sit at
+	 *  baseline. */
+	private smallBodyEmphasis = {
+		sizeMult: 1,
+		brightMult: 1,
+		opacity: EMPHASIS_BASE_OPACITY
+	};
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -126,15 +146,7 @@ export class PointCloudSystem {
 		dim: number;
 		opacity: number;
 	} {
-		if (count === null) {
-			return {
-				size: EMPHASIS_BASE_SIZE,
-				dim: EMPHASIS_BASE_DIM,
-				opacity: EMPHASIS_BASE_OPACITY
-			};
-		}
-		const tBright = clamp01((EMPHASIS_ALPHA_HI - count) / (EMPHASIS_ALPHA_HI - EMPHASIS_ALPHA_LO));
-		const tSize = clamp01((EMPHASIS_SIZE_HI - count) / (EMPHASIS_SIZE_HI - EMPHASIS_SIZE_LO));
+		const { tBright, tSize } = emphasisIntensity(count);
 		return {
 			size: EMPHASIS_BASE_SIZE + (EMPHASIS_MAX_SIZE - EMPHASIS_BASE_SIZE) * tSize,
 			dim: EMPHASIS_BASE_DIM + (EMPHASIS_MAX_DIM - EMPHASIS_BASE_DIM) * tBright,
@@ -151,15 +163,16 @@ export class PointCloudSystem {
 	}
 
 	/** Mark a `small_bodies/<class>` zone as focused — its sub-clouds get a
-	 *  fixed size + opacity boost so the active /g/class-* page stands out from
-	 *  the otherwise-hidden neighbour zones. Passing `null` clears any prior
-	 *  emphasis. Safe to call before the matching sub-clouds exist; rebuildMinor
-	 *  re-applies on creation. */
-	setEmphasizedSmallBodyZone(zone: string | null): void {
+	 *  size/brightness/opacity boost ramped against `count` (bucket size) using
+	 *  the same thresholds as earth-sat. Passing `null` zone clears emphasis.
+	 *  Safe to call before the matching sub-clouds exist or while chunks are
+	 *  still landing; rebuildMinor re-applies the latest ramp on creation, and
+	 *  callers re-call this whenever the bucket size changes. */
+	setEmphasizedSmallBodyZone(zone: string | null, count: number | null): void {
 		const prev = this.emphasizedSmallBodyZone;
-		if (prev === zone) return;
 		this.emphasizedSmallBodyZone = zone;
-		if (prev !== null) {
+		this.smallBodyEmphasis = this.computeSmallBodyEmphasis(zone === null ? null : count);
+		if (prev !== null && prev !== zone) {
 			for (const [key, pts] of this.asteroidPoints) {
 				if (parentIdFromSubkey(key) === prev) this.resetSmallBodyEmphasis(pts);
 			}
@@ -171,21 +184,41 @@ export class PointCloudSystem {
 		}
 	}
 
+	private computeSmallBodyEmphasis(count: number | null): {
+		sizeMult: number;
+		brightMult: number;
+		opacity: number;
+	} {
+		const { tBright, tSize } = emphasisIntensity(count);
+		return {
+			sizeMult: 1 + (SMALL_BODY_SIZE_MULT_MAX - 1) * tSize,
+			brightMult: 1 + (SMALL_BODY_BRIGHT_MULT_MAX - 1) * tBright,
+			opacity: EMPHASIS_BASE_OPACITY + (SMALL_BODY_MAX_OPACITY - EMPHASIS_BASE_OPACITY) * tBright
+		};
+	}
+
 	private applySmallBodyEmphasis(pts: Points): void {
-		if (pts.userData.smallBodyEmphasized) return;
 		const mat = pts.material as PointsMaterial;
-		pts.userData.smallBodyBaseSize = mat.size;
-		mat.size = mat.size * SMALL_BODY_EMPHASIS_SIZE_MULT;
-		mat.opacity = SMALL_BODY_EMPHASIS_OPACITY;
-		pts.userData.smallBodyEmphasized = true;
+		if (pts.userData.smallBodyBaseSize === undefined) {
+			pts.userData.smallBodyBaseSize = mat.size;
+			pts.userData.smallBodyBaseColor = mat.color.clone();
+		}
+		const baseSize = pts.userData.smallBodyBaseSize as number;
+		const baseColor = pts.userData.smallBodyBaseColor as Color;
+		const { sizeMult, brightMult, opacity } = this.smallBodyEmphasis;
+		mat.size = baseSize * sizeMult;
+		mat.color.copy(baseColor).multiplyScalar(brightMult);
+		mat.opacity = opacity;
 	}
 
 	private resetSmallBodyEmphasis(pts: Points): void {
-		if (!pts.userData.smallBodyEmphasized) return;
+		if (pts.userData.smallBodyBaseSize === undefined) return;
 		const mat = pts.material as PointsMaterial;
-		mat.size = (pts.userData.smallBodyBaseSize as number | undefined) ?? mat.size;
-		mat.opacity = 1.0;
-		pts.userData.smallBodyEmphasized = false;
+		mat.size = pts.userData.smallBodyBaseSize as number;
+		mat.color.copy(pts.userData.smallBodyBaseColor as Color);
+		mat.opacity = EMPHASIS_BASE_OPACITY;
+		pts.userData.smallBodyBaseSize = undefined;
+		pts.userData.smallBodyBaseColor = undefined;
 	}
 
 	seedBasis(p: Vec3): void {
