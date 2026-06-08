@@ -1,15 +1,8 @@
-"""Group registry: unified view of aggregation entities behind /g/<slug>.
+"""Group registry: aggregation entities behind /g/<slug>.
 
-A Group is a user-facing collection of objects (constellation, operator,
-launch site, manufacturer, ...). ``applies_to`` is the object category the
-group can filter — determines which membership file the frontend consults.
-
-Group slugs share a single global namespace. Constellations keep bare slugs
-("starlink") for backwards compatibility; operators, launch sites and
-manufacturers are namespaced (``op-spacex``, ``site-baikonur``,
-``mfr-spacex``) so the constant tables can reuse natural identifiers without
-colliding — and so a single company appearing as both operator and
-manufacturer keeps two honest, role-scoped pages.
+Constellations keep bare slugs; operators, launch sites, and manufacturers
+are prefixed (``op-``/``site-``/``mfr-``) so a single company can appear in
+multiple roles without slug collisions.
 """
 
 from dataclasses import dataclass

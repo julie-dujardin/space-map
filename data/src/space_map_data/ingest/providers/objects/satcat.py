@@ -57,7 +57,7 @@ class SatcatIngestor:
         operator_qids = resolve_operator_qids(
             owner, constellation, fields["launch_date"], fields["decay_date"]
         )
-        manufacturer_qids = resolve_manufacturer_qids(constellation)
+        manufacturer_qids = resolve_manufacturer_qids(constellation, name)
         country_codes = resolve_country_codes(owner)
         if not operator_qids:
             self.missing_operator += 1

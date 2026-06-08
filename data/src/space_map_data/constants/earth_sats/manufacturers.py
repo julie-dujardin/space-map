@@ -1,16 +1,8 @@
 """Satellite / launcher manufacturers.
 
-A manufacturer is the entity that *built* the hardware. Many manufacturers
-also operate their own fleet (SpaceX, Rocket Lab, ICEYE, ...) — those entries
-share the Wikidata QID with the matching :class:`OperatorSpec`, but keep a
-distinct ``mfr-`` group slug so the URL/page never claims that a company
-operates satellites it merely manufactured (Boeing builds many GEO sats for
-Inmarsat/Intelsat/ABS etc.).
-
-``slug`` is unique within MANUFACTURERS; the group registry prefixes with
-``mfr-`` to avoid collisions with constellation/operator/launch-site slugs.
-Coverage is intentionally partial — only well-known primes with stable
-constellation attribution are listed today.
+Operator-and-manufacturer duals share the Wikidata QID with their
+:class:`OperatorSpec` entry but keep a distinct ``mfr-`` group slug so the
+role is honest in the URL (Boeing builds many GEO sats it doesn't operate).
 """
 
 from collections import defaultdict
@@ -38,13 +30,8 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Q193701",
         constellations=("starlink", "crew-dragon", "falcon", "dragon"),
     ),
-    ManufacturerSpec(
-        "Boeing",
-        "boeing",
-        "Q66",
-        constellations=("ius",),  # Boeing builds many GEO sats for others —
-        # those aren't claimed here, only the IUS upper stage they both build and operate.
-    ),
+    # Boeing-built GEO sats for other operators are caught via the SATELLITE_BUSES path.
+    ManufacturerSpec("Boeing", "boeing", "Q66", constellations=("ius",)),
     ManufacturerSpec(
         "Northrop Grumman",
         "northrop-grumman",
@@ -217,6 +204,21 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Q949211",
         constellations=("venera", "elektron"),
     ),
+    # ----- Bus-only primes (no constellation claim; tagged via SATELLITE_BUSES name match) -----
+    ManufacturerSpec("Hughes Aircraft Company", "hughes", "Q196253"),
+    ManufacturerSpec("Space Systems / Loral", "ssl", "Q571107"),
+    ManufacturerSpec("Orbital Sciences Corporation", "orbital-sciences", "Q1030096"),
+    ManufacturerSpec("Aérospatiale", "aerospatiale", "Q650639"),
+    ManufacturerSpec("Alcatel Space", "alcatel-space", "Q2832087"),
+    ManufacturerSpec("CNES", "cnes", "Q48756"),
+    ManufacturerSpec("Mitsubishi Electric", "mitsubishi-electric", "Q53257"),
+    ManufacturerSpec("NEC Corporation", "nec", "Q219203"),
+    ManufacturerSpec("Satrec Initiative", "satrec", "Q55731469"),
+    ManufacturerSpec("INVAP", "invap", "Q752556"),
+    ManufacturerSpec("Planetary Resources", "planetary-resources", "Q568726"),
+    ManufacturerSpec("NASA Ames Research Center", "nasa-ames", "Q181052"),
+    ManufacturerSpec("Ball Aerospace", "ball-aerospace", "Q805116"),
+    ManufacturerSpec("NASA Goddard Space Flight Center", "nasa-goddard", "Q52152"),
 )
 
 

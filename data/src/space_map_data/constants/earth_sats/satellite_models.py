@@ -16,50 +16,18 @@ Where a Wikipedia article lists a satellite under a slightly different name (e.g
 
 import re
 from dataclasses import dataclass
-from enum import Enum
 
-
-class Manufacturer(Enum):
-    """Satellite bus manufacturers, keyed by Wikidata QID."""
-
-    HUGHES = "Q196253"  # Hughes Aircraft Company / Hughes Space and Communications
-    BOEING = "Q66"  # Boeing Satellite Systems / Boeing Defense, Space & Security
-    LOCKHEED_MARTIN = "Q7240"  # Lockheed Martin / Lockheed Martin Space
-    SSL = "Q571107"  # Space Systems/Loral
-    NORTHROP_GRUMMAN = "Q329953"  # Northrop Grumman Space Systems
-    ORBITAL_SCIENCES = "Q1030096"
-    THALES_ALENIA_SPACE = "Q128356"  # incl. Thales Alenia Space Italy
-    AEROSPATIALE = "Q650639"
-    ALCATEL_SPACE = "Q2832087"
-    AIRBUS = (
-        "Q15529123"  # Airbus Defence and Space; Alphabus joint with Thales (Q128356)
-    )
-    CNES = "Q48756"
-    OHB = "Q131651897"  # OHB System
-    CAST = "Q5099557"  # China Academy of Space Technology / DFH Satellite Co.
-    MITSUBISHI_ELECTRIC = "Q53257"
-    NEC = "Q219203"  # NEC Corporation
-    ISRO = "Q229058"
-    SATREC = "Q55731469"  # Satrec Initiative
-    ISS_RESHETNEV = "Q2371486"  # ISS Reshetnev / NPO PM
-    RSC_ENERGIA = "Q763402"
-    KHRUNICHEV = "Q1197016"
-    NPO_LAVOCHKIN = "Q949211"
-    IAI = "Q876017"  # Israel Aerospace Industries
-    INVAP = "Q752556"
-    SPACEQUEST = "Q7572201"  # SpaceQuest Ltd
-    PLANETARY_RESOURCES = "Q568726"
-    NASA_AMES = "Q181052"  # NASA Ames Research Center
-    ROCKET_LAB = "Q116319"
-    BALL_AEROSPACE = "Q805116"
-    NASA_GODDARD = "Q52152"  # NASA Goddard Space Flight Center
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_BY_SLUG,
+    ManufacturerSpec,
+)
 
 
 @dataclass(frozen=True)
 class SatelliteBusSpec:
     slug: str
     wikidata_qid: str | None
-    manufacturer: Manufacturer
+    manufacturer: ManufacturerSpec
     also_known_as: tuple[str, ...] = ()
     first_launch: str | None = None
     mass_kg_range: tuple[int, int] | None = None
@@ -84,7 +52,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="hs-333",
         wikidata_qid="Q5635829",
-        manufacturer=Manufacturer.HUGHES,
+        manufacturer=MANUFACTURER_BY_SLUG["hughes"],
         also_known_as=("Hughes 333",),
         first_launch="1972",
         mass_kg_range=(146, 574),
@@ -104,7 +72,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="hs-376",
         wikidata_qid="Q10293459",
-        manufacturer=Manufacturer.HUGHES,
+        manufacturer=MANUFACTURER_BY_SLUG["hughes"],
         also_known_as=("BSS-376", "Boeing 376", "Hughes 376"),
         first_launch="1980",
         mass_kg_range=(540, 1757),
@@ -177,7 +145,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="hs-381",
         wikidata_qid=None,
-        manufacturer=Manufacturer.HUGHES,
+        manufacturer=MANUFACTURER_BY_SLUG["hughes"],
         also_known_as=("Leasat bus", "Syncom IV bus"),
         first_launch="1984",
         mass_kg_range=(1315, 3400),
@@ -194,7 +162,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="hs-393",
         wikidata_qid="Q28446578",
-        manufacturer=Manufacturer.HUGHES,
+        manufacturer=MANUFACTURER_BY_SLUG["hughes"],
         also_known_as=("Hughes 393", "Boeing 393"),
         first_launch="1989",
         mass_kg_range=(1346, 2500),
@@ -206,7 +174,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="intelsat-vi",
         wikidata_qid="Q6044256",
-        manufacturer=Manufacturer.HUGHES,
+        manufacturer=MANUFACTURER_BY_SLUG["hughes"],
         also_known_as=("HS-389", "Intelsat VI bus"),
         first_launch="1989",
         mass_kg_range=(4215, 4296),
@@ -224,7 +192,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="boeing-601",
         wikidata_qid="Q16632420",
-        manufacturer=Manufacturer.BOEING,
+        manufacturer=MANUFACTURER_BY_SLUG["boeing"],
         also_known_as=("HS-601", "BSS-601", "Hughes 601", "601HP", "601M"),
         first_launch="1992",
         mass_kg_range=(1700, 3900),
@@ -312,7 +280,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="boeing-702",
         wikidata_qid="Q890161",
-        manufacturer=Manufacturer.BOEING,
+        manufacturer=MANUFACTURER_BY_SLUG["boeing"],
         also_known_as=(
             "HS-702",
             "BSS-702",
@@ -389,7 +357,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="a2100",
         wikidata_qid="Q279910",
-        manufacturer=Manufacturer.LOCKHEED_MARTIN,
+        manufacturer=MANUFACTURER_BY_SLUG["lockheed-martin"],
         also_known_as=(
             "AS 2100",
             "A2100A",
@@ -493,7 +461,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="lm-700",
         wikidata_qid="Q6459000",
-        manufacturer=Manufacturer.LOCKHEED_MARTIN,
+        manufacturer=MANUFACTURER_BY_SLUG["lockheed-martin"],
         also_known_as=("LM 700", "LM-700A", "LM-700B", "Iridium bus"),
         first_launch="1997-05-05",
         mass_kg_range=(680, 689),
@@ -505,7 +473,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="elitebus1000",
         wikidata_qid="Q125698667",
-        manufacturer=Manufacturer.THALES_ALENIA_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         first_launch="2010-10-19",
         known_satellites=tuple(
             [f"IRIDIUM {i}" for i in range(100, 182)]
@@ -524,7 +492,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="ssl-1300",
         wikidata_qid="Q4364714",
-        manufacturer=Manufacturer.SSL,
+        manufacturer=MANUFACTURER_BY_SLUG["ssl"],
         also_known_as=(
             "LS-1300",
             "FS-1300",
@@ -717,7 +685,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="star-bus",
         wikidata_qid="Q1131474",
-        manufacturer=Manufacturer.NORTHROP_GRUMMAN,
+        manufacturer=MANUFACTURER_BY_SLUG["northrop-grumman"],
         also_known_as=("Star-1", "Star-2", "STARBus", "STAR Bus family"),
         first_launch="1997-11-12",
         known_satellites=(
@@ -732,7 +700,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="geostar-1",
         wikidata_qid="Q96378941",
-        manufacturer=Manufacturer.ORBITAL_SCIENCES,
+        manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("Aquila",),
         first_launch="2006-06-21",
         known_satellites=(
@@ -748,7 +716,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="geostar-2",
         wikidata_qid="Q17083126",
-        manufacturer=Manufacturer.ORBITAL_SCIENCES,
+        manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("STAR-2", "Star-2 bus", "GEOStar-2.4"),
         first_launch="2002-07-05",
         mass_kg_range=(1500, 3500),
@@ -802,7 +770,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="geostar-3",
         wikidata_qid="Q96378944",
-        manufacturer=Manufacturer.NORTHROP_GRUMMAN,
+        manufacturer=MANUFACTURER_BY_SLUG["northrop-grumman"],
         also_known_as=("Star-3",),
         first_launch="2018-01-25",
         mass_kg_range=(3500, 4500),
@@ -827,7 +795,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="leostar",
         wikidata_qid="Q1131474",  # No dedicated Wikidata item; covered under Star Bus Q1131474
-        manufacturer=Manufacturer.ORBITAL_SCIENCES,
+        manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("LEOStar-1", "LEOStar-2", "LEOStar-3"),
         first_launch="1995-12-30",
         mass_kg_range=(300, 4000),
@@ -855,7 +823,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="microstar",
         wikidata_qid="Q1131474",
-        manufacturer=Manufacturer.ORBITAL_SCIENCES,
+        manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("Microstar", "MicroStar-1", "MicroStar-2"),
         first_launch="1991-07-17",
         mass_kg_range=(43, 68),
@@ -914,7 +882,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.THALES_ALENIA_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         also_known_as=("Spacebus family", "Eurosatellite Spacebus"),
         first_launch="1985-02-08",
         notes="Umbrella family: Spacebus-100/300/2000/3000/4000 + Neo. 92+ built. "
@@ -923,7 +891,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus-100",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.AEROSPATIALE,
+        manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         also_known_as=("Spacebus 1000", "Eurosatellite Spacebus 100"),
         first_launch="1985-02-08",
         mass_kg_range=(1170, 1500),
@@ -934,7 +902,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus-300",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.AEROSPATIALE,
+        manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         also_known_as=("SB-300",),
         first_launch="1987-11-21",
         mass_kg_range=(2077, 2144),
@@ -950,7 +918,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus-2000",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.AEROSPATIALE,
+        manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         first_launch="1990-08-30",
         mass_kg_range=(1800, 2500),
         solar_span_m=22.4,
@@ -971,7 +939,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus-3000",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.ALCATEL_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["alcatel-space"],
         also_known_as=(
             "Spacebus 3000A",
             "Spacebus 3000B2",
@@ -1014,7 +982,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacebus-4000",
         wikidata_qid="Q2091683",
-        manufacturer=Manufacturer.THALES_ALENIA_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         also_known_as=(
             "Spacebus 4000B2",
             "Spacebus 4000B3",
@@ -1069,7 +1037,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="prima",
         wikidata_qid=None,
-        manufacturer=Manufacturer.THALES_ALENIA_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         also_known_as=("Piattaforma Riconfigurabile Italiana Multi-Applicativa",),
         first_launch="2007-06-08",
         known_satellites=(
@@ -1090,7 +1058,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="proteus",
         wikidata_qid="Q1127075",
-        manufacturer=Manufacturer.THALES_ALENIA_SPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         also_known_as=("PROTEUS", "Astrosat-1000 (commonly conflated)"),
         first_launch="2001-12-07",
         mass_kg_range=(500, 700),
@@ -1110,7 +1078,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="eurostar",
         wikidata_qid="Q3060865",
-        manufacturer=Manufacturer.AIRBUS,
+        manufacturer=MANUFACTURER_BY_SLUG["airbus-ds"],
         also_known_as=(
             "Eurostar 1000",
             "Eurostar 2000",
@@ -1190,7 +1158,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="eurostar-e3000",
         wikidata_qid="Q15122464",
-        manufacturer=Manufacturer.AIRBUS,
+        manufacturer=MANUFACTURER_BY_SLUG["airbus-ds"],
         also_known_as=("Eurostar 3000", "E3000", "E3000EOR", "E3000e"),
         first_launch="2004",
         mass_kg_range=(4500, 6400),
@@ -1242,7 +1210,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="astrosat-1000",
         wikidata_qid="Q4811708",
-        manufacturer=Manufacturer.AIRBUS,
+        manufacturer=MANUFACTURER_BY_SLUG["airbus-ds"],
         also_known_as=("AstroSat-1000",),
         first_launch="2011-12-17",
         mass_kg_range=(800, 1200),
@@ -1253,7 +1221,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="alphabus",
         wikidata_qid="Q1359245",
-        manufacturer=Manufacturer.AIRBUS,  # joint with Thales Alenia Space (Q128356)
+        manufacturer=MANUFACTURER_BY_SLUG[
+            "airbus-ds"
+        ],  # joint with Thales Alenia Space (Q128356)
         also_known_as=("Alphabus Extended", "Alphasat platform"),
         first_launch="2013-07-25",
         mass_kg_range=(6000, 8800),
@@ -1270,7 +1240,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="myriade",
         wikidata_qid="Q3331500",
-        manufacturer=Manufacturer.CNES,
+        manufacturer=MANUFACTURER_BY_SLUG["cnes"],
         also_known_as=("AstroSat-100", "Myriade-Evolutions"),
         first_launch="2004-06-28",
         mass_kg_range=(120, 400),
@@ -1300,7 +1270,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="small-geo",
         wikidata_qid="Q48755064",
-        manufacturer=Manufacturer.OHB,
+        manufacturer=MANUFACTURER_BY_SLUG["ohb"],
         also_known_as=("SGEO", "Luxor"),
         first_launch="2017-01-28",
         mass_kg_range=(1600, 3200),
@@ -1316,7 +1286,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="dfh-3",
         wikidata_qid="Q97219471",
-        manufacturer=Manufacturer.CAST,
+        manufacturer=MANUFACTURER_BY_SLUG["cast"],
         also_known_as=(
             "Dong Fang Hong 3",
             "\u4e1c\u65b9\u7ea2\u4e09\u53f7",
@@ -1348,7 +1318,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="dfh-4",
         wikidata_qid="Q97219489",
-        manufacturer=Manufacturer.CAST,
+        manufacturer=MANUFACTURER_BY_SLUG["cast"],
         also_known_as=(
             "Dong Fang Hong 4",
             "\u4e1c\u65b9\u7ea2\u56db\u53f7",
@@ -1403,7 +1373,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="dfh-5",
         wikidata_qid="Q97219511",
-        manufacturer=Manufacturer.CAST,
+        manufacturer=MANUFACTURER_BY_SLUG["cast"],
         also_known_as=("Dong Fang Hong 5", "\u4e1c\u65b9\u7ea2\u4e94\u53f7"),
         first_launch="2019-12-27",
         mass_kg_range=(6500, 9000),
@@ -1419,7 +1389,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="cast968",
         wikidata_qid=None,
-        manufacturer=Manufacturer.CAST,
+        manufacturer=MANUFACTURER_BY_SLUG["cast"],
         also_known_as=("CAST-968",),
         first_launch="1999-05-10",
         mass_kg_range=(300, 500),
@@ -1437,7 +1407,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="cast2000",
         wikidata_qid=None,
-        manufacturer=Manufacturer.CAST,
+        manufacturer=MANUFACTURER_BY_SLUG["cast"],
         also_known_as=("CAST-2000",),
         first_launch="2003",
         mass_kg_range=(400, 900),
@@ -1462,7 +1432,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="ds2000",
         wikidata_qid="Q8353343",
-        manufacturer=Manufacturer.MITSUBISHI_ELECTRIC,
+        manufacturer=MANUFACTURER_BY_SLUG["mitsubishi-electric"],
         also_known_as=("DS-2000", "Melco DS2000"),
         first_launch="2002-09-10",
         mass_kg_range=(3000, 5000),
@@ -1495,7 +1465,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="nextar",
         wikidata_qid="Q11234905",
-        manufacturer=Manufacturer.NEC,
+        manufacturer=MANUFACTURER_BY_SLUG["nec"],
         also_known_as=("NX-100L", "NX-300L", "NX-500L", "NX-1500L"),
         first_launch="2014-11-06",
         mass_kg_range=(250, 500),
@@ -1505,7 +1475,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="i-1k",
         wikidata_qid="Q17028555",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT-1000", "I-1000"),
         first_launch="2002-09-12",
         mass_kg_range=(500, 1100),
@@ -1528,7 +1498,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="i-2k",
         wikidata_qid="Q17038983",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT-2000", "I-2000"),
         first_launch="2001-04-18",
         mass_kg_range=(1500, 2500),
@@ -1559,7 +1529,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="i-3k",
         wikidata_qid="Q17028575",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT-3000", "I-3000"),
         first_launch="2005-12-21",
         mass_kg_range=(3000, 3400),
@@ -1585,7 +1555,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="i-4k",
         wikidata_qid="Q16991488",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT-4000", "I-4000"),
         first_launch=None,
         known_satellites=("GSAT-20", "GSAT-7R"),
@@ -1594,7 +1564,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="i-6k",
         wikidata_qid="Q60760760",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT-6000", "I-6000"),
         first_launch="2018-12-04",
         mass_kg_range=(4000, 6500),
@@ -1604,7 +1574,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="ims",
         wikidata_qid="Q17056247",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("IMS", "IMS-1", "IMS-2"),
         first_launch="2008-04-28",
         mass_kg_range=(80, 450),
@@ -1627,7 +1597,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="insat-bus",
         wikidata_qid="Q136171554",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=("INSAT bus family",),
         first_launch="2001-04-18",
         notes="Umbrella article covering I-1K through I-6K; see individual entries.",
@@ -1635,7 +1605,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="poem",
         wikidata_qid="Q121238986",
-        manufacturer=Manufacturer.ISRO,
+        manufacturer=MANUFACTURER_BY_SLUG["isro"],
         also_known_as=(
             "POEM",
             "PS4-OP",
@@ -1655,7 +1625,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="si-200",
         wikidata_qid="Q17125153",
-        manufacturer=Manufacturer.SATREC,
+        manufacturer=MANUFACTURER_BY_SLUG["satrec"],
         also_known_as=("SI-300 (extended)",),
         first_launch="2009-07-14",
         mass_kg_range=(180, 300),
@@ -1667,7 +1637,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="kaur",
         wikidata_qid="Q4206256",
-        manufacturer=Manufacturer.ISS_RESHETNEV,
+        manufacturer=MANUFACTURER_BY_SLUG["iss-reshetnev"],
         also_known_as=(
             "\u041a\u0410\u0423\u0420",
             "KAUR-1",
@@ -1698,7 +1668,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="usp",
         wikidata_qid="Q22084823",
-        manufacturer=Manufacturer.RSC_ENERGIA,
+        manufacturer=MANUFACTURER_BY_SLUG["energia"],
         also_known_as=("Universal Space Platform", "\u0423\u041a\u041f", "Viktoria"),
         first_launch="1999-09-06",
         known_satellites=(
@@ -1716,7 +1686,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="yakhta",
         wikidata_qid="Q4539748",
-        manufacturer=Manufacturer.KHRUNICHEV,
+        manufacturer=MANUFACTURER_BY_SLUG["khrunichev"],
         also_known_as=("\u042f\u0445\u0442\u0430",),
         first_launch="2005-08-26",
         mass_kg_range=(700, 1380),
@@ -1732,7 +1702,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="ekspress",
         wikidata_qid="Q4530647",
-        manufacturer=Manufacturer.ISS_RESHETNEV,
+        manufacturer=MANUFACTURER_BY_SLUG["iss-reshetnev"],
         also_known_as=(
             "\u042d\u043a\u0441\u043f\u0440\u0435\u0441\u0441",
             "Ekspress-1000",
@@ -1778,7 +1748,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="navigator",
         wikidata_qid="Q67944760",
-        manufacturer=Manufacturer.NPO_LAVOCHKIN,
+        manufacturer=MANUFACTURER_BY_SLUG["npo-lavochkin"],
         also_known_as=(
             "\u041d\u0430\u0432\u0438\u0433\u0430\u0442\u043e\u0440",
             "BMSS Navigator",
@@ -1798,7 +1768,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="yamal",
         wikidata_qid="Q3656794",
-        manufacturer=Manufacturer.RSC_ENERGIA,
+        manufacturer=MANUFACTURER_BY_SLUG["energia"],
         also_known_as=("\u042f\u043c\u0430\u043b",),
         first_launch="1999-09-06",
         known_satellites=(
@@ -1818,7 +1788,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="amos",
         wikidata_qid="Q28195917",
-        manufacturer=Manufacturer.IAI,
+        manufacturer=MANUFACTURER_BY_SLUG["iai"],
         also_known_as=(
             "Affordable Modular Optimized Satellite",
             "\u05e2\u05de\u05d5\u05e1",
@@ -1836,7 +1806,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="arsat-3k",
         wikidata_qid="Q22084804",
-        manufacturer=Manufacturer.INVAP,
+        manufacturer=MANUFACTURER_BY_SLUG["invap"],
         first_launch="2014-10-16",
         mass_kg_range=(2900, 3000),
         known_satellites=("ARSAT-1", "ARSAT-2", "ARSAT-SG1"),
@@ -1846,7 +1816,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="aprizesat",
         wikidata_qid="Q17512448",
-        manufacturer=Manufacturer.SPACEQUEST,
+        manufacturer=MANUFACTURER_BY_SLUG["spacequest"],
         also_known_as=("LatinSat",),
         first_launch="2002-12-20",
         mass_kg_range=(12, 14),
@@ -1879,7 +1849,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="arkyd-3",
         wikidata_qid="Q18520405",
-        manufacturer=Manufacturer.PLANETARY_RESOURCES,
+        manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Arkyd 3", "Arkyd-3R"),
         first_launch="2015-04-14",
         mass_kg_range=(4, 5),
@@ -1890,7 +1860,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="arkyd-100",
         wikidata_qid="Q25449222",
-        manufacturer=Manufacturer.PLANETARY_RESOURCES,
+        manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Leo Space Telescope", "Ceres"),
         first_launch=None,
         mass_kg_range=(11, 15),
@@ -1899,7 +1869,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="arkyd-200",
         wikidata_qid="Q17620827",
-        manufacturer=Manufacturer.PLANETARY_RESOURCES,
+        manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Interceptor",),
         first_launch=None,
         notes="Planned asteroid interceptor; full-size prototype built 2016; never launched.",
@@ -1907,7 +1877,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="arkyd-300",
         wikidata_qid="Q17620827",
-        manufacturer=Manufacturer.PLANETARY_RESOURCES,
+        manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Rendezvous Prospector", "Arkyd-301"),
         first_launch=None,
         notes="Concept only; cancelled 2018.",
@@ -1915,7 +1885,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="mcsb",
         wikidata_qid="Q6889690",
-        manufacturer=Manufacturer.NASA_AMES,
+        manufacturer=MANUFACTURER_BY_SLUG["nasa-ames"],
         also_known_as=("MCSB",),
         first_launch="2013-09-06",
         known_satellites=("LADEE",),
@@ -1925,7 +1895,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="photon",
         wikidata_qid="Q106610366",
-        manufacturer=Manufacturer.ROCKET_LAB,
+        manufacturer=MANUFACTURER_BY_SLUG["rocket-lab"],
         also_known_as=("Photon", "Explorer", "Lightning", "Pioneer"),
         first_launch="2020-08-31",
         mass_kg_range=(200, 300),
@@ -1942,7 +1912,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="rs-300",
         wikidata_qid="Q106457215",
-        manufacturer=Manufacturer.BALL_AEROSPACE,
+        manufacturer=MANUFACTURER_BY_SLUG["ball-aerospace"],
         also_known_as=("BCP-300 (related)",),
         first_launch="2007-03-09",
         mass_kg_range=(125, 200),
@@ -1953,7 +1923,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     SatelliteBusSpec(
         slug="spacecube",
         wikidata_qid="Q7572193",
-        manufacturer=Manufacturer.NASA_GODDARD,
+        manufacturer=MANUFACTURER_BY_SLUG["nasa-goddard"],
         first_launch="2009-05",
         notes="NOT actually a satellite bus - family of FPGA-based on-board data processing computers. "
         "Listed in Wikipedia Category:Satellite_buses possibly in error. "
@@ -1997,4 +1967,6 @@ def bus_for_satellite(object_name: str) -> SatelliteBusSpec | None:
 
 
 def buses_by_manufacturer(manufacturer_qid: str) -> tuple[SatelliteBusSpec, ...]:
-    return tuple(b for b in SATELLITE_BUSES if b.manufacturer.value == manufacturer_qid)
+    return tuple(
+        b for b in SATELLITE_BUSES if b.manufacturer.wikidata_qid == manufacturer_qid
+    )

@@ -187,16 +187,10 @@ def _collect_feature_type_labels(
 def _collect_group_name_labels(
     wikidata_entities: WikidataEntityCache,
 ) -> dict[str, dict[str, str]]:
-    """Return {lang: {group_name_<slug>: label}}.
+    """Return {lang: {group_name_<slug>: label}}, deduped by QID.
 
-    Wikidata labels win per language. The baseLocale fallback uses the
-    underlying spec name (Operator/LaunchSite/Manufacturer) when available so
-    QID-less groups don't render as their internal slug.
-
-    When the same QID appears across multiple groups (a company that is both
-    operator and manufacturer of its own hardware), only the first group's
-    slug gets a label — the others share the same display name and would only
-    duplicate the entry in the locale JSON.
+    A company that is both operator and manufacturer ships under one slug
+    only — its sibling shares the same display name.
     """
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]

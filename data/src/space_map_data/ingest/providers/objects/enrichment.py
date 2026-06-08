@@ -36,6 +36,7 @@ from space_map_data.constants.earth_sats.satcat import (
     parse_orbit_center,
     parse_orbit_type,
 )
+from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
 from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_source
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 
@@ -223,19 +224,32 @@ def resolve_operator_qids(
     return sorted(qids)
 
 
-def resolve_manufacturer_qids(constellation: str | None) -> list[str]:
-    """QIDs of primes that build hardware for this constellation.
+# OBJECT_NAME → manufacturer QID, flattened from each bus's ``known_satellites``.
+_NAME_TO_MANUFACTURER_QID: dict[str, str] = {
+    sat_name: bus.manufacturer.wikidata_qid
+    for bus in SATELLITE_BUSES
+    if bus.manufacturer.wikidata_qid is not None
+    for sat_name in bus.known_satellites
+}
 
-    Manufacturer is resolved only via constellation slug — no SATCAT OWNER
-    fallback, since OWNER reflects who operates the satellite, not who built
-    it (and the two often differ; see ``manufacturers.py`` docstring).
+
+def resolve_manufacturer_qids(
+    constellation: str | None, name: str | None = None
+) -> list[str]:
+    """QIDs of primes that build hardware for this sat.
+
+    Two paths: constellation slug (Starlink, GPS, ...) and OBJECT_NAME against
+    ``SATELLITE_BUSES`` (legacy GEO sats where operator ≠ manufacturer).
     """
-    if constellation is None:
-        return []
     qids: set[str] = set()
-    for mfr in MANUFACTURER_BY_CONSTELLATION.get(constellation, ()):
-        if mfr.wikidata_qid is not None:
-            qids.add(mfr.wikidata_qid)
+    if constellation is not None:
+        for mfr in MANUFACTURER_BY_CONSTELLATION.get(constellation, ()):
+            if mfr.wikidata_qid is not None:
+                qids.add(mfr.wikidata_qid)
+    if name is not None:
+        qid = _NAME_TO_MANUFACTURER_QID.get(name)
+        if qid is not None:
+            qids.add(qid)
     return sorted(qids)
 
 

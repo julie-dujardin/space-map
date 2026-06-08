@@ -269,13 +269,7 @@ def _related_role_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Cross-links to other groups sharing this group's Wikidata QID.
-
-    SpaceX-as-operator (``op-spacex``) and SpaceX-as-manufacturer
-    (``mfr-spacex``) are the same company, so each side carries a link to the
-    other to help users jump between roles. Skips entries whose only sibling
-    is the group itself.
-    """
+    """Sibling groups (different role, same Wikidata QID) for cross-linking."""
     if not group.wikidata_qid:
         return []
     siblings = related_by_qid.get(group.wikidata_qid, [])

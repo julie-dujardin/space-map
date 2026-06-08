@@ -91,8 +91,7 @@ def build_satcat_localized(
             sat.manufacturer_qids, lang, wikidata_entities
         )
         if mfr_refs:
-            # Same key as ``EntityRefClaim("manufacturer", "P176")`` so SATCAT
-            # refs override the Wikidata-resolved ones (which lack /g/mfr-* links).
+            # Overrides the Wikidata P176 path (which has no /g/mfr-* link).
             data["manufacturer"] = mfr_refs
 
     return data
