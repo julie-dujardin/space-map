@@ -39,6 +39,7 @@ export interface FeatureHit {
 	description_zh?: string;
 	description_ar?: string;
 	description_ru?: string;
+	thumbnail?: SearchThumbnail;
 }
 
 export interface ObjectHit {
@@ -168,7 +169,6 @@ export function localizedDescription(hit: SearchHit, locale: string): string | u
 /** URL for the dropdown thumbnail, or undefined when the hit has no image.
  *  Mirrors the bundle layout used by `pickImageUrl` in `lib/fetch/objects/images.ts`. */
 export function thumbnailUrl(hit: SearchHit): string | undefined {
-	if (hit.kind === 'feature') return undefined;
 	const t = hit.thumbnail;
 	if (!t) return undefined;
 	return `${DATA_BASE}/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`;

@@ -130,6 +130,21 @@ def _load_localized_details(
     return out
 
 
+def _load_global_details(export_dir: Path) -> dict[str, dict[str, Any]]:
+    """Return ``{bucket_key: global_entry}`` from the details tier.
+
+    Carries the ``images`` array used to pick search-card thumbnails.
+    """
+    global_dir = export_dir / "v1" / "nomenclature" / "details" / "__global__"
+    if not global_dir.exists():
+        return {}
+    merged: dict[str, dict[str, Any]] = {}
+    for bundle in sorted(global_dir.glob("*.json.gz")):
+        merged.update(json.loads(gzip.decompress(bundle.read_bytes())))
+    logger.info("Loaded %d feature global detail entries", len(merged))
+    return merged
+
+
 def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     positions_dir = export_dir / "v1" / "nomenclature" / "positions"
     labels_root = export_dir / "v1" / "nomenclature" / "labels"
@@ -140,6 +155,7 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         return
 
     details_by_lang = _load_localized_details(export_dir)
+    global_details = _load_global_details(export_dir)
     body_files = sorted(positions_dir.glob("*.bin.gz"))
     logger.info("Indexing features from %d bodies", len(body_files))
 
@@ -185,6 +201,9 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             # Detail-tier bundles use ``{body}:{fid}`` as the key — mirrors
             # ``feature_bucket_key`` in the nomenclature writer.
             detail_key = f"{body_id}:{fid}"
+            thumb = pick_thumbnail((global_details.get(detail_key) or {}).get("images"))
+            if thumb:
+                doc["thumbnail"] = thumb
             for lang in LANGUAGES:
                 label = labels_by_lang[lang][i]
                 if label:
