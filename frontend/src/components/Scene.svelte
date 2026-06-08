@@ -9,6 +9,7 @@
 	import { page } from '$app/state';
 	import { sphericalToCartesian } from '$lib/math/spherical';
 	import { parseUrl, urlTypeFromId } from '$lib/state/url';
+	import { UrlType } from '$lib/state/view';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import DebugMenu from './DebugMenu.svelte';
@@ -124,14 +125,22 @@
 				// Skip the auto-setFocus when the URL already names this body:
 				// programmatic navigators (search, deep links) push their target
 				// state first and would otherwise have featureId/groupSlug wiped
-				// out by setFocus the moment the camera lands.
+				// out by setFocus the moment the camera lands. Also skip when a
+				// group is focused and the clicked body is a member — clicking
+				// within a group should keep the group view, only the camera moves.
 				if (!wasInitial && !isNavigatingBack && body && body.data.id !== appState.view.id) {
-					appState.setFocus({
-						type: urlTypeFromId(body.data.id),
-						id: body.data.id,
-						// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
-						name: body.data.name ?? ''
-					});
+					const inActiveGroup =
+						appState.view.type === UrlType.Group &&
+						appState.view.groupSlug !== null &&
+						ctx.earthSatFilter?.has(body.data.id) === true;
+					if (!inActiveGroup) {
+						appState.setFocus({
+							type: urlTypeFromId(body.data.id),
+							id: body.data.id,
+							// Drawer fills the localized name via replaceFocusName once the detail bundle resolves.
+							name: body.data.name ?? ''
+						});
+					}
 				}
 			},
 			onCameraPosition: syncCameraToUrl,
