@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -76,9 +75,7 @@
 								onclick={() => focusEntity(entity)}
 								aria-label={m.entity_focus_in_map()}
 								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
-								><span class="truncate">{display}</span><LocateFixedIcon
-									class="size-3 shrink-0"
-								/></button
+								><span class="truncate">{display}</span></button
 							>
 						{:else if entity.wikipedia}
 							<a

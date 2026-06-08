@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -108,9 +107,7 @@
 								onclick={() => appState.setGroup(slug, name)}
 								aria-label={m.entity_focus_in_map()}
 								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{site.name}</span><LocateFixedIcon
-									class="size-3 shrink-0"
-								/></button
+								><span class="truncate">{site.name}</span></button
 							>
 						{:else if site.wikipedia}
 							<a
@@ -155,9 +152,7 @@
 								onclick={() => appState.setGroup(slug, name)}
 								aria-label={m.entity_focus_in_map()}
 								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{c.name}</span><LocateFixedIcon
-									class="size-3 shrink-0"
-								/></button
+								><span class="truncate">{c.name}</span></button
 							>
 						{:else if c.wikipedia}
 							<a
