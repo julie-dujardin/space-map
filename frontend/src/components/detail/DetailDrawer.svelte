@@ -412,6 +412,7 @@
 	>
 		<Vaul.Portal>
 			<Vaul.Content
+				trapFocus={false}
 				class="fixed inset-x-0 bottom-0 z-50 flex h-dvh max-h-dvh flex-col rounded-t-xl border-t bg-background shadow-lg outline-none"
 			>
 				<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
