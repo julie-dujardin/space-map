@@ -221,11 +221,17 @@
 						}
 						if (hit.kind === 'group') {
 							appState.setGroup(hit.slug, name);
-							// setGroup parked view.id on the group's camera anchor body;
-							// the sidebar still shows the constellation (focusable kind=group).
-							const anchorId = appState.view.id;
-							const anchor = ctx.getBody(anchorId);
-							if (anchor) scene?.focusOnBody(anchorId, minCameraDistance(anchor) * 5);
+							// setGroup parked view.id on the group's camera anchor body and
+							// view.zoom on the framing distance for that group type (full
+							// solar-system for asteroid classes, near-Earth for the rest).
+							// Pair it with DEFAULT_VIEW lat/lon so the camera lands at the
+							// default framing instead of approaching from the prior angle.
+							scene?.focusOnBody(
+								appState.view.id,
+								appState.view.zoom,
+								DEFAULT_VIEW.latitude,
+								DEFAULT_VIEW.longitude
+							);
 							return;
 						}
 						// Snap into coverage first so the camera lands on a positioned body.
