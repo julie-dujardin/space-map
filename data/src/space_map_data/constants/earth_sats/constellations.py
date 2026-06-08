@@ -115,9 +115,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "tianqi",
         None,
         (SatelliteCategory.COMMUNICATIONS,),
-        prefix="TIANQI",
+        prefix="TIANQI-",
         url="https://www.guodiangaoke.com/web/dist/index.html#/tianqixingzuo",
-    ),
+    ),  # Hyphen-anchored; bare "TIANQI" would catch TIANQIN 1 (gravity-wave demo).
     ConstellationSpec(
         "connecta-iot",
         None,
@@ -527,8 +527,8 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "hawkeye360",
         None,
         (SatelliteCategory.OBSERVATION,),
-        prefix=("HAWK", "KESTREL-"),
-    ),
+        prefix=("HAWK-", "KESTREL-"),
+    ),  # Bare "HAWK" would catch HAWKSAT 1 (ATK demo cubesat, unrelated).
     # Capella Space: commercial SAR imaging constellation.
     ConstellationSpec(
         "capella", None, (SatelliteCategory.OBSERVATION,), prefix="CAPELLA"
@@ -604,11 +604,11 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "apollo", "Q46611", (SatelliteCategory.MANNED_CAPSULE,), prefix="APOLLO"
     ),
     ConstellationSpec(
-        "sts", "Q1775296", (SatelliteCategory.MANNED_CAPSULE,), prefix="STS"
-    ),
+        "sts", "Q1775296", (SatelliteCategory.MANNED_CAPSULE,), prefix="STS "
+    ),  # Trailing space; bare "STS" would catch Korean STSAT-* and US-DoD STSS *.
     ConstellationSpec(
-        "dragon", "Q236448", (SatelliteCategory.UNMANNED_CARGO,), prefix="DRAGON"
-    ),
+        "dragon", "Q236448", (SatelliteCategory.UNMANNED_CARGO,), prefix="DRAGON "
+    ),  # Trailing space; bare "DRAGON" would catch DRAGONFLY, DRAGONSAT.
     # Science / geodetic
     ConstellationSpec(
         "pageos", "Q2043671", (SatelliteCategory.SCIENCE,), prefix="PAGEOS"
@@ -772,7 +772,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "salyut", "Q207933", (SatelliteCategory.STATION,), prefix="SALYUT"
     ),  # some were military, documented in individual pages (good coverage)
-    ConstellationSpec("mir", "Q48604", (SatelliteCategory.STATION,), prefix="MIR"),
+    ConstellationSpec(
+        "mir",
+        "Q48604",
+        (SatelliteCategory.STATION,),
+        prefix="MIR ",
+        satellites=["MIR"],
+    ),  # Bare "MIR" prefix would catch MIRANDA, MIRATA, MIR-SAT 1 (all unrelated).
     ConstellationSpec(
         "soyuz-rocket", "Q1299641", (SatelliteCategory.ROCKET,), prefix="SL-"
     ),  # Soyuz rocket spent stages & debris
@@ -941,6 +947,10 @@ PREFIX_TO_SLUG: dict[str, str] = dict(
     )
 )
 
+EXACT_NAME_TO_SLUG: dict[str, str] = {
+    n: c.slug for c in CONSTELLATIONS if c.satellites is not None for n in c.satellites
+}
+
 CONTAINS_TO_SLUG: dict[str, str] = {
     k: c.slug for c in CONSTELLATIONS if c.contains is not None for k in c.contains
 }
@@ -1010,6 +1020,9 @@ GROUP_TO_CATEGORY: dict[str, SatelliteCategory] = {
 def slug_from_name(name: str | None) -> str | None:
     if not name:
         return None
+    exact = EXACT_NAME_TO_SLUG.get(name)
+    if exact is not None:
+        return exact
     for prefix, slug in PREFIX_TO_SLUG.items():
         if name.startswith(prefix):
             return slug
