@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 K_GLOBAL = 100
 K_LOCALIZED = 200
 _TOP_LAUNCH_SITES = 5
+_TOP_CONSTELLATIONS = 5
 
 
 def _build_global(
@@ -144,13 +145,17 @@ def _build_localized(
             ]
             if instance_refs:
                 data["instance_of"] = instance_refs
-    # Top-launch-sites breakdown is meaningless for launch-site groups (always
-    # 100% itself), so skip it there. Constellation / operator / manufacturer
-    # groups show where their fleet flew from.
+    # Skip self-breakdown (a launch-site page can't list itself as a top site).
     if stats and stats.launch_sites and group.type is not GroupType.LAUNCH_SITE:
         sites = _launch_site_refs(stats.launch_sites, lang, wikidata_entities)
         if sites:
             data["launch_sites"] = sites
+    if stats and stats.constellations and group.type is not GroupType.CONSTELLATION:
+        constellations = _constellation_refs(
+            stats.constellations, lang, wikidata_entities
+        )
+        if constellations:
+            data["constellations"] = constellations
     return data
 
 
@@ -159,19 +164,13 @@ def _launch_site_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Top ``_TOP_LAUNCH_SITES`` sites with localized ref + count.
-
-    Unknown codes (not in ``LAUNCH_SITE_BY_CODE``) are dropped; codes
-    without a QID fall back to the CelesTrak short name.
-    """
+    """Top sites with localized ref + count; unknown codes dropped."""
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:_TOP_LAUNCH_SITES]
     out: list[dict] = []
     for code, n in top:
         spec = LAUNCH_SITE_BY_CODE.get(code)
         if not spec:
             continue
-        # Link the entry to its own /g/site-<slug> page so the frontend can
-        # navigate from a constellation/operator drawer into the launch-site group.
         name = spec.name
         if spec.wikidata_qid:
             ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
@@ -188,15 +187,40 @@ def _launch_site_refs(
     return out
 
 
+def _constellation_refs(
+    counts: dict[str, int],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Top constellations with localized ref + count; unknown slugs dropped."""
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[
+        :_TOP_CONSTELLATIONS
+    ]
+    out: list[dict] = []
+    for slug, n in top:
+        spec = CONSTELLATION_BY_SLUG.get(slug)
+        if not spec:
+            continue
+        name = spec.slug
+        if spec.wikidata_qid:
+            ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+            if ref is not None and ref.name:
+                name = ref.name
+        out.append(
+            {
+                "n": n,
+                "name": name,
+                "primary_type": "group",
+                "primary_id": spec.slug,
+            }
+        )
+    return out
+
+
 def _extract_group_claims(
     group: Group, wikidata_entities: WikidataEntityCache
 ) -> dict | None:
-    """Run the shared object-claim extractor against the group's Wikidata entity.
-
-    We only consume ``website`` (P856) and ``country_of_origin`` (P495) for the
-    bundle today, but going through ``extract_claims`` keeps unit/currency
-    handling consistent if we surface more fields later.
-    """
+    """Run the shared object-claim extractor on the group's Wikidata entity."""
     if not group.wikidata_qid:
         return None
     wd = wikidata_entities.get_referenced(group.wikidata_qid)
@@ -212,9 +236,7 @@ def _operator_refs_for_group(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Constellation operators sourced from constants (not Wikidata P137), resolved
-    as EntityRefs. Returns refs only for constellation groups — operator groups
-    *are* the operator and launch-site groups don't have a single operator."""
+    """Operators of a constellation, resolved as EntityRefs (constants, not P137)."""
     if group.type is not GroupType.CONSTELLATION:
         return []
     operators = OPERATOR_BY_CONSTELLATION.get(group.slug, [])
@@ -241,7 +263,7 @@ def _manufacturer_refs_for_group(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Constellation manufacturers sourced from constants, resolved as EntityRefs."""
+    """Manufacturers of a constellation, resolved as EntityRefs."""
     if group.type is not GroupType.CONSTELLATION:
         return []
     manufacturers = MANUFACTURER_BY_CONSTELLATION.get(group.slug, [])

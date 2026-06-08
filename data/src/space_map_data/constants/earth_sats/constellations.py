@@ -442,8 +442,11 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ),
     # Rocket stages
     ConstellationSpec(
-        "falcon", "Q249091", (SatelliteCategory.ROCKET,), prefix="FALCON "
-    ),  # Includes one falcon 1 stage
+        "falcon",
+        "Q249091",
+        (SatelliteCategory.ROCKET,),
+        prefix=("FALCON 1", "FALCON 9", "FALCON HEAVY"),
+    ),  # Includes one falcon 1 stage. Bare "FALCON " would catch UAE FALCON EYE.
     ConstellationSpec("atlas", "Q22949", (SatelliteCategory.ROCKET,), prefix="ATLAS"),
     ConstellationSpec("delta", "Q49506", (SatelliteCategory.ROCKET,), prefix="DELTA"),
     ConstellationSpec(

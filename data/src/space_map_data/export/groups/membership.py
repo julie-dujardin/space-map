@@ -51,6 +51,7 @@ class GroupSatcatStats:
     active: int = 0
     decayed: int = 0
     launch_sites: dict[str, int] = field(default_factory=dict)
+    constellations: dict[str, int] = field(default_factory=dict)
     first_launch_date: str | None = None
 
 
@@ -134,7 +135,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
 
         for group_type, group_slug in slugs:
             stats = build.add(group_type, group_slug, obj_id)
-            _accumulate(stats, launch_date, ops_status, decay_date, site_code)
+            _accumulate(stats, launch_date, ops_status, decay_date, site_code, c_slug)
 
     for group_type, mem in build.membership.items():
         for ids in mem.values():
@@ -166,6 +167,7 @@ def _accumulate(
     ops_status: str | None,
     decay_date: str | None,
     site_code: str | None,
+    constellation_slug: str | None,
 ) -> None:
     if launch_date:
         try:
@@ -182,6 +184,10 @@ def _accumulate(
         stats.active += 1
     if site_code:
         stats.launch_sites[site_code] = stats.launch_sites.get(site_code, 0) + 1
+    if constellation_slug:
+        stats.constellations[constellation_slug] = (
+            stats.constellations.get(constellation_slug, 0) + 1
+        )
 
 
 def write_earth_membership(
