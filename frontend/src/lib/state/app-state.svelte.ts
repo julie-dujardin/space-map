@@ -1,6 +1,6 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
-import { GROUP_DEFAULT_BODY, parseUrl, serializeUrl } from './url';
+import { GROUP_DEFAULT_BODY, parseUrl, serializeUrl, urlTypeFromId } from './url';
 
 const WRITE_DEBOUNCE_MS = 250;
 
@@ -83,11 +83,12 @@ export class AppState {
 	}
 
 	/** Tear down every focus layer (group + feature + body); URL parks on
-	 *  anchorId so refresh still resolves somewhere. */
+	 *  anchorId so refresh still resolves somewhere. Type must be derived from
+	 *  the id — anchorId may be a satellite/small-body/probe, not a NAIF body. */
 	closeDetail(anchorId: string) {
 		this.view = {
 			...this.view,
-			type: UrlType.Body,
+			type: urlTypeFromId(anchorId),
 			id: anchorId,
 			groupSlug: null,
 			featureId: null,
