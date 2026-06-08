@@ -120,6 +120,52 @@ function applyAtParam(defaults: MapViewState): MapViewState {
 	return { ...defaults, date, isNow, latitude, longitude, zoom };
 }
 
+/** Next view when focusing a body. Mirrors AppState.setFocus's merge so link
+ *  hrefs and the committed state stay in lockstep. */
+export function applyFocus(
+	current: MapViewState,
+	focus: { type: string; id: string; name: string }
+): MapViewState {
+	return {
+		...current,
+		...focus,
+		imageIndex: null,
+		featureId: null,
+		groupSlug: null
+	};
+}
+
+/** Next view when opening a group. Parks `id` on the group's camera anchor
+ *  so the body route resolves to the anchor body. */
+export function applyGroup(current: MapViewState, slug: string, name: string): MapViewState {
+	const anchor = groupAnchor(slug);
+	return {
+		...current,
+		type: UrlType.Group,
+		id: anchor.id,
+		zoom: anchor.zoom,
+		groupSlug: slug,
+		name,
+		imageIndex: null,
+		featureId: null
+	};
+}
+
+/** Next view when opening a nomenclature feature on its parent body. */
+export function applyFeature(
+	current: MapViewState,
+	focus: { bodyId: string; featureId: number; featureName: string }
+): MapViewState {
+	return {
+		...current,
+		type: UrlType.Feature,
+		id: focus.bodyId,
+		name: focus.featureName,
+		featureId: focus.featureId,
+		imageIndex: null
+	};
+}
+
 /** Produce the route path for the current MapViewState — `/<type>/<id>/<name>`
  *  for bodies and groups (groups carry a slug in the id slot), or
  *  `/<type>/<id>/f/<featureId>/<name>` for features — plus the shared

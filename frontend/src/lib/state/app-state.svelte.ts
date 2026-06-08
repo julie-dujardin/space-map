@@ -1,6 +1,6 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
-import { groupAnchor, parseUrl, serializeUrl, urlTypeFromId } from './url';
+import { applyFeature, applyFocus, applyGroup, parseUrl, serializeUrl, urlTypeFromId } from './url';
 
 const WRITE_DEBOUNCE_MS = 250;
 
@@ -54,15 +54,7 @@ export class AppState {
 	}
 
 	setFocus(focus: { type: string; id: string; name: string }) {
-		// New object = any previously-open image viewer / feature / group
-		// selection is no longer meaningful.
-		this.view = {
-			...this.view,
-			...focus,
-			imageIndex: null,
-			featureId: null,
-			groupSlug: null
-		};
+		this.view = applyFocus(this.view, focus);
 		this.pushNow();
 	}
 
@@ -70,17 +62,7 @@ export class AppState {
 	 *  anchor body so Scene's onFocusChange guard recognizes the landing body
 	 *  as the intended target and doesn't stomp groupSlug via setFocus. */
 	setGroup(slug: string, name: string) {
-		const anchor = groupAnchor(slug);
-		this.view = {
-			...this.view,
-			type: UrlType.Group,
-			id: anchor.id,
-			zoom: anchor.zoom,
-			groupSlug: slug,
-			name,
-			imageIndex: null,
-			featureId: null
-		};
+		this.view = applyGroup(this.view, slug, name);
 		this.pushNow();
 	}
 
@@ -101,14 +83,7 @@ export class AppState {
 
 	/** Open a nomenclature feature on its parent body. */
 	setFeature(focus: { bodyId: string; featureId: number; featureName: string }) {
-		this.view = {
-			...this.view,
-			type: UrlType.Feature,
-			id: focus.bodyId,
-			name: focus.featureName,
-			featureId: focus.featureId,
-			imageIndex: null
-		};
+		this.view = applyFeature(this.view, focus);
 		this.pushNow();
 	}
 

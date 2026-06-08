@@ -10,6 +10,7 @@
 	import { formatCurrency, formatNumber } from '$lib/format/quantities';
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -75,6 +76,18 @@
 				ct?.rcs != null ||
 				countries.length > 0)
 	);
+
+	function countryGroupHref(cc: string, name: string): string | undefined {
+		if (!appState) return undefined;
+		return serializeUrl(applyGroup(appState.view, `country-${cc.toLowerCase()}`, name));
+	}
+
+	function handleCountryClick(e: MouseEvent, cc: string, name: string) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState) return;
+		e.preventDefault();
+		appState.setGroup(`country-${cc.toLowerCase()}`, name);
+	}
 </script>
 
 {#if hasContent}
@@ -152,10 +165,11 @@
 						<span title={cc}
 							>{countryFlag(cc)}
 							{#if appState}
-								<button
-									type="button"
-									onclick={() => appState.setGroup(`country-${cc.toLowerCase()}`, name)}
-									class="pointer-events-auto underline hover:text-foreground">{name}</button
+								<a
+									href={countryGroupHref(cc, name)}
+									onclick={(e) => handleCountryClick(e, cc, name)}
+									class="text-muted-foreground pointer-events-auto underline hover:text-foreground"
+									>{name}</a
 								>
 							{:else}
 								{name}

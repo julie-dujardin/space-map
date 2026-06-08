@@ -4,8 +4,8 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import { applyFeature, applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
-	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		entities: EntityRef[];
@@ -33,6 +33,34 @@
 			const urlType = ref.primary_type === 'spkid' ? UrlType.SmallBody : UrlType.Body;
 			appState.setFocus({ type: urlType, id: bodyId, name: ref.name });
 		}
+	}
+
+	function entityHref(ref: EntityRef): string | undefined {
+		if (!appState || !ref.primary_id || !ref.primary_type) return undefined;
+		if (ref.primary_type === 'group') {
+			return serializeUrl(applyGroup(appState.view, ref.primary_id, ref.name));
+		}
+		const bodyId = `${ref.primary_type}-${ref.primary_id}`;
+		if (ref.secondary_type === 'feature' && ref.secondary_id) {
+			return serializeUrl(
+				applyFeature(appState.view, {
+					bodyId,
+					featureId: parseInt(ref.secondary_id, 10),
+					featureName: ref.name
+				})
+			);
+		}
+		const urlType = ref.primary_type === 'spkid' ? UrlType.SmallBody : UrlType.Body;
+		return serializeUrl(applyFocus(appState.view, { type: urlType, id: bodyId, name: ref.name }));
+	}
+
+	// Let middle-click / cmd-click / ctrl-click / shift-click / alt-click fall
+	// through to the browser so "open in new tab" etc. work natively. Only the
+	// plain left-click takes the in-memory fast path.
+	function handleEntityClick(e: MouseEvent, ref: EntityRef) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		e.preventDefault();
+		focusEntity(ref);
 	}
 
 	function detectTruncation(node: HTMLElement, name: string) {
@@ -70,12 +98,11 @@
 				{#snippet child({ props })}
 					<span class="min-w-0 max-w-full" use:detectTruncation={entity.name} {...props}>
 						{#if entity.primary_id && appState}
-							<button
-								type="button"
-								onclick={() => focusEntity(entity)}
-								aria-label={m.entity_focus_in_map()}
+							<a
+								href={entityHref(entity)}
+								onclick={(e) => handleEntityClick(e, entity)}
 								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1 max-w-full align-bottom"
-								><span class="truncate">{display}</span></button
+								><span class="truncate">{display}</span></a
 							>
 						{:else if entity.wikipedia}
 							<a

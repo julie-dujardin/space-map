@@ -6,6 +6,7 @@
 	import { groupTypeLabel } from '$lib/format/group';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
+	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -67,6 +68,18 @@
 	let countryLabel = $derived(
 		groupType === 'launch_site' ? m.group_label_country() : m.group_label_country_of_origin()
 	);
+
+	function groupHref(slug: string, name: string): string | undefined {
+		if (!appState) return undefined;
+		return serializeUrl(applyGroup(appState.view, slug, name));
+	}
+
+	function handleGroupClick(e: MouseEvent, slug: string, name: string) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState) return;
+		e.preventDefault();
+		appState.setGroup(slug, name);
+	}
 </script>
 
 {#if histogram}
@@ -124,12 +137,11 @@
 						{#if appState && site.primary_type === 'group' && site.primary_id}
 							{@const slug = site.primary_id}
 							{@const name = site.name}
-							<button
-								type="button"
-								onclick={() => appState.setGroup(slug, name)}
-								aria-label={m.entity_focus_in_map()}
+							<a
+								href={groupHref(slug, name)}
+								onclick={(e) => handleGroupClick(e, slug, name)}
 								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{site.name}</span></button
+								><span class="truncate">{site.name}</span></a
 							>
 						{:else if site.wikipedia}
 							<a
@@ -169,12 +181,11 @@
 						{#if appState && c.primary_type === 'group' && c.primary_id}
 							{@const slug = c.primary_id}
 							{@const name = c.name}
-							<button
-								type="button"
-								onclick={() => appState.setGroup(slug, name)}
-								aria-label={m.entity_focus_in_map()}
+							<a
+								href={groupHref(slug, name)}
+								onclick={(e) => handleGroupClick(e, slug, name)}
 								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
-								><span class="truncate">{c.name}</span></button
+								><span class="truncate">{c.name}</span></a
 							>
 						{:else if c.wikipedia}
 							<a
