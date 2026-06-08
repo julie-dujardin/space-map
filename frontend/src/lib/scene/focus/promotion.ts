@@ -94,6 +94,8 @@ export class PromotionRegistry {
 		// current value rather than waiting for the next change event.
 		deps.ctx.onGroupFilterChange((filter) => this.applyGroupFilter(filter));
 		this.applyGroupFilter(deps.ctx.earthSatFilter);
+		deps.ctx.onSmallBodyClassFilterChange((cls) => this.applySmallBodyClassFilter(cls));
+		this.applySmallBodyClassFilter(deps.ctx.smallBodyClassFilter);
 		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
 		// until labels resolve a few hundred ms later, defaults is empty so the
 		// notification handler matches nothing.
@@ -292,6 +294,14 @@ export class PromotionRegistry {
 	private applyGroupFilter(filter: ReadonlySet<string> | null): void {
 		this.groupTargets = filter;
 		this.reevaluateGroupMode();
+	}
+
+	/** Small-body class focus: tell the point-cloud system which `small_bodies/<class>`
+	 *  zone to emphasize. No body-promotion side: asteroid clouds are dense enough
+	 *  that the earth-style bulk-promote-on-small-count doesn't apply. */
+	private applySmallBodyClassFilter(cls: string | null): void {
+		const zone = cls ? `small_bodies/${cls}` : null;
+		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone);
 	}
 
 	/** Chunk-flush hook: every time a new earth-zone segment lands (or any

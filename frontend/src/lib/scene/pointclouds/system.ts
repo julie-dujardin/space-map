@@ -47,6 +47,15 @@ const EMPHASIS_MAX_DIM = 1.0;
 const EMPHASIS_BASE_OPACITY = 1.0;
 const EMPHASIS_MAX_OPACITY = 3.5;
 
+/** Asteroid-class emphasis: size + opacity boost applied to the focused
+ *  `small_bodies/<class>` zone (e.g. when /g/class-NEA is active). Asteroid
+ *  zones span four orders of magnitude in cardinality (CEN ~hundreds vs MBA
+ *  >10k), so the earth-sat count-based ramp isn't a fit — a single fixed boost
+ *  delivers consistent visual emphasis. Color stays at the material's baseline
+ *  `overlayColor(c) = c · 0.5`; only size + opacity move. */
+const SMALL_BODY_EMPHASIS_SIZE_MULT = 2.5;
+const SMALL_BODY_EMPHASIS_OPACITY = 2.5;
+
 /**
  * Owns every minor-body point cloud (asteroid zones, spacecraft groups, moon
  * dots) plus the worker pool that powers asteroid/spacecraft Kepler solves.
@@ -79,6 +88,10 @@ export class PointCloudSystem {
 		dim: EMPHASIS_BASE_DIM,
 		opacity: EMPHASIS_BASE_OPACITY
 	};
+	/** Full zone key of the emphasized small-body class (e.g. `small_bodies/MBA`)
+	 *  while a /g/class-* page is focused; null otherwise. New sub-clouds spawned
+	 *  in rebuildMinor pick this up automatically. */
+	private emphasizedSmallBodyZone: string | null = null;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -137,6 +150,44 @@ export class PointCloudSystem {
 		mat.opacity = opacity;
 	}
 
+	/** Mark a `small_bodies/<class>` zone as focused — its sub-clouds get a
+	 *  fixed size + opacity boost so the active /g/class-* page stands out from
+	 *  the otherwise-hidden neighbour zones. Passing `null` clears any prior
+	 *  emphasis. Safe to call before the matching sub-clouds exist; rebuildMinor
+	 *  re-applies on creation. */
+	setEmphasizedSmallBodyZone(zone: string | null): void {
+		const prev = this.emphasizedSmallBodyZone;
+		if (prev === zone) return;
+		this.emphasizedSmallBodyZone = zone;
+		if (prev !== null) {
+			for (const [key, pts] of this.asteroidPoints) {
+				if (parentIdFromSubkey(key) === prev) this.resetSmallBodyEmphasis(pts);
+			}
+		}
+		if (zone !== null) {
+			for (const [key, pts] of this.asteroidPoints) {
+				if (parentIdFromSubkey(key) === zone) this.applySmallBodyEmphasis(pts);
+			}
+		}
+	}
+
+	private applySmallBodyEmphasis(pts: Points): void {
+		if (pts.userData.smallBodyEmphasized) return;
+		const mat = pts.material as PointsMaterial;
+		pts.userData.smallBodyBaseSize = mat.size;
+		mat.size = mat.size * SMALL_BODY_EMPHASIS_SIZE_MULT;
+		mat.opacity = SMALL_BODY_EMPHASIS_OPACITY;
+		pts.userData.smallBodyEmphasized = true;
+	}
+
+	private resetSmallBodyEmphasis(pts: Points): void {
+		if (!pts.userData.smallBodyEmphasized) return;
+		const mat = pts.material as PointsMaterial;
+		mat.size = (pts.userData.smallBodyBaseSize as number | undefined) ?? mat.size;
+		mat.opacity = 1.0;
+		pts.userData.smallBodyEmphasized = false;
+	}
+
 	seedBasis(p: Vec3): void {
 		this.basisPos = [...p];
 	}
@@ -158,6 +209,15 @@ export class PointCloudSystem {
 		// to the freshly-created earth sub-clouds.
 		for (const [key, p] of this.spacecraftPoints) {
 			if (parentIdFromSubkey(key) === EARTH_ID) this.applyEarthSatEmphasis(p);
+		}
+		// Same for small-body class focus: a deep-linked /g/class-* page may have
+		// set the emphasis before the initial build ran.
+		if (this.emphasizedSmallBodyZone !== null) {
+			for (const [key, p] of this.asteroidPoints) {
+				if (parentIdFromSubkey(key) === this.emphasizedSmallBodyZone) {
+					this.applySmallBodyEmphasis(p);
+				}
+			}
 		}
 		this.assignMapLayer();
 	}
@@ -227,6 +287,7 @@ export class PointCloudSystem {
 					pts.userData.frontBasis = seedBasis;
 					pts.userData.groupId = groupId;
 					pts.userData.parentVec = [0, 0, 0] as Vec3;
+					if (zone === this.emphasizedSmallBodyZone) this.applySmallBodyEmphasis(pts);
 					this.asteroidPoints.set(key, pts);
 					this.pendingSceneAdds.push(pts);
 				}

@@ -77,12 +77,22 @@ export class ContextManager {
 	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
 	 *  members when the count is small. */
 	private readonly groupFilterListeners = new Set<(filter: ReadonlySet<string> | null) => void>();
+	/** Notified after `smallBodyClassFilter` changes (cheap — no fetch). Used to
+	 *  drive the focused-zone point-cloud emphasis. */
+	private readonly smallBodyClassListeners = new Set<(cls: string | null) => void>();
 
 	/** Subscribe to filter changes. The callback fires on each `applyGroupFilter`
 	 *  completion. Returns an unsubscribe. */
 	onGroupFilterChange(cb: (filter: ReadonlySet<string> | null) => void): () => void {
 		this.groupFilterListeners.add(cb);
 		return () => this.groupFilterListeners.delete(cb);
+	}
+
+	/** Subscribe to small-body class filter changes. Callback fires synchronously
+	 *  inside `applyGroupFilter` when the class slug flips. Returns an unsubscribe. */
+	onSmallBodyClassFilterChange(cb: (cls: string | null) => void): () => void {
+		this.smallBodyClassListeners.add(cb);
+		return () => this.smallBodyClassListeners.delete(cb);
 	}
 
 	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
@@ -123,7 +133,10 @@ export class ContextManager {
 
 		const nextSmallBody = category === 'small_body' ? slug!.slice(CLASS_SLUG_PREFIX.length) : null;
 		const nextEarthSlug = category === 'earth_sat' ? slug : null;
-		this.smallBodyClassFilter = nextSmallBody;
+		if (this.smallBodyClassFilter !== nextSmallBody) {
+			this.smallBodyClassFilter = nextSmallBody;
+			for (const cb of this.smallBodyClassListeners) cb(nextSmallBody);
+		}
 
 		if (nextEarthSlug === this.earthSatFilterSlug) return;
 
