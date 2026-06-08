@@ -1,8 +1,8 @@
 import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { AU_SCALE } from '$lib/math/units';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
-import { SUN_ID } from '$lib/constants';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import {
@@ -16,6 +16,12 @@ import {
 	FOCUS_HIDE_MOON_MULTIPLIER,
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
+
+/** Probes within 1.2× GEO of Earth are hidden when an earth-sat group is
+ *  focused, so the group's own sats stand out against an otherwise crowded
+ *  near-Earth volume (Geotail, MMS, IBEX, flyby probes, …). */
+const GEO_RADIUS_KM = 42_164;
+const PROBE_NEAR_EARTH_HIDE_SCENE_SQR = kmToScene(GEO_RADIUS_KM * 1.2) ** 2;
 
 /**
  * Owns focus state and turns camera distance + focus into per-body visibility
@@ -56,7 +62,8 @@ export class VisibilityController {
 
 	constructor(
 		private readonly bodies: BodyIndex,
-		private readonly getProbeStore: () => ProbeStore | null = () => null
+		private readonly getProbeStore: () => ProbeStore | null = () => null,
+		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null
 	) {}
 
 	/**
@@ -203,6 +210,14 @@ export class VisibilityController {
 			return this.getProbeVisibility(body);
 		}
 
+		// Earth-sat group focus: hide any earth-orbiting non-member, including
+		// promoted ones (URL-loaded sats, labels-file auto-promotes) that don't
+		// go through the chunk-time filter.
+		const earthFilter = this.getEarthSatGroupFilter();
+		if (earthFilter && body.data.parentId === EARTH_ID && !earthFilter.has(body.data.id)) {
+			return VISIBILITY.HIDE;
+		}
+
 		if (this.bodies.isSystemBody(body)) {
 			if (!this.isInFocusedSystem(body.data.parentId)) return VISIBILITY.HIDE;
 			const refA = body.data.a;
@@ -248,6 +263,22 @@ export class VisibilityController {
 	 *  a planetary system → moon style: focused-system gate + ratio against
 	 *  distance-to-parent (a stand-in for the missing osculating `a`). */
 	private getProbeVisibility(body: PositionedBody): VISIBILITY {
+		// Earth-sat group focus: hide probes currently inside Earth's
+		// near-neighborhood (Geotail, MMS, IBEX, mid-flyby, …) so they don't
+		// crowd the group's sats. Threshold is 1.2× GEO from Earth's center,
+		// regardless of the probe's current parent or dynamical regime.
+		if (this.getEarthSatGroupFilter()) {
+			const earth = this.bodies.bodiesById.get(EARTH_ID);
+			if (earth) {
+				const dx = body.position[0] - earth.position[0];
+				const dy = body.position[1] - earth.position[1];
+				const dz = body.position[2] - earth.position[2];
+				if (dx * dx + dy * dy + dz * dz < PROBE_NEAR_EARTH_HIDE_SCENE_SQR) {
+					return VISIBILITY.HIDE;
+				}
+			}
+		}
+
 		const ps = this.getProbeStore();
 		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
 		const isHeliocentric = inSysNaif === null;
