@@ -121,16 +121,19 @@ export function buildPointClouds(
 		}
 	}
 
-	// Spacecraft point clouds: same hash-partition as asteroids.
+	// Spacecraft point clouds: same hash-partition as asteroids. Per-vertex
+	// colors so DEBRIS + SPACECRAFT mixing under one parentId doesn't paint the
+	// whole sub-cloud from bodies[0]'s type.
 	for (const [groupParentId, byId] of ctx.bodies.spacecraftByParent.entries()) {
 		const filtered = excludePromoted(byId.values(), promotedIds);
 		if (filtered.length === 0) continue;
-		const color = resolveBodyColor(filtered[0].data);
 		const { buckets } = partitionForWorkers(groupParentId, filtered, workerCount);
 		for (let i = 0; i < buckets.length; i++) {
 			const bucket = buckets[i];
 			if (bucket.length === 0) continue;
-			const points = makePointCloud(bucket, circleTexture, color, basisPos);
+			const points = makePointCloud(bucket, circleTexture, '#ffffff', basisPos, undefined, (b) =>
+				resolveBodyColor(b.data)
+			);
 			points.userData.groupId = `spacecraft:${groupParentId}#${i}`;
 			points.userData.parentBodyId = groupParentId;
 			points.userData.parentVec = [0, 0, 0];

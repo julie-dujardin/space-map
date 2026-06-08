@@ -53,7 +53,8 @@ export function makePointCloud(
 	texture: CanvasTexture,
 	color: string,
 	basisPos: [number, number, number] = [0, 0, 0],
-	size: number = 4
+	size: number = 4,
+	colorForBody: ((body: PositionedBody) => string) | null = null
 ): Points {
 	const valid = bodies.filter((b) => {
 		const [x, y, z] = b.position;
@@ -73,16 +74,28 @@ export function makePointCloud(
 		return false;
 	});
 	const positions = new Float32Array(valid.length * 3);
+	const colors = colorForBody ? new Float32Array(valid.length * 3) : null;
+	const tmp = colors ? new Color() : null;
 	for (let i = 0; i < valid.length; i++) {
-		positions[i * 3] = valid[i].position[0] - basisPos[0];
-		positions[i * 3 + 1] = valid[i].position[1] - basisPos[1];
-		positions[i * 3 + 2] = valid[i].position[2] - basisPos[2];
+		const b = valid[i];
+		positions[i * 3] = b.position[0] - basisPos[0];
+		positions[i * 3 + 1] = b.position[1] - basisPos[1];
+		positions[i * 3 + 2] = b.position[2] - basisPos[2];
+		if (colors && tmp && colorForBody) {
+			tmp.set(colorForBody(b));
+			colors[i * 3] = tmp.r;
+			colors[i * 3 + 1] = tmp.g;
+			colors[i * 3 + 2] = tmp.b;
+		}
 	}
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+	if (colors) geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
 	const material = new PointsMaterial({
 		map: texture,
-		color: overlayColor(color),
+		// vertexColors path: material color is the 0.5 dim multiplier (vColor * 0.5).
+		color: colors ? new Color(0.5, 0.5, 0.5) : overlayColor(color),
+		vertexColors: !!colors,
 		transparent: true,
 		size,
 		sizeAttenuation: false,
@@ -109,14 +122,17 @@ export function makePointCloudFromBuffer(
 	drawCount: number,
 	texture: CanvasTexture,
 	color: string,
-	size: number = 4
+	size: number = 4,
+	colors: Float32Array | null = null
 ): Points {
 	const geometry = new BufferGeometry();
 	geometry.setAttribute('position', new BufferAttribute(positions, 3));
+	if (colors) geometry.setAttribute('color', new BufferAttribute(colors, 3));
 	geometry.setDrawRange(0, drawCount);
 	const material = new PointsMaterial({
 		map: texture,
-		color: overlayColor(color),
+		color: colors ? new Color(0.5, 0.5, 0.5) : overlayColor(color),
+		vertexColors: !!colors,
 		transparent: true,
 		size,
 		sizeAttenuation: false,

@@ -1,5 +1,6 @@
 import {
 	BufferAttribute,
+	Color,
 	Float32BufferAttribute,
 	Points,
 	type BufferGeometry,
@@ -179,12 +180,18 @@ export class PointCloudSystem {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
 				} else {
 					const arr = new Float32Array(bodies.length * 3);
-					this.seedGeometryArray(arr, bodies);
+					const colors = new Float32Array(bodies.length * 3);
+					this.seedGeometryArray(arr, bodies, colors);
+					// Spacecraft buckets mix SPACECRAFT + DEBRIS under the same
+					// parentId — per-vertex colors keep each dot honest instead of
+					// painting the whole sub-cloud from bodies[0]'s type.
 					const pts = makePointCloudFromBuffer(
 						arr,
 						bodies.length,
 						this.circleTexture,
-						resolveBodyColor(bodies[0].data)
+						'#ffffff',
+						undefined,
+						colors
 					);
 					pts.userData.frontBasis = seedBasis;
 					pts.userData.groupId = groupId;
@@ -198,22 +205,36 @@ export class PointCloudSystem {
 		this.ctx.bodies.dirtySpacecraftGroups.clear();
 	}
 
-	/** Write basis-relative positions for `bodies` into the first `bodies.length*3` slots of `arr`. */
-	private seedGeometryArray(arr: Float32Array, bodies: PositionedBody[]): void {
+	/** Write basis-relative positions for `bodies` into the first `bodies.length*3` slots of `arr`.
+	 *  When `colorArr` is provided, parallel-writes per-body RGB triplets resolved from each body's type. */
+	private seedGeometryArray(
+		arr: Float32Array,
+		bodies: PositionedBody[],
+		colorArr: Float32Array | null = null
+	): void {
 		const [bx, by, bz] = this.basisPos;
 		const n = Math.min(bodies.length, arr.length / 3);
+		const tmp = colorArr ? new Color() : null;
 		for (let i = 0; i < n; i++) {
-			const p = bodies[i].position;
+			const b = bodies[i];
+			const p = b.position;
 			arr[i * 3] = p[0] - bx;
 			arr[i * 3 + 1] = p[1] - by;
 			arr[i * 3 + 2] = p[2] - bz;
+			if (colorArr && tmp) {
+				tmp.set(resolveBodyColor(b.data));
+				colorArr[i * 3] = tmp.r;
+				colorArr[i * 3 + 1] = tmp.g;
+				colorArr[i * 3 + 2] = tmp.b;
+			}
 		}
 	}
 
 	/** If the geometry's position array no longer matches the body count, swap
 	 *  in a freshly-seeded array (size change is rare — only on rewire with
 	 *  membership change). Same-capacity rewires leave the attribute alone so
-	 *  the next worker result updates it in place. */
+	 *  the next worker result updates it in place. Color attribute (when
+	 *  present, spacecraft only) is resized in parallel. */
 	private resizeGeometryIfNeeded(geometry: BufferGeometry, bodies: PositionedBody[]): void {
 		const need = bodies.length * 3;
 		const posAttr = geometry.getAttribute('position') as BufferAttribute;
@@ -222,9 +243,12 @@ export class PointCloudSystem {
 			geometry.setDrawRange(0, bodies.length);
 			return;
 		}
+		const hasColors = !!geometry.getAttribute('color');
 		const fresh = new Float32Array(need);
-		this.seedGeometryArray(fresh, bodies);
+		const freshColors = hasColors ? new Float32Array(need) : null;
+		this.seedGeometryArray(fresh, bodies, freshColors);
 		geometry.setAttribute('position', new BufferAttribute(fresh, 3));
+		if (freshColors) geometry.setAttribute('color', new BufferAttribute(freshColors, 3));
 		geometry.setDrawRange(0, bodies.length);
 	}
 
