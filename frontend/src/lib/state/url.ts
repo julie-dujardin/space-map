@@ -1,5 +1,7 @@
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
+import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 
 /** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
@@ -18,11 +20,19 @@ export function urlTypeFromId(id: string): UrlType {
 	return UrlType.Body; // naif-
 }
 
-/** Camera anchor when landing on /g/<slug>. Earth covers Phase-1 groups
- *  (constellations); revisit once other applies_to categories ship. */
-export const GROUP_DEFAULT_BODY = 'naif-399';
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
-const GROUP_DEFAULT_ZOOM = 0.005;
+const EARTH_GROUP_ZOOM = 0.005;
+/** Solar-system framing for small-body (orbit-class) groups. */
+const SUN_GROUP_ZOOM = DEFAULT_VIEW.zoom;
+
+/** Camera anchor + zoom for /g/<slug>. Small-body classes orbit the Sun;
+ *  every other category currently centers on Earth. */
+export function groupAnchor(slug: string): { id: string; zoom: number } {
+	if (slug.startsWith(CLASS_SLUG_PREFIX)) {
+		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
+	}
+	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };
+}
 
 /** Parse current page state → MapViewState, or null */
 export function parseUrl(): MapViewState | null {
@@ -35,11 +45,12 @@ export function parseUrl(): MapViewState | null {
 
 	// Groups ride the body route shape — [id] holds the slug, not a number.
 	if (type === UrlType.Group) {
+		const anchor = groupAnchor(idStr);
 		const defaults: MapViewState = {
 			...DEFAULT_VIEW,
 			type: UrlType.Group,
-			id: GROUP_DEFAULT_BODY,
-			zoom: GROUP_DEFAULT_ZOOM,
+			id: anchor.id,
+			zoom: anchor.zoom,
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: null,

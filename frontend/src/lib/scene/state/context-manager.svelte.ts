@@ -8,6 +8,7 @@ import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
+import { CLASS_SLUG_PREFIX, fetchGroupIndex } from '$lib/fetch/groups/registry';
 import { EARTH_ID } from '$lib/constants';
 
 /**
@@ -66,6 +67,11 @@ export class ContextManager {
 	 *  /g/<slug> pages render only group members. */
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
+	/** Orbit-class name (e.g. "MBA") when /g/class-<NAME> is active; null
+	 *  otherwise. Read by `planMinorChunks` to skip non-matching
+	 *  `small_bodies/*` zones at fetch time. */
+	smallBodyClassFilter: string | null = null;
+	private currentGroupSlug: string | null = null;
 	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
 	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
 	 *  members when the count is small. */
@@ -99,21 +105,53 @@ export class ContextManager {
 		this.refresher?.tick(date);
 	}
 
-	/** Install or remove the earth-sat group filter, evicting + reloading the
-	 *  earth zone so the in-memory bucket matches. Safe to call before
-	 *  {@link load} — the first chunk pass picks it up. */
+	/** Install or remove the active group filter. Branches on the slug's
+	 *  ``applies_to`` (resolved from the group index). Safe to call before
+	 *  {@link load} — the first chunk pass picks the filter up. Mid-session
+	 *  transitions in or out of a small-body filter reload the page; the
+	 *  asteroid zone state isn't surgically evictable. */
 	async applyGroupFilter(slug: string | null): Promise<void> {
-		if (slug === this.earthSatFilterSlug) return;
-		this.earthSatFilterSlug = slug;
+		if (slug === this.currentGroupSlug) return;
+		this.currentGroupSlug = slug;
+		const category = slug ? await this.resolveCategory(slug) : null;
+		if (slug !== this.currentGroupSlug) return;
+
+		const nextSmallBody = category === 'small_body' ? slug!.slice(CLASS_SLUG_PREFIX.length) : null;
+		const smallBodyChange = nextSmallBody !== this.smallBodyClassFilter;
+		this.smallBodyClassFilter = nextSmallBody;
+
+		if (nextSmallBody !== null) {
+			// Earth filter is mutually exclusive with small-body filter.
+			this.earthSatFilter = null;
+			this.earthSatFilterSlug = null;
+			if (!this.loading && smallBodyChange) window.location.reload();
+			return;
+		}
+
+		if (smallBodyChange && !this.loading) {
+			// Leaving small-body mode: need a full re-fetch of small_bodies/* zones.
+			window.location.reload();
+			return;
+		}
+
 		const filter = slug ? await fetchEarthGroupMembers(slug) : null;
-		// Bail if a newer call superseded us during the fetch.
-		if (slug !== this.earthSatFilterSlug) return;
+		if (slug !== this.currentGroupSlug) return;
 		this.earthSatFilter = filter;
+		this.earthSatFilterSlug = slug;
 		for (const cb of this.groupFilterListeners) cb(filter);
 		if (this.loading) return;
 		this.bodies.spacecraftByParent.delete(EARTH_ID);
 		this.bodies.dirtySpacecraftGroups.add(EARTH_ID);
 		this.bodies.minorBodyVersion++;
 		this.refresher?.invalidateZone('earth');
+	}
+
+	private async resolveCategory(slug: string): Promise<string | null> {
+		try {
+			const index = await fetchGroupIndex();
+			return index[slug]?.applies_to ?? null;
+		} catch {
+			return null;
+		}
 	}
 }

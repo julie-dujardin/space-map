@@ -13,6 +13,8 @@ export function groupTypeLabel(type: GroupType): string {
 			return m.group_type_manufacturer();
 		case 'country':
 			return m.group_type_country();
+		case 'orbit_class':
+			return m.group_type_orbit_class();
 	}
 }
 

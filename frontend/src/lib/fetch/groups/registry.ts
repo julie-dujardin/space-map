@@ -6,8 +6,17 @@
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 
-export type GroupType = 'constellation' | 'operator' | 'launch_site' | 'manufacturer' | 'country';
-export type GroupCategory = 'earth_sat';
+export type GroupType =
+	| 'constellation'
+	| 'operator'
+	| 'launch_site'
+	| 'manufacturer'
+	| 'country'
+	| 'orbit_class';
+export type GroupCategory = 'earth_sat' | 'small_body';
+
+/** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
+export const CLASS_SLUG_PREFIX = 'class-';
 
 /** Mirrors ``SatelliteCategory`` in ``data/constants/earth_sats/constellations.py``. */
 export type SatelliteCategory =

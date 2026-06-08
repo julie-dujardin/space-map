@@ -35,14 +35,27 @@ interface MinorChunkArg {
  * Build the chunk-fetch plan for phase 2 (minor zones). Fires `ChunkLoader.prefetch`
  * so the HTTP cache is warm by the time phase 2 awaits each `loader.process` call.
  * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev (ChebyshevStore).
+ * When ``smallBodyClassFilter`` is set, ``small_bodies/<X>`` zones with a different
+ * suffix are skipped — the orbit class is the selector.
  */
-function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
+function planMinorChunks(
+	metadata: Metadata,
+	date: Date,
+	smallBodyClassFilter: string | null
+): MinorChunkArg[] {
 	const cap = getSettings().maxPartsPerZone;
 	const args: MinorChunkArg[] = [];
 	for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 		if (zone === 'major' || zone === 'moons') continue;
 		if (zone === 'spacecraft') continue;
 		if (isProbeZone(zoneData)) continue;
+		if (
+			smallBodyClassFilter !== null &&
+			zone.startsWith('small_bodies/') &&
+			zone.slice('small_bodies/'.length) !== smallBodyClassFilter
+		) {
+			continue;
+		}
 		const parentIdType = zoneData.parent_id_type ?? 'naif';
 		for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
 			const zoom = Number(zoomStr);
@@ -169,7 +182,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	});
 
-	const minorChunkArgsPromise = metadataPromise.then((metadata) => planMinorChunks(metadata, date));
+	const minorChunkArgsPromise = metadataPromise.then((metadata) =>
+		planMinorChunks(metadata, date, ctx.smallBodyClassFilter)
+	);
 
 	// Chebyshev must be ready before we process major/moons — the zones it
 	// covers (Sun/planets/dwarves at major, perturbers at major_asteroids,

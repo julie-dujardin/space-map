@@ -1,6 +1,6 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
-import { GROUP_DEFAULT_BODY, parseUrl, serializeUrl, urlTypeFromId } from './url';
+import { groupAnchor, parseUrl, serializeUrl, urlTypeFromId } from './url';
 
 const WRITE_DEBOUNCE_MS = 250;
 
@@ -70,10 +70,12 @@ export class AppState {
 	 *  anchor body so Scene's onFocusChange guard recognizes the landing body
 	 *  as the intended target and doesn't stomp groupSlug via setFocus. */
 	setGroup(slug: string, name: string) {
+		const anchor = groupAnchor(slug);
 		this.view = {
 			...this.view,
 			type: UrlType.Group,
-			id: GROUP_DEFAULT_BODY,
+			id: anchor.id,
+			zoom: anchor.zoom,
 			groupSlug: slug,
 			name,
 			imageIndex: null,
