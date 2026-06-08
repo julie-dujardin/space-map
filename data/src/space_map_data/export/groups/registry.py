@@ -1,8 +1,9 @@
 """Group registry: aggregation entities behind /g/<slug>.
 
-Constellations keep bare slugs; operators, launch sites, manufacturers, and
-countries are prefixed (``op-``/``site-``/``mfr-``/``country-``) so the
-same entity can appear in multiple roles without slug collisions.
+Constellations keep bare slugs; operators, launch sites, manufacturers,
+countries, and orbit classes are prefixed (``op-``/``site-``/``mfr-``/
+``country-``/``class-``) so the same entity can appear in multiple roles
+without slug collisions.
 """
 
 from dataclasses import dataclass
@@ -22,6 +23,10 @@ from space_map_data.constants.earth_sats.operators import (
     OPERATOR_SLUG_PREFIX,
     OPERATORS,
 )
+from space_map_data.constants.wikidata_qids import ORBIT_CLASS_QIDS
+from space_map_data.models.object.sbdb import OrbitClass
+
+CLASS_SLUG_PREFIX = "class-"
 
 
 class GroupType(StrEnum):
@@ -30,15 +35,18 @@ class GroupType(StrEnum):
     LAUNCH_SITE = "launch_site"
     MANUFACTURER = "manufacturer"
     COUNTRY = "country"
+    ORBIT_CLASS = "orbit_class"
 
 
 class GroupCategory(StrEnum):
     """Object category a group filters when set as the active group."""
 
     EARTH_SAT = "earth_sat"
+    SMALL_BODY = "small_body"
 
 
 __all__ = [
+    "CLASS_SLUG_PREFIX",
     "COUNTRY_SLUG_PREFIX",
     "GROUPS",
     "GROUP_BY_SLUG",
@@ -108,7 +116,23 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for c in COUNTRIES
     )
-    return constellations + operators + launch_sites + manufacturers + countries
+    orbit_classes = tuple(
+        Group(
+            slug=f"{CLASS_SLUG_PREFIX}{cls.name}",
+            type=GroupType.ORBIT_CLASS,
+            applies_to=GroupCategory.SMALL_BODY,
+            wikidata_qid=ORBIT_CLASS_QIDS.get(cls),
+        )
+        for cls in OrbitClass
+    )
+    return (
+        constellations
+        + operators
+        + launch_sites
+        + manufacturers
+        + countries
+        + orbit_classes
+    )
 
 
 GROUPS: tuple[Group, ...] = _build_groups()

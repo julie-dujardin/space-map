@@ -10,12 +10,14 @@ from space_map_data.constants.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
 from space_map_data.export.groups.registry import (
+    CLASS_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
     GROUPS,
     GroupType,
 )
+from space_map_data.models.object.sbdb import OrbitClass
 from space_map_data.export.objects.wikidata_claims import PID_TO_KEY, resolve_unit
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -231,6 +233,11 @@ def _group_fallback_name(group) -> str:
         )
         if mfr is not None:
             return mfr.name
+    elif group.type is GroupType.ORBIT_CLASS:
+        try:
+            return OrbitClass[group.slug.removeprefix(CLASS_SLUG_PREFIX)].value
+        except KeyError:
+            pass
     return group.slug
 
 

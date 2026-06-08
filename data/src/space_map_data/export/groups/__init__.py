@@ -12,6 +12,7 @@ from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
 )
+from space_map_data.export.groups.small_body import build_small_body_member_counts
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -26,10 +27,15 @@ def run_groups_tier(
     """Build + write the groups tier; returns bucket counts for metadata.json."""
     with Session(engine) as session:
         build = build_earth_groups_data(session)
+        small_body_counts = build_small_body_member_counts(session)
     write_earth_membership(out_dir, build.membership)
 
     return write_group_bundles(
-        out_dir, wikidata_entities, build.membership, build.stats
+        out_dir,
+        wikidata_entities,
+        build.membership,
+        build.stats,
+        extra_member_counts=small_body_counts,
     )
 
 

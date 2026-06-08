@@ -228,8 +228,10 @@ def _extract_group_claims(
     """Run the shared object-claim extractor on the group's Wikidata entity."""
     # Country entities carry many object-style claims (population, area, …)
     # that the shared extractor can't disambiguate; none are surfaced on the
-    # country-page UI anyway.
-    if group.type is GroupType.COUNTRY:
+    # country-page UI anyway. Orbit-class entities point to encyclopedic
+    # concept pages whose claims (e.g. discoverer, named after) describe the
+    # category, not its members.
+    if group.type in (GroupType.COUNTRY, GroupType.ORBIT_CLASS):
         return None
     if not group.wikidata_qid:
         return None
@@ -360,12 +362,18 @@ def write_group_bundles(
     wikidata_entities: WikidataEntityCache,
     membership_by_type: dict[GroupType, dict[str, list[str]]],
     stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
+    extra_member_counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
+    ``extra_member_counts`` carries member counts for group types that ship
+    no membership inverted index (orbit classes); merged into ``member_counts``
+    before the per-group loop so the global bundle and __index__ both see them.
     Returns ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
     member_counts = _flatten_membership(membership_by_type)
+    if extra_member_counts:
+        member_counts.update(extra_member_counts)
     satcat_stats = _flatten_stats(stats_by_type)
     related_by_qid = _build_related_by_qid()
     global_by_slug: dict[str, dict] = {}
