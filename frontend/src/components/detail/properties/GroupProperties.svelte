@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import { groupTypeLabel } from '$lib/format/group';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
 	import Section from './Section.svelte';
@@ -19,15 +20,22 @@
 	let dissolved = $derived(global?.dissolved);
 	let histogram = $derived(global?.launch_histogram);
 	let operators = $derived(localized?.operators ?? []);
+	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
 	let launchSites = $derived(localized?.launch_sites ?? []);
+	let related = $derived(localized?.related_groups ?? []);
 
 	let maxSiteCount = $derived(
 		launchSites.length > 0 ? Math.max(...launchSites.map((s) => s.n)) : 0
 	);
 
 	let hasMission = $derived(
-		!!inception || !!dissolved || operators.length > 0 || countries.length > 0
+		!!inception ||
+			!!dissolved ||
+			operators.length > 0 ||
+			manufacturers.length > 0 ||
+			countries.length > 0 ||
+			related.length > 0
 	);
 </script>
 
@@ -54,11 +62,21 @@
 				<EntityLinks entities={operators} />
 			</Row>
 		{/if}
+		{#if manufacturers.length > 0}
+			<Row label={m.property_name_manufacturer()}>
+				<EntityLinks entities={manufacturers} />
+			</Row>
+		{/if}
 		{#if countries.length > 0}
 			<Row label={m.property_name_country_of_origin()}>
 				<EntityLinks entities={countries} />
 			</Row>
 		{/if}
+		{#each related as r (r.primary_id)}
+			<Row label={groupTypeLabel(r.role)}>
+				<EntityLinks entities={[r]} />
+			</Row>
+		{/each}
 	</Section>
 {/if}
 
@@ -78,7 +96,7 @@
 								href={site.wikipedia}
 								target="_blank"
 								rel="noopener"
-								class="hover:text-foreground truncate underline">{site.name}</a
+								class="pointer-events-auto hover:text-foreground truncate underline">{site.name}</a
 							>
 						{:else}
 							<span class="truncate">{site.name}</span>

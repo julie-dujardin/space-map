@@ -75,7 +75,7 @@
 								type="button"
 								onclick={() => focusEntity(entity)}
 								aria-label={m.entity_focus_in_map()}
-								class="underline hover:text-foreground inline-flex items-center gap-1"
+								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1"
 								>{display}<LocateFixedIcon class="size-3 shrink-0" /></button
 							>
 						{:else if entity.wikipedia}
@@ -83,7 +83,7 @@
 								href={entity.wikipedia}
 								target="_blank"
 								rel="noopener"
-								class="underline hover:text-foreground inline-flex items-center gap-1"
+								class="pointer-events-auto underline hover:text-foreground inline-flex items-center gap-1"
 								>{display}<ExternalLinkIcon class="size-3 shrink-0" /></a
 							>
 						{:else}

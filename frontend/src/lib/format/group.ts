@@ -9,6 +9,8 @@ export function groupTypeLabel(type: GroupType): string {
 			return m.group_type_operator();
 		case 'launch_site':
 			return m.group_type_launch_site();
+		case 'manufacturer':
+			return m.group_type_manufacturer();
 	}
 }
 

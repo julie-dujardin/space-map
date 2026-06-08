@@ -41,6 +41,11 @@ export interface GlobalGroupData {
 	images?: ObjectImage[];
 }
 
+export interface RelatedGroupEntry extends EntityRef {
+	/** The other group's type so the UI can label the cross-link as "Also a manufacturer", etc. */
+	role: GroupType;
+}
+
 export interface LocalizedGroupData {
 	name?: string;
 	description?: string;
@@ -50,10 +55,14 @@ export interface LocalizedGroupData {
 		url?: string;
 	};
 	operators?: EntityRef[];
+	/** Constellation-only: primes that build this constellation's hardware. */
+	manufacturers?: EntityRef[];
 	country_of_origin?: EntityRef[];
 	instance_of?: EntityRef[];
 	/** Top launch sites by member count, with localized name. */
 	launch_sites?: LaunchSiteEntry[];
+	/** Other groups sharing this group's QID (typically the op/mfr pair for the same company). */
+	related_groups?: RelatedGroupEntry[];
 }
 
 export interface GroupDetailData {

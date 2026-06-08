@@ -6,7 +6,7 @@
 
 import { DATA_BASE } from '$lib/fetch/data-base';
 
-export type GroupType = 'constellation' | 'operator' | 'launch_site';
+export type GroupType = 'constellation' | 'operator' | 'launch_site' | 'manufacturer';
 export type GroupCategory = 'earth_sat';
 
 /** Mirrors ``SatelliteCategory`` in ``data/constants/earth_sats/constellations.py``. */
