@@ -13,6 +13,10 @@ export interface LaunchSiteEntry extends EntityRef {
 	n: number;
 }
 
+export interface ConstellationEntry extends EntityRef {
+	n: number;
+}
+
 export interface GlobalGroupData {
 	slug: string;
 	type: GroupType;
@@ -61,6 +65,8 @@ export interface LocalizedGroupData {
 	instance_of?: EntityRef[];
 	/** Top launch sites by member count, with localized name. */
 	launch_sites?: LaunchSiteEntry[];
+	/** Top constellations represented in this group's fleet (non-constellation groups only). */
+	constellations?: ConstellationEntry[];
 	/** Other groups sharing this group's QID (typically the op/mfr pair for the same company). */
 	related_groups?: RelatedGroupEntry[];
 }

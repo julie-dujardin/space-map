@@ -28,10 +28,14 @@
 	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
 	let launchSites = $derived(localized?.launch_sites ?? []);
+	let constellations = $derived(localized?.constellations ?? []);
 	let related = $derived(localized?.related_groups ?? []);
 
 	let maxSiteCount = $derived(
 		launchSites.length > 0 ? Math.max(...launchSites.map((s) => s.n)) : 0
+	);
+	let maxConstellationCount = $derived(
+		constellations.length > 0 ? Math.max(...constellations.map((c) => c.n)) : 0
 	);
 
 	let hasMission = $derived(
@@ -124,6 +128,53 @@
 						<div
 							class="bg-primary h-full rounded-full"
 							style:width="{maxSiteCount > 0 ? (site.n / maxSiteCount) * 100 : 0}%"
+						></div>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</div>
+{/if}
+
+{#if constellations.length > 0}
+	<div class="flex flex-col gap-1">
+		<div class="flex items-baseline justify-between">
+			<h3 class="text-sm font-medium">{m.group_top_constellations()}</h3>
+			<span class="text-muted-foreground text-[10px] uppercase">{m.satellites_label()}</span>
+		</div>
+		<div class="border-border/60 border-t"></div>
+		<ul class="flex flex-col gap-2 pt-1 text-sm">
+			{#each constellations as c (c.name)}
+				<li class="flex flex-col gap-1">
+					<div class="flex items-baseline justify-between gap-2">
+						{#if appState && c.primary_type === 'group' && c.primary_id}
+							{@const slug = c.primary_id}
+							{@const name = c.name}
+							<button
+								type="button"
+								onclick={() => appState.setGroup(slug, name)}
+								aria-label={m.entity_focus_in_map()}
+								class="pointer-events-auto hover:text-foreground inline-flex min-w-0 items-center gap-1 truncate underline"
+								><span class="truncate">{c.name}</span><LocateFixedIcon
+									class="size-3 shrink-0"
+								/></button
+							>
+						{:else if c.wikipedia}
+							<a
+								href={c.wikipedia}
+								target="_blank"
+								rel="noopener"
+								class="pointer-events-auto hover:text-foreground truncate underline">{c.name}</a
+							>
+						{:else}
+							<span class="truncate">{c.name}</span>
+						{/if}
+						<span class="text-muted-foreground tabular-nums">{formatNumber(c.n)}</span>
+					</div>
+					<div class="bg-muted h-1 overflow-hidden rounded-full">
+						<div
+							class="bg-primary h-full rounded-full"
+							style:width="{maxConstellationCount > 0 ? (c.n / maxConstellationCount) * 100 : 0}%"
 						></div>
 					</div>
 				</li>
