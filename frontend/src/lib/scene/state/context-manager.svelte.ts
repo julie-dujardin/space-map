@@ -31,7 +31,8 @@ export class ContextManager {
 	visibility = new VisibilityController(
 		this.bodies,
 		() => this.probeStore,
-		() => this.earthSatFilter
+		() => this.earthSatFilter,
+		() => this.smallBodyClassFilter
 	);
 
 	loading = $state(true);
@@ -68,8 +69,8 @@ export class ContextManager {
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
 	/** Orbit-class name (e.g. "MBA") when /g/class-<NAME> is active; null
-	 *  otherwise. Read by `planMinorChunks` to skip non-matching
-	 *  `small_bodies/*` zones at fetch time. */
+	 *  otherwise. Read by `VisibilityController.isAsteroidGroupVisible` to
+	 *  hide non-matching `small_bodies/*` point clouds at render time. */
 	smallBodyClassFilter: string | null = null;
 	private currentGroupSlug: string | null = null;
 	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
@@ -107,9 +108,13 @@ export class ContextManager {
 
 	/** Install or remove the active group filter. Branches on the slug's
 	 *  ``applies_to`` (resolved from the group index). Safe to call before
-	 *  {@link load} — the first chunk pass picks the filter up. Mid-session
-	 *  transitions in or out of a small-body filter reload the page; the
-	 *  asteroid zone state isn't surgically evictable. */
+	 *  {@link load} — the first chunk pass picks the filter up.
+	 *
+	 *  Small-body filter is a render-time mask read by
+	 *  {@link VisibilityController.isAsteroidGroupVisible}, so toggling it just
+	 *  updates the field — the per-frame visibility pass picks it up. Earth-sat
+	 *  filter is applied at chunk-fetch time, so changes trigger a zone
+	 *  invalidation + refetch. */
 	async applyGroupFilter(slug: string | null): Promise<void> {
 		if (slug === this.currentGroupSlug) return;
 		this.currentGroupSlug = slug;
@@ -117,27 +122,15 @@ export class ContextManager {
 		if (slug !== this.currentGroupSlug) return;
 
 		const nextSmallBody = category === 'small_body' ? slug!.slice(CLASS_SLUG_PREFIX.length) : null;
-		const smallBodyChange = nextSmallBody !== this.smallBodyClassFilter;
+		const nextEarthSlug = category === 'earth_sat' ? slug : null;
 		this.smallBodyClassFilter = nextSmallBody;
 
-		if (nextSmallBody !== null) {
-			// Earth filter is mutually exclusive with small-body filter.
-			this.earthSatFilter = null;
-			this.earthSatFilterSlug = null;
-			if (!this.loading && smallBodyChange) window.location.reload();
-			return;
-		}
+		if (nextEarthSlug === this.earthSatFilterSlug) return;
 
-		if (smallBodyChange && !this.loading) {
-			// Leaving small-body mode: need a full re-fetch of small_bodies/* zones.
-			window.location.reload();
-			return;
-		}
-
-		const filter = slug ? await fetchEarthGroupMembers(slug) : null;
+		const filter = nextEarthSlug ? await fetchEarthGroupMembers(nextEarthSlug) : null;
 		if (slug !== this.currentGroupSlug) return;
 		this.earthSatFilter = filter;
-		this.earthSatFilterSlug = slug;
+		this.earthSatFilterSlug = nextEarthSlug;
 		for (const cb of this.groupFilterListeners) cb(filter);
 		if (this.loading) return;
 		this.bodies.spacecraftByParent.delete(EARTH_ID);

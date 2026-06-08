@@ -63,7 +63,8 @@ export class VisibilityController {
 	constructor(
 		private readonly bodies: BodyIndex,
 		private readonly getProbeStore: () => ProbeStore | null = () => null,
-		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null
+		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null,
+		private readonly getSmallBodyClassFilter: () => string | null = () => null
 	) {}
 
 	/**
@@ -371,9 +372,19 @@ export class VisibilityController {
 	 * Whether an asteroid zone's point-cloud should be visible.
 	 * Compares camera distance (AU) to the zone's semi-major axis range.
 	 * Zones without a defined range (parabolic, unclassified) are always visible.
+	 * When a small-body class filter is set, non-matching `small_bodies/<class>`
+	 * zones are hidden — render-time mask used by /g/class-* pages.
 	 */
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.activeSystemId) return false;
+		const classFilter = this.getSmallBodyClassFilter();
+		if (
+			classFilter !== null &&
+			zone.startsWith('small_bodies/') &&
+			zone.slice('small_bodies/'.length) !== classFilter
+		) {
+			return false;
+		}
 		const range = ZONE_A_RANGE[zone];
 		if (!range) return true;
 		const camDistAU = this.cameraDistThreeJS / AU_SCALE;
