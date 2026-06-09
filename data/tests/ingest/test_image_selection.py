@@ -45,7 +45,12 @@ def layout(tmp_path, monkeypatch):
 
 
 def _stage_wikidata(
-    layout, qid: str, *, p18: Sequence[str] = (), p154: Sequence[str] = ()
+    layout,
+    qid: str,
+    *,
+    p18: Sequence[str] = (),
+    p154: Sequence[str] = (),
+    sitelink_count: int = 0,
 ):
     """Write a stub Wikidata entity JSON with P18 / P154 claims."""
     claims: dict = {}
@@ -57,8 +62,12 @@ def _stage_wikidata(
         claims["P154"] = [
             {"rank": "normal", "mainsnak": {"datavalue": {"value": f}}} for f in p154
         ]
+    sitelinks = {
+        f"site{i}wiki": {"site": f"site{i}wiki", "title": f"{qid}-t{i}"}
+        for i in range(sitelink_count)
+    }
     (layout["wikidata"] / f"{qid}.json").write_bytes(
-        orjson.dumps({"id": qid, "claims": claims})
+        orjson.dumps({"id": qid, "claims": claims, "sitelinks": sitelinks})
     )
 
 
@@ -88,6 +97,8 @@ def _stage_metadata(
     other_versions: Sequence[str] = (),
     assessments: str | None = None,
     globalusage: int = 0,
+    width: int = 2000,
+    height: int = 2000,
 ):
     """Write a metadata.json under ``commons/images/<filename>/``."""
     d = layout["images"] / filename
@@ -99,7 +110,7 @@ def _stage_metadata(
         em["Assessments"] = {"value": assessments}
     payload = {
         "filename": filename,
-        "imageinfo": {"extmetadata": em},
+        "imageinfo": {"extmetadata": em, "width": width, "height": height},
         "license_servable": license_servable,
         "derived_from": list(derived_from),
         "other_versions": list(other_versions),
@@ -253,3 +264,274 @@ class TestReadObjectImages:
         assert "naif-399" in payload["objects"]
         assert "399" not in payload["objects"]
         assert payload["schema_version"] == image_selection.SCHEMA_VERSION
+
+
+def _stage_member(
+    layout,
+    qid: str,
+    *,
+    photo: str,
+    sitelinks: int,
+    width: int = 2000,
+    height: int = 2000,
+):
+    """One-call stub: a member with a sitelink count and a single P18 photo."""
+    _stage_wikidata(layout, qid, p18=[photo], sitelink_count=sitelinks)
+    _stage_metadata(layout, photo, width=width, height=height)
+
+
+class TestRankMembersBySitelinks:
+    def test_sorts_descending_by_sitelinks(self, layout):
+        _stage_wikidata(layout, "Q1", sitelink_count=2)
+        _stage_wikidata(layout, "Q2", sitelink_count=10)
+        _stage_wikidata(layout, "Q3", sitelink_count=5)
+        ranked = image_selection._rank_members_by_sitelinks(
+            ["Q1", "Q2", "Q3"], layout["wikidata"], {}
+        )
+        assert ranked == ["Q2", "Q3", "Q1"]
+
+    def test_lex_qid_breaks_ties(self, layout):
+        _stage_wikidata(layout, "QB", sitelink_count=3)
+        _stage_wikidata(layout, "QA", sitelink_count=3)
+        ranked = image_selection._rank_members_by_sitelinks(
+            ["QB", "QA"], layout["wikidata"], {}
+        )
+        assert ranked == ["QA", "QB"]
+
+    def test_missing_entity_treated_as_zero(self, layout):
+        _stage_wikidata(layout, "Q1", sitelink_count=5)
+        # Q2 has no JSON on disk
+        ranked = image_selection._rank_members_by_sitelinks(
+            ["Q1", "Q2"], layout["wikidata"], {}
+        )
+        assert ranked == ["Q1", "Q2"]
+
+    def test_deduplicates_input(self, layout):
+        _stage_wikidata(layout, "Q1", sitelink_count=5)
+        ranked = image_selection._rank_members_by_sitelinks(
+            ["Q1", "Q1", "Q1"], layout["wikidata"], {}
+        )
+        assert ranked == ["Q1"]
+
+
+class TestResolutionAtLeast:
+    def test_passes_above_floor(self):
+        meta = {"imageinfo": {"width": 1000, "height": 900}}
+        assert image_selection._resolution_at_least(meta, 800)
+
+    def test_uses_min_axis(self):
+        meta = {"imageinfo": {"width": 4000, "height": 600}}
+        # min(4000, 600) = 600 < 800 → fail.
+        assert not image_selection._resolution_at_least(meta, 800)
+
+    def test_no_metadata(self):
+        assert not image_selection._resolution_at_least(None, 800)
+
+    def test_no_imageinfo(self):
+        assert not image_selection._resolution_at_least({}, 800)
+
+    def test_non_int_dims(self):
+        meta = {"imageinfo": {"width": None, "height": 1000}}
+        assert not image_selection._resolution_at_least(meta, 800)
+
+
+class TestPickFallbackImages:
+    def _view(self, metadata_cache):
+        return image_selection._MetadataView(metadata_cache)
+
+    def test_empty_members_returns_empty(self, layout):
+        meta_cache: dict[str, dict | None] = {}
+        assert (
+            image_selection._pick_fallback_images(
+                [], self._view(meta_cache), meta_cache, layout["wikidata"]
+            )
+            == []
+        )
+
+    def test_per_member_cap_of_three(self, layout):
+        # One member contributes four photos; we keep three in the first pass.
+        _stage_wikidata(
+            layout, "Q1", p18=["a.jpg", "b.jpg", "c.jpg", "d.jpg"], sitelink_count=10
+        )
+        for f in ("a.jpg", "b.jpg", "c.jpg", "d.jpg"):
+            _stage_metadata(layout, f)
+        # No second member to backfill, so the second pass drops the cap and
+        # the fourth photo gets in. To prove the cap, give it nine candidates.
+        # Easier: assert that with a SECOND high-sitelink member supplying
+        # extras, the first member contributes exactly 3 before the second
+        # starts.
+        _stage_wikidata(layout, "Q2", p18=["e.jpg", "f.jpg"], sitelink_count=5)
+        for f in ("e.jpg", "f.jpg"):
+            _stage_metadata(layout, f)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1", "Q2"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        files = [p["file"] for p in out]
+        # Q1's first three come before any Q2 photo (Q1 has higher sitelink count).
+        assert files.index("e.jpg") > 2
+        assert files.index("f.jpg") > 2
+        # And d.jpg comes after Q2's photos thanks to the per-member cap on Q1.
+        assert files.index("d.jpg") > files.index("e.jpg")
+
+    def test_resolution_floor_drops_small_images(self, layout):
+        _stage_wikidata(layout, "Q1", p18=["big.jpg", "tiny.jpg"], sitelink_count=10)
+        _stage_metadata(layout, "big.jpg", width=2000, height=2000)
+        _stage_metadata(layout, "tiny.jpg", width=300, height=300)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert [p["file"] for p in out] == ["big.jpg"]
+
+    def test_cross_member_filename_dedup(self, layout):
+        # Two members both list the same Commons file (sometimes a featured
+        # asteroid-belt schematic). Surface it once.
+        _stage_wikidata(layout, "Q1", p18=["shared.jpg"], sitelink_count=10)
+        _stage_wikidata(layout, "Q2", p18=["shared.jpg"], sitelink_count=5)
+        _stage_metadata(layout, "shared.jpg")
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1", "Q2"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert [p["file"] for p in out] == ["shared.jpg"]
+
+    def test_hero_promoted_to_index_zero(self, layout):
+        # Top member has only a gallery-resolution photo; the next member has
+        # a hero-resolution photo. The hero leads even though it's a lower-
+        # ranked member.
+        _stage_member(
+            layout, "Q1", photo="leader-small.jpg", sitelinks=10, width=900, height=900
+        )
+        _stage_member(
+            layout, "Q2", photo="hero-big.jpg", sitelinks=5, width=2000, height=2000
+        )
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1", "Q2"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        files = [p["file"] for p in out]
+        assert files[0] == "hero-big.jpg"
+        assert "leader-small.jpg" in files
+
+    def test_no_hero_resolution_falls_back_to_gallery_leader(self, layout):
+        # Nobody clears the hero floor; ranking is pure sitelink-order.
+        _stage_member(
+            layout, "Q1", photo="a.jpg", sitelinks=10, width=1000, height=1000
+        )
+        _stage_member(layout, "Q2", photo="b.jpg", sitelinks=5, width=1000, height=1000)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1", "Q2"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert [p["file"] for p in out] == ["a.jpg", "b.jpg"]
+
+    def test_drops_member_logo_kind(self, layout):
+        # The member's own corporate logo (P154) shouldn't represent the group.
+        _stage_wikidata(
+            layout, "Q1", p18=["photo.jpg"], p154=["logo.svg"], sitelink_count=10
+        )
+        _stage_metadata(layout, "photo.jpg")
+        _stage_metadata(layout, "logo.svg")
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert [(p["file"], p["kind"]) for p in out] == [("photo.jpg", "photo")]
+
+    def test_stops_at_target_count(self, layout):
+        # Twenty members each with one photo — gallery caps at 15.
+        members = []
+        for i in range(20):
+            qid = f"Q{i:02d}"
+            photo = f"p{i:02d}.jpg"
+            _stage_member(layout, qid, photo=photo, sitelinks=100 - i)
+            members.append(qid)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            members, self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert len(out) == image_selection.GROUP_FALLBACK_TARGET_COUNT
+
+    def test_sub_target_drops_per_member_cap(self, layout):
+        # One member with 5 photos, no others. First pass caps at 3; second
+        # pass drops the cap and lets the rest through.
+        _stage_wikidata(
+            layout,
+            "Q1",
+            p18=["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"],
+            sitelink_count=10,
+        )
+        for f in ("a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg"):
+            _stage_metadata(layout, f)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"], self._view(meta_cache), meta_cache, layout["wikidata"]
+        )
+        assert len(out) == 5
+
+    def test_exclude_files_skipped(self, layout):
+        # Existing P154 picked shared.jpg; member fallback must not re-emit it.
+        _stage_wikidata(
+            layout, "Q1", p18=["shared.jpg", "other.jpg"], sitelink_count=10
+        )
+        _stage_metadata(layout, "shared.jpg")
+        _stage_metadata(layout, "other.jpg")
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"],
+            self._view(meta_cache),
+            meta_cache,
+            layout["wikidata"],
+            exclude_files={"shared.jpg"},
+        )
+        assert [p["file"] for p in out] == ["other.jpg"]
+
+    def test_target_count_caps_total(self, layout):
+        # Augmenting a group with 13 existing entries should add at most 2.
+        _stage_wikidata(
+            layout, "Q1", p18=["a.jpg", "b.jpg", "c.jpg"], sitelink_count=10
+        )
+        for f in ("a.jpg", "b.jpg", "c.jpg"):
+            _stage_metadata(layout, f)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"],
+            self._view(meta_cache),
+            meta_cache,
+            layout["wikidata"],
+            target_count=2,
+        )
+        assert len(out) == 2
+
+    def test_promote_hero_false_preserves_sitelink_order(self, layout):
+        # When promote_hero=False we don't reorder for hero-resolution; the
+        # highest-sitelink member's gallery-floor photo leads even if a
+        # lower-ranked member has a hero-res shot.
+        _stage_member(
+            layout, "Q1", photo="leader.jpg", sitelinks=10, width=900, height=900
+        )
+        _stage_member(
+            layout, "Q2", photo="hero-big.jpg", sitelinks=5, width=2000, height=2000
+        )
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1", "Q2"],
+            self._view(meta_cache),
+            meta_cache,
+            layout["wikidata"],
+            promote_hero=False,
+        )
+        assert [p["file"] for p in out] == ["leader.jpg", "hero-big.jpg"]
+
+    def test_target_count_zero_returns_empty(self, layout):
+        _stage_member(layout, "Q1", photo="a.jpg", sitelinks=10)
+        meta_cache: dict[str, dict | None] = {}
+        out = image_selection._pick_fallback_images(
+            ["Q1"],
+            self._view(meta_cache),
+            meta_cache,
+            layout["wikidata"],
+            target_count=0,
+        )
+        assert out == []

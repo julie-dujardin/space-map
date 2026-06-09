@@ -27,9 +27,29 @@ import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
-from space_map_data.export.groups.registry import GROUPS
+from space_map_data.constants.countries import COUNTRY_BY_CODE, COUNTRY_SLUG_PREFIX
+from space_map_data.constants.earth_sats.launch_sites import (
+    LAUNCH_SITE_BY_CODE,
+    LAUNCH_SITE_SLUG_PREFIX,
+)
+from space_map_data.constants.earth_sats.manufacturers import (
+    MANUFACTURER_BY_QID,
+    MANUFACTURER_SLUG_PREFIX,
+)
+from space_map_data.constants.earth_sats.operators import (
+    OPERATOR_BY_QID,
+    OPERATOR_SLUG_PREFIX,
+)
+from space_map_data.export.groups.registry import (
+    CLASS_SLUG_PREFIX,
+    GROUPS,
+    SMALL_BODY_FLAG_SLUG_PREFIX,
+)
+from space_map_data.export.groups.small_body import _exported_sbdb_filter
 from space_map_data.models.feature import Feature
-from space_map_data.models.object import Object
+from space_map_data.models.object import Object, ObjectType
+from space_map_data.models.object.sbdb import SBDB
+from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
     COMMONS_DIR,
@@ -48,6 +68,18 @@ FEATURE_IMAGES_PATH = COMMONS_DIR / "feature_images.json"
 GROUP_IMAGES_PATH = COMMONS_DIR / "group_images.json"
 
 SCHEMA_VERSION = 1
+
+# Member-photo fallback for groups whose own QID yielded no image (orbit classes,
+# obscure operators, etc.). Walks member objects in sitelink-rank order and picks
+# from their Commons photos. Tuned so the gallery always has enough to show.
+GROUP_FALLBACK_TARGET_COUNT = 15
+GROUP_FALLBACK_PER_MEMBER_CAP = 3
+GROUP_FALLBACK_MIN_GALLERY_DIM = 800
+GROUP_FALLBACK_MIN_HERO_DIM = 1600
+# Earth-sat filter mirrored from `membership.build_earth_groups_data` so the
+# fallback's member set matches the rows actually shipped per zone.
+_FALLBACK_SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
+_FALLBACK_EARTH_OBJECT_ID = "naif-399"
 
 
 def ingest() -> None:
@@ -105,6 +137,11 @@ def ingest() -> None:
         aux_kind="logo",
         desc="Selecting per-group images",
         unit="group",
+    )
+    # Picture-less groups (no own QID or QID yielded no image) fall back to
+    # photos of their member objects, ranked by member sitelink count.
+    _fill_groups_from_members(
+        group_selections, metadata_cache, wikidata_root / "objects", session
     )
     _write_cache(GROUP_IMAGES_PATH, "groups", group_selections)
     _log_written(GROUP_IMAGES_PATH, "groups", group_selections, groups)
@@ -202,6 +239,274 @@ def _select_for_qid(
         seen.add(best)
         out.append({"file": best, "kind": kind_of.get(best, "photo")})
     return out
+
+
+def _fill_groups_from_members(
+    selections: dict[str, list[dict]],
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
+    session,
+) -> None:
+    """Augment every group's selection in-place with member-object photos.
+
+    Existing entries (logo / group-own image) keep their slots — they were
+    deliberately chosen — and member photos append to fill out the gallery
+    up to :data:`GROUP_FALLBACK_TARGET_COUNT`. Groups that arrived empty
+    additionally get a hero photo promoted to index 0 when a member supplies
+    one above :data:`GROUP_FALLBACK_MIN_HERO_DIM`. Members are walked in
+    descending sitelink order, each contributing at most
+    :data:`GROUP_FALLBACK_PER_MEMBER_CAP` photos.
+    """
+    members_by_slug = _build_group_member_qids(session)
+    sitelink_cache: dict[str, int] = {}
+    metadata_view = _MetadataView(metadata_cache)
+
+    filled_empty = 0
+    augmented = 0
+    skipped_no_members = 0
+    for group in tqdm(
+        GROUPS, desc="Augmenting groups with member photos", unit="group"
+    ):
+        slug = group.slug
+        qids = members_by_slug.get(slug)
+        if not qids:
+            if not selections.get(slug):
+                skipped_no_members += 1
+            continue
+        existing = list(selections.get(slug) or ())
+        remaining = GROUP_FALLBACK_TARGET_COUNT - len(existing)
+        if remaining <= 0:
+            continue
+        ranked = _rank_members_by_sitelinks(qids, wikidata_dir, sitelink_cache)
+        picks = _pick_fallback_images(
+            ranked,
+            metadata_view,
+            metadata_cache,
+            wikidata_dir,
+            target_count=remaining,
+            exclude_files={e["file"] for e in existing},
+            promote_hero=not existing,
+        )
+        if not picks:
+            continue
+        selections[slug] = existing + picks
+        if existing:
+            augmented += 1
+        else:
+            filled_empty += 1
+
+    logger.info(
+        "Member-photo group fallback: filled %d previously empty groups, "
+        "augmented %d existing ones; %d groups had no qid-bearing members",
+        filled_empty,
+        augmented,
+        skipped_no_members,
+    )
+
+
+def _build_group_member_qids(session) -> dict[str, list[str]]:
+    """Return ``{slug: [member_qid, ...]}`` for every fallback-eligible group.
+
+    Members are bodies with a Wikidata QID; objects without one can't
+    contribute Wikidata-sourced photos and would just bloat the walk.
+    """
+    out: dict[str, list[str]] = {}
+
+    # Small-body groups: orbit class + NEO/PHA flags from SBDB.
+    sb_rows = (
+        session.query(Object.wikidata_qid, SBDB.class_, SBDB.neo, SBDB.pha)
+        .join(Object, Object.id == SBDB.object_id)
+        .filter(*_exported_sbdb_filter())
+        .filter(Object.wikidata_qid.is_not(None))
+        .all()
+    )
+    for qid, cls, neo, pha in sb_rows:
+        out.setdefault(f"{CLASS_SLUG_PREFIX}{cls.name}", []).append(qid)
+        if neo:
+            out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo", []).append(qid)
+        if pha:
+            out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha", []).append(qid)
+
+    # Earth-sat groups: constellation/operator/launch-site/manufacturer/country
+    # — mirror the filter in `membership.build_earth_groups_data` so the
+    # member set matches the rows actually shipped.
+    earth_rows = (
+        session.query(
+            Object.wikidata_qid,
+            Satcat.constellation_slug,
+            Satcat.operator_qids,
+            Satcat.manufacturer_qids,
+            Satcat.launch_site_code,
+            Satcat.country_codes,
+        )
+        .join(Object.satcat)
+        .filter(
+            Object.spkid.is_(None),
+            Object.object_type.in_(_FALLBACK_SAT_TYPE_VALUES),
+            Object.parent_id == _FALLBACK_EARTH_OBJECT_ID,
+            Object.wikidata_qid.is_not(None),
+        )
+        .all()
+    )
+    for qid, c_slug, op_qids, mfr_qids, site_code, country_codes in earth_rows:
+        if c_slug:
+            out.setdefault(c_slug, []).append(qid)
+        for op_qid in op_qids or ():
+            op = OPERATOR_BY_QID.get(op_qid)
+            if op is not None:
+                out.setdefault(f"{OPERATOR_SLUG_PREFIX}{op.slug}", []).append(qid)
+        for m_qid in mfr_qids or ():
+            mfr = MANUFACTURER_BY_QID.get(m_qid)
+            if mfr is not None:
+                out.setdefault(f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}", []).append(qid)
+        if site_code:
+            site = LAUNCH_SITE_BY_CODE.get(site_code)
+            if site is not None:
+                out.setdefault(f"{LAUNCH_SITE_SLUG_PREFIX}{site.slug}", []).append(qid)
+        for code in country_codes or ():
+            country = COUNTRY_BY_CODE.get(code)
+            if country is not None:
+                out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
+    return out
+
+
+def _rank_members_by_sitelinks(
+    qids: list[str], wikidata_dir: Path, cache: dict[str, int]
+) -> list[str]:
+    """Return ``qids`` sorted by descending sitelink count, lex QID as tiebreak."""
+    unique: list[str] = []
+    seen: set[str] = set()
+    for qid in qids:
+        if qid in seen:
+            continue
+        seen.add(qid)
+        unique.append(qid)
+    return sorted(
+        unique,
+        key=lambda q: (-_get_sitelink_count(q, wikidata_dir, cache), q),
+    )
+
+
+def _get_sitelink_count(qid: str, wikidata_dir: Path, cache: dict[str, int]) -> int:
+    """Number of Wikipedia sitelinks for ``qid``; 0 when missing or corrupt."""
+    if qid in cache:
+        return cache[qid]
+    path = wikidata_dir / f"{qid}.json"
+    count = 0
+    if path.exists():
+        try:
+            entity = orjson.loads(path.read_bytes())
+        except orjson.JSONDecodeError:
+            logger.warning("Corrupt Wikidata JSON, skipping sitelinks: %s", path)
+        else:
+            sitelinks = entity.get("sitelinks") or {}
+            if isinstance(sitelinks, dict):
+                count = len(sitelinks)
+    cache[qid] = count
+    return count
+
+
+def _pick_fallback_images(
+    ranked_qids: list[str],
+    metadata_view: "_MetadataView",
+    metadata_cache: dict[str, dict | None],
+    wikidata_dir: Path,
+    *,
+    target_count: int = GROUP_FALLBACK_TARGET_COUNT,
+    exclude_files: set[str] | None = None,
+    promote_hero: bool = True,
+) -> list[dict]:
+    """Pick up to ``target_count`` member photos for one group.
+
+    When ``promote_hero`` is True (the group has no pre-existing entry the
+    hero would displace), the first photo of the highest-sitelink member
+    that clears :data:`GROUP_FALLBACK_MIN_HERO_DIM` leads the result; if no
+    member qualifies, the gallery leader survives at lower resolution rather
+    than ship no image. ``exclude_files`` is a set of Commons filenames
+    already chosen elsewhere (e.g. by the existing P154 pass) and must not
+    be re-emitted. Each member's :func:`_select_for_qid` result is computed
+    once and reused across hero scan and gallery fill.
+    """
+    if target_count <= 0:
+        return []
+    photos_cache: dict[str, list[dict]] = {}
+
+    def member_photos(qid: str) -> list[dict]:
+        cached = photos_cache.get(qid)
+        if cached is None:
+            picks = _select_for_qid(
+                qid, metadata_cache, wikidata_dir, aux_pid="P154", aux_kind="logo"
+            )
+            cached = [p for p in picks if p["kind"] == "photo"]
+            photos_cache[qid] = cached
+        return cached
+
+    chosen: list[dict] = []
+    used_files: set[str] = set(exclude_files or ())
+    contributed: dict[str, int] = {}
+
+    if promote_hero:
+        # Prepend the first hero-resolution photo so it lands at index 0.
+        # Counts toward the contributing member's allocation so we don't
+        # accidentally let one member supply 4 images (hero + 3 gallery).
+        for qid in ranked_qids:
+            hero = next(
+                (
+                    p
+                    for p in member_photos(qid)
+                    if p["file"] not in used_files
+                    and _resolution_at_least(
+                        metadata_view.get(p["file"]), GROUP_FALLBACK_MIN_HERO_DIM
+                    )
+                ),
+                None,
+            )
+            if hero is not None:
+                chosen.append(hero)
+                used_files.add(hero["file"])
+                contributed[qid] = 1
+                break
+
+    def fill(per_member_cap: int) -> None:
+        for qid in ranked_qids:
+            if len(chosen) >= target_count:
+                return
+            picks_for_member = contributed.get(qid, 0)
+            if picks_for_member >= per_member_cap:
+                continue
+            for pick in member_photos(qid):
+                file = pick["file"]
+                if file in used_files:
+                    continue
+                if not _resolution_at_least(
+                    metadata_view.get(file), GROUP_FALLBACK_MIN_GALLERY_DIM
+                ):
+                    continue
+                chosen.append(pick)
+                used_files.add(file)
+                picks_for_member += 1
+                contributed[qid] = picks_for_member
+                if len(chosen) >= target_count or picks_for_member >= per_member_cap:
+                    break
+
+    fill(GROUP_FALLBACK_PER_MEMBER_CAP)
+    if len(chosen) < target_count:
+        # Drop the per-member cap so prolific contributors backfill the
+        # gallery instead of leaving it half-empty.
+        fill(target_count)
+    return chosen
+
+
+def _resolution_at_least(metadata: dict | None, min_dim: int) -> bool:
+    """True when ``min(width, height) >= min_dim`` in the Commons imageinfo."""
+    if not metadata:
+        return False
+    info = metadata.get("imageinfo") or {}
+    width = info.get("width")
+    height = info.get("height")
+    if not isinstance(width, int) or not isinstance(height, int):
+        return False
+    return min(width, height) >= min_dim
 
 
 class _MetadataView:
