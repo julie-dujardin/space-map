@@ -10,7 +10,7 @@
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
-	import LaunchActivityChart from './LaunchActivityChart.svelte';
+	import YearHistogramChart from './YearHistogramChart.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -23,7 +23,8 @@
 
 	let inception = $derived(global?.inception);
 	let dissolved = $derived(global?.dissolved);
-	let histogram = $derived(global?.launch_histogram);
+	let launchHistogram = $derived(global?.launch_histogram);
+	let discoveryHistogram = $derived(global?.discovery_histogram);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
 	let countries = $derived(localized?.country_of_origin ?? []);
@@ -82,12 +83,22 @@
 	}
 </script>
 
-{#if histogram}
+{#if launchHistogram}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.group_launch_activity()}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="pt-1">
-			<LaunchActivityChart {histogram} />
+			<YearHistogramChart histogram={launchHistogram} kind="launch" />
+		</div>
+	</div>
+{/if}
+
+{#if discoveryHistogram}
+	<div class="flex flex-col gap-1">
+		<h3 class="text-sm font-medium">{m.group_discovery_activity()}</h3>
+		<div class="border-border/60 border-t"></div>
+		<div class="pt-1">
+			<YearHistogramChart histogram={discoveryHistogram} kind="discovery" />
 		</div>
 	</div>
 {/if}

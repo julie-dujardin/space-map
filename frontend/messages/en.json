@@ -16,11 +16,12 @@
 		}
 	],
 	"group_no_summary": "No description available.",
-	"group_launch_activity": "Launch activity",
+	"group_launch_activity": "Launch timeline",
 	"group_top_constellations": "Top constellations",
 	"group_top_launch_sites": "Top launch sites",
 	"satellites_label": "satellites",
 	"legend_per_year": "per year",
+	"legend_per_n_years": "per {n} years",
 	"legend_cumulative": "cumulative",
 	"tooltip_launches_count": [
 		{
@@ -29,6 +30,17 @@
 			"match": {
 				"countPlural=one": "{count} launch",
 				"countPlural=other": "{count} launches"
+			}
+		}
+	],
+	"group_discovery_activity": "Discovery timeline",
+	"tooltip_discoveries_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} discovery",
+				"countPlural=other": "{count} discoveries"
 			}
 		}
 	],

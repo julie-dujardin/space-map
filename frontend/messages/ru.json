@@ -18,11 +18,12 @@
 		}
 	],
 	"group_no_summary": "Описание отсутствует.",
-	"group_launch_activity": "Запуски",
+	"group_launch_activity": "Хронология запусков",
 	"group_top_constellations": "Основные группировки",
 	"group_top_launch_sites": "Основные стартовые площадки",
 	"satellites_label": "спутников",
 	"legend_per_year": "в год",
+	"legend_per_n_years": "за {n} лет",
 	"legend_cumulative": "всего",
 	"tooltip_launches_count": [
 		{
@@ -33,6 +34,19 @@
 				"countPlural=few": "{count} запуска",
 				"countPlural=many": "{count} запусков",
 				"countPlural=other": "{count} запуска"
+			}
+		}
+	],
+	"group_discovery_activity": "Хронология открытий",
+	"tooltip_discoveries_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} открытие",
+				"countPlural=few": "{count} открытия",
+				"countPlural=many": "{count} открытий",
+				"countPlural=other": "{count} открытия"
 			}
 		}
 	],

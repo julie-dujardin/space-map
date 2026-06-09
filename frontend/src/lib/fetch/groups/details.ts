@@ -37,6 +37,8 @@ export interface GlobalGroupData {
 	active_count?: number;
 	/** Members with a SATCAT decay_date. */
 	decayed_count?: number;
+	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
+	discovery_histogram?: Record<string, number>;
 	/** Wikidata P571 — programme/operator inception (ISO date string). */
 	inception?: string;
 	/** Wikidata P576 — programme dissolution (ISO date string). */
