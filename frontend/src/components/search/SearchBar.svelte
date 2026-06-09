@@ -210,8 +210,8 @@
 									type="button"
 									class="w-full text-start px-4 py-2 flex items-center gap-3 transition-colors {i ===
 									highlighted
-										? 'bg-accent'
-										: 'hover:bg-accent'}"
+										? 'bg-neutral-200 dark:bg-accent'
+										: 'hover:bg-neutral-200 dark:hover:bg-accent'}"
 									onmouseenter={() => (highlighted = i)}
 									onclick={() => pick(hit)}
 								>
