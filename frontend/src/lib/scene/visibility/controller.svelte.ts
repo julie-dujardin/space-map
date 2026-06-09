@@ -434,20 +434,24 @@ export class VisibilityController {
 	}
 
 	/** True when no small-body filter is active, or when the body satisfies it.
-	 *  Class filter: zone path must match. Flag filter: body's `flags` byte must
-	 *  carry every requested bit. Bodies outside `small_bodies/*` (asteroid
-	 *  moons, URL-loaded standalones, etc.) fall through — callers handle them
-	 *  via parent lookup or treat them as unscoped. */
+	 *  Class filter: body must live in `small_bodies/<className>`. Flag filter:
+	 *  body's `flags` byte must carry every requested bit. Unresolvable bodies
+	 *  (no zone for class, not found for flag) don't match, so promoted
+	 *  off-class asteroids stay hidden when a small-body group is focused.
+	 *  Asteroid moons are gated separately via parent-id lookup in
+	 *  getMoonVisibility. */
 	private matchesSmallBodyClass(id: string): boolean {
 		const filter = this.getSmallBodyFilter();
 		if (filter === null) return true;
 		if (filter.kind === 'class') {
 			const zone = this.bodies.findAsteroidZone(id);
-			if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return true;
+			if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return false;
 			return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === filter.className;
 		}
-		const body = this.bodies.bodiesById.get(id);
-		if (body === undefined) return true;
+		// Promoted small bodies usually live in `asteroidBodiesByZone`, not
+		// `bodiesById` — go through getBody so the flag check finds them.
+		const body = this.bodies.getBody(id);
+		if (body === undefined) return false;
 		return ((body.data.flags ?? 0) & filter.mask) === filter.mask;
 	}
 
