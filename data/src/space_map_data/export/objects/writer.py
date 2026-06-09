@@ -1,8 +1,10 @@
 """Build object detail dicts and write them as hash-bucketed JSON files.
 
 Objects are grouped by `hash(id) % N`, with N picked per tier so average
-members-per-bundle hits target K: `K_GLOBAL=100` for `__global__`,
-`K_LOCALIZED=200` for per-language. Bundle files live at:
+members-per-bundle hits target K. K is sized so each bundle compresses to
+~200 KiB, which keeps the per-deploy manifest small enough for the
+Cloudflare Workers Assets upload API to process within its gateway
+timeout. Bundle files live at:
 
   objects/__global__/{bucket}.json.gz
   objects/{lang}/{bucket}.json.gz
@@ -55,8 +57,8 @@ logger = logging.getLogger(__name__)
 # Target average members per bundle. N = ceil(total / K) is picked at export
 # time so per-bundle size stays constant as the DB grows. Frontend reads N
 # back from metadata.json to compute bucket ids via `hash(id) % N`.
-K_GLOBAL = 100
-K_LOCALIZED = 200
+K_GLOBAL = 1100
+K_LOCALIZED = 5500
 
 _QID_CURRENCY = "Q8142"
 

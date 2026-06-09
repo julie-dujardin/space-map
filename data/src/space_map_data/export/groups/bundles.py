@@ -45,8 +45,8 @@ from space_map_data.export.wikidata import WikidataEntityCache
 
 logger = logging.getLogger(__name__)
 
-K_GLOBAL = 100
-K_LOCALIZED = 200
+K_GLOBAL = 1000
+K_LOCALIZED = 600
 _TOP_LAUNCH_SITES = 5
 _TOP_CONSTELLATIONS = 5
 

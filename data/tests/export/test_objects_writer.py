@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from space_map_data.export.objects.writer import (
     K_GLOBAL,
+    K_LOCALIZED,
     _iso_currency_code,
     _pick_attrs,
     hash_bucket,
@@ -126,10 +127,11 @@ class TestWriteObjectBundles:
     """write_object_bundles hash-buckets ids, writes one gzipped JSON per bucket."""
 
     def test_global_bundle_count_is_ceil_total_over_k(self, tmp_path):
-        # 250 objects → N = ceil(250 / 100) = 3 global buckets
-        global_data = {f"spkid-{i}": {"id": f"spkid-{i}"} for i in range(250)}
+        # Use K_GLOBAL * 2 + 1 entries so the count exercises ceil rounding.
+        n_items = K_GLOBAL * 2 + 1
+        global_data = {f"spkid-{i}": {"id": f"spkid-{i}"} for i in range(n_items)}
         ns = write_object_bundles(tmp_path, global_data, {})
-        assert ns["global"] == math.ceil(250 / K_GLOBAL)
+        assert ns["global"] == math.ceil(n_items / K_GLOBAL)
         out_dir = tmp_path / "objects" / "__global__"
         files = sorted(out_dir.iterdir())
         assert len(files) == ns["global"]
@@ -145,13 +147,14 @@ class TestWriteObjectBundles:
         assert seen == set(global_data)
 
     def test_localized_n_is_per_language(self, tmp_path):
-        # en has 400 entries → ceil(400/200) = 2. fr has 50 → ceil(50/200) = 1.
+        # en has 2*K+1 entries → ceil = 3. fr has 50 → ceil = 1.
+        n_en = K_LOCALIZED * 2 + 1
         localized = {
-            "en": {f"spkid-{i}": {"name": f"n{i}"} for i in range(400)},
+            "en": {f"spkid-{i}": {"name": f"n{i}"} for i in range(n_en)},
             "fr": {f"spkid-{i}": {"name": f"f{i}"} for i in range(50)},
         }
         ns = write_object_bundles(tmp_path, {}, localized)
-        assert ns["en"] == 2
+        assert ns["en"] == math.ceil(n_en / K_LOCALIZED)
         assert ns["fr"] == 1
         assert (tmp_path / "objects" / "en").exists()
         assert (tmp_path / "objects" / "fr").exists()
