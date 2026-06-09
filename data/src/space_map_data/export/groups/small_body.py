@@ -7,9 +7,11 @@ of the elements tiles and are filtered render-time on the frontend. Only
 aggregate stats are needed in the group bundle.
 
 The filter here mirrors ``_iter_sbdb_zone_snapshots`` in the orchestrator so
-stats match the rows that actually ship. Histograms are aggregated
-server-side (GROUP BY year derived from ``first_obs``) so the ~1.3M-row
-SBDB scan never crosses the ORM boundary.
+stats match the rows that actually ship. Histograms and NEO/PHA per-class
+breakdowns are aggregated server-side (GROUP BY) so the ~1.3M-row SBDB scan
+never crosses the ORM boundary; the largest-body lookup is one ``ORDER BY
+diameter DESC LIMIT 1`` per group, narrowed by the ``class_`` / NEO / PHA
+indexes.
 """
 
 import gzip
@@ -54,12 +56,28 @@ class OrbitClassSample:
 
 
 @dataclass
+class LargestBody:
+    """The biggest member (by ``SBDB.diameter``) of a small-body group."""
+
+    name: str
+    diameter_km: float
+    spkid: str  # for /o/spkid-<spkid> link
+
+
+@dataclass
 class SmallBodyGroupStats:
-    """Per-slug member counts, discovery histograms, and scatter samples."""
+    """Per-slug counts, histograms, scatter samples, NEO/PHA counts, largest body."""
 
     member_counts: dict[str, int] = field(default_factory=dict)
     discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
     orbit_samples: list[OrbitClassSample] = field(default_factory=list)
+    # Keyed by orbit-class slug (``class-<name>``). Flag groups omitted —
+    # ``flag-neo`` neo_count == member_count, and PHAs are a subset of NEOs.
+    neo_counts: dict[str, int] = field(default_factory=dict)
+    pha_counts: dict[str, int] = field(default_factory=dict)
+    # Keyed by orbit-class slug and small-body flag slug; missing entry =
+    # no member of that group has a diameter.
+    largest_bodies: dict[str, LargestBody] = field(default_factory=dict)
 
 
 def _exported_sbdb_filter():
@@ -168,6 +186,33 @@ def build_orbit_class_samples(
     return samples
 
 
+def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
+    """Member with the largest ``diameter`` matching the given filters.
+
+    Returns ``None`` if no row in the filtered set has a diameter.
+    """
+    row = (
+        session.query(SBDB.full_name, SBDB.name, SBDB.pdes, SBDB.spkid, SBDB.diameter)
+        .join(Object, Object.id == SBDB.object_id)
+        .filter(*_exported_sbdb_filter())
+        .filter(SBDB.diameter.is_not(None))
+        .filter(*filter_clauses)
+        .order_by(SBDB.diameter.desc())
+        .limit(1)
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    full_name, name, pdes, spkid, diameter = row
+    if spkid is None:
+        return None
+    return LargestBody(
+        name=full_name or name or pdes or spkid,
+        diameter_km=diameter,
+        spkid=spkid,
+    )
+
+
 def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
 
@@ -253,19 +298,54 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
             sorted(malformed_years) if malformed_years else "[]",
         )
 
+    neo_per_class_rows = (
+        base.with_entities(SBDB.class_, func.count(SBDB.spkid))
+        .filter(SBDB.neo.is_(True))
+        .group_by(SBDB.class_)
+        .all()
+    )
+    neo_counts = {
+        f"{CLASS_SLUG_PREFIX}{cls.name}": n for cls, n in neo_per_class_rows if n
+    }
+    pha_per_class_rows = (
+        base.with_entities(SBDB.class_, func.count(SBDB.spkid))
+        .filter(SBDB.pha.is_(True))
+        .group_by(SBDB.class_)
+        .all()
+    )
+    pha_counts = {
+        f"{CLASS_SLUG_PREFIX}{cls.name}": n for cls, n in pha_per_class_rows if n
+    }
+
+    largest_bodies: dict[str, LargestBody] = {}
+    for cls in class_counts:
+        body = _largest_body(session, SBDB.class_ == cls)
+        if body is not None:
+            largest_bodies[f"{CLASS_SLUG_PREFIX}{cls.name}"] = body
+    neo_largest = _largest_body(session, SBDB.neo.is_(True))
+    if neo_largest is not None:
+        largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_largest
+    pha_largest = _largest_body(session, SBDB.pha.is_(True))
+    if pha_largest is not None:
+        largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_largest
+
     logger.info(
         "Built small-body group stats: %d classes, NEO=%d, PHA=%d, "
-        "histograms for %d slugs",
+        "histograms for %d slugs, largest body for %d slugs",
         len(class_counts),
         neo_count,
         pha_count,
         len(discovery_histograms),
+        len(largest_bodies),
     )
     orbit_samples = build_orbit_class_samples(session, class_counts)
     return SmallBodyGroupStats(
         member_counts=member_counts,
         discovery_histograms=discovery_histograms,
         orbit_samples=orbit_samples,
+        neo_counts=neo_counts,
+        pha_counts=pha_counts,
+        largest_bodies=largest_bodies,
     )
 
 

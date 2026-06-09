@@ -26,10 +26,12 @@ from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
+    SMALL_BODY_FLAG_SLUG_PREFIX,
     GROUPS,
     Group,
     GroupType,
 )
+from space_map_data.export.groups.small_body import LargestBody
 from space_map_data.export.images import collect_group_images
 from space_map_data.export.objects.wikidata_claims import (
     attach_country_group_link,
@@ -51,6 +53,10 @@ _TOP_LAUNCH_SITES = 5
 _TOP_CONSTELLATIONS = 5
 
 
+_FLAG_NEO_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"
+_FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
+
+
 def _build_global(
     group: Group,
     member_count: int,
@@ -58,6 +64,9 @@ def _build_global(
     stats: GroupSatcatStats | None,
     discovery_histogram: dict[int, int] | None,
     images: list[dict] | None,
+    largest_body: LargestBody | None,
+    neo_count: int,
+    pha_count: int,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -87,6 +96,27 @@ def _build_global(
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
+        }
+    if largest_body is not None:
+        data["largest_body"] = {
+            "name": largest_body.name,
+            "diameter_km": largest_body.diameter_km,
+            "primary_type": "spkid",
+            "primary_id": largest_body.spkid,
+        }
+    # Self-refs (NEO count on flag-neo etc.) are skipped — equal or near-equal
+    # to member_count and would point the page link back at itself.
+    if neo_count and group.slug != _FLAG_NEO_SLUG:
+        data["neo"] = {
+            "n": neo_count,
+            "primary_type": "group",
+            "primary_id": _FLAG_NEO_SLUG,
+        }
+    if pha_count and group.slug != _FLAG_PHA_SLUG:
+        data["pha"] = {
+            "n": pha_count,
+            "primary_type": "group",
+            "primary_id": _FLAG_PHA_SLUG,
         }
     if extracted:
         websites = extracted.get("website")
@@ -369,6 +399,9 @@ def write_group_bundles(
     stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
     extra_member_counts: dict[str, int] | None = None,
     extra_histograms: dict[str, dict[int, int]] | None = None,
+    extra_largest_bodies: dict[str, LargestBody] | None = None,
+    extra_neo_counts: dict[str, int] | None = None,
+    extra_pha_counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -377,6 +410,9 @@ def write_group_bundles(
     into ``member_counts`` before the per-group loop so the global bundle
     and __index__ both see them. ``extra_histograms`` carries the parallel
     ``first_obs`` year histograms for those same slugs.
+    ``extra_largest_bodies`` / ``extra_neo_counts`` / ``extra_pha_counts``
+    carry per-orbit-class (and per-flag, for the largest body) stats that
+    show up on the small-body group page.
     Returns ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
     member_counts = _flatten_membership(membership_by_type)
@@ -397,6 +433,9 @@ def write_group_bundles(
         images = collect_group_images(group.slug)
         stats = satcat_stats.get(group.slug)
         discovery_histogram = (extra_histograms or {}).get(group.slug)
+        largest_body = (extra_largest_bodies or {}).get(group.slug)
+        neo_count = (extra_neo_counts or {}).get(group.slug, 0)
+        pha_count = (extra_pha_counts or {}).get(group.slug, 0)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -404,6 +443,9 @@ def write_group_bundles(
             stats,
             discovery_histogram,
             images,
+            largest_body,
+            neo_count,
+            pha_count,
         )
         for lang in LANGUAGES:
             lang_data = _build_localized(
