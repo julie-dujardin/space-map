@@ -1,4 +1,10 @@
-import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
+import {
+	isAsteroid,
+	ObjectType,
+	sbdbOrbitClass,
+	ZONE_A_RANGE,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
@@ -233,13 +239,14 @@ export class VisibilityController {
 			return VISIBILITY.HIDE;
 		}
 
-		// Small-body class focus: promoted asteroids/comets (curated defaults,
-		// URL-loaded standalones, clicks) bypass the point-cloud render-time mask
-		// in isAsteroidGroupVisible, so apply the same zone check here. Local
-		// hoist sidesteps a svelte `.svelte.ts` miscompile of `(A || B) && C`.
-		const isSmallBody =
-			isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET;
-		if (isSmallBody && !this.matchesSmallBodyClass(body.data.id)) {
+		// Small-body class focus: promoted asteroids/comets and dwarf planets
+		// bypass the point-cloud render-time mask, so apply the zone check
+		// here. Local hoist sidesteps a svelte `.svelte.ts` miscompile of
+		// `(A || B) && C`.
+		const ot = body.data.objectType;
+		const isClassFiltered =
+			isAsteroid(ot) || ot === ObjectType.COMET || ot === ObjectType.DWARF_PLANET;
+		if (isClassFiltered && !this.matchesSmallBodyClass(body.data.id)) {
 			return VISIBILITY.HIDE;
 		}
 
@@ -433,23 +440,35 @@ export class VisibilityController {
 		return this.bodies.isInSystem(parentId, this.focusedSystemIdPlain);
 	}
 
-	/** True when no small-body filter is active, or when the body satisfies it.
-	 *  Class filter: body must live in `small_bodies/<className>`. Flag filter:
-	 *  body's `flags` byte must carry every requested bit. Unresolvable bodies
-	 *  (no zone for class, not found for flag) don't match, so promoted
-	 *  off-class asteroids stay hidden when a small-body group is focused.
-	 *  Asteroid moons are gated separately via parent-id lookup in
-	 *  getMoonVisibility. */
+	/** True when no small-body filter is active or the body satisfies it.
+	 *  Unresolved bodies don't match, so off-class promoted bodies stay hidden.
+	 *  Asteroid moons are gated via parent-id lookup in getMoonVisibility. */
 	private matchesSmallBodyClass(id: string): boolean {
 		const filter = this.getSmallBodyFilter();
 		if (filter === null) return true;
 		if (filter.kind === 'class') {
 			const zone = this.bodies.findAsteroidZone(id);
-			if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return false;
-			return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === filter.className;
+			if (zone && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
+				return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === filter.className;
+			}
+			// Dwarf planets aren't zoned; derive the class from (a, e) since
+			// AMO/MCA/APO overlap the main belt's `a` band. Walk one level up
+			// for Pluto, whose `data.a` is around its barycenter.
+			const body = this.bodies.bodiesById.get(id);
+			if (body?.data.objectType !== ObjectType.DWARF_PLANET) return false;
+			let a = body.data.a;
+			let e = body.data.e;
+			if (!isTopLevelParent(body.data.parentId)) {
+				const parent = this.bodies.bodiesById.get(body.data.parentId);
+				if (parent?.data.a) {
+					a = parent.data.a;
+					e = parent.data.e;
+				}
+			}
+			return sbdbOrbitClass(a, e) === filter.className;
 		}
-		// Promoted small bodies usually live in `asteroidBodiesByZone`, not
-		// `bodiesById` — go through getBody so the flag check finds them.
+		// Promoted small bodies live in `asteroidBodiesByZone`, not
+		// `bodiesById` — go through getBody so flags resolve.
 		const body = this.bodies.getBody(id);
 		if (body === undefined) return false;
 		return ((body.data.flags ?? 0) & filter.mask) === filter.mask;

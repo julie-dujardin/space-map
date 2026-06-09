@@ -167,6 +167,26 @@ export const ZONE_A_RANGE: Record<string, { minA: number; maxA: number }> = {
 	earth: { minA: 0, maxA: 0.0003 }
 };
 
+/** SBDB orbit-class slug from `(a, e)`. Mirrors the OrbitClass rules in
+ *  `data/src/space_map_data/models/object/sbdb.py` — used for bodies that
+ *  don't carry the class as data (dwarf planets in `bodiesById`). */
+export function sbdbOrbitClass(a: number, e: number): string | null {
+	if (!Number.isFinite(a) || a <= 0 || !Number.isFinite(e)) return null;
+	const q = a * (1 - e);
+	const Q = a * (1 + e);
+	if (Q < 0.983) return 'IEO';
+	if (a < 1.0) return 'ATE';
+	if (q < 1.017) return 'APO';
+	if (q < 1.3) return 'AMO';
+	if (q < 1.666 && a < 3.2) return 'MCA';
+	if (a < 2.0) return 'IMB';
+	if (a < 3.2) return 'MBA';
+	if (a < 4.6) return 'OMB';
+	if (a < 5.5 && e < 0.3) return 'TJN';
+	if (a < 30.1) return 'CEN';
+	return 'TNO';
+}
+
 /** Default visual radius in km for bodies with no known radius. */
 const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
 	[ObjectType.SPACECRAFT]: 0.005
