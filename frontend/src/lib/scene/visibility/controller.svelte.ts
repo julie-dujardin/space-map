@@ -235,11 +235,11 @@ export class VisibilityController {
 
 		// Small-body class focus: promoted asteroids/comets (curated defaults,
 		// URL-loaded standalones, clicks) bypass the point-cloud render-time mask
-		// in isAsteroidGroupVisible, so apply the same zone check here.
-		if (
-			(isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET) &&
-			!this.matchesSmallBodyClass(body.data.id)
-		) {
+		// in isAsteroidGroupVisible, so apply the same zone check here. Local
+		// hoist sidesteps a svelte `.svelte.ts` miscompile of `(A || B) && C`.
+		const isSmallBody =
+			isAsteroid(body.data.objectType) || body.data.objectType === ObjectType.COMET;
+		if (isSmallBody && !this.matchesSmallBodyClass(body.data.id)) {
 			return VISIBILITY.HIDE;
 		}
 
