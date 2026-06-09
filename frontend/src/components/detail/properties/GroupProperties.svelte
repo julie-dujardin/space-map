@@ -11,6 +11,7 @@
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
 	import YearHistogramChart from './YearHistogramChart.svelte';
+	import GroupOrbitMap from './GroupOrbitMap.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -92,6 +93,8 @@
 		</div>
 	</div>
 {/if}
+
+<GroupOrbitMap {global} />
 
 {#if discoveryHistogram}
 	<div class="flex flex-col gap-1">

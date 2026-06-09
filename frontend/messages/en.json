@@ -34,6 +34,42 @@
 		}
 	],
 	"group_discovery_activity": "Discovery timeline",
+	"scatter_membership_title": "Orbit map",
+	"scatter_axes_a_q": "q · a (AU)",
+	"scatter_axes_q_e": "q · e",
+	"scatter_range_inner": "Inner",
+	"scatter_range_outer": "Outer",
+	"scatter_tooltip_pha": "Potentially hazardous",
+	"scatter_tooltip_neo": "Near-Earth",
+	"scatter_tooltip_population": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} object",
+				"countPlural=other": "{count} objects"
+			}
+		}
+	],
+	"zone_def_IEO": "Atira — orbit entirely inside Earth's (Q < 0.983 AU).",
+	"zone_def_ATE": "Aten — Earth-crossing, smaller than Earth's (a < 1.0 AU, Q > 0.983 AU).",
+	"zone_def_APO": "Apollo — Earth-crossing, larger than Earth's (a > 1.0 AU, q < 1.017 AU).",
+	"zone_def_AMO": "Amor — approaches Earth from outside (1.017 < q < 1.3 AU).",
+	"zone_def_MCA": "Mars-crossing — 1.3 < q < 1.666 AU; a < 3.2 AU.",
+	"zone_def_IMB": "Inner main belt — 1.666 < q AU and a < 2.0 AU.",
+	"zone_def_MBA": "Main belt — between Mars and Jupiter (2.0 < a < 3.2 AU, q > 1.666 AU).",
+	"zone_def_OMB": "Outer main belt — 3.2 < a < 4.6 AU.",
+	"zone_def_TJN": "Jupiter Trojan — locked in 1:1 resonance at Jupiter's L4/L5 (a ≈ 5.2 AU, e < 0.3).",
+	"zone_def_CEN": "Centaur — between the giant planets (5.5 < a < 30.1 AU).",
+	"zone_def_TNO": "Trans-Neptunian — beyond Neptune (a > 30.1 AU).",
+	"zone_def_JFc": "Jupiter-family comet (Levison & Duncan) — Tisserand 2 < T_J < 3.",
+	"zone_def_JFC": "Jupiter-family comet (classical) — orbital period under 20 years.",
+	"zone_def_HTC": "Halley-type comet — period 20–200 years, T_J < 2.",
+	"zone_def_ETc": "Encke-type comet — T_J > 3 with a < Jupiter's; very short period.",
+	"zone_def_CTc": "Chiron-type comet — T_J > 3 with a > Jupiter's; Centaur-like.",
+	"zone_def_PAR": "Parabolic — eccentricity = 1; orbit is just barely bound.",
+	"zone_def_HYP": "Hyperbolic comet — eccentricity > 1; escaping the solar system.",
+	"zone_def_HYA": "Hyperbolic asteroid — eccentricity > 1; escape trajectory (interstellar candidate).",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
