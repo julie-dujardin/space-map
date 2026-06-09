@@ -35,15 +35,18 @@
 		return out;
 	});
 
-	// Tick every other year once there are more than 8, so labels never overlap.
-	let tickEvery = $derived(series.length > 8 ? 2 : 1);
+	// Pick a "nice" step so ~8 labels show, snapping to round decades for long spans.
+	const NICE_STEPS = [1, 2, 5, 10, 20, 25, 50, 100];
+	let tickEvery = $derived.by(() => {
+		if (series.length <= 8) return 1;
+		const target = Math.ceil(series.length / 8);
+		return NICE_STEPS.find((s) => s >= target) ?? 100;
+	});
 
 	let hoveredIndex = $state<number | null>(null);
 
 	function formatYear(y: unknown): string {
-		const n = Number(y);
-		const yy = (n % 100).toString().padStart(2, '0');
-		return `'${yy}`;
+		return String(Number(y));
 	}
 </script>
 

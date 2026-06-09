@@ -19,7 +19,8 @@
 	let { format = (d) => String(d), every = 1 }: Props = $props();
 
 	const { xScale, height } = getContext<Ctx>('LayerCake');
-	let ticks = $derived($xScale.domain().filter((_, i) => i % every === 0));
+	// Filter by value (not index) so ticks land on round numbers like '60, '70, '80.
+	let ticks = $derived($xScale.domain().filter((d) => Number(d) % every === 0));
 </script>
 
 <g class="axis-x" transform="translate(0, {$height + 4})">
