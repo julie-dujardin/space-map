@@ -1,6 +1,6 @@
 import { isAsteroid, ObjectType, ZONE_A_RANGE, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { AU_SCALE, kmToScene } from '$lib/math/units';
+import { AU_SCALE } from '$lib/math/units';
 import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
@@ -18,13 +18,12 @@ import {
 	computeVisibilityFromRatio
 } from '$lib/scene/visibility/thresholds';
 
-/** Probes within 1.2× GEO of Earth are hidden when an earth-sat group is
- *  focused, so the group's own sats stand out against an otherwise crowded
- *  near-Earth volume (Geotail, MMS, IBEX, flyby probes, …). */
-const GEO_RADIUS_KM = 42_164;
-const PROBE_NEAR_EARTH_HIDE_SCENE_SQR = kmToScene(GEO_RADIUS_KM * 1.2) ** 2;
-
 const SMALL_BODY_ZONE_PREFIX = 'small_bodies/';
+
+/** NAIF id of the Earth-Moon barycenter, returned by `containingSystemAt` for
+ *  any probe inside the Earth system zone (Earth orbiters, lunar orbiters,
+ *  mid-flyby probes). */
+const EARTH_SYSTEM_NAIF = 3;
 
 /**
  * Owns focus state and turns camera distance + focus into per-body visibility
@@ -289,24 +288,16 @@ export class VisibilityController {
 	 *  a planetary system → moon style: focused-system gate + ratio against
 	 *  distance-to-parent (a stand-in for the missing osculating `a`). */
 	private getProbeVisibility(body: PositionedBody): VISIBILITY {
-		// Earth-sat group focus: hide probes currently inside Earth's
-		// near-neighborhood (Geotail, MMS, IBEX, mid-flyby, …) so they don't
-		// crowd the group's sats. Threshold is 1.2× GEO from Earth's center,
-		// regardless of the probe's current parent or dynamical regime.
-		if (this.getEarthSatGroupFilter()) {
-			const earth = this.bodies.bodiesById.get(EARTH_ID);
-			if (earth) {
-				const dx = body.position[0] - earth.position[0];
-				const dy = body.position[1] - earth.position[1];
-				const dz = body.position[2] - earth.position[2];
-				if (dx * dx + dy * dy + dz * dz < PROBE_NEAR_EARTH_HIDE_SCENE_SQR) {
-					return VISIBILITY.HIDE;
-				}
-			}
-		}
-
 		const ps = this.getProbeStore();
 		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
+
+		// Earth-sat group focus: clear the whole Earth system zone of probes
+		// (Earth orbiters, lunar orbiters, mid-flyby) so they don't crowd the
+		// focused group.
+		if (inSysNaif === EARTH_SYSTEM_NAIF && this.getEarthSatGroupFilter()) {
+			return VISIBILITY.HIDE;
+		}
+
 		const isHeliocentric = inSysNaif === null;
 
 		if (!isHeliocentric && !this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
