@@ -5,6 +5,7 @@ import { fetchLabels } from '$lib/fetch/position/labels';
 import { EARTH_ID, MINOR_PROMOTED_IDS } from '$lib/constants';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { buildMajorBodies, disposeMaterial } from '$lib/scene/objects/body/lifecycle';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
@@ -79,9 +80,12 @@ export class PromotionRegistry {
 	private readonly groupPromoted = new Set<string>();
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
-	/** Full zone key (`small_bodies/<class>`) tracked for emphasis count
-	 *  re-evaluation as chunks land. Null when no class filter is active. */
+	/** Emphasis target: `small_bodies/<class>` for class filters, `'*'` for
+	 *  flag filters, null otherwise. */
 	private smallBodyZone: string | null = null;
+	/** Mirrors `ctx.smallBodyFilter` so `refreshSmallBodyEmphasis` can pick the
+	 *  ramp count source (live bucket vs static index `n`). */
+	private smallBodyFilter: SmallBodyFilter | null = null;
 
 	constructor(private readonly deps: PromotionDeps) {
 		deps.ctx.bodies.onBodiesAdded((ids) => {
@@ -98,8 +102,8 @@ export class PromotionRegistry {
 		// current value rather than waiting for the next change event.
 		deps.ctx.onGroupFilterChange((filter) => this.applyGroupFilter(filter));
 		this.applyGroupFilter(deps.ctx.earthSatFilter);
-		deps.ctx.onSmallBodyClassFilterChange((cls) => this.applySmallBodyClassFilter(cls));
-		this.applySmallBodyClassFilter(deps.ctx.smallBodyClassFilter);
+		deps.ctx.onSmallBodyFilterChange((f) => this.applySmallBodyFilter(f));
+		this.applySmallBodyFilter(deps.ctx.smallBodyFilter);
 		// Curated set = labels-file keys ∪ MINOR_PROMOTED_IDS. Fire-and-forget:
 		// until labels resolve a few hundred ms later, defaults is empty so the
 		// notification handler matches nothing.
@@ -300,26 +304,30 @@ export class PromotionRegistry {
 		this.reevaluateGroupMode();
 	}
 
-	/** Small-body class focus: tell the point-cloud system which `small_bodies/<class>`
-	 *  zone to emphasize, ramped against the bucket's body count (same thresholds
-	 *  as earth-sat). No body-promotion side: asteroid clouds are dense enough
-	 *  that the earth-style bulk-promote-on-small-count doesn't apply. */
-	private applySmallBodyClassFilter(cls: string | null): void {
-		this.smallBodyZone = cls ? `small_bodies/${cls}` : null;
+	/** Class filters emphasize one `small_bodies/<class>` zone; flag filters use
+	 *  the `'*'` sentinel so every sub-cloud picks up the ramp. */
+	private applySmallBodyFilter(f: SmallBodyFilter | null): void {
+		this.smallBodyFilter = f;
+		this.smallBodyZone =
+			f?.kind === 'class' ? `small_bodies/${f.className}` : f?.kind === 'flag' ? '*' : null;
 		this.refreshSmallBodyEmphasis();
 	}
 
-	/** Recompute the emphasized zone's count from the current bucket and push it
-	 *  to the point-cloud system. Called on filter change and whenever new
-	 *  bodies land — chunk-time additions can move a class through the ramp
-	 *  thresholds as more members arrive. */
+	/** Push the current emphasis count to the point-cloud system. Class filters
+	 *  ramp against the live bucket size (moves as chunks land); flag filters
+	 *  use the static index `n` (re-scanning loaded asteroids per chunk isn't
+	 *  worth it). */
 	private refreshSmallBodyEmphasis(): void {
 		const zone = this.smallBodyZone;
-		if (zone === null) {
+		const filter = this.smallBodyFilter;
+		if (zone === null || filter === null) {
 			this.deps.pointClouds.setEmphasizedSmallBodyZone(null, null);
 			return;
 		}
-		const count = this.deps.ctx.bodies.asteroidBodiesByZone.get(zone)?.size ?? 0;
+		const count =
+			filter.kind === 'flag'
+				? filter.n
+				: (this.deps.ctx.bodies.asteroidBodiesByZone.get(zone)?.size ?? 0);
 		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone, count);
 	}
 

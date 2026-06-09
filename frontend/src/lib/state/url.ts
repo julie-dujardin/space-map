@@ -1,6 +1,6 @@
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import { CLASS_SLUG_PREFIX, SMALL_BODY_FLAG_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 
@@ -25,10 +25,11 @@ const EARTH_GROUP_ZOOM = 0.005;
 /** Solar-system framing for small-body (orbit-class) groups. */
 const SUN_GROUP_ZOOM = DEFAULT_VIEW.zoom;
 
-/** Camera anchor + zoom for /g/<slug>. Small-body classes orbit the Sun;
- *  every other category currently centers on Earth. */
+/** Camera anchor + zoom for /g/<slug>. Small-body groups (orbit class + NEO/
+ *  PHA designations) frame heliocentrically; every other category currently
+ *  centers on Earth. */
 export function groupAnchor(slug: string): { id: string; zoom: number } {
-	if (slug.startsWith(CLASS_SLUG_PREFIX)) {
+	if (slug.startsWith(CLASS_SLUG_PREFIX) || slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };

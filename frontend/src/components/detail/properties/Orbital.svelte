@@ -20,6 +20,8 @@
 		landedPositionAt
 	} from '$lib/fetch/position/probes/propagate';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
@@ -35,6 +37,7 @@
 	import EntityLinks from './EntityLinks.svelte';
 
 	const ctx = getContext<ContextManager>('ctx');
+	const appState = getContext<AppState | undefined>('appState');
 
 	// Maps the OrbitClass enum name (`global.sbdb.class`, e.g. "MBA") to the
 	// localized label. Mirrors the OrbitClass members in
@@ -67,6 +70,19 @@
 	};
 	function orbitClassLabel(id: string): string {
 		return ORBIT_CLASS_LABEL[id]?.() ?? id;
+	}
+
+	function groupHref(slug: string, name: string): string | undefined {
+		return appState ? serializeUrl(applyGroup(appState.view, slug, name)) : undefined;
+	}
+
+	// Plain left-click swaps via appState; modifier-clicks fall through to the
+	// browser so "open in new tab" etc. work. Mirrors EntityLinks.
+	function handleGroupClick(e: MouseEvent, slug: string, name: string) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState) return;
+		e.preventDefault();
+		appState.setGroup(slug, name);
 	}
 
 	// Fallback when the global JSON predates `ephemeris_source`.
@@ -300,20 +316,44 @@
 			{#if isNeo || isPha}
 				<div class="flex gap-1.5 mb-1">
 					{#if isNeo}
+						{@const neoName = m['group_name_flag-neo']()}
 						<Tooltip.Root>
 							<Tooltip.Trigger>
 								{#snippet child({ props })}
-									<span {...props}><Badge variant="outline">{m.neo()}</Badge></span>
+									<span class="pointer-events-auto" {...props}>
+										{#if appState}
+											<a
+												href={groupHref('flag-neo', neoName)}
+												onclick={(e) => handleGroupClick(e, 'flag-neo', neoName)}
+											>
+												<Badge variant="outline">{m.neo()}</Badge>
+											</a>
+										{:else}
+											<Badge variant="outline">{m.neo()}</Badge>
+										{/if}
+									</span>
 								{/snippet}
 							</Tooltip.Trigger>
 							<Tooltip.Content>{m.tooltip_neo()}</Tooltip.Content>
 						</Tooltip.Root>
 					{/if}
 					{#if isPha}
+						{@const phaName = m['group_name_flag-pha']()}
 						<Tooltip.Root>
 							<Tooltip.Trigger>
 								{#snippet child({ props })}
-									<span {...props}><Badge variant="destructive">{m.pha()}</Badge></span>
+									<span class="pointer-events-auto" {...props}>
+										{#if appState}
+											<a
+												href={groupHref('flag-pha', phaName)}
+												onclick={(e) => handleGroupClick(e, 'flag-pha', phaName)}
+											>
+												<Badge variant="destructive">{m.pha()}</Badge>
+											</a>
+										{:else}
+											<Badge variant="destructive">{m.pha()}</Badge>
+										{/if}
+									</span>
 								{/snippet}
 							</Tooltip.Trigger>
 							<Tooltip.Content>{m.tooltip_pha()}</Tooltip.Content>
@@ -323,7 +363,21 @@
 			{/if}
 		{/snippet}
 		{#if orbitClass}
-			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()} value={orbitClass} />
+			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()}>
+				{#if sbdb?.class}
+					<EntityLinks
+						entities={[
+							{
+								name: orbitClass,
+								primary_type: 'group',
+								primary_id: `class-${sbdb.class}`
+							}
+						]}
+					/>
+				{:else}
+					{orbitClass}
+				{/if}
+			</Row>
 		{/if}
 		{#if cometPrefix}
 			<Row label={m.comet_type()} value={cometPrefix} />

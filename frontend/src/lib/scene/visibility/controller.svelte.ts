@@ -5,6 +5,7 @@ import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
+import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -66,8 +67,16 @@ export class VisibilityController {
 		private readonly bodies: BodyIndex,
 		private readonly getProbeStore: () => ProbeStore | null = () => null,
 		private readonly getEarthSatGroupFilter: () => ReadonlySet<string> | null = () => null,
-		private readonly getSmallBodyClassFilter: () => string | null = () => null
+		private readonly getSmallBodyFilter: () => SmallBodyFilter | null = () => null
 	) {}
+
+	/** Per-tick mask read by the orbit worker pool to hide non-matching small
+	 *  bodies. Zero when the active filter is class-based (or none) — only the
+	 *  flag-kind filter carries a non-zero mask. */
+	getRequiredFlags(): number {
+		const f = this.getSmallBodyFilter();
+		return f?.kind === 'flag' ? f.mask : 0;
+	}
 
 	/**
 	 * Call from resize() in SceneRenderer whenever the canvas dimensions change.
@@ -388,16 +397,17 @@ export class VisibilityController {
 	 * Whether an asteroid zone's point-cloud should be visible.
 	 * Compares camera distance (AU) to the zone's semi-major axis range.
 	 * Zones without a defined range (parabolic, unclassified) are always visible.
-	 * When a small-body class filter is set, non-matching `small_bodies/<class>`
-	 * zones are hidden — render-time mask used by /g/class-* pages.
+	 * A `class` small-body filter hides non-matching `small_bodies/<class>`
+	 * zones at render time; a `flag` filter (NEO/PHA) leaves every zone visible
+	 * and lets the orbit worker mask non-matching points via `requiredFlags`.
 	 */
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.activeSystemId) return false;
-		const classFilter = this.getSmallBodyClassFilter();
+		const filter = this.getSmallBodyFilter();
 		if (
-			classFilter !== null &&
+			filter?.kind === 'class' &&
 			zone.startsWith('small_bodies/') &&
-			zone.slice('small_bodies/'.length) !== classFilter
+			zone.slice('small_bodies/'.length) !== filter.className
 		) {
 			return false;
 		}
@@ -432,17 +442,22 @@ export class VisibilityController {
 		return this.bodies.isInSystem(parentId, this.focusedSystemIdPlain);
 	}
 
-	/** True when no class filter is active, or when the body's asteroid zone
-	 *  matches the filter. Bodies outside `small_bodies/*` (asteroid moons in
-	 *  `small_body_moons`, URL-loaded standalones in `bodiesById` only, etc.)
-	 *  fall through — callers handle them via parent lookup or treat them as
-	 *  unscoped. */
+	/** True when no small-body filter is active, or when the body satisfies it.
+	 *  Class filter: zone path must match. Flag filter: body's `flags` byte must
+	 *  carry every requested bit. Bodies outside `small_bodies/*` (asteroid
+	 *  moons, URL-loaded standalones, etc.) fall through — callers handle them
+	 *  via parent lookup or treat them as unscoped. */
 	private matchesSmallBodyClass(id: string): boolean {
-		const classFilter = this.getSmallBodyClassFilter();
-		if (classFilter === null) return true;
-		const zone = this.bodies.findAsteroidZone(id);
-		if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return true;
-		return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === classFilter;
+		const filter = this.getSmallBodyFilter();
+		if (filter === null) return true;
+		if (filter.kind === 'class') {
+			const zone = this.bodies.findAsteroidZone(id);
+			if (!zone || !zone.startsWith(SMALL_BODY_ZONE_PREFIX)) return true;
+			return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === filter.className;
+		}
+		const body = this.bodies.bodiesById.get(id);
+		if (body === undefined) return true;
+		return ((body.data.flags ?? 0) & filter.mask) === filter.mask;
 	}
 
 	/**

@@ -8,8 +8,18 @@ import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
-import { CLASS_SLUG_PREFIX, fetchGroupIndex } from '$lib/fetch/groups/registry';
+import {
+	CLASS_SLUG_PREFIX,
+	SMALL_BODY_FLAG_MASK,
+	SMALL_BODY_FLAG_SLUG_PREFIX,
+	fetchGroupIndex,
+	smallBodyFiltersEqual,
+	type SmallBodyFilter,
+	type SmallBodyFlagName
+} from '$lib/fetch/groups/registry';
 import { EARTH_ID } from '$lib/constants';
+
+export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 
 /**
  * Top-level state holder for the rendered scene. Composes four sub-stores —
@@ -32,7 +42,7 @@ export class ContextManager {
 		this.bodies,
 		() => this.probeStore,
 		() => this.earthSatFilter,
-		() => this.smallBodyClassFilter
+		() => this.smallBodyFilter
 	);
 
 	loading = $state(true);
@@ -68,18 +78,18 @@ export class ContextManager {
 	 *  /g/<slug> pages render only group members. */
 	earthSatFilter: Set<string> | null = null;
 	private earthSatFilterSlug: string | null = null;
-	/** Orbit-class name (e.g. "MBA") when /g/class-<NAME> is active; null
-	 *  otherwise. Read by `VisibilityController.isAsteroidGroupVisible` to
-	 *  hide non-matching `small_bodies/*` point clouds at render time. */
-	smallBodyClassFilter: string | null = null;
+	/** Active small-body filter (class or flag) when /g/<slug> is for a small-
+	 *  body group; null otherwise. Read by `VisibilityController` for both the
+	 *  per-zone hide and the per-tick flag mask. */
+	smallBodyFilter: SmallBodyFilter | null = null;
 	private currentGroupSlug: string | null = null;
 	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
 	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
 	 *  members when the count is small. */
 	private readonly groupFilterListeners = new Set<(filter: ReadonlySet<string> | null) => void>();
-	/** Notified after `smallBodyClassFilter` changes (cheap — no fetch). Used to
-	 *  drive the focused-zone point-cloud emphasis. */
-	private readonly smallBodyClassListeners = new Set<(cls: string | null) => void>();
+	/** Notified after `smallBodyFilter` changes (cheap — no fetch). Used to
+	 *  drive the focused-zone point-cloud emphasis (class kind only). */
+	private readonly smallBodyFilterListeners = new Set<(f: SmallBodyFilter | null) => void>();
 
 	/** Subscribe to filter changes. The callback fires on each `applyGroupFilter`
 	 *  completion. Returns an unsubscribe. */
@@ -88,11 +98,11 @@ export class ContextManager {
 		return () => this.groupFilterListeners.delete(cb);
 	}
 
-	/** Subscribe to small-body class filter changes. Callback fires synchronously
-	 *  inside `applyGroupFilter` when the class slug flips. Returns an unsubscribe. */
-	onSmallBodyClassFilterChange(cb: (cls: string | null) => void): () => void {
-		this.smallBodyClassListeners.add(cb);
-		return () => this.smallBodyClassListeners.delete(cb);
+	/** Subscribe to small-body filter changes. Callback fires synchronously
+	 *  inside `applyGroupFilter` when the filter flips. Returns an unsubscribe. */
+	onSmallBodyFilterChange(cb: (f: SmallBodyFilter | null) => void): () => void {
+		this.smallBodyFilterListeners.add(cb);
+		return () => this.smallBodyFilterListeners.delete(cb);
 	}
 
 	/** Look up any body by ID. Carve-out delegate — see {@link BodyIndex.getBody}. */
@@ -103,15 +113,18 @@ export class ContextManager {
 	/** True when an /g/<slug> view is active and the given body belongs to it.
 	 *  Used by Scene.svelte's click handler to keep the group view sticky when
 	 *  the user clicks a member — the camera moves, the URL stays. Earth-sat
-	 *  members live in `earthSatFilter`; small-body class members are matched
-	 *  by their `asteroidBodiesByZone` bucket against `smallBodyClassFilter`. */
+	 *  members live in `earthSatFilter`; small-body class members match by
+	 *  zone path; small-body flag members match by per-body `flags` bits. */
 	isMemberOfActiveGroup(bodyId: string): boolean {
 		if (this.earthSatFilter?.has(bodyId) === true) return true;
-		if (this.smallBodyClassFilter !== null) {
+		const f = this.smallBodyFilter;
+		if (f === null) return false;
+		if (f.kind === 'class') {
 			const zone = this.bodies.findAsteroidZone(bodyId);
-			if (zone === `small_bodies/${this.smallBodyClassFilter}`) return true;
+			return zone === `small_bodies/${f.className}`;
 		}
-		return false;
+		const body = this.bodies.getBody(bodyId);
+		return ((body?.data.flags ?? 0) & f.mask) === f.mask;
 	}
 
 	async load(date: Date, targetId?: string): Promise<void> {
@@ -142,14 +155,15 @@ export class ContextManager {
 	async applyGroupFilter(slug: string | null): Promise<void> {
 		if (slug === this.currentGroupSlug) return;
 		this.currentGroupSlug = slug;
-		const category = slug ? await this.resolveCategory(slug) : null;
+		const entry = slug ? await this.resolveIndexEntry(slug) : null;
 		if (slug !== this.currentGroupSlug) return;
 
-		const nextSmallBody = category === 'small_body' ? slug!.slice(CLASS_SLUG_PREFIX.length) : null;
-		const nextEarthSlug = category === 'earth_sat' ? slug : null;
-		if (this.smallBodyClassFilter !== nextSmallBody) {
-			this.smallBodyClassFilter = nextSmallBody;
-			for (const cb of this.smallBodyClassListeners) cb(nextSmallBody);
+		const nextSmallBody =
+			entry?.applies_to === 'small_body' ? this.parseSmallBodyFilter(slug!, entry.n) : null;
+		const nextEarthSlug = entry?.applies_to === 'earth_sat' ? slug : null;
+		if (!smallBodyFiltersEqual(this.smallBodyFilter, nextSmallBody)) {
+			this.smallBodyFilter = nextSmallBody;
+			for (const cb of this.smallBodyFilterListeners) cb(nextSmallBody);
 		}
 
 		if (nextEarthSlug === this.earthSatFilterSlug) return;
@@ -166,10 +180,23 @@ export class ContextManager {
 		this.refresher?.invalidateZone('earth');
 	}
 
-	private async resolveCategory(slug: string): Promise<string | null> {
+	private parseSmallBodyFilter(slug: string, n: number): SmallBodyFilter | null {
+		if (slug.startsWith(CLASS_SLUG_PREFIX)) {
+			return { kind: 'class', className: slug.slice(CLASS_SLUG_PREFIX.length) };
+		}
+		if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX)) {
+			const name = slug.slice(SMALL_BODY_FLAG_SLUG_PREFIX.length) as SmallBodyFlagName;
+			const mask = SMALL_BODY_FLAG_MASK[name];
+			if (mask === undefined) return null;
+			return { kind: 'flag', flag: name, mask, n };
+		}
+		return null;
+	}
+
+	private async resolveIndexEntry(slug: string) {
 		try {
 			const index = await fetchGroupIndex();
-			return index[slug]?.applies_to ?? null;
+			return index[slug] ?? null;
 		} catch {
 			return null;
 		}

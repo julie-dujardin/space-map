@@ -27,6 +27,11 @@ function clamp01(x: number): number {
 	return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
+function matchesEmphasizedZone(zone: string, target: string): boolean {
+	if (target === '*') return zone.startsWith('small_bodies/');
+	return zone === target;
+}
+
 /** Shared count → ramp intensities for cloud emphasis. `tBright` ramps over
  *  count 10000 → 500 (stage 1), `tSize` over 500 → 50 (stage 2). `null` = no
  *  emphasis (both 0). Earth-sat and small-body class consumers each apply these
@@ -99,9 +104,8 @@ export class PointCloudSystem {
 		dim: EMPHASIS_BASE_DIM,
 		opacity: EMPHASIS_BASE_OPACITY
 	};
-	/** Full zone key of the emphasized small-body class (e.g. `small_bodies/MBA`)
-	 *  while a /g/class-* page is focused; null otherwise. New sub-clouds spawned
-	 *  in rebuildMinor pick this up automatically. */
+	/** Emphasis target: `small_bodies/<class>` for class filters, `'*'` for flag
+	 *  filters (every small-body sub-cloud), null otherwise. */
 	private emphasizedSmallBodyZone: string | null = null;
 	/** Current ramp values for the emphasized zone, recomputed from the bucket's
 	 *  body count. Mirrors the earth-sat ramp curve so a sparse class (CEN ~few
@@ -162,24 +166,26 @@ export class PointCloudSystem {
 		mat.opacity = opacity;
 	}
 
-	/** Mark a `small_bodies/<class>` zone as focused — its sub-clouds get a
-	 *  size/brightness/opacity boost ramped against `count` (bucket size) using
-	 *  the same thresholds as earth-sat. Passing `null` zone clears emphasis.
-	 *  Safe to call before the matching sub-clouds exist or while chunks are
-	 *  still landing; rebuildMinor re-applies the latest ramp on creation, and
-	 *  callers re-call this whenever the bucket size changes. */
+	/** Emphasize a `small_bodies/<class>` zone — size/brightness/opacity ramp
+	 *  against `count`, same thresholds as earth-sat. Sentinel `'*'` ramps every
+	 *  small-body sub-cloud (flag-kind filters cut across zones). Null clears.
+	 *  Safe before sub-clouds exist; rebuildMinor re-applies on creation. */
 	setEmphasizedSmallBodyZone(zone: string | null, count: number | null): void {
 		const prev = this.emphasizedSmallBodyZone;
 		this.emphasizedSmallBodyZone = zone;
 		this.smallBodyEmphasis = this.computeSmallBodyEmphasis(zone === null ? null : count);
 		if (prev !== null && prev !== zone) {
 			for (const [key, pts] of this.asteroidPoints) {
-				if (parentIdFromSubkey(key) === prev) this.resetSmallBodyEmphasis(pts);
+				if (matchesEmphasizedZone(parentIdFromSubkey(key), prev)) {
+					this.resetSmallBodyEmphasis(pts);
+				}
 			}
 		}
 		if (zone !== null) {
 			for (const [key, pts] of this.asteroidPoints) {
-				if (parentIdFromSubkey(key) === zone) this.applySmallBodyEmphasis(pts);
+				if (matchesEmphasizedZone(parentIdFromSubkey(key), zone)) {
+					this.applySmallBodyEmphasis(pts);
+				}
 			}
 		}
 	}
@@ -243,11 +249,12 @@ export class PointCloudSystem {
 		for (const [key, p] of this.spacecraftPoints) {
 			if (parentIdFromSubkey(key) === EARTH_ID) this.applyEarthSatEmphasis(p);
 		}
-		// Same for small-body class focus: a deep-linked /g/class-* page may have
-		// set the emphasis before the initial build ran.
+		// Same for small-body focus: a deep-linked /g/class-* or /g/flag-* page
+		// may have set the emphasis before the initial build ran.
 		if (this.emphasizedSmallBodyZone !== null) {
+			const target = this.emphasizedSmallBodyZone;
 			for (const [key, p] of this.asteroidPoints) {
-				if (parentIdFromSubkey(key) === this.emphasizedSmallBodyZone) {
+				if (matchesEmphasizedZone(parentIdFromSubkey(key), target)) {
 					this.applySmallBodyEmphasis(p);
 				}
 			}
@@ -303,7 +310,7 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
+				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k, true);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
@@ -320,7 +327,12 @@ export class PointCloudSystem {
 					pts.userData.frontBasis = seedBasis;
 					pts.userData.groupId = groupId;
 					pts.userData.parentVec = [0, 0, 0] as Vec3;
-					if (zone === this.emphasizedSmallBodyZone) this.applySmallBodyEmphasis(pts);
+					if (
+						this.emphasizedSmallBodyZone !== null &&
+						matchesEmphasizedZone(zone, this.emphasizedSmallBodyZone)
+					) {
+						this.applySmallBodyEmphasis(pts);
+					}
 					this.asteroidPoints.set(key, pts);
 					this.pendingSceneAdds.push(pts);
 				}
@@ -556,7 +568,7 @@ export class PointCloudSystem {
 			}
 			parents.set(pts.userData.groupId as string, v);
 		}
-		this.orbitPool.tick(jd, this.basisPos, parents);
+		this.orbitPool.tick(jd, this.basisPos, parents, this.ctx.visibility.getRequiredFlags());
 	}
 
 	private moonsByParent(): Map<string, PositionedBody[]> {

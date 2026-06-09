@@ -37,12 +37,16 @@ export interface ChunkMeta extends Validity {
 	idMap: Map<number, string>;
 }
 
-/** Last column on every sub-format: 1 iff the object has a localized detail
- *  bundle in at least one language. Frontend gates its localized fetch on
- *  this so flag-0 rows don't trigger a 404 per click. */
+/** `hasLocalized` gates the localized-bundle fetch (flag-0 rows would 404).
+ *  `flags` carries SBDB bits per point (0 = NEO, 1 = PHA); zero on non-SBDB rows. */
 export interface HasLocalizedColumn {
 	hasLocalized: Uint8Array;
+	flags: Uint8Array;
 }
+
+/** Per-point flag bits (column 16 on Keplerian, 19 on SGP4, 13 on Parabolic). */
+export const ELEMENTS_FLAG_NEO = 0x01;
+export const ELEMENTS_FLAG_PHA = 0x02;
 
 export interface KeplerianColumns extends ChunkMeta, HasLocalizedColumn {
 	kind: 'keplerian';
@@ -267,8 +271,11 @@ export function parseElementsPayload(
 	tail += align8(rowCount * 4);
 	const wDot = new Float32Array(buffer, tail, rowCount);
 	tail += align8(rowCount * 4);
-	// Column 15: has_localized (uint8) — last column on every sub-format.
+	// Column 15: has_localized (uint8).
 	const hasLocalized = new Uint8Array(buffer, tail, rowCount);
+	tail += align8(rowCount);
+	// Column 16: flags (uint8) — last column on every sub-format.
+	const flags = new Uint8Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
 		validityEnd,
@@ -294,6 +301,7 @@ export function parseElementsPayload(
 		omDot,
 		wDot,
 		hasLocalized,
+		flags,
 		rowCount,
 		...meta
 	};
@@ -336,8 +344,11 @@ function parseSGP4Elements(
 	offset += align8(rowCount * 4);
 	const revAtEpoch = new Int32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
-	// Column 18: has_localized (uint8) — last column on every sub-format.
+	// Column 18: has_localized (uint8).
 	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
+	offset += align8(rowCount);
+	// Column 19: flags (uint8) — always zero for SGP4, emitted for uniformity.
+	const flags = new Uint8Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'sgp4',
@@ -360,6 +371,7 @@ function parseSGP4Elements(
 		elementSetNo,
 		revAtEpoch,
 		hasLocalized,
+		flags,
 		rowCount,
 		...meta
 	};
@@ -413,8 +425,11 @@ function parseParabolicElements(
 	// Column 11: radius_km (float32)
 	const radiusKm = new Float32Array(buffer, offset, rowCount);
 	offset += align8(rowCount * 4);
-	// Column 12: has_localized (uint8) — last column on every sub-format.
+	// Column 12: has_localized (uint8).
 	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
+	offset += align8(rowCount);
+	// Column 13: flags (uint8) — last column on every sub-format.
+	const flags = new Uint8Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'parabolic',
@@ -431,6 +446,7 @@ function parseParabolicElements(
 		tp,
 		radiusKm,
 		hasLocalized,
+		flags,
 		rowCount,
 		...meta
 	};

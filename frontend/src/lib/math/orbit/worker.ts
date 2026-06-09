@@ -30,6 +30,8 @@ type TickMsg = {
 	type: 'tick';
 	jd: number;
 	basis: [number, number, number];
+	/** Per-tick NEO/PHA mask; hides points whose flags lack every set bit. */
+	requiredFlags?: number;
 	groups: {
 		id: string;
 		parent: [number, number, number];
@@ -68,7 +70,8 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
 				bx,
 				by,
 				bz,
-				g.out
+				g.out,
+				msg.requiredFlags ?? 0
 			);
 			out.push({ id: g.id, count, buf: g.out.buffer });
 			transfers.push(g.out.buffer as Transferable);

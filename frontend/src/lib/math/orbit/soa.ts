@@ -44,6 +44,12 @@ export interface OrbitColumns {
 	tp: Float64Array;
 	/** Per-row SGP4 satrec — non-null iff kind[i] === KIND_SGP4. */
 	satrec: (SatRec | null)[];
+	/** SBDB bits per point (0 = NEO, 1 = PHA); zero on non-SBDB rows. */
+	flags: Uint8Array;
+	/** Whether `writePositions` honours the tick's `requiredFlags` mask. False
+	 *  for groups whose flags are meaningless (Earth sats) so a global NEO/PHA
+	 *  filter doesn't erase them. */
+	applyFlagFilter: boolean;
 	/**
 	 * Group-level validity window (JD TDB). Written once at pack time from the
 	 * widest span across bodies — bodies in a pool group always come from one
@@ -60,11 +66,17 @@ export interface OrbitColumns {
  * Bodies whose IDs are in `skip` (e.g. promoted to full meshes) are tagged
  * KIND_SKIP. Degenerate Keplerian entries (a=0 with no q/tp) are also skipped.
  * Returns columns sized to bodies.length; order matches `bodies` exactly so
- * main-thread callers can map back by index.
+ * main-thread callers can map back by index. `applyFlagFilter` opts the group
+ * into the per-tick NEO/PHA mask (leave false for Earth sats / probes).
  */
-export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitColumns {
+export function packBodies(
+	bodies: PositionedBody[],
+	skip?: Set<string>,
+	applyFlagFilter: boolean = false
+): OrbitColumns {
 	const count = bodies.length;
 	const cols = allocColumns(count);
+	cols.applyFlagFilter = applyFlagFilter;
 	// Widen the group's validity window to the union of all bodies' windows.
 	// In practice all bodies in one pool group share a single chunk window, so
 	// min/max collapses to that shared value — but the widening keeps us safe
@@ -100,6 +112,7 @@ export function packBodies(bodies: PositionedBody[], skip?: Set<string>): OrbitC
 		cols.n[idx] = d.n;
 		cols.epoch[idx] = d.epoch;
 		cols.equatorial[idx] = d.equatorial ? 1 : 0;
+		cols.flags[idx] = d.flags ?? 0;
 		if (d.validityStart < start) start = d.validityStart;
 		if (d.validityEnd > end) end = d.validityEnd;
 	}
@@ -122,7 +135,8 @@ export function columnsTransferList(cols: OrbitColumns): Transferable[] {
 		cols.n.buffer,
 		cols.epoch.buffer,
 		cols.q.buffer,
-		cols.tp.buffer
+		cols.tp.buffer,
+		cols.flags.buffer
 	] as Transferable[];
 }
 
@@ -142,6 +156,8 @@ export function allocColumns(count: number): OrbitColumns {
 		q: new Float64Array(count),
 		tp: new Float64Array(count),
 		satrec: new Array<SatRec | null>(count).fill(null),
+		flags: new Uint8Array(count),
+		applyFlagFilter: false,
 		validityStart: -Infinity,
 		validityEnd: Infinity
 	};
@@ -169,13 +185,15 @@ export function writePositions(
 	basisX: number,
 	basisY: number,
 	basisZ: number,
-	out: Float32Array
+	out: Float32Array,
+	requiredFlags: number = 0
 ): number {
 	// Bail on the whole group when jd sits outside the chunk's validity window
 	// — avoids a full SGP4 sweep that would error on every row and flood the
 	// console. Returning 0 hides the cloud via setDrawRange.
 	if (jd < cols.validityStart || jd > cols.validityEnd) return 0;
-	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec } = cols;
+	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec, flags } = cols;
+	const filterActive = requiredFlags !== 0 && cols.applyFlagFilter;
 	const capacity = (out.length / 3) | 0;
 	let writeIdx = 0;
 
@@ -183,6 +201,7 @@ export function writePositions(
 		if (writeIdx >= capacity) break;
 		const k = kind[idx];
 		if (k === KIND_SKIP) continue;
+		if (filterActive && (flags[idx] & requiredFlags) !== requiredFlags) continue;
 
 		if (k === KIND_SGP4) {
 			const sat = satrec[idx];

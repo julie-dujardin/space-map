@@ -93,7 +93,13 @@ export class OrbitWorkerPool {
 	 * Letting back stay null defers the next dispatch until the in-flight
 	 * tick lands naturally.
 	 */
-	rewireOne(id: string, bodies: PositionedBody[], skip: Set<string>, workerHint: number): void {
+	rewireOne(
+		id: string,
+		bodies: PositionedBody[],
+		skip: Set<string>,
+		workerHint: number,
+		applyFlagFilter: boolean = false
+	): void {
 		if (bodies.length === 0) {
 			this.unwireOne(id);
 			return;
@@ -116,7 +122,7 @@ export class OrbitWorkerPool {
 			}
 		}
 
-		const cols = packBodies(bodies, skip);
+		const cols = packBodies(bodies, skip, applyFlagFilter);
 		// If a tick is in flight (prev.back === null), preserve its pending
 		// dispatch state so the returning result is paired with the basis /
 		// parent it was actually computed under — see comment above re: back.
@@ -151,11 +157,10 @@ export class OrbitWorkerPool {
 		});
 	}
 
-	/**
-	 * Per-frame dispatch. Groups with no free back-buffer (worker still chewing
-	 * on last tick) are skipped this frame — they'll catch up on the next one.
-	 */
-	tick(jd: number, basis: Vec3, parents: Map<string, Vec3>): void {
+	/** Per-frame dispatch. Groups with no free back-buffer (worker still on
+	 *  last tick) are skipped — they catch up next frame. `requiredFlags` (0 =
+	 *  no mask) is the NEO/PHA filter applied to groups with `applyFlagFilter`. */
+	tick(jd: number, basis: Vec3, parents: Map<string, Vec3>, requiredFlags: number = 0): void {
 		const perWorker: {
 			id: string;
 			parent: [number, number, number];
@@ -180,7 +185,13 @@ export class OrbitWorkerPool {
 			if (groupMsgs.length === 0) continue;
 			const transfers: Transferable[] = groupMsgs.map((g) => g.out.buffer as Transferable);
 			this.workers[i].postMessage(
-				{ type: 'tick', jd, basis: [basis[0], basis[1], basis[2]], groups: groupMsgs },
+				{
+					type: 'tick',
+					jd,
+					basis: [basis[0], basis[1], basis[2]],
+					requiredFlags,
+					groups: groupMsgs
+				},
 				transfers
 			);
 		}

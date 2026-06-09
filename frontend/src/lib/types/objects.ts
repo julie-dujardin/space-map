@@ -55,6 +55,9 @@ export interface BodyData extends OrbitalElements {
 	 *  chunk. Frontend uses this to gate the localized bundle fetch — a
 	 *  detail-bundle fetch for `false` rows would 404. */
 	hasLocalized: boolean;
+	/** SBDB bits: 0 = NEO, 1 = PHA. Zero on non-SBDB bodies. Drives the orbit
+	 *  worker's NEO/PHA per-point visibility mask. */
+	flags?: number;
 	/**
 	 * SGP4 satellite record from satellite.js. Populated only for Earth
 	 * satellites (SGP4 format chunks). When present, position propagation
