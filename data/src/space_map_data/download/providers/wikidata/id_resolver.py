@@ -135,9 +135,13 @@ class WikidataIdResolver:
         #             resolved_qids.update(qids)
         #     self._resolve_by_name(resolved_qids)
 
-        # Collect unique QIDs from the resolved sources
+        # Read every allowed PID's CSV — id_types whose SPARQL resolution is
+        # disabled in SOURCES still have valid matches from prior runs.
         all_qids: set[str] = set()
-        for id_type, _, _ in sources:
+        allowed_pid_types = ID_TYPE_TO_WIKIDATA_PID.keys()
+        if id_types is not None:
+            allowed_pid_types = [t for t in allowed_pid_types if t in set(id_types)]
+        for id_type in allowed_pid_types:
             pid = ID_TYPE_TO_WIKIDATA_PID[id_type]
             for qids in self._read_ids_csv(pid).values():
                 all_qids.update(qids)
