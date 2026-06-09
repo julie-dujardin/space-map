@@ -138,6 +138,10 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
     "global": 90,
     "en": 17, "fr": 12, "ja": 2, "ar": 2, "ru": 10, "zh": 13
   },
+  "group_bundles": {
+    "global": 6,
+    "en": 4, "fr": 4, "ja": 4, "ar": 3, "ru": 4, "zh": 4
+  },
   "skybox": {
     "id": "stars",
     "type": "cubemap_skybox",
@@ -1009,6 +1013,92 @@ interface LocalizedObjectData {
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
+```
+
+## Group detail files
+
+Aggregation entities behind `/g/<slug>` pages (constellations, operators,
+launch sites, manufacturers, countries, orbit classes, and small-body
+flags). Group bundles use the **same hash-bucketing scheme as object
+bundles** (sha256 first-4-bytes BE, mod N) so the frontend reuses
+`hashBucket` for slug → bundle resolution.
+
+Bucket counts ship in `metadata.json` under `group_bundles` as
+`{ global: N, <lang>: N, ... }`. Target bundle sizes: `K_global = 1000`,
+`K_localized = 600`. Source: `data/src/space_map_data/export/groups/`.
+
+### `groups/__index__.json`
+
+Small, **ungzipped** map written once. Loaded eagerly to validate
+`/g/<slug>` URLs and render group listings without a bundle fetch:
+
+```typescript
+interface GroupIndexEntry {
+  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "country" | "orbit_class" | "small_body_flag"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body"
+  n: number;                  // member count
+}
+// File body: Record<slug, GroupIndexEntry>
+```
+
+### Global (`groups/__global__/{bucket}.json.gz`)
+
+Written for every group. `bucket = sha256(slug)[:4] % N_global`. Each
+bundle is a JSON object `{ "<slug>": GlobalGroupData, ... }`.
+
+```typescript
+interface GlobalGroupData {
+  slug: string;
+  type: GroupType;
+  applies_to: GroupCategory;
+  member_count: number;
+  wikidata_qid?: string;
+  url?: string;                     // Fallback external URL when no Wikidata QID
+  website?: string;                 // Wikidata P856
+  categories?: SatelliteCategory[]; // Constellation-only; top-level use cases (communications, navigation, ...)
+
+  // Earth-sat groups (constellation / operator / launch_site / manufacturer / country).
+  // Computed from SATCAT; absent on small-body groups.
+  launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
+  first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
+  active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
+  decayed_count?: number;                     // Members with a SATCAT decay_date
+
+  // Small-body groups (orbit_class / small_body_flag).
+  // Computed from SBDB.first_obs (YYYY-MM-DD or partial YYYY).
+  // Rows lacking a parseable year are excluded from the histogram but
+  // still count in member_count. NEO/PHA flags overlap with the orbit
+  // class an object belongs to, so the same row contributes to multiple
+  // small-body histograms.
+  discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
+
+  inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
+  dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
+  images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
+}
+```
+
+### Localized (`groups/{lang}/{bucket}.json.gz`)
+
+Per-language bundles. `bucket = sha256(slug)[:4] % N_{lang}` where
+`N_{lang}` is that language's count in `metadata.group_bundles`. A group
+appears in a language only when it has Wikidata/Wikipedia data for that
+language. On a 404 the frontend gives up — there is no English fallback
+tier.
+
+```typescript
+interface LocalizedGroupData {
+  name?: string;
+  description?: string;
+  wikipedia?: { extract?: string; description?: string; url?: string };
+  operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137)
+  manufacturers?: EntityRef[];        // Constellation hardware primes
+  country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
+  instance_of?: EntityRef[];
+  launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
+  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
+  related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID across roles
+}
 ```
 
 ## IAU planetary nomenclature

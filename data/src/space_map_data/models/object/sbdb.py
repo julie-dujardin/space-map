@@ -94,13 +94,13 @@ class SBDB(Base):
         default=None
     )  # extracted from full_name parentheses
     prefix: Mapped[CometPrefix | None] = mapped_column(
-        default=None
+        default=None, index=True
     )  # comet designation prefix
     neo: Mapped[bool | None] = mapped_column(
-        default=None
+        default=None, index=True
     )  # Near-Earth Object (NEO) flag
     pha: Mapped[bool | None] = mapped_column(
-        default=None
+        default=None, index=True
     )  # Potentially Hazardous Asteroid (PHA) flag
     sats: Mapped[int | None] = mapped_column(default=None)  # number of known satellites
 
@@ -237,13 +237,15 @@ class SBDB(Base):
     )  # sidereal orbital period [d]
 
     # Orbit metadata
-    class_: Mapped[OrbitClass] = mapped_column("class")  # orbit classification
+    class_: Mapped[OrbitClass] = mapped_column(
+        "class", index=True
+    )  # orbit classification
     producer: Mapped[str | None] = mapped_column(
         default=None
     )  # person/institution who computed the orbit
     data_arc: Mapped[int | None] = mapped_column(default=None)  # data-arc span [d]
     first_obs: Mapped[str | None] = mapped_column(
-        default=None
+        default=None, index=True
     )  # date of first observation used in fit [UT] — YYYY-MM-DD or YYYY if partial
     last_obs: Mapped[str | None] = mapped_column(
         default=None

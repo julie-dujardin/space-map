@@ -56,6 +56,7 @@ def _build_global(
     member_count: int,
     extracted: dict | None,
     stats: GroupSatcatStats | None,
+    discovery_histogram: dict[int, int] | None,
     images: list[dict] | None,
 ) -> dict:
     data: dict = {
@@ -83,6 +84,10 @@ def _build_global(
             data["active_count"] = stats.active
         if stats.decayed:
             data["decayed_count"] = stats.decayed
+    if discovery_histogram:
+        data["discovery_histogram"] = {
+            str(year): n for year, n in sorted(discovery_histogram.items())
+        }
     if extracted:
         websites = extracted.get("website")
         if websites:
@@ -363,12 +368,15 @@ def write_group_bundles(
     membership_by_type: dict[GroupType, dict[str, list[str]]],
     stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
     extra_member_counts: dict[str, int] | None = None,
+    extra_histograms: dict[str, dict[int, int]] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
     ``extra_member_counts`` carries member counts for group types that ship
-    no membership inverted index (orbit classes); merged into ``member_counts``
-    before the per-group loop so the global bundle and __index__ both see them.
+    no membership inverted index (orbit classes, small-body flags); merged
+    into ``member_counts`` before the per-group loop so the global bundle
+    and __index__ both see them. ``extra_histograms`` carries the parallel
+    ``first_obs`` year histograms for those same slugs.
     Returns ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
     member_counts = _flatten_membership(membership_by_type)
@@ -388,11 +396,13 @@ def write_group_bundles(
         extracted = _extract_group_claims(group, wikidata_entities)
         images = collect_group_images(group.slug)
         stats = satcat_stats.get(group.slug)
+        discovery_histogram = (extra_histograms or {}).get(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
             extracted,
             stats,
+            discovery_histogram,
             images,
         )
         for lang in LANGUAGES:

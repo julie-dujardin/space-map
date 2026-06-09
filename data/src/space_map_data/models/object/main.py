@@ -172,7 +172,7 @@ class Object(Base):
     )  # Object.id of the central body (e.g. "naif-399" for Earth)
 
     orbital_source: Mapped[OrbitalSource | None] = mapped_column(
-        default=None
+        default=None, index=True
     )  # which source provided the orbital elements (= which sub-table to join)
 
     map_texture_available: Mapped[bool] = mapped_column(default=False)
