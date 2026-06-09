@@ -299,7 +299,7 @@ payload).
 | Offset | Type    | Field |
 |--------|---------|-------|
 | 0      | char[4] | Magic `SMAP` |
-| 4      | uint16  | Version (7) |
+| 4      | uint16  | Version (10) |
 | 6      | uint8   | Format: `0 = elements, 1 = chebyshev, 2 = probes` |
 | 7      | uint8   | Reserved |
 | 8      | float64 | `start_jd` — file validity start (JD TDB), `-Infinity` = unbounded |
@@ -354,6 +354,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 13| om_dot      | float32 | 0.0     | Secular drift of `om` (deg/day). Populated by SPICE for non-whitelisted moons via the Method C mean-element fit; zero for everything else |
 | 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
 | 15| has_localized | uint8 | 0       | `1` iff the object has a localized detail bundle in at least one language; `0` otherwise. Frontend gates its localized-bundle fetch on this bit so flag-0 objects don't trigger a 404 per click |
+| 16| flags       | uint8   | 0       | Per-point SBDB-derived bits: bit 0 = NEO (`sbdb.neo`), bit 1 = PHA (`sbdb.pha`), bits 2–7 reserved. Zero on rows without an SBDB sub-table (planets, moons, sats). |
 
 Coordinate frame: ecliptic J2000.
 
@@ -401,6 +402,7 @@ don't do SGP4 can ignore columns 13–17 and treat the file as Keplerian.
 | 16 | element_set_no   | int32   | -1      | TLE element set number |
 | 17 | rev_at_epoch     | int32   | -1      | Revolution number at epoch |
 | 18 | has_localized    | uint8   | 0       | Same semantics as the Keplerian column 15 |
+| 19 | flags            | uint8   | 0       | Always zero for SGP4 (no SBDB sub-table); emitted for layout uniformity with the Keplerian sub-format |
 
 `a` and `n` use the planet-scale units (km, rev/day) — the raw OMM values from
 CelesTrak, which `json2satrec` expects unconverted.
@@ -422,6 +424,7 @@ Columns 0–3 are identical to Keplerian. Julian Dates use float64; other column
 | 10| tp          | float64 | NaN     | Time of perihelion passage (Julian Date, TDB) |
 | 11| radius_km   | float32 | NaN     | Physical radius (km) |
 | 12| has_localized | uint8 | 0       | Same semantics as the Keplerian column 15 |
+| 13| flags       | uint8   | 0       | Same semantics as the Keplerian column 16 |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
 
