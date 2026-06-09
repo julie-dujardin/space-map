@@ -1,9 +1,9 @@
 """Group registry: aggregation entities behind /g/<slug>.
 
 Constellations keep bare slugs; operators, launch sites, manufacturers,
-countries, and orbit classes are prefixed (``op-``/``site-``/``mfr-``/
-``country-``/``class-``) so the same entity can appear in multiple roles
-without slug collisions.
+countries, orbit classes, and small-body flags are prefixed
+(``op-``/``site-``/``mfr-``/``country-``/``class-``/``flag-``) so the same
+entity can appear in multiple roles without slug collisions.
 """
 
 from dataclasses import dataclass
@@ -27,6 +27,7 @@ from space_map_data.constants.wikidata_qids import ORBIT_CLASS_QIDS
 from space_map_data.models.object.sbdb import OrbitClass
 
 CLASS_SLUG_PREFIX = "class-"
+SMALL_BODY_FLAG_SLUG_PREFIX = "flag-"
 
 
 class GroupType(StrEnum):
@@ -36,6 +37,15 @@ class GroupType(StrEnum):
     MANUFACTURER = "manufacturer"
     COUNTRY = "country"
     ORBIT_CLASS = "orbit_class"
+    SMALL_BODY_FLAG = "small_body_flag"
+
+
+# Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
+# resolved render-time from the per-point `flags` byte on elements tiles.
+SMALL_BODY_FLAGS: tuple[tuple[str, str], ...] = (
+    ("neo", "Q265392"),
+    ("pha", "Q2014814"),
+)
 
 
 class GroupCategory(StrEnum):
@@ -56,6 +66,8 @@ __all__ = [
     "LAUNCH_SITE_SLUG_PREFIX",
     "MANUFACTURER_SLUG_PREFIX",
     "OPERATOR_SLUG_PREFIX",
+    "SMALL_BODY_FLAG_SLUG_PREFIX",
+    "SMALL_BODY_FLAGS",
 ]
 
 
@@ -125,6 +137,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for cls in OrbitClass
     )
+    small_body_flags = tuple(
+        Group(
+            slug=f"{SMALL_BODY_FLAG_SLUG_PREFIX}{name}",
+            type=GroupType.SMALL_BODY_FLAG,
+            applies_to=GroupCategory.SMALL_BODY,
+            wikidata_qid=qid,
+        )
+        for name, qid in SMALL_BODY_FLAGS
+    )
     return (
         constellations
         + operators
@@ -132,6 +153,7 @@ def _build_groups() -> tuple[Group, ...]:
         + manufacturers
         + countries
         + orbit_classes
+        + small_body_flags
     )
 
 

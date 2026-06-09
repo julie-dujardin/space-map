@@ -14,6 +14,8 @@ from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import (
+    ELEMENTS_FLAG_NEO,
+    ELEMENTS_FLAG_PHA,
     ID_TYPE_ORDINAL,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
@@ -203,6 +205,7 @@ def write_elements(
     Kepler propagation reduces to plain mean-anomaly drift. Column 15
     (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
     a localized object-detail bundle fetch — set when any language has data.
+    Column 16 (`flags`, uint8) packs per-point SBDB bits (NEO, PHA).
 
     `start_jd`/`end_jd` bound the file's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
@@ -231,6 +234,7 @@ def write_elements(
         )
 
     _write_has_localized(buf, objects, has_localized)
+    _write_flags(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -251,6 +255,8 @@ def write_sgp4_elements(
     TLE/OMM fields needed by satellite.js `json2satrec`: BSTAR, MEAN_MOTION_DOT,
     MEAN_MOTION_DDOT (float32), ELEMENT_SET_NO, REV_AT_EPOCH (int32). Column
     18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
+    Column 19 (`flags`, uint8) is always zero for SGP4 (no SBDB sub-table)
+    but is emitted for layout uniformity with the Keplerian sub-format.
 
     `start_jd`/`end_jd` bound the file's validity. TLEs lose accuracy fast
     past their epoch and the SGP4 propagator blows up entirely a year or two
@@ -292,6 +298,7 @@ def write_sgp4_elements(
     )
 
     _write_has_localized(buf, objects, has_localized)
+    _write_flags(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -309,10 +316,11 @@ def write_parabolic_elements(
     """Write a parabolic elements file (sub_format=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
-    radius_km, has_localized. `has_localized` (uint8 0/1) gates localized
-    object-detail fetches in the frontend. `start_jd`/`end_jd` bound the
-    file's validity; ±inf means unbounded. Raises ValueError if a required
-    element (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
+    radius_km, has_localized, flags. `has_localized` (uint8 0/1) gates
+    localized object-detail fetches in the frontend; `flags` (uint8) packs
+    per-point SBDB bits (NEO, PHA). `start_jd`/`end_jd` bound the file's
+    validity; ±inf means unbounded. Raises ValueError if a required element
+    (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
     disagrees with the file source.
     """
     n = len(objects)
@@ -364,6 +372,7 @@ def write_parabolic_elements(
     _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
 
     _write_has_localized(buf, objects, has_localized)
+    _write_flags(buf, objects)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -500,9 +509,28 @@ def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
 def _write_has_localized(
     f, objects: list[Object], has_localized: dict[str, bool]
 ) -> None:
-    """Write the trailing `has_localized` uint8 column (last column of every sub-format)."""
+    """Write the `has_localized` uint8 column."""
     n = len(objects)
     _write_uint8(f, n, [1 if has_localized.get(o.id) else 0 for o in objects])
+
+
+def _flags_byte(o: Object) -> int:
+    """Pack SBDB-derived per-point flags. Zero for rows without an SBDB row."""
+    sbdb = o.sbdb if o.spkid is not None else None
+    if sbdb is None:
+        return 0
+    bits = 0
+    if sbdb.neo:
+        bits |= ELEMENTS_FLAG_NEO
+    if sbdb.pha:
+        bits |= ELEMENTS_FLAG_PHA
+    return bits
+
+
+def _write_flags(f, objects: list[Object]) -> None:
+    """Write the trailing `flags` uint8 column (last column on v10+ payloads)."""
+    n = len(objects)
+    _write_uint8(f, n, [_flags_byte(o) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

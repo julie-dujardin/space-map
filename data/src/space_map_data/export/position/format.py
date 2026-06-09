@@ -44,7 +44,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 9
+VERSION = 10
 
 # Common header at offset 0..23, format extension at 24..31.
 COMMON_HEADER_SIZE = 24
@@ -130,6 +130,11 @@ MISSING_FLOAT32 = float("nan")
 MISSING_FLOAT64 = float("nan")
 MISSING_SOURCE = 255
 MISSING_ID_TYPE = 255
+
+# Per-point flags byte (trailing column on elements payloads, v10+). Bits read
+# from SBDB; unset on rows without an SBDB sub-table (planets, moons, sats).
+ELEMENTS_FLAG_NEO = 0x01
+ELEMENTS_FLAG_PHA = 0x02
 
 _COMMON_STRUCT = struct.Struct("<4sHBBdd")
 assert _COMMON_STRUCT.size == COMMON_HEADER_SIZE

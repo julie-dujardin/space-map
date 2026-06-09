@@ -327,6 +327,68 @@ class TestWriteElements:
         flags = struct.unpack_from("<2B", raw, offset)
         assert flags == (1, 0)
 
+    def test_flags_column(self, tmp_path):
+        """The trailing flags uint8 column packs sbdb.neo (bit 0) and
+        sbdb.pha (bit 1); rows without an SBDB sub-table read as zero."""
+        from space_map_data.models.object.sbdb import SBDB
+
+        pha = make_object(
+            id="spkid-2000001",
+            object_type=ObjectType.asteroid,
+            spkid=2000001,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        kepler_kw = dict(
+            epoch=2460000.5, a=2.0, e=0.1, i=5.0, om=10.0, w=20.0, ma=30.0, n=0.5
+        )
+        pha.sbdb = SBDB(
+            spkid="2000001",
+            object_id="spkid-2000001",
+            neo=True,
+            pha=True,
+            **kepler_kw,
+        )
+        neo_only = make_object(
+            id="spkid-2000002",
+            object_type=ObjectType.asteroid,
+            spkid=2000002,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        neo_only.sbdb = SBDB(
+            spkid="2000002",
+            object_id="spkid-2000002",
+            neo=True,
+            pha=False,
+            **kepler_kw,
+        )
+        plain = make_object(
+            id="spkid-2000003",
+            object_type=ObjectType.asteroid,
+            spkid=2000003,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        plain.sbdb = SBDB(
+            spkid="2000003",
+            object_id="spkid-2000003",
+            neo=False,
+            pha=False,
+            **kepler_kw,
+        )
+
+        out = tmp_path / "flags.bin.gz"
+        write_elements(
+            [pha, neo_only, plain], out, OrbitalSource.sbdb, has_localized={}
+        )
+        raw = gzip.decompress(out.read_bytes())
+
+        # 3 rows. Per-column padded sizes: int32 cols = 16, uint8 cols = 8,
+        # float32 cols = 16, float64 cols = 24. Layout: shared cols 0-3
+        # (16+8+16+8 = 48), col 4 epoch_jd f64 (24), cols 5-12 (8 f32 cols × 16
+        # = 128), cols 13-14 (2 × 16 = 32), col 15 has_localized (8).
+        offset = HEADER_SIZE + 48 + 24 + 128 + 32 + 8
+        flags = struct.unpack_from("<3B", raw, offset)
+        assert flags == (0x03, 0x01, 0x00)
+
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)
