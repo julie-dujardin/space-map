@@ -12,7 +12,10 @@ from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
 )
-from space_map_data.export.groups.small_body import build_small_body_group_stats
+from space_map_data.export.groups.small_body import (
+    build_small_body_group_stats,
+    write_orbit_samples,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.utils.paths import EXPORT_DIR
 
@@ -29,6 +32,7 @@ def run_groups_tier(
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(session)
     write_earth_membership(out_dir, build.membership)
+    write_orbit_samples(out_dir, small_body_stats.orbit_samples)
 
     return write_group_bundles(
         out_dir,

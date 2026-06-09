@@ -12,9 +12,13 @@ server-side (GROUP BY year derived from ``first_obs``) so the ~1.3M-row
 SBDB scan never crosses the ORM boundary.
 """
 
+import gzip
 import logging
+import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import orjson
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -23,17 +27,39 @@ from space_map_data.export.groups.registry import (
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
 from space_map_data.models.object.main import Object, OrbitalSource
-from space_map_data.models.object.sbdb import SBDB, CometPrefix
+from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
 logger = logging.getLogger(__name__)
+
+# Target sample count for the orbit-class scatter plot. Allocation is
+# sqrt-weighted by population with a per-class floor so even tiny classes
+# (a few dozen rows) stay visible. No upper cap — MBA dominates the chart
+# the same way it dominates the real population.
+SCATTER_TARGET = 1000
+SCATTER_FLOOR = 5
+
+
+@dataclass
+class OrbitClassSample:
+    """One scatter-plot point for the orbit-class chart."""
+
+    slug: str  # class-<OrbitClass.name>
+    name: str
+    a: float | None  # AU; None for parabolic comets (e = 1)
+    e: float
+    q: float  # AU; perihelion, always defined
+    i: float | None  # deg
+    neo: bool
+    pha: bool
 
 
 @dataclass
 class SmallBodyGroupStats:
-    """Per-slug member counts and ``first_obs`` year histograms."""
+    """Per-slug member counts, discovery histograms, and scatter samples."""
 
     member_counts: dict[str, int] = field(default_factory=dict)
     discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
+    orbit_samples: list[OrbitClassSample] = field(default_factory=list)
 
 
 def _exported_sbdb_filter():
@@ -45,6 +71,101 @@ def _exported_sbdb_filter():
             Object.orbital_source == OrbitalSource.sbdb,
         ),
     )
+
+
+def _allocate_samples(
+    class_counts: dict[OrbitClass, int],
+    target: int = SCATTER_TARGET,
+    floor: int = SCATTER_FLOOR,
+) -> dict[OrbitClass, int]:
+    """sqrt-weighted allocation with a per-class floor capped by population.
+
+    Classes with 0 members get 0. No upper cap — MBA naturally dominates.
+    """
+    weights = {cls: math.sqrt(n) for cls, n in class_counts.items() if n > 0}
+    total_w = sum(weights.values())
+    out: dict[OrbitClass, int] = {}
+    for cls, n in class_counts.items():
+        if n == 0:
+            out[cls] = 0
+            continue
+        raw = round(target * weights[cls] / total_w)
+        out[cls] = min(max(raw, floor), n)
+    return out
+
+
+def _sample_orbit_class(
+    session: Session, cls: OrbitClass, n: int
+) -> list[OrbitClassSample]:
+    """Pick ``n`` deterministic samples from one orbit class.
+
+    Ordered by ``Object.random_int`` — that's a hash of the PK populated at
+    insert, so the same rows come back across export runs as long as the DB
+    is the same. Skips rows missing the elements we plot.
+    """
+    rows = (
+        session.query(
+            SBDB.full_name,
+            SBDB.name,
+            SBDB.pdes,
+            SBDB.a,
+            SBDB.e,
+            SBDB.q,
+            SBDB.i,
+            SBDB.neo,
+            SBDB.pha,
+        )
+        .join(Object, Object.id == SBDB.object_id)
+        .filter(*_exported_sbdb_filter())
+        .filter(SBDB.class_ == cls)
+        .filter(SBDB.e.is_not(None), SBDB.q.is_not(None))
+        .order_by(Object.random_int)
+        .limit(n)
+        .all()
+    )
+    slug = f"{CLASS_SLUG_PREFIX}{cls.name}"
+    return [
+        OrbitClassSample(
+            slug=slug,
+            name=full_name or name or pdes or "",
+            a=a,
+            e=e,
+            q=q,
+            i=i,
+            neo=bool(neo),
+            pha=bool(pha),
+        )
+        for (full_name, name, pdes, a, e, q, i, neo, pha) in rows
+    ]
+
+
+def build_orbit_class_samples(
+    session: Session, class_counts: dict[OrbitClass, int]
+) -> list[OrbitClassSample]:
+    """Pick a representative scatter sample for every non-empty orbit class."""
+    allocation = _allocate_samples(class_counts)
+    samples: list[OrbitClassSample] = []
+    short_falls: list[tuple[str, int, int]] = []
+    for cls, n in allocation.items():
+        if n == 0:
+            continue
+        class_samples = _sample_orbit_class(session, cls, n)
+        samples.extend(class_samples)
+        if len(class_samples) < n:
+            short_falls.append((cls.name, n, len(class_samples)))
+    if short_falls:
+        logger.info(
+            "Orbit class sampling shortfall (missing a/e/q in DB): %s",
+            ", ".join(f"{c}: {got}/{want}" for c, want, got in short_falls),
+        )
+    logger.info(
+        "Built %d orbit-class scatter samples across %d classes (target=%d, floor=%d)",
+        len(samples),
+        sum(1 for n in allocation.values() if n > 0),
+        SCATTER_TARGET,
+        SCATTER_FLOOR,
+    )
+    return samples
 
 
 def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
@@ -61,13 +182,14 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
         .filter(*_exported_sbdb_filter())
     )
 
-    class_counts = (
+    class_counts_rows = (
         base.with_entities(SBDB.class_, func.count(SBDB.spkid))
         .group_by(SBDB.class_)
         .all()
     )
+    class_counts: dict[OrbitClass, int] = {cls: n for cls, n in class_counts_rows}
     member_counts: dict[str, int] = {
-        f"{CLASS_SLUG_PREFIX}{cls.name}": n for cls, n in class_counts
+        f"{CLASS_SLUG_PREFIX}{cls.name}": n for cls, n in class_counts.items()
     }
     neo_count = base.filter(SBDB.neo.is_(True)).count()
     pha_count = base.filter(SBDB.pha.is_(True)).count()
@@ -139,7 +261,40 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
         pha_count,
         len(discovery_histograms),
     )
+    orbit_samples = build_orbit_class_samples(session, class_counts)
     return SmallBodyGroupStats(
         member_counts=member_counts,
         discovery_histograms=discovery_histograms,
+        orbit_samples=orbit_samples,
+    )
+
+
+def write_orbit_samples(out_dir: Path, samples: list[OrbitClassSample]) -> None:
+    """Write the shared scatter-plot sample file at groups/__orbit_samples__.json.gz.
+
+    Shape: ``{"samples": [...]}``. Per-class real counts live in the existing
+    groups __index__.json — no need to duplicate them here.
+    """
+    payload = {
+        "samples": [
+            {
+                "slug": s.slug,
+                "name": s.name,
+                "a": s.a,
+                "e": s.e,
+                "q": s.q,
+                "i": s.i,
+                "neo": s.neo,
+                "pha": s.pha,
+            }
+            for s in samples
+        ],
+    }
+    path = out_dir / "groups" / "__orbit_samples__.json.gz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(gzip.compress(orjson.dumps(payload)))
+    logger.info(
+        "Wrote orbit-class scatter samples: %d points → %s",
+        len(samples),
+        path.name,
     )
