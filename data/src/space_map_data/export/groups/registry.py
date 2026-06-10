@@ -23,7 +23,11 @@ from space_map_data.constants.earth_sats.operators import (
     OPERATOR_SLUG_PREFIX,
     OPERATORS,
 )
-from space_map_data.constants.wikidata_qids import ORBIT_CLASS_QIDS
+from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.wikidata_qids import (
+    EARTH_ORBIT_CLASS_QIDS,
+    ORBIT_CLASS_QIDS,
+)
 from space_map_data.models.object.sbdb import OrbitClass
 
 CLASS_SLUG_PREFIX = "class-"
@@ -38,6 +42,7 @@ class GroupType(StrEnum):
     COUNTRY = "country"
     ORBIT_CLASS = "orbit_class"
     SMALL_BODY_FLAG = "small_body_flag"
+    EARTH_ORBIT_CLASS = "earth_orbit_class"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -146,6 +151,18 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for name, qid in SMALL_BODY_FLAGS
     )
+    # All earth-sat zones (primary + overlay) share the ``class-`` prefix;
+    # names don't collide with small-body OrbitClass values (LEO/MEO/... vs
+    # MBA/NEO/...) and applies_to disambiguates per category.
+    earth_orbit_classes = tuple(
+        Group(
+            slug=f"{CLASS_SLUG_PREFIX}{cls.name}",
+            type=GroupType.EARTH_ORBIT_CLASS,
+            applies_to=GroupCategory.EARTH_SAT,
+            wikidata_qid=EARTH_ORBIT_CLASS_QIDS.get(cls),
+        )
+        for cls in EarthOrbitClass
+    )
     return (
         constellations
         + operators
@@ -154,6 +171,7 @@ def _build_groups() -> tuple[Group, ...]:
         + countries
         + orbit_classes
         + small_body_flags
+        + earth_orbit_classes
     )
 
 

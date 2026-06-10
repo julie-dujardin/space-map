@@ -5,6 +5,7 @@ so the frontend can pull localized labels/descriptions from the Wikidata
 download cache instead of carrying English-only constants.
 """
 
+from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.models.object.sbdb import OrbitClass
 
 # IAU feature type code -> Wikidata QID, used to localize the nomenclature
@@ -98,4 +99,26 @@ ORBIT_CLASS_QIDS = {
     OrbitClass.PAR: "Q25036733",  # No wikipedia page
     OrbitClass.HYP: "Q20717849",  # No wikipedia page
     OrbitClass.COM: "Q3559",  # Generic page for generid class, about 700 in this range
+}
+
+
+# Earth-orbit zone -> Wikidata QID, used to localize the orbit-class popover.
+# Each targets the precise concept the zone encodes (e.g. GSO is *any*
+# inclination, so "geosynchronous" not "geostationary"). Missing QIDs just
+# skip Wikidata enrichment.
+EARTH_ORBIT_CLASS_QIDS: dict[EarthOrbitClass, str | None] = {
+    EarthOrbitClass.LEO: "Q663611",  # low Earth orbit
+    EarthOrbitClass.MEO: "Q218414",  # medium Earth orbit
+    EarthOrbitClass.GSO: "Q472251",  # geosynchronous orbit (any inclination)
+    EarthOrbitClass.HEO: "Q38982",  # highly elliptical orbit
+    EarthOrbitClass.CIS: "Q95319835",  # cislunar space (few sitelinks but exact)
+    EarthOrbitClass.VHEO: None,  # No page
+    EarthOrbitClass.GTO: "Q1138649",  # geostationary transfer orbit
+    EarthOrbitClass.GEO: "Q192316",  # geostationary orbit
+    EarthOrbitClass.MOL: "Q1063974",  # Molniya orbit
+    EarthOrbitClass.TUN: "Q846805",  # Tundra orbit
+    EarthOrbitClass.SSO: "Q174241",  # Sun-synchronous orbit
+    EarthOrbitClass.POL: "Q746711",  # polar orbit
+    EarthOrbitClass.RET: "Q53865977",  # retrograde orbit
+    EarthOrbitClass.EQU: "Q60964821",  # equatorial orbit
 }

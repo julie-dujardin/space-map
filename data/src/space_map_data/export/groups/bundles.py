@@ -256,7 +256,11 @@ def _extract_group_claims(
     # country-page UI anyway. Orbit-class entities point to encyclopedic
     # concept pages whose claims (e.g. discoverer, named after) describe the
     # category, not its members.
-    if group.type in (GroupType.COUNTRY, GroupType.ORBIT_CLASS):
+    if group.type in (
+        GroupType.COUNTRY,
+        GroupType.ORBIT_CLASS,
+        GroupType.EARTH_ORBIT_CLASS,
+    ):
         return None
     if not group.wikidata_qid:
         return None

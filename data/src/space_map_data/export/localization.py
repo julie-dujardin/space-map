@@ -200,7 +200,11 @@ def _collect_group_name_labels(
     seen_qids: set[str] = set()
 
     for group in GROUPS:
-        if group.type in (GroupType.COUNTRY, GroupType.ORBIT_CLASS):
+        if group.type in (
+            GroupType.COUNTRY,
+            GroupType.ORBIT_CLASS,
+            GroupType.EARTH_ORBIT_CLASS,
+        ):
             continue
         if group.wikidata_qid and group.wikidata_qid in seen_qids:
             continue
