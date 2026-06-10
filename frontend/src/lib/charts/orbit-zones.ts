@@ -93,6 +93,25 @@ function tisserandBand(lower: number, upper: number, aMin: number, aMax: number)
 	return [...top, ...bot];
 }
 
+/** Region with T_J ≥ target, closed against the e=0 and q=0 axes (Encke side). */
+function highTisserandArea(target: number, aMin: number, aMax: number): ZonePoint[] {
+	const curve = tisserandCurve(target, aMin, aMax);
+	if (curve.length === 0) return [];
+	return [
+		{ x: 0, y: 0 },
+		{ x: curve[0].x, y: 0 },
+		...curve,
+		{ x: 0, y: curve[curve.length - 1].y }
+	];
+}
+
+/** Region with T_J ≤ target, closed against e=eMax (Halley side). */
+function lowTisserandArea(target: number, aMin: number, aMax: number, eMax: number): ZonePoint[] {
+	const curve = tisserandCurve(target, aMin, aMax);
+	if (curve.length === 0) return [];
+	return [...curve, { x: eMax, y: curve[curve.length - 1].y }, { x: eMax, y: curve[0].y }];
+}
+
 /**
  * Map of every plottable orbit class. The shared `__orbit_samples__.json`
  * exporter (`build_orbit_class_samples`) emits one zone per OrbitClass enum
@@ -100,12 +119,39 @@ function tisserandBand(lower: number, upper: number, aMin: number, aMax: number)
  * (samples are still drawn as background dots when another zone is focused).
  */
 export const ORBIT_ZONES: Record<string, OrbitZone> = {
-	IEO: {
-		className: 'IEO',
+	// AST/COM are catch-all "unclassified" zones that fill the chart
+	// background. Listed first so the specific classes render on top; only
+	// the leftover gaps show as AST/COM. The asteroid q > a half-plane is
+	// physically empty and intentionally not covered.
+	AST: {
+		className: 'AST',
 		plotType: 'a-q',
 		polygon: [
 			{ x: 0, y: 0 },
-			{ x: 0.983, y: 0 },
+			{ x: 100, y: 0 },
+			{ x: 100, y: 100 }
+		],
+		tooltipDefinition: () => m.zone_def_AST()
+	},
+	COM: {
+		className: 'COM',
+		plotType: 'q-e',
+		polygon: [
+			{ x: 0, y: 0 },
+			{ x: 3, y: 0 },
+			{ x: 3, y: 20 },
+			{ x: 0, y: 20 }
+		],
+		tooltipDefinition: () => m.zone_def_COM()
+	},
+	IEO: {
+		className: 'IEO',
+		plotType: 'a-q',
+		// Q < 0.983: q > 2a − 0.983. Right boundary hits q=0 at a=0.4915
+		// and the q=a apex at a=0.983.
+		polygon: [
+			{ x: 0, y: 0 },
+			{ x: 0.4915, y: 0 },
 			{ x: 0.983, y: 0.983 }
 		],
 		tooltipDefinition: () => m.zone_def_IEO()
@@ -113,11 +159,12 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 	ATE: {
 		className: 'ATE',
 		plotType: 'a-q',
+		// Inner edge is the Q=0.983 line shared with IEO.
 		polygon: [
-			{ x: 0.5, y: 0 },
+			{ x: 0.4915, y: 0 },
 			{ x: 1.0, y: 0 },
 			{ x: 1.0, y: 1.0 },
-			{ x: 0.5, y: 0.5 }
+			{ x: 0.983, y: 0.983 }
 		],
 		tooltipDefinition: () => m.zone_def_ATE()
 	},
@@ -239,25 +286,15 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 	HTC: {
 		className: 'HTC',
 		plotType: 'q-e',
-		// T_J < 2, a < ~34 (200y period). Approximate as q ∈ [0.1, 2], e ∈ [0.6, 0.99].
-		polygon: [
-			{ x: 0.6, y: 0.1 },
-			{ x: 0.99, y: 0.1 },
-			{ x: 0.99, y: 2.0 },
-			{ x: 0.6, y: 2.0 }
-		],
+		// T_J < 2 (Halley side of the JFc band), out to a ≈ 30 (200y).
+		polygon: lowTisserandArea(2, 3, 30, 0.999),
 		tooltipDefinition: () => m.zone_def_HTC()
 	},
 	ETc: {
 		className: 'ETc',
 		plotType: 'q-e',
-		// T_J > 3, a < a_J: small-a low-q corner
-		polygon: [
-			{ x: 0.5, y: 0.1 },
-			{ x: 0.95, y: 0.1 },
-			{ x: 0.95, y: 1.0 },
-			{ x: 0.5, y: 1.0 }
-		],
+		// T_J > 3 (Encke side of the JFc band), a < a_J.
+		polygon: highTisserandArea(3, 1.5, AJ),
 		tooltipDefinition: () => m.zone_def_ETc()
 	},
 	CTc: {

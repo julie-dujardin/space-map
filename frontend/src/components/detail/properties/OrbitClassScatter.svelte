@@ -159,7 +159,7 @@
 	{#if width > 0}
 		<svg {width} {height} viewBox="0 0 {width} {height}" class="block">
 			<g transform="translate({M.left},{M.top})">
-				<rect width={innerW} height={innerH} class="fill-muted/10 stroke-border" stroke-width="1" />
+				<rect width={innerW} height={innerH} class="fill-muted/10" />
 
 				{#if plotType === 'a-q'}
 					<!-- q = a diagonal: physical limit (circular orbit, e=0) -->
@@ -226,13 +226,13 @@
 						tabindex="0"
 						aria-label={z.className}
 						d={polyPath(z.polygon)}
-						class="cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2"
-						class:fill-orange-500={focused}
-						class:fill-opacity-20={focused}
-						class:stroke-orange-500={focused}
+						class={[
+							'cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2',
+							focused
+								? 'fill-orange-500/20 stroke-orange-500'
+								: 'fill-muted/15 stroke-muted-foreground/40'
+						].join(' ')}
 						stroke-width={focused ? 1.5 : 1}
-						style:fill={focused ? undefined : 'oklch(var(--muted) / 0.15)'}
-						style:stroke={focused ? undefined : 'oklch(var(--muted-foreground) / 0.4)'}
 						onmouseenter={() => (tip = { kind: 'zone', zone: z })}
 						onclick={() => onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`)}
 						onkeydown={(e) => {
@@ -280,6 +280,10 @@
 						onmouseenter={() => (tip = { kind: 'sample', sample: s })}
 					/>
 				{/each}
+
+				<!-- Border on top: masks zone-polygon strokes that lie along the
+				     chart edge (AST/COM catch-alls, IEO/ATE/APO bottoms at q=0, …). -->
+				<rect width={innerW} height={innerH} fill="none" class="stroke-border" stroke-width="1" />
 
 				<!-- Axes -->
 				<g transform="translate(0,{innerH})">
