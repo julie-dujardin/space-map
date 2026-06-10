@@ -42,7 +42,6 @@ def run_groups_tier(
         extra_member_counts=small_body_stats.member_counts,
         extra_histograms=small_body_stats.discovery_histograms,
         extra_largest_bodies=small_body_stats.largest_bodies,
-        extra_neo_counts=small_body_stats.neo_counts,
         extra_pha_counts=small_body_stats.pha_counts,
     )
 
