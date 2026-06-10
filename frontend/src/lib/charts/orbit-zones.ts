@@ -10,9 +10,9 @@
 
 import * as m from '$lib/paraglide/messages.js';
 
-export type PlotType = 'a-q' | 'q-e';
+export type PlotType = 'a-q' | 'q-e' | 'peri-apo';
 
-/** A polygon vertex in (x, y) where x and y are AU (a or e, q). */
+/** Polygon vertex (x, y); units are AU for a-q/q-e, km for peri-apo. */
 export type ZonePoint = { x: number; y: number };
 
 /** Mirrors the OrbitClassSample shape in
@@ -28,14 +28,31 @@ export interface OrbitSample {
 	pha: boolean;
 }
 
+/** Mirrors EarthOrbitSample in the export; `classes` lists every zone hit. */
+export interface EarthOrbitSample {
+	slug: string;
+	name: string;
+	perigee_km: number;
+	apogee_km: number;
+	inclination_deg: number | null;
+	classes: string[];
+}
+
 export interface OrbitZone {
-	/** Matches the OrbitClass enum name; full slug is `class-${className}`. */
 	className: string;
 	plotType: PlotType;
-	/** Polygon vertices in order. Closed implicitly. */
+	/** Closed polygon vertices; empty = inc-only zone, no peri-apo footprint. */
 	polygon: ZonePoint[];
 	tooltipDefinition: () => string;
 }
+
+/** Focused-zone colors keyed close to the matching point-cloud hue:
+ *  Earth sat cloud is `#bed4ec`, asteroid `#ccb49a`, comet `#d8ffe8`. */
+export const FOCUS_COLORS: Record<PlotType, string> = {
+	'peri-apo': '#7fb3e6',
+	'a-q': '#d4a373',
+	'q-e': '#88d4a8'
+};
 
 const AJ = 5.2038; // Jupiter semi-major axis [AU], standard Tisserand reference
 
@@ -346,6 +363,174 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 	}
 };
 
+/** Geostationary altitude (km above Earth surface). */
+export const GEO_ALT_KM = 35786;
+
+/**
+ * Earth-orbit zones for a sat given perigee/apogee/inclination.
+ * Mirror of `classify_earth_orbit` in the data tier — kept in sync by hand.
+ */
+export function classifyEarthOrbit(
+	perigeeKm: number | null | undefined,
+	apogeeKm: number | null | undefined,
+	inclinationDeg: number | null | undefined
+): string[] {
+	if (perigeeKm == null || apogeeKm == null) return [];
+	const peri = perigeeKm;
+	const apo = apogeeKm;
+	const classes: string[] = [];
+
+	if (apo < 2000) classes.push('LEO');
+	else if (apo < 35000) classes.push(peri >= 2000 ? 'MEO' : 'HEO');
+	else if (apo < 50000) classes.push(Math.abs(peri - GEO_ALT_KM) < 2000 ? 'GSO' : 'HEO');
+	else if (apo < 500000) classes.push('CIS');
+	else classes.push('VHEO');
+
+	if (peri < 2000 && apo >= 30000 && apo <= 40000) classes.push('GTO');
+
+	if (inclinationDeg == null) return classes;
+	const inc = inclinationDeg;
+
+	if (Math.abs(peri - GEO_ALT_KM) < 2000 && Math.abs(apo - GEO_ALT_KM) < 2000 && inc < 1)
+		classes.push('GEO');
+	if (peri < 2000 && apo >= 35000 && apo <= 45000 && Math.abs(inc - 63.4) <= 3) classes.push('MOL');
+	if (peri >= 20000 && peri <= 50000 && apo >= 35000 && apo <= 50000 && Math.abs(inc - 63.4) <= 5)
+		classes.push('TUN');
+
+	const isSso = inc >= 96 && inc <= 100 && apo < 2000;
+	if (isSso) classes.push('SSO');
+	if (inc >= 80 && inc <= 100) classes.push('POL');
+	if (inc > 90 && !isSso) classes.push('RET');
+	if (inc < 10) classes.push('EQU');
+
+	return classes;
+}
+
+/**
+ * Earth-sat orbit zones on the perigee × apogee plane (km, log-log).
+ * Inc-only overlays (SSO/POL/RET/EQU/MOL/TUN/GEO) carry empty polygons
+ * and rely on per-sample `classes` highlighting.
+ */
+export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
+	LEO: {
+		className: 'LEO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 100, y: 100 },
+			{ x: 2000, y: 2000 },
+			{ x: 100, y: 2000 }
+		],
+		tooltipDefinition: () => m.zone_def_LEO()
+	},
+	MEO: {
+		className: 'MEO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 2000, y: 2000 },
+			{ x: 35000, y: 35000 },
+			{ x: 2000, y: 35000 }
+		],
+		tooltipDefinition: () => m.zone_def_MEO()
+	},
+	HEO: {
+		className: 'HEO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 100, y: 2000 },
+			{ x: 2000, y: 2000 },
+			{ x: 2000, y: 50000 },
+			{ x: 100, y: 50000 }
+		],
+		tooltipDefinition: () => m.zone_def_HEO()
+	},
+	GSO: {
+		className: 'GSO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM - 2000 },
+			{ x: GEO_ALT_KM + 2000, y: GEO_ALT_KM + 2000 },
+			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM + 2000 }
+		],
+		tooltipDefinition: () => m.zone_def_GSO()
+	},
+	CIS: {
+		className: 'CIS',
+		plotType: 'peri-apo',
+		// Bottom edge tracks the peri=apo diagonal up to apo=50k.
+		polygon: [
+			{ x: 100, y: 50000 },
+			{ x: 50000, y: 50000 },
+			{ x: 500000, y: 500000 },
+			{ x: 100, y: 500000 }
+		],
+		tooltipDefinition: () => m.zone_def_CIS()
+	},
+	VHEO: {
+		className: 'VHEO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 100, y: 500000 },
+			{ x: 500000, y: 500000 },
+			{ x: 2000000, y: 2000000 },
+			{ x: 100, y: 2000000 }
+		],
+		tooltipDefinition: () => m.zone_def_VHEO()
+	},
+	GTO: {
+		className: 'GTO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 100, y: 30000 },
+			{ x: 2000, y: 30000 },
+			{ x: 2000, y: 40000 },
+			{ x: 100, y: 40000 }
+		],
+		tooltipDefinition: () => m.zone_def_GTO()
+	},
+	GEO: {
+		className: 'GEO',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_GEO()
+	},
+	MOL: {
+		className: 'MOL',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_MOL()
+	},
+	TUN: {
+		className: 'TUN',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_TUN()
+	},
+	SSO: {
+		className: 'SSO',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_SSO()
+	},
+	POL: {
+		className: 'POL',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_POL()
+	},
+	RET: {
+		className: 'RET',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_RET()
+	},
+	EQU: {
+		className: 'EQU',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_EQU()
+	}
+};
+
 /** Planet semi-major axes (AU) used as a-axis reference lines on a-q plots. */
 export const PLANET_A_REFS: { name: string; a: number }[] = [
 	{ name: 'Mercury', a: 0.387 },
@@ -375,15 +560,10 @@ export function orbitClassLabel(className: string): string {
 	return typeof fn === 'function' ? (fn as () => string)() : className;
 }
 
-/**
- * Pick plot type for a focused group slug.
- * - `class-<NAME>` → look up ORBIT_ZONES[NAME].
- * - `flag-neo` / `flag-pha` → asteroid `a-q` (the NEO families are asteroids).
- * - Anything else → null (caller should hide the chart).
- */
+/** Pick the chart's plot type for a group slug; null hides the chart. */
 export function plotTypeForSlug(slug: string): PlotType | null {
 	if (slug === `${FLAG_SLUG_PREFIX}neo` || slug === `${FLAG_SLUG_PREFIX}pha`) return 'a-q';
 	const cls = classNameFromSlug(slug);
 	if (cls == null) return null;
-	return ORBIT_ZONES[cls]?.plotType ?? null;
+	return ORBIT_ZONES[cls]?.plotType ?? SAT_ORBIT_ZONES[cls]?.plotType ?? null;
 }

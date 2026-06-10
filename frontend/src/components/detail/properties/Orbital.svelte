@@ -32,7 +32,8 @@
 	import { bodyQuaternion } from '$lib/math/orientation';
 	import { cartesianToSpherical } from '$lib/math/spherical';
 	import { AU_KM } from '$lib/math/units';
-	import { orbitClassLabel } from '$lib/charts/orbit-zones';
+	import { classifyEarthOrbit, orbitClassLabel } from '$lib/charts/orbit-zones';
+	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -153,6 +154,20 @@
 		orbit?.n != null && orbit.n > 0 && orbit.e != null && orbit.e < 1 ? 360 / orbit.n : null
 	);
 	let orbitClass = $derived(sbdb?.class ? orbitClassLabel(sbdb.class) : null);
+	// Earth-sat orbit zones: derived from peri/apo/inc since membership lookup
+	// from the static index would be 14× larger payload for one chip row.
+	let satOrbitClasses = $derived(
+		celestrak?.orbit_center === 'earth'
+			? classifyEarthOrbit(celestrak.perigee, celestrak.apogee, orbit?.i)
+			: []
+	);
+	let satOrbitClassRefs = $derived<EntityRef[]>(
+		satOrbitClasses.map((c) => ({
+			name: orbitClassLabel(c),
+			primary_type: 'group',
+			primary_id: `class-${c}`
+		}))
+	);
 	let cometPrefix = $derived(sbdb?.prefix);
 	let minorPlanetGroup = $derived(localized?.minor_planet_group);
 	let isNeo = $derived(sbdb?.neo);
@@ -345,6 +360,10 @@
 				{:else}
 					{orbitClass}
 				{/if}
+			</Row>
+		{:else if satOrbitClassRefs.length > 0}
+			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()}>
+				<EntityLinks entities={satOrbitClassRefs} />
 			</Row>
 		{/if}
 		{#if cometPrefix}

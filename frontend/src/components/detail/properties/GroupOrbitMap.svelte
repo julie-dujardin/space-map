@@ -3,10 +3,16 @@
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
 	import { fetchGroupIndex, type GroupIndex } from '$lib/fetch/groups/registry';
 	import { fetchOrbitSamples } from '$lib/fetch/groups/orbit-samples';
-	import { plotTypeForSlug, type OrbitSample } from '$lib/charts/orbit-zones';
+	import { fetchSatOrbitSamples } from '$lib/fetch/groups/sat-orbit-samples';
+	import {
+		plotTypeForSlug,
+		type OrbitSample,
+		type EarthOrbitSample
+	} from '$lib/charts/orbit-zones';
 	import { getContext } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
+	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
 
 	interface Props {
 		global: GlobalGroupData | null;
@@ -17,6 +23,7 @@
 
 	let plotType = $derived(global ? plotTypeForSlug(global.slug) : null);
 	let samples = $state<OrbitSample[] | null>(null);
+	let satSamples = $state<EarthOrbitSample[] | null>(null);
 	let groupIndex = $state<GroupIndex | null>(null);
 	let populationBySlug = $derived.by(() => {
 		const out: Record<string, number> = {};
@@ -29,7 +36,11 @@
 
 	$effect(() => {
 		if (plotType == null) return;
-		if (samples == null) fetchOrbitSamples().then((s) => (samples = s));
+		if (plotType === 'peri-apo') {
+			if (satSamples == null) fetchSatOrbitSamples().then((s) => (satSamples = s));
+		} else if (samples == null) {
+			fetchOrbitSamples().then((s) => (samples = s));
+		}
 		if (groupIndex == null) fetchGroupIndex().then((g) => (groupIndex = g));
 	});
 
@@ -39,18 +50,27 @@
 	}
 </script>
 
-{#if global && plotType && samples}
+{#if global && plotType}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.scatter_membership_title()}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="pt-1">
-			<OrbitClassScatter
-				{samples}
-				focusedSlug={global.slug}
-				{plotType}
-				{populationBySlug}
-				onZoneClick={handleZoneClick}
-			/>
+			{#if plotType === 'peri-apo' && satSamples}
+				<EarthOrbitScatter
+					samples={satSamples}
+					focusedSlug={global.slug}
+					{populationBySlug}
+					onZoneClick={handleZoneClick}
+				/>
+			{:else if (plotType === 'a-q' || plotType === 'q-e') && samples}
+				<OrbitClassScatter
+					{samples}
+					focusedSlug={global.slug}
+					{plotType}
+					{populationBySlug}
+					onZoneClick={handleZoneClick}
+				/>
+			{/if}
 		</div>
 	</div>
 {/if}

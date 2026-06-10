@@ -37,6 +37,7 @@
 	"scatter_membership_title": "Orbit map",
 	"scatter_axes_a_q": "q · a (AU)",
 	"scatter_axes_q_e": "q · e",
+	"scatter_axes_peri_apo": "perigee · apogee (km)",
 	"scatter_range_inner": "Inner",
 	"scatter_range_outer": "Outer",
 	"scatter_tooltip_pha": "Potentially hazardous",

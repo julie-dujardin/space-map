@@ -8,6 +8,7 @@
 		NEO_CLASSES,
 		CLASS_SLUG_PREFIX,
 		FLAG_SLUG_PREFIX,
+		FOCUS_COLORS,
 		classNameFromSlug,
 		orbitClassLabel,
 		type OrbitSample,
@@ -119,6 +120,8 @@
 	let xTicks = $derived(xScale.ticks(6));
 	let yTicks = $derived(yScale.ticks(6));
 
+	let focusedColor = $derived(FOCUS_COLORS[plotType]);
+
 	function formatTick(v: number): string {
 		if (v === 0) return '0';
 		if (Math.abs(v) >= 10) return v.toFixed(0);
@@ -226,12 +229,11 @@
 						tabindex="0"
 						aria-label={z.className}
 						d={polyPath(z.polygon)}
-						class={[
-							'cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2',
-							focused
-								? 'fill-orange-500/20 stroke-orange-500'
-								: 'fill-muted/15 stroke-muted-foreground/40'
-						].join(' ')}
+						class="cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2"
+						fill={focused ? focusedColor : 'transparent'}
+						fill-opacity={focused ? 0.22 : 0}
+						stroke={focused ? focusedColor : 'var(--color-muted-foreground)'}
+						stroke-opacity={focused ? 1 : 0.4}
 						stroke-width={focused ? 1.5 : 1}
 						onmouseenter={() => (tip = { kind: 'zone', zone: z })}
 						onclick={() => onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`)}
@@ -261,7 +263,7 @@
 						{cx}
 						{cy}
 						r={1.8}
-						class="fill-orange-400"
+						fill={focusedColor}
 						onmouseenter={() => (tip = { kind: 'sample', sample: s })}
 					/>
 				{/each}

@@ -13,7 +13,8 @@ export type GroupType =
 	| 'manufacturer'
 	| 'country'
 	| 'orbit_class'
-	| 'small_body_flag';
+	| 'small_body_flag'
+	| 'earth_orbit_class';
 export type GroupCategory = 'earth_sat' | 'small_body';
 
 /** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */

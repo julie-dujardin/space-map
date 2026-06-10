@@ -2,11 +2,14 @@
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
+	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { groupTypeLabel } from '$lib/format/group';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
+	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
+	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import Section from './Section.svelte';
 	import Row from './Row.svelte';
 	import EntityLinks from './EntityLinks.svelte';
@@ -39,6 +42,48 @@
 	let maxConstellationCount = $derived(
 		constellations.length > 0 ? Math.max(...constellations.map((c) => c.n)) : 0
 	);
+
+	// Orbit-class breakdown for the focused group: intersect the cached
+	// membership map against each class-* slug, drop zones with ≤10 % share.
+	let isEarthSatGroup = $derived(global?.applies_to === 'earth_sat');
+	let isOrbitClassGroup = $derived(global?.type === 'earth_orbit_class');
+	const ORBIT_CLASS_MIN_SHARE = 0.1;
+	let orbitClassRefs = $state<EntityRef[]>([]);
+	$effect(() => {
+		if (!global || !isEarthSatGroup || isOrbitClassGroup) {
+			orbitClassRefs = [];
+			return;
+		}
+		const slug = global.slug;
+		fetchEarthMembership().then((mem) => {
+			const focused = new Set(mem[slug] ?? []);
+			if (focused.size === 0) {
+				orbitClassRefs = [];
+				return;
+			}
+			const minCount = focused.size * ORBIT_CLASS_MIN_SHARE;
+			const hits: { name: string; n: number; slug: string }[] = [];
+			for (const className of Object.keys(SAT_ORBIT_ZONES)) {
+				const members = mem[`${CLASS_SLUG_PREFIX}${className}`];
+				if (!members) continue;
+				let n = 0;
+				for (const id of members) if (focused.has(id)) n++;
+				if (n > minCount) {
+					hits.push({
+						name: orbitClassLabel(className),
+						n,
+						slug: `${CLASS_SLUG_PREFIX}${className}`
+					});
+				}
+			}
+			hits.sort((a, b) => b.n - a.n);
+			orbitClassRefs = hits.map((h) => ({
+				name: h.name,
+				primary_type: 'group',
+				primary_id: h.slug
+			}));
+		});
+	});
 
 	let hasMission = $derived(
 		!!inception ||
@@ -135,6 +180,16 @@
 			</Row>
 		{/each}
 	</Section>
+{/if}
+
+{#if orbitClassRefs.length > 0}
+	<div class="flex flex-col gap-1">
+		<h3 class="text-sm font-medium">{m.orbit_class()}</h3>
+		<div class="border-border/60 border-t"></div>
+		<div class="pt-1">
+			<EntityLinks entities={orbitClassRefs} />
+		</div>
+	</div>
 {/if}
 
 {#if launchSites.length > 0}
