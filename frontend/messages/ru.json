@@ -53,6 +53,8 @@
 	"group_stat_members": "Аппараты",
 	"group_stat_active": "Действующие",
 	"group_stat_first_launch": "Первый запуск",
+	"group_stat_largest": "Крупнейший",
+	"group_stat_pha": "Опасные",
 	"group_type_constellation": "Группировка",
 	"group_type_operator": "Оператор",
 	"group_type_launch_site": "Космодром",

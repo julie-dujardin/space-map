@@ -39,6 +39,15 @@ export interface GlobalGroupData {
 	decayed_count?: number;
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
+	/** Member with the largest SBDB.diameter; absent when no member has a measured diameter. */
+	largest_body?: {
+		name: string;
+		diameter_km: number;
+		primary_type: 'spkid';
+		primary_id: string;
+	};
+	/** PHA subset of this orbit_class group; absent on flag-pha (self-link suppressed) and when zero. */
+	pha?: { n: number; primary_type: 'group'; primary_id: 'flag-pha' };
 	/** Wikidata P571 — programme/operator inception (ISO date string). */
 	inception?: string;
 	/** Wikidata P576 — programme dissolution (ISO date string). */

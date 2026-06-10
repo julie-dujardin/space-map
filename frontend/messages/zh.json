@@ -20,6 +20,8 @@
 	"group_stat_members": "成员",
 	"group_stat_active": "运行中",
 	"group_stat_first_launch": "首次发射",
+	"group_stat_largest": "最大",
+	"group_stat_pha": "危险",
 	"group_type_constellation": "星座",
 	"group_type_operator": "运营方",
 	"group_type_launch_site": "发射场",

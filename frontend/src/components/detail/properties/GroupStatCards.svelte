@@ -1,20 +1,47 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
+	import type { AppState } from '$lib/state/app-state.svelte';
+	import { applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
+	import { UrlType } from '$lib/state/view';
 	import { formatIsoDate } from '$lib/format/date';
-	import { formatNumber } from '$lib/format/quantities';
+	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 
 	interface Props {
 		global: GlobalGroupData | null;
 	}
 	let { global }: Props = $props();
 
+	const appState = getContext<AppState | undefined>('appState');
+
 	interface Stat {
 		label: string;
 		value: string;
 		tooltip?: string;
 		dot: string;
+		href?: string;
+		onClick?: (e: MouseEvent) => void;
+	}
+
+	function focusBody(type: UrlType, id: string, name: string, e: MouseEvent) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState) return;
+		e.preventDefault();
+		appState.setFocus({ type, id, name });
+	}
+
+	function focusGroup(slug: string, name: string, e: MouseEvent) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		if (!appState) return;
+		e.preventDefault();
+		appState.setGroup(slug, name);
+	}
+
+	function formatPercent(n: number, total: number): string {
+		if (!total) return '';
+		return `${formatNumber((n / total) * 100)}%`;
 	}
 
 	let firstLaunch = $derived.by<{ year: string; full?: string } | null>(() => {
@@ -58,9 +85,49 @@
 				tooltip: firstLaunch.full,
 				dot: 'bg-zinc-500'
 			});
+		const largest = global.largest_body;
+		if (largest && appState) {
+			const bodyId = `${largest.primary_type}-${largest.primary_id}`;
+			out.push({
+				label: m.group_stat_largest(),
+				value: formatQuantity({ value: largest.diameter_km, unit: 'kilometre' }, true),
+				tooltip: largest.name,
+				dot: 'bg-amber-400',
+				href: serializeUrl(
+					applyFocus(appState.view, { type: UrlType.SmallBody, id: bodyId, name: largest.name })
+				),
+				onClick: (e) => focusBody(UrlType.SmallBody, bodyId, largest.name, e)
+			});
+		}
+		if (global.pha && appState) {
+			const pha = global.pha;
+			const label = m.group_stat_pha();
+			out.push({
+				label,
+				value: formatPercent(pha.n, global.member_count),
+				tooltip: formatNumber(pha.n),
+				dot: 'bg-rose-400',
+				href: serializeUrl(applyGroup(appState.view, pha.primary_id, label)),
+				onClick: (e) => focusGroup(pha.primary_id, label, e)
+			});
+		}
 		return out;
 	});
 </script>
+
+{#snippet valueNode(s: Stat)}
+	{#if s.href}
+		<a
+			href={s.href}
+			onclick={s.onClick}
+			class="pointer-events-auto hover:text-foreground text-lg font-semibold tabular-nums underline decoration-dotted underline-offset-2"
+		>
+			{s.value}
+		</a>
+	{:else}
+		<div class="text-lg font-semibold tabular-nums">{s.value}</div>
+	{/if}
+{/snippet}
 
 {#if stats.length > 0}
 	<div class="grid auto-cols-fr grid-flow-col gap-2">
@@ -74,18 +141,15 @@
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							{#snippet child({ props })}
-								<div
-									class="cursor-help text-lg font-semibold tabular-nums decoration-dotted underline-offset-2 hover:underline"
-									{...props}
-								>
-									{s.value}
+								<div class="cursor-help" {...props}>
+									{@render valueNode(s)}
 								</div>
 							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>{s.tooltip}</Tooltip.Content>
 					</Tooltip.Root>
 				{:else}
-					<div class="text-lg font-semibold tabular-nums">{s.value}</div>
+					{@render valueNode(s)}
 				{/if}
 			</div>
 		{/each}

@@ -83,6 +83,8 @@
 	"group_stat_members": "Members",
 	"group_stat_active": "Active",
 	"group_stat_first_launch": "First launch",
+	"group_stat_largest": "Largest",
+	"group_stat_pha": "Hazardous",
 	"group_type_constellation": "Constellation",
 	"group_type_operator": "Operator",
 	"group_type_launch_site": "Launch site",

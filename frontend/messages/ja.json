@@ -20,6 +20,8 @@
 	"group_stat_members": "メンバー",
 	"group_stat_active": "稼働中",
 	"group_stat_first_launch": "初回打ち上げ",
+	"group_stat_largest": "最大",
+	"group_stat_pha": "危険",
 	"group_type_constellation": "コンステレーション",
 	"group_type_operator": "運用者",
 	"group_type_launch_site": "射場",

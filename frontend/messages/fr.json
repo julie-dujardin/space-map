@@ -47,6 +47,8 @@
 	"group_stat_members": "Membres",
 	"group_stat_active": "Actifs",
 	"group_stat_first_launch": "Premier lancement",
+	"group_stat_largest": "Le plus gros",
+	"group_stat_pha": "Dangereux",
 	"group_type_constellation": "Constellation",
 	"group_type_operator": "Opérateur",
 	"group_type_launch_site": "Site de lancement",

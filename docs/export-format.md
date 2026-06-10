@@ -1072,9 +1072,52 @@ interface GlobalGroupData {
   // small-body histograms.
   discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
 
+  // Member with the largest SBDB.diameter; absent when no member has a
+  // measured diameter. Present on orbit_class groups and on flag-neo/flag-pha.
+  largest_body?: {
+    name: string;        // SBDB full_name (fallback: name, pdes, spkid)
+    diameter_km: number; // equivalent-sphere diameter
+    primary_type: "spkid";
+    primary_id: string;  // SBDB.spkid; route /o/spkid-<id>
+  };
+
+  // PHA member count for orbit_class groups; absent when 0 and on flag-pha
+  // itself (self-link suppressed). NEO is intentionally not shipped — by
+  // definition it's 100 % on IEO/ATE/APO/AMO and 0 % on every other class.
+  pha?: { n: number; primary_type: "group"; primary_id: "flag-pha" };
+
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
+}
+```
+
+### `groups/__orbit_samples__.json.gz`
+
+Shared sample set for the orbit-class scatter plot shown on small-body
+group pages. Fetched once and cached. Population per orbit class is read
+from `__index__.json` (the `n` field) — counts are not duplicated here.
+
+Allocation is sqrt-weighted by class population with a per-class floor of
+`5` (or the class's population, whichever is smaller). No upper cap, so
+MBA naturally dominates the chart. Target total ≈ 1000; actual count
+typically lands in the 1000–1100 range. Source:
+`build_orbit_class_samples` in
+`data/src/space_map_data/export/groups/small_body.py`.
+
+```typescript
+interface OrbitClassSample {
+  slug: string;        // class-<OrbitClass.name>, e.g. "class-Main-belt"
+  name: string;        // SBDB full_name → name → pdes fallback
+  a: number | null;    // Semi-major axis [AU]; null for parabolic (e = 1) comets
+  e: number;           // Eccentricity
+  q: number;           // Perihelion distance [AU]
+  i: number | null;    // Inclination to ecliptic [deg]
+  neo: boolean;
+  pha: boolean;
+}
+interface OrbitSamplesFile {
+  samples: OrbitClassSample[];
 }
 ```
 
