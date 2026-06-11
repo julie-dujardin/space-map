@@ -36,7 +36,10 @@
 	import Mission from './properties/Mission.svelte';
 	import GroupProperties from './properties/GroupProperties.svelte';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
+	import MemberStrip from './members/MemberStrip.svelte';
+	import MemberList from './members/MemberList.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
+	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
@@ -319,11 +322,16 @@
 	}
 
 	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
-	let activeTab = $state<'overview' | 'images'>('overview');
-	// Switching to an object that has no images while we're sitting on the
-	// images tab would leave the panel empty — fall back to overview.
+	let notableMembers = $derived(isGroupMode ? groupDetail?.global?.notable_members : undefined);
+	let memberNames = $derived(groupDetail?.localized?.notable_member_names);
+	let memberTotal = $derived(groupDetail?.global?.member_count ?? 0);
+	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
+	let activeTab = $state<'overview' | 'images' | 'members'>('overview');
+	// Switching to a focusable that lacks the active tab's content would
+	// leave the panel empty — fall back to overview.
 	$effect(() => {
 		if (!hasImages && activeTab === 'images') activeTab = 'overview';
+		if (!hasMembers && activeTab === 'members') activeTab = 'overview';
 	});
 </script>
 
@@ -336,6 +344,14 @@
 					{m.tab_images()}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{viewerImages?.length}
+					</Badge>
+				</Tabs.Trigger>
+			{/if}
+			{#if hasMembers}
+				<Tabs.Trigger value="members" class="px-2">
+					{m.tab_members()}
+					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+						{formatCompactNumber(memberTotal)}
 					</Badge>
 				</Tabs.Trigger>
 			{/if}
@@ -366,6 +382,14 @@
 				}}
 			/>
 			{@render tabsBar()}
+			{#if notableMembers && notableMembers.length > 0}
+				<MemberStrip
+					members={notableMembers}
+					localizedNames={memberNames}
+					totalCount={memberTotal}
+					onSeeAll={() => (activeTab = 'members')}
+				/>
+			{/if}
 			{#if isGroupMode && groupDetail?.global}
 				<GroupStatCards global={groupDetail.global} />
 			{/if}
@@ -403,6 +427,15 @@
 		{@render tabsBar()}
 		{#if viewerImages && viewerImages.length}
 			<ImageGallery images={viewerImages} alt={displayName} />
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet membersPanel()}
+	<div class="flex flex-col gap-3 p-1">
+		{@render tabsBar()}
+		{#if notableMembers && notableMembers.length > 0}
+			<MemberList members={notableMembers} localizedNames={memberNames} totalCount={memberTotal} />
 		{/if}
 	</div>
 {/snippet}
@@ -470,6 +503,9 @@
 						<Tabs.Content value="images">
 							{@render imagesPanel()}
 						</Tabs.Content>
+						<Tabs.Content value="members">
+							{@render membersPanel()}
+						</Tabs.Content>
 					</div>
 				</Tabs.Root>
 			</Vaul.Content>
@@ -514,6 +550,9 @@
 				</Tabs.Content>
 				<Tabs.Content value="images" class="px-4 pb-4">
 					{@render imagesPanel()}
+				</Tabs.Content>
+				<Tabs.Content value="members" class="px-4 pb-4">
+					{@render membersPanel()}
 				</Tabs.Content>
 			</ScrollArea>
 		</Tabs.Root>

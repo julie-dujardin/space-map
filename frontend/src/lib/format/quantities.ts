@@ -28,6 +28,15 @@ export function formatNumber(n: number): string {
 	return n.toLocaleString(getLocale(), precisionOptions(n));
 }
 
+/** Locale-aware compact notation ("1.34M"), ~3 significant digits. */
+export function formatCompactNumber(n: number): string {
+	if (!Number.isFinite(n)) return String(n);
+	return new Intl.NumberFormat(getLocale(), {
+		notation: 'compact',
+		maximumSignificantDigits: 3
+	}).format(n);
+}
+
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
 	return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
 }

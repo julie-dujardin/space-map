@@ -12,6 +12,12 @@ export type Focusable =
 	| { kind: 'feature'; body: PositionedBody; feature: NomenclatureFeature }
 	| { kind: 'group'; slug: string };
 
+/** Full in-session object navigation: coverage snap + URL focus + camera
+ *  fly-to. Provided by MapPage via setContext('focusObject') — a bare
+ *  `appState.setFocus` only rewrites the URL and never reaches the renderer,
+ *  so the drawer (driven by the renderer's focus) would not follow. */
+export type FocusObject = (id: string, name: string) => void;
+
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {
 	if (f.kind === 'feature') return `feature-${f.feature.featureId}`;

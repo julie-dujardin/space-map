@@ -10,7 +10,7 @@
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
-	import type { Focusable } from '$lib/state/focusable';
+	import type { Focusable, FocusObject } from '$lib/state/focusable';
 	import DetailDrawer from './detail/DetailDrawer.svelte';
 	import MyLocation from './MyLocation.svelte';
 	import ClearPromoted from './ClearPromoted.svelte';
@@ -36,6 +36,26 @@
 
 	const appState = createAppState();
 	setContext('appState', appState);
+
+	// Shared by the search bar and in-drawer object links (notable members,
+	// largest body): pushes the target URL state first so Scene's
+	// onFocusChange doesn't re-route it, then flies the camera.
+	const focusObject: FocusObject = (id, name) => {
+		void (async () => {
+			// Snap into coverage first so the camera lands on a positioned body.
+			const window = await coverageWindowFor(id);
+			if (window) {
+				const snap = snapJdIntoWindow(clock.jd, window);
+				if (snap !== null) clock.setJD(snap);
+			}
+			appState.setFocus({ type: urlTypeFromId(id), id, name });
+			// Maximize-distance zoom when the body's loaded; default otherwise.
+			const body = ctx.getBody(id);
+			const zoom = body ? minCameraDistance(body) * 5 : undefined;
+			scene?.focusOnBody(id, zoom);
+		})();
+	};
+	setContext('focusObject', focusObject);
 
 	const clock = new SimClock(dateToJD(appState.view.date));
 	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
@@ -234,21 +254,7 @@
 							);
 							return;
 						}
-						// Snap into coverage first so the camera lands on a positioned body.
-						const window = await coverageWindowFor(hit.id);
-						if (window) {
-							const snap = snapJdIntoWindow(clock.jd, window);
-							if (snap !== null) clock.setJD(snap);
-						}
-						appState.setFocus({
-							type: urlTypeFromId(hit.id),
-							id: hit.id,
-							name
-						});
-						// Maximize-distance zoom when the body's loaded; default otherwise.
-						const body = ctx.getBody(hit.id);
-						const zoom = body ? minCameraDistance(body) * 5 : undefined;
-						scene?.focusOnBody(hit.id, zoom);
+						focusObject(hit.id, name);
 					}}
 				/>
 			</div>

@@ -4,6 +4,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, applyGroup, serializeUrl } from '$lib/state/url';
 	import { UrlType } from '$lib/state/view';
 	import { formatIsoDate } from '$lib/format/date';
@@ -15,6 +16,7 @@
 	let { global }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
+	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	interface Stat {
 		label: string;
@@ -25,11 +27,12 @@
 		onClick?: (e: MouseEvent) => void;
 	}
 
-	function focusBody(type: UrlType, id: string, name: string, e: MouseEvent) {
+	function focusBody(id: string, name: string, e: MouseEvent) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!appState) return;
+		// No focusObject in context — let the href do a full-page navigation.
+		if (!focusObject) return;
 		e.preventDefault();
-		appState.setFocus({ type, id, name });
+		focusObject(id, name);
 	}
 
 	function focusGroup(slug: string, name: string, e: MouseEvent) {
@@ -96,7 +99,7 @@
 				href: serializeUrl(
 					applyFocus(appState.view, { type: UrlType.SmallBody, id: bodyId, name: largest.name })
 				),
-				onClick: (e) => focusBody(UrlType.SmallBody, bodyId, largest.name, e)
+				onClick: (e) => focusBody(bodyId, largest.name, e)
 			});
 		}
 		if (global.pha && appState) {

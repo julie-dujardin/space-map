@@ -47,6 +47,21 @@ export function variantUrl(image: ObjectImage, label: VariantLabel): string | un
 	return `${DATA_BASE}/v1/images/${encodeURIComponent(image.file)}/${label}.${ext}`;
 }
 
+/** Pre-picked thumbnail descriptor: a single emitted variant, as written by
+ *  the search indexer and the group notable-members exporter. */
+export interface PickedThumbnail {
+	file: string;
+	/** Variant bucket: `s` (512px) when emitted, `m` / `xl` for sources that
+	 *  skipped smaller buckets (e.g. SVG/WebM passthrough → `xl` only). */
+	label: 's' | 'm' | 'xl';
+	ext: string;
+}
+
+/** URL for a pre-picked thumbnail descriptor. */
+export function pickedThumbnailUrl(t: PickedThumbnail): string {
+	return `${DATA_BASE}/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`;
+}
+
 /** URL of the gzipped per-image metadata JSON. */
 export function metadataUrl(image: ObjectImage): string {
 	return `${DATA_BASE}/v1/images/${encodeURIComponent(image.file)}/metadata.json.gz`;

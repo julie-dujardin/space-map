@@ -1105,6 +1105,21 @@ interface GlobalGroupData {
   // definition it's 100 % on IEO/ATE/APO/AMO and 0 % on every other class.
   pha?: { n: number; primary_type: "group"; primary_id: "flag-pha" };
 
+  // Top 20 members picked at export time, ordered by
+  // (image_available, sitelinks_count, diameter desc, H asc, spkid).
+  // Present on orbit_class groups and flag-neo/flag-pha. Denormalized so
+  // the strip + members list render without per-object bundle fetches.
+  // Names are the English Wikidata label (matching object bundles), with
+  // per-language overrides in LocalizedGroupData.notable_member_names.
+  notable_members?: {
+    name: string;
+    primary_type: "spkid";
+    primary_id: string;             // SBDB.spkid; route /o/spkid-<id>
+    diameter_km?: number;           // equivalent-sphere diameter
+    first_obs?: string;             // discovery proxy — YYYY-MM-DD or YYYY
+    thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
+  }[];
+
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
   images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
@@ -1211,6 +1226,7 @@ interface LocalizedGroupData {
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
   related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID across roles
+  notable_member_names?: Record<string, string>; // spkid → localized label, only where it differs from the global name
 }
 ```
 
