@@ -253,6 +253,34 @@ _FEATURE_IMAGES_CACHE: dict[str, list[dict]] | None = None
 _GROUP_IMAGES_CACHE: dict[str, list[dict]] | None = None
 
 
+# Smallest variant first — buckets ascend left-to-right in the export.
+_THUMB_LABEL_ORDER = ("s", "m", "xl")
+
+
+def pick_thumbnail(images: list[dict] | None) -> dict[str, str] | None:
+    """Pick a card thumbnail from an export ``images`` array.
+
+    Prefers the first ``kind: photo`` entry (locators/logos are less useful at
+    32-48px) and returns its smallest available variant as
+    ``{file, label, ext}``. Returns ``None`` when no entry has a renderable
+    variant.
+    """
+    if not images:
+        return None
+    chosen = (
+        next((img for img in images if img.get("kind") == "photo"), None) or images[0]
+    )
+    file = chosen.get("file")
+    variants = chosen.get("variants") or {}
+    if not isinstance(file, str) or not variants:
+        return None
+    for label in _THUMB_LABEL_ORDER:
+        ext = variants.get(label)
+        if ext:
+            return {"file": file, "label": label, "ext": ext}
+    return None
+
+
 def _make_entry(filename: str, kind: str) -> dict | None:
     """Ensure the export bundle exists, then return a global-object-data entry."""
     if not source_path(filename).exists():
@@ -768,6 +796,7 @@ __all__ = [
     "collect_object_images",
     "collect_feature_images",
     "collect_group_images",
+    "pick_thumbnail",
     "clear_export_cache",
     "DOWNLOADS_IMAGES_DIR",
 ]

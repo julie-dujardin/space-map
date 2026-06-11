@@ -178,6 +178,10 @@ class Object(Base):
     map_texture_available: Mapped[bool] = mapped_column(default=False)
     image_available: Mapped[bool] = mapped_column(default=False)
     has_wikipedia_description: Mapped[bool] = mapped_column(default=False)
+    # Total Wikidata sitelink count (all Wikimedia projects), persisted from
+    # the entity JSON at wikidata ingest. Notability signal for export-time
+    # ranking (e.g. notable group members). 0 when no QID or no sitelinks.
+    sitelinks_count: Mapped[int] = mapped_column(default=0)
     has_rings: Mapped[bool] = mapped_column(default=False)
     # Slug of the 3D-model bundle under EXPORT_DIR/v1/models/{slug}/. Many
     # objects may point at the same slug (Viking 1/2 share an orbiter model;

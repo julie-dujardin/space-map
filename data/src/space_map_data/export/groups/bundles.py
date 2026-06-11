@@ -31,8 +31,12 @@ from space_map_data.export.groups.registry import (
     Group,
     GroupType,
 )
-from space_map_data.export.groups.small_body import LargestBody
-from space_map_data.export.images import collect_group_images
+from space_map_data.export.groups.small_body import LargestBody, NotableMember
+from space_map_data.export.images import (
+    collect_group_images,
+    collect_object_images,
+    pick_thumbnail,
+)
 from space_map_data.export.objects.wikidata_claims import (
     attach_country_group_link,
     extract_claims,
@@ -65,6 +69,7 @@ def _build_global(
     images: list[dict] | None,
     largest_body: LargestBody | None,
     pha_count: int,
+    notable_members: list[dict] | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -108,6 +113,8 @@ def _build_global(
             "primary_type": "group",
             "primary_id": _FLAG_PHA_SLUG,
         }
+    if notable_members:
+        data["notable_members"] = notable_members
     if extracted:
         websites = extracted.get("website")
         if websites:
@@ -248,6 +255,54 @@ def _constellation_refs(
                 "primary_id": spec.slug,
             }
         )
+    return out
+
+
+def _notable_member_entries(
+    members: list[NotableMember],
+    wikidata_entities: WikidataEntityCache,
+) -> list[dict]:
+    """Denormalized member records for the global group bundle.
+
+    Name is the English Wikidata label when available (matching the object
+    bundles' global name), else the DB fallback. Thumbnail reuses the
+    search-card picker over the member's export images.
+    """
+    out: list[dict] = []
+    for member in members:
+        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        name = (wd["labels"].get("en") if wd else None) or member.fallback_name
+        entry: dict = {
+            "name": name,
+            "primary_type": "spkid",
+            "primary_id": member.spkid,
+        }
+        if member.diameter_km is not None:
+            entry["diameter_km"] = member.diameter_km
+        if member.first_obs:
+            entry["first_obs"] = member.first_obs
+        thumbnail = pick_thumbnail(collect_object_images(member.object_id))
+        if thumbnail:
+            entry["thumbnail"] = thumbnail
+        out.append(entry)
+    return out
+
+
+def _notable_member_names(
+    members: list[NotableMember],
+    entries: list[dict],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, str]:
+    """Per-language label overrides keyed by spkid, only where they differ."""
+    out: dict[str, str] = {}
+    for member, entry in zip(members, entries):
+        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        if not wd:
+            continue
+        label = wd["labels"].get(lang)
+        if label and label != entry["name"]:
+            out[member.spkid] = label
     return out
 
 
@@ -399,6 +454,7 @@ def write_group_bundles(
     extra_histograms: dict[str, dict[int, int]] | None = None,
     extra_largest_bodies: dict[str, LargestBody] | None = None,
     extra_pha_counts: dict[str, int] | None = None,
+    extra_notable_members: dict[str, list[NotableMember]] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -426,6 +482,10 @@ def write_group_bundles(
         discovery_histogram = (extra_histograms or {}).get(group.slug)
         largest_body = (extra_largest_bodies or {}).get(group.slug)
         pha_count = (extra_pha_counts or {}).get(group.slug, 0)
+        members = (extra_notable_members or {}).get(group.slug)
+        member_entries = (
+            _notable_member_entries(members, wikidata_entities) if members else None
+        )
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -435,6 +495,7 @@ def write_group_bundles(
             images,
             largest_body,
             pha_count,
+            member_entries,
         )
         for lang in LANGUAGES:
             lang_data = _build_localized(
@@ -446,6 +507,12 @@ def write_group_bundles(
                 stats,
                 related_by_qid,
             )
+            if members and member_entries:
+                member_names = _notable_member_names(
+                    members, member_entries, lang, wikidata_entities
+                )
+                if member_names:
+                    lang_data["notable_member_names"] = member_names
             if lang_data:
                 localized_by_slug[lang][group.slug] = lang_data
 

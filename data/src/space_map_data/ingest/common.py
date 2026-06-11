@@ -8,7 +8,12 @@ from sqlalchemy import func
 
 from space_map_data.ingest.checks import assert_no_namespace_collision
 from space_map_data.models.object import Object
-from space_map_data.ingest.providers import iau_nomenclature, image_selection, wikipedia
+from space_map_data.ingest.providers import (
+    iau_nomenclature,
+    image_selection,
+    sitelinks,
+    wikipedia,
+)
 from space_map_data.ingest.providers.objects import (
     celestrak,
     probes,
@@ -67,10 +72,14 @@ def ingest_features(download_dir: Path) -> None:
 
 
 def ingest_wikidata(download_dir: Path) -> None:
-    """Ingest Wikidata QIDs for objects and features."""
+    """Ingest Wikidata QIDs for objects and features, then sitelink counts.
+
+    Sitelinks run last so every Object's ``wikidata_qid`` is in place.
+    """
     objects.ingest(download_dir)
     objects_conflicts.ingest(download_dir)
     nomenclature.ingest(download_dir)
+    sitelinks.ingest()
 
 
 def ingest_images() -> None:

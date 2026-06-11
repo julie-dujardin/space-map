@@ -37,6 +37,10 @@ logger = logging.getLogger(__name__)
 SCATTER_TARGET = 1000
 SCATTER_FLOOR = 5
 
+# Statically-picked "notable members" per group, embedded in the group bundle
+# so the frontend renders the strip + members list without per-object fetches.
+NOTABLE_MEMBER_COUNT = 20
+
 
 @dataclass
 class OrbitClassSample:
@@ -62,6 +66,18 @@ class LargestBody:
 
 
 @dataclass
+class NotableMember:
+    """One statically-picked notable member of a small-body group."""
+
+    object_id: str  # Object.id, keys the image-selection cache
+    spkid: str
+    wikidata_qid: str | None  # for localized labels at bundle-write time
+    fallback_name: str  # used when no Wikidata label exists
+    diameter_km: float | None
+    first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
+
+
+@dataclass
 class SmallBodyGroupStats:
     """Per-slug counts, histograms, scatter samples, PHA counts, largest body."""
 
@@ -71,6 +87,7 @@ class SmallBodyGroupStats:
     # NEO is omitted on purpose: 100 % on IEO/ATE/APO/AMO, 0 % elsewhere.
     pha_counts: dict[str, int] = field(default_factory=dict)
     largest_bodies: dict[str, LargestBody] = field(default_factory=dict)
+    notable_members: dict[str, list[NotableMember]] = field(default_factory=dict)
 
 
 def _exported_sbdb_filter():
@@ -207,6 +224,65 @@ def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
     )
 
 
+def _notable_members(session: Session, *filter_clauses) -> list[NotableMember]:
+    """Top members by (has image, sitelinks, diameter, brightness).
+
+    Sitelinks dominate in practice — image availability mostly promotes the
+    photogenic famous few into the strip's leading slots. Diameter then H
+    degrade gracefully for groups with no Wikidata coverage at all. Like
+    ``_largest_body``, skips the orbital-source clause so SPICE-routed dwarf
+    planets (Ceres, Pluto, …) still rank. spkid tiebreak keeps the selection
+    deterministic across exports.
+    """
+    rows = (
+        session.query(
+            Object.id,
+            Object.wikidata_qid,
+            Object.name,
+            SBDB.full_name,
+            SBDB.name,
+            SBDB.pdes,
+            SBDB.spkid,
+            SBDB.diameter,
+            SBDB.first_obs,
+        )
+        .join(Object, Object.id == SBDB.object_id)
+        .filter(SBDB.prefix.is_distinct_from(CometPrefix.D))
+        .filter(SBDB.spkid.is_not(None))
+        .filter(*filter_clauses)
+        .order_by(
+            Object.image_available.desc(),
+            Object.sitelinks_count.desc(),
+            SBDB.diameter.desc().nullslast(),
+            SBDB.H.asc().nullslast(),
+            SBDB.spkid,
+        )
+        .limit(NOTABLE_MEMBER_COUNT)
+        .all()
+    )
+    return [
+        NotableMember(
+            object_id=object_id,
+            spkid=spkid,
+            wikidata_qid=qid,
+            fallback_name=obj_name or full_name or sbdb_name or pdes or spkid,
+            diameter_km=diameter,
+            first_obs=first_obs,
+        )
+        for (
+            object_id,
+            qid,
+            obj_name,
+            full_name,
+            sbdb_name,
+            pdes,
+            spkid,
+            diameter,
+            first_obs,
+        ) in rows
+    ]
+
+
 def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
 
@@ -314,14 +390,28 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     if pha_largest is not None:
         largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_largest
 
+    notable_members: dict[str, list[NotableMember]] = {}
+    for cls in class_counts:
+        members = _notable_members(session, SBDB.class_ == cls)
+        if members:
+            notable_members[f"{CLASS_SLUG_PREFIX}{cls.name}"] = members
+    neo_notable = _notable_members(session, SBDB.neo.is_(True))
+    if neo_notable:
+        notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_notable
+    pha_notable = _notable_members(session, SBDB.pha.is_(True))
+    if pha_notable:
+        notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_notable
+
     logger.info(
         "Built small-body group stats: %d classes, NEO=%d, PHA=%d, "
-        "histograms for %d slugs, largest body for %d slugs",
+        "histograms for %d slugs, largest body for %d slugs, "
+        "notable members for %d slugs",
         len(class_counts),
         neo_count,
         pha_count,
         len(discovery_histograms),
         len(largest_bodies),
+        len(notable_members),
     )
     orbit_samples = build_orbit_class_samples(session, class_counts)
     return SmallBodyGroupStats(
@@ -330,6 +420,7 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
         orbit_samples=orbit_samples,
         pha_counts=pha_counts,
         largest_bodies=largest_bodies,
+        notable_members=notable_members,
     )
 
 

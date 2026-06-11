@@ -22,8 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.images import pick_thumbnail
 
-from .features import Index, pick_thumbnail
+from .features import Index
 
 logger = logging.getLogger(__name__)
 

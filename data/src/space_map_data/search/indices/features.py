@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.images import pick_thumbnail
 from space_map_data.export.nomenclature.format import (
     HEADER_SIZE,
     MAGIC,
@@ -38,34 +39,6 @@ class Index:
 
     def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
         raise NotImplementedError
-
-
-# Smallest variant first — buckets ascend left-to-right in the export.
-_THUMB_LABEL_ORDER = ("s", "m", "xl")
-
-
-def pick_thumbnail(images: list[dict[str, Any]] | None) -> dict[str, str] | None:
-    """Pick a search-card thumbnail from an export ``images`` array.
-
-    Prefers the first ``kind: photo`` entry (locators/logos are less useful at
-    32-48px) and returns its smallest available variant as
-    ``{file, label, ext}``. Returns ``None`` when no entry has a renderable
-    variant.
-    """
-    if not images:
-        return None
-    chosen = (
-        next((img for img in images if img.get("kind") == "photo"), None) or images[0]
-    )
-    file = chosen.get("file")
-    variants = chosen.get("variants") or {}
-    if not isinstance(file, str) or not variants:
-        return None
-    for label in _THUMB_LABEL_ORDER:
-        ext = variants.get(label)
-        if ext:
-            return {"file": file, "label": label, "ext": ext}
-    return None
 
 
 _RECORD_STRUCT = struct.Struct("<IiII2sBB")
