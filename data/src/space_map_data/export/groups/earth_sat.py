@@ -134,7 +134,6 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             Satcat.orbit_type,
             Satcat.launch_date,
             Satcat.ops_status,
-            Satcat.launch_site_code,
             Satcat.constellation_slug,
         )
         .join(Object.satcat)
@@ -163,7 +162,6 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         orbit_type,
         launch_date,
         ops_status,
-        launch_site_code,
         constellation_slug,
     ) in rows:
         if decay_date:
@@ -194,12 +192,14 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             stats.membership.setdefault(s, []).append(obj_id)
             population_per_class[s] += 1
             satcat_stats = stats.satcat_stats.setdefault(s, GroupSatcatStats())
+            # Launch sites are deliberately not accumulated: a zone's top-sites
+            # breakdown isn't meaningful, so the bundle ships without it.
             _accumulate(
                 satcat_stats,
                 launch_date,
                 ops_status,
                 None,
-                launch_site_code,
+                None,
                 constellation_slug,
             )
 

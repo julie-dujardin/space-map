@@ -1186,8 +1186,8 @@ The 17 Earth orbit zones from
 `membership/earth.json.gz`, and bucket pages under `groups/__global__/`
 and `groups/{lang}/` — the same shape as constellation/operator/etc.
 groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
-`active_count`, plus localized `launch_sites` and `constellations`
-cross-link tables. An object holds exactly one shape class plus at most
+`active_count`, plus a localized `constellations` cross-link table
+(no `launch_sites` breakdown). An object holds exactly one shape class plus at most
 one inclination band (e.g. VLEO + SSO) — membership rules in
 `classify_earth_orbit`.
 
