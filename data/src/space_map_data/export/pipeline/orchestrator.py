@@ -1,9 +1,10 @@
 """Export orchestrator: query DB, drive zone exports, write global outputs."""
 
 import logging
+import shutil
 import time
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import (
     FIRST_COMPLETED,
     Future,
@@ -38,6 +39,7 @@ from space_map_data.export.objects.writer import (
     ChunkObjectData,
     write_object_bundles,
 )
+from space_map_data.export.pipeline import incremental
 from space_map_data.export.pipeline.cleanup import (
     precheck_tables,
     prune_small_bodies,
@@ -55,6 +57,7 @@ from space_map_data.export.pipeline.snapshots import (
 )
 from space_map_data.export.pipeline.zone import (
     ObjectDataContext,
+    SnapshotResult,
     ZoneExportResult,
     build_zone_object_data,
     export_zone,
@@ -175,6 +178,41 @@ def _record(zone: str, zoom: int, result: ZoneExportResult, agg: _Aggregators) -
             )
 
 
+def _record_cached(zone: str, zoom: int, meta: dict, agg: _Aggregators) -> None:
+    """Fold a skipped zone's cached stats into the aggregators.
+
+    Only valid when tier B is clean: the zone's per-object data is not
+    rebuilt, so `agg.all_objects` stays untouched — every consumer of it is
+    skipped under the same gate.
+    """
+    agg.zone_structure[zone][zoom].parent_id_type = meta["parent_id_type"]
+    count = 0
+    for kwargs in incremental.decode_snapshots(meta["snapshots"]):
+        snap = SnapshotResult(**kwargs)
+        agg.object_counts[(zone, zoom, snap.time)] += snap.count
+        agg.zone_structure[zone][zoom].snapshots.append(snap)
+        count += snap.count
+    logger.info(
+        "  %s zoom=%d: inputs unchanged, skipped (%d objects, %d snapshots cached)",
+        zone,
+        zoom,
+        count,
+        len(meta["snapshots"]),
+    )
+
+
+def _zone_is_cached(
+    out_dir: Path, zone: str, zoom: int, signature: dict
+) -> dict | None:
+    """Return the zone's cached meta iff its signature matches and parts exist."""
+    meta = incremental.read_zone_meta(out_dir, zone, zoom)
+    if meta is None or meta.get("signature") != signature:
+        return None
+    if not incremental.zone_parts_exist(out_dir, zone, zoom, meta["snapshots"]):
+        return None
+    return meta
+
+
 def _build_object_data_for(
     label: str,
     objects: list[Object],
@@ -286,8 +324,15 @@ def _iter_non_sbdb_zone_snapshots(
 def _iter_sbdb_zone_snapshots(
     session: Session,
     cheb_covered_ids: set[str],
+    out_dir: Path,
+    agg: _Aggregators,
+    tier_b_clean: bool,
 ) -> Iterator[tuple[str, int, ZoneSnapshots]]:
     """Yield (zone, zoom, snapshots) per (SBDB class, named) combo with rows.
+
+    Combos whose zone signature matches their cached meta (and tier B is
+    clean) are folded into `agg` from the cache and never queried — the ORM
+    load and per-object build are the expensive part of a no-change run.
 
     Generator pauses after each yield so the caller can submit the snapshots
     to the executor before we move on. Resuming runs ``session.expunge_all()``
@@ -295,12 +340,18 @@ def _iter_sbdb_zone_snapshots(
     them alive via their own refs, so no lazy load can fire. That's the
     memory bound for big combos (MBA-unnamed alone is ~3 GB of ORM rows).
     """
+    sbdb_sig = incremental.sbdb_zone_signature(cheb_covered_ids)
     named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
     combos = (
         session.query(SBDB.class_, named_col).group_by(SBDB.class_, named_col).all()
     )
     for cls, named in combos:
         zoom = 0 if named else 1
+        if tier_b_clean:
+            meta = _zone_is_cached(out_dir, f"small_bodies/{cls.name}", zoom, sbdb_sig)
+            if meta is not None:
+                _record_cached(f"small_bodies/{cls.name}", zoom, meta, agg)
+                continue
         name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
         # SPICE-sourced bodies (DE441 perturbers like Ceres, Pallas, …) ship
         # via the chebyshev export and are filtered out here both to enforce
@@ -345,16 +396,22 @@ def _run_earth_zones(
     session: Session,
     out_dir: Path,
     ctx: ObjectDataContext,
-    celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
+    celestrak_loader: Callable[[], Mapping[str, dict[int, CelesTrakElements]]],
     agg: _Aggregators,
+    tier_b_clean: bool,
 ) -> None:
     """Run Earth-zone exports inline (synchronous).
+
+    Zooms whose zone signature matches the cached meta (and tier B is clean)
+    skip the DB load and per-day overlays entirely; the CelesTrak CSVs are
+    only parsed (`celestrak_loader`) when at least one zoom runs.
 
     Per-day overlays mutate the same Object instances in-place, so multiple
     days can't be shipped to threads simultaneously without cloning.
     Main-thread work still overlaps with the executor pool processing other
     zones.
     """
+    earth_sig = incremental.earth_zone_signature()
     earth_base = (
         session.query(Object)
         .options(joinedload(Object.satcat), joinedload(Object.celestrak))
@@ -369,6 +426,11 @@ def _run_earth_zones(
         (0, ~is_constellation),
         (1, is_constellation),
     ):
+        if tier_b_clean:
+            meta = _zone_is_cached(out_dir, "earth", zoom_label, earth_sig)
+            if meta is not None:
+                _record_cached("earth", zoom_label, meta, agg)
+                continue
         # Earth zones are uncapped: per-day CelesTrak sidecars (see
         # `build_earth_part_signature`) make re-export incremental. random_int
         # ordering is kept for deterministic chunking.
@@ -379,23 +441,35 @@ def _run_earth_zones(
         result = export_zone(
             "earth",
             zoom_label,
-            earth_snapshots(base_objects, celestrak_days),
+            earth_snapshots(base_objects, celestrak_loader()),
             out_dir,
             ctx,
         )
         _record("earth", zoom_label, result, agg)
+        incremental.write_zone_meta(
+            out_dir,
+            "earth",
+            zoom_label,
+            earth_sig,
+            result.parent_id_type,
+            result.snapshots,
+        )
 
 
 def _drive_zone_exports(
     session: Session,
     out_dir: Path,
     ctx: ObjectDataContext,
-    celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
+    celestrak_loader: Callable[[], Mapping[str, dict[int, CelesTrakElements]]],
     limit_per_zone: int,
     cheb_covered_ids: set[str],
     agg: _Aggregators,
+    tier_b_clean: bool,
 ) -> dict[Future, tuple[str, int]]:
     """Submit threaded zone exports + run Earth zones inline.
+
+    Zones whose cached signature still matches are folded into `agg` here
+    and never submitted (see `_iter_sbdb_zone_snapshots` / `_run_earth_zones`).
 
     Returns the pending futures (executor has joined, but the results are
     still wrapped). Caller drains them via :func:`_record` after writing the
@@ -429,10 +503,10 @@ def _drive_zone_exports(
         ):
             submit_zone(zone, zoom, snapshots)
         for zone, zoom, snapshots in _iter_sbdb_zone_snapshots(
-            session, cheb_covered_ids
+            session, cheb_covered_ids, out_dir, agg, tier_b_clean
         ):
             submit_zone(zone, zoom, snapshots)
-        _run_earth_zones(session, out_dir, ctx, celestrak_days, agg)
+        _run_earth_zones(session, out_dir, ctx, celestrak_loader, agg, tier_b_clean)
         # executor joins here — session still open so ORM objects remain valid
     return futures
 
@@ -559,15 +633,127 @@ def _write_metadata_json(
     )
 
 
+def _run_chebyshev(
+    session: Session,
+    out_dir: Path,
+    radii: dict[int, dict],
+    cheb_covered_ids: set[str],
+    agg: _Aggregators,
+    tier_b_clean: bool,
+) -> dict[str, dict]:
+    """Run (or skip) the chebyshev pass behind its input signature.
+
+    Skipping requires tier B clean: body resolution and has_localized bits
+    come from DB + wikidata, which only the tier-B fingerprint tracks. When
+    only the npz inputs changed, the per-body bits are reused from the meta.
+    """
+    sig = incremental.chebyshev_signature()
+    meta = incremental.read_chebyshev_meta(out_dir)
+    if tier_b_clean and meta is not None and meta.get("signature") == sig:
+        manifest = meta["zone_manifest"]
+        if all((out_dir / "position" / z / "0").is_dir() for z in manifest):
+            logger.info(
+                "Chebyshev inputs unchanged — skipped (%d zones cached)",
+                len(manifest),
+            )
+            return manifest
+    if tier_b_clean:
+        has_loc = (meta or {}).get("has_localized", {})
+    else:
+        has_loc = {
+            oid: bool(agg.all_objects.has_localized.get(oid))
+            for oid in cheb_covered_ids
+        }
+    _wipe_chebyshev_outputs(out_dir, meta)
+    manifest = write_chebyshev(session, DOWNLOAD_DIR, out_dir, radii, has_loc)
+    incremental.write_chebyshev_meta(out_dir, sig, manifest, has_loc)
+    return manifest
+
+
+def _wipe_chebyshev_outputs(out_dir: Path, previous_meta: dict | None) -> None:
+    """Remove chebyshev-owned chunk dirs before a re-encode.
+
+    These dirs survive `remove_old_outputs` so a skipped pass keeps its
+    files; a re-encoding pass starts clean so stale chunks can't linger.
+    Wipes the standard cheb dirs plus whatever the previous manifest listed.
+    """
+    pos = out_dir / "position"
+    zones = {"major/0", "major_asteroids"}
+    moons_dir = pos / "moons"
+    if moons_dir.exists():
+        zones.update(
+            f"moons/{child.name}"
+            for child in moons_dir.iterdir()
+            if child.is_dir() and child.name != "0"
+        )
+    for zone in (previous_meta or {}).get("zone_manifest", {}):
+        zones.add(f"{zone}/0" if zone in ("major",) else zone)
+    for zone in zones:
+        path = pos / zone
+        if path.exists():
+            shutil.rmtree(path)
+
+
+def _run_probes(
+    session: Session,
+    out_dir: Path,
+    probe_ids: set[str],
+    agg: _Aggregators,
+    tier_b_clean: bool,
+) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
+    """Run (or skip) the probes pass behind its input signature.
+
+    Same tier-B coupling as chebyshev: probe Object rows and has_localized
+    bits are only tracked by the tier-B fingerprint, so a skip requires a
+    clean tier B and unchanged kernels/events/candidates/registry.
+    """
+    sig = incremental.probes_signature()
+    meta = incremental.read_probes_meta(out_dir)
+    if (
+        tier_b_clean
+        and meta is not None
+        and meta.get("signature") == sig
+        and (out_dir / "position" / "probes").is_dir()
+    ):
+        logger.info(
+            "Probe inputs unchanged — skipped (%d zones cached)",
+            len(meta["zone_manifest"]),
+        )
+        return meta["zone_manifest"], meta["coverage"]
+    if tier_b_clean:
+        has_loc = (meta or {}).get("has_localized", {})
+    else:
+        has_loc = {
+            oid: bool(agg.all_objects.has_localized.get(oid)) for oid in probe_ids
+        }
+    zone_manifest, coverage = write_probes(session, DOWNLOAD_DIR, out_dir, has_loc)
+    incremental.write_probes_meta(out_dir, sig, zone_manifest, coverage, has_loc)
+    return zone_manifest, coverage
+
+
 def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     """Run the full export pipeline."""
     t0 = time.monotonic()
+    out_dir = EXPORT_DIR / "v1"
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
-    out_dir = EXPORT_DIR / "v1"
+        tier_b_fp = incremental.tier_b_fingerprint(session)
+    tier_b_meta = incremental.read_tier_b_meta(out_dir)
+    tier_b_clean = (
+        tier_b_fp["ingest_stamp"] is not None
+        and tier_b_meta is not None
+        and tier_b_meta.get("fingerprint") == tier_b_fp
+    )
+    if tier_b_clean:
+        logger.info(
+            "Object-metadata inputs unchanged — bundle/label/feature/message "
+            "writers will be skipped, unchanged zones won't be reloaded"
+        )
+    else:
+        logger.info("Object-metadata inputs changed — full per-object rebuild")
     out_dir.mkdir(parents=True, exist_ok=True)
-    remove_old_outputs(out_dir)
+    remove_old_outputs(out_dir, keep_object_outputs=tier_b_clean)
 
     wikidata_entities = WikidataEntityCache()
     units = UnitConverter(wikidata_entities)
@@ -600,7 +786,16 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)
-    celestrak_days = load_all_days(DOWNLOAD_DIR)
+
+    # CelesTrak CSV parsing is deferred: when both earth zooms skip via their
+    # zone meta, the ~120 MB of day CSVs are never read.
+    _celestrak_days: dict[str, dict[int, CelesTrakElements]] | None = None
+
+    def celestrak_loader() -> Mapping[str, dict[int, CelesTrakElements]]:
+        nonlocal _celestrak_days
+        if _celestrak_days is None:
+            _celestrak_days = load_all_days(DOWNLOAD_DIR)
+        return _celestrak_days
 
     agg = _Aggregators()
 
@@ -620,10 +815,11 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             session,
             out_dir,
             ctx,
-            celestrak_days,
+            celestrak_loader,
             limit_per_zone,
             cheb_covered_ids,
             agg,
+            tier_b_clean,
         )
 
         write_system_metadata(
@@ -652,50 +848,79 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Aggregate has_localized from elements futures before writing chebyshev
         # — the cheb body header carries one bit per body, gated on the same
         # union map the elements files use.
+        sbdb_sig = incremental.sbdb_zone_signature(cheb_covered_ids)
         for f in as_completed(futures):
             zone, zoom = futures[f]
-            _record(zone, zoom, f.result(), agg)
+            result = f.result()
+            _record(zone, zoom, result, agg)
+            if zone.startswith("small_bodies/"):
+                incremental.write_zone_meta(
+                    out_dir,
+                    zone,
+                    zoom,
+                    sbdb_sig,
+                    result.parent_id_type,
+                    result.snapshots,
+                )
 
-        probe_ids = _build_non_zone_object_data(
-            session, ctx, cheb_covered_ids, agg.all_objects
+        if not tier_b_clean:
+            probe_ids = _build_non_zone_object_data(
+                session, ctx, cheb_covered_ids, agg.all_objects
+            )
+        else:
+            probe_ids = set()
+
+        chebyshev_zones = _run_chebyshev(
+            session, out_dir, radii, cheb_covered_ids, agg, tier_b_clean
+        )
+        probe_zones, probe_coverage = _run_probes(
+            session, out_dir, probe_ids, agg, tier_b_clean
         )
 
-        chebyshev_zones = write_chebyshev(
-            session, DOWNLOAD_DIR, out_dir, radii, agg.all_objects.has_localized
-        )
-        probe_zones, probe_coverage = write_probes(
-            session, DOWNLOAD_DIR, out_dir, agg.all_objects.has_localized
-        )
+        rendered_ids = _load_rendered_ids(session) if not tier_b_clean else set()
 
-        rendered_ids = _load_rendered_ids(session)
-
-    # Attitude extraction runs after probe positions are written but before
-    # the global object bundles are sealed — it mutates `global_data` in
-    # place to inject the per-probe attitude manifest under `attitude`.
-    write_attitude(out_dir, agg.all_objects.global_data)
-
-    bundle_ns = write_object_bundles(
-        out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
-    )
-    write_nomenclature_positions(out_dir, nomenclature_by_body)
-    write_nomenclature_labels(out_dir, nomenclature_by_body, wikidata_entities)
-    # Feature details are built after object data so the unit converter has
-    # already absorbed object-side `used_units`; nomenclature claims may add
-    # more (km, m, ...) that the localization writer needs to see below.
-    body_radii_km = {
-        f"naif-{naif_id}": (r["a"] + r["b"] + r["c"]) / 3.0
-        for naif_id, r in radii.items()
-    }
-    with Session(engine) as session:
-        feature_details = build_feature_details(
-            session, wikidata_entities, units, body_radii_km=body_radii_km
+    if tier_b_clean:
+        # Outputs on disk are already current; reuse the bucket counts the
+        # last full run published so metadata.json stays consistent.
+        assert tier_b_meta is not None
+        bundle_ns = tier_b_meta["bundle_ns"]
+        feature_bundle_ns = tier_b_meta["feature_bundle_ns"]
+        group_bundle_ns = tier_b_meta["group_bundle_ns"]
+        logger.info(
+            "Skipped object bundles, labels, nomenclature, feature details, "
+            "messages and groups (object-metadata inputs unchanged)"
         )
-    feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
-    write_global_labels(
-        out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
-    )
-    write_messages(wikidata_entities, units.used_units)
-    group_bundle_ns = run_groups_tier(engine, out_dir, wikidata_entities)
+    else:
+        # Attitude extraction runs after probe positions are written but before
+        # the global object bundles are sealed — it mutates `global_data` in
+        # place to inject the per-probe attitude manifest under `attitude`.
+        write_attitude(out_dir, agg.all_objects.global_data)
+
+        bundle_ns = write_object_bundles(
+            out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
+        )
+        write_nomenclature_positions(out_dir, nomenclature_by_body)
+        write_nomenclature_labels(out_dir, nomenclature_by_body, wikidata_entities)
+        # Feature details are built after object data so the unit converter has
+        # already absorbed object-side `used_units`; nomenclature claims may add
+        # more (km, m, ...) that the localization writer needs to see below.
+        body_radii_km = {
+            f"naif-{naif_id}": (r["a"] + r["b"] + r["c"]) / 3.0
+            for naif_id, r in radii.items()
+        }
+        with Session(engine) as session:
+            feature_details = build_feature_details(
+                session, wikidata_entities, units, body_radii_km=body_radii_km
+            )
+        feature_bundle_ns = write_feature_detail_bundles(out_dir, feature_details)
+        write_global_labels(
+            out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
+        )
+        write_messages(wikidata_entities, units.used_units)
+        group_bundle_ns = run_groups_tier(engine, out_dir, wikidata_entities)
+        incremental.write_tier_b_meta(
+            out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns
+        )
     prune_small_bodies(out_dir, agg.zone_structure)
     _write_metadata_json(
         out_dir,

@@ -29,7 +29,7 @@ class Horizons(Base):
     naif_id: Mapped[int | None] = mapped_column(
         default=None, primary_key=True
     )  # NAIF integer ID
-    object_id: Mapped[str | None] = mapped_column(ForeignKey("objects.id"))
+    object_id: Mapped[str | None] = mapped_column(ForeignKey("objects.id"), index=True)
 
     cospar_id: Mapped[str | None] = mapped_column(
         default=None

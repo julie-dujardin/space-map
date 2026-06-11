@@ -43,7 +43,7 @@ def precheck_tables(session: Session) -> None:
         )
 
 
-def remove_old_outputs(out_dir: Path) -> None:
+def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None:
     """Remove all chunk output directories before a fresh export.
 
     Top-level dirs in `_POSITION_INCREMENTAL_ZONES` (`earth`, `probes`,
@@ -54,29 +54,54 @@ def remove_old_outputs(out_dir: Path) -> None:
     so a part is now orphan) are cleaned up post-export by
     :func:`prune_small_bodies`.
 
+    Chebyshev-owned dirs (`major/0`, `major_asteroids`, `moons/<parent>`)
+    are also preserved — the chebyshev pass wipes them itself when its
+    inputs changed (`_wipe_chebyshev_outputs`), so a signature-skipped pass
+    keeps valid files.
+
     Every other zone under `position/` is wiped — the elements writers
     don't atomic-overwrite, and stale part files for bodies that have left
     a zone would otherwise linger forever.
+
+    `keep_object_outputs=True` (tier-B inputs unchanged) preserves
+    `objects/` and `nomenclature/details/` so the skipped bundle writers
+    don't leave the export without them.
     """
     pos = out_dir / "position"
     if pos.exists():
         for child in pos.iterdir():
-            if child.is_dir() and child.name in _POSITION_INCREMENTAL_ZONES:
-                continue
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
+            if not child.is_dir():
                 child.unlink()
-    p = out_dir / "objects"
-    if p.exists():
-        shutil.rmtree(p)
-    # Nomenclature details bucket count depends on K_GLOBAL / K_LOCALIZED;
-    # tuning either leaves stale-numbered files behind that the writer
-    # never touches. Positions / labels use stable per-body filenames and
-    # overwrite cleanly, so only details needs the wipe.
-    p = out_dir / "nomenclature" / "details"
-    if p.exists():
-        shutil.rmtree(p)
+                continue
+            if child.name in _POSITION_INCREMENTAL_ZONES:
+                continue
+            if child.name == "major_asteroids":
+                continue
+            if child.name == "major":
+                # zoom 0 is chebyshev's; 1/2 are elements zooms.
+                for sub in child.iterdir():
+                    if sub.is_dir() and sub.name != "0":
+                        shutil.rmtree(sub)
+                continue
+            if child.name == "moons":
+                # `moons/0` is the elements zone; named children are
+                # chebyshev's per-parent moon tiers.
+                sub = child / "0"
+                if sub.exists():
+                    shutil.rmtree(sub)
+                continue
+            shutil.rmtree(child)
+    if not keep_object_outputs:
+        p = out_dir / "objects"
+        if p.exists():
+            shutil.rmtree(p)
+        # Nomenclature details bucket count depends on K_GLOBAL / K_LOCALIZED;
+        # tuning either leaves stale-numbered files behind that the writer
+        # never touches. Positions / labels use stable per-body filenames and
+        # overwrite cleanly, so only details needs the wipe.
+        p = out_dir / "nomenclature" / "details"
+        if p.exists():
+            shutil.rmtree(p)
     # The previous schema shipped a per-body `__global__/{body}.json.gz`
     # marker file alongside positions; the new schema replaces it with
     # per-language label files. Drop the legacy dir so old artefacts
@@ -141,8 +166,10 @@ def prune_small_bodies(
     from space_map_data.export.position.elements import (
         sidecar,
     )  # local import: avoid cycle
+    from space_map_data.export.pipeline.incremental import ZONE_META_NAME
 
     planned = _planned_small_body_paths(out_dir, zone_structure)
+    planned_dirs = {p.parent for p in planned}
     sb_dir = out_dir / "position" / "small_bodies"
     deleted = 0
     if sb_dir.exists():
@@ -166,6 +193,13 @@ def prune_small_bodies(
     if meta_sb_dir.exists():
         for meta_path in meta_sb_dir.rglob("*.meta.json"):
             rel_dir = meta_path.relative_to(meta_sb_dir).parent
+            if meta_path.name == ZONE_META_NAME:
+                # Zone-level stats sidecar: orphan iff its zone has no
+                # planned parts this run (class removed / moved).
+                if sb_dir / rel_dir not in planned_dirs:
+                    meta_path.unlink()
+                    deleted += 1
+                continue
             part_idx = meta_path.name.removesuffix(".meta.json")
             if sb_dir / rel_dir / f"{part_idx}.bin.gz" not in planned:
                 meta_path.unlink()

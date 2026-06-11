@@ -271,6 +271,25 @@ A post-export prune pass walks `position/small_bodies/` and deletes orphan
 parts (and their sidecars) that this run didn't plan — covers asteroids
 moving between classes, class shrinkage, or zooms disappearing.
 
+Above the per-part sidecars sit run-level skip gates (all in the
+`EXPORT_METADATA_DIR` mirror, see `export/pipeline/incremental.py`):
+
+- `position/{zone}/{zoom}/__zone__.meta.json` — per-zone signature plus the
+  snapshot stats `metadata.json` needs. A matching zone skips its DB load
+  and per-object build entirely, not just the re-encode.
+- `position/chebyshev.meta.json` / `position/probes/__pass__.meta.json` —
+  gate those whole passes behind their input fingerprints (npz tree /
+  kernels + events + candidates + registry), caching the manifest fragments.
+- `tier_b.meta.json` — fingerprint over everything feeding the per-object
+  outputs (ingest stamp, wikidata/wikipedia/images download stamps, kernel
+  tree). When it matches, bundles / labels / nomenclature details /
+  messages / groups are skipped and their bucket counts reused.
+
+Zone and pass skips require a clean tier-B fingerprint: DB- and
+wikidata-derived row state (membership, `has_localized`, radius overrides)
+is only tracked there. The `ingest_stamp` DB table is rewritten by every
+ingest run, so any ingest invalidates tier B.
+
 ### Time-segmented zones
 
 Two zones segment elements over time, distinguished by `label` in the

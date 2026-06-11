@@ -6,8 +6,9 @@ import logging.config
 import time
 import tomllib
 
+from space_map_data.models.ingest_stamp import write_ingest_stamp
 from space_map_data.utils.paths import DATA_DIR, DB_FILE, DOWNLOAD_DIR
-from space_map_data.utils.db import session_scope
+from space_map_data.utils.db import get_session, session_scope
 from space_map_data.ingest.common import (
     ingest_objects,
     ingest_features,
@@ -83,6 +84,9 @@ def cli():
             RingProcessor().process_all(force=args.force)
         if "models" in selected:
             ModelProcessor().process_all(force=args.force)
+        # Any target can write DB rows (models updates Object.model_name,
+        # textures flips map_texture_available, ...), so stamp unconditionally.
+        write_ingest_stamp(get_session(), selected)
 
 
 if __name__ == "__main__":

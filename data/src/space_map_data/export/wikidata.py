@@ -40,7 +40,9 @@ class WikidataEntityCache:
     """On-demand Wikidata entity loader.
 
     Units are preloaded eagerly (143 files). Entities and referenced entries
-    are read from disk on each access.
+    are loaded from disk on first access and memoized — claim resolution asks
+    for the same referenced QIDs once per object per language, so uncached
+    re-reads dominated export profiles.
     """
 
     def __init__(self) -> None:
@@ -51,6 +53,8 @@ class WikidataEntityCache:
         self._units: dict[str, WikidataEntity] = {}
         self._properties: dict[str, WikidataEntity] = {}
         self._feature_types: dict[str, WikidataEntity] = {}
+        # Benign under threads: a race just loads the same file twice.
+        self._loaded: dict[tuple[str, str], WikidataEntity | None] = {}
 
         if not any(
             d.exists()
@@ -117,14 +121,20 @@ class WikidataEntityCache:
         return self._load(qid, self._referenced_dir)
 
     def _load(self, qid: str, directory: Path) -> WikidataEntity | None:
+        key = (directory.name, qid)
+        if key in self._loaded:
+            return self._loaded[key]
         path = directory / f"{qid}.json"
         if not path.exists():
-            return None
-        try:
-            raw = orjson.loads(path.read_bytes())
-        except (orjson.JSONDecodeError, OSError) as exc:
-            raise ValueError(f"Failed to load {path}") from exc
-        return _parse_entity(raw)
+            entity = None
+        else:
+            try:
+                raw = orjson.loads(path.read_bytes())
+            except (orjson.JSONDecodeError, OSError) as exc:
+                raise ValueError(f"Failed to load {path}") from exc
+            entity = _parse_entity(raw)
+        self._loaded[key] = entity
+        return entity
 
 
 def _parse_entity(entity: dict) -> WikidataEntity | None:

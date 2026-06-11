@@ -82,7 +82,9 @@ class SBDB(Base):
     spkid: Mapped[str | None] = mapped_column(
         default=None, primary_key=True
     )  # object primary SPK-ID
-    object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"))
+    # Indexed: export queries joinedload this relationship; without the index
+    # SQLite's join falls back to a full sbdb scan per outer row.
+    object_id: Mapped[str] = mapped_column(ForeignKey("objects.id"), index=True)
 
     # Object fields
     full_name: Mapped[str | None] = mapped_column(
