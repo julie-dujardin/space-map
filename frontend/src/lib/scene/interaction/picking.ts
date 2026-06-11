@@ -74,8 +74,8 @@ export function pickPointCloudBody(
 
 	// Round-robin asteroid zones + spacecraft groups one loader-chunk
 	// (10k bodies) at a time, so every visible bucket gets sampled before
-	// we commit to a deep scan of any one zone. Bail at the end of each
-	// bucket's slice once we have a definitive hit.
+	// we commit to a deep scan of any one zone. Bail after a full round
+	// once we have a definitive hit.
 	if (bestScreenDist > DEFINITIVE_PX) {
 		const CHUNK_BAIL_SIZE = 10_000;
 		const iters: IterableIterator<PositionedBody>[] = [];
@@ -87,7 +87,7 @@ export function pickPointCloudBody(
 		}
 
 		let anyProgress = true;
-		outer: while (anyProgress) {
+		while (anyProgress) {
 			anyProgress = false;
 			for (const it of iters) {
 				for (let i = 0; i < CHUNK_BAIL_SIZE; i++) {
@@ -96,8 +96,10 @@ export function pickPointCloudBody(
 					testBody(next.value);
 					anyProgress = true;
 				}
-				if (bestScreenDist <= DEFINITIVE_PX) break outer;
 			}
+			// Bail only after a full round so every visible bucket gets an equal
+			// shot before we commit — else earlier zones (APO before MBA) win ties.
+			if (bestScreenDist <= DEFINITIVE_PX) break;
 		}
 	}
 
