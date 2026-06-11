@@ -267,6 +267,7 @@
 	"scatter_axis_a": "большая полуось (а.е.)",
 	"scatter_axis_q": "перигелий (а.е.)",
 	"scatter_axis_e": "эксцентриситет",
+	"scatter_axis_T": "параметр Тиссерана (Tⱼ)",
 	"scatter_axis_perigee": "перигей (км)",
 	"scatter_axis_apogee": "апогей (км)",
 	"condition_code": "Код состояния",

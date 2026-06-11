@@ -1,16 +1,15 @@
 /**
  * Orbit-class zone polygons for the small-body scatter plot.
  *
- * Asteroids plot on (a, q) — semi-major axis vs perihelion. Comets plot on
- * (e, q) because hyperbolic/parabolic comets have undefined or negative a.
- * Polygons approximate SBDB membership rules; tooltip carries the precise
- * definition (esp. for resonance- or Tisserand-based classes where the
- * a-q/q-e projection is a simplification).
+ * Asteroids plot on (a, q) — semi-major axis vs perihelion. Comets get two
+ * switchable plots: bound families on (a, T_J) where every SBDB class is an
+ * exact rectangle, and unbound/unclassified trajectories on (e, q) since
+ * hyperbolic/parabolic comets have undefined or negative a.
  */
 
 import * as m from '$lib/paraglide/messages.js';
 
-export type PlotType = 'a-q' | 'q-e' | 'peri-apo';
+export type PlotType = 'a-q' | 'q-e' | 'a-T' | 'peri-apo';
 
 /** Polygon vertex (x, y); units are AU for a-q/q-e, km for peri-apo. */
 export type ZonePoint = { x: number; y: number };
@@ -51,82 +50,37 @@ export interface OrbitZone {
 export const FOCUS_COLORS: Record<PlotType, string> = {
 	'peri-apo': '#7fb3e6',
 	'a-q': '#d4a373',
-	'q-e': '#88d4a8'
+	'q-e': '#88d4a8',
+	'a-T': '#88d4a8'
 };
 
-const AJ = 5.2038; // Jupiter semi-major axis [AU], standard Tisserand reference
+export const AJ = 5.2038; // Jupiter semi-major axis [AU], standard Tisserand reference
+
+/** Period cuts as semi-major axes (P² = a³): P < 20 y and P < 200 y. */
+export const A_P20 = Math.pow(20, 2 / 3); // ≈ 7.37 AU
+export const A_P200 = Math.pow(200, 2 / 3); // ≈ 34.2 AU
+
+/** Chart bounds for the comet plots; zone rectangles are cut to these. */
+export const AT_DOMAIN = { x: [1, 60] as [number, number], y: [-2, 4] as [number, number] };
+export const QE_DOMAIN = { x: [0.9, 1.3] as [number, number], y: [0, 12] as [number, number] };
 
 /**
- * Tisserand parameter (i=0 projection).
- * T_J = a_J/a + 2*sqrt((a/a_J)(1-e²))
+ * Tisserand parameter w.r.t. Jupiter:
+ * T_J = a_J/a + 2·cos(i)·√((a/a_J)(1−e²)). Null for unbound orbits.
  */
-function tisserand(a: number, e: number): number {
-	if (a <= 0) return Infinity;
-	return AJ / a + 2 * Math.sqrt((a / AJ) * (1 - e * e));
+export function tisserand(a: number, e: number, iDeg: number): number | null {
+	if (a <= 0 || e >= 1) return null;
+	const cosI = Math.cos((iDeg * Math.PI) / 180);
+	return AJ / a + 2 * cosI * Math.sqrt((a / AJ) * (1 - e * e));
 }
 
-/**
- * Solve T_J(a, e) = target for e given a. Bisection on e ∈ [0, 1].
- * Returns null if no crossing in the bracket.
- */
-function tisserandSolveEAt(a: number, target: number): number | null {
-	const f = (e: number) => tisserand(a, e) - target;
-	let lo = 0;
-	let hi = 0.999;
-	const fLo = f(lo);
-	const fHi = f(hi);
-	if (fLo * fHi > 0) return null;
-	for (let i = 0; i < 50; i++) {
-		const mid = (lo + hi) / 2;
-		const fMid = f(mid);
-		if (fMid === 0) return mid;
-		if (fLo * fMid < 0) hi = mid;
-		else lo = mid;
-	}
-	return (lo + hi) / 2;
-}
-
-/**
- * Sample the T_J = target curve as (e, q) polyline over the given a range.
- * Returns points in increasing-a order (which is decreasing-e order for the
- * usual comet brackets).
- */
-function tisserandCurve(target: number, aMin: number, aMax: number, steps = 40): ZonePoint[] {
-	const out: ZonePoint[] = [];
-	for (let i = 0; i <= steps; i++) {
-		const a = aMin + (aMax - aMin) * (i / steps);
-		const e = tisserandSolveEAt(a, target);
-		if (e == null) continue;
-		const q = a * (1 - e);
-		out.push({ x: e, y: q });
-	}
-	return out;
-}
-
-/** Band between T_J=lower (outer) and T_J=upper (inner) over an a range. */
-function tisserandBand(lower: number, upper: number, aMin: number, aMax: number): ZonePoint[] {
-	const top = tisserandCurve(upper, aMin, aMax);
-	const bot = tisserandCurve(lower, aMin, aMax).reverse();
-	return [...top, ...bot];
-}
-
-/** Region with T_J ≥ target, closed against the e=0 and q=0 axes (Encke side). */
-function highTisserandArea(target: number, aMin: number, aMax: number): ZonePoint[] {
-	const curve = tisserandCurve(target, aMin, aMax);
-	if (curve.length === 0) return [];
+function rect(x1: number, x2: number, y1: number, y2: number): ZonePoint[] {
 	return [
-		{ x: 0, y: 0 },
-		{ x: curve[0].x, y: 0 },
-		...curve,
-		{ x: 0, y: curve[curve.length - 1].y }
+		{ x: x1, y: y1 },
+		{ x: x2, y: y1 },
+		{ x: x2, y: y2 },
+		{ x: x1, y: y2 }
 	];
-}
-
-/** Region with T_J ≤ target, closed against e=eMax (Halley side). */
-function lowTisserandArea(target: number, aMin: number, aMax: number, eMax: number): ZonePoint[] {
-	const curve = tisserandCurve(target, aMin, aMax);
-	if (curve.length === 0) return [];
-	return [...curve, { x: eMax, y: curve[curve.length - 1].y }, { x: eMax, y: curve[0].y }];
 }
 
 /**
@@ -134,31 +88,31 @@ function lowTisserandArea(target: number, aMin: number, aMax: number, eMax: numb
  * exporter (`build_orbit_class_samples`) emits one zone per OrbitClass enum
  * member that has rows; missing keys here mean "no clickable polygon"
  * (samples are still drawn as background dots when another zone is focused).
+ * A class may appear on several plots under distinct keys (e.g. COM/COM_AT);
+ * the className-keyed entry decides its default plot.
  */
 export const ORBIT_ZONES: Record<string, OrbitZone> = {
-	// AST/COM are catch-all "unclassified" zones that fill the chart
-	// background. Listed first so the specific classes render on top; only
-	// the leftover gaps show as AST/COM. The asteroid q > a half-plane is
-	// physically empty and intentionally not covered.
+	// AST/COM are "no other match" catch-alls. The other classes tile the
+	// space, so each catch-all is drawn as the exact gap they leave open
+	// (verified against SBDB: every AST object falls in this pocket).
 	AST: {
 		className: 'AST',
 		plotType: 'a-q',
+		// Jupiter-region orbits failing TJN's e < 0.3 cut: 4.6 < a < 5.5,
+		// q above the Amor cut (1.3) and below the e = 0.3 line (q = 0.7a).
 		polygon: [
-			{ x: 0, y: 0 },
-			{ x: 100, y: 0 },
-			{ x: 100, y: 100 }
+			{ x: 4.6, y: 1.3 },
+			{ x: 5.5, y: 1.3 },
+			{ x: 5.5, y: 3.85 },
+			{ x: 4.6, y: 3.22 }
 		],
 		tooltipDefinition: () => m.zone_def_AST()
 	},
 	COM: {
 		className: 'COM',
 		plotType: 'q-e',
-		polygon: [
-			{ x: 0, y: 0 },
-			{ x: 3, y: 0 },
-			{ x: 3, y: 20 },
-			{ x: 0, y: 20 }
-		],
+		// Bound (e < 1) but not in any family — mostly long-period comets.
+		polygon: rect(0, 1, QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
 		tooltipDefinition: () => m.zone_def_COM()
 	},
 	IEO: {
@@ -243,9 +197,11 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 	OMB: {
 		className: 'OMB',
 		plotType: 'a-q',
+		// No q > 1.666 floor like MBA — SBDB OMB runs down to the Amor cut
+		// (q = 1.3); 1.3 < q < 1.666 only counts as Mars-crossing for a < 3.2.
 		polygon: [
-			{ x: 3.2, y: 1.666 },
-			{ x: 4.6, y: 1.666 },
+			{ x: 3.2, y: 1.3 },
+			{ x: 4.6, y: 1.3 },
 			{ x: 4.6, y: 4.6 },
 			{ x: 3.2, y: 3.2 }
 		],
@@ -286,80 +242,73 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 		],
 		tooltipDefinition: () => m.zone_def_TNO()
 	},
-	// --- Comets (q-e plot) ---
-	JFc: {
-		className: 'JFc',
-		plotType: 'q-e',
-		polygon: tisserandBand(2, 3, 0.5, AJ),
-		tooltipDefinition: () => m.zone_def_JFc()
-	},
-	JFC: {
-		className: 'JFC',
-		plotType: 'q-e',
-		// Period-based; treat as nested inside JFc with tighter q (P < 20y → a < 7.4)
-		polygon: tisserandBand(2, 3, 0.5, 4.0),
-		tooltipDefinition: () => m.zone_def_JFC()
+	// --- Comet families (a-T plot): exact SBDB rectangles. Larger zones
+	// listed first so the smaller ones stay hover/clickable on top.
+	// COM catch-all fills the leftover corner: bound, T_J < 2, P > 200 y.
+	COM_AT: {
+		className: 'COM',
+		plotType: 'a-T',
+		polygon: rect(A_P200, AT_DOMAIN.x[1], AT_DOMAIN.y[0], 2),
+		tooltipDefinition: () => m.zone_def_COM()
 	},
 	HTC: {
 		className: 'HTC',
-		plotType: 'q-e',
-		// T_J < 2 (Halley side of the JFc band), out to a ≈ 30 (200y).
-		polygon: lowTisserandArea(2, 3, 30, 0.999),
+		plotType: 'a-T',
+		// T_J < 2, P < 200 y.
+		polygon: rect(AT_DOMAIN.x[0], A_P200, AT_DOMAIN.y[0], 2),
 		tooltipDefinition: () => m.zone_def_HTC()
+	},
+	JFC: {
+		className: 'JFC',
+		plotType: 'a-T',
+		// Classical: P < 20 y, no Tisserand constraint.
+		polygon: rect(AT_DOMAIN.x[0], A_P20, AT_DOMAIN.y[0], AT_DOMAIN.y[1]),
+		tooltipDefinition: () => m.zone_def_JFC()
+	},
+	JFc: {
+		className: 'JFc',
+		plotType: 'a-T',
+		polygon: rect(AT_DOMAIN.x[0], AT_DOMAIN.x[1], 2, 3),
+		tooltipDefinition: () => m.zone_def_JFc()
 	},
 	ETc: {
 		className: 'ETc',
-		plotType: 'q-e',
-		// T_J > 3 (Encke side of the JFc band), a < a_J.
-		polygon: highTisserandArea(3, 1.5, AJ),
+		plotType: 'a-T',
+		polygon: rect(AT_DOMAIN.x[0], AJ, 3, AT_DOMAIN.y[1]),
 		tooltipDefinition: () => m.zone_def_ETc()
 	},
 	CTc: {
 		className: 'CTc',
-		plotType: 'q-e',
-		// T_J > 3, a > a_J: Centaur-like comets with q > 5
-		polygon: [
-			{ x: 0.0, y: 5.5 },
-			{ x: 0.7, y: 5.5 },
-			{ x: 0.7, y: 20 },
-			{ x: 0.0, y: 20 }
-		],
+		plotType: 'a-T',
+		polygon: rect(AJ, AT_DOMAIN.x[1], 3, AT_DOMAIN.y[1]),
 		tooltipDefinition: () => m.zone_def_CTc()
+	},
+	// --- Unbound trajectories (q-e plot). Asteroid-designated twins (HYA/PAA)
+	// sit under their comet counterparts; the thin e=1 bands render on top.
+	HYA: {
+		className: 'HYA',
+		plotType: 'q-e',
+		polygon: rect(1, QE_DOMAIN.x[1], QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
+		tooltipDefinition: () => m.zone_def_HYA()
+	},
+	HYP: {
+		className: 'HYP',
+		plotType: 'q-e',
+		polygon: rect(1, QE_DOMAIN.x[1], QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
+		tooltipDefinition: () => m.zone_def_HYP()
+	},
+	PAA: {
+		className: 'PAA',
+		plotType: 'q-e',
+		polygon: rect(0.99, 1.01, QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
+		tooltipDefinition: () => m.zone_def_PAA()
 	},
 	PAR: {
 		className: 'PAR',
 		plotType: 'q-e',
 		// e ≈ 1 — render as a thin band at e = 1
-		polygon: [
-			{ x: 0.99, y: 0.1 },
-			{ x: 1.01, y: 0.1 },
-			{ x: 1.01, y: 20 },
-			{ x: 0.99, y: 20 }
-		],
+		polygon: rect(0.99, 1.01, QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
 		tooltipDefinition: () => m.zone_def_PAR()
-	},
-	HYP: {
-		className: 'HYP',
-		plotType: 'q-e',
-		polygon: [
-			{ x: 1.0, y: 0.1 },
-			{ x: 3.0, y: 0.1 },
-			{ x: 3.0, y: 20 },
-			{ x: 1.0, y: 20 }
-		],
-		tooltipDefinition: () => m.zone_def_HYP()
-	},
-	HYA: {
-		// Hyperbolic asteroid — share the HYP region on the q-e plot.
-		className: 'HYA',
-		plotType: 'q-e',
-		polygon: [
-			{ x: 1.0, y: 0.1 },
-			{ x: 3.0, y: 0.1 },
-			{ x: 3.0, y: 20 },
-			{ x: 1.0, y: 20 }
-		],
-		tooltipDefinition: () => m.zone_def_HYA()
 	}
 };
 
@@ -553,6 +502,16 @@ export function classNameFromSlug(slug: string): string | null {
 
 /** NEO is a meta-zone (Atira ∪ Aten ∪ Apollo ∪ Amor); PHA is a styling overlay only. */
 export const NEO_CLASSES = ['IEO', 'ATE', 'APO', 'AMO'] as const;
+
+/** The two switchable comet plots. */
+export const COMET_PLOT_TYPES: PlotType[] = ['a-T', 'q-e'];
+
+/** Slugs whose samples are drawn on the comet plots (a-T and q-e). */
+export const COMET_PLOT_CLASSES = new Set(
+	['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'COM', 'PAR', 'HYP', 'PAA', 'HYA'].map(
+		(c) => `${CLASS_SLUG_PREFIX}${c}`
+	)
+);
 
 /** Resolve `orbit_class_<NAME>` to its localized label; unknown → raw id. */
 export function orbitClassLabel(className: string): string {

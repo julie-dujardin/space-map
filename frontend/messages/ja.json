@@ -234,6 +234,7 @@
 	"scatter_axis_a": "軌道長半径 (au)",
 	"scatter_axis_q": "近日点距離 (au)",
 	"scatter_axis_e": "離心率",
+	"scatter_axis_T": "ティスランパラメータ (Tⱼ)",
 	"scatter_axis_perigee": "近地点 (km)",
 	"scatter_axis_apogee": "遠地点 (km)",
 	"condition_code": "コンディションコード",

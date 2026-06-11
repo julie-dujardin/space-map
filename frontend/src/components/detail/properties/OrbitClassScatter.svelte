@@ -1,19 +1,32 @@
+<script lang="ts" module>
+	import type { PlotType } from '$lib/charts/orbit-zones';
+
+	// Last shown plot, recorded at module level because the chart briefly
+	// unmounts during group navigation. Lets a click on a COM zone keep the
+	// comet plot it was clicked from.
+	let lastPlot: PlotType | null = null;
+</script>
+
 <script lang="ts">
-	import { scaleLinear } from 'd3-scale';
+	import { scaleLinear, scaleLog } from 'd3-scale';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatNumber } from '$lib/format/quantities';
 	import {
 		ORBIT_ZONES,
 		PLANET_A_REFS,
 		NEO_CLASSES,
+		COMET_PLOT_TYPES,
+		COMET_PLOT_CLASSES,
+		AT_DOMAIN,
+		QE_DOMAIN,
 		CLASS_SLUG_PREFIX,
 		FLAG_SLUG_PREFIX,
 		FOCUS_COLORS,
 		classNameFromSlug,
 		orbitClassLabel,
+		tisserand,
 		type OrbitSample,
 		type OrbitZone,
-		type PlotType,
 		type ZonePoint
 	} from '$lib/charts/orbit-zones';
 
@@ -36,10 +49,20 @@
 		height = 240
 	}: Props = $props();
 
-	const M = { top: 8, right: 10, bottom: 36, left: 44 };
+	const uid = $props.id();
+
+	// Top margin leaves room for the range/plot switcher overlay.
+	const M = { top: 26, right: 10, bottom: 36, left: 44 };
 	let width = $state(0); // measured at runtime from the wrapping div
 	let innerW = $derived(Math.max(0, width - M.left - M.right));
 	let innerH = $derived(Math.max(0, height - M.top - M.bottom));
+
+	// Comet classes live on two switchable plots (families on a-T, unbound
+	// trajectories on q-e); `plotType` is the auto pick for the focused class,
+	// the toggle lets the user flip.
+	let isCometMode = $derived(COMET_PLOT_TYPES.includes(plotType));
+	let userPlot = $state<PlotType | null>(null);
+	let activePlot = $derived(isCometMode ? (userPlot ?? plotType) : plotType);
 
 	let focusedZones = $derived.by<OrbitZone[]>(() => {
 		if (focusedSlug === `${FLAG_SLUG_PREFIX}neo` || focusedSlug === `${FLAG_SLUG_PREFIX}pha`) {
@@ -47,29 +70,31 @@
 		}
 		const cls = classNameFromSlug(focusedSlug);
 		if (!cls) return [];
-		const z = ORBIT_ZONES[cls];
-		return z ? [z] : [];
+		// A class can have a zone on several plots (e.g. COM on q-e and a-T).
+		return Object.values(ORBIT_ZONES).filter((z) => z.className === cls);
 	});
 
 	let focusedClassNames = $derived(new Set(focusedZones.map((z) => z.className)));
 
-	let plotZones = $derived(Object.values(ORBIT_ZONES).filter((z) => z.plotType === plotType));
+	let plotZones = $derived(Object.values(ORBIT_ZONES).filter((z) => z.plotType === activePlot));
 
 	// Two presets for a-q so TNO/CEN are reachable without making the inner
 	// zones invisible. The chart auto-picks based on what's focused; user can
 	// override with the toggle.
 	const DOMAIN_PRESETS = {
 		'a-q': {
-			// Inner cuts off right before centaurs (a = 5.5 AU).
+			// Inner cuts off right before centaurs (a = 5.5 AU); outer picks
+			// up from there.
 			inner: { x: [0, 5.5] as [number, number], y: [0, 5] as [number, number] },
-			outer: { x: [0, 100] as [number, number], y: [0, 60] as [number, number] }
+			outer: { x: [5.5, 100] as [number, number], y: [0, 60] as [number, number] }
 		},
-		'q-e': { x: [0, 3] as [number, number], y: [0, 12] as [number, number] }
+		'q-e': QE_DOMAIN,
+		'a-T': AT_DOMAIN
 	};
 
 	let userRange = $state<'inner' | 'outer' | null>(null);
 	let autoRange = $derived.by<'inner' | 'outer'>(() => {
-		if (plotType !== 'a-q') return 'inner';
+		if (activePlot !== 'a-q') return 'inner';
 		for (const z of focusedZones) {
 			for (const p of z.polygon) {
 				if (p.x > 6) return 'outer';
@@ -78,14 +103,46 @@
 		return 'inner';
 	});
 	let range = $derived<'inner' | 'outer'>(userRange ?? autoRange);
-	let domain = $derived(plotType === 'a-q' ? DOMAIN_PRESETS['a-q'][range] : DOMAIN_PRESETS['q-e']);
 
-	let xScale = $derived(scaleLinear().domain(domain.x).range([0, innerW]));
+	// On focus change, reset to the new class's auto plot/range — unless the
+	// new focus is COM, which has zones on both comet plots: keep the plot it
+	// was clicked from instead of jumping to its default (q-e).
+	// `lastPlot` holds the pre-navigation view; `activePlot` has already
+	// flipped to the new class's default by the time this runs.
+	$effect(() => {
+		const cls = classNameFromSlug(focusedSlug);
+		if (cls === 'COM') {
+			userPlot = lastPlot != null && COMET_PLOT_TYPES.includes(lastPlot) ? lastPlot : null;
+		} else {
+			userPlot = null;
+		}
+		userRange = null;
+	});
+
+	// Record the shown plot for the COM pin above. Declared after it so the
+	// pin reads the pre-navigation value within the same flush.
+	$effect(() => {
+		lastPlot = activePlot;
+	});
+	let domain = $derived(
+		activePlot === 'a-q'
+			? DOMAIN_PRESETS['a-q'][range]
+			: DOMAIN_PRESETS[activePlot as 'q-e' | 'a-T']
+	);
+
+	// a-T spans 1–60 AU; log keeps the short-period families readable.
+	let xScale = $derived(
+		(activePlot === 'a-T' ? scaleLog() : scaleLinear()).domain(domain.x).range([0, innerW])
+	);
 	let yScale = $derived(scaleLinear().domain(domain.y).range([innerH, 0]));
 
-	function sampleX(s: OrbitSample): number | null {
-		if (plotType === 'a-q') return s.a;
-		return s.e;
+	/** Plot coordinates for a sample; null = not representable on this plot. */
+	function samplePoint(s: OrbitSample): { x: number; y: number } | null {
+		if (activePlot === 'a-q') return s.a == null ? null : { x: s.a, y: s.q };
+		if (activePlot === 'q-e') return { x: s.e, y: s.q };
+		if (s.a == null || s.i == null) return null;
+		const t = tisserand(s.a, s.e, s.i);
+		return t == null ? null : { x: s.a, y: t };
 	}
 
 	function polyPath(poly: ZonePoint[]): string {
@@ -104,29 +161,36 @@
 		return cls != null && s.slug === `${CLASS_SLUG_PREFIX}${cls}`;
 	}
 
-	let visibleSamples = $derived(
-		(samples ?? []).filter((s) => {
-			const sx = sampleX(s);
-			if (sx == null || !Number.isFinite(sx)) return false;
-			return true;
-		})
-	);
+	type Dot = { s: OrbitSample; px: number; py: number };
+	let visibleDots = $derived.by<Dot[]>(() => {
+		const out: Dot[] = [];
+		for (const s of samples ?? []) {
+			// Comet plots only show comet-family samples; asteroid dots there
+			// are clutter (e.g. the whole main belt lands inside ETc on a-T).
+			if (isCometMode && !COMET_PLOT_CLASSES.has(s.slug)) continue;
+			const p = samplePoint(s);
+			if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+			out.push({ s, px: xScale(p.x), py: yScale(p.y) });
+		}
+		return out;
+	});
 
 	// Render order: background dots → focused dots → PHA on top
-	let backgroundDots = $derived(visibleSamples.filter((s) => !isFocused(s) && !s.pha));
-	let focusedDots = $derived(visibleSamples.filter((s) => isFocused(s) && !s.pha));
-	let phaDots = $derived(visibleSamples.filter((s) => s.pha));
+	let backgroundDots = $derived(visibleDots.filter((d) => !isFocused(d.s) && !d.s.pha));
+	let focusedDots = $derived(visibleDots.filter((d) => isFocused(d.s) && !d.s.pha));
+	let phaDots = $derived(visibleDots.filter((d) => d.s.pha));
 
-	let xTicks = $derived(xScale.ticks(6));
+	let xTicks = $derived(
+		activePlot === 'a-T' ? [1, 2, 5, 10, 20, 50] : xScale.ticks(activePlot === 'q-e' ? 4 : 6)
+	);
 	let yTicks = $derived(yScale.ticks(6));
 
-	let focusedColor = $derived(FOCUS_COLORS[plotType]);
+	let focusedColor = $derived(FOCUS_COLORS[activePlot]);
 
 	function formatTick(v: number): string {
-		if (v === 0) return '0';
 		if (Math.abs(v) >= 10) return v.toFixed(0);
-		if (Math.abs(v) >= 1) return v.toFixed(1);
-		return v.toFixed(2);
+		// Shortest exact form ≤2 decimals, so dense domains (q-e) stay distinct.
+		return String(parseFloat(v.toFixed(2)));
 	}
 
 	// Tooltip — single floating div, mouse-positioned.
@@ -162,9 +226,12 @@
 	{#if width > 0}
 		<svg {width} {height} viewBox="0 0 {width} {height}" class="block">
 			<g transform="translate({M.left},{M.top})">
+				<clipPath id="plot-clip-{uid}">
+					<rect width={innerW} height={innerH} />
+				</clipPath>
 				<rect width={innerW} height={innerH} class="fill-muted/10" />
 
-				{#if plotType === 'a-q'}
+				{#if activePlot === 'a-q'}
 					<!-- q = a diagonal: physical limit (circular orbit, e=0) -->
 					{@const x1 = xScale(Math.max(domain.x[0], domain.y[0]))}
 					{@const y1 = yScale(Math.max(domain.x[0], domain.y[0]))}
@@ -200,7 +267,7 @@
 				{/if}
 
 				<!-- Approximate PHA "danger band": q ≈ 1 AU ± 0.05 (Earth-MOID proxy) -->
-				{#if plotType === 'a-q' && (focusedSlug === `${FLAG_SLUG_PREFIX}neo` || focusedSlug === `${FLAG_SLUG_PREFIX}pha`)}
+				{#if activePlot === 'a-q' && (focusedSlug === `${FLAG_SLUG_PREFIX}neo` || focusedSlug === `${FLAG_SLUG_PREFIX}pha`)}
 					{@const bandY1 = yScale(Math.min(1.05, domain.y[1]))}
 					{@const bandY2 = yScale(Math.max(0.95, domain.y[0]))}
 					<rect
@@ -221,67 +288,63 @@
 					/>
 				{/if}
 
-				<!-- Zone polygons -->
-				{#each plotZones as z (z.className)}
-					{@const focused = focusedClassNames.has(z.className)}
-					<path
-						role="button"
-						tabindex="0"
-						aria-label={z.className}
-						d={polyPath(z.polygon)}
-						class="cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2"
-						fill={focused ? focusedColor : 'transparent'}
-						fill-opacity={focused ? 0.22 : 0}
-						stroke={focused ? focusedColor : 'var(--color-muted-foreground)'}
-						stroke-opacity={focused ? 1 : 0.4}
-						stroke-width={focused ? 1.5 : 1}
-						onmouseenter={() => (tip = { kind: 'zone', zone: z })}
-						onclick={() => onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`)}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ' ') {
-								e.preventDefault();
-								onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`);
-							}
-						}}
-					/>
-				{/each}
+				<g clip-path="url(#plot-clip-{uid})">
+					<!-- Zone polygons -->
+					{#each plotZones as z (z.className)}
+						{@const focused = focusedClassNames.has(z.className)}
+						<path
+							role="button"
+							tabindex="0"
+							aria-label={z.className}
+							d={polyPath(z.polygon)}
+							class="cursor-pointer transition-opacity focus:outline-none focus-visible:stroke-2"
+							fill={focused ? focusedColor : 'transparent'}
+							fill-opacity={focused ? 0.22 : 0}
+							stroke={focused ? focusedColor : 'var(--color-muted-foreground)'}
+							stroke-opacity={focused ? 1 : 0.4}
+							stroke-width={focused ? 1.5 : 1}
+							onmouseenter={() => (tip = { kind: 'zone', zone: z })}
+							onclick={() => onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									onZoneClick(`${CLASS_SLUG_PREFIX}${z.className}`);
+								}
+							}}
+						/>
+					{/each}
 
-				<!-- Background dots (non-focused) -->
-				{#each backgroundDots as s (s.name + s.slug)}
-					{@const cx = xScale(sampleX(s) as number)}
-					{@const cy = yScale(s.q)}
-					<circle {cx} {cy} r={1.4} class="fill-foreground/25 pointer-events-none" />
-				{/each}
+					<!-- Background dots (non-focused) -->
+					{#each backgroundDots as d (d.s.name + d.s.slug)}
+						<circle cx={d.px} cy={d.py} r={1.4} class="fill-foreground/25 pointer-events-none" />
+					{/each}
 
-				<!-- Focused dots -->
-				{#each focusedDots as s (s.name + s.slug)}
-					{@const cx = xScale(sampleX(s) as number)}
-					{@const cy = yScale(s.q)}
-					<circle
-						role="img"
-						aria-label={s.name}
-						{cx}
-						{cy}
-						r={1.8}
-						fill={focusedColor}
-						onmouseenter={() => (tip = { kind: 'sample', sample: s })}
-					/>
-				{/each}
+					<!-- Focused dots -->
+					{#each focusedDots as d (d.s.name + d.s.slug)}
+						<circle
+							role="img"
+							aria-label={d.s.name}
+							cx={d.px}
+							cy={d.py}
+							r={1.8}
+							fill={focusedColor}
+							onmouseenter={() => (tip = { kind: 'sample', sample: d.s })}
+						/>
+					{/each}
 
-				<!-- PHA dots, always red, drawn on top -->
-				{#each phaDots as s (s.name + s.slug)}
-					{@const cx = xScale(sampleX(s) as number)}
-					{@const cy = yScale(s.q)}
-					<circle
-						role="img"
-						aria-label={s.name}
-						{cx}
-						{cy}
-						r={2}
-						class="fill-red-500"
-						onmouseenter={() => (tip = { kind: 'sample', sample: s })}
-					/>
-				{/each}
+					<!-- PHA dots, always red, drawn on top -->
+					{#each phaDots as d (d.s.name + d.s.slug)}
+						<circle
+							role="img"
+							aria-label={d.s.name}
+							cx={d.px}
+							cy={d.py}
+							r={2}
+							class="fill-red-500"
+							onmouseenter={() => (tip = { kind: 'sample', sample: d.s })}
+						/>
+					{/each}
+				</g>
 
 				<!-- Border on top: masks zone-polygon strokes that lie along the
 				     chart edge (AST/COM catch-alls, IEO/ATE/APO bottoms at q=0, …). -->
@@ -306,7 +369,7 @@
 						class="fill-muted-foreground"
 						style:font-size="9px"
 					>
-						{plotType === 'a-q' ? m.scatter_axis_a() : m.scatter_axis_e()}
+						{activePlot === 'q-e' ? m.scatter_axis_e() : m.scatter_axis_a()}
 					</text>
 				</g>
 				<g>
@@ -332,14 +395,14 @@
 						class="fill-muted-foreground"
 						style:font-size="9px"
 					>
-						{m.scatter_axis_q()}
+						{activePlot === 'a-T' ? m.scatter_axis_T() : m.scatter_axis_q()}
 					</text>
 				</g>
 			</g>
 		</svg>
 	{/if}
 
-	{#if plotType === 'a-q'}
+	{#if activePlot === 'a-q'}
 		<div
 			class="text-muted-foreground absolute top-1 left-9 flex gap-0 overflow-hidden rounded border border-border"
 			style:font-size="9px"
@@ -363,6 +426,30 @@
 				{m.scatter_range_outer()}
 			</button>
 		</div>
+	{:else if isCometMode}
+		<div
+			class="text-muted-foreground absolute top-1 left-9 flex gap-0 overflow-hidden rounded border border-border"
+			style:font-size="9px"
+		>
+			<button
+				type="button"
+				class="px-1.5 py-0.5 transition-colors"
+				class:bg-foreground={activePlot === 'a-T'}
+				class:text-background={activePlot === 'a-T'}
+				onclick={() => (userPlot = 'a-T')}
+			>
+				{m.scatter_plot_families()}
+			</button>
+			<button
+				type="button"
+				class="px-1.5 py-0.5 transition-colors"
+				class:bg-foreground={activePlot === 'q-e'}
+				class:text-background={activePlot === 'q-e'}
+				onclick={() => (userPlot = 'q-e')}
+			>
+				{m.scatter_plot_trajectories()}
+			</button>
+		</div>
 	{/if}
 
 	{#if tip}
@@ -382,11 +469,16 @@
 				</div>
 			{:else}
 				<div class="font-semibold">{tip.sample.name}</div>
+				{@const tipT =
+					tip.sample.a != null && tip.sample.i != null
+						? tisserand(tip.sample.a, tip.sample.e, tip.sample.i)
+						: null}
 				<div class="text-muted-foreground tabular-nums">
 					a={tip.sample.a == null ? '—' : formatNumber(tip.sample.a)} · e={formatNumber(
 						tip.sample.e
 					)}
-					· q={formatNumber(tip.sample.q)}
+					· q={formatNumber(tip.sample.q)}{#if activePlot === 'a-T' && tipT != null}
+						· T<sub>J</sub>={formatNumber(tipT)}{/if}
 				</div>
 				{#if tip.sample.pha}
 					<div class="font-semibold text-red-500">{m.scatter_tooltip_pha()}</div>

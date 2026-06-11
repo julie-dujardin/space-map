@@ -223,6 +223,7 @@
 	"scatter_axis_a": "半长轴（天文单位）",
 	"scatter_axis_q": "近日点距离（天文单位）",
 	"scatter_axis_e": "偏心率",
+	"scatter_axis_T": "蒂瑟朗参数（Tⱼ）",
 	"scatter_axis_perigee": "近地点（公里）",
 	"scatter_axis_apogee": "远地点（公里）",
 	"condition_code": "条件码",

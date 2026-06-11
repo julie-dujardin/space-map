@@ -62,7 +62,7 @@
 					{populationBySlug}
 					onZoneClick={handleZoneClick}
 				/>
-			{:else if (plotType === 'a-q' || plotType === 'q-e') && samples}
+			{:else if plotType !== 'peri-apo' && samples}
 				<OrbitClassScatter
 					{samples}
 					focusedSlug={global.slug}

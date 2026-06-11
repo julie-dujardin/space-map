@@ -234,6 +234,7 @@
 	"scatter_axis_a": "نصف المحور الأكبر (و.ف.)",
 	"scatter_axis_q": "الحضيض الشمسي (و.ف.)",
 	"scatter_axis_e": "الانحراف المداري",
+	"scatter_axis_T": "معامل تيسران (Tⱼ)",
 	"scatter_axis_perigee": "الحضيض (كم)",
 	"scatter_axis_apogee": "الأوج (كم)",
 	"condition_code": "رمز الحالة",

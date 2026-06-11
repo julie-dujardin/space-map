@@ -261,6 +261,7 @@
 	"scatter_axis_a": "demi-grand axe (UA)",
 	"scatter_axis_q": "périhélie (UA)",
 	"scatter_axis_e": "excentricité",
+	"scatter_axis_T": "paramètre de Tisserand (Tⱼ)",
 	"scatter_axis_perigee": "périgée (km)",
 	"scatter_axis_apogee": "apogée (km)",
 	"condition_code": "Code de condition",
