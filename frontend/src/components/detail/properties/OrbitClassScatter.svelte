@@ -36,7 +36,7 @@
 		height = 240
 	}: Props = $props();
 
-	const M = { top: 8, right: 10, bottom: 24, left: 36 };
+	const M = { top: 8, right: 10, bottom: 36, left: 44 };
 	let width = $state(0); // measured at runtime from the wrapping div
 	let innerW = $derived(Math.max(0, width - M.left - M.right));
 	let innerH = $derived(Math.max(0, height - M.top - M.bottom));
@@ -105,7 +105,7 @@
 	}
 
 	let visibleSamples = $derived(
-		samples.filter((s) => {
+		(samples ?? []).filter((s) => {
 			const sx = sampleX(s);
 			if (sx == null || !Number.isFinite(sx)) return false;
 			return true;
@@ -299,6 +299,15 @@
 							</text>
 						</g>
 					{/each}
+					<text
+						x={innerW / 2}
+						y={M.bottom - 4}
+						text-anchor="middle"
+						class="fill-muted-foreground"
+						style:font-size="9px"
+					>
+						{plotType === 'a-q' ? m.scatter_axis_a() : m.scatter_axis_e()}
+					</text>
 				</g>
 				<g>
 					<line y2={innerH} class="stroke-muted-foreground/60" />
@@ -317,15 +326,18 @@
 							</text>
 						</g>
 					{/each}
+					<text
+						transform="translate({-M.left + 10},{innerH / 2}) rotate(-90)"
+						text-anchor="middle"
+						class="fill-muted-foreground"
+						style:font-size="9px"
+					>
+						{m.scatter_axis_q()}
+					</text>
 				</g>
 			</g>
 		</svg>
 	{/if}
-
-	<!-- Axis labels -->
-	<span class="text-muted-foreground absolute right-2 top-1" style:font-size="9px">
-		{plotType === 'a-q' ? m.scatter_axes_a_q() : m.scatter_axes_q_e()}
-	</span>
 
 	{#if plotType === 'a-q'}
 		<div

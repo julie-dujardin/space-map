@@ -23,7 +23,7 @@
 
 	let { samples, focusedSlug, populationBySlug, onZoneClick, height = 280 }: Props = $props();
 
-	const M = { top: 8, right: 10, bottom: 24, left: 44 };
+	const M = { top: 8, right: 10, bottom: 36, left: 52 };
 	let width = $state(0);
 	let innerW = $derived(Math.max(0, width - M.left - M.right));
 	let innerH = $derived(Math.max(0, height - M.top - M.bottom));
@@ -33,29 +33,21 @@
 		focusedClass ? (SAT_ORBIT_ZONES[focusedClass] ?? null) : null
 	);
 
-	// Inner covers LEO/MEO/HEO/GSO/GTO; outer reaches past the Moon.
-	const DOMAIN_PRESETS = {
-		inner: { x: [100, 50000] as [number, number], y: [100, 50000] as [number, number] },
-		outer: { x: [100, 2_000_000] as [number, number], y: [100, 2_000_000] as [number, number] }
-	};
-	const OUTER_ONLY_ZONES = new Set(['CIS', 'VHEO']);
+	// Single domain that fits every zone (LEO → cislunar+VHEO) on log axes.
+	const domain = { x: [100, 2_000_000] as const, y: [100, 2_000_000] as const };
 
-	let userRange = $state<'inner' | 'outer' | null>(null);
-	let autoRange = $derived.by<'inner' | 'outer'>(() => {
-		if (!focusedClass) return 'inner';
-		if (OUTER_ONLY_ZONES.has(focusedClass)) return 'outer';
-		if (focusedZone) {
-			for (const p of focusedZone.polygon) {
-				if (p.x > 50000 || p.y > 50000) return 'outer';
-			}
-		}
-		return 'inner';
-	});
-	let range = $derived<'inner' | 'outer'>(userRange ?? autoRange);
-	let domain = $derived(DOMAIN_PRESETS[range]);
-
-	let xScale = $derived(scaleLog().domain(domain.x).range([0, innerW]).clamp(true));
-	let yScale = $derived(scaleLog().domain(domain.y).range([innerH, 0]).clamp(true));
+	let xScale = $derived(
+		scaleLog()
+			.domain([...domain.x])
+			.range([0, innerW])
+			.clamp(true)
+	);
+	let yScale = $derived(
+		scaleLog()
+			.domain([...domain.y])
+			.range([innerH, 0])
+			.clamp(true)
+	);
 
 	function polyPath(poly: ZonePoint[]): string {
 		if (poly.length === 0) return '';
@@ -76,12 +68,13 @@
 	let backgroundDots = $derived(visibleSamples.filter((s) => !isFocused(s)));
 	let focusedDots = $derived(visibleSamples.filter((s) => isFocused(s)));
 
-	let xTicks = $derived(xScale.ticks(5));
-	let yTicks = $derived(yScale.ticks(5));
+	// Powers of ten — d3's default log tick set crowds at low magnitudes.
+	const TICKS = [100, 1000, 10000, 100000, 1000000];
 
 	function formatTick(v: number): string {
-		if (v >= 1000) return `${(v / 1000).toFixed(0)}k`;
-		return v.toFixed(0);
+		if (v >= 1_000_000) return `${v / 1_000_000}M`;
+		if (v >= 1000) return `${v / 1000}k`;
+		return `${v}`;
 	}
 
 	// peri = apo (circular orbit) diagonal.
@@ -204,7 +197,7 @@
 
 				<g transform="translate(0,{innerH})">
 					<line x2={innerW} class="stroke-muted-foreground/60" />
-					{#each xTicks as t (t)}
+					{#each TICKS as t (t)}
 						{@const tx = xScale(t)}
 						<g transform="translate({tx},0)">
 							<line y2={3} class="stroke-muted-foreground/60" />
@@ -213,10 +206,19 @@
 							</text>
 						</g>
 					{/each}
+					<text
+						x={innerW / 2}
+						y={M.bottom - 4}
+						text-anchor="middle"
+						class="fill-muted-foreground"
+						style:font-size="9px"
+					>
+						{m.scatter_axis_perigee()}
+					</text>
 				</g>
 				<g>
 					<line y2={innerH} class="stroke-muted-foreground/60" />
-					{#each yTicks as t (t)}
+					{#each TICKS as t (t)}
 						{@const ty = yScale(t)}
 						<g transform="translate(0,{ty})">
 							<line x2={-3} class="stroke-muted-foreground/60" />
@@ -231,43 +233,23 @@
 							</text>
 						</g>
 					{/each}
+					<text
+						transform="translate({-M.left + 10},{innerH / 2}) rotate(-90)"
+						text-anchor="middle"
+						class="fill-muted-foreground"
+						style:font-size="9px"
+					>
+						{m.scatter_axis_apogee()}
+					</text>
 				</g>
 			</g>
 		</svg>
 	{/if}
 
-	<span class="text-muted-foreground absolute right-2 top-1" style:font-size="9px">
-		{m.scatter_axes_peri_apo()}
-	</span>
-
-	<div
-		class="text-muted-foreground absolute top-1 left-12 flex gap-0 overflow-hidden rounded border border-border"
-		style:font-size="9px"
-	>
-		<button
-			type="button"
-			class="px-1.5 py-0.5 transition-colors"
-			class:bg-foreground={range === 'inner'}
-			class:text-background={range === 'inner'}
-			onclick={() => (userRange = 'inner')}
-		>
-			{m.scatter_range_inner()}
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-0.5 transition-colors"
-			class:bg-foreground={range === 'outer'}
-			class:text-background={range === 'outer'}
-			onclick={() => (userRange = 'outer')}
-		>
-			{m.scatter_range_outer()}
-		</button>
-	</div>
-
 	{#if focusedIsIncOnly && focusedZone}
-		<!-- Inc-only zones have no polygon — surface the rule as a banner. -->
+		<!-- Inc-only zones have no polygon — surface the rule as a top banner. -->
 		<div
-			class="bg-muted/60 text-muted-foreground absolute right-2 bottom-6 rounded px-1.5 py-0.5"
+			class="bg-muted/70 text-muted-foreground absolute top-1 right-2 left-14 rounded px-1.5 py-0.5 leading-tight"
 			style:font-size="9px"
 		>
 			{focusedZone.tooltipDefinition()}
