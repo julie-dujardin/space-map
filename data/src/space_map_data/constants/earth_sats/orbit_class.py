@@ -1,9 +1,10 @@
 """Earth-orbit zone classification.
 
-Shape classes (VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/MOL/TUN/GTO/CIS/VHEO)
-are mutually exclusive — the most specific match wins. Low orbits add at
-most one inclination band (SSO/Polar/Retrograde/Equatorial), GCAT-style.
-Bands follow GCAT (planet4589.org/space/gcat/web/intro/orbits.html);
+Shape classes (VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/HIGH/MOL/TUN/GTO/CIS/
+VHEO) are mutually exclusive — the most specific match wins. Low orbits
+add at most one inclination band (SSO/Polar/Retrograde/Equatorial),
+GCAT-style. Bands follow GCAT
+(planet4589.org/space/gcat/web/intro/orbits.html);
 period/eccentricity-based GCAT cuts are approximated on the perigee/
 apogee plane.
 """
@@ -15,8 +16,8 @@ GEO_ALT_KM = 35786.0
 
 VLEO_APO_MAX = 600  # GCAT LLEO upper bound
 LEO_APO_MAX = 2000
-MEO_APO_MAX = 35000
 HEO_APO_MAX = 50000
+HEO_ECC_MIN = 0.5  # GCAT MEO/HEO eccentricity boundary
 CISLUNAR_APO_MAX = 500000
 GSO_BAND_HALF_WIDTH = 2000
 # IADC/FCC disposal: re-orbit at least ~200-300 km above GEO.
@@ -46,6 +47,7 @@ class EarthOrbitClass(StrEnum):
     GEO = "GEO"
     IGSO = "IGSO"
     GRA = "GRA"
+    HIGH = "HIGH"
     MOL = "MOL"
     TUN = "TUN"
     SSO = "SSO"
@@ -64,6 +66,7 @@ PRIMARY_ZONES: frozenset[EarthOrbitClass] = frozenset(
         EarthOrbitClass.GEO,
         EarthOrbitClass.IGSO,
         EarthOrbitClass.GRA,
+        EarthOrbitClass.HIGH,
         EarthOrbitClass.MOL,
         EarthOrbitClass.TUN,
         EarthOrbitClass.GTO,
@@ -114,12 +117,14 @@ def _shape_class(peri: float, apo: float, inc: float | None) -> EarthOrbitClass:
         if inc < GEO_INC_MAX_DEG:
             return EarthOrbitClass.GEO
         return EarthOrbitClass.IGSO
-    if apo < MEO_APO_MAX and peri >= LEO_APO_MAX:
-        return EarthOrbitClass.MEO
     if apo < HEO_APO_MAX:
         # Eccentric near-sync (perigee in the band, apogee out).
         if abs(peri - GEO_ALT_KM) < GSO_BAND_HALF_WIDTH:
+            if peri >= GRAVEYARD_PERI_MIN:
+                return EarthOrbitClass.GRA
             return EarthOrbitClass.GSO
+        if peri > GEO_ALT_KM + GSO_BAND_HALF_WIDTH:
+            return EarthOrbitClass.HIGH
         if (
             peri < LEO_APO_MAX
             and MOLNIYA_APO_MIN <= apo <= MOLNIYA_APO_MAX
@@ -136,10 +141,19 @@ def _shape_class(peri: float, apo: float, inc: float | None) -> EarthOrbitClass:
             return EarthOrbitClass.TUN
         if peri < LEO_APO_MAX and GTO_APO_MIN <= apo <= GTO_APO_MAX:
             return EarthOrbitClass.GTO
-        return EarthOrbitClass.HEO
+        if _eccentricity(peri, apo) >= HEO_ECC_MIN:
+            return EarthOrbitClass.HEO
+        return EarthOrbitClass.MEO
     if apo < CISLUNAR_APO_MAX:
+        if peri > GEO_ALT_KM + GSO_BAND_HALF_WIDTH:
+            return EarthOrbitClass.HIGH
         return EarthOrbitClass.CIS
     return EarthOrbitClass.VHEO
+
+
+def _eccentricity(peri: float, apo: float) -> float:
+    r_peri, r_apo = peri + R_EARTH_KM, apo + R_EARTH_KM
+    return (r_apo - r_peri) / (r_apo + r_peri)
 
 
 def _inclination_band(inc: float) -> EarthOrbitClass | None:

@@ -118,6 +118,7 @@ EARTH_ORBIT_CLASS_QIDS: dict[EarthOrbitClass, str | None] = {
     EarthOrbitClass.GEO: "Q192316",  # geostationary orbit
     EarthOrbitClass.IGSO: None,  # inclined geosynchronous: no page
     EarthOrbitClass.GRA: "Q1457566",  # graveyard orbit
+    EarthOrbitClass.HIGH: "Q218056",  # high Earth orbit
     EarthOrbitClass.MOL: "Q1063974",  # Molniya orbit
     EarthOrbitClass.TUN: "Q846805",  # Tundra orbit
     EarthOrbitClass.SSO: "Q174241",  # Sun-synchronous orbit
