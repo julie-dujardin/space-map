@@ -315,6 +315,8 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 /** Geostationary altitude (km above Earth surface). */
 export const GEO_ALT_KM = 35786;
 
+export const R_EARTH_KM = 6378.137;
+
 /**
  * Earth-orbit zones for a sat given perigee/apogee/inclination.
  * Mirror of `classify_earth_orbit` in the data tier — kept in sync by hand.
@@ -346,10 +348,10 @@ function shapeClass(peri: number, apo: number, inc: number | null | undefined): 
 		if (inc == null) return 'GSO';
 		return inc < 3 ? 'GEO' : 'IGSO';
 	}
-	if (apo < 35000 && peri >= 2000) return 'MEO';
 	if (apo < 50000) {
 		// Eccentric near-sync (perigee in the band, apogee out).
-		if (Math.abs(peri - GEO_ALT_KM) < 2000) return 'GSO';
+		if (Math.abs(peri - GEO_ALT_KM) < 2000) return peri >= GEO_ALT_KM + 200 ? 'GRA' : 'GSO';
+		if (peri > GEO_ALT_KM + 2000) return 'HIGH';
 		if (peri < 2000 && apo >= 35000 && apo <= 45000 && inc != null && inc >= 62 && inc <= 64)
 			return 'MOL';
 		if (
@@ -361,10 +363,17 @@ function shapeClass(peri: number, apo: number, inc: number | null | undefined): 
 		)
 			return 'TUN';
 		if (peri < 2000 && apo >= 30000 && apo <= 40000) return 'GTO';
-		return 'HEO';
+		return eccentricity(peri, apo) >= 0.5 ? 'HEO' : 'MEO';
 	}
-	if (apo < 500000) return 'CIS';
+	if (apo < 500000) return peri > GEO_ALT_KM + 2000 ? 'HIGH' : 'CIS';
 	return 'VHEO';
+}
+
+/** GCAT's MEO/HEO boundary sits at eccentricity 0.5. */
+function eccentricity(peri: number, apo: number): number {
+	const rPeri = peri + R_EARTH_KM;
+	const rApo = apo + R_EARTH_KM;
+	return (rApo - rPeri) / (rApo + rPeri);
 }
 
 function inclinationBand(inc: number): string | null {
@@ -376,9 +385,20 @@ function inclinationBand(inc: number): string | null {
 	return null;
 }
 
+/** Ecc-0.5 MEO/HEO boundary: r_apo = 3·r_peri ⇒ apo = 3·peri + 2·R⊕. */
+function heoFloor(peri: number): ZonePoint {
+	return { x: peri, y: 3 * peri + 2 * R_EARTH_KM };
+}
+
+/** Sampled perigees approximating the ecc-0.5 curve on the log-log chart. */
+const HEO_FLOOR_PERIS = [100, 500, 1000, 2000, 4000, 8000];
+
+/** Perigee where the ecc-0.5 floor meets the HEO apogee ceiling (50000 km). */
+const HEO_PERI_MAX = (50000 - 2 * R_EARTH_KM) / 3;
+
 /**
  * Earth-sat orbit zones on the perigee × apogee plane (km, log-log).
- * Inc-only overlays (SSO/POL/RET/EQU/MOL/TUN/GEO) carry empty polygons
+ * Inc-only overlays (SSO/POL/RET/EQU/TUN/GEO) carry empty polygons
  * and rely on per-sample `classes` highlighting.
  */
 export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
@@ -403,34 +423,43 @@ export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
 		],
 		tooltipDefinition: () => m.zone_def_LEO()
 	},
+	// Low-eccentricity (< 0.5) catch-all between LEO and the sync band; the
+	// top-left edge follows the ecc-0.5 curve shared with HEO.
 	MEO: {
 		className: 'MEO',
 		plotType: 'peri-apo',
 		polygon: [
+			{ x: 100, y: 2000 },
 			{ x: 2000, y: 2000 },
-			{ x: 35000, y: 35000 },
-			{ x: 2000, y: 35000 }
+			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM - 2000 },
+			{ x: GEO_ALT_KM - 2000, y: 50000 },
+			{ x: HEO_PERI_MAX, y: 50000 },
+			...HEO_FLOOR_PERIS.map(heoFloor).reverse()
 		],
 		tooltipDefinition: () => m.zone_def_MEO()
 	},
+	// Above the ecc-0.5 curve, below the 50000 km apogee ceiling.
 	HEO: {
 		className: 'HEO',
 		plotType: 'peri-apo',
 		polygon: [
-			{ x: 100, y: 2000 },
-			{ x: 2000, y: 2000 },
-			{ x: 2000, y: 50000 },
+			...HEO_FLOOR_PERIS.map(heoFloor),
+			{ x: HEO_PERI_MAX, y: 50000 },
 			{ x: 100, y: 50000 }
 		],
 		tooltipDefinition: () => m.zone_def_HEO()
 	},
+	// Sync band square plus the perigee-in-band strip (apogee out, below the
+	// graveyard floor).
 	GSO: {
 		className: 'GSO',
 		plotType: 'peri-apo',
 		polygon: [
 			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM - 2000 },
 			{ x: GEO_ALT_KM + 2000, y: GEO_ALT_KM + 2000 },
-			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM + 2000 }
+			{ x: GEO_ALT_KM + 200, y: GEO_ALT_KM + 2000 },
+			{ x: GEO_ALT_KM + 200, y: 50000 },
+			{ x: GEO_ALT_KM - 2000, y: 50000 }
 		],
 		tooltipDefinition: () => m.zone_def_GSO()
 	},
@@ -441,18 +470,29 @@ export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
 		polygon: [
 			{ x: GEO_ALT_KM + 200, y: GEO_ALT_KM + 200 },
 			{ x: GEO_ALT_KM + 2000, y: GEO_ALT_KM + 2000 },
-			{ x: GEO_ALT_KM + 200, y: GEO_ALT_KM + 2000 }
+			{ x: GEO_ALT_KM + 2000, y: 50000 },
+			{ x: GEO_ALT_KM + 200, y: 50000 }
 		],
 		tooltipDefinition: () => m.zone_def_GRA()
+	},
+	// Perigee entirely above the sync band, apogee below the cislunar cut.
+	HIGH: {
+		className: 'HIGH',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: GEO_ALT_KM + 2000, y: GEO_ALT_KM + 2000 },
+			{ x: 500000, y: 500000 },
+			{ x: GEO_ALT_KM + 2000, y: 500000 }
+		],
+		tooltipDefinition: () => m.zone_def_HIGH()
 	},
 	CIS: {
 		className: 'CIS',
 		plotType: 'peri-apo',
-		// Bottom edge tracks the peri=apo diagonal up to apo=50k.
 		polygon: [
 			{ x: 100, y: 50000 },
-			{ x: 50000, y: 50000 },
-			{ x: 500000, y: 500000 },
+			{ x: GEO_ALT_KM + 2000, y: 50000 },
+			{ x: GEO_ALT_KM + 2000, y: 500000 },
 			{ x: 100, y: 500000 }
 		],
 		tooltipDefinition: () => m.zone_def_CIS()

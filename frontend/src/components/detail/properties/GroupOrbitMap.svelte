@@ -10,6 +10,7 @@
 		type EarthOrbitSample
 	} from '$lib/charts/orbit-zones';
 	import { getContext } from 'svelte';
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
 	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
@@ -70,6 +71,13 @@
 					{populationBySlug}
 					onZoneClick={handleZoneClick}
 				/>
+			{:else}
+				<div
+					class="text-muted-foreground flex items-center justify-center"
+					style:height="{plotType === 'peri-apo' ? 280 : 240}px"
+				>
+					<LoaderCircleIcon class="size-6 animate-spin" />
+				</div>
 			{/if}
 		</div>
 	</div>
