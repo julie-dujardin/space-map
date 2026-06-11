@@ -241,6 +241,7 @@
 	"orbit_class_GEO": "Orbite géostationnaire",
 	"orbit_class_IGSO": "Orbite géosynchrone inclinée",
 	"orbit_class_GRA": "Orbite cimetière",
+	"orbit_class_HIGH": "Orbite terrestre haute",
 	"orbit_class_MOL": "Orbite Molniya",
 	"orbit_class_TUN": "Orbite Toundra",
 	"orbit_class_SSO": "Orbite héliosynchrone",

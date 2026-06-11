@@ -136,6 +136,10 @@ def _build_localized(
         if wd:
             name = wd["labels"].get(lang) or wd["labels"].get("en")
             if name:
+                # Wikidata labels orbit zones sentence-case ("low Earth
+                # orbit"); the UI wants a capitalized leading letter.
+                if group.type in (GroupType.ORBIT_CLASS, GroupType.EARTH_ORBIT_CLASS):
+                    name = name[:1].upper() + name[1:]
                 data["name"] = name
             desc = wd["descriptions"].get(lang)
             if desc:

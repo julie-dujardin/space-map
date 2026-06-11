@@ -306,6 +306,7 @@
 	"orbit_class_GEO": "Geostationary Orbit",
 	"orbit_class_IGSO": "Inclined Geosynchronous Orbit",
 	"orbit_class_GRA": "Graveyard Orbit",
+	"orbit_class_HIGH": "High Earth Orbit",
 	"orbit_class_MOL": "Molniya Orbit",
 	"orbit_class_TUN": "Tundra Orbit",
 	"orbit_class_SSO": "Sun-Synchronous Orbit",

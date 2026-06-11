@@ -214,6 +214,7 @@
 	"orbit_class_GEO": "静止軌道",
 	"orbit_class_IGSO": "傾斜対地同期軌道",
 	"orbit_class_GRA": "墓場軌道",
+	"orbit_class_HIGH": "高軌道",
 	"orbit_class_MOL": "モルニヤ軌道",
 	"orbit_class_TUN": "ツンドラ軌道",
 	"orbit_class_SSO": "太陽同期軌道",

@@ -203,6 +203,7 @@
 	"orbit_class_GEO": "地球静止轨道",
 	"orbit_class_IGSO": "倾斜地球同步轨道",
 	"orbit_class_GRA": "坟墓轨道",
+	"orbit_class_HIGH": "高地球轨道",
 	"orbit_class_MOL": "闪电轨道",
 	"orbit_class_TUN": "苔原轨道",
 	"orbit_class_SSO": "太阳同步轨道",

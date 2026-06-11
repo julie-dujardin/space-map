@@ -214,6 +214,7 @@
 	"orbit_class_GEO": "مدار ثابت بالنسبة للأرض",
 	"orbit_class_IGSO": "مدار متزامن أرضيًا مائل",
 	"orbit_class_GRA": "مدار المقبرة",
+	"orbit_class_HIGH": "مدار أرضي مرتفع",
 	"orbit_class_MOL": "مدار مولنيا",
 	"orbit_class_TUN": "مدار التندرا",
 	"orbit_class_SSO": "مدار متزامن شمسيًا",
