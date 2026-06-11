@@ -54,6 +54,7 @@ class GroupSatcatStats:
     decayed: int = 0
     launch_sites: dict[str, int] = field(default_factory=dict)
     constellations: dict[str, int] = field(default_factory=dict)
+    orbit_classes: dict[str, int] = field(default_factory=dict)
     first_launch_date: str | None = None
 
 

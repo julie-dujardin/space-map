@@ -112,9 +112,12 @@ EARTH_ORBIT_CLASS_QIDS: dict[EarthOrbitClass, str | None] = {
     EarthOrbitClass.GSO: "Q472251",  # geosynchronous orbit (any inclination)
     EarthOrbitClass.HEO: "Q38982",  # highly elliptical orbit
     EarthOrbitClass.CIS: "Q95319835",  # cislunar space (few sitelinks but exact)
-    EarthOrbitClass.VHEO: None,  # No page
+    EarthOrbitClass.VHEO: None,  # very high Earth orbit: no page
+    EarthOrbitClass.VLEO: "Q118905801",  # very low Earth orbit
     EarthOrbitClass.GTO: "Q1138649",  # geostationary transfer orbit
     EarthOrbitClass.GEO: "Q192316",  # geostationary orbit
+    EarthOrbitClass.IGSO: None,  # inclined geosynchronous: no page
+    EarthOrbitClass.GRA: "Q1457566",  # graveyard orbit
     EarthOrbitClass.MOL: "Q1063974",  # Molniya orbit
     EarthOrbitClass.TUN: "Q846805",  # Tundra orbit
     EarthOrbitClass.SSO: "Q174241",  # Sun-synchronous orbit
