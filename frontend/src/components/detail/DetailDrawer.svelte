@@ -20,7 +20,12 @@
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
+	import {
+		type Focusable,
+		focusableFallbackName,
+		focusableKey,
+		groupSlugLabel
+	} from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './ImageGallery.svelte';
@@ -160,7 +165,7 @@
 						global: {
 							id: `group-${slug}`,
 							type: 'group',
-							name: detail.localized?.name ?? slug,
+							name: detail.localized?.name ?? groupSlugLabel(slug),
 							images: detail.global?.images,
 							cross_refs: detail.global?.wikidata_qid
 								? { wikidata_qid: detail.global.wikidata_qid }

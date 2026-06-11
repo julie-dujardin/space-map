@@ -1124,11 +1124,13 @@ interface OrbitSamplesFile {
 ### `groups/__sat_orbit_samples__.json.gz`
 
 Earth-sat scatter samples. Same role as `__orbit_samples__.json.gz` but for
-the 14-zone Earth orbit-class chart (`class-LEO` … `class-EQU`). Sampled
-per primary zone (LEO/MEO/GSO/HEO/CIS/VHEO) with sqrt-weighted allocation
-and a per-zone floor; total ≈ 1000. Each dot carries every zone it
-belongs to via `classes` so overlay zones (SSO, Polar, Molniya, …) light
-up the same dots when focused. Source: `build_earth_orbit_classes` in
+the 17-zone Earth orbit-class chart (`class-LEO` … `class-EQU`). Sampled
+per shape class (one per sat: VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/MOL/TUN/
+GTO/CIS/VHEO, most specific wins) with sqrt-weighted allocation and a
+per-class floor; total ≈ 1000. Each dot also carries its inclination band
+(SSO/Polar/Retrograde/Equatorial, low orbits only) via `classes` so band
+zones light up the same dots when focused. Source:
+`build_earth_orbit_classes` in
 `data/src/space_map_data/export/groups/earth_sat.py`.
 
 Source data:
@@ -1136,20 +1138,21 @@ Source data:
   (`satcat.perigee`, `satcat.apogee`).
 - Inclination from the latest CelesTrak GP snapshot on disk
   (`gp-active.csv` + `groups/*.csv`); ~45 % of currently-active SATCAT
-  rows have no GP entry and therefore no inclination — those still ship
-  with a primary zone (apogee/perigee-driven) but no SSO/Polar/etc.
-  overlays. Space-Track ingest is planned to close that gap.
+  rows have no GP entry and therefore no inclination — those park in the
+  apogee/perigee-driven fallbacks (GSO/GTO/HEO instead of GEO/IGSO/MOL/
+  TUN) and carry no inclination band. Space-Track ingest is planned to
+  close that gap.
 - Decayed sats (`decay_date` set) and non-Earth-centred orbits
   (`orbit_center != EARTH`) are excluded.
 
 ```typescript
 interface EarthOrbitSample {
-  slug: string;                  // Primary zone slug, e.g. "class-LEO"
+  slug: string;                  // Shape class slug, e.g. "class-LEO"
   name: string;                  // SATCAT OBJECT_NAME → Object.name fallback
   perigee_km: number;            // km above Earth surface
   apogee_km: number;             // km above Earth surface
   inclination_deg: number | null; // deg; null when no GP row
-  classes: string[];             // All zone names this dot belongs to (primary + overlays)
+  classes: string[];             // Shape class + optional inclination band
 }
 interface EarthOrbitSamplesFile {
   samples: EarthOrbitSample[];
@@ -1158,15 +1161,15 @@ interface EarthOrbitSamplesFile {
 
 ### Earth-sat orbit-class groups (`class-LEO`, `class-SSO`, …)
 
-The 14 Earth orbit zones from
+The 17 Earth orbit zones from
 `data/src/space_map_data/constants/earth_sats/orbit_class.py` ship as
 `GroupType.EARTH_ORBIT_CLASS` groups with bundles, membership entries in
 `membership/earth.json.gz`, and bucket pages under `groups/__global__/`
 and `groups/{lang}/` — the same shape as constellation/operator/etc.
 groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
 `active_count`, plus localized `launch_sites` and `constellations`
-cross-link tables. An object can belong to several classes (e.g. SSO ∪
-Polar ∪ LEO) — membership rules in
+cross-link tables. An object holds exactly one shape class plus at most
+one inclination band (e.g. VLEO + SSO) — membership rules in
 `classify_earth_orbit`.
 
 ### Localized (`groups/{lang}/{bucket}.json.gz`)

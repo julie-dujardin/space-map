@@ -318,6 +318,7 @@ export const GEO_ALT_KM = 35786;
 /**
  * Earth-orbit zones for a sat given perigee/apogee/inclination.
  * Mirror of `classify_earth_orbit` in the data tier — kept in sync by hand.
+ * Returns one shape class plus at most one inclination band.
  */
 export function classifyEarthOrbit(
 	perigeeKm: number | null | undefined,
@@ -325,34 +326,54 @@ export function classifyEarthOrbit(
 	inclinationDeg: number | null | undefined
 ): string[] {
 	if (perigeeKm == null || apogeeKm == null) return [];
-	const peri = perigeeKm;
-	const apo = apogeeKm;
-	const classes: string[] = [];
-
-	if (apo < 2000) classes.push('LEO');
-	else if (apo < 35000) classes.push(peri >= 2000 ? 'MEO' : 'HEO');
-	else if (apo < 50000) classes.push(Math.abs(peri - GEO_ALT_KM) < 2000 ? 'GSO' : 'HEO');
-	else if (apo < 500000) classes.push('CIS');
-	else classes.push('VHEO');
-
-	if (peri < 2000 && apo >= 30000 && apo <= 40000) classes.push('GTO');
-
-	if (inclinationDeg == null) return classes;
-	const inc = inclinationDeg;
-
-	if (Math.abs(peri - GEO_ALT_KM) < 2000 && Math.abs(apo - GEO_ALT_KM) < 2000 && inc < 1)
-		classes.push('GEO');
-	if (peri < 2000 && apo >= 35000 && apo <= 45000 && Math.abs(inc - 63.4) <= 3) classes.push('MOL');
-	if (peri >= 20000 && peri <= 50000 && apo >= 35000 && apo <= 50000 && Math.abs(inc - 63.4) <= 5)
-		classes.push('TUN');
-
-	const isSso = inc >= 96 && inc <= 100 && apo < 2000;
-	if (isSso) classes.push('SSO');
-	if (inc >= 80 && inc <= 100) classes.push('POL');
-	if (inc > 90 && !isSso) classes.push('RET');
-	if (inc < 10) classes.push('EQU');
-
+	const classes = [shapeClass(perigeeKm, apogeeKm, inclinationDeg)];
+	if (apogeeKm < 2000 && inclinationDeg != null) {
+		const band = inclinationBand(inclinationDeg);
+		if (band != null) classes.push(band);
+	}
 	return classes;
+}
+
+function shapeClass(peri: number, apo: number, inc: number | null | undefined): string {
+	if (apo < 600) return 'VLEO';
+	if (apo < 2000) return 'LEO';
+	const inGsoBand = Math.abs(peri - GEO_ALT_KM) < 2000 && Math.abs(apo - GEO_ALT_KM) < 2000;
+	if (inGsoBand) {
+		// Graveyard sats sit in the GSO band but are no longer station-kept,
+		// so geometry trumps inclination. IGSO has no inclination cap
+		// (BeiDou/QZSS fly at 43-55 deg).
+		if (peri >= GEO_ALT_KM + 200) return 'GRA';
+		if (inc == null) return 'GSO';
+		return inc < 3 ? 'GEO' : 'IGSO';
+	}
+	if (apo < 35000 && peri >= 2000) return 'MEO';
+	if (apo < 50000) {
+		// Eccentric near-sync (perigee in the band, apogee out).
+		if (Math.abs(peri - GEO_ALT_KM) < 2000) return 'GSO';
+		if (peri < 2000 && apo >= 35000 && apo <= 45000 && inc != null && inc >= 62 && inc <= 64)
+			return 'MOL';
+		if (
+			peri >= 20000 &&
+			peri < GEO_ALT_KM - 2000 &&
+			apo >= 35000 &&
+			inc != null &&
+			Math.abs(inc - 63.4) <= 5
+		)
+			return 'TUN';
+		if (peri < 2000 && apo >= 30000 && apo <= 40000) return 'GTO';
+		return 'HEO';
+	}
+	if (apo < 500000) return 'CIS';
+	return 'VHEO';
+}
+
+function inclinationBand(inc: number): string | null {
+	if (inc >= 95 && inc <= 104) return 'SSO';
+	if (inc >= 85 && inc <= 95) return 'POL';
+	// GCAT: retrograde band starts where sun-sync ends.
+	if (inc > 104) return 'RET';
+	if (inc < 25) return 'EQU';
+	return null;
 }
 
 /**
@@ -361,13 +382,24 @@ export function classifyEarthOrbit(
  * and rely on per-sample `classes` highlighting.
  */
 export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
+	VLEO: {
+		className: 'VLEO',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: 100, y: 100 },
+			{ x: 600, y: 600 },
+			{ x: 100, y: 600 }
+		],
+		tooltipDefinition: () => m.zone_def_VLEO()
+	},
 	LEO: {
 		className: 'LEO',
 		plotType: 'peri-apo',
 		polygon: [
-			{ x: 100, y: 100 },
+			{ x: 600, y: 600 },
 			{ x: 2000, y: 2000 },
-			{ x: 100, y: 2000 }
+			{ x: 100, y: 2000 },
+			{ x: 100, y: 600 }
 		],
 		tooltipDefinition: () => m.zone_def_LEO()
 	},
@@ -401,6 +433,17 @@ export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
 			{ x: GEO_ALT_KM - 2000, y: GEO_ALT_KM + 2000 }
 		],
 		tooltipDefinition: () => m.zone_def_GSO()
+	},
+	// Listed after GSO so the smaller zone stays hover/clickable on top.
+	GRA: {
+		className: 'GRA',
+		plotType: 'peri-apo',
+		polygon: [
+			{ x: GEO_ALT_KM + 200, y: GEO_ALT_KM + 200 },
+			{ x: GEO_ALT_KM + 2000, y: GEO_ALT_KM + 2000 },
+			{ x: GEO_ALT_KM + 200, y: GEO_ALT_KM + 2000 }
+		],
+		tooltipDefinition: () => m.zone_def_GRA()
 	},
 	CIS: {
 		className: 'CIS',
@@ -442,10 +485,24 @@ export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
 		polygon: [],
 		tooltipDefinition: () => m.zone_def_GEO()
 	},
+	IGSO: {
+		className: 'IGSO',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_IGSO()
+	},
+	// Overlaps GTO on 35-40k; listed after it so it stays clickable on top.
+	// Membership is inclination-gated (62-64 deg), the polygon is just the
+	// peri-apo footprint.
 	MOL: {
 		className: 'MOL',
 		plotType: 'peri-apo',
-		polygon: [],
+		polygon: [
+			{ x: 100, y: 35000 },
+			{ x: 2000, y: 35000 },
+			{ x: 2000, y: 45000 },
+			{ x: 100, y: 45000 }
+		],
 		tooltipDefinition: () => m.zone_def_MOL()
 	},
 	TUN: {

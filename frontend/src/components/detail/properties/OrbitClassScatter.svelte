@@ -85,7 +85,8 @@
 		'a-q': {
 			// Inner cuts off right before centaurs (a = 5.5 AU); outer picks
 			// up from there.
-			inner: { x: [0, 5.5] as [number, number], y: [0, 5] as [number, number] },
+			// y reaches past the q = a apex at 5.5 so the Trojan zone's top shows.
+			inner: { x: [0, 5.5] as [number, number], y: [0, 5.5] as [number, number] },
 			outer: { x: [5.5, 100] as [number, number], y: [0, 60] as [number, number] }
 		},
 		'q-e': QE_DOMAIN,
