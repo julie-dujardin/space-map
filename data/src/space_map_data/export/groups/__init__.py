@@ -51,11 +51,26 @@ def run_groups_tier(
             for slug, ids in mem.items()
         }
         all_counts.update(extra_member_counts)
-        category_data = build_category_data(session, all_counts)
+        earth_launch_histograms = {
+            slug: s.launch_histogram
+            for slug, s in earth_orbit_stats.satcat_stats.items()
+            if s.launch_histogram
+        }
+        category_data = build_category_data(
+            session,
+            all_counts,
+            small_body_stats.discovery_histograms,
+            earth_launch_histograms,
+        )
 
     extra_member_counts.update(category_data.member_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
     extra_notable_members.update(category_data.notable_members)
+    # Category discovery charts ride the same per-slug path as small-body
+    # classes; satellite launch charts need their own override since categories
+    # carry no GroupSatcatStats.
+    extra_histograms = dict(small_body_stats.discovery_histograms)
+    extra_histograms.update(category_data.discovery_histograms)
 
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
@@ -67,7 +82,8 @@ def run_groups_tier(
         build.membership,
         build.stats,
         extra_member_counts=extra_member_counts,
-        extra_histograms=small_body_stats.discovery_histograms,
+        extra_histograms=extra_histograms,
+        extra_launch_histograms=category_data.launch_histograms,
         extra_largest_bodies=small_body_stats.largest_bodies,
         extra_pha_counts=small_body_stats.pha_counts,
         extra_notable_members=extra_notable_members,

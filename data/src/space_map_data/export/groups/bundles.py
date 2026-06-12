@@ -65,6 +65,7 @@ def _build_global(
     extracted: dict | None,
     stats: GroupSatcatStats | None,
     discovery_histogram: dict[int, int] | None,
+    launch_histogram_override: dict[int, int] | None,
     images: list[dict] | None,
     largest_body: LargestBody | None,
     pha_count: int,
@@ -95,6 +96,12 @@ def _build_global(
             data["active_count"] = stats.active
         if stats.decayed:
             data["decayed_count"] = stats.decayed
+    # Categories carry no GroupSatcatStats; their satellite launch chart comes
+    # in via the override instead of the per-group stats above.
+    if "launch_histogram" not in data and launch_histogram_override:
+        data["launch_histogram"] = {
+            str(year): n for year, n in sorted(launch_histogram_override.items())
+        }
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
@@ -460,6 +467,7 @@ def write_group_bundles(
     stats_by_type: dict[GroupType, dict[str, GroupSatcatStats]],
     extra_member_counts: dict[str, int] | None = None,
     extra_histograms: dict[str, dict[int, int]] | None = None,
+    extra_launch_histograms: dict[str, dict[int, int]] | None = None,
     extra_largest_bodies: dict[str, LargestBody] | None = None,
     extra_pha_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
@@ -489,6 +497,7 @@ def write_group_bundles(
         images = collect_group_images(group.slug)
         stats = satcat_stats.get(group.slug)
         discovery_histogram = (extra_histograms or {}).get(group.slug)
+        launch_histogram_override = (extra_launch_histograms or {}).get(group.slug)
         largest_body = (extra_largest_bodies or {}).get(group.slug)
         pha_count = (extra_pha_counts or {}).get(group.slug, 0)
         members = (extra_notable_members or {}).get(group.slug)
@@ -501,6 +510,7 @@ def write_group_bundles(
             extracted,
             stats,
             discovery_histogram,
+            launch_histogram_override,
             images,
             largest_body,
             pha_count,

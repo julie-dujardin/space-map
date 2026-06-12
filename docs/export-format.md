@@ -1101,7 +1101,8 @@ interface GlobalGroupData {
   categories?: SatelliteCategory[]; // Constellation-only; top-level use cases (communications, navigation, ...)
 
   // Earth-sat groups (constellation / operator / launch_site / manufacturer / country).
-  // Computed from SATCAT; absent on small-body groups.
+  // Computed from SATCAT; absent on small-body groups. Also present on the
+  // Satellites category, summed over the primary shape classes (LEO/MEO/...).
   launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
   first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
   active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
@@ -1112,7 +1113,8 @@ interface GlobalGroupData {
   // Rows lacking a parseable year are excluded from the histogram but
   // still count in member_count. NEO/PHA flags overlap with the orbit
   // class an object belongs to, so the same row contributes to multiple
-  // small-body histograms.
+  // small-body histograms. Also present on the Asteroids and Comets
+  // categories, summed over their constituent orbit classes (flags excluded).
   discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
 
   // Member with the largest SBDB.diameter; absent when no member has a

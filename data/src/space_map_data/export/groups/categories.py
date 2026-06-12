@@ -48,6 +48,21 @@ class CategoryData:
     )  # cat slug -> child slugs
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     member_counts: dict[str, int] = field(default_factory=dict)
+    discovery_histograms: dict[str, dict[int, int]] = field(
+        default_factory=dict
+    )  # cat slug -> {year: count}
+    launch_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
+
+
+def _sum_histograms(
+    slugs: list[str], source: dict[str, dict[int, int]]
+) -> dict[int, int]:
+    """Sum per-slug year histograms over a partition of child slugs."""
+    out: dict[int, int] = {}
+    for slug in slugs:
+        for year, n in source.get(slug, {}).items():
+            out[year] = out.get(year, 0) + n
+    return out
 
 
 def _body_member(obj_id: str, qid: str | None, name: str | None) -> NotableObject:
@@ -102,12 +117,19 @@ def _solar_system_members(
 
 
 def build_category_data(
-    session: Session, member_counts: dict[str, int]
+    session: Session,
+    member_counts: dict[str, int],
+    discovery_histograms: dict[str, dict[int, int]],
+    launch_histograms: dict[str, dict[int, int]],
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
     ``member_counts`` is the flattened ``{slug: n}`` for all non-category
     groups; used to drop empty zones and rank constellations.
+    ``discovery_histograms`` is keyed by small-body class slug and
+    ``launch_histograms`` by earth orbit-class slug; both are summed over the
+    classes that partition each category (orbit classes for small bodies, the
+    primary shape classes for satellites) to give the category-level chart.
     """
 
     def nonempty(slug: str) -> bool:
@@ -174,6 +196,21 @@ def build_category_data(
         PLANETS_SLUG: len(planet_members),
     }
 
+    # Discovery/launch charts: sum the histograms over the classes that
+    # partition each category (flags are subsets, so they're excluded; sats
+    # sum only the primary shape classes — same partition as satellites_total).
+    primary_sat_slugs = [
+        f"{CLASS_SLUG_PREFIX}{c.name}" for c in EarthOrbitClass if c.primary
+    ]
+    discovery_out: dict[str, dict[int, int]] = {}
+    if asteroid_hist := _sum_histograms(asteroid_classes, discovery_histograms):
+        discovery_out[ASTEROIDS_SLUG] = asteroid_hist
+    if comet_hist := _sum_histograms(comet_classes, discovery_histograms):
+        discovery_out[COMETS_SLUG] = comet_hist
+    launch_out: dict[str, dict[int, int]] = {}
+    if sat_hist := _sum_histograms(primary_sat_slugs, launch_histograms):
+        launch_out[SATELLITES_SLUG] = sat_hist
+
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
@@ -192,4 +229,6 @@ def build_category_data(
         children=children,
         notable_members=notable_members,
         member_counts=member_counts_out,
+        discovery_histograms=discovery_out,
+        launch_histograms=launch_out,
     )
