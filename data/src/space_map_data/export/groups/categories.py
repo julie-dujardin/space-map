@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 # the largest fleets, ranked by member count.
 TOP_CONSTELLATIONS = 12
 
+# Notable members shown on the Solar System root (Sun + top 19 bodies).
+NOTABLE_COUNT = 20
+
 
 @dataclass
 class CategoryData:
@@ -69,7 +72,7 @@ def _planet_members(session: Session) -> list[NotableObject]:
 
 
 def _star_member(session: Session) -> NotableObject | None:
-    """The Sun — the one body that anchors the Solar System root page."""
+    """The Sun — pinned first on the Solar System root page."""
     row = (
         session.query(Object.id, Object.wikidata_qid, Object.name)
         .filter(Object.object_type == ObjectType.star)
@@ -77,6 +80,25 @@ def _star_member(session: Session) -> NotableObject | None:
         .first()
     )
     return _body_member(*row) if row is not None else None
+
+
+def _solar_system_members(
+    session: Session, star: NotableObject | None
+) -> list[NotableObject]:
+    """Sun first, then the most-linked bodies (same image/sitelinks proxy)."""
+    rows = (
+        session.query(Object.id, Object.wikidata_qid, Object.name)
+        .filter(Object.object_type != ObjectType.barycenter)
+        .order_by(
+            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
+        )
+        .limit(NOTABLE_COUNT + 1)
+        .all()
+    )
+    members = [_body_member(*r) for r in rows]
+    if star is not None:
+        members = [star] + [m for m in members if m.object_id != star.object_id]
+    return members[:NOTABLE_COUNT]
 
 
 def build_category_data(
@@ -155,8 +177,9 @@ def build_category_data(
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
-    if star is not None:
-        notable_members[SOLAR_SYSTEM_SLUG] = [star]
+    solar_system = _solar_system_members(session, star)
+    if solar_system:
+        notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     logger.info(
         "Built category data: planets=%d, asteroid zones=%d, comet families=%d, "
         "satellite groups=%d",
