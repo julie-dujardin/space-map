@@ -322,9 +322,18 @@
 	}
 
 	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
-	let notableMembers = $derived(isGroupMode ? groupDetail?.global?.notable_members : undefined);
-	let memberNames = $derived(groupDetail?.localized?.notable_member_names);
-	let memberTotal = $derived(groupDetail?.global?.member_count ?? 0);
+	// The members tab is shared: groups list notable members, bodies list moons.
+	let notableMembers = $derived(
+		isGroupMode ? groupDetail?.global?.notable_members : data?.global?.notable_moons
+	);
+	let memberNames = $derived(
+		isGroupMode ? groupDetail?.localized?.notable_member_names : data?.localized?.notable_moon_names
+	);
+	let memberTotal = $derived(
+		isGroupMode ? (groupDetail?.global?.member_count ?? 0) : (data?.global?.moon_count ?? 0)
+	);
+	let membersHeading = $derived(isGroupMode ? m.members_notable() : m.moons_section());
+	let membersTabLabel = $derived(isGroupMode ? m.tab_members() : m.tab_moons());
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	let activeTab = $state<'overview' | 'images' | 'members'>('overview');
 	// Switching to a focusable that lacks the active tab's content would
@@ -349,7 +358,7 @@
 			{/if}
 			{#if hasMembers}
 				<Tabs.Trigger value="members" class="px-2">
-					{m.tab_members()}
+					{membersTabLabel}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(memberTotal)}
 					</Badge>
@@ -387,6 +396,7 @@
 					members={notableMembers}
 					localizedNames={memberNames}
 					totalCount={memberTotal}
+					heading={membersHeading}
 					onSeeAll={() => (activeTab = 'members')}
 				/>
 			{/if}
@@ -435,7 +445,12 @@
 	<div class="flex flex-col gap-3 p-1">
 		{@render tabsBar()}
 		{#if notableMembers && notableMembers.length > 0}
-			<MemberList members={notableMembers} localizedNames={memberNames} totalCount={memberTotal} />
+			<MemberList
+				members={notableMembers}
+				localizedNames={memberNames}
+				totalCount={memberTotal}
+				heading={membersHeading}
+			/>
 		{/if}
 	</div>
 {/snippet}

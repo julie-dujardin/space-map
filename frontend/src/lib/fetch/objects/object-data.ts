@@ -1,6 +1,7 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
+import type { PickedThumbnail } from '$lib/fetch/objects/images';
 
 // --- Global object data (non-localized) ---
 
@@ -50,6 +51,23 @@ export interface TextureAttribution {
 	description?: string;
 	/** Only on `cylindrical_monthly`: number of monthly frames (always 12 today). */
 	frames?: number;
+}
+
+/**
+ * One denormalized notable object for the detail-page strip + list — a group
+ * member (asteroid) or a moon. Picked at export time; carries everything the
+ * UI needs so no per-object bundle fetch is required to render the tile/row.
+ */
+export interface NotableMemberEntry {
+	/** English Wikidata label (matching object bundles), or the DB fallback name. */
+	name: string;
+	/** Full Object.id for focus/routing (e.g. "spkid-2000004", "naif-502"). */
+	id: string;
+	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
+	diameter_km?: number;
+	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
+	first_obs?: string;
+	thumbnail?: PickedThumbnail;
 }
 
 export interface GlobalObjectData {
@@ -195,6 +213,12 @@ export interface GlobalObjectData {
 		categories?: string[];
 		country_codes?: string[];
 	};
+	/** Top moons picked at export time (image/sitelinks/diameter rank); on
+	 *  planets/dwarf planets and asteroids with satellites. */
+	notable_moons?: NotableMemberEntry[];
+	/** Total moon count of this body — drives the "+N more" tile. Present iff
+	 *  notable_moons is. */
+	moon_count?: number;
 }
 
 // --- Localized object data ---
@@ -237,6 +261,8 @@ export interface LocalizedObjectData {
 		description?: string;
 		url?: string;
 	};
+	/** notable-moon Object.id → localized label, only where it differs from the global name. */
+	notable_moon_names?: Record<string, string>;
 }
 
 // --- Fetching ---

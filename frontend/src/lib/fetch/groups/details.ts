@@ -6,22 +6,10 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
-import type { EntityRef, ObjectImage } from '$lib/fetch/objects/object-data';
-import type { PickedThumbnail } from '$lib/fetch/objects/images';
+import type { EntityRef, NotableMemberEntry, ObjectImage } from '$lib/fetch/objects/object-data';
 import type { GroupCategory, GroupType, SatelliteCategory } from './registry';
 
-export interface NotableMemberEntry {
-	/** English Wikidata label (matching object bundles), or the DB fallback name. */
-	name: string;
-	primary_type: 'spkid';
-	/** SBDB.spkid; route /o/spkid-<id>. */
-	primary_id: string;
-	/** Equivalent-sphere diameter. */
-	diameter_km?: number;
-	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY. */
-	first_obs?: string;
-	thumbnail?: PickedThumbnail;
-}
+export type { NotableMemberEntry };
 
 export interface LaunchSiteEntry extends EntityRef {
 	n: number;
@@ -96,7 +84,7 @@ export interface LocalizedGroupData {
 	constellations?: ConstellationEntry[];
 	/** Other groups sharing this group's QID (typically the op/mfr pair for the same company). */
 	related_groups?: RelatedGroupEntry[];
-	/** spkid → localized label for notable_members, only where it differs from the global name. */
+	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	notable_member_names?: Record<string, string>;
 }
 

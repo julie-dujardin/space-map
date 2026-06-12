@@ -5,30 +5,30 @@
 	import { pickedThumbnailUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl } from '$lib/state/url';
-	import { UrlType } from '$lib/state/view';
+	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatCompactNumber, formatNumber, formatQuantity } from '$lib/format/quantities';
 
 	interface Props {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
 		totalCount: number;
+		heading: string;
 	}
-	let { members, localizedNames, totalCount }: Props = $props();
+	let { members, localizedNames, totalCount, heading }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
 	function displayName(member: NotableMemberEntry): string {
-		return localizedNames?.[member.primary_id] ?? member.name;
+		return localizedNames?.[member.id] ?? member.name;
 	}
 
 	function memberHref(member: NotableMemberEntry): string | undefined {
 		if (!appState) return undefined;
 		return serializeUrl(
 			applyFocus(appState.view, {
-				type: UrlType.SmallBody,
-				id: `spkid-${member.primary_id}`,
+				type: urlTypeFromId(member.id),
+				id: member.id,
 				name: displayName(member)
 			})
 		);
@@ -39,7 +39,7 @@
 		// No focusObject in context — let the href do a full-page navigation.
 		if (!focusObject) return;
 		e.preventDefault();
-		focusObject(`spkid-${member.primary_id}`, displayName(member));
+		focusObject(member.id, displayName(member));
 	}
 
 	/** Discovery year from the first_obs proxy (YYYY-MM-DD or YYYY). */
@@ -51,7 +51,7 @@
 
 <div class="flex flex-col gap-1">
 	<div class="flex items-baseline justify-between gap-2">
-		<h3 class="text-sm font-medium">{m.members_notable()}</h3>
+		<h3 class="text-sm font-medium">{heading}</h3>
 		{#if totalCount > members.length}
 			<span class="text-muted-foreground text-xs tabular-nums">
 				{m.members_top_of_total({
@@ -63,7 +63,7 @@
 	</div>
 	<div class="border-border/60 border-t"></div>
 	<ul class="flex flex-col">
-		{#each members as member (member.primary_id)}
+		{#each members as member (member.id)}
 			{@const year = discoveryYear(member)}
 			<li>
 				<a
