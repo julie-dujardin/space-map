@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 MESSAGES_DIR = PROJECT_ROOT / "frontend" / "messages"
 BASE_LOCALE = "en"
 
-# All prefixes managed by this module — keys with these prefixes are removed
-# before writing fresh ones, so hand-written keys are never touched.
+# All prefixes managed by this module. Generated values only fill gaps:
+# existing translations (hand-fixed or otherwise) always win, and keys no
+# longer generated for the base locale are pruned.
 GENERATED_PREFIXES = (
     "unit_name_",
     "unit_symbol_",
@@ -249,54 +250,61 @@ def write_messages(
     feature_type_labels = _collect_feature_type_labels(wikidata_entities)
     group_name_labels = _collect_group_name_labels(wikidata_entities)
 
-    for lang in LANGUAGES:
-        msg_file = MESSAGES_DIR / f"{lang}.json"
-        if msg_file.exists():
-            existing = orjson.loads(msg_file.read_bytes())
-        else:
-            existing = {}
-
-        # Strip old generated keys
-        manual = {
-            k: v
-            for k, v in existing.items()
-            if not any(k.startswith(p) for p in GENERATED_PREFIXES)
-        }
-
-        # Merge fresh generated keys
-        generated = {
+    def collect(lang: str) -> dict[str, str]:
+        return {
             **unit_labels.get(lang, {}),
             **property_labels.get(lang, {}),
             **feature_type_labels.get(lang, {}),
             **group_name_labels.get(lang, {}),
         }
-        merged = {**manual, **dict(sorted(generated.items()))}
 
-        msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
-        logger.info(
-            "Wrote %d generated keys to %s (%d total)",
-            len(generated),
-            msg_file.name,
-            len(merged),
-        )
+    # Base locale always has every generated key, so it defines which keys
+    # are still live; anything else belongs to a removed group/unit/property.
+    live_keys = set(collect(BASE_LOCALE))
+    for lang in LANGUAGES:
+        _merge_into_file(lang, collect(lang), live_keys, GENERATED_PREFIXES)
 
 
 def write_group_messages(wikidata_entities: WikidataEntityCache) -> None:
-    """Refresh only ``group_name_*`` keys; leave other generated keys intact."""
+    """Fill missing ``group_name_*`` keys; leave other generated keys intact."""
     group_name_labels = _collect_group_name_labels(wikidata_entities)
-
+    live_keys = set(group_name_labels.get(BASE_LOCALE, {}))
     for lang in LANGUAGES:
-        msg_file = MESSAGES_DIR / f"{lang}.json"
-        existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
-        preserved = {
-            k: v for k, v in existing.items() if not k.startswith("group_name_")
-        }
-        fresh = group_name_labels.get(lang, {})
-        merged = {**preserved, **dict(sorted(fresh.items()))}
-        msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
-        logger.info(
-            "Refreshed %d group_name_* keys in %s (%d total)",
-            len(fresh),
-            msg_file.name,
-            len(merged),
+        _merge_into_file(
+            lang, group_name_labels.get(lang, {}), live_keys, ("group_name_",)
         )
+
+
+def _merge_into_file(
+    lang: str,
+    fresh: dict[str, str],
+    live_keys: set[str],
+    prefixes: tuple[str, ...],
+) -> None:
+    """Merge *fresh* generated entries into the *lang* message file.
+
+    Existing translations win — generated values only fill gaps. Keys under
+    *prefixes* that are no longer in *live_keys* are pruned.
+    """
+    msg_file = MESSAGES_DIR / f"{lang}.json"
+    existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
+
+    manual = {
+        k: v for k, v in existing.items() if not any(k.startswith(p) for p in prefixes)
+    }
+    kept = {k: v for k, v in existing.items() if k not in manual and k in live_keys}
+    pruned = len(existing) - len(manual) - len(kept)
+
+    generated = {**fresh, **kept}
+    merged = {**manual, **dict(sorted(generated.items()))}
+
+    msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
+    logger.info(
+        "Merged %d generated keys into %s (%d kept, %d filled, %d pruned, %d total)",
+        len(generated),
+        msg_file.name,
+        len(kept),
+        len(generated) - len(kept),
+        pruned,
+        len(merged),
+    )
