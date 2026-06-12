@@ -27,6 +27,14 @@ import orjson
 from sqlalchemy import update
 from tqdm import tqdm
 
+from space_map_data.constants.categories import (
+    ASTEROIDS_SLUG,
+    COMET_ORBIT_CLASSES,
+    COMETS_SLUG,
+    PLANETS_SLUG,
+    SATELLITES_SLUG,
+    SOLAR_SYSTEM_SLUG,
+)
 from space_map_data.constants.countries import COUNTRY_BY_CODE, COUNTRY_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
@@ -322,6 +330,8 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
     )
     for qid, cls, neo, pha in sb_rows:
         out.setdefault(f"{CLASS_SLUG_PREFIX}{cls.name}", []).append(qid)
+        category = COMETS_SLUG if cls in COMET_ORBIT_CLASSES else ASTEROIDS_SLUG
+        out.setdefault(category, []).append(qid)
         if neo:
             out.setdefault(f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo", []).append(qid)
         if pha:
@@ -349,6 +359,7 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
         .all()
     )
     for qid, c_slug, op_qids, mfr_qids, site_code, country_codes in earth_rows:
+        out.setdefault(SATELLITES_SLUG, []).append(qid)
         if c_slug:
             out.setdefault(c_slug, []).append(qid)
         for op_qid in op_qids or ():
@@ -367,6 +378,26 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
             country = COUNTRY_BY_CODE.get(code)
             if country is not None:
                 out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
+
+    # Body-aggregating categories: the planets, and the Solar System root
+    # (Sun + planets — a curated hero set, not the whole catalogue).
+    def _typed_qids(*types: ObjectType) -> list[str]:
+        return [
+            qid
+            for (qid,) in session.query(Object.wikidata_qid)
+            .filter(
+                Object.object_type.in_([t.value for t in types]),
+                Object.wikidata_qid.is_not(None),
+            )
+            .all()
+        ]
+
+    planet_qids = _typed_qids(ObjectType.planet)
+    if planet_qids:
+        out[PLANETS_SLUG] = planet_qids
+    solar = _typed_qids(ObjectType.star) + planet_qids
+    if solar:
+        out[SOLAR_SYSTEM_SLUG] = solar
     return out
 
 
