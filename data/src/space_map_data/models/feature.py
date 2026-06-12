@@ -5,7 +5,7 @@ import datetime
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from space_map_data.constants.continents import Continent
+from space_map_data.constants.nomenclature.continents import Continent
 from space_map_data.models.object import Base
 
 
@@ -13,7 +13,7 @@ class Feature(Base):
     """Mirror of IAU planetary nomenclature KML data.
 
     ``feature_type_code`` is a 2-letter IAU code (e.g. ``"AA"``); the human-
-    readable singular/plural names live in ``constants.feature_types``.
+    readable singular/plural names live in ``constants.nomenclature.feature_types``.
     """
 
     __tablename__ = "features"

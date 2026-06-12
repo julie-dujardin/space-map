@@ -10,13 +10,11 @@ import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
+from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
+from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
-from space_map_data.constants.quadrangle_refs import quadrangle_qids
-from space_map_data.constants.wikidata_qids import (
-    EARTH_ORBIT_CLASS_QIDS,
-    FEATURE_TYPE_QIDS,
-    ORBIT_CLASS_QIDS,
-)
+from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.wikidata.id_resolver import WikidataIdResolver
 from space_map_data.export.nomenclature.wikidata_claims import (
@@ -87,7 +85,7 @@ class WikidataDownloader(Downloader):
         # Wikidata counterpart). Used at export time to emit localized
         # label/description messages for the frontend nomenclature popover.
         feature_type_qids = {
-            qid for qid in FEATURE_TYPE_QIDS.values() if qid is not None
+            ft.qid for ft in FEATURE_TYPES.values() if ft.qid is not None
         }
         feature_types_dir = self.out_dir / "feature_types"
         feature_types_dir.mkdir(exist_ok=True)
@@ -113,7 +111,10 @@ class WikidataDownloader(Downloader):
         # and the Wikipedia downloader resolve group QIDs from referenced/.
         orbit_class_qids = {
             qid
-            for qid in (*ORBIT_CLASS_QIDS.values(), *EARTH_ORBIT_CLASS_QIDS.values())
+            for qid in (
+                *ORBIT_CLASS_QIDS.values(),
+                *(c.qid for c in EarthOrbitClass),
+            )
             if qid is not None
         }
         self._fetch_entities(

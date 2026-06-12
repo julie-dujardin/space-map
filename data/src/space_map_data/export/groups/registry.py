@@ -24,10 +24,7 @@ from space_map_data.constants.earth_sats.operators import (
     OPERATORS,
 )
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
-from space_map_data.constants.wikidata_qids import (
-    EARTH_ORBIT_CLASS_QIDS,
-    ORBIT_CLASS_QIDS,
-)
+from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.models.object.sbdb import OrbitClass
 
 CLASS_SLUG_PREFIX = "class-"
@@ -159,7 +156,7 @@ def _build_groups() -> tuple[Group, ...]:
             slug=f"{CLASS_SLUG_PREFIX}{cls.name}",
             type=GroupType.EARTH_ORBIT_CLASS,
             applies_to=GroupCategory.EARTH_SAT,
-            wikidata_qid=EARTH_ORBIT_CLASS_QIDS.get(cls),
+            wikidata_qid=cls.qid,
         )
         for cls in EarthOrbitClass
     )

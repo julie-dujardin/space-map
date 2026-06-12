@@ -6,9 +6,8 @@ import logging
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_SLUG
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_SLUG
-from space_map_data.constants.feature_types import FEATURE_TYPES
+from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.constants.wikidata_qids import FEATURE_TYPE_QIDS
 from space_map_data.export.groups.registry import (
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
@@ -164,9 +163,10 @@ def _collect_feature_type_labels(
     result: dict[str, dict[str, str]] = {lang: {} for lang in LANGUAGES}
     base = result[BASE_LOCALE]
 
-    for code, qid in FEATURE_TYPE_QIDS.items():
+    for code, feature_type in FEATURE_TYPES.items():
         label_key = f"feature_type_label_{code}"
         desc_key = f"feature_type_description_{code}"
+        qid = feature_type.qid
         entity = wikidata_entities.get_feature_type(qid) if qid else None
 
         if entity:
@@ -178,9 +178,8 @@ def _collect_feature_type_labels(
 
         # Fall back to the in-repo IAU constants for the baseLocale where
         # Wikidata didn't provide a value (or had no entity at all).
-        fallback = FEATURE_TYPES[code]
-        base.setdefault(label_key, fallback.singular)
-        base.setdefault(desc_key, fallback.description)
+        base.setdefault(label_key, feature_type.singular)
+        base.setdefault(desc_key, feature_type.description)
 
     return result
 

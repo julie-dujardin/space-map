@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from urllib.parse import quote
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.constants.quadrangle_refs import QUADRANGLE_QIDS
+from space_map_data.constants.nomenclature.quadrangles import QUADRANGLE_QIDS
 from space_map_data.export.images import collect_feature_images
 from space_map_data.export.nomenclature.format import (
     pack_header,

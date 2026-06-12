@@ -9,7 +9,8 @@ period/eccentricity-based GCAT cuts are approximated on the perigee/
 apogee plane.
 """
 
-from enum import StrEnum
+from dataclasses import dataclass
+from enum import Enum
 
 R_EARTH_KM = 6378.137
 GEO_ALT_KM = 35786.0
@@ -33,47 +34,48 @@ POLAR_INC_MIN_DEG, POLAR_INC_MAX_DEG = 85.0, 95.0
 EQUATORIAL_INC_MAX_DEG = 25.0
 
 
-class EarthOrbitClass(StrEnum):
-    """Shape classes + inclination bands for Earth-orbiting payloads."""
+@dataclass(frozen=True, eq=False)
+class _OrbitZone:
+    """Per-member data for :class:`EarthOrbitClass`.
 
-    LEO = "LEO"
-    MEO = "MEO"
-    GSO = "GSO"
-    HEO = "HEO"
-    CIS = "CIS"
-    VHEO = "VHEO"
-    VLEO = "VLEO"
-    GTO = "GTO"
-    GEO = "GEO"
-    IGSO = "IGSO"
-    GRA = "GRA"
-    HIGH = "HIGH"
-    MOL = "MOL"
-    TUN = "TUN"
-    SSO = "SSO"
-    POL = "POL"
-    RET = "RET"
-    EQU = "EQU"
+    ``eq=False`` so members with identical data (e.g. VHEO/IGSO, both
+    without a QID) stay distinct by identity instead of aliasing.
+    """
+
+    qid: str | None  # Wikidata QID for the orbit-class popover, or None (no page)
+    primary: bool = True  # False for inclination bands added atop a shape class
 
 
-PRIMARY_ZONES: frozenset[EarthOrbitClass] = frozenset(
-    {
-        EarthOrbitClass.VLEO,
-        EarthOrbitClass.LEO,
-        EarthOrbitClass.MEO,
-        EarthOrbitClass.HEO,
-        EarthOrbitClass.GSO,
-        EarthOrbitClass.GEO,
-        EarthOrbitClass.IGSO,
-        EarthOrbitClass.GRA,
-        EarthOrbitClass.HIGH,
-        EarthOrbitClass.MOL,
-        EarthOrbitClass.TUN,
-        EarthOrbitClass.GTO,
-        EarthOrbitClass.CIS,
-        EarthOrbitClass.VHEO,
-    }
-)
+class EarthOrbitClass(_OrbitZone, Enum):
+    """Shape classes + inclination bands for Earth-orbiting payloads.
+
+    Each member carries a Wikidata ``qid`` (used to localize the orbit-class
+    popover — ``None`` skips enrichment; each QID targets the precise concept
+    the zone encodes, e.g. GSO is *any* inclination, so "geosynchronous" not
+    "geostationary") and a ``primary`` flag (``True`` for the mutually-exclusive
+    shape classes, ``False`` for the SSO/Polar/Retrograde/Equatorial inclination
+    bands a low orbit adds on top of its shape class).
+    """
+
+    LEO = "Q663611"  # low Earth orbit
+    MEO = "Q218414"  # medium Earth orbit
+    GSO = "Q472251"  # geosynchronous orbit (any inclination)
+    HEO = "Q38982"  # highly elliptical orbit
+    CIS = "Q95319835"  # cislunar space (few sitelinks but exact)
+    VHEO = None  # very high Earth orbit: no page
+    VLEO = "Q118905801"  # very low Earth orbit
+    GTO = "Q1138649"  # geostationary transfer orbit
+    GEO = "Q192316"  # geostationary orbit
+    IGSO = None  # inclined geosynchronous: no page
+    GRA = "Q1457566"  # graveyard orbit
+    HIGH = "Q218056"  # high Earth orbit
+    MOL = "Q1063974"  # Molniya orbit
+    TUN = "Q846805"  # Tundra orbit
+    # Inclination bands — not primary (added on top of a shape class).
+    SSO = "Q174241", False  # Sun-synchronous orbit
+    POL = "Q746711", False  # polar orbit
+    RET = "Q53865977", False  # retrograde orbit
+    EQU = "Q60964821", False  # equatorial orbit
 
 
 def classify_earth_orbit(

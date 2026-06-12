@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from space_map_data.constants.continents import Continent
+from space_map_data.constants.nomenclature.continents import Continent
 from space_map_data.ingest.providers.iau_nomenclature import (
     IAUNomenclatureIngestor,
     _derive_sf_stem,

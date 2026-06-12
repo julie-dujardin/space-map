@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import case, delete, func, insert, update
 from tqdm import tqdm
 
-from space_map_data.constants.continents import Continent
+from space_map_data.constants.nomenclature.continents import Continent
 from space_map_data.ingest.convert import float_or_none, string_or_none
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import SBDB, Object, ObjectType

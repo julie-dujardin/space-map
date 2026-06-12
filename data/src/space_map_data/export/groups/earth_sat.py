@@ -18,7 +18,6 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.earth_sats.orbit_class import (
-    PRIMARY_ZONES,
     EarthOrbitClass,
     classify_earth_orbit,
 )
@@ -185,7 +184,7 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
 
         class_names = [c.name for c in classes]
         slugs = [f"{CLASS_SLUG_PREFIX}{c}" for c in class_names]
-        primary = next(c for c in classes if c in PRIMARY_ZONES)
+        primary = next(c for c in classes if c.primary)
         primary_slug = f"{CLASS_SLUG_PREFIX}{primary.name}"
 
         for s in slugs:
