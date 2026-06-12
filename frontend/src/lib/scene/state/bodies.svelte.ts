@@ -6,6 +6,14 @@ export function isTopLevelParent(parentId: string): boolean {
 	return parentId === SSB_ID || parentId === SUN_ID;
 }
 
+/** Planetary barycenters (`naif-1`…`naif-9`) carry no name/rotational frame of
+ *  their own; their dominant planet is `naif-{X}99` by SPICE convention. Returns
+ *  that planet's id, or null when `id` isn't such a barycenter. */
+export function dominantPlanetId(id: string): string | null {
+	const m = /^naif-([1-9])$/.exec(id);
+	return m ? `naif-${m[1]}99` : null;
+}
+
 /**
  * The scene's body store. Owns every loaded `PositionedBody` plus the
  * parent/child graph used to answer system-membership questions. Visibility

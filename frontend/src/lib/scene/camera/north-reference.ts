@@ -3,6 +3,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import { bodyQuaternion } from '$lib/math/orientation';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import { SSB_ID } from '$lib/constants';
 
 /**
@@ -79,8 +80,6 @@ export function bodyNorthVector(body: PositionedBody, jd: number, out?: Vector3)
  * substituted in their place — e.g. walking up from the Moon
  * (Moon → EMB → SSB) surfaces Earth as the EMB stand-in.
  */
-const BARY_PATTERN = /^naif-([1-9])$/;
-
 export function getNorthChoices(
 	focused: PositionedBody | undefined,
 	ctx: ContextManager
@@ -92,9 +91,9 @@ export function getNorthChoices(
 		seen.add(cur.data.id);
 
 		let chosen: PositionedBody = cur;
-		const baryMatch = cur.data.id.match(BARY_PATTERN);
-		if (baryMatch) {
-			const planet = ctx.getBody(`naif-${baryMatch[1]}99`);
+		const planetId = dominantPlanetId(cur.data.id);
+		if (planetId) {
+			const planet = ctx.getBody(planetId);
 			if (planet) chosen = planet;
 		}
 		if (chosen.orientation && !choices.some((c) => c.id === chosen.data.id)) {

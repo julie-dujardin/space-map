@@ -27,6 +27,8 @@
 		groupSlugLabel
 	} from '$lib/state/focusable';
 	import ObjectHeader from './ObjectHeader.svelte';
+	import DrawerTitle from './DrawerTitle.svelte';
+	import { parentCrumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './ImageGallery.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
@@ -262,6 +264,7 @@
 		onSheetResize?.(dvh);
 	});
 
+	let crumb = $derived(parentCrumb(focusable, ctx, data));
 	let fallbackName = $derived(focusableFallbackName(focusable));
 	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
@@ -471,7 +474,7 @@
 				<div bind:this={headerEl} class="flex flex-col items-center gap-2 px-4 pt-3 pb-2">
 					<div class="h-1 w-10 rounded-full bg-muted-foreground/40"></div>
 					<div class="flex w-full items-center justify-between gap-2">
-						<span class="text-sm font-semibold truncate">{displayName}</span>
+						<DrawerTitle {crumb} title={displayName} />
 						<div class="flex items-center gap-1.5">
 							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 								<Share2Icon />
@@ -532,7 +535,7 @@
 		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
 		<div class="flex items-center justify-between gap-2 p-2 px-4">
-			<span class="text-sm font-semibold truncate">{displayName}</span>
+			<DrawerTitle {crumb} title={displayName} />
 			<div class="flex items-center gap-1.5">
 				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
 					<Share2Icon />
