@@ -8,6 +8,7 @@
  */
 
 import * as m from '$lib/paraglide/messages.js';
+import { CAT_ASTEROIDS, CAT_COMETS, CAT_SATELLITES } from '$lib/fetch/groups/registry';
 
 export type PlotType = 'a-q' | 'q-e' | 'a-T' | 'peri-apo';
 
@@ -614,6 +615,34 @@ export const COMET_PLOT_CLASSES = new Set(
 export function orbitClassLabel(className: string): string {
 	const fn = (m as Record<string, unknown>)[`orbit_class_${className}`];
 	return typeof fn === 'function' ? (fn as () => string)() : className;
+}
+
+/** Default scatter plot for an orbit-grouping category page. */
+export function categoryPlotType(slug: string): PlotType | null {
+	if (slug === CAT_ASTEROIDS) return 'a-q';
+	if (slug === CAT_COMETS) return 'a-T';
+	if (slug === CAT_SATELLITES) return 'peri-apo';
+	return null;
+}
+
+/** `class-<NAME>` slugs with a clickable zone polygon on `plotType`'s scatter
+ *  (comet plots count both a-T and q-e, since the chart toggles). Everything
+ *  else — inc-only sat zones, off-plot classes — belongs in the textual list. */
+export function scatterClickableSlugs(plotType: PlotType): Set<string> {
+	const out = new Set<string>();
+	if (plotType === 'peri-apo') {
+		for (const z of Object.values(SAT_ORBIT_ZONES)) {
+			if (z.polygon.length > 0) out.add(`${CLASS_SLUG_PREFIX}${z.className}`);
+		}
+		return out;
+	}
+	const plots = COMET_PLOT_TYPES.includes(plotType) ? COMET_PLOT_TYPES : [plotType];
+	for (const z of Object.values(ORBIT_ZONES)) {
+		if (plots.includes(z.plotType) && z.polygon.length > 0) {
+			out.add(`${CLASS_SLUG_PREFIX}${z.className}`);
+		}
+	}
+	return out;
 }
 
 /** Pick the chart's plot type for a group slug; null hides the chart. */

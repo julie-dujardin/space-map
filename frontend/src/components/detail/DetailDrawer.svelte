@@ -37,7 +37,9 @@
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
 	import GroupProperties from './properties/GroupProperties.svelte';
+	import GroupOrbitMap from './properties/GroupOrbitMap.svelte';
 	import ChildGroups from './properties/ChildGroups.svelte';
+	import { categoryPlotType, scatterClickableSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import MemberStrip from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
@@ -266,6 +268,17 @@
 	});
 
 	let crumb = $derived(parentCrumb(focusable, ctx, data, groupDetail?.global ?? null));
+
+	// Orbit-grouping categories (asteroids/comets/satellites) show the scatter;
+	// the textual child list then keeps only zones the scatter can't be clicked
+	// for (inc-only sat zones, off-plot classes) plus non-zone children.
+	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
+	let categoryChildGroups = $derived.by(() => {
+		const cg = groupDetail?.localized?.child_groups ?? [];
+		if (!categoryPlot) return cg;
+		const clickable = scatterClickableSlugs(categoryPlot);
+		return cg.filter((c) => !(c.primary_id && clickable.has(c.primary_id)));
+	});
 	let fallbackName = $derived(focusableFallbackName(focusable));
 	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
@@ -426,8 +439,11 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
-				{#if groupDetail?.localized?.child_groups?.length}
-					<ChildGroups childGroups={groupDetail.localized.child_groups} />
+				{#if categoryPlot && groupDetail?.global}
+					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
+				{/if}
+				{#if categoryChildGroups.length}
+					<ChildGroups childGroups={categoryChildGroups} />
 				{/if}
 				<GroupProperties
 					global={groupDetail?.global ?? null}

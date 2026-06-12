@@ -7,7 +7,8 @@
 	import {
 		plotTypeForSlug,
 		type OrbitSample,
-		type EarthOrbitSample
+		type EarthOrbitSample,
+		type PlotType
 	} from '$lib/charts/orbit-zones';
 	import { getContext } from 'svelte';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
@@ -17,12 +18,14 @@
 
 	interface Props {
 		global: GlobalGroupData | null;
+		/** Category pages force the plot (their slug isn't an orbit class). */
+		plotOverride?: PlotType;
 	}
-	let { global }: Props = $props();
+	let { global, plotOverride }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 
-	let plotType = $derived(global ? plotTypeForSlug(global.slug) : null);
+	let plotType = $derived(plotOverride ?? (global ? plotTypeForSlug(global.slug) : null));
 	let samples = $state<OrbitSample[] | null>(null);
 	let satSamples = $state<EarthOrbitSample[] | null>(null);
 	let groupIndex = $state<GroupIndex | null>(null);
