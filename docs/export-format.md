@@ -972,6 +972,16 @@ interface GlobalObjectData {
     length?: QuantityWithUnit;
     width?: QuantityWithUnit;
   };
+
+  // Notable moons of this body, picked at export time, ordered by
+  // (image_available, sitelinks_count, diameter desc, id). Present on the
+  // planet/dwarf-planet (a planet's moons are gathered from its barycenter)
+  // and on asteroids with satellites. Denormalized so the strip + moons list
+  // render without per-moon fetches; per-language label overrides live in
+  // LocalizedObjectData.notable_moon_names. Shares the NotableEntry shape
+  // with GlobalGroupData.notable_members.
+  notable_moons?: NotableEntry[];
+  moon_count?: number;                // total moons of this body (drives the "+N more" tile); present iff notable_moons is
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
@@ -1029,6 +1039,7 @@ interface LocalizedObjectData {
     description?: string;
     url?: string;        // URL
   };
+  notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
@@ -1064,6 +1075,19 @@ interface GroupIndexEntry {
 
 Written for every group. `bucket = sha256(slug)[:4] % N_global`. Each
 bundle is a JSON object `{ "<slug>": GlobalGroupData, ... }`.
+
+A `NotableEntry` is a denormalized record for the detail-page strip + list,
+shared by group `notable_members` and object `notable_moons`:
+
+```typescript
+interface NotableEntry {
+  name: string;                     // English Wikidata label (matching object bundles), or the DB fallback name
+  id: string;                       // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502)
+  diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
+  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
+  thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
+}
+```
 
 ```typescript
 interface GlobalGroupData {
@@ -1111,14 +1135,8 @@ interface GlobalGroupData {
   // the strip + members list render without per-object bundle fetches.
   // Names are the English Wikidata label (matching object bundles), with
   // per-language overrides in LocalizedGroupData.notable_member_names.
-  notable_members?: {
-    name: string;
-    primary_type: "spkid";
-    primary_id: string;             // SBDB.spkid; route /o/spkid-<id>
-    diameter_km?: number;           // equivalent-sphere diameter
-    first_obs?: string;             // discovery proxy — YYYY-MM-DD or YYYY
-    thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
-  }[];
+  // Shares the NotableEntry shape with GlobalObjectData.notable_moons.
+  notable_members?: NotableEntry[];
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
@@ -1226,7 +1244,7 @@ interface LocalizedGroupData {
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
   related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID across roles
-  notable_member_names?: Record<string, string>; // spkid → localized label, only where it differs from the global name
+  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```
 

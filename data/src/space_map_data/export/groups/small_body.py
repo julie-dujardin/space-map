@@ -25,6 +25,7 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
+from space_map_data.export.notable import NotableObject
 from space_map_data.models.object.main import Object, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
@@ -66,18 +67,6 @@ class LargestBody:
 
 
 @dataclass
-class NotableMember:
-    """One statically-picked notable member of a small-body group."""
-
-    object_id: str  # Object.id, keys the image-selection cache
-    spkid: str
-    wikidata_qid: str | None  # for localized labels at bundle-write time
-    fallback_name: str  # used when no Wikidata label exists
-    diameter_km: float | None
-    first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
-
-
-@dataclass
 class SmallBodyGroupStats:
     """Per-slug counts, histograms, scatter samples, PHA counts, largest body."""
 
@@ -87,7 +76,7 @@ class SmallBodyGroupStats:
     # NEO is omitted on purpose: 100 % on IEO/ATE/APO/AMO, 0 % elsewhere.
     pha_counts: dict[str, int] = field(default_factory=dict)
     largest_bodies: dict[str, LargestBody] = field(default_factory=dict)
-    notable_members: dict[str, list[NotableMember]] = field(default_factory=dict)
+    notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
 
 
 def _exported_sbdb_filter():
@@ -224,7 +213,7 @@ def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
     )
 
 
-def _notable_members(session: Session, *filter_clauses) -> list[NotableMember]:
+def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
 
     Sitelinks dominate in practice — image availability mostly promotes the
@@ -261,11 +250,10 @@ def _notable_members(session: Session, *filter_clauses) -> list[NotableMember]:
         .all()
     )
     return [
-        NotableMember(
+        NotableObject(
             object_id=object_id,
-            spkid=spkid,
             wikidata_qid=qid,
-            fallback_name=obj_name or full_name or sbdb_name or pdes or spkid,
+            fallback_name=obj_name or full_name or sbdb_name or pdes or str(spkid),
             diameter_km=diameter,
             first_obs=first_obs,
         )
@@ -390,7 +378,7 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     if pha_largest is not None:
         largest_bodies[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_largest
 
-    notable_members: dict[str, list[NotableMember]] = {}
+    notable_members: dict[str, list[NotableObject]] = {}
     for cls in class_counts:
         members = _notable_members(session, SBDB.class_ == cls)
         if members:
