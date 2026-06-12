@@ -14,14 +14,33 @@ export type GroupType =
 	| 'country'
 	| 'orbit_class'
 	| 'small_body_flag'
-	| 'earth_orbit_class';
-export type GroupCategory = 'earth_sat' | 'small_body';
+	| 'earth_orbit_class'
+	| 'category';
+export type GroupCategory = 'earth_sat' | 'small_body' | 'category';
 
 /** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const CLASS_SLUG_PREFIX = 'class-';
 
 /** Mirrors ``SMALL_BODY_FLAG_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const SMALL_BODY_FLAG_SLUG_PREFIX = 'flag-';
+
+/** Mirrors ``CATEGORY_SLUG_PREFIX`` in ``data/constants/categories.py``. */
+export const CATEGORY_SLUG_PREFIX = 'cat-';
+export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
+export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
+export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
+export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
+export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
+
+/** English fallback labels shown until the localized bundle name resolves.
+ *  Mirrors ``CategorySpec.name`` in ``data/constants/categories.py``. */
+export const CATEGORY_LABELS: Record<string, string> = {
+	[CAT_SOLAR_SYSTEM]: 'Solar System',
+	[CAT_PLANETS]: 'Planets',
+	[CAT_ASTEROIDS]: 'Asteroids',
+	[CAT_COMETS]: 'Comets',
+	[CAT_SATELLITES]: 'Satellites'
+};
 
 /** Slug suffix → flag bit mask. Mirrors `ELEMENTS_FLAG_*` in
  *  `$lib/fetch/position/elements/parse.ts`. */

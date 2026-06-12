@@ -1,18 +1,30 @@
-/** One-level "parent" crumb for the drawer header. Each focusable resolves to
- *  at most one ancestor: a moon to its planet, a small body to its orbit-class
- *  zone, a satellite to its constellation (else its orbit class), a feature to
- *  its body. Planets, the Sun, groups and probes anchor on category pages that
- *  don't exist yet — they return null. */
+/** One-level "parent" crumb for the drawer header: each focusable resolves to
+ *  at most one ancestor (moon→planet, small body→zone, sat→constellation/class,
+ *  planet/group→category, category→Solar System root, feature→body). */
 
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
+import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType, sbdbOrbitClass, type PositionedBody } from '$lib/types/objects';
 import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
-import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
-import { classifyEarthOrbit, orbitClassLabel } from '$lib/charts/orbit-zones';
+import {
+	CATEGORY_LABELS,
+	CATEGORY_SLUG_PREFIX,
+	CAT_ASTEROIDS,
+	CAT_COMETS,
+	CAT_PLANETS,
+	CAT_SATELLITES,
+	CAT_SOLAR_SYSTEM,
+	CLASS_SLUG_PREFIX
+} from '$lib/fetch/groups/registry';
+import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType } from './view';
+
+/** Comet orbit classes; the rest are asteroids. Mirrors COMET_ORBIT_CLASSES in
+ *  data/constants/categories.py. */
+const COMET_CLASS_NAMES = new Set(['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'PAR', 'HYP', 'COM']);
 
 /** A moon's real parent is the dominant planet, not its (nameless) barycenter. */
 function parentPlanet(
@@ -44,6 +56,11 @@ function classGroup(className: string): Crumb {
 	};
 }
 
+function categoryCrumb(slug: string): Crumb {
+	const label = CATEGORY_LABELS[slug] ?? slug;
+	return { label, target: { kind: 'group', slug, name: label } };
+}
+
 /** Title-case a bare constellation slug as a last resort when the localized
  *  detail hasn't supplied a display name. */
 function prettifySlug(slug: string): string {
@@ -53,15 +70,28 @@ function prettifySlug(slug: string): string {
 export function parentCrumb(
 	focusable: Focusable,
 	ctx: ContextManager | undefined,
-	detail: ObjectDetailData | null
+	detail: ObjectDetailData | null,
+	groupGlobal: GlobalGroupData | null
 ): Crumb | null {
 	// A surface feature belongs to the body it sits on.
 	if (focusable.kind === 'feature') {
 		const b = focusable.body.data;
 		return b.name ? { label: b.name, target: { kind: 'focus', id: b.id, name: b.name } } : null;
 	}
-	// Group parents are category pages (phase 2).
-	if (focusable.kind === 'group') return null;
+	// Groups climb to their category; categories climb to the Solar System root.
+	if (focusable.kind === 'group') {
+		const slug = focusable.slug;
+		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
+			return slug === CAT_SOLAR_SYSTEM ? null : categoryCrumb(CAT_SOLAR_SYSTEM);
+		}
+		const appliesTo = groupGlobal?.applies_to;
+		if (appliesTo === 'small_body') {
+			const cls = classNameFromSlug(slug);
+			return categoryCrumb(cls && COMET_CLASS_NAMES.has(cls) ? CAT_COMETS : CAT_ASTEROIDS);
+		}
+		if (appliesTo === 'earth_sat') return categoryCrumb(CAT_SATELLITES);
+		return null;
+	}
 
 	const data = focusable.body.data;
 
@@ -80,6 +110,10 @@ export function parentCrumb(
 		const cls = sbdbOrbitClass(a, e);
 		return cls ? classGroup(cls) : null;
 	}
+
+	// Planets → the Planets category; the Sun → the Solar System root.
+	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);
+	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
 	const urlType = urlTypeFromId(data.id);
 
@@ -112,6 +146,6 @@ export function parentCrumb(
 			: null;
 	}
 
-	// Planets, dwarf planets, the Sun, probes: parents land in phase 2.
+	// Probes: their category isn't built yet.
 	return null;
 }

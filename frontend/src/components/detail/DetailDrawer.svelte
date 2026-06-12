@@ -37,6 +37,7 @@
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
 	import GroupProperties from './properties/GroupProperties.svelte';
+	import ChildGroups from './properties/ChildGroups.svelte';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import MemberStrip from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
@@ -264,7 +265,7 @@
 		onSheetResize?.(dvh);
 	});
 
-	let crumb = $derived(parentCrumb(focusable, ctx, data));
+	let crumb = $derived(parentCrumb(focusable, ctx, data, groupDetail?.global ?? null));
 	let fallbackName = $derived(focusableFallbackName(focusable));
 	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
 	let displayName = $derived(resolvedName ?? (loading ? m.loading() : focusableKey(focusable)));
@@ -425,6 +426,9 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
+				{#if groupDetail?.localized?.child_groups?.length}
+					<ChildGroups childGroups={groupDetail.localized.child_groups} />
+				{/if}
 				<GroupProperties
 					global={groupDetail?.global ?? null}
 					localized={groupDetail?.localized ?? null}

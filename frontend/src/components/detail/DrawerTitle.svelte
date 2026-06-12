@@ -43,11 +43,9 @@
 		}
 	}
 
-	// The chevron is always visible; the label is added only once we've confirmed
-	// it fits. The expanded width is read from an always-full, offscreen measurer
-	// — so the decision is independent of the label's presence (no oscillation)
-	// and the label never flashes in then collapses (it starts hidden and only
-	// appears when measured to fit).
+	// The chevron is always shown; the label appears only once measured to fit.
+	// Width comes from an always-full offscreen measurer, so the decision is
+	// independent of the label's presence (no oscillation, no first-paint flash).
 	let rowEl = $state<HTMLDivElement | null>(null);
 	let titleEl = $state<HTMLSpanElement | null>(null);
 	let measureEl = $state<HTMLSpanElement | null>(null);

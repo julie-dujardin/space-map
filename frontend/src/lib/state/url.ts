@@ -1,6 +1,12 @@
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import { CLASS_SLUG_PREFIX, SMALL_BODY_FLAG_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+import {
+	CATEGORY_SLUG_PREFIX,
+	CAT_SATELLITES,
+	CLASS_SLUG_PREFIX,
+	SMALL_BODY_FLAG_SLUG_PREFIX
+} from '$lib/fetch/groups/registry';
+import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 
@@ -29,7 +35,20 @@ const SUN_GROUP_ZOOM = DEFAULT_VIEW.zoom;
  *  PHA designations) frame heliocentrically; every other category currently
  *  centers on Earth. */
 export function groupAnchor(slug: string): { id: string; zoom: number } {
-	if (slug.startsWith(CLASS_SLUG_PREFIX) || slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX)) {
+	if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
+		// Satellites frame on Earth; the rest of the tree is heliocentric.
+		return slug === CAT_SATELLITES
+			? { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM }
+			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
+	}
+	if (slug.startsWith(CLASS_SLUG_PREFIX)) {
+		// Earth-orbit classes frame on Earth, small-body classes heliocentrically.
+		const cls = slug.slice(CLASS_SLUG_PREFIX.length);
+		return cls in SAT_ORBIT_ZONES
+			? { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM }
+			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
+	}
+	if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };

@@ -65,6 +65,13 @@ export interface RelatedGroupEntry extends EntityRef {
 	role: GroupType;
 }
 
+export interface ChildGroupEntry extends EntityRef {
+	/** Child group's type, so a category can section its children (orbit classes vs constellations). */
+	role: GroupType;
+	/** Child group's member count, for the chip. */
+	n: number;
+}
+
 export interface LocalizedGroupData {
 	name?: string;
 	description?: string;
@@ -84,6 +91,8 @@ export interface LocalizedGroupData {
 	constellations?: ConstellationEntry[];
 	/** Other groups sharing this group's QID (typically the op/mfr pair for the same company). */
 	related_groups?: RelatedGroupEntry[];
+	/** Category-only: the child groups this category lists (zones, families, classes, constellations). */
+	child_groups?: ChildGroupEntry[];
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	notable_member_names?: Record<string, string>;
 }
