@@ -27,7 +27,11 @@ export function disposeMaterial(mat: Material | Material[]): void {
 }
 
 const STAR_SPHERE_SEGMENTS = 96;
-const BODY_SPHERE_SEGMENTS = 64;
+/** Initial mesh detail. Deliberately the sphere-LOD floor: at build time the
+ *  camera is rarely close to any body, and `updateSphereLOD` up-steps the
+ *  geometry on the first frame a body covers real screen space. Building ~200
+ *  bodies at 64 segments cost ~150ms+ of the startup scene build. */
+const BODY_SPHERE_SEGMENTS = 24;
 
 export function buildMajorBodies(
 	bodies: PositionedBody[],

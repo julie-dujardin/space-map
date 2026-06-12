@@ -309,6 +309,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		await loader.seedNeededParents(arg.zone, arg.zoom, arg.part, arg.time, arg.parentIdType);
 	}
 
+	ctx.bodies.minorStreaming = true;
 	const intervalId = setInterval(flush, 500);
 
 	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
@@ -373,6 +374,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		);
 	} finally {
 		clearInterval(intervalId);
+		ctx.bodies.minorStreaming = false;
 		flush();
 	}
 

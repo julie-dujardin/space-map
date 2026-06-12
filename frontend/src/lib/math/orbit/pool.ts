@@ -1,7 +1,7 @@
 import type { PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
 import OrbitWorker from './worker?worker';
-import { packBodies, columnsTransferList } from './soa';
+import { packBodiesSliced, columnsTransferList } from './soa';
 
 /*
  * OrbitWorkerPool — offloads per-frame Kepler solves for asteroid zone and
@@ -85,6 +85,9 @@ export class OrbitWorkerPool {
 
 	/**
 	 * Add or replace one group's SoA element columns. Empty bodies → unwire.
+	 * Async: the pack yields to the event loop every few ms (main belt is >1M
+	 * rows), so callers must not rewire the same id concurrently — the
+	 * point-cloud system serializes rebuild passes for this reason.
 	 *
 	 * We do NOT allocate a fresh back when one is in flight: doing so would
 	 * let a new tick dispatch before the old one returns, and the old
@@ -93,17 +96,22 @@ export class OrbitWorkerPool {
 	 * Letting back stay null defers the next dispatch until the in-flight
 	 * tick lands naturally.
 	 */
-	rewireOne(
+	async rewireOne(
 		id: string,
 		bodies: PositionedBody[],
 		skip: Set<string>,
 		workerHint: number,
 		applyFlagFilter: boolean = false
-	): void {
+	): Promise<void> {
 		if (bodies.length === 0) {
 			this.unwireOne(id);
 			return;
 		}
+		const cols = await packBodiesSliced(bodies, skip, applyFlagFilter);
+		// Pool may have been destroyed while the pack yielded.
+		if (this.workers.length === 0) return;
+		// Read group state only after the pack's yields — an in-flight tick may
+		// have landed meanwhile and swapped front/back.
 		const prev = this.groups.get(id);
 		const workerIdx = prev?.workerIdx ?? workerHint % this.workers.length;
 		const capacity = bodies.length;
@@ -122,7 +130,6 @@ export class OrbitWorkerPool {
 			}
 		}
 
-		const cols = packBodies(bodies, skip, applyFlagFilter);
 		// If a tick is in flight (prev.back === null), preserve its pending
 		// dispatch state so the returning result is paired with the basis /
 		// parent it was actually computed under — see comment above re: back.

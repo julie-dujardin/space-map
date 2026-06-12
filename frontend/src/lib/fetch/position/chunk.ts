@@ -10,6 +10,7 @@ import {
 import { LruPromiseCache } from '$lib/fetch/position/cache';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
+import { yieldToMain } from '$lib/yield';
 import { OrbitalSource, Scale, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
@@ -79,6 +80,13 @@ function pickIsMinor(labels: LabelMap, id: string): boolean {
 	return labels.get(id)?.isMinor ?? false;
 }
 
+/** Single-lookup variant of pickLabel + pickIsMinor for the per-row hot loops —
+ *  two string-keyed gets per row measured ~10% of the asteroid-load window. */
+function pickLabelEntry(labels: LabelMap, id: string): { name: string | null; isMinor: boolean } {
+	const entry = labels.get(id);
+	return { name: entry?.name || null, isMinor: entry?.isMinor ?? false };
+}
+
 function keplerianToBody(
 	cols: KeplerianColumns,
 	idx: number,
@@ -90,10 +98,11 @@ function keplerianToBody(
 	const omDot = cols.omDot[idx];
 	const wDot = cols.wDot[idx];
 	const id = idMap.get(idx)!;
+	const { name, isMinor } = pickLabelEntry(labels, id);
 	return {
 		id,
-		name: pickLabel(labels, id),
-		isMinor: pickIsMinor(labels, id),
+		name,
+		isMinor,
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		flags: cols.flags[idx],
 		objectType: cols.objectType[idx] as ObjectType,
@@ -127,10 +136,11 @@ function parabolicToBody(
 	parentIdType: string
 ): BodyData {
 	const id = idMap.get(idx)!;
+	const { name, isMinor } = pickLabelEntry(labels, id);
 	return {
 		id,
-		name: pickLabel(labels, id),
-		isMinor: pickIsMinor(labels, id),
+		name,
+		isMinor,
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		flags: cols.flags[idx],
 		objectType: cols.objectType[idx] as ObjectType,
@@ -166,7 +176,7 @@ function sgp4ToBody(
 	parentIdType: string
 ): BodyData | null {
 	const id = idMap.get(idx)!;
-	const name = pickLabel(labels, id);
+	const { name, isMinor } = pickLabelEntry(labels, id);
 	const satrec = buildSatrec(
 		{
 			noradCatId: cols.id[idx],
@@ -189,7 +199,7 @@ function sgp4ToBody(
 	return {
 		id,
 		name,
-		isMinor: pickIsMinor(labels, id),
+		isMinor,
 		hasLocalized: cols.hasLocalized[idx] === 1,
 		flags: cols.flags[idx],
 		objectType: cols.objectType[idx] as ObjectType,
@@ -709,7 +719,15 @@ export class ChunkLoader {
 		const isSGP4 = cols.kind === 'sgp4';
 		const jd = dateToJD(date);
 
+		// Time-budgeted slicing: this loop runs for every row of every minor
+		// chunk (~1M rows on a full load) — without yields it starves input
+		// and rAF for seconds during phase 2.
+		let sliceStart = performance.now();
 		for (let idx = 0; idx < cols.rowCount; idx++) {
+			if ((idx & 255) === 255 && performance.now() - sliceStart > 6) {
+				await yieldToMain();
+				sliceStart = performance.now();
+			}
 			const objType = cols.objectType[idx] as ObjectType;
 
 			// Parabolic comets always have a valid orbit; for Keplerian/SGP4, skip

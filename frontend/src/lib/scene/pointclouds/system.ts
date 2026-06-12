@@ -15,7 +15,7 @@ import type { FocusState } from '$lib/scene/animation/focus';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
-import { partitionForWorkers, parentIdFromSubkey } from '$lib/math/orbit/partition';
+import { partitionForWorkersSliced, parentIdFromSubkey } from '$lib/math/orbit/partition';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
 import { resolveBodyColor } from '$lib/utils';
@@ -97,6 +97,11 @@ export class PointCloudSystem {
 	private readonly _parentsScratch = new Map<string, Vec3>();
 	/** Memoized moon → parent grouping; invalidated when majorBodies count changes. */
 	private moonsByParentCache: { len: number; map: Map<string, PositionedBody[]> } | null = null;
+	/** Bucket size at each group's last full pack (keys `asteroid:<zone>` /
+	 *  `spacecraft:<gid>`). While the minor stream is in flight, a dirty group
+	 *  is only repacked once it doubles past this — repacking the whole zone on
+	 *  every 500ms flush is O(loaded-so-far) and was the dominant flush cost. */
+	private lastPackedSize = new Map<string, number>();
 	/** Last earth-sat emphasis values applied. Used to re-apply to newly-built
 	 *  earth sub-clouds (rebuildMinor recreates them after a group filter swap). */
 	private earthSatEmphasis = {
@@ -269,18 +274,44 @@ export class PointCloudSystem {
 		for (const pts of this.moonPoints.values()) pts.layers.set(this.mapLayer);
 	}
 
+	/** Serialization for {@link rebuildMinor}'s async passes: one pass at a
+	 *  time; calls landing mid-pass queue a single follow-up pass. */
+	private rebuildRunning = false;
+	private rebuildQueued = false;
+
 	/**
 	 * Sync pool wiring and Three.js geometries with the ctx's dirty markers.
 	 * New chunks landing, the promoted set changing, and basis rebuilds all
-	 * add to dirty markers — this drains them.
-	 *
-	 * Each Points' geometry owns a persistent `Float32Array`: only resized
-	 * when the body count changes, otherwise left in place so a worker result
-	 * can `.set()` into it under the same `BufferAttribute`. That stable
-	 * attribute identity lets Three.js reuse the WebGL VBO instead of
-	 * `createBuffer`-ing a fresh one every tick.
+	 * add to dirty markers — this drains them. Fire-and-forget: the actual
+	 * pass is async (packs yield to keep input responsive) and serialized, so
+	 * the wiring lands a few frames later rather than within this call.
 	 */
 	rebuildMinor(): void {
+		if (this.rebuildRunning) {
+			this.rebuildQueued = true;
+			return;
+		}
+		this.rebuildRunning = true;
+		void (async () => {
+			try {
+				do {
+					this.rebuildQueued = false;
+					await this.rebuildMinorPass();
+				} while (this.rebuildQueued);
+			} finally {
+				this.rebuildRunning = false;
+			}
+		})();
+	}
+
+	/**
+	 * One drain of the dirty markers. Each Points' geometry owns a persistent
+	 * `Float32Array`: only resized when the body count changes, otherwise left
+	 * in place so a worker result can `.set()` into it under the same
+	 * `BufferAttribute`. That stable attribute identity lets Three.js reuse
+	 * the WebGL VBO instead of `createBuffer`-ing a fresh one every tick.
+	 */
+	private async rebuildMinorPass(): Promise<void> {
 		if (
 			this.ctx.bodies.dirtyAsteroidZones.size === 0 &&
 			this.ctx.bodies.dirtySpacecraftGroups.size === 0
@@ -291,10 +322,12 @@ export class PointCloudSystem {
 		const seedBasis: Vec3 = [this.basisPos[0], this.basisPos[1], this.basisPos[2]];
 		const k = this.orbitPool.workerCount;
 
-		for (const zone of this.ctx.bodies.dirtyAsteroidZones) {
+		for (const zone of [...this.ctx.bodies.dirtyAsteroidZones]) {
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
+			if (this.deferPackWhileStreaming(`asteroid:${zone}`, bucket?.size ?? 0)) continue;
+			this.ctx.bodies.dirtyAsteroidZones.delete(zone);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
-			const { buckets, baseWorker } = partitionForWorkers(zone, allBodies, k);
+			const { buckets, baseWorker } = await partitionForWorkersSliced(zone, allBodies, k);
 			// Iterate full K (not buckets.length) so subgroups #1..#K-1 get
 			// unwired when a zone shrinks below the split threshold.
 			for (let i = 0; i < k; i++) {
@@ -310,7 +343,7 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k, true);
+				await this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k, true);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
@@ -338,12 +371,13 @@ export class PointCloudSystem {
 				}
 			}
 		}
-		this.ctx.bodies.dirtyAsteroidZones.clear();
 
-		for (const gid of this.ctx.bodies.dirtySpacecraftGroups) {
+		for (const gid of [...this.ctx.bodies.dirtySpacecraftGroups]) {
 			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
+			if (this.deferPackWhileStreaming(`spacecraft:${gid}`, bucket?.size ?? 0)) continue;
+			this.ctx.bodies.dirtySpacecraftGroups.delete(gid);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
-			const { buckets, baseWorker } = partitionForWorkers(gid, allBodies, k);
+			const { buckets, baseWorker } = await partitionForWorkersSliced(gid, allBodies, k);
 			for (let i = 0; i < k; i++) {
 				const key = `${gid}#${i}`;
 				const groupId = `spacecraft:${key}`;
@@ -357,7 +391,7 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
+				await this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
 				const existing = this.spacecraftPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
@@ -386,7 +420,22 @@ export class PointCloudSystem {
 				}
 			}
 		}
-		this.ctx.bodies.dirtySpacecraftGroups.clear();
+	}
+
+	/** Streaming-phase repack throttle. Returns true when `key`'s group should
+	 *  stay dirty and skip this rebuild: it grew since the last pack but hasn't
+	 *  doubled yet. Unchanged sizes (promotion/teardown skip-set changes) and
+	 *  first arrivals always pack; once the stream ends the final flush drains
+	 *  whatever is still dirty. */
+	private deferPackWhileStreaming(key: string, size: number): boolean {
+		if (!this.ctx.bodies.minorStreaming) {
+			this.lastPackedSize.set(key, size);
+			return false;
+		}
+		const last = this.lastPackedSize.get(key);
+		if (last !== undefined && size > last && size < last * 2) return true;
+		this.lastPackedSize.set(key, size);
+		return false;
 	}
 
 	/** Write basis-relative positions for `bodies` into the first `bodies.length*3` slots of `arr`.

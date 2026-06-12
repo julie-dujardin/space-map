@@ -11,6 +11,7 @@
  */
 
 import type { PositionedBody } from '$lib/types/objects';
+import { yieldToMain } from '$lib/yield';
 
 /**
  * Minimum bodies per bucket for the split path to be worth its overhead.
@@ -63,6 +64,27 @@ export function partitionForWorkers(
 		buckets: partitionByHash(bodies, k),
 		baseWorker: hashString(name) % workerCount
 	};
+}
+
+/** Time-budgeted {@link partitionForWorkers} for the streaming rebuild path —
+ *  hashing >1M ids in one go blocks for >100ms. */
+export async function partitionForWorkersSliced(
+	name: string,
+	bodies: PositionedBody[],
+	workerCount: number
+): Promise<GroupPartition> {
+	const k = bodies.length >= workerCount * MIN_BODIES_PER_BUCKET ? workerCount : 1;
+	const buckets: PositionedBody[][] = Array.from({ length: k }, () => []);
+	let sliceStart = performance.now();
+	for (let i = 0; i < bodies.length; i++) {
+		if ((i & 16383) === 16383 && performance.now() - sliceStart > 6) {
+			await yieldToMain();
+			sliceStart = performance.now();
+		}
+		const b = bodies[i];
+		buckets[hashString(b.data.id) % k].push(b);
+	}
+	return { buckets, baseWorker: hashString(name) % workerCount };
 }
 
 /** Strip the `#i` subgroup suffix added by hash-partitioning to recover the

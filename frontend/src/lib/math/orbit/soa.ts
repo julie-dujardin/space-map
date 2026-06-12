@@ -2,6 +2,7 @@ import { solveKepler, solveKeplerHyperbolic, solveBarker } from './solvers';
 import { AU_SCALE, AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
 import { sgp4, SatRecError, type SatRec } from 'satellite.js';
+import { yieldToMain } from '$lib/yield';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
@@ -69,6 +70,45 @@ export interface OrbitColumns {
  * main-thread callers can map back by index. `applyFlagFilter` opts the group
  * into the per-tick NEO/PHA mask (leave false for Earth sats / probes).
  */
+/** Pack one body into row `idx` of `cols`. Returns false for KIND_SKIP rows
+ *  (skipped / degenerate) so callers can exclude them from validity widening. */
+function packRowInto(
+	cols: OrbitColumns,
+	idx: number,
+	b: PositionedBody,
+	skip?: Set<string>
+): boolean {
+	const d = b.data;
+	if (skip?.has(d.id)) {
+		cols.kind[idx] = KIND_SKIP;
+		return false;
+	}
+	if (d.satrec) {
+		cols.kind[idx] = KIND_SGP4;
+		cols.satrec[idx] = d.satrec;
+	} else if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
+		cols.kind[idx] = KIND_PARABOLIC;
+		cols.q[idx] = d.q;
+		cols.tp[idx] = d.tp;
+	} else if (d.a !== 0 && isFinite(d.a)) {
+		cols.kind[idx] = KIND_KEPLER;
+	} else {
+		cols.kind[idx] = KIND_SKIP;
+		return false;
+	}
+	cols.a[idx] = d.a;
+	cols.e[idx] = d.e;
+	cols.i[idx] = d.i;
+	cols.om[idx] = d.om;
+	cols.w[idx] = d.w;
+	cols.ma[idx] = d.ma;
+	cols.n[idx] = d.n;
+	cols.epoch[idx] = d.epoch;
+	cols.equatorial[idx] = d.equatorial ? 1 : 0;
+	cols.flags[idx] = d.flags ?? 0;
+	return true;
+}
+
 export function packBodies(
 	bodies: PositionedBody[],
 	skip?: Set<string>,
@@ -84,35 +124,36 @@ export function packBodies(
 	let start = Infinity;
 	let end = -Infinity;
 	for (let idx = 0; idx < count; idx++) {
-		const b = bodies[idx];
-		const d = b.data;
-		if (skip?.has(d.id)) {
-			cols.kind[idx] = KIND_SKIP;
-			continue;
+		if (!packRowInto(cols, idx, bodies[idx], skip)) continue;
+		const d = bodies[idx].data;
+		if (d.validityStart < start) start = d.validityStart;
+		if (d.validityEnd > end) end = d.validityEnd;
+	}
+	cols.validityStart = start === Infinity ? -Infinity : start;
+	cols.validityEnd = end === -Infinity ? Infinity : end;
+	return cols;
+}
+
+/** Time-budgeted {@link packBodies}: yields to the event loop every ~6ms so a
+ *  large zone (main belt is >1M rows) doesn't stall input for its whole pack. */
+export async function packBodiesSliced(
+	bodies: PositionedBody[],
+	skip?: Set<string>,
+	applyFlagFilter: boolean = false
+): Promise<OrbitColumns> {
+	const count = bodies.length;
+	const cols = allocColumns(count);
+	cols.applyFlagFilter = applyFlagFilter;
+	let start = Infinity;
+	let end = -Infinity;
+	let sliceStart = performance.now();
+	for (let idx = 0; idx < count; idx++) {
+		if ((idx & 4095) === 4095 && performance.now() - sliceStart > 6) {
+			await yieldToMain();
+			sliceStart = performance.now();
 		}
-		if (d.satrec) {
-			cols.kind[idx] = KIND_SGP4;
-			cols.satrec[idx] = d.satrec;
-		} else if (d.q != null && d.tp != null && isFinite(d.q) && isFinite(d.tp)) {
-			cols.kind[idx] = KIND_PARABOLIC;
-			cols.q[idx] = d.q;
-			cols.tp[idx] = d.tp;
-		} else if (d.a !== 0 && isFinite(d.a)) {
-			cols.kind[idx] = KIND_KEPLER;
-		} else {
-			cols.kind[idx] = KIND_SKIP;
-			continue;
-		}
-		cols.a[idx] = d.a;
-		cols.e[idx] = d.e;
-		cols.i[idx] = d.i;
-		cols.om[idx] = d.om;
-		cols.w[idx] = d.w;
-		cols.ma[idx] = d.ma;
-		cols.n[idx] = d.n;
-		cols.epoch[idx] = d.epoch;
-		cols.equatorial[idx] = d.equatorial ? 1 : 0;
-		cols.flags[idx] = d.flags ?? 0;
+		if (!packRowInto(cols, idx, bodies[idx], skip)) continue;
+		const d = bodies[idx].data;
 		if (d.validityStart < start) start = d.validityStart;
 		if (d.validityEnd > end) end = d.validityEnd;
 	}

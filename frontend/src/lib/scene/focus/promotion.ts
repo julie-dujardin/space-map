@@ -146,10 +146,15 @@ export class PromotionRegistry {
 	 *  the moon's per-frame parent lookup resolves) — without this the host would
 	 *  stay invisible while its moon renders. */
 	private autoPromoteAsteroidMoons(ids: readonly string[]): void {
+		// Only the `small_body_moons` bucket can match — look ids up there
+		// directly. The previous per-id `ctx.getBody` fallback scanned every
+		// zone bucket and dominated flush time during chunk streaming.
+		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
+		if (!moonBucket || moonBucket.size === 0) return;
 		const matched: PositionedBody[] = [];
 		const seenParents = new Set<string>();
 		for (const id of ids) {
-			const body = this.deps.ctx.getBody(id);
+			const body = moonBucket.get(id);
 			if (!body || body.data.objectType !== ObjectType.MOON) continue;
 			const parent = this.deps.ctx.getBody(body.data.parentId);
 			if (!parent || !isAsteroid(parent.data.objectType)) continue;

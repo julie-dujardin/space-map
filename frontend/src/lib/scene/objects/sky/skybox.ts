@@ -11,7 +11,7 @@
  * Sirius, and the Magellanic Clouds.
  */
 import {
-	CubeTextureLoader,
+	CubeTexture,
 	Quaternion,
 	SRGBColorSpace,
 	Vector3,
@@ -65,6 +65,39 @@ function faceUrl(id: string, tier: string, face: string): string {
 	return `${DATA_BASE}/v1/textures/${id}/${tier}_${face}.webp`;
 }
 
+/**
+ * Fetch + decode one tier's six faces as ImageBitmaps. Bitmap upload skips the
+ * CPU-side convert that `texSubImage2D(HTMLImageElement)` pays (~1s main-thread
+ * stall for the 4k tier), and decode happens off-thread in `createImageBitmap`.
+ * `imageOrientation: 'none'` matches the `<img>` path's flipY=false upload, so
+ * the empirically-calibrated SKYBOX_BASE_ROTATION stays valid.
+ */
+async function loadTierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
+	return Promise.all(
+		FACE_ORDER.map(async (face) => {
+			const res = await fetch(faceUrl(id, tier, face));
+			if (!res.ok) throw new Error(`Skybox face fetch failed (${res.status}): ${tier}_${face}`);
+			const blob = await res.blob();
+			return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
+		})
+	);
+}
+
+function makeCube(bitmaps: ImageBitmap[]): CubeTexture {
+	const cube = new CubeTexture(bitmaps);
+	cube.colorSpace = SRGBColorSpace;
+	cube.needsUpdate = true;
+	return cube;
+}
+
+/** Smallest declared tier, for the fast first paint. */
+function pickLowTier(meta: SkyboxMetadata): string | null {
+	if (meta.tiers.length === 0) return null;
+	return [...meta.tiers].sort(
+		(a, b) => (meta.tier_face_size[a] ?? 0) - (meta.tier_face_size[b] ?? 0)
+	)[0];
+}
+
 async function loadFromMeta(
 	scene: Scene,
 	renderer: WebGLRenderer,
@@ -75,14 +108,28 @@ async function loadFromMeta(
 		console.warn(`Skybox ${meta.id}: no tiers declared`);
 		return;
 	}
-	const urls = FACE_ORDER.map((face) => faceUrl(meta.id, tier, face));
-	const cube = await new CubeTextureLoader().loadAsync(urls);
-	cube.colorSpace = SRGBColorSpace;
-	scene.background = cube;
 	// `scene.backgroundRotation` is owned by the renderer (see
 	// `SceneRenderer.setSkyboxAdjust`), so we don't write it here to avoid
 	// clobbering a user adjustment that may have raced ahead of this async
 	// load. The renderer seeds the rotation synchronously at scene-init time.
+	const lowTier = pickLowTier(meta);
+	let low: CubeTexture | null = null;
+	if (lowTier && lowTier !== tier) {
+		low = makeCube(await loadTierBitmaps(meta.id, lowTier));
+		scene.background = low;
+	}
+	const full = makeCube(await loadTierBitmaps(meta.id, tier));
+	// Upload during idle time rather than mid-frame: initTexture pushes the
+	// six faces to the GPU now, so the first render that samples the cube
+	// doesn't absorb the upload cost.
+	await new Promise<void>((resolve) =>
+		'requestIdleCallback' in window
+			? requestIdleCallback(() => resolve(), { timeout: 2000 })
+			: setTimeout(resolve, 500)
+	);
+	renderer.initTexture(full);
+	scene.background = full;
+	low?.dispose();
 }
 
 /**

@@ -34,6 +34,12 @@ export class BodyIndex {
 	dirtyAsteroidZones = new Set<string>();
 	dirtySpacecraftGroups = new Set<string>();
 
+	/** True while the phase-2 minor-chunk stream is in flight. Point-cloud
+	 *  rebuilds throttle full-zone repacks while this is set (see
+	 *  {@link PointCloudSystem.rebuildMinor}); the final flush clears it so
+	 *  every still-dirty zone gets its full pack. */
+	minorStreaming = false;
+
 	/** Incremented on each minor-body data flush; read by Scene.svelte to trigger point cloud rebuilds. */
 	minorBodyVersion = $state(0);
 
