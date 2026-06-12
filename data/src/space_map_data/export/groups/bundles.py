@@ -14,6 +14,7 @@ import orjson
 
 from collections import defaultdict
 
+from space_map_data.constants.categories import CATEGORY_BY_SLUG
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import (
@@ -27,6 +28,7 @@ from space_map_data.export.groups.registry import (
     MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
+    GROUP_BY_SLUG,
     GROUPS,
     Group,
     GroupType,
@@ -133,18 +135,30 @@ def _build_localized(
     extracted: dict | None,
     stats: GroupSatcatStats | None,
     related_by_qid: dict[str, list[Group]],
+    child_slugs: list[str] | None,
+    member_counts: dict[str, int],
 ) -> dict:
     data: dict = {}
+    # Categories carry a hand-set plural name (the Wikidata label is singular
+    # and lower-case, e.g. "planet"); the description still comes from Wikidata.
+    if group.type is GroupType.CATEGORY:
+        spec = CATEGORY_BY_SLUG.get(group.slug)
+        if spec:
+            data["name"] = spec.name
     if group.wikidata_qid:
         wd = wikidata_entities.get_referenced(group.wikidata_qid)
         if wd:
-            name = wd["labels"].get(lang) or wd["labels"].get("en")
-            if name:
-                # Wikidata labels orbit zones sentence-case ("low Earth
-                # orbit"); the UI wants a capitalized leading letter.
-                if group.type in (GroupType.ORBIT_CLASS, GroupType.EARTH_ORBIT_CLASS):
-                    name = name[:1].upper() + name[1:]
-                data["name"] = name
+            if group.type is not GroupType.CATEGORY:
+                name = wd["labels"].get(lang) or wd["labels"].get("en")
+                if name:
+                    # Wikidata labels orbit zones sentence-case ("low Earth
+                    # orbit"); the UI wants a capitalized leading letter.
+                    if group.type in (
+                        GroupType.ORBIT_CLASS,
+                        GroupType.EARTH_ORBIT_CLASS,
+                    ):
+                        name = name[:1].upper() + name[1:]
+                    data["name"] = name
             desc = wd["descriptions"].get(lang)
             if desc:
                 data["description"] = desc
@@ -194,7 +208,51 @@ def _build_localized(
         )
         if constellations:
             data["constellations"] = constellations
+    if child_slugs:
+        child_groups = _child_group_refs(
+            child_slugs, lang, wikidata_entities, member_counts
+        )
+        if child_groups:
+            data["child_groups"] = child_groups
     return data
+
+
+def _child_group_refs(
+    child_slugs: list[str],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+    member_counts: dict[str, int],
+) -> list[dict]:
+    """Child-group links for a category page, with localized names + counts."""
+    refs: list[dict] = []
+    for slug in child_slugs:
+        child = GROUP_BY_SLUG.get(slug)
+        if child is None:
+            continue
+        if child.type is GroupType.CATEGORY:
+            spec = CATEGORY_BY_SLUG.get(slug)
+            name = spec.name if spec else slug
+        else:
+            name = slug
+            if child.wikidata_qid:
+                ref = resolve_entity_ref(child.wikidata_qid, lang, wikidata_entities)
+                if ref is not None and ref.name:
+                    name = ref.name
+                    if child.type in (
+                        GroupType.ORBIT_CLASS,
+                        GroupType.EARTH_ORBIT_CLASS,
+                    ):
+                        name = name[:1].upper() + name[1:]
+        refs.append(
+            {
+                "name": name,
+                "n": member_counts.get(slug, 0),
+                "primary_type": "group",
+                "primary_id": slug,
+                "role": str(child.type),
+            }
+        )
+    return refs
 
 
 def _launch_site_refs(
@@ -268,6 +326,7 @@ def _extract_group_claims(
         GroupType.COUNTRY,
         GroupType.ORBIT_CLASS,
         GroupType.EARTH_ORBIT_CLASS,
+        GroupType.CATEGORY,
     ):
         return None
     if not group.wikidata_qid:
@@ -404,6 +463,7 @@ def write_group_bundles(
     extra_largest_bodies: dict[str, LargestBody] | None = None,
     extra_pha_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
+    category_children: dict[str, list[str]] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -446,6 +506,7 @@ def write_group_bundles(
             pha_count,
             member_entries,
         )
+        child_slugs = (category_children or {}).get(group.slug)
         for lang in LANGUAGES:
             lang_data = _build_localized(
                 group,
@@ -455,6 +516,8 @@ def write_group_bundles(
                 extracted,
                 stats,
                 related_by_qid,
+                child_slugs,
+                member_counts,
             )
             if members and member_entries:
                 member_names = notable_names(

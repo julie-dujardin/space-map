@@ -9,6 +9,7 @@ entity can appear in multiple roles without slug collisions.
 from dataclasses import dataclass
 from enum import StrEnum
 
+from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES, COUNTRY_SLUG_PREFIX
 from space_map_data.constants.earth_sats.constellations import CONSTELLATIONS
 from space_map_data.constants.earth_sats.launch_sites import (
@@ -40,6 +41,7 @@ class GroupType(StrEnum):
     ORBIT_CLASS = "orbit_class"
     SMALL_BODY_FLAG = "small_body_flag"
     EARTH_ORBIT_CLASS = "earth_orbit_class"
+    CATEGORY = "category"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -55,6 +57,7 @@ class GroupCategory(StrEnum):
 
     EARTH_SAT = "earth_sat"
     SMALL_BODY = "small_body"
+    CATEGORY = "category"  # browse-tree node; no scene filter
 
 
 __all__ = [
@@ -160,6 +163,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for cls in EarthOrbitClass
     )
+    categories = tuple(
+        Group(
+            slug=c.slug,
+            type=GroupType.CATEGORY,
+            applies_to=GroupCategory.CATEGORY,
+            wikidata_qid=c.wikidata_qid,
+        )
+        for c in CATEGORIES
+    )
     return (
         constellations
         + operators
@@ -169,6 +181,7 @@ def _build_groups() -> tuple[Group, ...]:
         + orbit_classes
         + small_body_flags
         + earth_orbit_classes
+        + categories
     )
 
 

@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export.groups.bundles import write_group_bundles
+from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.earth_sat import (
     build_earth_orbit_classes,
     write_earth_orbit_samples,
@@ -37,14 +38,28 @@ def run_groups_tier(
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(session)
         earth_orbit_stats = build_earth_orbit_classes(session)
-    build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
-    build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
+        build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
+        build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats
+
+        extra_member_counts = dict(small_body_stats.member_counts)
+        extra_member_counts.update(earth_orbit_stats.member_counts)
+        # Counts the category builder needs to rank constellations + drop empty
+        # zones: membership-backed groups plus the small-body/earth extras.
+        all_counts = {
+            slug: len(ids)
+            for mem in build.membership.values()
+            for slug, ids in mem.items()
+        }
+        all_counts.update(extra_member_counts)
+        category_data = build_category_data(session, all_counts)
+
+    extra_member_counts.update(category_data.member_counts)
+    extra_notable_members = dict(small_body_stats.notable_members)
+    extra_notable_members.update(category_data.notable_members)
+
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
     write_earth_orbit_samples(out_dir, earth_orbit_stats.orbit_samples)
-
-    extra_member_counts = dict(small_body_stats.member_counts)
-    extra_member_counts.update(earth_orbit_stats.member_counts)
 
     return write_group_bundles(
         out_dir,
@@ -55,7 +70,8 @@ def run_groups_tier(
         extra_histograms=small_body_stats.discovery_histograms,
         extra_largest_bodies=small_body_stats.largest_bodies,
         extra_pha_counts=small_body_stats.pha_counts,
-        extra_notable_members=small_body_stats.notable_members,
+        extra_notable_members=extra_notable_members,
+        category_children=category_data.children,
     )
 
 
