@@ -10,7 +10,6 @@ from concurrent.futures import (
     FIRST_COMPLETED,
     Future,
     ThreadPoolExecutor,
-    as_completed,
     wait,
 )
 from dataclasses import dataclass, field
@@ -131,9 +130,10 @@ _DEFAULT_ZONE_LIMIT = 10_000
 # unbounded executor every combo's `.all()` landed in RAM before any worker
 # drained, and the session's identity map pinned them all — that's the 30-40
 # GB blow-up. Cap concurrent zone exports so peak memory ≈ MAX_IN_FLIGHT ×
-# largest-combo size. 8 keeps the big MBA-unnamed combo (~3 GB) + smaller
-# ones in flight under ~20 GB.
-_MAX_ZONE_IN_FLIGHT = 8
+# largest-combo size. 3 keeps the big MBA-unnamed combo (~3 GB) plus at most
+# two others resident at once; the giant combo's own `.all()` is the hard
+# floor below this (one batch can't be split without chunking the query).
+_MAX_ZONE_IN_FLIGHT = 3
 
 
 @dataclass
@@ -486,22 +486,42 @@ def _drive_zone_exports(
     cheb_covered_ids: set[str],
     agg: _Aggregators,
     tier_b_clean: bool,
-) -> dict[Future, tuple[str, int]]:
-    """Submit threaded zone exports + run Earth zones inline.
+) -> None:
+    """Submit threaded zone exports, run Earth zones inline, fold all results.
 
     Zones whose cached signature still matches are folded into `agg` here
     and never submitted (see `_iter_sbdb_zone_snapshots` / `_run_earth_zones`).
 
-    Returns the pending futures (executor has joined, but the results are
-    still wrapped). Caller drains them via :func:`_record` after writing the
-    intermediate outputs that don't depend on per-object data.
+    Each zone export is drained into `agg` the moment it completes, so only
+    the in-flight zones' per-object data stays resident — not the whole
+    export's. Returns once every result has been folded in.
     """
+    sbdb_sig = incremental.sbdb_zone_signature(
+        cheb_covered_ids, _moon_host_ids(session)
+    )
     futures: dict[Future, tuple[str, int]] = {}
+
+    def drain(done: set[Future]) -> None:
+        """Fold completed zone exports into `agg` and drop their results."""
+        for f in done:
+            zone, zoom = futures.pop(f)
+            result = f.result()
+            _record(zone, zoom, result, agg)
+            if zone.startswith("small_bodies/"):
+                incremental.write_zone_meta(
+                    out_dir,
+                    zone,
+                    zoom,
+                    sbdb_sig,
+                    result.parent_id_type,
+                    result.snapshots,
+                )
+
     with ThreadPoolExecutor(max_workers=_MAX_ZONE_IN_FLIGHT) as executor:
         in_flight: set[Future] = set()
 
         def gate() -> None:
-            """Block until at least one slot frees up.
+            """Block until a slot frees up, draining whatever completed.
 
             Without this the loop would queue every combo's loaded ORM
             objects in the executor's work queue, defeating max_workers as a
@@ -512,6 +532,7 @@ def _drive_zone_exports(
             while len(in_flight) >= _MAX_ZONE_IN_FLIGHT:
                 done, _pending = wait(in_flight, return_when=FIRST_COMPLETED)
                 in_flight.difference_update(done)
+                drain(done)
 
         def submit_zone(zone: str, zoom: int, snapshots: ZoneSnapshots) -> None:
             gate()
@@ -528,8 +549,12 @@ def _drive_zone_exports(
         ):
             submit_zone(zone, zoom, snapshots)
         _run_earth_zones(session, out_dir, ctx, celestrak_loader, agg, tier_b_clean)
-        # executor joins here — session still open so ORM objects remain valid
-    return futures
+        # Drain the tail: combos still running plus those that finished while
+        # earth ran inline. Session stays open so ORM objects remain valid.
+        while in_flight:
+            done, _pending = wait(in_flight, return_when=FIRST_COMPLETED)
+            in_flight.difference_update(done)
+            drain(done)
 
 
 def _build_non_zone_object_data(
@@ -901,7 +926,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 len(cheb_covered_ids),
             )
 
-        futures = _drive_zone_exports(
+        _drive_zone_exports(
             session,
             out_dir,
             ctx,
@@ -934,26 +959,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             skybox_metadata,
             model_metadata,
         )
-
-        # Aggregate has_localized from elements futures before writing chebyshev
-        # — the cheb body header carries one bit per body, gated on the same
-        # union map the elements files use.
-        sbdb_sig = incremental.sbdb_zone_signature(
-            cheb_covered_ids, _moon_host_ids(session)
-        )
-        for f in as_completed(futures):
-            zone, zoom = futures[f]
-            result = f.result()
-            _record(zone, zoom, result, agg)
-            if zone.startswith("small_bodies/"):
-                incremental.write_zone_meta(
-                    out_dir,
-                    zone,
-                    zoom,
-                    sbdb_sig,
-                    result.parent_id_type,
-                    result.snapshots,
-                )
 
         if not tier_b_clean:
             probe_ids = _build_non_zone_object_data(
