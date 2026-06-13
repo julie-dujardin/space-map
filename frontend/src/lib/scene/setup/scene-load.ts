@@ -1,6 +1,8 @@
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { fetchLabels } from '$lib/fetch/position/labels';
+import { MinorBucket } from '$lib/fetch/position/minor-columns';
+import type { ElementColumns } from '$lib/fetch/position/elements/parse';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { loadSystemsGlobal } from '$lib/fetch/systems-global';
 import {
@@ -227,24 +229,38 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	ctx.bodies.addBodies(major);
 	ctx.credits.recordOrbitSources(major);
 
-	const pendingAsteroids = new Map<string, Map<string, PositionedBody>>();
-	const pendingSpacecraft = new Map<string, Map<string, PositionedBody>>();
-	// Placeholders for URL-loaded targets (one per session): when the real
-	// chunk lands the entry's data/position fields are mutated in place so
-	// the BodyObject the renderer kept holds onto fresh elements without us
-	// needing to reseat references anywhere.
+	// Labels resolve once on app start; awaited here so each MinorBucket can
+	// materialize names/flags on demand without re-awaiting per chunk.
+	const labels = await fetchLabels();
+
+	// Asteroid buckets live directly on ctx.bodies; chunks are added in place and
+	// the outer Map is re-wrapped on flush so reactive observers see a new ref.
+	const asteroidBucket = (zone: string): MinorBucket => {
+		let b = ctx.bodies.asteroidBodiesByZone.get(zone);
+		if (!b) ctx.bodies.asteroidBodiesByZone.set(zone, (b = new MinorBucket(labels)));
+		return b;
+	};
+	// Spacecraft (Earth sats / debris) stay on the AoS per-id Map path.
+	const spacecraftBucket = (key: string): Map<string, PositionedBody> => {
+		let b = ctx.bodies.spacecraftByParent.get(key);
+		if (!b) ctx.bodies.spacecraftByParent.set(key, (b = new Map()));
+		return b;
+	};
+
+	// Placeholders for URL-loaded spacecraft targets: when the real chunk lands
+	// the entry's data/position are mutated in place so the renderer's held
+	// BodyObject ref stays valid. (Asteroid placeholders live in MinorBucket.)
 	const placeholderById = new Map<string, PositionedBody>();
-	// Ids added to a pending bucket since the last flush — drained at flush
-	// time to feed `BodyIndex.notifyBodiesAdded` so the promotion registry
-	// picks up curated asteroids/spacecraft without polling.
+	// Ids added to a bucket since the last flush — drained at flush time to feed
+	// `BodyIndex.notifyBodiesAdded` so the promotion registry picks up curated
+	// asteroids/spacecraft without polling.
 	const addedSinceFlush = new Set<string>();
 
 	const flush = () => {
-		// Re-wrap each inner Map so the outer reference changes for any
-		// reactive observers — inner refs stay stable for in-place updates.
-		const cloneOuter = <K, V>(m: Map<K, V>): Map<K, V> => new Map(m);
-		ctx.bodies.asteroidBodiesByZone = cloneOuter(pendingAsteroids);
-		ctx.bodies.spacecraftByParent = cloneOuter(pendingSpacecraft);
+		// Re-wrap the outer Maps so the reference changes for reactive observers
+		// — the inner MinorBucket refs stay stable (mutated in place by addChunk).
+		ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
+		ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
 		ctx.bodies.minorBodyVersion++;
 		if (addedSinceFlush.size > 0) {
 			ctx.bodies.notifyBodiesAdded([...addedSinceFlush]);
@@ -284,17 +300,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 					: zone;
 			if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
 				const key = body.data.parentId;
-				let bucket = pendingSpacecraft.get(key);
-				if (!bucket) pendingSpacecraft.set(key, (bucket = new Map()));
-				bucket.set(body.data.id, body);
+				spacecraftBucket(key).set(body.data.id, body);
 				placeholderById.set(body.data.id, body);
 				addedSinceFlush.add(body.data.id);
 				ctx.bodies.dirtySpacecraftGroups.add(key);
 			} else if (resolvedZone) {
-				let bucket = pendingAsteroids.get(resolvedZone);
-				if (!bucket) pendingAsteroids.set(resolvedZone, (bucket = new Map()));
-				bucket.set(body.data.id, body);
-				placeholderById.set(body.data.id, body);
+				asteroidBucket(resolvedZone).addPlaceholder(body);
 				addedSinceFlush.add(body.data.id);
 				ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
 			} else {
@@ -341,6 +352,21 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	ctx.bodies.minorStreaming = true;
 	const intervalId = setInterval(flush, 500);
 
+	// Columnar ingest for the asteroid bulk (small_bodies/*): the parsed element
+	// columns go straight into a MinorBucket — no per-row PositionedBody, no
+	// throwaway main-thread Kepler solve. The few bodies that become objects
+	// (promotion / picking / detail) materialize on demand from these columns.
+	const handleColumnChunk = (zone: string, cols: ElementColumns, parentIdType: string) => {
+		ctx.credits.recordOrbitSource(cols.source);
+		if (cols.rowCount === 0) return;
+		const added = asteroidBucket(zone).addChunk(cols, parentIdType);
+		for (const id of added) addedSinceFlush.add(id);
+		ctx.bodies.dirtyAsteroidZones.add(zone);
+	};
+
+	// Earth sats / debris stay on the AoS path (small count + time-segmented
+	// hot-reload + group-filter machinery). Mirrors the original per-id Map
+	// merge, including URL-placeholder reconciliation.
 	const handleChunk = (zone: string, chunk: PositionedBody[]) => {
 		ctx.credits.recordOrbitSources(chunk);
 		const earthFilter = zone === 'earth' ? ctx.earthSatFilter : null;
@@ -348,49 +374,53 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			if (earthFilter && !earthFilter.has(b.data.id)) continue;
 			const placeholder = placeholderById.get(b.data.id);
 			if (placeholder) {
-				// Mutate in place so the renderer's BodyObject keeps a stable
-				// PositionedBody ref. Don't overwrite optional fields with
-				// undefined — non-major chunks leave them unset, and the
-				// placeholder's orbitCenter array is what the per-frame loop
-				// mutates to keep the focused sat's trail tracking parent motion.
 				placeholder.data = b.data;
 				placeholder.position = b.position;
 				if (b.orbitElements !== undefined) placeholder.orbitElements = b.orbitElements;
 				if (b.orbitCenter !== undefined) placeholder.orbitCenter = b.orbitCenter;
 				placeholderById.delete(b.data.id);
-				const t = b.data.objectType;
-				if (t === ObjectType.SPACECRAFT || t === ObjectType.DEBRIS) {
-					ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
-				} else {
-					ctx.bodies.dirtyAsteroidZones.add(zone);
-				}
+				ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
 				continue;
 			}
-			const t = b.data.objectType;
-			if (t === ObjectType.SPACECRAFT || t === ObjectType.DEBRIS) {
-				let bucket = pendingSpacecraft.get(b.data.parentId);
-				if (!bucket) pendingSpacecraft.set(b.data.parentId, (bucket = new Map()));
-				if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
-				bucket.set(b.data.id, b);
-				ctx.bodies.dirtySpacecraftGroups.add(b.data.parentId);
-			} else {
-				let bucket = pendingAsteroids.get(zone);
-				if (!bucket) pendingAsteroids.set(zone, (bucket = new Map()));
-				if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
-				bucket.set(b.data.id, b);
-				ctx.bodies.dirtyAsteroidZones.add(zone);
-			}
+			const key = b.data.parentId;
+			const bucket = spacecraftBucket(key);
+			if (!bucket.has(b.data.id)) addedSinceFlush.add(b.data.id);
+			bucket.set(b.data.id, b);
+			ctx.bodies.dirtySpacecraftGroups.add(key);
 		}
 	};
 
+	// `small_body_moons` keep the AoS path: they're a tiny set whose positions
+	// resolve against their parent asteroid (seeded above) on the main thread,
+	// and the asteroid-moon auto-promote consumes the resolved bodies. Routed
+	// into the bucket as loose entries so `getBody`/promotion still find them.
+	const handleMoonChunk = (zone: string, chunk: PositionedBody[]) => {
+		ctx.credits.recordOrbitSources(chunk);
+		const bucket = asteroidBucket(zone);
+		for (const b of chunk) {
+			bucket.addPlaceholder(b);
+			addedSinceFlush.add(b.data.id);
+		}
+		ctx.bodies.dirtyAsteroidZones.add(zone);
+	};
+
+	// Asteroid zones go columnar; any other elements zone (Earth sats) stays AoS.
+	const asteroidOtherArgs = otherArgs.filter((a) => a.zone.startsWith('small_bodies/'));
+	const spacecraftArgs = otherArgs.filter((a) => !a.zone.startsWith('small_bodies/'));
+
 	try {
-		await Promise.all(
-			otherArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+		await Promise.all([
+			...asteroidOtherArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+				loader
+					.fetchMinorColumns(zone, zoom, part, date, time, parentIdType)
+					.then((cols) => handleColumnChunk(zone, cols, parentIdType))
+			),
+			...spacecraftArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
 					.process(zone, zoom, part, date, time, parentIdType)
 					.then((chunk) => handleChunk(zone, chunk))
 			)
-		);
+		]);
 		// Moons last: by now their parent asteroids have populated
 		// `loader.positions` via the seeded `neededParentIds` set, so
 		// `process()` can resolve them instead of skipping.
@@ -398,7 +428,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			moonArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
 					.process(zone, zoom, part, date, time, parentIdType)
-					.then((chunk) => handleChunk(zone, chunk))
+					.then((chunk) => handleMoonChunk(zone, chunk))
 			)
 		);
 	} finally {
@@ -422,8 +452,8 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			await Promise.all(
 				deferredChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 					loader
-						.process(zone, zoom, part, date, time, parentIdType)
-						.then((chunk) => handleChunk(zone, chunk))
+						.fetchMinorColumns(zone, zoom, part, date, time, parentIdType)
+						.then((cols) => handleColumnChunk(zone, cols, parentIdType))
 				)
 			);
 		} finally {

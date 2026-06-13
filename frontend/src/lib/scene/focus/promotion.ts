@@ -179,7 +179,7 @@ export class PromotionRegistry {
 	private promoteExistingAsteroidMoons(): void {
 		const moonBucket = this.deps.ctx.bodies.asteroidBodiesByZone.get('small_body_moons');
 		if (!moonBucket || moonBucket.size === 0) return;
-		this.autoPromoteAsteroidMoons(Array.from(moonBucket.keys()));
+		this.autoPromoteAsteroidMoons(Array.from(moonBucket.ids()));
 	}
 
 	/** Notification hook from {@link BodyIndex}. Promotes any newly-arrived

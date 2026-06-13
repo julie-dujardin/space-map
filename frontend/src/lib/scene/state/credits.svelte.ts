@@ -165,4 +165,13 @@ export class CreditsStore {
 		}
 		if (added) this.orbitSources = new Set(this.orbitSources);
 	}
+
+	/** Record one chunk-level orbit source. Minor chunks are single-source
+	 *  (the elements payload carries one provider byte for the whole file), so
+	 *  the columnar ingest path folds it in once per chunk instead of per row. */
+	recordOrbitSource(src: OrbitalSource): void {
+		if (src === OrbitalSource.UNKNOWN || this.orbitSources.has(src)) return;
+		this.orbitSources.add(src);
+		this.orbitSources = new Set(this.orbitSources);
+	}
 }

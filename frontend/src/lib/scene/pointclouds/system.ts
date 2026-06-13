@@ -326,15 +326,19 @@ export class PointCloudSystem {
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
 			if (this.deferPackWhileStreaming(`asteroid:${zone}`, bucket?.size ?? 0)) continue;
 			this.ctx.bodies.dirtyAsteroidZones.delete(zone);
-			const allBodies = bucket ? Array.from(bucket.values()) : [];
-			const { buckets, baseWorker } = await partitionForWorkersSliced(zone, allBodies, k);
-			// Iterate full K (not buckets.length) so subgroups #1..#K-1 get
+			// Fill the worker SoA straight from the bucket's columns — no
+			// PositionedBody[] round-trip, no throwaway main-thread Kepler solve.
+			const { groups, baseWorker } = bucket
+				? await bucket.buildWorkerGroups(zone, k, skip, false)
+				: { groups: [], baseWorker: 0 };
+			const cloudColor = bucket && groups.length > 0 ? bucket.cloudColor() : '#888888';
+			// Iterate full K (not groups.length) so subgroups #1..#K-1 get
 			// unwired when a zone shrinks below the split threshold.
 			for (let i = 0; i < k; i++) {
 				const key = `${zone}#${i}`;
 				const groupId = `asteroid:${key}`;
-				const bodies = i < buckets.length ? buckets[i] : [];
-				if (bodies.length === 0) {
+				const group = i < groups.length ? groups[i] : null;
+				if (!group || group.cols.count === 0) {
 					this.orbitPool.unwireOne(groupId);
 					const stale = this.asteroidPoints.get(key);
 					if (stale) {
@@ -343,18 +347,18 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
-				await this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k, true);
+				this.orbitPool.rewireOneCols(groupId, group.cols, (baseWorker + i) % k);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
-					this.resizeGeometryIfNeeded(existing.geometry, bodies);
+					this.resizeGeometryToCount(existing.geometry, group.cols.count, null);
 				} else {
-					const arr = new Float32Array(bodies.length * 3);
-					this.seedGeometryArray(arr, bodies);
+					// Positions start empty (drawRange 0) — the first worker tick
+					// fills them and expands the draw range; no origin flash.
 					const pts = makePointCloudFromBuffer(
-						arr,
-						bodies.length,
+						new Float32Array(group.cols.count * 3),
+						0,
 						this.circleTexture,
-						resolveBodyColor(bodies[0].data),
+						cloudColor,
 						asteroidPointSize()
 					);
 					pts.userData.frontBasis = seedBasis;
@@ -372,6 +376,9 @@ export class PointCloudSystem {
 			}
 		}
 
+		// Spacecraft stay on the AoS path (Earth sats / debris — small count plus
+		// time-segmented hot-reload + group filters that the columnar bulk path
+		// doesn't model). Same partition + pack + seed as before.
 		for (const gid of [...this.ctx.bodies.dirtySpacecraftGroups]) {
 			const bucket = this.ctx.bodies.spacecraftByParent.get(gid);
 			if (this.deferPackWhileStreaming(`spacecraft:${gid}`, bucket?.size ?? 0)) continue;
@@ -463,11 +470,10 @@ export class PointCloudSystem {
 		}
 	}
 
-	/** If the geometry's position array no longer matches the body count, swap
-	 *  in a freshly-seeded array (size change is rare — only on rewire with
-	 *  membership change). Same-capacity rewires leave the attribute alone so
-	 *  the next worker result updates it in place. Color attribute (when
-	 *  present, spacecraft only) is resized in parallel. */
+	/** AoS (spacecraft) geometry resize: if the position array no longer matches
+	 *  the body count, swap in a freshly-seeded array (size change is rare — only
+	 *  on rewire with membership change). Same-capacity rewires leave the
+	 *  attribute alone so the next worker result updates it in place. */
 	private resizeGeometryIfNeeded(geometry: BufferGeometry, bodies: PositionedBody[]): void {
 		const need = bodies.length * 3;
 		const posAttr = geometry.getAttribute('position') as BufferAttribute;
@@ -483,6 +489,35 @@ export class PointCloudSystem {
 		geometry.setAttribute('position', new BufferAttribute(fresh, 3));
 		if (freshColors) geometry.setAttribute('color', new BufferAttribute(freshColors, 3));
 		geometry.setDrawRange(0, bodies.length);
+	}
+
+	/**
+	 * Columnar (asteroid) geometry resize: match an existing group's geometry to
+	 * a new body `count`. Same-capacity rebuilds leave the position attribute
+	 * alone so the next worker result updates it in place (and keep the current
+	 * draw range so the cloud doesn't blink). On a size change, swap in a fresh
+	 * position array, copying the stable prefix (a body keeps its subgroup slot
+	 * across rebuilds — ids are append-only and hash-stable) so the visible dots
+	 * survive until the next tick repopulates the buffer. `colors`, when given
+	 * (unused for asteroids), is the freshly-built per-vertex color array.
+	 */
+	private resizeGeometryToCount(
+		geometry: BufferGeometry,
+		count: number,
+		colors: Float32Array | null
+	): void {
+		const need = count * 3;
+		const posAttr = geometry.getAttribute('position') as BufferAttribute;
+		const arr = posAttr.array as Float32Array;
+		if (colors) geometry.setAttribute('color', new BufferAttribute(colors, 3));
+		if (arr.length === need) return; // worker keeps filling the same buffer
+		const fresh = new Float32Array(need);
+		fresh.set(arr.subarray(0, Math.min(arr.length, need)));
+		geometry.setAttribute('position', new BufferAttribute(fresh, 3));
+		// Keep the prior draw range (clamped) so the existing prefix stays
+		// visible; the next worker tick expands it to the new count.
+		const prev = Math.min(geometry.drawRange.count, count);
+		geometry.setDrawRange(0, Number.isFinite(prev) ? prev : 0);
 	}
 
 	private onPoolResult = (

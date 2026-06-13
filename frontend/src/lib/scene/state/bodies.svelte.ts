@@ -1,4 +1,5 @@
 import { ObjectType, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import type { MinorBucket } from '$lib/fetch/position/minor-columns';
 import { EARTH_ID, SSB_ID, SUN_ID } from '$lib/constants';
 
 /** True if parentId is a top-level parent (SSB or Sun), not a planetary system. */
@@ -30,12 +31,17 @@ export class BodyIndex {
 	 *  this so the long tail of probes stays out of per-frame iteration. */
 	majorBodies: PositionedBody[] = [];
 
-	/** Per-zone asteroid buckets — inner Map keyed by object id so `getBody`/
-	 *  zone-local lookups stay O(1) without duplicating refs into a flat index. */
-	asteroidBodiesByZone = new Map<string, Map<string, PositionedBody>>();
+	/** Per-zone asteroid buckets. Each {@link MinorBucket} holds the zone's
+	 *  parsed element columns and materializes a `PositionedBody` on demand
+	 *  (`get`/`values`) — the ~1.3M dots render straight off the worker SoA and
+	 *  never allocate an object. `small_body_moons` ride here too, as loose
+	 *  entries (they need main-thread parent resolution + auto-promotion). */
+	asteroidBodiesByZone = new Map<string, MinorBucket>();
 
-	/** Per-parent spacecraft buckets — same shape as `asteroidBodiesByZone`,
-	 *  outer key is the parent id (e.g. `naif-399` for Earth sats). */
+	/** Per-parent spacecraft buckets — inner Map keyed by object id. Earth sats
+	 *  / debris stay on the AoS path (small count, plus the time-segmented
+	 *  hot-reload + group-filter machinery in ZoneRefresher), so this is a plain
+	 *  per-id Map, not a {@link MinorBucket}. Outer key is the parent id. */
 	spacecraftByParent = new Map<string, Map<string, PositionedBody>>();
 
 	/** Zones/groups that received new data since last rebuild. Cleared by the consumer. */

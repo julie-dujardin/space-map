@@ -1,7 +1,7 @@
 import type { PositionedBody } from '$lib/types/objects';
 import type { Vec3 } from '$lib/scene/animation/math';
 import OrbitWorker from './worker?worker';
-import { packBodiesSliced, columnsTransferList } from './soa';
+import { packBodiesSliced, columnsTransferList, type OrbitColumns } from './soa';
 
 /*
  * OrbitWorkerPool — offloads per-frame Kepler solves for asteroid zone and
@@ -110,11 +110,29 @@ export class OrbitWorkerPool {
 		const cols = await packBodiesSliced(bodies, skip, applyFlagFilter);
 		// Pool may have been destroyed while the pack yielded.
 		if (this.workers.length === 0) return;
-		// Read group state only after the pack's yields — an in-flight tick may
-		// have landed meanwhile and swapped front/back.
+		this.wireCols(id, cols, workerHint, bodies.length);
+	}
+
+	/**
+	 * Wire a group whose `OrbitColumns` are already built (the columnar minor
+	 * path — {@link MinorBucket.buildWorkerGroups} fills the SoA directly from
+	 * the binary, no `PositionedBody[]` round-trip). Same buffer/double-buffer
+	 * bookkeeping as {@link rewireOne}, minus the pack.
+	 */
+	rewireOneCols(id: string, cols: OrbitColumns, workerHint: number): void {
+		if (this.workers.length === 0) return;
+		if (cols.count === 0) {
+			this.unwireOne(id);
+			return;
+		}
+		this.wireCols(id, cols, workerHint, cols.count);
+	}
+
+	private wireCols(id: string, cols: OrbitColumns, workerHint: number, capacity: number): void {
+		// Read group state fresh — an in-flight tick may have landed meanwhile
+		// and swapped front/back.
 		const prev = this.groups.get(id);
 		const workerIdx = prev?.workerIdx ?? workerHint % this.workers.length;
-		const capacity = bodies.length;
 
 		let front: Float32Array;
 		let back: Float32Array | null;

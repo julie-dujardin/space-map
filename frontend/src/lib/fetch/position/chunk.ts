@@ -1,17 +1,25 @@
 import { fetchLabels, type LabelMap } from '$lib/fetch/position/labels';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
-import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
+import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import {
 	type KeplerianColumns,
 	type ParabolicColumns,
 	type SGP4Columns,
 	type ElementColumns
 } from '$lib/fetch/position/elements/parse';
+import {
+	pickLabel,
+	pickIsMinor,
+	keplerianToBody,
+	parabolicToBody,
+	sgp4ToBody,
+	materializeBodyData
+} from '$lib/fetch/position/elements/row';
 import { LruPromiseCache } from '$lib/fetch/position/cache';
 import { isMajorBody } from '$lib/types/objects';
 import { ObjectType } from '$lib/types/objects';
 import { yieldToMain } from '$lib/yield';
-import { OrbitalSource, Scale, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
+import { OrbitalSource, chunkedPartedUrl, partedUrl } from '$lib/fetch/position/format';
 import { parsePosition } from '$lib/fetch/position/parse';
 import { type BodyData, type PositionedBody, type OrbitalElements } from '$lib/types/objects';
 import { AU_KM, AU_SCALE, KM3_S2_TO_AU3_DAY2, KM_DAY_TO_AU_DAY, kmToScene } from '$lib/math/units';
@@ -29,6 +37,9 @@ import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 import { NUM_TRAIL_POINTS } from '$lib/scene/objects/trail/points';
 import { PROBE_METHOD_CHEBYSHEV } from '$lib/fetch/position/format';
+
+/** Position-only materialization (moon-host parents) doesn't need names. */
+const NO_LABELS: LabelMap = new Map();
 
 /**
  * Osculating Keplerian elements from a chebyshev body's state at `jd`, with
@@ -62,165 +73,6 @@ function chebyshevOsculatingElements(
 		state.velocity[2] * KM_DAY_TO_AU_DAY
 	];
 	return stateVectorToElements(r, v, muAuDay2, jd);
-}
-
-/**
- * Resolve a label to a non-empty name or null. The labels file ships
- * `{id}\x1f\x1f` for promoted bodies with no Wikidata/DB name (the id
- * still needs to be in the keys so the renderer auto-promotes it).
- * Coalescing `''` to null here keeps `body.data.name` truthy-or-null,
- * so downstream `?? fallback` chains in the drawer / page title / focus
- * URL work.
- */
-function pickLabel(labels: LabelMap, id: string): string | null {
-	return labels.get(id)?.name || null;
-}
-
-function pickIsMinor(labels: LabelMap, id: string): boolean {
-	return labels.get(id)?.isMinor ?? false;
-}
-
-/** Single-lookup variant of pickLabel + pickIsMinor for the per-row hot loops —
- *  two string-keyed gets per row measured ~10% of the asteroid-load window. */
-function pickLabelEntry(labels: LabelMap, id: string): { name: string | null; isMinor: boolean } {
-	const entry = labels.get(id);
-	return { name: entry?.name || null, isMinor: entry?.isMinor ?? false };
-}
-
-function keplerianToBody(
-	cols: KeplerianColumns,
-	idx: number,
-	labels: LabelMap,
-	idMap: Map<number, string>,
-	parentIdType: string
-): BodyData {
-	const isPlanetScale = cols.scale[idx] === Scale.PLANET;
-	const omDot = cols.omDot[idx];
-	const wDot = cols.wDot[idx];
-	const id = idMap.get(idx)!;
-	const { name, isMinor } = pickLabelEntry(labels, id);
-	return {
-		id,
-		name,
-		isMinor,
-		hasLocalized: cols.hasLocalized[idx] === 1,
-		flags: cols.flags[idx],
-		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `${parentIdType}-${cols.parentId[idx]}`,
-		radiusKm: cols.radiusKm[idx],
-		// Planet-scale: a is in km, n is in rev/day → convert to AU and deg/day
-		a: isPlanetScale ? cols.a[idx] / AU_KM : cols.a[idx],
-		e: cols.e[idx],
-		i: cols.i[idx],
-		om: cols.om[idx],
-		w: cols.w[idx],
-		ma: cols.ma[idx],
-		n: isPlanetScale ? cols.n[idx] * 360 : cols.n[idx],
-		epoch: cols.epochJd[idx],
-		omDot: omDot !== 0 ? omDot : undefined,
-		wDot: wDot !== 0 ? wDot : undefined,
-		// Planet-scale entries come from CelesTrak TLEs, whose angles are in the
-		// Earth-equatorial (TEME) frame. System-scale entries are ecliptic J2000.
-		equatorial: isPlanetScale,
-		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
-	};
-}
-
-function parabolicToBody(
-	cols: ParabolicColumns,
-	idx: number,
-	labels: LabelMap,
-	idMap: Map<number, string>,
-	parentIdType: string
-): BodyData {
-	const id = idMap.get(idx)!;
-	const { name, isMinor } = pickLabelEntry(labels, id);
-	return {
-		id,
-		name,
-		isMinor,
-		hasLocalized: cols.hasLocalized[idx] === 1,
-		flags: cols.flags[idx],
-		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `${parentIdType}-${cols.parentId[idx]}`,
-		radiusKm: cols.radiusKm[idx],
-		a: 0,
-		e: cols.e[idx],
-		i: cols.i[idx],
-		om: cols.om[idx],
-		w: cols.w[idx],
-		ma: 0,
-		n: 0,
-		epoch: cols.epochJd[idx],
-		q: cols.q[idx],
-		tp: cols.tp[idx],
-		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
-	};
-}
-
-/**
- * Build an SGP4-backed BodyData for one earth satellite. Returns null when
- * satrec init fails — earth sats must use SGP4, so we drop the row rather
- * than silently falling back to Kepler (which diverges from the SGP4 curve
- * by km and breaks trail construction).
- */
-function sgp4ToBody(
-	cols: SGP4Columns,
-	idx: number,
-	labels: LabelMap,
-	idMap: Map<number, string>,
-	parentIdType: string
-): BodyData | null {
-	const id = idMap.get(idx)!;
-	const { name, isMinor } = pickLabelEntry(labels, id);
-	const satrec = buildSatrec(
-		{
-			noradCatId: cols.id[idx],
-			epochJd: cols.epochJd[idx],
-			meanMotion: cols.n[idx],
-			eccentricity: cols.e[idx],
-			inclination: cols.i[idx],
-			raOfAscNode: cols.om[idx],
-			argOfPericenter: cols.w[idx],
-			meanAnomaly: cols.ma[idx],
-			bstar: cols.bstar[idx],
-			meanMotionDot: cols.meanMotionDot[idx],
-			meanMotionDdot: cols.meanMotionDdot[idx],
-			elementSetNo: cols.elementSetNo[idx],
-			revAtEpoch: cols.revAtEpoch[idx]
-		},
-		name ?? undefined
-	);
-	if (!satrec) return null;
-	return {
-		id,
-		name,
-		isMinor,
-		hasLocalized: cols.hasLocalized[idx] === 1,
-		flags: cols.flags[idx],
-		objectType: cols.objectType[idx] as ObjectType,
-		parentId: `${parentIdType}-${cols.parentId[idx]}`,
-		radiusKm: cols.radiusKm[idx],
-		// Kepler mean elements kept in canonical (AU, deg/day) units for the
-		// orbit-period estimate used by sgp4Curve — they're not used to propagate.
-		a: cols.a[idx] / AU_KM,
-		e: cols.e[idx],
-		i: cols.i[idx],
-		om: cols.om[idx],
-		w: cols.w[idx],
-		ma: cols.ma[idx],
-		n: cols.n[idx] * 360,
-		epoch: cols.epochJd[idx],
-		equatorial: true,
-		satrec,
-		validityStart: cols.validityStart,
-		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
-	};
 }
 
 /**
@@ -694,6 +546,61 @@ export class ChunkLoader {
 		const cols = await fetchElements(zone, zoom, part, time);
 		for (let i = 0; i < cols.rowCount; i++) {
 			this.neededParentIds.add(`${parentIdType}-${cols.parentId[i]}`);
+		}
+	}
+
+	/**
+	 * Fetch + parse one minor-body chunk into columnar form, without building a
+	 * per-row `PositionedBody`. The point cloud lives off the worker's per-frame
+	 * solve; the few bodies that become objects materialize on demand via
+	 * {@link MinorBucket}. Replaces the AoS `process()` path for asteroid zones.
+	 *
+	 * Still resolves a world position for the handful of rows in
+	 * `neededParentIds` (asteroid hosts of `small_body_moons`) into
+	 * `this.positions`, since the moons' `process()` pass looks their parent up
+	 * there — `process()` no longer runs for asteroid zones to do it.
+	 */
+	async fetchMinorColumns(
+		zone: string,
+		zoom: number,
+		part: number,
+		date: Date,
+		time: string | null = null,
+		parentIdType: string = 'naif'
+	): Promise<ElementColumns> {
+		const cols = await fetchElements(zone, zoom, part, time);
+		if (this.neededParentIds.size > 0) this.resolveNeededParents(cols, date, parentIdType);
+		return cols;
+	}
+
+	/** Solve + store positions for rows whose id is a needed moon-host parent.
+	 *  Mirrors the per-row offset selection in {@link process}. */
+	private resolveNeededParents(cols: ElementColumns, date: Date, parentIdType: string): void {
+		const jd = dateToJD(date);
+		const isParabolic = cols.kind === 'parabolic';
+		for (let i = 0; i < cols.rowCount; i++) {
+			const id = cols.idMap.get(i);
+			if (id === undefined || !this.neededParentIds.has(id)) continue;
+			const parentPos = this.positions.get(`${parentIdType}-${cols.parentId[i]}`);
+			if (!parentPos) continue;
+			const body = materializeBodyData(cols, i, NO_LABELS, parentIdType);
+			if (!body) continue;
+			const inRange = jd >= body.validityStart && jd <= body.validityEnd;
+			const offset = !inRange
+				? ([0, 0, 0] as [number, number, number])
+				: body.satrec
+					? sgp4PositionScene(body.satrec, jd)
+					: body.q != null
+						? parabolicToPosition(body, date)
+						: body.a === 0 && !isParabolic
+							? ([0, 0, 0] as [number, number, number])
+							: orbitalElementsToPosition(body, date);
+			if (!offset) continue;
+			this.positions.set(id, [
+				parentPos[0] + offset[0],
+				parentPos[1] + offset[1],
+				parentPos[2] + offset[2]
+			]);
 		}
 	}
 

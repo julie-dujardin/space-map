@@ -26,7 +26,9 @@ import { yieldToMain } from '$lib/yield';
  */
 export const MIN_BODIES_PER_BUCKET = 600;
 
-function hashString(s: string): number {
+/** Stable 32-bit string hash (djb2-ish). Used for both body→bucket assignment
+ *  and group-name→baseWorker spread. */
+export function hashString(s: string): number {
 	let h = 0;
 	for (let i = 0; i < s.length; i++) {
 		h = ((h << 5) - h + s.charCodeAt(i)) | 0;
