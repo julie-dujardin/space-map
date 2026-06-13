@@ -58,12 +58,7 @@
 
 <div class="flex flex-col gap-1">
 	<div class="flex items-baseline justify-between gap-2">
-		<div class="flex items-baseline gap-2 min-w-0">
-			<h3 class="text-sm font-medium">{heading}</h3>
-			<span class="text-muted-foreground text-xs tabular-nums">
-				{formatCompactNumber(totalCount)}
-			</span>
-		</div>
+		<h3 class="text-sm font-medium min-w-0 truncate">{heading}</h3>
 		{#if hasOverflow}
 			<button
 				type="button"

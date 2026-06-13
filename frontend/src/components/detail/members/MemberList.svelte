@@ -1,20 +1,18 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import * as m from '$lib/paraglide/messages.js';
 	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 	import { pickedThumbnailUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import { formatCompactNumber, formatNumber, formatQuantity } from '$lib/format/quantities';
+	import { formatQuantity } from '$lib/format/quantities';
 
 	interface Props {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
-		totalCount: number;
 		heading: string;
 	}
-	let { members, localizedNames, totalCount, heading }: Props = $props();
+	let { members, localizedNames, heading }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -50,16 +48,8 @@
 </script>
 
 <div class="flex flex-col gap-1">
-	<div class="flex items-baseline justify-between gap-2">
+	<div class="flex items-baseline gap-2">
 		<h3 class="text-sm font-medium">{heading}</h3>
-		{#if totalCount > members.length}
-			<span class="text-muted-foreground text-xs tabular-nums">
-				{m.members_top_of_total({
-					top: formatNumber(members.length),
-					total: formatCompactNumber(totalCount)
-				})}
-			</span>
-		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>
 	<ul class="flex flex-col">

@@ -470,12 +470,7 @@
 	<div class="flex flex-col gap-3 p-1">
 		{@render tabsBar()}
 		{#if notableMembers && notableMembers.length > 0}
-			<MemberList
-				members={notableMembers}
-				localizedNames={memberNames}
-				totalCount={memberTotal}
-				heading={membersHeading}
-			/>
+			<MemberList members={notableMembers} localizedNames={memberNames} heading={membersHeading} />
 		{/if}
 	</div>
 {/snippet}
