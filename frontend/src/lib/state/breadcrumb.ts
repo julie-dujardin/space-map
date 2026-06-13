@@ -140,6 +140,22 @@ export function parentCrumb(
 		return name ? { label: name, target: { kind: 'focus', id, name } } : null;
 	}
 
+	// Split-comet fragment → its parent comet, or the family group when the
+	// intact body isn't catalogued. Precedes the small-body branch: a fragment
+	// carries a spkid- id and would otherwise resolve to its orbit-class zone.
+	const fragmentOf = detail?.global?.fragment_of;
+	if (fragmentOf) {
+		return fragmentOf.primary_type === 'group'
+			? {
+					label: fragmentOf.name,
+					target: { kind: 'group', slug: fragmentOf.primary_id, name: fragmentOf.name }
+				}
+			: {
+					label: fragmentOf.name,
+					target: { kind: 'focus', id: fragmentOf.primary_id, name: fragmentOf.name }
+				};
+	}
+
 	const urlType = urlTypeFromId(data.id);
 
 	// Earth satellite → its constellation, else its orbit-class zone.

@@ -7,6 +7,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { groupTypeLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
+	import FragmentOf from './properties/FragmentOf.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -376,12 +377,26 @@
 		if (satellitesGroup) appState?.setGroup(satellitesGroup, membersHeading);
 		else activeTab = 'members';
 	}
-	let activeTab = $state<'overview' | 'images' | 'members'>('overview');
+
+	// Split-comet fragments: a strip + tab on the intact parent comet, mirroring
+	// moons. `fragment_of` (the fragment side) drives the breadcrumb + a card.
+	let notableFragments = $derived(isGroupMode ? undefined : data?.global?.fragments);
+	let fragmentNames = $derived(data?.localized?.fragment_names);
+	let fragmentTotal = $derived(data?.global?.fragment_count ?? 0);
+	let fragmentOf = $derived(isGroupMode ? undefined : data?.global?.fragment_of);
+	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
+	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
+
+	function seeAllFragments() {
+		activeTab = 'fragments';
+	}
+	let activeTab = $state<'overview' | 'images' | 'members' | 'fragments'>('overview');
 	// Switching to a focusable that lacks the active tab's content would
 	// leave the panel empty — fall back to overview.
 	$effect(() => {
 		if (!hasImages && activeTab === 'images') activeTab = 'overview';
 		if (!showMembersTab && activeTab === 'members') activeTab = 'overview';
+		if (!showFragmentsTab && activeTab === 'fragments') activeTab = 'overview';
 	});
 </script>
 
@@ -402,6 +417,14 @@
 					{membersTabLabel}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
 						{formatCompactNumber(memberTotal)}
+					</Badge>
+				</Tabs.Trigger>
+			{/if}
+			{#if showFragmentsTab}
+				<Tabs.Trigger value="fragments" class="px-2">
+					{m.tab_fragments()}
+					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
+						{formatCompactNumber(fragmentTotal)}
 					</Badge>
 				</Tabs.Trigger>
 			{/if}
@@ -439,6 +462,9 @@
 				extract={data?.localized?.wikipedia?.extract}
 				wikipediaUrl={data?.localized?.wikipedia?.url}
 			/>
+			{#if fragmentOf}
+				<FragmentOf {fragmentOf} />
+			{/if}
 			{#if notableMembers && notableMembers.length > 0}
 				<MemberStrip
 					members={notableMembers}
@@ -446,6 +472,15 @@
 					totalCount={memberTotal}
 					heading={membersHeading}
 					onSeeAll={seeAllMembers}
+				/>
+			{/if}
+			{#if hasFragments && notableFragments}
+				<MemberStrip
+					members={notableFragments}
+					localizedNames={fragmentNames}
+					totalCount={fragmentTotal}
+					heading={m.fragments_section()}
+					onSeeAll={seeAllFragments}
 				/>
 			{/if}
 			{#if feature}
@@ -493,6 +528,19 @@
 		{@render tabsBar()}
 		{#if notableMembers && notableMembers.length > 0}
 			<MemberList members={notableMembers} localizedNames={memberNames} heading={membersHeading} />
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet fragmentsPanel()}
+	<div class="flex flex-col gap-3 p-1">
+		{@render tabsBar()}
+		{#if notableFragments && notableFragments.length > 0}
+			<MemberList
+				members={notableFragments}
+				localizedNames={fragmentNames}
+				heading={m.fragments_section()}
+			/>
 		{/if}
 	</div>
 {/snippet}
@@ -561,6 +609,9 @@
 						<Tabs.Content value="members">
 							{@render membersPanel()}
 						</Tabs.Content>
+						<Tabs.Content value="fragments">
+							{@render fragmentsPanel()}
+						</Tabs.Content>
 					</div>
 				</Tabs.Root>
 			</Vaul.Content>
@@ -616,6 +667,9 @@
 				</Tabs.Content>
 				<Tabs.Content value="members" class="px-4 pb-4">
 					{@render membersPanel()}
+				</Tabs.Content>
+				<Tabs.Content value="fragments" class="px-4 pb-4">
+					{@render fragmentsPanel()}
 				</Tabs.Content>
 			</ScrollArea>
 		</Tabs.Root>

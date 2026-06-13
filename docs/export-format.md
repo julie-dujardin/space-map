@@ -894,6 +894,7 @@ interface GlobalObjectData {
   };
   provisional_designation?: string;
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
+  sitelinks_count?: number;           // Wikidata sitelink count; notability rank (omitted when 0)
   cross_refs?: {
     wikidata_qid?: string;
     naif_id?: number;
@@ -1033,8 +1034,8 @@ interface GlobalObjectData {
   fragment_of?: {
     name: string;
     primary_type: "object" | "group";
-    primary_id: string;
-    thumbnail?: string;   // parent thumbnail (object parents only)
+    primary_id: string;            // parent Object.id ("object") or family group slug ("group")
+    thumbnail?: PickedThumbnail;   // parent thumbnail (object parents only)
   };
 }
 

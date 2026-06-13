@@ -235,6 +235,24 @@ export interface GlobalObjectData {
 	satellite_count?: number;
 	/** Group slug the "+N more" tile links to (the Satellites browse page). */
 	satellites_group?: string;
+	/** Pieces of a split comet, on the intact parent (e.g. 73P). Same shape +
+	 *  strip UI as notable_moons; localized labels in `fragment_names`. */
+	fragments?: NotableMemberEntry[];
+	/** Total fragment count of this comet — drives the "+N more" tile. Present
+	 *  iff `fragments` is. */
+	fragment_count?: number;
+	/** On a fragment body: the comet it broke off, for the breadcrumb + "Fragment
+	 *  of" card. Routes to the parent object, or the family group when the intact
+	 *  comet isn't catalogued (parentless families like Shoemaker-Levy 9). */
+	fragment_of?: FragmentOf;
+}
+
+export interface FragmentOf {
+	name: string;
+	primary_type: 'object' | 'group';
+	/** Parent Object.id ("object") or family group slug ("group"). */
+	primary_id: string;
+	thumbnail?: PickedThumbnail;
 }
 
 // --- Localized object data ---
@@ -281,6 +299,8 @@ export interface LocalizedObjectData {
 	notable_moon_names?: Record<string, string>;
 	/** featured-satellite id/slug → localized label, only where it differs. */
 	notable_satellite_names?: Record<string, string>;
+	/** fragment Object.id → localized label, only where it differs from the global name. */
+	fragment_names?: Record<string, string>;
 }
 
 // --- Fetching ---
