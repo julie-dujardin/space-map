@@ -148,6 +148,12 @@ def write_chunk(
         # all of them at once. No CelesTrak-style per-day variance.
         signature = sidecar.build_sbdb_part_signature(DOWNLOAD_DIR)
     if signature is not None:
+        # The gate byte rides into the binary but isn't covered by the source
+        # fingerprints above, so a newly matched QID would otherwise leave a
+        # stale 0 that blocks the localized-detail fetch.
+        signature["has_localized"] = sidecar.has_localized_digest(
+            [o.id for o in objects], has_localized
+        )
         sidecar_path = sidecar.mirror_path(chunk_dir / f"{part}.meta.json")
         if out_path.exists() and sidecar.matches(sidecar_path, signature):
             return out_path.stat().st_size

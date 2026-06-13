@@ -14,13 +14,17 @@ share the format:
 Both shapes carry `format_version` so a writer/encoding change invalidates
 every part regardless of source freshness.
 
-Per-object DB state (object_type, parent, scale, has_localized, radius
-overrides) is intentionally NOT fingerprinted — those fields ride into the
-binary but are also republished by the `/objects` bundles every run; we
-treat that as the canonical refresh path and accept that DB-only edits
-won't invalidate already-written position parts.
+Most per-object DB state (object_type, parent, scale, radius overrides) is
+intentionally NOT fingerprinted — those fields ride into the binary but are
+also republished by the `/objects` bundles every run; we treat that as the
+canonical refresh path and accept that DB-only edits won't invalidate
+already-written position parts. The `has_localized` gate byte is the lone
+exception (see :func:`has_localized_digest`): it decides whether the frontend
+fetches the localized bundle at all, so a stale byte hides the refreshed
+`/objects` data instead of being healed by it.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -65,6 +69,18 @@ def _day_dir_inputs(day_dir: Path) -> list[dict]:
             entries.append(_file_entry(csv_path, day_dir))
     entries.sort(key=lambda e: e["name"])
     return entries
+
+
+def has_localized_digest(object_ids: list[str], has_localized: dict[str, bool]) -> str:
+    """Digest of the part's `has_localized` gate bits, in binary row order.
+
+    Folded into both part signatures so a body gaining/losing localized data
+    (e.g. a freshly matched QID) re-encodes its part. Other DB-derived columns
+    skip this on purpose — they refresh via `/objects` — but this byte gates
+    that very fetch, so it must invalidate the binary itself.
+    """
+    bits = bytes(1 if has_localized.get(oid) else 0 for oid in object_ids)
+    return hashlib.sha256(bits).hexdigest()[:16]
 
 
 def build_earth_part_signature(day_dir: Path) -> dict:

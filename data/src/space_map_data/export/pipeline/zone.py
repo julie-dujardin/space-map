@@ -144,6 +144,7 @@ def _write_element_parts(
     time: str | None,
     validity_start_jd: float = UNBOUNDED_START_JD,
     validity_end_jd: float = UNBOUNDED_END_JD,
+    part_offset: int = 0,
 ) -> int:
     """Chunk and write element binary files for one (zone, zoom, snapshot).
 
@@ -152,6 +153,8 @@ def _write_element_parts(
     last column so the frontend can skip detail-bundle fetches for objects
     with no Wikidata. `validity_start_jd`/`validity_end_jd` ride into the
     file header so consumers can hide bodies outside the chunk's time window.
+    `part_offset` shifts the written part indices, so a zone streamed in
+    CHUNK_SIZE-aligned batches lands a contiguous `0..N-1` run across batches.
     Returns the number of parts written.
     """
     num_parts = max(1, math.ceil(len(objects) / CHUNK_SIZE))
@@ -163,7 +166,7 @@ def _write_element_parts(
             out_dir,
             zone,
             zoom,
-            part_idx,
+            part_offset + part_idx,
             chunk_entities,
             has_localized,
             units,
@@ -207,8 +210,13 @@ def export_zone(
     snapshots: ZoneSnapshots,
     out_dir: Path,
     ctx: ObjectDataContext,
+    part_offset: int = 0,
 ) -> ZoneExportResult:
     """Build per-object data once for the zone; write element parts per snapshot.
+
+    `part_offset` shifts written part indices and is only meaningful for
+    single-snapshot zones streamed in batches (SBDB) — multi-snapshot zones
+    keep the default 0 since each snapshot writes into its own subdir.
 
     Two-pass over `snapshots.iterate`:
 
@@ -248,6 +256,7 @@ def export_zone(
             time=snap.label,
             validity_start_jd=snap.validity_start_jd,
             validity_end_jd=snap.validity_end_jd,
+            part_offset=part_offset,
         )
         result.snapshots.append(
             SnapshotResult(

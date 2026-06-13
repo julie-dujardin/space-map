@@ -65,7 +65,7 @@ from space_map_data.export.pipeline.zone import (
     build_zone_object_data,
     export_zone,
 )
-from space_map_data.export.position import write_chebyshev
+from space_map_data.export.position import CHUNK_SIZE, write_chebyshev
 from space_map_data.export.position.chebyshev.coverage import chebyshev_coverage
 from space_map_data.export.position.elements.celestrak_source import (
     CelesTrakElements,
@@ -130,10 +130,19 @@ _DEFAULT_ZONE_LIMIT = 10_000
 # unbounded executor every combo's `.all()` landed in RAM before any worker
 # drained, and the session's identity map pinned them all — that's the 30-40
 # GB blow-up. Cap concurrent zone exports so peak memory ≈ MAX_IN_FLIGHT ×
-# largest-combo size. 3 keeps the big MBA-unnamed combo (~3 GB) plus at most
-# two others resident at once; the giant combo's own `.all()` is the hard
-# floor below this (one batch can't be split without chunking the query).
-_MAX_ZONE_IN_FLIGHT = 3
+# largest-batch size. Big combos are split into row-capped batches
+# (see `_SBDB_BATCH_ROWS`) so no single work item materializes more than the
+# batch cap, keeping this knob about parallelism rather than the memory floor.
+_MAX_ZONE_IN_FLIGHT = 8
+
+# Rows per SBDB work item. The giant combos (MBA-unnamed is ~hundreds of
+# thousands of rows) used to materialize in one `.all()` — the multi-GB
+# transient. Streaming a combo in CHUNK_SIZE-aligned batches caps any single
+# work item at this many ORM rows; each batch writes a contiguous part range
+# at its offset so the on-disk output stays identical to a one-shot combo.
+# Must be a multiple of CHUNK_SIZE so batch boundaries land on part boundaries.
+_SBDB_BATCH_ROWS = 50_000
+assert _SBDB_BATCH_ROWS % CHUNK_SIZE == 0
 
 
 @dataclass
@@ -342,18 +351,25 @@ def _iter_sbdb_zone_snapshots(
     out_dir: Path,
     agg: _Aggregators,
     tier_b_clean: bool,
-) -> Iterator[tuple[str, int, ZoneSnapshots]]:
-    """Yield (zone, zoom, snapshots) per (SBDB class, named) combo with rows.
+) -> Iterator[tuple[str, int, ZoneSnapshots, int]]:
+    """Yield (zone, zoom, snapshots, part_offset) per CHUNK_SIZE-aligned batch.
+
+    Each (SBDB class, named) combo is streamed in `_SBDB_BATCH_ROWS` batches
+    rather than materialized whole, so the giant classes don't land a
+    multi-GB `.all()` in RAM. A combo emits one batch per slice; `part_offset`
+    places each batch's parts in a contiguous `0..N-1` run, so the on-disk
+    layout matches a one-shot combo. The caller tallies the batches back into
+    a single zone result.
 
     Combos whose zone signature matches their cached meta (and tier B is
     clean) are folded into `agg` from the cache and never queried — the ORM
     load and per-object build are the expensive part of a no-change run.
 
     Generator pauses after each yield so the caller can submit the snapshots
-    to the executor before we move on. Resuming runs ``session.expunge_all()``
-    to release the identity map's ref to the loaded objects — workers keep
-    them alive via their own refs, so no lazy load can fire. That's the
-    memory bound for big combos (MBA-unnamed alone is ~3 GB of ORM rows).
+    to the executor before we move on. Resuming detaches the batch's objects
+    one at a time (not ``expunge_all()``, which would kill the identity map
+    the live cursor still feeds) — workers keep them alive via their own
+    refs, so no lazy load can fire.
     """
     # Moon hosts join the named bodies in the eager (zoom 0) tier so an
     # asteroid-moon's parent loads early enough for the frontend to resolve the
@@ -402,15 +418,32 @@ def _iter_sbdb_zone_snapshots(
         # costs a sidecar scan rather than re-encoding every asteroid. The
         # first-export and post-refresh cost still scales with row count, but
         # that's amortized across re-runs.
-        objects = q.order_by(Object.random_int).all()
-        if not objects:
-            continue
+        #
+        # Stream in CHUNK_SIZE-aligned batches so a giant class never lands
+        # whole in RAM. yield_per keeps the single-query random_int order, so
+        # each batch's part range matches the slice a one-shot `.all()` would
+        # have chunked — the output is byte-identical, just written piecewise.
         # All SBDB classes ship under one parent dir so the prune pass and
         # incremental wipe rules can target them as a group.
         zone = f"small_bodies/{cls.name}"
-        yield zone, zoom, single_snapshot(objects)
-        del objects
-        session.expunge_all()
+        batch: list[Object] = []
+        part_offset = 0
+        for obj in q.order_by(Object.random_int).yield_per(CHUNK_SIZE):
+            batch.append(obj)
+            if len(batch) == _SBDB_BATCH_ROWS:
+                yield zone, zoom, single_snapshot(batch), part_offset
+                part_offset += _SBDB_BATCH_ROWS // CHUNK_SIZE
+                # Detach the submitted batch one row at a time — workers hold
+                # their refs, so no lazy load can fire. `expunge_all()` would
+                # kill the identity map the live yield_per cursor is still
+                # feeding rows into, so it has to be per-object here.
+                for done in batch:
+                    session.expunge(done)
+                batch = []
+        if batch:
+            yield zone, zoom, single_snapshot(batch), part_offset
+            for done in batch:
+                session.expunge(done)
 
 
 def _run_earth_zones(
@@ -500,22 +533,51 @@ def _drive_zone_exports(
         cheb_covered_ids, _moon_host_ids(session)
     )
     futures: dict[Future, tuple[str, int]] = {}
+    # SBDB combos arrive as several batch futures; tally their per-batch stats
+    # back into one untimed snapshot per (zone, zoom) so the zone meta and
+    # manifest see a single combo, exactly as the pre-streaming path produced.
+    sbdb_tally: dict[tuple[str, int], SnapshotResult] = {}
+    sbdb_parent: dict[tuple[str, int], str | None] = {}
 
     def drain(done: set[Future]) -> None:
-        """Fold completed zone exports into `agg` and drop their results."""
+        """Fold completed zone exports into `agg` and drop their results.
+
+        SBDB batches merge their object data eagerly (freeing it) but only
+        accumulate counts here — the zone meta is written once per combo in
+        :func:`_finalize_sbdb_zones` after every batch has landed.
+        """
         for f in done:
             zone, zoom = futures.pop(f)
             result = f.result()
-            _record(zone, zoom, result, agg)
             if zone.startswith("small_bodies/"):
-                incremental.write_zone_meta(
-                    out_dir,
-                    zone,
-                    zoom,
-                    sbdb_sig,
-                    result.parent_id_type,
-                    result.snapshots,
+                _merge_object_data(agg.all_objects, result.zone_data)
+                key = (zone, zoom)
+                tally = sbdb_tally.setdefault(
+                    key, SnapshotResult(time=None, count=0, num_parts=0)
                 )
+                sbdb_parent[key] = result.parent_id_type
+                for snap in result.snapshots:
+                    tally.count += snap.count
+                    tally.num_parts += snap.num_parts
+            else:
+                _record(zone, zoom, result, agg)
+
+    def _finalize_sbdb_zones() -> None:
+        """Fold each combo's tallied snapshot into `agg` and write its meta."""
+        for (zone, zoom), tally in sbdb_tally.items():
+            agg.object_counts[(zone, zoom, None)] += tally.count
+            agg.zone_structure[zone][zoom].parent_id_type = sbdb_parent[(zone, zoom)]
+            agg.zone_structure[zone][zoom].snapshots.append(tally)
+            logger.info(
+                "  %s zoom=%d: %d objects, %d parts",
+                zone,
+                zoom,
+                tally.count,
+                tally.num_parts,
+            )
+            incremental.write_zone_meta(
+                out_dir, zone, zoom, sbdb_sig, sbdb_parent[(zone, zoom)], [tally]
+            )
 
     with ThreadPoolExecutor(max_workers=_MAX_ZONE_IN_FLIGHT) as executor:
         in_flight: set[Future] = set()
@@ -523,7 +585,7 @@ def _drive_zone_exports(
         def gate() -> None:
             """Block until a slot frees up, draining whatever completed.
 
-            Without this the loop would queue every combo's loaded ORM
+            Without this the loop would queue every batch's loaded ORM
             objects in the executor's work queue, defeating max_workers as a
             memory bound. The expunge after each SBDB submit only frees
             memory once *all* refs to those objects drop — including the
@@ -534,9 +596,13 @@ def _drive_zone_exports(
                 in_flight.difference_update(done)
                 drain(done)
 
-        def submit_zone(zone: str, zoom: int, snapshots: ZoneSnapshots) -> None:
+        def submit_zone(
+            zone: str, zoom: int, snapshots: ZoneSnapshots, part_offset: int = 0
+        ) -> None:
             gate()
-            f = executor.submit(export_zone, zone, zoom, snapshots, out_dir, ctx)
+            f = executor.submit(
+                export_zone, zone, zoom, snapshots, out_dir, ctx, part_offset
+            )
             futures[f] = (zone, zoom)
             in_flight.add(f)
 
@@ -544,17 +610,19 @@ def _drive_zone_exports(
             session, cheb_covered_ids, limit_per_zone
         ):
             submit_zone(zone, zoom, snapshots)
-        for zone, zoom, snapshots in _iter_sbdb_zone_snapshots(
+        for zone, zoom, snapshots, part_offset in _iter_sbdb_zone_snapshots(
             session, cheb_covered_ids, out_dir, agg, tier_b_clean
         ):
-            submit_zone(zone, zoom, snapshots)
+            submit_zone(zone, zoom, snapshots, part_offset)
         _run_earth_zones(session, out_dir, ctx, celestrak_loader, agg, tier_b_clean)
-        # Drain the tail: combos still running plus those that finished while
+        # Drain the tail: batches still running plus those that finished while
         # earth ran inline. Session stays open so ORM objects remain valid.
         while in_flight:
             done, _pending = wait(in_flight, return_when=FIRST_COMPLETED)
             in_flight.difference_update(done)
             drain(done)
+
+    _finalize_sbdb_zones()
 
 
 def _build_non_zone_object_data(
