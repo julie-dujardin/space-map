@@ -1121,7 +1121,7 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "country" | "orbit_class" | "small_body_flag"
+  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
   applies_to: GroupCategory;  // "earth_sat" | "small_body"
   n: number;                  // member count
 }
@@ -1200,6 +1200,9 @@ interface GlobalGroupData {
   // Names are the English Wikidata label (matching object bundles), with
   // per-language overrides in LocalizedGroupData.notable_member_names.
   // Shares the NotableEntry shape with GlobalObjectData.notable_moons.
+  // On a `split_comet` group (slug `comet-family-<pdes>`) these are the
+  // family's fragments — the parentless counterpart to the `fragments` list a
+  // catalogued parent comet carries on its own object page.
   notable_members?: NotableEntry[];
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)

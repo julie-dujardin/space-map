@@ -148,6 +148,7 @@ def _build_localized(
     related_by_qid: dict[str, list[Group]],
     child_slugs: list[str] | None,
     member_counts: dict[str, int],
+    display_name: str | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -156,6 +157,10 @@ def _build_localized(
         spec = CATEGORY_BY_SLUG.get(group.slug)
         if spec:
             data["name"] = spec.name
+    # Split-comet families have no Wikidata label of their own — the catalog
+    # name of the comet (passed in) is the reliable display name.
+    elif group.type is GroupType.SPLIT_COMET and display_name:
+        data["name"] = display_name
     if group.wikidata_qid:
         wd = wikidata_entities.get_referenced(group.wikidata_qid)
         if wd:
@@ -477,11 +482,16 @@ def write_group_bundles(
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
     category_children: dict[str, list[str]] | None = None,
+    extra_groups: tuple[Group, ...] = (),
+    extra_group_names: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
     The ``extra_*`` dicts carry per-slug stats for group types that ship no
-    membership inverted index (orbit classes, small-body flags). Returns
+    membership inverted index (orbit classes, small-body flags).
+    ``extra_groups`` are DB-derived groups (split-comet families) appended to
+    the static registry; ``extra_group_names`` gives their localized display
+    name (they carry no Wikidata label of their own). Returns
     ``{global: N, lang: N, ...}`` for publication in metadata.json.
     """
     member_counts = _flatten_membership(membership_by_type)
@@ -492,7 +502,7 @@ def write_group_bundles(
     global_by_slug: dict[str, dict] = {}
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
-    for group in GROUPS:
+    for group in (*GROUPS, *extra_groups):
         wiki_summaries = (
             load_wikipedia_summaries_for_qid(group.wikidata_qid)
             if group.wikidata_qid
@@ -524,6 +534,7 @@ def write_group_bundles(
             member_entries,
         )
         child_slugs = (category_children or {}).get(group.slug)
+        display_name = (extra_group_names or {}).get(group.slug)
         for lang in LANGUAGES:
             lang_data = _build_localized(
                 group,
@@ -535,6 +546,7 @@ def write_group_bundles(
                 related_by_qid,
                 child_slugs,
                 member_counts,
+                display_name,
             )
             if members and member_entries:
                 member_names = notable_names(

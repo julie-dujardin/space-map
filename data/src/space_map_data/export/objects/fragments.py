@@ -16,6 +16,7 @@ members: image availability, then Wikidata sitelinks, with an id tiebreak.
 """
 
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,7 +34,7 @@ from space_map_data.export.notable import NotableObject, notable_entries, notabl
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
-from space_map_data.models.object.sbdb import SBDB
+from space_map_data.models.object.sbdb import SBDB, CometPrefix
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,9 @@ class CometFamily:
     parent_object_id: str | None  # None for parentless families (e.g. SL9)
     parent_qid: str | None
     parent_name: str  # display name for the breadcrumb / stat card
-    fragments: list[NotableObject] = field(default_factory=list)
+    designation: str = ""  # full IAU designation, e.g. "C/1860 D1" or "483P"
+    fragments: list[NotableObject] = field(default_factory=list)  # capped display list
+    member_ids: list[str] = field(default_factory=list)  # every fragment's object id
     total: int = 0
 
 
@@ -71,12 +74,55 @@ def _parent_display_name(
 def _parentless_name(full_name: str | None, parent_pdes: str, suffix: str) -> str:
     """Reconstruct a parent label from a fragment's full name.
 
-    ``C/1882 R1-A (Great September comet)`` → ``C/1882 R1 (Great September comet)``;
-    falls back to the bare designation when the full name is missing.
+    Drops the ``-<suffix>`` where it sits before the parenthetical name or the
+    end of the designation — covers both ``C/1882 R1-A (Great September comet)``
+    → ``C/1882 R1 (Great September comet)`` and the numbered form
+    ``483P/PANSTARRS-A`` → ``483P/PANSTARRS`` (where the suffix rides the name,
+    not the designation). Falls back to the bare designation.
     """
-    if full_name:
-        return full_name.replace(f"{parent_pdes}-{suffix}", parent_pdes, 1)
-    return parent_pdes
+    if not full_name:
+        return parent_pdes
+    return re.sub(rf"-{re.escape(suffix)}(?=\s*\(|$)", "", full_name, count=1)
+
+
+def _iau_designation(parent_pdes: str, prefix: CometPrefix | None) -> str:
+    """Full IAU designation: numbered comets stay bare (``483P``); provisional
+    ones get their prefix (``1860 D1`` + ``C`` → ``C/1860 D1``)."""
+    if re.match(r"^\d+[A-Z]$", parent_pdes) or prefix is None:
+        return parent_pdes
+    return f"{prefix.name}/{parent_pdes}"
+
+
+# A Wikidata label denotes a single fragment (not the whole comet) when it ends
+# in a "-<letters>" suffix before the parenthetical name or end of string —
+# "C/2001 A2-B", "C/1996 J1-A (Evans-Drinkwater)".
+_FRAGMENT_LABEL_RE = re.compile(r"-[A-Z]{1,2}(?=\s*\(|\s*$)")
+
+
+def _resolve_parentless_qid(
+    frag_rows: list[Any], wikidata_entities: WikidataEntityCache
+) -> str | None:
+    """Comet-level QID among the fragments' own Wikidata links, if unambiguous.
+
+    A parentless comet has no intact body to match, but editors often attach the
+    comet's page to some fragments and a per-fragment item to others. The
+    comet-level QID is the one whose label carries no fragment suffix; return it
+    only when exactly one such QID exists (else there's no single family page).
+    """
+    candidates = {r.wikidata_qid for r in frag_rows if r.wikidata_qid}
+    comet_level = {
+        qid
+        for qid in candidates
+        if not _FRAGMENT_LABEL_RE.search(
+            (
+                wd["labels"].get("en")
+                if (wd := wikidata_entities.get_entity(qid))
+                else ""
+            )
+            or ""
+        )
+    }
+    return next(iter(comet_level)) if len(comet_level) == 1 else None
 
 
 def build_comet_families(
@@ -132,7 +178,9 @@ def build_comet_families(
             )
             for r in top
         ]
+        member_ids = [r.object_id for r in frag_rows]
 
+        designation = _iau_designation(parent_pdes, frag_rows[0].prefix)
         parent = parents.get(parent_pdes)
         if parent is not None:
             parent_name = _parent_display_name(
@@ -143,19 +191,28 @@ def build_comet_families(
                 parent_object_id=parent.object_id,
                 parent_qid=parent.wikidata_qid,
                 parent_name=parent_name or parent_pdes,
+                designation=designation,
                 fragments=fragments,
+                member_ids=member_ids,
                 total=len(frag_rows),
             )
         else:
             rep = top[0]
+            reconstructed = _parentless_name(
+                rep.full_name, parent_pdes, frag_suffix[rep.object_id]
+            )
+            qid = _resolve_parentless_qid(frag_rows, wikidata_entities)
             family = CometFamily(
                 parent_pdes=parent_pdes,
                 parent_object_id=None,
-                parent_qid=None,
-                parent_name=_parentless_name(
-                    rep.full_name, parent_pdes, frag_suffix[rep.object_id]
-                ),
+                parent_qid=qid,
+                parent_name=_parent_display_name(
+                    reconstructed, None, qid, wikidata_entities
+                )
+                or reconstructed,
+                designation=designation,
                 fragments=fragments,
+                member_ids=member_ids,
                 total=len(frag_rows),
             )
         families[parent_pdes] = family
@@ -197,8 +254,10 @@ def attach_comet_fragments(
     frags_done = 0
     for family in families.values():
         fragment_of = _fragment_of(family)
-        for fragment in family.fragments:
-            global_data = chunk.global_data.get(fragment.object_id)
+        # Stamp every fragment, not just the capped display list — otherwise the
+        # 53rd piece of 73P would carry no parent link.
+        for object_id in family.member_ids:
+            global_data = chunk.global_data.get(object_id)
             if global_data is not None:
                 global_data["fragment_of"] = fragment_of
                 frags_done += 1

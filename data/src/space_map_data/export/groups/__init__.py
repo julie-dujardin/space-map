@@ -1,6 +1,10 @@
 """Group export: per-group bundles + membership index for /g/<slug> pages."""
 
+import csv
+import io
 import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import orjson
@@ -17,15 +21,123 @@ from space_map_data.export.groups.membership import (
     build_earth_groups_data,
     write_earth_membership,
 )
-from space_map_data.export.groups.registry import GroupType
+from space_map_data.export.groups.registry import (
+    Group,
+    GroupCategory,
+    GroupType,
+)
 from space_map_data.export.groups.small_body import (
+    _exported_sbdb_filter,
     build_small_body_group_stats,
     write_orbit_samples,
 )
+from space_map_data.constants.comet_fragments import family_group_slug
+from space_map_data.export.notable import NotableObject
+from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.wikidata import WikidataEntityCache
-from space_map_data.utils.paths import EXPORT_DIR
+from space_map_data.models.object.main import Object
+from space_map_data.models.object.sbdb import SBDB
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_METADATA_DIR
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SplitCometGroups:
+    """Dynamic group pages for parentless split-comet families."""
+
+    groups: list[Group] = field(default_factory=list)
+    member_counts: dict[str, int] = field(default_factory=dict)
+    notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    names: dict[str, str] = field(default_factory=dict)
+
+
+# Wikidata properties whose match CSVs key on a comet's designation.
+_DESIGNATION_MATCH_PIDS = ("P5736", "P490")
+
+
+def _designation_qids() -> dict[str, list[str]]:
+    """``{comet designation: [qid]}`` from the P5736/P490 Wikidata match CSVs.
+
+    Mirrors the ingest reader, but keyed on the full designation (``C/1860 D1``)
+    so a parentless family — which matches no object — can still be linked to
+    its Wikidata item when an editor sets the designation property there.
+    """
+    matches_dir = SOURCES_METADATA_DIR / "wikidata" / "ids" / "matches"
+    out: dict[str, set[str]] = defaultdict(set)
+    for pid in _DESIGNATION_MATCH_PIDS:
+        path = matches_dir / f"{pid}.csv"
+        if not path.exists():
+            continue
+        for row in csv.reader(io.StringIO(path.read_text())):
+            if row and len(row) > 1 and row[1]:
+                out[row[0]].update(row[1].split())
+    return {designation: sorted(qids) for designation, qids in out.items()}
+
+
+def _split_comet_groups(
+    session: Session, wikidata_entities: WikidataEntityCache
+) -> SplitCometGroups:
+    """One group page per parentless split-comet family (no intact body).
+
+    Families with an intact parent get their fragment list on that body's
+    object page instead. Members are restricted to exported fragments, so a
+    family whose pieces are all unexported (Shoemaker-Levy 9 — all D-prefix)
+    yields no page. A family's Wikidata QID comes from its fragments' own links
+    where possible, else a direct designation lookup (catches comets an editor
+    linked by designation but that no fragment matched).
+    """
+    families = build_comet_families(session, wikidata_entities)
+    designation_qids = _designation_qids()
+    exported = {
+        object_id
+        for (object_id,) in session.query(SBDB.object_id)
+        .join(Object, Object.id == SBDB.object_id)
+        .filter(*_exported_sbdb_filter())
+        .all()
+    }
+    out = SplitCometGroups()
+    skipped: list[str] = []
+    by_designation = 0
+    for family in families.values():
+        if family.parent_object_id is not None:
+            continue
+        members = [f for f in family.fragments if f.object_id in exported]
+        if not members:
+            skipped.append(family.parent_pdes)
+            continue
+        qid = family.parent_qid
+        name = family.parent_name
+        if qid is None:
+            candidates = designation_qids.get(family.designation, [])
+            if len(candidates) == 1:
+                qid = candidates[0]
+                wd = wikidata_entities.get_entity(qid)
+                name = (wd["labels"].get("en") if wd else None) or name
+                by_designation += 1
+        slug = family_group_slug(family.parent_pdes)
+        out.groups.append(
+            Group(
+                slug=slug,
+                type=GroupType.SPLIT_COMET,
+                applies_to=GroupCategory.SMALL_BODY,
+                wikidata_qid=qid,
+            )
+        )
+        out.member_counts[slug] = len(members)
+        out.notable_members[slug] = members
+        out.names[slug] = name
+    enriched = sum(1 for g in out.groups if g.wikidata_qid)
+    logger.info(
+        "Split-comet group pages: %d parentless families (%d with a Wikidata QID, "
+        "%d of those via designation lookup), %d skipped (no exported fragments): %s",
+        len(out.groups),
+        enriched,
+        by_designation,
+        len(skipped),
+        ", ".join(skipped) if skipped else "[]",
+    )
+    return out
 
 
 def run_groups_tier(
@@ -63,12 +175,15 @@ def run_groups_tier(
             small_body_stats.discovery_histograms,
             earth_launch_histograms,
         )
+        split_comets = _split_comet_groups(session, wikidata_entities)
 
     extra_member_counts.update(category_data.member_counts)
+    extra_member_counts.update(split_comets.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
     extra_notable_members.update(category_data.notable_members)
+    extra_notable_members.update(split_comets.notable_members)
     # Category discovery charts ride the same per-slug path as small-body
     # classes; satellite launch charts need their own override since categories
     # carry no GroupSatcatStats.
@@ -92,6 +207,8 @@ def run_groups_tier(
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
         category_children=category_data.children,
+        extra_groups=tuple(split_comets.groups),
+        extra_group_names=split_comets.names,
     )
 
 

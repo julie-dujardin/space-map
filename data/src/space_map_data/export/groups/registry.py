@@ -42,6 +42,10 @@ class GroupType(StrEnum):
     SMALL_BODY_FLAG = "small_body_flag"
     EARTH_ORBIT_CLASS = "earth_orbit_class"
     CATEGORY = "category"
+    # Synthetic per-family page for a parentless split comet (no intact body in
+    # the catalog, e.g. Shoemaker-Levy 9). Built dynamically from the DB, not in
+    # _build_groups; carries its fragments as notable members.
+    SPLIT_COMET = "split_comet"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
