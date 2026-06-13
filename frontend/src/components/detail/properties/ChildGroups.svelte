@@ -7,6 +7,7 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { groupTypeLabel } from '$lib/format/group';
 	import { formatCompactNumber } from '$lib/format/quantities';
+	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 
 	interface Props {
 		childGroups: ChildGroupEntry[];
@@ -14,6 +15,14 @@
 	let { childGroups }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
+
+	// Orbit-class names live in the frontend `orbit_class_*` i18n keys, not the
+	// export (whose Wikidata fallback leaves QID-less classes like IGSO/VHEO as
+	// the raw slug). Other child types use their exported localized name.
+	function childName(c: ChildGroupEntry): string {
+		const className = classNameFromSlug(c.primary_id ?? '');
+		return className != null ? orbitClassLabel(className) : c.name;
+	}
 
 	// Section by child type (orbit classes vs constellations …), preserving the
 	// export's order within each section.
@@ -48,12 +57,13 @@
 		<Separator />
 		<div class="flex flex-wrap gap-1.5 pt-0.5">
 			{#each items as c (c.primary_id)}
+				{@const name = childName(c)}
 				<a
-					href={href(c.primary_id ?? '', c.name)}
-					onclick={(e) => onClick(e, c.primary_id ?? '', c.name)}
+					href={href(c.primary_id ?? '', name)}
+					onclick={(e) => onClick(e, c.primary_id ?? '', name)}
 					class="border-border/60 hover:bg-muted/60 flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors"
 				>
-					<span class="font-medium">{c.name}</span>
+					<span class="font-medium">{name}</span>
 					{#if c.n > 0}
 						<span class="text-muted-foreground tabular-nums">{formatCompactNumber(c.n)}</span>
 					{/if}

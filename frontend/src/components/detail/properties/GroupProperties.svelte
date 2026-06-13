@@ -160,12 +160,12 @@
 			<Row label={dissolvedLabel} value={formatIsoDate(dissolved)} />
 		{/if}
 		{#if operators.length > 0}
-			<Row label={m.group_label_operators()}>
+			<Row label={m.group_label_operators({ count: operators.length })}>
 				<EntityLinks entities={operators} />
 			</Row>
 		{/if}
 		{#if manufacturers.length > 0}
-			<Row label={m.group_label_manufacturers()}>
+			<Row label={m.group_label_manufacturers({ count: manufacturers.length })}>
 				<EntityLinks entities={manufacturers} />
 			</Row>
 		{/if}
