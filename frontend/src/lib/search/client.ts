@@ -45,6 +45,16 @@ export interface ObjectHit {
 	priority?: number;
 	designations?: string[];
 	ops_status?: string;
+	/** Group slugs this object belongs to (small-body class/flags + earth-sat
+	 *  collections) — the filter key behind a group's "show all members". */
+	groups?: string[];
+	/** Wikidata sitelink count; prominence rank for member listings. */
+	sitelinks_count?: number;
+	diameter_km?: number;
+	/** Absolute magnitude (SBDB H, else Wikidata) — brightness tiebreak. */
+	magnitude?: number;
+	/** Sortable YYYYMMDD int: discovery/launch/inception. */
+	inception?: number;
 	name_en?: string;
 	name_fr?: string;
 	name_ja?: string;
@@ -127,6 +137,39 @@ export async function search(
 		(h) => ({ ...h, kind: 'feature' }) as FeatureHit
 	);
 	return [...groups, ...interleave(objects, features)].slice(0, limit);
+}
+
+/** One page of a group's members from the objects index. */
+export interface GroupMemberPage {
+	hits: ObjectHit[];
+	/** Capped at the index's maxTotalHits (1000). */
+	estimatedTotalHits: number;
+}
+
+// Notable-first: prominence → size → brightness → age. Docs missing a key
+// sort last for it, so this degrades gracefully before sitelinks_count ships.
+const MEMBER_SORT = ['sitelinks_count:desc', 'diameter_km:desc', 'magnitude:asc', 'inception:asc'];
+
+/** A paginated slice of a group's members (small-body class/flag or earth-sat
+ *  collection), ranked notable-first. Empty when search is unconfigured or the
+ *  slug tags no objects (e.g. categories / split-comet families). */
+export async function searchGroupMembers(
+	slug: string,
+	offset: number,
+	limit: number,
+	locale: string
+): Promise<GroupMemberPage> {
+	const c = getClient();
+	if (!c) return { hits: [], estimatedTotalHits: 0 };
+	const res = await c.index('objects').search('', {
+		filter: `groups = "${slug}"`,
+		sort: MEMBER_SORT,
+		offset,
+		limit,
+		locales: [locale]
+	});
+	const hits = (res.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
+	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
 /** Round-robin two ranked lists into one. Cheap stand-in for cross-index

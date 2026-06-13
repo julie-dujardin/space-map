@@ -44,6 +44,7 @@
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
+	import GroupMemberList from './members/GroupMemberList.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
@@ -537,7 +538,14 @@
 {#snippet membersPanel()}
 	<div class="flex flex-col gap-3 p-1">
 		{@render tabsBar()}
-		{#if notableMembers && notableMembers.length > 0}
+		{#if isGroupMode && groupDetail?.global}
+			<GroupMemberList
+				slug={groupDetail.global.slug}
+				totalCount={memberTotal}
+				localizedNames={memberNames}
+				fallback={notableMembers ?? []}
+			/>
+		{:else if notableMembers && notableMembers.length > 0}
 			<MemberList members={notableMembers} localizedNames={memberNames} heading={membersHeading} />
 		{/if}
 	</div>
