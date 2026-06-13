@@ -38,6 +38,7 @@ PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
 ASTEROIDS_SLUG = f"{CATEGORY_SLUG_PREFIX}asteroids"
 COMETS_SLUG = f"{CATEGORY_SLUG_PREFIX}comets"
 SATELLITES_SLUG = f"{CATEGORY_SLUG_PREFIX}satellites"
+PROBES_SLUG = f"{CATEGORY_SLUG_PREFIX}probes"
 
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
@@ -45,6 +46,7 @@ CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(ASTEROIDS_SLUG, "Asteroids", "Q3863"),
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),
     CategorySpec(SATELLITES_SLUG, "Satellites", "Q26540"),
+    CategorySpec(PROBES_SLUG, "Probes", "Q26529"),  # "space probe"
 )
 
 CATEGORY_BY_SLUG: dict[str, CategorySpec] = {c.slug: c for c in CATEGORIES}

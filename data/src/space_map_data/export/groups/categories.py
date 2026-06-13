@@ -2,14 +2,15 @@
 
 Categories (constants/categories.py) are Wikidata-backed browse nodes. Their
 members are child groups — asteroid zones, comet families, satellite classes
-and the largest constellations — or, for Planets, the planet bodies. The child
-slugs and counts feed the localized bundle's ``child_groups`` block; planets
-ride the existing ``notable_members`` path.
+and the largest constellations — or bodies (Planets, Probes). The child slugs
+and counts feed the localized bundle's ``child_groups`` block; planets and
+probes ride the existing ``notable_members`` path.
 """
 
 import logging
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import (
@@ -17,6 +18,7 @@ from space_map_data.constants.categories import (
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
     PLANETS_SLUG,
+    PROBES_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
@@ -28,7 +30,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.notable import NotableObject
-from space_map_data.models.object.main import Object, ObjectType
+from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,26 @@ def _solar_system_members(
     return members[:NOTABLE_COUNT]
 
 
+def _probe_members(session: Session) -> tuple[list[NotableObject], int]:
+    """The notable probes (most-linked first) plus the total probe count.
+
+    Probes are SPICE-tracked interplanetary spacecraft (``spice_probe``); Earth
+    satellites are also ``spacecraft``-typed but belong to the Satellites tree.
+    """
+    is_probe = Object.orbital_source == OrbitalSource.spice_probe
+    total = session.query(func.count(Object.id)).filter(is_probe).scalar() or 0
+    rows = (
+        session.query(Object.id, Object.wikidata_qid, Object.name)
+        .filter(is_probe)
+        .order_by(
+            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
+        )
+        .limit(NOTABLE_COUNT)
+        .all()
+    )
+    return [_body_member(*r) for r in rows], total
+
+
 def build_category_data(
     session: Session,
     member_counts: dict[str, int],
@@ -170,9 +192,16 @@ def build_category_data(
 
     planet_members = _planet_members(session)
     star = _star_member(session)
+    probe_members, probes_total = _probe_members(session)
 
     children = {
-        SOLAR_SYSTEM_SLUG: [PLANETS_SLUG, ASTEROIDS_SLUG, COMETS_SLUG, SATELLITES_SLUG],
+        SOLAR_SYSTEM_SLUG: [
+            PLANETS_SLUG,
+            ASTEROIDS_SLUG,
+            COMETS_SLUG,
+            SATELLITES_SLUG,
+            PROBES_SLUG,
+        ],
         ASTEROIDS_SLUG: asteroids,
         COMETS_SLUG: comets,
         SATELLITES_SLUG: satellites,
@@ -192,11 +221,13 @@ def build_category_data(
         SOLAR_SYSTEM_SLUG: len(planet_members)
         + asteroids_total
         + comets_total
-        + satellites_total,
+        + satellites_total
+        + probes_total,
         ASTEROIDS_SLUG: asteroids_total,
         COMETS_SLUG: comets_total,
         SATELLITES_SLUG: satellites_total,
         PLANETS_SLUG: len(planet_members),
+        PROBES_SLUG: probes_total,
     }
 
     # Discovery/launch charts: sum the histograms over the classes that
@@ -217,16 +248,19 @@ def build_category_data(
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
+    if probe_members:
+        notable_members[PROBES_SLUG] = probe_members
     solar_system = _solar_system_members(session, star)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     logger.info(
         "Built category data: planets=%d, asteroid zones=%d, comet families=%d, "
-        "satellite groups=%d",
+        "satellite groups=%d, probes=%d",
         len(planet_members),
         len(asteroids),
         len(comets),
         len(satellites),
+        probes_total,
     )
     return CategoryData(
         children=children,

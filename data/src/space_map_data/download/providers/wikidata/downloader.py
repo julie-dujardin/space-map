@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 from tqdm import tqdm
 
+from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
@@ -119,6 +120,15 @@ class WikidataDownloader(Downloader):
         }
         self._fetch_entities(
             orbit_class_qids, referenced_dir, limit=None, fetch_desc="orbit classes"
+        )
+        # Category browse-node QIDs (Solar System, Planets, … Probes). Mostly
+        # reachable via object instance_of claims, but seed directly so a new
+        # category isn't silently missing its name/description + Wikipedia.
+        self._fetch_entities(
+            {c.wikidata_qid for c in CATEGORIES},
+            referenced_dir,
+            limit=None,
+            fetch_desc="categories",
         )
         # IAU planetary quadrangles (Mercury/Mars/Venus). Not reachable via
         # feature claims — features carry quad_code/quad_name from the IAU

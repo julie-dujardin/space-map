@@ -31,6 +31,7 @@ export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
 export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
 export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
+export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
 
 /** English fallback labels shown until the localized bundle name resolves.
  *  Mirrors ``CategorySpec.name`` in ``data/constants/categories.py``. */
@@ -39,7 +40,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
 	[CAT_PLANETS]: 'Planets',
 	[CAT_ASTEROIDS]: 'Asteroids',
 	[CAT_COMETS]: 'Comets',
-	[CAT_SATELLITES]: 'Satellites'
+	[CAT_SATELLITES]: 'Satellites',
+	[CAT_PROBES]: 'Probes'
 };
 
 /** Slug suffix → flag bit mask. Mirrors `ELEMENTS_FLAG_*` in

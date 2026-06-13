@@ -13,6 +13,7 @@ import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
 	CAT_PLANETS,
+	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
 	CLASS_SLUG_PREFIX
@@ -151,6 +152,8 @@ export function parentCrumb(
 		return cls ? classGroup(cls) : null;
 	}
 
-	// Probes: their category isn't built yet.
+	// Probe → the Probes category.
+	if (urlType === UrlType.Probe) return categoryCrumb(CAT_PROBES);
+
 	return null;
 }

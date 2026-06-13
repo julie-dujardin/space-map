@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export import notable
+from space_map_data.export.groups.categories import _probe_members
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
     NOTABLE_MEMBER_COUNT,
@@ -161,6 +162,52 @@ class TestNamedCounts:
         )
         stats = build_small_body_group_stats(session)
         assert f"{CLASS_SLUG_PREFIX}COM" not in stats.named_counts
+
+
+def _add_spacecraft(
+    session: Session,
+    object_id: str,
+    *,
+    orbital_source: OrbitalSource,
+    name: str | None = None,
+    qid: str | None = None,
+    image: bool = False,
+    sitelinks: int = 0,
+) -> None:
+    session.add(
+        Object(
+            id=object_id,
+            name=name or object_id,
+            object_type=ObjectType.spacecraft,
+            wikidata_qid=qid,
+            image_available=image,
+            sitelinks_count=sitelinks,
+            orbital_source=orbital_source,
+        )
+    )
+    session.commit()
+
+
+class TestProbeMembers:
+    """``_probe_members``: spice-probe-only count + most-linked ordering."""
+
+    def test_counts_and_ranks_probes_only(self, session: Session) -> None:
+        sp = OrbitalSource.spice_probe
+        _add_spacecraft(session, "probe-1", orbital_source=sp, sitelinks=50)
+        _add_spacecraft(session, "probe-2", orbital_source=sp, image=True, sitelinks=5)
+        _add_spacecraft(session, "probe-3", orbital_source=sp)
+        # An Earth satellite — also spacecraft-typed, but not a probe.
+        _add_spacecraft(
+            session,
+            "norad_satcat-25544",
+            orbital_source=OrbitalSource.celestrak,
+            sitelinks=999,
+        )
+        _add_member(session, 99)  # an asteroid — must be excluded too
+
+        members, total = _probe_members(session)
+        assert total == 3
+        assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
 
 
 class _StubEntityCache:
