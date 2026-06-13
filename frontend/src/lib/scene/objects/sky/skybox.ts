@@ -20,6 +20,7 @@ import {
 } from 'three';
 
 import { DATA_BASE } from '$lib/fetch/data-base';
+import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { fetchMetadata, type SkyboxMetadata } from '$lib/fetch/metadata';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -83,6 +84,18 @@ async function loadTierBitmaps(id: string, tier: string): Promise<ImageBitmap[]>
 	);
 }
 
+/** Fetch+decode promises, shared so the early prefetch and the install reuse one fetch per tier. */
+const tierPrefetch = new Map<string, Promise<ImageBitmap[]>>();
+
+function tierBitmaps(id: string, tier: string): Promise<ImageBitmap[]> {
+	let p = tierPrefetch.get(tier);
+	if (!p) {
+		p = loadTierBitmaps(id, tier);
+		tierPrefetch.set(tier, p);
+	}
+	return p;
+}
+
 function makeCube(bitmaps: ImageBitmap[]): CubeTexture {
 	const cube = new CubeTexture(bitmaps);
 	cube.colorSpace = SRGBColorSpace;
@@ -97,6 +110,20 @@ function pickLowTier(meta: SkyboxMetadata): string | null {
 		(a, b) => (meta.tier_face_size[a] ?? 0) - (meta.tier_face_size[b] ?? 0)
 	)[0];
 }
+
+/**
+ * Start fetching+decoding the low skybox tier as soon as metadata is known,
+ * without waiting for the renderer. Low tier only: the full tier is an order of
+ * magnitude larger and waits for the eager-minors gate so it doesn't crowd the
+ * critical path (see {@link loadFromMeta}).
+ */
+export function prefetchSkyboxTiers(meta: SkyboxMetadata): void {
+	const low = pickLowTier(meta);
+	if (low) void tierBitmaps(meta.id, low).catch(() => tierPrefetch.delete(low));
+}
+
+/** Full-res tier load waits on the eager point cloud, but never longer than this. */
+const FULL_TIER_GATE_TIMEOUT_MS = 12_000;
 
 async function loadFromMeta(
 	scene: Scene,
@@ -113,12 +140,30 @@ async function loadFromMeta(
 	// clobbering a user adjustment that may have raced ahead of this async
 	// load. The renderer seeds the rotation synchronously at scene-init time.
 	const lowTier = pickLowTier(meta);
-	let low: CubeTexture | null = null;
+	// Holder object: the low cube is assigned from an async race the TS
+	// control-flow analysis can't narrow through a plain `let`.
+	const lowRef: { cube: CubeTexture | null } = { cube: null };
+	let fullInstalled = false;
 	if (lowTier && lowTier !== tier) {
-		low = makeCube(await loadTierBitmaps(meta.id, lowTier));
-		scene.background = low;
+		// Don't gate the full tier behind the low tier: install low only if it
+		// wins the race, so a preloaded/cached full tier goes straight up.
+		void tierBitmaps(meta.id, lowTier)
+			.then((bitmaps) => {
+				if (fullInstalled) return;
+				lowRef.cube = makeCube(bitmaps);
+				scene.background = lowRef.cube;
+				performance.mark('sm-skybox-low');
+			})
+			.catch(() => {});
 	}
-	const full = makeCube(await loadTierBitmaps(meta.id, tier));
+	// Full tier is large (≈11MB) — hold it until the eager minor wave has the
+	// bandwidth it needs. Bounded by a timeout so a stalled/failed load can't
+	// strand the background on the low tier forever.
+	await Promise.race([
+		eagerMinorsDone,
+		new Promise<void>((resolve) => setTimeout(resolve, FULL_TIER_GATE_TIMEOUT_MS))
+	]);
+	const full = makeCube(await tierBitmaps(meta.id, tier));
 	// Upload during idle time rather than mid-frame: initTexture pushes the
 	// six faces to the GPU now, so the first render that samples the cube
 	// doesn't absorb the upload cost.
@@ -128,8 +173,10 @@ async function loadFromMeta(
 			: setTimeout(resolve, 500)
 	);
 	renderer.initTexture(full);
+	fullInstalled = true;
 	scene.background = full;
-	low?.dispose();
+	performance.mark('sm-skybox-high');
+	lowRef.cube?.dispose();
 }
 
 /**
