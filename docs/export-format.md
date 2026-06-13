@@ -1010,6 +1010,15 @@ interface GlobalObjectData {
   named_moon_count?: number;          // moons with an IAU name; present when > 0 (asteroid moonlets and provisional
                                       // outer-planet moons are unnamed, so this is < moon_count for those hosts)
 
+  // Curated featured satellites (Earth only). The Moons section is relabelled
+  // "Satellites" and renders these after the Moon; the "+N more" tile links to
+  // the Satellites browse page (`satellites_group`) instead of an in-drawer
+  // tab. NotableEntry shape, but a constellation entry carries `group` (a slug)
+  // instead of `id`. Per-language overrides live in notable_satellite_names.
+  notable_satellites?: NotableEntry[];
+  satellite_count?: number;           // total tracked artificial satellites (spacecraft + debris), folded into "+N more"
+  satellites_group?: string;          // group slug the "+N more" tile opens (cat-satellites)
+
   // Split-comet fragments. On an intact parent comet (e.g. 73P/Schwassmann-
   // Wachmann 3) `fragments` lists its pieces — same NotableEntry shape + strip
   // UI as notable_moons, ranked by (image_available, sitelinks_count, id) and
@@ -1085,6 +1094,7 @@ interface LocalizedObjectData {
     url?: string;        // URL
   };
   notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
+  notable_satellite_names?: Record<string, string>; // featured-satellite id-or-slug → localized label, only where it differs
   fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
 }
 
@@ -1128,7 +1138,8 @@ shared by group `notable_members` and object `notable_moons`:
 ```typescript
 interface NotableEntry {
   name: string;                     // English Wikidata label (matching object bundles), or the DB fallback name
-  id: string;                       // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502)
+  id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
+  group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards

@@ -17,6 +17,7 @@ ones (Ceres, Vesta, Pallas, …) carry aliases, a Wikipedia article, or a
 import gzip
 import json
 import logging
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -135,6 +136,84 @@ def _designations(global_entry: dict[str, Any]) -> list[str]:
     return out
 
 
+def _load_earth_membership(export_dir: Path) -> dict[str, list[str]]:
+    """Invert v1/membership/earth.json.gz ({slug: [ids]}) into {id: [slugs]}.
+
+    Earth-sat group membership (constellation/operator/manufacturer/launch-site/
+    country) only lives in this inverted index, so we fold it onto each doc's
+    `groups` array to back the "show all members" query.
+    """
+    path = export_dir / "v1" / "membership" / "earth.json.gz"
+    if not path.exists():
+        logger.warning("No earth membership at %s — sat groups will be empty", path)
+        return {}
+    merged: dict[str, list[str]] = json.loads(gzip.decompress(path.read_bytes()))
+    inverted: dict[str, list[str]] = {}
+    for slug, ids in merged.items():
+        for obj_id in ids:
+            inverted.setdefault(obj_id, []).append(slug)
+    logger.info(
+        "Loaded earth membership: %d sats tagged across %d groups",
+        len(inverted),
+        len(merged),
+    )
+    return inverted
+
+
+def _small_body_groups(sbdb: dict[str, Any]) -> list[str]:
+    """Group slugs from SBDB orbit class + NEO/PHA flags. Slugs mirror
+    export/groups/registry.py: `class-<OrbitClass.name>`, `flag-neo`, `flag-pha`."""
+    groups: list[str] = []
+    cls = sbdb.get("class")
+    if cls:
+        groups.append(f"class-{cls}")
+    if sbdb.get("neo"):
+        groups.append("flag-neo")
+    if sbdb.get("pha"):
+        groups.append("flag-pha")
+    return groups
+
+
+# Leading +/- (Wikidata times), year, then optional -MM-DD; trailing time ignored.
+_DATE_RE = re.compile(r"[+-]?(\d{1,4})(?:-(\d{2})(?:-(\d{2}))?)?")
+
+
+def _date_to_int(value: str) -> int | None:
+    """Parse 'YYYY', 'YYYY-MM-DD' or a Wikidata '+YYYY-MM-DDT..Z' time into a
+    sortable YYYYMMDD int. Missing or zero month/day default to 01."""
+    m = _DATE_RE.match(value.strip())
+    if not m:
+        return None
+    year = int(m.group(1))
+    month = int(m.group(2)) if m.group(2) and m.group(2) != "00" else 1
+    day = int(m.group(3)) if m.group(3) and m.group(3) != "00" else 1
+    return year * 10000 + month * 100 + day
+
+
+def _inception(g: dict[str, Any]) -> int | None:
+    """One sortable date (YYYYMMDD): discovery for asteroids, launch for sats,
+    else Wikidata launch/inception/discovery. First parseable source wins."""
+    candidates: list[str] = []
+    first_obs = (g.get("sbdb") or {}).get("first_obs")
+    if isinstance(first_obs, str):
+        candidates.append(first_obs)
+    launch = (g.get("celestrak") or {}).get("launch_date")
+    if isinstance(launch, str):
+        candidates.append(launch)
+    wd = g.get("wikidata") or {}
+    for key in ("launch_date", "inception"):
+        if isinstance(wd.get(key), str):
+            candidates.append(wd[key])
+    disc = wd.get("discovery_date")
+    if isinstance(disc, list):
+        candidates.extend(d for d in disc if isinstance(d, str))
+    for c in candidates:
+        parsed = _date_to_int(c)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     objects_dir = export_dir / "v1" / "objects"
     global_dir = objects_dir / "__global__"
@@ -143,6 +222,7 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         return
 
     localized = _load_localized(objects_dir)
+    earth_groups = _load_earth_membership(export_dir)
     global_files = sorted(global_dir.glob("*.json.gz"))
     logger.info("Streaming %d global object bundles", len(global_files))
 
@@ -188,6 +268,25 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             if ct.get("ops_status"):
                 doc["ops_status"] = ct["ops_status"]
 
+            # Group membership — backs the "show all members" query. Small-body
+            # slugs come from SBDB class/flags, earth-sat slugs from the inverted
+            # membership index. An object is one or the other, so a union is safe.
+            groups = _small_body_groups(sbdb) + earth_groups.get(obj_id, [])
+            if groups:
+                doc["groups"] = groups
+
+            # Sort keys for member listings: prominence/size/brightness/date.
+            if sbdb.get("diameter") is not None:
+                doc["diameter_km"] = sbdb["diameter"]
+            magnitude = sbdb.get("H")
+            if magnitude is None:
+                magnitude = (g.get("wikidata") or {}).get("absolute_magnitude")
+            if isinstance(magnitude, (int, float)):
+                doc["magnitude"] = magnitude
+            inception = _inception(g)
+            if inception is not None:
+                doc["inception"] = inception
+
             thumb = pick_thumbnail(g.get("images"))
             if thumb:
                 doc["thumbnail"] = thumb
@@ -229,8 +328,15 @@ def _objects_settings() -> dict[str, Any]:
         "searchableAttributes": (
             name_fields + alias_fields + designation_fields + description_fields
         ),
-        "filterableAttributes": ["type", "parent_id", "neo", "pha", "ops_status"],
-        "sortableAttributes": ["priority"],
+        "filterableAttributes": [
+            "type",
+            "parent_id",
+            "neo",
+            "pha",
+            "ops_status",
+            "groups",
+        ],
+        "sortableAttributes": ["priority", "diameter_km", "magnitude", "inception"],
         "localizedAttributes": [
             {
                 "locales": [lang],

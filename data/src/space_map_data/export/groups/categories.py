@@ -195,11 +195,11 @@ def build_category_data(
     probe_members, probes_total = _probe_members(session)
 
     children = {
+        # Satellites is reachable under Earth (its real parent), not the root.
         SOLAR_SYSTEM_SLUG: [
             PLANETS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
-            SATELLITES_SLUG,
             PROBES_SLUG,
         ],
         ASTEROIDS_SLUG: asteroids,
