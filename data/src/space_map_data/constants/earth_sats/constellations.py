@@ -1078,6 +1078,25 @@ CONTAINS_TO_SLUG: dict[str, str] = {
     k: c.slug for c in CONSTELLATIONS if c.contains is not None for k in c.contains
 }
 
+# COSPAR launch-ID core (e.g. "1979-017") → slug. Catches breakup debris whose
+# OBJECT_NAME lacks the expected prefix but whose OBJECT_ID shares the launch.
+# Longest prefix first so a more specific launch wins.
+OBJECT_ID_PREFIX_TO_SLUG: dict[str, str] = dict(
+    sorted(
+        (
+            (p, c.slug)
+            for c in CONSTELLATIONS
+            if c.object_id_prefix is not None
+            for p in (
+                c.object_id_prefix
+                if isinstance(c.object_id_prefix, tuple)
+                else (c.object_id_prefix,)
+            )
+        ),
+        key=lambda kv: -len(kv[0]),
+    )
+)
+
 GROUP_TO_SLUG: dict[str, str] = {
     c.group: c.slug for c in CONSTELLATIONS if c.group is not None
 }
@@ -1151,5 +1170,15 @@ def slug_from_name(name: str | None) -> str | None:
             return slug
     for keyword, slug in CONTAINS_TO_SLUG.items():
         if keyword in name:
+            return slug
+    return None
+
+
+def slug_from_cospar(cospar: str | None) -> str | None:
+    """Match a COSPAR/OBJECT_ID by launch-ID prefix (e.g. '1979-017A' → solwind-debris)."""
+    if not cospar:
+        return None
+    for prefix, slug in OBJECT_ID_PREFIX_TO_SLUG.items():
+        if cospar.startswith(prefix):
             return slug
     return None

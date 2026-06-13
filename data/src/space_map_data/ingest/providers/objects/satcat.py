@@ -52,7 +52,7 @@ class SatcatIngestor:
         owner = fields["owner"]
         groups = groups_for(norad, cospar, group_data)
 
-        constellation = resolve_constellation(norad, name, owner, groups)
+        constellation = resolve_constellation(norad, name, owner, groups, cospar)
         categories = resolve_categories(constellation, groups)
         operator_qids = resolve_operator_qids(
             owner, constellation, fields["launch_date"], fields["decay_date"]
