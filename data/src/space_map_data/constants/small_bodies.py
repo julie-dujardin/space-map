@@ -19,7 +19,7 @@ ORBIT_CLASS_QIDS = {
     OrbitClass.MBA: "Q2179",
     OrbitClass.OMB: "Q2179",  # Q15122026: stub
     OrbitClass.TJN: "Q8101032",
-    OrbitClass.AST: "Q3863",  # Generic page for generid class, only a hundred or so asteroids in this range anyway
+    OrbitClass.AST: None,  # Catch-all "unclassified asteroid" bucket; the generic "asteroid" page misrepresents it
     OrbitClass.CEN: "Q10734",
     OrbitClass.TNO: "Q6592",
     OrbitClass.PAA: None,  # No object, no page. Q2247097: parabolic trajectory
@@ -31,5 +31,5 @@ ORBIT_CLASS_QIDS = {
     OrbitClass.HTC: "Q11741560",
     OrbitClass.PAR: "Q25036733",  # No wikipedia page
     OrbitClass.HYP: "Q20717849",  # No wikipedia page
-    OrbitClass.COM: "Q3559",  # Generic page for generid class, about 700 in this range
+    OrbitClass.COM: None,  # Catch-all "unclassified comet" bucket; the generic "comet" page misrepresents it
 }

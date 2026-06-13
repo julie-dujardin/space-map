@@ -164,15 +164,14 @@ def _build_localized(
     if group.wikidata_qid:
         wd = wikidata_entities.get_referenced(group.wikidata_qid)
         if wd:
-            if group.type is not GroupType.CATEGORY:
+            # Orbit classes name from the frontend `orbit_class_<NAME>` i18n
+            # keys, not the shared Wikidata label (IMB/MBA/OMB → "asteroid belt").
+            if group.type not in (GroupType.CATEGORY, GroupType.ORBIT_CLASS):
                 name = wd["labels"].get(lang) or wd["labels"].get("en")
                 if name:
                     # Wikidata labels orbit zones sentence-case ("low Earth
                     # orbit"); the UI wants a capitalized leading letter.
-                    if group.type in (
-                        GroupType.ORBIT_CLASS,
-                        GroupType.EARTH_ORBIT_CLASS,
-                    ):
+                    if group.type is GroupType.EARTH_ORBIT_CLASS:
                         name = name[:1].upper() + name[1:]
                     data["name"] = name
             desc = wd["descriptions"].get(lang)
@@ -439,11 +438,23 @@ def _related_role_refs(
     return refs
 
 
+# Concept groups collide on shared encyclopedia QIDs (IMB/MBA/OMB → "asteroid
+# belt") rather than entity identities, so they don't cross-link as siblings.
+_CONCEPT_GROUP_TYPES = frozenset(
+    {
+        GroupType.ORBIT_CLASS,
+        GroupType.EARTH_ORBIT_CLASS,
+        GroupType.CATEGORY,
+        GroupType.SMALL_BODY_FLAG,
+    }
+)
+
+
 def _build_related_by_qid() -> dict[str, list[Group]]:
     """QID → list of groups sharing it across types (typically op + mfr pair)."""
     by_qid: dict[str, list[Group]] = defaultdict(list)
     for g in GROUPS:
-        if g.wikidata_qid:
+        if g.wikidata_qid and g.type not in _CONCEPT_GROUP_TYPES:
             by_qid[g.wikidata_qid].append(g)
     return {qid: gs for qid, gs in by_qid.items() if len(gs) > 1}
 

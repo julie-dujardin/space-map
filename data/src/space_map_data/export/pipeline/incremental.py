@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Bump to invalidate all tier-B outputs (bundle/label/feature/message shape
 # changes that no input fingerprint captures).
-TIER_B_VERSION = 2
+TIER_B_VERSION = 3
 
 _TIER_B_META = "tier_b.meta.json"
 _CHEB_META = "position/chebyshev.meta.json"

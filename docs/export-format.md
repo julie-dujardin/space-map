@@ -1301,7 +1301,7 @@ tier.
 
 ```typescript
 interface LocalizedGroupData {
-  name?: string;
+  name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct).
   description?: string;
   wikipedia?: { extract?: string; description?: string; url?: string };
   operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137)
@@ -1310,7 +1310,7 @@ interface LocalizedGroupData {
   instance_of?: EntityRef[];
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
-  related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID across roles
+  related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID (e.g. operator/manufacturer pairs); concept groups (orbit_class, category, small_body_flag) are excluded
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```
