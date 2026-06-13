@@ -17,16 +17,13 @@ import {
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
 	CLASS_SLUG_PREFIX,
-	COMET_FAMILY_SLUG_PREFIX
+	COMET_FAMILY_SLUG_PREFIX,
+	smallBodyCategory
 } from '$lib/fetch/groups/registry';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
 import { UrlType } from './view';
-
-/** Comet orbit classes; the rest are asteroids. Mirrors COMET_ORBIT_CLASSES in
- *  data/constants/categories.py. */
-const COMET_CLASS_NAMES = new Set(['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'PAR', 'HYP', 'COM']);
 
 /** Earth's Object.id — parent of the Satellites category. Mirrors EARTH_ID in
  *  data/constants/earth_sats/featured.py. */
@@ -102,7 +99,7 @@ export function parentCrumb(
 		const appliesTo = groupGlobal?.applies_to;
 		if (appliesTo === 'small_body') {
 			const cls = classNameFromSlug(slug);
-			return categoryCrumb(cls && COMET_CLASS_NAMES.has(cls) ? CAT_COMETS : CAT_ASTEROIDS);
+			return categoryCrumb(cls && smallBodyCategory(cls) === 'comet' ? CAT_COMETS : CAT_ASTEROIDS);
 		}
 		if (appliesTo === 'earth_sat') return categoryCrumb(CAT_SATELLITES);
 		return null;

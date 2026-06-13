@@ -57,11 +57,34 @@ export const SMALL_BODY_FLAG_MASK = {
 
 export type SmallBodyFlagName = keyof typeof SMALL_BODY_FLAG_MASK;
 
-/** Active small-body group filter. `class` hides non-matching zones; `flag`
- *  keeps zones visible and masks per-point via the orbit worker's
- *  `requiredFlags`. `n` is the index's total so emphasis ramps without a refetch. */
+/** SBDB orbit-class names that are comets; every other class is an asteroid.
+ *  Mirrors COMET_ORBIT_CLASSES in data/constants/categories.py. */
+export const COMET_CLASS_NAMES: ReadonlySet<string> = new Set([
+	'ETc',
+	'JFc',
+	'JFC',
+	'CTc',
+	'HTC',
+	'PAR',
+	'HYP',
+	'COM'
+]);
+
+export type SmallBodyCategory = 'asteroid' | 'comet';
+
+/** Bucket an SBDB orbit-class name into the asteroid or comet category. */
+export function smallBodyCategory(className: string): SmallBodyCategory {
+	return COMET_CLASS_NAMES.has(className) ? 'comet' : 'asteroid';
+}
+
+/** Active small-body group filter. `class` hides non-matching zones; `category`
+ *  hides every zone outside the asteroid/comet bucket (the Asteroids/Comets
+ *  category pages); `flag` keeps zones visible and masks per-point via the orbit
+ *  worker's `requiredFlags`. `n` is the index's total so emphasis ramps without
+ *  a refetch. */
 export type SmallBodyFilter =
 	| { kind: 'class'; className: string }
+	| { kind: 'category'; category: SmallBodyCategory }
 	| { kind: 'flag'; flag: SmallBodyFlagName; mask: number; n: number };
 
 export function smallBodyFiltersEqual(
@@ -72,6 +95,7 @@ export function smallBodyFiltersEqual(
 	if (a === null || b === null) return false;
 	if (a.kind !== b.kind) return false;
 	if (a.kind === 'class' && b.kind === 'class') return a.className === b.className;
+	if (a.kind === 'category' && b.kind === 'category') return a.category === b.category;
 	if (a.kind === 'flag' && b.kind === 'flag') return a.flag === b.flag;
 	return false;
 }

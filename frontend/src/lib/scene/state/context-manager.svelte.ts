@@ -9,11 +9,15 @@ import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
 import {
+	CAT_ASTEROIDS,
+	CAT_COMETS,
 	CLASS_SLUG_PREFIX,
 	SMALL_BODY_FLAG_MASK,
 	SMALL_BODY_FLAG_SLUG_PREFIX,
 	fetchGroupIndex,
+	smallBodyCategory,
 	smallBodyFiltersEqual,
+	type GroupCategory,
 	type SmallBodyFilter,
 	type SmallBodyFlagName
 } from '$lib/fetch/groups/registry';
@@ -119,9 +123,13 @@ export class ContextManager {
 		if (this.earthSatFilter?.has(bodyId) === true) return true;
 		const f = this.smallBodyFilter;
 		if (f === null) return false;
-		if (f.kind === 'class') {
+		if (f.kind === 'class' || f.kind === 'category') {
 			const zone = this.bodies.findAsteroidZone(bodyId);
-			return zone === `small_bodies/${f.className}`;
+			if (zone?.startsWith('small_bodies/') !== true) return false;
+			const className = zone.slice('small_bodies/'.length);
+			return f.kind === 'class'
+				? className === f.className
+				: smallBodyCategory(className) === f.category;
 		}
 		const body = this.bodies.getBody(bodyId);
 		return ((body?.data.flags ?? 0) & f.mask) === f.mask;
@@ -158,8 +166,7 @@ export class ContextManager {
 		const entry = slug ? await this.resolveIndexEntry(slug) : null;
 		if (slug !== this.currentGroupSlug) return;
 
-		const nextSmallBody =
-			entry?.applies_to === 'small_body' ? this.parseSmallBodyFilter(slug!, entry.n) : null;
+		const nextSmallBody = this.resolveSmallBodyFilter(slug, entry?.applies_to, entry?.n);
 		const nextEarthSlug = entry?.applies_to === 'earth_sat' ? slug : null;
 		if (!smallBodyFiltersEqual(this.smallBodyFilter, nextSmallBody)) {
 			this.smallBodyFilter = nextSmallBody;
@@ -180,7 +187,18 @@ export class ContextManager {
 		this.refresher?.invalidateZone('earth');
 	}
 
-	private parseSmallBodyFilter(slug: string, n: number): SmallBodyFilter | null {
+	/** The Asteroids/Comets category pages hide the opposite bucket's zones, like
+	 *  a class page hides every other class. Other small-body slugs map to a
+	 *  class or flag filter; everything else (earth-orbit classes, other
+	 *  categories) is left unfiltered. */
+	private resolveSmallBodyFilter(
+		slug: string | null,
+		appliesTo: GroupCategory | undefined,
+		n: number | undefined
+	): SmallBodyFilter | null {
+		if (slug === CAT_ASTEROIDS) return { kind: 'category', category: 'asteroid' };
+		if (slug === CAT_COMETS) return { kind: 'category', category: 'comet' };
+		if (slug === null || appliesTo !== 'small_body') return null;
 		if (slug.startsWith(CLASS_SLUG_PREFIX)) {
 			return { kind: 'class', className: slug.slice(CLASS_SLUG_PREFIX.length) };
 		}
@@ -188,7 +206,7 @@ export class ContextManager {
 			const name = slug.slice(SMALL_BODY_FLAG_SLUG_PREFIX.length) as SmallBodyFlagName;
 			const mask = SMALL_BODY_FLAG_MASK[name];
 			if (mask === undefined) return null;
-			return { kind: 'flag', flag: name, mask, n };
+			return { kind: 'flag', flag: name, mask, n: n ?? 0 };
 		}
 		return null;
 	}

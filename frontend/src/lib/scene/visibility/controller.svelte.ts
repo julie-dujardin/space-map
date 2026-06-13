@@ -11,7 +11,7 @@ import { BodyIndex, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { f64dist } from '$lib/scene/animation/math';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
-import type { SmallBodyFilter } from '$lib/fetch/groups/registry';
+import { smallBodyCategory, type SmallBodyFilter } from '$lib/fetch/groups/registry';
 import {
 	VISIBILITY,
 	REFERENCE_VIEWPORT_HEIGHT,
@@ -402,12 +402,12 @@ export class VisibilityController {
 	isAsteroidGroupVisible(zone: string): boolean {
 		if (this.activeSystemId) return false;
 		const filter = this.getSmallBodyFilter();
-		if (
-			filter?.kind === 'class' &&
-			zone.startsWith('small_bodies/') &&
-			zone.slice('small_bodies/'.length) !== filter.className
-		) {
-			return false;
+		if (filter && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
+			const className = zone.slice(SMALL_BODY_ZONE_PREFIX.length);
+			if (filter.kind === 'class' && className !== filter.className) return false;
+			if (filter.kind === 'category' && smallBodyCategory(className) !== filter.category) {
+				return false;
+			}
 		}
 		const range = ZONE_A_RANGE[zone];
 		if (!range) return true;
@@ -446,32 +446,41 @@ export class VisibilityController {
 	private matchesSmallBodyClass(id: string): boolean {
 		const filter = this.getSmallBodyFilter();
 		if (filter === null) return true;
-		if (filter.kind === 'class') {
-			const zone = this.bodies.findAsteroidZone(id);
-			if (zone && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
-				return zone.slice(SMALL_BODY_ZONE_PREFIX.length) === filter.className;
-			}
-			// Dwarf planets aren't zoned; derive the class from (a, e) since
-			// AMO/MCA/APO overlap the main belt's `a` band. Walk one level up
-			// for Pluto, whose `data.a` is around its barycenter.
-			const body = this.bodies.bodiesById.get(id);
-			if (body?.data.objectType !== ObjectType.DWARF_PLANET) return false;
-			let a = body.data.a;
-			let e = body.data.e;
-			if (!isTopLevelParent(body.data.parentId)) {
-				const parent = this.bodies.bodiesById.get(body.data.parentId);
-				if (parent?.data.a) {
-					a = parent.data.a;
-					e = parent.data.e;
-				}
-			}
-			return sbdbOrbitClass(a, e) === filter.className;
+		if (filter.kind === 'class' || filter.kind === 'category') {
+			const className = this.resolveSmallBodyClass(id);
+			if (className === null) return false;
+			return filter.kind === 'class'
+				? className === filter.className
+				: smallBodyCategory(className) === filter.category;
 		}
 		// Promoted small bodies live in `asteroidBodiesByZone`, not
 		// `bodiesById` — go through getBody so flags resolve.
 		const body = this.bodies.getBody(id);
 		if (body === undefined) return false;
 		return ((body.data.flags ?? 0) & filter.mask) === filter.mask;
+	}
+
+	/** SBDB orbit-class name for a small body: its zone suffix, or — for
+	 *  un-zoned dwarf planets — derived from heliocentric (a, e) since AMO/MCA/APO
+	 *  overlap the main belt's `a` band. Walks one level up for Pluto, whose
+	 *  `data.a` is around its barycenter. Null when the class can't be resolved. */
+	private resolveSmallBodyClass(id: string): string | null {
+		const zone = this.bodies.findAsteroidZone(id);
+		if (zone && zone.startsWith(SMALL_BODY_ZONE_PREFIX)) {
+			return zone.slice(SMALL_BODY_ZONE_PREFIX.length);
+		}
+		const body = this.bodies.bodiesById.get(id);
+		if (body?.data.objectType !== ObjectType.DWARF_PLANET) return null;
+		let a = body.data.a;
+		let e = body.data.e;
+		if (!isTopLevelParent(body.data.parentId)) {
+			const parent = this.bodies.bodiesById.get(body.data.parentId);
+			if (parent?.data.a) {
+				a = parent.data.a;
+				e = parent.data.e;
+			}
+		}
+		return sbdbOrbitClass(a, e);
 	}
 
 	/**
