@@ -1009,6 +1009,24 @@ interface GlobalObjectData {
   moon_count?: number;                // total moons of this body (drives the "+N more" tile); present iff notable_moons is
   named_moon_count?: number;          // moons with an IAU name; present when > 0 (asteroid moonlets and provisional
                                       // outer-planet moons are unnamed, so this is < moon_count for those hosts)
+
+  // Split-comet fragments. On an intact parent comet (e.g. 73P/Schwassmann-
+  // Wachmann 3) `fragments` lists its pieces — same NotableEntry shape + strip
+  // UI as notable_moons, ranked by (image_available, sitelinks_count, id) and
+  // capped at 20; `fragment_count` is the full total. Per-language label
+  // overrides live in LocalizedObjectData.fragment_names.
+  fragments?: NotableEntry[];
+  fragment_count?: number;
+  // Present on each fragment object (a `<pdes>-<letters>` body): the comet it
+  // broke off, for the "Fragment of <parent>" stat card + breadcrumb. Points
+  // at the parent's object page when the intact body is catalogued, else at
+  // the synthetic split-comet group page (primary_type "group").
+  fragment_of?: {
+    name: string;
+    primary_type: "object" | "group";
+    primary_id: string;
+    thumbnail?: string;   // parent thumbnail (object parents only)
+  };
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
@@ -1067,6 +1085,7 @@ interface LocalizedObjectData {
     url?: string;        // URL
   };
   notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
+  fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }

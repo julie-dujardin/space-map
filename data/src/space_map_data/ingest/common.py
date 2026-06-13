@@ -23,6 +23,7 @@ from space_map_data.ingest.providers.objects import (
     spice,
 )
 from space_map_data.ingest.providers.wikidata import (
+    comet_fragments,
     nomenclature,
     objects,
     objects_conflicts,
@@ -78,6 +79,10 @@ def ingest_wikidata(download_dir: Path) -> None:
     """
     objects.ingest(download_dir)
     objects_conflicts.ingest(download_dir)
+    # Resolve split-comet parents whose QID was dropped as a family-internal
+    # conflict (parent + fragments share the comet number). Runs after the
+    # manual conflict pass so it only fills genuinely-unmatched parents.
+    comet_fragments.ingest(download_dir)
     nomenclature.ingest(download_dir)
     sitelinks.ingest()
 
