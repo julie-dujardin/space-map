@@ -145,16 +145,18 @@ def write_tier_b_meta(
 # --- zone meta -------------------------------------------------------------
 
 
-def sbdb_zone_signature(cheb_covered_ids: set[str]) -> dict:
+def sbdb_zone_signature(cheb_covered_ids: set[str], host_ids: set[str]) -> dict:
     """Shared signature for every small_bodies/* zone.
 
-    The tier-B gate covers DB/wikidata-derived row state; this only needs
-    the SBDB snapshot itself plus the cheb exclusion set that shapes zone
-    membership.
+    The tier-B gate covers DB/wikidata-derived row state; this needs the SBDB
+    snapshot itself, the cheb exclusion set that shapes zone membership, and
+    the moon-host set (its members are promoted into the eager zoom-0 tier, so
+    a change here moves a body between zooms).
     """
     return {
         "part": build_sbdb_part_signature(DOWNLOAD_DIR),
         "cheb_covered": _digest(sorted(cheb_covered_ids)),
+        "moon_hosts": _digest(sorted(host_ids)),
     }
 
 

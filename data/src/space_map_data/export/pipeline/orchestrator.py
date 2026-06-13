@@ -98,6 +98,7 @@ from space_map_data.models.object import (
     ObjectType,
     OrbitalSource,
     SBDB,
+    SBDBMoon,
 )
 from space_map_data.models.object.sbdb import CometPrefix
 from space_map_data.utils.paths import (
@@ -323,6 +324,16 @@ def _iter_non_sbdb_zone_snapshots(
         yield zone, zoom, snapshots
 
 
+def _moon_host_ids(session: Session) -> set[str]:
+    """Object ids that parent at least one asteroid moon (SBDBMoon rows)."""
+    return {
+        pid
+        for (pid,) in session.query(SBDBMoon.parent_object_id)
+        .filter(SBDBMoon.parent_object_id.is_not(None))
+        .distinct()
+    }
+
+
 def _iter_sbdb_zone_snapshots(
     session: Session,
     cheb_covered_ids: set[str],
@@ -342,19 +353,25 @@ def _iter_sbdb_zone_snapshots(
     them alive via their own refs, so no lazy load can fire. That's the
     memory bound for big combos (MBA-unnamed alone is ~3 GB of ORM rows).
     """
-    sbdb_sig = incremental.sbdb_zone_signature(cheb_covered_ids)
-    named_col = case((SBDB.name.is_not(None), 1), else_=0).label("named")
+    # Moon hosts join the named bodies in the eager (zoom 0) tier so an
+    # asteroid-moon's parent loads early enough for the frontend to resolve the
+    # moon's position (its position is anchored on the parent). Without this the
+    # parent often sits in the deferred zoom-1 tail and the moon never appears.
+    host_ids = _moon_host_ids(session)
+    sbdb_sig = incremental.sbdb_zone_signature(cheb_covered_ids, host_ids)
+    is_eager = or_(SBDB.name.is_not(None), SBDB.object_id.in_(host_ids))
+    eager_col = case((is_eager, 1), else_=0).label("eager")
     combos = (
-        session.query(SBDB.class_, named_col).group_by(SBDB.class_, named_col).all()
+        session.query(SBDB.class_, eager_col).group_by(SBDB.class_, eager_col).all()
     )
-    for cls, named in combos:
-        zoom = 0 if named else 1
+    for cls, eager in combos:
+        zoom = 0 if eager else 1
         if tier_b_clean:
             meta = _zone_is_cached(out_dir, f"small_bodies/{cls.name}", zoom, sbdb_sig)
             if meta is not None:
                 _record_cached(f"small_bodies/{cls.name}", zoom, meta, agg)
                 continue
-        name_filter = SBDB.name.is_not(None) if named else SBDB.name.is_(None)
+        name_filter = is_eager if eager else ~is_eager
         # SPICE-sourced bodies (DE441 perturbers like Ceres, Pallas, …) ship
         # via the chebyshev export and are filtered out here both to enforce
         # the one-provider-per-file invariant and to avoid shipping duplicate
@@ -919,7 +936,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Aggregate has_localized from elements futures before writing chebyshev
         # — the cheb body header carries one bit per body, gated on the same
         # union map the elements files use.
-        sbdb_sig = incremental.sbdb_zone_signature(cheb_covered_ids)
+        sbdb_sig = incremental.sbdb_zone_signature(
+            cheb_covered_ids, _moon_host_ids(session)
+        )
         for f in as_completed(futures):
             zone, zoom = futures[f]
             result = f.result()
