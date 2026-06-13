@@ -546,7 +546,7 @@
 				fallback={notableMembers ?? []}
 			/>
 		{:else if notableMembers && notableMembers.length > 0}
-			<MemberList members={notableMembers} localizedNames={memberNames} heading={membersHeading} />
+			<MemberList members={notableMembers} localizedNames={memberNames} />
 		{/if}
 	</div>
 {/snippet}
@@ -558,7 +558,6 @@
 			<MemberList
 				members={notableFragments}
 				localizedNames={fragmentNames}
-				heading={m.fragments_section()}
 				focusMovesCamera={false}
 			/>
 		{/if}

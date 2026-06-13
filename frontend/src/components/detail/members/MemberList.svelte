@@ -10,11 +10,10 @@
 	interface Props {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
-		heading: string;
 		/** Fragment lists pass false: select the piece without flying to its mesh. */
 		focusMovesCamera?: boolean;
 	}
-	let { members, localizedNames, heading, focusMovesCamera = true }: Props = $props();
+	let { members, localizedNames, focusMovesCamera = true }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -55,10 +54,6 @@
 </script>
 
 <div class="flex flex-col gap-1">
-	<div class="flex items-baseline gap-2">
-		<h3 class="text-sm font-medium">{heading}</h3>
-	</div>
-	<div class="border-border/60 border-t"></div>
 	<ul class="flex flex-col">
 		{#each members as member (member.id ?? member.group)}
 			{@const year = discoveryYear(member)}
