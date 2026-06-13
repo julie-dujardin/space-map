@@ -380,6 +380,10 @@ def _build_global(
     if obj.provisional_designation is not None:
         data["provisional_designation"] = obj.provisional_designation
 
+    # Wikidata notability signal — search ranks "show all group members" by it.
+    if obj.sitelinks_count:
+        data["sitelinks_count"] = obj.sitelinks_count
+
     # Cross-references
     cross_refs = _pick_attrs(obj, _CROSS_REF_FIELDS)
     if cross_refs:

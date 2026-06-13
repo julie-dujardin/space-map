@@ -276,6 +276,8 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 doc["groups"] = groups
 
             # Sort keys for member listings: prominence/size/brightness/date.
+            if g.get("sitelinks_count"):
+                doc["sitelinks_count"] = g["sitelinks_count"]
             if sbdb.get("diameter") is not None:
                 doc["diameter_km"] = sbdb["diameter"]
             magnitude = sbdb.get("H")
@@ -336,7 +338,13 @@ def _objects_settings() -> dict[str, Any]:
             "ops_status",
             "groups",
         ],
-        "sortableAttributes": ["priority", "diameter_km", "magnitude", "inception"],
+        "sortableAttributes": [
+            "priority",
+            "sitelinks_count",
+            "diameter_km",
+            "magnitude",
+            "inception",
+        ],
         "localizedAttributes": [
             {
                 "locales": [lang],
