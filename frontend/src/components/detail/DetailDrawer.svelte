@@ -44,7 +44,7 @@
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
-	import GroupMemberList from './members/GroupMemberList.svelte';
+	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
@@ -539,14 +539,19 @@
 	<div class="flex flex-col gap-3 p-1">
 		{@render tabsBar()}
 		{#if isGroupMode && groupDetail?.global}
-			<GroupMemberList
-				slug={groupDetail.global.slug}
+			<PaginatedMemberList
+				source={{ kind: 'group', slug: groupDetail.global.slug }}
 				totalCount={memberTotal}
 				localizedNames={memberNames}
 				fallback={notableMembers ?? []}
 			/>
-		{:else if notableMembers && notableMembers.length > 0}
-			<MemberList members={notableMembers} localizedNames={memberNames} />
+		{:else if body && notableMembers && notableMembers.length > 0}
+			<PaginatedMemberList
+				source={{ kind: 'parent', parentId: body.data.id }}
+				totalCount={memberTotal}
+				localizedNames={memberNames}
+				fallback={notableMembers}
+			/>
 		{/if}
 	</div>
 {/snippet}

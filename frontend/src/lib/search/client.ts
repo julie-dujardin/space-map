@@ -150,11 +150,8 @@ export interface GroupMemberPage {
 // sort last for it, so this degrades gracefully before sitelinks_count ships.
 const MEMBER_SORT = ['sitelinks_count:desc', 'diameter_km:desc', 'magnitude:asc', 'inception:asc'];
 
-/** A paginated slice of a group's members (small-body class/flag or earth-sat
- *  collection), ranked notable-first. Empty when search is unconfigured or the
- *  slug tags no objects (e.g. categories / split-comet families). */
-export async function searchGroupMembers(
-	slug: string,
+async function searchMemberPage(
+	filter: string,
 	offset: number,
 	limit: number,
 	locale: string
@@ -162,7 +159,7 @@ export async function searchGroupMembers(
 	const c = getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0 };
 	const res = await c.index('objects').search('', {
-		filter: `groups = "${slug}"`,
+		filter,
 		sort: MEMBER_SORT,
 		offset,
 		limit,
@@ -170,6 +167,31 @@ export async function searchGroupMembers(
 	});
 	const hits = (res.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
+}
+
+/** A paginated slice of a group's members (small-body class/flag or earth-sat
+ *  collection), ranked notable-first. Empty when search is unconfigured or the
+ *  slug tags no objects (e.g. categories / split-comet families). */
+export function searchGroupMembers(
+	slug: string,
+	offset: number,
+	limit: number,
+	locale: string
+): Promise<GroupMemberPage> {
+	return searchMemberPage(`groups = "${slug}"`, offset, limit, locale);
+}
+
+/** A paginated slice of a body's moons, ranked notable-first. `parentId` is the
+ *  host body's Object id (a planet/dwarf-planet; its barycenter's moons are
+ *  re-parented to it in the index). The planet itself shares that parent_id, so
+ *  the `type` clause keeps moons only. */
+export function searchChildMembers(
+	parentId: string,
+	offset: number,
+	limit: number,
+	locale: string
+): Promise<GroupMemberPage> {
+	return searchMemberPage(`parent_id = "${parentId}" AND type = "moon"`, offset, limit, locale);
 }
 
 /** Round-robin two ranked lists into one. Cheap stand-in for cross-index

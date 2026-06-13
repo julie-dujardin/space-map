@@ -8,6 +8,7 @@
 	import {
 		isSearchEnabled,
 		localizedName,
+		searchChildMembers,
 		searchGroupMembers,
 		type GroupMemberPage,
 		type ObjectHit
@@ -17,14 +18,17 @@
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
 
+	/** A group's members (by slug) or a body's moons (by host id). */
+	type MemberSource = { kind: 'group'; slug: string } | { kind: 'parent'; parentId: string };
+
 	interface Props {
-		slug: string;
+		source: MemberSource;
 		totalCount: number;
 		localizedNames?: Record<string, string>;
 		/** Baked top members shown instantly, before/without the search backend. */
 		fallback: NotableMemberEntry[];
 	}
-	let { slug, totalCount, localizedNames, fallback }: Props = $props();
+	let { source, totalCount, localizedNames, fallback }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -39,6 +43,21 @@
 		thumbnail?: PickedThumbnail;
 		diameter_km?: number;
 		year?: string;
+	}
+
+	// Primitive identity of the source, so the load effect tracks only a change
+	// of group/body — not the fresh object literal the parent passes each render.
+	let sourceKey = $derived(source.kind === 'group' ? `g:${source.slug}` : `p:${source.parentId}`);
+
+	function fetchPage(
+		src: MemberSource,
+		offset: number,
+		limit: number,
+		locale: string
+	): Promise<GroupMemberPage> {
+		return src.kind === 'group'
+			? searchGroupMembers(src.slug, offset, limit, locale)
+			: searchChildMembers(src.parentId, offset, limit, locale);
 	}
 
 	function yearOf(s?: string): string | undefined {
@@ -74,35 +93,36 @@
 	let loading = $state(false);
 	let searchBacked = $state(false);
 
-	// (Re)seed from the baked list and pull the first search page on group change.
+	// (Re)seed from the baked list and pull the first search page on source change.
 	// The reset + load run untracked so writes to loading/rows/searchBacked don't
-	// re-trigger this effect (which would loop, hammering Meili) — `slug` is the
-	// only intended trigger.
+	// re-trigger this effect (which would loop, hammering Meili) — `sourceKey` is
+	// the only intended trigger.
 	$effect(() => {
-		const s = slug;
+		const key = sourceKey;
 		const seed = fallbackRows();
 		const seedTotal = totalCount;
 		untrack(() => {
 			rows = seed;
 			total = seedTotal;
 			searchBacked = false;
-			if (isSearchEnabled()) void loadFirst(s);
+			if (isSearchEnabled()) void loadFirst(key);
 		});
 	});
 
-	async function loadFirst(s: string) {
+	async function loadFirst(key: string) {
+		const src = untrack(() => source);
 		loading = true;
 		const locale = getLocale();
 		let page: GroupMemberPage;
 		try {
-			page = await searchGroupMembers(s, 0, PAGE_SIZE, locale);
+			page = await fetchPage(src, 0, PAGE_SIZE, locale);
 		} catch {
 			loading = false;
 			return;
 		}
-		// A newer group may have superseded this request; empty page → slug isn't
-		// in the index, so keep the baked fallback.
-		if (s === slug && page.hits.length > 0) {
+		// A newer source may have superseded this request; empty page → nothing in
+		// the index, so keep the baked fallback.
+		if (key === sourceKey && page.hits.length > 0) {
 			rows = page.hits.map((h) => hitRow(h, locale));
 			total = page.estimatedTotalHits;
 			searchBacked = true;
@@ -112,17 +132,18 @@
 
 	async function loadMore() {
 		if (loading) return;
-		const s = slug;
+		const key = sourceKey;
+		const src = source;
 		loading = true;
 		const locale = getLocale();
 		let page: GroupMemberPage;
 		try {
-			page = await searchGroupMembers(s, rows.length, PAGE_SIZE, locale);
+			page = await fetchPage(src, rows.length, PAGE_SIZE, locale);
 		} catch {
 			loading = false;
 			return;
 		}
-		if (s === slug) {
+		if (key === sourceKey) {
 			rows = [...rows, ...page.hits.map((h) => hitRow(h, locale))];
 			total = page.estimatedTotalHits;
 		}
