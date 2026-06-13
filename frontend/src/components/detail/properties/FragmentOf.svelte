@@ -36,7 +36,8 @@
 		}
 		if (!focusObject) return;
 		e.preventDefault();
-		focusObject(primary_id, name);
+		// Parent comet's mesh isn't worth flying to — just select it.
+		focusObject(primary_id, name, { moveCamera: false });
 	}
 </script>
 

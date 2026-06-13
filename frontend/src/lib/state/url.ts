@@ -4,6 +4,7 @@ import {
 	CATEGORY_SLUG_PREFIX,
 	CAT_SATELLITES,
 	CLASS_SLUG_PREFIX,
+	COMET_FAMILY_SLUG_PREFIX,
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
@@ -48,7 +49,7 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 			? { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM }
 			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
-	if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX)) {
+	if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX) || slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) {
 		return { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	return { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM };

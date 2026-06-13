@@ -364,10 +364,20 @@
 			: (data?.global?.moon_count ?? 0) +
 					(satellitesGroup ? (data?.global?.satellite_count ?? 0) : 0)
 	);
+	// A split-comet family group lists fragments, not generic "members".
+	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
 	let membersHeading = $derived(
-		isGroupMode ? m.members_notable() : satellitesGroup ? m.satellites_section() : m.moons_section()
+		isGroupMode
+			? isSplitCometGroup
+				? m.fragments_section()
+				: m.members_notable()
+			: satellitesGroup
+				? m.satellites_section()
+				: m.moons_section()
 	);
-	let membersTabLabel = $derived(isGroupMode ? m.tab_members() : m.tab_moons());
+	let membersTabLabel = $derived(
+		isGroupMode ? (isSplitCometGroup ? m.tab_fragments() : m.tab_members()) : m.tab_moons()
+	);
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
@@ -481,6 +491,7 @@
 					totalCount={fragmentTotal}
 					heading={m.fragments_section()}
 					onSeeAll={seeAllFragments}
+					focusMovesCamera={false}
 				/>
 			{/if}
 			{#if feature}
@@ -540,6 +551,7 @@
 				members={notableFragments}
 				localizedNames={fragmentNames}
 				heading={m.fragments_section()}
+				focusMovesCamera={false}
 			/>
 		{/if}
 	</div>

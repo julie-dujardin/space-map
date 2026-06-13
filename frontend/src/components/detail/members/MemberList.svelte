@@ -11,8 +11,10 @@
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
 		heading: string;
+		/** Fragment lists pass false: select the piece without flying to its mesh. */
+		focusMovesCamera?: boolean;
 	}
-	let { members, localizedNames, heading }: Props = $props();
+	let { members, localizedNames, heading, focusMovesCamera = true }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -42,7 +44,7 @@
 		}
 		if (!focusObject || !member.id) return;
 		e.preventDefault();
-		focusObject(member.id, name);
+		focusObject(member.id, name, { moveCamera: focusMovesCamera });
 	}
 
 	/** Discovery year from the first_obs proxy (YYYY-MM-DD or YYYY). */

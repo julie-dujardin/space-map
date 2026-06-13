@@ -40,7 +40,7 @@
 	// Shared by the search bar and in-drawer object links (notable members,
 	// largest body): pushes the target URL state first so Scene's
 	// onFocusChange doesn't re-route it, then flies the camera.
-	const focusObject: FocusObject = (id, name) => {
+	const focusObject: FocusObject = (id, name, opts) => {
 		void (async () => {
 			// Snap into coverage first so the camera lands on a positioned body.
 			const window = await coverageWindowFor(id);
@@ -50,8 +50,12 @@
 			}
 			appState.setFocus({ type: urlTypeFromId(id), id, name });
 			// Maximize-distance zoom when the body's loaded; default otherwise.
+			// `moveCamera: false` skips the zoom fly entirely (comet fragments):
+			// focusOnBody without a zoom re-anchors focus so the drawer follows,
+			// but doesn't pull the camera in to inspect the mesh.
 			const body = ctx.getBody(id);
-			const zoom = body ? minCameraDistance(body) * 5 : undefined;
+			const zoom =
+				opts?.moveCamera === false ? undefined : body ? minCameraDistance(body) * 5 : undefined;
 			scene?.focusOnBody(id, zoom);
 		})();
 	};

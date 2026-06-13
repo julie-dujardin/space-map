@@ -15,11 +15,15 @@ export type GroupType =
 	| 'orbit_class'
 	| 'small_body_flag'
 	| 'earth_orbit_class'
-	| 'category';
+	| 'category'
+	| 'split_comet';
 export type GroupCategory = 'earth_sat' | 'small_body' | 'category';
 
 /** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const CLASS_SLUG_PREFIX = 'class-';
+
+/** Mirrors ``FAMILY_GROUP_SLUG_PREFIX`` in ``data/constants/comet_fragments.py``. */
+export const COMET_FAMILY_SLUG_PREFIX = 'comet-family-';
 
 /** Mirrors ``SMALL_BODY_FLAG_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const SMALL_BODY_FLAG_SLUG_PREFIX = 'flag-';

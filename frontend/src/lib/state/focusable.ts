@@ -16,8 +16,12 @@ export type Focusable =
 /** Full in-session object navigation: coverage snap + URL focus + camera
  *  fly-to. Provided by MapPage via setContext('focusObject') — a bare
  *  `appState.setFocus` only rewrites the URL and never reaches the renderer,
- *  so the drawer (driven by the renderer's focus) would not follow. */
-export type FocusObject = (id: string, name: string) => void;
+ *  so the drawer (driven by the renderer's focus) would not follow.
+ *
+ *  `moveCamera: false` selects the body (drawer follows) without the zoom
+ *  fly-in — used for comet fragments/parents, whose tiny meshes aren't worth
+ *  flying to. */
+export type FocusObject = (id: string, name: string, opts?: { moveCamera?: boolean }) => void;
 
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {

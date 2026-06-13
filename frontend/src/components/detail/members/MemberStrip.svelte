@@ -21,8 +21,17 @@
 		totalCount: number;
 		heading: string;
 		onSeeAll: () => void;
+		/** Fragment lists pass false: select the piece without flying to its mesh. */
+		focusMovesCamera?: boolean;
 	}
-	let { members, localizedNames, totalCount, heading, onSeeAll }: Props = $props();
+	let {
+		members,
+		localizedNames,
+		totalCount,
+		heading,
+		onSeeAll,
+		focusMovesCamera = true
+	}: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -59,7 +68,7 @@
 		}
 		if (!focusObject || !member.id) return;
 		e.preventDefault();
-		focusObject(member.id, name);
+		focusObject(member.id, name, { moveCamera: focusMovesCamera });
 	}
 </script>
 

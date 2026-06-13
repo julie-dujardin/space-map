@@ -16,7 +16,8 @@ import {
 	CAT_PROBES,
 	CAT_SATELLITES,
 	CAT_SOLAR_SYSTEM,
-	CLASS_SLUG_PREFIX
+	CLASS_SLUG_PREFIX,
+	COMET_FAMILY_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import type { Focusable } from './focusable';
@@ -46,7 +47,7 @@ function parentPlanet(
 }
 
 export type CrumbTarget =
-	| { kind: 'focus'; id: string; name: string }
+	| { kind: 'focus'; id: string; name: string; moveCamera?: boolean }
 	| { kind: 'group'; slug: string; name: string };
 
 export interface Crumb {
@@ -96,6 +97,8 @@ export function parentCrumb(
 			}
 			return categoryCrumb(CAT_SOLAR_SYSTEM);
 		}
+		// A split-comet family is always a comet, regardless of orbit class.
+		if (slug.startsWith(COMET_FAMILY_SLUG_PREFIX)) return categoryCrumb(CAT_COMETS);
 		const appliesTo = groupGlobal?.applies_to;
 		if (appliesTo === 'small_body') {
 			const cls = classNameFromSlug(slug);
@@ -152,7 +155,13 @@ export function parentCrumb(
 				}
 			: {
 					label: fragmentOf.name,
-					target: { kind: 'focus', id: fragmentOf.primary_id, name: fragmentOf.name }
+					// Parent comet's mesh isn't worth flying to — just select it.
+					target: {
+						kind: 'focus',
+						id: fragmentOf.primary_id,
+						name: fragmentOf.name,
+						moveCamera: false
+					}
 				};
 	}
 

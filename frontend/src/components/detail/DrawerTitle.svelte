@@ -36,7 +36,7 @@
 		if (c.target.kind === 'focus') {
 			if (!focusObject) return; // no in-session nav available — let the href win
 			e.preventDefault();
-			focusObject(c.target.id, c.target.name);
+			focusObject(c.target.id, c.target.name, { moveCamera: c.target.moveCamera });
 		} else {
 			e.preventDefault();
 			appState.setGroup(c.target.slug, c.target.name);

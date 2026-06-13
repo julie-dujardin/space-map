@@ -20,6 +20,8 @@ export function groupTypeLabel(type: GroupType): string {
 			return m.group_type_small_body_flag();
 		case 'category':
 			return m.group_type_category();
+		case 'split_comet':
+			return m.group_type_split_comet();
 	}
 }
 
