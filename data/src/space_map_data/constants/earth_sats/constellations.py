@@ -51,6 +51,7 @@ class ConstellationSpec:
     source: str | None = None  # SATCAT SOURCE/OWNER code
     url: str | None = None  # When no wikipedia link
     satellites: list[str] | None = None  # List of member names
+    object_id_prefix: str | tuple[str, ...] | None = None  # COSPAR launch-ID core
 
 
 """
@@ -397,6 +398,37 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "Q1136670",
         (SatelliteCategory.ROCKET, SatelliteCategory.MILITARY),
         prefix="TITAN",
+    ),
+    # OVx: US Air Force Orbiting Vehicle series (1960s-1970s), mostly military.
+    ConstellationSpec(
+        "orbiting-vehicle-1",
+        "Q7100108",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.MILITARY),
+        contains=("OV1",),
+    ),
+    ConstellationSpec(
+        "orbiting-vehicle-2",
+        "Q7100108",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.MILITARY),
+        contains=("OV2",),
+    ),
+    ConstellationSpec(
+        "orbiting-vehicle-3",
+        "Q7100108",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.MILITARY),
+        contains=("OV3",),
+    ),
+    ConstellationSpec(
+        "orbiting-vehicle-4",
+        "Q7100108",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.MILITARY),
+        contains=("OV4",),
+    ),
+    ConstellationSpec(
+        "orbiting-vehicle-5",
+        "Q7100108",
+        (SatelliteCategory.SCIENCE, SatelliteCategory.MILITARY),
+        contains=("OV5",),
     ),
     # -------------------------------------------------------------------------
     # US civilian / weather satellites
@@ -865,6 +897,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         prefix=("NAVSTAR",),
     ),
     ConstellationSpec(
+        "nts-satellites",
+        "Q135670517",
+        (SatelliteCategory.NAVIGATION, SatelliteCategory.MILITARY),
+        satellites=["OPS 7518 (NTS 1)", "NTS 2", "NTS-3"],
+    ),
+    ConstellationSpec(
         "glonass", "Q486250", (SatelliteCategory.NAVIGATION,), group="glo-ops"
     ),
     ConstellationSpec(
@@ -880,11 +918,54 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "sbas", "Q2165162", (SatelliteCategory.NAVIGATION,), group="sbas"
     ),  # generic "constellation"
     ConstellationSpec(
+        "tdrss", "Q3522774", (SatelliteCategory.COMMUNICATIONS,), group="tdrss"
+    ),
+    ConstellationSpec(
+        "argos", "Q649489", (SatelliteCategory.OBSERVATION,), group="argos"
+    ),
+    # Deliberate debris events: ASAT tests / intentional dispersals
+    ConstellationSpec(
         "fengyun-1c-asat-debris",
         "Q182183",
         (SatelliteCategory.DEBRIS,),
         group="fengyun-1c-debris",
     ),
+    ConstellationSpec(
+        "westford-needles",
+        "Q621882",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1963-014",
+        prefix=("WESTFORD NEEDLES",),
+    ),
+    ConstellationSpec(
+        "solwind-debris",
+        "Q54370",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1979-017",
+        prefix=("SOLWIND DEB",),
+    ),
+    ConstellationSpec(
+        "microsat-r-debris",
+        "Q60990709",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="2019-006",
+        prefix=("MICROSAT-R DEB",),
+    ),
+    ConstellationSpec(
+        "crres-debris",
+        "Q5013937",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1990-065",
+        prefix=("CRRES DEB",),
+    ),
+    ConstellationSpec(
+        "cosmos-1408-debris",
+        "Q12907386",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1982-092",
+        prefix=("COSMOS 1408 DEB",),
+    ),
+    # Accidental breakup debris
     ConstellationSpec(
         "iridium-33-debris",
         "Q843912",
@@ -898,10 +979,52 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         group="cosmos-2251-debris",
     ),
     ConstellationSpec(
-        "tdrss", "Q3522774", (SatelliteCategory.COMMUNICATIONS,), group="tdrss"
+        "hitomi-debris",
+        "Q298048",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="2016-012",
+        prefix=("ASTRO-H (HITOMI) DEB", "ASTRO-H DEB"),
     ),
     ConstellationSpec(
-        "argos", "Q649489", (SatelliteCategory.OBSERVATION,), group="argos"
+        "cobe-debris",
+        "Q49445",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1989-089",
+        prefix=("COBE DEB",),
+    ),
+    ConstellationSpec(
+        "seasat-debris",
+        "Q257020",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1978-064",
+        prefix=("SEASAT 1 DEB",),
+    ),
+    ConstellationSpec(
+        "uars-debris",
+        "Q534401",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1991-063",
+        prefix=("UARS DEB",),
+    ),  #
+    ConstellationSpec(
+        "resurs-o1-debris",
+        "Q12816951",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="1994-074",
+        prefix=("RESURS O1 DEB",),
+    ),
+    ConstellationSpec(
+        "resurs-p1-debris",
+        "Q4393669",
+        (SatelliteCategory.DEBRIS,),
+        object_id_prefix="2013-030",
+        prefix=("RESURS-P 1 DEB",),
+    ),
+    ConstellationSpec(
+        "echo-debris",
+        "Q620661",
+        (SatelliteCategory.DEBRIS,),
+        prefix=("ECHO 1 DEB", "ECHO 2 DEB"),
     ),
     # -------------------------------------------------------------------------
     # Derived from SATCAT SOURCE/OWNER code

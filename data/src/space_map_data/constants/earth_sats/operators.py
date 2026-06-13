@@ -98,7 +98,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "JAXA",
         "jaxa",
         "Q179103",
-        constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket"),
+        constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket", "hitomi-debris"),
     ),
     OperatorSpec("CSA", "csa", "Q212227", constellations=("iss",)),
     OperatorSpec("Italian Space Agency", "asi", "Q392953", constellations=("iride",)),
@@ -137,7 +137,11 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("marecs", "marisat", "inmarsat"),
     ),
     OperatorSpec(
-        "Iridium", "iridium", "Q3154356", source="IRID", constellations=("iridium",)
+        "Iridium",
+        "iridium",
+        "Q3154356",
+        source="IRID",
+        constellations=("iridium", "iridium-33-debris"),
     ),
     OperatorSpec(
         "Indian Space Research Organisation",
@@ -257,6 +261,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "muos",
             "dsp",
             "uhf-follow-on",
+            "nts-satellites",  # NTS-3 (NTS-1/2 were US Navy)
         ),
     ),
     OperatorSpec(
@@ -304,6 +309,8 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "iss",
             "meteor",
             "block-dm",
+            "resurs-o1-debris",
+            "resurs-p1-debris",
         ),
         active_from=1992,
     ),
@@ -318,7 +325,14 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Russian Aerospace Forces",
         "russian-aerospace-forces",
         "Q21042210",
-        constellations=("cosmos", "blagovest", "cis-classified", "resurs-"),
+        constellations=(
+            "cosmos",
+            "blagovest",
+            "cis-classified",
+            "resurs-",
+            "cosmos-1408-debris",  # 2021 Nudol ASAT test
+            "cosmos-2251-debris",  # Strela-2M military comsat (2009 collision)
+        ),
         active_from=1992,
     ),
     OperatorSpec(
@@ -352,16 +366,36 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "sts",
             "nimbus",
             "syncom",
+            "crres-debris",
+            "cobe-debris",
+            "seasat-debris",
+            "uars-debris",
+            "echo-debris",
         ),
     ),
     OperatorSpec(
-        "US Navy", "us-navy", "Q11220", constellations=("transit", "vanguard")
+        "US Navy",
+        "us-navy",
+        "Q11220",
+        constellations=("transit", "vanguard", "nts-satellites"),
     ),
     OperatorSpec(
         "US Air Force",
         "us-air-force",
         "Q11223",
-        constellations=("us-ops-classified", "leasat", "titan-rocket"),
+        constellations=(
+            "us-ops-classified",
+            "leasat",
+            "titan-rocket",
+            "orbiting-vehicle-1",
+            "orbiting-vehicle-2",
+            "orbiting-vehicle-3",
+            "orbiting-vehicle-4",
+            "orbiting-vehicle-5",
+            "westford-needles",
+            "solwind-debris",  # 1985 ASM-135 ASAT test
+            "crres-debris",
+        ),
     ),
     OperatorSpec(
         "US DOD - Department of Defense",
@@ -468,6 +502,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "yunhai-2",
             "yunhai-3",
             "prc-classified",
+            "fengyun-1c-asat-debris",  # 2007 SC-19 ASAT test
         ),
     ),
     OperatorSpec(
@@ -606,6 +641,12 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q17492679",
         constellations=("firefly",),
     ),
+    OperatorSpec(
+        "DRDO - Defence Research and Development Organisation",
+        "drdo",
+        "Q1154393",
+        constellations=("microsat-r-debris",),
+    ),  # India, Mission Shakti 2019 ASAT test
 )
 
 

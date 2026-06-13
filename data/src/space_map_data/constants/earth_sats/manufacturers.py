@@ -142,6 +142,45 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Vantor", "vantor", "Q136461484", constellations=("worldView-legion",)
     ),
     # ----- Manufacturer-only (no matching operator entry) -----
+    # Orbiting Vehicle (OV) program contractors — USAF program, built by these firms
+    ManufacturerSpec(
+        "General Dynamics",
+        "general-dynamics",
+        "Q502940",
+        constellations=("orbiting-vehicle-1",),
+    ),
+    ManufacturerSpec(
+        "Northrop Corporation",
+        "northrop",
+        "Q912979",
+        constellations=("orbiting-vehicle-2", "orbiting-vehicle-5"),
+    ),
+    ManufacturerSpec(
+        "Aerojet",
+        "aerojet",
+        "Q381498",
+        constellations=(
+            "orbiting-vehicle-3",
+        ),  # built OV3 via subsidiary Space General
+    ),
+    ManufacturerSpec(
+        "Martin Marietta",
+        "martin-marietta",
+        "Q626800",
+        constellations=("orbiting-vehicle-4",),
+    ),
+    ManufacturerSpec(
+        "TRW",
+        "trw",
+        "Q967620",
+        constellations=("orbiting-vehicle-5",),
+    ),
+    ManufacturerSpec(
+        "Air Force Cambridge Research Laboratories",
+        "afcrl",
+        "Q14715385",
+        constellations=("orbiting-vehicle-3", "orbiting-vehicle-5"),
+    ),
     ManufacturerSpec(
         "Lockheed Martin",
         "lockheed-martin",
