@@ -41,7 +41,7 @@
 	import ChildGroups from './properties/ChildGroups.svelte';
 	import { categoryPlotType, scatterClickableSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
-	import MemberStrip from './members/MemberStrip.svelte';
+	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -352,12 +352,14 @@
 	let membersHeading = $derived(isGroupMode ? m.members_notable() : m.moons_section());
 	let membersTabLabel = $derived(isGroupMode ? m.tab_members() : m.tab_moons());
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
+	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
+	let showMembersTab = $derived(hasMembers && memberTotal > STRIP_CAPACITY);
 	let activeTab = $state<'overview' | 'images' | 'members'>('overview');
 	// Switching to a focusable that lacks the active tab's content would
 	// leave the panel empty — fall back to overview.
 	$effect(() => {
 		if (!hasImages && activeTab === 'images') activeTab = 'overview';
-		if (!hasMembers && activeTab === 'members') activeTab = 'overview';
+		if (!showMembersTab && activeTab === 'members') activeTab = 'overview';
 	});
 </script>
 
@@ -373,7 +375,7 @@
 					</Badge>
 				</Tabs.Trigger>
 			{/if}
-			{#if hasMembers}
+			{#if showMembersTab}
 				<Tabs.Trigger value="members" class="px-2">
 					{membersTabLabel}
 					<Badge variant="secondary" class="text-[10px] py-0 px-1.5 h-4 leading-none">
@@ -408,6 +410,13 @@
 				}}
 			/>
 			{@render tabsBar()}
+			{#if isGroupMode && groupDetail?.global}
+				<GroupStatCards global={groupDetail.global} />
+			{/if}
+			<ObjectDescription
+				extract={data?.localized?.wikipedia?.extract}
+				wikipediaUrl={data?.localized?.wikipedia?.url}
+			/>
 			{#if notableMembers && notableMembers.length > 0}
 				<MemberStrip
 					members={notableMembers}
@@ -417,13 +426,6 @@
 					onSeeAll={() => (activeTab = 'members')}
 				/>
 			{/if}
-			{#if isGroupMode && groupDetail?.global}
-				<GroupStatCards global={groupDetail.global} />
-			{/if}
-			<ObjectDescription
-				extract={data?.localized?.wikipedia?.extract}
-				wikipediaUrl={data?.localized?.wikipedia?.url}
-			/>
 			{#if feature}
 				<FeatureProperties {feature} detail={featureDetail} />
 			{:else if body}

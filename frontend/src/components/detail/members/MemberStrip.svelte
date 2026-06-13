@@ -1,3 +1,9 @@
+<script module lang="ts">
+	// Slots in the overview strip's grid. At/under this count all members fit
+	// here, so DetailDrawer drops the dedicated tab.
+	export const STRIP_CAPACITY = 5;
+</script>
+
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -21,9 +27,10 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
-	const STRIP_COUNT = 4;
-	let shown = $derived(members.slice(0, STRIP_COUNT));
-	let moreCount = $derived(Math.max(0, totalCount - shown.length));
+	// Show all when they fit; otherwise reserve the last slot for a "+N more" tile.
+	let hasOverflow = $derived(totalCount > STRIP_CAPACITY);
+	let shown = $derived(members.slice(0, hasOverflow ? STRIP_CAPACITY - 1 : STRIP_CAPACITY));
+	let moreCount = $derived(hasOverflow ? totalCount - shown.length : 0);
 
 	function displayName(member: NotableMemberEntry): string {
 		return localizedNames?.[member.id] ?? member.name;
@@ -57,14 +64,16 @@
 				{formatCompactNumber(totalCount)}
 			</span>
 		</div>
-		<button
-			type="button"
-			onclick={onSeeAll}
-			class="pointer-events-auto text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
-		>
-			{m.members_see_all()}
-			<ArrowRightIcon class="size-3" />
-		</button>
+		{#if hasOverflow}
+			<button
+				type="button"
+				onclick={onSeeAll}
+				class="pointer-events-auto text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-xs"
+			>
+				{m.members_see_all()}
+				<ArrowRightIcon class="size-3" />
+			</button>
+		{/if}
 	</div>
 	<div class="border-border/60 border-t"></div>
 	<div class="grid grid-cols-5 gap-2 pt-1">
