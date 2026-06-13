@@ -2,7 +2,7 @@ import { MeshStandardMaterial, SRGBColorSpace, type Texture, type TextureLoader 
 import { resolveBodyColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -42,8 +42,11 @@ export function highestAvailableTier(maxRank: number, available: string[]): Tier
  * documented in docs/export-format.md.
  */
 function textureUrlFor(id: string, tier: string, frame: number | undefined): string {
-	if (frame === undefined) return `${DATA_BASE}/v1/textures/${id}/${tier}.webp`;
-	return `${DATA_BASE}/v1/textures/${id}/${tier}_${String(frame).padStart(2, '0')}.webp`;
+	if (frame === undefined) return versionedUrl(`/v1/textures/${id}/${tier}.webp`, 'textures');
+	return versionedUrl(
+		`/v1/textures/${id}/${tier}_${String(frame).padStart(2, '0')}.webp`,
+		'textures'
+	);
 }
 
 /**

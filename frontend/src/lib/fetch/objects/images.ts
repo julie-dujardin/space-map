@@ -11,7 +11,7 @@
  * smaller than the request.
  */
 
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import type { ImageVariants, ObjectImage } from './object-data';
 
 const BUCKET_DIMS = { s: 512, m: 1024, xl: 4096 } as const;
@@ -44,7 +44,7 @@ export function pickImageUrl(image: ObjectImage, targetDevicePx: number): string
 export function variantUrl(image: ObjectImage, label: VariantLabel): string | undefined {
 	const ext = image.variants[label];
 	if (!ext) return undefined;
-	return `${DATA_BASE}/v1/images/${encodeURIComponent(image.file)}/${label}.${ext}`;
+	return versionedUrl(`/v1/images/${encodeURIComponent(image.file)}/${label}.${ext}`, 'images');
 }
 
 /** Pre-picked thumbnail descriptor: a single emitted variant, as written by
@@ -59,12 +59,12 @@ export interface PickedThumbnail {
 
 /** URL for a pre-picked thumbnail descriptor. */
 export function pickedThumbnailUrl(t: PickedThumbnail): string {
-	return `${DATA_BASE}/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`;
+	return versionedUrl(`/v1/images/${encodeURIComponent(t.file)}/${t.label}.${t.ext}`, 'images');
 }
 
 /** URL of the gzipped per-image metadata JSON. */
 export function metadataUrl(image: ObjectImage): string {
-	return `${DATA_BASE}/v1/images/${encodeURIComponent(image.file)}/metadata.json.gz`;
+	return versionedUrl(`/v1/images/${encodeURIComponent(image.file)}/metadata.json.gz`, 'images');
 }
 
 /** Fetch and decompress the per-image metadata JSON. */

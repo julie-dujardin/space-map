@@ -9,7 +9,7 @@
  */
 import { Mesh, MeshStandardMaterial, SphereGeometry, SRGBColorSpace, Texture } from 'three';
 
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
 
 /** Per-body cloud-overlay metadata — matches `clouds_block` in export/systems.py. */
@@ -55,7 +55,7 @@ const CLOUD_RADIUS_OFFSET = 1.002;
 const CLOUD_SWAP_MIN_INTERVAL_MS = 1000;
 
 function cloudTextureUrl(id: string, tier: string, frame: string): string {
-	return `${DATA_BASE}/v1/textures/${id}/${tier}_${frame}.webp`;
+	return versionedUrl(`/v1/textures/${id}/${tier}_${frame}.webp`, 'textures');
 }
 
 /**

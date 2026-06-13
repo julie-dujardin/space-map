@@ -9,7 +9,7 @@
  * The format byte at offset 6 of the common header dispatches between them.
  */
 
-import { DATA_BASE } from '../data-base';
+import { DATA_BASE, versionedUrl } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
 export const VERSION = 10;
@@ -65,11 +65,10 @@ export const PROBE_FLAG_HAS_LANDED_RECORD = 0x01;
  */
 export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
 
-export const BASE_POSITION_PATH = `${DATA_BASE}/v1/position`;
-
 /** Pre-interaction labels file: one global gzipped index per language listing
  *  every promoted body's display name. The frontend's promoted set is exactly
- *  this file's keys — there is no separate hardcoded list. */
+ *  this file's keys — there is no separate hardcoded list. Served on the
+ *  revalidating default (small, on the boot path), so no `?v=` token. */
 export const labelsUrl = (lang: string): string => `${DATA_BASE}/v1/labels/${lang}.gz`;
 
 /**
@@ -84,21 +83,21 @@ export const labelsUrl = (lang: string): string => `${DATA_BASE}/v1/labels/${lan
  *   - `chunked`        → `position/{zone}/{zoom}/{chunk}.bin.gz` (chebyshev)
  */
 export function partedUrl(zone: string, zoom: number, part: number): string {
-	return `${BASE_POSITION_PATH}/${zone}/${zoom}/${part}.bin.gz`;
+	return versionedUrl(`/v1/position/${zone}/${zoom}/${part}.bin.gz`, 'position');
 }
 
 export function chunkedPartedUrl(zone: string, zoom: number, label: string, part: number): string {
-	return `${BASE_POSITION_PATH}/${zone}/${zoom}/${label}/${part}.bin.gz`;
+	return versionedUrl(`/v1/position/${zone}/${zoom}/${label}/${part}.bin.gz`, 'position');
 }
 
 export function chunkedUrl(zone: string, zoom: number, chunk: number): string {
-	return `${BASE_POSITION_PATH}/${zone}/${zoom}/${chunk}.bin.gz`;
+	return versionedUrl(`/v1/position/${zone}/${zoom}/${chunk}.bin.gz`, 'position');
 }
 
 /** Probe zones use the `chunked` shape with no zoom segment — see
  *  [Probes payload](docs/export-format.md#probes-payload-format-byte--2). */
 export function chunkedFlatUrl(zone: string, chunk: number): string {
-	return `${BASE_POSITION_PATH}/${zone}/${chunk}.bin.gz`;
+	return versionedUrl(`/v1/position/${zone}/${chunk}.bin.gz`, 'position');
 }
 
 /** Sentinel values for missing data in the binary format. */

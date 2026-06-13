@@ -1,5 +1,5 @@
 import { type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 
 /**
  * Per-body specular-map metadata block from `systems/{bary}.json`. Mirrors
@@ -50,7 +50,7 @@ export async function attachSpecularMap(
 	tier: string,
 	textureLoader: TextureLoader
 ): Promise<Texture | null> {
-	const url = `${DATA_BASE}/v1/textures/${specMeta.id}/${tier}.webp`;
+	const url = versionedUrl(`/v1/textures/${specMeta.id}/${tier}.webp`, 'textures');
 	let texture: Texture;
 	try {
 		texture = await new Promise<Texture>((resolve, reject) => {

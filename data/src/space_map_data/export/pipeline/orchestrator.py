@@ -1,5 +1,6 @@
 """Export orchestrator: query DB, drive zone exports, write global outputs."""
 
+import hashlib
 import logging
 import shutil
 import time
@@ -629,6 +630,49 @@ def _load_nasa_science_urls() -> dict[str, str]:
     return {}
 
 
+# Content-class directories served under an immutable `Cache-Control` rule
+# (see infrastructure/deploy/_headers). Each gets a content-hash token in
+# metadata.json `versions`; the frontend appends it as `?v=` so a content change
+# yields a fresh URL while unchanged classes stay cached. Roots that stay on the
+# revalidating default (metadata, systems, groups, labels, credits) are absent.
+VERSIONED_CLASSES = (
+    "position",
+    "objects",
+    "nomenclature",
+    "textures",
+    "rings",
+    "models",
+    "images",
+    "membership",
+)
+
+
+def _content_token(root: Path) -> str:
+    """Stable 16-hex token over every file under `root` (path + bytes).
+
+    Changes iff a file's relative path or contents change, so a deterministic
+    re-export keeps the token (and the client's cached copy). Returns "0" when
+    the directory is missing or holds no files. Nondeterministic contents only
+    weaken caching (the token churns), never correctness.
+    """
+    if not root.is_dir():
+        return "0"
+    files = sorted(p for p in root.rglob("*") if p.is_file())
+    if not files:
+        return "0"
+    digest = hashlib.sha256()
+    for path in files:
+        file_hash = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                file_hash.update(block)
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(file_hash.digest())
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
 def _write_metadata_json(
     out_dir: Path,
     zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
@@ -649,6 +693,7 @@ def _write_metadata_json(
         "object_bundles": bundle_ns,
         "feature_bundles": feature_bundle_ns,
         "group_bundles": group_bundle_ns,
+        "versions": {cls: _content_token(out_dir / cls) for cls in VERSIONED_CLASSES},
     }
     if skybox_metadata is not None:
         metadata["skybox"] = skybox_block(skybox_metadata)

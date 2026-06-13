@@ -6,7 +6,7 @@
 
 import type { ChebyshevZoneParams } from './position/chebyshev/store';
 import type { ProbeZoneParams } from './position/probes/store';
-import { DATA_BASE } from './data-base';
+import { DATA_BASE, setDataVersions } from './data-base';
 
 /**
  * Bucket counts for hash-bucketed object detail bundles. `global` is the
@@ -195,6 +195,12 @@ export interface Metadata {
 	 *  id is `hashBucket(slug, N)`. Optional so frontends loading a pre-groups
 	 *  export degrade gracefully. */
 	group_bundles?: ObjectBundles;
+	/** Per-content-class cache-busting tokens (content hashes). The frontend
+	 *  appends `versions[class]` as `?v=` on URLs for classes served under an
+	 *  immutable `Cache-Control` rule. Optional so pre-versioning exports load
+	 *  (those URLs degrade to the revalidating default). Mirrors
+	 *  `VERSIONED_CLASSES` in `data/.../pipeline/orchestrator.py`. */
+	versions?: Record<string, string>;
 	skybox?: SkyboxMetadata;
 }
 
@@ -202,10 +208,17 @@ let pending: Promise<Metadata> | null = null;
 
 export function fetchMetadata(): Promise<Metadata> {
 	if (pending) return pending;
-	pending = fetch(`${DATA_BASE}/v1/metadata.json`).then((r) => {
-		if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
-		return r.json() as Promise<Metadata>;
-	});
+	pending = fetch(`${DATA_BASE}/v1/metadata.json`)
+		.then((r) => {
+			if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
+			return r.json() as Promise<Metadata>;
+		})
+		.then((meta) => {
+			// Publish version tokens before the resolved metadata reaches any
+			// consumer, so `versionedUrl` always sees them.
+			setDataVersions(meta.versions);
+			return meta;
+		});
 	return pending;
 }
 

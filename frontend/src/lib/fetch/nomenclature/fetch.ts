@@ -12,7 +12,7 @@
  */
 
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import { parseNomenclature, type NomenclatureRecord } from '$lib/fetch/nomenclature/parse';
 
 export interface NomenclatureFeature extends NomenclatureRecord {
@@ -22,7 +22,7 @@ export interface NomenclatureFeature extends NomenclatureRecord {
 const cache = new Map<string, Promise<NomenclatureFeature[]>>();
 
 async function fetchPositions(bodyId: string): Promise<NomenclatureRecord[]> {
-	const url = `${DATA_BASE}/v1/nomenclature/positions/${bodyId}.bin.gz`;
+	const url = versionedUrl(`/v1/nomenclature/positions/${bodyId}.bin.gz`, 'nomenclature');
 	const res = await fetch(url);
 	if (!res.ok) {
 		if (res.status === 404) return [];
@@ -34,7 +34,7 @@ async function fetchPositions(bodyId: string): Promise<NomenclatureRecord[]> {
 }
 
 async function fetchLabels(bodyId: string, lang: string): Promise<string[]> {
-	const url = `${DATA_BASE}/v1/nomenclature/labels/${lang}/${bodyId}.txt.gz`;
+	const url = versionedUrl(`/v1/nomenclature/labels/${lang}/${bodyId}.txt.gz`, 'nomenclature');
 	const res = await fetch(url);
 	if (!res.ok) {
 		if (res.status === 404) return [];

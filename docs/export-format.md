@@ -142,6 +142,10 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
     "global": 6,
     "en": 4, "fr": 4, "ja": 4, "ar": 3, "ru": 4, "zh": 4
   },
+  "versions": {
+    "position": "a1b2c3d4e5f60718", "objects": "…", "nomenclature": "…",
+    "textures": "…", "rings": "…", "models": "…", "images": "…", "membership": "…"
+  },
   "skybox": {
     "id": "stars",
     "type": "cubemap_skybox",
@@ -161,6 +165,26 @@ The `skybox` block is omitted when no cubemap-skybox bundle is present in
 the export. The frontend loads face URLs as
 `/v1/textures/{skybox.id}/{tier}_{face}.webp` and picks the largest tier
 whose `tier_face_size[tier]` fits the device's max texture dimension.
+
+### Caching & versioning
+
+`versions` maps a content class to a 16-hex content-hash token (sha256 over
+each file's path + bytes under that class dir, `0` for an absent dir). The
+frontend appends it as `?v={token}` on every URL it builds for that class, so
+a content change produces a fresh URL and an unchanged class keeps its cached
+copy. Because the tokens are content hashes, a deterministic re-export with no
+data change leaves them — and the client's cache — untouched. Nondeterministic
+contents only churn the token (weaker caching), never correctness.
+
+The eight versioned classes — `position`, `objects`, `nomenclature`,
+`textures`, `rings`, `models`, `images`, `membership` — are served under an
+immutable `Cache-Control` rule (`infrastructure/deploy/_headers`). The
+remaining roots (`metadata.json`, `credits.json`, `labels/`, `systems/`,
+`groups/`) carry no token and fall through to Cloudflare Pages' revalidating
+default; `metadata.json` is the single always-fresh entry point that pins
+every other URL. `_headers` rules must stay non-overlapping: Pages joins a
+header set by multiple matching rules with a comma, so a revalidating file
+must never also match an immutable glob.
 
 ### Shape → URL
 

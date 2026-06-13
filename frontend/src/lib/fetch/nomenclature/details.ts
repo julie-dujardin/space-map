@@ -11,7 +11,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import type {
 	CurrencyQuantity,
 	EntityRef,
@@ -128,14 +128,20 @@ export async function fetchFeatureDetail(
 	const globalPromise: Promise<FeatureGlobalData | undefined> =
 		globalBucket >= 0
 			? fetchBundle<FeatureGlobalData>(
-					`${DATA_BASE}/v1/nomenclature/details/__global__/${globalBucket}.json.gz`
+					versionedUrl(
+						`/v1/nomenclature/details/__global__/${globalBucket}.json.gz`,
+						'nomenclature'
+					)
 				).then((b) => b[key])
 			: Promise.resolve(undefined);
 
 	const localizedPromise: Promise<FeatureLocalizedData | undefined> =
 		localizedBucket >= 0
 			? fetchBundle<FeatureLocalizedData>(
-					`${DATA_BASE}/v1/nomenclature/details/${lang}/${localizedBucket}.json.gz`
+					versionedUrl(
+						`/v1/nomenclature/details/${lang}/${localizedBucket}.json.gz`,
+						'nomenclature'
+					)
 				).then((b) => b[key])
 			: Promise.resolve(undefined);
 

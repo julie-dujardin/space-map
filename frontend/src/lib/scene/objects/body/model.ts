@@ -12,7 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -55,7 +55,7 @@ const _bundleMetaCache = new Map<string, Promise<ModelBundleMeta>>();
 function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 	let p = _bundleMetaCache.get(slug);
 	if (!p) {
-		p = fetch(`${DATA_BASE}/v1/models/${slug}/metadata.json`).then((r) => r.json());
+		p = fetch(versionedUrl(`/v1/models/${slug}/metadata.json`, 'models')).then((r) => r.json());
 		_bundleMetaCache.set(slug, p);
 	}
 	return p;
@@ -113,7 +113,7 @@ export async function loadBodyModel(
 		setHaloLoading(bo, true);
 		// Bundle metadata fires alongside the GLB so credit registers atomically.
 		const metaPromise = fetchBundleMeta(slug);
-		const gltf = await _loader.loadAsync(`${DATA_BASE}/v1/models/${slug}/high.glb`);
+		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
 		if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) {
 			disposeGltf(gltf.scene);
 			return;

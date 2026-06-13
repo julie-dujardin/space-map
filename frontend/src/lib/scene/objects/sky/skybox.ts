@@ -19,7 +19,7 @@ import {
 	type WebGLRenderer
 } from 'three';
 
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import { eagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { fetchMetadata, type SkyboxMetadata } from '$lib/fetch/metadata';
 import { EARTH_OBLIQUITY_DEG } from '$lib/math/units';
@@ -63,7 +63,7 @@ function pickTier(meta: SkyboxMetadata, maxTextureSize: number): string | null {
 }
 
 function faceUrl(id: string, tier: string, face: string): string {
-	return `${DATA_BASE}/v1/textures/${id}/${tier}_${face}.webp`;
+	return versionedUrl(`/v1/textures/${id}/${tier}_${face}.webp`, 'textures');
 }
 
 /**

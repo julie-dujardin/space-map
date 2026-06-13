@@ -1,6 +1,6 @@
 import { Color, type MeshStandardMaterial, type Texture, type TextureLoader } from 'three';
 import { SRGBColorSpace } from 'three';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 import { getEclipseSceneUniforms } from './eclipse-shadow';
 
 /**
@@ -60,7 +60,7 @@ export async function attachNightLights(
 	tier: string,
 	textureLoader: TextureLoader
 ): Promise<Texture | null> {
-	const url = `${DATA_BASE}/v1/textures/${nightMeta.id}/${tier}.webp`;
+	const url = versionedUrl(`/v1/textures/${nightMeta.id}/${tier}.webp`, 'textures');
 	let texture: Texture;
 	try {
 		texture = await new Promise<Texture>((resolve, reject) => {

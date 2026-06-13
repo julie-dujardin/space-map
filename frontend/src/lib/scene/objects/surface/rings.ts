@@ -29,7 +29,7 @@ import {
 	Vector3
 } from 'three';
 import { kmToScene } from '$lib/math/units';
-import { DATA_BASE } from '$lib/fetch/data-base';
+import { versionedUrl } from '$lib/fetch/data-base';
 
 export interface RingMeta {
 	source: string;
@@ -459,7 +459,7 @@ export async function loadRingNode(
 
 	// Color channel is sRGB (perceptual albedo tint); the scalar profiles are
 	// linear (packed uint8 luminance, not gamma-encoded).
-	const baseUrl = `${DATA_BASE}/v1/rings/${bodyId}`;
+	const ringUrl = (channel: string) => versionedUrl(`/v1/rings/${bodyId}/${channel}`, 'rings');
 	const ch = meta.channels;
 	let backscattered: Texture,
 		forwardscattered: Texture,
@@ -468,11 +468,11 @@ export async function loadRingNode(
 		color: Texture;
 	try {
 		[backscattered, forwardscattered, unlitside, transparency, color] = await Promise.all([
-			loadTexture(`${baseUrl}/${ch.backscattered}`, false, maxTextureSize),
-			loadTexture(`${baseUrl}/${ch.forwardscattered}`, false, maxTextureSize),
-			loadTexture(`${baseUrl}/${ch.unlitside}`, false, maxTextureSize),
-			loadTexture(`${baseUrl}/${ch.transparency}`, false, maxTextureSize),
-			loadTexture(`${baseUrl}/${ch.color}`, true, maxTextureSize)
+			loadTexture(ringUrl(ch.backscattered), false, maxTextureSize),
+			loadTexture(ringUrl(ch.forwardscattered), false, maxTextureSize),
+			loadTexture(ringUrl(ch.unlitside), false, maxTextureSize),
+			loadTexture(ringUrl(ch.transparency), false, maxTextureSize),
+			loadTexture(ringUrl(ch.color), true, maxTextureSize)
 		]);
 	} catch (err) {
 		console.warn(`Failed to load ring textures for ${bodyId}:`, err);
