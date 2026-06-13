@@ -27,6 +27,10 @@ import { UrlType } from './view';
  *  data/constants/categories.py. */
 const COMET_CLASS_NAMES = new Set(['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'PAR', 'HYP', 'COM']);
 
+/** Earth's Object.id — parent of the Satellites category. Mirrors EARTH_ID in
+ *  data/constants/earth_sats/featured.py. */
+const EARTH_ID = 'naif-399';
+
 /** A moon's real parent: the dominant planet (not its nameless barycenter),
  *  or the host body directly (e.g. the asteroid an asteroid-moon orbits). */
 function parentPlanet(
@@ -84,7 +88,13 @@ export function parentCrumb(
 	if (focusable.kind === 'group') {
 		const slug = focusable.slug;
 		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) {
-			return slug === CAT_SOLAR_SYSTEM ? null : categoryCrumb(CAT_SOLAR_SYSTEM);
+			if (slug === CAT_SOLAR_SYSTEM) return null;
+			// Satellites' real parent is Earth, not the Solar System root.
+			if (slug === CAT_SATELLITES) {
+				const name = ctx?.getBody(EARTH_ID)?.data.name ?? 'Earth';
+				return { label: name, target: { kind: 'focus', id: EARTH_ID, name } };
+			}
+			return categoryCrumb(CAT_SOLAR_SYSTEM);
 		}
 		const appliesTo = groupGlobal?.applies_to;
 		if (appliesTo === 'small_body') {

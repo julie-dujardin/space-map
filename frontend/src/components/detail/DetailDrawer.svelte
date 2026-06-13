@@ -339,21 +339,43 @@
 	}
 
 	let hasImages = $derived(!!viewerImages && viewerImages.length > 0);
+	// Earth folds its artificial satellites into the moons section: the Moon plus
+	// curated featured sats (ISS, Hubble, Starlink), "+N more" → the group page.
+	let satellitesGroup = $derived(isGroupMode ? undefined : data?.global?.satellites_group);
 	// The members tab is shared: groups list notable members, bodies list moons.
 	let notableMembers = $derived(
-		isGroupMode ? groupDetail?.global?.notable_members : data?.global?.notable_moons
+		isGroupMode
+			? groupDetail?.global?.notable_members
+			: satellitesGroup
+				? [...(data?.global?.notable_moons ?? []), ...(data?.global?.notable_satellites ?? [])]
+				: data?.global?.notable_moons
 	);
 	let memberNames = $derived(
-		isGroupMode ? groupDetail?.localized?.notable_member_names : data?.localized?.notable_moon_names
+		isGroupMode
+			? groupDetail?.localized?.notable_member_names
+			: satellitesGroup
+				? { ...data?.localized?.notable_moon_names, ...data?.localized?.notable_satellite_names }
+				: data?.localized?.notable_moon_names
 	);
 	let memberTotal = $derived(
-		isGroupMode ? (groupDetail?.global?.member_count ?? 0) : (data?.global?.moon_count ?? 0)
+		isGroupMode
+			? (groupDetail?.global?.member_count ?? 0)
+			: (data?.global?.moon_count ?? 0) +
+					(satellitesGroup ? (data?.global?.satellite_count ?? 0) : 0)
 	);
-	let membersHeading = $derived(isGroupMode ? m.members_notable() : m.moons_section());
+	let membersHeading = $derived(
+		isGroupMode ? m.members_notable() : satellitesGroup ? m.satellites_section() : m.moons_section()
+	);
 	let membersTabLabel = $derived(isGroupMode ? m.tab_members() : m.tab_moons());
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
-	let showMembersTab = $derived(hasMembers && memberTotal > STRIP_CAPACITY);
+	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
+	let showMembersTab = $derived(hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY);
+
+	function seeAllMembers() {
+		if (satellitesGroup) appState?.setGroup(satellitesGroup, membersHeading);
+		else activeTab = 'members';
+	}
 	let activeTab = $state<'overview' | 'images' | 'members'>('overview');
 	// Switching to a focusable that lacks the active tab's content would
 	// leave the panel empty — fall back to overview.
@@ -423,7 +445,7 @@
 					localizedNames={memberNames}
 					totalCount={memberTotal}
 					heading={membersHeading}
-					onSeeAll={() => (activeTab = 'members')}
+					onSeeAll={seeAllMembers}
 				/>
 			{/if}
 			{#if feature}

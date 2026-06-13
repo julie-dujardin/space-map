@@ -12,7 +12,7 @@
 	import { pickedThumbnailUrl } from '$lib/fetch/objects/images';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatCompactNumber } from '$lib/format/quantities';
 
 	interface Props {
@@ -33,26 +33,33 @@
 	let moreCount = $derived(hasOverflow ? totalCount - shown.length : 0);
 
 	function displayName(member: NotableMemberEntry): string {
-		return localizedNames?.[member.id] ?? member.name;
+		return localizedNames?.[member.id ?? member.group ?? ''] ?? member.name;
 	}
 
 	function memberHref(member: NotableMemberEntry): string | undefined {
 		if (!appState) return undefined;
+		const name = displayName(member);
+		if (member.group) return serializeUrl(applyGroup(appState.view, member.group, name));
+		if (!member.id) return undefined;
 		return serializeUrl(
-			applyFocus(appState.view, {
-				type: urlTypeFromId(member.id),
-				id: member.id,
-				name: displayName(member)
-			})
+			applyFocus(appState.view, { type: urlTypeFromId(member.id), id: member.id, name })
 		);
 	}
 
 	function focusMember(e: MouseEvent, member: NotableMemberEntry) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		// No focusObject in context — let the href do a full-page navigation.
-		if (!focusObject) return;
+		const name = displayName(member);
+		// Group entry → open the group; otherwise focus the object. With no
+		// appState/focusObject in context, let the href do a full-page nav.
+		if (member.group) {
+			if (!appState) return;
+			e.preventDefault();
+			appState.setGroup(member.group, name);
+			return;
+		}
+		if (!focusObject || !member.id) return;
 		e.preventDefault();
-		focusObject(member.id, displayName(member));
+		focusObject(member.id, name);
 	}
 </script>
 
@@ -72,7 +79,7 @@
 	</div>
 	<div class="border-border/60 border-t"></div>
 	<div class="grid grid-cols-5 gap-2 pt-1">
-		{#each shown as member (member.id)}
+		{#each shown as member (member.id ?? member.group)}
 			<a
 				href={memberHref(member)}
 				onclick={(e) => focusMember(e, member)}

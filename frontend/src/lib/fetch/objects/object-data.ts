@@ -61,8 +61,12 @@ export interface TextureAttribution {
 export interface NotableMemberEntry {
 	/** English Wikidata label (matching object bundles), or the DB fallback name. */
 	name: string;
-	/** Full Object.id for focus/routing (e.g. "spkid-2000004", "naif-502"). */
-	id: string;
+	/** Full Object.id for focus/routing (e.g. "spkid-2000004", "naif-502").
+	 *  Absent when the entry is a group (see `group`). */
+	id?: string;
+	/** Group slug for entries that route to a group page instead of an object —
+	 *  e.g. a featured constellation (Starlink) in Earth's Satellites strip. */
+	group?: string;
 	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
 	diameter_km?: number;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
@@ -223,6 +227,14 @@ export interface GlobalObjectData {
 	/** Total moon count of this body — drives the "+N more" tile. Present iff
 	 *  notable_moons is. */
 	moon_count?: number;
+	/** Curated featured satellites (Earth only): the Moons section becomes a
+	 *  Satellites section listing these after the Moon. Object entries route to
+	 *  the object; a constellation entry carries `group` instead of `id`. */
+	notable_satellites?: NotableMemberEntry[];
+	/** Total tracked artificial satellites — folded into the "+N more" count. */
+	satellite_count?: number;
+	/** Group slug the "+N more" tile links to (the Satellites browse page). */
+	satellites_group?: string;
 }
 
 // --- Localized object data ---
@@ -267,6 +279,8 @@ export interface LocalizedObjectData {
 	};
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
 	notable_moon_names?: Record<string, string>;
+	/** featured-satellite id/slug → localized label, only where it differs. */
+	notable_satellite_names?: Record<string, string>;
 }
 
 // --- Fetching ---
