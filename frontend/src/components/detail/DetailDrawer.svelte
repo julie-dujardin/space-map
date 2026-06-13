@@ -10,7 +10,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
-	import { MaximizeIcon, MinimizeIcon } from '@lucide/svelte';
+	import { ZoomInIcon, ZoomOutIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -493,33 +493,31 @@
 					<div class="flex w-full items-center justify-between gap-2">
 						<DrawerTitle {crumb} title={displayName} />
 						<div class="flex items-center gap-1.5">
-							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
-								<Share2Icon />
-								<span class="sr-only">{m.share()}</span>
-							</Button>
 							{#if showCameraButtons}
 								{#if isMinimized}
 									<Button
-										variant="secondary"
 										size="icon-lg"
-										class="rounded-full"
+										class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
 										onclick={onMinimize}
 									>
-										<MinimizeIcon />
+										<ZoomOutIcon />
 										<span class="sr-only">{m.zoom_out_to_system()}</span>
 									</Button>
 								{:else}
 									<Button
-										variant="secondary"
 										size="icon-lg"
-										class="rounded-full"
+										class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
 										onclick={onMaximize}
 									>
-										<MaximizeIcon />
+										<ZoomInIcon />
 										<span class="sr-only">{m.go_to_object()}</span>
 									</Button>
 								{/if}
 							{/if}
+							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
+								<Share2Icon />
+								<span class="sr-only">{m.share()}</span>
+							</Button>
 							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 								<XIcon />
 								<span class="sr-only">{m.close()}</span>
@@ -554,23 +552,31 @@
 		<div class="flex items-center justify-between gap-2 p-2 px-4">
 			<DrawerTitle {crumb} title={displayName} />
 			<div class="flex items-center gap-1.5">
-				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
-					<Share2Icon />
-					<span class="sr-only">{m.share()}</span>
-				</Button>
 				{#if showCameraButtons}
 					{#if isMinimized}
-						<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMinimize}>
-							<MinimizeIcon />
+						<Button
+							size="icon-lg"
+							class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
+							onclick={onMinimize}
+						>
+							<ZoomOutIcon />
 							<span class="sr-only">{m.zoom_out_to_system()}</span>
 						</Button>
 					{:else}
-						<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onMaximize}>
-							<MaximizeIcon />
+						<Button
+							size="icon-lg"
+							class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
+							onclick={onMaximize}
+						>
+							<ZoomInIcon />
 							<span class="sr-only">{m.go_to_object()}</span>
 						</Button>
 					{/if}
 				{/if}
+				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
+					<Share2Icon />
+					<span class="sr-only">{m.share()}</span>
+				</Button>
 				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
 					<XIcon />
 					<span class="sr-only">{m.close()}</span>
