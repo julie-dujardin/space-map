@@ -1045,6 +1045,371 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "rascomstar", "Q3415056", (SatelliteCategory.COMMUNICATIONS,), source="RASC"
     ),
     # -------------------------------------------------------------------------
+    # Soviet / Russian GEO communications
+    # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "gorizont", "Q2622945", (SatelliteCategory.COMMUNICATIONS,), prefix="GORIZONT"
+    ),
+    # RADUGA-1 / RADUGA-1M units share the RADUGA prefix; no GLOBUS names in SATCAT.
+    ConstellationSpec(
+        "raduga",
+        "Q15915658",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        prefix="RADUGA",
+    ),
+    ConstellationSpec(
+        "ekran", "Q877664", (SatelliteCategory.COMMUNICATIONS,), prefix="EKRAN"
+    ),
+    # All catalogued "EXPRESS"/"EXPRESS-A/AM/AT"; every match is CIS-owned.
+    ConstellationSpec(
+        "ekspress",
+        "Q73605",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix=("EXPRESS", "EKSPRESS"),
+    ),
+    # -------------------------------------------------------------------------
+    # Western military communications
+    # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "skynet",
+        "Q1751266",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        prefix="SKYNET",
+    ),
+    # IDSCS / DSCS catalogued as "OPS NNNN (...)" or bare; exact lists needed to
+    # win over us-ops-classified (prefix "OPS " resolves first otherwise).
+    # IDSCS (Initial DSCS, phase I) is a distinct program from DSCS-II/III.
+    ConstellationSpec(
+        "idscs",
+        "Q106946774",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        satellites=[
+            "OPS 9311 (IDSCS 1)",
+            "OPS 9312 (IDSCS 2)",
+            "OPS 9313 (IDSCS 3)",
+            "OPS 9314 (IDSCS 4)",
+            "OPS 9315 (IDSCS 5)",
+            "OPS 9316 (IDSCS 6)",
+            "OPS 9317 (IDSCS 7)",
+            "OPS 9321 (IDSCS 8)",
+            "OPS 9322 (IDSCS 9)",
+            "OPS 9323 (IDSCS 10)",
+            "OPS 9324 (IDSCS 11)",
+            "OPS 9325 (IDSCS 12)",
+            "OPS 9326 (IDSCS 13)",
+            "OPS 9327 (IDSCS 14)",
+            "OPS 9328 (IDSCS 15)",
+            "OPS 9331 (IDSCS 16)",
+            "OPS 9332 (IDSCS 17)",
+            "OPS 9333 (IDSCS 18)",
+            "OPS 9334 (IDSCS 19)",
+            "OPS 9341 (IDSCS 20)",
+            "OPS 9342 (IDSCS 21)",
+            "OPS 9343 (IDSCS 22)",
+            "OPS 9344 (IDSCS 23)",
+            "OPS 9345 (IDSCS 24)",
+            "OPS 9346 (IDSCS 25)",
+            "OPS 9347 (IDSCS 26)",
+            "OPS 9348 (IDSCS 27)",
+        ],
+    ),
+    ConstellationSpec(
+        "dscs",
+        "Q821834",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        satellites=[
+            "OPS 9431 (DSCS 2-1)",
+            "OPS 9432 (DSCS 2-2)",
+            "OPS 9433 (DSCS 2-3)",
+            "OPS 9434 (DSCS 2-4)",
+            "OPS 9435 (DSCS 2-5)",
+            "OPS 9436 (DSCS 2-6)",
+            "OPS 9437 (DSCS 2-7)",
+            "OPS 9438 (DSCS 2-8)",
+            "OPS 9441 (DSCS 2-11)",
+            "OPS 9442 (DSCS 2-12)",
+            "OPS 9443 (DSCS 2-13)",
+            "OPS 9444 (DSCS 2-14)",
+            "DSCS 2-15",
+            "DSCS 3-1",
+        ],
+    ),
+    # Catalogued as "USA NNN (MILSTAR-...)"; exact list beats usa-classified.
+    ConstellationSpec(
+        "milstar",
+        "Q1759462",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        satellites=[
+            "USA 99 (MILSTAR-1 1)",
+            "USA 115 (MILSTAR-1 2)",
+            "USA 143 (MILSTAR-2 1)",
+            "USA 157 (MILSTAR-2 2)",
+            "USA 164 (MILSTAR-2 3)",
+            "USA 169 (MILSTAR-2 4)",
+        ],
+    ),
+    # Mix of "OPS NNNN (FLTSATCOM N)", bare, and "FLTSATCOM N (USA NN)".
+    ConstellationSpec(
+        "fltsatcom",
+        "Q378548",
+        (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
+        satellites=[
+            "OPS 6391 (FLTSATCOM 1)",
+            "OPS 6392 (FLTSATCOM 2)",
+            "OPS 6393 (FLTSATCOM 3)",
+            "OPS 6394 (FLTSATCOM 4)",
+            "FLTSATCOM 5",
+            "FLTSATCOM 7 (USA 20)",
+            "FLTSATCOM 8 (USA 46)",
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # Satellite-IoT / data-relay constellations
+    # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "kineis", "Q60849749", (SatelliteCategory.COMMUNICATIONS,), prefix="KINEIS"
+    ),
+    ConstellationSpec(
+        "astrocast",
+        "Q107563951",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix="ASTROCAST",
+    ),
+    # Trailing hyphen isolates from the NASA Kepler telescope ("KEPLER", no hyphen).
+    ConstellationSpec(
+        "kepler-communications",
+        "Q28163140",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix="KEPLER-",
+    ),
+    # AMSAT amateur radio. No leading prefix: OSCAR designators ride as
+    # parenthetical "(xO-NN)" tags. Open-paren anchor avoids RS-/IRS- collisions.
+    ConstellationSpec(
+        "oscar",
+        "Q2008094",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix="OSCAR ",
+        contains=(
+            "(AO-",
+            "(FO-",
+            "(SO-",
+            "(UO-",
+            "(DO-",
+            "(NO-",
+            "(LO-",
+            "(IO-",
+            "(WO-",
+            "(VO-",
+            "(HO-",
+            "(PO-",
+            "(RS-",
+        ),
+    ),
+    # -------------------------------------------------------------------------
+    # Regional navigation
+    # -------------------------------------------------------------------------
+    # NavIC: IRNSS-1x + 2nd-gen NVS-0x; scoped so it doesn't catch ISRO comms GSAT.
+    ConstellationSpec(
+        "irnss-navic",
+        "Q94915",
+        (SatelliteCategory.NAVIGATION,),
+        prefix=("IRNSS", "NVS"),
+    ),
+    # QZS-N (MICHIBIKI-N); all units carry the QZS- prefix.
+    ConstellationSpec(
+        "qzss", "Q862327", (SatelliteCategory.NAVIGATION,), prefix="QZS-"
+    ),
+    # -------------------------------------------------------------------------
+    # Commercial / military Earth observation & SAR
+    # -------------------------------------------------------------------------
+    # Satellogic (ARGN). Hyphen anchor excludes the 1985 US "NUSAT 1" and the
+    # unrelated US "NEWSAT-1 (PALAPA B2R)"; SATCAT spells the Ñ as "NUSAT".
+    ConstellationSpec(
+        "nusat-satellogic",
+        "Q28803027",
+        (SatelliteCategory.OBSERVATION,),
+        prefix="NUSAT-",
+    ),
+    ConstellationSpec(
+        "grus-axelspace", None, (SatelliteCategory.OBSERVATION,), prefix="GRUS"
+    ),
+    ConstellationSpec(
+        "qps-sar", None, (SatelliteCategory.OBSERVATION,), prefix="QPS-SAR"
+    ),
+    ConstellationSpec(
+        "umbra-sar", None, (SatelliteCategory.OBSERVATION,), prefix="UMBRA"
+    ),
+    # Trailing hyphen scopes to the SAR fleet, not the owl genus "STRIX".
+    ConstellationSpec(
+        "strix-synspective", None, (SatelliteCategory.OBSERVATION,), prefix="STRIX-"
+    ),
+    # BlackSky Global EO; SATCAT name is bare "GLOBAL-N". Hyphen avoids Globalstar.
+    ConstellationSpec(
+        "blacksky", None, (SatelliteCategory.OBSERVATION,), prefix="GLOBAL-"
+    ),
+    ConstellationSpec(
+        "cartosat", "Q11383970", (SatelliteCategory.OBSERVATION,), prefix="CARTOSAT"
+    ),
+    ConstellationSpec(
+        "risat",
+        "Q3631031",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix="RISAT",
+    ),
+    # IRS- (hyphen) keeps it off unrelated short tokens; RESOURCESAT-2/2A too.
+    ConstellationSpec(
+        "resourcesat-irs",
+        "Q1661266",
+        (SatelliteCategory.OBSERVATION,),
+        prefix=("RESOURCESAT", "IRS-"),
+    ),
+    # First-gen "COSMO-SKYMED N" + second-gen "CSG-N".
+    ConstellationSpec(
+        "cosmo-skymed",
+        "Q591968",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix=("COSMO-SKYMED", "CSG"),
+    ),
+    ConstellationSpec(
+        "sar-lupe",
+        "Q698351",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix="SAR-LUPE",
+    ),
+    ConstellationSpec(
+        "sarah",
+        "Q19308236",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix="SARAH",
+    ),
+    # Israeli recon: optical OFEQ + SAR TECSAR (catalogued as standalone "TECSAR").
+    ConstellationSpec(
+        "ofeq",
+        "Q1130496",
+        (SatelliteCategory.OBSERVATION, SatelliteCategory.MILITARY),
+        prefix=("OFEQ", "TECSAR"),
+    ),
+    # Naval Ocean Surveillance System (White Cloud/PARCAE → Ranger → Intruder).
+    # SIGINT clusters/pairs catalogued under classified USA/OPS names + obscure
+    # first-gen subsat tags; exact list beats usa-classified / us-ops-classified.
+    # Rideshare cubesats on the NROL-36/-55 launches are deliberately excluded.
+    ConstellationSpec(
+        "noss-intruder",
+        "Q3074873",
+        (SatelliteCategory.MILITARY, SatelliteCategory.OBSERVATION),
+        satellites=[
+            "OPS 6431",
+            "SSU 1",
+            "SSU 2",
+            "SSU 3",
+            "OPS 8781",
+            "SS 1",
+            "SS 2",
+            "SS 3",
+            "OPS 7245",
+            "EP 1",
+            "EP 2",
+            "EP 3",
+            "OPS 0252",
+            "SSD",
+            "SSA",
+            "SSB",
+            "SSC",
+            "OPS 6432",
+            "GB 1",
+            "GB 2",
+            "GB 3",
+            "OPS 8737",
+            "JD 1",
+            "JD 2",
+            "JD 3",
+            "USA 15",
+            "USA 16",
+            "USA 17",
+            "USA 18",
+            "USA 22",
+            "USA 23",
+            "USA 24",
+            "USA 25",
+            "USA 59",
+            "USA 60",
+            "USA 61",
+            "USA 62",
+            "USA 72",
+            "USA 74",
+            "USA 76",
+            "USA 77",
+            "USA 119",
+            "USA 120",
+            "USA 121",
+            "USA 122",
+            "USA 123",
+            "USA 124",
+            "USA 160",
+            "USA 173",
+            "USA 181",
+            "USA 194",
+            "USA 229",
+            "USA 238",
+            "USA 264",
+            "USA 274",
+            "USA 327",
+            "USA 498",
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # Japanese geostationary weather
+    # -------------------------------------------------------------------------
+    # All units "HIMAWARI-N (GMS-N)"; no bare GMS names (one unrelated German GMS-T).
+    ConstellationSpec(
+        "himawari", "Q3103808", (SatelliteCategory.WEATHER,), prefix="HIMAWARI"
+    ),
+    # -------------------------------------------------------------------------
+    # Crewed spacecraft, cargo & stations
+    # -------------------------------------------------------------------------
+    ConstellationSpec(
+        "shenzhou",
+        "Q1138653",
+        (SatelliteCategory.MANNED_CAPSULE,),
+        prefix=("SHENZHOU", "SZ-"),
+    ),
+    ConstellationSpec(
+        "tianzhou", "Q15905312", (SatelliteCategory.UNMANNED_CARGO,), prefix="TIANZHOU"
+    ),
+    # Orbital Mercury-Atlas flights (MA-4..9). Trailing space drops "MERCURY ONE".
+    ConstellationSpec(
+        "mercury-crewed",
+        "Q52162",
+        (SatelliteCategory.MANNED_CAPSULE,),
+        prefix="MERCURY ATLAS ",
+    ),
+    # Trailing space drops the unrelated "GEMINI-POLLUX".
+    ConstellationSpec(
+        "gemini", "Q214996", (SatelliteCategory.MANNED_CAPSULE,), prefix="GEMINI "
+    ),
+    ConstellationSpec(
+        "skylab", "Q190776", (SatelliteCategory.STATION,), prefix="SKYLAB"
+    ),
+    ConstellationSpec(
+        "vostok", "Q623873", (SatelliteCategory.MANNED_CAPSULE,), prefix="VOSTOK"
+    ),
+    ConstellationSpec(
+        "voskhod", "Q8860000", (SatelliteCategory.MANNED_CAPSULE,), prefix="VOSKHOD"
+    ),
+    # -------------------------------------------------------------------------
+    # Lunar / planetary science
+    # -------------------------------------------------------------------------
+    # Trailing space: bare "LUNA" catches unrelated US/Turkish cubesats.
+    ConstellationSpec("luna", "Q192372", (SatelliteCategory.SCIENCE,), prefix="LUNA "),
+    ConstellationSpec("zond", "Q219857", (SatelliteCategory.SCIENCE,), prefix="ZOND"),
+    # SATCAT spells it "CHANG'E-N"; CHANGE kept for apostrophe-free catalogs.
+    ConstellationSpec(
+        "change", "Q860037", (SatelliteCategory.SCIENCE,), prefix=("CHANG'E", "CHANGE")
+    ),
+    ConstellationSpec(
+        "tianwen", "Q97300910", (SatelliteCategory.SCIENCE,), prefix="TIANWEN"
+    ),
+    # -------------------------------------------------------------------------
     # Classified payloads — fallback for "OBJECT X" names, keyed by SATCAT owner
     # -------------------------------------------------------------------------
     ConstellationSpec("prc-classified", None, (SatelliteCategory.MILITARY,)),

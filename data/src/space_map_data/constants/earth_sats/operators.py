@@ -101,7 +101,12 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket", "hitomi-debris"),
     ),
     OperatorSpec("CSA", "csa", "Q212227", constellations=("iss",)),
-    OperatorSpec("Italian Space Agency", "asi", "Q392953", constellations=("iride",)),
+    OperatorSpec(
+        "Italian Space Agency",
+        "asi",
+        "Q392953",
+        constellations=("iride", "cosmo-skymed"),
+    ),
     OperatorSpec(
         "European Space Research Organization", "esro", "Q473105", source="ESRO"
     ),
@@ -148,7 +153,14 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "isro",
         "Q229058",
         source="ISRO",
-        constellations=("pslv", "gslv"),
+        constellations=(
+            "pslv",
+            "gslv",
+            "irnss-navic",
+            "cartosat",
+            "risat",
+            "resourcesat-irs",
+        ),
     ),
     OperatorSpec(
         "Intelsat",
@@ -262,6 +274,9 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "dsp",
             "uhf-follow-on",
             "nts-satellites",  # NTS-3 (NTS-1/2 were US Navy)
+            "idscs",
+            "dscs",
+            "milstar",
         ),
     ),
     OperatorSpec(
@@ -290,6 +305,12 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "venera",
             "meteor",
             "block-dm",
+            "vostok",
+            "voskhod",
+            "luna",
+            "zond",
+            "gorizont",
+            "ekran",
         ),
         active_until=1991,
     ),
@@ -318,7 +339,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Soviet Armed Forces",
         "soviet-armed-forces",
         "Q7915590",
-        constellations=("cosmos", "cis-classified", "resurs-"),
+        constellations=("cosmos", "cis-classified", "resurs-", "raduga"),
         active_until=1991,
     ),
     OperatorSpec(
@@ -332,6 +353,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "resurs-",
             "cosmos-1408-debris",  # 2021 Nudol ASAT test
             "cosmos-2251-debris",  # Strela-2M military comsat (2009 collision)
+            "raduga",
         ),
         active_from=1992,
     ),
@@ -366,6 +388,9 @@ OPERATORS: tuple[OperatorSpec, ...] = (
             "sts",
             "nimbus",
             "syncom",
+            "mercury-crewed",
+            "gemini",
+            "skylab",
             "crres-debris",
             "cobe-debris",
             "seasat-debris",
@@ -377,7 +402,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "US Navy",
         "us-navy",
         "Q11220",
-        constellations=("transit", "vanguard", "nts-satellites"),
+        constellations=(
+            "transit",
+            "vanguard",
+            "nts-satellites",
+            "fltsatcom",
+            "noss-intruder",
+        ),
     ),
     OperatorSpec(
         "US Air Force",
@@ -420,7 +451,16 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "China National Space Administration",
         "cnsa",
         "Q320644",
-        constellations=("beidou", "gaofen", "tianlian", "chinese-space-station"),
+        constellations=(
+            "beidou",
+            "gaofen",
+            "tianlian",
+            "chinese-space-station",
+            "shenzhou",
+            "tianzhou",
+            "change",
+            "tianwen",
+        ),
     ),
     OperatorSpec(
         "Shanghai Spacecom Satellite Technology",
@@ -557,7 +597,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "National Reconnaissance Office",
         "nro",
         "Q427818",
-        constellations=("usa-classified", "nemesis"),
+        constellations=("usa-classified", "nemesis", "noss-intruder"),
         url="https://en.wikipedia.org/wiki/File:Nrol-39.jpg",
     ),
     # US civilian / weather
@@ -581,9 +621,8 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec(
         "Umbra",
         "umbra",
-        None,
-        prefix=("UMBRA",),
-        category=SatelliteCategory.OBSERVATION,
+        "Q121644709",
+        constellations=("umbra-sar",),
         url="https://umbra.space/",
     ),
     OperatorSpec(
@@ -647,6 +686,58 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "Q1154393",
         constellations=("microsat-r-debris",),
     ),  # India, Mission Shakti 2019 ASAT test
+    # Satellite-IoT / data-relay & EO commercial operators
+    OperatorSpec("Kinéis", "kineis", "Q60849749", constellations=("kineis",)),
+    OperatorSpec("Astrocast", "astrocast", "Q107563951", constellations=("astrocast",)),
+    OperatorSpec(
+        "Kepler Communications",
+        "kepler-communications",
+        "Q28163140",
+        constellations=("kepler-communications",),
+    ),
+    OperatorSpec(
+        "Synspective",
+        "synspective",
+        "Q110017262",
+        constellations=("strix-synspective",),
+    ),
+    OperatorSpec(
+        "Satellogic", "satellogic", "Q22669551", constellations=("nusat-satellogic",)
+    ),
+    OperatorSpec(
+        "Axelspace", "axelspace", "Q24876408", constellations=("grus-axelspace",)
+    ),
+    OperatorSpec("iQPS", "iqps", "Q124040109", constellations=("qps-sar",)),
+    OperatorSpec("BlackSky", "blacksky", "Q56314218", constellations=("blacksky",)),
+    # Russian Satellite Communications Company — civil GEO comms since 1992.
+    OperatorSpec(
+        "Russian Satellite Communications Company",
+        "rscc",
+        "Q4355209",
+        constellations=("gorizont", "ekran", "ekspress"),
+        active_from=1992,
+    ),
+    OperatorSpec(
+        "Japan Meteorological Agency", "jma", "Q860935", constellations=("himawari",)
+    ),
+    OperatorSpec(
+        "UK Ministry of Defence", "uk-mod", "Q1143261", constellations=("skynet",)
+    ),
+    OperatorSpec(
+        "Cabinet Office (Japan)",
+        "cabinet-office-japan",
+        "Q6005",
+        constellations=("qzss",),
+    ),  # operates QZSS / Michibiki
+    OperatorSpec(
+        "Ministry of Defense (Israel)",
+        "israel-mod",
+        "Q1862884",
+        constellations=("ofeq",),
+    ),
+    OperatorSpec(
+        "Bundeswehr", "bundeswehr", "Q56010", constellations=("sar-lupe", "sarah")
+    ),
 )
 
 

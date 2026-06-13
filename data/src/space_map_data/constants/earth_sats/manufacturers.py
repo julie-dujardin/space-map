@@ -49,7 +49,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "IAI - Israel Aerospace Industries",
         "iai",
         "Q876017",
-        constellations=("shavit",),
+        constellations=("shavit", "ofeq"),
     ),
     ManufacturerSpec(
         "China Aerospace Science and Technology Corporation / CASC",
@@ -121,7 +121,14 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Indian Space Research Organisation",
         "isro",
         "Q229058",
-        constellations=("pslv", "gslv"),
+        constellations=(
+            "pslv",
+            "gslv",
+            "irnss-navic",
+            "cartosat",
+            "risat",
+            "resourcesat-irs",
+        ),
     ),
     ManufacturerSpec(
         "SpaceQuest", "spacequest", "Q7572201", constellations=("aprizesat",)
@@ -197,9 +204,14 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Thales Alenia Space",
         "thales-alenia-space",
         "Q128356",
-        constellations=("globalstar", "iridium"),
+        constellations=("globalstar", "iridium", "cosmo-skymed"),
     ),
-    ManufacturerSpec("OHB System", "ohb", "Q131651897", constellations=("galileo",)),
+    ManufacturerSpec(
+        "OHB System",
+        "ohb",
+        "Q131651897",
+        constellations=("galileo", "sar-lupe", "sarah"),
+    ),
     ManufacturerSpec(
         "China Academy of Space Technology / CAST",
         "cast",
@@ -213,10 +225,15 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
             "zhongxing",
             "tiantong",
             "chinese-space-station",
+            "shenzhou",
+            "tianzhou",
         ),
     ),
     ManufacturerSpec(
-        "ISS Reshetnev", "iss-reshetnev", "Q2371486", constellations=("glonass",)
+        "ISS Reshetnev",
+        "iss-reshetnev",
+        "Q2371486",
+        constellations=("glonass", "gorizont", "ekran", "raduga", "ekspress"),
     ),
     ManufacturerSpec(
         "Khrunichev State Research and Production Space Center",
@@ -241,7 +258,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "NPO Lavochkin",
         "npo-lavochkin",
         "Q949211",
-        constellations=("venera", "elektron"),
+        constellations=("venera", "elektron", "luna", "zond"),
     ),
     # ----- Bus-only primes (no constellation claim; tagged via SATELLITE_BUSES name match) -----
     ManufacturerSpec("Hughes Aircraft Company", "hughes", "Q196253"),
@@ -250,7 +267,18 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
     ManufacturerSpec("Aérospatiale", "aerospatiale", "Q650639"),
     ManufacturerSpec("Alcatel Space", "alcatel-space", "Q2832087"),
     ManufacturerSpec("CNES", "cnes", "Q48756"),
-    ManufacturerSpec("Mitsubishi Electric", "mitsubishi-electric", "Q53257"),
+    ManufacturerSpec(
+        "Mitsubishi Electric",
+        "mitsubishi-electric",
+        "Q53257",
+        constellations=("himawari", "qzss"),
+    ),
+    ManufacturerSpec(
+        "Synspective",
+        "synspective",
+        "Q110017262",
+        constellations=("strix-synspective",),
+    ),
     ManufacturerSpec("NEC Corporation", "nec", "Q219203"),
     ManufacturerSpec("Satrec Initiative", "satrec", "Q55731469"),
     ManufacturerSpec("INVAP", "invap", "Q752556"),
