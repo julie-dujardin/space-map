@@ -847,6 +847,7 @@ interface GlobalObjectData {
   id: string;
   type: string;                       // ObjectType name
   name?: string;
+  parent_name?: string;               // host display name; moons only — lets the breadcrumb label the parent when its body isn't resident in the scene
   map_texture_available?: boolean;    // only present if true
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
     source: string;                   // source page URL

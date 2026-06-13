@@ -49,7 +49,7 @@ from space_map_data.export.objects.wikidata_claims import (
     resolve_entity_ref,
     resolve_unit,
 )
-from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.models.object import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
@@ -207,6 +207,7 @@ def build_chunk_object_data(
     clouds_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
+    parent_names: dict[str, str],
 ) -> ChunkObjectData:
     """Build per-object global and localized JSON dicts (no I/O).
 
@@ -252,6 +253,7 @@ def build_chunk_object_data(
             clouds_metadata,
             probe_kernel_sources,
             nomenclature_body_ids,
+            parent_names,
         )
 
         wiki_summaries = load_wikipedia_summaries_for_qid(qid) if qid else {}
@@ -338,6 +340,7 @@ def _build_global(
     clouds_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
+    parent_names: dict[str, str],
 ) -> dict:
     """Build the language-independent JSON dict for an object."""
     data: dict = {
@@ -364,6 +367,14 @@ def _build_global(
         data["has_nomenclature"] = True
     if obj.name is not None:
         data["name"] = obj.name
+    # Host name for moons — top-level (not in `orbit`) so position-less
+    # publication-placeholder moonlets carry it too. Lets the frontend
+    # breadcrumb label the parent even when its body isn't resident in the
+    # scene (small-body hosts get culled once focus moves on).
+    if obj.object_type == ObjectType.moon and obj.parent_id is not None:
+        parent_name = parent_names.get(obj.parent_id)
+        if parent_name:
+            data["parent_name"] = parent_name
     if obj.mpc_designation is not None:
         data["sbdb_primary_designation"] = obj.mpc_designation
     if obj.provisional_designation is not None:

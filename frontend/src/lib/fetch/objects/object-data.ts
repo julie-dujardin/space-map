@@ -74,6 +74,10 @@ export interface GlobalObjectData {
 	id: string;
 	type: string;
 	name?: string;
+	/** Host display name, present on moons only — lets the breadcrumb label the
+	 *  parent even when its body isn't resident in the scene (small-body hosts
+	 *  get culled by the streaming loader once focus moves on). */
+	parent_name?: string;
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;

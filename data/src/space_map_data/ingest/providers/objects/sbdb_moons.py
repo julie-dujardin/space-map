@@ -139,6 +139,22 @@ def _resolve_parent_object_id(parent_object_id: str | None) -> str | None:
     return parent_object_id
 
 
+def _synth_satellite_designation(
+    parent_token: str | None, year: int | None, sat_index: int
+) -> str | None:
+    """IAU provisional satellite designation ``S/<year> (<parent>) <n>``.
+
+    Many SBDB satellites ship with no name, fullname, or prov_des — only a
+    discovery year. We reconstruct their catalog designation from the parent's
+    token (its number when numbered, else its provisional designation) and the
+    1-based sat sequence. Returns None when the parent token or year is missing
+    so the caller can fall back to the object id.
+    """
+    if not parent_token or year is None:
+        return None
+    return f"S/{year} ({parent_token}) {sat_index + 1}"
+
+
 def _parse_orbit(orbit: dict | None) -> dict:
     """Flatten the first orbit solution into SBDBMoon columns.
 
@@ -182,6 +198,8 @@ class SBDBMoonsIngestor:
     def __init__(self, download_dir: Path):
         self.session = get_session()
         self.dir = download_dir / "sources" / "position" / "sbdb" / "moons"
+        # parent Object.id -> catalog token used in synthesized designations.
+        self.parent_designations: dict[str, str] = {}
         self.new_objects = 0
         self.merged_count = 0
         self.no_parent_files = 0
@@ -200,11 +218,28 @@ class SBDBMoonsIngestor:
         self.session.commit()
 
     def _load_parent_index(self) -> dict[int, str]:
-        """Map parent SPK-ID -> Object.id for parents in DB."""
+        """Map parent SPK-ID -> Object.id for parents in DB.
+
+        Also caches each parent's catalog token (number when numbered, else its
+        provisional designation) in ``self.parent_designations``, used to
+        synthesize ``S/<year> (<parent>) <n>`` designations for nameless moons.
+        """
         rows = self.session.execute(
-            select(Object.id, Object.spkid).where(Object.spkid.is_not(None))
+            select(
+                Object.id,
+                Object.spkid,
+                Object.mpc_designation,
+                Object.provisional_designation,
+                Object.name,
+            ).where(Object.spkid.is_not(None))
         ).all()
-        return {spkid: oid for oid, spkid in rows}
+        index: dict[int, str] = {}
+        for oid, spkid, mpc, prov, name in rows:
+            index[spkid] = oid
+            token = mpc or prov or name
+            if token:
+                self.parent_designations[oid] = token
+        return index
 
     def _load_moon_index(self) -> dict[tuple[str, str], str]:
         """Map (parent Object.id, lowercased name) -> Object.id for existing moons.
@@ -261,13 +296,20 @@ class SBDBMoonsIngestor:
         synth_spkid: int,
         sat: dict,
         tree_parent_object_id: str | None,
+        parent_designation: str | None,
         sat_row: dict,
     ) -> dict:
         fullname = string_or_none(sat.get("fullname"))
         iau_name = string_or_none(sat.get("iau_name"))
-        prov_des = string_or_none(sat.get("prov_des"))
+        # Use SBDB's prov_des when present, else reconstruct the IAU provisional
+        # designation so nameless moons don't fall back to their raw object id.
+        designation = string_or_none(
+            sat.get("prov_des")
+        ) or _synth_satellite_designation(
+            parent_designation, sat_row.get("year"), sat_row["sat_index"]
+        )
         # Prefer IAU name, fall back to fullname, then provisional designation.
-        display_name = iau_name or fullname or prov_des
+        display_name = iau_name or fullname or designation
         # Most SBDB satellite payloads are publication placeholders with no
         # orbit at all; tag whether this row carries the full Keplerian set
         # the elements writer needs so export queries can route orbit-less
@@ -277,7 +319,7 @@ class SBDBMoonsIngestor:
             id=sat_id,
             name=display_name,
             object_type=ObjectType.moon,
-            provisional_designation=prov_des,
+            provisional_designation=designation,
             # naif_id == spkid in the binary-satellite range (no Horizons offset);
             # populating both lets PCK lookups (keyed on naif_id) attach radii
             # for catalogued binaries like Dimorphos and Menoetius.
@@ -402,7 +444,12 @@ class SBDBMoonsIngestor:
                         include_orbit=True,
                     )
                     obj_row = self._build_new_object_row(
-                        sat_id, synth_spkid, sat, tree_parent_object_id, sat_row
+                        sat_id,
+                        synth_spkid,
+                        sat,
+                        tree_parent_object_id,
+                        self.parent_designations.get(parent_object_id),
+                        sat_row,
                     )
                     objects.append(obj_row)
                     sats.append(sat_row)

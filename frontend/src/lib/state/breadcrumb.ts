@@ -26,7 +26,8 @@ import { UrlType } from './view';
  *  data/constants/categories.py. */
 const COMET_CLASS_NAMES = new Set(['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'PAR', 'HYP', 'COM']);
 
-/** A moon's real parent is the dominant planet, not its (nameless) barycenter. */
+/** A moon's real parent: the dominant planet (not its nameless barycenter),
+ *  or the host body directly (e.g. the asteroid an asteroid-moon orbits). */
 function parentPlanet(
 	ctx: ContextManager | undefined,
 	parentId: string
@@ -115,6 +116,19 @@ export function parentCrumb(
 	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);
 	if (data.objectType === ObjectType.STAR) return categoryCrumb(CAT_SOLAR_SYSTEM);
 
+	// Moon (planetary or small-body) → its parent (planet, not the barycenter;
+	// or the host asteroid). Must precede the URL-type branches: small-body
+	// moons carry spkid- ids and would otherwise resolve to an orbit-class zone.
+	// Prefer the resident body (localized name, barycenter→planet remap); fall
+	// back to the bundle's host name + raw parentId when the host has been
+	// culled from the scene, so the crumb doesn't blink out (focus reloads it).
+	if (data.objectType === ObjectType.MOON) {
+		const parent = parentPlanet(ctx, data.parentId);
+		const id = parent?.data.id ?? data.parentId;
+		const name = parent?.data.name ?? detail?.global?.parent_name;
+		return name ? { label: name, target: { kind: 'focus', id, name } } : null;
+	}
+
 	const urlType = urlTypeFromId(data.id);
 
 	// Earth satellite → its constellation, else its orbit-class zone.
@@ -135,15 +149,6 @@ export function parentCrumb(
 	if (urlType === UrlType.SmallBody) {
 		const cls = detail?.global?.sbdb?.class;
 		return cls ? classGroup(cls) : null;
-	}
-
-	// Moon (planetary or small-body) → its parent planet (not the barycenter).
-	if (data.objectType === ObjectType.MOON) {
-		const parent = parentPlanet(ctx, data.parentId);
-		const name = parent?.data.name;
-		return parent && name
-			? { label: name, target: { kind: 'focus', id: parent.data.id, name } }
-			: null;
 	}
 
 	// Probes: their category isn't built yet.

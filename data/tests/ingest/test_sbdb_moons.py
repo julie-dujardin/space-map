@@ -5,6 +5,7 @@ from space_map_data.download.providers.spice.bodies.pck_extract import _canonica
 from space_map_data.ingest.providers.objects.sbdb_moons import (
     SBDBMoonsIngestor,
     _MAX_SAT_INDEX,
+    _synth_satellite_designation,
 )
 from space_map_data.models.object import ObjectType, OrbitalSource
 
@@ -72,7 +73,12 @@ class TestBuildNewObjectRow:
     both find the row.
     """
 
-    def _row(self, sat: dict | None = None, sat_row: dict | None = None) -> dict:
+    def _row(
+        self,
+        sat: dict | None = None,
+        sat_row: dict | None = None,
+        parent_designation: str | None = None,
+    ) -> dict:
         # The method doesn't touch self — instantiate without __init__ to
         # avoid spinning up a DB session.
         ingestor = SBDBMoonsIngestor.__new__(SBDBMoonsIngestor)
@@ -81,7 +87,8 @@ class TestBuildNewObjectRow:
             synth_spkid=120_065_803,
             sat=sat or {"iau_name": "Dimorphos"},
             tree_parent_object_id="spkid-20065803",
-            sat_row=sat_row or {},
+            parent_designation=parent_designation,
+            sat_row=sat_row or {"sat_index": 0},
         )
 
     def test_spkid_and_naif_id_are_both_set(self):
@@ -102,11 +109,14 @@ class TestBuildNewObjectRow:
         assert row["orbital_source"] == OrbitalSource.sbdb_moon.value
 
     def test_has_position_false_without_full_keplerian(self):
-        row = self._row(sat_row={"a_km": 1.0})  # missing most required cols
+        row = self._row(
+            sat_row={"sat_index": 0, "a_km": 1.0}
+        )  # missing most required cols
         assert row["has_position"] is False
 
     def test_has_position_true_with_full_keplerian(self):
         kepler = {
+            "sat_index": 0,
             "epoch_jd": 2460000.0,
             "a_km": 1.0,
             "e": 0.0,
@@ -126,3 +136,42 @@ class TestBuildNewObjectRow:
     def test_name_falls_back_to_fullname(self):
         row = self._row(sat={"fullname": "(65803) Didymos I"})
         assert row["name"] == "(65803) Didymos I"
+
+    def test_nameless_moon_synthesizes_provisional_designation(self):
+        # No iau_name/fullname/prov_des — reconstruct S/<year> (<parent>) <n>
+        # rather than falling through to the raw object id.
+        row = self._row(
+            sat={"year": 2008},
+            sat_row={"sat_index": 1, "year": 2008},
+            parent_designation="153591",
+        )
+        assert row["name"] == "S/2008 (153591) 2"
+        assert row["provisional_designation"] == "S/2008 (153591) 2"
+
+    def test_real_prov_des_wins_over_synthesis(self):
+        row = self._row(
+            sat={"prov_des": "S/2004 (45) 1", "year": 2004},
+            sat_row={"sat_index": 0, "year": 2004},
+            parent_designation="45",
+        )
+        assert row["name"] == "S/2004 (45) 1"
+        assert row["provisional_designation"] == "S/2004 (45) 1"
+
+
+class TestSynthSatelliteDesignation:
+    """``_synth_satellite_designation`` rebuilds the IAU provisional
+    designation for moons SBDB ships without any name."""
+
+    def test_numbered_parent_uses_number_token(self):
+        assert _synth_satellite_designation("153591", 2008, 0) == "S/2008 (153591) 1"
+
+    def test_unnumbered_parent_uses_provisional_token(self):
+        assert (
+            _synth_satellite_designation("1998 WW31", 2000, 0) == "S/2000 (1998 WW31) 1"
+        )
+
+    def test_missing_token_returns_none(self):
+        assert _synth_satellite_designation(None, 2008, 0) is None
+
+    def test_missing_year_returns_none(self):
+        assert _synth_satellite_designation("153591", None, 0) is None

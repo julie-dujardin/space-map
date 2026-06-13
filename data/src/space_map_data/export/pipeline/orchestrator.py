@@ -595,6 +595,29 @@ def _load_rendered_ids(session: Session) -> set[str]:
     }
 
 
+def _load_moon_parent_names(session: Session) -> dict[str, str]:
+    """Map each moon-host Object.id to its display name.
+
+    Shipped in moon bundles (orbit.parent_name) so the frontend breadcrumb can
+    name the host even when the host body isn't resident in the scene — small-
+    body hosts get culled by the streaming loader once focus moves on.
+    """
+    host_ids = (
+        session.query(Object.parent_id)
+        .filter(
+            Object.object_type == ObjectType.moon.value,
+            Object.parent_id.is_not(None),
+        )
+        .distinct()
+    )
+    rows = (
+        session.query(Object.id, Object.name)
+        .filter(Object.id.in_(host_ids), Object.name.is_not(None))
+        .all()
+    )
+    return {oid: name for oid, name in rows}
+
+
 def _load_nasa_science_urls() -> dict[str, str]:
     """Load the pk→URL map, returning {} if the download file is missing."""
     path = SOURCES_METADATA_DIR / "nasa-science-urls" / "pk-to-url.json"
@@ -739,6 +762,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     with Session(engine) as session:
         precheck_tables(session)
         nomenclature_by_body = build_nomenclature(session)
+        moon_parent_names = _load_moon_parent_names(session)
         tier_b_fp = incremental.tier_b_fingerprint(session)
     tier_b_meta = incremental.read_tier_b_meta(out_dir)
     tier_b_clean = (
@@ -784,6 +808,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         clouds_metadata=clouds_metadata,
         probe_kernel_sources=probe_kernel_sources,
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
+        parent_names=moon_parent_names,
     )
 
     write_systems_global(out_dir, gms, nut_prec_angles)

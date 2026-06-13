@@ -39,6 +39,10 @@ class ObjectDataContext:
     clouds_metadata: dict[str, dict]
     probe_kernel_sources: dict[int, str | None]
     nomenclature_body_ids: set[str]
+    # parent Object.id -> display name, for moons whose parent may live in
+    # another chunk (lets the frontend breadcrumb name the host without the
+    # parent body being resident in the scene).
+    parent_names: dict[str, str]
 
 
 @dataclass
@@ -112,6 +116,7 @@ def build_zone_object_data(
         clouds_metadata=ctx.clouds_metadata,
         probe_kernel_sources=ctx.probe_kernel_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
+        parent_names=ctx.parent_names,
     )
 
 
