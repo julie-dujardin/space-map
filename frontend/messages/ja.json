@@ -18,6 +18,7 @@
 	"group_discovery_activity": "発見の推移",
 	"tooltip_discoveries_count": "{count} 件の発見",
 	"group_stat_members": "メンバー",
+	"group_stat_named": "命名済み",
 	"group_stat_active": "稼働中",
 	"group_stat_first_launch": "初回打ち上げ",
 	"group_stat_largest": "最大",

@@ -12,8 +12,11 @@
 
 	interface Props {
 		global: GlobalGroupData | null;
+		/** Whether the members tab (with its count badge) is shown — if so the
+		 * Members card is redundant and dropped in favour of the Named card. */
+		showMembersTab?: boolean;
 	}
-	let { global }: Props = $props();
+	let { global, showMembersTab = false }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -68,13 +71,22 @@
 
 	let stats = $derived.by<Stat[]>(() => {
 		if (!global) return [];
-		const out: Stat[] = [
-			{
+		const out: Stat[] = [];
+		// The members tab already shows the count in its badge; only carry the
+		// Members card when there's no tab (sat groups, categories without one).
+		if (!showMembersTab)
+			out.push({
 				label: m.group_stat_members(),
 				value: formatNumber(global.member_count),
 				dot: 'bg-sky-400'
-			}
-		];
+			});
+		if (global.named_count != null)
+			out.push({
+				label: m.group_stat_named(),
+				value: formatNumber(global.named_count),
+				tooltip: formatPercent(global.named_count, global.member_count),
+				dot: 'bg-teal-400'
+			});
 		if (global.active_count != null && global.active_count > 0)
 			out.push({
 				label: m.group_stat_active(),

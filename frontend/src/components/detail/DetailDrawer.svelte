@@ -411,7 +411,7 @@
 			/>
 			{@render tabsBar()}
 			{#if isGroupMode && groupDetail?.global}
-				<GroupStatCards global={groupDetail.global} />
+				<GroupStatCards global={groupDetail.global} {showMembersTab} />
 			{/if}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}

@@ -108,6 +108,7 @@
 		}
 	],
 	"group_stat_members": "Members",
+	"group_stat_named": "Named",
 	"group_stat_active": "Active",
 	"group_stat_first_launch": "First launch",
 	"group_stat_largest": "Largest",

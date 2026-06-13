@@ -62,6 +62,7 @@
 		}
 	],
 	"group_stat_members": "Объекты",
+	"group_stat_named": "Именованные",
 	"group_stat_active": "Действующие",
 	"group_stat_first_launch": "Первый запуск",
 	"group_stat_largest": "Крупнейший",

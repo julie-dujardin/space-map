@@ -18,6 +18,7 @@
 	"group_discovery_activity": "发现时间线",
 	"tooltip_discoveries_count": "{count} 次发现",
 	"group_stat_members": "成员",
+	"group_stat_named": "已命名",
 	"group_stat_active": "运行中",
 	"group_stat_first_launch": "首次发射",
 	"group_stat_largest": "最大",

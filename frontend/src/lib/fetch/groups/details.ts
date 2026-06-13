@@ -24,6 +24,8 @@ export interface GlobalGroupData {
 	type: GroupType;
 	applies_to: GroupCategory;
 	member_count: number;
+	/** IAU-named members; present (when > 0) on asteroid orbit_class groups and the Asteroids category. */
+	named_count?: number;
 	wikidata_qid?: string;
 	/** Fallback external URL when a group has no Wikidata QID. */
 	url?: string;
