@@ -7,6 +7,7 @@ from space_map_data.search.indices.objects import (
     _date_to_int,
     _inception,
     _load_earth_membership,
+    _radii_diameter_km,
     _small_body_groups,
 )
 
@@ -67,6 +68,19 @@ class TestSmallBodyGroups:
 
     def test_empty_when_no_signal(self):
         assert _small_body_groups({}) == []
+
+
+class TestRadiiDiameterKm:
+    """`_radii_diameter_km` gives moons/planets a diameter sort key from PCK radii."""
+
+    def test_mean_triaxial(self):
+        assert _radii_diameter_km({"a": 1820.0, "b": 1815.0, "c": 1810.0}) == 3630.0
+
+    def test_partial_radii(self):
+        assert _radii_diameter_km({"a": 100.0, "c": 200.0}) == 300.0
+
+    def test_none_when_empty(self):
+        assert _radii_diameter_km({}) is None
 
 
 class TestLoadEarthMembership:

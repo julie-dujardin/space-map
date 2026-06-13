@@ -174,6 +174,17 @@ def _small_body_groups(sbdb: dict[str, Any]) -> list[str]:
     return groups
 
 
+def _radii_diameter_km(radii: dict[str, Any]) -> float | None:
+    """Mean triaxial diameter (km) from SPICE PCK radii — the diameter source
+    for moons/planets, which aren't in SBDB. Mirrors export/objects/moons.py."""
+    vals = [
+        v for v in (radii.get("a"), radii.get("b"), radii.get("c")) if v is not None
+    ]
+    if not vals:
+        return None
+    return sum(vals) / len(vals) * 2.0
+
+
 # Leading +/- (Wikidata times), year, then optional -MM-DD; trailing time ignored.
 _DATE_RE = re.compile(r"[+-]?(\d{1,4})(?:-(\d{2})(?:-(\d{2}))?)?")
 
@@ -280,6 +291,10 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 doc["sitelinks_count"] = g["sitelinks_count"]
             if sbdb.get("diameter") is not None:
                 doc["diameter_km"] = sbdb["diameter"]
+            elif g.get("radii"):
+                radii_diameter = _radii_diameter_km(g["radii"])
+                if radii_diameter is not None:
+                    doc["diameter_km"] = radii_diameter
             magnitude = sbdb.get("H")
             if magnitude is None:
                 magnitude = (g.get("wikidata") or {}).get("absolute_magnitude")
