@@ -1,7 +1,7 @@
 import { Matrix4, Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Vec3 } from './math';
-import { f64dist, f64lerp } from './math';
+import { f64dist, f64lerp, f64slerpArc } from './math';
 import {
 	angularDuration,
 	spatialDuration,
@@ -29,6 +29,10 @@ export interface FocusState {
 	flyQ0: Quaternion | null;
 	flyQ1: Quaternion | null;
 	orbitFly: boolean;
+	/** Camera circles the focus center at constant radius (arc, not chord) instead
+	 *  of a straight lerp — set when re-framing on the already-focused body (e.g.
+	 *  switching surface features) so the path doesn't cut through the planet. */
+	arcOrbit: boolean;
 	/** Lock camera world position to `camTargetWorld` (body-tracking) for the
 	 *  whole animation instead of easing from `camOriginWorld` — for plain focus
 	 *  switches the `focusTruePos` smoothstep alone carries the scene transition. */
@@ -81,15 +85,29 @@ export function stepFocusAnimation(
 				state.focusOriginWorld[0] !== state.focusTargetWorld[0] ||
 				state.focusOriginWorld[1] !== state.focusTargetWorld[1] ||
 				state.focusOriginWorld[2] !== state.focusTargetWorld[2];
-			// Ease-in position when approaching from afar, smoothstep when orbiting
-			const sCam = focusChanging ? t * t * t : s;
-			const camWorld = f64lerp(state.camOriginWorld!, state.camTargetWorld!, sCam);
+			let camWorld: Vec3;
+			if (state.arcOrbit) {
+				// Re-framing the already-focused body: sweep around its center at
+				// constant radius so the path can't cut a chord through the planet.
+				// (focusChanging is polluted true here by per-frame body motion, so
+				// gate on the explicit flag, not on it.)
+				camWorld = f64slerpArc(
+					state.camOriginWorld!,
+					state.camTargetWorld!,
+					state.focusTargetWorld,
+					s
+				);
+			} else {
+				// Approaching from afar: ease position in so the rotation reads first.
+				const sCam = focusChanging ? t * t * t : s;
+				camWorld = f64lerp(state.camOriginWorld!, state.camTargetWorld!, sCam);
+			}
 			camera.position.set(
 				camWorld[0] - state.focusTruePos[0],
 				camWorld[1] - state.focusTruePos[1],
 				camWorld[2] - state.focusTruePos[2]
 			);
-			if (focusChanging) {
+			if (focusChanging && !state.arcOrbit) {
 				// Approaching: blend from slerp (turn) to lookAt (keep centered)
 				camera.quaternion.slerpQuaternions(state.flyQ0!, state.flyQ1!, s);
 				_slerpQ.copy(camera.quaternion);
@@ -101,7 +119,7 @@ export function stepFocusAnimation(
 				_lookAtQ.copy(camera.quaternion);
 				camera.quaternion.slerpQuaternions(_slerpQ, _lookAtQ, s);
 			} else {
-				// Already focused: pure lookAt
+				// Orbiting in place: pure lookAt keeps the body centered throughout.
 				camera.lookAt(
 					state.focusTargetWorld[0] - state.focusTruePos[0],
 					state.focusTargetWorld[1] - state.focusTruePos[1],
@@ -160,6 +178,7 @@ export function stepFocusAnimation(
 		state.flyQ0 = null;
 		state.flyQ1 = null;
 		state.orbitFly = false;
+		state.arcOrbit = false;
 		state.cameraStaysOnBody = false;
 	}
 	return !controls.update();
@@ -176,6 +195,9 @@ export function prepareFocusTarget(
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...bodyPosition];
 	state.focusStartTime = performance.now();
+	// Arc-orbit is only for re-framing the already-focused body; a new-body focus
+	// (incl. the orbitFly approach set by the controller) must use the linear path.
+	state.arcOrbit = false;
 
 	if (camPos) {
 		state.camOriginWorld = cameraTruePos;
@@ -266,6 +288,7 @@ export function prepareFlyToCamera(
 	state.focusTargetWorld = [...state.focusTruePos];
 	state.focusStartTime = performance.now();
 	state.orbitFly = true;
+	state.arcOrbit = true;
 	state.cameraStaysOnBody = false;
 	// Set dummy quaternions so isFlying is true
 	state.flyQ0 = camera.quaternion.clone();
