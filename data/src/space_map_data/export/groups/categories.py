@@ -48,6 +48,7 @@ class CategoryData:
     )  # cat slug -> child slugs
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     member_counts: dict[str, int] = field(default_factory=dict)
+    named_counts: dict[str, int] = field(default_factory=dict)  # cat slug -> named n
     discovery_histograms: dict[str, dict[int, int]] = field(
         default_factory=dict
     )  # cat slug -> {year: count}
@@ -119,6 +120,7 @@ def _solar_system_members(
 def build_category_data(
     session: Session,
     member_counts: dict[str, int],
+    named_counts: dict[str, int],
     discovery_histograms: dict[str, dict[int, int]],
     launch_histograms: dict[str, dict[int, int]],
 ) -> CategoryData:
@@ -178,6 +180,7 @@ def build_category_data(
     # Object totals, not child counts: orbit classes partition their bodies, so
     # summing is exact; flags are subsets, and satellites sum shape classes only.
     asteroids_total = sum(member_counts.get(s, 0) for s in asteroid_classes)
+    asteroids_named = sum(named_counts.get(s, 0) for s in asteroid_classes)
     comets_total = sum(member_counts.get(s, 0) for s in comet_classes)
     satellites_total = sum(
         member_counts.get(f"{CLASS_SLUG_PREFIX}{c.name}", 0)
@@ -229,6 +232,9 @@ def build_category_data(
         children=children,
         notable_members=notable_members,
         member_counts=member_counts_out,
+        # Only Asteroids has a meaningful named/total gap (~1.7 % named); the
+        # Solar System root and other categories are effectively all-named.
+        named_counts={ASTEROIDS_SLUG: asteroids_named} if asteroids_named else {},
         discovery_histograms=discovery_out,
         launch_histograms=launch_out,
     )

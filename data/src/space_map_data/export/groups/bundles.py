@@ -69,6 +69,7 @@ def _build_global(
     images: list[dict] | None,
     largest_body: LargestBody | None,
     pha_count: int,
+    named_count: int,
     notable_members: list[dict] | None,
 ) -> dict:
     data: dict = {
@@ -113,6 +114,9 @@ def _build_global(
             "primary_type": "spkid",
             "primary_id": largest_body.spkid,
         }
+    # Only asteroid classes + the Asteroids category carry a named count.
+    if named_count:
+        data["named_count"] = named_count
     if pha_count and group.slug != _FLAG_PHA_SLUG:
         data["pha"] = {
             "n": pha_count,
@@ -470,6 +474,7 @@ def write_group_bundles(
     extra_launch_histograms: dict[str, dict[int, int]] | None = None,
     extra_largest_bodies: dict[str, LargestBody] | None = None,
     extra_pha_counts: dict[str, int] | None = None,
+    extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
     category_children: dict[str, list[str]] | None = None,
 ) -> dict[str, int]:
@@ -500,6 +505,7 @@ def write_group_bundles(
         launch_histogram_override = (extra_launch_histograms or {}).get(group.slug)
         largest_body = (extra_largest_bodies or {}).get(group.slug)
         pha_count = (extra_pha_counts or {}).get(group.slug, 0)
+        named_count = (extra_named_counts or {}).get(group.slug, 0)
         members = (extra_notable_members or {}).get(group.slug)
         member_entries = (
             notable_entries(members, wikidata_entities) if members else None
@@ -514,6 +520,7 @@ def write_group_bundles(
             images,
             largest_body,
             pha_count,
+            named_count,
             member_entries,
         )
         child_slugs = (category_children or {}).get(group.slug)

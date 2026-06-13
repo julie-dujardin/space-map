@@ -36,10 +36,11 @@ _PLANET_TYPES = (ObjectType.planet, ObjectType.dwarf_planet)
 
 @dataclass
 class HostMoons:
-    """Top moons of a host body plus the host's full moon count."""
+    """Top moons of a host body plus the host's full and named moon counts."""
 
     moons: list[NotableObject]
     total: int
+    named: int  # moons with an IAU name (asteroid moonlets are mostly unnamed)
 
 
 def _mean_diameter_km(naif_id: int | None, radii: dict[int, dict]) -> float | None:
@@ -141,14 +142,16 @@ def notable_moons_by_host(
             )
             for r in top
         ]
+        named = sum(1 for r in children if r.name)
         # A host may already be present from another parent (shouldn't happen —
         # one parent per host — but merge defensively rather than overwrite).
         existing = result.get(host_id)
         if existing is None:
-            result[host_id] = HostMoons(moons=moons, total=len(children))
+            result[host_id] = HostMoons(moons=moons, total=len(children), named=named)
         else:
             existing.moons.extend(moons)
             existing.total += len(children)
+            existing.named += named
 
     logger.info(
         "Built notable moons for %d host bodies (%d moons total across %d parents)",
@@ -165,7 +168,8 @@ def attach_notable_moons(
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
 ) -> None:
-    """Inject ``notable_moons`` + ``moon_count`` into each host's global bundle.
+    """Inject ``notable_moons`` + ``moon_count`` + ``named_moon_count`` into
+    each host's global bundle.
 
     Mutates ``chunk`` in place (mirrors ``write_attitude``). Localized moon
     names are added only where the host already has a localized entry for the
@@ -186,6 +190,8 @@ def attach_notable_moons(
         entries = notable_entries(host_moons.moons, wikidata_entities)
         global_data["notable_moons"] = entries
         global_data["moon_count"] = host_moons.total
+        if host_moons.named:
+            global_data["named_moon_count"] = host_moons.named
         for lang in LANGUAGES:
             localized = chunk.localized_data.get(lang, {}).get(host_id)
             if localized is None:

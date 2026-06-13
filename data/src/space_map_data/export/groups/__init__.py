@@ -59,11 +59,14 @@ def run_groups_tier(
         category_data = build_category_data(
             session,
             all_counts,
+            small_body_stats.named_counts,
             small_body_stats.discovery_histograms,
             earth_launch_histograms,
         )
 
     extra_member_counts.update(category_data.member_counts)
+    extra_named_counts = dict(small_body_stats.named_counts)
+    extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
     extra_notable_members.update(category_data.notable_members)
     # Category discovery charts ride the same per-slug path as small-body
@@ -86,6 +89,7 @@ def run_groups_tier(
         extra_launch_histograms=category_data.launch_histograms,
         extra_largest_bodies=small_body_stats.largest_bodies,
         extra_pha_counts=small_body_stats.pha_counts,
+        extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
         category_children=category_data.children,
     )

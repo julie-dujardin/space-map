@@ -21,6 +21,7 @@ import orjson
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.categories import COMET_ORBIT_CLASSES
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
@@ -71,6 +72,9 @@ class SmallBodyGroupStats:
     """Per-slug counts, histograms, scatter samples, PHA counts, largest body."""
 
     member_counts: dict[str, int] = field(default_factory=dict)
+    # Members with an IAU name, per asteroid class slug. Comets are omitted:
+    # they all carry a designation, so their named/total split is meaningless.
+    named_counts: dict[str, int] = field(default_factory=dict)
     discovery_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
     orbit_samples: list[OrbitClassSample] = field(default_factory=list)
     # NEO is omitted on purpose: 100 % on IEO/ATE/APO/AMO, 0 % elsewhere.
@@ -299,6 +303,20 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     member_counts[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_count
     member_counts[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_count
 
+    # Named (IAU-named) counts per asteroid class. Asteroids are overwhelmingly
+    # designation-only (~1.7 % named), so the frontend pairs this with the total.
+    # Comet classes are excluded — every comet shows a designation regardless.
+    named_counts_rows = (
+        base.with_entities(SBDB.class_, func.count(SBDB.spkid))
+        .filter(SBDB.name.is_not(None), SBDB.name != "")
+        .filter(SBDB.class_.not_in(COMET_ORBIT_CLASSES))
+        .group_by(SBDB.class_)
+        .all()
+    )
+    named_counts = {
+        f"{CLASS_SLUG_PREFIX}{cls.name}": n for cls, n in named_counts_rows if n
+    }
+
     year_expr = func.substr(SBDB.first_obs, 1, 4)
     discovery_histograms: dict[str, dict[int, int]] = {}
     malformed_years: set[str] = set()
@@ -392,11 +410,12 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
 
     logger.info(
         "Built small-body group stats: %d classes, NEO=%d, PHA=%d, "
-        "histograms for %d slugs, largest body for %d slugs, "
-        "notable members for %d slugs",
+        "%d named (asteroid classes only), histograms for %d slugs, "
+        "largest body for %d slugs, notable members for %d slugs",
         len(class_counts),
         neo_count,
         pha_count,
+        sum(named_counts.values()),
         len(discovery_histograms),
         len(largest_bodies),
         len(notable_members),
@@ -404,6 +423,7 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
     orbit_samples = build_orbit_class_samples(session, class_counts)
     return SmallBodyGroupStats(
         member_counts=member_counts,
+        named_counts=named_counts,
         discovery_histograms=discovery_histograms,
         orbit_samples=orbit_samples,
         pha_counts=pha_counts,

@@ -1007,6 +1007,8 @@ interface GlobalObjectData {
   // with GlobalGroupData.notable_members.
   notable_moons?: NotableEntry[];
   moon_count?: number;                // total moons of this body (drives the "+N more" tile); present iff notable_moons is
+  named_moon_count?: number;          // moons with an IAU name; present when > 0 (asteroid moonlets and provisional
+                                      // outer-planet moons are unnamed, so this is < moon_count for those hosts)
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
@@ -1120,6 +1122,10 @@ interface GlobalGroupData {
   type: GroupType;
   applies_to: GroupCategory;
   member_count: number;
+  // IAU-named members; present (when > 0) on asteroid orbit_class groups and
+  // the Asteroids category — asteroids are only ~1.7 % named. Comets are
+  // omitted: they all carry a designation, so named/total is meaningless.
+  named_count?: number;
   wikidata_qid?: string;
   url?: string;                     // Fallback external URL when no Wikidata QID
   website?: string;                 // Wikidata P856

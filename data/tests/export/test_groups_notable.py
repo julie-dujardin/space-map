@@ -7,9 +7,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from space_map_data.export import notable
+from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import (
     NOTABLE_MEMBER_COUNT,
     _notable_members,
+    build_small_body_group_stats,
 )
 from space_map_data.export.notable import NotableObject
 from space_map_data.models.object import Object, ObjectType, OrbitalSource
@@ -42,6 +44,7 @@ def _add_member(
     neo: bool = False,
     pha: bool = False,
     orbital_source: OrbitalSource | None = OrbitalSource.sbdb,
+    sbdb_name: str | None = None,
 ) -> None:
     obj = Object(
         id=f"spkid-{spkid}",
@@ -59,6 +62,7 @@ def _add_member(
             object_id=obj.id,
             class_=cls,
             prefix=prefix,
+            name=sbdb_name,
             diameter=diameter,
             H=h_mag,
             first_obs=first_obs,
@@ -135,6 +139,28 @@ class TestNotableMembers:
             diameter_km=199.8,
             first_obs="1847-08-13",
         )
+
+
+class TestNamedCounts:
+    """Named (IAU-named) member counts in build_small_body_group_stats."""
+
+    def test_counts_named_asteroids_per_class(self, session: Session) -> None:
+        _add_member(session, 1, cls=OrbitClass.MBA, sbdb_name="Ceres")
+        _add_member(session, 2, cls=OrbitClass.MBA)  # designation-only
+        _add_member(session, 3, cls=OrbitClass.TNO, sbdb_name="Eris")
+        stats = build_small_body_group_stats(session)
+        assert stats.named_counts == {
+            f"{CLASS_SLUG_PREFIX}MBA": 1,
+            f"{CLASS_SLUG_PREFIX}TNO": 1,
+        }
+        assert stats.member_counts[f"{CLASS_SLUG_PREFIX}MBA"] == 2
+
+    def test_excludes_comets(self, session: Session) -> None:
+        _add_member(
+            session, 1, cls=OrbitClass.COM, prefix=CometPrefix.C, sbdb_name="Halley"
+        )
+        stats = build_small_body_group_stats(session)
+        assert f"{CLASS_SLUG_PREFIX}COM" not in stats.named_counts
 
 
 class _StubEntityCache:

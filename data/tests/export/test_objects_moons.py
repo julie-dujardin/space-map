@@ -117,6 +117,17 @@ class TestNotableMoonsByHost:
         assert moon.diameter_km is None
         assert moon.first_obs is None
 
+    def test_named_count_excludes_unnamed_moons(self, session: Session) -> None:
+        _add(session, "spkid-1", ObjectType.asteroid, name="Ida")
+        _add(session, "spkid-2", ObjectType.moon, name="Dactyl", parent_id="spkid-1")
+        # Provisional-only moonlet: no IAU name.
+        _add(session, "spkid-3", ObjectType.moon, name=None, parent_id="spkid-1")
+        session.commit()
+
+        host = notable_moons_by_host(session, RADII)["spkid-1"]
+        assert host.total == 2
+        assert host.named == 1
+
     def test_ranking_image_then_sitelinks_then_diameter(self, session: Session) -> None:
         _add(session, "naif-5", ObjectType.barycenter)
         _add(session, "naif-599", ObjectType.planet, parent_id="naif-5")
