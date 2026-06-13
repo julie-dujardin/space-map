@@ -19,6 +19,8 @@ import { dateToJD } from '$lib/format/date';
 import { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import { ProbeStore } from '$lib/fetch/position/probes/store';
 import { ZoneRefresher } from '$lib/scene/zone-refresher';
+import { prefetchSkyboxTiers } from '$lib/scene/objects/sky/skybox';
+import { markEagerMinorsDone } from '$lib/scene/setup/load-gates';
 import { createPlaceholderBody } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
@@ -32,13 +34,31 @@ interface MinorChunkArg {
 }
 
 /**
- * Build the chunk-fetch plan for phase 2 (minor zones). Fires `ChunkLoader.prefetch`
- * so the HTTP cache is warm by the time phase 2 awaits each `loader.process` call.
- * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev (ChebyshevStore).
+ * Parts are uniform random shards (hash-bucketed by `Object.random_int`), so the
+ * first N parts of a zoom bucket are a representative sample of the whole zone.
+ * Unnamed (zoom-1) parts past this cap are split into a deferred wave that runs
+ * only after the eager wave finishes, so the point cloud reaches a visually
+ * representative density before the long tail competes for bandwidth. Only the
+ * main belt (MBA, 133 zoom-1 parts) exceeds this today; every other zone is
+ * smaller and stays fully eager.
  */
-function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
+const EAGER_ZOOM1_PARTS = 13;
+
+/**
+ * Build the phase-2 chunk-fetch plan, split into an eager wave (named bodies,
+ * plus a representative sample of unnamed bodies) and a deferred wave (the
+ * unnamed long tail). No `ChunkLoader.prefetch` warming: firing every part up
+ * front floods the connection and starves the phase-1 critical path on
+ * bandwidth-bound links — the awaited `loader.process` calls fetch on demand.
+ * Skips `major`/`moons` (phase 1), probe zones (ProbeStore), chebyshev.
+ */
+function planMinorChunks(
+	metadata: Metadata,
+	date: Date
+): { eager: MinorChunkArg[]; deferred: MinorChunkArg[] } {
 	const cap = getSettings().maxPartsPerZone;
-	const args: MinorChunkArg[] = [];
+	const eager: MinorChunkArg[] = [];
+	const deferred: MinorChunkArg[] = [];
 	for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
 		if (zone === 'major' || zone === 'moons') continue;
 		if (zone === 'spacecraft') continue;
@@ -51,12 +71,13 @@ function planMinorChunks(metadata: Metadata, date: Date): MinorChunkArg[] {
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
 			const limit = cap > 0 ? Math.min(zoomData.parts, cap) : zoomData.parts;
 			for (let part = 0; part < limit; part++) {
-				args.push({ zone, zoom, part, time, parentIdType });
-				ChunkLoader.prefetch(zone, zoom, part, time);
+				const arg = { zone, zoom, part, time, parentIdType };
+				if (zoom >= 1 && part >= EAGER_ZOOM1_PARTS) deferred.push(arg);
+				else eager.push(arg);
 			}
 		}
 	}
-	return args;
+	return { eager, deferred };
 }
 
 /** Build the probe ephemeris store from metadata, or null when no probe zones ship. */
@@ -153,6 +174,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// + per-body GMs used by chebyshev trail-buffer sizing. Fire-and-forget;
 	// rotation falls back to the first-order model and trail buffers stay
 	// uninitialized until it lands.
+	performance.mark('sm-load-start');
 	loadSystemsGlobal();
 	const jd = dateToJD(date);
 	const metadataPromise = fetchMetadata();
@@ -167,6 +189,12 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		if (moonsZoom && isParted(moonsZoom)) {
 			ChunkLoader.prefetch('moons', 0, 0, null);
 		}
+	});
+
+	// Skybox is the page background — start fetching+decoding the low tier as
+	// soon as the tier list is known, rather than waiting for renderer init.
+	metadataPromise.then((metadata) => {
+		if (metadata.skybox) prefetchSkyboxTiers(metadata.skybox);
 	});
 
 	const minorChunkArgsPromise = metadataPromise.then((metadata) => planMinorChunks(metadata, date));
@@ -294,10 +322,11 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 			b.data.orbitalSource !== OrbitalSource.SPICE_PROBE
 	);
 	ctx.loading = false;
+	performance.mark('sm-majors-done');
 
 	// Phase 2: minors — load in background, flush to reactive state periodically.
-	// minorChunkArgsPromise has been running in parallel; files are likely cached already.
-	const minorChunkArgs = await minorChunkArgsPromise;
+	// minorChunkArgsPromise has been running in parallel.
+	const { eager: minorChunkArgs, deferred: deferredChunkArgs } = await minorChunkArgsPromise;
 
 	// `small_body_moons` parents (asteroid hosts) live in `small_bodies/*`
 	// zones, not in chebyshev — without seeding, the asteroid pass would not
@@ -376,6 +405,33 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		clearInterval(intervalId);
 		ctx.bodies.minorStreaming = false;
 		flush();
+		performance.mark('sm-minors-done');
+		// Release the eager-minors gate (full-res skybox waits on it) even if
+		// the eager wave threw — a partial point cloud shouldn't block the
+		// background upgrade.
+		markEagerMinorsDone();
+	}
+
+	// Deferred wave: the unnamed long tail (main-belt zoom-1 parts past the
+	// eager sample). Same ingest path, started only after the eager wave so it
+	// never delays the visually-representative point cloud or the majors.
+	if (deferredChunkArgs.length > 0) {
+		ctx.bodies.minorStreaming = true;
+		const deferredInterval = setInterval(flush, 1000);
+		try {
+			await Promise.all(
+				deferredChunkArgs.map(({ zone, zoom, part, time, parentIdType }) =>
+					loader
+						.process(zone, zoom, part, date, time, parentIdType)
+						.then((chunk) => handleChunk(zone, chunk))
+				)
+			);
+		} finally {
+			clearInterval(deferredInterval);
+			ctx.bodies.minorStreaming = false;
+			flush();
+			performance.mark('sm-deferred-done');
+		}
 	}
 
 	// Hot-reload driver: at this point metadataPromise has already

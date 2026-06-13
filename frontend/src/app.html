@@ -10,6 +10,30 @@
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<script>
+			// Early resource hints for the data origin, mirroring DATA_BASE
+			// ($lib/fetch/data-base) so the metadata + systems-global fetches can
+			// overlap the JS bundle download and warm the cross-origin connection.
+			// crossOrigin is set only for an absolute (prod CDN) host so it matches
+			// fetch()'s credentials mode; the dev proxy serves data same-origin.
+			(function () {
+				try {
+					var base = '%sveltekit.env.PUBLIC_DATA_URL%' || 'https://static.spacemap.co';
+					var cross = /^https?:\/\//.test(base);
+					var add = function (rel, href, as) {
+						var l = document.createElement('link');
+						l.rel = rel;
+						l.href = href;
+						if (as) l.as = as;
+						if (cross) l.crossOrigin = 'anonymous';
+						document.head.appendChild(l);
+					};
+					if (cross) add('preconnect', base);
+					add('preload', base + '/v1/metadata.json', 'fetch');
+					add('preload', base + '/v1/systems/global.json', 'fetch');
+				} catch (e) {}
+			})();
+		</script>
+		<script>
 			// Resolve theme before first paint so a stored 'light'/'dark' override
 			// doesn't FOUC through the system preference. Mirrors the auto logic in
 			// settings.svelte.ts; keep them in sync.
