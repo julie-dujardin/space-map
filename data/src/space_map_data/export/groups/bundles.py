@@ -596,5 +596,10 @@ def _write_buckets(dir_path: Path, by_slug: dict[str, dict], n: int) -> None:
     for slug, data in by_slug.items():
         buckets.setdefault(hash_bucket(slug, n), {})[slug] = data
     dir_path.mkdir(parents=True, exist_ok=True)
+    # Drop bucket files from a previous run with a higher bucket count (e.g. an
+    # additive --only groups run after a merge shrank the group set). Consumers
+    # that glob the directory would otherwise ingest the stale orphans.
+    for stale in dir_path.glob("*.json.gz"):
+        stale.unlink()
     for b, entries in buckets.items():
         (dir_path / f"{b}.json.gz").write_bytes(gzip.compress(orjson.dumps(entries)))
