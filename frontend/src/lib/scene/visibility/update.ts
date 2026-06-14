@@ -63,7 +63,8 @@ export function updateBodyVisibility(
 	moonPoints: Map<string, Points>,
 	cullFrameCounter: number,
 	renderer: WebGLRenderer,
-	tmpV3: Vector3
+	tmpV3: Vector3,
+	forceCull: boolean
 ): number {
 	const fovRad = (camera.fov * Math.PI) / 180;
 	const screenW = renderer.domElement.clientWidth;
@@ -312,7 +313,11 @@ export function updateBodyVisibility(
 		}
 	}
 
-	if (++cullFrameCounter >= 3) {
+	// While the camera moves, label screen positions change every frame; the
+	// throttled (every-3rd-frame) cull then judges overlaps against 1–2-frame-stale
+	// positions and lets overlapping labels both stay maximized until motion stops.
+	// Caller forces every-frame culling during camera motion; throttle when idle.
+	if (forceCull || ++cullFrameCounter >= 3) {
 		cullFrameCounter = 0;
 		cullOverlappingLabels(
 			bodyObjects,

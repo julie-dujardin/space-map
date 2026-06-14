@@ -525,7 +525,13 @@ export class SceneRenderer {
 			this.pointClouds.moons(),
 			this.cullFrameCounter,
 			this.renderer,
-			this._tmpV3
+			this._tmpV3,
+			// Camera moving (drag/inertia/fly): label screen positions shift many
+			// px/frame, so the overlap cull must run every frame to stay in sync —
+			// the throttled (every-3rd-frame) pass judges stale positions and lets
+			// overlapping labels both stay maximized mid-motion. Throttle resumes
+			// once the camera settles; clock-only drift at 1x is sub-pixel/frame.
+			!controlsSettled
 		);
 
 		// Catches lines updatePositions skipped (visible=false) that updateBodyVisibility

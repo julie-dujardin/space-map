@@ -221,10 +221,14 @@ export function cullOverlappingLabels(
 	for (const bo of bodyObjects.values()) {
 		const { body, label, labelHalo } = bo;
 		if (!label?.visible) continue;
-		// Lazy-measure label text width (element must be in DOM; cached forever)
-		if (bo.labelTextWidth === undefined && labelHalo) {
+		// Lazy-measure label text width, caching the first positive measurement.
+		// A hidden name span (display:none from a prior dim) reports offsetWidth 0;
+		// caching that would peg the label's overlap rect to halo-width forever, so
+		// it would never cull against (or be culled by) its neighbours. Keep
+		// re-measuring until the span is laid out, falling back to 50 meanwhile.
+		if (!bo.labelTextWidth && labelHalo) {
 			const span = labelHalo.nextElementSibling as HTMLElement | null;
-			if (span) bo.labelTextWidth = span.offsetWidth;
+			if (span && span.offsetWidth > 0) bo.labelTextWidth = span.offsetWidth;
 		}
 		// Focus-relative position for projection (matches camera's coordinate space).
 		// label.position carries the silhouette offset (set in updateBodyVisibility)
@@ -244,7 +248,7 @@ export function cullOverlappingLabels(
 		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
 		// Compute actual screen AABB accounting for center.x offset
 		const rootLeft = screenX - label.center.x * 32;
-		const textWidth = bo.labelTextWidth ?? 50;
+		const textWidth = bo.labelTextWidth || 50;
 		const c = ensureCandidate(_candidatesActive++);
 		c.bodyId = body.data.id;
 		c.bo = bo;
@@ -391,7 +395,7 @@ export function refreshVisibleBodyLabelRects(
 		const screenX = (_tmpProj.x * 0.5 + 0.5) * screenWidth;
 		const screenY = (-_tmpProj.y * 0.5 + 0.5) * screenHeight;
 		const rootLeft = screenX - label.center.x * 32;
-		const textWidth = bo.labelTextWidth ?? 50;
+		const textWidth = bo.labelTextWidth || 50;
 		const a = ensureAccepted(_acceptedActive++);
 		a.left = rootLeft;
 		a.right = rootLeft + 40 + textWidth;
