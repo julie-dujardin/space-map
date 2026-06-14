@@ -54,18 +54,22 @@ configs:
       		defer
       	}
 
+      	# handle blocks are mutually exclusive and evaluated in order, so the
+      	# catch-all 403 can't shadow the proxy (a bare `respond` would).
       	@preflight method OPTIONS
-      	respond @preflight 204
+      	handle @preflight {
+      		respond 204
+      	}
 
       	# Public surface: search endpoints + health probe.
-      	@search {
-      		path /indexes/*/search
-      		path /multi-search
-      		path /health
+      	@search path /indexes/*/search /multi-search /health
+      	handle @search {
+      		reverse_proxy meili:7700
       	}
-      	reverse_proxy @search meili:7700
 
       	# Everything else (settings, keys, tasks, dumps, CRUD) is not proxied —
       	# admin goes straight to Meili on :9751.
-      	respond 403
+      	handle {
+      		respond 403
+      	}
       }
