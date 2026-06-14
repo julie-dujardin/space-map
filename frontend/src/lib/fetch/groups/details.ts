@@ -7,7 +7,7 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { EntityRef, NotableMemberEntry, ObjectImage } from '$lib/fetch/objects/object-data';
-import type { GroupCategory, GroupType, SatelliteCategory } from './registry';
+import type { GroupCategory, GroupType, OrganizationRole, SatelliteCategory } from './registry';
 
 export type { NotableMemberEntry };
 
@@ -24,6 +24,8 @@ export interface GlobalGroupData {
 	type: GroupType;
 	applies_to: GroupCategory;
 	member_count: number;
+	/** Organization-only: role tags (operator and/or manufacturer) for badges. */
+	roles?: OrganizationRole[];
 	/** IAU-named members; present (when > 0) on asteroid orbit_class groups and the Asteroids category. */
 	named_count?: number;
 	wikidata_qid?: string;
@@ -62,11 +64,6 @@ export interface GlobalGroupData {
 	images?: ObjectImage[];
 }
 
-export interface RelatedGroupEntry extends EntityRef {
-	/** The other group's type so the UI can label the cross-link as "Also a manufacturer", etc. */
-	role: GroupType;
-}
-
 export interface ChildGroupEntry extends EntityRef {
 	/** Child group's type, so a category can section its children (orbit classes vs constellations). */
 	role: GroupType;
@@ -91,8 +88,6 @@ export interface LocalizedGroupData {
 	launch_sites?: LaunchSiteEntry[];
 	/** Top constellations represented in this group's fleet (non-constellation groups only). */
 	constellations?: ConstellationEntry[];
-	/** Other groups sharing this group's QID (typically the op/mfr pair for the same company). */
-	related_groups?: RelatedGroupEntry[];
 	/** Category-only: the child groups this category lists (zones, families, classes, constellations). */
 	child_groups?: ChildGroupEntry[];
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */

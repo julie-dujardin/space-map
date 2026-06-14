@@ -1,23 +1,20 @@
 """Satellite / launcher manufacturers.
 
-Operator-and-manufacturer duals share the Wikidata QID with their
-:class:`OperatorSpec` entry but keep a distinct ``mfr-`` group slug so the
-role is honest in the URL (Boeing builds many GEO sats it doesn't operate).
+Operator-and-manufacturer duals share both slug and Wikidata QID with their
+:class:`OperatorSpec` entry; ``organizations.py`` unions the two by slug into a
+single ``org-`` group tagged with both roles.
 """
 
 from collections import defaultdict
 from dataclasses import dataclass
 
-# Group slug namespace: manufacturer group slugs are
-# ``f"{MANUFACTURER_SLUG_PREFIX}{m.slug}"`` so they don't collide with bare
-# constellation slugs, ``op-*`` operator slugs, or ``site-*`` launch-site slugs.
-MANUFACTURER_SLUG_PREFIX = "mfr-"
-
 
 @dataclass(frozen=True)
 class ManufacturerSpec:
     name: str
-    slug: str  # URL slug, unique within MANUFACTURERS; group registry prefixes with "mfr-"
+    slug: (
+        str  # URL slug, unique within MANUFACTURERS; org registry prefixes with "org-"
+    )
     wikidata_qid: str | None = None
     constellations: tuple[str, ...] = ()  # constellation slugs this prime builds for
 

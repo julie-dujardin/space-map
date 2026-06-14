@@ -1,9 +1,9 @@
 """Group registry: aggregation entities behind /g/<slug>.
 
-Constellations keep bare slugs; operators, launch sites, manufacturers,
-countries, orbit classes, and small-body flags are prefixed
-(``op-``/``site-``/``mfr-``/``country-``/``class-``/``flag-``) so the same
-entity can appear in multiple roles without slug collisions.
+Constellations keep bare slugs; organizations, launch sites, countries, orbit
+classes, and small-body flags are prefixed
+(``org-``/``site-``/``country-``/``class-``/``flag-``) so the same entity can
+appear in multiple roles without slug collisions.
 """
 
 from dataclasses import dataclass
@@ -16,13 +16,9 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_SITES,
 )
-from space_map_data.constants.earth_sats.manufacturers import (
-    MANUFACTURER_SLUG_PREFIX,
-    MANUFACTURERS,
-)
-from space_map_data.constants.earth_sats.operators import (
-    OPERATOR_SLUG_PREFIX,
-    OPERATORS,
+from space_map_data.constants.earth_sats.organizations import (
+    ORGANIZATION_SLUG_PREFIX,
+    ORGANIZATIONS,
 )
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.earth_sats.satellite_models import (
@@ -38,9 +34,8 @@ SMALL_BODY_FLAG_SLUG_PREFIX = "flag-"
 
 class GroupType(StrEnum):
     CONSTELLATION = "constellation"
-    OPERATOR = "operator"
+    ORGANIZATION = "organization"
     LAUNCH_SITE = "launch_site"
-    MANUFACTURER = "manufacturer"
     BUS = "bus"
     COUNTRY = "country"
     ORBIT_CLASS = "orbit_class"
@@ -79,9 +74,8 @@ __all__ = [
     "GroupCategory",
     "GroupType",
     "LAUNCH_SITE_SLUG_PREFIX",
-    "MANUFACTURER_BUS_CHILDREN",
-    "MANUFACTURER_SLUG_PREFIX",
-    "OPERATOR_SLUG_PREFIX",
+    "ORGANIZATION_BUS_CHILDREN",
+    "ORGANIZATION_SLUG_PREFIX",
     "SMALL_BODY_FLAG_SLUG_PREFIX",
     "SMALL_BODY_FLAGS",
 ]
@@ -107,15 +101,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for c in CONSTELLATIONS
     )
-    operators = tuple(
+    organizations = tuple(
         Group(
-            slug=f"{OPERATOR_SLUG_PREFIX}{o.slug}",
-            type=GroupType.OPERATOR,
+            slug=f"{ORGANIZATION_SLUG_PREFIX}{o.slug}",
+            type=GroupType.ORGANIZATION,
             applies_to=GroupCategory.EARTH_SAT,
             wikidata_qid=o.wikidata_qid,
-            fallback_url=o.url,
+            fallback_url=o.fallback_url,
         )
-        for o in OPERATORS
+        for o in ORGANIZATIONS
     )
     launch_sites = tuple(
         Group(
@@ -125,15 +119,6 @@ def _build_groups() -> tuple[Group, ...]:
             wikidata_qid=s.wikidata_qid,
         )
         for s in LAUNCH_SITES
-    )
-    manufacturers = tuple(
-        Group(
-            slug=f"{MANUFACTURER_SLUG_PREFIX}{m.slug}",
-            type=GroupType.MANUFACTURER,
-            applies_to=GroupCategory.EARTH_SAT,
-            wikidata_qid=m.wikidata_qid,
-        )
-        for m in MANUFACTURERS
     )
     buses = tuple(
         Group(
@@ -194,9 +179,8 @@ def _build_groups() -> tuple[Group, ...]:
     )
     return (
         constellations
-        + operators
+        + organizations
         + launch_sites
-        + manufacturers
         + buses
         + countries
         + orbit_classes
@@ -212,13 +196,17 @@ GROUP_BY_SLUG: dict[str, Group] = {g.slug: g for g in GROUPS}
 assert len(GROUP_BY_SLUG) == len(GROUPS), "Duplicate group slug across types"
 
 
-def _build_manufacturer_bus_children() -> dict[str, list[str]]:
-    """Manufacturer group slug -> its bus group slugs, for the bus chip list."""
+def _build_organization_bus_children() -> dict[str, list[str]]:
+    """Organization group slug -> its bus group slugs, for the bus chip list.
+
+    A bus's manufacturer slug is its organization slug, so buses hang off the
+    merged org page (the org carries the ``manufacturer`` role).
+    """
     children: dict[str, list[str]] = {}
     for b in SATELLITE_BUSES:
-        mfr_slug = f"{MANUFACTURER_SLUG_PREFIX}{b.manufacturer.slug}"
-        children.setdefault(mfr_slug, []).append(f"{BUS_SLUG_PREFIX}{b.slug}")
+        org_slug = f"{ORGANIZATION_SLUG_PREFIX}{b.manufacturer.slug}"
+        children.setdefault(org_slug, []).append(f"{BUS_SLUG_PREFIX}{b.slug}")
     return children
 
 
-MANUFACTURER_BUS_CHILDREN: dict[str, list[str]] = _build_manufacturer_bus_children()
+ORGANIZATION_BUS_CHILDREN: dict[str, list[str]] = _build_organization_bus_children()

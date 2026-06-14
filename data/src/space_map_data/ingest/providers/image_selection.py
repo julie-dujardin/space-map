@@ -40,13 +40,10 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
 )
-from space_map_data.constants.earth_sats.manufacturers import (
-    MANUFACTURER_BY_QID,
-    MANUFACTURER_SLUG_PREFIX,
-)
-from space_map_data.constants.earth_sats.operators import (
-    OPERATOR_BY_QID,
-    OPERATOR_SLUG_PREFIX,
+from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
+from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
+from space_map_data.constants.earth_sats.organizations import (
+    ORGANIZATION_SLUG_PREFIX,
 )
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
@@ -365,11 +362,11 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
         for op_qid in op_qids or ():
             op = OPERATOR_BY_QID.get(op_qid)
             if op is not None:
-                out.setdefault(f"{OPERATOR_SLUG_PREFIX}{op.slug}", []).append(qid)
+                out.setdefault(f"{ORGANIZATION_SLUG_PREFIX}{op.slug}", []).append(qid)
         for m_qid in mfr_qids or ():
             mfr = MANUFACTURER_BY_QID.get(m_qid)
             if mfr is not None:
-                out.setdefault(f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}", []).append(qid)
+                out.setdefault(f"{ORGANIZATION_SLUG_PREFIX}{mfr.slug}", []).append(qid)
         if site_code:
             site = LAUNCH_SITE_BY_CODE.get(site_code)
             if site is not None:

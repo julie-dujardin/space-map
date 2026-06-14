@@ -8,9 +8,8 @@ import { DATA_BASE } from '$lib/fetch/data-base';
 
 export type GroupType =
 	| 'constellation'
-	| 'operator'
+	| 'organization'
 	| 'launch_site'
-	| 'manufacturer'
 	| 'bus'
 	| 'country'
 	| 'orbit_class'
@@ -18,6 +17,9 @@ export type GroupType =
 	| 'earth_orbit_class'
 	| 'category'
 	| 'split_comet';
+
+/** An organization's role tags, surfaced as badges on its /g/org-<slug> page. */
+export type OrganizationRole = 'operator' | 'manufacturer';
 export type GroupCategory = 'earth_sat' | 'small_body' | 'category';
 
 /** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */

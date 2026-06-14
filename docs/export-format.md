@@ -1080,10 +1080,10 @@ interface LocalizedObjectData {
   minor_planet_group?: EntityRef;
   spectral_type?: EntityRef;
   asteroid_family?: EntityRef;
-  operators?: EntityRef[];        // merged from Wikidata P137 + CelesTrak, deduped
+  operators?: EntityRef[];        // merged from Wikidata P137 + CelesTrak, deduped; links to /g/org-<slug>
   constellation?: EntityRef;      // CelesTrak-derived
   bus?: EntityRef;                // CelesTrak-derived; links to /g/bus-<slug>
-  manufacturer?: EntityRef;
+  manufacturer?: EntityRef;       // CelesTrak-derived; links to /g/org-<slug>
   launch_vehicle?: EntityRef;
   launch_site?: EntityRef;        // CelesTrak-derived takes precedence over Wikidata P1427
   developer?: EntityRef[];
@@ -1106,9 +1106,11 @@ interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 
 ## Group detail files
 
-Aggregation entities behind `/g/<slug>` pages (constellations, operators,
-launch sites, manufacturers, countries, orbit classes, and small-body
-flags). Group bundles use the **same hash-bucketing scheme as object
+Aggregation entities behind `/g/<slug>` pages (constellations, organizations,
+launch sites, countries, orbit classes, and small-body flags). An organization
+(`org-<slug>`) is the merged company/agency entity that subsumes the former
+operator and manufacturer roles; its roles are surfaced as tags rather than
+separate pages. Group bundles use the **same hash-bucketing scheme as object
 bundles** (sha256 first-4-bytes BE, mod N) so the frontend reuses
 `hashBucket` for slug → bundle resolution.
 
@@ -1123,7 +1125,7 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
+  type: GroupType;            // "constellation" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
   applies_to: GroupCategory;  // "earth_sat" | "small_body"
   n: number;                  // member count
 }
@@ -1163,8 +1165,9 @@ interface GlobalGroupData {
   url?: string;                     // Fallback external URL when no Wikidata QID
   website?: string;                 // Wikidata P856
   categories?: SatelliteCategory[]; // Constellation-only; top-level use cases (communications, navigation, ...)
+  roles?: ("operator" | "manufacturer")[]; // Organization-only; role tags shown as header badges
 
-  // Earth-sat groups (constellation / operator / launch_site / manufacturer / country).
+  // Earth-sat groups (constellation / organization / launch_site / country).
   // Computed from SATCAT; absent on small-body groups. Also present on the
   // Satellites category, summed over the primary shape classes (LEO/MEO/...).
   launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
@@ -1286,7 +1289,7 @@ The 17 Earth orbit zones from
 `data/src/space_map_data/constants/earth_sats/orbit_class.py` ship as
 `GroupType.EARTH_ORBIT_CLASS` groups with bundles, membership entries in
 `membership/earth.json.gz`, and bucket pages under `groups/__global__/`
-and `groups/{lang}/` — the same shape as constellation/operator/etc.
+and `groups/{lang}/` — the same shape as constellation/organization/etc.
 groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
 `active_count`, plus a localized `constellations` cross-link table
 (no `launch_sites` breakdown). An object holds exactly one shape class plus at most
@@ -1306,14 +1309,13 @@ interface LocalizedGroupData {
   name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct).
   description?: string;
   wikipedia?: { extract?: string; description?: string; url?: string };
-  operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137)
-  manufacturers?: EntityRef[];        // Constellation hardware primes; on a bus page, the bus's single manufacturer
+  operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137); link to /g/org-<slug>
+  manufacturers?: EntityRef[];        // Constellation hardware primes; on a bus page, the bus's single manufacturer; link to /g/org-<slug>
   country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
   instance_of?: EntityRef[];
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
-  related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID (e.g. operator/manufacturer pairs); concept groups (orbit_class, category, small_body_flag) are excluded
-  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, a manufacturer's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
+  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```

@@ -1,16 +1,14 @@
 import * as m from '$lib/paraglide/messages.js';
-import type { GroupType, SatelliteCategory } from '$lib/fetch/groups/registry';
+import type { GroupType, OrganizationRole, SatelliteCategory } from '$lib/fetch/groups/registry';
 
 export function groupTypeLabel(type: GroupType): string {
 	switch (type) {
 		case 'constellation':
 			return m.group_type_constellation();
-		case 'operator':
-			return m.group_type_operator();
+		case 'organization':
+			return m.group_type_organization();
 		case 'launch_site':
 			return m.group_type_launch_site();
-		case 'manufacturer':
-			return m.group_type_manufacturer();
 		case 'bus':
 			return m.group_type_bus();
 		case 'country':
@@ -25,6 +23,11 @@ export function groupTypeLabel(type: GroupType): string {
 		case 'split_comet':
 			return m.group_type_split_comet();
 	}
+}
+
+/** Badge label for an organization's operator/manufacturer role tag. */
+export function organizationRoleLabel(role: OrganizationRole): string {
+	return role === 'operator' ? m.group_type_operator() : m.group_type_manufacturer();
 }
 
 export function satelliteCategoryLabel(cat: SatelliteCategory): string {

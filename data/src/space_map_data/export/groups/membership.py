@@ -19,13 +19,15 @@ from space_map_data.constants.countries import COUNTRY_BY_CODE
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
+from space_map_data.constants.earth_sats.organizations import (
+    OPERATOR_ONLY_MEMBERSHIP_SLUGS,
+    ORGANIZATION_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.satcat import OpsStatus
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
     COUNTRY_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
-    MANUFACTURER_SLUG_PREFIX,
-    OPERATOR_SLUG_PREFIX,
     GroupType,
 )
 from space_map_data.models.object import Object, ObjectType
@@ -108,6 +110,9 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
     unknown_operator_qids: set[str] = set()
     unknown_manufacturer_qids: set[str] = set()
     unknown_country_codes: set[str] = set()
+    # Sats dropped from an org's fleet because it's a disjoint dual shown as a
+    # pure operator (CNES); {org slug: # of manufactured-only sats dropped}.
+    operator_only_dropped: dict[str, int] = {}
     for (
         obj_id,
         c_slug,
@@ -129,20 +134,28 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             if c_slug:
                 per_bus = build.constellation_bus_counts.setdefault(c_slug, {})
                 per_bus[bus_group_slug] = per_bus.get(bus_group_slug, 0) + 1
+        # Operator + manufacturer roles collapse onto one org slug; dedup so a
+        # sat both built and flown by the same org counts once for its fleet.
+        org_slugs: set[str] = set()
         for qid in op_qids or ():
             op = OPERATOR_BY_QID.get(qid)
             if op is None:
                 unknown_operator_qids.add(qid)
                 continue
-            slugs.append((GroupType.OPERATOR, f"{OPERATOR_SLUG_PREFIX}{op.slug}"))
+            org_slugs.add(f"{ORGANIZATION_SLUG_PREFIX}{op.slug}")
         for qid in mfr_qids or ():
             mfr = MANUFACTURER_BY_QID.get(qid)
             if mfr is None:
                 unknown_manufacturer_qids.add(qid)
                 continue
-            slugs.append(
-                (GroupType.MANUFACTURER, f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}")
-            )
+            org_slug = f"{ORGANIZATION_SLUG_PREFIX}{mfr.slug}"
+            if mfr.slug in OPERATOR_ONLY_MEMBERSHIP_SLUGS and org_slug not in org_slugs:
+                operator_only_dropped[org_slug] = (
+                    operator_only_dropped.get(org_slug, 0) + 1
+                )
+                continue
+            org_slugs.add(org_slug)
+        slugs.extend((GroupType.ORGANIZATION, s) for s in org_slugs)
         if site_code:
             site = LAUNCH_SITE_BY_CODE.get(site_code)
             if site is not None:
@@ -186,6 +199,13 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             "Dropped %d unknown country code(s) during group build: %s",
             len(unknown_country_codes),
             sorted(unknown_country_codes),
+        )
+    for org_slug, n in sorted(operator_only_dropped.items()):
+        logger.info(
+            "Org %s shown as operator-only: dropped %d manufactured-only sat(s) "
+            "(disjoint dual; they remain under their operators)",
+            org_slug,
+            n,
         )
     return build
 

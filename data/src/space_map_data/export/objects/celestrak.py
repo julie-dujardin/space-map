@@ -5,14 +5,13 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
 )
-from space_map_data.constants.earth_sats.manufacturers import (
-    MANUFACTURER_BY_QID,
-    MANUFACTURER_SLUG_PREFIX,
-)
+from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import (
     OPERATOR_BY_QID,
-    OPERATOR_SLUG_PREFIX,
     ActiveDate,
+)
+from space_map_data.constants.earth_sats.organizations import (
+    ORGANIZATION_SLUG_PREFIX,
 )
 from space_map_data.constants.earth_sats.satellite_models import (
     BUS_BY_SLUG,
@@ -176,7 +175,7 @@ def resolve_operator_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Resolve operator QIDs to entity refs, linked to /g/op-<slug>.
+    """Resolve operator QIDs to entity refs, linked to /g/org-<slug>.
 
     Falls back to the Wikidata label for the visible name. ``active_from`` /
     ``active_until`` (when set on the OperatorSpec) ride along so the satellite
@@ -194,7 +193,7 @@ def resolve_operator_refs(
         ref_dict: dict = {
             "name": name,
             "primary_type": "group",
-            "primary_id": f"{OPERATOR_SLUG_PREFIX}{spec.slug}",
+            "primary_id": f"{ORGANIZATION_SLUG_PREFIX}{spec.slug}",
         }
         if spec.active_from is not None:
             ref_dict["active_from"] = _serialize_active_date(spec.active_from)
@@ -209,7 +208,7 @@ def resolve_manufacturer_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Resolve manufacturer QIDs to entity refs, linked to /g/mfr-<slug>."""
+    """Resolve manufacturer QIDs to entity refs, linked to /g/org-<slug>."""
     refs = []
     for qid in qids:
         spec = MANUFACTURER_BY_QID.get(qid)
@@ -221,7 +220,7 @@ def resolve_manufacturer_refs(
             {
                 "name": name,
                 "primary_type": "group",
-                "primary_id": f"{MANUFACTURER_SLUG_PREFIX}{spec.slug}",
+                "primary_id": f"{ORGANIZATION_SLUG_PREFIX}{spec.slug}",
             }
         )
     return refs

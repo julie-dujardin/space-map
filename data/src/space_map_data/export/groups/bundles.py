@@ -12,8 +12,6 @@ from pathlib import Path
 
 import orjson
 
-from collections import defaultdict
-
 from space_map_data.constants.categories import CATEGORY_BY_SLUG
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
@@ -21,14 +19,16 @@ from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
+from space_map_data.constants.earth_sats.organizations import (
+    ORGANIZATION_BY_SLUG,
+    ORGANIZATION_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.satellite_models import BUS_BY_SLUG
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
-    MANUFACTURER_SLUG_PREFIX,
-    OPERATOR_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
     GROUP_BY_SLUG,
     GROUPS,
@@ -84,6 +84,12 @@ def _build_global(
         data["wikidata_qid"] = group.wikidata_qid
     if group.fallback_url:
         data["url"] = group.fallback_url
+    if group.type is GroupType.ORGANIZATION:
+        org = ORGANIZATION_BY_SLUG.get(
+            group.slug.removeprefix(ORGANIZATION_SLUG_PREFIX)
+        )
+        if org:
+            data["roles"] = list(org.roles)
     if group.type is GroupType.CONSTELLATION:
         spec = CONSTELLATION_BY_SLUG.get(group.slug)
         if spec and spec.category:
@@ -147,7 +153,6 @@ def _build_localized(
     wiki_summaries: dict[str, WikipediaSummary],
     extracted: dict | None,
     stats: GroupSatcatStats | None,
-    related_by_qid: dict[str, list[Group]],
     child_slugs: list[str] | None,
     member_counts: dict[str, int],
     child_counts: dict[str, int] | None = None,
@@ -189,9 +194,6 @@ def _build_localized(
     manufacturers = _manufacturer_refs_for_group(group, lang, wikidata_entities)
     if manufacturers:
         data["manufacturers"] = manufacturers
-    related = _related_role_refs(group, related_by_qid, lang, wikidata_entities)
-    if related:
-        data["related_groups"] = related
     if extracted:
         # Country pages don't show their own country of origin (it's themselves).
         if group.type is not GroupType.COUNTRY:
@@ -383,7 +385,7 @@ def _operator_refs_for_group(
     operators = OPERATOR_BY_CONSTELLATION.get(group.slug, [])
     refs: list[dict] = []
     for op in operators:
-        op_group_slug = f"{OPERATOR_SLUG_PREFIX}{op.slug}"
+        org_group_slug = f"{ORGANIZATION_SLUG_PREFIX}{op.slug}"
         name = op.name
         if op.wikidata_qid:
             ref = resolve_entity_ref(op.wikidata_qid, lang, wikidata_entities)
@@ -393,7 +395,7 @@ def _operator_refs_for_group(
             {
                 "name": name,
                 "primary_type": "group",
-                "primary_id": op_group_slug,
+                "primary_id": org_group_slug,
             }
         )
     return refs
@@ -414,7 +416,7 @@ def _manufacturer_refs_for_group(
         return []
     refs: list[dict] = []
     for mfr in manufacturers:
-        mfr_group_slug = f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}"
+        org_group_slug = f"{ORGANIZATION_SLUG_PREFIX}{mfr.slug}"
         name = mfr.name
         if mfr.wikidata_qid:
             ref = resolve_entity_ref(mfr.wikidata_qid, lang, wikidata_entities)
@@ -424,61 +426,10 @@ def _manufacturer_refs_for_group(
             {
                 "name": name,
                 "primary_type": "group",
-                "primary_id": mfr_group_slug,
+                "primary_id": org_group_slug,
             }
         )
     return refs
-
-
-def _related_role_refs(
-    group: Group,
-    related_by_qid: dict[str, list[Group]],
-    lang: str,
-    wikidata_entities: WikidataEntityCache,
-) -> list[dict]:
-    """Sibling groups (different role, same Wikidata QID) for cross-linking."""
-    if not group.wikidata_qid:
-        return []
-    siblings = related_by_qid.get(group.wikidata_qid, [])
-    refs: list[dict] = []
-    for sibling in siblings:
-        if sibling.slug == group.slug:
-            continue
-        name: str | None = None
-        if sibling.wikidata_qid:
-            ref = resolve_entity_ref(sibling.wikidata_qid, lang, wikidata_entities)
-            if ref is not None and ref.name:
-                name = ref.name
-        refs.append(
-            {
-                "name": name or sibling.slug,
-                "primary_type": "group",
-                "primary_id": sibling.slug,
-                "role": str(sibling.type),
-            }
-        )
-    return refs
-
-
-# Concept groups collide on shared encyclopedia QIDs (IMB/MBA/OMB → "asteroid
-# belt") rather than entity identities, so they don't cross-link as siblings.
-_CONCEPT_GROUP_TYPES = frozenset(
-    {
-        GroupType.ORBIT_CLASS,
-        GroupType.EARTH_ORBIT_CLASS,
-        GroupType.CATEGORY,
-        GroupType.SMALL_BODY_FLAG,
-    }
-)
-
-
-def _build_related_by_qid() -> dict[str, list[Group]]:
-    """QID → list of groups sharing it across types (typically op + mfr pair)."""
-    by_qid: dict[str, list[Group]] = defaultdict(list)
-    for g in GROUPS:
-        if g.wikidata_qid and g.type not in _CONCEPT_GROUP_TYPES:
-            by_qid[g.wikidata_qid].append(g)
-    return {qid: gs for qid, gs in by_qid.items() if len(gs) > 1}
 
 
 def _flatten_membership(
@@ -532,7 +483,6 @@ def write_group_bundles(
     if extra_member_counts:
         member_counts.update(extra_member_counts)
     satcat_stats = _flatten_stats(stats_by_type)
-    related_by_qid = _build_related_by_qid()
     global_by_slug: dict[str, dict] = {}
     localized_by_slug: dict[str, dict[str, dict]] = {lang: {} for lang in LANGUAGES}
 
@@ -578,7 +528,6 @@ def write_group_bundles(
                 wiki_summaries,
                 extracted,
                 stats,
-                related_by_qid,
                 child_slugs,
                 member_counts,
                 child_counts,

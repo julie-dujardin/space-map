@@ -4,7 +4,6 @@
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
 	import type { AppState } from '$lib/state/app-state.svelte';
-	import { groupTypeLabel } from '$lib/format/group';
 	import { formatIsoDate } from '$lib/format/date';
 	import { formatNumber } from '$lib/format/quantities';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
@@ -35,7 +34,6 @@
 	let countries = $derived(localized?.country_of_origin ?? []);
 	let launchSites = $derived(localized?.launch_sites ?? []);
 	let constellations = $derived(localized?.constellations ?? []);
-	let related = $derived(localized?.related_groups ?? []);
 	// Satellite buses flown by this group's members (constellations + manufacturers).
 	let busChildGroups = $derived((localized?.child_groups ?? []).filter((c) => c.role === 'bus'));
 
@@ -97,8 +95,7 @@
 			!!dissolved ||
 			operators.length > 0 ||
 			manufacturers.length > 0 ||
-			countries.length > 0 ||
-			related.length > 0
+			countries.length > 0
 	);
 
 	let groupType = $derived(global?.type);
@@ -181,11 +178,6 @@
 				<EntityLinks entities={countries} />
 			</Row>
 		{/if}
-		{#each related as r (r.primary_id)}
-			<Row label={groupTypeLabel(r.role)}>
-				<EntityLinks entities={[r]} />
-			</Row>
-		{/each}
 	</Section>
 {/if}
 

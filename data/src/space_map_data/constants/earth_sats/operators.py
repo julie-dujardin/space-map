@@ -9,9 +9,8 @@ to the fleet through one of two paths:
   isn't a SATCAT source but owns one or more constellations (SpaceX operates
   Starlink, Amazon operates Kuiper, EUMETSAT operates MetOp/Meteosat, ...).
 
-``slug`` is the URL-friendly identifier used by the operator group page
-(prefixed with ``op-`` in the group registry to avoid collisions with
-constellation slugs).
+``slug`` is the URL-friendly identifier; the merged organization group page
+prefixes it with ``org-`` (see ``organizations.py``).
 """
 
 from collections import defaultdict
@@ -23,15 +22,11 @@ from space_map_data.constants.earth_sats.constellations import SatelliteCategory
 # Year-only or exact date for operator active periods.
 ActiveDate = int | date
 
-# Group slug namespace: operator group slugs are ``f"{OPERATOR_SLUG_PREFIX}{op.slug}"``
-# so they never collide with bare constellation slugs in the group registry.
-OPERATOR_SLUG_PREFIX = "op-"
-
 
 @dataclass(frozen=True)
 class OperatorSpec:
     name: str
-    slug: str  # URL slug, unique within OPERATORS; group registry prefixes with "op-"
+    slug: str  # URL slug, unique within OPERATORS; org registry prefixes with "org-"
     wikidata_qid: str | None = None
     source: str | None = None  # SATCAT SOURCE/OWNER code, when one exists
     constellations: tuple[str, ...] = ()  # constellation slugs operated by this entity

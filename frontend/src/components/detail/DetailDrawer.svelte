@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { groupTypeLabel, satelliteCategoryLabel } from '$lib/format/group';
+	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
@@ -73,6 +73,7 @@
 		const g = groupDetail?.global;
 		if (!g) return undefined;
 		const out: string[] = [groupTypeLabel(g.type)];
+		for (const role of g.roles ?? []) out.push(organizationRoleLabel(role));
 		for (const c of g.categories ?? []) out.push(satelliteCategoryLabel(c));
 		return out;
 	});
