@@ -44,9 +44,11 @@ class SatelliteBusSpec:
     notes: str | None = None
 
 
-# AI discosure:
-# Ran deep research, then manually checked/fix QIDs & matched to satcat.csv
-# TODO: finish checking. currently checked up to next TODO
+# AI disclosure:
+# Ran deep research, then checked/fixed QIDs & matched known_satellites to satcat.csv.
+# Full review complete (all entries verified against Wikidata, Wikipedia, Gunter's Space Page,
+# and CelesTrak satcat.csv). Entries that don't resolve in satcat are annotated inline
+# (launch failures, not-yet-launched, deep-space, decayed-and-removed, or ambiguous names).
 SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     # ---------- Hughes / Boeing (spin-stabilized drums, then 3-axis) ----------
     SatelliteBusSpec(
@@ -210,7 +212,6 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ASIASAT 4",
             "PAKSAT 1",  # Palapa-C1, HGS-3, Anatolia-1
             "PALAPA C2",
-            "APSTAR-2R",
             "INTELSAT 802",
             "JCSAT-3",
             "INTELSAT 26",  # JCSAT-4
@@ -488,7 +489,6 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         "Retrieved April 19, 2026, from https://space.skyrocket.de/doc_sat/thales-alenia_elite.htm",
     ),
     # ---------- SSL / Loral / Lanteris ----------
-    # TODO: check entries below
     SatelliteBusSpec(
         slug="ssl-1300",
         wikidata_qid="Q4364714",
@@ -508,17 +508,16 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         known_satellites=(
             "SUPERBIRD-A",
             "SUPERBIRD-A1",
-            "SUPERBIRD-B",
+            "SUPERBIRD-B",  # lost after 1990 launch; not in current satcat
             "SUPERBIRD-B1",
-            "AGILA 2",
-            "APSTAR 2R",
+            "ABS-3",  # Agila 2, renamed ABS-3
+            "APSTAR-2R",
             "ASIASAT 5",
             "ASIASAT 6",
             "ASIASAT 7",
             "ASIASAT 8",
             "ASIASAT 9",
-            "AZERSPACE 2",
-            "INTELSAT 38",
+            "AZERSPACE 2",  # = Intelsat 38 (one satellite)
             "BRISAT",
             "BSAT-4A",
             "BSAT-4B",
@@ -534,7 +533,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ECHOSTAR 5",
             "ECHOSTAR 6",
             "ECHOSTAR 8",
-            "ECHOSTAR 9",
+            # EchoStar 9 = Galaxy 23 (listed)
             "ECHOSTAR 11",
             "ECHOSTAR 15",
             "ECHOSTAR 16",
@@ -543,11 +542,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ECHOSTAR 19",
             "ECHOSTAR 21",
             "ECHOSTAR 23",
-            "ECHOSTAR 24",
-            "JUPITER 1",
-            "JUPITER 2",
-            "JUPITER 3",
-            "EUROPE*STAR 1",
+            "ECHOSTAR 24",  # = Jupiter 3
+            # Jupiter 1/2 = EchoStar 17/19 (listed); Europe*Star 1 = Intelsat 12 (listed)
             "INTELSAT 12",
             "INTELSAT 14",
             "INTELSAT 17",
@@ -563,12 +559,12 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "INTELSAT 40E",
             "INTELSAT 701",
             "INTELSAT 702",
-            "INTELSAT 703",
+            "INTELSAT 703",  # decayed/removed from satcat
             "INTELSAT 704",
             "INTELSAT 705",
             "INTELSAT 706",
             "INTELSAT 707",
-            "INTELSAT 708",
+            "INTELSAT 708",  # 1996 Long March 3B launch failure
             "INTELSAT 709",
             "INTELSAT 901",
             "INTELSAT 902",
@@ -595,75 +591,66 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "GOES 10",
             "GOES 11",
             "GOES 12",
-            "IPSTAR 1",
-            "JCSAT 14",
-            "JCSAT 15",
+            "THAICOM 4",  # IPSTAR-1
+            "JCSAT-2B",  # = JCSAT-14 in satcat
+            "JCSAT-15",
             "JCSAT-16",
-            "MBSAT 1",
-            "MTSAT 1",
-            "MTSAT 1R",
+            "MBSAT 1",  # MBSat; decayed, not in current satcat
+            "MTSAT 1",  # 1999 H-II launch failure
+            "MTSAT-1R",  # = Himawari-6
             "N-STAR A",
             "N-STAR B",
             "NIMIQ 5",
             "NIMIQ 6",
-            "NSS 12",
-            "NBN-CO 1A",
-            "NBN-CO 1B",
-            "SKY MUSTER 1",
-            "SKY MUSTER 2",
+            "NSS-12",
+            "SKY MUSTER 1",  # = NBN-Co 1A
+            "SKY MUSTER 2",  # = NBN-Co 1B
             "OPTUS 10",
             "OPTUS C1",
             "ORION 2",
-            "TELSTAR 5",
-            "TELSTAR 6",
-            "TELSTAR 7",
+            # Telstar 5/6/7 = Galaxy 25/26/27 (listed)
             "TELSTAR 11N",
             "TELSTAR 12",
-            "TELSTAR 14",
-            "TELSTAR 14R",
+            "TELSTAR 14R",  # Telstar 14 = Estrela do Sul (listed)
             "TELSTAR 18",
-            "TELSTAR 18 VANTAGE",
-            "TELSTAR 19 VANTAGE",
-            "ESTRELA DO SUL 1",
-            "ESTRELA DO SUL 2",
+            "TELSTAR 18V",
+            "TELSTAR 19V",
+            "ESTRELA DO SUL",  # Estrela do Sul 1; Estrela do Sul 2 = Telstar 14R (listed)
             "PAS 6",
-            "PAS 7",
-            "PAS 8",
-            "PROTOSTAR 1",
-            "PSN-6",
+            "INTELSAT 7",  # PAS-7
+            "INTELSAT 8",  # PAS-8
+            "PROTOSTAR 1",  # ProtoStar I; deorbited 2010, not in satcat
+            "NUSANTARA SATU",  # PSN-6
             "QUETZSAT 1",
-            "SATMEX 6",
-            "SATMEX 8",
+            # Satmex 6/8 = Eutelsat 113/117 West A (listed)
             "EUTELSAT 113 WEST A",
             "EUTELSAT 117 WEST A",
             "EUTELSAT 7C",
-            "EUTELSAT 25B",
-            "ES'HAIL 1",
+            "ES'HAIL 1",  # = Eutelsat 25B (one satellite)
             "EUTELSAT 65 WEST A",
             "SES-4",
             "SES-5",
-            "SIRIUS FM-1",
-            "SIRIUS FM-2",
-            "SIRIUS FM-3",
-            "SIRIUS FM-5",
-            "SIRIUS FM-6",
+            "SIRIUS-1",  # Sirius FM-1
+            "SIRIUS-2",  # Sirius FM-2
+            "SIRIUS-3",  # Sirius FM-3
+            "FM-5",  # Sirius FM-5 (satcat OBJECT_NAME is literally "FM-5")
+            "FM-6",  # Sirius FM-6
             "SXM-7",
             "SXM-8",
             "SXM-9",
             "SXM-10",
             "SPAINSAT",
-            "XTAR-LANT",
+            # XTAR-LANT is a hosted payload on Spainsat (listed)
             "XTAR-EUR",
             "STAR ONE C4",
             "STAR ONE D1",
             "STAR ONE D2",
-            "TELKOM 4",
-            "MERAH PUTIH",
+            "TELKOM 4",  # = Merah Putih (bare "MERAH PUTIH" also matches Merah Putih 2, a Spacebus-4000)
             "TERRESTAR-1",
             "THOR 7",
             "VIASAT-1",
-            "WILDBLUE 1",
-            "XM 5",
+            "WILDBLUE-1",
+            "XM-5",
             "AMAZONAS 3",
             "AMAZONAS 5",
             "ANIK G1",
@@ -689,12 +676,13 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("Star-1", "Star-2", "STARBus", "STAR Bus family"),
         first_launch="1997-11-12",
         known_satellites=(
-            "INDOSTAR-1",
+            "INDOSTAR 1",
             "BSAT-2A",
-            "BSAT-2B",
+            "BSAT-2B",  # launch failure (stranded by Ariane upper stage), but cataloged
             "BSAT-2C",
         ),
         notes="Parent family umbrella; see GEOStar/LEOStar/MicroStar for variants. "
+        "These 4 are STAR-1 craft (CTA heritage); Q1131474 is the umbrella Star Bus item. "
         "Originally CTA Space Systems, acquired by Orbital Sciences 1997.",
     ),
     SatelliteBusSpec(
@@ -704,14 +692,17 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("Aquila",),
         first_launch="2006-06-21",
         known_satellites=(
-            "USA-187",
-            "USA-188",  # MiTEx-A/B
-            "USA-253",
-            "USA-254",
-            "USA-270",
-            "USA-271",  # GSSAP 1-4
+            "USA 187",  # MiTEx-A (MiTEx-B / USA 188 was Lockheed Martin, not Orbital)
+            "USA 253",  # GSSAP 1
+            "USA 254",  # GSSAP 2
+            "USA 270",  # GSSAP 3
+            "USA 271",  # GSSAP 4
+            "USA 324",  # GSSAP 5
+            "USA 325",  # GSSAP 6
+            "USA 582",  # GSSAP 7
+            "USA 583",  # GSSAP 8
         ),
-        notes="Small sub-5 kW GEO bus, primarily US government/military (MiTEx, GSSAP).",
+        notes="Small sub-5 kW GEO bus, primarily US government/military (MiTEx-A, GSSAP).",
     ),
     SatelliteBusSpec(
         slug="geostar-2",
@@ -726,7 +717,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "GALAXY 14",
             "GALAXY 15",
             "GALAXY 30",
-            "TELKOM-2",
+            "TELKOM 2",
             "OPTUS D1",
             "OPTUS D2",
             "OPTUS D3",
@@ -737,7 +728,6 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "INTELSAT 23",
             "HORIZONS-2",
             "THOR 5",
-            "AMC-12",
             "AMC-21",
             "NSS-9",
             "MEASAT-3A",
@@ -746,23 +736,15 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "SES-3",
             "SES-8",
             "KOREASAT 6",
-            "NEW DAWN",
-            "INTELSAT 28",
+            "INTELSAT 28",  # = New Dawn
             "HYLAS 2",
-            "MEXSAT-3",
-            "STAR ONE C1",
-            "STAR ONE C2",
+            "MEXSAT 3",
             "STAR ONE C3",
-            "AZERSPACE-1",
-            "AFRICASAT-1A",
+            "AZERSPACE 1",  # = Africasat-1A
             "THAICOM 6",
             "THAICOM 8",
-            "SKY-MEXICO 1",
+            "SKY MEXICO-1",
             "EUTELSAT 5 WEST B",
-            "VIASAT-1",
-            "ABS-2",
-            "ABS-3A",
-            "HISPASAT 36W-1",
         ),
         notes="Modular rectangular body with central composite thrust cylinder, 2 articulated "
         "solar wings, payload up to 5.5 kW; 15-18 yr design life.",
@@ -777,67 +759,65 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         known_satellites=(
             "AL YAH 3",
             "GOVSAT-1",
-            "HYLAS-4",
+            "HYLAS 4",
             "MEV-1",
             "MEV-2",
             "GALAXY 33",
             "GALAXY 34",
             "SES-18",
             "SES-19",
-            "ASBM 1",
-            "ASBM 2",
-            "INMARSAT GX 10A",
-            "INMARSAT GX 10B",
+            "ASBM-1",  # hosts Inmarsat GX 10A payload
+            "ASBM-2",  # hosts Inmarsat GX 10B payload
         ),
         notes="Evolutionary growth of GEOStar-2 with larger solar arrays and hybrid propulsion option. "
         "Supports dual-launch stacking (MEV/MRV, Galaxy 33+34).",
     ),
     SatelliteBusSpec(
         slug="leostar",
-        wikidata_qid="Q1131474",  # No dedicated Wikidata item; covered under Star Bus Q1131474
+        wikidata_qid=None,  # No dedicated item for the umbrella; Q133286575 covers only LEOStar-3
         manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("LEOStar-1", "LEOStar-2", "LEOStar-3"),
-        first_launch="1995-12-30",
+        first_launch="2003",  # OrbView-4 (2001) was the first LEOStar flight but failed to orbit
         mass_kg_range=(300, 4000),
         known_satellites=(
-            "RXTE",
-            "SEASTAR",
-            "ORBVIEW-3",
-            "ORBVIEW-4",
-            "GALEX",
+            "ORBVIEW 3",  # LEOStar-1
+            "ORBVIEW-4",  # LEOStar-1; 2001 Taurus launch failure, never cataloged
+            "GALEX",  # LEOStar-2
             "SORCE",
             "RHESSI",
-            "AIM",
-            "GLAST",
+            "AIM",  # LEOStar-2 (NOT rs-300)
+            "FGRST (GLAST)",  # Fermi / GLAST, LEOStar-3
             "NUSTAR",
-            "DART",
-            "OCO-2",
-            "LANDSAT 8",
+            "OCO 2",
+            "LANDSAT 8",  # LEOStar-3
             "ICESAT-2",
-            "NOAA-20",
-            "NOAA-21",
+            "NOAA 21",  # JPSS-2, LEOStar-3 (NOAA-20/JPSS-1 was Ball BCP-2000, not LEOStar)
+            "TESS",  # LEOStar-2
+            "ICON",  # LEOStar-2
         ),
         notes="NASA SMEx/Earth-science LEO platform. LEOStar-2 hexagonal prism; LEOStar-3 is 4,000 kg class. "
-        "No standalone English Wikipedia article (covered under Star Bus).",
+        "No standalone English Wikipedia article (covered under Star Bus). "
+        "Pruned: RXTE (GSFC bus), SeaStar (PegaStar), DART (HAPS), NOAA-20 (Ball BCP-2000).",
     ),
     SatelliteBusSpec(
         slug="microstar",
-        wikidata_qid="Q1131474",
+        wikidata_qid=None,  # No dedicated item; Q1131474 is the umbrella Star Bus, not MicroStar
         manufacturer=MANUFACTURER_BY_SLUG["orbital-sciences"],
         also_known_as=("Microstar", "MicroStar-1", "MicroStar-2"),
-        first_launch="1991-07-17",
+        first_launch="1995-04-03",  # Orbcomm FM01/FM02 (Orbcomm-X 1991 prototype predates the bus)
         mass_kg_range=(43, 68),
         solar_span_m=2.2,
         known_satellites=(
-            "ORBCOMM-X",
-            "ORBCOMM FM1",
-            "ORBCOMM FM2",
-            "ORBCOMM FM3",
-            "ORBCOMM FM4",
-            "ORBCOMM FM5",
-            "ORBCOMM FM6",
-            "ORBCOMM FM7",
-            "ORBCOMM FM8",
+            # satcat zero-pads FM01-FM09; FM10+ unpadded
+            "ORBCOMM FM01",
+            "ORBCOMM FM02",
+            "ORBCOMM FM03",
+            "ORBCOMM FM04",
+            "ORBCOMM FM05",
+            "ORBCOMM FM06",
+            "ORBCOMM FM07",
+            "ORBCOMM FM08",
+            "ORBCOMM FM09",
             "ORBCOMM FM10",
             "ORBCOMM FM11",
             "ORBCOMM FM12",
@@ -865,7 +845,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ORBCOMM FM34",
             "ORBCOMM FM35",
             "ORBCOMM FM36",
-            "ORBVIEW-1",
+            "ORBVIEW 1",  # OrbView-1 / Microlab
             "MUBLCOM",
             "FORMOSAT-3 FM1",
             "FORMOSAT-3 FM2",
@@ -876,7 +856,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "IBEX",
         ),
         notes="Flat disk stowed (~1 m dia x 16 cm), deploys butterfly. First Orbcomm LEO constellation. "
-        "QID on dewiki; no standalone enwiki bus article.",
+        "No dedicated Wikidata/enwiki bus article. IBEX is the MicroStar-2 variant. "
+        "Orbcomm-X (1991 prototype) and the OG2/Sterkh sats are different buses (excluded).",
     ),
     # ---------- Thales Alenia Space (Spacebus family + PRIMA + Proteus) ----------
     SatelliteBusSpec(
@@ -890,18 +871,22 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     ),
     SatelliteBusSpec(
         slug="spacebus-100",
-        wikidata_qid="Q2091683",
+        wikidata_qid="Q125680103",  # Spacebus-1000 (no enwiki sitelink)
         manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         also_known_as=("Spacebus 1000", "Eurosatellite Spacebus 100"),
         first_launch="1985-02-08",
         mass_kg_range=(1170, 1500),
         solar_span_m=21.0,
-        known_satellites=("ARABSAT 1A", "ARABSAT 1B", "ARABSAT 1C"),
+        known_satellites=(
+            "ARABSAT-1A",
+            "ARABSAT-1B",
+            "INSAT-2DT",
+        ),  # Arabsat-1C sold to India
         notes="Franco-German Eurosatellite consortium (Aerospatiale + MBB).",
     ),
     SatelliteBusSpec(
         slug="spacebus-300",
-        wikidata_qid="Q2091683",
+        wikidata_qid="Q125680104",  # Spacebus-300 (no enwiki sitelink)
         manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         also_known_as=("SB-300",),
         first_launch="1987-11-21",
@@ -910,28 +895,28 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "TDF 1",
             "TDF 2",
             "TELE-X",
-            "TV-SAT 1",
-            "TV-SAT 2",
+            "TVSAT 1",
+            "TVSAT 2",
         ),
         notes="Eurosatellite DBS bus for TV-Sat/TDF/Tele-X programs.",
     ),
     SatelliteBusSpec(
         slug="spacebus-2000",
-        wikidata_qid="Q2091683",
+        wikidata_qid="Q125680105",  # Spacebus-2000 (no enwiki sitelink)
         manufacturer=MANUFACTURER_BY_SLUG["aerospatiale"],
         first_launch="1990-08-30",
         mass_kg_range=(1800, 2500),
         solar_span_m=22.4,
         known_satellites=(
-            "EUTELSAT-2 F1",
-            "EUTELSAT-2 F2",
-            "EUTELSAT-2 F3",
-            "EUTELSAT-2 F4",
-            "EUTELSAT-2 F5",
+            "EUTELSAT 2-F1",
+            "EUTELSAT 2-F2",
+            "EUTELSAT 2-F3",
+            "EUTELSAT 2-F4",
+            "EUTELSAT-2 F5",  # lost in 1994 Ariane failure (with Turksat 1A); not in satcat
             "AMC-5",
             "HOT BIRD 1",
             "NAHUEL 1A",
-            "TURKSAT 1A",
+            "TURKSAT 1A",  # lost in 1994 Ariane failure; not in satcat
             "TURKSAT 1B",
             "TURKSAT 1C",
         ),
@@ -949,35 +934,36 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="1996-07-09",
         mass_kg_range=(2000, 6000),
         known_satellites=(
-            "ARABSAT 2A",
-            "ARABSAT 2B",
-            "SINOSAT 1",
+            "ARABSAT-2A",
+            "ARABSAT-2B",
+            "ZHONGXING-5B",  # Sinosat-1
             "THAICOM 3",
             "THAICOM 5",
-            "ATLANTIC BIRD 2",
-            "ARABSAT 3A",
-            "COMSAT BW 1",
-            "COMSAT BW 2",
-            "EUROBIRD 1",
+            "EUTELSAT 12 WEST B",  # Atlantic Bird 2
+            "BADR-3",  # Arabsat-3A
+            "COMSATBW-1",
+            "COMSATBW-2",
+            "EUTELSAT 133 WEST A",  # Eurobird 1
             "EUTELSAT W2",
-            "EUTELSAT W3",
-            "EUTELSAT W4",
-            "EUTELSAT W5",
+            "EUTELSAT 48C",  # Eutelsat W3
+            "EUTELSAT 80A",  # Eutelsat W4
+            "EUTELSAT 33B",  # Eutelsat W5
             "HISPASAT 1C",
-            "HISPASAT 1D",
-            "SIRIUS 2",
+            "HISPASAT 30W-4",  # Hispasat 1D
+            "ASTRA 5A",  # Sirius 2
             "AMC-9",
-            "EURASIASAT 1",
+            "TURKSAT 2A",  # Eurasiasat 1
             "GALAXY 17",
-            "HOT BIRD 6",
-            "HOT BIRD 7A",
+            "EUTELSAT 33D",  # Hot Bird 6
+            "EUTELSAT HOTBIRD 13E",  # Hot Bird 7A
             "STAR ONE C1",
             "STAR ONE C2",
-            "STELLAT 5",
-            "STENTOR",
-            "ASTRA 1K",
+            "EUTELSAT 5 WEST A",  # Stellat 5
+            "STENTOR",  # lost in 2002 Ariane 5 ECA failure; not in satcat
+            "ASTRA 1K",  # reached only parking orbit (2002 Proton failure); cataloged, decayed
         ),
-        notes="5-16 kW power, 50 V bus + Ni-H2 batteries.",
+        notes="5-16 kW power, 50 V bus + Ni-H2 batteries. "
+        "Spans sub-variants 3000A/B2/B3/B3S (distinct Wikidata items exist); Q2091683 is the umbrella.",
     ),
     SatelliteBusSpec(
         slug="spacebus-4000",
@@ -995,7 +981,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(3000, 5900),
         known_satellites=(
             "ATHENA-FIDUS",
-            "BANGABANDHU 1",
+            "BANGABANDHUSAT-1",  # Bangabandhu-1
             "INMARSAT GX5",
             "KOREASAT 5",
             "KOREASAT 5A",
@@ -1003,40 +989,68 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "KOREASAT 7",
             "NILESAT 201",
             "NILESAT 301",
-            "SES 22",
-            "SES 23",
+            "SES-22",
+            "SES-23",  # not in satcat (not separately cataloged / not yet launched)
             "SICRAL 2",
-            "TELKOM-3S",
+            "TELKOM 3S",
             "MERAH PUTIH 2",
             "THOR 6",
             "TURKSAT 3A",
-            "PALAPA-D",
+            "PALAPA D",
             "RASCOM-QAF 1",
             "RASCOM-QAF 1R",
             "SYRACUSE 3A",
             "SYRACUSE 3B",
-            "APSTAR 6",
-            "APSTAR 7",
-            "TURKMENALEM 52E",
-            "ZX 6B",
-            "ZX 9",
-            "ZX 12",
-            "AMC-12",
-            "EUTELSAT W3B",
+            "APSTAR-6",
+            "APSTAR-7",
+            "TURKMENALEM52E/MONACOSAT",  # TurkmenAlem 52E / MonacoSat
+            "ZHONGXING-6B",  # ZX 6B
+            "ZHONGXING-9",  # ZX 9
+            "ZHONGXING-12",  # ZX 12
+            "NSS-10",  # ex AMC-12 (renamed 2009)
+            "EUTELSAT W3B",  # failed to orbit 2010; cataloged
             "EUTELSAT 16A",
             "EUTELSAT 8 WEST B",
             "EUTELSAT 21B",
-            "YAMAL-402",
+            "YAMAL 402",
+            "YAMAL 601",  # Spacebus-4000C4 (moved from ekspress)
             "CIEL-2",
-            "EUTELSAT W7",
-            "HELLAS SAT 3",
-            "EUTELSAT W2A",
+            "EUTELSAT 36B",  # Eutelsat W7
+            "HELLAS-SAT 3",
+            "EUTELSAT 10A",  # Eutelsat W2A
         ),
-        notes="100 V bus, Li-ion batteries, integrated OBC; first GEO platform with in-GEO star tracker.",
+        notes="100 V bus, Li-ion batteries, integrated OBC; first GEO platform with in-GEO star tracker. "
+        "Spans 4000B2/B3/C1-C4 sub-variants (distinct Wikidata items exist); Q2091683 is the umbrella.",
+    ),
+    SatelliteBusSpec(
+        slug="spacebus-neo",
+        wikidata_qid="Q21711928",
+        manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
+        also_known_as=(
+            "Spacebus Neo",
+            "Spacebus-Neo-100",
+            "Spacebus-Neo-200",
+            "SB-Neo",
+        ),
+        first_launch="2020-01-16",
+        mass_kg_range=(3600, 6500),
+        known_satellites=(
+            "EUTELSAT KONNECT",
+            "SYRACUSE 4A",
+            "SES-17",
+            "EUTELSAT KONNECT VHTS",
+            "EUTELSAT 10B",
+            "AMAZONAS NEXUS",
+            "NUSANTARA TIGA (SATRIA)",
+            "ASTRA 1P (SES-24)",
+            # Not yet launched: Sicral 3A, Sicral 3B (~2027)
+        ),
+        notes="All-electric / flexible-propulsion GEO telecom platform (ESA/CNES Neosat), up to ~20 kW. "
+        "Sub-variants Neo-100 (Q125680118) / Neo-200 (Q125698171).",
     ),
     SatelliteBusSpec(
         slug="prima",
-        wikidata_qid=None,
+        wikidata_qid="Q125698747",  # PRIMA (Alenia Spazio / Thales Alenia Space; no enwiki sitelink)
         manufacturer=MANUFACTURER_BY_SLUG["thales-alenia-space"],
         also_known_as=("Piattaforma Riconfigurabile Italiana Multi-Applicativa",),
         first_launch="2007-06-08",
@@ -1045,12 +1059,14 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "COSMO-SKYMED 2",
             "COSMO-SKYMED 3",
             "COSMO-SKYMED 4",
-            "CSG 1",
-            "CSG 2",
+            "CSG-1",
+            "CSG-2",
+            "CSG-3",
             "RADARSAT-2",
             "SENTINEL-1A",
             "SENTINEL-1B",
             "SENTINEL-1C",
+            "SENTINEL-1D",
         ),
         notes="Italian modular LEO/MEO/GEO platform (Service+Propulsion+Payload modules). "
         "Pointing accuracy 0.025 deg. Also proposed for NASA Rapid IV (with ELiTeBUS).",
@@ -1091,63 +1107,20 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         solar_span_m=45.0,
         known_satellites=(
             "AFRISTAR",
-            "AL YAH 1",
-            "AMAZONAS 1",
-            "AMAZONAS 2",
-            "ANIK F1R",
-            "ANIK F3",
-            "ARABSAT-5B",
-            "ARABSAT-5C",
-            "ARABSAT-6B",
             "ASIASTAR",
-            "ASTRA 1M",
-            "ASTRA 1N",
             "ASTRA 2B",
-            "ASTRA 2E",
-            "ASTRA 2F",
-            "ASTRA 2G",
-            "ASTRA 3B",
-            "ASTRA 5B",
             "BADR-4",
-            "DIRECTV-15",
-            "EKSPRESS-AM4",
-            "EKSPRESS-AM4R",
-            "EKSPRESS-AM7",
-            "EKSPRESS-AMU1",
-            "EUTELSAT 4A",
-            "EUTELSAT 7 WEST A",
-            "EUTELSAT 9B",
-            "EUTELSAT 16B",
-            "EUTELSAT 139 WEST A",
-            "EUTELSAT 172B",
-            "HELLAS SAT 2",
-            "HOT BIRD 2",
-            "HOT BIRD 3",
-            "HOT BIRD 5",
-            "HOT BIRD 13B",
-            "HOT BIRD 13C",
-            "INMARSAT-4 F1",
-            "INMARSAT-4 F3",
-            "INMARSAT-6 F1",
-            "INTELSAT 10-02",
-            "KA-SAT",
-            "MEASAT-3B",
+            "EUROBIRD 4A",  # Eutelsat 4A / ex-Eutelsat W1 (Eurostar-2000+)
+            "EUTELSAT 16B",  # = Hot Bird 4
+            "HELLAS-SAT 2",
+            "HOT BIRD 2",  # decayed; not in current satcat
+            "HOT BIRD 3",  # decayed; not in current satcat
+            "HOT BIRD 5",  # decayed; not in current satcat
             "NILESAT 102",
-            "NIMIQ-4",
-            "SES-6",
-            "SES-10",
-            "SES-11",
-            "SES-14",
-            "SKYNET 5A",
-            "SKYNET 5B",
-            "SKYNET 5C",
-            "SKYNET 5D",
             "ST-1",
             "TELECOM 2A",
             "TELECOM 2C",
             "TELSTAR 11",
-            "TELSTAR 12V",
-            "YAHSAT 1B",
         ),
         model_url="https://sketchfab.com/3d-models/communication-satellite-eurostar-3000-07f3c3573afe49fb8c8257af6e608eec",
         model_format="glTF",
@@ -1164,7 +1137,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(4500, 6400),
         solar_span_m=45.0,
         known_satellites=(
-            "ANASIS 2",
+            "ANASIS 2",  # KR military; not in satcat
+            "AMAZONAS 1",
             "AMAZONAS 2",
             "ASTRA 1M",
             "ASTRA 1N",
@@ -1173,29 +1147,45 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ASTRA 2G",
             "ASTRA 3B",
             "ASTRA 5B",
-            "ATLANTIC BIRD 7",
-            "ATLANTIC BIRD 70B",
+            # Atlantic Bird 7 = Eutelsat 7 West A
+            "EUTELSAT 70B",  # Atlantic Bird 70B
             "ANIK F1R",
             "ANIK F3",
-            "EUTELSAT W3A",
-            "HOT BIRD 13B",
-            "HOT BIRD 13C",
-            "HOT BIRD 13D",
+            "ARABSAT-5C",
+            "ARABSAT-6B",
+            "BADR-5",  # Arabsat-5B
+            "DIRECTV 15",
+            "EXPRESS-AM4",  # Ekspress-AM4
+            "EKSPRESS-AM4R",  # 2014 Proton launch failure; not in satcat
+            "EXPRESS-AM7",  # Ekspress-AM7
+            "EXPRESS-AMU1",  # Ekspress-AMU1
+            "EUTELSAT 7 WEST A",
+            "EUTELSAT 9B",
+            "EUTELSAT 36 WEST A",  # Eutelsat W3A
+            "EUTELSAT 139 WEST A",
+            "EUTELSAT 172B",
+            "EUTELSAT 33F",  # Hot Bird 8 / Hot Bird 13B
+            "EUTELSAT HOTBIRD 13C",  # Hot Bird 9 / Hot Bird 13C
+            "EUTELSAT 33E",  # Hot Bird 10 / Hot Bird 13D
             "INTELSAT 10-02",
             "KA-SAT",
-            "NIMIQ-4",
-            "SKYNET 5A",
-            "SKYNET 5B",
-            "SKYNET 5C",
-            "SKYNET 5D",
-            "INMARSAT-4 F1",
-            "INMARSAT-4 F2",
-            "INMARSAT-4 F3",
-            "INMARSAT-6 F1",
+            "MEASAT-3B",
+            "NIMIQ 4",
+            "INMARSAT 4-F1",
+            "INMARSAT 4-F2",
+            "INMARSAT 4-F3",
+            "INMARSAT 6-F1",
+            "INMARSAT 6-F2",
             "SES-6",
             "SES-10",
             "SES-11",
             "SES-14",
+            "SKYNET 5A",
+            "SKYNET 5B",
+            "SKYNET 5C",
+            "SKYNET 5D",
+            "SYRACUSE 4B",  # Eurostar-3000EOR
+            "TELSTAR 12V",
             "TURKSAT 5A",
             "TURKSAT 5B",
             "YAHSAT 1A",
@@ -1227,15 +1217,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("Alphabus Extended", "Alphasat platform"),
         first_launch="2013-07-25",
         mass_kg_range=(6000, 8800),
-        known_satellites=(
-            "ALPHASAT",
-            "SYRACUSE 4A",
-            "SYRACUSE 4B",
-            "EUTELSAT 10B",
-            "INMARSAT-6 F1",
-            "INMARSAT-6 F2",
-        ),
-        notes="Heavy GEO platform (12-18 kW payload) developed under ESA ARTES-8 with CNES.",
+        known_satellites=("ALPHASAT",),  # sole Alphabus flight unit (= Inmarsat-4A F4)
+        notes="Heavy GEO platform (12-18 kW payload) developed under ESA ARTES-8 with CNES. "
+        "Pruned (wrong bus): Syracuse 4A (Spacebus-Neo-100), Syracuse 4B + Inmarsat-6 F1/F2 "
+        "(Eurostar E3000), Eutelsat 10B (Spacebus-Neo-200). Spacebus-Neo has no catalog entry yet.",
     ),
     SatelliteBusSpec(
         slug="myriade",
@@ -1247,22 +1232,22 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         known_satellites=(
             "DEMETER",
             "PARASOL",
-            "ESSAIM 1",
-            "ESSAIM 2",
-            "ESSAIM 3",
-            "ESSAIM 4",
+            "ESSAIM-1",
+            "ESSAIM-2",
+            "ESSAIM-3",
+            "ESSAIM-4",
             "PICARD",
-            "ELISA 1",
-            "ELISA 2",
-            "ELISA 3",
-            "ELISA 4",
+            "ELISA W11",  # Elisa 1
+            "ELISA E12",  # Elisa 2
+            "ELISA W23",  # Elisa 3
+            "ELISA E24",  # Elisa 4
             "SPIRALE A",
             "SPIRALE B",
             "MICROSCOPE",
             "ALSAT-2A",
             "ALSAT-2B",
-            "VNREDSAT-1",
-            "TARANIS",
+            "VNREDSAT 1",
+            "TARANIS",  # lost in 2020 Vega VV17 launch failure; not in satcat
             "ANGELS",
         ),
         notes="French ~125 kg microsat platform (CNES + Airbus). Myriade-Evolutions is 350-400 kg.",
@@ -1278,7 +1263,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "HISPASAT 36W-1",
             "EDRS-C",
             "HEINRICH HERTZ",
-            "ELECTRA",
+            "ELECTRA",  # not launched as of 2026; not in satcat
         ),
         notes="German/ESA ARTES-11 3-ton GEO platform; classic, hybrid, or all-electric propulsion.",
     ),
@@ -1297,10 +1282,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(1100, 3800),
         solar_span_m=18.1,
         known_satellites=(
-            "ZX 5",
-            "ZX 6",
-            "CHINASAT 22",
-            "CHINASAT 22A",
+            "DFH 3-2",  # ChinaSat 6 / ZX 6 (1997, first successful DFH-3)
+            "ZHONGXING-22",  # ChinaSat 22 / Fenghuo-1
+            "ZHONGXING-22A",
             "BEIDOU-2 G1",
             "BEIDOU-2 G2",
             "BEIDOU-2 M1",
@@ -1308,10 +1292,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "TIANLIAN 1-01",
             "TIANLIAN 1-02",
             "TIANLIAN 1-03",
-            "CHANG'E 1",
-            "CHANG'E 2",
-            "CHANG'E 5-T1",
-            "LAOSAT-1",
+            "CHANG'E-1",
+            "CHANG'E-2",
+            "CHANG'E-5 T1",
         ),
         notes="Box-shaped 3-axis GEO bus, MBB design assistance. 2-5.5 kW across A/B variants.",
     ),
@@ -1329,43 +1312,43 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="2006-10-28",
         mass_kg_range=(4600, 5400),
         known_satellites=(
-            "SINOSAT-2",
-            "NIGCOMSAT-1",
-            "NIGCOMSAT-1R",
-            "CHINASAT 9",
-            "CHINASAT 9A",
+            "SINOSAT 2",  # failed to deploy arrays (2006); cataloged
+            "NIGCOMSAT 1",
+            "NIGCOMSAT 1R",
+            "ZHONGXING-9A",  # ChinaSat 9A (ChinaSat 9 = Thales Spacebus-4000 = Zhongxing-9)
             "CHINASAT 9B",
             "CHINASAT 9C",
-            "CHINASAT 10",
-            "CHINASAT 10R",
-            "CHINASAT 11",
-            "CHINASAT 12",
-            "CHINASAT 15",
-            "CHINASAT 16",
-            "CHINASAT 18",
-            "CHINASAT 19",
-            "CHINASAT 1A",
-            "CHINASAT 1C",
-            "CHINASAT 1D",
-            "CHINASAT 1E",
-            "CHINASAT 2A",
-            "CHINASAT 2D",
-            "CHINASAT 2E",
-            "CHINASAT 6A",
+            "ZHONGXING-10",
+            "ZHONGXING-10R",
+            "ZHONGXING-11",
+            "CHINASAT 16",  # matches CHINASAT 16 (SJ-13)
+            "ZHONGXING-18",  # solar-array anomaly; cataloged
+            "ZHONGXING-19",  # ChinaSat 19 (DFH-4E; moved from dfh-5)
+            "ZHONGXING-26",  # ChinaSat 26 (DFH-4E; moved from dfh-5)
+            "ZHONGXING-1A",
+            "ZHONGXING-1C",
+            "ZHONGXING-1D",
+            "ZHONGXING-1E",
+            "ZHONGXING-2A",
+            "ZHONGXING-2D",
+            "ZHONGXING-2E",
+            "ZHONGXING-6A",
             "VENESAT-1",
             "PAKSAT-1R",
             "TKSAT-1",
-            "APSTAR 7",
-            "APSTAR 9",
-            "APSTAR 6C",
-            "APSTAR 6E",
+            "APSTAR-9",
+            "APSTAR-6C",
+            "APSTAR-6E",
+            "APSTAR-6D",  # DFH-4E (moved from dfh-5)
+            "LAOSAT 1",  # DFH-4S (moved from dfh-3)
             "BELINTERSAT-1",
-            "ALCOMSAT-1",
+            "ALCOMSAT 1",
             "TIANLIAN 2-01",
             "TIANLIAN 2-02",
             "TIANLIAN 2-03",
             "TJS-1",
             "TJS-2",
+            # Pruned (Thales Spacebus-4000C2): ChinaSat 9 (= Zhongxing-9), Apstar 7
         ),
         notes="10.5 kW solar, 8 kW payload, 15 yr life. DFH-4E adds electric propulsion; "
         "DFH-4S 'Small but Smart' uses plasma propulsion. Marketed via CGWIC.",
@@ -1377,14 +1360,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("Dong Fang Hong 5", "\u4e1c\u65b9\u7ea2\u4e94\u53f7"),
         first_launch="2019-12-27",
         mass_kg_range=(6500, 9000),
-        known_satellites=(
-            "SHIJIAN-20",
-            "APSTAR 6D",
-            "CHINASAT 19",
-            "CHINASAT 26",
-        ),
-        notes="Large 4th-gen GEO bus, 28 kW power, LIPS-300 electric propulsion, "
-        "deployable radiators. ChinaSat 18/19 bus attributions vary between sources.",
+        known_satellites=("SHIJIAN-20",),  # sole operational DFH-5 to date
+        notes="Large 4th-gen GEO bus, 28 kW power, LIPS-300 electric propulsion, deployable radiators. "
+        "Apstar-6D / ChinaSat 19 / ChinaSat 26 are DFH-4E (moved to dfh-4).",
     ),
     SatelliteBusSpec(
         slug="cast968",
@@ -1394,13 +1372,13 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="1999-05-10",
         mass_kg_range=(300, 500),
         known_satellites=(
-            "SHIJIAN 5",
-            "HAIYANG 1A",
-            "HAIYANG 1B",
-            "HAIYANG 1C",
-            "HAIYANG 2A",
-            "TAN CE 1",
-            "TAN CE 2",
+            "SJ-5",  # Shijian-5
+            "HAIYANG-1A",
+            "HAIYANG-1B",
+            "HAIYANG-1C",
+            "HAIYANG-2A",
+            "DOUBLESTAR TC-1",  # Tan Ce 1
+            "DOUBLESTAR TC-2",  # Tan Ce 2
         ),
         notes="Small sun-synchronous LEO bus, 1.4 m x 1.1 m x 0.95 m, 250-1000 W.",
     ),
@@ -1412,22 +1390,18 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="2003",
         mass_kg_range=(400, 900),
         known_satellites=(
-            "TAN CE 1",
-            "TAN CE 2",
-            "SJ-6B",
-            "SJ-6D",
             "HJ-1A",
             "HJ-1B",
             "VRSS-1",
             "VRSS-2",
-            "GAOFEN 1",
-            "GAOFEN 6",
-            "ZHANGHENG-1",
-            "HAIYANG 1D",
+            "GAOFEN-1",
+            "GAOFEN-6",
+            "ZHANGHENG 1-01",  # Zhangheng-1 / CSES-1
+            "HAIYANG-1D",
             "QUEQIAO-2",
+            # Tan Ce 1/2 moved to cast968 (Double Star); SJ-6B/6D removed (no such designation)
         ),
-        notes="Minisat 3-axis platform, 1 kW BOL, LEO/MEO/HEO/formation flight. "
-        "Tan Ce/Double Star attribution varies (CAST968 vs CAST2000).",
+        notes="Minisat 3-axis platform, 1 kW BOL, LEO/MEO/HEO/formation flight.",
     ),
     SatelliteBusSpec(
         slug="ds2000",
@@ -1449,16 +1423,16 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "QZS-2",
             "QZS-3",
             "QZS-4",
-            "QZS-5",
+            "QZS-5",  # 2025 H3 stage-2 failure; not in satcat
             "QZS-6",
-            "QZS-7",
+            "QZS-7",  # not yet launched; not in satcat
             "TURKSAT 4A",
             "TURKSAT 4B",
-            "DSN-1",
-            "DSN-2",
+            "DSN-2",  # DSN-1 = Superbird-B3 (listed)
+            "DSN-3",
             "ES'HAIL 2",
-            "HIMAWARI 8",
-            "HIMAWARI 9",
+            "HIMAWARI-8",
+            "HIMAWARI-9",
         ),
         notes="Carbon-fiber central cylinder, cuboid body, derived from DRTS/ETS-VIII.",
     ),
@@ -1469,7 +1443,11 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("NX-100L", "NX-300L", "NX-500L", "NX-1500L"),
         first_launch="2014-11-06",
         mass_kg_range=(250, 500),
-        known_satellites=("ASNARO-1", "ASNARO-2", "LOTUSAT-1"),
+        known_satellites=(
+            "ASNARO",
+            "ASNARO-2",
+            "LOTUSAT-1",
+        ),  # ASNARO = ASNARO-1; LOTUSat-1 not yet launched
         notes="Modular small-sat bus (JAXA/USEF collaboration); SpaceWire + SpaceCube-2 computer.",
     ),
     SatelliteBusSpec(
@@ -1492,8 +1470,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "IRNSS-1G",
             "IRNSS-1I",
             "MARS ORBITER MISSION",
+            "CHANDRAYAAN-1",
+            "ADITYA-L1",
         ),
-        notes="1.5 m cuboid. Hosts IRNSS/NavIC constellation and Mangalyaan.",
+        notes="1.5 m cuboid. Hosts IRNSS/NavIC constellation, Mangalyaan, Chandrayaan-1, Aditya-L1.",
     ),
     SatelliteBusSpec(
         slug="i-2k",
@@ -1513,9 +1493,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "GSAT-1",
             "GSAT-2",
             "GSAT-3",
-            "GSAT-4",
-            "GSAT-5",
-            "GSAT-5P",
+            "GSAT-4",  # GSLV-D3 launch failure 2010; not in satcat
+            "GSAT-5P",  # GSLV-F06 launch failure 2010; not in satcat (GSAT-5 phantom removed)
             "GSAT-6",
             "GSAT-6A",
             "GSAT-7",
@@ -1537,7 +1516,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "INSAT-4A",
             "INSAT-4B",
             "INSAT-4CR",
-            "EUTELSAT W2M",
+            "EUTELSAT W2M",  # in-orbit power failure post-launch; not in current satcat
             "GSAT-8",
             "GSAT-10",
             "GSAT-15",
@@ -1547,8 +1526,8 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "GSAT-19",
             "GSAT-29",
             "GSAT-30",
-            "GSAT-22",
-            "GSAT-23",
+            "GSAT-22",  # not yet launched; not in satcat
+            "GSAT-23",  # not yet launched; not in satcat
             "GSAT-24",
         ),
     ),
@@ -1580,19 +1559,17 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(80, 450),
         known_satellites=(
             "IMS-1",
+            "MICROSAT-TD",  # IMS-1 demonstrator
             "YOUTHSAT",
-            "MICROSAT-R",
             "SARAL",
-            "SCATSAT-1",
+            "SCATSAT 1",
             "EMISAT",
-            "RISAT-2B",
-            "RISAT-2BR1",
-            "RISAT-2BR2",
-            "EOS-01",
-            "EOS-02",
-            "EOS-04",
+            "HYSIS",  # IMS-2
+            "XPOSAT",  # IMS-2
+            "EOS-02",  # SSLV-D1 launch failure 2022; not in satcat
         ),
-        notes="Microsat (IMS-1 ~100 kg) and minisat (IMS-2 ~400 kg) variants.",
+        notes="Microsat (IMS-1 ~100 kg) and minisat (IMS-2 ~400 kg) variants. "
+        "Pruned (RISAT bus, not IMS): RISAT-2B/2BR1/2BR2 (= EOS-01), EOS-04, Microsat-R.",
     ),
     SatelliteBusSpec(
         slug="insat-bus",
@@ -1614,7 +1591,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         ),
         first_launch="2019-01-24",
         known_satellites=(
-            "POEM-1",
+            "POEM",  # POEM-1 (cataloged bare as "POEM")
             "POEM-2",
             "POEM-3",
             "POEM-4",
@@ -1648,20 +1625,20 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="1965",
         mass_kg_range=(800, 2000),
         known_satellites=(
-            "MOLNIYA-1",
-            "MOLNIYA-2",
-            "MOLNIYA-3",
+            "MOLNIYA 1",  # whole series (KAUR-1)
+            "MOLNIYA 2",
+            "MOLNIYA 3",
             "EKRAN 1",
             "EKRAN 2",
-            "EKRAN-M",
+            "EKRAN-M",  # decayed; not in current satcat
             "GORIZONT 1",
             "GORIZONT 2",
             "GORIZONT 3",
             "RADUGA 1",
             "RADUGA 2",
-            "RADUGA-1",
+            "RADUGA-1",  # distinct Globus/Raduga-1 series (not a dup of Raduga 1)
             "LUCH",
-            "POTOK",
+            "POTOK",  # decayed; not in current satcat
         ),
         notes="Soviet 'Universal Spacecraft Series' - 4 generations spanning 1965-2009, 400+ built.",
     ),
@@ -1676,10 +1653,12 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "YAMAL 102",
             "YAMAL 201",
             "YAMAL 202",
-            "KOSMOS 2510",
-            "KOSMOS 2518",
-            "KOSMOS 2541",
-            "KOSMOS 2546",
+            "COSMOS 2510",  # EKS-1
+            "COSMOS 2518",  # EKS-2
+            "COSMOS 2541",  # EKS-3
+            "COSMOS 2546",  # EKS-4
+            "COSMOS 2552",  # EKS-5
+            "COSMOS 2563",  # EKS-6
         ),
         notes="3-axis unpressurized LEO-to-GEO platform; SPT-70 electric thrusters for stationkeeping.",
     ),
@@ -1692,10 +1671,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         mass_kg_range=(700, 1380),
         known_satellites=(
             "MONITOR-E",
-            "KAZSAT 1",
-            "KAZSAT 2",
-            "EKSPRESS-MD1",
-            "EKSPRESS-MD2",
+            "KAZSAT-1",
+            "KAZSAT-2",
+            "EXPRESS-MD1",
+            "EXPRESS-MD2",
         ),
         notes="Small 3-axis bus; proposed for RAMOS.",
     ),
@@ -1716,26 +1695,23 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="2011-02-26",
         mass_kg_range=(1200, 3500),
         known_satellites=(
-            "EKSPRESS-AT1",
-            "EKSPRESS-AT2",
-            "EKSPRESS-AM5",
-            "EKSPRESS-AM6",
-            "EKSPRESS-AM7",
-            "EKSPRESS-AM8",
-            "EKSPRESS-AMU1",
-            "EKSPRESS-80",
-            "EKSPRESS-103",
+            "EXPRESS-AT1",
+            "EXPRESS-AT2",
+            "EXPRESS-AM5",
+            "EUTELSAT 53A",  # Ekspress-AM6 (only cataloged under Eutelsat name)
+            "EXPRESS-AM8",
+            "EXPRESS 80",
+            "EXPRESS 103",
             "GLONASS-K",
             "GLONASS-K2",
             "KAZSAT-3",
-            "LUCH 5A",
-            "LUCH 5B",
-            "LUCH 5V",
+            "LUCH-5A",
+            "LUCH-5B",
+            "LUCH-5V",
             "OLYMP-K",
-            "TELKOM-3",
-            "YAMAL-300K",
-            "YAMAL-401",
-            "YAMAL-601",
+            "TELKOM 3",
+            "YAMAL 300K",
+            "YAMAL 401",
             "AMOS-5",
             "COSMOS 2520",
             "COSMOS 2526",
@@ -1760,6 +1736,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "ELEKTRO-L 2",
             "ELEKTRO-L 3",
             "ELEKTRO-L 4",
+            "ELEKTRO-L 5",
             "SPEKTR-R",
             "SPEKTR-RG",
         ),
@@ -1771,18 +1748,11 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         manufacturer=MANUFACTURER_BY_SLUG["energia"],
         also_known_as=("\u042f\u043c\u0430\u043b",),
         first_launch="1999-09-06",
-        known_satellites=(
-            "YAMAL 100",
-            "YAMAL 201",
-            "YAMAL 202",
-            "YAMAL 300K",
-            "YAMAL 401",
-            "YAMAL 402",
-            "YAMAL 601",
-        ),
+        known_satellites=(),  # series, not a bus: members live on usp / ekspress / spacebus-4000
         notes="Yamal name refers to the satellite series (Gazprom Space Systems); hardware built "
         "on USP (Energia), Ekspress-2000 (Reshetnev), and Spacebus-4000 (Thales) platforms. "
-        "Wikipedia article is about the series, not a distinct bus.",
+        "Wikipedia article is about the series, not a distinct bus. "
+        "Yamal 101/102/201/202 -> usp; 300K/401 -> ekspress; 402/601 -> spacebus-4000.",
     ),
     # ---------- Other / misc ----------
     SatelliteBusSpec(
@@ -1799,7 +1769,14 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "AMOS-E",
         ),
         first_launch="1996-05-16",
-        known_satellites=("AMOS 1", "AMOS 2", "AMOS 3", "AMOS 6"),
+        known_satellites=(
+            "INTELSAT 24",  # AMOS-1 (transferred to Intelsat)
+            "AMOS-2",
+            "AMOS-3",
+            "AMOS-4",
+            "AMOS 6",  # lost in 2016 Falcon 9 pad explosion; never reached orbit
+            "DROR 1",
+        ),
         notes="IAI GEO commsat family derived from Ofeq. AMOS-5 is ISS Reshetnev; AMOS-17 is "
         "reportedly Boeing 702MP per Wikipedia (sources conflict); AMOS-6 lost pre-launch 2016.",
     ),
@@ -1809,7 +1786,11 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         manufacturer=MANUFACTURER_BY_SLUG["invap"],
         first_launch="2014-10-16",
         mass_kg_range=(2900, 3000),
-        known_satellites=("ARSAT-1", "ARSAT-2", "ARSAT-SG1"),
+        known_satellites=(
+            "ARSAT 1",
+            "ARSAT 2",
+            "ARSAT-SG1",
+        ),  # ARSAT-SG1 not yet in satcat
         notes="Argentine 3-axis GEO bus, 4.2 kW, 350 kg payload. Comparable to Spacebus 3000B2. "
         "TKSAT-1 (Tupac Katari) is CAST DFH-4, not ARSAT.",
     ),
@@ -1821,10 +1802,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="2002-12-20",
         mass_kg_range=(12, 14),
         known_satellites=(
-            "LATINSAT-A",
-            "LATINSAT-B",
-            "LATINSAT-C",
-            "LATINSAT-D",
+            "LATINSAT A",
+            "LATINSAT B",
+            # LatinSat C/D = AprizeSat 1/2; exactView 3/4/5/5R/6/11/12/13 = AprizeSat 3/4/5/7/6/9/8/10
             "APRIZESAT 1",
             "APRIZESAT 2",
             "APRIZESAT 3",
@@ -1835,14 +1815,6 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
             "APRIZESAT 8",
             "APRIZESAT 9",
             "APRIZESAT 10",
-            "EXACTVIEW 3",
-            "EXACTVIEW 4",
-            "EXACTVIEW 5",
-            "EXACTVIEW 5R",
-            "EXACTVIEW 6",
-            "EXACTVIEW 11",
-            "EXACTVIEW 12",
-            "EXACTVIEW 13",
         ),
         notes="US microsat bus (~12-14 kg) for AIS/M2M. Now AAC SpaceQuest (since 2020).",
     ),
@@ -1853,7 +1825,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("Arkyd 3", "Arkyd-3R"),
         first_launch="2015-04-14",
         mass_kg_range=(4, 5),
-        known_satellites=("ARKYD 3", "ARKYD 3R"),
+        known_satellites=(
+            "ARKYD 3",
+            "ARKYD-3R",
+        ),  # Arkyd 3 lost in 2014 Antares failure; not in satcat
         notes="3U CubeSat testbed for larger Arkyd-100. Arkyd 3 lost in Antares Orb-3 failure (2014); "
         "Arkyd 3R deployed from ISS 2015.",
     ),
@@ -1868,7 +1843,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     ),
     SatelliteBusSpec(
         slug="arkyd-200",
-        wikidata_qid="Q17620827",
+        wikidata_qid=None,  # Q17620827 is the generic "Arkyd" series item, not the 200; no dedicated item
         manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Interceptor",),
         first_launch=None,
@@ -1876,7 +1851,7 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
     ),
     SatelliteBusSpec(
         slug="arkyd-300",
-        wikidata_qid="Q17620827",
+        wikidata_qid=None,  # Q17620827 is the generic "Arkyd" series item, not the 300; no dedicated item
         manufacturer=MANUFACTURER_BY_SLUG["planetary-resources"],
         also_known_as=("Rendezvous Prospector", "Arkyd-301"),
         first_launch=None,
@@ -1900,9 +1875,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         first_launch="2020-08-31",
         mass_kg_range=(200, 300),
         known_satellites=(
-            "FIRST LIGHT",
+            "RLFL14",  # First Light / Photon 01
             "CAPSTONE",
-            "PATHSTONE",
+            "PHOTON-02",  # Pathstone
             "ESCAPADE BLUE",
             "ESCAPADE GOLD",
         ),
@@ -1916,18 +1891,9 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         also_known_as=("BCP-300 (related)",),
         first_launch="2007-03-09",
         mass_kg_range=(125, 200),
-        known_satellites=("NEXTSAT/CSC", "AIM", "WISE"),
+        known_satellites=("OE (NEXTSAT)", "NEOWISE", "SPHEREX (MIDEX 9)"),
         notes="Small low-cost LEO bus; ASPEN avionics from Deep Impact heritage. "
         "Succeeded/renamed to BCP-300. Now BAE Systems Space & Mission Systems (2024).",
-    ),
-    SatelliteBusSpec(
-        slug="spacecube",
-        wikidata_qid="Q7572193",
-        manufacturer=MANUFACTURER_BY_SLUG["nasa-goddard"],
-        first_launch="2009-05",
-        notes="NOT actually a satellite bus - family of FPGA-based on-board data processing computers. "
-        "Listed in Wikipedia Category:Satellite_buses possibly in error. "
-        "Flown on STS-125 HST SM4, MISSE-7, STP-H4/H5/H6/H9, RRM3, NavCube.",
     ),
 )
 
