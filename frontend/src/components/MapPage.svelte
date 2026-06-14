@@ -71,6 +71,7 @@
 	let cameraFocus = $state.raw<PositionedBody | undefined>();
 	let scene = $state<Scene>();
 	let drawerHeightDvh = $state(0);
+	let searchExpanded = $state(false);
 	let userPromotedCount = $state(0);
 	let northRefId = $state<string | null>(null);
 
@@ -228,9 +229,12 @@
 			/>
 			<TimeControls {clock} />
 			<div
-				class="fixed top-4 start-4 end-4 z-10 pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))]"
+				class="fixed top-4 start-4 end-4 pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
+					? 'z-[55]'
+					: 'z-10'}"
 			>
 				<SearchBar
+					onExpandedChange={(v) => (searchExpanded = v)}
 					onSelect={async (hit) => {
 						const name = localizedName(hit, getLocale());
 						if (hit.kind === 'feature') {

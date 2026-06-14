@@ -217,22 +217,29 @@
 	// Snap points: chrome-only collapsed (measured at runtime so it tracks the
 	// real header height — buttons, fonts, locale length all affect it), mid,
 	// full.
-	const TOP_SNAP = 0.95;
 	const MID_SNAP = 0.3;
-	// The drawer is h-dvh. If the top snap is < 1 the bottom (1 - TOP_SNAP)
-	// of the drawer stays below the viewport even when expanded, so the
-	// scroll container needs that much extra bottom padding to let the last
-	// content into view.
-	const HIDDEN_BOTTOM_DVH = (1 - TOP_SNAP) * 100;
+	// The open drawer's top edge meets the collapsed search bar's top (it's
+	// pinned at top-4 = 16px), covering it while leaving that same sliver of map
+	// above. A px snap keeps the edge at a fixed inset on any viewport height.
+	const TOP_GAP_PX = 16;
+
+	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
+	$effect(() => {
+		const update = () => (innerH = window.innerHeight);
+		update();
+		window.addEventListener('resize', update);
+		return () => window.removeEventListener('resize', update);
+	});
 
 	let headerEl = $state<HTMLDivElement | null>(null);
 	// Initial guess close to the rendered size (icon-lg row + handle + paddings)
 	// so the drawer opens at a sensible height before the first measurement.
 	let headerHeightPx = $state(68);
 	let collapsedSnap = $derived(`${headerHeightPx}px`);
-	let snapPoints = $derived([collapsedSnap, MID_SNAP, TOP_SNAP]);
+	let topSnap = $derived(`${Math.max(1, innerH - TOP_GAP_PX)}px`);
+	let snapPoints = $derived([collapsedSnap, MID_SNAP, topSnap]);
 	let activeSnapPoint = $state<number | string | null>('68px');
-	let isAtTop = $derived(activeSnapPoint === TOP_SNAP);
+	let isAtTop = $derived(activeSnapPoint === topSnap);
 
 	$effect(() => {
 		const el = headerEl;
@@ -625,7 +632,7 @@
 				<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
 					<div
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-						style="padding-bottom: calc(1rem + {HIDDEN_BOTTOM_DVH}dvh);"
+						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px);"
 					>
 						<Tabs.Content value="overview">
 							{@render overviewPanel()}

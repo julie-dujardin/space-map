@@ -30,15 +30,19 @@
 
 	type Props = {
 		onSelect: (hit: SearchHit) => void;
+		onExpandedChange?: (expanded: boolean) => void;
 	};
 
-	let { onSelect }: Props = $props();
+	let { onSelect, onExpandedChange }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
 	const enabled = isSearchEnabled();
 
 	const model = new SearchModel();
 	let expanded = $state(false);
+	// Let the parent raise the search panel above the detail drawer while it's
+	// open, and drop it back under the drawer once collapsed.
+	$effect(() => onExpandedChange?.(expanded));
 	let filterOpen = $state(false);
 	let groupCatalog = $state<GroupHit[]>([]);
 	let catalogTotal = $state(0);
