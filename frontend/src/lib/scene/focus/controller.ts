@@ -22,7 +22,7 @@ import {
 	prepareFocusTarget,
 	type FocusState
 } from '$lib/scene/animation/focus';
-import type { Vec3 } from '$lib/scene/animation/math';
+import { f64dist, type Vec3 } from '$lib/scene/animation/math';
 import type { PointCloudSystem } from '$lib/scene/pointclouds/system';
 import type { SystemDataLoader } from '$lib/scene/system-data/loader';
 import { PromotionRegistry, type PromotionDeps } from './promotion';
@@ -283,7 +283,16 @@ export class FocusController {
 		const spherical = cartesianToSpherical(emitFrom, body.position, this.focusedBodyQuat(body));
 		callbacks.onCameraPosition?.(spherical.latitude, spherical.longitude, spherical.distance);
 		if (zoom !== undefined && camPos) {
-			if (this.focusedBody?.data.id === id) {
+			// In-object re-framing (arc-orbit) is only correct when the camera is
+			// actually orbiting this body right now — `focusedBody` is set eagerly at
+			// fly-start and can be stale (e.g. a still-animating fly, or a second
+			// feature-pick landing mid-flight), so gate on the focus origin being
+			// coincident with the body. Otherwise fall through to the approach fly so
+			// the camera glides in instead of teleporting onto the body.
+			const orbitingThisBody =
+				this.focusedBody?.data.id === id &&
+				f64dist(focus.focusTruePos, body.position) < minCameraDistance(body);
+			if (orbitingThisBody) {
 				// Snap focus in case a prior fly animation hasn't fully settled.
 				focus.focusTruePos = [...body.position];
 				this.deps.repositionAll();
