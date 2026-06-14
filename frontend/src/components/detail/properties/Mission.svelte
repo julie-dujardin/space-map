@@ -58,26 +58,28 @@
 		return parts;
 	});
 
-	let hasContent = $derived(
-		isSpacecraft &&
-			(launchDate ||
-				decayDate ||
-				operators ||
-				manufacturer ||
-				bus ||
-				developer ||
-				funder ||
-				countryOfOrigin ||
-				launchContractor ||
-				launchVehicle ||
-				launchSite ||
-				namedAfter ||
-				mergedPartOf.length > 0 ||
-				capitalCost ||
-				ct?.ops_status ||
-				ct?.rcs != null ||
-				countries.length > 0)
+	let hasFields = $derived(
+		!!(
+			launchDate ||
+			decayDate ||
+			operators ||
+			manufacturer ||
+			bus ||
+			developer ||
+			funder ||
+			countryOfOrigin ||
+			launchContractor ||
+			launchVehicle ||
+			launchSite ||
+			namedAfter ||
+			mergedPartOf.length > 0 ||
+			capitalCost ||
+			ct?.ops_status ||
+			ct?.rcs != null ||
+			countries.length > 0
+		)
 	);
+	let hasContent = $derived(isSpacecraft && hasFields);
 
 	function countryGroupHref(cc: string, name: string): string | undefined {
 		if (!appState) return undefined;

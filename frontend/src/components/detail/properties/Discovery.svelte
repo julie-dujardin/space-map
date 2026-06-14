@@ -29,10 +29,10 @@
 	let partOf = $derived(localized?.part_of);
 	let namedAfter = $derived(localized?.named_after);
 
-	let hasContent = $derived(
-		!isSpacecraft &&
-			(discoveryDate || discoverers || discoverySite || asteroidFamily || partOf || namedAfter)
+	let hasFields = $derived(
+		!!(discoveryDate || discoverers || discoverySite || asteroidFamily || partOf || namedAfter)
 	);
+	let hasContent = $derived(!isSpacecraft && hasFields);
 </script>
 
 {#if hasContent}
