@@ -25,8 +25,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -40,3 +42,41 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+
+configs:
+  caddyfile:
+    # Inlined so the stack deploys from Portainer without the file present on host.
+    content: |
+      {$SEARCH_DOMAIN} {
+      	encode gzip
+
+      	# CORS: reflect Origin only if it's in the allowlist. Multiple origins
+      	# are joined with `|` to form an alternation regex.
+      	@allowed_origin header_regexp Origin ^https?://({$ALLOWED_ORIGINS})(:\d+)?$
+      	header @allowed_origin {
+      		Access-Control-Allow-Origin "{http.request.header.Origin}"
+      		Access-Control-Allow-Headers "Authorization,Content-Type,X-Meilisearch-Client"
+      		Access-Control-Allow-Methods "GET,POST,OPTIONS"
+      		Access-Control-Max-Age "86400"
+      		Vary "Origin"
+      		defer
+      	}
+
+      	@preflight method OPTIONS
+      	respond @preflight 204
+
+      	# Public surface: search endpoints + health probe.
+      	@search {
+      		path /indexes/*/search
+      		path /multi-search
+      		path /health
+      	}
+      	reverse_proxy @search meili:7700
+
+      	# Admin surface: everything else (settings, tasks, keys, dumps, swap,
+      	# metrics, raw document CRUD). VPN-only.
+      	@vpn remote_ip {$VPN_CIDR}
+      	reverse_proxy @vpn meili:7700
+
+      	respond 403
+      }

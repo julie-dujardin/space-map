@@ -5,11 +5,12 @@ Meilisearch + Caddy reverse proxy. Sits on the same Debian VM as
 
 ## What lives where
 
-- `docker-compose.yaml` — Meili + Caddy services.
-- `Caddyfile` — TLS termination, CORS for the Pages origin, public surface
-  limited to `/indexes/*/search`, `/multi-search`, `/health`. Everything
-  else (settings, keys, tasks, dumps, swap, metrics, document CRUD) is
-  VPN-only.
+- `docker-compose.yaml` — Meili + Caddy services. The Caddy config is
+  inlined as a compose `config` (TLS termination, CORS for the Pages origin;
+  public surface limited to `/indexes/*/search`, `/multi-search`, `/health`,
+  everything else — settings, keys, tasks, dumps, swap, metrics, document
+  CRUD — is VPN-only). Inlined so Portainer deploys it without the file
+  needing to exist on the host.
 - `.env.example` — fill in and copy to `.env` next to the compose file.
 
 ## Deploy
