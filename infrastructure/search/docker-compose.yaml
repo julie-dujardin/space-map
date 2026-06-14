@@ -9,8 +9,9 @@ services:
       - MEILI_NO_ANALYTICS=true
     volumes:
       - ${MEILI_DATA_HOST_DIR:-/srv/space-map/meili_data}:/meili_data
-    expose:
-      - "7700"
+    # Admin is Meili directly (master-key protected). Caddy proxies search only.
+    ports:
+      - "9751:7700"
     networks:
       - search
 
@@ -20,16 +21,12 @@ services:
     restart: unless-stopped
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-      - VPN_CIDR=${VPN_CIDR}
     # Cloudflare handles TLS
     ports:
       - "9750:80"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
     depends_on:
       - meili
     networks:
@@ -37,10 +34,6 @@ services:
 
 networks:
   search:
-
-volumes:
-  caddy_data:
-  caddy_config:
 
 configs:
   caddyfile:
@@ -72,10 +65,7 @@ configs:
       	}
       	reverse_proxy @search meili:7700
 
-      	# Admin surface: everything else (settings, tasks, keys, dumps, swap,
-      	# metrics, raw document CRUD). VPN-only.
-      	@vpn remote_ip {$VPN_CIDR}
-      	reverse_proxy @vpn meili:7700
-
+      	# Everything else (settings, keys, tasks, dumps, CRUD) is not proxied —
+      	# admin goes straight to Meili on :9751.
       	respond 403
       }
