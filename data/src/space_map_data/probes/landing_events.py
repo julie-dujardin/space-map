@@ -5,6 +5,8 @@ Walks ``DOWNLOAD_DIR/probes/events/*.json``, yields one ``LandingPhase`` per
 end = the next event in ``_DEPARTURE_TYPES`` (re-launch, departure, next
 landing, …) or ``end_date`` on the landing itself; otherwise the probe is
 considered landed forever (Apollo descent stages, Veneras, Surveyors).
+Earth landings are capped to one month so sample-return capsules and launch
+failures don't clutter Earth long after touchdown.
 
 Schema is the canonical one produced by ``scripts/normalize_probe_events.py``:
 
@@ -70,6 +72,11 @@ _DEPARTURE_TYPES = frozenset(
 
 _NAIF = ID_TYPE_ORDINAL[ID_TYPES.NAIF]
 _SPKID = ID_TYPE_ORDINAL[ID_TYPES.SPKID]
+
+# Earth landings (sample-return capsules, launch failures) are only interesting
+# near touchdown; keeping them indefinitely clutters Earth. Cap to one month.
+_EARTH_NAIF = 399
+_EARTH_LANDING_MAX_S = 30 * 86400.0
 
 
 @dataclass(frozen=True)
@@ -265,6 +272,8 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
                 end_et = _phase_end_et(events, i, start_et)
                 if end_et is None:
                     end_et = end_et_for_indefinite
+                if body_id_type == _NAIF and body_id_value == _EARTH_NAIF:
+                    end_et = min(end_et, start_et + _EARTH_LANDING_MAX_S)
                 out.append(
                     LandingPhase(
                         probe_id=int(pid),

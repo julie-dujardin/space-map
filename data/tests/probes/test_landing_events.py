@@ -214,7 +214,8 @@ def test_burnup_above_surface_yields_no_phase(events_root: Path) -> None:
 
 
 def test_sample_return_capsule_lands_on_earth(events_root: Path) -> None:
-    """Earth landings use the normal NAIF id 399."""
+    """Earth landings use the normal NAIF id 399 and are capped to one month
+    (sample-return capsules clutter Earth long after touchdown otherwise)."""
     _write(
         events_root,
         "sample-return.json",
@@ -242,6 +243,42 @@ def test_sample_return_capsule_lands_on_earth(events_root: Path) -> None:
     assert len(phases) == 1
     assert phases[0].body_id_type == _NAIF
     assert phases[0].body_id_value == 399
+    # Indefinite phase is capped to one month past touchdown, not _INDEFINITE_END.
+    assert phases[0].end_et == pytest.approx(
+        phases[0].start_et + landing_events._EARTH_LANDING_MAX_S
+    )
+
+
+def test_short_earth_landing_keeps_real_end(events_root: Path) -> None:
+    """An Earth landing that ends within a month keeps its real end_date — the
+    cap only truncates longer/indefinite phases, never extends short ones."""
+    _write(
+        events_root,
+        "venus-style-earth.json",
+        [
+            {
+                "probe_id": 113000001,
+                "name": "Short-lived Earth capsule",
+                "landing_site": {
+                    "target_body_naif": 399,
+                    "lat_deg": 0.0,
+                    "lon_deg": 0.0,
+                    "site_name": None,
+                },
+                "events": [
+                    {
+                        "type": "landing",
+                        "date": "2023-09-24T14:52:00Z",
+                        "end_date": "2023-09-24T16:00:00Z",
+                        "outcome": "controlled",
+                    },
+                ],
+            }
+        ],
+    )
+    phases = landing_events.load_phases(_INDEFINITE_END)
+    assert len(phases) == 1
+    assert phases[0].end_et == pytest.approx(_et("2023-09-24T16:00:00"))
 
 
 def test_comet_naif_keeps_value_changes_id_type(events_root: Path) -> None:
@@ -306,7 +343,11 @@ def test_lower_precision_followup_is_skipped(events_root: Path) -> None:
     )
     phases = landing_events.load_phases(_INDEFINITE_END)
     assert len(phases) == 1
-    assert phases[0].end_et == _INDEFINITE_END
+    # Date-only follow-up isn't chosen as phase-end; the indefinite phase is
+    # then capped to one month (Earth landing), not _INDEFINITE_END.
+    assert phases[0].end_et == pytest.approx(
+        phases[0].start_et + landing_events._EARTH_LANDING_MAX_S
+    )
 
 
 def test_spk_covered_probe_skipped_by_cospar(
