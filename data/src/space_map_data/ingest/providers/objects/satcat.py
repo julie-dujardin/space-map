@@ -14,6 +14,7 @@ from space_map_data.ingest.providers.objects.enrichment import (
     latest_day_dir,
     load_groups,
     parse_satcat_fields,
+    resolve_bus_slug,
     resolve_categories,
     resolve_constellation,
     resolve_country_codes,
@@ -58,6 +59,7 @@ class SatcatIngestor:
             owner, constellation, fields["launch_date"], fields["decay_date"]
         )
         manufacturer_qids = resolve_manufacturer_qids(constellation, name)
+        bus_slug = resolve_bus_slug(name)
         country_codes = resolve_country_codes(owner)
         if not operator_qids:
             self.missing_operator += 1
@@ -67,6 +69,7 @@ class SatcatIngestor:
             OBJECT_NAME=name,
             COSPAR_ID=cospar,
             constellation_slug=constellation,
+            bus_slug=bus_slug,
             categories=categories,
             operator_qids=operator_qids,
             manufacturer_qids=manufacturer_qids,

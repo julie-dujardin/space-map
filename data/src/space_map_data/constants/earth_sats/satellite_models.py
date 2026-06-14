@@ -22,6 +22,10 @@ from space_map_data.constants.earth_sats.manufacturers import (
     ManufacturerSpec,
 )
 
+# Group slug namespace: bus group slugs are ``f"{BUS_SLUG_PREFIX}{bus.slug}"`` so
+# they don't collide with bare constellation slugs.
+BUS_SLUG_PREFIX = "bus-"
+
 
 @dataclass(frozen=True)
 class SatelliteBusSpec:
@@ -1896,6 +1900,10 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         "Succeeded/renamed to BCP-300. Now BAE Systems Space & Mission Systems (2024).",
     ),
 )
+
+
+BUS_BY_SLUG: dict[str, SatelliteBusSpec] = {b.slug: b for b in SATELLITE_BUSES}
+assert len(BUS_BY_SLUG) == len(SATELLITE_BUSES), "Duplicate bus slug"
 
 
 # Precompiled word-boundary patterns for each known_satellites entry, sorted by

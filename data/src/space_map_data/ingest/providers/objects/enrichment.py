@@ -37,7 +37,10 @@ from space_map_data.constants.earth_sats.satcat import (
     parse_orbit_center,
     parse_orbit_type,
 )
-from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
+from space_map_data.constants.earth_sats.satellite_models import (
+    SATELLITE_BUSES,
+    bus_for_satellite,
+)
 from space_map_data.constants.earth_sats.sources import SOURCE_BY_CODE, parse_source
 from space_map_data.ingest.convert import float_or_none, int_or_none, string_or_none
 
@@ -256,6 +259,14 @@ def resolve_manufacturer_qids(
         if qid is not None:
             qids.add(qid)
     return sorted(qids)
+
+
+def resolve_bus_slug(name: str | None) -> str | None:
+    """Match OBJECT_NAME to a satellite bus slug (legacy GEO sats, mostly)."""
+    if name is None:
+        return None
+    bus = bus_for_satellite(name)
+    return bus.slug if bus is not None else None
 
 
 def resolve_country_codes(owner: str | None) -> list[str]:

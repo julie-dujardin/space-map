@@ -46,6 +46,7 @@ class Satcat(Base):
 
     # Enrichment (derived from SATCAT owner, object name, group memberships)
     constellation_slug: Mapped[str | None] = mapped_column(default=None)
+    bus_slug: Mapped[str | None] = mapped_column(default=None)
     categories: Mapped[list[str]] = mapped_column(JSON, default=list)
     operator_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
     manufacturer_qids: Mapped[list[str]] = mapped_column(JSON, default=list)
