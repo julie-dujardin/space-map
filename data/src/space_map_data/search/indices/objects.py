@@ -352,6 +352,11 @@ def _objects_settings() -> dict[str, Any]:
             "pha",
             "ops_status",
             "groups",
+            # Range filters for the faceted search panel. Already sortable; data
+            # lives on the doc, so this is a settings-only change (no re-export).
+            "diameter_km",
+            "magnitude",
+            "inception",
         ],
         "sortableAttributes": [
             "priority",
@@ -381,6 +386,9 @@ def _objects_settings() -> dict[str, Any]:
             "exactness",
             "priority:desc",
         ],
+        # `groups` carries hundreds of slugs (constellations/operators/...); the
+        # default cap of 100 would truncate facet distributions in the panel.
+        "faceting": {"maxValuesPerFacet": 1000},
     }
 
 

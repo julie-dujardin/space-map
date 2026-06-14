@@ -13,6 +13,7 @@
 		type SearchHit
 	} from '$lib/search/client';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import ResultRow from './ResultRow.svelte';
 
 	type Props = {
 		onSelect: (hit: SearchHit) => void;
@@ -105,7 +106,9 @@
 			});
 		}
 		if (hit.kind === 'group') {
-			return m.group_member_count({ count: hit.member_count });
+			// Member count now renders on the right of the row; a group with no
+			// description just shows its name + count rather than repeating it.
+			return '';
 		}
 		if (hit.id.startsWith('norad_satcat-')) {
 			return hit.type === 'debris' ? m.type_earth_debris() : m.type_earth_satellite();
@@ -206,33 +209,15 @@
 					<ul class="max-h-[60vh] overflow-y-auto py-1">
 						{#each hits as hit, i (hit.id)}
 							<li>
-								<button
-									type="button"
-									class="w-full text-start px-4 py-2 flex items-center gap-3 transition-colors {i ===
-									highlighted
-										? 'bg-neutral-200 dark:bg-accent'
-										: 'hover:bg-neutral-200 dark:hover:bg-accent'}"
-									onmouseenter={() => (highlighted = i)}
-									onclick={() => pick(hit)}
-								>
-									{#if thumbnailUrl(hit)}
-										<img
-											src={thumbnailUrl(hit)}
-											alt=""
-											loading="lazy"
-											decoding="async"
-											class="size-9 rounded-md object-cover bg-muted shrink-0"
-										/>
-									{:else}
-										<div class="size-9 rounded-md bg-muted shrink-0"></div>
-									{/if}
-									<div class="flex flex-col gap-0.5 min-w-0 flex-1">
-										<span class="text-sm text-foreground truncate"
-											>{localizedName(hit, getLocale())}</span
-										>
-										<span class="text-xs text-muted-foreground truncate">{secondaryText(hit)}</span>
-									</div>
-								</button>
+								<ResultRow
+									{hit}
+									name={localizedName(hit, getLocale())}
+									secondary={secondaryText(hit)}
+									thumbnail={thumbnailUrl(hit)}
+									active={i === highlighted}
+									onselect={() => pick(hit)}
+									onhover={() => (highlighted = i)}
+								/>
 							</li>
 						{/each}
 					</ul>
