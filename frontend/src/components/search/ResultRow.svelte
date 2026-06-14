@@ -11,11 +11,13 @@
 		active: boolean;
 		onselect: () => void;
 		onhover: () => void;
+		/** Right-aligned value tied to the active sort (size/brightness/…). */
+		metric?: { value: string; unit?: string };
 	};
 
-	let { hit, name, secondary, thumbnail, active, onselect, onhover }: Props = $props();
+	let { hit, name, secondary, thumbnail, active, onselect, onhover, metric }: Props = $props();
 
-	// Collection pages (constellations, operators, orbit classes, …) read as a
+	// Collection pages (constellations, organizations, orbit classes, …) read as a
 	// navigable group rather than a single object: stacked-card thumbnail, a
 	// member count, and a chevron that signals "opens a page". `hit.kind` is
 	// referenced inline below so the discriminated union narrows member_count.
@@ -75,6 +77,12 @@
 		<span class="flex shrink-0 items-center gap-1.5 text-muted-foreground">
 			<span class="text-xs tabular-nums text-foreground">{compact(hit.member_count)}</span>
 			<ChevronRightIcon class="size-4" />
+		</span>
+	{:else if metric}
+		<span class="shrink-0 text-end font-mono text-xs tabular-nums text-muted-foreground">
+			<span class="text-foreground">{metric.value}</span>{#if metric.unit}<span class="ms-0.5"
+					>{metric.unit}</span
+				>{/if}
 		</span>
 	{/if}
 </button>

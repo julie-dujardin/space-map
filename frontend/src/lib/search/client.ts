@@ -70,7 +70,7 @@ export interface ObjectHit {
 	thumbnail?: SearchThumbnail;
 }
 
-/** Constellation / operator / asteroid-class collection. The Meili primary
+/** Constellation / organization / asteroid-class collection. The Meili primary
  *  key is ``slug``; we mirror it into ``id`` so the rest of the search UI
  *  can treat all hit kinds uniformly. */
 export interface GroupHit {
@@ -237,6 +237,143 @@ export function searchChildMembers(
 		limit,
 		locale
 	);
+}
+
+// ── faceted catalog search (Option D panel) ──────────────────────────────
+
+/** Active sort. `relevance` uses Meili's default ranking (+ sitelinks
+ *  tiebreaker); the rest map to a sortable attribute. */
+export type SortId = 'relevance' | 'name' | 'size' | 'brightness' | 'date';
+
+/** Selected facet values. Array facets are OR within / AND across; the two
+ *  small-body flags are plain booleans. */
+export interface CatalogFilters {
+	kind?: string[]; // object | feature | group
+	type?: string[]; // object.type
+	groups?: string[]; // object.groups slugs (orbit class, constellation, …)
+	neo?: boolean;
+	pha?: boolean;
+}
+
+/** A facet value → match-count map, keyed by facet attribute. */
+export type FacetDistribution = Record<string, Record<string, number>>;
+
+export interface CatalogResult {
+	hits: SearchHit[];
+	/** Capped at the index's maxTotalHits (1000). */
+	estimatedTotalHits: number;
+	facets: FacetDistribution;
+}
+
+const FACETS = [
+	'kind',
+	'object.type',
+	'object.groups',
+	'object.neo',
+	'object.pha',
+	'group.type',
+	'feature.type'
+];
+
+// Sortable attribute + its "natural" first direction (reversed by the toggle).
+const SORT_FIELD: Record<Exclude<SortId, 'relevance'>, [string, boolean]> = {
+	name: ['name', false],
+	size: ['diameter_km', true],
+	brightness: ['object.magnitude', false], // lower H = brighter
+	date: ['object.inception', true]
+};
+
+function buildSort(sort: SortId, reverse: boolean): string[] {
+	if (sort === 'relevance') return [];
+	const [field, desc] = SORT_FIELD[sort];
+	const dir = reverse ? !desc : desc;
+	return [`${field}:${dir ? 'desc' : 'asc'}`];
+}
+
+function quote(v: string): string {
+	return `"${v.replace(/"/g, '\\"')}"`;
+}
+
+function orClause(field: string, vals: string[] | undefined): string | null {
+	if (!vals || vals.length === 0) return null;
+	return `(${vals.map((v) => `${field} = ${quote(v)}`).join(' OR ')})`;
+}
+
+function buildFilter(f: CatalogFilters): string | undefined {
+	const parts: string[] = [];
+	for (const [field, vals] of [
+		['kind', f.kind],
+		['object.type', f.type],
+		['object.groups', f.groups]
+	] as const) {
+		const clause = orClause(field, vals);
+		if (clause) parts.push(clause);
+	}
+	if (f.neo) parts.push('object.neo = true');
+	if (f.pha) parts.push('object.pha = true');
+	return parts.length ? parts.join(' AND ') : undefined;
+}
+
+/** One page of the faceted catalog: ranked hits, a post-filter facet
+ *  distribution (drives counts + the filter tree), and the capped total. */
+export async function searchCatalog(opts: {
+	query: string;
+	filters: CatalogFilters;
+	sort: SortId;
+	reverse: boolean;
+	page: number;
+	pageSize: number;
+	locale: string;
+}): Promise<CatalogResult> {
+	const c = getClient();
+	if (!c) return { hits: [], estimatedTotalHits: 0, facets: {} };
+	const sort = buildSort(opts.sort, opts.reverse);
+	const res = await c.index(INDEX).search(opts.query, {
+		filter: buildFilter(opts.filters),
+		sort: sort.length ? sort : undefined,
+		facets: FACETS,
+		offset: (opts.page - 1) * opts.pageSize,
+		limit: opts.pageSize,
+		locales: [opts.locale]
+	});
+	return {
+		hits: (res.hits ?? []).map((h) => toHit(h as RawHit)),
+		estimatedTotalHits: res.estimatedTotalHits ?? 0,
+		facets: (res.facetDistribution ?? {}) as FacetDistribution
+	};
+}
+
+// Total documents in the catalog, cached after the first stats call. Drives the
+// idle "N entries in catalog" hint (estimatedTotalHits caps at maxTotalHits).
+let catalogCountCache: number | null = null;
+
+export async function catalogCount(): Promise<number> {
+	if (catalogCountCache !== null) return catalogCountCache;
+	const c = getClient();
+	if (!c) return 0;
+	const stats = await c.index(INDEX).getStats();
+	catalogCountCache = stats.numberOfDocuments ?? 0;
+	return catalogCountCache;
+}
+
+// Every group/collection doc, fetched once per locale to label the filter
+// tree (slug → name/type) without a round-trip per facet value. ~830 docs.
+const groupCatalogCache = new Map<string, GroupHit[]>();
+
+export async function fetchGroupCatalog(locale: string): Promise<GroupHit[]> {
+	const cached = groupCatalogCache.get(locale);
+	if (cached) return cached;
+	const c = getClient();
+	if (!c) return [];
+	const res = await c.index(INDEX).search('', {
+		filter: 'kind = "group"',
+		sort: ['group.member_count:desc'],
+		limit: 1000,
+		locales: [locale]
+	});
+	const groups = (res.hits ?? []).map((h) => toGroupHit(h as RawHit));
+	groupCatalogCache.set(locale, groups);
+	return groups;
 }
 
 /** Display name for a hit in the active locale, falling back to canonical. */

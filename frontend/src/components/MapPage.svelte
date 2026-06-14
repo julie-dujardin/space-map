@@ -228,7 +228,7 @@
 			/>
 			<TimeControls {clock} />
 			<div
-				class="fixed top-4 start-4 end-4 z-10 pointer-events-auto md:end-auto md:w-[min(360px,calc(100vw-7rem))]"
+				class="fixed top-4 start-4 end-4 z-10 pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))]"
 			>
 				<SearchBar
 					onSelect={async (hit) => {
