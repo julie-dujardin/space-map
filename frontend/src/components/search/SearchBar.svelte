@@ -217,42 +217,43 @@
 			if (leaves.length) cats.push({ id: 'type', label: m.search_facet_type(), leaves });
 		}
 
-		// Collections — one category per group type, leaves are the groups. Live
-		// facet count when querying, else the group's own member tally. Too many
-		// groups to list every empty one, so drop 0-count leaves — but always keep
-		// a currently-selected group visible so it stays uncheckable in place.
-		const gf = f['object.groups'];
-		const selectedGroups = new Set(model.filters.groups ?? []);
-		const byType = new Map<string, GroupHit[]>();
-		for (const g of groupCatalog) {
-			const list = byType.get(g.type);
-			if (list) list.push(g);
-			else byType.set(g.type, [g]);
-		}
-		for (const [type, gs] of byType) {
-			let leaves = gs.map((g) => ({
-				slug: g.slug,
-				label: groupName(g, locale),
-				count: gf?.[g.slug] ?? (gf ? 0 : g.member_count)
-			}));
-			if (gf) leaves = leaves.filter((l) => l.count > 0 || selectedGroups.has(l.slug));
-			leaves.sort((a, b) => b.count - a.count);
-			leaves = leaves.slice(0, 60);
-			if (!leaves.length) continue;
-			cats.push({
-				id: `grp-${type}`,
-				// Fall back to the raw type for any group kind the frontend doesn't
-				// know (e.g. stale docs from a pre-merge export) rather than `undefined`.
-				label: groupTypeLabel(type as GroupType) ?? type,
-				leaves: leaves.map((l) => ({
-					id: `grp-${type}-${l.slug}`,
-					kind: 'array',
-					facet: 'groups',
-					values: [l.slug],
-					label: l.label,
-					count: l.count
-				}))
-			});
+		// Collections — one category per group type, leaves are the groups. Counts
+		// come from the same catalog facet distribution as every other facet
+		// (whole-catalog universe while idle, disjunctive live count once selected),
+		// so a group's number never jumps between its stored member tally and the
+		// actually-indexed count. Too many groups to list every empty one, so drop
+		// 0-count leaves — but always keep a currently-selected group visible.
+		const gf = small['object.groups'];
+		if (gf) {
+			const selectedGroups = new Set(model.filters.groups ?? []);
+			const byType = new Map<string, GroupHit[]>();
+			for (const g of groupCatalog) {
+				const list = byType.get(g.type);
+				if (list) list.push(g);
+				else byType.set(g.type, [g]);
+			}
+			for (const [type, gs] of byType) {
+				let leaves = gs
+					.map((g) => ({ slug: g.slug, label: groupName(g, locale), count: gf[g.slug] ?? 0 }))
+					.filter((l) => l.count > 0 || selectedGroups.has(l.slug));
+				leaves.sort((a, b) => b.count - a.count);
+				leaves = leaves.slice(0, 60);
+				if (!leaves.length) continue;
+				cats.push({
+					id: `grp-${type}`,
+					// Fall back to the raw type for any group kind the frontend doesn't
+					// know (e.g. stale docs from a pre-merge export) rather than `undefined`.
+					label: groupTypeLabel(type as GroupType) ?? type,
+					leaves: leaves.map((l) => ({
+						id: `grp-${type}-${l.slug}`,
+						kind: 'array',
+						facet: 'groups',
+						values: [l.slug],
+						label: l.label,
+						count: l.count
+					}))
+				});
+			}
 		}
 
 		// Properties — small-body flags; always shown, 0 when none match.
