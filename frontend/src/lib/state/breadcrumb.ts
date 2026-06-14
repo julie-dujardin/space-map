@@ -18,6 +18,7 @@ import {
 	CAT_SOLAR_SYSTEM,
 	CLASS_SLUG_PREFIX,
 	COMET_FAMILY_SLUG_PREFIX,
+	CONSTELLATION_SLUG_PREFIX,
 	smallBodyCategory
 } from '$lib/fetch/groups/registry';
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
@@ -169,7 +170,8 @@ export function parentCrumb(
 		const ct = detail?.global?.celestrak;
 		if (ct?.constellation_slug) {
 			const name = detail?.localized?.constellation?.name ?? prettifySlug(ct.constellation_slug);
-			return { label: name, target: { kind: 'group', slug: ct.constellation_slug, name } };
+			const slug = `${CONSTELLATION_SLUG_PREFIX}${ct.constellation_slug}`;
+			return { label: name, target: { kind: 'group', slug, name } };
 		}
 		if (ct) {
 			const classes = classifyEarthOrbit(ct.perigee, ct.apogee, data.i);

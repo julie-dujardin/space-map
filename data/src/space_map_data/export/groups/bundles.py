@@ -13,7 +13,10 @@ from pathlib import Path
 import orjson
 
 from space_map_data.constants.categories import CATEGORY_BY_SLUG
-from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_BY_SLUG,
+    CONSTELLATION_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
@@ -91,7 +94,9 @@ def _build_global(
         if org:
             data["roles"] = list(org.roles)
     if group.type is GroupType.CONSTELLATION:
-        spec = CONSTELLATION_BY_SLUG.get(group.slug)
+        spec = CONSTELLATION_BY_SLUG.get(
+            group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+        )
         if spec and spec.category:
             data["categories"] = [str(c) for c in spec.category]
     if stats:
@@ -342,7 +347,7 @@ def _constellation_refs(
                 "n": n,
                 "name": name,
                 "primary_type": "group",
-                "primary_id": spec.slug,
+                "primary_id": f"{CONSTELLATION_SLUG_PREFIX}{spec.slug}",
             }
         )
     return out
@@ -382,7 +387,9 @@ def _operator_refs_for_group(
     """Operators of a constellation, resolved as EntityRefs (constants, not P137)."""
     if group.type is not GroupType.CONSTELLATION:
         return []
-    operators = OPERATOR_BY_CONSTELLATION.get(group.slug, [])
+    operators = OPERATOR_BY_CONSTELLATION.get(
+        group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX), []
+    )
     refs: list[dict] = []
     for op in operators:
         org_group_slug = f"{ORGANIZATION_SLUG_PREFIX}{op.slug}"
@@ -408,7 +415,9 @@ def _manufacturer_refs_for_group(
 ) -> list[dict]:
     """Manufacturers of a constellation or bus, resolved as EntityRefs."""
     if group.type is GroupType.CONSTELLATION:
-        manufacturers = MANUFACTURER_BY_CONSTELLATION.get(group.slug, [])
+        manufacturers = MANUFACTURER_BY_CONSTELLATION.get(
+            group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX), []
+        )
     elif group.type is GroupType.BUS:
         bus = BUS_BY_SLUG.get(group.slug.removeprefix(BUS_SLUG_PREFIX))
         manufacturers = [bus.manufacturer] if bus is not None else []

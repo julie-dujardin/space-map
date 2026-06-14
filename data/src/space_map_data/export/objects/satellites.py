@@ -13,7 +13,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.categories import SATELLITES_SLUG
-from space_map_data.constants.earth_sats.constellations import CONSTELLATIONS
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_SLUG_PREFIX,
+    CONSTELLATIONS,
+)
 from space_map_data.constants.earth_sats.featured import (
     EARTH_ID,
     FEATURED_EARTH_SATELLITES,
@@ -103,13 +106,14 @@ def attach_featured_satellites(
         else:
             slug = feat.constellation_slug
             assert slug is not None
+            group_slug = f"{CONSTELLATION_SLUG_PREFIX}{slug}"
             entity = wikidata_entities.get_referenced(_CONSTELLATION_QID.get(slug))
             name = _en_name(entity, slug)
-            entry = {"name": name, "group": slug}
-            thumbnail = pick_thumbnail(collect_group_images(slug))
+            entry = {"name": name, "group": group_slug}
+            thumbnail = pick_thumbnail(collect_group_images(group_slug))
             if thumbnail:
                 entry["thumbnail"] = thumbnail
-            _localized(entity, name, names, slug)
+            _localized(entity, name, names, group_slug)
         entries.append(entry)
 
     if not entries:

@@ -1,9 +1,9 @@
 """Group registry: aggregation entities behind /g/<slug>.
 
-Constellations keep bare slugs; organizations, launch sites, countries, orbit
-classes, and small-body flags are prefixed
-(``org-``/``site-``/``country-``/``class-``/``flag-``) so the same entity can
-appear in multiple roles without slug collisions.
+Every group type's ``/g/`` slug carries a prefix
+(``const-``/``org-``/``site-``/``country-``/``class-``/``flag-``/``cat-``/
+``bus-``/``comet-family-``) so the same entity can appear in multiple roles
+without slug collisions and a slug's type is recognizable on sight.
 """
 
 from dataclasses import dataclass
@@ -11,7 +11,10 @@ from enum import StrEnum
 
 from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES, COUNTRY_SLUG_PREFIX
-from space_map_data.constants.earth_sats.constellations import CONSTELLATIONS
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_SLUG_PREFIX,
+    CONSTELLATIONS,
+)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_SITES,
@@ -93,7 +96,7 @@ class Group:
 def _build_groups() -> tuple[Group, ...]:
     constellations = tuple(
         Group(
-            slug=c.slug,
+            slug=f"{CONSTELLATION_SLUG_PREFIX}{c.slug}",
             type=GroupType.CONSTELLATION,
             applies_to=GroupCategory.EARTH_SAT,
             wikidata_qid=c.wikidata_qid,

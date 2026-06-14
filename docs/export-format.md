@@ -1107,7 +1107,10 @@ interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
 ## Group detail files
 
 Aggregation entities behind `/g/<slug>` pages (constellations, organizations,
-launch sites, countries, orbit classes, and small-body flags). An organization
+launch sites, countries, orbit classes, and small-body flags). Every group
+type's slug carries a type prefix (`const-`, `org-`, `site-`, `bus-`,
+`country-`, `class-`, `flag-`, `cat-`, `comet-family-`) so slugs never collide
+across types and a slug's type is recognizable on sight. An organization
 (`org-<slug>`) is the merged company/agency entity that subsumes the former
 operator and manufacturer roles; its roles are surfaced as tags rather than
 separate pages. Group bundles use the **same hash-bucketing scheme as object

@@ -1,6 +1,9 @@
 """SATCAT metadata export helpers (exported under the "celestrak" JSON key)."""
 
-from space_map_data.constants.earth_sats.constellations import CONSTELLATION_BY_SLUG
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_BY_SLUG,
+    CONSTELLATION_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
@@ -120,13 +123,14 @@ def _constellation_group_ref(
     spec = CONSTELLATION_BY_SLUG.get(slug)
     if spec is None:
         return None
+    group_slug = f"{CONSTELLATION_SLUG_PREFIX}{slug}"
     if spec.wikidata_qid is not None:
         ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
         if ref is not None:
             ref.primary_type = "group"
-            ref.primary_id = slug
+            ref.primary_id = group_slug
             return ref
-    return EntityRef(name=slug, primary_type="group", primary_id=slug)
+    return EntityRef(name=slug, primary_type="group", primary_id=group_slug)
 
 
 def _bus_group_ref(

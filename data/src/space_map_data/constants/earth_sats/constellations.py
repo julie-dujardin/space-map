@@ -19,6 +19,11 @@ Categories mirror the top-level sections of https://celestrak.org/NORAD/elements
 from dataclasses import dataclass
 from enum import StrEnum
 
+# Group-page slug prefix. The bare ``ConstellationSpec.slug`` stays the internal
+# primary key (cross-referenced by operators/manufacturers and CelesTrak
+# matching); the ``/g/`` page is prefixed so every group type carries one.
+CONSTELLATION_SLUG_PREFIX = "const-"
+
 
 class SatelliteCategory(StrEnum):
     """Top-level grouping from https://celestrak.org/NORAD/elements/"""

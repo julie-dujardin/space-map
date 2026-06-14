@@ -102,7 +102,7 @@ def test_attaches_objects_and_constellation(session: Session, monkeypatch) -> No
     assert g["notable_satellites"] == [
         {"name": "International Space Station", "id": "norad_satcat-25544"},
         {"name": "Hubble Space Telescope", "id": "norad_satcat-20580"},
-        {"name": "Starlink", "group": "starlink"},
+        {"name": "Starlink", "group": "const-starlink"},
     ]
     # Localized override only where the label differs from English (ISS in ru).
     assert chunk.localized_data["ru"][EARTH_ID]["notable_satellite_names"] == {

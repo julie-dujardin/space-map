@@ -36,6 +36,7 @@ from space_map_data.constants.categories import (
     SOLAR_SYSTEM_SLUG,
 )
 from space_map_data.constants.countries import COUNTRY_BY_CODE, COUNTRY_SLUG_PREFIX
+from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
@@ -358,7 +359,7 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
     for qid, c_slug, op_qids, mfr_qids, site_code, country_codes in earth_rows:
         out.setdefault(SATELLITES_SLUG, []).append(qid)
         if c_slug:
-            out.setdefault(c_slug, []).append(qid)
+            out.setdefault(f"{CONSTELLATION_SLUG_PREFIX}{c_slug}", []).append(qid)
         for op_qid in op_qids or ():
             op = OPERATOR_BY_QID.get(op_qid)
             if op is not None:

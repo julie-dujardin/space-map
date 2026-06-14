@@ -16,6 +16,7 @@ import orjson
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.countries import COUNTRY_BY_CODE
+from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
@@ -67,7 +68,7 @@ class GroupTierBuild:
 
     membership: dict[GroupType, dict[str, list[str]]] = field(default_factory=dict)
     stats: dict[GroupType, dict[str, GroupSatcatStats]] = field(default_factory=dict)
-    # {constellation slug: {bus group slug: # of this constellation's sats on it}}
+    # {const- group slug: {bus group slug: # of this constellation's sats on it}}
     constellation_bus_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def add(self, group_type: GroupType, slug: str, obj_id: str) -> GroupSatcatStats:
@@ -126,13 +127,16 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
         decay_date,
     ) in rows:
         slugs: list[tuple[GroupType, str]] = []
-        if c_slug:
-            slugs.append((GroupType.CONSTELLATION, c_slug))
+        const_group_slug = f"{CONSTELLATION_SLUG_PREFIX}{c_slug}" if c_slug else None
+        if const_group_slug:
+            slugs.append((GroupType.CONSTELLATION, const_group_slug))
         if bus_slug:
             bus_group_slug = f"{BUS_SLUG_PREFIX}{bus_slug}"
             slugs.append((GroupType.BUS, bus_group_slug))
-            if c_slug:
-                per_bus = build.constellation_bus_counts.setdefault(c_slug, {})
+            if const_group_slug:
+                per_bus = build.constellation_bus_counts.setdefault(
+                    const_group_slug, {}
+                )
                 per_bus[bus_group_slug] = per_bus.get(bus_group_slug, 0) + 1
         # Operator + manufacturer roles collapse onto one org slug; dedup so a
         # sat both built and flown by the same org counts once for its fleet.
@@ -244,9 +248,9 @@ def write_earth_membership(
 ) -> None:
     """Write one gzipped inverted index merging all earth-sat group types.
 
-    Group slugs are globally unique across types (constellation slugs are
-    bare, operator slugs ``op-*``, launch-site slugs ``site-*``, manufacturer
-    slugs ``mfr-*``) so a single flat file resolves any /g/<slug> page.
+    Group slugs are globally unique across types (every type carries a prefix:
+    ``const-``, ``org-``, ``site-``, ``bus-``, ``country-``) so a single flat
+    file resolves any /g/<slug> page.
     """
     merged: dict[str, list[str]] = {
         slug: ids for mem in membership_by_type.values() for slug, ids in mem.items()

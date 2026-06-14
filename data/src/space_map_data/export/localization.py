@@ -3,6 +3,7 @@
 import orjson
 import logging
 
+from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_SLUG
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_BY_SLUG,
@@ -233,6 +234,9 @@ def _group_fallback_name(group) -> str:
         site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
         if site is not None:
             return site.name
+    elif group.type is GroupType.CONSTELLATION:
+        # No name registry; the bare slug is the fallback the frontend prettifies.
+        return group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
     return group.slug
 
 

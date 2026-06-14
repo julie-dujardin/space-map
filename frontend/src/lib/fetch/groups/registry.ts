@@ -22,6 +22,10 @@ export type GroupType =
 export type OrganizationRole = 'operator' | 'manufacturer';
 export type GroupCategory = 'earth_sat' | 'small_body' | 'category';
 
+/** Mirrors ``CONSTELLATION_SLUG_PREFIX`` in
+ *  ``data/constants/earth_sats/constellations.py``. */
+export const CONSTELLATION_SLUG_PREFIX = 'const-';
+
 /** Mirrors ``CLASS_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const CLASS_SLUG_PREFIX = 'class-';
 
