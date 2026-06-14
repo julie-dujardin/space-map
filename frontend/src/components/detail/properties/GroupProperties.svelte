@@ -133,6 +133,8 @@
 	}
 </script>
 
+<GroupOrbitMap {global} />
+
 {#if launchHistogram}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.group_launch_activity()}</h3>
@@ -142,8 +144,6 @@
 		</div>
 	</div>
 {/if}
-
-<GroupOrbitMap {global} />
 
 {#if discoveryHistogram}
 	<div class="flex flex-col gap-1">
