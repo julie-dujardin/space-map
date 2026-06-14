@@ -32,7 +32,9 @@ def assert_no_namespace_collision(session: Session) -> None:
 
     Three checks:
       1. No NORAD value appears on both a probe-* and a norad_satcat-* row.
-      2. No COSPAR value appears on both a probe-* and a norad_satcat-* row.
+      2. No COSPAR value of a *NORAD-less* probe appears on a norad_satcat-*
+         row (see below — COSPAR is non-unique, so this is narrower than
+         NORAD).
       3. For every Object with `satcat_norad_cat_id` set, the FK target
          equals the denormalized `norad_cat_id` (they can't disagree).
 
@@ -40,6 +42,13 @@ def assert_no_namespace_collision(session: Session) -> None:
     both at NORAD 25008) are NOT a violation — multiple probes legitimately
     share a NORAD when they separate after launch. The invariant is purely
     cross-namespace.
+
+    COSPAR (the international designator) is NOT unique across NORADs —
+    Apollo 8's 1968-118B sits on both satcat 3626 and 3627. So a COSPAR
+    overlap is only a real split for a NORAD-less probe: those rely on
+    COSPAR for identity and a same-COSPAR satcat row should have
+    consolidated onto them. A probe that matched by NORAD may share its
+    COSPAR with a distinct-NORAD satcat sibling — benign.
     """
     probe_norads = _column_values(
         session, Object.norad_cat_id, prefix="probe-", non_null=True
@@ -49,8 +58,13 @@ def assert_no_namespace_collision(session: Session) -> None:
     )
     norad_overlap = probe_norads & sat_norads
 
+    # Only NORAD-less probes rely on COSPAR for identity (see docstring).
     probe_cospars = _column_values(
-        session, Object.cospar_id, prefix="probe-", non_null=True
+        session,
+        Object.cospar_id,
+        prefix="probe-",
+        non_null=True,
+        extra_where=(Object.norad_cat_id.is_(None),),
     )
     sat_cospars = _column_values(
         session, Object.cospar_id, prefix="norad_satcat-", non_null=True
@@ -91,10 +105,14 @@ def assert_no_namespace_collision(session: Session) -> None:
     )
 
 
-def _column_values(session: Session, column, *, prefix: str, non_null: bool) -> set:
+def _column_values(
+    session: Session, column, *, prefix: str, non_null: bool, extra_where=()
+) -> set:
     stmt = select(column).where(Object.id.like(f"{prefix}%"))
     if non_null:
         stmt = stmt.where(column.is_not(None))
+    for cond in extra_where:
+        stmt = stmt.where(cond)
     return {v for (v,) in session.execute(stmt).all()}
 
 

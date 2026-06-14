@@ -134,22 +134,42 @@ class TestAssertNoNamespaceCollision:
         with pytest.raises(NamespaceCollisionError, match="NORAD overlap"):
             assert_no_namespace_collision(session)
 
-    def test_raises_on_cospar_overlap(self, session: Session) -> None:
-        # Probe carries a cospar; an unrelated norad_satcat-* row also carries it.
-        _add_satcat(session, 25008, "1997-061A")
-        _add_satcat(session, 99999, "1997-061A")
+    def test_raises_on_cospar_overlap_for_norad_less_probe(
+        self, session: Session
+    ) -> None:
+        # A NORAD-less probe relies on COSPAR for identity; a norad_satcat-*
+        # row sharing that COSPAR should have consolidated onto it.
+        _add_satcat(session, 99999, "1968-118B")
         _add_probe(
             session,
-            probe_id=88592384,
-            name="Cassini",
-            norad=25008,
-            cospar="1997-061A",
-            satcat_fk=25008,
+            probe_id=36044800,
+            name="Apollo 8 S-IVB",
+            norad=None,
+            cospar="1968-118B",
         )
-        _add_norad_satcat(session, norad=99999, cospar="1997-061A", satcat_fk=99999)
+        _add_norad_satcat(session, norad=99999, cospar="1968-118B", satcat_fk=99999)
         session.commit()
         with pytest.raises(NamespaceCollisionError, match="COSPAR overlap"):
             assert_no_namespace_collision(session)
+
+    def test_passes_on_shared_cospar_across_distinct_norads(
+        self, session: Session
+    ) -> None:
+        # COSPAR is non-unique: Apollo 8's 1968-118B is on satcat 3626 (the
+        # probe, matched by NORAD) and 3627, which mints its own row.
+        _add_satcat(session, 3626, "1968-118B")
+        _add_satcat(session, 3627, "1968-118B")
+        _add_probe(
+            session,
+            probe_id=36044800,
+            name="Apollo 8 S-IVB",
+            norad=3626,
+            cospar="1968-118B",
+            satcat_fk=3626,
+        )
+        _add_norad_satcat(session, norad=3627, cospar="1968-118B", satcat_fk=3627)
+        session.commit()
+        assert_no_namespace_collision(session)  # no raise
 
     def test_raises_on_fk_mismatch(self, session: Session) -> None:
         _add_satcat(session, 25008, "1997-061A")
