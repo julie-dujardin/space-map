@@ -30,5 +30,5 @@ Against Meili directly. Reindex is atomic (load into `features_tmp`, then swap):
 ```
 MEILI_URL=http://<host>:9751 \
 MEILI_MASTER_KEY=<from .env> \
-    uv run space-map-search push --indices features
+    uv run space-map-search push
 ```
