@@ -125,6 +125,7 @@ export class SceneRenderer {
 		camOriginWorld: null,
 		camTargetWorld: null,
 		camTargetOffset: null,
+		camOriginOffset: null,
 		flyQ0: null,
 		flyQ1: null,
 		orbitFly: false,

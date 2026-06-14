@@ -26,6 +26,14 @@ export interface FocusState {
 	 * world-fixed (e.g. focus-rotation without a fly).
 	 */
 	camTargetOffset: Vec3 | null;
+	/**
+	 * Body-relative offset of `camOriginWorld`, mirroring {@link camTargetOffset}.
+	 * Set for arc-orbit re-frames so the arc's start point tracks the moving body
+	 * each frame — without it the arc center (the body) drifts away from a fixed
+	 * world origin at high sim speed, ballooning the radius and swinging the camera
+	 * out and back. Null when the origin is world-fixed (approach flies from afar).
+	 */
+	camOriginOffset: Vec3 | null;
 	flyQ0: Quaternion | null;
 	flyQ1: Quaternion | null;
 	orbitFly: boolean;
@@ -175,6 +183,7 @@ export function stepFocusAnimation(
 		state.camOriginWorld = null;
 		state.camTargetWorld = null;
 		state.camTargetOffset = null;
+		state.camOriginOffset = null;
 		state.flyQ0 = null;
 		state.flyQ1 = null;
 		state.orbitFly = false;
@@ -198,6 +207,8 @@ export function prepareFocusTarget(
 	// Arc-orbit is only for re-framing the already-focused body; a new-body focus
 	// (incl. the orbitFly approach set by the controller) must use the linear path.
 	state.arcOrbit = false;
+	// Approach flies leave from a fixed world point; only arc-orbit tracks the origin.
+	state.camOriginOffset = null;
 
 	if (camPos) {
 		state.camOriginWorld = cameraTruePos;
@@ -277,12 +288,19 @@ export function prepareFlyToCamera(
 ): void {
 	state.camOriginWorld = cameraTruePos;
 	state.camTargetWorld = [...camPos];
-	// Body-relative offset (focusTruePos == focused body position at this point)
-	// so camTargetWorld follows the body during the orbit fly.
+	// Body-relative offsets (focusTruePos == focused body position at this point)
+	// so BOTH arc endpoints follow the body during the orbit fly. Tracking the
+	// origin too keeps the arc center (the body) at a constant distance from both
+	// ends, so the body stays framed even when it travels far at high sim speed.
 	state.camTargetOffset = [
 		camPos[0] - state.focusTruePos[0],
 		camPos[1] - state.focusTruePos[1],
 		camPos[2] - state.focusTruePos[2]
+	];
+	state.camOriginOffset = [
+		cameraTruePos[0] - state.focusTruePos[0],
+		cameraTruePos[1] - state.focusTruePos[1],
+		cameraTruePos[2] - state.focusTruePos[2]
 	];
 	state.focusOriginWorld = [...state.focusTruePos];
 	state.focusTargetWorld = [...state.focusTruePos];

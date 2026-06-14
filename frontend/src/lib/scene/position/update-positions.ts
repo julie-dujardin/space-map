@@ -450,6 +450,14 @@ export function updatePositions(params: UpdatePositionsParams): void {
 			focus.camTargetWorld[1] = p[1] + camOff[1];
 			focus.camTargetWorld[2] = p[2] + camOff[2];
 		}
+		// Arc-orbit only: pin the arc's start point to the body too, so the arc
+		// center stays equidistant from both ends and the body stays framed.
+		const camOrigOff = focus.camOriginOffset;
+		if (camOrigOff && focus.camOriginWorld) {
+			focus.camOriginWorld[0] = p[0] + camOrigOff[0];
+			focus.camOriginWorld[1] = p[1] + camOrigOff[1];
+			focus.camOriginWorld[2] = p[2] + camOrigOff[2];
+		}
 		if (!animating) {
 			focus.focusTruePos[0] = p[0];
 			focus.focusTruePos[1] = p[1];
