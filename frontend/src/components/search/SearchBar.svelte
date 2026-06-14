@@ -11,9 +11,11 @@
 		localizedDescription,
 		fetchGroupCatalog,
 		catalogCount,
+		catalogFacets,
 		isSearchEnabled,
 		type SearchHit,
-		type GroupHit
+		type GroupHit,
+		type FacetDistribution
 	} from '$lib/search/client';
 	import { compact } from '$lib/search/format';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
@@ -40,6 +42,7 @@
 	let filterOpen = $state(false);
 	let groupCatalog = $state<GroupHit[]>([]);
 	let catalogTotal = $state(0);
+	let facetUniverse = $state<FacetDistribution>({});
 	let inputEl: HTMLInputElement | undefined = $state();
 
 	const groupBySlug = $derived(new Map(groupCatalog.map((g) => [g.slug, g])));
@@ -52,6 +55,12 @@
 	// Total catalog size for the idle hint (one stats call, locale-agnostic).
 	$effect(() => {
 		if (enabled) catalogCount().then((n) => (catalogTotal = n));
+	});
+
+	// Full facet vocabulary (locale-agnostic codes) so bounded facets can list
+	// every value even once a query/filter narrows the live distribution.
+	$effect(() => {
+		if (enabled) catalogFacets().then((d) => (facetUniverse = d));
 	});
 
 	// Page size follows the visible panel height so a full page fills it (no big
@@ -160,10 +169,15 @@
 	// ── filter tree (categories) ───────────────────────────────────────
 	const categories = $derived.by((): FilterCategory[] => {
 		const f = model.result.facets;
+		// Bounded facets (kind, type, flags) list their full value set always; the
+		// live distribution gives counts (0 when narrowed away), falling back to the
+		// whole-catalog universe while idle (no query/filters).
+		const small = model.hasResults ? f : facetUniverse;
 		const locale = getLocale();
 		const cats: FilterCategory[] = [];
 
-		// Kind — always offered, even before a query populates counts.
+		// Kind — the fixed trio, always shown; 0 when none match.
+		const kindDist = small['kind'] ?? {};
 		cats.push({
 			id: 'kind',
 			label: m.search_facet_kind(),
@@ -173,19 +187,21 @@
 				facet: 'kind',
 				values: [k],
 				label: kindLabel(k),
-				count: f['kind']?.[k]
+				count: kindDist[k] ?? 0
 			}))
 		});
 
-		// Type — merge raw object.type values that share a display label.
-		const typeFacet = f['object.type'];
-		if (typeFacet) {
+		// Type — full vocabulary from the universe, merged by display label; live
+		// counts fill in (0 when none match the current query/filters).
+		const typeVocab = facetUniverse['object.type'];
+		if (typeVocab) {
+			const typeDist = small['object.type'] ?? {};
 			const byLabel = new Map<string, { values: string[]; count: number }>();
-			for (const [raw, count] of Object.entries(typeFacet)) {
+			for (const raw of Object.keys(typeVocab)) {
 				const lbl = typeLabel(raw);
 				const e = byLabel.get(lbl) ?? { values: [], count: 0 };
 				e.values.push(raw);
-				e.count += count;
+				e.count += typeDist[raw] ?? 0;
 				byLabel.set(lbl, e);
 			}
 			const leaves = [...byLabel.entries()]
@@ -202,8 +218,11 @@
 		}
 
 		// Collections — one category per group type, leaves are the groups. Live
-		// facet count when querying, else the group's own member tally.
+		// facet count when querying, else the group's own member tally. Too many
+		// groups to list every empty one, so drop 0-count leaves — but always keep
+		// a currently-selected group visible so it stays uncheckable in place.
 		const gf = f['object.groups'];
+		const selectedGroups = new Set(model.filters.groups ?? []);
 		const byType = new Map<string, GroupHit[]>();
 		for (const g of groupCatalog) {
 			const list = byType.get(g.type);
@@ -216,7 +235,7 @@
 				label: groupName(g, locale),
 				count: gf?.[g.slug] ?? (gf ? 0 : g.member_count)
 			}));
-			if (gf) leaves = leaves.filter((l) => l.count > 0);
+			if (gf) leaves = leaves.filter((l) => l.count > 0 || selectedGroups.has(l.slug));
 			leaves.sort((a, b) => b.count - a.count);
 			leaves = leaves.slice(0, 60);
 			if (!leaves.length) continue;
@@ -236,7 +255,7 @@
 			});
 		}
 
-		// Properties — small-body flags.
+		// Properties — small-body flags; always shown, 0 when none match.
 		cats.push({
 			id: 'props',
 			label: m.search_facet_properties(),
@@ -246,14 +265,14 @@
 					kind: 'bool',
 					facet: 'neo',
 					label: m.search_prop_neo(),
-					count: f['object.neo']?.['true']
+					count: small['object.neo']?.['true'] ?? 0
 				},
 				{
 					id: 'prop-pha',
 					kind: 'bool',
 					facet: 'pha',
 					label: m.search_prop_pha(),
-					count: f['object.pha']?.['true']
+					count: small['object.pha']?.['true'] ?? 0
 				}
 			]
 		});

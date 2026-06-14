@@ -299,23 +299,34 @@ function orClause(field: string, vals: string[] | undefined): string | null {
 	return `(${vals.map((v) => `${field} = ${quote(v)}`).join(' OR ')})`;
 }
 
-function buildFilter(f: CatalogFilters): string | undefined {
-	const parts: string[] = [];
-	for (const [field, vals] of [
-		['kind', f.kind],
-		['object.type', f.type],
-		['object.groups', f.groups]
-	] as const) {
-		const clause = orClause(field, vals);
-		if (clause) parts.push(clause);
-	}
-	if (f.neo) parts.push('object.neo = true');
-	if (f.pha) parts.push('object.pha = true');
+/** Per-facet filter clauses, keyed by the facet attribute. Values within one
+ *  facet OR together (inside `orClause`); facets AND when joined. Keyed so a
+ *  facet's own clause can be dropped for its disjunctive recount. */
+function filterClauses(f: CatalogFilters): Map<string, string> {
+	const out = new Map<string, string>();
+	const kind = orClause('kind', f.kind);
+	if (kind) out.set('kind', kind);
+	const type = orClause('object.type', f.type);
+	if (type) out.set('object.type', type);
+	const groups = orClause('object.groups', f.groups);
+	if (groups) out.set('object.groups', groups);
+	if (f.neo) out.set('object.neo', 'object.neo = true');
+	if (f.pha) out.set('object.pha', 'object.pha = true');
+	return out;
+}
+
+function joinClauses(clauses: Map<string, string>, except?: string): string | undefined {
+	const parts = [...clauses].filter(([k]) => k !== except).map(([, v]) => v);
 	return parts.length ? parts.join(' AND ') : undefined;
 }
 
-/** One page of the faceted catalog: ranked hits, a post-filter facet
- *  distribution (drives counts + the filter tree), and the capped total. */
+/** One page of the faceted catalog: ranked hits, a facet distribution (drives
+ *  counts + the filter tree), and the capped total.
+ *
+ *  Facets are disjunctive: each facet that has an active selection gets its
+ *  distribution recomputed with its own clause dropped, so its sibling values
+ *  keep the true counts you'd get by OR-ing them in — instead of collapsing to
+ *  the one selected value. Facets with no selection use the main distribution. */
 export async function searchCatalog(opts: {
 	query: string;
 	filters: CatalogFilters;
@@ -328,19 +339,58 @@ export async function searchCatalog(opts: {
 	const c = getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0, facets: {} };
 	const sort = buildSort(opts.sort, opts.reverse);
-	const res = await c.index(INDEX).search(opts.query, {
-		filter: buildFilter(opts.filters),
-		sort: sort.length ? sort : undefined,
-		facets: FACETS,
-		offset: (opts.page - 1) * opts.pageSize,
-		limit: opts.pageSize,
-		locales: [opts.locale]
+	const clauses = filterClauses(opts.filters);
+	const active = [...clauses.keys()];
+
+	const { results } = await c.multiSearch({
+		queries: [
+			{
+				indexUid: INDEX,
+				q: opts.query,
+				filter: joinClauses(clauses),
+				sort: sort.length ? sort : undefined,
+				facets: FACETS,
+				offset: (opts.page - 1) * opts.pageSize,
+				limit: opts.pageSize,
+				locales: [opts.locale]
+			},
+			// One recount per selected facet: same query, all clauses except its own.
+			...active.map((facet) => ({
+				indexUid: INDEX,
+				q: opts.query,
+				filter: joinClauses(clauses, facet),
+				facets: [facet],
+				limit: 0,
+				locales: [opts.locale]
+			}))
+		]
 	});
+
+	const main = results[0];
+	const facets: FacetDistribution = { ...((main.facetDistribution ?? {}) as FacetDistribution) };
+	active.forEach((facet, i) => {
+		facets[facet] = ((results[i + 1].facetDistribution ?? {}) as FacetDistribution)[facet] ?? {};
+	});
+
 	return {
-		hits: (res.hits ?? []).map((h) => toHit(h as RawHit)),
-		estimatedTotalHits: res.estimatedTotalHits ?? 0,
-		facets: (res.facetDistribution ?? {}) as FacetDistribution
+		hits: (main.hits ?? []).map((h) => toHit(h as RawHit)),
+		estimatedTotalHits: main.estimatedTotalHits ?? 0,
+		facets
 	};
+}
+
+// Unfiltered facet distribution over the whole catalog, cached after first use.
+// Supplies the full value vocabulary so bounded facets (kind, type, flags) can
+// still list every option — at 0 — once a query/filter narrows them away.
+let facetUniverseCache: FacetDistribution | null = null;
+
+export async function catalogFacets(): Promise<FacetDistribution> {
+	if (facetUniverseCache) return facetUniverseCache;
+	const c = getClient();
+	if (!c) return {};
+	const res = await c.index(INDEX).search('', { facets: FACETS, limit: 0 });
+	facetUniverseCache = (res.facetDistribution ?? {}) as FacetDistribution;
+	return facetUniverseCache;
 }
 
 // Total documents in the catalog, cached after the first stats call. Drives the
