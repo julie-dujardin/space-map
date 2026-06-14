@@ -365,7 +365,7 @@
 		role="search"
 		bind:this={wrapperEl}
 	>
-		<!-- header: input + applied filter tokens -->
+		<!-- header chrome: input · controls (count/sort/filter) · applied tokens -->
 		<div class={expanded ? 'shrink-0 border-b border-border' : ''}>
 			<div
 				class={expanded
@@ -411,72 +411,74 @@
 				{/if}
 			</div>
 
-			{#if expanded && tokens.length > 0}
-				<div class="flex flex-wrap gap-1.5 px-3 pb-2.5">
-					{#each tokens as t (t.key + (t.value ?? ''))}
-						<span
-							class="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 ps-2.5 pe-1.5 text-xs whitespace-nowrap text-foreground"
-						>
-							{t.label}
-							<button
-								type="button"
-								class="grid size-[17px] place-items-center rounded-full bg-foreground/10 hover:bg-foreground/20"
-								aria-label={m.search_clear()}
-								onclick={() => model.removeToken(t)}
+			{#if expanded}
+				<!-- count · sort · filter — kept directly under the fixed-height input
+				     (token chips moved below) so the Filter popover opens at a constant
+				     height no matter how many token rows pile up -->
+				<div class="flex items-center gap-2 px-3 pt-2 pb-2">
+					<span class="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">
+						{#if model.hasResults}
+							<span class="font-medium text-foreground"
+								>{compact(model.result.estimatedTotalHits)}</span
 							>
-								<XIcon class="size-2.5" />
-							</button>
-						</span>
-					{/each}
-					<button
-						type="button"
-						class="h-[26px] px-2 text-xs text-muted-foreground hover:text-foreground"
-						onclick={() => model.clearFilters()}>{m.search_clear()}</button
-					>
+							{m.search_results_label()}
+						{:else}
+							{m.search_catalog_count({ count: catalogTotal.toLocaleString(getLocale()) })}
+						{/if}
+					</span>
+					{#if model.hasResults}
+						<SortMenu {model} />
+					{/if}
+					<div class="relative shrink-0" bind:this={filterWrapEl}>
+						<button
+							type="button"
+							class="inline-flex h-[30px] items-center gap-1.5 rounded-lg border px-2.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-accent {model.activeCount ||
+							filterOpen
+								? 'border-foreground bg-accent'
+								: 'border-border'}"
+							onclick={() => (filterOpen = !filterOpen)}
+						>
+							<SlidersIcon class="size-3.5" />
+							{m.search_filter()}
+							{#if model.activeCount > 0}
+								<span
+									class="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-foreground px-1 text-[10px] tabular-nums text-background"
+									>{model.activeCount}</span
+								>
+							{/if}
+						</button>
+						{#if filterOpen}
+							<FilterDrill {model} {categories} />
+						{/if}
+					</div>
 				</div>
+
+				{#if tokens.length > 0}
+					<div class="flex flex-wrap gap-1.5 px-3 pb-2.5">
+						{#each tokens as t (t.key + (t.value ?? ''))}
+							<span
+								class="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 ps-2.5 pe-1.5 text-xs whitespace-nowrap text-foreground"
+							>
+								{t.label}
+								<button
+									type="button"
+									class="grid size-[17px] place-items-center rounded-full bg-foreground/10 hover:bg-foreground/20"
+									aria-label={m.search_clear()}
+									onclick={() => model.removeToken(t)}
+								>
+									<XIcon class="size-2.5" />
+								</button>
+							</span>
+						{/each}
+						<button
+							type="button"
+							class="h-[26px] px-2 text-xs text-muted-foreground hover:text-foreground"
+							onclick={() => model.clearFilters()}>{m.search_clear()}</button
+						>
+					</div>
+				{/if}
 			{/if}
 		</div>
-
-		<!-- count · sort · filter -->
-		{#if expanded}
-			<div class="flex shrink-0 items-center gap-2 px-3 pt-2 pb-1">
-				<span class="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">
-					{#if model.hasResults}
-						<span class="font-medium text-foreground"
-							>{compact(model.result.estimatedTotalHits)}</span
-						>
-						{m.search_results_label()}
-					{:else}
-						{m.search_catalog_count({ count: catalogTotal.toLocaleString(getLocale()) })}
-					{/if}
-				</span>
-				{#if model.hasResults}
-					<SortMenu {model} />
-				{/if}
-				<div class="relative shrink-0" bind:this={filterWrapEl}>
-					<button
-						type="button"
-						class="inline-flex h-[30px] items-center gap-1.5 rounded-lg border px-2.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-accent {model.activeCount ||
-						filterOpen
-							? 'border-foreground bg-accent'
-							: 'border-border'}"
-						onclick={() => (filterOpen = !filterOpen)}
-					>
-						<SlidersIcon class="size-3.5" />
-						{m.search_filter()}
-						{#if model.activeCount > 0}
-							<span
-								class="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-foreground px-1 text-[10px] tabular-nums text-background"
-								>{model.activeCount}</span
-							>
-						{/if}
-					</button>
-					{#if filterOpen}
-						<FilterDrill {model} {categories} />
-					{/if}
-				</div>
-			</div>
-		{/if}
 
 		<!-- results -->
 		{#if expanded && model.hasResults}
