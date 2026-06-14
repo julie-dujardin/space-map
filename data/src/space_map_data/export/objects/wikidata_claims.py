@@ -152,10 +152,6 @@ _INSTANCE_OF_IGNORED = {
 }
 
 
-class MultipleClaimValues(ValueError):
-    """Raised when a single-value claim has multiple non-deprecated values."""
-
-
 class GlobalClaim(NamedTuple):
     key: str
     pid: str
@@ -467,6 +463,15 @@ def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
     return None
 
 
+def _series_ordinal(stmt: dict) -> int | None:
+    """Return the P1545 series ordinal of a statement, or None."""
+    for snak in stmt.get("qualifiers", {}).get("P1545", []):
+        val = snak.get("datavalue", {}).get("value")
+        if isinstance(val, str) and val.lstrip("-").isdigit():
+            return int(val)
+    return None
+
+
 def _stmt_value(stmt: dict):
     """Extract ``mainsnak.datavalue.value`` from a statement, or None."""
     return stmt.get("mainsnak", {}).get("datavalue", {}).get("value")
@@ -600,7 +605,9 @@ def _single_time(
         if prop in _PICK_EARLIEST_TIME:
             return min(vals)
         key = PID_TO_KEY.get(prop, prop)
-        raise MultipleClaimValues(f"Multiple time values for {key} on {qid}: {vals}")
+        logger.critical(
+            "Multiple time values for %s on %s: %s — picking first", key, qid, vals
+        )
     return vals[0] if vals else None
 
 
@@ -725,10 +732,19 @@ def _resolve_quantity(
         vals = [(p["value"] if isinstance(p, dict) else p, p) for _, p in pairs]
         return max(vals, key=lambda t: t[0])[1]
 
+    # Distinguished only by series ordinal (P1545): pick the lowest ordinal.
+    ordinals = [(_series_ordinal(s), p) for s, p in pairs]
+    if any(o is not None for o, _ in ordinals):
+        return min(ordinals, key=lambda t: (t[0] is None, t[0]))[1]
+
     key = PID_TO_KEY.get(prop, prop)
-    raise MultipleClaimValues(
-        f"Multiple quantity values for {key} on {qid}: {[p for _, p in pairs]}"
+    logger.critical(
+        "Multiple quantity values for %s on %s: %s — picking first",
+        key,
+        qid,
+        [p for _, p in pairs],
     )
+    return pairs[0][1]
 
 
 def _single_quantity(
@@ -758,7 +774,9 @@ def _single_entity_qid(claims: dict, prop: str, qid: str) -> str | None:
     )
     if len(vals) > 1:
         key = PID_TO_KEY.get(prop, prop)
-        raise MultipleClaimValues(f"Multiple entity values for {key} on {qid}: {vals}")
+        logger.critical(
+            "Multiple entity values for %s on %s: %s — picking first", key, qid, vals
+        )
     return vals[0] if vals else None
 
 

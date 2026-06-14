@@ -1,5 +1,6 @@
 """Tests for space_map_data.export.objects.wikidata_claims."""
 
+import logging
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -7,7 +8,6 @@ import pytest
 
 from space_map_data.export.wikidata import active_statements
 from space_map_data.export.objects.wikidata_claims import (
-    MultipleClaimValues,
     extract_claims,
     radius_km_from_claims,
     resolve_entity_ref,
@@ -302,15 +302,17 @@ class TestTimeClaims:
     def test_single_time_empty(self):
         assert _single_time({}, "P619", "Q1") is None
 
-    def test_single_time_raises_on_multiple(self):
+    def test_single_time_logs_critical_on_multiple(self, caplog):
         claims = {
             "P619": [
                 _stmt(_time_snak("+1990-04-24T00:00:00Z", precision=11)),
                 _stmt(_time_snak("+1991-01-01T00:00:00Z", precision=11)),
             ]
         }
-        with pytest.raises(MultipleClaimValues, match="launch_date.*Q1"):
-            _single_time(claims, "P619", "Q1")
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_time(claims, "P619", "Q1")
+        assert result == "+1990-04-24T00:00:00Z"
+        assert "Multiple time values for launch_date on Q1" in caplog.text
 
     def test_single_time_inception_picks_earliest(self):
         # Predecessor founding (1884) + restructuring (1991) — the older
@@ -463,15 +465,33 @@ class TestSingleQuantity:
         result = _single_quantity(claims, "P7015", needs_unit=True, qid="Q147561")
         assert result is None
 
-    def test_raises_on_unresolvable_multiple(self):
+    def test_logs_critical_on_unresolvable_multiple(self, caplog):
         claims = {
             "P2054": [
                 _stmt(_qty_snak("+5.0", "Q13147228")),
                 _stmt(_qty_snak("+6.0", "Q13147228")),
             ]
         }
-        with pytest.raises(MultipleClaimValues, match="density"):
-            _single_quantity(claims, "P2054", needs_unit=True, qid="Q99999")
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_quantity(claims, "P2054", needs_unit=True, qid="Q99999")
+        assert result == {"value": 5.0, "unit": "Q13147228"}
+        assert "Multiple quantity values for density on Q99999" in caplog.text
+
+    def test_series_ordinal_picks_lowest(self):
+        claims = {
+            "P2067": [
+                _stmt(
+                    _qty_snak("+41.0", "Q11570"),
+                    qualifiers={"P1545": [_string_snak("2")]},
+                ),
+                _stmt(
+                    _qty_snak("+37.5", "Q11570"),
+                    qualifiers={"P1545": [_string_snak("1")]},
+                ),
+            ]
+        }
+        result = _single_quantity(claims, "P2067", needs_unit=True, qid="Q28803027")
+        assert result == {"value": 37.5, "unit": "Q11570"}
 
     def test_width_picks_max_soho(self):
         """Q320638 SOHO: width 2.7m (body) vs 9.5m (solar panel span) — pick max."""
@@ -550,15 +570,17 @@ class TestEntityQids:
         }
         assert _single_entity_qid(claims, "P744", "Q1") == "Q123456"
 
-    def test_single_entity_qid_raises_on_multiple(self):
+    def test_single_entity_qid_logs_critical_on_multiple(self, caplog):
         claims = {
             "P744": [
                 _stmt(_entity_snak("Q123")),
                 _stmt(_entity_snak("Q456")),
             ]
         }
-        with pytest.raises(MultipleClaimValues, match="asteroid_family.*Q1"):
-            _single_entity_qid(claims, "P744", "Q1")
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_entity_qid(claims, "P744", "Q1")
+        assert result == "Q123"
+        assert "Multiple entity values for asteroid_family on Q1" in caplog.text
 
 
 class TestExtractClaims:
