@@ -150,6 +150,7 @@ def _build_localized(
     related_by_qid: dict[str, list[Group]],
     child_slugs: list[str] | None,
     member_counts: dict[str, int],
+    child_counts: dict[str, int] | None = None,
     display_name: str | None = None,
 ) -> dict:
     data: dict = {}
@@ -227,7 +228,7 @@ def _build_localized(
             data["constellations"] = constellations
     if child_slugs:
         child_groups = _child_group_refs(
-            child_slugs, lang, wikidata_entities, member_counts
+            child_slugs, lang, wikidata_entities, member_counts, child_counts
         )
         if child_groups:
             data["child_groups"] = child_groups
@@ -239,8 +240,14 @@ def _child_group_refs(
     lang: str,
     wikidata_entities: WikidataEntityCache,
     member_counts: dict[str, int],
+    child_counts: dict[str, int] | None = None,
 ) -> list[dict]:
-    """Child-group links for a category page, with localized names + counts."""
+    """Child-group links for a parent page, with localized names + counts.
+
+    ``child_counts`` overrides the displayed count per child slug — used by
+    constellations, whose bus chips show the within-constellation tally rather
+    than the bus group's global total. Falls back to ``member_counts``.
+    """
     refs: list[dict] = []
     for slug in child_slugs:
         child = GROUP_BY_SLUG.get(slug)
@@ -266,10 +273,13 @@ def _child_group_refs(
                 bus = BUS_BY_SLUG.get(slug.removeprefix(BUS_SLUG_PREFIX))
                 if bus is not None and bus.also_known_as:
                     name = bus.also_known_as[0]
+        n = member_counts.get(slug, 0)
+        if child_counts is not None and slug in child_counts:
+            n = child_counts[slug]
         refs.append(
             {
                 "name": name,
-                "n": member_counts.get(slug, 0),
+                "n": n,
                 "primary_type": "group",
                 "primary_id": slug,
                 "role": str(child.type),
@@ -505,6 +515,7 @@ def write_group_bundles(
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
+    child_counts_by_group: dict[str, dict[str, int]] | None = None,
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
 ) -> dict[str, int]:
@@ -557,6 +568,7 @@ def write_group_bundles(
             member_entries,
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
+        child_counts = (child_counts_by_group or {}).get(group.slug)
         display_name = (extra_group_names or {}).get(group.slug)
         for lang in LANGUAGES:
             lang_data = _build_localized(
@@ -569,6 +581,7 @@ def write_group_bundles(
                 related_by_qid,
                 child_slugs,
                 member_counts,
+                child_counts,
                 display_name,
             )
             if members and member_entries:

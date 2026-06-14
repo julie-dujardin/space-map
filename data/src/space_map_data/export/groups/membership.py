@@ -65,6 +65,8 @@ class GroupTierBuild:
 
     membership: dict[GroupType, dict[str, list[str]]] = field(default_factory=dict)
     stats: dict[GroupType, dict[str, GroupSatcatStats]] = field(default_factory=dict)
+    # {constellation slug: {bus group slug: # of this constellation's sats on it}}
+    constellation_bus_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def add(self, group_type: GroupType, slug: str, obj_id: str) -> GroupSatcatStats:
         self.membership.setdefault(group_type, {}).setdefault(slug, []).append(obj_id)
@@ -122,7 +124,11 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
         if c_slug:
             slugs.append((GroupType.CONSTELLATION, c_slug))
         if bus_slug:
-            slugs.append((GroupType.BUS, f"{BUS_SLUG_PREFIX}{bus_slug}"))
+            bus_group_slug = f"{BUS_SLUG_PREFIX}{bus_slug}"
+            slugs.append((GroupType.BUS, bus_group_slug))
+            if c_slug:
+                per_bus = build.constellation_bus_counts.setdefault(c_slug, {})
+                per_bus[bus_group_slug] = per_bus.get(bus_group_slug, 0) + 1
         for qid in op_qids or ():
             op = OPERATOR_BY_QID.get(qid)
             if op is None:

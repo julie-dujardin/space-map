@@ -276,7 +276,9 @@
 	// for (inc-only sat zones, off-plot classes) plus non-zone children.
 	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
 	let visibleChildGroups = $derived.by(() => {
-		const cg = groupDetail?.localized?.child_groups ?? [];
+		// Bus chips render inside GroupProperties (below Programme); everything
+		// else (category zones/families/classes) stays here, above the details.
+		const cg = (groupDetail?.localized?.child_groups ?? []).filter((c) => c.role !== 'bus');
 		if (!categoryPlot) return cg;
 		const clickable = scatterClickableSlugs(categoryPlot);
 		return cg.filter((c) => !(c.primary_id && clickable.has(c.primary_id)));

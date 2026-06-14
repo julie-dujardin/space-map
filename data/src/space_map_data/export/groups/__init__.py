@@ -178,6 +178,13 @@ def run_groups_tier(
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
 
+    # Each constellation lists the buses its members fly, most-used first; the
+    # chip count is the within-constellation tally, not the bus's global total.
+    constellation_bus_children = {
+        c_slug: sorted(counts, key=lambda s: (-counts[s], s))
+        for c_slug, counts in build.constellation_bus_counts.items()
+    }
+
     extra_member_counts.update(category_data.member_counts)
     extra_member_counts.update(split_comets.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
@@ -207,7 +214,12 @@ def run_groups_tier(
         extra_pha_counts=small_body_stats.pha_counts,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
-        child_slugs_by_group={**category_data.children, **MANUFACTURER_BUS_CHILDREN},
+        child_slugs_by_group={
+            **category_data.children,
+            **MANUFACTURER_BUS_CHILDREN,
+            **constellation_bus_children,
+        },
+        child_counts_by_group=build.constellation_bus_counts,
         extra_groups=tuple(split_comets.groups),
         extra_group_names=split_comets.names,
     )

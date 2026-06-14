@@ -15,6 +15,7 @@
 	import EntityLinks from './EntityLinks.svelte';
 	import YearHistogramChart from './YearHistogramChart.svelte';
 	import GroupOrbitMap from './GroupOrbitMap.svelte';
+	import ChildGroups from './ChildGroups.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -35,6 +36,8 @@
 	let launchSites = $derived(localized?.launch_sites ?? []);
 	let constellations = $derived(localized?.constellations ?? []);
 	let related = $derived(localized?.related_groups ?? []);
+	// Satellite buses flown by this group's members (constellations + manufacturers).
+	let busChildGroups = $derived((localized?.child_groups ?? []).filter((c) => c.role === 'bus'));
 
 	// Hide the top-launch-sites and orbit-class breakdowns when constellations
 	// are shown — each constellation already surfaces its own, so they're redundant.
@@ -184,6 +187,10 @@
 			</Row>
 		{/each}
 	</Section>
+{/if}
+
+{#if busChildGroups.length}
+	<ChildGroups childGroups={busChildGroups} />
 {/if}
 
 {#if orbitClassRefs.length > 0 && constellations.length === 0}
