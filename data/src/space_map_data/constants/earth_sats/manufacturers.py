@@ -36,7 +36,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Northrop Grumman",
         "northrop-grumman",
         "Q86894155",
-        constellations=("cygnus", "minotaur", "antares"),
+        constellations=("cygnus", "minotaur", "antares", "taurus-minotaur-c"),
     ),
     ManufacturerSpec(
         "Rocket Lab",
@@ -124,6 +124,10 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         constellations=(
             "pslv",
             "gslv",
+            "slv-3",
+            "aslv",
+            "lvm3",
+            "sslv",
             "irnss-navic",
             "cartosat",
             "risat",
@@ -192,7 +196,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Lockheed Martin",
         "lockheed-martin",
         "Q7240",
-        constellations=("aehf", "sbirs", "muos", "gps"),
+        constellations=("aehf", "sbirs", "muos", "gps", "athena", "agena"),
     ),
     ManufacturerSpec(
         "Airbus Defence and Space",
@@ -239,7 +243,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Khrunichev State Research and Production Space Center",
         "khrunichev",
         "Q1197016",
-        constellations=("proton", "proton-m"),
+        constellations=("proton", "proton-m", "proton-rocket", "rokot"),
     ),
     ManufacturerSpec(
         "S.P. Korolev Rocket and Space Corporation Energia",
@@ -247,8 +251,13 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Q763402",
         constellations=(
             "molniya",
+            "molniya-rocket",
             "soyuz",
             "soyuz-rocket",
+            "sputnik-rocket",
+            "vostok-rocket",
+            "polyot",
+            "energia",
             "progress",
             "mir",
             "salyut",
@@ -260,6 +269,19 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Q949211",
         constellations=("venera", "elektron", "luna", "zond"),
     ),
+    ManufacturerSpec(
+        "Yuzhmash",
+        "yuzhmash",
+        "Q851367",
+        constellations=("tsyklon-2", "tsyklon-3", "zenit", "dnepr"),
+    ),
+    ManufacturerSpec(
+        "Mitsubishi Heavy Industries",
+        "mhi",
+        "Q648280",
+        constellations=("h3", "n-1-japan", "n-2-japan"),
+    ),
+    ManufacturerSpec("Avio", "avio", "Q791069", constellations=("vega",)),
     # ----- Bus-only primes (no constellation claim; tagged via SATELLITE_BUSES name match) -----
     ManufacturerSpec("Hughes Aircraft Company", "hughes", "Q196253"),
     ManufacturerSpec("Space Systems / Loral", "ssl", "Q571107"),

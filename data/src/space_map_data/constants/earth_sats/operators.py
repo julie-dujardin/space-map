@@ -98,7 +98,17 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "JAXA",
         "jaxa",
         "Q179103",
-        constellations=("iss", "h-2", "h-1", "epsilon", "mu-rocket", "hitomi-debris"),
+        constellations=(
+            "iss",
+            "h-2",
+            "h-1",
+            "h3",
+            "n-1-japan",
+            "n-2-japan",
+            "epsilon",
+            "mu-rocket",
+            "hitomi-debris",
+        ),
     ),
     OperatorSpec("CSA", "csa", "Q212227", constellations=("iss",)),
     OperatorSpec(
@@ -156,6 +166,10 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         constellations=(
             "pslv",
             "gslv",
+            "slv-3",
+            "aslv",
+            "lvm3",
+            "sslv",
             "irnss-navic",
             "cartosat",
             "risat",
@@ -660,13 +674,13 @@ OPERATORS: tuple[OperatorSpec, ...] = (
         "IRGC Aerospace Force",
         "irgc-aerospace-force",
         "Q4410582",
-        constellations=("iran-classified",),
+        constellations=("iran-classified", "qased", "qaem-100"),
     ),
     OperatorSpec(
         "Iranian Space Agency",
         "isa",
         "Q572596",
-        constellations=("safir",),
+        constellations=("safir", "simorgh", "zuljanah"),
     ),
     OperatorSpec(
         "IAI - Israel Aerospace Industries",
@@ -737,6 +751,38 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     ),
     OperatorSpec(
         "Bundeswehr", "bundeswehr", "Q56010", constellations=("sar-lupe", "sarah")
+    ),
+    # Launch providers for the 2026-06 rocket batch.
+    OperatorSpec(
+        "Galactic Energy",
+        "galactic-energy",
+        "Q104635667",
+        constellations=("ceres-1", "pallas-1"),
+    ),
+    OperatorSpec("LandSpace", "landspace", "Q48772158", constellations=("zhuque-2",)),
+    OperatorSpec(
+        "Orienspace", "orienspace", "Q110921195", constellations=("gravity-1",)
+    ),
+    OperatorSpec(
+        "Virgin Orbit", "virgin-orbit", "Q28939648", constellations=("launcherone",)
+    ),
+    OperatorSpec(
+        "Relativity Space",
+        "relativity-space",
+        "Q54263821",
+        constellations=("terran-1",),
+    ),
+    OperatorSpec(
+        "Korea Aerospace Research Institute",
+        "kari",
+        "Q494948",
+        constellations=("naro", "nuri"),
+    ),
+    OperatorSpec(
+        "National Aerospace Development Administration",
+        "nada",
+        "Q17124852",
+        constellations=("unha", "chollima-1"),
     ),
 )
 

@@ -472,7 +472,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         (SatelliteCategory.OBSERVATION,),
         prefix=("GEOEYE", "WORLDVIEW", "LEGION"),
     ),
-    # Rocket stages
+    # -------------------------------------------------------------------------
+    # Rockets/upper stages
+    # -------------------------------------------------------------------------
     ConstellationSpec(
         "falcon",
         "Q249091",
@@ -488,7 +490,9 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "thor-rocket",
         "Q249534",
         (SatelliteCategory.ROCKET,),
-        prefix=("THORAD", "THOR ABLESTAR"),
+        # Thor/Thorad booster stacks. AGENA/BURNER stages get their own
+        # cross-family entries below; "THOR 5/6/7" are Telenor comsats (thor).
+        prefix=("THOR ABLE", "THOR ALTAIR", "THOR DELTA", "THORAD DELTA"),
     ),
     ConstellationSpec("pslv", "Q221654", (SatelliteCategory.ROCKET,), prefix="PSLV"),
     ConstellationSpec(
@@ -501,8 +505,18 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "diamant", "Q49568", (SatelliteCategory.ROCKET,), prefix="DIAMANT"
     ),
+    ConstellationSpec(
+        "black-arrow", "Q35307", (SatelliteCategory.ROCKET,), prefix="BLACK ARROW"
+    ),
     ConstellationSpec("h-1", "Q1279552", (SatelliteCategory.ROCKET,), prefix="H-1"),
     ConstellationSpec("h-2", "Q548376", (SatelliteCategory.ROCKET,), prefix="H-2"),
+    ConstellationSpec(
+        "n-1-japan", "Q618897", (SatelliteCategory.ROCKET,), prefix="N-1"
+    ),  # NASDA N-I (licensed Thor-Delta); catalogued "N-1 R/B".
+    ConstellationSpec(
+        "n-2-japan", "Q3130574", (SatelliteCategory.ROCKET,), prefix="N-2"
+    ),
+    ConstellationSpec("h3", "Q11222053", (SatelliteCategory.ROCKET,), prefix="H-3"),
     ConstellationSpec("gslv", "Q249238", (SatelliteCategory.ROCKET,), prefix="GSLV"),
     ConstellationSpec(
         "minotaur", "Q1727072", (SatelliteCategory.ROCKET,), prefix="MINOTAUR"
@@ -522,7 +536,6 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     ConstellationSpec(
         "firefly", "Q21512704", (SatelliteCategory.ROCKET,), prefix="FIREFLY"
     ),
-    ConstellationSpec("safir", "Q142596", (SatelliteCategory.ROCKET,), prefix="SAFIR"),
     ConstellationSpec(
         "kuaizhou", "Q15049837", (SatelliteCategory.ROCKET,), prefix="KZ-1"
     ),
@@ -549,8 +562,114 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "yuanzheng", "Q20871633", (SatelliteCategory.UPPER_STAGE,), prefix="YZ-1"
     ),
     ConstellationSpec(
-        "vega", None, (SatelliteCategory.ROCKET,), prefix="AVUM"
-    ),  # avum is vega's upper stage
+        "vega", "Q262629", (SatelliteCategory.ROCKET,), prefix="AVUM"
+    ),  # AVUM is Vega's upper stage
+    ConstellationSpec(
+        "agena", "Q16862", (SatelliteCategory.UPPER_STAGE,), contains=("AGENA",)
+    ),
+    # No "centaur" entry: every Centaur in SATCAT is booster-prefixed
+    # (ATLAS/TITAN/VULCAN CENTAUR) and so resolves to atlas/titan-rocket/vulcan.
+    ConstellationSpec(
+        "burner", "Q4356935", (SatelliteCategory.UPPER_STAGE,), contains=("BURNER",)
+    ),
+    ConstellationSpec(
+        "pam-star",
+        "Q1424161",
+        (SatelliteCategory.UPPER_STAGE,),
+        contains=("[PAM-", "STAR 37", "STAR 48"),
+    ),  # PAM-D/A bracketed tags + Thiokol Star-37/48 apogee motors.
+    ConstellationSpec(
+        "iabs", "Q110419336", (SatelliteCategory.UPPER_STAGE,), prefix="IABS"
+    ),
+    ConstellationSpec(
+        "volga", "Q12090276", (SatelliteCategory.UPPER_STAGE,), prefix="VOLGA"
+    ),
+    ConstellationSpec(
+        "athena",
+        "Q22770",
+        (SatelliteCategory.ROCKET,),
+        prefix=("ATHENA 1", "ATHENA 2"),
+    ),  # Bare "ATHENA" would catch ATHENA-FIDUS / ATHENA EPIC payloads.
+    ConstellationSpec(
+        "taurus-minotaur-c",
+        "Q201032",
+        (SatelliteCategory.ROCKET,),
+        prefix=("TAURUS ", "MINOTAUR-C"),
+    ),  # "MINOTAUR-C" (longer) beats the minotaur prefix; "TAURUS " excludes TAURUS-1.
+    ConstellationSpec(
+        "conestoga", "Q248551", (SatelliteCategory.ROCKET,), prefix="CONESTOGA"
+    ),  # Stub: sole orbital attempt (1995) failed; no catalogue residue.
+    ConstellationSpec(
+        "juno-ii", "Q248951", (SatelliteCategory.ROCKET,), prefix="JUNO II"
+    ),
+    ConstellationSpec(
+        "vanguard-rocket",
+        "Q333812",
+        (SatelliteCategory.ROCKET,),
+        satellites=["VANGUARD R/B", "VANGUARD DEB"],
+    ),  # Exact list splits the rocket from the VANGUARD 1/2/3 satellites (vanguard).
+    ConstellationSpec(
+        "launcherone", "Q1807659", (SatelliteCategory.ROCKET,), prefix="LAUNCHERONE"
+    ),
+    ConstellationSpec(
+        "terran-1", "Q60847337", (SatelliteCategory.ROCKET,), prefix="TERRAN 1"
+    ),  # Stub: sole flight (2023) failed to orbit.
+    # China
+    ConstellationSpec(
+        "ceres-1", "Q97172682", (SatelliteCategory.ROCKET,), prefix="CERES-1"
+    ),  # Hyphen excludes the French CERES ELINT satellites ("CERES 1").
+    ConstellationSpec(
+        "zhuque-2",
+        "Q65151444",
+        (SatelliteCategory.ROCKET,),
+        prefix=("ZHUQUE-2", "ZQ-2"),
+    ),
+    ConstellationSpec(
+        "hyperbola-1", "Q56692274", (SatelliteCategory.ROCKET,), prefix="SQX-1"
+    ),
+    ConstellationSpec(
+        "gravity-1", "Q123469921", (SatelliteCategory.ROCKET,), prefix="GRAVITY-1"
+    ),
+    ConstellationSpec(
+        "kaituozhe",
+        "Q966854",
+        (SatelliteCategory.ROCKET,),
+        prefix=("KT-1", "KAITUOZHE"),
+    ),  # Stub: early KT-1/KT-2 flights left no catalogued objects.
+    ConstellationSpec(
+        "pallas-1", "Q96398258", (SatelliteCategory.ROCKET,), prefix="PALLAS"
+    ),  # Stub: in development, no orbital residue yet.
+    # India
+    ConstellationSpec("slv-3", "Q1752243", (SatelliteCategory.ROCKET,), prefix="SLV-3"),
+    ConstellationSpec("aslv", "Q15017", (SatelliteCategory.ROCKET,), prefix="ASLV"),
+    ConstellationSpec(
+        "lvm3", "Q1360911", (SatelliteCategory.ROCKET,), prefix="LVM3"
+    ),  # LVM3 (ex-GSLV Mk III) shares no stages with GSLV; distinct entry.
+    ConstellationSpec(
+        "sslv", "Q56292638", (SatelliteCategory.ROCKET,), prefix=("SSLV", "VTM")
+    ),  # VTM = Velocity Trimming Module, the SSLV terminal stage.
+    # Korea
+    ConstellationSpec("naro", "Q494204", (SatelliteCategory.ROCKET,), prefix="KSLV-1"),
+    ConstellationSpec("nuri", "Q624548", (SatelliteCategory.ROCKET,), prefix="KSLV-II"),
+    # North Korea
+    ConstellationSpec("unha", "Q496193", (SatelliteCategory.ROCKET,), prefix="UNHA"),
+    ConstellationSpec(
+        "chollima-1", "Q118906406", (SatelliteCategory.ROCKET,), prefix="CHOLLIMA"
+    ),
+    # Iran
+    ConstellationSpec("safir", "Q142596", (SatelliteCategory.ROCKET,), prefix="SAFIR"),
+    ConstellationSpec(
+        "simorgh", "Q2905149", (SatelliteCategory.ROCKET,), prefix="SIMORGH"
+    ),  # Stub: most flights failed to orbit.
+    ConstellationSpec(
+        "qased", "Q91459262", (SatelliteCategory.ROCKET,), prefix="QASED"
+    ),
+    ConstellationSpec(
+        "qaem-100", "Q115815184", (SatelliteCategory.ROCKET,), prefix="QAEM"
+    ),
+    ConstellationSpec(
+        "zuljanah", "Q105686394", (SatelliteCategory.ROCKET,), prefix="ZULJANAH"
+    ),  # Stub: no orbital residue.
     # -------------------------------------------------------------------------
     # US commercial constellations
     # -------------------------------------------------------------------------
@@ -811,15 +930,68 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         prefix="MIR ",
         satellites=["MIR"],
     ),  # Bare "MIR" prefix would catch MIRANDA, MIRATA, MIR-SAT 1 (all unrelated).
+    # Sheldon "SL-N" designators split by launch-vehicle family.
     ConstellationSpec(
-        "soyuz-rocket", "Q1299641", (SatelliteCategory.ROCKET,), prefix="SL-"
-    ),  # Soyuz rocket spent stages & debris
+        "soyuz-rocket",
+        "Q1299641",
+        (SatelliteCategory.ROCKET,),
+        prefix=("SL-4", "SL-26"),
+    ),  # Soyuz/Voskhod/Soyuz-2 spent stages & debris
+    ConstellationSpec(
+        "sputnik-rocket", "Q1393751", (SatelliteCategory.ROCKET,), prefix="SL-1"
+    ),
+    ConstellationSpec(
+        "vostok-rocket", "Q841262", (SatelliteCategory.ROCKET,), prefix="SL-3"
+    ),
+    ConstellationSpec("polyot", "Q1392495", (SatelliteCategory.ROCKET,), prefix="SL-5"),
+    ConstellationSpec(
+        "molniya-rocket", "Q847798", (SatelliteCategory.ROCKET,), prefix="SL-6"
+    ),
+    ConstellationSpec(
+        "kosmos-2i", "Q1540897", (SatelliteCategory.ROCKET,), prefix="SL-7"
+    ),  # Kosmos-2I (11K63); no distinct Wikidata item, family QID used.
+    ConstellationSpec(
+        "kosmos-3m", "Q4235084", (SatelliteCategory.ROCKET,), prefix="SL-8"
+    ),
+    ConstellationSpec(
+        "proton-rocket",
+        "Q249231",
+        (SatelliteCategory.ROCKET,),
+        prefix=("SL-9", "SL-12", "SL-13", "SL-25"),
+    ),  # UR-500/Proton-K/Proton-M stages. The "proton" SCIENCE entry is the payload series.
+    ConstellationSpec(
+        "tsyklon-2", "Q367286", (SatelliteCategory.ROCKET,), prefix="SL-11"
+    ),
+    ConstellationSpec(
+        "tsyklon-3", "Q334236", (SatelliteCategory.ROCKET,), prefix="SL-14"
+    ),
+    ConstellationSpec(
+        "zenit", "Q1748964", (SatelliteCategory.ROCKET,), prefix=("SL-16", "SL-23")
+    ),  # SL-16 Zenit-2 (LEO) + SL-23 Zenit-3SLB/SLBF (GEO, Baikonur).
+    ConstellationSpec(
+        "start-1",
+        "Q60524",
+        (SatelliteCategory.ROCKET,),
+        prefix=("SL-18", "START-1", "START 1"),
+    ),
+    ConstellationSpec(
+        "rokot", "Q682764", (SatelliteCategory.ROCKET,), prefix="SL-19"
+    ),  # SL-19 also covers the sibling Strela (both UR-100N conversions).
+    ConstellationSpec(
+        "shtil", None, (SatelliteCategory.ROCKET,), prefix="SL-21"
+    ),  # Submarine-launched R-29RM conversion; Wikidata has only a disambig page.
+    ConstellationSpec(
+        "dnepr", "Q49674", (SatelliteCategory.ROCKET,), prefix=("SL-24", "DNEPR")
+    ),
+    ConstellationSpec(
+        "energia", "Q731859", (SatelliteCategory.ROCKET,), prefix="ENERGIA"
+    ),  # Stub: 1987-88 flights left no catalogued objects under this name.
     ConstellationSpec(
         "fregat", "Q1453740", (SatelliteCategory.ROCKET,), prefix="FREGAT"
     ),  # Upper stages (mostly Soyuz)
     ConstellationSpec(
         "proton-m", "Q1756423", (SatelliteCategory.ROCKET,), prefix="BREEZE"
-    ),  # Proton-M rocket spent stages & debris
+    ),  # Briz-M/KM upper stage (flies on Proton-M and Rokot)
     # -------------------------------------------------------------------------
     # Derived from CelesTrak group membership
     # -------------------------------------------------------------------------
