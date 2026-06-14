@@ -1,13 +1,11 @@
 """Registry of search indices.
 
-Each module exposes an ``Index`` instance describing the index uid,
-settings, and how to stream documents from the export.
+The catalog is a single index of heterogeneous documents (objects, features,
+groups) discriminated by ``kind``. ``Index`` describes the uid, settings, and
+how to stream documents from the export.
 """
 
-from .features import FEATURES_INDEX, Index
-from .groups import GROUPS_INDEX
-from .objects import OBJECTS_INDEX
+from .base import Index
+from .catalog import CATALOG_INDEX
 
-ALL: dict[str, Index] = {
-    idx.uid: idx for idx in [FEATURES_INDEX, OBJECTS_INDEX, GROUPS_INDEX]
-}
+ALL: dict[str, Index] = {CATALOG_INDEX.uid: CATALOG_INDEX}

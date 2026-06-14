@@ -19,7 +19,7 @@ from typing import Any
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
 
-from .features import Index
+from .base import group_pk
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def _load_bundles(
     return global_by_slug, localized
 
 
-def _build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
+def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     groups_dir = export_dir / "v1" / "groups"
     if not groups_dir.exists():
         logger.warning("No group bundles at %s — nothing to index", groups_dir)
@@ -59,12 +59,22 @@ def _build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         # the doc is always renderable.
         canonical = (localized.get("en", {}).get(slug, {}) or {}).get("name") or slug
         doc: dict[str, Any] = {
-            "slug": slug,
+            "id": group_pk(slug),
+            "kind": "group",
             "name": canonical,
-            "type": g["type"],
-            "applies_to": g["applies_to"],
-            "member_count": g.get("member_count", 0),
+            # Group-specific fields nest under `group`; the natural slug rides
+            # along for frontend routing.
+            "group": {
+                "slug": slug,
+                "type": g["type"],
+                "applies_to": g["applies_to"],
+                "member_count": g.get("member_count", 0),
+            },
         }
+        # Prominence ranking key — groups don't carry sitelinks_count yet
+        # (they have a wikidata_qid for a future backfill); root when present.
+        if g.get("sitelinks_count"):
+            doc["sitelinks_count"] = g["sitelinks_count"]
         thumb = pick_thumbnail(g.get("images"))
         if thumb:
             doc["thumbnail"] = thumb
@@ -79,45 +89,3 @@ def _build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             if description:
                 doc[f"description_{lang}"] = description
         yield doc
-
-
-def _groups_settings() -> dict[str, Any]:
-    name_fields = ["name"] + [f"name_{lang}" for lang in LANGUAGES]
-    description_fields = [f"description_{lang}" for lang in LANGUAGES]
-    return {
-        # slug last so it's a fallback for users who type the URL form
-        # ("starlink") when there's no localized name yet.
-        "searchableAttributes": name_fields + description_fields + ["slug"],
-        "filterableAttributes": ["type", "applies_to"],
-        "sortableAttributes": ["member_count"],
-        "localizedAttributes": [
-            {
-                "locales": [lang],
-                "attributePatterns": [f"name_{lang}", f"description_{lang}"],
-            }
-            for lang in LANGUAGES
-        ],
-        # Bigger constellations break ties — Starlink beats a tiny operator
-        # group when both fuzzy-match a partial query.
-        "rankingRules": [
-            "words",
-            "typo",
-            "proximity",
-            "attribute",
-            "sort",
-            "exactness",
-            "member_count:desc",
-        ],
-    }
-
-
-class GroupsIndex(Index):
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
-        return _build_group_documents(export_dir)
-
-
-GROUPS_INDEX = GroupsIndex(
-    uid="groups",
-    primary_key="slug",
-    settings=_groups_settings(),
-)

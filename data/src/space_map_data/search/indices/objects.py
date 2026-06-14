@@ -25,7 +25,7 @@ from typing import Any
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
 
-from .features import Index
+from .base import object_pk
 
 logger = logging.getLogger(__name__)
 
@@ -58,28 +58,6 @@ _PLANET_BY_BARYCENTER = {
     "naif-7": "naif-799",
     "naif-8": "naif-899",
     "naif-9": "naif-999",
-}
-
-# Type → ranking weight (higher = surfaces first when scores tie). Lets a
-# query like "mars" prefer the planet over the dozens of probes that share
-# the word.
-_TYPE_PRIORITY: dict[str, int] = {
-    "star": 100,
-    "planet": 95,
-    "dwarf_planet": 90,
-    "moon": 85,
-    "barycenter": 70,
-    "lagrange_point": 65,
-    "comet": 60,
-    "spacecraft": 55,
-    "asteroid": 40,
-    "asteroid_inner": 40,
-    "asteroid_main_belt": 40,
-    "asteroid_trojan": 40,
-    "asteroid_centaur": 40,
-    "asteroid_tno": 40,
-    "debris": 20,
-    "undocumented": 10,
 }
 
 
@@ -225,7 +203,7 @@ def _inception(g: dict[str, Any]) -> int | None:
     return None
 
 
-def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
+def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     objects_dir = export_dir / "v1" / "objects"
     global_dir = objects_dir / "__global__"
     if not global_dir.exists():
@@ -252,41 +230,52 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 skipped_no_translation += 1
                 continue
 
-            global_name = g.get("name") or obj_id
-            doc: dict[str, Any] = {
-                "id": obj_id,
-                "name": global_name,
-                "type": otype,
-                "priority": _TYPE_PRIORITY.get(otype, 0),
-            }
+            sbdb = g.get("sbdb") or {}
+            # Object-specific fields live under the nested `object` key; the
+            # natural id rides along so the frontend can route without re-parsing
+            # the URL-form primary key.
+            obj: dict[str, Any] = {"id": obj_id, "type": otype}
 
             parent_id = (g.get("orbit") or {}).get("parent_id")
             if parent_id:
-                doc["parent_id"] = _PLANET_BY_BARYCENTER.get(parent_id, parent_id)
+                obj["parent_id"] = _PLANET_BY_BARYCENTER.get(parent_id, parent_id)
 
             designations = _designations(g)
             if designations:
-                doc["designations"] = designations
+                obj["designations"] = designations
 
-            # Optional: NEO/PHA flags & celestrak ops_status are nice-to-have
-            # facets even if we don't expose filters yet.
-            sbdb = g.get("sbdb") or {}
             if sbdb.get("neo"):
-                doc["neo"] = True
+                obj["neo"] = True
             if sbdb.get("pha"):
-                doc["pha"] = True
+                obj["pha"] = True
             ct = g.get("celestrak") or {}
             if ct.get("ops_status"):
-                doc["ops_status"] = ct["ops_status"]
+                obj["ops_status"] = ct["ops_status"]
 
             # Group membership — backs the "show all members" query. Small-body
             # slugs come from SBDB class/flags, earth-sat slugs from the inverted
             # membership index. An object is one or the other, so a union is safe.
             groups = _small_body_groups(sbdb) + earth_groups.get(obj_id, [])
             if groups:
-                doc["groups"] = groups
+                obj["groups"] = groups
 
-            # Sort keys for member listings: prominence/size/brightness/date.
+            magnitude = sbdb.get("H")
+            if magnitude is None:
+                magnitude = (g.get("wikidata") or {}).get("absolute_magnitude")
+            if isinstance(magnitude, (int, float)):
+                obj["magnitude"] = magnitude
+            inception = _inception(g)
+            if inception is not None:
+                obj["inception"] = inception
+
+            doc: dict[str, Any] = {
+                "id": object_pk(obj_id),
+                "kind": "object",
+                "name": g.get("name") or obj_id,
+                "object": obj,
+            }
+
+            # Root, shared across kinds: prominence (ranking key), size, image.
             if g.get("sitelinks_count"):
                 doc["sitelinks_count"] = g["sitelinks_count"]
             if sbdb.get("diameter") is not None:
@@ -295,15 +284,6 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 radii_diameter = _radii_diameter_km(g["radii"])
                 if radii_diameter is not None:
                     doc["diameter_km"] = radii_diameter
-            magnitude = sbdb.get("H")
-            if magnitude is None:
-                magnitude = (g.get("wikidata") or {}).get("absolute_magnitude")
-            if isinstance(magnitude, (int, float)):
-                doc["magnitude"] = magnitude
-            inception = _inception(g)
-            if inception is not None:
-                doc["inception"] = inception
-
             thumb = pick_thumbnail(g.get("images"))
             if thumb:
                 doc["thumbnail"] = thumb
@@ -317,7 +297,7 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                     doc[f"name_{lang}"] = name
                 aliases = entry.get("aliases")
                 if aliases:
-                    doc[f"aliases_{lang}"] = aliases
+                    obj[f"aliases_{lang}"] = aliases
                 description = entry.get("description")
                 if description:
                     doc[f"description_{lang}"] = description
@@ -331,74 +311,3 @@ def _build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
         total_seen,
         skipped_no_translation,
     )
-
-
-def _objects_settings() -> dict[str, Any]:
-    name_fields = ["name"] + [f"name_{lang}" for lang in LANGUAGES]
-    alias_fields = [f"aliases_{lang}" for lang in LANGUAGES]
-    designation_fields = ["designations"]
-    description_fields = [f"description_{lang}" for lang in LANGUAGES]
-    return {
-        # Order matters — earlier attributes outrank later ones via the
-        # "attribute" ranking rule, so name matches beat alias/designation
-        # matches, and descriptions are last-resort full-text fallback.
-        "searchableAttributes": (
-            name_fields + alias_fields + designation_fields + description_fields
-        ),
-        "filterableAttributes": [
-            "type",
-            "parent_id",
-            "neo",
-            "pha",
-            "ops_status",
-            "groups",
-            # Range filters for the faceted search panel. Already sortable; data
-            # lives on the doc, so this is a settings-only change (no re-export).
-            "diameter_km",
-            "magnitude",
-            "inception",
-        ],
-        "sortableAttributes": [
-            "priority",
-            "sitelinks_count",
-            "diameter_km",
-            "magnitude",
-            "inception",
-        ],
-        "localizedAttributes": [
-            {
-                "locales": [lang],
-                "attributePatterns": [
-                    f"name_{lang}",
-                    f"aliases_{lang}",
-                    f"description_{lang}",
-                ],
-            }
-            for lang in LANGUAGES
-        ],
-        # Type priority tiebreaks ties — planet "Mars" wins over probe "Mars 3".
-        "rankingRules": [
-            "words",
-            "typo",
-            "proximity",
-            "attribute",
-            "sort",
-            "exactness",
-            "priority:desc",
-        ],
-        # `groups` carries hundreds of slugs (constellations/operators/...); the
-        # default cap of 100 would truncate facet distributions in the panel.
-        "faceting": {"maxValuesPerFacet": 1000},
-    }
-
-
-class ObjectsIndex(Index):
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
-        return _build_object_documents(export_dir)
-
-
-OBJECTS_INDEX = ObjectsIndex(
-    uid="objects",
-    primary_key="id",
-    settings=_objects_settings(),
-)

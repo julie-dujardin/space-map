@@ -16,7 +16,6 @@ import json
 import logging
 import struct
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,17 +27,9 @@ from space_map_data.export.nomenclature.format import (
     RECORD_SIZE,
 )
 
+from .base import feature_pk
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class Index:
-    uid: str
-    primary_key: str
-    settings: dict[str, Any]
-
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
-        raise NotImplementedError
 
 
 _RECORD_STRUCT = struct.Struct("<IiII2sBB")
@@ -118,7 +109,7 @@ def _load_global_details(export_dir: Path) -> dict[str, dict[str, Any]]:
     return merged
 
 
-def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
+def build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
     positions_dir = export_dir / "v1" / "nomenclature" / "positions"
     labels_root = export_dir / "v1" / "nomenclature" / "labels"
     if not positions_dir.exists():
@@ -158,16 +149,18 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             # non-empty for a renderable feature).
             canonical = labels_by_lang["en"][i]
             doc: dict[str, Any] = {
-                # Meili primary keys only allow [a-zA-Z0-9_-]; the `:`
-                # separator used elsewhere in the export isn't legal here,
-                # so feature_id rides as a numeric suffix after `_`.
-                "id": f"{body_id}_{fid}",
-                "feature_id": fid,
-                "body_id": body_id,
+                "id": feature_pk(body_id, fid),
+                "kind": "feature",
                 "name": canonical,
-                "feature_type": type_code,
-                "center_lat": round(lat, 4),
-                "center_lon": round(lon, 4),
+                # Feature-specific fields nest under `feature`; the natural
+                # body_id + feature_id ride along for frontend routing.
+                "feature": {
+                    "feature_id": fid,
+                    "body_id": body_id,
+                    "type": type_code,
+                    "center_lat": round(lat, 4),
+                    "center_lon": round(lon, 4),
+                },
             }
             if dia_m:
                 doc["diameter_km"] = round(dia_m / 1000.0, 3)
@@ -188,46 +181,3 @@ def _build_feature_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             total += 1
 
     logger.info("Built %d feature documents", total)
-
-
-def _features_settings() -> dict[str, Any]:
-    name_fields = ["name"] + [f"name_{lang}" for lang in LANGUAGES]
-    description_fields = [f"description_{lang}" for lang in LANGUAGES]
-    return {
-        # Names outrank descriptions via the "attribute" ranking rule, so
-        # a query like "olympus" still surfaces Olympus Mons even though
-        # the word also appears in many other features' descriptions.
-        "searchableAttributes": name_fields + description_fields,
-        "filterableAttributes": ["body_id", "feature_type"],
-        "sortableAttributes": ["diameter_km"],
-        "localizedAttributes": [
-            {
-                "locales": [lang],
-                "attributePatterns": [f"name_{lang}", f"description_{lang}"],
-            }
-            for lang in LANGUAGES
-        ],
-        # Prefer larger features when relevancy is otherwise tied — Olympus
-        # Mons should beat any 1km crater that happens to share part of the name.
-        "rankingRules": [
-            "words",
-            "typo",
-            "proximity",
-            "attribute",
-            "sort",
-            "exactness",
-            "diameter_km:desc",
-        ],
-    }
-
-
-class FeaturesIndex(Index):
-    def build_documents(self, export_dir: Path) -> Iterator[dict[str, Any]]:
-        return _build_feature_documents(export_dir)
-
-
-FEATURES_INDEX = FeaturesIndex(
-    uid="features",
-    primary_key="id",
-    settings=_features_settings(),
-)
