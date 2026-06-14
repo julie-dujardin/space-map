@@ -111,10 +111,57 @@ export function isSearchEnabled(): boolean {
 	return getClient() !== null;
 }
 
-/** Federated search across groups + objects + features. Groups are a small,
- *  curated set of high-intent matches (constellations, operators, ...) and
- *  lead the result list ahead of any object/feature hits, which are then
- *  round-robined to mix the two indices fairly. */
+/** Unified index name. Objects, surface features and group/collection pages
+ *  all live in one index, discriminated by `kind`, so a single query ranks
+ *  them together. */
+const INDEX = 'catalog';
+
+type RawHit = Record<string, unknown>;
+
+/** Flatten a stored catalog doc into the kind-specific hit the UI consumes:
+ *  shared fields stay at the root, per-kind fields lift out of the nested
+ *  `object`/`feature`/`group` key, and `id` becomes the natural identifier the
+ *  frontend routes on (the doc's root `id` is the URL-form Meili primary key). */
+function toObjectHit(d: RawHit): ObjectHit {
+	const o = (d.object ?? {}) as RawHit;
+	return { ...d, ...o, kind: 'object', id: (o.id as string) ?? String(d.id) } as ObjectHit;
+}
+
+function toFeatureHit(d: RawHit): FeatureHit {
+	const f = (d.feature ?? {}) as RawHit;
+	return {
+		...d,
+		kind: 'feature',
+		feature_id: f.feature_id as number,
+		body_id: f.body_id as string,
+		feature_type: f.type as string,
+		center_lat: f.center_lat as number,
+		center_lon: f.center_lon as number
+	} as FeatureHit;
+}
+
+function toGroupHit(d: RawHit): GroupHit {
+	const g = (d.group ?? {}) as RawHit;
+	return {
+		...d,
+		kind: 'group',
+		id: g.slug as string,
+		slug: g.slug as string,
+		type: g.type as string,
+		applies_to: g.applies_to as string,
+		member_count: (g.member_count as number) ?? 0
+	} as GroupHit;
+}
+
+function toHit(d: RawHit): SearchHit {
+	if (d.kind === 'group') return toGroupHit(d);
+	if (d.kind === 'feature') return toFeatureHit(d);
+	return toObjectHit(d);
+}
+
+/** Full-text search across the unified catalog. Objects, surface features and
+ *  group/collection pages are ranked together (relevance, then Wikidata
+ *  prominence), so a prominent body outranks a niche group of the same name. */
 export async function search(
 	query: string,
 	locale: string,
@@ -122,24 +169,11 @@ export async function search(
 ): Promise<SearchHit[]> {
 	const c = getClient();
 	if (!c || !query.trim()) return [];
-	const res = await c.multiSearch({
-		queries: [
-			{ indexUid: 'groups', q: query, limit, locales: [locale] },
-			{ indexUid: 'objects', q: query, limit, locales: [locale] },
-			{ indexUid: 'features', q: query, limit, locales: [locale] }
-		]
-	});
-	const groups = (res.results[0]?.hits ?? []).map(
-		(h) => ({ ...h, kind: 'group', id: (h as { slug: string }).slug }) as GroupHit
-	);
-	const objects = (res.results[1]?.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
-	const features = (res.results[2]?.hits ?? []).map(
-		(h) => ({ ...h, kind: 'feature' }) as FeatureHit
-	);
-	return [...groups, ...interleave(objects, features)].slice(0, limit);
+	const res = await c.index(INDEX).search(query, { limit, locales: [locale] });
+	return (res.hits ?? []).map((h) => toHit(h as RawHit));
 }
 
-/** One page of a group's members from the objects index. */
+/** One page of a group's members (objects) from the catalog index. */
 export interface GroupMemberPage {
 	hits: ObjectHit[];
 	/** Capped at the index's maxTotalHits (1000). */
@@ -147,8 +181,14 @@ export interface GroupMemberPage {
 }
 
 // Notable-first: prominence → size → brightness → age. Docs missing a key
-// sort last for it, so this degrades gracefully before sitelinks_count ships.
-const MEMBER_SORT = ['sitelinks_count:desc', 'diameter_km:desc', 'magnitude:asc', 'inception:asc'];
+// sort last for it. prominence/size are shared root fields; magnitude/inception
+// are object-only, so they live under the nested `object` key.
+const MEMBER_SORT = [
+	'sitelinks_count:desc',
+	'diameter_km:desc',
+	'object.magnitude:asc',
+	'object.inception:asc'
+];
 
 async function searchMemberPage(
 	filter: string,
@@ -158,14 +198,14 @@ async function searchMemberPage(
 ): Promise<GroupMemberPage> {
 	const c = getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0 };
-	const res = await c.index('objects').search('', {
+	const res = await c.index(INDEX).search('', {
 		filter,
 		sort: MEMBER_SORT,
 		offset,
 		limit,
 		locales: [locale]
 	});
-	const hits = (res.hits ?? []).map((h) => ({ ...h, kind: 'object' }) as ObjectHit);
+	const hits = (res.hits ?? []).map((h) => toObjectHit(h as RawHit));
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
@@ -178,7 +218,7 @@ export function searchGroupMembers(
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
-	return searchMemberPage(`groups = "${slug}"`, offset, limit, locale);
+	return searchMemberPage(`object.groups = "${slug}"`, offset, limit, locale);
 }
 
 /** A paginated slice of a body's moons, ranked notable-first. `parentId` is the
@@ -191,19 +231,12 @@ export function searchChildMembers(
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
-	return searchMemberPage(`parent_id = "${parentId}" AND type = "moon"`, offset, limit, locale);
-}
-
-/** Round-robin two ranked lists into one. Cheap stand-in for cross-index
- *  score normalization, which Meili doesn't expose. */
-function interleave<A, B>(a: A[], b: B[]): (A | B)[] {
-	const out: (A | B)[] = [];
-	const n = Math.max(a.length, b.length);
-	for (let i = 0; i < n; i++) {
-		if (i < a.length) out.push(a[i]);
-		if (i < b.length) out.push(b[i]);
-	}
-	return out;
+	return searchMemberPage(
+		`object.parent_id = "${parentId}" AND object.type = "moon"`,
+		offset,
+		limit,
+		locale
+	);
 }
 
 /** Display name for a hit in the active locale, falling back to canonical. */
