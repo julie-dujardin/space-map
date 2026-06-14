@@ -19,6 +19,8 @@ export function setTrailResolution(width: number, height: number): void {
 export function makeTrailMaterial(color: string): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
+		// Transparent line must not write depth, or it culls clouds/point clouds behind it.
+		depthWrite: false,
 		uniforms: {
 			uColor: { value: overlayColor(color) },
 			uCenterOffset: { value: new Vector3() },
@@ -67,6 +69,8 @@ export function makeTrailMaterial(color: string): ShaderMaterial {
 export function makeFatTrailMaterial(color: string, lineWidth: number): ShaderMaterial {
 	return new ShaderMaterial({
 		transparent: true,
+		// Transparent line must not write depth, or it culls clouds/point clouds behind it.
+		depthWrite: false,
 		side: DoubleSide,
 		uniforms: {
 			uColor: { value: overlayColor(color) },
