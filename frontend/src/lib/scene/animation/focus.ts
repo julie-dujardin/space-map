@@ -35,7 +35,6 @@ export interface FocusState {
 	 */
 	camOriginOffset: Vec3 | null;
 	flyQ0: Quaternion | null;
-	flyQ1: Quaternion | null;
 	orbitFly: boolean;
 	/** Camera circles the focus center at constant radius (arc, not chord) instead
 	 *  of a straight lerp — set when re-framing on the already-focused body (e.g.
@@ -53,7 +52,6 @@ const _lookAtMatrix = new Matrix4();
 const _lookAtEye = new Vector3();
 const _lookAtTarget = new Vector3();
 const _lookAtQuat = new Quaternion();
-const _slerpQ = new Quaternion();
 const _lookAtQ = new Quaternion();
 const _forwardA = new Vector3();
 const _forwardB = new Vector3();
@@ -81,7 +79,7 @@ export function stepFocusAnimation(
 	const elapsed = performance.now() - state.focusStartTime;
 	const t = Math.min(elapsed / state.focusDurationMs, 1);
 	const isAnimating = t < 1;
-	const isFlying = !!(state.camOriginWorld && state.camTargetWorld && state.flyQ0 && state.flyQ1);
+	const isFlying = !!(state.camOriginWorld && state.camTargetWorld && state.flyQ0);
 
 	if (isAnimating && isFlying) {
 		const s = t * t * (3 - 2 * t); // smoothstep
@@ -116,16 +114,17 @@ export function stepFocusAnimation(
 				camWorld[2] - state.focusTruePos[2]
 			);
 			if (focusChanging && !state.arcOrbit) {
-				// Approaching: blend from slerp (turn) to lookAt (keep centered)
-				camera.quaternion.slerpQuaternions(state.flyQ0!, state.flyQ1!, s);
-				_slerpQ.copy(camera.quaternion);
+				// Approaching a new body: slerp from the start orientation straight to a
+				// per-frame lookAt at the body's CURRENT position. The turn still reads
+				// in first (position eases slower, above), but it tracks the body even
+				// when it travels far under time-warp and always ends centered.
 				camera.lookAt(
 					state.focusTargetWorld[0] - state.focusTruePos[0],
 					state.focusTargetWorld[1] - state.focusTruePos[1],
 					state.focusTargetWorld[2] - state.focusTruePos[2]
 				);
 				_lookAtQ.copy(camera.quaternion);
-				camera.quaternion.slerpQuaternions(_slerpQ, _lookAtQ, s);
+				camera.quaternion.slerpQuaternions(state.flyQ0!, _lookAtQ, s);
 			} else {
 				// Orbiting in place: pure lookAt keeps the body centered throughout.
 				camera.lookAt(
@@ -185,7 +184,6 @@ export function stepFocusAnimation(
 		state.camTargetOffset = null;
 		state.camOriginOffset = null;
 		state.flyQ0 = null;
-		state.flyQ1 = null;
 		state.orbitFly = false;
 		state.arcOrbit = false;
 		state.cameraStaysOnBody = false;
@@ -214,35 +212,34 @@ export function prepareFocusTarget(
 		state.camOriginWorld = cameraTruePos;
 		state.camTargetWorld = [...camPos];
 		// Body-relative offset so camTargetWorld can be refreshed each frame as the
-		// body moves; the relative direction (and therefore flyQ1) stays valid.
+		// body moves, keeping the fly destination locked to the moving body.
 		state.camTargetOffset = [
 			camPos[0] - bodyPosition[0],
 			camPos[1] - bodyPosition[1],
 			camPos[2] - bodyPosition[2]
 		];
 		state.cameraStaysOnBody = false;
-		// Capture start orientation, compute end orientation for slerp
 		state.flyQ0 = camera.quaternion.clone();
-		const savedPos = camera.position.clone();
-		// Temporarily place camera at target in focus-relative space (using CURRENT focusTruePos)
-		camera.position.set(
-			camPos[0] - state.focusTruePos[0],
-			camPos[1] - state.focusTruePos[1],
-			camPos[2] - state.focusTruePos[2]
+		// End orientation (camera at camPos, looking at the body) — computed only to
+		// pace the fly; the actual turn is driven by the per-frame lookAt in
+		// stepFocusAnimation, so this is never stored or replayed.
+		const endLook = lookAtQuaternion(
+			[
+				camPos[0] - state.focusTruePos[0],
+				camPos[1] - state.focusTruePos[1],
+				camPos[2] - state.focusTruePos[2]
+			],
+			[
+				bodyPosition[0] - state.focusTruePos[0],
+				bodyPosition[1] - state.focusTruePos[1],
+				bodyPosition[2] - state.focusTruePos[2]
+			],
+			camera.up
 		);
-		// lookAt target body in focus-relative space
-		camera.lookAt(
-			bodyPosition[0] - state.focusTruePos[0],
-			bodyPosition[1] - state.focusTruePos[1],
-			bodyPosition[2] - state.focusTruePos[2]
-		);
-		state.flyQ1 = camera.quaternion.clone();
-		camera.position.copy(savedPos);
-		camera.quaternion.copy(state.flyQ0);
 		// Pace by whichever of {linear travel, rotation} is larger — a small move
 		// with a big turn shouldn't snap; a big move with a small turn shouldn't drag.
 		const dist = f64dist(cameraTruePos, camPos);
-		const angle = state.flyQ0.angleTo(state.flyQ1);
+		const angle = state.flyQ0.angleTo(endLook);
 		state.focusDurationMs = Math.max(
 			spatialDuration(dist, FLY_TRANS_PACING),
 			angularDuration(angle, FLY_ROT_PACING)
@@ -260,10 +257,6 @@ export function prepareFocusTarget(
 		];
 		state.cameraStaysOnBody = true;
 		state.flyQ0 = camera.quaternion.clone();
-		// flyQ1 is unused on this path (orientation slerps to a per-frame lookAt
-		// against the body's current position); set it non-null so the isFlying
-		// gate in stepFocusAnimation passes.
-		state.flyQ1 = state.flyQ0.clone();
 		// Pace by the angle from current camera forward to the new body direction —
 		// that's what the per-frame lookAt slerp is actually sweeping through.
 		_forwardA.set(0, 0, -1).applyQuaternion(state.flyQ0);
@@ -308,9 +301,8 @@ export function prepareFlyToCamera(
 	state.orbitFly = true;
 	state.arcOrbit = true;
 	state.cameraStaysOnBody = false;
-	// Set dummy quaternions so isFlying is true
+	// flyQ0 is the isFlying sentinel; the arc drives orientation via per-frame lookAt.
 	state.flyQ0 = camera.quaternion.clone();
-	state.flyQ1 = camera.quaternion.clone();
 	// Pace by translation distance or by the angular sweep around the focus
 	// (the camera lookAt re-targets each frame, so this is how much it'll rotate).
 	const dist = f64dist(cameraTruePos, camPos);
