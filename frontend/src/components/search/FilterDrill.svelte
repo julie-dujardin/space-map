@@ -3,7 +3,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import * as m from '$lib/paraglide/messages.js';
-	import { compact } from '$lib/search/format';
+	import { capitalize, compact } from '$lib/search/format';
 	import type { SearchModel } from '$lib/search/model.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 
@@ -45,7 +45,7 @@
 				onclick={() => (path = path.slice(0, -1))}
 			>
 				<ChevronLeftIcon class="size-4" />
-				<span class="whitespace-nowrap">{current.label}</span>
+				<span class="whitespace-nowrap">{capitalize(current.label)}</span>
 			</button>
 		{:else}
 			<span class="ps-1 text-sm font-semibold text-foreground">{m.search_add_filter()}</span>
@@ -76,7 +76,8 @@
 				>
 					{#if checked}<CheckIcon class="size-3" />{/if}
 				</span>
-				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{leaf.label}</span>
+				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(leaf.label)}</span
+				>
 				{#if leaf.count != null}
 					<span class="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
 						>{compact(leaf.count)}</span
@@ -98,7 +99,8 @@
 				class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-start transition-colors hover:bg-accent"
 				onclick={() => (path = [...path, node])}
 			>
-				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{node.label}</span>
+				<span class="min-w-0 flex-1 truncate text-sm text-foreground">{capitalize(node.label)}</span
+				>
 				{#if au > 0}
 					<span
 						class="grid h-4 min-w-4 place-items-center rounded-full bg-primary/20 px-1.5 text-[10px] tabular-nums text-primary"

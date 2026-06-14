@@ -12,3 +12,10 @@ export function compact(n: number): string {
 export function inceptionYear(yyyymmdd: number): number {
 	return Math.trunc(yyyymmdd / 10000);
 }
+
+/** Upper-case the first character only, for filter labels (the `type_*` keys are
+ *  sentence-case for inline use — "moon of Saturn" — so we capitalize at display
+ *  rather than mutate them). No-op on already-capitalized or non-Latin text. */
+export function capitalize(s: string): string {
+	return s ? s[0].toLocaleUpperCase() + s.slice(1) : s;
+}

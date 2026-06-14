@@ -17,7 +17,7 @@
 		type GroupHit,
 		type FacetDistribution
 	} from '$lib/search/client';
-	import { compact } from '$lib/search/format';
+	import { capitalize, compact } from '$lib/search/format';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { groupTypeLabel } from '$lib/format/group';
@@ -131,6 +131,16 @@
 	}
 	function featureTypeLabel(code: string): string {
 		return messages[`feature_type_label_${code}`]?.() ?? code;
+	}
+	// Plural category labels for the filter tree (standalone headers, e.g.
+	// "Asteroids", "Launch sites"). The numeric count sits in its own column, so
+	// these are invariant plurals — separate keys, since `type_*`/`group_type_*`
+	// are singular for inline/sentence use. Fall back to the singular if missing.
+	function typeLabelPlural(type: string): string {
+		return messages[`search_cat_${type}`]?.() ?? typeLabel(type);
+	}
+	function groupTypeLabelPlural(type: GroupType): string {
+		return messages[`search_grp_${type}`]?.() ?? groupTypeLabel(type) ?? type;
 	}
 	function bodyName(bodyId: string): string {
 		return ctx.getBody(bodyId)?.data.name ?? bodyId;
@@ -252,7 +262,7 @@
 		// A drillable sub-category from one group type (null when it has no leaves).
 		const groupTypeNode = (id: string, type: GroupType): FilterNode | null => {
 			const lv = groupLeaves(id, byType.get(type) ?? []);
-			return lv.length ? { id, label: groupTypeLabel(type) ?? type, leaves: lv } : null;
+			return lv.length ? { id, label: groupTypeLabelPlural(type), leaves: lv } : null;
 		};
 
 		const children: FilterNode[] = [];
@@ -263,7 +273,7 @@
 			kind: 'array',
 			facet: 'type',
 			values: [type],
-			label: typeLabel(type),
+			label: typeLabelPlural(type),
 			count: sumType([type])
 		}));
 
@@ -275,11 +285,11 @@
 				orbit.filter((g) => !cometClass(g))
 			);
 			const sub = cls.length
-				? [{ id: 'ast-class', label: groupTypeLabel('orbit_class') ?? 'orbit_class', leaves: cls }]
+				? [{ id: 'ast-class', label: groupTypeLabelPlural('orbit_class'), leaves: cls }]
 				: [];
 			children.push({
 				id: 'asteroid',
-				label: typeLabel('asteroid'),
+				label: typeLabelPlural('asteroid'),
 				count: cnt,
 				leaves: [allLeaf('ast-all', ASTEROID_TYPES, cnt), ...flagLeaves('ast')],
 				children: sub
@@ -294,14 +304,14 @@
 			if (cls.length)
 				sub.push({
 					id: 'com-class',
-					label: groupTypeLabel('orbit_class') ?? 'orbit_class',
+					label: groupTypeLabelPlural('orbit_class'),
 					leaves: cls
 				});
 			const frag = groupTypeNode('com-frag', 'split_comet');
 			if (frag) sub.push(frag);
 			children.push({
 				id: 'comet',
-				label: typeLabel('comet'),
+				label: typeLabelPlural('comet'),
 				count: cnt,
 				leaves: [allLeaf('com-all', ['comet'], cnt), ...flagLeaves('com')],
 				children: sub
@@ -346,7 +356,7 @@
 			);
 			children.push({
 				id: 'spacecraft',
-				label: typeLabel('spacecraft'),
+				label: typeLabelPlural('spacecraft'),
 				count: cnt,
 				leaves,
 				children: sub
@@ -393,7 +403,7 @@
 		{
 			const cnt = kindDist['group'] ?? 0;
 			const gl = Object.keys(gtypeDist)
-				.map((t) => ({ t, label: groupTypeLabel(t as GroupType) ?? t, count: gtypeDist[t] ?? 0 }))
+				.map((t) => ({ t, label: groupTypeLabelPlural(t as GroupType), count: gtypeDist[t] ?? 0 }))
 				.filter((l) => l.count > 0 || (model.filters.groupType ?? []).includes(l.t))
 				.sort((a, b) => b.count - a.count)
 				.map(
@@ -438,7 +448,7 @@
 						kind: 'array',
 						facet: 'type',
 						values: [t],
-						label: typeLabel(t),
+						label: typeLabelPlural(t),
 						count: typeDist[t] ?? 0
 					}))
 				});
@@ -453,7 +463,7 @@
 		for (const v of model.filters.kind ?? [])
 			out.push({ key: 'kind', value: v, label: kindLabel(v) });
 		for (const v of model.filters.type ?? [])
-			out.push({ key: 'type', value: v, label: typeLabel(v) });
+			out.push({ key: 'type', value: v, label: typeLabelPlural(v) });
 		for (const slug of model.filters.groups ?? []) {
 			const g = groupBySlug.get(slug);
 			out.push({ key: 'groups', value: slug, label: g ? groupName(g, locale) : slug });
@@ -461,7 +471,7 @@
 		for (const code of model.filters.featureType ?? [])
 			out.push({ key: 'featureType', value: code, label: featureTypeLabel(code) });
 		for (const t of model.filters.groupType ?? [])
-			out.push({ key: 'groupType', value: t, label: groupTypeLabel(t as GroupType) ?? t });
+			out.push({ key: 'groupType', value: t, label: groupTypeLabelPlural(t as GroupType) });
 		if (model.filters.neo) out.push({ key: 'neo', label: m.search_prop_neo() });
 		if (model.filters.pha) out.push({ key: 'pha', label: m.search_prop_pha() });
 		return out;
@@ -629,7 +639,7 @@
 							<span
 								class="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 ps-2.5 pe-1.5 text-xs whitespace-nowrap text-foreground"
 							>
-								{t.label}
+								{capitalize(t.label)}
 								<button
 									type="button"
 									class="grid size-[17px] place-items-center rounded-full bg-foreground/10 hover:bg-foreground/20"
