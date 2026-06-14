@@ -684,30 +684,69 @@
 	"property_name_asteroid_family": "семейство астероидов",
 	"property_name_blog": "официальный блог",
 	"property_name_capital_cost": "стоимость",
-	"property_name_country_of_origin": "страна происхождения",
+	"property_name_country_of_origin": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "страна происхождения",
+				"countPlural=other": "страны происхождения"
+			}
+		}
+	],
 	"property_name_density": "плотность",
-	"property_name_developer": "разработчик",
+	"property_name_developer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "разработчик", "countPlural=other": "разработчики" }
+		}
+	],
 	"property_name_discoverers": "первооткрыватель или изобретатель",
 	"property_name_discovery_date": "дата открытия (изобретения)",
 	"property_name_discovery_site": "место астрономического открытия",
 	"property_name_dissolved": "дата прекращения существования",
-	"property_name_funder": "заказчик",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "заказчик", "countPlural=other": "заказчики" }
+		}
+	],
 	"property_name_image": "изображение",
 	"property_name_inception": "дата возникновения",
 	"property_name_instance_of": "это частный случай понятия",
-	"property_name_launch_contractor": "подрядчик запуска",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "подрядчик запуска", "countPlural=other": "подрядчики запуска" }
+		}
+	],
 	"property_name_launch_date": "дата запуска космического аппарата",
 	"property_name_launch_site": "начало пути",
 	"property_name_launch_vehicle": "ракета-носитель",
 	"property_name_length": "длина",
 	"property_name_logo_image": "логотип",
-	"property_name_manufacturer": "производитель",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "производитель", "countPlural=other": "производители" }
+		}
+	],
 	"property_name_mass": "масса",
 	"property_name_max_temperature": "максимальная температура",
 	"property_name_min_temperature": "минимум температуры",
 	"property_name_minor_planet_group": "группа малых планет",
 	"property_name_named_after": "названо в честь",
-	"property_name_operators": "оператор",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "оператор", "countPlural=other": "операторы" }
+		}
+	],
 	"property_name_part_of": "является частью",
 	"property_name_population": "численность населения",
 	"property_name_radius": "радиус",

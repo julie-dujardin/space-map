@@ -628,30 +628,66 @@
 	"property_name_asteroid_family": "عائلة الكويكبات",
 	"property_name_blog": "المدونة الرسمية",
 	"property_name_capital_cost": "الكلفة",
-	"property_name_country_of_origin": "بلد المنشأ",
+	"property_name_country_of_origin": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "بلد المنشأ", "countPlural=other": "بلدان المنشأ" }
+		}
+	],
 	"property_name_density": "الكثافة",
-	"property_name_developer": "المُطوِّر",
+	"property_name_developer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "المُطوِّر", "countPlural=other": "المُطوِّرون" }
+		}
+	],
 	"property_name_discoverers": "المكتشف أو المخترع",
 	"property_name_discovery_date": "تاريخ الاكتشاف أو الاختراع",
 	"property_name_discovery_site": "موقع الاكتشاف الفلكي",
 	"property_name_dissolved": "تاريخ الحل أو الإلغاء أو الهدم",
-	"property_name_funder": "ممول",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "ممول", "countPlural=other": "ممولون" }
+		}
+	],
 	"property_name_image": "الصورة",
 	"property_name_inception": "البداية",
 	"property_name_instance_of": "نموذج من",
-	"property_name_launch_contractor": "مقدم خدمة الإطلاق",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "مقدم خدمة الإطلاق", "countPlural=other": "مقدمو خدمة الإطلاق" }
+		}
+	],
 	"property_name_launch_date": "وقت إطلاق المركبة الفضائية",
 	"property_name_launch_site": "نقطة البداية",
 	"property_name_launch_vehicle": "مركبة الإطلاق الفضائية",
 	"property_name_length": "الطُّول",
 	"property_name_logo_image": "صورة الشعار",
-	"property_name_manufacturer": "الشركة المصنعة",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "الشركة المصنعة", "countPlural=other": "الشركات المصنعة" }
+		}
+	],
 	"property_name_mass": "الكتلة",
 	"property_name_max_temperature": "أقصى درجة حرارة مسجلة",
 	"property_name_min_temperature": "أدنى درجة حرارة مسجلة",
 	"property_name_minor_planet_group": "مجموعة الكوكب الصغير",
 	"property_name_named_after": "سُمِّي باسم",
-	"property_name_operators": "المشغل",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "المشغل", "countPlural=other": "المشغلون" }
+		}
+	],
 	"property_name_part_of": "جزء من",
 	"property_name_population": "عدد السكان",
 	"property_name_radius": "نصف القطر",

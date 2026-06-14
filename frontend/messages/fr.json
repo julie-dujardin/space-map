@@ -699,23 +699,50 @@
 	"property_name_discovery_date": "date de découverte ou d'invention",
 	"property_name_discovery_site": "lieu de découverte astronomique",
 	"property_name_dissolved": "date de dissolution, d'abolition ou de démolition",
-	"property_name_funder": "financeur",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "financeur", "countPlural=other": "financeurs" }
+		}
+	],
 	"property_name_image": "image",
 	"property_name_inception": "date de fondation ou de création",
 	"property_name_instance_of": "nature de l’élément",
-	"property_name_launch_contractor": "service de lancement",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "service de lancement",
+				"countPlural=other": "services de lancement"
+			}
+		}
+	],
 	"property_name_launch_date": "date UTC de lancement du véhicule spatial",
 	"property_name_launch_site": "point de départ",
 	"property_name_launch_vehicle": "lanceur",
 	"property_name_length": "longueur",
 	"property_name_logo_image": "image du logotype",
-	"property_name_manufacturer": "fabricant",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "fabricant", "countPlural=other": "fabricants" }
+		}
+	],
 	"property_name_mass": "masse",
 	"property_name_max_temperature": "record de température maximale",
 	"property_name_min_temperature": "température minimale record",
 	"property_name_minor_planet_group": "groupe d'objets mineurs",
 	"property_name_named_after": "nommé(e) en référence à",
-	"property_name_operators": "opérateur",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": { "countPlural=one": "opérateur", "countPlural=other": "opérateurs" }
+		}
+	],
 	"property_name_part_of": "partie de",
 	"property_name_population": "population",
 	"property_name_radius": "rayon",

@@ -111,12 +111,12 @@
 			<Row label={m.decay_date()} value={formatIsoDate(decayDate)} />
 		{/if}
 		{#if operators && operators.length > 0}
-			<Row label={m.property_name_operators()}>
+			<Row label={m.property_name_operators({ count: operators.length })}>
 				<EntityLinks entities={operators} />
 			</Row>
 		{/if}
 		{#if manufacturer && manufacturer.length > 0}
-			<Row label={m.property_name_manufacturer()}>
+			<Row label={m.property_name_manufacturer({ count: manufacturer.length })}>
 				<EntityLinks entities={manufacturer} />
 			</Row>
 		{/if}
@@ -131,7 +131,7 @@
 			</Row>
 		{/if}
 		{#if launchContractor && launchContractor.length > 0}
-			<Row label={m.property_name_launch_contractor()}>
+			<Row label={m.property_name_launch_contractor({ count: launchContractor.length })}>
 				<EntityLinks entities={launchContractor} />
 			</Row>
 		{/if}
@@ -141,17 +141,17 @@
 			</Row>
 		{/if}
 		{#if developer && developer.length > 0}
-			<Row label={m.property_name_developer()}>
+			<Row label={m.property_name_developer({ count: developer.length })}>
 				<EntityLinks entities={developer} />
 			</Row>
 		{/if}
 		{#if funder && funder.length > 0}
-			<Row label={m.property_name_funder()}>
+			<Row label={m.property_name_funder({ count: funder.length })}>
 				<EntityLinks entities={funder} />
 			</Row>
 		{/if}
 		{#if countryOfOrigin && countryOfOrigin.length > 0}
-			<Row label={m.property_name_country_of_origin()}>
+			<Row label={m.property_name_country_of_origin({ count: countryOfOrigin.length })}>
 				<EntityLinks entities={countryOfOrigin} />
 			</Row>
 		{/if}
