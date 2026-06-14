@@ -251,6 +251,8 @@ export interface CatalogFilters {
 	kind?: string[]; // object | feature | group
 	type?: string[]; // object.type
 	groups?: string[]; // object.groups slugs (orbit class, constellation, …)
+	featureType?: string[]; // feature.type codes
+	groupType?: string[]; // group.type names (collection kinds)
 	neo?: boolean;
 	pha?: boolean;
 }
@@ -310,6 +312,10 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 	if (type) out.set('object.type', type);
 	const groups = orClause('object.groups', f.groups);
 	if (groups) out.set('object.groups', groups);
+	const featureType = orClause('feature.type', f.featureType);
+	if (featureType) out.set('feature.type', featureType);
+	const groupType = orClause('group.type', f.groupType);
+	if (groupType) out.set('group.type', groupType);
 	if (f.neo) out.set('object.neo', 'object.neo = true');
 	if (f.pha) out.set('object.pha', 'object.pha = true');
 	return out;

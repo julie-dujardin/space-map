@@ -9,6 +9,7 @@ from space_map_data.search.indices.objects import (
     _load_earth_membership,
     _radii_diameter_km,
     _small_body_groups,
+    _spacecraft_category,
 )
 
 
@@ -68,6 +69,23 @@ class TestSmallBodyGroups:
 
     def test_empty_when_no_signal(self):
         assert _small_body_groups({}) == []
+
+
+class TestSpacecraftCategory:
+    """`_spacecraft_category` splits spacecraft into Earth satellites vs probes."""
+
+    def test_celestrak_spacecraft_is_satellite(self):
+        assert _spacecraft_category(
+            {"celestrak": {"ops_status": "+"}}, "spacecraft"
+        ) == ("cat-satellites")
+
+    def test_spacecraft_without_celestrak_is_probe(self):
+        assert _spacecraft_category({}, "spacecraft") == "cat-probes"
+
+    def test_non_spacecraft_is_none(self):
+        assert (
+            _spacecraft_category({"celestrak": {"ops_status": "+"}}, "debris") is None
+        )
 
 
 class TestRadiiDiameterKm:

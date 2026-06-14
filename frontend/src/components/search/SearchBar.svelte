@@ -19,10 +19,15 @@
 	} from '$lib/search/client';
 	import { compact } from '$lib/search/format';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
-	import type { FilterCategory } from '$lib/search/tree';
+	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { groupTypeLabel } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import type { GroupType } from '$lib/fetch/groups/registry';
+	import {
+		smallBodyCategory,
+		CAT_PROBES,
+		CAT_SATELLITES,
+		type GroupType
+	} from '$lib/fetch/groups/registry';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import SortMenu from './SortMenu.svelte';
 	import FilterDrill from './FilterDrill.svelte';
@@ -170,119 +175,276 @@
 		return label;
 	}
 
-	// ── filter tree (categories) ───────────────────────────────────────
-	const categories = $derived.by((): FilterCategory[] => {
-		const f = model.result.facets;
-		// Bounded facets (kind, type, flags) list their full value set always; the
-		// live distribution gives counts (0 when narrowed away), falling back to the
-		// whole-catalog universe while idle (no query/filters).
-		const small = model.hasResults ? f : facetUniverse;
+	// ── filter tree (type-first) ───────────────────────────────────────
+	// Root nodes are object types (+ surface features, collections); drilling into
+	// a type reveals the sub-filters relevant to it (orbit class, org, …) plus an
+	// "All" toggle and the small-body flags. Selections stay flat: same facet ORs,
+	// different facets AND — the tree only organizes which filters appear where.
+	const ASTEROID_TYPES = [
+		'asteroid',
+		'asteroid_inner',
+		'asteroid_main_belt',
+		'asteroid_trojan',
+		'asteroid_tno',
+		'asteroid_centaur'
+	];
+	const SPACECRAFT_GROUP_TYPES: GroupType[] = [
+		'organization',
+		'constellation',
+		'bus',
+		'launch_site',
+		'country',
+		'earth_orbit_class'
+	];
+
+	const tree = $derived.by((): FilterNode => {
+		// Live distribution once narrowing, else the whole-catalog universe so every
+		// node lists its full value set with idle counts.
+		const small = model.hasResults ? model.result.facets : facetUniverse;
 		const locale = getLocale();
-		const cats: FilterCategory[] = [];
-
-		// Kind — the fixed trio, always shown; 0 when none match.
+		const typeDist = small['object.type'] ?? {};
+		const groupDist = small['object.groups'] ?? {};
+		const featDist = small['feature.type'] ?? {};
+		const gtypeDist = small['group.type'] ?? {};
 		const kindDist = small['kind'] ?? {};
-		cats.push({
-			id: 'kind',
-			label: m.search_facet_kind(),
-			leaves: (['object', 'feature', 'group'] as const).map((k) => ({
-				id: `kind-${k}`,
-				kind: 'array',
-				facet: 'kind',
-				values: [k],
-				label: kindLabel(k),
-				count: kindDist[k] ?? 0
-			}))
-		});
+		const neoCount = small['object.neo']?.['true'] ?? 0;
+		const phaCount = small['object.pha']?.['true'] ?? 0;
+		const selGroups = new Set(model.filters.groups ?? []);
 
-		// Type — full vocabulary from the universe, merged by display label; live
-		// counts fill in (0 when none match the current query/filters).
-		const typeVocab = facetUniverse['object.type'];
-		if (typeVocab) {
-			const typeDist = small['object.type'] ?? {};
-			const byLabel = new Map<string, { values: string[]; count: number }>();
-			for (const raw of Object.keys(typeVocab)) {
-				const lbl = typeLabel(raw);
-				const e = byLabel.get(lbl) ?? { values: [], count: 0 };
-				e.values.push(raw);
-				e.count += typeDist[raw] ?? 0;
-				byLabel.set(lbl, e);
-			}
-			const leaves = [...byLabel.entries()]
-				.sort((a, b) => b[1].count - a[1].count)
-				.map(([lbl, e]) => ({
-					id: `type-${lbl}`,
-					kind: 'array' as const,
-					facet: 'type' as const,
-					values: e.values,
-					label: lbl,
-					count: e.count
+		const sumType = (keys: string[]) => keys.reduce((n, k) => n + (typeDist[k] ?? 0), 0);
+		const allLeaf = (id: string, values: string[], count: number): FilterLeaf => ({
+			id,
+			kind: 'array',
+			facet: 'type',
+			values,
+			label: m.search_filter_all(),
+			count
+		});
+		const flagLeaves = (idp: string): FilterLeaf[] => [
+			{ id: `${idp}-neo`, kind: 'bool', facet: 'neo', label: m.search_prop_neo(), count: neoCount },
+			{ id: `${idp}-pha`, kind: 'bool', facet: 'pha', label: m.search_prop_pha(), count: phaCount }
+		];
+		// Group memberships → leaves (drop 0-count unless currently selected).
+		const groupLeaves = (idp: string, gs: GroupHit[]): FilterLeaf[] =>
+			gs
+				.map((g) => ({ slug: g.slug, label: groupName(g, locale), count: groupDist[g.slug] ?? 0 }))
+				.filter((l) => l.count > 0 || selGroups.has(l.slug))
+				.sort((a, b) => b.count - a.count)
+				.slice(0, 80)
+				.map((l) => ({
+					id: `${idp}-${l.slug}`,
+					kind: 'array',
+					facet: 'groups',
+					values: [l.slug],
+					label: l.label,
+					count: l.count
 				}));
-			if (leaves.length) cats.push({ id: 'type', label: m.search_facet_type(), leaves });
+
+		const byType = new Map<string, GroupHit[]>();
+		for (const g of groupCatalog) {
+			const list = byType.get(g.type);
+			if (list) list.push(g);
+			else byType.set(g.type, [g]);
+		}
+		const orbit = byType.get('orbit_class') ?? [];
+		const cometClass = (g: GroupHit) =>
+			smallBodyCategory(classNameFromSlug(g.slug) ?? '') === 'comet';
+		// A drillable sub-category from one group type (null when it has no leaves).
+		const groupTypeNode = (id: string, type: GroupType): FilterNode | null => {
+			const lv = groupLeaves(id, byType.get(type) ?? []);
+			return lv.length ? { id, label: groupTypeLabel(type) ?? type, leaves: lv } : null;
+		};
+
+		const children: FilterNode[] = [];
+
+		// Types with no sub-filters — a plain checkbox right at the root level.
+		const rootLeaves: FilterLeaf[] = (['planet', 'dwarf_planet', 'moon'] as const).map((type) => ({
+			id: `root-${type}`,
+			kind: 'array',
+			facet: 'type',
+			values: [type],
+			label: typeLabel(type),
+			count: sumType([type])
+		}));
+
+		// Asteroids — All / NEO / PHA + SBDB orbit class (asteroid subset).
+		{
+			const cnt = sumType(ASTEROID_TYPES);
+			const cls = groupLeaves(
+				'ast-class',
+				orbit.filter((g) => !cometClass(g))
+			);
+			const sub = cls.length
+				? [{ id: 'ast-class', label: groupTypeLabel('orbit_class') ?? 'orbit_class', leaves: cls }]
+				: [];
+			children.push({
+				id: 'asteroid',
+				label: typeLabel('asteroid'),
+				count: cnt,
+				leaves: [allLeaf('ast-all', ASTEROID_TYPES, cnt), ...flagLeaves('ast')],
+				children: sub
+			});
 		}
 
-		// Collections — one category per group type, leaves are the groups. Counts
-		// come from the same catalog facet distribution as every other facet
-		// (whole-catalog universe while idle, disjunctive live count once selected),
-		// so a group's number never jumps between its stored member tally and the
-		// actually-indexed count. Too many groups to list every empty one, so drop
-		// 0-count leaves — but always keep a currently-selected group visible.
-		const gf = small['object.groups'];
-		if (gf) {
-			const selectedGroups = new Set(model.filters.groups ?? []);
-			const byType = new Map<string, GroupHit[]>();
-			for (const g of groupCatalog) {
-				const list = byType.get(g.type);
-				if (list) list.push(g);
-				else byType.set(g.type, [g]);
-			}
-			for (const [type, gs] of byType) {
-				let leaves = gs
-					.map((g) => ({ slug: g.slug, label: groupName(g, locale), count: gf[g.slug] ?? 0 }))
-					.filter((l) => l.count > 0 || selectedGroups.has(l.slug));
-				leaves.sort((a, b) => b.count - a.count);
-				leaves = leaves.slice(0, 60);
-				if (!leaves.length) continue;
-				cats.push({
-					id: `grp-${type}`,
-					// Fall back to the raw type for any group kind the frontend doesn't
-					// know (e.g. stale docs from a pre-merge export) rather than `undefined`.
-					label: groupTypeLabel(type as GroupType) ?? type,
-					leaves: leaves.map((l) => ({
-						id: `grp-${type}-${l.slug}`,
+		// Comets — All / NEO / PHA + orbit class (comet subset) + fragments.
+		{
+			const cnt = sumType(['comet']);
+			const cls = groupLeaves('com-class', orbit.filter(cometClass));
+			const sub: FilterNode[] = [];
+			if (cls.length)
+				sub.push({
+					id: 'com-class',
+					label: groupTypeLabel('orbit_class') ?? 'orbit_class',
+					leaves: cls
+				});
+			const frag = groupTypeNode('com-frag', 'split_comet');
+			if (frag) sub.push(frag);
+			children.push({
+				id: 'comet',
+				label: typeLabel('comet'),
+				count: cnt,
+				leaves: [allLeaf('com-all', ['comet'], cnt), ...flagLeaves('com')],
+				children: sub
+			});
+		}
+
+		// Spacecraft — All / Probes / Earth satellites / Debris + org/constellation/…
+		// Probes & Earth satellites filter on category membership (object.groups =
+		// cat-probes / cat-satellites); those counts populate once the export tags
+		// objects with their category — until then the leaves read 0.
+		{
+			const cnt = sumType(['spacecraft']);
+			const leaves: FilterLeaf[] = [allLeaf('sc-all', ['spacecraft'], cnt)];
+			const cats = byType.get('category') ?? [];
+			for (const [id, slug] of [
+				['sc-probes', CAT_PROBES],
+				['sc-sats', CAT_SATELLITES]
+			] as const) {
+				const g = cats.find((c) => c.slug === slug);
+				if (g)
+					leaves.push({
+						id,
 						kind: 'array',
 						facet: 'groups',
-						values: [l.slug],
-						label: l.label,
-						count: l.count
-					}))
-				});
+						values: [slug],
+						label: groupName(g, locale),
+						count: groupDist[slug] ?? 0
+					});
 			}
+			const debris = sumType(['debris']);
+			if (debris > 0 || (model.filters.type ?? []).includes('debris'))
+				leaves.push({
+					id: 'sc-debris',
+					kind: 'array',
+					facet: 'type',
+					values: ['debris'],
+					label: m.type_earth_debris(),
+					count: debris
+				});
+			const sub = SPACECRAFT_GROUP_TYPES.map((t) => groupTypeNode(`sc-${t}`, t)).filter(
+				(n): n is FilterNode => n != null
+			);
+			children.push({
+				id: 'spacecraft',
+				label: typeLabel('spacecraft'),
+				count: cnt,
+				leaves,
+				children: sub
+			});
 		}
 
-		// Properties — small-body flags; always shown, 0 when none match.
-		cats.push({
-			id: 'props',
-			label: m.search_facet_properties(),
-			leaves: [
-				{
-					id: 'prop-neo',
-					kind: 'bool',
-					facet: 'neo',
-					label: m.search_prop_neo(),
-					count: small['object.neo']?.['true'] ?? 0
-				},
-				{
-					id: 'prop-pha',
-					kind: 'bool',
-					facet: 'pha',
-					label: m.search_prop_pha(),
-					count: small['object.pha']?.['true'] ?? 0
-				}
-			]
-		});
+		// Surface features — All + the feature types directly (type is the only filter).
+		{
+			const cnt = kindDist['feature'] ?? 0;
+			const fl = Object.keys(featDist)
+				.map((code) => ({ code, label: featureTypeLabel(code), count: featDist[code] ?? 0 }))
+				.filter((l) => l.count > 0 || (model.filters.featureType ?? []).includes(l.code))
+				.sort((a, b) => b.count - a.count)
+				.slice(0, 80)
+				.map(
+					(l): FilterLeaf => ({
+						id: `feat-${l.code}`,
+						kind: 'array',
+						facet: 'featureType',
+						values: [l.code],
+						label: l.label,
+						count: l.count
+					})
+				);
+			children.push({
+				id: 'feature',
+				label: m.search_kind_feature(),
+				count: cnt,
+				leaves: [
+					{
+						id: 'feat-all',
+						kind: 'array',
+						facet: 'kind',
+						values: ['feature'],
+						label: m.search_filter_all(),
+						count: cnt
+					},
+					...fl
+				]
+			});
+		}
 
-		return cats;
+		// Collections — All + the collection types directly (type is the only filter).
+		{
+			const cnt = kindDist['group'] ?? 0;
+			const gl = Object.keys(gtypeDist)
+				.map((t) => ({ t, label: groupTypeLabel(t as GroupType) ?? t, count: gtypeDist[t] ?? 0 }))
+				.filter((l) => l.count > 0 || (model.filters.groupType ?? []).includes(l.t))
+				.sort((a, b) => b.count - a.count)
+				.map(
+					(l): FilterLeaf => ({
+						id: `coll-${l.t}`,
+						kind: 'array',
+						facet: 'groupType',
+						values: [l.t],
+						label: l.label,
+						count: l.count
+					})
+				);
+			children.push({
+				id: 'group',
+				label: m.search_kind_group(),
+				count: cnt,
+				leaves: [
+					{
+						id: 'coll-all',
+						kind: 'array',
+						facet: 'kind',
+						values: ['group'],
+						label: m.search_filter_all(),
+						count: cnt
+					},
+					...gl
+				]
+			});
+		}
+
+		// Other long-tail types (star, barycenter) — kept reachable, hidden at 0.
+		{
+			const others = (['star', 'barycenter'] as const).filter(
+				(t) => (typeDist[t] ?? 0) > 0 || (model.filters.type ?? []).includes(t)
+			);
+			if (others.length)
+				children.push({
+					id: 'other',
+					label: m.search_facet_other(),
+					leaves: others.map((t) => ({
+						id: `other-${t}`,
+						kind: 'array',
+						facet: 'type',
+						values: [t],
+						label: typeLabel(t),
+						count: typeDist[t] ?? 0
+					}))
+				});
+		}
+
+		return { id: 'root', label: '', leaves: rootLeaves, children };
 	});
 
 	const tokens = $derived.by((): FilterToken[] => {
@@ -296,6 +458,10 @@
 			const g = groupBySlug.get(slug);
 			out.push({ key: 'groups', value: slug, label: g ? groupName(g, locale) : slug });
 		}
+		for (const code of model.filters.featureType ?? [])
+			out.push({ key: 'featureType', value: code, label: featureTypeLabel(code) });
+		for (const t of model.filters.groupType ?? [])
+			out.push({ key: 'groupType', value: t, label: groupTypeLabel(t as GroupType) ?? t });
 		if (model.filters.neo) out.push({ key: 'neo', label: m.search_prop_neo() });
 		if (model.filters.pha) out.push({ key: 'pha', label: m.search_prop_pha() });
 		return out;
@@ -452,7 +618,7 @@
 							{/if}
 						</button>
 						{#if filterOpen}
-							<FilterDrill {model} {categories} />
+							<FilterDrill {model} root={tree} />
 						{/if}
 					</div>
 				</div>

@@ -22,6 +22,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from space_map_data.constants.categories import PROBES_SLUG, SATELLITES_SLUG
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
 
@@ -138,6 +139,15 @@ def _load_earth_membership(export_dir: Path) -> dict[str, list[str]]:
     return inverted
 
 
+def _spacecraft_category(g: dict[str, Any], otype: str) -> str | None:
+    """Probe vs Earth-satellite split for the search filter. Spacecraft in the
+    CelesTrak (NORAD) catalog orbit Earth (`cat-satellites`); the rest are
+    deep-space probes (`cat-probes`). None for non-spacecraft."""
+    if otype != "spacecraft":
+        return None
+    return SATELLITES_SLUG if g.get("celestrak") else PROBES_SLUG
+
+
 def _small_body_groups(sbdb: dict[str, Any]) -> list[str]:
     """Group slugs from SBDB orbit class + NEO/PHA flags. Slugs mirror
     export/groups/registry.py: `class-<OrbitClass.name>`, `flag-neo`, `flag-pha`."""
@@ -252,10 +262,14 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             if ct.get("ops_status"):
                 obj["ops_status"] = ct["ops_status"]
 
-            # Group membership — backs the "show all members" query. Small-body
-            # slugs come from SBDB class/flags, earth-sat slugs from the inverted
-            # membership index. An object is one or the other, so a union is safe.
+            # Group membership — backs the "show all members" query and the search
+            # filter tree. Small-body slugs from SBDB class/flags, earth-sat slugs
+            # from the inverted membership index, plus the probe/satellite category
+            # for spacecraft. An object draws from one of these, so a union is safe.
             groups = _small_body_groups(sbdb) + earth_groups.get(obj_id, [])
+            spacecraft_cat = _spacecraft_category(g, otype)
+            if spacecraft_cat:
+                groups.append(spacecraft_cat)
             if groups:
                 obj["groups"] = groups
 

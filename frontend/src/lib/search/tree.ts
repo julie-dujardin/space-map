@@ -11,9 +11,14 @@ export type FilterLeaf = {
 	count?: number;
 } & ({ kind: 'array'; facet: ArrayFacet; values: string[] } | { kind: 'bool'; facet: BoolFacet });
 
-/** A drillable group of leaves (Kind, Type, Orbit class, Constellation, …). */
-export interface FilterCategory {
+/** A node in the filter drill tree. The root's `children` are the type nodes
+ *  (Planets, Asteroids, Spacecraft, …). A node may offer direct toggle `leaves`
+ *  (All / NEO / PHA) and/or drillable `children` (Orbit class, Organization, …);
+ *  `count` is the type total shown on the drill row. */
+export interface FilterNode {
 	id: string;
 	label: string;
-	leaves: FilterLeaf[];
+	count?: number;
+	leaves?: FilterLeaf[];
+	children?: FilterNode[];
 }

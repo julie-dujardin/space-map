@@ -13,7 +13,7 @@ export interface FilterToken {
 	label: string;
 }
 
-export type ArrayFacet = 'kind' | 'type' | 'groups';
+export type ArrayFacet = 'kind' | 'type' | 'groups' | 'featureType' | 'groupType';
 export type BoolFacet = 'neo' | 'pha';
 
 /** Sort options in menu order; labels resolve via `search_sort_*` messages. */
@@ -26,7 +26,12 @@ export const SORTS: { id: SortId; key: string }[] = [
 ];
 
 function countActive(f: CatalogFilters): number {
-	let n = (f.kind?.length ?? 0) + (f.type?.length ?? 0) + (f.groups?.length ?? 0);
+	let n =
+		(f.kind?.length ?? 0) +
+		(f.type?.length ?? 0) +
+		(f.groups?.length ?? 0) +
+		(f.featureType?.length ?? 0) +
+		(f.groupType?.length ?? 0);
 	if (f.neo) n++;
 	if (f.pha) n++;
 	return n;
