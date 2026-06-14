@@ -42,9 +42,9 @@ configs:
       :80 {
       	encode gzip
 
-      	# CORS: reflect Origin only if it's in the allowlist. Multiple origins
-      	# are joined with `|` to form an alternation regex.
-      	@allowed_origin header_regexp Origin ^https?://({$ALLOWED_ORIGINS})(:\d+)?$
+      	# CORS: reflect Origin only if it's in the allowlist (pipe-separated).
+      	# $$ escapes Compose interpolation so Caddy expands {$ALLOWED_ORIGINS}.
+      	@allowed_origin header_regexp Origin ^https?://({$$ALLOWED_ORIGINS})(:\d+)?$
       	header @allowed_origin {
       		Access-Control-Allow-Origin "{http.request.header.Origin}"
       		Access-Control-Allow-Headers "Authorization,Content-Type,X-Meilisearch-Client"
