@@ -1,25 +1,19 @@
 # space-map search infra
 
-Meilisearch + Caddy reverse proxy. Sits on the same Debian VM as
-`infrastructure/data/`, deployed via Portainer.
+Meilisearch + Caddy, deployed via Portainer on the `infrastructure/data/` VM.
 
-## What lives where
-
-- `docker-compose.yaml` — Meili + Caddy services. The Caddy config is
-  inlined as a compose `config` (TLS termination, CORS for the Pages origin;
-  public surface limited to `/indexes/*/search`, `/multi-search`, `/health`,
-  everything else — settings, keys, tasks, dumps, swap, metrics, document
-  CRUD — is VPN-only). Inlined so Portainer deploys it without the file
-  needing to exist on the host.
-- `.env.example` — fill in and copy to `.env` next to the compose file.
+Caddy (config inlined in the compose `config`, so no host file needed) serves
+HTTP on `:9750` and proxies to Meili: public surface is `/indexes/*/search`,
+`/multi-search`, `/health`; everything else is VPN-only (`403` otherwise).
+TLS and the public hostname are handled by a Cloudflare tunnel → `:9750`.
 
 ## Deploy
 
-1. Point `SEARCH_DOMAIN` at the VPS IP (A record).
-2. `cp .env.example .env` and fill it in. The master key never leaves
-   the VPS.
-3. Bring it up via Portainer (or `docker compose up -d` for first run).
-4. From inside the VPN, generate the public search-only key once:
+1. `cp .env.example .env` and fill it in. The master key never leaves the VM.
+2. Bring up the stack in Portainer.
+3. Point the Cloudflare tunnel at `http://<host>:9750`.
+4. From the VPN, mint the frontend's search-only key once and bake it in at
+   build time:
 
    ```
    MEILI_URL=https://search.example.com \
@@ -27,17 +21,12 @@ Meilisearch + Caddy reverse proxy. Sits on the same Debian VM as
        uv run space-map-search search-key
    ```
 
-   Bake the printed `key` field into the frontend at build time.
-
 ## Indexing
 
-The indexer runs from a developer machine (or any host on the VPN):
+From any host on the VPN. Reindex is atomic (load into `features_tmp`, then swap):
 
 ```
 MEILI_URL=https://search.example.com \
 MEILI_MASTER_KEY=<from .env> \
     uv run space-map-search push --indices features
 ```
-
-Reindex is atomic: docs go into `features_tmp`, then a swap promotes them
-to `features` in one step.

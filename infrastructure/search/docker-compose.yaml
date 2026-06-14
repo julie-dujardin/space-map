@@ -19,12 +19,11 @@ services:
     container_name: space-map-search-caddy
     restart: unless-stopped
     environment:
-      - SEARCH_DOMAIN=${SEARCH_DOMAIN}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - VPN_CIDR=${VPN_CIDR}
+    # Cloudflare handles TLS
     ports:
-      - "80:80"
-      - "443:443"
+      - "9750:80"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
@@ -47,7 +46,7 @@ configs:
   caddyfile:
     # Inlined so the stack deploys from Portainer without the file present on host.
     content: |
-      {$SEARCH_DOMAIN} {
+      :80 {
       	encode gzip
 
       	# CORS: reflect Origin only if it's in the allowlist. Multiple origins
