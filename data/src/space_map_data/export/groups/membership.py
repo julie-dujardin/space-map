@@ -21,6 +21,7 @@ from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QI
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.satcat import OpsStatus
 from space_map_data.export.groups.registry import (
+    BUS_SLUG_PREFIX,
     COUNTRY_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
@@ -85,6 +86,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             Satcat.constellation_slug,
             Satcat.operator_qids,
             Satcat.manufacturer_qids,
+            Satcat.bus_slug,
             Satcat.launch_site_code,
             Satcat.country_codes,
             Satcat.launch_date,
@@ -109,6 +111,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
         c_slug,
         op_qids,
         mfr_qids,
+        bus_slug,
         site_code,
         country_codes,
         launch_date,
@@ -118,6 +121,8 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
         slugs: list[tuple[GroupType, str]] = []
         if c_slug:
             slugs.append((GroupType.CONSTELLATION, c_slug))
+        if bus_slug:
+            slugs.append((GroupType.BUS, f"{BUS_SLUG_PREFIX}{bus_slug}"))
         for qid in op_qids or ():
             op = OPERATOR_BY_QID.get(qid)
             if op is None:

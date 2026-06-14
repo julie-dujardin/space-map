@@ -25,6 +25,10 @@ from space_map_data.constants.earth_sats.operators import (
     OPERATORS,
 )
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.earth_sats.satellite_models import (
+    BUS_SLUG_PREFIX,
+    SATELLITE_BUSES,
+)
 from space_map_data.constants.small_bodies import ORBIT_CLASS_QIDS
 from space_map_data.models.object.sbdb import OrbitClass
 
@@ -37,6 +41,7 @@ class GroupType(StrEnum):
     OPERATOR = "operator"
     LAUNCH_SITE = "launch_site"
     MANUFACTURER = "manufacturer"
+    BUS = "bus"
     COUNTRY = "country"
     ORBIT_CLASS = "orbit_class"
     SMALL_BODY_FLAG = "small_body_flag"
@@ -65,6 +70,7 @@ class GroupCategory(StrEnum):
 
 
 __all__ = [
+    "BUS_SLUG_PREFIX",
     "CLASS_SLUG_PREFIX",
     "COUNTRY_SLUG_PREFIX",
     "GROUPS",
@@ -128,6 +134,15 @@ def _build_groups() -> tuple[Group, ...]:
         )
         for m in MANUFACTURERS
     )
+    buses = tuple(
+        Group(
+            slug=f"{BUS_SLUG_PREFIX}{b.slug}",
+            type=GroupType.BUS,
+            applies_to=GroupCategory.EARTH_SAT,
+            wikidata_qid=b.wikidata_qid,
+        )
+        for b in SATELLITE_BUSES
+    )
     countries = tuple(
         Group(
             slug=f"{COUNTRY_SLUG_PREFIX}{c.slug}",
@@ -181,6 +196,7 @@ def _build_groups() -> tuple[Group, ...]:
         + operators
         + launch_sites
         + manufacturers
+        + buses
         + countries
         + orbit_classes
         + small_body_flags

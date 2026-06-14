@@ -21,9 +21,11 @@ from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_CONSTELLATION
+from space_map_data.constants.earth_sats.satellite_models import BUS_BY_SLUG
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
+    BUS_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
     MANUFACTURER_SLUG_PREFIX,
     OPERATOR_SLUG_PREFIX,
@@ -386,10 +388,14 @@ def _manufacturer_refs_for_group(
     lang: str,
     wikidata_entities: WikidataEntityCache,
 ) -> list[dict]:
-    """Manufacturers of a constellation, resolved as EntityRefs."""
-    if group.type is not GroupType.CONSTELLATION:
+    """Manufacturers of a constellation or bus, resolved as EntityRefs."""
+    if group.type is GroupType.CONSTELLATION:
+        manufacturers = MANUFACTURER_BY_CONSTELLATION.get(group.slug, [])
+    elif group.type is GroupType.BUS:
+        bus = BUS_BY_SLUG.get(group.slug.removeprefix(BUS_SLUG_PREFIX))
+        manufacturers = [bus.manufacturer] if bus is not None else []
+    else:
         return []
-    manufacturers = MANUFACTURER_BY_CONSTELLATION.get(group.slug, [])
     refs: list[dict] = []
     for mfr in manufacturers:
         mfr_group_slug = f"{MANUFACTURER_SLUG_PREFIX}{mfr.slug}"

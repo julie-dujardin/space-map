@@ -14,6 +14,10 @@ from space_map_data.constants.earth_sats.operators import (
     OPERATOR_SLUG_PREFIX,
     ActiveDate,
 )
+from space_map_data.constants.earth_sats.satellite_models import (
+    BUS_BY_SLUG,
+    BUS_SLUG_PREFIX,
+)
 from space_map_data.export.objects.wikidata_claims import EntityRef, resolve_entity_ref
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object import Satcat
@@ -34,6 +38,7 @@ _GLOBAL_FIELDS = (
     "launch_site_code",
     "owner",
     "constellation_slug",
+    "bus_slug",
 )
 
 
@@ -63,6 +68,11 @@ def build_satcat_localized(
         ref = _constellation_group_ref(sat.constellation_slug, lang, wikidata_entities)
         if ref is not None:
             data["constellation"] = ref.to_dict()
+
+    if sat.bus_slug is not None:
+        ref = _bus_group_ref(sat.bus_slug, lang, wikidata_entities)
+        if ref is not None:
+            data["bus"] = ref.to_dict()
 
     if sat.launch_site_code is not None:
         site = LAUNCH_SITE_BY_CODE.get(sat.launch_site_code)
@@ -118,6 +128,29 @@ def _constellation_group_ref(
             ref.primary_id = slug
             return ref
     return EntityRef(name=slug, primary_type="group", primary_id=slug)
+
+
+def _bus_group_ref(
+    slug: str,
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> EntityRef | None:
+    """EntityRef for a satellite bus, pointing at /g/bus-<slug>.
+
+    Display name comes from Wikidata when a QID is registered; otherwise the
+    slug stands in, matching the bus group page's own fallback.
+    """
+    spec = BUS_BY_SLUG.get(slug)
+    if spec is None:
+        return None
+    group_slug = f"{BUS_SLUG_PREFIX}{slug}"
+    if spec.wikidata_qid is not None:
+        ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+        if ref is not None:
+            ref.primary_type = "group"
+            ref.primary_id = group_slug
+            return ref
+    return EntityRef(name=slug, primary_type="group", primary_id=group_slug)
 
 
 def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
