@@ -26,6 +26,34 @@ export function groupTypeLabel(type: GroupType): string {
 	}
 }
 
+/** Plural group-type label, for headers over a list of groups ("Constellations",
+ *  "Launch sites"). The numeric count sits in its own column, so these are
+ *  invariant plurals — `group_type_*` stays singular for badges/inline use. */
+export function groupTypeLabelPlural(type: GroupType): string {
+	switch (type) {
+		case 'constellation':
+			return m.group_type_plural_constellation();
+		case 'organization':
+			return m.group_type_plural_organization();
+		case 'launch_site':
+			return m.group_type_plural_launch_site();
+		case 'bus':
+			return m.group_type_plural_bus();
+		case 'country':
+			return m.group_type_plural_country();
+		case 'orbit_class':
+			return m.group_type_plural_orbit_class();
+		case 'earth_orbit_class':
+			return m.group_type_plural_earth_orbit_class();
+		case 'small_body_flag':
+			return m.group_type_plural_small_body_flag();
+		case 'category':
+			return m.group_type_plural_category();
+		case 'split_comet':
+			return m.group_type_plural_split_comet();
+	}
+}
+
 /** Badge label for an organization's operator/manufacturer role tag. */
 export function organizationRoleLabel(role: OrganizationRole): string {
 	return role === 'operator' ? m.group_type_operator() : m.group_type_manufacturer();

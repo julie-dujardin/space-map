@@ -20,7 +20,7 @@
 	import { capitalize, compact } from '$lib/search/format';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
-	import { groupTypeLabel } from '$lib/format/group';
+	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import {
 		smallBodyCategory,
@@ -138,9 +138,6 @@
 	// are singular for inline/sentence use. Fall back to the singular if missing.
 	function typeLabelPlural(type: string): string {
 		return messages[`search_cat_${type}`]?.() ?? typeLabel(type);
-	}
-	function groupTypeLabelPlural(type: GroupType): string {
-		return messages[`search_grp_${type}`]?.() ?? groupTypeLabel(type) ?? type;
 	}
 	function bodyName(bodyId: string): string {
 		return ctx.getBody(bodyId)?.data.name ?? bodyId;

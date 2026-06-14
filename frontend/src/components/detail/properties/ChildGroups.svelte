@@ -5,7 +5,7 @@
 	import type { ChildGroupEntry } from '$lib/fetch/groups/details';
 	import type { GroupType } from '$lib/fetch/groups/registry';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
-	import { groupTypeLabel } from '$lib/format/group';
+	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 
@@ -53,7 +53,7 @@
 
 {#each sections as [role, items] (role)}
 	<div class="flex flex-col gap-1.5">
-		<h3 class="text-sm font-medium">{groupTypeLabel(role)}</h3>
+		<h3 class="text-sm font-medium">{groupTypeLabelPlural(role)}</h3>
 		<Separator />
 		<div class="flex flex-wrap gap-1.5 pt-0.5">
 			{#each items as c (c.primary_id)}
