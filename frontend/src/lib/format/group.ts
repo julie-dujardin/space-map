@@ -11,6 +11,8 @@ export function groupTypeLabel(type: GroupType): string {
 			return m.group_type_launch_site();
 		case 'manufacturer':
 			return m.group_type_manufacturer();
+		case 'bus':
+			return m.group_type_bus();
 		case 'country':
 			return m.group_type_country();
 		case 'orbit_class':

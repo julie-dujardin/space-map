@@ -260,6 +260,12 @@ def _child_group_refs(
                         GroupType.EARTH_ORBIT_CLASS,
                     ):
                         name = name[:1].upper() + name[1:]
+            elif child.type is GroupType.BUS:
+                # QID-less buses (7 of them) carry no Wikidata label; fall back
+                # to the first alias rather than the raw "bus-…" slug.
+                bus = BUS_BY_SLUG.get(slug.removeprefix(BUS_SLUG_PREFIX))
+                if bus is not None and bus.also_known_as:
+                    name = bus.also_known_as[0]
         refs.append(
             {
                 "name": name,
@@ -498,7 +504,7 @@ def write_group_bundles(
     extra_pha_counts: dict[str, int] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
-    category_children: dict[str, list[str]] | None = None,
+    child_slugs_by_group: dict[str, list[str]] | None = None,
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
 ) -> dict[str, int]:
@@ -550,7 +556,7 @@ def write_group_bundles(
             named_count,
             member_entries,
         )
-        child_slugs = (category_children or {}).get(group.slug)
+        child_slugs = (child_slugs_by_group or {}).get(group.slug)
         display_name = (extra_group_names or {}).get(group.slug)
         for lang in LANGUAGES:
             lang_data = _build_localized(

@@ -977,6 +977,7 @@ interface GlobalObjectData {
     launch_site_code?: string;        // SATCAT short code, see constants/earth_sats/launch_sites.py
     owner?: string;                   // SATCAT OWNER short code, see constants/earth_sats/sources.py
     constellation_slug?: string;      // see constants/earth_sats/constellations.py
+    bus_slug?: string;                // satellite bus / platform, see constants/earth_sats/satellite_models.py
     categories?: string[];            // SatelliteCategory values
     country_codes?: string[];         // ISO 3166-1 alpha-2 (feed into Intl.DisplayNames)
   };
@@ -1081,6 +1082,7 @@ interface LocalizedObjectData {
   asteroid_family?: EntityRef;
   operators?: EntityRef[];        // merged from Wikidata P137 + CelesTrak, deduped
   constellation?: EntityRef;      // CelesTrak-derived
+  bus?: EntityRef;                // CelesTrak-derived; links to /g/bus-<slug>
   manufacturer?: EntityRef;
   launch_vehicle?: EntityRef;
   launch_site?: EntityRef;        // CelesTrak-derived takes precedence over Wikidata P1427
@@ -1121,7 +1123,7 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
+  type: GroupType;            // "constellation" | "operator" | "launch_site" | "manufacturer" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
   applies_to: GroupCategory;  // "earth_sat" | "small_body"
   n: number;                  // member count
 }
@@ -1305,12 +1307,13 @@ interface LocalizedGroupData {
   description?: string;
   wikipedia?: { extract?: string; description?: string; url?: string };
   operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137)
-  manufacturers?: EntityRef[];        // Constellation hardware primes
+  manufacturers?: EntityRef[];        // Constellation hardware primes; on a bus page, the bus's single manufacturer
   country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
   instance_of?: EntityRef[];
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
   related_groups?: { name: string; primary_type: "group"; primary_id: string; role: GroupType }[]; // Sibling groups sharing the same QID (e.g. operator/manufacturer pairs); concept groups (orbit_class, category, small_body_flag) are excluded
+  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, and a manufacturer's satellite buses
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```

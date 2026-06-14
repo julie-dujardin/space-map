@@ -32,6 +32,7 @@
 	let decayDate = $derived(ct?.decay_date);
 	let operators = $derived(localized?.operators);
 	let manufacturer = $derived(localized?.manufacturer);
+	let bus = $derived(localized?.bus);
 	let developer = $derived(localized?.developer);
 	let funder = $derived(localized?.funder);
 	let countryOfOrigin = $derived(localized?.country_of_origin);
@@ -63,6 +64,7 @@
 				decayDate ||
 				operators ||
 				manufacturer ||
+				bus ||
 				developer ||
 				funder ||
 				countryOfOrigin ||
@@ -114,6 +116,11 @@
 		{#if manufacturer && manufacturer.length > 0}
 			<Row label={m.property_name_manufacturer()}>
 				<EntityLinks entities={manufacturer} />
+			</Row>
+		{/if}
+		{#if bus}
+			<Row label={m.group_type_bus()}>
+				<EntityLinks entities={[bus]} />
 			</Row>
 		{/if}
 		{#if launchVehicle}

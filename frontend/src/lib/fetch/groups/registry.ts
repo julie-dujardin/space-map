@@ -11,6 +11,7 @@ export type GroupType =
 	| 'operator'
 	| 'launch_site'
 	| 'manufacturer'
+	| 'bus'
 	| 'country'
 	| 'orbit_class'
 	| 'small_body_flag'

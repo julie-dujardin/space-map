@@ -282,6 +282,8 @@ export interface LocalizedObjectData {
 	asteroid_family?: EntityRef;
 	operators?: EntityRef[];
 	constellation?: EntityRef;
+	/** Satellite bus / platform (CelesTrak-derived); links to /g/bus-<slug>. */
+	bus?: EntityRef;
 	manufacturer?: EntityRef[];
 	launch_vehicle?: EntityRef;
 	launch_site?: EntityRef[];

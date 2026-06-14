@@ -22,6 +22,7 @@ from space_map_data.export.groups.membership import (
     write_earth_membership,
 )
 from space_map_data.export.groups.registry import (
+    MANUFACTURER_BUS_CHILDREN,
     Group,
     GroupCategory,
     GroupType,
@@ -206,7 +207,7 @@ def run_groups_tier(
         extra_pha_counts=small_body_stats.pha_counts,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
-        category_children=category_data.children,
+        child_slugs_by_group={**category_data.children, **MANUFACTURER_BUS_CHILDREN},
         extra_groups=tuple(split_comets.groups),
         extra_group_names=split_comets.names,
     )

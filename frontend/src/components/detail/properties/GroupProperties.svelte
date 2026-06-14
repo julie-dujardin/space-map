@@ -36,6 +36,10 @@
 	let constellations = $derived(localized?.constellations ?? []);
 	let related = $derived(localized?.related_groups ?? []);
 
+	// Hide the top-launch-sites and orbit-class breakdowns when constellations
+	// are shown — each constellation already surfaces its own, so they're redundant.
+	let showLaunchSites = $derived(launchSites.length > 0 && constellations.length === 0);
+
 	let maxSiteCount = $derived(
 		launchSites.length > 0 ? Math.max(...launchSites.map((s) => s.n)) : 0
 	);
@@ -182,7 +186,7 @@
 	</Section>
 {/if}
 
-{#if orbitClassRefs.length > 0}
+{#if orbitClassRefs.length > 0 && constellations.length === 0}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.orbit_class()}</h3>
 		<div class="border-border/60 border-t"></div>
@@ -192,7 +196,7 @@
 	</div>
 {/if}
 
-{#if launchSites.length > 0}
+{#if showLaunchSites}
 	<div class="flex flex-col gap-1">
 		<div class="flex items-baseline justify-between">
 			<h3 class="text-sm font-medium">{m.group_top_launch_sites()}</h3>

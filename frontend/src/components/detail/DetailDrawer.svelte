@@ -275,7 +275,7 @@
 	// the textual child list then keeps only zones the scatter can't be clicked
 	// for (inc-only sat zones, off-plot classes) plus non-zone children.
 	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
-	let categoryChildGroups = $derived.by(() => {
+	let visibleChildGroups = $derived.by(() => {
 		const cg = groupDetail?.localized?.child_groups ?? [];
 		if (!categoryPlot) return cg;
 		const clickable = scatterClickableSlugs(categoryPlot);
@@ -513,8 +513,8 @@
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 				{/if}
-				{#if categoryChildGroups.length}
-					<ChildGroups childGroups={categoryChildGroups} />
+				{#if visibleChildGroups.length}
+					<ChildGroups childGroups={visibleChildGroups} />
 				{/if}
 				<GroupProperties
 					global={groupDetail?.global ?? null}

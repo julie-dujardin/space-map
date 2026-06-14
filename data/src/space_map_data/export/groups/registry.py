@@ -79,6 +79,7 @@ __all__ = [
     "GroupCategory",
     "GroupType",
     "LAUNCH_SITE_SLUG_PREFIX",
+    "MANUFACTURER_BUS_CHILDREN",
     "MANUFACTURER_SLUG_PREFIX",
     "OPERATOR_SLUG_PREFIX",
     "SMALL_BODY_FLAG_SLUG_PREFIX",
@@ -209,3 +210,15 @@ GROUPS: tuple[Group, ...] = _build_groups()
 GROUP_BY_SLUG: dict[str, Group] = {g.slug: g for g in GROUPS}
 
 assert len(GROUP_BY_SLUG) == len(GROUPS), "Duplicate group slug across types"
+
+
+def _build_manufacturer_bus_children() -> dict[str, list[str]]:
+    """Manufacturer group slug -> its bus group slugs, for the bus chip list."""
+    children: dict[str, list[str]] = {}
+    for b in SATELLITE_BUSES:
+        mfr_slug = f"{MANUFACTURER_SLUG_PREFIX}{b.manufacturer.slug}"
+        children.setdefault(mfr_slug, []).append(f"{BUS_SLUG_PREFIX}{b.slug}")
+    return children
+
+
+MANUFACTURER_BUS_CHILDREN: dict[str, list[str]] = _build_manufacturer_bus_children()
