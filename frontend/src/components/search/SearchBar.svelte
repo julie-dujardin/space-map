@@ -13,6 +13,7 @@
 		catalogCount,
 		catalogFacets,
 		isSearchEnabled,
+		MAX_TOTAL_HITS,
 		type SearchHit,
 		type GroupHit,
 		type FacetDistribution
@@ -148,17 +149,25 @@
 		if (k === 'group') return m.search_kind_group();
 		return k;
 	}
-	// Localized group/collection name. Orbit classes resolve via the frontend
-	// `orbit_class_*` keys (the export leaves QID-less classes as the raw slug);
-	// other kinds use their `group_name_<slug>` key, else the exported name.
+	// Localized group/collection name, used for filter leaves, tokens and result
+	// rows alike. Orbit classes resolve via the frontend `orbit_class_*` keys,
+	// falling back to the index's Wikidata name (then the bare code) for any
+	// class without a key; other kinds use `group_name_<slug>`, else the
+	// exported name.
 	function groupName(g: GroupHit, locale: string): string {
 		const className = classNameFromSlug(g.slug);
-		if (className != null) return orbitClassLabel(className);
+		if (className != null) {
+			const label = orbitClassLabel(className);
+			if (label !== className) return label;
+			const idx = localizedName(g, locale);
+			return idx && idx !== g.slug ? idx : className;
+		}
 		const fn = messages[`group_name_${g.slug}`];
 		if (fn) return fn();
 		return localizedName(g, locale);
 	}
 	function rowName(hit: SearchHit): string {
+		if (hit.kind === 'group') return groupName(hit, getLocale());
 		return localizedName(hit, getLocale());
 	}
 	function secondaryText(hit: SearchHit): string {
@@ -596,7 +605,10 @@
 					<span class="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">
 						{#if model.hasResults}
 							<span class="font-medium text-foreground"
-								>{compact(model.result.estimatedTotalHits)}</span
+								>{compact(model.result.estimatedTotalHits)}{model.result.estimatedTotalHits >=
+								MAX_TOTAL_HITS
+									? '+'
+									: ''}</span
 							>
 							{m.search_results_label()}
 						{:else}

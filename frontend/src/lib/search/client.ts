@@ -116,6 +116,10 @@ export function isSearchEnabled(): boolean {
  *  them together. */
 const INDEX = 'catalog';
 
+/** Meili's `maxTotalHits` cap — `estimatedTotalHits` is clamped to it, so a
+ *  count that reaches it means "this many or more" and is shown as "N+". */
+export const MAX_TOTAL_HITS = 1000;
+
 type RawHit = Record<string, unknown>;
 
 /** Flatten a stored catalog doc into the kind-specific hit the UI consumes:
