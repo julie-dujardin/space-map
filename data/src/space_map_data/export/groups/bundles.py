@@ -17,7 +17,10 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
     CONSTELLATION_SLUG_PREFIX,
 )
-from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
+from space_map_data.constants.earth_sats.launch_sites import (
+    LAUNCH_SITE_BY_CODE,
+    LAUNCH_SITE_BY_SLUG,
+)
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
@@ -67,6 +70,7 @@ _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
 def _build_global(
     group: Group,
     member_count: int,
+    sitelinks_count: int,
     extracted: dict | None,
     stats: GroupSatcatStats | None,
     discovery_histogram: dict[int, int] | None,
@@ -85,6 +89,10 @@ def _build_global(
     }
     if group.wikidata_qid:
         data["wikidata_qid"] = group.wikidata_qid
+    # Wikidata prominence — the catalog index's cross-kind ranking tiebreaker,
+    # so collection results order by notability rather than ingest order.
+    if sitelinks_count:
+        data["sitelinks_count"] = sitelinks_count
     if group.fallback_url:
         data["url"] = group.fallback_url
     if group.type is GroupType.ORGANIZATION:
@@ -151,6 +159,44 @@ def _build_global(
     return data
 
 
+def _prettify_slug(slug: str, prefix: str) -> str:
+    """Title-cased fallback label from a kebab slug ("const-tianqi" → "Tianqi")."""
+    return slug.removeprefix(prefix).replace("-", " ").title()
+
+
+def _fallback_group_name(group: Group) -> str | None:
+    """Display name for a QID-less group, from the static constants.
+
+    Orbit classes (frontend `orbit_class_*` i18n) and countries (browser-
+    localized from the ISO code) are intentionally left nameless here — the
+    frontend resolves them — so this returns None for those types.
+    """
+    if group.type is GroupType.CONSTELLATION:
+        spec = CONSTELLATION_BY_SLUG.get(
+            group.slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+        )
+        # The TLE name prefix ("SITRO-AIS", "TIANQI-") is the best label; drop
+        # any trailing separator left from the prefix match.
+        if spec and isinstance(spec.prefix, str) and (p := spec.prefix.strip(" -_")):
+            return p
+        return _prettify_slug(group.slug, CONSTELLATION_SLUG_PREFIX)
+    if group.type is GroupType.ORGANIZATION:
+        org = ORGANIZATION_BY_SLUG.get(
+            group.slug.removeprefix(ORGANIZATION_SLUG_PREFIX)
+        )
+        if org:
+            return org.name
+    if group.type is GroupType.BUS:
+        bus = BUS_BY_SLUG.get(group.slug.removeprefix(BUS_SLUG_PREFIX))
+        if bus and bus.also_known_as:
+            return bus.also_known_as[0]
+    if group.type is GroupType.LAUNCH_SITE:
+        site = LAUNCH_SITE_BY_SLUG.get(group.slug.removeprefix(LAUNCH_SITE_SLUG_PREFIX))
+        if site:
+            return site.name
+    return None
+
+
 def _build_localized(
     group: Group,
     lang: str,
@@ -190,6 +236,12 @@ def _build_localized(
             desc = wd["descriptions"].get(lang)
             if desc:
                 data["description"] = desc
+    # No Wikidata label (QID-less or entity not downloaded) — fall back to the
+    # curated constant name so search/drawer never show the raw slug.
+    if "name" not in data:
+        fallback = _fallback_group_name(group)
+        if fallback:
+            data["name"] = fallback
     summary = wiki_summaries.get(lang)
     if summary:
         data["wikipedia"] = summary.to_dict()
@@ -502,6 +554,12 @@ def write_group_bundles(
             else {}
         )
         extracted = _extract_group_claims(group, wikidata_entities)
+        wd = (
+            wikidata_entities.get_referenced(group.wikidata_qid)
+            if group.wikidata_qid
+            else None
+        )
+        sitelinks_count = len(wd["sitelinks"]) if wd else 0
         images = collect_group_images(group.slug)
         stats = satcat_stats.get(group.slug)
         discovery_histogram = (extra_histograms or {}).get(group.slug)
@@ -516,6 +574,7 @@ def write_group_bundles(
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
+            sitelinks_count,
             extracted,
             stats,
             discovery_histogram,
