@@ -312,6 +312,37 @@ def extract_claims(
     return result
 
 
+def drop_covered_qids(extracted: dict, covered: set[str], obj_id: str) -> None:
+    """Strip QIDs already shown via an authoritative field from Wikidata claims.
+
+    Cross-refs by QID so a derived ref (e.g. a SATCAT constellation linked to a
+    group page) isn't duplicated by the matching Wikidata claim (e.g. P361
+    part_of). Mutates ``extracted``; claims we don't otherwise cover are kept.
+    """
+    if not covered:
+        return
+    for claim in ENTITY_REF_CLAIMS:
+        val = extracted.get(claim.key)
+        if val is None:
+            continue
+        if claim.multiple:
+            kept = [q for q in val if q not in covered]
+            if len(kept) != len(val):
+                logger.info(
+                    "Dropped covered QIDs from %s %s: %s",
+                    obj_id,
+                    claim.key,
+                    [q for q in val if q in covered],
+                )
+                if kept:
+                    extracted[claim.key] = kept
+                else:
+                    del extracted[claim.key]
+        elif val in covered:
+            logger.info("Dropped covered QID from %s %s: %s", obj_id, claim.key, val)
+            del extracted[claim.key]
+
+
 def resolve_entity_ref(
     qid: str,
     lang: str,

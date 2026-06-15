@@ -169,6 +169,32 @@ def merge_operator_qids(extracted: dict, sat: Satcat | None) -> None:
     extracted["operators"] = merged
 
 
+def covered_authoritative_qids(sat: Satcat | None) -> set[str]:
+    """QIDs already shown via a SATCAT-derived, group-linked ref.
+
+    Wikidata claims (e.g. P361 part_of) pointing at one of these are
+    redundant — we surface the entity through its own field — so they get
+    dropped at export to avoid a double-render.
+    """
+    if sat is None:
+        return set()
+    qids: set[str] = set()
+    if sat.constellation_slug and (
+        spec := CONSTELLATION_BY_SLUG.get(sat.constellation_slug)
+    ):
+        if spec.wikidata_qid is not None:
+            qids.add(spec.wikidata_qid)
+    if sat.bus_slug and (spec := BUS_BY_SLUG.get(sat.bus_slug)):
+        if spec.wikidata_qid is not None:
+            qids.add(spec.wikidata_qid)
+    if sat.launch_site_code and (site := LAUNCH_SITE_BY_CODE.get(sat.launch_site_code)):
+        if site.wikidata_qid is not None:
+            qids.add(site.wikidata_qid)
+    qids.update(sat.operator_qids or [])
+    qids.update(sat.manufacturer_qids or [])
+    return qids
+
+
 def _serialize_active_date(ad: ActiveDate) -> int | str:
     """int stays int (year), date becomes ISO string."""
     return ad if isinstance(ad, int) else ad.isoformat()

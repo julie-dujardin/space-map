@@ -36,6 +36,7 @@ from space_map_data.export.images import collect_object_images
 from space_map_data.export.objects.celestrak import (
     build_satcat_global,
     build_satcat_localized,
+    covered_authoritative_qids,
     merge_operator_qids,
 )
 from space_map_data.export.objects.sbdb import build_sbdb
@@ -45,6 +46,7 @@ from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
     attach_country_group_link,
+    drop_covered_qids,
     extract_claims,
     resolve_entity_ref,
     resolve_unit,
@@ -237,6 +239,7 @@ def build_chunk_object_data(
             extracted = {}
 
         sat = obj.satcat if obj.norad_cat_id is not None else None
+        drop_covered_qids(extracted, covered_authoritative_qids(sat), obj.id)
         merge_operator_qids(extracted, sat)
 
         out.global_data[obj.id] = _build_global(

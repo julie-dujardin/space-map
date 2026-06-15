@@ -1090,7 +1090,7 @@ interface LocalizedObjectData {
   funder?: EntityRef[];
   country_of_origin?: EntityRef[];
   launch_contractor?: EntityRef[];
-  part_of?: EntityRef[];
+  part_of?: EntityRef[];          // Wikidata P361; QIDs already shown via a CelesTrak-derived field (constellation, bus, launch_site, operators, manufacturer) are dropped
   wikipedia?: {
     extract?: string;
     description?: string;
