@@ -359,6 +359,93 @@ SATELLITE_BUSES: tuple[SatelliteBusSpec, ...] = (
         "Paid CGTrader INMARSAT 5-F4 model exists (not free).",
     ),
     # ---------- Lockheed Martin ----------
+    # ---------- GPS / NAVSTAR blocks (one bus per generation) ----------
+    # Numbers keyed off the USA/OPS designator, not the NAVSTAR ordinal.
+    # GPS III (NAVSTAR 77+) rides the Lockheed a2100 bus below.
+    SatelliteBusSpec(
+        slug="gps-block-i",
+        wikidata_qid="Q121831552",
+        manufacturer=MANUFACTURER_BY_SLUG["rockwell"],
+        also_known_as=("Navstar Block I", "GPS Block 1"),
+        first_launch="1978",
+        known_satellites=tuple(
+            f"NAVSTAR {n}" for n in (1, 2, 3, 4, 5, 6, 8, 9, 10, 11)
+        ),
+    ),
+    SatelliteBusSpec(
+        slug="gps-block-ii",
+        wikidata_qid="Q121831554",
+        manufacturer=MANUFACTURER_BY_SLUG["rockwell"],
+        also_known_as=("Navstar Block II", "GPS Block 2"),
+        first_launch="1989",
+        known_satellites=tuple(
+            f"NAVSTAR {n}" for n in (13, 14, 15, 16, 17, 18, 19, 20)
+        ),
+    ),
+    SatelliteBusSpec(
+        slug="gps-block-iia",
+        wikidata_qid="Q121831557",
+        manufacturer=MANUFACTURER_BY_SLUG["rockwell"],
+        also_known_as=("Navstar Block IIA", "GPS Block 2A"),
+        first_launch="1990",
+        # NAVSTAR 44 (USA-135 = IIA-19) is the last IIA, launched after the first IIR.
+        known_satellites=tuple(
+            f"NAVSTAR {n}"
+            for n in (
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                44,
+            )
+        ),
+    ),
+    SatelliteBusSpec(
+        slug="gps-block-iir",
+        wikidata_qid="Q121831559",
+        manufacturer=MANUFACTURER_BY_SLUG["lockheed-martin"],
+        also_known_as=("Navstar Block IIR", "GPS Block 2R"),
+        first_launch="1997",
+        # NAVSTAR 43 (USA-132 = IIR-2) is the first successful IIR.
+        known_satellites=tuple(
+            f"NAVSTAR {n}" for n in (43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56)
+        ),
+    ),
+    SatelliteBusSpec(
+        slug="gps-block-iir-m",
+        wikidata_qid="Q121831561",
+        manufacturer=MANUFACTURER_BY_SLUG["lockheed-martin"],
+        also_known_as=("GPS Block IIRM", "Navstar Block IIR-M", "GPS Block 2R-M"),
+        first_launch="2005",
+        known_satellites=tuple(
+            f"NAVSTAR {n}" for n in (57, 58, 59, 60, 61, 62, 63, 64)
+        ),
+    ),
+    SatelliteBusSpec(
+        slug="gps-block-iif",
+        wikidata_qid="Q5514327",
+        manufacturer=MANUFACTURER_BY_SLUG["boeing"],
+        also_known_as=("Navstar-2F", "GPS Block 2F", "GPS IIF"),
+        first_launch="2010",
+        known_satellites=tuple(
+            f"NAVSTAR {n}" for n in (65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76)
+        ),
+    ),
     SatelliteBusSpec(
         slug="a2100",
         wikidata_qid="Q279910",

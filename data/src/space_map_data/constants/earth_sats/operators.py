@@ -70,7 +70,7 @@ def operator_overlaps(
 OPERATORS: tuple[OperatorSpec, ...] = (
     # Linked via a dedicated SATCAT SOURCE code
     OperatorSpec(
-        "Arabsat", "arabsat", "Q65277396", source="AB", constellations=("arabsat",)
+        "Arabsat", "arabsat", "Q624426", source="AB", constellations=("arabsat",)
     ),
     OperatorSpec(
         "Asia Broadcast Satellite",

@@ -29,6 +29,8 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
     ),
     # Boeing-built GEO sats for other operators are caught via the SATELLITE_BUSES path.
     ManufacturerSpec("Boeing", "boeing", "Q66", constellations=("ius",)),
+    # Early GPS primes; matched via the SATELLITE_BUSES path (GPS Block I/II/IIA).
+    ManufacturerSpec("Rockwell International", "rockwell", "Q1348664"),
     ManufacturerSpec(
         "Northrop Grumman",
         "northrop-grumman",
@@ -193,7 +195,7 @@ MANUFACTURERS: tuple[ManufacturerSpec, ...] = (
         "Lockheed Martin",
         "lockheed-martin",
         "Q7240",
-        constellations=("aehf", "sbirs", "muos", "gps", "athena", "agena"),
+        constellations=("aehf", "sbirs", "muos", "athena", "agena"),
     ),
     ManufacturerSpec(
         "Airbus Defence and Space",
