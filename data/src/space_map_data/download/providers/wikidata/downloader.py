@@ -10,6 +10,7 @@ import httpx
 from tqdm import tqdm
 
 from space_map_data.constants.categories import CATEGORIES
+from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
@@ -120,6 +121,15 @@ class WikidataDownloader(Downloader):
         }
         self._fetch_entities(
             orbit_class_qids, referenced_dir, limit=None, fetch_desc="orbit classes"
+        )
+        # Country group QIDs (SATCAT OWNER → country pivot). Most arrive via a
+        # satellite's country_of_origin claim, but ~1/3 are never reached that
+        # way — seed directly so every country page has a name + is searchable.
+        self._fetch_entities(
+            {c.wikidata_qid for c in COUNTRIES},
+            referenced_dir,
+            limit=None,
+            fetch_desc="countries",
         )
         # Category browse-node QIDs (Solar System, Planets, … Probes). Mostly
         # reachable via object instance_of claims, but seed directly so a new
