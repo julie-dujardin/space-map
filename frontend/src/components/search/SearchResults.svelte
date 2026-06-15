@@ -5,6 +5,7 @@
 	import type { SearchModel } from '$lib/search/model.svelte';
 	import ResultRow from './ResultRow.svelte';
 	import Pagination from './Pagination.svelte';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 
 	let {
 		model,
@@ -43,35 +44,37 @@
 	}
 </script>
 
-<div class="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-	{#if model.result.hits.length === 0}
-		<div class="px-3 py-10 text-center">
-			<div class="mb-1 text-sm text-foreground">{m.search_no_results()}</div>
-			{#if model.query.trim()}
-				<div class="text-xs text-muted-foreground">
-					{m.search_no_results_for({ query: model.query.trim() })}
-				</div>
-			{/if}
-		</div>
-	{:else}
-		<ul>
-			{#each model.result.hits as hit, i (hit.id)}
-				<li>
-					<ResultRow
-						{hit}
-						name={name(hit)}
-						secondary={secondary(hit)}
-						thumbnail={thumbnailUrl(hit)}
-						metric={metricFor(hit)}
-						active={i === highlighted}
-						onselect={() => onselect(hit)}
-						onhover={() => (highlighted = i)}
-					/>
-				</li>
-			{/each}
-		</ul>
-	{/if}
-</div>
+<ScrollArea class="min-h-0 flex-1">
+	<div class="px-2 py-1">
+		{#if model.result.hits.length === 0}
+			<div class="px-3 py-10 text-center">
+				<div class="mb-1 text-sm text-foreground">{m.search_no_results()}</div>
+				{#if model.query.trim()}
+					<div class="text-xs text-muted-foreground">
+						{m.search_no_results_for({ query: model.query.trim() })}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<ul>
+				{#each model.result.hits as hit, i (hit.id)}
+					<li>
+						<ResultRow
+							{hit}
+							name={name(hit)}
+							secondary={secondary(hit)}
+							thumbnail={thumbnailUrl(hit)}
+							metric={metricFor(hit)}
+							active={i === highlighted}
+							onselect={() => onselect(hit)}
+							onhover={() => (highlighted = i)}
+						/>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</div>
+</ScrollArea>
 
 {#if model.result.hits.length > 0}
 	<div class="border-t border-border px-3 py-1.5">

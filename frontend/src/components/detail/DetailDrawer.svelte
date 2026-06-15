@@ -20,6 +20,7 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
+	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import {
 		type Focusable,
@@ -354,6 +355,16 @@
 	// Earth folds its artificial satellites into the moons section: the Moon plus
 	// curated featured sats (ISS, Hubble, Starlink), "+N more" → the group page.
 	let satellitesGroup = $derived(isGroupMode ? undefined : data?.global?.satellites_group);
+	// "+N more" must match the count shown on the Satellites group page, which is
+	// the categorized member total (primary orbit classes) — not Earth's raw
+	// satcat tally (`satellite_count` includes debris/uncategorized objects). The
+	// group index `n` is that same baked member count.
+	let satelliteGroupCount = $state(0);
+	$effect(() => {
+		const slug = satellitesGroup;
+		if (!slug) return;
+		fetchGroupIndex().then((idx) => (satelliteGroupCount = idx[slug]?.n ?? 0));
+	});
 	// The members tab is shared: groups list notable members, bodies list moons.
 	let notableMembers = $derived(
 		isGroupMode
@@ -372,8 +383,7 @@
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
-			: (data?.global?.moon_count ?? 0) +
-					(satellitesGroup ? (data?.global?.satellite_count ?? 0) : 0)
+			: (data?.global?.moon_count ?? 0) + (satellitesGroup ? satelliteGroupCount : 0)
 	);
 	// A split-comet family group lists fragments, not generic "members".
 	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
