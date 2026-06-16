@@ -328,12 +328,6 @@ def drop_covered_qids(extracted: dict, covered: set[str], obj_id: str) -> None:
         if claim.multiple:
             kept = [q for q in val if q not in covered]
             if len(kept) != len(val):
-                logger.info(
-                    "Dropped covered QIDs from %s %s: %s",
-                    obj_id,
-                    claim.key,
-                    [q for q in val if q in covered],
-                )
                 if kept:
                     extracted[claim.key] = kept
                 else:

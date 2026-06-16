@@ -8,6 +8,7 @@ indexes and creates Object rows with `id_type=PROBE`.
 import json
 import logging
 from collections import defaultdict
+from pathlib import Path
 
 import httpx
 
@@ -35,6 +36,24 @@ import os as _os
 _ATTITUDE_MAX_GIB = float(_os.environ.get("SPACE_MAP_ATTITUDE_MAX_GIB", "100"))
 
 logger = logging.getLogger(__name__)
+
+
+def _existing_extrap_records(mission_dir: Path) -> list[dict]:
+    """Synthetic `*-extrap.bsp` `files` records from the current `_index.json`,
+    so regenerating the index from a download doesn't drop them."""
+    idx_path = mission_dir / "_index.json"
+    if not idx_path.exists():
+        return []
+    try:
+        idx = json.loads(idx_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [
+        f
+        for f in idx.get("files", [])
+        if f.get("name", "").endswith("-extrap.bsp")
+        and (mission_dir / f["name"]).exists()
+    ]
 
 
 class ProbesDownloader(Downloader):
@@ -172,12 +191,20 @@ class ProbesDownloader(Downloader):
                         "targets": targets,
                     }
                 )
+            # Carry over synthetic extrap entries: they're written by the
+            # propagation synthesiser (not downloaded), so rebuilding the index
+            # from `bucket` alone would drop them and make the kernels invisible
+            # to the exporter until propagation re-runs.
+            for rec in _existing_extrap_records(mission_dir):
+                file_records.append(rec)
+                for t in rec["targets"]:
+                    coverage_by_naif[t].append(rec["name"])
             index = {
                 "server": source.server,
                 "mission": source.mission,
                 "spk_url": source.spk_url,
                 "bucket": bucket_name,
-                "files": file_records,
+                "files": sorted(file_records, key=lambda r: r["name"]),
                 "targets": {
                     str(naif): sorted(set(names))
                     for naif, names in sorted(coverage_by_naif.items())

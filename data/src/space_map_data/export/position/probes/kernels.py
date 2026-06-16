@@ -109,6 +109,7 @@ def _kernels_from_index_with(
         re.compile(p, re.IGNORECASE) for p in include_map.get(mdir.name, ())
     )
     candidates: list[Path] = []
+    seen: set[str] = set()
     for entry in idx.get("files", []):
         name = entry["name"]
         path = mdir / name
@@ -131,6 +132,13 @@ def _kernels_from_index_with(
             )
             continue
         candidates.append(path)
+        seen.add(name)
+    # Extrap kernels can be absent from the index: a re-download regenerates
+    # `_index.json` from the downloaded files only, dropping our synthetic
+    # entries. The file on disk is the source of truth — pick it up directly.
+    for path in sorted(mdir.glob("*-extrap.bsp")):
+        if path.name not in seen:
+            candidates.append(path)
     return sorted(candidates, key=lambda p: (kernel_precedence(p.name), p.name))
 
 
@@ -196,6 +204,14 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
         if (mdir / "_index.json").exists():
             traj_idx = json.loads((mdir / "_index.json").read_text())
             targets.update(int(s) for s in traj_idx.get("targets", {}))
+        # An extrap kernel's NAIF may be missing from the index (re-download
+        # clobbered it); recover it from the `<naif>-extrap.bsp` filename so
+        # the probe still enumerates.
+        for ek in mdir.glob("*-extrap.bsp"):
+            try:
+                targets.add(int(ek.name[: -len("-extrap.bsp")]))
+            except ValueError:
+                logger.warning("extrap kernel with unparseable NAIF: %s", ek)
         landed_idx_path = LANDED_MISSIONS_DIR / name / "_index.json"
         if landed_idx_path.exists():
             landed_idx = json.loads(landed_idx_path.read_text())
