@@ -401,7 +401,13 @@
 				: m.moons_section()
 	);
 	let membersTabLabel = $derived(
-		isGroupMode ? (isSplitCometGroup ? m.tab_fragments() : m.tab_members()) : m.tab_moons()
+		isGroupMode
+			? isSplitCometGroup
+				? m.tab_fragments()
+				: isMissionGroup
+					? m.mission_members_section()
+					: m.tab_members()
+			: m.tab_moons()
 	);
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.

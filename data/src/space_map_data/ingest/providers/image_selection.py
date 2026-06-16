@@ -52,6 +52,7 @@ from space_map_data.export.groups.registry import (
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
 from space_map_data.export.groups.small_body import _exported_sbdb_filter
+from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.models.feature import Feature
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.models.object.sbdb import SBDB
@@ -133,8 +134,10 @@ def ingest() -> None:
     _write_cache(FEATURE_IMAGES_PATH, "features", feature_selections)
     _log_written(FEATURE_IMAGES_PATH, "features", feature_selections, features)
 
-    # Groups: registry-driven (referenced/ also holds operators/countries).
+    # Groups: registry-driven (referenced/ also holds operators/countries), plus
+    # the dynamically-built probe missions keyed by their mission QID.
     groups = [(g.slug, g.wikidata_qid) for g in GROUPS if g.wikidata_qid]
+    groups += [(m.slug, m.mission_qid) for m in build_probe_missions()]
     group_selections = _select_for_qids(
         groups,
         metadata_cache,
@@ -270,10 +273,15 @@ def _fill_groups_from_members(
     filled_empty = 0
     augmented = 0
     skipped_no_members = 0
-    for group in tqdm(
-        GROUPS, desc="Augmenting groups with member photos", unit="group"
+    # Static registry groups, plus slugs that only live in the member map
+    # (dynamically-built probe missions).
+    static_slugs = [g.slug for g in GROUPS]
+    extra_slugs = [s for s in members_by_slug if s not in set(static_slugs)]
+    for slug in tqdm(
+        static_slugs + extra_slugs,
+        desc="Augmenting groups with member photos",
+        unit="group",
     ):
-        slug = group.slug
         qids = members_by_slug.get(slug)
         if not qids:
             if not selections.get(slug):
@@ -396,6 +404,17 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
     solar = _typed_qids(ObjectType.star) + planet_qids
     if solar:
         out[SOLAR_SYSTEM_SLUG] = solar
+
+    # Probe missions: primary craft + sibling QIDs, so a mission whose own QID
+    # has no Commons image fills from its craft (e.g. Pioneer Venus Multiprobe).
+    for mission in build_probe_missions():
+        qids = [
+            o.wikidata_qid
+            for o in (mission.primary, *mission.members)
+            if o.wikidata_qid
+        ]
+        if qids:
+            out[mission.slug] = qids
     return out
 
 
