@@ -271,6 +271,11 @@ def load_qids() -> set[str]:
     return {qid for entry in load_registry() if (qid := entry.get("wikidata_qid"))}
 
 
+def load_mission_qids() -> set[str]:
+    """Return every mission `primary_qid` (the per-mission Wikidata QID)."""
+    return {qid for entry in load_registry() if (qid := entry.get("primary_qid"))}
+
+
 def assign_many(
     items: list[tuple[str, int, int]],
 ) -> dict[tuple[str, int], ProbeIdRecord]:

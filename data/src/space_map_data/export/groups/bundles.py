@@ -80,6 +80,7 @@ def _build_global(
     pha_count: int,
     named_count: int,
     notable_members: list[dict] | None,
+    primary_id: str | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -146,6 +147,9 @@ def _build_global(
         }
     if notable_members:
         data["notable_members"] = notable_members
+    # Focus redirect for mission pages (fly to the primary probe, not a filter).
+    if primary_id:
+        data["primary"] = {"primary_type": "object", "primary_id": primary_id}
     if extracted:
         websites = extracted.get("website")
         if websites:
@@ -526,6 +530,7 @@ def write_group_bundles(
     extra_pha_counts: dict[str, int] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
+    extra_primary_ids: dict[str, str] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
     child_counts_by_group: dict[str, dict[str, int]] | None = None,
     extra_groups: tuple[Group, ...] = (),
@@ -584,6 +589,7 @@ def write_group_bundles(
             pha_count,
             named_count,
             member_entries,
+            (extra_primary_ids or {}).get(group.slug),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

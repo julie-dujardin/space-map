@@ -49,6 +49,9 @@ class GroupType(StrEnum):
     # the catalog, e.g. Shoemaker-Levy 9). Built dynamically from the DB, not in
     # _build_groups; carries its fragments as notable members.
     SPLIT_COMET = "split_comet"
+    # Synthetic per-mission page (primary probe + sibling craft), built from the
+    # probe registry; carries a `primary` redirect that focuses the primary probe.
+    MISSION = "mission"
 
 
 # Orthogonal to orbit class (an object can be both NEO and MBA). Membership is
@@ -64,6 +67,7 @@ class GroupCategory(StrEnum):
 
     EARTH_SAT = "earth_sat"
     SMALL_BODY = "small_body"
+    PROBE = "probe"  # mission pages; focus redirects to the primary probe
     CATEGORY = "category"  # browse-tree node; no scene filter
 
 

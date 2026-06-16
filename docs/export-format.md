@@ -1038,6 +1038,16 @@ interface GlobalObjectData {
     primary_id: string;            // parent Object.id ("object") or family group slug ("group")
     thumbnail?: PickedThumbnail;   // parent thumbnail (object parents only)
   };
+
+  // Probe missions (probe objects only). The primary probe carries `mission`
+  // + a `mission_members` strip (siblings, primary excluded) + count; each
+  // member carries `part_of_mission`. Both link to the /g/mission-<slug> page,
+  // whose `primary` redirect (see GlobalGroupData) focuses the primary probe.
+  // Per-language label overrides: LocalizedObjectData.mission_member_names.
+  mission?: { name: string; primary_type: "group"; primary_id: string };
+  mission_members?: NotableEntry[];
+  mission_member_count?: number;
+  part_of_mission?: { name: string; primary_type: "group"; primary_id: string };
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)
@@ -1099,6 +1109,7 @@ interface LocalizedObjectData {
   notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
   notable_satellite_names?: Record<string, string>; // featured-satellite id-or-slug → localized label, only where it differs
   fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
+  mission_member_names?: Record<string, string>; // mission-member Object.id → localized label, only where it differs from the global name
 }
 
 interface EntityRef { name: string; short_name?: string; wikipedia?: string; }
@@ -1128,8 +1139,8 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet"
-  applies_to: GroupCategory;  // "earth_sat" | "small_body"
+  type: GroupType;            // "constellation" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category"
   n: number;                  // member count
 }
 // File body: Record<slug, GroupIndexEntry>
@@ -1210,8 +1221,12 @@ interface GlobalGroupData {
   // Shares the NotableEntry shape with GlobalObjectData.notable_moons.
   // On a `split_comet` group (slug `comet-family-<pdes>`) these are the
   // family's fragments — the parentless counterpart to the `fragments` list a
-  // catalogued parent comet carries on its own object page.
+  // catalogued parent comet carries on its own object page. On a `mission`
+  // group (slug `mission-<slug>`) these are the mission's craft, primary first.
   notable_members?: NotableEntry[];
+
+  // `mission` groups only — focus redirect to the primary probe (not a filter).
+  primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
 
   inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
   dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)

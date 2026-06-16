@@ -28,6 +28,9 @@ from space_map_data.export.objects.wikidata_claims import (
     GLOBAL_CLAIMS,
     PID_TO_KEY,
 )
+from space_map_data.probes.probe_id import (
+    load_mission_qids as load_probe_mission_qids,
+)
 from space_map_data.probes.probe_id import load_qids as load_probe_qids
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import SOURCES_METADATA_DIR
@@ -148,6 +151,15 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="quadrangles",
+        )
+        # Probe-mission group QIDs (primary_qid in the probe registry). Not an
+        # object's own QID, so not fetched via the object tier — seed directly
+        # so /g/mission-<slug> pages get a name, description, and sitelinks.
+        self._fetch_entities(
+            load_probe_mission_qids(),
+            referenced_dir,
+            limit=None,
+            fetch_desc="probe missions",
         )
 
         # Second pass: fetch referenced entities and units. Each primary tier

@@ -35,6 +35,7 @@ from space_map_data.export.groups.small_body import (
 from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.fragments import build_comet_families
+from space_map_data.export.objects.missions import build_probe_missions
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
@@ -51,6 +52,41 @@ class SplitCometGroups:
     member_counts: dict[str, int] = field(default_factory=dict)
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class MissionGroups:
+    """Dynamic group pages for probe missions (primary + sibling craft)."""
+
+    groups: list[Group] = field(default_factory=list)
+    member_counts: dict[str, int] = field(default_factory=dict)
+    notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    primary_ids: dict[str, str] = field(default_factory=dict)
+
+
+def _mission_groups() -> MissionGroups:
+    """One group page per probe mission, built from the probe registry.
+
+    The mission's Wikidata QID (set on the primary as ``primary_qid``) drives
+    the sidebar; members list the primary first, then its sibling craft. The
+    ``primary_ids`` map gives each page a focus redirect to its primary probe.
+    """
+    out = MissionGroups()
+    for mission in build_probe_missions():
+        members = [mission.primary, *mission.members]
+        out.groups.append(
+            Group(
+                slug=mission.slug,
+                type=GroupType.MISSION,
+                applies_to=GroupCategory.PROBE,
+                wikidata_qid=mission.mission_qid,
+            )
+        )
+        out.member_counts[mission.slug] = len(members)
+        out.notable_members[mission.slug] = members
+        out.primary_ids[mission.slug] = mission.primary_object_id
+    logger.info("Mission group pages: %d", len(out.groups))
+    return out
 
 
 # Wikidata properties whose match CSVs key on a comet's designation.
@@ -177,6 +213,7 @@ def run_groups_tier(
             earth_launch_histograms,
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
+    missions = _mission_groups()
 
     # Each constellation lists the buses its members fly, most-used first; the
     # chip count is the within-constellation tally, not the bus's global total.
@@ -187,11 +224,13 @@ def run_groups_tier(
 
     extra_member_counts.update(category_data.member_counts)
     extra_member_counts.update(split_comets.member_counts)
+    extra_member_counts.update(missions.member_counts)
     extra_named_counts = dict(small_body_stats.named_counts)
     extra_named_counts.update(category_data.named_counts)
     extra_notable_members = dict(small_body_stats.notable_members)
     extra_notable_members.update(category_data.notable_members)
     extra_notable_members.update(split_comets.notable_members)
+    extra_notable_members.update(missions.notable_members)
     # Category discovery charts ride the same per-slug path as small-body
     # classes; satellite launch charts need their own override since categories
     # carry no GroupSatcatStats.
@@ -214,13 +253,14 @@ def run_groups_tier(
         extra_pha_counts=small_body_stats.pha_counts,
         extra_named_counts=extra_named_counts,
         extra_notable_members=extra_notable_members,
+        extra_primary_ids=missions.primary_ids,
         child_slugs_by_group={
             **category_data.children,
             **ORGANIZATION_BUS_CHILDREN,
             **constellation_bus_children,
         },
         child_counts_by_group=build.constellation_bus_counts,
-        extra_groups=tuple(split_comets.groups),
+        extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
     )
 

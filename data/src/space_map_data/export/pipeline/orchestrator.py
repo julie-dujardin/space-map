@@ -36,6 +36,7 @@ from space_map_data.export.nomenclature.writer import (
     write_nomenclature_positions,
 )
 from space_map_data.export.objects.fragments import attach_comet_fragments
+from space_map_data.export.objects.missions import attach_probe_missions
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.writer import (
@@ -1063,6 +1064,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             attach_notable_moons(session, agg.all_objects, wikidata_entities, radii)
             attach_featured_satellites(session, agg.all_objects, wikidata_entities)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
+        attach_probe_missions(agg.all_objects, wikidata_entities)
         # Attitude extraction runs after probe positions are written but before
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.
