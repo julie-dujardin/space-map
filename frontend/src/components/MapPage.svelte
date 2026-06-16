@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, setContext } from 'svelte';
+	import { onMount, setContext, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Scene from './Scene.svelte';
 	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -24,6 +24,8 @@
 	import SearchBar from './search/SearchBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
+	import { fetchGroupDetail } from '$lib/fetch/groups/details';
+	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import * as m from '$lib/paraglide/messages.js';
@@ -180,6 +182,47 @@
 				? appState.view.groupSlug
 				: null;
 		void ctx.applyGroupFilter(slug);
+	});
+
+	// Opening a mission flies the camera to its primary probe (snapping the clock
+	// into coverage), unless we're already focused on one of its craft — then the
+	// mission page just opens over the current view (member "Mission" card path).
+	let missionFlownSlug: string | null = null;
+	$effect(() => {
+		// Read scene/loading synchronously so a direct /g/mission-… load retries
+		// once the renderer mounts (the effect first runs while ctx.loading).
+		const ready = !ctx.loading && scene;
+		const slug =
+			appState.view.type === UrlType.Group && appState.view.groupSlug
+				? appState.view.groupSlug
+				: null;
+		if (!slug?.startsWith(MISSION_SLUG_PREFIX)) {
+			missionFlownSlug = null;
+			return;
+		}
+		if (!ready || slug === missionFlownSlug) return;
+		missionFlownSlug = slug;
+		const fromId = untrack(() => cameraFocus?.data.id);
+		void (async () => {
+			const detail = await fetchGroupDetail(slug);
+			if (appState.view.groupSlug !== slug) return;
+			const primary = detail.global?.primary;
+			if (!primary) return;
+			const memberIds = new Set(
+				(detail.global?.notable_members ?? []).map((mm) => mm.id).filter(Boolean)
+			);
+			if (fromId && memberIds.has(fromId)) return; // already on a craft — keep camera
+			const window = await coverageWindowFor(primary.primary_id);
+			const body = ctx.getBody(primary.primary_id);
+			// EVENTS-DB primaries have no ephemeris (no coverage, never streamed in)
+			// — nothing to fly to. The mission page still opens; camera stays put.
+			if (!window && !body) return;
+			if (window) {
+				const snap = snapJdIntoWindow(clock.jd, window);
+				if (snap !== null) clock.setJD(snap);
+			}
+			scene?.focusOnBody(primary.primary_id, body ? minCameraDistance(body) * 5 : undefined);
+		})();
 	});
 </script>
 

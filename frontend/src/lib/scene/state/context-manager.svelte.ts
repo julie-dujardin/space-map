@@ -8,10 +8,12 @@ import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { ZoneRefresher } from '$lib/scene/zone-refresher';
 import { loadScene } from '$lib/scene/setup/scene-load';
 import { fetchEarthGroupMembers } from '$lib/fetch/groups/membership';
+import { fetchGroupDetail } from '$lib/fetch/groups/details';
 import {
 	CAT_ASTEROIDS,
 	CAT_COMETS,
 	CLASS_SLUG_PREFIX,
+	MISSION_SLUG_PREFIX,
 	SMALL_BODY_FLAG_MASK,
 	SMALL_BODY_FLAG_SLUG_PREFIX,
 	fetchGroupIndex,
@@ -86,6 +88,10 @@ export class ContextManager {
 	 *  body group; null otherwise. Read by `VisibilityController` for both the
 	 *  per-zone hide and the per-tick flag mask. */
 	smallBodyFilter: SmallBodyFilter | null = null;
+	/** Member object-ids of the active mission group (primary probe + siblings);
+	 *  null off a mission page. Lets the focus guard keep the mission view sticky
+	 *  when the camera lands on the primary probe. */
+	private missionMemberIds: Set<string> | null = null;
 	private currentGroupSlug: string | null = null;
 	/** Notified after `earthSatFilter` is set (post-fetch). Used by the
 	 *  promotion registry + pointclouds to ramp emphasis and bulk-promote
@@ -120,6 +126,7 @@ export class ContextManager {
 	 *  members live in `earthSatFilter`; small-body class members match by
 	 *  zone path; small-body flag members match by per-body `flags` bits. */
 	isMemberOfActiveGroup(bodyId: string): boolean {
+		if (this.missionMemberIds?.has(bodyId) === true) return true;
 		if (this.earthSatFilter?.has(bodyId) === true) return true;
 		const f = this.smallBodyFilter;
 		if (f === null) return false;
@@ -163,6 +170,20 @@ export class ContextManager {
 	async applyGroupFilter(slug: string | null): Promise<void> {
 		if (slug === this.currentGroupSlug) return;
 		this.currentGroupSlug = slug;
+
+		// Mission groups carry no scene filter — their members are probes, not a
+		// streamed point layer — but the focus guard needs the member ids so the
+		// camera can fly to the primary probe without dropping the mission view.
+		if (slug?.startsWith(MISSION_SLUG_PREFIX)) {
+			const detail = await fetchGroupDetail(slug);
+			if (slug !== this.currentGroupSlug) return;
+			this.missionMemberIds = new Set(
+				(detail.global?.notable_members ?? []).map((mm) => mm.id).filter((id): id is string => !!id)
+			);
+		} else {
+			this.missionMemberIds = null;
+		}
+
 		const entry = slug ? await this.resolveIndexEntry(slug) : null;
 		if (slug !== this.currentGroupSlug) return;
 

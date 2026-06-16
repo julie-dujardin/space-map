@@ -16,11 +16,12 @@ export type GroupType =
 	| 'small_body_flag'
 	| 'earth_orbit_class'
 	| 'category'
-	| 'split_comet';
+	| 'split_comet'
+	| 'mission';
 
 /** An organization's role tags, surfaced as badges on its /g/org-<slug> page. */
 export type OrganizationRole = 'operator' | 'manufacturer';
-export type GroupCategory = 'earth_sat' | 'small_body' | 'category';
+export type GroupCategory = 'earth_sat' | 'small_body' | 'category' | 'probe';
 
 /** Mirrors ``CONSTELLATION_SLUG_PREFIX`` in
  *  ``data/constants/earth_sats/constellations.py``. */
@@ -31,6 +32,9 @@ export const CLASS_SLUG_PREFIX = 'class-';
 
 /** Mirrors ``FAMILY_GROUP_SLUG_PREFIX`` in ``data/constants/comet_fragments.py``. */
 export const COMET_FAMILY_SLUG_PREFIX = 'comet-family-';
+
+/** Mirrors ``MISSION_SLUG_PREFIX`` in ``data/export/objects/missions.py``. */
+export const MISSION_SLUG_PREFIX = 'mission-';
 
 /** Mirrors ``SMALL_BODY_FLAG_SLUG_PREFIX`` in ``data/export/groups/registry.py``. */
 export const SMALL_BODY_FLAG_SLUG_PREFIX = 'flag-';

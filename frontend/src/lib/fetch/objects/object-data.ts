@@ -245,6 +245,16 @@ export interface GlobalObjectData {
 	 *  of" card. Routes to the parent object, or the family group when the intact
 	 *  comet isn't catalogued (parentless families like Shoemaker-Levy 9). */
 	fragment_of?: FragmentOf;
+	/** On a mission's primary probe: link up to the /g/mission-<slug> page. Same
+	 *  card + shape as fragment_of (always a group link). */
+	mission?: FragmentOf;
+	/** Sibling craft of this mission, on the primary probe. Strip UI like
+	 *  notable_moons; localized labels in `mission_member_names`. */
+	mission_members?: NotableMemberEntry[];
+	/** Sibling craft count, present iff mission_members is. */
+	mission_member_count?: number;
+	/** On a member probe: the mission it belongs to, for the breadcrumb + card. */
+	part_of_mission?: FragmentOf;
 }
 
 export interface FragmentOf {
@@ -303,6 +313,8 @@ export interface LocalizedObjectData {
 	notable_satellite_names?: Record<string, string>;
 	/** fragment Object.id → localized label, only where it differs from the global name. */
 	fragment_names?: Record<string, string>;
+	/** mission-member Object.id → localized label, only where it differs from the global name. */
+	mission_member_names?: Record<string, string>;
 }
 
 // --- Fetching ---

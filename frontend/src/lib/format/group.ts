@@ -23,6 +23,8 @@ export function groupTypeLabel(type: GroupType): string {
 			return m.group_type_category();
 		case 'split_comet':
 			return m.group_type_split_comet();
+		case 'mission':
+			return m.group_type_mission();
 	}
 }
 
@@ -51,6 +53,8 @@ export function groupTypeLabelPlural(type: GroupType): string {
 			return m.group_type_plural_category();
 		case 'split_comet':
 			return m.group_type_plural_split_comet();
+		case 'mission':
+			return m.group_type_plural_mission();
 	}
 }
 

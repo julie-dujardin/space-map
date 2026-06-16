@@ -8,6 +8,7 @@
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
+	import MissionLink from './properties/MissionLink.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -385,13 +386,16 @@
 			? (groupDetail?.global?.member_count ?? 0)
 			: (data?.global?.moon_count ?? 0) + (satellitesGroup ? satelliteGroupCount : 0)
 	);
-	// A split-comet family group lists fragments, not generic "members".
+	// A split-comet family group lists fragments; a mission group lists its craft.
 	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
+	let isMissionGroup = $derived(groupDetail?.global?.type === 'mission');
 	let membersHeading = $derived(
 		isGroupMode
 			? isSplitCometGroup
 				? m.fragments_section()
-				: m.members_notable()
+				: isMissionGroup
+					? m.mission_members_section()
+					: m.members_notable()
 			: satellitesGroup
 				? m.satellites_section()
 				: m.moons_section()
@@ -420,6 +424,22 @@
 
 	function seeAllFragments() {
 		activeTab = 'fragments';
+	}
+
+	// Probe mission: the primary craft links up to the mission and shows a strip
+	// of its siblings; a member craft shows only the "Part of mission" card.
+	let missionLink = $derived(
+		isGroupMode ? undefined : (data?.global?.mission ?? data?.global?.part_of_mission)
+	);
+	let missionLinkLabel = $derived(data?.global?.mission ? m.mission() : m.part_of_mission());
+	let missionMembers = $derived(isGroupMode ? undefined : data?.global?.mission_members);
+	let missionMemberNames = $derived(data?.localized?.mission_member_names);
+	let missionMemberTotal = $derived(data?.global?.mission_member_count ?? 0);
+	let hasMissionMembers = $derived(!!missionMembers && missionMembers.length > 0);
+
+	function seeAllMissionMembers() {
+		const link = data?.global?.mission;
+		if (link) appState?.setGroup(link.primary_id, link.name);
 	}
 	let activeTab = $state<'overview' | 'images' | 'members' | 'fragments'>('overview');
 	// Switching to a focusable that lacks the active tab's content would
@@ -496,6 +516,9 @@
 			{#if fragmentOf}
 				<FragmentOf {fragmentOf} />
 			{/if}
+			{#if missionLink}
+				<MissionLink link={missionLink} label={missionLinkLabel} />
+			{/if}
 			{#if notableMembers && notableMembers.length > 0}
 				<MemberStrip
 					members={notableMembers}
@@ -513,6 +536,15 @@
 					heading={m.fragments_section()}
 					onSeeAll={seeAllFragments}
 					focusMovesCamera={false}
+				/>
+			{/if}
+			{#if hasMissionMembers && missionMembers}
+				<MemberStrip
+					members={missionMembers}
+					localizedNames={missionMemberNames}
+					totalCount={missionMemberTotal}
+					heading={m.mission_members_section()}
+					onSeeAll={seeAllMissionMembers}
 				/>
 			{/if}
 			{#if feature}
@@ -542,6 +574,17 @@
 				/>
 			{/if}
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
+			{#if data?.localized?.wikipedia?.extract}
+				<p class="text-xs text-muted-foreground">
+					{m.wikipedia_license_notice()}
+					<a
+						href="https://creativecommons.org/licenses/by-sa/4.0/"
+						target="_blank"
+						rel="noopener noreferrer license"
+						class="underline hover:text-foreground">CC BY-SA 4.0</a
+					>.
+				</p>
+			{/if}
 		</div>
 	{/if}
 {/snippet}

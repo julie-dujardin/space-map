@@ -163,6 +163,16 @@ export function parentCrumb(
 				};
 	}
 
+	// Probe in a mission → the mission group page (primary craft and members
+	// alike). Precedes the Probes-category fallback below.
+	const missionLink = detail?.global?.mission ?? detail?.global?.part_of_mission;
+	if (missionLink) {
+		return {
+			label: missionLink.name,
+			target: { kind: 'group', slug: missionLink.primary_id, name: missionLink.name }
+		};
+	}
+
 	const urlType = urlTypeFromId(data.id);
 
 	// Earth satellite → its constellation, else its orbit-class zone.

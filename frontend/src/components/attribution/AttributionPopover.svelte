@@ -3,6 +3,7 @@
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { OrbitalSource } from '$lib/fetch/position/format';
+	import { GITHUB_REPO_URL } from '$lib/constants';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const ctx = getContext<ContextManager>('ctx');
@@ -248,6 +249,13 @@
 			<li>
 				{@render link('https://commons.wikimedia.org/', m.source_wikimedia_commons_name())}
 			</li>
+		</ul>
+	</section>
+
+	<section class="space-y-1">
+		{@render sectionHeader(m.attribution_section_source())}
+		<ul class="space-y-0.5">
+			<li>{@render link(GITHUB_REPO_URL, m.credits_source_code())}</li>
 		</ul>
 	</section>
 

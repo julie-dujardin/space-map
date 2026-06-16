@@ -2,6 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import { archiveLabel } from '$lib/credits/archive-labels';
+	import { GITHUB_REPO_URL } from '$lib/constants';
 	import type { Credits } from './+page';
 
 	interface Props {
@@ -44,6 +45,13 @@
 		</a>
 
 		<h1 class="text-2xl font-semibold">{m.credits_page_title()}</h1>
+
+		<section>
+			{@render sectionHeader(m.attribution_section_source())}
+			<ul class="space-y-1">
+				<li>{@render link(GITHUB_REPO_URL, m.credits_source_code())}</li>
+			</ul>
+		</section>
 
 		<section>
 			{@render sectionHeader(m.attribution_section_orbits())}
