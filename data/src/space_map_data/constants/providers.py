@@ -3,6 +3,7 @@ from enum import StrEnum
 
 class PROVIDERS(StrEnum):
     CELESTRAK = "celestrak"
+    GCAT = "gcat"
     SBDB = "sbdb"
     SBDB_MOONS = "sbdb_moons"
     SPICE = "spice"

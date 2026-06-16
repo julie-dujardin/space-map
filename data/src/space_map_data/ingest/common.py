@@ -16,6 +16,7 @@ from space_map_data.ingest.providers import (
 )
 from space_map_data.ingest.providers.objects import (
     celestrak,
+    launchlog,
     probes,
     satcat,
     sbdb,
@@ -62,6 +63,10 @@ def ingest_objects(download_dir: Path) -> None:
     # Sets `satcat_norad_cat_id` FK against the satcat table populated above.
     probes.ingest(download_dir)
     celestrak.ingest(download_dir)
+    # GCAT launch log: mirror the table and link each row to an Object by
+    # COSPAR (piece == cospar_id). Runs last so every cospar-bearing Object
+    # (incl. backfilled norad_satcat-* rows) already exists.
+    launchlog.ingest(download_dir)
     # Post-ingest invariants: probe-* and norad_satcat-* must be disjoint by
     # NORAD + COSPAR, and the FK ↔ denormalized norad_cat_id must agree.
     assert_no_namespace_collision(get_session())

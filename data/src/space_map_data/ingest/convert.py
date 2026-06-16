@@ -3,11 +3,14 @@
 Raise errors for invalid values, and convert empty/whitespace-only strings to None.
 """
 
+import calendar
 import datetime
 import math
 from pathlib import Path
 
 GM_EARTH = 398600.4418  # km^3/s^2
+
+_GCAT_MONTHS = {abbr: i for i, abbr in enumerate(calendar.month_abbr) if abbr}
 
 
 def count_csv_rows(path: Path) -> int:
@@ -94,6 +97,44 @@ def datetime_or_none(val: str) -> datetime.datetime | None:
     else:
         td = datetime.timedelta()
     return datetime.datetime(d.year, d.month, d.day) + td
+
+
+def gcat_date_to_iso(val: str | None) -> str | None:
+    """Convert a GCAT "Vague Date" to a partial ISO 8601 string at its precision.
+
+    ``1958 Jul 25`` → ``1958-07-25``; ``2022 Jan 6 2149`` → ``2022-01-06T21:49``;
+    ``1957 Oct 4 1928:34`` → ``1957-10-04T19:28:34``; ``1961`` → ``1961``;
+    ``1961 Apr`` → ``1961-04``. Times are UTC (implied, like satcat's
+    ``launch_date``); the trailing ``?`` uncertainty marker is dropped — the
+    raw string keeps it. Returns None for empty values or forms GCAT doesn't
+    use here (centiday, hour-suffix, BC, century descriptors).
+    """
+    if not val or not val.strip():
+        return None
+    parts = val.strip().rstrip("?").split()
+    if not parts or not parts[0].isdigit():
+        return None
+    iso = f"{int(parts[0]):04d}"
+    if len(parts) >= 2:
+        month = _GCAT_MONTHS.get(parts[1])
+        if month is None:
+            return iso  # quarter (Q1-Q4) or unknown token — keep year
+        iso += f"-{month:02d}"
+    if len(parts) >= 3:
+        if not parts[2].isdigit():
+            return iso
+        iso += f"-{int(parts[2]):02d}"
+    if len(parts) >= 4:
+        clock, _, sec = parts[3].partition(":")
+        if len(clock) != 4 or not clock.isdigit():
+            return iso  # hour-suffix / centiday — keep date precision
+        iso += f"T{clock[:2]}:{clock[2:]}"
+        if sec:
+            try:
+                iso += f":{int(float(sec)):02d}"
+            except ValueError:
+                pass
+    return iso
 
 
 def mean_motion_to_a_km(mean_motion_rev_per_day: float) -> float:

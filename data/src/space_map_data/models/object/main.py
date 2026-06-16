@@ -14,6 +14,7 @@ from space_map_data.models.object.base import Base
 if TYPE_CHECKING:
     from space_map_data.models.object.celestrak import CelesTrak
     from space_map_data.models.object.horizons import Horizons
+    from space_map_data.models.object.launchlog import Launchlog
     from space_map_data.models.object.satcat import Satcat
     from space_map_data.models.object.sbdb import SBDB
     from space_map_data.models.object.sbdb_moon import SBDBMoon
@@ -161,6 +162,14 @@ class Object(Base):
         default=None,
         index=True,
     )
+    # GCAT launch-log claim. Non-unique: the 6 objects whose COSPAR is shared
+    # between a probe row and a norad_satcat row resolve to the same launchlog
+    # row. Matched on `launchlog.piece` == `cospar_id` by the launchlog ingest.
+    launchlog_jcat: Mapped[str | None] = mapped_column(
+        ForeignKey("launchlog.jcat"),
+        default=None,
+        index=True,
+    )
 
     # Orbital element scale + central body. Kepler elements themselves live
     # on the sub-tables (Horizons / SBDB / CelesTrak); join via orbital_source.
@@ -203,6 +212,7 @@ class Object(Base):
         foreign_keys=[celestrak_norad_cat_id]
     )
     satcat: Mapped["Satcat | None"] = relationship(foreign_keys=[satcat_norad_cat_id])
+    launchlog: Mapped["Launchlog | None"] = relationship(foreign_keys=[launchlog_jcat])
     sbdb_moon: Mapped["SBDBMoon | None"] = relationship(
         foreign_keys="SBDBMoon.object_id", back_populates="object"
     )

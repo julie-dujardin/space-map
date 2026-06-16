@@ -11,6 +11,7 @@ import httpx
 from space_map_data.utils.paths import CONFIG_FILE, DOWNLOAD_DIR
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.celestrak import CelesTrakDownloader
+from space_map_data.download.providers.objects.gcat import GCATDownloader
 from space_map_data.download.providers.spice import (
     HorizonsSyntheticDownloader,
     ProbesDownloader,
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDERS_CLASSES = [
     CelesTrakDownloader,
+    GCATDownloader,
     SBDBDownloader,
     SBDBMoonsDownloader,
     SpiceDownloader,
