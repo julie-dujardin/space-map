@@ -38,17 +38,23 @@
 		{
 			source: OrbitalSource.CELESTRAK,
 			entry: () => ({ name: m.source_celestrak_name(), url: 'https://celestrak.org/' })
+		},
+		{
+			source: OrbitalSource.SPACETRACK,
+			entry: () => ({ name: m.source_spacetrack_name(), url: 'https://www.space-track.org/' })
 		}
 	];
 
+	// Earth-satellite sources are only relevant inside the Earth-Moon system.
+	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
+
 	const orbitEntries = $derived.by(() => {
-		// CelesTrak only covers Earth satellites — suppress its credit outside
-		// the Earth-Moon system, mirroring the bar's scoping.
+		// Suppress Earth-sat credits outside the Earth-Moon system, mirroring the
+		// bar's scoping.
 		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		return ORBIT_ENTRIES.filter(
 			({ source }) =>
-				ctx.credits.orbitSources.has(source) &&
-				(source !== OrbitalSource.CELESTRAK || inEarthSystem)
+				ctx.credits.orbitSources.has(source) && (!EARTH_SAT_SOURCES.has(source) || inEarthSystem)
 		).map(({ entry }) => entry());
 	});
 

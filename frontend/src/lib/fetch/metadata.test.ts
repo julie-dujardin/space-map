@@ -14,6 +14,8 @@ import {
 	isChunkIndexed,
 	isDateSegmented,
 	isParted,
+	partsForDate,
+	snapshotDate,
 	type ChebyshevZoom,
 	type ChunkIndexedZoom,
 	type DateSegmentedZoom,
@@ -93,7 +95,14 @@ describe('zoom-shape discriminators', () => {
 		label: 'date',
 		start_date: '2026-04-23',
 		end_date: '2026-04-27',
-		parts: 1
+		parts: 1,
+		parts_by_date: {
+			'2026-04-23': 1,
+			'2026-04-24': 1,
+			'2026-04-25': 1,
+			'2026-04-26': 1,
+			'2026-04-27': 1
+		}
 	};
 	const cheb: ChebyshevZoom = {
 		shape: 'chunked',
@@ -143,5 +152,45 @@ describe('zoom-shape discriminators', () => {
 			].filter(Boolean).length;
 			expect(matches).toBe(1);
 		}
+	});
+});
+
+describe('snapshotDate / partsForDate (sparse date axis)', () => {
+	// Weekly history (Mondays) + a daily-ish recent cluster, irregular gaps.
+	const sparse: DateSegmentedZoom = {
+		shape: 'chunked-parted',
+		label: 'date',
+		start_date: '2024-01-01',
+		end_date: '2024-06-17',
+		parts: 3,
+		parts_by_date: {
+			'2024-01-01': 3,
+			'2024-01-08': 3,
+			'2024-01-15': 2,
+			'2024-06-17': 1
+		}
+	};
+	const at = (iso: string) => new Date(`${iso}T12:00:00Z`);
+
+	it('snaps to the nearest available snapshot, not a day-truncation', () => {
+		// Tue 2024-01-09 is closer to Mon 01-08 than Mon 01-15.
+		expect(snapshotDate(sparse, at('2024-01-09'))).toBe('2024-01-08');
+		// Thu 2024-01-11 sits midweek but still nearer 01-08.
+		expect(snapshotDate(sparse, at('2024-01-11'))).toBe('2024-01-08');
+		// Sat 2024-01-13 is nearer 01-15.
+		expect(snapshotDate(sparse, at('2024-01-13'))).toBe('2024-01-15');
+	});
+
+	it('clamps out-of-range dates to the first/last snapshot', () => {
+		expect(snapshotDate(sparse, at('2020-01-01'))).toBe('2024-01-01');
+		expect(snapshotDate(sparse, at('2030-01-01'))).toBe('2024-06-17');
+	});
+
+	it('partsForDate returns the per-date count, capped', () => {
+		expect(partsForDate(sparse, '2024-01-01')).toBe(3);
+		expect(partsForDate(sparse, '2024-01-15')).toBe(2);
+		expect(partsForDate(sparse, '2024-06-17')).toBe(1);
+		expect(partsForDate(sparse, '2024-01-01', 2)).toBe(2); // cap clamps
+		expect(partsForDate(sparse, '2024-01-15', 5)).toBe(2); // cap above count
 	});
 });

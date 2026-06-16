@@ -17,7 +17,8 @@
 		[OrbitalSource.CELESTRAK]: m.provider_celestrak,
 		[OrbitalSource.SPICE]: m.provider_nasa,
 		[OrbitalSource.SBDB_MOON]: m.provider_nasa,
-		[OrbitalSource.SPICE_PROBE]: m.provider_nasa
+		[OrbitalSource.SPICE_PROBE]: m.provider_nasa,
+		[OrbitalSource.SPACETRACK]: m.provider_spacetrack
 	};
 
 	const ORBIT_ORDER: OrbitalSource[] = [
@@ -26,17 +27,22 @@
 		OrbitalSource.SPICE,
 		OrbitalSource.SBDB_MOON,
 		OrbitalSource.SPICE_PROBE,
-		OrbitalSource.CELESTRAK
+		OrbitalSource.CELESTRAK,
+		OrbitalSource.SPACETRACK
 	];
 
+	// Earth-satellite sources are only relevant inside the Earth-Moon system.
+	const EARTH_SAT_SOURCES = new Set([OrbitalSource.CELESTRAK, OrbitalSource.SPACETRACK]);
+
 	const orbitLabels = $derived.by(() => {
-		// CelesTrak only covers Earth satellites — hide outside the Earth-Moon system.
+		// CelesTrak/Space-Track only cover Earth satellites — hide outside the
+		// Earth-Moon system.
 		const inEarthSystem = ctx.visibility.isFocusedOnEarthSystem();
 		const seen = new Set<string>();
 		const out: string[] = [];
 		for (const src of ORBIT_ORDER) {
 			if (!ctx.credits.orbitSources.has(src)) continue;
-			if (src === OrbitalSource.CELESTRAK && !inEarthSystem) continue;
+			if (EARTH_SAT_SOURCES.has(src) && !inEarthSystem) continue;
 			const label = ORBIT_LABELS[src as Exclude<OrbitalSource, OrbitalSource.UNKNOWN>]();
 			if (seen.has(label)) continue;
 			seen.add(label);

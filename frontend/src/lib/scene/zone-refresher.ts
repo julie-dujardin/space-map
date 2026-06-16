@@ -23,6 +23,7 @@ import {
 	isChunkIndexed,
 	isDateSegmented,
 	isProbeZone,
+	partsForDate,
 	snapshotDate,
 	type ChunkIndexedZoom,
 	type DateSegmentedZoom,
@@ -49,6 +50,9 @@ interface TimeZoneState extends BaseZoneState {
 	/** Snapshot date string of the currently loaded data. */
 	currentTime: string;
 	lastLoadStartMs: number;
+	/** Per-zone part cap (0 = uncapped); part count is resolved per snapshot
+	 *  date via {@link partsForDate} since date-segmented zones vary. */
+	cap: number;
 }
 
 /** A neighbor chunk preload — pending while `loader.process()` is in flight,
@@ -110,7 +114,8 @@ export class ZoneRefresher {
 						zoomData,
 						currentTime: snapshotDate(zoomData, initialDate),
 						inFlight: null,
-						lastLoadStartMs: -Infinity
+						lastLoadStartMs: -Infinity,
+						cap
 					};
 					this.zones.push(state);
 					this.prefetchTimeNeighbors(state, initialDate);
@@ -194,8 +199,9 @@ export class ZoneRefresher {
 	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {
 		const fromTime = z.currentTime;
 		try {
+			const parts = partsForDate(z.zoomData, time, z.cap);
 			const chunks = await Promise.all(
-				Array.from({ length: z.parts }, (_, part) =>
+				Array.from({ length: parts }, (_, part) =>
 					this.loader.process(z.zone, z.zoom, part, date, time, z.parentIdType)
 				)
 			);
@@ -395,7 +401,8 @@ export class ZoneRefresher {
 		const after = snapshotDate(z.zoomData, new Date(date.getTime() + dayMs));
 		for (const time of new Set([before, after])) {
 			if (time === z.currentTime) continue;
-			for (let part = 0; part < z.parts; part++) {
+			const parts = partsForDate(z.zoomData, time, z.cap);
+			for (let part = 0; part < parts; part++) {
 				ChunkLoader.prefetch(z.zone, z.zoom, part, time);
 			}
 		}

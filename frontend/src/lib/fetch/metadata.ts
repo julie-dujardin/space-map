@@ -28,13 +28,19 @@ export interface PartedZoom {
 }
 
 /** Time-chunked + parted, ISO-date label (currently `earth`):
- *  `position/{zone}/{zoom}/{YYYY-MM-DD}/{part}.bin.gz`. */
+ *  `position/{zone}/{zoom}/{YYYY-MM-DD}/{part}.bin.gz`. The available snapshot
+ *  dates are sparse and irregular (recent CelesTrak dailies + historical
+ *  Space-Track weeklies), so `parts_by_date` doubles as the date index — its
+ *  keys are exactly the exported snapshots — and gives each date's part count
+ *  (historical weeks carry the full decayed catalog, recent dailies fewer).
+ *  `parts` is the max across dates, a convenience bound. */
 export interface DateSegmentedZoom {
 	shape: 'chunked-parted';
 	label: 'date';
 	start_date: string;
 	end_date: string;
 	parts: number;
+	parts_by_date: Record<string, number>;
 }
 
 /** Time-chunked + parted, integer chunk-idx label (currently `moons`):
@@ -133,17 +139,53 @@ export function isProbeZone(entry: ZoneOrProbeMetadata): entry is ProbeZoneMetad
 	return (entry as ProbeZoneMetadata).shape === 'chunked';
 }
 
+/** Sorted UTC-midnight ms of every available snapshot date, memoised per zoom
+ *  (the metadata object is stable for the session). */
+const sortedDateMsCache = new WeakMap<DateSegmentedZoom, number[]>();
+
+function sortedDateMs(zoom: DateSegmentedZoom): number[] {
+	let arr = sortedDateMsCache.get(zoom);
+	if (!arr) {
+		arr = Object.keys(zoom.parts_by_date)
+			.map((d) => Date.parse(`${d}T00:00:00Z`))
+			.sort((a, b) => a - b);
+		sortedDateMsCache.set(zoom, arr);
+	}
+	return arr;
+}
+
 /**
- * Clamp `date` into the segmented zoom's date range and return the ISO
- * `YYYY-MM-DD` snapshot string for the URL builder. Snapshots are exported
- * daily so the integer-day truncation lands on a real export.
+ * Return the ISO `YYYY-MM-DD` of the exported snapshot nearest `date`. Snapshot
+ * dates are sparse and irregular (weekly history + daily recent), so this snaps
+ * to the closest available date rather than truncating — a plain day-truncation
+ * would miss the export for any non-daily date. Out-of-range dates clamp to the
+ * first/last snapshot.
  */
 export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
+	const dates = sortedDateMs(zoom);
 	const t = date.getTime();
-	const startMs = Date.parse(`${zoom.start_date}T00:00:00Z`);
-	const endMs = Date.parse(`${zoom.end_date}T00:00:00Z`);
-	const clamped = Math.min(Math.max(t, startMs), endMs);
-	return new Date(clamped).toISOString().slice(0, 10);
+	const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+	if (t <= dates[0]) return toIso(dates[0]);
+	if (t >= dates[dates.length - 1]) return toIso(dates[dates.length - 1]);
+	let lo = 0;
+	let hi = dates.length - 1;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (dates[mid] < t) lo = mid + 1;
+		else hi = mid;
+	}
+	// dates[lo] is the first >= t; pick whichever neighbor is closer.
+	const prev = dates[lo - 1];
+	const next = dates[lo];
+	return toIso(t - prev <= next - t ? prev : next);
+}
+
+/** Part count for a specific snapshot date, capped by `cap` (0 = uncapped).
+ *  `isoDate` must be a key of `parts_by_date` (i.e. from {@link snapshotDate});
+ *  falls back to the zone max otherwise. */
+export function partsForDate(zoom: DateSegmentedZoom, isoDate: string, cap = 0): number {
+	const parts = zoom.parts_by_date[isoDate] ?? zoom.parts;
+	return cap > 0 ? Math.min(parts, cap) : parts;
 }
 
 /** Per-probe outermost coverage envelope (start, end JD) across every zone

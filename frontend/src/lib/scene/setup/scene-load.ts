@@ -13,6 +13,7 @@ import {
 	isDateSegmented,
 	isParted,
 	isProbeZone,
+	partsForDate,
 	probeZoneParams,
 	snapshotDate,
 	type Metadata
@@ -71,7 +72,12 @@ function planMinorChunks(
 			if (zoomData.shape === 'chunked') continue;
 			// Date-segmented zones (earth): pick snapshot nearest the sim time so SGP4's window covers it.
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
-			const limit = cap > 0 ? Math.min(zoomData.parts, cap) : zoomData.parts;
+			const limit =
+				isDateSegmented(zoomData) && time !== null
+					? partsForDate(zoomData, time, cap)
+					: cap > 0
+						? Math.min(zoomData.parts, cap)
+						: zoomData.parts;
 			for (let part = 0; part < limit; part++) {
 				const arg = { zone, zoom, part, time, parentIdType };
 				if (zoom >= 1 && part >= EAGER_ZOOM1_PARTS) deferred.push(arg);
