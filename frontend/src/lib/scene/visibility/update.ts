@@ -151,6 +151,11 @@ export function updateBodyVisibility(
 	// from being suppressed by the CLOSE-and-not-focused gate in bodyVisFlags.
 	const focusedSystemId = ctx.visibility.focusedSystemId;
 
+	// Set when a label flips hidden→visible this frame: forces the cull below so
+	// freshly-shown labels render already-culled instead of flashing maximized
+	// for the 1–2 frames until the throttled (every-3rd-frame) cull would run.
+	let newlyShownLabel = false;
+
 	// Landed probe defers to its landing body for surface-label focus.
 	let nomFocusedBodyId = focusedBodyId;
 	if (focusedBodyId) {
@@ -271,7 +276,9 @@ export function updateBodyVisibility(
 			group.add(label);
 		}
 
-		applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId);
+		if (applyLabelDisplay(bo, showLabel, isClose, dist, projScale, focusedBodyId)) {
+			newlyShownLabel = true;
+		}
 
 		const nomScreenR = bo.radiusScene > 0 ? (bo.radiusScene / dist) * projScale : 0;
 		const isNomFocused = body.data.id === nomFocusedBodyId;
@@ -317,7 +324,7 @@ export function updateBodyVisibility(
 	// throttled (every-3rd-frame) cull then judges overlaps against 1–2-frame-stale
 	// positions and lets overlapping labels both stay maximized until motion stops.
 	// Caller forces every-frame culling during camera motion; throttle when idle.
-	if (forceCull || ++cullFrameCounter >= 3) {
+	if (forceCull || newlyShownLabel || ++cullFrameCounter >= 3) {
 		cullFrameCounter = 0;
 		cullOverlappingLabels(
 			bodyObjects,

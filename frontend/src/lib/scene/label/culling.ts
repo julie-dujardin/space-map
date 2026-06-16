@@ -69,6 +69,9 @@ export function restoreLabel(
 /**
  * Applies label visibility for a body, handling the close-in case where the
  * rendered sphere is large enough to replace the halo indicator.
+ * Returns true if the label transitioned hidden→visible this call, so the
+ * caller can force a cull this frame (otherwise it renders un-culled — all
+ * labels maximized — until the throttled cull catches up, a 1–2 frame flash).
  */
 export function applyLabelDisplay(
 	bo: BodyObjects,
@@ -77,9 +80,10 @@ export function applyLabelDisplay(
 	distToBody: number,
 	projScale: number,
 	focusedBodyId: string | undefined
-): void {
+): boolean {
 	const { label, labelHalo, radiusScene } = bo;
-	if (!label) return;
+	if (!label) return false;
+	const wasVisible = label.visible;
 
 	const screenR = radiusScene > 0 ? (radiusScene / distToBody) * projScale : 0;
 	const isFocused = bo.body.data.id === focusedBodyId;
@@ -106,6 +110,7 @@ export function applyLabelDisplay(
 	// the close-zoom rule — it sits at the viewport centre.
 	if (bo.loadingEl) bo.loadingEl.style.display = hideHaloRing ? '' : 'none';
 	label.center.x = hideHaloRing ? 1 - screenR / 32 : 0.5;
+	return show && !wasVisible;
 }
 
 /**
