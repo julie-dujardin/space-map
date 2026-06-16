@@ -47,9 +47,9 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
     Kepler elements live on the sub-tables; ``orbital_source`` says which to
     join. Horizons sub-table exposes unified-name properties (a, e, i, om, w,
     ma, n, epoch_jd) over its native column names; SBDB columns already match
-    unified except for ``epoch`` (aliased to ``epoch_jd``). Celestrak-source
-    rows don't persist elements — the daily overlay attaches them as a
-    transient ``_daily_kepler`` dict at export time. SBDBMoon stores ``a`` in
+    unified except for ``epoch`` (aliased to ``epoch_jd``). CelesTrak and
+    Space-Track rows don't persist elements — the snapshot overlay attaches
+    them as a transient ``_daily_kepler`` dict at export time. SBDBMoon stores ``a`` in
     km natively (``a_km``); we convert to AU on read so the small_body_moons
     zone ships system-scale values in the same units as the moons zone.
 
@@ -58,7 +58,7 @@ def _kepler_attr(o: Object, attr: str, file_source: OrbitalSource) -> float | No
     and treated as the file's declared source).
     """
     src = o.orbital_source or file_source
-    if src == OrbitalSource.celestrak:
+    if src in (OrbitalSource.celestrak, OrbitalSource.spacetrack):
         daily = getattr(o, "_daily_kepler", None)
         return daily[attr] if daily is not None else None
     if src == OrbitalSource.sbdb:

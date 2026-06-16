@@ -276,6 +276,20 @@ class TestWriteSgp4Elements:
         _, _, _, _, _, _, _, source, _ = _read_header(raw)
         assert source == SOURCE_ORDINAL[OrbitalSource.spacetrack]
 
+    def test_spacetrack_file_source_reads_overlay(self, tmp_path):
+        # Satcat-only rows have orbital_source=None, so under a Space-Track file
+        # source `src` resolves to spacetrack — the Kepler columns must still
+        # read the TLE elements off the `_daily_kepler` overlay, not blow up.
+        obj = self._sgp4_object()
+        obj.orbital_source = None
+        out = tmp_path / "spacetrack.bin.gz"
+        write_sgp4_elements([obj], out, OrbitalSource.spacetrack, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, sub_format, _, _, row_count, source, _ = _read_header(raw)
+        assert sub_format == SUBFORMAT_SGP4
+        assert row_count == 1
+        assert source == SOURCE_ORDINAL[OrbitalSource.spacetrack]
+
     def test_row_source_none_is_accepted(self, tmp_path):
         """Rows with orbital_source=None inherit the file header source."""
         obj = make_object(
