@@ -56,22 +56,19 @@ class ZoneSnapshots:
 def _overlay_celestrak_elements(
     objects: list[Object],
     elements_by_norad: dict[int, CelesTrakElements],
-    log_dropped: bool = True,
 ) -> list[Object]:
     """Attach each Earth Object's orbital elements for the snapshot from disk.
 
-    Drops objects whose NORAD ID has no row on disk — without fresh elements
-    we can't propagate them, so shipping stale DB values would just produce
-    broken positions in the frontend. ``log_dropped=False`` silences the
-    drop count, used during the snapshot driver's union-collection pass to
-    avoid duplicating the message on the subsequent write pass.
+    Skips objects whose NORAD ID has no row for this snapshot — they simply
+    have no elements that week (e.g. not yet launched in a historical
+    archive), so there's nothing to propagate and they're absent rather than
+    dropped.
 
     Every element (Kepler + SGP4 extras) rides on the transient
     ``_daily_kepler`` dict, which both writers read — so satcat-only Objects
     with no CelesTrak sub-table row export the same as actively-tracked ones.
     """
     kept: list[Object] = []
-    dropped_no_elements = 0
     for obj in objects:
         elements = (
             elements_by_norad.get(obj.norad_cat_id)
@@ -79,15 +76,9 @@ def _overlay_celestrak_elements(
             else None
         )
         if elements is None:
-            dropped_no_elements += 1
             continue
         obj._daily_kepler = elements  # type: ignore[attr-defined]
         kept.append(obj)
-    if log_dropped and dropped_no_elements:
-        logger.info(
-            "Dropped %d Earth satellites with no matching elements on disk",
-            dropped_no_elements,
-        )
     return kept
 
 

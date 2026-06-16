@@ -184,7 +184,7 @@ def _record(zone: str, zoom: int, result: ZoneExportResult, agg: _Aggregators) -
                 snap.num_parts,
             )
         else:
-            logger.info(
+            logger.debug(
                 "  %s zoom=%d %s: %d objects, %d parts",
                 zone,
                 zoom,
