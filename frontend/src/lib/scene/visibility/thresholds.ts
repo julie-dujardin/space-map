@@ -40,7 +40,7 @@ export const FOCUSED_FULL_MULTIPLIER_MOON = 5;
 export const FOCUSED_FULL_MULTIPLIER_SUN_ORBITING = 50;
 
 /** Max number of moons shown at FULL visibility simultaneously. Excess (outermost) are demoted to FAR. */
-export const MAX_FULL_MOONS = 20;
+export const MAX_FULL_MOONS = 40;
 
 /**
  * Moon semi-major axes are multiplied by this when contributing to the
