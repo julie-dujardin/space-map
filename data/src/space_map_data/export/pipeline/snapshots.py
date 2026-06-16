@@ -1,7 +1,7 @@
 """Snapshot streams: produce one ``Snapshot`` per time slice of a zone."""
 
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,7 +58,7 @@ def _overlay_celestrak_elements(
     elements_by_norad: dict[int, CelesTrakElements],
     log_dropped: bool = True,
 ) -> list[Object]:
-    """Replace each Earth Object's orbital elements with the latest from disk.
+    """Attach each Earth Object's orbital elements for the snapshot from disk.
 
     Drops objects whose NORAD ID has no row on disk — without fresh elements
     we can't propagate them, so shipping stale DB values would just produce
@@ -66,17 +66,12 @@ def _overlay_celestrak_elements(
     drop count, used during the snapshot driver's union-collection pass to
     avoid duplicating the message on the subsequent write pass.
 
-    Kepler elements (epoch_jd, a, e, i, om, w, ma, n) are attached as a
-    transient ``_daily_kepler`` dict on the Object — celestrak-source objects
-    don't persist these fields anywhere (the daily snapshot is authoritative),
-    so the writer reads them off this attribute. SGP4 extras (BSTAR,
-    MEAN_MOTION_DOT/DDOT, ELEMENT_SET_NO, REV_AT_EPOCH) overwrite the
-    CelesTrak sub-table row in-place since the writer reads them through that
-    relation.
+    Every element (Kepler + SGP4 extras) rides on the transient
+    ``_daily_kepler`` dict, which both writers read — so satcat-only Objects
+    with no CelesTrak sub-table row export the same as actively-tracked ones.
     """
     kept: list[Object] = []
     dropped_no_elements = 0
-    dropped_no_celestrak_row = 0
     for obj in objects:
         elements = (
             elements_by_norad.get(obj.norad_cat_id)
@@ -86,35 +81,13 @@ def _overlay_celestrak_elements(
         if elements is None:
             dropped_no_elements += 1
             continue
-        # Earth-zone Objects can come from two ingest paths: CelesTrak (creates
-        # Object + CelesTrak row in lockstep) and Satcat (creates Object alone
-        # — for catalogued debris no longer actively tracked, etc.). The writer
-        # reads SGP4 extras through the CelesTrak relation, so satcat-only
-        # Objects can't be exported even when the daily elements file mentions
-        # them. Skip with a count rather than asserting.
-        ct = obj.celestrak
-        if ct is None:
-            dropped_no_celestrak_row += 1
-            continue
         obj._daily_kepler = elements  # type: ignore[attr-defined]
-        ct.BSTAR = elements["BSTAR"]
-        ct.MEAN_MOTION_DOT = elements["MEAN_MOTION_DOT"]
-        ct.MEAN_MOTION_DDOT = elements["MEAN_MOTION_DDOT"]
-        ct.ELEMENT_SET_NO = elements["ELEMENT_SET_NO"]
-        ct.REV_AT_EPOCH = elements["REV_AT_EPOCH"]
         kept.append(obj)
-    if log_dropped:
-        if dropped_no_elements:
-            logger.info(
-                "Dropped %d Earth satellites with no matching elements on disk",
-                dropped_no_elements,
-            )
-        if dropped_no_celestrak_row:
-            logger.info(
-                "Dropped %d Earth satellites with daily elements but no CelesTrak row "
-                "(satcat-only, can't overlay SGP4 extras)",
-                dropped_no_celestrak_row,
-            )
+    if log_dropped and dropped_no_elements:
+        logger.info(
+            "Dropped %d Earth satellites with no matching elements on disk",
+            dropped_no_elements,
+        )
     return kept
 
 
@@ -124,31 +97,6 @@ def single_snapshot(objects: list[Object]) -> ZoneSnapshots:
         base=objects,
         iterate=lambda: iter([Snapshot(label=None, objects=objects)]),
     )
-
-
-def earth_snapshots(
-    base: list[Object],
-    celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
-) -> ZoneSnapshots:
-    """Snapshot stream for Earth: one snapshot per CelesTrak day on disk.
-
-    The snapshot driver iterates twice (union pass, write pass); both passes
-    re-apply the same overlays. Suppress the per-day "Dropped N satellites"
-    log on pass 1 so the user only sees one entry per date.
-    """
-    pass_count = [0]
-
-    def iterate() -> Iterator[Snapshot]:
-        pass_count[0] += 1
-        log = pass_count[0] >= 2
-        for date_iso, day_elements in celestrak_days.items():
-            kept = _overlay_celestrak_elements(base, day_elements, log_dropped=log)
-            if kept:
-                # Validity window comes from the SGP4 epoch spread inside the
-                # chunk writer, so we don't pre-compute it here.
-                yield Snapshot(label=date_iso, objects=kept)
-
-    return ZoneSnapshots(base=base, iterate=iterate)
 
 
 def moons_snapshots(

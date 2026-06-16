@@ -1,6 +1,8 @@
 """Per-zone export driver: build object data once, write element parts per snapshot."""
 
 import math
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,15 +10,27 @@ from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
 )
-from space_map_data.export.pipeline.snapshots import ZoneSnapshots
 from space_map_data.export.position import CHUNK_SIZE, write_chunk
+from space_map_data.export.position.elements import sidecar
+from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
+from space_map_data.export.position.elements.spacetrack_source import (
+    archive_zip_fingerprints,
+    load_archive_weeks,
+)
 from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
 )
+from space_map_data.export.position.format import VERSION as BINARY_VERSION
+from space_map_data.export.pipeline.snapshots import (
+    ZoneSnapshots,
+    _overlay_celestrak_elements,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, OrbitalSource
+
+_DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @dataclass(frozen=True)
@@ -125,11 +139,14 @@ def _chunk_source(chunk: list[Object], zone: str, part_idx: int) -> OrbitalSourc
 
     The writer asserts every other row matches. Zone queries are single-source
     by construction (the pipeline filters per-zone), so any object with a
-    source is representative.
+    source is representative. A transient ``_source_override`` (set per Earth
+    snapshot to distinguish CelesTrak dailies from Space-Track archive weeks)
+    wins over the DB column.
     """
     for o in chunk:
-        if o.orbital_source is not None:
-            return o.orbital_source
+        source = getattr(o, "_source_override", None) or o.orbital_source
+        if source is not None:
+            return source
     raise ValueError(f"No object in {zone!r} part {part_idx} carries an orbital_source")
 
 
@@ -269,3 +286,127 @@ def export_zone(
             )
         )
     return result
+
+
+def _archive_year_marker(out_dir: Path, zoom: int, year: int) -> Path:
+    """Sidecar path marking an archive year fully exported for ``zoom``."""
+    return sidecar.mirror_path(
+        out_dir / "position" / "earth" / str(zoom) / f".archive-{year}.meta.json"
+    )
+
+
+def _archive_year_signature(year: int) -> dict:
+    return {
+        "format_version": sidecar.FORMAT_VERSION,
+        "binary_version": BINARY_VERSION,
+        "archive_inputs": archive_zip_fingerprints([year]),
+    }
+
+
+def _scan_date_snapshots(out_dir: Path, zone: str, zoom: int) -> list[SnapshotResult]:
+    """Build the date-segmented snapshot list from the on-disk part dirs.
+
+    Years skipped by the per-year cache aren't re-parsed, so their weeks never
+    pass through the write loop — the manifest reads their part counts straight
+    off disk instead. ``count`` is left 0 (rows aren't re-decoded); only
+    ``num_parts`` feeds the date-segmented manifest entry.
+    """
+    zdir = out_dir / "position" / zone / str(zoom)
+    out: list[SnapshotResult] = []
+    if not zdir.exists():
+        return out
+    for d in sorted(zdir.iterdir()):
+        if not (d.is_dir() and _DATE_DIR_RE.match(d.name)):
+            continue
+        num_parts = sum(1 for _ in d.glob("*.bin.gz"))
+        if num_parts:
+            out.append(SnapshotResult(time=d.name, count=0, num_parts=num_parts))
+    return out
+
+
+def export_earth_zones(
+    zoom_bases: list[tuple[int, list[Object]]],
+    celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
+    archive_years: Iterable[int],
+    out_dir: Path,
+    ctx: ObjectDataContext,
+) -> dict[int, ZoneExportResult]:
+    """Stream the Earth zoom(s): archive holds ≤1 year in memory, each dirty year
+    is parsed once and drives every zoom.
+
+    Unlike the generic two-pass :func:`export_zone`, object metadata is built
+    from the full base per zoom rather than the snapshot union — every Earth
+    Object appears in some week, so the union *is* the base, and skipping the
+    union pass lets the archive parse lazily. An archive year whose zip
+    fingerprints match its on-disk marker is skipped without parsing; its parts
+    stay and the manifest is rebuilt from a disk scan so they still ship. The
+    result: a steady-state daily CelesTrak refresh re-parses zero archive years.
+    Recent dailies are stamped CELESTRAK, historical weeks SPACETRACK — same
+    SGP4 wire format, distinct provenance for attribution.
+    """
+    zone_data = {z: build_zone_object_data(b, ctx) for z, b in zoom_bases}
+    parent_id_type = {z: _derive_parent_id_type("earth", b) for z, b in zoom_bases}
+    built: dict[int, dict[str, SnapshotResult]] = {z: {} for z, _ in zoom_bases}
+
+    def write(
+        zoom: int,
+        base: list[Object],
+        date_iso: str,
+        elements: dict[int, CelesTrakElements],
+        source: OrbitalSource,
+    ) -> None:
+        kept = _overlay_celestrak_elements(base, elements)
+        if not kept:
+            return
+        for obj in kept:
+            obj._source_override = source  # type: ignore[attr-defined]  # transient
+        num_parts = _write_element_parts(
+            kept,
+            out_dir,
+            "earth",
+            zoom,
+            zone_data[zoom].has_localized,
+            ctx.wikidata_entities,
+            ctx.units,
+            time=date_iso,
+        )
+        built[zoom][date_iso] = SnapshotResult(
+            time=date_iso, count=len(kept), num_parts=num_parts
+        )
+
+    # Recent CelesTrak dailies — already materialised, small.
+    for date_iso, elements in celestrak_days.items():
+        for zoom, base in zoom_bases:
+            write(zoom, base, date_iso, elements, OrbitalSource.celestrak)
+
+    # Historical archive: parse each dirty year once, drive every zoom from it.
+    for year in archive_years:
+        signature = _archive_year_signature(year)
+        dirty = [
+            (z, b)
+            for z, b in zoom_bases
+            if not sidecar.matches(_archive_year_marker(out_dir, z, year), signature)
+        ]
+        if not dirty:
+            continue  # unchanged zip + already built — don't parse; disk scan re-adds it
+        for date_iso, elements in load_archive_weeks([year]).items():
+            for zoom, base in dirty:
+                write(zoom, base, date_iso, elements, OrbitalSource.spacetrack)
+        for zoom, _ in dirty:
+            sidecar.write_sidecar(_archive_year_marker(out_dir, zoom, year), signature)
+
+    # Built weeks carry real counts; skipped years (not re-parsed) come off disk
+    # with count 0 so they still ship in the date-segmented manifest.
+    results: dict[int, ZoneExportResult] = {}
+    for zoom, _ in zoom_bases:
+        snapshots = list(built[zoom].values())
+        for snap in _scan_date_snapshots(out_dir, "earth", zoom):
+            if snap.time not in built[zoom]:
+                snapshots.append(snap)
+        snapshots.sort(key=lambda s: s.time or "")
+        results[zoom] = ZoneExportResult(
+            zone_data=zone_data[zoom],
+            snapshots=snapshots,
+            parent_id_type=parent_id_type[zoom],
+        )
+    return results

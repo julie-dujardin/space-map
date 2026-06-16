@@ -11,6 +11,7 @@ from space_map_data.export.position.elements.writer import (
     _parse_numeric_id,
     write_elements,
     write_parabolic_elements,
+    write_sgp4_elements,
 )
 from space_map_data.export.position.format import (
     FORMAT_ELEMENTS,
@@ -22,6 +23,7 @@ from space_map_data.export.position.format import (
     SOURCE_ORDINAL,
     SUBFORMAT_KEPLERIAN,
     SUBFORMAT_PARABOLIC,
+    SUBFORMAT_SGP4,
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
     VERSION,
@@ -206,6 +208,73 @@ class TestWriteElements:
         raw = gzip.decompress(out.read_bytes())
         _, _, _, _, _, _, _, _, id_type = _read_header(raw)
         assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
+
+
+class TestWriteSgp4Elements:
+    """The SGP4 writer reads every field from the ``_daily_kepler`` overlay,
+    so satcat-only Objects (no CelesTrak sub-table row) export the same as
+    actively-tracked ones — the historical archive's whole catalog, not just
+    still-tracked sats."""
+
+    def _sgp4_object(self, **extra) -> Object:
+        daily = {
+            "epoch_jd": 2460310.5,
+            "a": 6795.0,
+            "e": 0.0003347,
+            "i": 51.6422,
+            "om": 68.6294,
+            "w": 343.4617,
+            "ma": 78.0593,
+            "n": 15.49961425,
+            "BSTAR": 2.9758e-4,
+            "MEAN_MOTION_DOT": 1.6541e-4,
+            "MEAN_MOTION_DDOT": 0.0,
+            "ELEMENT_SET_NO": 569,
+            "REV_AT_EPOCH": 43247,
+        }
+        daily.update(extra)
+        return make_object(
+            id="norad_satcat-25544",
+            naif_id=None,
+            norad_cat_id=25544,
+            object_type=ObjectType.spacecraft,
+            parent_id="naif-399",
+            orbital_source=OrbitalSource.celestrak,
+            daily_kepler=daily,
+        )
+
+    def test_satcat_only_object_exports(self, tmp_path):
+        out = tmp_path / "sgp4.bin.gz"
+        write_sgp4_elements(
+            [self._sgp4_object()], out, OrbitalSource.celestrak, has_localized={}
+        )
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, sub_format, _, _, row_count, source, id_type = _read_header(raw)
+        assert sub_format == SUBFORMAT_SGP4
+        assert row_count == 1
+        assert source == SOURCE_ORDINAL[OrbitalSource.celestrak]
+        assert id_type == ID_TYPE_ORDINAL[ID_TYPES.NORAD_SATCAT]
+
+    def test_missing_required_sgp4_field_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="missing required SGP4 field"):
+            write_sgp4_elements(
+                [self._sgp4_object(BSTAR=None)],
+                tmp_path / "x.bin.gz",
+                OrbitalSource.celestrak,
+                has_localized={},
+            )
+
+    def test_source_override_stamps_spacetrack(self, tmp_path):
+        # Historical archive weeks set a transient `_source_override` so the file
+        # header carries Space-Track provenance even though the Objects are
+        # CelesTrak/satcat-sourced in the DB.
+        obj = self._sgp4_object()
+        obj._source_override = OrbitalSource.spacetrack  # type: ignore[attr-defined]
+        out = tmp_path / "spacetrack.bin.gz"
+        write_sgp4_elements([obj], out, OrbitalSource.spacetrack, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        _, _, _, _, _, _, _, source, _ = _read_header(raw)
+        assert source == SOURCE_ORDINAL[OrbitalSource.spacetrack]
 
     def test_row_source_none_is_accepted(self, tmp_path):
         """Rows with orbital_source=None inherit the file header source."""

@@ -75,9 +75,10 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
           "0": {
             "shape": "chunked-parted",
             "label": "date",
-            "start_date": "2026-04-23",
+            "start_date": "2024-01-01",
             "end_date": "2026-04-26",
-            "parts": 2
+            "parts": 3,
+            "parts_by_date": { "2024-01-01": 3, "2026-04-26": 2 }
           }
         }
       },
@@ -199,6 +200,16 @@ must never also match an immutable glob.
 dates (`earth`), `"index"` for numeric chunk indices (`moons` Method-C secular
 elements). Clients dispatch on `label` to format the path segment.
 
+For the date-segmented `earth` zone the available snapshot dates are sparse and
+irregular — recent CelesTrak dailies plus historical Space-Track weekly
+snapshots — so part counts vary per date (historical weeks carry the full
+decayed catalog; recent dailies fewer). The entry therefore ships
+`parts_by_date` (a `{date: parts}` map whose **keys are exactly the exported
+snapshots**, doubling as the date index) alongside `start_date`/`end_date`;
+`parts` is the max as a convenience bound. Clients snap a sim time to the
+nearest key and load that date's part count. The `"index"` (moons) variant
+keeps a single uniform `parts`.
+
 The `chunked` shape carries `chunks` and `chunk_years`; clients compute
 `chunk_idx = floor((jd - start_jd) / (chunk_years * 365.25))`. There's no
 parts axis on chebyshev — files are tuned to ~200 KB by adjusting
@@ -278,9 +289,11 @@ Both `earth` and `small_bodies/{class}` parts carry a `{part}.meta.json`
 sidecar (stored in `EXPORT_METADATA_DIR` mirror, never published) recording
 the upstream snapshot that produced them:
 
-- `earth/{zoom}/{date}/{part}.meta.json` — fingerprints the CelesTrak CSVs
-  for that day (`name + mtime_ns + size` per CSV). A re-downloaded day
-  invalidates only that date's parts.
+- `earth/{zoom}/{date}/{part}.meta.json` — fingerprints that date's source.
+  Recent CelesTrak dailies fingerprint the day's CSVs (`name + mtime_ns +
+  size` per CSV); historical weekly snapshots fingerprint the Space-Track
+  archive zip(s) feeding the week (`archive_inputs`). A re-downloaded day or
+  re-fetched archive zip invalidates only the affected dates' parts.
 - `small_bodies/{class}/{zoom}/{part}.meta.json` — fingerprints the SBDB
   download metadata (`downloaded_at + record_count + complete`). The unit
   of cacheability is the whole SBDB snapshot, so a re-download invalidates
@@ -319,10 +332,15 @@ ingest run, so any ingest invalidates tier B.
 Two zones segment elements over time, distinguished by `label` in the
 manifest:
 
-- **`earth`** — date-segmented (`label: "date"`). One snapshot per CelesTrak
-  day. Path: `position/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy
-  degrades fast past the TLE epoch, so each snapshot's header
-  `start_jd`/`end_jd` bounds it to `min(epoch)−14d … max(epoch)+14d`.
+- **`earth`** — date-segmented (`label: "date"`). Two sources share one date
+  axis: recent CelesTrak dailies (one snapshot per downloaded day) and the
+  historical Space-Track archive distilled to one snapshot per ISO week (the
+  week's Monday is the date label; per satellite the TLE nearest the week
+  midpoint is kept). Part counts vary per date, so the manifest ships
+  `parts_by_date` (see Manifest shapes). Path:
+  `position/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
+  past the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds it
+  to `min(epoch)−14d … max(epoch)+14d`.
 
 - **`moons`** — chunk-indexed (`label: "index"`). One snapshot per 6-month
   chunk over the Chebyshev coverage range. Method C secular elements are

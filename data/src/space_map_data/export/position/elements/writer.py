@@ -94,9 +94,10 @@ def _source_ordinal(objects: list[Object], orbital_source: OrbitalSource) -> int
     mis-attributed file.
     """
     for o in objects:
-        if o.orbital_source is not None and o.orbital_source != orbital_source:
+        source = getattr(o, "_source_override", None) or o.orbital_source
+        if source is not None and source != orbital_source:
             raise ValueError(
-                f"{o.id}: orbital_source {o.orbital_source!r} does not match "
+                f"{o.id}: orbital_source {source!r} does not match "
                 f"file source {orbital_source!r}"
             )
     return SOURCE_ORDINAL[orbital_source]
@@ -283,18 +284,18 @@ def write_sgp4_elements(
     _write_keplerian_columns(buf, objects, radius_km_overrides, orbital_source)
 
     for attr in _REQUIRED_SGP4:
-        _write_float32(buf, n, [_required_celestrak_float(o, attr) for o in objects])
+        _write_float32(buf, n, [_required_sgp4_float(o, attr) for o in objects])
 
     _write_int32(
         buf,
         n,
-        [_celestrak_int(o, "ELEMENT_SET_NO") for o in objects],
+        [_sgp4_int(o, "ELEMENT_SET_NO") for o in objects],
     )
 
     _write_int32(
         buf,
         n,
-        [_celestrak_int(o, "REV_AT_EPOCH") for o in objects],
+        [_sgp4_int(o, "REV_AT_EPOCH") for o in objects],
     )
 
     _write_has_localized(buf, objects, has_localized)
@@ -477,23 +478,24 @@ def _required_sbdb_float(o: Object, attr: str) -> float:
     return val
 
 
-def _required_celestrak_float(o: Object, attr: str) -> float:
-    """Get a required float from the CelesTrak relation, raising ValueError if missing."""
-    celestrak = o.celestrak if o.norad_cat_id is not None else None
-    if celestrak is None:
-        raise ValueError(f"{o.id}: no CelesTrak data for SGP4 field '{attr}'")
-    val = getattr(celestrak, attr)
+def _required_sgp4_float(o: Object, key: str) -> float:
+    """Required SGP4 float from the transient ``_daily_kepler`` overlay dict.
+
+    The overlay (CelesTrak daily or Space-Track archive) attaches every SGP4
+    field there, so satcat-only Objects with no CelesTrak sub-table row still
+    export. Raises if the overlay didn't run or the field is absent.
+    """
+    daily = getattr(o, "_daily_kepler", None)
+    val = daily.get(key) if daily is not None else None
     if val is None:
-        raise ValueError(f"{o.id}: CelesTrak missing required SGP4 field '{attr}'")
+        raise ValueError(f"{o.id}: missing required SGP4 field '{key}'")
     return val
 
 
-def _celestrak_int(o: Object, attr: str) -> int:
-    """Get an optional int from the CelesTrak relation, returning MISSING_INT32 if absent."""
-    celestrak = o.celestrak if o.norad_cat_id is not None else None
-    if celestrak is None:
-        return MISSING_INT32
-    val = getattr(celestrak, attr)
+def _sgp4_int(o: Object, key: str) -> int:
+    """Optional SGP4 int from ``_daily_kepler``; MISSING_INT32 when absent."""
+    daily = getattr(o, "_daily_kepler", None)
+    val = daily.get(key) if daily is not None else None
     return val if val is not None else MISSING_INT32
 
 

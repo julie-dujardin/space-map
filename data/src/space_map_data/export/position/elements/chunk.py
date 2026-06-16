@@ -134,12 +134,17 @@ def write_chunk(
     elif zone == "earth":
         write_fn = write_sgp4_elements
         start_jd, end_jd = _sgp4_validity_window(objects)
-        # Earth parts come from per-day CelesTrak CSVs that the downloader
-        # writes once and never edits. If the CSV fingerprints + the encoding
+        # Earth parts come from inputs the downloader writes once and never
+        # edits — per-day CelesTrak CSVs for recent dates, the Space-Track year
+        # zips for historical weeks. If the source fingerprints + encoding
         # version match an existing binary's sidecar, the part contents are
         # determined entirely by those inputs — skip the encode + gzip.
         assert time is not None, "earth zone snapshots must carry a date label"
-        signature = sidecar.build_earth_part_signature(_earth_day_dir(time))
+        day_dir = _earth_day_dir(time)
+        if day_dir.exists():
+            signature = sidecar.build_earth_part_signature(day_dir)
+        else:
+            signature = sidecar.build_earth_archive_part_signature(time)
     else:
         write_fn = write_elements
     if zone.startswith("small_bodies/"):

@@ -6,6 +6,7 @@ class PROVIDERS(StrEnum):
     GCAT = "gcat"
     SBDB = "sbdb"
     SBDB_MOONS = "sbdb_moons"
+    SPACETRACK = "spacetrack"
     SPICE = "spice"
     SPICE_PROBES = "spice_probes"
     SPICE_PROBES_PROPAGATION = "spice_probes_propagation"

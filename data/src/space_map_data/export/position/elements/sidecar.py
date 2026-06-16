@@ -38,11 +38,12 @@ from space_map_data.export.sidecar_io import (  # noqa: F401  (re-exported)
 )
 
 
-# Bump when the elements encoding changes in a way the binary VERSION bump
-# doesn't already capture (e.g. column reordering at the same VERSION).
+# Bump when the elements encoding OR row-membership rules change in a way the
+# binary VERSION bump doesn't already capture (e.g. column reordering at the
+# same VERSION, or the earth overlay starting to keep satcat-only objects).
 # Otherwise rely on BINARY_VERSION going into the signature — any wire-format
 # bump (probe header growth, new fields) invalidates every elements part too.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def _file_entry(path: Path, day_dir: Path) -> dict:
@@ -94,6 +95,25 @@ def build_earth_part_signature(day_dir: Path) -> dict:
         "format_version": FORMAT_VERSION,
         "binary_version": BINARY_VERSION,
         "inputs": _day_dir_inputs(day_dir),
+    }
+
+
+def build_earth_archive_part_signature(date_iso: str) -> dict:
+    """Sidecar contents for one historical (archive-sourced) Earth week.
+
+    Historical weeks are distilled from the Space-Track year zips, not the
+    CelesTrak day CSVs, so they fingerprint the zip(s) feeding the week instead
+    of a day-dir. The zips are immutable once downloaded; a re-download (new
+    mtime/size) invalidates the week.
+    """
+    from space_map_data.export.position.elements.spacetrack_source import (
+        week_zip_fingerprints,
+    )
+
+    return {
+        "format_version": FORMAT_VERSION,
+        "binary_version": BINARY_VERSION,
+        "archive_inputs": week_zip_fingerprints(date_iso),
     }
 
 

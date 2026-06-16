@@ -173,7 +173,26 @@ class TestDateSegmentedShape:
             "start_date": "2026-04-23",
             "end_date": "2026-04-27",
             "parts": 1,
+            "parts_by_date": {
+                "2026-04-23": 1,
+                "2026-04-24": 1,
+                "2026-04-27": 1,
+            },
         }
+
+    def test_allows_uneven_parts_per_date(self):
+        # Date-segmented zones (earth) carry per-date part counts — historical
+        # weekly snapshots hold the full decayed catalog (more parts) while
+        # recent dailies are smaller. parts is the max bound.
+        zoom = _zoom(
+            _result(time="2024-01-01", num_parts=3),
+            _result(time="2026-04-23", num_parts=2),
+        )
+        entry = build_position_metadata({"earth": {0: zoom}}, {})["zones"]["earth"][
+            "zooms"
+        ]["0"]
+        assert entry["parts"] == 3
+        assert entry["parts_by_date"] == {"2024-01-01": 3, "2026-04-23": 2}
 
     def test_picks_lex_min_max_dates(self):
         # ISO YYYY-MM-DD format makes lexicographic and chronological sort

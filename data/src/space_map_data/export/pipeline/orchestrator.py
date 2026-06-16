@@ -55,7 +55,6 @@ from space_map_data.export.pipeline.manifest import (
 )
 from space_map_data.export.pipeline.snapshots import (
     ZoneSnapshots,
-    earth_snapshots,
     moons_snapshots,
     single_snapshot,
 )
@@ -64,6 +63,7 @@ from space_map_data.export.pipeline.zone import (
     SnapshotResult,
     ZoneExportResult,
     build_zone_object_data,
+    export_earth_zones,
     export_zone,
 )
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev
@@ -72,6 +72,7 @@ from space_map_data.export.position.elements.celestrak_source import (
     CelesTrakElements,
     load_all_days,
 )
+from space_map_data.export.position.elements.spacetrack_source import ARCHIVE_YEARS
 from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.probes.attitude.orchestrator import (
     write_attitude,
@@ -458,8 +459,9 @@ def _run_earth_zones(
     """Run Earth-zone exports inline (synchronous).
 
     Zooms whose zone signature matches the cached meta (and tier B is clean)
-    skip the DB load and per-day overlays entirely; the CelesTrak CSVs are
-    only parsed (`celestrak_loader`) when at least one zoom runs.
+    skip the DB load and per-day overlays entirely; the elements sources
+    (CelesTrak CSVs + Space-Track archive zips) are only parsed
+    (`celestrak_loader`) when at least one zoom runs.
 
     Per-day overlays mutate the same Object instances in-place, so multiple
     days can't be shipped to threads simultaneously without cloning.
@@ -477,6 +479,9 @@ def _run_earth_zones(
         )
     )
     is_constellation = or_(*(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES))
+    # Collect the non-cached zooms, then export them together so a dirty archive
+    # year is parsed once and drives both zooms (not once per zoom).
+    zoom_bases: list[tuple[int, list[Object]]] = []
     for zoom_label, zoom_filter in (
         (0, ~is_constellation),
         (1, is_constellation),
@@ -486,20 +491,22 @@ def _run_earth_zones(
             if meta is not None:
                 _record_cached("earth", zoom_label, meta, agg)
                 continue
-        # Earth zones are uncapped: per-day CelesTrak sidecars (see
-        # `build_earth_part_signature`) make re-export incremental. random_int
-        # ordering is kept for deterministic chunking.
+        # Earth zones are uncapped: per-day CelesTrak sidecars + per-year archive
+        # markers make re-export incremental. random_int ordering is kept for
+        # deterministic chunking.
         base_objects = earth_base.filter(zoom_filter).order_by(Object.random_int).all()
         if not base_objects:
             logger.info("  earth zoom=%d: empty, skipping", zoom_label)
             continue
-        result = export_zone(
-            "earth",
-            zoom_label,
-            earth_snapshots(base_objects, celestrak_loader()),
-            out_dir,
-            ctx,
-        )
+        zoom_bases.append((zoom_label, base_objects))
+
+    if not zoom_bases:
+        return
+    results = export_earth_zones(
+        zoom_bases, celestrak_loader(), ARCHIVE_YEARS, out_dir, ctx
+    )
+    for zoom_label, _ in zoom_bases:
+        result = results[zoom_label]
         _record("earth", zoom_label, result, agg)
         incremental.write_zone_meta(
             out_dir,
@@ -972,7 +979,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     write_systems_global(out_dir, gms, nut_prec_angles)
 
     # CelesTrak CSV parsing is deferred: when both earth zooms skip via their
-    # zone meta, the ~120 MB of day CSVs are never read.
+    # zone meta, the ~120 MB of day CSVs are never read. The historical
+    # Space-Track archive is parsed separately, lazily per dirty year, inside
+    # `export_earth_zone`.
     _celestrak_days: dict[str, dict[int, CelesTrakElements]] | None = None
 
     def celestrak_loader() -> Mapping[str, dict[int, CelesTrakElements]]:

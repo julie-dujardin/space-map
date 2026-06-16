@@ -76,6 +76,7 @@ class OrbitalSource(StrEnum):
     sbdb = PROVIDERS.SBDB
     sbdb_moon = PROVIDERS.SBDB_MOONS
     celestrak = PROVIDERS.CELESTRAK
+    spacetrack = PROVIDERS.SPACETRACK
     spice = PROVIDERS.SPICE
     spice_probe = PROVIDERS.SPICE_PROBES
 

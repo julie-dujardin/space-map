@@ -32,7 +32,9 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
       ``{shape, label, chunks, chunk_days, start_jd, parts}``.
     * ``chunked-parted`` with ``label="date"`` — date-segmented elements
       (the earth zone). URL: ``position/{zone}/{zoom}/{date}/{part}.bin.gz``.
-      Entry: ``{shape, label, start_date, end_date, parts}``.
+      Entry: ``{shape, label, start_date, end_date, parts, parts_by_date}`` —
+      ``parts_by_date`` maps each date to its part count (counts vary across
+      dates); ``parts`` is the max as a convenience bound.
 
     The chebyshev-only shape (``chunked``, no parts axis) is folded in
     separately by the caller — it doesn't go through the snapshot pipeline.
@@ -46,13 +48,6 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
             f"{zone} zoom={zoom} mixes timed snapshots with a None-time "
             f"snapshot; one zoom must be all-timed or single-static"
         )
-    parts_set = {s.num_parts for s in snaps}
-    if len(parts_set) != 1:
-        raise ValueError(
-            f"{zone} zoom={zoom} has uneven parts across snapshots "
-            f"{parts_set}; the slim metadata shape assumes uniform parts"
-        )
-    parts = next(iter(parts_set))
     chunk_days_set = {s.chunk_days for s in snaps}
     if len(chunk_days_set) > 1:
         raise ValueError(
@@ -61,9 +56,16 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
         )
     chunk_days = next(iter(chunk_days_set))
     if chunk_days is not None:
-        # Chunk-indexed: derive start_jd from the earliest snapshot's
-        # validity window. Sorting by validity_start_jd avoids relying on
-        # label format.
+        # Chunk-indexed (moons): every chunk fits the same body set, so part
+        # counts are uniform and the slim shape carries a single `parts`.
+        parts_set = {s.num_parts for s in snaps}
+        if len(parts_set) != 1:
+            raise ValueError(
+                f"{zone} zoom={zoom} has uneven parts across chunk snapshots "
+                f"{parts_set}; the chunk-indexed shape assumes uniform parts"
+            )
+        # Derive start_jd from the earliest snapshot's validity window. Sorting
+        # by validity_start_jd avoids relying on label format.
         snaps_sorted = sorted(snaps, key=lambda s: s.validity_start_jd)
         return {
             "shape": "chunked-parted",
@@ -71,16 +73,21 @@ def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> d
             "chunks": len(snaps_sorted),
             "chunk_days": chunk_days,
             "start_jd": snaps_sorted[0].validity_start_jd,
-            "parts": parts,
+            "parts": next(iter(parts_set)),
         }
-    # Date-segmented: labels are ISO dates, sort lexicographically.
-    dated = sorted(s.time for s in snaps if s.time is not None)
+    # Date-segmented (earth): part counts vary per date — historical weekly
+    # snapshots carry the full decayed catalog while recent dailies are
+    # smaller — so the manifest carries the count for each date. `parts` keeps
+    # the max as a convenience bound.
+    parts_by_date = {s.time: s.num_parts for s in snaps if s.time is not None}
+    dated = sorted(parts_by_date)
     return {
         "shape": "chunked-parted",
         "label": "date",
         "start_date": dated[0],
         "end_date": dated[-1],
-        "parts": parts,
+        "parts": max(parts_by_date.values()),
+        "parts_by_date": parts_by_date,
     }
 
 

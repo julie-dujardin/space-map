@@ -28,6 +28,10 @@ from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
     build_sbdb_part_signature,
 )
+from space_map_data.export.position.elements.spacetrack_source import (
+    ARCHIVE_YEARS,
+    archive_zip_fingerprints,
+)
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
 from space_map_data.models.ingest_stamp import read_ingest_stamp
@@ -161,9 +165,17 @@ def sbdb_zone_signature(cheb_covered_ids: set[str], host_ids: set[str]) -> dict:
 
 
 def earth_zone_signature() -> dict:
-    """Shared signature for both earth zooms: every day-dir's CSV fingerprints."""
+    """Shared signature for both earth zooms.
+
+    Covers both Earth-elements sources: every CelesTrak day-dir's CSV
+    fingerprints (recent dailies) and the Space-Track archive zips feeding the
+    historical weekly snapshots. A change to either re-runs the zone.
+    """
     days = iter_day_dirs(SOURCES_POSITION_DIR / "celestrak")
-    return {"days": {iso: build_earth_part_signature(day_dir) for iso, day_dir in days}}
+    return {
+        "days": {iso: build_earth_part_signature(day_dir) for iso, day_dir in days},
+        "archive": archive_zip_fingerprints(ARCHIVE_YEARS),
+    }
 
 
 def zone_meta_path(out_dir: Path, zone: str, zoom: int) -> Path:
