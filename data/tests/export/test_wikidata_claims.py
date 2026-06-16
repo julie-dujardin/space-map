@@ -541,6 +541,89 @@ class TestSingleQuantity:
         result = _single_quantity(claims, "P2067", needs_unit=True, qid="Q99999")
         assert result == {"value": 80.0, "unit": "Q11570"}
 
+    def test_mass_drops_payload_component(self, caplog):
+        """STS-style: payload mass (P518) is dropped, leaving the whole-vehicle figure."""
+        claims = {
+            "P2067": [
+                _stmt(
+                    _qty_snak("+97448", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q844947")]},  # landing
+                ),
+                _stmt(
+                    _qty_snak("+10231", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q21211206")]},  # payload
+                ),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_quantity(claims, "P2067", needs_unit=True, qid="Q844966")
+        assert result == {"value": 97448.0, "unit": "Q11570"}
+        assert caplog.text == ""
+
+    def test_mass_all_components_yields_none(self, caplog):
+        """Progress-style cargo manifest (fuel/gas/water): no whole-vehicle mass → None."""
+        claims = {
+            "P2067": [
+                _stmt(
+                    _qty_snak("+346", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q42501")]},  # fuel
+                ),
+                _stmt(
+                    _qty_snak("+50", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q11432")]},  # gas
+                ),
+                _stmt(
+                    _qty_snak("+420", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q283")]},  # water
+                ),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_quantity(claims, "P2067", needs_unit=True, qid="Q4379822")
+        assert result is None
+        assert caplog.text == ""
+
+    def test_mass_drops_including_qualifier(self, caplog):
+        """Vanguard-style: P1012 'including <rocket stage>' figure is dropped."""
+        claims = {
+            "P2067": [
+                _stmt(
+                    _qty_snak("+23.7", "Q11570"),
+                    qualifiers={"P518": [_entity_snak("Q40218")]},  # spacecraft
+                ),
+                _stmt(
+                    _qty_snak("+42.9", "Q11570"),
+                    qualifiers={
+                        "P518": [_entity_snak("Q40218")],
+                        "P1012": [_entity_snak("Q4809")],  # including rocket stage
+                    },
+                ),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_quantity(claims, "P2067", needs_unit=True, qid="Q632896")
+        assert result == {"value": 23.7, "unit": "Q11570"}
+        assert caplog.text == ""
+
+    def test_quantity_prefers_spacecraft_scope(self, caplog):
+        """capital_cost: spacecraft-scoped value wins over the whole-mission figure."""
+        claims = {
+            "P2130": [
+                _stmt(
+                    _qty_snak("+808000000", "Q4917"),
+                    qualifiers={"P518": [_entity_snak("Q40218")]},  # spacecraft
+                ),
+                _stmt(
+                    _qty_snak("+986000000", "Q4917"),
+                    qualifiers={"P518": [_entity_snak("Q2133344")]},  # space mission
+                ),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_quantity(claims, "P2130", needs_unit=True, qid="Q14927")
+        assert result == {"value": 808000000.0, "unit": "Q4917"}
+        assert caplog.text == ""
+
 
 class TestEntityQids:
     """Entity QID extraction."""
@@ -581,6 +664,38 @@ class TestEntityQids:
             result = _single_entity_qid(claims, "P744", "Q1")
         assert result == "Q123"
         assert "Multiple entity values for asteroid_family on Q1" in caplog.text
+
+    def test_single_entity_qid_prefers_stated_in(self, caplog):
+        """P248-sourced value wins over one merely imported from Wikipedia (P143)."""
+        claims = {
+            "P375": [
+                _stmt(
+                    _entity_snak("Q847798"),  # generic family, imported-from only
+                    references=[{"snaks": {"P143": [_entity_snak("Q206855")]}}],
+                ),
+                _stmt(
+                    _entity_snak("Q2155073"),  # specific variant, stated in a catalog
+                    references=[_p248_ref("Q6272367")],
+                ),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_entity_qid(claims, "P375", "Q291210")
+        assert result == "Q2155073"
+        assert caplog.text == ""
+
+    def test_single_entity_qid_logs_when_both_stated_in(self, caplog):
+        """No preference when both candidates carry a P248 reference."""
+        claims = {
+            "P375": [
+                _stmt(_entity_snak("Q111"), references=[_p248_ref("Q1")]),
+                _stmt(_entity_snak("Q222"), references=[_p248_ref("Q2")]),
+            ]
+        }
+        with caplog.at_level(logging.CRITICAL):
+            result = _single_entity_qid(claims, "P375", "Q9")
+        assert result == "Q111"
+        assert "Multiple entity values for launch_vehicle on Q9" in caplog.text
 
 
 class TestExtractClaims:

@@ -440,6 +440,10 @@ _QID_MAXIMUM = "Q10578722"
 _QID_AVERAGE = "Q202785"
 _QID_MEAN = "Q2796622"
 
+# P518 "applies to part" = the spacecraft itself, distinguishing a value scoped
+# to the object from one scoped to a broader unit (e.g. the whole space mission).
+_QID_SPACECRAFT = "Q40218"
+
 # qualifier: preferred values per property, tried in order.
 _PREFERRED_CRITERIA: dict[str, list[str]] = {
     "P2067": [  # Arbitrarily prefer the mass closer to service entry, instead of dry mass
@@ -478,6 +482,18 @@ _PICK_MAX: set[str] = {"P2043", "P2049"}  # length, width
 # predecessor founding and a later restructuring; we want the longer history.
 _PICK_EARLIEST_TIME: set[str] = {"P571"}  # inception
 
+# Mass (P2067) "applies to part" values that name a sub-component rather than
+# the object itself — a mass so qualified is not the object's own mass.
+_MASS_COMPONENT_PARTS: set[str] = {
+    "Q21211206",  # payload
+    "Q228751",  # payload weight
+    "Q66121258",  # pressurized cargo
+    "Q66121316",  # unpressurized cargo
+    "Q42501",  # fuel
+    "Q11432",  # gas
+    "Q283",  # water
+}
+
 
 def _qualifier_qid(stmt: dict, qual_prop: str) -> str | None:
     """Return the first QID from a qualifier property, or None."""
@@ -509,6 +525,18 @@ def _is_sourced_to(stmt: dict, qid: str) -> bool:
             val = snak.get("datavalue", {}).get("value", {})
             if isinstance(val, dict) and val.get("id") == qid:
                 return True
+    return False
+
+
+def _has_stated_in(stmt: dict) -> bool:
+    """Check whether a statement cites a source via P248 (stated in).
+
+    Distinguishes an authoritative reference from a bare P143 "imported from
+    Wikimedia project".
+    """
+    for ref in stmt.get("references", []):
+        if ref.get("snaks", {}).get("P248"):
+            return True
     return False
 
 
@@ -702,6 +730,12 @@ def _resolve_quantity(
     if len(unique) == 1:
         return unique[0][1]
 
+    # Prefer the value scoped to the spacecraft itself over one scoped to a
+    # broader unit (e.g. capital cost of the craft vs the whole space mission).
+    scoped = [(s, p) for s, p in pairs if _qualifier_qid(s, "P518") == _QID_SPACECRAFT]
+    if len(scoped) == 1:
+        return scoped[0][1]
+
     # Radius: prefer the mean/average value (P518 qualifier)
     if prop == "P2120":
         mean = [
@@ -772,6 +806,33 @@ def _resolve_quantity(
     return pairs[0][1]
 
 
+def _drop_component_mass(
+    pairs: list[tuple[dict, dict | float]],
+) -> list[tuple[dict, dict | float]]:
+    """Drop mass statements describing a sub-component rather than the whole object.
+
+    A P518/P1013/P3831 qualifier naming a payload/cargo/consumable part, or a
+    P1012 ("including") qualifier folding in a separate body such as a rocket
+    stage, means the value is not the object's own mass. Only filters when more
+    than one statement is present, so single-valued masses are untouched.
+    """
+    if len(pairs) <= 1:
+        return pairs
+    kept: list[tuple[dict, dict | float]] = []
+    for stmt, parsed in pairs:
+        part = (
+            _qualifier_qid(stmt, "P518")
+            or _qualifier_qid(stmt, "P1013")
+            or _qualifier_qid(stmt, "P3831")
+        )
+        if part in _MASS_COMPONENT_PARTS:
+            continue
+        if stmt.get("qualifiers", {}).get("P1012"):
+            continue
+        kept.append((stmt, parsed))
+    return kept
+
+
 def _single_quantity(
     claims: dict,
     prop: str,
@@ -785,24 +846,38 @@ def _single_quantity(
     Entries lacking units are ignored when *needs_unit* is True.
     """
     pairs = _qty_pairs(active_statements(claims, prop), needs_unit=needs_unit)
+    if prop == "P2067":
+        pairs = _drop_component_mass(pairs)
     return _resolve_quantity(pairs, prop, qid=qid)
 
 
 def _single_entity_qid(claims: dict, prop: str, qid: str) -> str | None:
-    """Extract the single entity QID from a claim."""
-    vals = list(
-        dict.fromkeys(
-            val["id"]
-            for val in _claim_values(claims, prop)
-            if isinstance(val, dict) and "id" in val
-        )
+    """Extract the single entity QID from a claim.
+
+    When candidates conflict, prefer one cited via P248 (stated in) over values
+    merely imported from a Wikimedia project — e.g. a generic rocket family
+    scraped from Wikipedia loses to the specific variant from a catalog source.
+    """
+    vals: list[str] = []
+    sourced: list[str] = []
+    for stmt in active_statements(claims, prop):
+        val = _stmt_value(stmt)
+        if not (isinstance(val, dict) and "id" in val):
+            continue
+        ref_qid = val["id"]
+        if ref_qid not in vals:
+            vals.append(ref_qid)
+        if _has_stated_in(stmt) and ref_qid not in sourced:
+            sourced.append(ref_qid)
+    if len(vals) <= 1:
+        return vals[0] if vals else None
+    if len(sourced) == 1:
+        return sourced[0]
+    key = PID_TO_KEY.get(prop, prop)
+    logger.critical(
+        "Multiple entity values for %s on %s: %s — picking first", key, qid, vals
     )
-    if len(vals) > 1:
-        key = PID_TO_KEY.get(prop, prop)
-        logger.critical(
-            "Multiple entity values for %s on %s: %s — picking first", key, qid, vals
-        )
-    return vals[0] if vals else None
+    return vals[0]
 
 
 def _all_entity_qids(claims: dict, prop: str) -> list[str]:
