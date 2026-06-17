@@ -2,9 +2,14 @@
  * Orbit-class zone polygons for the small-body scatter plot.
  *
  * Asteroids plot on (a, q) — semi-major axis vs perihelion. Comets get two
- * switchable plots: bound families on (a, T_J) where every SBDB class is an
- * exact rectangle, and unbound/unclassified trajectories on (e, q) since
+ * switchable plots: bound families on (a, T_J) where each SBDB class is a
+ * rectangle, and unbound/unclassified trajectories on (e, q) since
  * hyperbolic/parabolic comets have undefined or negative a.
+ *
+ * The (a, T_J) family rectangles tile without overlap, matching how SBDB
+ * assigns exactly one class per object: the Tisserand families (JFc/ETc/CTc)
+ * take priority over the classical period families (JFC/HTC), so JFC/HTC are
+ * clipped to the T_J < 2 strip they actually occupy in the catalog.
  */
 
 import * as m from '$lib/paraglide/messages.js';
@@ -243,9 +248,10 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 		],
 		tooltipDefinition: () => m.zone_def_TNO()
 	},
-	// --- Comet families (a-T plot): exact SBDB rectangles. Larger zones
-	// listed first so the smaller ones stay hover/clickable on top.
-	// COM catch-all fills the leftover corner: bound, T_J < 2, P > 200 y.
+	// --- Comet families (a-T plot): SBDB rectangles, tiled to match the
+	// catalog's one-class-per-object priority (Tisserand families win over the
+	// classical period ones). COM catch-all fills the leftover corner: bound,
+	// T_J < 2, P > 200 y.
 	COM_AT: {
 		className: 'COM',
 		plotType: 'a-T',
@@ -255,15 +261,15 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 	HTC: {
 		className: 'HTC',
 		plotType: 'a-T',
-		// T_J < 2, P < 200 y.
-		polygon: rect(AT_DOMAIN.x[0], A_P200, AT_DOMAIN.y[0], 2),
+		// 20 < P < 200 y, T_J < 2; starts at A_P20 where JFC ends.
+		polygon: rect(A_P20, A_P200, AT_DOMAIN.y[0], 2),
 		tooltipDefinition: () => m.zone_def_HTC()
 	},
 	JFC: {
 		className: 'JFC',
 		plotType: 'a-T',
-		// Classical: P < 20 y, no Tisserand constraint.
-		polygon: rect(AT_DOMAIN.x[0], A_P20, AT_DOMAIN.y[0], AT_DOMAIN.y[1]),
+		// Classical P < 20 y; clipped to T_J < 2 since JFc/ETc/CTc rank higher.
+		polygon: rect(AT_DOMAIN.x[0], A_P20, AT_DOMAIN.y[0], 2),
 		tooltipDefinition: () => m.zone_def_JFC()
 	},
 	JFc: {
