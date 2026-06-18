@@ -21,9 +21,11 @@ class TestTimeHelpers:
         assert horizons_api._jd_to_iso(2443376.148) == "1977-08-20"
 
     def test_et_jd_round_trip(self):
+        from space_map_data.utils.time import et_to_jd
+
         for jd in (2451545.0, 2443376.148, 2461110.5, 2415020.5):
             et = (jd - 2451545.0) * 86400.0
-            assert horizons_api.et_to_jd(et) == pytest.approx(jd)
+            assert et_to_jd(et) == pytest.approx(jd)
 
 
 class TestCoarseStepFor:
@@ -198,6 +200,58 @@ class TestFetchObjData:
         obj = horizons_api.fetch_obj_data(client, -42)
         assert obj.revised == "unknown"
         assert obj.name == "NAIF -42"
+
+
+class TestDetectWindow:
+    """Precise coverage-edge detection from Horizons boundary errors.
+
+    Regression guard for Artemis II: its splashdown falls late on the final
+    coverage day, which the old whole-day ±1d clamp dropped entirely.
+    """
+
+    _PRIOR = (
+        'No ephemeris for target "Artemis II (spacecraft)" prior to '
+        "A.D. 2026-APR-02 01:58:32.3050 TDB"
+    )
+    _AFTER = (
+        'No ephemeris for target "Artemis II (spacecraft)" after '
+        "A.D. 2026-APR-10 23:54:22.8576 TDB"
+    )
+
+    def _client(self, responses: list[str]) -> MagicMock:
+        """A fake httpx client whose successive GETs return `responses`."""
+        client = MagicMock(spec=httpx.Client)
+        it = iter(responses)
+
+        def _get(*_a, **_k):
+            resp = MagicMock()
+            resp.text = next(it)
+            resp.raise_for_status.return_value = None
+            return resp
+
+        client.get.side_effect = _get
+        return client
+
+    def test_pins_precise_edges_including_partial_days(self):
+        # prior-to error → after error → in-coverage samples (no error).
+        inside = (
+            "$$SOE\n"
+            "2461132.583, A.D. 2026-Apr-02 02:03:00.0,  1,2,3,0.1,0.2,0.3,\n"
+            "2461141.494, A.D. 2026-Apr-10 23:49:00.0,  4,5,6,0.4,0.5,0.6,\n"
+            "$$EOE\n"
+        )
+        client = self._client([self._PRIOR, self._AFTER, inside])
+        start, end = horizons_api.detect_window(client, -1024)
+        # Boundaries ± the 5-min margin, sub-day precision retained.
+        assert start == "2026-04-02 02:03:32"
+        assert end == "2026-04-10 23:49:22"
+
+    def test_end_covers_the_landing_day(self):
+        # End must stay on Apr-10, not clamp back to Apr-09.
+        inside = "$$SOE\n2461141.0, A.D. 2026-Apr-10 12:00:00.0,  1,2,3,0.1,0.2,0.3,\n$$EOE\n"
+        client = self._client([self._PRIOR, self._AFTER, inside])
+        _, end = horizons_api.detect_window(client, -1024)
+        assert end.startswith("2026-04-10")
 
 
 class TestIdentifyRefinementWindows:

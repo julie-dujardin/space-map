@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from space_map_data.utils.time import et_to_jd, jd_to_et
+from space_map_data.utils.time import jd_to_et
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,12 @@ def _jd_to_iso(jd: float) -> str:
     """Convert JD-TDB → ISO calendar date (UTC, ±69s precision)."""
     dt = _J2000_DATE + timedelta(seconds=jd_to_et(jd))
     return dt.date().isoformat()
+
+
+def _et_to_iso_dt(et: float) -> str:
+    """ET seconds → `YYYY-MM-DD HH:MM:SS` (UTC, ±69s), as Horizons wants it."""
+    dt = (_J2000_DATE + timedelta(seconds=et)).replace(tzinfo=None)
+    return dt.isoformat(sep=" ", timespec="seconds")
 
 
 def _parse_horizons_csv(text: str) -> list[Sample]:
@@ -147,20 +153,28 @@ def _fetch_vectors_chunked(
 ) -> str:
     """Fetch a long span in ≤chunk_days slices; concatenate the CSVs.
 
-    The concatenated text has multiple $$SOE/$$EOE blocks; callers should
-    parse it with `_parse_chunks` rather than `_parse_horizons_csv` (which
-    reads only the first block).
+    Sub-day times on `start_iso`/`stop_iso` are preserved so edge chunks keep
+    the partial launch/landing days instead of snapping to midnight.
+
+    The concatenated text has multiple $$SOE/$$EOE blocks; parse it with
+    `_parse_chunks`, not `_parse_horizons_csv` (which reads only the first).
     """
     if chunk_days is None:
         chunk_days = _chunk_days_for_step(step)
-    start = datetime.fromisoformat(start_iso).date()
-    stop = datetime.fromisoformat(stop_iso).date()
+    start = datetime.fromisoformat(start_iso)
+    stop = datetime.fromisoformat(stop_iso)
     pieces: list[str] = []
     cur = start
     while cur < stop:
         nxt = min(stop, cur + timedelta(days=chunk_days))
         pieces.append(
-            fetch_vectors(client, naif_id, cur.isoformat(), nxt.isoformat(), step)
+            fetch_vectors(
+                client,
+                naif_id,
+                cur.isoformat(sep=" ", timespec="seconds"),
+                nxt.isoformat(sep=" ", timespec="seconds"),
+                step,
+            )
         )
         cur = nxt
     return "\n".join(pieces)
@@ -181,11 +195,11 @@ def _parse_chunks(text: str) -> list[Sample]:
 
 _NO_EPHEM_PRIOR_RE = re.compile(
     r'No ephemeris for target "[^"]+" prior to A\.D\. '
-    r"(\d{4}-[A-Z]{3}-\d{2})",
+    r"(\d{4}-[A-Z]{3}-\d{2})\s+(\d{2}:\d{2}:\d{2})",
 )
 _NO_EPHEM_AFTER_RE = re.compile(
     r'No ephemeris for target "[^"]+" after A\.D\. '
-    r"(\d{4}-[A-Z]{3}-\d{2})",
+    r"(\d{4}-[A-Z]{3}-\d{2})\s+(\d{2}:\d{2}:\d{2})",
 )
 _MONTHS = {
     "JAN": "01",
@@ -208,53 +222,62 @@ def _horizons_date_to_iso(s: str) -> str:
     return f"{y}-{_MONTHS[m]}-{d}"
 
 
+# Inward margin on the reported coverage edges; > the ~69s TDB↔UTC gap so the
+# window stays inside coverage however Horizons reads the timescale.
+_WINDOW_MARGIN = timedelta(minutes=5)
+
+
+def _boundary_to_dt(date_grp: str, time_grp: str) -> datetime:
+    """`('2026-APR-10', '23:54:22')` → naive `datetime`."""
+    return datetime.fromisoformat(f"{_horizons_date_to_iso(date_grp)}T{time_grp}")
+
+
 def detect_window(client: httpx.Client, naif_id: int) -> tuple[str, str]:
     """Find Horizons coverage by probing wide and parsing "prior to / after"
-    error messages. Step is adaptive: small enough to fit short-coverage
-    spacecraft (Tianwen-1 ~6 months, Apollo S-IVB ~20 days), large enough
-    to keep the response small over a 140-year wide span. We also apply both
-    clamps in one round when Horizons returns both errors at once.
+    error messages, with an adaptive step that fits short-coverage spacecraft
+    yet keeps the response small over the 140-year wide span.
+
+    Returns `(start, end)` `YYYY-MM-DD HH:MM:SS` strings pinned to the coverage edges.
     """
     start = WINDOW_PROBE_START
     end = WINDOW_PROBE_END
-    for _ in range(4):
+    lo: str | None = None  # coverage edges, pinned from boundary errors
+    hi: str | None = None
+    for _ in range(5):
         span_days = (
             datetime.fromisoformat(end).date() - datetime.fromisoformat(start).date()
         ).days
         step_days = max(1, span_days // 20)
         step = f"{step_days} d"
         text = fetch_vectors(client, naif_id, start, end, step)
-        samples = _parse_horizons_csv(text)
-        if samples:
-            return (
-                _jd_to_iso(et_to_jd(samples[0].et)),
-                _jd_to_iso(et_to_jd(samples[-1].et)),
-            )
         m_prior = _NO_EPHEM_PRIOR_RE.search(text)
         m_after = _NO_EPHEM_AFTER_RE.search(text)
         progressed = False
         if m_prior:
-            # Horizons quotes the launch instant (e.g. 1977-Aug-20 15:32:32 TDB);
-            # asking for the date alone reads as midnight, still before launch.
-            # Bumping +1d places us safely after.
-            boundary = datetime.fromisoformat(
-                _horizons_date_to_iso(m_prior.group(1))
-            ).date() + timedelta(days=1)
-            start = boundary.isoformat()
-            logger.info("naif %d: clamping START → %s (prior-to error)", naif_id, start)
+            dt = _boundary_to_dt(*m_prior.groups()) + _WINDOW_MARGIN
+            lo = dt.isoformat(sep=" ", timespec="seconds")
+            start = lo
+            logger.info("naif %d: coverage START → %s (prior-to error)", naif_id, lo)
             progressed = True
         if m_after:
-            boundary = datetime.fromisoformat(
-                _horizons_date_to_iso(m_after.group(1))
-            ).date() - timedelta(days=1)
-            end = boundary.isoformat()
-            logger.info("naif %d: clamping STOP → %s (after error)", naif_id, end)
+            dt = _boundary_to_dt(*m_after.groups()) - _WINDOW_MARGIN
+            hi = dt.isoformat(sep=" ", timespec="seconds")
+            end = hi
+            logger.info("naif %d: coverage STOP → %s (after error)", naif_id, hi)
             progressed = True
         if progressed:
             continue
-        snippet = text[-400:].strip()
-        raise RuntimeError(
-            f"naif {naif_id}: window-probe returned no samples and no "
-            f"parseable boundary message: ...{snippet!r}"
+        # No errors: [start, end] is inside coverage. Any edge not pinned from
+        # an error lies beyond the probe span; fall back to its extreme sample.
+        samples = _parse_horizons_csv(text)
+        if not samples:
+            snippet = text[-400:].strip()
+            raise RuntimeError(
+                f"naif {naif_id}: window-probe returned no samples and no "
+                f"parseable boundary message: ...{snippet!r}"
+            )
+        return (
+            lo or _et_to_iso_dt(samples[0].et),
+            hi or _et_to_iso_dt(samples[-1].et),
         )
-    raise RuntimeError(f"naif {naif_id}: window-detect did not converge after 4 rounds")
+    raise RuntimeError(f"naif {naif_id}: window-detect did not converge after 5 rounds")

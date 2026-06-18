@@ -26,6 +26,11 @@ from .refine import (
 logger = logging.getLogger(__name__)
 
 
+def _fs_token(window_iso: str) -> str:
+    """Drop the spaces/colons in a window's `HH:MM:SS` time for use in a filename."""
+    return window_iso.replace(" ", "T").replace(":", "")
+
+
 def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dict:
     """Probe + fetch coarse + auto-refine → write cache. Returns meta dict.
 
@@ -82,7 +87,7 @@ def fetch_one(client: httpx.Client, naif_id: int, *, force: bool = False) -> dic
     )
 
     coarse_tag = coarse_step.replace(" ", "")
-    coarse_name = f"coarse_{win_start}_{win_end}_{coarse_tag}.csv"
+    coarse_name = f"coarse_{_fs_token(win_start)}_{_fs_token(win_end)}_{coarse_tag}.csv"
     coarse_path = cache_dir / coarse_name
     coarse_text = _fetch_vectors_chunked(
         client, naif_id, win_start, win_end, coarse_step
