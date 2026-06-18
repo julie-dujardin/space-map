@@ -59,6 +59,12 @@
 		return renderer?.focusOnBody(id, zoom, latitude, longitude) ?? 0;
 	}
 
+	/** Instantly focus + frame a body (no fly) — for URL deep-links whose target
+	 *  loaded after the initial render settled on the placeholder parent. */
+	export function snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+		renderer?.snapToBody(id, latitude, longitude, zoom);
+	}
+
 	/** Fly the camera onto a surface feature. Picks a zoom that frames the
 	 *  feature: small craters get pulled in close, ocean-sized features stay
 	 *  pulled back so they fit on screen. Clamped to the body's own min camera

@@ -497,7 +497,7 @@
 	"debug_time_scale": "Vitesse temps",
 	"go_to_object": "Aller à l'objet",
 	"zoom_out_to_system": "Dézoomer vers le système",
-	"object_not_found": "Objet {id} introuvable",
+	"object_not_found": "Objet {name} introuvable",
 	"out_of_range_title": "Données limitées à cette date",
 	"out_of_range_selected": "L'objet sélectionné n'a pas de données à cette date",
 	"out_of_range_satellites_after": "Satellites : aucune donnée après le {date}",

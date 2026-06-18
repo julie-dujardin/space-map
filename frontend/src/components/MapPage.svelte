@@ -164,14 +164,35 @@
 
 	onMount(async () => {
 		const initialId = appState.view.id;
+		// Friendly label from the URL slug; captured before the Sun fallback
+		// below overwrites appState.view.name.
+		const initialName = appState.view.name ?? initialId;
+		// URL camera framing — restored onto the real target once it loads, since
+		// the renderer settles its initial focus (on the parent) while the
+		// target's chunk is still streaming.
+		const { latitude, longitude, zoom } = appState.view;
 		// Pre-load the filter so the first earth-zone pass lands filtered —
 		// no flash of full SATCAT before the reload kicks in.
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
 		await ctx.load(appState.view.date, initialId);
-		if (!ctx.getBody(initialId)) {
-			toast.warning(m.object_not_found({ id: initialId }));
+		if (ctx.getBody(initialId)) {
+			// A late-arriving target lands with the camera parked on its parent
+			// (the renderer's initial fallback). Snap straight onto the real target
+			// with the URL's framing — no fly, so the deep link opens already on it.
+			// Skip if it's already focused (placeholder/early load).
+			if (cameraFocus?.data.id !== initialId) {
+				scene?.snapToBody(initialId, latitude, longitude, zoom);
+			}
+		} else {
+			// Persistent (no auto-dismiss): the scene-load main-thread churn can
+			// starve a transient toast so its duration timer expires before it ever
+			// paints. A stable id de-dupes if the load is retried.
+			toast.warning(m.object_not_found({ name: initialName }), {
+				id: 'object-not-found',
+				duration: Number.POSITIVE_INFINITY
+			});
 			appState.setFocus({ type: DEFAULT_VIEW.type, id: DEFAULT_VIEW.id, name: DEFAULT_VIEW.name });
 		}
 	});

@@ -18,7 +18,7 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OrbitControls as OrbitControlsClass } from 'three/addons/controls/OrbitControls.js';
 import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
-import type { MapViewState } from '$lib/state/view';
+import { UrlType, type MapViewState } from '$lib/state/view';
 import type { PositionedBody } from '$lib/types/objects';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -216,7 +216,16 @@ export class SceneRenderer {
 
 		const sunBody = ctx.bodies.majorBodies.find((b) => b.data.id === SUN_ID);
 		const matchedBody = ctx.getBody(initialView.id);
-		const focusBody = matchedBody ?? sunBody;
+		// When the URL target isn't resident yet (e.g. an Earth sat whose element
+		// chunk is still streaming), settle the camera on its parent body rather
+		// than the Sun — a far gentler starting frame that MapPage eases onto the
+		// real target from once it lands. Falls back to the Sun if even the parent
+		// isn't loaded.
+		const fallbackParentId = initialView.type === UrlType.EarthSatellite ? EARTH_ID : null;
+		const fallbackBody =
+			(fallbackParentId && ctx.bodies.majorBodies.find((b) => b.data.id === fallbackParentId)) ||
+			sunBody;
+		const focusBody = matchedBody ?? fallbackBody;
 		const focusPos: Vec3 = focusBody?.position ?? [0, 0, 0];
 
 		this.focus.focusTruePos = [...focusPos];
@@ -699,6 +708,10 @@ export class SceneRenderer {
 
 	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
 		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
+	}
+
+	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+		this.focusController.snapToBody(id, latitude, longitude, zoom);
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {

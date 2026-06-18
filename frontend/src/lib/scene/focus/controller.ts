@@ -18,6 +18,7 @@ import {
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 import {
+	FOCUS_DURATION_MS,
 	prepareFlyToCamera,
 	prepareFocusTarget,
 	type FocusState
@@ -309,6 +310,36 @@ export class FocusController {
 			this.setFocusTarget(body);
 		}
 		return focus.focusDurationMs;
+	}
+
+	/**
+	 * Instantly focus a now-resident body and frame it per the URL — no approach
+	 * fly. Used at load when the target's element chunk arrives after the initial
+	 * render has already settled the camera on the placeholder parent (Earth):
+	 * the user should land directly on the target, not watch a fly in from Earth.
+	 */
+	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
+		const { ctx, focus, pointClouds } = this.deps;
+		const body = ctx.getBody(id);
+		if (!body) return;
+		// Mesh upgrade, visibility, and detail-drawer + URL-name sync (via
+		// onFocusChange). This also queues an approach fly, which the settle below
+		// neutralises — nulling the cam-fly fields so stepFocusAnimation's settle
+		// branch leaves the snapped frame untouched.
+		this.setFocusTarget(body);
+		focus.focusTruePos = [...body.position];
+		focus.focusOriginWorld = [...body.position];
+		focus.focusTargetWorld = [...body.position];
+		focus.focusStartTime = -FOCUS_DURATION_MS; // already settled
+		focus.camOriginWorld = null;
+		focus.camTargetWorld = null;
+		focus.flyQ0 = null;
+		focus.orbitFly = false;
+		focus.arcOrbit = false;
+		focus.cameraStaysOnBody = false;
+		this.deps.repositionAll();
+		pointClouds.rebuildBasis();
+		this.snapToBodyFrame(latitude, longitude, zoom);
 	}
 
 	/** Snap the camera to a body-fixed lat/lon/zoom without any fly animation.

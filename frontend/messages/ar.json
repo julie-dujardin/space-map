@@ -517,7 +517,7 @@
 	"debug_time_scale": "تسارع الزمن",
 	"go_to_object": "الانتقال إلى الجرم",
 	"zoom_out_to_system": "التصغير إلى النظام",
-	"object_not_found": "الجرم {id} غير موجود",
+	"object_not_found": "الجرم {name} غير موجود",
 	"out_of_range_title": "البيانات محدودة في هذا الوقت",
 	"out_of_range_selected": "الجرم المحدد ليس له بيانات في هذا الوقت",
 	"out_of_range_satellites_after": "الأقمار الصناعية: لا توجد بيانات بعد {date}",
