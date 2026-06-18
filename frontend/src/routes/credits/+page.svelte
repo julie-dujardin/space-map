@@ -82,6 +82,13 @@
 				<li>
 					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
 				</li>
+				<li>{@render link('https://www.minorplanetcenter.net/', m.source_mpc_name())}</li>
+				<li>
+					{@render link('https://celestrak.org/satcat/', m.source_celestrak_name())}
+				</li>
+				<li>
+					{@render link('https://planet4589.org/space/', m.source_jonathan_space_report_name())}
+				</li>
 			</ul>
 		</section>
 

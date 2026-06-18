@@ -31,9 +31,10 @@ export interface ObjectImage {
 	source_url: string;
 	/** `photo` (P18 / Wikipedia pageimage) and `logo` (P154) are the object-side
 	 *  kinds; `locator` (P242) is feature-only — IAU outline maps for surface
-	 *  features. New kinds may appear; consumers should treat unknown values as
-	 *  generic photos. */
-	kind: 'photo' | 'logo' | 'locator';
+	 *  features. `radar` flags small-body radar/shape-model renders, kept visible
+	 *  for now but filterable once 3D shape rendering replaces them. New kinds may
+	 *  appear; consumers should treat unknown values as generic photos. */
+	kind: 'photo' | 'logo' | 'locator' | 'radar';
 	variants: ImageVariants;
 	/** Source pixel dimensions. Omitted for passthrough sources (SVG/WebM)
 	 *  where the exporter never decoded a raster — clients should fall back

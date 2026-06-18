@@ -14,11 +14,10 @@
 	let aliases = $derived(localized?.aliases ?? []);
 	let wikipediaUrl = $derived(localized?.wikipedia?.url);
 	let nasaScienceUrl = $derived(global?.nasa_science_url);
-	let wikidataQid = $derived(global?.cross_refs?.wikidata_qid);
 	let websites = $derived(global?.wikidata?.website ?? []);
 	let blogs = $derived(global?.wikidata?.blog ?? []);
+	// SBDB lookup key; Wikidata and the MPC database moved to the metadata-source credits.
 	let mpcDesignation = $derived(global?.cross_refs?.mpc_designation ?? global?.cross_refs?.spkid);
-	let mpcDesignationOnly = $derived(global?.cross_refs?.mpc_designation);
 	let naifId = $derived(global?.cross_refs?.naif_id);
 	let noradCatId = $derived(global?.cross_refs?.norad_cat_id);
 	let designation = $derived(
@@ -47,11 +46,6 @@
 				href: `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(String(mpcDesignation))}`,
 				label: m.jpl_sbdb({ id: String(mpcDesignation) })
 			});
-		if (mpcDesignationOnly)
-			result.push({
-				href: `https://www.minorplanetcenter.net/db_search/show_object?utf8=%E2%9C%93&object_id=${encodeURIComponent(String(mpcDesignationOnly))}`,
-				label: m.mpc_database({ id: String(mpcDesignationOnly) })
-			});
 		if (noradCatId) {
 			result.push({
 				href: `https://celestrak.org/NORAD/elements/graph-orbit-data.php?CATNR=${noradCatId}`,
@@ -62,11 +56,6 @@
 				label: m.n2yo_satellite_tracker({ id: String(noradCatId) })
 			});
 		}
-		if (wikidataQid)
-			result.push({
-				href: `https://www.wikidata.org/wiki/${wikidataQid}`,
-				label: m.wikidata_label({ qid: wikidataQid })
-			});
 		return result;
 	});
 </script>

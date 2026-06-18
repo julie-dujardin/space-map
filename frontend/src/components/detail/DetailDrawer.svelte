@@ -35,6 +35,7 @@
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
 	import ImageGallery from './ImageGallery.svelte';
 	import ObjectDescription from './ObjectDescription.svelte';
+	import SourcesFooter from './SourcesFooter.svelte';
 	import Physical from './properties/Physical.svelte';
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
@@ -389,6 +390,12 @@
 	// A split-comet family group lists fragments; a mission group lists its craft.
 	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
 	let isMissionGroup = $derived(groupDetail?.global?.type === 'mission');
+	// Earth sats (and earth-sat group pages) draw on CelesTrak SATCAT + GCAT for metadata.
+	let earthSatCredit = $derived(
+		isGroupMode
+			? ['constellation', 'bus', 'earth_orbit_class'].includes(groupDetail?.global?.type ?? '')
+			: data?.global?.cross_refs?.norad_cat_id != null
+	);
 	let membersHeading = $derived(
 		isGroupMode
 			? isSplitCometGroup
@@ -580,17 +587,11 @@
 				/>
 			{/if}
 			<ObjectLinks global={data?.global ?? null} localized={data?.localized ?? null} />
-			{#if data?.localized?.wikipedia?.extract}
-				<p class="text-xs text-muted-foreground">
-					{m.wikipedia_license_notice()}
-					<a
-						href="https://creativecommons.org/licenses/by-sa/4.0/"
-						target="_blank"
-						rel="noopener noreferrer license"
-						class="underline hover:text-foreground">CC BY-SA 4.0</a
-					>.
-				</p>
-			{/if}
+			<SourcesFooter
+				global={data?.global ?? null}
+				earthSat={earthSatCredit}
+				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
+			/>
 		</div>
 	{/if}
 {/snippet}
