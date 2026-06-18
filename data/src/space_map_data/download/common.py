@@ -23,6 +23,7 @@ from space_map_data.download.providers.objects.sbdb import SBDBDownloader
 from space_map_data.download.providers.objects.sbdb_moons import (
     SBDBMoonsDownloader,
 )
+from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
 from space_map_data.download.providers.images.commons import CommonsDownloader
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDERS_CLASSES = [
     CelesTrakDownloader,
+    SpaceTrackDownloader,
     GCATDownloader,
     SBDBDownloader,
     SBDBMoonsDownloader,

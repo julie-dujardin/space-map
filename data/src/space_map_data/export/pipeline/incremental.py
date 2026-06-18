@@ -23,7 +23,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.position.elements.celestrak_source import iter_day_dirs
+from space_map_data.export.position.elements.celestrak_source import current_day_dirs
 from space_map_data.export.position.elements.sidecar import (
     build_earth_part_signature,
     build_sbdb_part_signature,
@@ -167,11 +167,11 @@ def sbdb_zone_signature(cheb_covered_ids: set[str], host_ids: set[str]) -> dict:
 def earth_zone_signature() -> dict:
     """Shared signature for both earth zooms.
 
-    Covers both Earth-elements sources: every CelesTrak day-dir's CSV
-    fingerprints (recent dailies) and the Space-Track archive zips feeding the
-    historical weekly snapshots. A change to either re-runs the zone.
+    Covers every live day-dir's CSV fingerprints and the Space-Track archive
+    zips feeding the historical weekly snapshots. A change to either re-runs
+    the zone.
     """
-    days = iter_day_dirs(SOURCES_POSITION_DIR / "celestrak")
+    days = current_day_dirs(DOWNLOAD_DIR)
     return {
         "days": {iso: build_earth_part_signature(day_dir) for iso, day_dir in days},
         "archive": archive_zip_fingerprints(ARCHIVE_YEARS),

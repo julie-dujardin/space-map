@@ -1001,8 +1001,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # Derived from CelesTrak group membership
     # -------------------------------------------------------------------------
     ConstellationSpec(
-        "orbcomm", "Q16960684", (SatelliteCategory.COMMUNICATIONS,), group="orbcomm"
-    ),  # all are named "ORBCOMM-..." except VESSELSAT, which are part of the constellation
+        "orbcomm",
+        "Q16960684",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix=("ORBCOMM",),  # "ORBCOMM FM 5", "ORBCOMM-X", "ORBCOMM FM 36 DEB"
+        contains=("VESSELSAT",),  # AIS payloads flown as part of the constellation
+    ),
     ConstellationSpec(
         "intelsat", "Q778126", (SatelliteCategory.COMMUNICATIONS,), group="intelsat"
     ),
@@ -1083,11 +1087,11 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "glonass", "Q486250", (SatelliteCategory.NAVIGATION,), group="glo-ops"
     ),
     ConstellationSpec(
-        "galileo", "Q193902", (SatelliteCategory.NAVIGATION,), group="galileo"
-    ),
+        "galileo", "Q193902", (SatelliteCategory.NAVIGATION,), prefix=("GALILEO",)
+    ),  # "GALILEO 12 (269)" — distinct from the GSAT substring in BUGSAT/TUGSAT
     ConstellationSpec(
-        "beidou", "Q857141", (SatelliteCategory.NAVIGATION,), group="beidou"
-    ),
+        "beidou", "Q857141", (SatelliteCategory.NAVIGATION,), prefix=("BEIDOU",)
+    ),  # "BEIDOU 10", "BEIDOU 1D", "BEIDOU 2 G8"
     ConstellationSpec(
         "transit", "Q651136", (SatelliteCategory.NAVIGATION,), group="nnss"
     ),  # Navy Navigation Satellite System
@@ -1105,7 +1109,7 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "fengyun-1c-asat-debris",
         "Q182183",
         (SatelliteCategory.DEBRIS,),
-        group="fengyun-1c-debris",
+        prefix=("FENGYUN 1C DEB",),  # name-only: launch 1999-025 also carried SB-1
     ),
     ConstellationSpec(
         "westford-needles",
@@ -1147,13 +1151,13 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "iridium-33-debris",
         "Q843912",
         (SatelliteCategory.DEBRIS,),
-        group="iridium-33-debris",
+        prefix=("IRIDIUM 33 DEB",),  # name-only: 1997-051 also carried 4 intact sats
     ),
     ConstellationSpec(
         "cosmos-2251-debris",
         "Q843912",
         (SatelliteCategory.DEBRIS,),
-        group="cosmos-2251-debris",
+        prefix=("COSMOS 2251 DEB",),  # name-only, to avoid the parent's launch core
     ),
     ConstellationSpec(
         "hitomi-debris",

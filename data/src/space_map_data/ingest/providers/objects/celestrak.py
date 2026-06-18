@@ -37,15 +37,17 @@ class CelesTrakIngestor:
 
     def __init__(self, download_dir: Path):
         self.session = get_session()
-        self.provider_dir = download_dir / "sources" / "position" / "celestrak"
-        # The downloader writes daily snapshots under <year>/<month>/<day>/.
-        # Ingest from the most-recent day so DB-side queries (object lists,
-        # names, SGP4 extras) reflect the freshest element set; the export
-        # reads every day's snapshot directly off disk for time-sliced
-        # overlays so what's ingested here only matters outside the export.
-        latest_day = latest_day_dir(self.provider_dir)
-        self.csv_path = latest_day / "gp-active.csv"
-        self.groups_dir = latest_day / "groups"
+        position_dir = download_dir / "sources" / "position"
+        self.provider_dir = position_dir / "celestrak"
+        # Active catalogue (object list, names, SGP4 extras) from the Space-Track
+        # GP snapshot; group CSVs from CelesTrak. Each writes daily
+        # <year>/<month>/<day>/ trees, so ingest each one's latest day. The
+        # export reads every day's snapshot off disk for time-sliced overlays,
+        # so what's ingested here only matters outside the export.
+        self.csv_path = (
+            latest_day_dir(position_dir / "spacetrack" / "current") / "gp-active.csv"
+        )
+        self.groups_dir = latest_day_dir(self.provider_dir) / "groups"
         self.total_rows = 0
         self.missing_satcat = 0
         # Pre-loaded from the satcat DB table (ingested earlier).

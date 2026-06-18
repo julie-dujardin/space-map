@@ -87,6 +87,9 @@ class Job:
 
 JOBS: list[Job] = [
     Job(sources=(PROVIDERS.CELESTRAK,), schedule=DailyAt(dtime(hour=12, minute=0))),
+    # Space-Track GP fetch — kept off the top/bottom of the hour per their API
+    # guidelines (they explicitly reject :00/:30 for hourly element queries).
+    Job(sources=(PROVIDERS.SPACETRACK,), schedule=DailyAt(dtime(hour=12, minute=17))),
     Job(sources=(PROVIDERS.EARTH_CLOUDS,), schedule=Every(timedelta(hours=3))),
 ]
 

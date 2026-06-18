@@ -65,6 +65,20 @@ def iter_day_dirs(celestrak_dir: Path) -> list[tuple[str, Path]]:
     return out
 
 
+def current_day_dirs(download_dir: Path) -> list[tuple[str, Path]]:
+    """Merge daily element snapshots from ``spacetrack/current`` and ``celestrak``,
+    oldest first. Both hold a ``gp-active.csv`` in the same OMM CSV shape; on a
+    shared date Space-Track wins as the complete catalogue.
+    """
+    position_dir = download_dir / "sources" / "position"
+    by_iso: dict[str, Path] = {}
+    for iso, day_dir in iter_day_dirs(position_dir / "celestrak"):
+        by_iso[iso] = day_dir
+    for iso, day_dir in iter_day_dirs(position_dir / "spacetrack" / "current"):
+        by_iso[iso] = day_dir
+    return sorted(by_iso.items())
+
+
 def _parse_row(row: dict) -> tuple[int, CelesTrakElements] | None:
     """Extract orbital elements + SGP4 fields from a GP CSV row."""
     norad = int_or_none(row.get("NORAD_CAT_ID"))
@@ -132,12 +146,12 @@ def load_all_days(download_dir: Path) -> dict[str, dict[int, CelesTrakElements]]
     Outer keys are ``YYYY-MM-DD`` strings sorted oldest-first; inner values
     match :func:`_parse_row` output. Empty result if no day-dirs are present.
     """
-    celestrak_dir = download_dir / "sources" / "position" / "celestrak"
-    days = iter_day_dirs(celestrak_dir)
+    days = current_day_dirs(download_dir)
     if not days:
         logger.warning(
-            "No CelesTrak day-dirs under %s; Earth zone export will be empty",
-            celestrak_dir,
+            "No Space-Track/CelesTrak day-dirs under %s; Earth zone export "
+            "will be empty",
+            download_dir / "sources" / "position",
         )
         return {}
     return {iso: _load_day(day_dir) for iso, day_dir in days}
