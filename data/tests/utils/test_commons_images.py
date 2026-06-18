@@ -251,3 +251,114 @@ class TestParseUploadUrl:
 
     def test_malformed_returns_none(self):
         assert ci.parse_upload_url("https://example.com/not/wiki/here") is None
+
+
+def _meta_with_categories(*categories: str) -> dict:
+    """Minimal download-metadata shaped dict carrying pipe-joined categories."""
+    return {
+        "imageinfo": {"extmetadata": {"Categories": {"value": "|".join(categories)}}}
+    }
+
+
+class TestImageExclusionReason:
+    """image_exclusion_reason — category- and filename-based noise filtering."""
+
+    @pytest.mark.parametrize(
+        "filename, categories",
+        [
+            ("001653_Yakhontovia_-_orbit-viewer-snapshot.png", ["Orbits of asteroids"]),
+            ("Juno_orbit_2018.png", ["Orbits of asteroids"]),
+            ("1992_TC_orbital_diagram.jpg", []),  # filename token, no category
+            ("Foo.png", ["Orbit of Pluto"]),
+            ("Bar.gif", ["Animations of minor planet orbits"]),
+            ("Baz.png", ["Trajectory of 1I/ʻOumuamua"]),
+        ],
+    )
+    def test_orbit_diagrams(self, filename, categories):
+        assert (
+            ci.image_exclusion_reason(filename, _meta_with_categories(*categories))
+            == "orbit-diagram"
+        )
+
+    @pytest.mark.parametrize(
+        "filename, categories",
+        [
+            ("InnerSolarSystem-fr.png", ["Sun in art"]),  # filename family only
+            ("EightTNOs-ru.png", ["Russian-language diagrams"]),  # filename family
+            ("Solar_System_True_Color_RU.png", ["Solar System object comparisons"]),
+            ("Planets2008-ar.jpg", ["Horizontal diagrams of the Solar System (X)"]),
+            ("Euler-brouillon.jpg", ["Euler diagram of solar system bodies"]),
+        ],
+    )
+    def test_comparison_diagrams(self, filename, categories):
+        assert (
+            ci.image_exclusion_reason(filename, _meta_with_categories(*categories))
+            == "comparison-diagram"
+        )
+
+    @pytest.mark.parametrize(
+        "filename, categories",
+        [
+            # Localized spacecraft schematics must NOT be tagged comparison —
+            # the broad "<lang>-language diagrams" category is deliberately unused.
+            ("Astro-h_schema.jpg", ["ASTRO-H", "French-language diagrams"]),
+            ("Astro-H_schema_(en).png", ["ASTRO-H", "English-language diagrams"]),
+            ("1090_Sumida_Light_Curve.png", ["Light curves of asteroids"]),
+            ("Venus_map.jpg", ["Maps of Venus", "Magellan radar images of Venus"]),
+            ("Beidou-coverage.png", ["Locator maps of Asia (gray scheme)"]),
+        ],
+    )
+    def test_kept(self, filename, categories):
+        assert (
+            ci.image_exclusion_reason(filename, _meta_with_categories(*categories))
+            is None
+        )
+
+    def test_locator_maps_only_dropped_for_features(self):
+        meta = _meta_with_categories("Maps of Mars", "Locator maps")
+        # objects/groups keep locator-categorised images (e.g. coverage maps)
+        assert ci.image_exclusion_reason("NiliPatera_locator_map.jpg", meta) is None
+        # the nomenclature-feature pass drops them
+        assert (
+            ci.image_exclusion_reason(
+                "NiliPatera_locator_map.jpg", meta, drop_locator_maps=True
+            )
+            == "locator-map"
+        )
+
+    def test_none_metadata_falls_back_to_filename(self):
+        assert ci.image_exclusion_reason("x_orbit_diagram.png", None) == "orbit-diagram"
+        assert ci.image_exclusion_reason("InnerSolarSystem.png", None) == (
+            "comparison-diagram"
+        )
+        assert ci.image_exclusion_reason("Real_photo.jpg", None) is None
+
+
+class TestIsRadarRender:
+    """is_radar_render — small-body radar/shape-model tagging."""
+
+    @pytest.mark.parametrize(
+        "category",
+        [
+            "Radar images of asteroids",
+            "Radar images of Near-Earth Objects",
+            "Arecibo Telescope Radar Images",
+            "Radar-imaged asteroids",
+        ],
+    )
+    def test_small_body_radar_tagged(self, category):
+        assert ci.is_radar_render(_meta_with_categories(category))
+
+    @pytest.mark.parametrize(
+        "category",
+        [
+            "Magellan radar images of Venus",  # planetary surface map — keep as photo
+            "Cassini radar images of Titan",
+            "Photos of asteroids",
+        ],
+    )
+    def test_planetary_and_photos_not_tagged(self, category):
+        assert not ci.is_radar_render(_meta_with_categories(category))
+
+    def test_no_metadata(self):
+        assert not ci.is_radar_render(None)

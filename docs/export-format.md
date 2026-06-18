@@ -1072,7 +1072,7 @@ interface GlobalObjectData {
 interface ObjectImage {
   file: string;           // Commons filename, used as the bundle directory name
   source_url: string;     // Wikimedia Commons file page URL (for license/attribution)
-  kind: "photo" | "logo";
+  kind: "photo" | "logo" | "locator" | "radar";  // "locator" feature-only; "radar" = small-body shape-model render
   variants: { [label in "s" | "m" | "xl"]?: string };  // label → extension
   width?: number;         // source pixel dimensions (omitted for SVG/WebM passthrough)
   height?: number;
@@ -1437,6 +1437,8 @@ parent.
 ## Images
 
 Sourced from Wikimedia Commons (Wikidata P18 image + P154 logo for objects; P18 image + P242 locator map for IAU nomenclature features) and Wikipedia pageimages across all supported languages. Downloaded during the `commons` download step; the export step generates per-image thumbnail bundles.
+
+At selection time (ingest) candidates redundant with the app's own rendering are dropped using the Commons `Categories` metadata: orbit/trajectory diagrams, Solar-System schematic & size-comparison diagrams (including localized text-baked variants), and locator maps. Small-body radar / shape-model renders (asteroid/NEO radar) are kept but tagged `kind: "radar"` so they can be filtered once 3D shape rendering replaces them — planetary surface radar maps (Magellan/Venus, Cassini/Titan) are real imagery and stay `photo`. Country groups draw images only from their member objects (their own Wikidata image is a geographic locator map, irrelevant here).
 
 **Path:** `v1/images/{filename}/{label}.{ext}` + `v1/images/{filename}/metadata.json.gz`
 

@@ -38,6 +38,31 @@ FEATURE_WIKIDATA_IMAGE_PIDS = ("P18", "P242")
 # Auto-generated orbit diagrams on ru.wiki that flood the pageimages set.
 EXCLUDED_FILENAME_PREFIXES = ("Орбита_астероида_", "Орбита_кометы_")
 
+# Filename signals for images whose Commons categories don't reliably mark them
+# as noise. Orbit-viewer/diagram renders are categorised by depicted body, and
+# the position/size comparison-diagram families below (many language variants)
+# are categorised by the bodies they show, not as diagrams — so only the
+# filename gives them away. Matched case-insensitively.
+_ORBIT_FILENAME_SUBSTRINGS = (
+    "orbit-viewer-snapshot",
+    "orbital_diagram",
+    "orbit_diagram",
+)
+_DIAGRAM_FILENAME_PREFIXES = ("innersolarsystem", "outersolarsystem", "eighttnos")
+
+# Small-body radar / shape-model render categories. These get tagged
+# (kind="radar") rather than dropped so they stay visible until 3D shape
+# rendering replaces them. Planetary surface radar maps (Magellan/Venus,
+# Cassini/Titan) are deliberately absent — those are real surface imagery.
+_RADAR_CATEGORIES = frozenset(
+    {
+        "radar images of asteroids",
+        "radar images of near-earth objects",
+        "arecibo telescope radar images",
+        "radar-imaged asteroids",
+    }
+)
+
 # License tags we refuse to serve. Matched case-insensitively as substrings of
 # ``extmetadata.LicenseShortName`` (and of each segment of a multi-license
 # "A or B or C" string).
@@ -66,6 +91,79 @@ def canonical_filename(filename: str) -> str:
 def is_excluded(filename: str) -> bool:
     """Skip-list check for known-noise filename prefixes."""
     return any(filename.startswith(p) for p in EXCLUDED_FILENAME_PREFIXES)
+
+
+def _image_categories(metadata: dict | None) -> list[str]:
+    """Pipe-split ``extmetadata.Categories`` for a downloaded image, or ``[]``.
+
+    Present on ~99.8% of Commons files — a far more reliable classifier than
+    filenames.
+    """
+    if not metadata:
+        return []
+    em = (metadata.get("imageinfo") or {}).get("extmetadata") or {}
+    raw = (em.get("Categories") or {}).get("value")
+    if not isinstance(raw, str):
+        return []
+    return [c.strip() for c in raw.split("|") if c.strip()]
+
+
+def image_exclusion_reason(
+    filename: str, metadata: dict | None, *, drop_locator_maps: bool = False
+) -> str | None:
+    """Classify an image as redundant noise to skip, or ``None`` to keep.
+
+    Drops images the app already renders natively or that carry no value as a
+    photo: ``"orbit-diagram"`` (orbit/trajectory plots) and
+    ``"comparison-diagram"`` (Solar-System schematic & size-comparison diagrams,
+    including localized text-baked variants). With ``drop_locator_maps`` (the
+    nomenclature-feature pass) also drops ``"locator-map"`` red-dot/outline
+    locators — these are surface features whose position the app shows itself.
+
+    Comparison-diagram detection deliberately avoids the broad
+    ``"<lang>-language diagrams"`` category: it also tags *localized spacecraft
+    schematics* (e.g. Astro-H), which are kept. The diagram families that only
+    carry that category instead match by filename. Locator detection is scoped
+    to features so constellation coverage maps (categorised as country locator
+    maps) survive; country groups drop their own maps via the selection skip.
+    """
+    lname = filename.lower()
+    if is_excluded(filename) or any(s in lname for s in _ORBIT_FILENAME_SUBSTRINGS):
+        return "orbit-diagram"
+    if lname.startswith(_DIAGRAM_FILENAME_PREFIXES):
+        return "comparison-diagram"
+    for cat in _image_categories(metadata):
+        c = cat.lower()
+        if (
+            c.startswith(("orbits of ", "orbit of "))
+            or c in ("orbits", "orbits in art")
+            or c.startswith(
+                ("animations of orbits", "animations of minor planet orbits")
+            )
+            or c.startswith("videos of orbits")
+            or "trajectory of" in c
+        ):
+            return "orbit-diagram"
+        if (
+            c == "solar system diagrams"
+            or "solar system object comparison" in c
+            or c.startswith("horizontal diagrams of the solar system")
+            or "euler diagram" in c
+        ):
+            return "comparison-diagram"
+        if drop_locator_maps and "locator map" in c:
+            return "locator-map"
+    return None
+
+
+def is_radar_render(metadata: dict | None) -> bool:
+    """True for small-body radar / shape-model renders (asteroid/NEO radar).
+
+    Tagged rather than dropped so they stay visible until 3D shape rendering
+    lands. Excludes planetary surface radar maps (Magellan/Venus, Cassini/Titan),
+    which are real surface imagery and stay tagged as photos.
+    """
+    return any(c.lower() in _RADAR_CATEGORIES for c in _image_categories(metadata))
 
 
 def image_dir(filename: str) -> Path:

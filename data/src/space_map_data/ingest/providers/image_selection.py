@@ -19,6 +19,7 @@ Exports read these caches instead of re-walking sources.
 
 import json
 import logging
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,8 @@ from space_map_data.utils import image_scoring
 from space_map_data.utils.commons_images import (
     COMMONS_DIR,
     collect_qid_image_candidates,
+    image_exclusion_reason,
+    is_radar_render,
     is_servable_on_disk,
     read_download_metadata,
     read_manual_extras,
@@ -135,8 +138,15 @@ def ingest() -> None:
     _log_written(FEATURE_IMAGES_PATH, "features", feature_selections, features)
 
     # Groups: registry-driven (referenced/ also holds operators/countries), plus
-    # the dynamically-built probe missions keyed by their mission QID.
-    groups = [(g.slug, g.wikidata_qid) for g in GROUPS if g.wikidata_qid]
+    # the dynamically-built probe missions keyed by their mission QID. Country
+    # groups are skipped here: their own Wikidata image is a geographic locator
+    # map, irrelevant to a space map, so they draw solely from member photos via
+    # the fallback below.
+    groups = [
+        (g.slug, g.wikidata_qid)
+        for g in GROUPS
+        if g.wikidata_qid and not g.slug.startswith(COUNTRY_SLUG_PREFIX)
+    ]
     groups += [(m.slug, m.mission_qid) for m in build_probe_missions()]
     group_selections = _select_for_qids(
         groups,
@@ -169,15 +179,27 @@ def _select_for_qids(
     """Run :func:`_select_for_qid` over ``(key, qid)`` pairs, deduping per QID."""
     qid_cache: dict[str, list[dict]] = {}
     selections: dict[str, list[dict]] = {}
+    excluded: Counter[str] = Counter()
     for key, qid in tqdm(items, desc=desc, unit=unit):
         selected = qid_cache.get(qid)
         if selected is None:
             selected = _select_for_qid(
-                qid, metadata_cache, wikidata_dir, aux_pid=aux_pid, aux_kind=aux_kind
+                qid,
+                metadata_cache,
+                wikidata_dir,
+                aux_pid=aux_pid,
+                aux_kind=aux_kind,
+                excluded=excluded,
             )
             qid_cache[qid] = selected
         if selected:
             selections[key] = selected
+    if excluded:
+        logger.info(
+            "Skipped %d redundant candidate image(s) by category (%s)",
+            sum(excluded.values()),
+            ", ".join(f"{reason}: {n}" for reason, n in excluded.most_common()),
+        )
     return selections
 
 
@@ -203,6 +225,7 @@ def _select_for_qid(
     *,
     aux_pid: str,
     aux_kind: str,
+    excluded: Counter[str] | None = None,
 ) -> list[dict]:
     """Pick the best-of-tree image list for one QID."""
     direct, kind_of, pageimage_count = collect_qid_image_candidates(
@@ -215,9 +238,32 @@ def _select_for_qid(
     if not direct:
         return []
 
-    discovery_order = {name: i for i, name in enumerate(direct)}
     metadata_by_filename = _MetadataView(metadata_cache)
 
+    # Drop redundant candidates (orbit diagrams, comparison diagrams, locator
+    # maps) up front so a servable real photo elsewhere in the tree wins. An
+    # object whose only candidate was an orbit diagram correctly ends up
+    # image-less — the app draws the orbit itself.
+    # Feature locator maps (red-dot/outline "where is this crater") are
+    # redundant with the app showing the feature's position; objects/groups
+    # keep locator-categorised images (e.g. constellation coverage maps).
+    drop_locator_maps = aux_kind == "locator"
+
+    def _acceptable(name: str) -> bool:
+        reason = image_exclusion_reason(
+            name, metadata_by_filename.get(name), drop_locator_maps=drop_locator_maps
+        )
+        if reason is not None:
+            if excluded is not None:
+                excluded[reason] += 1
+            return False
+        return is_servable_on_disk(name)
+
+    direct = [name for name in direct if _acceptable(name)]
+    if not direct:
+        return []
+
+    discovery_order = {name: i for i, name in enumerate(direct)}
     components = image_scoring.tree_components(direct, metadata_by_filename)
     seen: set[str] = set()
     out: list[dict] = []
@@ -235,18 +281,20 @@ def _select_for_qid(
         )
         if best in seen:
             continue
-        if not is_servable_on_disk(best):
-            # Tree-only winners can be non-servable (different license);
-            # fall back to scanning the direct candidates in this
-            # component for a servable choice.
-            best = next(
-                (name for name in component if is_servable_on_disk(name)),
-                None,
-            )
+        if not _acceptable(best):
+            # Tree-only winners can be non-servable (different license) or
+            # redundant noise; fall back to scanning the direct candidates in
+            # this component for an acceptable choice.
+            best = next((name for name in component if _acceptable(name)), None)
             if best is None or best in seen:
                 continue
         seen.add(best)
-        out.append({"file": best, "kind": kind_of.get(best, "photo")})
+        kind = (
+            "radar"
+            if is_radar_render(metadata_by_filename.get(best))
+            else kind_of.get(best, "photo")
+        )
+        out.append({"file": best, "kind": kind})
     return out
 
 
@@ -485,7 +533,9 @@ def _pick_fallback_images(
             picks = _select_for_qid(
                 qid, metadata_cache, wikidata_dir, aux_pid="P154", aux_kind="logo"
             )
-            cached = [p for p in picks if p["kind"] == "photo"]
+            # Radar shape-model renders count as gallery photos (they were
+            # plain "photo" before tagging); only logos/locators are unwanted.
+            cached = [p for p in picks if p["kind"] in ("photo", "radar")]
             photos_cache[qid] = cached
         return cached
 
