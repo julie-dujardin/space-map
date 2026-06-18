@@ -260,18 +260,37 @@ def write_messages(
 
     # Base locale always has every generated key, so it defines which keys
     # are still live; anything else belongs to a removed group/unit/property.
+    # It also seeds the values other locales are compared against — a
+    # translation identical to baseLocale is dropped so Paraglide's fallback
+    # serves it instead.
     live_keys = set(collect(BASE_LOCALE))
+    base_values = _merge_into_file(
+        BASE_LOCALE, collect(BASE_LOCALE), live_keys, GENERATED_PREFIXES
+    )
     for lang in LANGUAGES:
-        _merge_into_file(lang, collect(lang), live_keys, GENERATED_PREFIXES)
+        if lang == BASE_LOCALE:
+            continue
+        _merge_into_file(
+            lang, collect(lang), live_keys, GENERATED_PREFIXES, base_values
+        )
 
 
 def write_group_messages(wikidata_entities: WikidataEntityCache) -> None:
     """Fill missing ``group_name_*`` keys; leave other generated keys intact."""
     group_name_labels = _collect_group_name_labels(wikidata_entities)
     live_keys = set(group_name_labels.get(BASE_LOCALE, {}))
+    base_values = _merge_into_file(
+        BASE_LOCALE, group_name_labels.get(BASE_LOCALE, {}), live_keys, ("group_name_",)
+    )
     for lang in LANGUAGES:
+        if lang == BASE_LOCALE:
+            continue
         _merge_into_file(
-            lang, group_name_labels.get(lang, {}), live_keys, ("group_name_",)
+            lang,
+            group_name_labels.get(lang, {}),
+            live_keys,
+            ("group_name_",),
+            base_values,
         )
 
 
@@ -280,11 +299,15 @@ def _merge_into_file(
     fresh: dict[str, str],
     live_keys: set[str],
     prefixes: tuple[str, ...],
-) -> None:
+    base_values: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Merge *fresh* generated entries into the *lang* message file.
 
     Existing translations win — generated values only fill gaps. Keys under
-    *prefixes* that are no longer in *live_keys* are pruned.
+    *prefixes* that are no longer in *live_keys* are pruned. When *base_values*
+    is given (non-base locales), any generated value identical to the base
+    locale is omitted so Paraglide's compile-time fallback serves it instead.
+    Returns the effective generated map for this locale.
     """
     msg_file = MESSAGES_DIR / f"{lang}.json"
     existing = orjson.loads(msg_file.read_bytes()) if msg_file.exists() else {}
@@ -296,15 +319,25 @@ def _merge_into_file(
     pruned = len(existing) - len(manual) - len(kept)
 
     generated = {**fresh, **kept}
+    redundant = (
+        {k for k, v in generated.items() if base_values.get(k) == v}
+        if base_values is not None
+        else set()
+    )
+    generated = {k: v for k, v in generated.items() if k not in redundant}
     merged = {**manual, **dict(sorted(generated.items()))}
 
     msg_file.write_bytes(orjson.dumps(merged, option=orjson.OPT_INDENT_2))
+    filled = sum(1 for k in generated if k not in kept)
     logger.info(
-        "Merged %d generated keys into %s (%d kept, %d filled, %d pruned, %d total)",
+        "Merged %d generated keys into %s "
+        "(%d kept, %d filled, %d pruned, %d == base, %d total)",
         len(generated),
         msg_file.name,
-        len(kept),
-        len(generated) - len(kept),
+        len(generated) - filled,
+        filled,
         pruned,
+        len(redundant),
         len(merged),
     )
+    return generated
