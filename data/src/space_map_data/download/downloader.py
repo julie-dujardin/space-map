@@ -51,14 +51,22 @@ class Downloader(ABC):
         return False
 
     def _save_metadata(
-        self, url: str, record_count: int, *, complete: bool, **extra: object
+        self,
+        url: str,
+        record_count: int,
+        *,
+        complete: bool | None = None,
+        **extra: object,
     ) -> None:
-        data = {
+        data: dict[str, object] = {
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
             "source_url": url,
             "record_count": record_count,
-            "complete": complete,
-            **extra,
         }
+        # Omitted by downloaders with their own freshness check (e.g. a daily
+        # date stamp) that don't rely on the base ``complete``-based skip.
+        if complete is not None:
+            data["complete"] = complete
+        data.update(extra)
         self.metadata_file.write_text(json.dumps(data, indent=2))
         logger.info("Metadata written -> %s", self.metadata_file.name)

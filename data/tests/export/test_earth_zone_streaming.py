@@ -144,8 +144,8 @@ class TestGlobalOrbitOverlay:
         old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
         new = {25544: {"epoch_jd": 2.0, "n": 15.5}}
         export_earth_zones(
-            [(0, [sat])],
-            {"2026-06-02": old, "2026-06-18": new},
+            [(0, [sat])],  # type: ignore[arg-type]
+            {"2026-06-02": old, "2026-06-18": new},  # type: ignore[arg-type]
             [],
             tmp_path,
             ctx=ctx,  # type: ignore[arg-type]
@@ -164,8 +164,8 @@ class TestGlobalOrbitOverlay:
         # The latest day has other sats but not this one.
         latest = {99999: {"epoch_jd": 2.0, "n": 16.0}}
         export_earth_zones(
-            [(0, [sat])],
-            {"2026-06-01": only_old, "2026-06-02": latest},
+            [(0, [sat])],  # type: ignore[arg-type]
+            {"2026-06-01": only_old, "2026-06-02": latest},  # type: ignore[arg-type]
             [],
             tmp_path,
             ctx=ctx,  # type: ignore[arg-type]

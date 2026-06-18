@@ -39,14 +39,13 @@ class CelesTrakIngestor:
         self.session = get_session()
         position_dir = download_dir / "sources" / "position"
         self.provider_dir = position_dir / "celestrak"
-        # Active catalogue (object list, names, SGP4 extras) from the Space-Track
-        # GP snapshot; group CSVs from CelesTrak. Each writes daily
-        # <year>/<month>/<day>/ trees, so ingest each one's latest day. The
-        # export reads every day's snapshot off disk for time-sliced overlays,
-        # so what's ingested here only matters outside the export.
-        self.csv_path = (
-            latest_day_dir(position_dir / "spacetrack" / "current") / "gp-active.csv"
-        )
+        # Active catalogue (object list, names, SGP4 extras): the freshest GP
+        # snapshot from either source. Space-Track is the target, but CelesTrak
+        # keeps flowing during the migration, so use whichever has the newest day
+        # (Space-Track wins a tie). Group CSVs are CelesTrak-only. The export
+        # reads every day's snapshot off disk for time-sliced overlays, so what's
+        # ingested here only matters outside the export.
+        self.csv_path = _freshest_catalog(position_dir)
         self.groups_dir = latest_day_dir(self.provider_dir) / "groups"
         self.total_rows = 0
         self.missing_satcat = 0
@@ -399,6 +398,33 @@ class CelesTrakIngestor:
             len(new_objects),
             reused,
         )
+
+
+def _day_key(day_dir: Path) -> tuple[int, int, int]:
+    """``(year, month, day)`` parsed from a ``.../YYYY/MM/DD`` path, else zeros."""
+    try:
+        y, m, d = day_dir.parts[-3:]
+        return (int(y), int(m), int(d))
+    except ValueError:
+        return (0, 0, 0)
+
+
+def _freshest_catalog(position_dir: Path) -> Path:
+    """Newest ``gp-active.csv`` across the Space-Track and CelesTrak day trees.
+
+    Space-Track wins a same-date tie (the migration target); falls back to the
+    Space-Track path when neither has one yet so the missing-file skip still fires.
+    """
+    candidates = [
+        latest_day_dir(position_dir / "spacetrack" / "current"),
+        latest_day_dir(position_dir / "celestrak"),
+    ]
+    catalogs = [
+        d / "gp-active.csv" for d in candidates if (d / "gp-active.csv").exists()
+    ]
+    if not catalogs:
+        return candidates[0] / "gp-active.csv"
+    return max(catalogs, key=lambda p: _day_key(p.parent))
 
 
 def ingest(download_dir: Path) -> None:

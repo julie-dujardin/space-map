@@ -43,18 +43,24 @@ class CelesTrakDownloader(Downloader):
         return meta.get("day") == today
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
-        # SATCAT metadata + group memberships (curated lists not derivable from
-        # a satellite's name); orbital elements come from Space-Track.
+        # SATCAT metadata + group memberships (curated lists not derivable from a
+        # satellite's name). GP elements also keep flowing as a transition safety
+        # net while Space-Track's weekly backfill completes; the export overlay
+        # unions both day-dir trees, Space-Track winning on a shared date.
         today = datetime.now(timezone.utc).date()
         day_dir = self._day_dir(today)
         day_dir.mkdir(parents=True, exist_ok=True)
 
-        # 1. SATCAT (country, launch site, decay, RCS, ...) — not elements, top-level
+        # 1. Active GP (TLE elements) — daily
+        gp_url = f"{GP_URL}?GROUP=active&FORMAT=csv"
+        gp_count = self._fetch_csv(gp_url, day_dir / "gp-active.csv", "active GP")
+
+        # 2. SATCAT (country, launch site, decay, RCS, ...) — not elements, top-level
         satcat_count = self._fetch_csv(
             SATCAT_URL, self.out_dir / "satcat.csv", "SATCAT"
         )
 
-        # 2. Per-group memberships (constellation + category) — daily
+        # 3. Per-group memberships (constellation + category) — daily
         groups_dir = day_dir / "groups"
         groups_dir.mkdir(exist_ok=True)
         group_counts: dict[str, int] = {}
@@ -66,8 +72,8 @@ class CelesTrakDownloader(Downloader):
             group_counts[group] = count
 
         self._save_metadata(
-            SATCAT_URL,
-            satcat_count,
+            gp_url,
+            gp_count,
             complete=True,
             day=today.isoformat(),
             satcat_records=satcat_count,
