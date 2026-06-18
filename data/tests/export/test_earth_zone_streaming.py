@@ -109,3 +109,78 @@ class TestSkipBeforeParse:
         )
         export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 2
+
+
+class TestGlobalOrbitOverlay:
+    """The per-object global bundle's orbit block is built from the transient
+    `_daily_kepler`, so the most recent daily must be overlaid onto the base
+    *before* metadata is built — without it Earth sats ship with no orbit block
+    and URL navigation hides them (redirecting to the Sun)."""
+
+    def _patch(self, monkeypatch, captured):
+        # Spy on the metadata build to record what `_daily_kepler` each object
+        # carries at build time; the overlay itself runs for real.
+        def fake_build(objs, ctx):
+            captured.extend(getattr(o, "_daily_kepler", None) for o in objs)
+            return ChunkObjectData()
+
+        def fake_write_parts(objects, out_dir, zone, zoom, *a, time, **k):
+            d = out_dir / "position" / zone / str(zoom) / time
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "0.bin.gz").write_bytes(b"x")
+            return 1
+
+        monkeypatch.setattr(zone_mod, "build_zone_object_data", fake_build)
+        monkeypatch.setattr(
+            zone_mod, "_derive_parent_id_type", lambda z, o: "norad_satcat"
+        )
+        monkeypatch.setattr(zone_mod, "_write_element_parts", fake_write_parts)
+
+    def test_latest_daily_overlaid_before_metadata(self, tmp_path, monkeypatch):
+        captured: list = []
+        self._patch(monkeypatch, captured)
+        ctx = SimpleNamespace(wikidata_entities=None, units=None)
+        sat = SimpleNamespace(norad_cat_id=25544)
+        old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
+        new = {25544: {"epoch_jd": 2.0, "n": 15.5}}
+        export_earth_zones(
+            [(0, [sat])],
+            {"2026-06-02": old, "2026-06-18": new},
+            [],
+            tmp_path,
+            ctx=ctx,  # type: ignore[arg-type]
+        )
+        # Metadata was built with the most recent daily's elements attached.
+        assert captured == [new[25544]]
+
+    def test_sat_missing_from_latest_day_keeps_earlier_elements(
+        self, tmp_path, monkeypatch
+    ):
+        captured: list = []
+        self._patch(monkeypatch, captured)
+        ctx = SimpleNamespace(wikidata_entities=None, units=None)
+        sat = SimpleNamespace(norad_cat_id=25544)
+        only_old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
+        # The latest day has other sats but not this one.
+        latest = {99999: {"epoch_jd": 2.0, "n": 16.0}}
+        export_earth_zones(
+            [(0, [sat])],
+            {"2026-06-01": only_old, "2026-06-02": latest},
+            [],
+            tmp_path,
+            ctx=ctx,  # type: ignore[arg-type]
+        )
+        # Absent from the newest day → falls back to the earlier day's elements.
+        assert captured == [only_old[25544]]
+
+    def test_no_daily_elements_warns_and_skips_overlay(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        captured: list = []
+        self._patch(monkeypatch, captured)
+        ctx = SimpleNamespace(wikidata_entities=None, units=None)
+        sat = SimpleNamespace(norad_cat_id=25544)
+        with caplog.at_level("WARNING"):
+            export_earth_zones([(0, [sat])], {}, [], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        assert captured == [None]
+        assert "no daily elements" in caplog.text

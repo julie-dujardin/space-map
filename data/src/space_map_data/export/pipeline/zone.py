@@ -1,5 +1,6 @@
 """Per-zone export driver: build object data once, write element parts per snapshot."""
 
+import logging
 import math
 import re
 from collections.abc import Iterable, Mapping
@@ -29,6 +30,8 @@ from space_map_data.export.pipeline.snapshots import (
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity, WikidataEntityCache
 from space_map_data.models.object import Object, OrbitalSource
+
+logger = logging.getLogger(__name__)
 
 _DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -344,6 +347,24 @@ def export_earth_zones(
     Recent dailies are stamped CELESTRAK, historical weeks SPACETRACK — same
     SGP4 wire format, distinct provenance for attribution.
     """
+    # The per-object global bundle ships one "current" orbit block the frontend
+    # reads to place a URL-navigated sat before (or in lieu of) its element
+    # chunk. The Kepler fields come from the transient `_daily_kepler` overlay,
+    # so overlay the recent dailies onto each base *before* building the
+    # metadata — otherwise Earth sats ship with no orbit block and URL
+    # navigation hides them (redirecting to the Sun). Apply oldest→newest so
+    # each sat keeps its most recent elements while a sat absent from the very
+    # latest day still gets placed from an earlier one. The per-date write loop
+    # below re-overlays each snapshot independently.
+    if celestrak_days:
+        for iso in sorted(celestrak_days):
+            for _zoom, base in zoom_bases:
+                _overlay_celestrak_elements(base, celestrak_days[iso])
+    else:
+        logger.warning(
+            "export_earth_zones: no daily elements available — Earth-sat global "
+            "bundles ship without an orbit block, so URL navigation will hide them"
+        )
     zone_data = {z: build_zone_object_data(b, ctx) for z, b in zoom_bases}
     parent_id_type = {z: _derive_parent_id_type("earth", b) for z, b in zoom_bases}
     built: dict[int, dict[str, SnapshotResult]] = {z: {} for z, _ in zoom_bases}
