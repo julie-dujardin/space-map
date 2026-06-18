@@ -514,6 +514,7 @@
 	"source_archive_jaxa_darts": "JAXA DARTS",
 	"source_iau_wgccre_name": "国際天文学連合 地図座標と自転要素作業部会",
 	"source_celestrak_name": "CelesTrak",
+	"source_spacetrack_name": "Space-Track.org",
 	"source_wikidata_name": "ウィキデータ",
 	"source_wikipedia_name": "ウィキペディア",
 	"source_prefix": "出典:",

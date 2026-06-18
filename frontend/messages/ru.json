@@ -598,6 +598,7 @@
 	"source_archive_jaxa_darts": "JAXA DARTS",
 	"source_iau_wgccre_name": "Рабочая группа МАС по картографическим координатам и элементам вращения",
 	"source_celestrak_name": "CelesTrak",
+	"source_spacetrack_name": "Space-Track.org",
 	"source_wikidata_name": "Викиданные",
 	"source_wikipedia_name": "Википедия",
 	"source_prefix": "Источник:",

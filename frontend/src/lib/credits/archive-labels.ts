@@ -9,6 +9,7 @@ const ARCHIVE_LABEL: Record<string, () => string> = {
 	horizons: m.source_horizons_name,
 	sbdb: m.source_sbdb_name,
 	celestrak: m.source_celestrak_name,
+	spacetrack: m.source_spacetrack_name,
 	naif: m.source_spice_ephemeris_name,
 	esa: m.source_archive_esa,
 	'naif-pds3': m.source_archive_naif_pds3,

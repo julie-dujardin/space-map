@@ -597,6 +597,7 @@
 	"source_archive_jaxa_darts": "JAXA DARTS",
 	"source_iau_wgccre_name": "مجموعة عمل الاتحاد الفلكي الدولي للإحداثيات الخرائطية وعناصر الدوران",
 	"source_celestrak_name": "CelesTrak",
+	"source_spacetrack_name": "Space-Track.org",
 	"source_wikidata_name": "ويكي بيانات",
 	"source_wikipedia_name": "ويكيبيديا",
 	"source_prefix": "المصدر:",

@@ -28,6 +28,7 @@ ARCHIVE_JAXA_DARTS = "jaxa-darts"
 ARCHIVE_HORIZONS = "horizons"
 ARCHIVE_SBDB = "sbdb"
 ARCHIVE_CELESTRAK = "celestrak"
+ARCHIVE_SPACETRACK = "spacetrack"
 
 
 # `server` strings written into `_index.json` by `ProbesDownloader`. Synth
@@ -164,6 +165,11 @@ EPHEMERIS_ARCHIVES: list[dict[str, str]] = [
         "id": ARCHIVE_CELESTRAK,
         "source": "https://celestrak.org/",
         "organisation": "CelesTrak",
+    },
+    {
+        "id": ARCHIVE_SPACETRACK,
+        "source": "https://www.space-track.org/",
+        "organisation": "Space-Track.org",
     },
     {
         "id": ARCHIVE_NAIF,
