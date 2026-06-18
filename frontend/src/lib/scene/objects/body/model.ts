@@ -85,16 +85,15 @@ export async function loadBodyModel(
 	if (bo.model || bo.modelLoading) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
-	// Pre-hide for model-bearing types (avoids placeholder flash); planets/moons skip this.
-	const preHide = isModelBearing(bo.body) && bo.mesh?.visible === true;
-	if (preHide && bo.mesh) bo.mesh.visible = false;
+	// Model-bearing types show the cuboid/model, never the sphere placeholder.
+	const modelBearing = isModelBearing(bo.body);
+	if (modelBearing && bo.mesh) bo.mesh.visible = false;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) {
-			// Spacecraft-like types (pre-hide set) get a gray cuboid placeholder;
-			// non-model-bearing bodies restore their sphere.
-			if (preHide) {
+			// Model-bearing → cuboid placeholder; natural bodies restore their sphere.
+			if (modelBearing) {
 				if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) return;
 				const fallback = buildFallbackSpacecraftModel();
 				fitToUnitRadius(fallback);
@@ -140,10 +139,9 @@ export async function loadBodyModel(
 			}
 		}
 	} finally {
-		// Load aborted before the GLB attached — put the sphere back and
-		// restore the halo so the body stays visible.
+		// Load aborted — restore the halo; only natural bodies put the sphere back.
 		if (!bo.model) {
-			if (bo.mesh) bo.mesh.visible = true;
+			if (bo.mesh && !modelBearing) bo.mesh.visible = true;
 			setHaloLoading(bo, false);
 		}
 		bo.modelLoading = false;
@@ -157,16 +155,18 @@ export async function loadBodyModel(
 export function unloadBodyModel(bo: BodyObjects): void {
 	bo.modelLoadEpoch = (bo.modelLoadEpoch ?? 0) + 1;
 	setHaloLoading(bo, false);
+	// Model-bearing types revert to their dot, never the sphere.
+	const restoreSphere = !isModelBearing(bo.body);
 	const root = bo.model;
 	if (!root) {
-		if (bo.mesh) bo.mesh.visible = true;
+		if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 		return;
 	}
 	root.parent?.remove(root);
 	disposeGltf(root);
 	bo.model = null;
 	bo.modelName = undefined;
-	if (bo.mesh) bo.mesh.visible = true;
+	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 }
 
 /** Create or remove the body's loading spinner. It's a plain DOM element

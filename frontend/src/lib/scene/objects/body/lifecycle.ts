@@ -18,7 +18,7 @@ import { attachCanvasForwarders } from '../../label/forward';
 import { buildStarExtras, makeStarSurfaceMaterial, type StarExtras } from '../sun';
 import { ATMOSPHERE_PARAMS, buildAtmosphereNode, type AtmosphereNode } from '../surface/atmosphere';
 import { attachEclipseShadowToBody, type EclipseSelfUniforms } from '../surface/eclipse-shadow';
-import { unloadBodyModel } from './model';
+import { isModelBearing, unloadBodyModel } from './model';
 import type { BodyObjects } from '../../types';
 
 export function disposeMaterial(mat: Material | Material[]): void {
@@ -84,6 +84,8 @@ export function buildMajorBodies(
 			const geometry = new SphereGeometry(radius, segments, segments);
 			const material = isStar ? makeStarSurfaceMaterial() : new MeshStandardMaterial({ color });
 			mesh = new Mesh(geometry, material);
+			// Model-bearing types use the cuboid/model — hide the sphere so it can't flash.
+			if (isModelBearing(body)) mesh.visible = false;
 			if (!isStar) {
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
@@ -186,6 +188,8 @@ export function upgradeBodyMesh(
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
 	const material = new MeshStandardMaterial({ color });
 	const mesh = new Mesh(geometry, material);
+	// Probes are model-bearing — hide the sphere.
+	if (isModelBearing(body)) mesh.visible = false;
 	scene.add(mesh);
 	bo.mesh = mesh;
 	bo.extraObjects.push(mesh);
