@@ -36,6 +36,7 @@ from space_map_data.probes.probe_id import (
     record_from_entry,
     assign_many,
     et_to_mjd,
+    is_spacecraft_naif,
     load_registry,
 )
 from space_map_data.probes.trace import inception_et
@@ -58,23 +59,6 @@ def _mission_kernels(mission_dir: Path) -> list[Path]:
         for k in (sorted(mission_dir.glob("*.bsp")) + sorted(mission_dir.glob("*.BSP")))
         if not any(p in k.name for p in _STATIONARY_PATTERNS)
     ]
-
-
-def _is_instrument_naif(naif: int, all_targets: set[int]) -> bool:
-    """SPK-convention instrument NAIFs are `-spacecraft × 1000 - k` for some
-    small `k`. MSL's surface kernels expose rover-arm joints -76501..-76620
-    as targets alongside the rover body -76; we don't want Object rows for
-    those joints. Returns True iff `naif`'s magnitude is `> 1000` and the
-    high-order "spacecraft" half is in `all_targets`."""
-    if naif >= 0:
-        return False
-    n = -naif
-    if n <= 1000:
-        return False
-    parent_code = n // 1000
-    if n % 1000 == 0:
-        return False
-    return -parent_code in all_targets
 
 
 def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]:
@@ -137,22 +121,12 @@ def _collect_probes(missions_dir: Path, landed_missions_dir: Path) -> list[dict]
                             t,
                             idx_path,
                         )
-            # Any negative NAIF ID is a spacecraft per SPICE convention.
-            # Modern commercial missions exceed the legacy -1..-999 range
-            # (Blue Ghost 1 -2711, IM-1 -370011, Tianwen-1 -9901491, etc.).
-            # Two exclusions:
-            #   * Landing-site NAIFs (`-X900` from `spacecraft × 1000 - 900`)
-            #     are per-body fixed points the SPK chains through, not probes.
-            #   * Instrument NAIFs (`-X * 1000 - k` for small k, when -X is
-            #     itself a target) — MSL surface kernels expose rover-arm
-            #     joints -76501..-76620 alongside the rover body -76.
+            # Negatives are spacecraft per SPICE convention (modern commercial
+            # missions exceed -1..-999: Blue Ghost 1 -2711, IM-1 -370011), minus
+            # landing-site/instrument sub-NAIFs — see is_spacecraft_naif.
             raw_targets = {int(s) for s in idx.get("targets", {})}
             spacecraft_ids = sorted(
-                t
-                for t in raw_targets
-                if t < 0
-                and (-t) % 1000 != 900
-                and not _is_instrument_naif(t, raw_targets)
+                t for t in raw_targets if is_spacecraft_naif(t, raw_targets)
             )
             if not spacecraft_ids:
                 continue

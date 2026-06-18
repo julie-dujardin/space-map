@@ -21,6 +21,7 @@ from space_map_data.download.providers.spice.probes import (
     MISSIONS_DIR,
 )
 from space_map_data.download.providers.spice.synth import qid_deduped_synth_naifs
+from space_map_data.probes.probe_id import is_spacecraft_naif
 from space_map_data.utils.paths import DERIVED_POSITION_DIR
 
 logger = logging.getLogger(__name__)
@@ -179,8 +180,9 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
 
     Includes every negative target from trajectory + landed indexes (NAIF
     reserves negatives for spacecraft), minus the simulation/debris set from
-    major_bodies.txt. Landing-site-only NAIFs (`-X900`) go through the
-    events-JSON ingest instead.
+    major_bodies.txt and the landing-site/instrument sub-NAIFs filtered by
+    `is_spacecraft_naif` — the same exclusions ingest applies, so the export
+    never assigns probe_ids for which ingest created no Object row.
     """
     out: list[tuple[Path, list[Path], int]] = []
     mission_names: set[str] = set()
@@ -217,7 +219,9 @@ def enumerate_probes() -> list[tuple[Path, list[Path], int]]:
             landed_idx = json.loads(landed_idx_path.read_text())
             targets.update(int(s) for s in landed_idx.get("targets", {}))
         spacecraft_ids = sorted(
-            t for t in targets if t < 0 and t not in excluded_naif_ids
+            t
+            for t in targets
+            if t not in excluded_naif_ids and is_spacecraft_naif(t, targets)
         )
         filtered = sorted(set(targets) - set(spacecraft_ids))
         if filtered:

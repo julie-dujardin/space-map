@@ -112,6 +112,28 @@ def decode(probe_id: int) -> tuple[int, int]:
     return MJD_EPOCH + offset, dedupe
 
 
+def is_spacecraft_naif(naif: int, all_targets: set[int]) -> bool:
+    """True if `naif` is a real spacecraft target, not a landing-site or
+    instrument/frame sub-NAIF. Shared so the ingest walk and the export's
+    `enumerate_probes` agree on what gets a probe row — otherwise the export
+    assigns probe_ids the ingest never created Object rows for.
+
+    Excludes negatives that are:
+      * landing-site NAIFs `-X900` (spacecraft × 1000 - 900) — fixed body points;
+      * instrument NAIFs `-X*1000 - k` (small k) when `-X` is itself a target
+        (e.g. MSL rover -76's arm joints -76501..-76620, Perseverance -168's
+        -168501..-168587 frames).
+    """
+    if naif >= 0:
+        return False
+    n = -naif
+    if n % 1000 == 900:
+        return False
+    if n > 1000 and n % 1000 != 0 and -(n // 1000) in all_targets:
+        return False
+    return True
+
+
 def load_registry() -> list[dict]:
     """Read the on-disk probe registry. Returns [] if missing or unreadable."""
     if not REGISTRY_PATH.exists():
