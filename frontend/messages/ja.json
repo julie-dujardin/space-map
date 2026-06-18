@@ -1,5 +1,9 @@
 {
 	"page_title": "宇宙マップ",
+	"featured_label": "注目",
+	"featured_main_belt": "メインベルト",
+	"featured_mars": "火星",
+	"featured_artemis_2": "アルテミス2",
 	"search_placeholder": "検索",
 	"search_no_results": "該当なし",
 	"search_secondary_orbiting": "{parent}の{type}",

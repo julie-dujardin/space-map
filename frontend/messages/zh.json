@@ -1,5 +1,11 @@
 {
 	"page_title": "太空地图",
+	"featured_label": "精选",
+	"featured_iss": "国际空间站",
+	"featured_main_belt": "主带",
+	"featured_mars": "火星",
+	"featured_starlink": "星链",
+	"featured_artemis_2": "阿尔忒弥斯2号",
 	"search_placeholder": "搜索",
 	"search_no_results": "无匹配结果",
 	"search_secondary_orbiting": "{parent}的{type}",

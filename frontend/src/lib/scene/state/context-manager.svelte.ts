@@ -158,6 +158,12 @@ export class ContextManager {
 		this.refresher?.tick(date);
 	}
 
+	/** Stream an out-of-view target into the running scene on demand (no reload).
+	 *  No-op before {@link load} sets the refresher, or if already loaded. */
+	async ensureBody(targetId: string, date: Date): Promise<void> {
+		await this.refresher?.ensureBody(targetId, date);
+	}
+
 	/** Install or remove the active group filter. Branches on the slug's
 	 *  ``applies_to`` (resolved from the group index). Safe to call before
 	 *  {@link load} — the first chunk pass picks the filter up.

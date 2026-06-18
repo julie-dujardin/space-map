@@ -31,6 +31,8 @@ import {
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
 import { dateToJD } from '$lib/format/date';
+import { fetchLabels } from '$lib/fetch/position/labels';
+import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getSettings } from '$lib/state/settings.svelte';
 
@@ -194,6 +196,33 @@ export class ZoneRefresher {
 				});
 			}
 		}
+	}
+
+	/** Stream a single target into the running scene if it isn't loaded — owns
+	 *  the loader, so it's the entry point for in-session on-demand focus. */
+	async ensureBody(targetId: string, date: Date): Promise<void> {
+		if (this.ctx.getBody(targetId)) return;
+		// Probes carry no orbital elements (the placeholder path can't build them)
+		// and an out-of-coverage probe isn't in bodiesById at boot. Load its chunk
+		// for the (coverage-snapped) date, re-run processProbes, graft in the target.
+		if (targetId.startsWith('probe-')) {
+			const store = this.ctx.probeStore;
+			if (!store) return;
+			await store.ensure(dateToJD(date)).done;
+			const labels = await fetchLabels();
+			const target = this.loader
+				.processProbes(store, date, labels)
+				.find((b) => b.data.id === targetId);
+			if (!target) {
+				console.warn(`zone-refresher.ensureBody: ${targetId} has no probe chunk at this date.`);
+				return;
+			}
+			this.ctx.bodies.addBodies([target]);
+			this.ctx.credits.recordOrbitSources([target]);
+			this.ctx.bodies.notifyBodiesAdded([targetId]);
+			return;
+		}
+		await ensureTargetStreamed(this.ctx, targetId, date, this.loader);
 	}
 
 	private async loadTime(z: TimeZoneState, time: string, date: Date): Promise<void> {

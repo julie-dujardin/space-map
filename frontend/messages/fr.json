@@ -1,5 +1,7 @@
 {
 	"page_title": "Carte de l'espace",
+	"featured_label": "En vedette",
+	"featured_main_belt": "Ceinture principale",
 	"search_placeholder": "Rechercher",
 	"search_no_results": "Aucun résultat",
 	"search_secondary_orbiting": "{type} de {parent}",

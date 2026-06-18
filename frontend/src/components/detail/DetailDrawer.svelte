@@ -716,7 +716,8 @@
 	<aside
 		class="fixed top-0 start-0 z-50 flex h-full w-[380px] max-w-[90vw] flex-col border-e bg-background shadow-lg"
 	>
-		<div class="flex items-center justify-between gap-2 p-2 px-4">
+		<!-- pt aligns the title/buttons row with the top-4 featured chips beside it. -->
+		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">
 			<DrawerTitle {crumb} title={displayName} />
 			<div class="flex items-center gap-1.5">
 				{#if showCameraButtons}

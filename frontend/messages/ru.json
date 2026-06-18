@@ -1,5 +1,10 @@
 {
 	"page_title": "Карта космоса",
+	"featured_label": "Избранное",
+	"featured_iss": "МКС",
+	"featured_main_belt": "Главный пояс",
+	"featured_mars": "Марс",
+	"featured_artemis_2": "Артемида II",
 	"search_placeholder": "Поиск",
 	"search_no_results": "Ничего не найдено",
 	"search_secondary_orbiting": "{type}: {parent}",

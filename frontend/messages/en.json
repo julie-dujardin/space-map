@@ -1,5 +1,11 @@
 {
 	"page_title": "Space Map",
+	"featured_label": "Featured",
+	"featured_iss": "ISS",
+	"featured_main_belt": "Main Belt",
+	"featured_mars": "Mars",
+	"featured_starlink": "Starlink",
+	"featured_artemis_2": "Artemis II",
 	"search_placeholder": "Search",
 	"search_no_results": "No matches",
 	"search_secondary_orbiting": "{type} of {parent}",

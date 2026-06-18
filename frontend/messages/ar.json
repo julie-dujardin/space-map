@@ -1,5 +1,11 @@
 {
 	"page_title": "خريطة الفضاء",
+	"featured_label": "مميز",
+	"featured_iss": "محطة الفضاء الدولية",
+	"featured_main_belt": "الحزام الرئيسي",
+	"featured_mars": "المريخ",
+	"featured_starlink": "ستارلينك",
+	"featured_artemis_2": "أرتميس 2",
 	"search_placeholder": "بحث",
 	"search_no_results": "لا توجد نتائج",
 	"search_secondary_orbiting": "{type} لـ{parent}",

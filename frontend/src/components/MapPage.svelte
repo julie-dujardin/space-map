@@ -4,7 +4,7 @@
 	import Scene from './Scene.svelte';
 	import { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { SimClock } from '$lib/scene/state/clock.svelte';
-	import { dateToJD } from '$lib/format/date';
+	import { dateToJD, jdToDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
 	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
@@ -22,9 +22,11 @@
 	import SettingsButton from './settings/SettingsButton.svelte';
 	import LayersButton from './layers/LayersButton.svelte';
 	import SearchBar from './search/SearchBar.svelte';
+	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
+	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -39,29 +41,57 @@
 	const appState = createAppState();
 	setContext('appState', appState);
 
-	// Shared by the search bar and in-drawer object links (notable members,
-	// largest body): pushes the target URL state first so Scene's
-	// onFocusChange doesn't re-route it, then flies the camera.
+	// Generic focus for the search bar, featured chips, and in-drawer links:
+	// snap into coverage, stream the body if absent, then frame it.
 	const focusObject: FocusObject = (id, name, opts) => {
 		void (async () => {
-			// Snap into coverage first so the camera lands on a positioned body.
-			const window = await coverageWindowFor(id);
-			if (window) {
-				const snap = snapJdIntoWindow(clock.jd, window);
-				if (snap !== null) clock.setJD(snap);
+			const type = urlTypeFromId(id);
+			// Snap into the coverage window if `now` is outside it — midpoint, not
+			// the boundary, which has no sample and reads as out-of-range.
+			const cov = await coverageWindowFor(id);
+			const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
+			if (snap !== null) {
+				const bounded = cov?.startJd !== undefined && cov.endJd !== undefined;
+				clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
 			}
-			appState.setFocus({ type: urlTypeFromId(id), id, name });
-			// Maximize-distance zoom when the body's loaded; default otherwise.
-			// `moveCamera: false` skips the zoom fly entirely (comet fragments):
-			// focusOnBody without a zoom re-anchors focus so the drawer follows,
-			// but doesn't pull the camera in to inspect the mesh.
+
+			// Stream an out-of-view target in place (probe/sat) — no page reload.
+			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
+
+			appState.setFocus({ type, id, name });
+
 			const body = ctx.getBody(id);
-			const zoom =
-				opts?.moveCamera === false ? undefined : body ? minCameraDistance(body) * 5 : undefined;
-			scene?.focusOnBody(id, zoom);
+			if (!body) {
+				console.warn(`[map] focusObject: ${id} not resolvable — nothing to focus.`);
+				return;
+			}
+			if (opts?.moveCamera === false) {
+				// Re-anchor focus only, no fly (comet fragments).
+				scene?.focusOnBody(id);
+			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
+				// Dive close when a 3D model exists; else hold distance (bare marker).
+				const detail = await fetchObjectDetail(id, false);
+				const distance = detail.global?.model_name ? minCameraDistance(body) * 5 : 0.005;
+				scene?.focusOnBody(id, distance, DEFAULT_VIEW.latitude, DEFAULT_VIEW.longitude);
+			} else {
+				scene?.focusOnBody(id, minCameraDistance(body) * 5);
+			}
 		})();
 	};
 	setContext('focusObject', focusObject);
+
+	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
+	function openGroup(slug: string, name: string) {
+		appState.setGroup(slug, name);
+		// setGroup parked view.id/zoom on the group anchor; DEFAULT_VIEW lat/lon
+		// lands at the default framing instead of the prior angle.
+		scene?.focusOnBody(
+			appState.view.id,
+			appState.view.zoom,
+			DEFAULT_VIEW.latitude,
+			DEFAULT_VIEW.longitude
+		);
+	}
 
 	const clock = new SimClock(dateToJD(appState.view.date));
 	// `.raw` — see Scene.svelte's `focusedBody` for the rationale (avoids deep
@@ -100,6 +130,10 @@
 		if (activeFeature) return { kind: 'feature', body: selectedBody, feature: activeFeature };
 		return { kind: 'body', body: selectedBody };
 	});
+
+	// Desktop inset: park chips just past the 380px detail sidebar when open,
+	// else the collapsed 240px search bar. Mobile stacks them below instead.
+	const featuredStart = $derived(focusable ? 'calc(380px + 1rem)' : 'calc(240px + 2rem)');
 
 	$effect(() => {
 		if (northRefId === null) return;
@@ -312,27 +346,25 @@
 							return;
 						}
 						if (hit.kind === 'group') {
-							appState.setGroup(hit.slug, name);
-							// setGroup parked view.id on the group's camera anchor body and
-							// view.zoom on the framing distance for that group type (full
-							// solar-system for asteroid classes, near-Earth for the rest).
-							// Pair it with DEFAULT_VIEW lat/lon so the camera lands at the
-							// default framing instead of approaching from the prior angle.
-							scene?.focusOnBody(
-								appState.view.id,
-								appState.view.zoom,
-								DEFAULT_VIEW.latitude,
-								DEFAULT_VIEW.longitude
-							);
+							openGroup(hit.slug, name);
 							return;
 						}
 						focusObject(hit.id, name);
 					}}
 				/>
 			</div>
+			{#if searchEnabled && !searchExpanded}
+				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below. -->
+				<div
+					class="pointer-events-auto fixed start-4 end-4 top-[3.75rem] z-10 md:end-4 md:top-4 md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
+					style="--featured-start: {featuredStart}"
+				>
+					<FeaturedBar onObject={(id, name) => focusObject(id, name)} onGroup={openGroup} />
+				</div>
+			{/if}
 			<div
 				class="fixed end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
-					? 'top-[4.25rem] md:top-4'
+					? 'top-[7.5rem] md:top-4'
 					: 'top-4'}"
 			>
 				<SettingsButton />

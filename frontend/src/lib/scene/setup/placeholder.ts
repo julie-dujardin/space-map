@@ -1,11 +1,14 @@
-import { ObjectType, type BodyData, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, isAsteroid, type BodyData, type PositionedBody } from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { orbitalElementsToPosition, parabolicToPosition } from '$lib/math/orbit/position';
 import { buildSatrec, sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { AU_KM } from '$lib/math/units';
 import { dateToJD } from '$lib/format/date';
+import { fetchLabels } from '$lib/fetch/position/labels';
+import { MinorBucket } from '$lib/fetch/position/minor-columns';
 import type { ChunkLoader } from '$lib/fetch/position/chunk';
+import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 
 /** Map a GlobalObjectData.type string (e.g. "asteroid_main_belt") to the ObjectType enum. */
 function parseObjectType(typeStr: string): ObjectType {
@@ -189,4 +192,65 @@ export async function createPlaceholderBody(
 		zone: global.sbdb?.class ?? null
 	});
 	return ancestors;
+}
+
+/**
+ * Stream a single target into the running scene if absent — the in-session
+ * equivalent of {@link loadScene}'s URL-target placeholder pass (no reload).
+ * Routes by type like loadScene; earth-sat placeholders reconcile on the next
+ * zone-refresher swap, probes keep theirs and draw from probeStore.
+ */
+export async function ensureTargetStreamed(
+	ctx: ContextManager,
+	targetId: string,
+	date: Date,
+	loader: ChunkLoader
+): Promise<void> {
+	if (ctx.getBody(targetId)) return;
+	const placeholders = await createPlaceholderBody(targetId, date, loader);
+	if (placeholders.length === 0) return;
+
+	const labels = await fetchLabels();
+	const asteroidBucket = (zone: string): MinorBucket => {
+		let b = ctx.bodies.asteroidBodiesByZone.get(zone);
+		if (!b) ctx.bodies.asteroidBodiesByZone.set(zone, (b = new MinorBucket(labels)));
+		return b;
+	};
+	const spacecraftBucket = (key: string): Map<string, PositionedBody> => {
+		let b = ctx.bodies.spacecraftByParent.get(key);
+		if (!b) ctx.bodies.spacecraftByParent.set(key, (b = new Map()));
+		return b;
+	};
+	const added: string[] = [];
+
+	for (let i = 0; i < placeholders.length; i++) {
+		const { body, zone } = placeholders[i];
+		if (ctx.getBody(body.data.id)) continue;
+		const type = body.data.objectType;
+		const parentEntry = i > 0 ? placeholders[i - 1] : null;
+		const resolvedZone =
+			type === ObjectType.MOON && parentEntry && isAsteroid(parentEntry.body.data.objectType)
+				? 'small_body_moons'
+				: zone;
+		if (type === ObjectType.SPACECRAFT || type === ObjectType.DEBRIS) {
+			const key = body.data.parentId;
+			spacecraftBucket(key).set(body.data.id, body);
+			ctx.bodies.dirtySpacecraftGroups.add(key);
+			added.push(body.data.id);
+		} else if (resolvedZone) {
+			asteroidBucket(resolvedZone).addPlaceholder(body);
+			ctx.bodies.dirtyAsteroidZones.add(resolvedZone);
+			added.push(body.data.id);
+		} else {
+			ctx.bodies.addBodies([body]);
+		}
+		ctx.credits.recordOrbitSources([body]);
+	}
+
+	// Re-wrap the outer Maps so reactive observers see a new ref, then notify the
+	// promotion registry so the freshly-added bodies get a visual representation.
+	ctx.bodies.asteroidBodiesByZone = new Map(ctx.bodies.asteroidBodiesByZone);
+	ctx.bodies.spacecraftByParent = new Map(ctx.bodies.spacecraftByParent);
+	ctx.bodies.minorBodyVersion++;
+	if (added.length > 0) ctx.bodies.notifyBodiesAdded(added);
 }
