@@ -1,7 +1,8 @@
 import { Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
-import { applyOrientation } from '$lib/math/orientation';
+import { applyOrientation, applySouthTowardParent } from '$lib/math/orientation';
+import { isModelBearing } from '$lib/scene/objects/body/model';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -399,6 +400,11 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		}
 		if (body.orientation && bo.mesh) {
 			applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
+		} else if (isModelBearing(body)) {
+			// Sats/probes have no IAU data: face their nadir at the parent.
+			// Both sphere and overlay model carry a world-frame attitude.
+			if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
+			if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
 		}
 		// Rings inherit the planet's pole orientation (geometry pre-rotated so
 		// local +Y is the pole). Re-apply each frame so nutation/precession/spin

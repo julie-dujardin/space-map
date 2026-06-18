@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import type { Mesh } from 'three';
+import type { Mesh, Object3D } from 'three';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -130,4 +130,23 @@ export function applyOrientation(
 	nutPrec?: NutPrec
 ): void {
 	mesh.quaternion.copy(bodyQuaternion(orientation, currentJd, nutPrec));
+}
+
+const LOCAL_NORTH = new Vector3(0, 1, 0);
+const zenithDir = new Vector3();
+
+/**
+ * Fallback attitude for sats/probes lacking IAU data: aim local +Y (north)
+ * away from the parent, so the south pole faces it (nadir). Recomputed per
+ * frame to track the moving parent; no-op when body and parent coincide.
+ */
+export function applySouthTowardParent(
+	obj: Object3D,
+	bodyPos: readonly [number, number, number],
+	parentPos: readonly [number, number, number]
+): void {
+	zenithDir.set(bodyPos[0] - parentPos[0], bodyPos[1] - parentPos[1], bodyPos[2] - parentPos[2]);
+	if (zenithDir.lengthSq() < 1e-20) return;
+	zenithDir.normalize();
+	obj.quaternion.setFromUnitVectors(LOCAL_NORTH, zenithDir);
 }

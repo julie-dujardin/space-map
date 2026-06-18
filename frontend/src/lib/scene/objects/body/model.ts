@@ -24,7 +24,7 @@ import type { BodyObjects } from '../../types';
  *  confirm `model_name`). Probes carry their own catalog; spacecraft/debris
  *  belong to the same family. Planets and moons never enter this branch, so
  *  their sphere doesn't flicker during focus. */
-function isModelBearing(body: PositionedBody): boolean {
+export function isModelBearing(body: PositionedBody): boolean {
 	const t = body.data.objectType;
 	return (
 		t === ObjectType.SPACECRAFT ||
