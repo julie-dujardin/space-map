@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import * as m from '$lib/paraglide/messages.js';
-	import { archiveLabel } from '$lib/credits/archive-labels';
+	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { ObjectType, type OrbitalElements, type PositionedBody } from '$lib/types/objects';
 	import {
@@ -62,6 +63,16 @@
 		[OrbitalSource.SPICE]: m.source_spice_ephemeris_name,
 		[OrbitalSource.SBDB_MOON]: m.source_sbdb_name,
 		[OrbitalSource.SPICE_PROBE]: m.source_spice_ephemeris_name
+	};
+
+	// Archive ids feeding archiveUrl(); used when only the enum source is known.
+	const ORBIT_SOURCE_ARCHIVE: Partial<Record<OrbitalSource, string>> = {
+		[OrbitalSource.HORIZONS]: 'horizons',
+		[OrbitalSource.SBDB]: 'sbdb',
+		[OrbitalSource.CELESTRAK]: 'celestrak',
+		[OrbitalSource.SPICE]: 'naif',
+		[OrbitalSource.SBDB_MOON]: 'sbdb',
+		[OrbitalSource.SPICE_PROBE]: 'naif'
 	};
 
 	interface Props {
@@ -199,6 +210,13 @@
 		return label();
 	});
 
+	let dataSourceUrl = $derived.by(() => {
+		const archive = global?.ephemeris_source;
+		if (archive) return archiveUrl(archive);
+		const src = body?.data.orbitalSource;
+		return src != null ? archiveUrl(ORBIT_SOURCE_ARCHIVE[src]) : null;
+	});
+
 	// Mirrors the renderer's dispatch order at renderer.ts:computePosition —
 	// Chebyshev wins over SGP4 wins over Kepler. The detail panel's altitude /
 	// orbital speed / sub-point are still derived from osculating elements (Kepler)
@@ -286,11 +304,19 @@
 			tooltip={m.tooltip_surface_state()}
 		/>
 		{#if dataSourceLabel}
-			<Row
-				label={m.orbit_data_source()}
-				value={dataSourceLabel}
-				tooltip={m.tooltip_orbit_data_source()}
-			/>
+			<Row label={m.orbit_data_source()} tooltip={m.tooltip_orbit_data_source()}>
+				{#if dataSourceUrl}
+					<a
+						href={dataSourceUrl}
+						target="_blank"
+						rel="noopener"
+						class="inline-flex items-center gap-1 underline hover:text-foreground"
+						>{dataSourceLabel}<ExternalLinkIcon class="size-3 shrink-0" /></a
+					>
+				{:else}
+					{dataSourceLabel}
+				{/if}
+			</Row>
 		{/if}
 	</Section>
 {:else if hasContent}
@@ -500,11 +526,19 @@
 			<Row label={m.orbit_epoch()} value={epochValue} tooltip={m.tooltip_orbit_epoch()} />
 		{/if}
 		{#if dataSourceLabel}
-			<Row
-				label={m.orbit_data_source()}
-				value={dataSourceLabel}
-				tooltip={m.tooltip_orbit_data_source()}
-			/>
+			<Row label={m.orbit_data_source()} tooltip={m.tooltip_orbit_data_source()}>
+				{#if dataSourceUrl}
+					<a
+						href={dataSourceUrl}
+						target="_blank"
+						rel="noopener"
+						class="inline-flex items-center gap-1 underline hover:text-foreground"
+						>{dataSourceLabel}<ExternalLinkIcon class="size-3 shrink-0" /></a
+					>
+				{:else}
+					{dataSourceLabel}
+				{/if}
+			</Row>
 		{/if}
 		{#if propagationMethodLabel}
 			<Row
