@@ -938,6 +938,13 @@ interface GlobalObjectData {
   radii?: {                           // SPICE PCK triaxial radii (km, body-fixed X/Y/Z)
     a: number; b: number; c: number;
   };
+  pointing?: {                        // hand-edited per-spacecraft attitude (spacecraft-orientation.yaml)
+    // The frontend aims the focused model's `primary.axis` exactly at the
+    // `primary.target` direction, then rolls so `secondary.axis` points as
+    // close as possible at `secondary.target`. Absent → south-toward-parent.
+    primary:    { axis: "+x"|"-x"|"+y"|"-y"|"+z"|"-z"; target: "parent"|"sun"|"velocity" };
+    secondary?: { axis: "+x"|"-x"|"+y"|"-y"|"+z"|"-z"; target: "parent"|"sun"|"velocity" };
+  };
   gm?: number;                        // SPICE PCK gravitational parameter (km^3/s^2)
   orbit?: {
     epoch_jd: number; e: number; i: number;

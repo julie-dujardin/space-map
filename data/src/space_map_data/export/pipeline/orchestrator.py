@@ -77,6 +77,9 @@ from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.probes.attitude.orchestrator import (
     write_attitude,
 )
+from space_map_data.export.position.spacecraft_orientation import (
+    apply_orientation_config,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import (
     load_clouds_metadata,
@@ -1078,6 +1081,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.
         write_attitude(out_dir, agg.all_objects.global_data)
+        # Hand-edited per-spacecraft pointing config; injects `pointing` into
+        # matching object entries for the frontend's focused-model attitude.
+        apply_orientation_config(agg.all_objects.global_data)
 
         bundle_ns = write_object_bundles(
             out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
