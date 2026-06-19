@@ -1,8 +1,14 @@
 import { Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
-import { applyOrientation, applySouthTowardParent } from '$lib/math/orientation';
+import {
+	applyOrientation,
+	applyPointing,
+	applySouthTowardParent,
+	type PointingSpec
+} from '$lib/math/orientation';
 import { isModelBearing } from '$lib/scene/objects/body/model';
+import { SUN_ID } from '$lib/constants';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import { OrbitalSource } from '$lib/fetch/position/format';
@@ -32,6 +38,39 @@ import type { PositionDiagnostics } from './diagnostics';
  *  threaded and the buffer is consumed within one probe iteration, so reusing
  *  one allocation across all probes per frame is safe and avoids GC churn. */
 const newestPosScratch: [number, number, number] = [0, 0, 0];
+
+/** Last world position per body for `velocity`-target pointing. Only the focused
+ *  model carries a pointing spec, so this stays tiny. */
+const velCache = new Map<
+	string,
+	{ jd: number; pos: [number, number, number]; dir: [number, number, number] | null }
+>();
+
+function needsVelocity(spec: PointingSpec): boolean {
+	return spec.primary.target === 'velocity' || spec.secondary?.target === 'velocity';
+}
+
+/** Finite-difference world velocity direction; source-agnostic. Reuses the last
+ *  good direction while paused (dt = 0); undefined until two distinct-jd samples
+ *  exist. Sign-corrected so reverse playback still yields the prograde heading. */
+function estimateVelocity(
+	id: string,
+	jd: number,
+	pos: readonly [number, number, number]
+): [number, number, number] | undefined {
+	const prev = velCache.get(id);
+	let dir = prev?.dir ?? null;
+	if (prev && jd !== prev.jd) {
+		const s = Math.sign(jd - prev.jd);
+		const vx = (pos[0] - prev.pos[0]) * s;
+		const vy = (pos[1] - prev.pos[1]) * s;
+		const vz = (pos[2] - prev.pos[2]) * s;
+		const len = Math.hypot(vx, vy, vz);
+		if (len > 1e-12) dir = [vx / len, vy / len, vz / len];
+	}
+	velCache.set(id, { jd, pos: [pos[0], pos[1], pos[2]], dir });
+	return dir ?? undefined;
+}
 
 export interface UpdatePositionsParams {
 	jd: number;
@@ -401,10 +440,27 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		if (body.orientation && bo.mesh) {
 			applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
 		} else if (isModelBearing(body)) {
-			// Sats/probes have no IAU data: face their nadir at the parent.
-			// Both sphere and overlay model carry a world-frame attitude.
-			if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
-			if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
+			// Sats/probes have no IAU data. With a pointing spec (debug override
+			// wins over config, set on focus), aim per the spec; otherwise face
+			// their nadir at the parent. Both sphere and overlay model carry a
+			// world-frame attitude.
+			const spec = body.pointingOverride ?? body.pointing;
+			if (spec) {
+				const velocity = needsVelocity(spec)
+					? estimateVelocity(d.id, jd, body.position)
+					: undefined;
+				const pctx = {
+					bodyPos: body.position,
+					parentPos,
+					sunPos: positionMap.get(SUN_ID),
+					velocity
+				};
+				if (bo.mesh) applyPointing(bo.mesh, spec, pctx);
+				if (bo.model) applyPointing(bo.model, spec, pctx);
+			} else {
+				if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
+				if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
+			}
 		}
 		// Rings inherit the planet's pole orientation (geometry pre-rotated so
 		// local +Y is the pole). Re-apply each frame so nutation/precession/spin

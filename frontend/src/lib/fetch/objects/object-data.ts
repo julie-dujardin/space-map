@@ -2,6 +2,7 @@ import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
+import type { PointingSpec } from '$lib/math/orientation';
 
 // --- Global object data (non-localized) ---
 
@@ -145,6 +146,10 @@ export interface GlobalObjectData {
 		dec: number[];
 		pm: number[];
 	};
+	/** Hand-edited per-spacecraft pointing (spacecraft-orientation.yaml); the
+	 *  focused model aims `primary.axis` at `primary.target`, rolling toward the
+	 *  optional `secondary`. Absent → south-toward-parent default. */
+	pointing?: PointingSpec;
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis).
 	 *  When present, this is the shape the 3D scene renders — supersedes the
 	 *  Wikidata radius and SBDB diameter as the authoritative size. */

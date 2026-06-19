@@ -1,7 +1,7 @@
 import type { SatRec } from 'satellite.js';
 import { DEFAULT_FALLBACK_RADIUS_KM } from '$lib/constants';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import type { NutPrec, Orientation } from '$lib/math/orientation';
+import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 export interface OrbitalElements {
@@ -114,6 +114,15 @@ export interface PositionedBody {
 	orientation?: Orientation;
 	/** IAU nutation/precession sums (per-body coefficients + system-shared angles). */
 	nutPrec?: NutPrec;
+	/**
+	 * Per-spacecraft pointing spec (export `pointing`). Set on focus when the
+	 * model loads; drives the focused model's attitude instead of the default
+	 * south-toward-parent. Cleared on unfocus.
+	 */
+	pointing?: PointingSpec;
+	/** Debug-menu live override; takes precedence over `pointing` when set, and
+	 *  clearing it restores the config/default attitude. */
+	pointingOverride?: PointingSpec;
 }
 
 /**

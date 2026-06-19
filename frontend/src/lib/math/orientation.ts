@@ -150,3 +150,113 @@ export function applySouthTowardParent(
 	zenithDir.normalize();
 	obj.quaternion.setFromUnitVectors(LOCAL_NORTH, zenithDir);
 }
+
+export type PointingAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
+export type PointingTarget = 'parent' | 'sun' | 'velocity';
+
+/** Aim one body axis at one world target. */
+export interface PointingConstraint {
+	axis: PointingAxis;
+	target: PointingTarget;
+}
+
+/**
+ * Per-spacecraft pointing spec (export `pointing`, hand-edited in
+ * spacecraft-orientation.yaml). The `primary` body axis is aimed exactly at its
+ * target direction; the optional `secondary` axis rolls the model to point as
+ * close as possible at its target. Primary-only leaves roll free.
+ */
+export interface PointingSpec {
+	primary: PointingConstraint;
+	secondary?: PointingConstraint;
+}
+
+/** World-space inputs a pointing spec resolves its targets against. */
+export interface PointingContext {
+	bodyPos: readonly [number, number, number];
+	parentPos: readonly [number, number, number];
+	sunPos?: readonly [number, number, number];
+	/** World-space velocity (any magnitude); used by the `velocity` target. */
+	velocity?: readonly [number, number, number];
+}
+
+const AXIS_VECTORS: Record<PointingAxis, Vector3> = {
+	'+x': new Vector3(1, 0, 0),
+	'-x': new Vector3(-1, 0, 0),
+	'+y': new Vector3(0, 1, 0),
+	'-y': new Vector3(0, -1, 0),
+	'+z': new Vector3(0, 0, 1),
+	'-z': new Vector3(0, 0, -1)
+};
+
+const _pWorld = new Vector3();
+const _sWorld = new Vector3();
+const _e1b = new Vector3();
+const _e2b = new Vector3();
+const _e3b = new Vector3();
+const _e1w = new Vector3();
+const _e2w = new Vector3();
+const _e3w = new Vector3();
+const _mWorld = new Matrix4();
+const _mBodyInv = new Matrix4();
+
+/** Resolve a target to a unit world direction in `out`; false if unavailable. */
+function resolveTarget(target: PointingTarget, ctx: PointingContext, out: Vector3): boolean {
+	if (target === 'parent') {
+		out.set(
+			ctx.parentPos[0] - ctx.bodyPos[0],
+			ctx.parentPos[1] - ctx.bodyPos[1],
+			ctx.parentPos[2] - ctx.bodyPos[2]
+		);
+	} else if (target === 'sun') {
+		if (!ctx.sunPos) return false;
+		out.set(
+			ctx.sunPos[0] - ctx.bodyPos[0],
+			ctx.sunPos[1] - ctx.bodyPos[1],
+			ctx.sunPos[2] - ctx.bodyPos[2]
+		);
+	} else {
+		if (!ctx.velocity) return false;
+		out.set(ctx.velocity[0], ctx.velocity[1], ctx.velocity[2]);
+	}
+	if (out.lengthSq() < 1e-20) return false;
+	out.normalize();
+	return true;
+}
+
+/**
+ * Two-vector attitude: aim `spec.primary.axis` exactly at its target, then roll
+ * `spec.secondary.axis` as close as possible at its target. Degenerates to a
+ * single-vector aim (roll free) when there's no secondary, the secondary target
+ * is unavailable this frame, or the two directions are parallel. No-op when the
+ * primary target can't be resolved.
+ */
+export function applyPointing(obj: Object3D, spec: PointingSpec, ctx: PointingContext): void {
+	if (!resolveTarget(spec.primary.target, ctx, _pWorld)) return;
+	const primaryAxis = AXIS_VECTORS[spec.primary.axis];
+
+	const sec = spec.secondary;
+	if (!sec || !resolveTarget(sec.target, ctx, _sWorld)) {
+		obj.quaternion.setFromUnitVectors(primaryAxis, _pWorld);
+		return;
+	}
+
+	// Build matching orthonormal frames in body & world from (primary, secondary)
+	// via the TRIAD recipe; R = worldFrame · bodyFrameᵀ maps body axes → world.
+	_e3b.crossVectors(primaryAxis, AXIS_VECTORS[sec.axis]);
+	_e3w.crossVectors(_pWorld, _sWorld);
+	if (_e3b.lengthSq() < 1e-20 || _e3w.lengthSq() < 1e-20) {
+		obj.quaternion.setFromUnitVectors(primaryAxis, _pWorld);
+		return;
+	}
+	_e3b.normalize();
+	_e3w.normalize();
+	_e1b.copy(primaryAxis);
+	_e1w.copy(_pWorld);
+	_e2b.crossVectors(_e3b, _e1b);
+	_e2w.crossVectors(_e3w, _e1w);
+	_mWorld.makeBasis(_e1w, _e2w, _e3w);
+	_mBodyInv.makeBasis(_e1b, _e2b, _e3b).transpose();
+	_mWorld.multiply(_mBodyInv);
+	obj.quaternion.setFromRotationMatrix(_mWorld);
+}

@@ -90,6 +90,9 @@ export async function loadBodyModel(
 	if (modelBearing && bo.mesh) bo.mesh.visible = false;
 	try {
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
+		// Hand-edited pointing spec drives the focused model's attitude; the
+		// per-frame loop reads it off the body (default: south-toward-parent).
+		bo.body.pointing = detail.global?.pointing;
 		const slug = detail.global?.model_name;
 		if (!slug) {
 			// Model-bearing → cuboid placeholder; natural bodies restore their sphere.
@@ -166,6 +169,7 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	disposeGltf(root);
 	bo.model = null;
 	bo.modelName = undefined;
+	bo.body.pointing = undefined;
 	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 }
 

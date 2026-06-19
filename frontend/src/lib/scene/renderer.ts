@@ -1,13 +1,19 @@
 import {
 	AmbientLight,
+	ArrowHelper,
+	CanvasTexture,
 	DirectionalLight as DirectionalLightClass,
 	type DirectionalLight,
+	Group,
+	type Material,
 	Mesh,
 	PerspectiveCamera as PerspectiveCameraClass,
 	type PerspectiveCamera,
 	PointLight,
 	Scene as SceneClass,
 	type Scene,
+	Sprite,
+	SpriteMaterial,
 	TextureLoader,
 	Vector3,
 	type WebGLRenderer
@@ -31,7 +37,8 @@ import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { applyOrientation } from '$lib/math/orientation';
-import { loadBodyModel, makeModelEnvMap } from './objects/body/model';
+import { isModelBearing, loadBodyModel, makeModelEnvMap } from './objects/body/model';
+import type { PointingSpec } from '$lib/math/orientation';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
 import { makeCircleTexture } from './objects/pointcloud';
@@ -113,6 +120,9 @@ export class SceneRenderer {
 	private modelScene!: Scene;
 	private modelCamera!: PerspectiveCamera;
 	private modelLight!: DirectionalLight;
+	/** Debug ±XYZ axis arrows over the focused model; built lazily in the overlay. */
+	private showPointingAxes = false;
+	private pointingAxes: Group | null = null;
 
 	private cameraUp!: CameraUpController;
 	private skyboxAdjuster!: SkyboxAdjuster;
@@ -624,6 +634,24 @@ export class SceneRenderer {
 		this.modelLight.intensity = MODEL_LIGHT_BASE_INTENSITY * factor;
 		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY * factor;
 
+		// Debug axis arrows share the model's world attitude (model sits at the
+		// overlay origin), drawn over it so the pointing config reads clearly.
+		if (this.showPointingAxes) {
+			if (!this.pointingAxes) {
+				this.pointingAxes = this.buildPointingAxes();
+				this.modelScene.add(this.pointingAxes);
+			}
+			this.pointingAxes.quaternion.copy(bo.model.quaternion);
+			// Arrows are built at unit length; scale them to a constant angular size
+			// (~0.45·overlayDist keeps tips inside the 60° overlay frame) so they stay
+			// on-screen when the model is zoomed in enough to overflow, capped at 0.8
+			// so they stay glued to the model when zoomed out.
+			this.pointingAxes.scale.setScalar(Math.min(0.8, 0.45 * overlayDist));
+			this.pointingAxes.visible = true;
+		} else if (this.pointingAxes) {
+			this.pointingAxes.visible = false;
+		}
+
 		this.renderer.autoClear = false;
 		this.renderer.clearDepth();
 		this.renderer.render(this.modelScene, this.modelCamera);
@@ -744,6 +772,77 @@ export class SceneRenderer {
 
 	setNorthReference(id: string | null): void {
 		this.cameraUp.setNorthReference(id);
+	}
+
+	/** Debug: the focused body's natural pointing (config or south-default,
+	 *  ignoring any live override) and whether the per-frame loop applies it
+	 *  (model-bearing). `base` is always populated so the panel can label its
+	 *  "default (…)" options with the current values. */
+	getFocusedPointing(): { supported: boolean; base: PointingSpec } | null {
+		const body = this.focusController.current;
+		if (!body) return null;
+		const base = body.pointing ?? { primary: { axis: '-y', target: 'parent' } };
+		return { supported: isModelBearing(body), base };
+	}
+
+	/** Debug: override the focused body's pointing live (null clears it, restoring
+	 *  the config/default). Re-focusing reloads the config value. */
+	setFocusedPointing(spec: PointingSpec | null): void {
+		const body = this.focusController.current;
+		if (body) body.pointingOverride = spec ?? undefined;
+	}
+
+	/** Debug: overlay ±XYZ body-axis arrows on the focused model (x=red,
+	 *  y=green, z=blue; negatives dimmed) so the pointing config is legible. */
+	setPointingAxesVisible(visible: boolean): void {
+		this.showPointingAxes = visible;
+	}
+
+	private buildPointingAxes(): Group {
+		const g = new Group();
+		const O = new Vector3(0, 0, 0);
+		// Built at unit length; renderModelOverlay scales the group per-frame to a
+		// constant angular size so the arrows stay inside the overlay frame.
+		const add = (dir: Vector3, color: number, label: string, labelColor: string) => {
+			const arrow = new ArrowHelper(dir, O, 1, color, 0.22, 0.12);
+			// Draw over the model so the arrows never hide inside its geometry.
+			(arrow.line.material as Material).depthTest = false;
+			(arrow.cone.material as Material).depthTest = false;
+			arrow.renderOrder = 999;
+			g.add(arrow);
+			const tag = this.makeAxisLabel(label, labelColor);
+			tag.position.copy(dir).multiplyScalar(1.12);
+			g.add(tag);
+		};
+		add(new Vector3(1, 0, 0), 0xff4444, '+X', '#ff9999');
+		add(new Vector3(-1, 0, 0), 0x884444, '-X', '#cc7777');
+		add(new Vector3(0, 1, 0), 0x44ff44, '+Y', '#99ff99');
+		add(new Vector3(0, -1, 0), 0x448844, '-Y', '#77cc77');
+		add(new Vector3(0, 0, 1), 0x4488ff, '+Z', '#99bbff');
+		add(new Vector3(0, 0, -1), 0x445588, '-Z', '#7799cc');
+		return g;
+	}
+
+	/** Camera-facing text sprite for an axis arrow tip, drawn over the model. */
+	private makeAxisLabel(text: string, color: string): Sprite {
+		const size = 128;
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = size;
+		const cx = canvas.getContext('2d')!;
+		cx.font = 'bold 72px sans-serif';
+		cx.textAlign = 'center';
+		cx.textBaseline = 'middle';
+		cx.fillStyle = color;
+		cx.fillText(text, size / 2, size / 2);
+		const mat = new SpriteMaterial({
+			map: new CanvasTexture(canvas),
+			depthTest: false,
+			transparent: true
+		});
+		const sprite = new Sprite(mat);
+		sprite.scale.setScalar(0.175);
+		sprite.renderOrder = 1000;
+		return sprite;
 	}
 
 	getSkyboxAdjust(): { rxDeg: number; ryDeg: number; rzDeg: number } {

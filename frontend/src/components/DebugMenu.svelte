@@ -6,6 +6,7 @@
 	import type { SimClock } from '$lib/scene/state/clock.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import type { PointingAxis, PointingSpec, PointingTarget } from '$lib/math/orientation';
 
 	interface Props {
 		getRenderer: () => SceneRenderer | undefined;
@@ -30,6 +31,84 @@
 	// performance.memory is a non-standard Chromium-only field; surface it
 	// when available, hide the row when not.
 	let jsHeapMB = $state<number | null>(null);
+
+	// Live pointing-spec override for the focused spacecraft model. Each dropdown
+	// defaults to DEFAULT ("keep the body's current value"); all-default = no
+	// override. NONE (secondary only) drops the secondary constraint.
+	const DEFAULT = 'default';
+	const NONE = 'none';
+	const POINTING_AXES: PointingAxis[] = ['+x', '-x', '+y', '-y', '+z', '-z'];
+	const POINTING_TARGETS: PointingTarget[] = ['parent', 'sun', 'velocity'];
+	let pointingSupported = $state(false);
+	let pointingFocusedId = $state<string | undefined>(undefined);
+	// Master toggle: shows the dropdowns and the on-model axis vectors.
+	let overrideMode = $state(false);
+	// The body's natural attitude (config or south-default) — labels the "default
+	// (…)" options and fills any field left on DEFAULT.
+	let base = $state<PointingSpec>({ primary: { axis: '-y', target: 'parent' } });
+	let primaryAxisSel = $state<string>(DEFAULT);
+	let primaryTargetSel = $state<string>(DEFAULT);
+	let secondaryAxisSel = $state<string>(DEFAULT);
+	let secondaryTargetSel = $state<string>(DEFAULT);
+
+	function resetSelections(): void {
+		primaryAxisSel = DEFAULT;
+		primaryTargetSel = DEFAULT;
+		secondaryAxisSel = DEFAULT;
+		secondaryTargetSel = DEFAULT;
+	}
+
+	function setOverrideMode(on: boolean): void {
+		overrideMode = on;
+		if (!on) {
+			resetSelections();
+			getRenderer()?.setFocusedPointing(null);
+		}
+	}
+
+	function applyPointing(): void {
+		const r = getRenderer();
+		if (!r) return;
+		// No field changed → no override; the body keeps its config/default.
+		if (
+			primaryAxisSel === DEFAULT &&
+			primaryTargetSel === DEFAULT &&
+			secondaryAxisSel === DEFAULT &&
+			secondaryTargetSel === DEFAULT
+		) {
+			r.setFocusedPointing(null);
+			return;
+		}
+		const spec: PointingSpec = {
+			primary: {
+				axis: (primaryAxisSel === DEFAULT ? base.primary.axis : primaryAxisSel) as PointingAxis,
+				target: (primaryTargetSel === DEFAULT
+					? base.primary.target
+					: primaryTargetSel) as PointingTarget
+			}
+		};
+		if (secondaryAxisSel !== NONE && secondaryTargetSel !== NONE) {
+			const axis = (secondaryAxisSel === DEFAULT ? base.secondary?.axis : secondaryAxisSel) as
+				| PointingAxis
+				| undefined;
+			const target = (
+				secondaryTargetSel === DEFAULT ? base.secondary?.target : secondaryTargetSel
+			) as PointingTarget | undefined;
+			if (axis && target) spec.secondary = { axis, target };
+		}
+		r.setFocusedPointing(spec);
+	}
+
+	// Show the model's ±XYZ axis vectors only while the override toggle is on;
+	// clear when toggled off or when the debug menu unmounts. Read both signals
+	// into locals first so `&&` short-circuiting never drops one as a dependency.
+	$effect(() => {
+		const supported = pointingSupported;
+		const on = overrideMode;
+		const r = getRenderer();
+		r?.setPointingAxesVisible(supported && on);
+		return () => r?.setPointingAxesVisible(false);
+	});
 
 	function fmtInt(n: number): string {
 		return n.toLocaleString();
@@ -56,6 +135,15 @@
 			// @ts-expect-error — non-standard Chromium API
 			const mem = performance.memory;
 			if (mem?.usedJSHeapSize != null) jsHeapMB = mem.usedJSHeapSize / 1_048_576;
+
+			const fp = r.getFocusedPointing();
+			pointingSupported = !!fp?.supported;
+			if (fp) base = fp.base;
+			// New focus → drop any in-progress override selections back to default.
+			if (stats.focusedId !== pointingFocusedId) {
+				pointingFocusedId = stats.focusedId;
+				resetSelections();
+			}
 		};
 		raf = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(raf);
@@ -67,7 +155,7 @@
 </script>
 
 <div
-	class="absolute top-3 start-3 z-10 pointer-events-auto
+	class="absolute top-16 start-4 z-10 pointer-events-auto
 		rounded-md bg-background/80 backdrop-blur-sm border border-border/60
 		px-3 py-2 text-[11px] font-mono leading-tight text-foreground/90
 		shadow-md max-w-[260px] select-text"
@@ -175,4 +263,77 @@
 			<span class="text-muted-foreground">0 = ∞, reload to apply</span>
 		</label>
 	</div>
+
+	{#if pointingSupported}
+		<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
+			<label class="flex items-center gap-2 cursor-pointer">
+				<input
+					type="checkbox"
+					checked={overrideMode}
+					onchange={(e) => setOverrideMode(e.currentTarget.checked)}
+				/>
+				<span>Attitude override</span>
+			</label>
+			{#if overrideMode}
+				<div>
+					<div class="text-muted-foreground">primary</div>
+					<div class="flex items-center gap-1">
+						<select
+							class="flex-1 min-w-0 px-1 py-0.5 rounded bg-background border border-border/60"
+							value={primaryAxisSel}
+							onchange={(e) => {
+								primaryAxisSel = e.currentTarget.value;
+								applyPointing();
+							}}
+						>
+							<option value={DEFAULT}>dft ({base.primary.axis})</option>
+							{#each POINTING_AXES as axis (axis)}<option value={axis}>{axis}</option>{/each}
+						</select>
+						<span class="text-muted-foreground">→</span>
+						<select
+							class="flex-1 min-w-0 px-1 py-0.5 rounded bg-background border border-border/60"
+							value={primaryTargetSel}
+							onchange={(e) => {
+								primaryTargetSel = e.currentTarget.value;
+								applyPointing();
+							}}
+						>
+							<option value={DEFAULT}>dft ({base.primary.target})</option>
+							{#each POINTING_TARGETS as t (t)}<option value={t}>{t}</option>{/each}
+						</select>
+					</div>
+				</div>
+				<div>
+					<div class="text-muted-foreground">secondary</div>
+					<div class="flex items-center gap-1">
+						<select
+							class="flex-1 min-w-0 px-1 py-0.5 rounded bg-background border border-border/60"
+							value={secondaryAxisSel}
+							onchange={(e) => {
+								secondaryAxisSel = e.currentTarget.value;
+								applyPointing();
+							}}
+						>
+							<option value={DEFAULT}>dft ({base.secondary?.axis ?? NONE})</option>
+							<option value={NONE}>none</option>
+							{#each POINTING_AXES as axis (axis)}<option value={axis}>{axis}</option>{/each}
+						</select>
+						<span class="text-muted-foreground">→</span>
+						<select
+							class="flex-1 min-w-0 px-1 py-0.5 rounded bg-background border border-border/60"
+							value={secondaryTargetSel}
+							onchange={(e) => {
+								secondaryTargetSel = e.currentTarget.value;
+								applyPointing();
+							}}
+						>
+							<option value={DEFAULT}>dft ({base.secondary?.target ?? NONE})</option>
+							<option value={NONE}>none</option>
+							{#each POINTING_TARGETS as t (t)}<option value={t}>{t}</option>{/each}
+						</select>
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
 </div>
