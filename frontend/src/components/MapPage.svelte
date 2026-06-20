@@ -41,19 +41,23 @@
 	const appState = createAppState();
 	setContext('appState', appState);
 
+	// Snap the clock into `id`'s coverage window when `now` falls outside it —
+	// midpoint, not the boundary, which has no sample and reads as out-of-range.
+	// No-op for objects without a coverage window (planets, etc.).
+	async function snapClockIntoCoverage(id: string) {
+		const cov = await coverageWindowFor(id);
+		const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
+		if (snap === null) return;
+		const bounded = cov!.startJd !== undefined && cov!.endJd !== undefined;
+		clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
+	}
+
 	// Generic focus for the search bar, featured chips, and in-drawer links:
 	// snap into coverage, stream the body if absent, then frame it.
 	const focusObject: FocusObject = (id, name, opts) => {
 		void (async () => {
 			const type = urlTypeFromId(id);
-			// Snap into the coverage window if `now` is outside it — midpoint, not
-			// the boundary, which has no sample and reads as out-of-range.
-			const cov = await coverageWindowFor(id);
-			const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
-			if (snap !== null) {
-				const bounded = cov?.startJd !== undefined && cov.endJd !== undefined;
-				clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
-			}
+			await snapClockIntoCoverage(id);
 
 			// Stream an out-of-view target in place (probe/sat) — no page reload.
 			if (!ctx.getBody(id)) await ctx.ensureBody(id, jdToDate(clock.jd));
@@ -210,7 +214,11 @@
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
-		await ctx.load(appState.view.date, initialId);
+		// A deep link with an `?at=` outside the target's coverage (or none, when
+		// the object isn't live now) would otherwise just fail to resolve. Snap the
+		// clock into range first — same path search takes — then load at that date.
+		await snapClockIntoCoverage(initialId);
+		await ctx.load(jdToDate(clock.jd), initialId);
 		if (ctx.getBody(initialId)) {
 			// A late-arriving target lands with the camera parked on its parent
 			// (the renderer's initial fallback). Snap straight onto the real target
