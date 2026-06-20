@@ -3,13 +3,15 @@
 ```mermaid
 flowchart LR
   user((User browser))
-  celestrak((CelesTrak))
+  sources((CelesTrak - Space-Track - clouds.matteason.co.uk))
+  cftunnel((Cloudflare Tunnel<br/>search.spacemap.co))
 
   subgraph repo["GitHub: julie-dujardin/space-map"]
     direction TB
     src_fe[frontend/]
     src_data[data/]
     src_infra[infrastructure/data/]
+    src_search[infrastructure/search/]
   end
 
   subgraph ci["GitHub Actions"]
@@ -20,22 +22,30 @@ flowchart LR
 
   subgraph hosts["Public artifact hosts"]
     direction TB
-    cfpagesfront[("Cloudflare Pages - space-map")]
-    cfpagesstatic[("Cloudflare Pages - space-map-static")]
+    cfpagesfront[("Cloudflare Pages<br/>spacemap.co")]
+    cfpagesstatic[("Cloudflare Pages<br/>static.spacemap.co")]
     ghcr[("ghcr.io/.../space-map-data")]
     ghrel[("GitHub Releases")]
   end
 
-  subgraph vm["Debian VM"]
+  subgraph vm["eu-0<br/>Containers in Debian VM"]
     direction TB
     portainer[Portainer]
     container["space-map-data container<br/>(daily scheduler)"]
-    grafana[Grafana]
+    grafana[Loki / Prometheus / Grafana<br/>Monitors stdout & metrics]
+
+    subgraph search["search stack"]
+      direction TB
+      caddy["Caddy<br/>(:9750 search-only proxy)"]
+      meili["Meilisearch<br/>(:9751 admin, master-key)"]
+    end
   end
 
   src_fe --> wf_fe
   src_data --> wf_data
   src_infra --> wf_data
+  src_infra -.->|deploy| portainer
+  src_search -.->|deploy| portainer
 
   wf_fe -->|"wrangler pages deploy"| cfpagesfront
   wf_data -->|"docker push :version :sha :latest"| ghcr
@@ -43,13 +53,20 @@ flowchart LR
 
   ghcr -.->|pull| portainer
   portainer --> container
+  portainer --> search
 
-  container -->|stdout| grafana
-  container -->|"HTTPS daily 12:00 UTC"| celestrak
+  container -.->|regular fetch| sources
   container -.->|TODO| cfpagesstatic
+
+  container -.->|"space-map-search push<br/>:9751"| meili
+  caddy --> meili
 
   user --> cfpagesfront
   user --> cfpagesstatic
+  user -->|"search (using search-only key)"| cftunnel
+  cftunnel -->|":9750"| caddy
 ```
 
-- Image tags: `latest`, the version from [`data/pyproject.toml`](../data/pyproject.toml), and the full commit SHA. A matching `vX.Y.Z` GitHub Release is created on first appearance of each version.
+## EU-0
+
+See [julie-dujardin/homelab](https://github.com/julie-dujardin/homelab) for sources
