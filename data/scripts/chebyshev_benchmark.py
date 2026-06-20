@@ -32,7 +32,6 @@ import spiceypy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
-from space_map_data.constants.providers import PROVIDERS  # noqa: E402
 from space_map_data.export.position.format import (  # noqa: E402
     BODY_HEADER_SIZE,
     CHEBYSHEV_FLAG_FLOAT64_COEFFS,
@@ -41,14 +40,14 @@ from space_map_data.export.position.format import (  # noqa: E402
     MAGIC,
     VERSION,
 )
-from space_map_data.utils.paths import DOWNLOAD_DIR, EXPORT_DIR  # noqa: E402
+from space_map_data.utils.paths import EXPORT_DIR, SOURCES_POSITION_DIR  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 _S_PER_DAY = 86400.0
 _J2000_JD = 2451545.0
-_KERNELS_ROOT = DOWNLOAD_DIR / PROVIDERS.SPICE / "kernels"
+_KERNELS_ROOT = SOURCES_POSITION_DIR / "spice-kernels"
 
 
 def _position_root(export_root: Path) -> Path:
@@ -337,6 +336,29 @@ def main() -> int:
             }
         )
 
+    # Pooled-across-zones total row. Percentiles re-computed on the combined
+    # error/size lists rather than averaged from per-zone numbers, so a small
+    # handful of huge errors in one zone don't get hidden by mean-of-means
+    # dilution. Omits `zone`/`chunk_days`/`coeffs` (rendered as blanks) so
+    # every entry is numeric.
+    if zone_rows:
+        all_errs = sorted(e for errs in per_zone_errs.values() for e in errs)
+        all_sizes = sorted(s for sizes in per_zone_files.values() for s in sizes)
+        total_row: dict[str, float] | None = {
+            "files": sum(r["files"] for r in zone_rows),
+            "bodies": sum(r["bodies"] for r in zone_rows),
+            "segments": sum(r["segments"] for r in zone_rows),
+            "med": pct(all_errs, 0.5),
+            "p95": pct(all_errs, 0.95),
+            "max": all_errs[-1] if all_errs else 0.0,
+            "med_kb": pct(all_sizes, 0.5) / 1024 if all_sizes else 0,
+            "p95_kb": pct(all_sizes, 0.95) / 1024 if all_sizes else 0,
+            "max_kb": all_sizes[-1] / 1024 if all_sizes else 0,
+            "sum_mb": sum(r["sum_mb"] for r in zone_rows),
+        }
+    else:
+        total_row = None
+
     # ── Per-body aggregates ──────────────────────────────────────────────
     # Layout: (naif_id, parent_id, max_err, p95_err, median_err, n_samples, n_segments).
     by_zone_bodies: dict[str, list[tuple[int, int, float, float, float, int, int]]] = (
@@ -373,9 +395,17 @@ def main() -> int:
             f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
             f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M"
         )
+    if total_row is not None and len(zone_rows) > 1:
+        r = total_row
+        print(
+            f"{'total':<22} {'':>5} "
+            f"{'':>4} {int(r['files']):>5} {int(r['bodies']):>6} {int(r['segments']):>8}  "
+            f"{_format_err(r['med']):>9} {_format_err(r['p95']):>9} {_format_err(r['max']):>9}  "
+            f"{r['med_kb']:>6.1f}K {r['p95_kb']:>6.1f}K {r['max_kb']:>6.1f}K {r['sum_mb']:>6.1f}M"
+        )
 
     if args.output:
-        _write_markdown(args.output, zone_rows, by_zone_bodies, body_labels)
+        _write_markdown(args.output, zone_rows, total_row, by_zone_bodies, body_labels)
         logger.info("Wrote %s", args.output)
     return 0
 
@@ -383,6 +413,7 @@ def main() -> int:
 def _write_markdown(
     path: Path,
     zone_rows: list[dict],
+    total_row: dict | None,
     by_zone_bodies: dict[str, list[tuple[int, int, float, float, float, int, int]]],
     body_labels: dict[int, str],
 ) -> None:
@@ -431,6 +462,14 @@ def _write_markdown(
             f"{r['files']} | {r['bodies']} | {r['segments']} | "
             f"{_format_err(r['med'])} | {_format_err(r['p95'])} | {_format_err(r['max'])} | "
             f"{r['med_kb']:.1f} | {r['p95_kb']:.1f} | {r['max_kb']:.1f} | {r['sum_mb']:.1f} |"
+        )
+    if total_row is not None and len(zone_rows) > 1:
+        r = total_row
+        lines.append(
+            f"| **total** | | | "
+            f"**{int(r['files'])}** | **{int(r['bodies'])}** | **{int(r['segments'])}** | "
+            f"**{_format_err(r['med'])}** | **{_format_err(r['p95'])}** | **{_format_err(r['max'])}** | "
+            f"**{r['med_kb']:.1f}** | **{r['p95_kb']:.1f}** | **{r['max_kb']:.1f}** | **{r['sum_mb']:.1f}** |"
         )
     lines.append("")
 
