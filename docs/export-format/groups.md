@@ -1,0 +1,239 @@
+# Group detail files
+
+Aggregation entities behind `/g/<slug>` pages (constellations, organizations,
+launch sites, countries, orbit classes, and small-body flags). Every group
+type's slug carries a type prefix (`const-`, `org-`, `site-`, `bus-`,
+`country-`, `class-`, `flag-`, `cat-`, `comet-family-`) so slugs never collide
+across types and a slug's type is recognizable on sight. An organization
+(`org-<slug>`) is the merged company/agency entity that subsumes the former
+operator and manufacturer roles; its roles are surfaced as tags rather than
+separate pages. Group bundles use the **same hash-bucketing scheme as object
+bundles** (sha256 first-4-bytes BE, mod N) so the frontend reuses
+`hashBucket` for slug → bundle resolution.
+
+Bucket counts ship in `metadata.json` under `group_bundles` as
+`{ global: N, <lang>: N, ... }`. Target bundle sizes: `K_global = 1000`,
+`K_localized = 600`. Source: `data/src/space_map_data/export/groups/`.
+
+## `groups/__index__.json`
+
+Small, **ungzipped** map written once. Loaded eagerly to validate
+`/g/<slug>` URLs and render group listings without a bundle fetch:
+
+```typescript
+interface GroupIndexEntry {
+  type: GroupType;            // "constellation" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission"
+  applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category"
+  n: number;                  // member count
+}
+// File body: Record<slug, GroupIndexEntry>
+```
+
+## Global (`groups/__global__/{bucket}.json.gz`)
+
+Written for every group. `bucket = sha256(slug)[:4] % N_global`. Each
+bundle is a JSON object `{ "<slug>": GlobalGroupData, ... }`.
+
+A `NotableEntry` is a denormalized record for the detail-page strip + list,
+shared by group `notable_members` and object `notable_moons`:
+
+```typescript
+interface NotableEntry {
+  name: string;                     // English Wikidata label (matching object bundles), or the DB fallback name
+  id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
+  group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
+  diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
+  first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
+  thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
+}
+```
+
+```typescript
+interface GlobalGroupData {
+  slug: string;
+  type: GroupType;
+  applies_to: GroupCategory;
+  member_count: number;
+  // IAU-named members; present (when > 0) on asteroid orbit_class groups and
+  // the Asteroids category — asteroids are only ~1.7 % named. Comets are
+  // omitted: they all carry a designation, so named/total is meaningless.
+  named_count?: number;
+  wikidata_qid?: string;
+  url?: string;                     // Fallback external URL when no Wikidata QID
+  website?: string;                 // Wikidata P856
+  categories?: SatelliteCategory[]; // Constellation-only; top-level use cases (communications, navigation, ...)
+  roles?: ("operator" | "manufacturer")[]; // Organization-only; role tags shown as header badges
+
+  // Earth-sat groups (constellation / organization / launch_site / country).
+  // Computed from SATCAT; absent on small-body groups. Also present on the
+  // Satellites category, summed over the primary shape classes (LEO/MEO/...).
+  launch_histogram?: Record<string, number>;  // year string → count, sorted ascending
+  first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
+  active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
+  decayed_count?: number;                     // Members with a SATCAT decay_date
+
+  // Small-body groups (orbit_class / small_body_flag).
+  // Computed from SBDB.first_obs (YYYY-MM-DD or partial YYYY).
+  // Rows lacking a parseable year are excluded from the histogram but
+  // still count in member_count. NEO/PHA flags overlap with the orbit
+  // class an object belongs to, so the same row contributes to multiple
+  // small-body histograms. Also present on the Asteroids and Comets
+  // categories, summed over their constituent orbit classes (flags excluded).
+  discovery_histogram?: Record<string, number>;  // year string → count, sorted ascending
+
+  // Member with the largest SBDB.diameter; absent when no member has a
+  // measured diameter. Present on orbit_class groups and on flag-neo/flag-pha.
+  largest_body?: {
+    name: string;        // SBDB full_name (fallback: name, pdes, spkid)
+    diameter_km: number; // equivalent-sphere diameter
+    primary_type: "spkid";
+    primary_id: string;  // SBDB.spkid; route /o/spkid-<id>
+  };
+
+  // PHA member count for orbit_class groups; absent when 0 and on flag-pha
+  // itself (self-link suppressed). NEO is intentionally not shipped — by
+  // definition it's 100 % on IEO/ATE/APO/AMO and 0 % on every other class.
+  pha?: { n: number; primary_type: "group"; primary_id: "flag-pha" };
+
+  // Top 20 members picked at export time, ordered by
+  // (image_available, sitelinks_count, diameter desc, H asc, spkid).
+  // Present on orbit_class groups and flag-neo/flag-pha. Denormalized so
+  // the strip + members list render without per-object bundle fetches.
+  // Names are the English Wikidata label (matching object bundles), with
+  // per-language overrides in LocalizedGroupData.notable_member_names.
+  // Shares the NotableEntry shape with GlobalObjectData.notable_moons.
+  // On a `split_comet` group (slug `comet-family-<pdes>`) these are the
+  // family's fragments — the parentless counterpart to the `fragments` list a
+  // catalogued parent comet carries on its own object page. On a `mission`
+  // group (slug `mission-<slug>`) these are the mission's craft, primary first.
+  notable_members?: NotableEntry[];
+
+  // `mission` groups only — focus redirect to the primary probe (not a filter).
+  primary?: { primary_type: "object"; primary_id: string };  // "probe-<id>"
+
+  inception?: string;               // Wikidata P571 — programme/operator inception (ISO date)
+  dissolved?: string;               // Wikidata P576 — programme dissolution (ISO date)
+  images?: ObjectImage[];           // Same pipeline / layout as GlobalObjectData.images
+}
+```
+
+## `groups/__orbit_samples__.json.gz`
+
+Shared sample set for the orbit-class scatter plot shown on small-body
+group pages. Fetched once and cached. Population per orbit class is read
+from `__index__.json` (the `n` field) — counts are not duplicated here.
+
+Allocation is sqrt-weighted by class population with a per-class floor of
+`5` (or the class's population, whichever is smaller). No upper cap, so
+MBA naturally dominates the chart. Target total ≈ 1000; actual count
+typically lands in the 1000–1100 range. Source:
+`build_orbit_class_samples` in
+`data/src/space_map_data/export/groups/small_body.py`.
+
+```typescript
+interface OrbitClassSample {
+  slug: string;        // class-<OrbitClass.name>, e.g. "class-Main-belt"
+  name: string;        // SBDB full_name → name → pdes fallback
+  a: number | null;    // Semi-major axis [AU]; null for parabolic (e = 1) comets
+  e: number;           // Eccentricity
+  q: number;           // Perihelion distance [AU]
+  i: number | null;    // Inclination to ecliptic [deg]
+  neo: boolean;
+  pha: boolean;
+}
+interface OrbitSamplesFile {
+  samples: OrbitClassSample[];
+}
+```
+
+## `groups/__sat_orbit_samples__.json.gz`
+
+Earth-sat scatter samples. Same role as `__orbit_samples__.json.gz` but for
+the 17-zone Earth orbit-class chart (`class-LEO` … `class-EQU`). Sampled
+per shape class (one per sat: VLEO/LEO/MEO/HEO/GSO/GEO/IGSO/GRA/MOL/TUN/
+GTO/CIS/VHEO, most specific wins) with sqrt-weighted allocation and a
+per-class floor; total ≈ 1000. Each dot also carries its inclination band
+(SSO/Polar/Retrograde/Equatorial, low orbits only) via `classes` so band
+zones light up the same dots when focused. Source:
+`build_earth_orbit_classes` in
+`data/src/space_map_data/export/groups/earth_sat.py`.
+
+Source data:
+- Perigee/apogee (km altitude above Earth surface) from CelesTrak SATCAT
+  (`satcat.perigee`, `satcat.apogee`).
+- Inclination from the latest CelesTrak GP snapshot on disk
+  (`gp-active.csv` + `groups/*.csv`); ~45 % of currently-active SATCAT
+  rows have no GP entry and therefore no inclination — those park in the
+  apogee/perigee-driven fallbacks (GSO/GTO/HEO instead of GEO/IGSO/MOL/
+  TUN) and carry no inclination band. Space-Track ingest is planned to
+  close that gap.
+- Decayed sats (`decay_date` set) and non-Earth-centred orbits
+  (`orbit_center != EARTH`) are excluded.
+
+```typescript
+interface EarthOrbitSample {
+  slug: string;                  // Shape class slug, e.g. "class-LEO"
+  name: string;                  // SATCAT OBJECT_NAME → Object.name fallback
+  perigee_km: number;            // km above Earth surface
+  apogee_km: number;             // km above Earth surface
+  inclination_deg: number | null; // deg; null when no GP row
+  classes: string[];             // Shape class + optional inclination band
+}
+interface EarthOrbitSamplesFile {
+  samples: EarthOrbitSample[];
+}
+```
+
+## Earth-sat orbit-class groups (`class-LEO`, `class-SSO`, …)
+
+The 17 Earth orbit zones from
+`data/src/space_map_data/constants/earth_sats/orbit_class.py` ship as
+`GroupType.EARTH_ORBIT_CLASS` groups with bundles, membership entries in
+`membership/earth.json.gz`, and bucket pages under `groups/__global__/`
+and `groups/{lang}/` — the same shape as constellation/organization/etc.
+groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
+`active_count`, plus a localized `constellations` cross-link table
+(no `launch_sites` breakdown). An object holds exactly one shape class plus at most
+one inclination band (e.g. VLEO + SSO) — membership rules in
+`classify_earth_orbit`.
+
+## Localized (`groups/{lang}/{bucket}.json.gz`)
+
+Per-language bundles. `bucket = sha256(slug)[:4] % N_{lang}` where
+`N_{lang}` is that language's count in `metadata.group_bundles`. A group
+appears in a language only when it has Wikidata/Wikipedia data for that
+language. On a 404 the frontend gives up — there is no English fallback
+tier.
+
+```typescript
+interface LocalizedGroupData {
+  name?: string;                      // Localized Wikidata label. Categories use a hand-set plural; orbit_class groups omit it (frontend uses `orbit_class_<NAME>` i18n keys, keeping IMB/MBA/OMB distinct).
+  description?: string;
+  wikipedia?: { extract?: string; description?: string; url?: string };
+  operators?: EntityRef[];            // Constellation operators (constants, not Wikidata P137); link to /g/org-<slug>
+  manufacturers?: EntityRef[];        // Constellation hardware primes; on a bus page, the bus's single manufacturer; link to /g/org-<slug>
+  country_of_origin?: EntityRef[];    // Omitted on country pages (would be self)
+  instance_of?: EntityRef[];
+  launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
+  constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
+  child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
+  notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
+}
+```
+
+## Membership index (`membership/earth.json.gz`)
+
+A single gzipped inverted index for **earth-sat** groups, merging every
+earth-sat group type (constellation, organization, launch_site, country,
+earth orbit class) into one `{slug: [object_id, ...]}` map. Built from a
+single SATCAT scan and consumed by the group page to list members without a
+per-member fetch. Its content hash feeds the `membership` versioned class.
+
+```typescript
+// membership/earth.json.gz
+type EarthMembership = Record<string /* group slug */, string[] /* Object.ids */>;
+```
+
+Small-body and probe group membership is **not** shipped here — those pages
+resolve members at runtime through the search (Meili `objects`) index, which
+scales past what a static inverted index can hold.

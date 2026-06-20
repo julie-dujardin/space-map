@@ -39,7 +39,7 @@ export function highestAvailableTier(maxRank: number, available: string[]): Tier
  * URL for a body's texture at a given tier/frame. Single-frame bodies use
  * `{tier}.webp`; monthly bodies append a 1-based zero-padded frame suffix
  * (`{tier}_NN.webp`, `NN` = 01..frames). Mirrors the export-tree convention
- * documented in docs/export-format.md.
+ * documented in docs/export-format/textures.md.
  */
 function textureUrlFor(id: string, tier: string, frame: number | undefined): string {
 	if (frame === undefined) return versionedUrl(`/v1/textures/${id}/${tier}.webp`, 'textures');

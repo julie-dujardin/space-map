@@ -95,7 +95,7 @@ export function chunkedUrl(zone: string, zoom: number, chunk: number): string {
 }
 
 /** Probe zones use the `chunked` shape with no zoom segment — see
- *  [Probes payload](docs/export-format.md#probes-payload-format-byte--2). */
+ *  [Probes payload](docs/export-format/probes.md). */
 export function chunkedFlatUrl(zone: string, chunk: number): string {
 	return versionedUrl(`/v1/position/${zone}/${chunk}.bin.gz`, 'position');
 }
