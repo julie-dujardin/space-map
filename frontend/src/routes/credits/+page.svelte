@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import { archiveLabel } from '$lib/credits/archive-labels';
+	import { archiveLabel, archiveRole } from '$lib/credits/archive-labels';
 	import { GITHUB_REPO_URL } from '$lib/constants';
 	import type { Credits } from './+page';
 
@@ -58,7 +58,11 @@
 			<ul class="space-y-1">
 				{#each credits.ephemeris_archives as archive (archive.id)}
 					<li>
-						{@render link(archive.source, archiveLabel(archive.id) ?? archive.organisation)}
+						{@render link(
+							archive.source,
+							archiveLabel(archive.id) ?? archive.organisation,
+							archiveRole(archive.id) ?? undefined
+						)}
 					</li>
 				{/each}
 			</ul>
@@ -77,17 +81,47 @@
 		<section>
 			{@render sectionHeader(m.attribution_section_metadata())}
 			<ul class="space-y-1">
-				<li>{@render link('https://www.wikidata.org/', m.source_wikidata_name())}</li>
-				<li>{@render link('https://www.wikipedia.org/', m.source_wikipedia_name())}</li>
 				<li>
-					{@render link('https://planetarynames.wr.usgs.gov/', m.source_iau_naming_name())}
-				</li>
-				<li>{@render link('https://www.minorplanetcenter.net/', m.source_mpc_name())}</li>
-				<li>
-					{@render link('https://celestrak.org/satcat/', m.source_celestrak_name())}
+					{@render link(
+						'https://www.wikidata.org/',
+						m.source_wikidata_name(),
+						m.source_wikidata_role()
+					)}
 				</li>
 				<li>
-					{@render link('https://planet4589.org/space/', m.source_jonathan_space_report_name())}
+					{@render link(
+						'https://www.wikipedia.org/',
+						m.source_wikipedia_name(),
+						m.source_wikipedia_role()
+					)}
+				</li>
+				<li>
+					{@render link(
+						'https://planetarynames.wr.usgs.gov/',
+						m.source_iau_naming_name(),
+						m.source_iau_naming_role()
+					)}
+				</li>
+				<li>
+					{@render link(
+						'https://www.minorplanetcenter.net/',
+						m.source_mpc_name(),
+						m.source_mpc_role()
+					)}
+				</li>
+				<li>
+					{@render link(
+						'https://celestrak.org/satcat/',
+						m.source_celestrak_name(),
+						m.source_celestrak_role()
+					)}
+				</li>
+				<li>
+					{@render link(
+						'https://planet4589.org/space/',
+						m.source_jonathan_space_report_name(),
+						m.source_jonathan_space_report_role()
+					)}
 				</li>
 			</ul>
 		</section>
