@@ -72,6 +72,7 @@ export function parseUrl(): MapViewState | null {
 			type: UrlType.Group,
 			id: anchor.id,
 			zoom: anchor.zoom,
+			framed: true, // group anchor zoom is intentional framing, not a default
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: null,
@@ -138,7 +139,7 @@ function applyAtParam(defaults: MapViewState): MapViewState {
 	if (!isFinite(latitude) || !isFinite(longitude) || !isFinite(zoom))
 		return { ...defaults, date, isNow };
 
-	return { ...defaults, date, isNow, latitude, longitude, zoom };
+	return { ...defaults, date, isNow, latitude, longitude, zoom, framed: true };
 }
 
 /** Next view when focusing a body. Mirrors AppState.setFocus's merge so link

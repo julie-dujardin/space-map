@@ -25,6 +25,9 @@ export interface MapViewState {
 	latitude: number;
 	longitude: number;
 	zoom: number;
+	/** Camera framing (lat/lon/zoom) was explicit — an `?at=` block or group
+	 *  anchor. Absent for a bare deep link, which frames by target size/model. */
+	framed?: boolean;
 	/** 0-based index into the focused object's images; null when the viewer is closed. */
 	imageIndex: number | null;
 	/** IAU feature id when a surface feature is the active selection; null otherwise. */

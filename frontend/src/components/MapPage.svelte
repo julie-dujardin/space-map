@@ -26,7 +26,7 @@
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
-	import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+	import { isModelBearing } from '$lib/scene/objects/body/model';
 	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import { urlTypeFromId } from '$lib/state/url';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -41,15 +41,23 @@
 	const appState = createAppState();
 	setContext('appState', appState);
 
-	// Snap the clock into `id`'s coverage window when `now` falls outside it —
-	// midpoint, not the boundary, which has no sample and reads as out-of-range.
-	// No-op for objects without a coverage window (planets, etc.).
+	// Snap the clock into `id`'s coverage window if `now` is outside it — midpoint,
+	// not the boundary (no sample there). No-op when there's no window.
 	async function snapClockIntoCoverage(id: string) {
 		const cov = await coverageWindowFor(id);
 		const snap = cov ? snapJdIntoWindow(clock.jd, cov) : null;
 		if (snap === null) return;
 		const bounded = cov!.startJd !== undefined && cov!.endJd !== undefined;
 		clock.setJD(bounded ? (cov!.startJd! + cov!.endJd!) / 2 : snap);
+	}
+
+	// Default camera distance: dive close to model/cuboid bodies, hold back for
+	// bare markers. Sync (isModelBearing, no fetch) so the camera moves at once.
+	function framingDistanceFor(type: string, body: PositionedBody): number {
+		if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
+			return isModelBearing(body) ? minCameraDistance(body) * 5 : 0.005;
+		}
+		return minCameraDistance(body) * 5;
 	}
 
 	// Generic focus for the search bar, featured chips, and in-drawer links:
@@ -73,12 +81,10 @@
 				// Re-anchor focus only, no fly (comet fragments).
 				scene?.focusOnBody(id);
 			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
-				// Dive close when a 3D model exists; else hold distance (bare marker).
-				const detail = await fetchObjectDetail(id, false);
-				const distance = detail.global?.model_name ? minCameraDistance(body) * 5 : 0.005;
+				const distance = framingDistanceFor(type, body);
 				scene?.focusOnBody(id, distance, DEFAULT_VIEW.latitude, DEFAULT_VIEW.longitude);
 			} else {
-				scene?.focusOnBody(id, minCameraDistance(body) * 5);
+				scene?.focusOnBody(id, framingDistanceFor(type, body));
 			}
 		})();
 	};
@@ -214,17 +220,32 @@
 		if (appState.view.type === UrlType.Group && appState.view.groupSlug) {
 			await ctx.applyGroupFilter(appState.view.groupSlug);
 		}
-		// A deep link with an `?at=` outside the target's coverage (or none, when
-		// the object isn't live now) would otherwise just fail to resolve. Snap the
-		// clock into range first — same path search takes — then load at that date.
+		// Snap the clock into range first (same path search takes), else an `?at=`
+		// outside coverage would fail to resolve. Then load at that date.
 		await snapClockIntoCoverage(initialId);
-		await ctx.load(jdToDate(clock.jd), initialId);
-		if (ctx.getBody(initialId)) {
-			// A late-arriving target lands with the camera parked on its parent
-			// (the renderer's initial fallback). Snap straight onto the real target
-			// with the URL's framing — no fly, so the deep link opens already on it.
-			// Skip if it's already focused (placeholder/early load).
-			if (cameraFocus?.data.id !== initialId) {
+		const loadPromise = ctx.load(jdToDate(clock.jd), initialId);
+		loadPromise.catch((e) => console.error('[map] scene load failed:', e));
+		// Frame as soon as the target's placeholder lands (phase 1, ~2s before
+		// ctx.load resolves); fall through to the full load if it never shows.
+		await Promise.race([
+			loadPromise.catch(() => {}),
+			new Promise<void>((resolve) => {
+				const check = () => {
+					if (scene && ctx.getBody(initialId)) resolve();
+					else requestAnimationFrame(check);
+				};
+				check();
+			})
+		]);
+		const initialBody = ctx.getBody(initialId);
+		if (initialBody) {
+			if (!appState.view.framed) {
+				// No URL camera — frame by the target's size/model, same as search.
+				const distance = framingDistanceFor(appState.view.type, initialBody);
+				scene?.snapToBody(initialId, DEFAULT_VIEW.latitude, DEFAULT_VIEW.longitude, distance);
+			} else if (cameraFocus?.data.id !== initialId) {
+				// Explicit URL camera, but the renderer settled on the parent while the
+				// target streamed — snap onto it (no fly, opens already framed).
 				scene?.snapToBody(initialId, latitude, longitude, zoom);
 			}
 		} else {
