@@ -385,7 +385,7 @@
 			{#if searchEnabled && !searchExpanded}
 				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below. -->
 				<div
-					class="pointer-events-auto fixed start-4 end-4 top-[3.75rem] z-10 md:end-4 md:top-4 md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
+					class="pointer-events-auto fixed start-4 end-4 top-[4.125rem] z-10 md:end-4 md:top-4 md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
 					style="--featured-start: {featuredStart}"
 				>
 					<FeaturedBar onObject={(id, name) => focusObject(id, name)} onGroup={openGroup} />
