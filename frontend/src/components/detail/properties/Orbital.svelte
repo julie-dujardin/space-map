@@ -371,23 +371,7 @@
 				</div>
 			{/if}
 		{/snippet}
-		{#if orbitClass}
-			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()}>
-				{#if sbdb?.class}
-					<EntityLinks
-						entities={[
-							{
-								name: orbitClass,
-								primary_type: 'group',
-								primary_id: `class-${sbdb.class}`
-							}
-						]}
-					/>
-				{:else}
-					{orbitClass}
-				{/if}
-			</Row>
-		{:else if satOrbitClassRefs.length > 0}
+		{#if satOrbitClassRefs.length > 0}
 			<Row label={m.orbit_class()} tooltip={m.tooltip_orbit_class()}>
 				<EntityLinks entities={satOrbitClassRefs} />
 			</Row>

@@ -9,6 +9,7 @@
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
 	import MissionLink from './properties/MissionLink.svelte';
+	import GroupLink from './properties/GroupLink.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -432,6 +433,9 @@
 	let fragmentNames = $derived(data?.localized?.fragment_names);
 	let fragmentTotal = $derived(data?.global?.fragment_count ?? 0);
 	let fragmentOf = $derived(isGroupMode ? undefined : data?.global?.fragment_of);
+	// Small body → its SBDB orbit-class group. Suppressed on fragments: they
+	// point to their parent comet instead
+	let orbitClass = $derived(isGroupMode || fragmentOf ? undefined : data?.global?.sbdb?.class);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
@@ -528,6 +532,9 @@
 			/>
 			{#if fragmentOf}
 				<FragmentOf {fragmentOf} />
+			{/if}
+			{#if orbitClass}
+				<GroupLink className={orbitClass} />
 			{/if}
 			{#if missionLink}
 				<MissionLink link={missionLink} label={missionLinkLabel} />
