@@ -86,6 +86,13 @@ export interface UpdatePositionsParams {
 	diagnostics: PositionDiagnostics;
 }
 
+export interface UpdatePositionsResult {
+	/** Focused body had no data at this jd (hidden). */
+	focusedOutOfRange: boolean;
+	/** Nearest in-range ancestor the camera was re-anchored to, or null. */
+	reanchorId: string | null;
+}
+
 /**
  * Per-frame body position + orientation update. Drives chebyshev, SPICE-probe,
  * SGP4, parabolic, and Keplerian paths; aggregates out-of-range bodies into a
@@ -93,7 +100,7 @@ export interface UpdatePositionsParams {
  * animation is driving it); refreshes trail geometry against the new
  * focus basis. Invisible lines are marked `refreshDeferred` for the next pass.
  */
-export function updatePositions(params: UpdatePositionsParams): void {
+export function updatePositions(params: UpdatePositionsParams): UpdatePositionsResult {
 	const { jd, ctx, bodyObjects, focus, focusedBody, positionMap, diagnostics } = params;
 	// Keep the chebyshev working set centred on `jd`. Fire-and-forget: the
 	// frame may miss data for one or two ticks at a boundary, during which
@@ -120,9 +127,9 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	};
 	const focusedId = focusedBody?.data.id;
 
-	// Snapshot the focused body's orbit-ancestor positions before computePosition
-	// overwrites them — the focus-sync block re-anchors off these when the focused
-	// body goes out of range across a time jump.
+	// Snapshot the focus's orbit-ancestor positions before computePosition
+	// overwrites them; the focus-sync block re-anchors off these when the focus
+	// goes out of range across a time jump.
 	const focusAncestors: { id: string; oldPos: Vec3; bo: BodyObjects | undefined }[] = [];
 	if (focusedBody) {
 		const seen = new Set<string>([focusedBody.data.id]);
@@ -525,12 +532,14 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	// Lock focus onto the focused body's new position unless an animation is
 	// driving it. Also refresh body-relative camera target so the fly
 	// destination tracks the moving body.
+	let reanchorId: string | null = null;
 	if (focusedBody && oorState.focusedOutOfRange) {
-		// No fresh focus position this frame — shift the camera frame by the nearest
-		// in-range ancestor's displacement so it tracks that body instead of freezing
-		// in world space while the scene slides past.
+		// No fresh focus position this frame — shift the camera by the nearest
+		// in-range ancestor's displacement so it tracks that body instead of
+		// freezing as the scene slides past.
 		const anchor = focusAncestors.find((a) => a.bo && !a.bo.outOfRange);
 		if (anchor) {
+			reanchorId = anchor.id;
 			const newPos = positionMap.get(anchor.id) ?? anchor.oldPos;
 			const dx = newPos[0] - anchor.oldPos[0];
 			const dy = newPos[1] - anchor.oldPos[1];
@@ -584,6 +593,8 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		refreshTrail(bo.body, line, basis, jd);
 		line.userData.refreshDeferred = false;
 	}
+
+	return { focusedOutOfRange: oorState.focusedOutOfRange, reanchorId };
 }
 
 /**

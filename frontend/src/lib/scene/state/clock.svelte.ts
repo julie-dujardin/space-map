@@ -22,6 +22,9 @@ export class SimClock {
 	jd = $state(0);
 	timeScale = $state(1);
 	direction = $state<1 | -1>(1);
+	/** Set by {@link setJD} (a discontinuous seek, not a play tick); the renderer
+	 *  reads and clears it to distinguish a deliberate date jump from playback. */
+	seeked = false;
 	private lastRealMs = 0;
 	private prevScale = 1;
 	private stops: BoundaryStops | null = null;
@@ -92,6 +95,7 @@ export class SimClock {
 
 	setJD(jd: number): void {
 		this.jd = jd;
+		this.seeked = true;
 		this.lastRealMs = performance.now();
 	}
 

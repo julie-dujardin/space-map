@@ -485,7 +485,7 @@ export class SceneRenderer {
 
 		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());
-		this.applyJdUpdate();
+		this.applyJdUpdate(true);
 
 		const controlsSettled = stepFocusAnimation(
 			this.focus,
@@ -711,12 +711,19 @@ export class SceneRenderer {
 	}
 
 	/** Process a pending jd change now instead of next frame, re-anchoring focus to
-	 *  the current body's new-time position. No-op when jd is already current. */
-	private applyJdUpdate(): void {
-		if (this.clock.jd === this.lastUpdatedJd) return;
+	 *  the current body's new-time position. No-op when jd is already current.
+	 *  `allowOorRefocus` (tick loop only) pans onto the parent when a seek lands
+	 *  where the focus no longer exists. */
+	private applyJdUpdate(allowOorRefocus = false): void {
+		if (this.clock.jd === this.lastUpdatedJd) {
+			this.clock.seeked = false;
+			return;
+		}
+		const seeked = this.clock.seeked;
+		this.clock.seeked = false;
 		this.lastUpdatedJd = this.clock.jd;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
-		updatePositions({
+		const result = updatePositions({
 			jd: this.clock.jd,
 			ctx: this.ctx,
 			bodyObjects: this.bodyObjects,
@@ -733,6 +740,19 @@ export class SceneRenderer {
 			this.pointClouds.maybeRebase();
 		}
 		this.syncLandedNomenclature();
+
+		// Seek landed where the focus no longer exists — pan onto the in-range
+		// ancestor it was re-anchored to. The re-anchor already put the camera
+		// beside it, so this just re-centers.
+		if (allowOorRefocus && seeked && result.focusedOutOfRange && result.reanchorId) {
+			const anchor = this.ctx.getBody(result.reanchorId);
+			if (anchor) {
+				this.focusController.setFocusTarget(anchor);
+				// Re-run positions next frame (jd unchanged) so the out-of-range toast
+				// clears now that the focus is the in-range parent.
+				this.lastUpdatedJd = NaN;
+			}
+		}
 	}
 
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
