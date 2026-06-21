@@ -14,7 +14,13 @@
 		ja: '日本語',
 		zh: '中文',
 		ar: 'العربية',
-		ru: 'Русский'
+		ru: 'Русский',
+		pt: 'Português',
+		de: 'Deutsch',
+		it: 'Italiano',
+		es: 'Español',
+		he: 'עברית',
+		pl: 'Polski'
 	};
 
 	const themeOptions: { value: Theme; label: () => string }[] = [
