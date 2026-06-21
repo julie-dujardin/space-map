@@ -8,6 +8,7 @@ import {
 	SMALL_BODY_FLAG_SLUG_PREFIX
 } from '$lib/fetch/groups/registry';
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
+import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 
@@ -31,6 +32,9 @@ export function urlTypeFromId(id: string): UrlType {
 
 /** Earth-system zoom — mirrors MapPage's minimize-from-sat distance. */
 const EARTH_GROUP_ZOOM = 0.005;
+/** Wide Earth framing for Sun–Earth L-point pages (~3 M km out; the points sit
+ *  ~1.5 M km away). */
+const LAGRANGE_GROUP_ZOOM = 0.3;
 /** Solar-system framing for small-body (orbit-class) groups. */
 const SUN_GROUP_ZOOM = DEFAULT_VIEW.zoom;
 
@@ -45,8 +49,10 @@ export function groupAnchor(slug: string): { id: string; zoom: number } {
 			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };
 	}
 	if (slug.startsWith(CLASS_SLUG_PREFIX)) {
-		// Earth-orbit classes frame on Earth, small-body classes heliocentrically.
+		// Sun–Earth L-points frame on Earth but zoomed way out; other earth-orbit
+		// classes frame tight on Earth, small-body classes heliocentrically.
 		const cls = slug.slice(CLASS_SLUG_PREFIX.length);
+		if (isLagrangeClass(cls)) return { id: EARTH_ID, zoom: LAGRANGE_GROUP_ZOOM };
 		return cls in SAT_ORBIT_ZONES
 			? { id: EARTH_ID, zoom: EARTH_GROUP_ZOOM }
 			: { id: SUN_ID, zoom: SUN_GROUP_ZOOM };

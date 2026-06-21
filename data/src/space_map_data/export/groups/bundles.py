@@ -34,6 +34,7 @@ from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
+    CLASS_SLUG_PREFIX,
     LAUNCH_SITE_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
     GROUP_BY_SLUG,
@@ -49,8 +50,10 @@ from space_map_data.export.objects.wikidata_claims import (
     extract_claims,
     resolve_entity_ref,
 )
+from space_map_data.constants.earth_sats.orbit_class import LAGRANGE_CLASSES
 from space_map_data.export.objects.wikipedia import (
     WikipediaSummary,
+    load_wikipedia_sections_for_qid,
     load_wikipedia_summaries_for_qid,
 )
 from space_map_data.export.objects.writer import hash_bucket
@@ -65,6 +68,11 @@ _TOP_CONSTELLATIONS = 5
 
 
 _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
+
+# Lagrange classes name from frontend i18n (Wikidata label is the bare "L1"/"L2").
+_LAGRANGE_CLASS_SLUGS = frozenset(
+    f"{CLASS_SLUG_PREFIX}{cls.name}" for cls in LAGRANGE_CLASSES
+)
 
 
 def _build_global(
@@ -227,9 +235,12 @@ def _build_localized(
     if group.wikidata_qid:
         wd = wikidata_entities.get_referenced(group.wikidata_qid)
         if wd:
-            # Orbit classes name from the frontend `orbit_class_<NAME>` i18n
-            # keys, not the shared Wikidata label (IMB/MBA/OMB → "asteroid belt").
-            if group.type not in (GroupType.CATEGORY, GroupType.ORBIT_CLASS):
+            # Orbit classes name from frontend i18n, not the Wikidata label
+            # (IMB/MBA/OMB → "asteroid belt"; EL1/EL2 → bare "L1"/"L2").
+            if (
+                group.type not in (GroupType.CATEGORY, GroupType.ORBIT_CLASS)
+                and group.slug not in _LAGRANGE_CLASS_SLUGS
+            ):
                 name = wd["labels"].get(lang) or wd["labels"].get("en")
                 if name:
                     # Wikidata labels orbit zones sentence-case ("low Earth
@@ -558,6 +569,9 @@ def write_group_bundles(
             if group.wikidata_qid
             else {}
         )
+        if group.wikidata_qid:
+            # A curated article-section extract overrides the sparse sitelink summary.
+            wiki_summaries.update(load_wikipedia_sections_for_qid(group.wikidata_qid))
         extracted = _extract_group_claims(group, wikidata_entities)
         wd = (
             wikidata_entities.get_referenced(group.wikidata_qid)

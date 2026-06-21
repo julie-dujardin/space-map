@@ -231,6 +231,7 @@ def run_groups_tier(
     extra_notable_members.update(category_data.notable_members)
     extra_notable_members.update(split_comets.notable_members)
     extra_notable_members.update(missions.notable_members)
+    extra_notable_members.update(earth_orbit_stats.notable_members)
     # Category discovery charts ride the same per-slug path as small-body
     # classes; satellite launch charts need their own override since categories
     # carry no GroupSatcatStats.

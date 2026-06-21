@@ -546,6 +546,8 @@
 					global={data?.global ?? null}
 					localized={data?.localized ?? null}
 					orbitElements={drawerOrbitElements}
+					{body}
+					jd={sampledJd}
 				/>
 			{/if}
 			{#if notableMembers && notableMembers.length > 0}

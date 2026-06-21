@@ -7,8 +7,11 @@
 		GlobalObjectData,
 		LocalizedObjectData
 	} from '$lib/fetch/objects/object-data';
-	import type { OrbitalElements } from '$lib/types/objects';
+	import type { OrbitalElements, PositionedBody } from '$lib/types/objects';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { OrbitalSource } from '$lib/fetch/position/format';
+	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import {
 		CLASS_SLUG_PREFIX,
@@ -16,6 +19,7 @@
 		orbitClassLabel,
 		orbitClassShortLabel
 	} from '$lib/charts/orbit-zones';
+	import { classifyLagrange } from '$lib/math/orbit/lagrange';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
 
@@ -24,10 +28,14 @@
 		localized: LocalizedObjectData | null;
 		/** TLE-derived elements (for the orbit inclination band). */
 		orbitElements?: OrbitalElements;
+		/** Focused body — used to detect a probe's Sun–Earth L-point at sim time. */
+		body?: PositionedBody;
+		jd: number;
 	}
-	let { global, localized, orbitElements }: Props = $props();
+	let { global, localized, orbitElements, body, jd }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
+	const ctx = getContext<ContextManager | undefined>('ctx');
 
 	let celestrak = $derived(global?.celestrak);
 	let orbitsEarth = $derived(celestrak?.orbit_center === 'earth');
@@ -90,6 +98,26 @@
 		};
 	});
 
+	// Probe orbit class: Sun–Earth L1/L2 from live scene geometry. Mutually
+	// exclusive with the earth-sat orbit-class slot above.
+	let lagrangeRef = $derived.by<CrossRef | null>(() => {
+		if (!ctx || !body || body.data.orbitalSource !== OrbitalSource.SPICE_PROBE) return null;
+		void jd; // re-run as sim time advances; positions below are read live
+		const earth = ctx.getBody(EARTH_ID)?.position;
+		const sun = ctx.getBody(SUN_ID)?.position;
+		const p = ctx.getBody(body.data.id)?.position ?? body.position;
+		if (!earth || !sun) return null;
+		const geocentric = [p[0] - earth[0], p[1] - earth[1], p[2] - earth[2]] as const;
+		const earthToSun = [sun[0] - earth[0], sun[1] - earth[1], sun[2] - earth[2]] as const;
+		const point = classifyLagrange(geocentric, earthToSun);
+		if (!point) return null;
+		return {
+			label: m.orbit(),
+			display: orbitClassShortLabel(point),
+			ref: groupRef(orbitClassLabel(point), `${CLASS_SLUG_PREFIX}${point}`)
+		};
+	});
+
 	// Mission first, then the first single-valued constellation / operator /
 	// manufacturer (arrays count only when there's exactly one clear primary).
 	let affiliationRef = $derived.by<CrossRef | null>(() => {
@@ -122,7 +150,9 @@
 
 	// Cap at two image tiles; take the first available in priority order.
 	let cards = $derived(
-		[orbitClassRef, affiliationRef, launchRef].filter((c): c is CrossRef => c != null).slice(0, 2)
+		[orbitClassRef ?? lagrangeRef, affiliationRef, launchRef]
+			.filter((c): c is CrossRef => c != null)
+			.slice(0, 2)
 	);
 
 	// Each linked group's lead image, fetched lazily (bundles are cached, so this

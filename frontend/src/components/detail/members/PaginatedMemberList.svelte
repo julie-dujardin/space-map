@@ -105,7 +105,8 @@
 			rows = seed;
 			total = seedTotal;
 			searchBacked = false;
-			if (isSearchEnabled()) void loadFirst(key);
+			// A fully-baked list (small group exported whole) needs no search backend.
+			if (seed.length < seedTotal && isSearchEnabled()) void loadFirst(key);
 		});
 	});
 

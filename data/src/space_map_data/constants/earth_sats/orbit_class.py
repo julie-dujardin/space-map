@@ -58,6 +58,10 @@ class EarthOrbitClass(_OrbitZone, Enum):
     """
 
     LEO = "Q663611"  # low Earth orbit
+    # Sun–Earth libration points: classified by SATCAT orbit_center, not
+    # perigee/apogee. QIDs are the generic L1/L2 items (no Sun–Earth-specific one).
+    EL1 = "Q15881550"  # first Lagrange point
+    EL2 = "Q15725508"  # second Lagrange point
     MEO = "Q218414"  # medium Earth orbit
     GSO = "Q472251"  # geosynchronous orbit (any inclination)
     HEO = "Q38982"  # highly elliptical orbit
@@ -76,6 +80,10 @@ class EarthOrbitClass(_OrbitZone, Enum):
     POL = "Q746711", False  # polar orbit
     RET = "Q53865977", False  # retrograde orbit
     EQU = "Q60964821", False  # equatorial orbit
+
+
+# Sun–Earth Lagrange zones — membership by SATCAT orbit_center, not shape.
+LAGRANGE_CLASSES = (EarthOrbitClass.EL1, EarthOrbitClass.EL2)
 
 
 def classify_earth_orbit(

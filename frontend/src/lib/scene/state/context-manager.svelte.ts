@@ -24,6 +24,7 @@ import {
 	type SmallBodyFlagName
 } from '$lib/fetch/groups/registry';
 import { EARTH_ID } from '$lib/constants';
+import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 
 export type { SmallBodyFilter } from '$lib/fetch/groups/registry';
 
@@ -194,7 +195,14 @@ export class ContextManager {
 		if (slug !== this.currentGroupSlug) return;
 
 		const nextSmallBody = this.resolveSmallBodyFilter(slug, entry?.applies_to, entry?.n);
-		const nextEarthSlug = entry?.applies_to === 'earth_sat' ? slug : null;
+		// L1/L2 members are TLE earth-sats SGP4 can't place at an L-point, so
+		// filtering the earth zone to them just empties the scene — don't hide
+		// anything on these zones until live geometric membership lands.
+		const isLagrange =
+			slug != null &&
+			slug.startsWith(CLASS_SLUG_PREFIX) &&
+			isLagrangeClass(slug.slice(CLASS_SLUG_PREFIX.length));
+		const nextEarthSlug = entry?.applies_to === 'earth_sat' && !isLagrange ? slug : null;
 		if (!smallBodyFiltersEqual(this.smallBodyFilter, nextSmallBody)) {
 			this.smallBodyFilter = nextSmallBody;
 			for (const cb of this.smallBodyFilterListeners) cb(nextSmallBody);
