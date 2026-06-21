@@ -485,27 +485,7 @@ export class SceneRenderer {
 
 		// Gate body updates on jd actually changing — skips work while paused.
 		this.clock.tick(performance.now());
-		if (this.clock.jd !== this.lastUpdatedJd) {
-			this.lastUpdatedJd = this.clock.jd;
-			this.ctx.refreshTick(jdToDate(this.clock.jd));
-			updatePositions({
-				jd: this.clock.jd,
-				ctx: this.ctx,
-				bodyObjects: this.bodyObjects,
-				focus: this.focus,
-				focusedBody: this.focusController.current,
-				positionMap: this._positionMapScratch,
-				diagnostics: this.positionDiagnostics
-			});
-			this.pointClouds.updateForJd(this.clock.jd);
-			// stepFocusAnimation handles repositionAll while animating.
-			const elapsed = performance.now() - this.focus.focusStartTime;
-			if (elapsed >= this.focus.focusDurationMs) {
-				this.repositionBodies();
-				this.pointClouds.maybeRebase();
-			}
-			this.syncLandedNomenclature();
-		}
+		this.applyJdUpdate();
 
 		const controlsSettled = stepFocusAnimation(
 			this.focus,
@@ -730,7 +710,35 @@ export class SceneRenderer {
 		this.focusController.promotion.clearUserPromoted();
 	}
 
+	/** Process a pending jd change now instead of next frame, re-anchoring focus to
+	 *  the current body's new-time position. No-op when jd is already current. */
+	private applyJdUpdate(): void {
+		if (this.clock.jd === this.lastUpdatedJd) return;
+		this.lastUpdatedJd = this.clock.jd;
+		this.ctx.refreshTick(jdToDate(this.clock.jd));
+		updatePositions({
+			jd: this.clock.jd,
+			ctx: this.ctx,
+			bodyObjects: this.bodyObjects,
+			focus: this.focus,
+			focusedBody: this.focusController.current,
+			positionMap: this._positionMapScratch,
+			diagnostics: this.positionDiagnostics
+		});
+		this.pointClouds.updateForJd(this.clock.jd);
+		// stepFocusAnimation handles repositionAll while animating.
+		const elapsed = performance.now() - this.focus.focusStartTime;
+		if (elapsed >= this.focus.focusDurationMs) {
+			this.repositionBodies();
+			this.pointClouds.maybeRebase();
+		}
+		this.syncLandedNomenclature();
+	}
+
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
+		// Settle a pending time jump first so the fly starts from the focus's
+		// new-time position, not its pre-jump one (else it swoops the orbital arc).
+		this.applyJdUpdate();
 		return this.focusController.focusOnBody(id, zoom, latitude, longitude);
 	}
 
@@ -743,6 +751,7 @@ export class SceneRenderer {
 	}
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
+		this.applyJdUpdate();
 		this.focusController.setFocusTarget(body, camPos);
 	}
 

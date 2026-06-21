@@ -120,6 +120,24 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	};
 	const focusedId = focusedBody?.data.id;
 
+	// Snapshot the focused body's orbit-ancestor positions before computePosition
+	// overwrites them — the focus-sync block re-anchors off these when the focused
+	// body goes out of range across a time jump.
+	const focusAncestors: { id: string; oldPos: Vec3; bo: BodyObjects | undefined }[] = [];
+	if (focusedBody) {
+		const seen = new Set<string>([focusedBody.data.id]);
+		let cur = ctx.getBody(focusedBody.data.parentId);
+		while (cur && !seen.has(cur.data.id)) {
+			seen.add(cur.data.id);
+			focusAncestors.push({
+				id: cur.data.id,
+				oldPos: [cur.position[0], cur.position[1], cur.position[2]],
+				bo: bodyObjects.get(cur.data.id)
+			});
+			cur = ctx.getBody(cur.data.parentId);
+		}
+	}
+
 	// Pre-seed last-known positions so a child reads the previous-frame value
 	// (not [0,0,0]) when a parent early-returns. Seed stores body.position by
 	// reference, so successful updates remain visible without re-seeding.
@@ -507,7 +525,24 @@ export function updatePositions(params: UpdatePositionsParams): void {
 	// Lock focus onto the focused body's new position unless an animation is
 	// driving it. Also refresh body-relative camera target so the fly
 	// destination tracks the moving body.
-	if (focusedBody) {
+	if (focusedBody && oorState.focusedOutOfRange) {
+		// No fresh focus position this frame — shift the camera frame by the nearest
+		// in-range ancestor's displacement so it tracks that body instead of freezing
+		// in world space while the scene slides past.
+		const anchor = focusAncestors.find((a) => a.bo && !a.bo.outOfRange);
+		if (anchor) {
+			const newPos = positionMap.get(anchor.id) ?? anchor.oldPos;
+			const dx = newPos[0] - anchor.oldPos[0];
+			const dy = newPos[1] - anchor.oldPos[1];
+			const dz = newPos[2] - anchor.oldPos[2];
+			focus.focusTruePos[0] += dx;
+			focus.focusTruePos[1] += dy;
+			focus.focusTruePos[2] += dz;
+			focus.focusTargetWorld[0] = focus.focusTruePos[0];
+			focus.focusTargetWorld[1] = focus.focusTruePos[1];
+			focus.focusTargetWorld[2] = focus.focusTruePos[2];
+		}
+	} else if (focusedBody) {
 		const p = focusedBody.position;
 		const elapsed = performance.now() - focus.focusStartTime;
 		const animating = elapsed < focus.focusDurationMs;
