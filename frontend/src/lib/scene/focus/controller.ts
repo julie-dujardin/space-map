@@ -142,6 +142,14 @@ export class FocusController {
 		return didUpgrade;
 	}
 
+	/** Pan the camera to frame `body` without changing the focused/selected body.
+	 *  Used to re-center on the parent when the focus goes out of range, keeping
+	 *  the focus (and its "no data" toast) on the original body. */
+	panCameraToBody(body: PositionedBody): void {
+		const { focus, camera } = this.deps;
+		prepareFocusTarget(focus, [...body.position], camera, this.cameraTruePos());
+	}
+
 	/** Click → emit + fly. Re-clicking the focused body re-emits without moving the camera. */
 	handleFocus(body: PositionedBody): void {
 		if (this.focusedBody?.data.id === body.data.id) {

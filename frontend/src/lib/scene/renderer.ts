@@ -145,6 +145,9 @@ export class SceneRenderer {
 	};
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
+	/** Tracks the focus's out-of-range state across frames so the camera pans onto
+	 *  the parent only on the transition in, not every frame parked there. */
+	private focusWasOutOfRange = false;
 	private readonly _positionMapScratch = new Map<string, Vec3>();
 	/** Landing body driven by the current landed focused probe; tracked so the
 	 *  attach fires only on transitions (URL-direct, land/launch mid-session). */
@@ -741,17 +744,15 @@ export class SceneRenderer {
 		}
 		this.syncLandedNomenclature();
 
-		// Seek landed where the focus no longer exists — pan onto the in-range
-		// ancestor it was re-anchored to. The re-anchor already put the camera
-		// beside it, so this just re-centers.
-		if (allowOorRefocus && seeked && result.focusedOutOfRange && result.reanchorId) {
+		// A seek just landed where the focus has no data — pan the camera onto the
+		// in-range ancestor it's now tracking. Only on the transition into
+		// out-of-range: the focus (and its "no data at this time" toast) stays on
+		// the original body, so it keeps firing while parked here. Once per episode.
+		const enteringOutOfRange = result.focusedOutOfRange && !this.focusWasOutOfRange;
+		this.focusWasOutOfRange = result.focusedOutOfRange;
+		if (allowOorRefocus && seeked && enteringOutOfRange && result.reanchorId) {
 			const anchor = this.ctx.getBody(result.reanchorId);
-			if (anchor) {
-				this.focusController.setFocusTarget(anchor);
-				// Re-run positions next frame (jd unchanged) so the out-of-range toast
-				// clears now that the focus is the in-range parent.
-				this.lastUpdatedJd = NaN;
-			}
+			if (anchor) this.focusController.panCameraToBody(anchor);
 		}
 	}
 
@@ -759,6 +760,7 @@ export class SceneRenderer {
 		// Settle a pending time jump first so the fly starts from the focus's
 		// new-time position, not its pre-jump one (else it swoops the orbital arc).
 		this.applyJdUpdate();
+		this.focusWasOutOfRange = false;
 		return this.focusController.focusOnBody(id, zoom, latitude, longitude);
 	}
 
@@ -772,6 +774,7 @@ export class SceneRenderer {
 
 	setFocusTarget(body: PositionedBody, camPos?: Vec3): void {
 		this.applyJdUpdate();
+		this.focusWasOutOfRange = false;
 		this.focusController.setFocusTarget(body, camPos);
 	}
 

@@ -534,22 +534,40 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	// destination tracks the moving body.
 	let reanchorId: string | null = null;
 	if (focusedBody && oorState.focusedOutOfRange) {
-		// No fresh focus position this frame — shift the camera by the nearest
-		// in-range ancestor's displacement so it tracks that body instead of
-		// freezing as the scene slides past.
+		// Focused body has no data this frame — track the nearest in-range ancestor
+		// so the camera follows it instead of freezing in world space. The focus
+		// (and its "no data at this time" toast) stays on the original body; the
+		// renderer pans the camera onto the anchor.
 		const anchor = focusAncestors.find((a) => a.bo && !a.bo.outOfRange);
 		if (anchor) {
 			reanchorId = anchor.id;
-			const newPos = positionMap.get(anchor.id) ?? anchor.oldPos;
-			const dx = newPos[0] - anchor.oldPos[0];
-			const dy = newPos[1] - anchor.oldPos[1];
-			const dz = newPos[2] - anchor.oldPos[2];
-			focus.focusTruePos[0] += dx;
-			focus.focusTruePos[1] += dy;
-			focus.focusTruePos[2] += dz;
-			focus.focusTargetWorld[0] = focus.focusTruePos[0];
-			focus.focusTargetWorld[1] = focus.focusTruePos[1];
-			focus.focusTargetWorld[2] = focus.focusTruePos[2];
+			const p = positionMap.get(anchor.id) ?? anchor.oldPos;
+			const elapsed = performance.now() - focus.focusStartTime;
+			const animating = elapsed < focus.focusDurationMs;
+			if (animating) {
+				// A pan onto the anchor is running: keep its look target on the anchor.
+				focus.focusTargetWorld[0] = p[0];
+				focus.focusTargetWorld[1] = p[1];
+				focus.focusTargetWorld[2] = p[2];
+				const camOff = focus.camTargetOffset;
+				if (camOff && focus.camTargetWorld) {
+					focus.camTargetWorld[0] = p[0] + camOff[0];
+					focus.camTargetWorld[1] = p[1] + camOff[1];
+					focus.camTargetWorld[2] = p[2] + camOff[2];
+				}
+			} else {
+				// Idle: shift the camera frame by the anchor's displacement so it keeps
+				// tracking — beside the anchor before the pan, centered on it after.
+				const dx = p[0] - anchor.oldPos[0];
+				const dy = p[1] - anchor.oldPos[1];
+				const dz = p[2] - anchor.oldPos[2];
+				focus.focusTruePos[0] += dx;
+				focus.focusTruePos[1] += dy;
+				focus.focusTruePos[2] += dz;
+				focus.focusTargetWorld[0] = focus.focusTruePos[0];
+				focus.focusTargetWorld[1] = focus.focusTruePos[1];
+				focus.focusTargetWorld[2] = focus.focusTruePos[2];
+			}
 		}
 	} else if (focusedBody) {
 		const p = focusedBody.position;
