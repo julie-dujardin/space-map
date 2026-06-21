@@ -771,6 +771,10 @@ class ModelProcessor:
             "exports": exports,
             "processed_at": datetime.now(UTC).isoformat(),
         }
+        # Real length (metres) of the model's longest dimension; lets the
+        # frontend size the mesh against scene units. Optional, manifest-set.
+        if entry.get("scale_meters"):
+            payload["scale_meters"] = entry["scale_meters"]
         (out_dir / "metadata.json").write_text(json.dumps(payload, indent=2))
 
     def _write_sidecar_metadata(

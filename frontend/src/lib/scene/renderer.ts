@@ -672,7 +672,13 @@ export class SceneRenderer {
 			}
 		});
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
-		loadBodyModel(bo, this.modelScene, this.ctx);
+		// On resolve the body's radius may have been true-sized from the model's
+		// scale_meters; refresh closest-approach so zoom-in tracks real size.
+		void loadBodyModel(bo, this.modelScene, this.ctx).then(() => {
+			if (this.focusController.current?.data.id === bo.body.data.id) {
+				this.controls.minDistance = minCameraDistance(bo.body);
+			}
+		});
 		// Nomenclature labels are focus-scoped — only the focused body fetches
 		// and attaches them. Idempotent. Re-tag the active label after attach
 		// resolves: `setSelectedFeature` may have run during the in-flight

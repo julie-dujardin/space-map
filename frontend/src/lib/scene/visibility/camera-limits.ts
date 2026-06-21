@@ -13,13 +13,15 @@ const SURFACE_CLEARANCE_KM: Partial<Record<ObjectType, number>> = {
 	[ObjectType.ASTEROID_TROJAN]: 1,
 	[ObjectType.ASTEROID_TNO]: 1,
 	[ObjectType.COMET]: 1,
-	[ObjectType.MOON]: 1,
-	[ObjectType.SPACECRAFT]: 0.01
+	[ObjectType.MOON]: 1
 };
-const DEFAULT_CLEARANCE_KM = 0.01; // 10 m
 
 export function minCameraDistance(body: PositionedBody): number {
 	const radiusKm = effectiveRadiusKm(body.data);
-	const clearance = SURFACE_CLEARANCE_KM[body.data.objectType] ?? DEFAULT_CLEARANCE_KM;
+	const fixed = SURFACE_CLEARANCE_KM[body.data.objectType];
+	// Spacecraft/debris span ~0.3 m to ~100 m; a fixed clearance would block
+	// close approach to tiny craft. Scale it with the body so max zoom-in is
+	// always proportional to real size.
+	const clearance = fixed ?? radiusKm * 0.25;
 	return kmToScene(radiusKm + clearance);
 }

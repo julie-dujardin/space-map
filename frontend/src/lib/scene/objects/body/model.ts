@@ -15,7 +15,8 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
-import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
+import { kmToScene } from '$lib/math/units';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { buildFallbackSpacecraftModel } from './fallback-model';
 import type { BodyObjects } from '../../types';
@@ -34,10 +35,11 @@ export function isModelBearing(body: PositionedBody): boolean {
 	);
 }
 
-/** Subset of `metadata.json` (per-model public bundle) that's needed to
- *  register the focused-body credit. The exporter writes more fields per
- *  tier (size/sha/stats/catalog/…), but the scene only needs the credit
- *  block for the high tier — that's the GLB we fetched. */
+/** Subset of `metadata.json` (per-model public bundle) the scene needs: the
+ *  high-tier credit block (the GLB we fetched) and, when set, `scale_meters`
+ *  — the real length of the model's longest dimension, used to size the mesh
+ *  against scene units. The exporter writes more fields per tier
+ *  (size/sha/stats/catalog/…) that we ignore. */
 interface ModelBundleMeta {
 	exports: {
 		high: {
@@ -47,6 +49,7 @@ interface ModelBundleMeta {
 			};
 		};
 	};
+	scale_meters?: number;
 }
 
 const _loader = new GLTFLoader();
@@ -135,19 +138,23 @@ export async function loadBodyModel(
 		bo.model = root;
 		bo.modelName = slug;
 		setHaloLoading(bo, false);
-		if (ctx) {
-			try {
-				const meta = await metaPromise;
-				ctx.credits.registerModel({
-					bodyId: bo.body.data.id,
-					source: meta.exports.high.credit.url,
-					organisation: meta.exports.high.credit.name
-				});
-			} catch (e) {
-				// Credits are a nice-to-have; a missing/corrupt metadata.json
-				// shouldn't tear down the loaded model.
-				console.warn(`Failed to register model credit for ${slug}:`, e);
+		try {
+			const meta = await metaPromise;
+			// True-size the body from the model's longest dimension so the overlay
+			// (sized off radiusScene) renders to scale against the solar system.
+			if (meta.scale_meters && (bo.modelLoadEpoch ?? 0) === epoch) {
+				bo.body.data.radiusKm = meta.scale_meters / 2000; // half the longest dim, km
+				bo.radiusScene = kmToScene(effectiveRadiusKm(bo.body.data));
 			}
+			ctx?.credits.registerModel({
+				bodyId: bo.body.data.id,
+				source: meta.exports.high.credit.url,
+				organisation: meta.exports.high.credit.name
+			});
+		} catch (e) {
+			// Credit + scale are nice-to-haves; a missing/corrupt metadata.json
+			// shouldn't tear down the loaded model.
+			console.warn(`Failed to apply model metadata for ${slug}:`, e);
 		}
 	} finally {
 		// Load aborted — restore the halo; only natural bodies put the sphere back.

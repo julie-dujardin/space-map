@@ -47,7 +47,8 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
       "stats": { "triangles": 50228, "meshes": 6, "nodes": 6, "textures": 2, "animations": 0 }
     }
   },
-  "processed_at": "2026-06-04T12:37:45+00:00"
+  "processed_at": "2026-06-04T12:37:45+00:00",
+  "scale_meters": 2.9
 }
 ```
 
@@ -58,4 +59,4 @@ Shipped publicly (lives in `EXPORT_DIR`, not the build-only mirror) so clients c
 - `exports.{tier}.catalog` — present only when the file came from a key in `MODEL_CATALOGS` (`"NASA-3D-Resources"`, `"ESA SciFleet"`). The credits page uses the union across all tiers to pick which primary catalogs to surface; one-off resources (NASA Science pages, Google rehosts) omit this and credit through `credit.name` alone.
 - `exports.{tier}.downloaded_at` — when the source bytes were last fetched, when known. ESA's downloader stamps this when it writes the per-root `metadata.yaml`; NASA falls back to the git HEAD commit time of the `NASA-3D-Resources` checkout.
 - `exports.{tier}.stats` — content stats parsed from the .glb's JSON chunk: `triangles` counts only primitives with mode 4 (TRIANGLES); the rest are top-level array lengths. A handy LOD-impact sanity check (high vs low triangle counts) and a cheap "deployable parts?" hint via `animations > 0`.
-- Real-world scale (metres) is **not** persisted today — source models use arbitrary authoring units and there's no reliable auto-conversion. A future iteration will add an optional `scale_meters` override in the YAML manifest for frontends that need to size the mesh against scene units.
+- `scale_meters` — optional, manifest-set: the real length (metres) of the model's longest dimension. Present only when the manifest entry supplies it; source models otherwise use arbitrary authoring units with no reliable auto-conversion. The frontend normalises every GLB to unit-radius and sizes it off the body's scene radius, so it uses this to set that radius (`radius = scale_meters / 2`), making the mesh render to scale against the rest of the scene. Absent → the frontend falls back to a generic spacecraft size.
