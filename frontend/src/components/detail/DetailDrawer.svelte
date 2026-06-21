@@ -8,7 +8,6 @@
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
-	import MissionLink from './properties/MissionLink.svelte';
 	import GroupLink from './properties/GroupLink.svelte';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -39,6 +38,7 @@
 	import SourcesFooter from './SourcesFooter.svelte';
 	import Physical from './properties/Physical.svelte';
 	import FlightStats from './properties/FlightStats.svelte';
+	import SatCrossRefs from './properties/SatCrossRefs.svelte';
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
@@ -444,12 +444,8 @@
 		activeTab = 'fragments';
 	}
 
-	// Probe mission: the primary craft links up to the mission and shows a strip
-	// of its siblings; a member craft shows only the "Part of mission" card.
-	let missionLink = $derived(
-		isGroupMode ? undefined : (data?.global?.mission ?? data?.global?.part_of_mission)
-	);
-	let missionLinkLabel = $derived(data?.global?.mission ? m.mission() : m.part_of_mission());
+	// Probe mission: the mission cross-ref tile lives in SatCrossRefs now; the
+	// primary craft still shows a strip of its sibling craft below.
 	let missionMembers = $derived(isGroupMode ? undefined : data?.global?.mission_members);
 	let missionMemberNames = $derived(data?.localized?.mission_member_names);
 	let missionMemberTotal = $derived(data?.global?.mission_member_count ?? 0);
@@ -545,8 +541,12 @@
 			{#if orbitClass}
 				<GroupLink className={orbitClass} />
 			{/if}
-			{#if missionLink}
-				<MissionLink link={missionLink} label={missionLinkLabel} />
+			{#if body}
+				<SatCrossRefs
+					global={data?.global ?? null}
+					localized={data?.localized ?? null}
+					orbitElements={drawerOrbitElements}
+				/>
 			{/if}
 			{#if notableMembers && notableMembers.length > 0}
 				<MemberStrip

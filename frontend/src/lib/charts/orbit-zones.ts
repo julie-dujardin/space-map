@@ -623,6 +623,13 @@ export function orbitClassLabel(className: string): string {
 	return typeof fn === 'function' ? (fn as () => string)() : className;
 }
 
+/** Localized class name with the redundant "orbit" word dropped (e.g.
+ *  "Geostationary" not "Geostationary Orbit"); full label when no short key. */
+export function orbitClassShortLabel(className: string): string {
+	const fn = (m as Record<string, unknown>)[`orbit_class_short_${className}`];
+	return typeof fn === 'function' ? (fn as () => string)() : orbitClassLabel(className);
+}
+
 /** Default scatter plot for an orbit-grouping category page. */
 export function categoryPlotType(slug: string): PlotType | null {
 	if (slug === CAT_ASTEROIDS) return 'a-q';

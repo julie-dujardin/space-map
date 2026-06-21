@@ -54,10 +54,8 @@
 		return (TWO_PI * Math.sqrt((aKm * aKm * aKm) / muKm3S2)) / SECONDS_PER_DAY;
 	}
 
-	// Probe path: mirror the renderer's parent resolution (probeWithCenter →
-	// primary override) so the altitude reference matches the body the scene
-	// fits the probe against — the Sun on heliocentric cruise, the captured
-	// planet/moon otherwise. Position/velocity are parent-relative.
+	// Mirror the renderer's parent resolution so altitude is measured against the
+	// body the probe is fit to (Sun on heliocentric cruise, else planet/moon).
 	let probeStats = $derived.by<FlightStats | null>(() => {
 		if (!isProbe || !ctx?.probeStore || !body) return null;
 		const located = ctx.probeStore.probeWithCenter(body.data.id, jd);
