@@ -25,6 +25,11 @@ SOURCES_MODELS_DIR = SOURCES_DIR / "models"
 SOURCES_METADATA_DIR = SOURCES_DIR / "metadata"
 SOURCES_ATMOSPHERE_DIR = SOURCES_DIR / "atmosphere"
 
+# Hand-authored supplemental overlays the automated providers can't discover
+# (mirrors sources/models/manual + Commons manual-extra.json). See
+# utils/manual_overlay.py.
+SOURCES_MANUAL_DIR = SOURCES_METADATA_DIR / "manual"
+
 DERIVED_POSITION_DIR = DERIVED_DIR / "position"
 DERIVED_TEXTURES_DIR = DERIVED_DIR / "textures"
 DERIVED_MODELS_DIR = DERIVED_DIR / "models"

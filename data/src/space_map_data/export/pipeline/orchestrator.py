@@ -28,6 +28,7 @@ from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
 from space_map_data.export.localization import write_messages
+from space_map_data.export.manual import inject_manual_objects
 from space_map_data.export.nomenclature.writer import (
     build_feature_details,
     build_nomenclature,
@@ -1084,6 +1085,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)
+        # Hand-authored extra objects (no DB row) fold into the bundles here.
+        inject_manual_objects(agg.all_objects)
 
         bundle_ns = write_object_bundles(
             out_dir, agg.all_objects.global_data, agg.all_objects.localized_data

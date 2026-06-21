@@ -26,6 +26,7 @@ _OBJECT_ID_PREFIX_TO_LETTER: dict[str, str] = {
     "spkid-": "s",
     "norad_satcat-": "e",
     "probe-": "p",
+    "extra-": "u",
 }
 
 

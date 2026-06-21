@@ -134,7 +134,7 @@ class ModelProcessor:
             entry["slug"]
             for _yaml_path, doc in self._yaml_docs
             for entry in doc.get("entries") or []
-            if entry.get("slug") and self._entry_has_db_mission(entry, db_object_ids)
+            if entry.get("slug") and self._entry_wanted(entry, db_object_ids)
         }
 
         self._prune_stale_bundles(wanted_slugs)
@@ -151,7 +151,7 @@ class ModelProcessor:
             (yaml_path, entry)
             for yaml_path, doc in self._yaml_docs
             for entry in doc.get("entries") or []
-            if self._entry_has_db_mission(entry, db_object_ids)
+            if self._entry_wanted(entry, db_object_ids)
         ]
         for yaml_path, entry in tqdm(all_entries, desc="3D models", unit="entry"):
             self._process_entry(entry, yaml_path, force=force)
@@ -353,6 +353,16 @@ class ModelProcessor:
         ):
             out.setdefault(norad, oid)
         return out
+
+    def _entry_wanted(self, entry: dict, db_object_ids: set[str]) -> bool:
+        """Process this entry's model bundle? True when it resolves to a DB
+        mission, or when flagged ``standalone`` — a model not tied to any
+        catalog mission, referenced by slug from elsewhere (e.g. an injected
+        object). Standalone bundles export but get no Object.model_name pointer.
+        """
+        if entry.get("standalone"):
+            return True
+        return self._entry_has_db_mission(entry, db_object_ids)
 
     def _entry_has_db_mission(self, entry: dict, db_object_ids: set[str]) -> bool:
         """Skip entries that resolve to no Object row — saves Blender/gltf work

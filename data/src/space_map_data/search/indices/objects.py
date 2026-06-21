@@ -25,6 +25,7 @@ from typing import Any
 from space_map_data.constants.categories import PROBES_SLUG, SATELLITES_SLUG
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
+from space_map_data.utils.manual_overlay import read_manual_aliases
 
 from .base import object_pk
 
@@ -222,6 +223,7 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
 
     localized = _load_localized(objects_dir)
     earth_groups = _load_earth_membership(export_dir)
+    manual_aliases = read_manual_aliases()
     global_files = sorted(global_dir.glob("*.json.gz"))
     logger.info("Streaming %d global object bundles", len(global_files))
 
@@ -315,6 +317,14 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 description = entry.get("description")
                 if description:
                     doc[f"description_{lang}"] = description
+
+            # Hand-authored extra aliases (sources/metadata/manual/aliases.json)
+            # fold onto the object's existing alias terms.
+            extra_aliases = manual_aliases.get(obj_id)
+            if extra_aliases:
+                for lang, terms in extra_aliases.items():
+                    key = f"aliases_{lang}"
+                    obj[key] = (obj.get(key) or []) + terms
 
             yield doc
             total_indexed += 1

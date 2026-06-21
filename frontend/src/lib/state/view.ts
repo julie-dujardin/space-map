@@ -9,7 +9,8 @@ export enum UrlType {
 	EarthSatellite = 'e', // norad_satcat-
 	Probe = 'p', // probe-
 	Feature = 'f', // IAU nomenclature feature on a body
-	Group = 'g' // /g/<slug>/<name> — constellation / operator / asteroid class / ...
+	Group = 'g', // /g/<slug>/<name> — constellation / operator / asteroid class / ...
+	Extra = 'u' // /u/<id>/<name> — hand-authored extra object addressed by its id
 }
 
 /**

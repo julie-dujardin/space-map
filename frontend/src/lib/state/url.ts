@@ -16,14 +16,16 @@ export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.SmallBody) return 'spkid';
 	if (urlType === UrlType.EarthSatellite) return 'norad_satcat';
 	if (urlType === UrlType.Probe) return 'probe';
+	if (urlType === UrlType.Extra) return 'extra';
 	return 'naif'; // UrlType.Body
 }
 
-/** Derive URL type segment from a prefixed body ID. Use this for URL generation — it's always consistent with the ID. */
+/** Derive URL type segment from a body ID. Use this for URL generation — it's always consistent with the ID. */
 export function urlTypeFromId(id: string): UrlType {
 	if (id.startsWith('spkid-')) return UrlType.SmallBody;
 	if (id.startsWith('norad_satcat-')) return UrlType.EarthSatellite;
 	if (id.startsWith('probe-')) return UrlType.Probe;
+	if (id.startsWith('extra-')) return UrlType.Extra;
 	return UrlType.Body; // naif-
 }
 

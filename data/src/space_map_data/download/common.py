@@ -26,6 +26,7 @@ from space_map_data.download.providers.objects.sbdb_moons import (
 from space_map_data.download.providers.objects.spacetrack import SpaceTrackDownloader
 from space_map_data.download.providers.wikidata import WikidataDownloader
 from space_map_data.download.providers.wikipedia import WikipediaDownloader
+from space_map_data.download.providers.manual import ManualDownloader
 from space_map_data.download.providers.images.commons import CommonsDownloader
 from space_map_data.download.providers.images.earth_clouds import (
     EarthCloudsDownloader,
@@ -51,6 +52,7 @@ PROVIDERS_CLASSES = [
     HorizonsSyntheticDownloader,
     PropagationDownloader,
     WikidataDownloader,
+    ManualDownloader,
     WikipediaDownloader,
     CommonsDownloader,
     EarthCloudsDownloader,
