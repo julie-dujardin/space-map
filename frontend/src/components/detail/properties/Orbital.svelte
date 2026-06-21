@@ -157,6 +157,12 @@
 	);
 	let sbdb = $derived(global?.sbdb);
 	let celestrak = $derived(global?.celestrak);
+	// Earth sats and probes surface altitude/speed/period in the FlightStats
+	// cards instead, so those rows are suppressed here to avoid duplicating them.
+	let isEarthSat = $derived(celestrak?.orbit_center === 'earth');
+	let inFlightStats = $derived(
+		isEarthSat || body?.data.orbitalSource === OrbitalSource.SPICE_PROBE
+	);
 	let satPeriodDays = $derived(celestrak?.period != null ? celestrak.period / 1440 : null);
 	// Fallback for bodies without SBDB/CelesTrak (planets, moons, Horizons-only):
 	// derive period from mean motion. Only valid for elliptical orbits — n ≤ 0
@@ -390,13 +396,13 @@
 				value={formatDuration(sbdb.per_y * 365.25)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
-		{:else if satPeriodDays != null}
+		{:else if satPeriodDays != null && !inFlightStats}
 			<Row
 				label={m.orbital_period()}
 				value={formatDuration(satPeriodDays)}
 				tooltip={m.tooltip_orbital_period()}
 			/>
-		{:else if elementsPeriodDays != null}
+		{:else if elementsPeriodDays != null && !inFlightStats}
 			<Row
 				label={m.orbital_period()}
 				value={formatDuration(elementsPeriodDays)}
@@ -453,7 +459,7 @@
 				tooltip={m.tooltip_perihelion_time()}
 			/>
 		{/if}
-		{#if altitudeKm != null && altitudeKm > 0}
+		{#if altitudeKm != null && altitudeKm > 0 && !inFlightStats}
 			<Row
 				label={m.altitude()}
 				value={formatDistance(altitudeKm / AU_KM)}
@@ -472,7 +478,7 @@
 				tooltip={m.tooltip_longitude()}
 			/>
 		{/if}
-		{#if currentState}
+		{#if currentState && !inFlightStats}
 			<Row
 				label={m.orbital_speed()}
 				value={formatQuantity({ value: currentState.vKms, unit: 'kilometre_per_second' }, true)}

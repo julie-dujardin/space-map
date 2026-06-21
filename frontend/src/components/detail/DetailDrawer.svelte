@@ -38,6 +38,7 @@
 	import ObjectDescription from './ObjectDescription.svelte';
 	import SourcesFooter from './SourcesFooter.svelte';
 	import Physical from './properties/Physical.svelte';
+	import FlightStats from './properties/FlightStats.svelte';
 	import Orbital from './properties/Orbital.svelte';
 	import Discovery from './properties/Discovery.svelte';
 	import Mission from './properties/Mission.svelte';
@@ -525,6 +526,14 @@
 			{@render tabsBar()}
 			{#if isGroupMode && groupDetail?.global}
 				<GroupStatCards global={groupDetail.global} {showMembersTab} />
+			{:else if body}
+				<FlightStats
+					global={data?.global ?? null}
+					{body}
+					orbitElements={drawerOrbitElements}
+					{parentBody}
+					jd={sampledJd}
+				/>
 			{/if}
 			<ObjectDescription
 				extract={data?.localized?.wikipedia?.extract}
