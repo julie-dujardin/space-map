@@ -84,11 +84,11 @@ def write_attitude(out_dir: Path, global_data: dict[str, dict]) -> dict[str, dic
             spiceypy.kclear()
             continue
 
-        ck_path = mission_dir / index["ck_files"][0]
+        ck_paths = [str(mission_dir / name) for name in index["ck_files"]]
         for probe in matched:
             try:
                 _run_probe(
-                    out_dir, probe, mission, frame_name, ck_path, global_data, summary
+                    out_dir, probe, mission, frame_name, ck_paths, global_data, summary
                 )
             except Exception as exc:
                 # Don't let one probe's extraction abort the whole pipeline —
@@ -123,7 +123,7 @@ def _run_probe(
     probe: dict,
     mission: str,
     frame_name: str,
-    ck_path: Path,
+    ck_paths: list[str],
     global_data: dict[str, dict],
     summary: dict[str, dict],
 ) -> None:
@@ -134,7 +134,7 @@ def _run_probe(
     bus_instr_id = sc_naif * 1000
     probe_out_dir = out_dir / "attitude" / str(probe_id)
 
-    result = extract_attitude(probe_out_dir, str(ck_path), bus_instr_id, frame_name)
+    result = extract_attitude(probe_out_dir, ck_paths, bus_instr_id, frame_name)
     if result.n_keyframes == 0:
         logger.info(
             "attitude: no keyframes for probe %d (mission %s)", probe_id, mission

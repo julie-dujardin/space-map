@@ -1,10 +1,11 @@
 /**
- * Per-probe attitude: decoded keyframe stream + optional spin baseline, with a
- * per-frame evaluator returning a scene-frame body→world quaternion. Loaded
- * lazily on focus (see `loadBodyModel`); only the focused probe holds a track.
+ * Per-probe attitude: a lazily chunk-loaded keyframe stream + optional spin
+ * baseline, evaluated per frame to a scene-frame body→world quaternion.
+ * Coverage spans years, so chunks fetch on demand — only the one under the
+ * playhead is resident. Created on focus; only the focused probe holds a track.
  *
  * Stored quaternions are `pxform("J2000", frame)` (J2000→body), so eval
- * conjugates for body→world, then rotates into the scene frame via `EQ_TO_SCENE`.
+ * conjugates for body→world, then rotates into the scene via `EQ_TO_SCENE`.
  */
 
 import { Matrix4, Quaternion, Vector3 } from 'three';
@@ -41,62 +42,44 @@ function loadQuat(quats: Float32Array, i: number, out: Quaternion): Quaternion {
 }
 
 export class AttitudeTrack {
-	private readonly times: Float64Array;
-	private readonly quats: Float32Array;
 	private readonly startJd: number;
 	private readonly endJd: number;
 	private readonly baseline: ProbeAttitude['baseline'];
+	private readonly files: ProbeAttitude['files'];
+	private readonly chunks = new Map<number, AttitudeChunk>();
+	private readonly inflight = new Set<number>();
+	private readonly failed = new Set<number>();
 
-	constructor(manifest: ProbeAttitude, chunks: AttitudeChunk[]) {
+	constructor(
+		private readonly probeId: string,
+		manifest: ProbeAttitude
+	) {
 		this.startJd = manifest.start_jd;
 		this.endJd = manifest.end_jd;
 		this.baseline = manifest.baseline;
-		// Time-ascending, non-overlapping; flatten for one binary search at eval.
-		const total = chunks.reduce((n, c) => n + c.times.length, 0);
-		this.times = new Float64Array(total);
-		this.quats = new Float32Array(total * 4);
-		let o = 0;
-		for (const c of chunks) {
-			this.times.set(c.times, o);
-			this.quats.set(c.quats, o * 4);
-			o += c.times.length;
-		}
+		this.files = manifest.files;
 	}
 
 	/** True when `jd` is inside the track's coverage window. */
 	covers(jd: number): boolean {
-		return jd >= this.startJd && jd <= this.endJd && this.times.length > 0;
+		return jd >= this.startJd && jd <= this.endJd && this.files.length > 0;
 	}
 
 	/**
 	 * Write the scene-frame body→world orientation at `jd` into `out`. Returns
-	 * false when `jd` is outside coverage (caller falls back to pointing/nadir).
+	 * false when `jd` is outside coverage or its chunk isn't resident yet (the
+	 * fetch is kicked off; caller falls back to pointing/nadir until it lands).
 	 */
 	orientationAt(jd: number, out: Quaternion): boolean {
 		if (!this.covers(jd)) return false;
-		const { times, quats } = this;
+		const ci = this.fileIndexFor(jd);
+		const chunk = this.ensure(ci);
+		if (!chunk) return false;
+		// Warm neighbours so scrubbing across a chunk edge doesn't stall.
+		this.ensure(ci - 1);
+		this.ensure(ci + 1);
 
-		// Bracket jd; clamp at the endpoints (rounded bounds can sit just outside).
-		const n = times.length;
-		let lo = 0;
-		let hi = n - 1;
-		if (jd <= times[0]) {
-			loadQuat(quats, 0, _qa);
-		} else if (jd >= times[n - 1]) {
-			loadQuat(quats, n - 1, _qa);
-		} else {
-			while (hi - lo > 1) {
-				const mid = (lo + hi) >> 1;
-				if (times[mid] <= jd) lo = mid;
-				else hi = mid;
-			}
-			const span = times[hi] - times[lo];
-			const t = span > 0 ? (jd - times[lo]) / span : 0;
-			loadQuat(quats, lo, _qa);
-			loadQuat(quats, hi, _qb);
-			// Handles antipodal pairs — smallest-three can flip sign between keyframes.
-			_qa.slerpQuaternions(_qa, _qb, t);
-		}
+		this.sampleChunk(jd, ci, chunk);
 
 		// Recompose spin baseline: q_full = baseline(t)·anchor·residual, t since start.
 		if (this.baseline) {
@@ -114,25 +97,90 @@ export class AttitudeTrack {
 		out.copy(EQ_TO_SCENE).multiply(_qa);
 		return true;
 	}
-}
 
-/** Fetch + decode a probe's attitude chunks into a track. `probeId` is the bare
- *  id (no `probe-` prefix) = the export directory. Attitude isn't
- *  content-versioned, so fetch straight off `DATA_BASE` (no `?v=`). */
-export async function fetchAttitudeTrack(
-	probeId: string,
-	manifest: ProbeAttitude
-): Promise<AttitudeTrack> {
-	const chunks = await Promise.all(
-		manifest.files.map(async (f) => {
-			const res = await fetch(`${DATA_BASE}/v1/attitude/${probeId}/${f.name}`);
-			if (!res.ok) {
-				throw new Error(`attitude: ${probeId}/${f.name} returned ${res.status}`);
+	/** Index of the last file whose window starts at or before `jd` (clamped). */
+	private fileIndexFor(jd: number): number {
+		const files = this.files;
+		if (jd <= files[0].start_jd) return 0;
+		let lo = 0;
+		let hi = files.length - 1;
+		while (hi - lo > 1) {
+			const mid = (lo + hi) >> 1;
+			if (files[mid].start_jd <= jd) lo = mid;
+			else hi = mid;
+		}
+		return files[hi].start_jd <= jd ? hi : lo;
+	}
+
+	/** SLERP the keyframe quaternion at `jd` into `_qa`, bridging to the next
+	 *  chunk's leading keyframe across a chunk boundary when it's resident. */
+	private sampleChunk(jd: number, ci: number, chunk: AttitudeChunk): void {
+		const { times, quats } = chunk;
+		const n = times.length;
+		if (jd <= times[0]) {
+			loadQuat(quats, 0, _qa);
+			return;
+		}
+		if (jd >= times[n - 1]) {
+			const next = this.chunks.get(ci + 1);
+			if (next && next.times.length > 0 && next.times[0] > times[n - 1]) {
+				const span = next.times[0] - times[n - 1];
+				const t = Math.min(1, (jd - times[n - 1]) / span);
+				loadQuat(quats, n - 1, _qa);
+				loadQuat(next.quats, 0, _qb);
+				_qa.slerpQuaternions(_qa, _qb, t);
+			} else {
+				loadQuat(quats, n - 1, _qa); // clamp until the next chunk arrives
 			}
+			return;
+		}
+		let lo = 0;
+		let hi = n - 1;
+		while (hi - lo > 1) {
+			const mid = (lo + hi) >> 1;
+			if (times[mid] <= jd) lo = mid;
+			else hi = mid;
+		}
+		const span = times[hi] - times[lo];
+		const t = span > 0 ? (jd - times[lo]) / span : 0;
+		loadQuat(quats, lo, _qa);
+		loadQuat(quats, hi, _qb);
+		// Handles antipodal pairs — smallest-three can flip sign between keyframes.
+		_qa.slerpQuaternions(_qa, _qb, t);
+	}
+
+	/** Decoded chunk `i` if resident; otherwise kick off its fetch (once) and
+	 *  return undefined so the caller falls back this frame. */
+	private ensure(i: number): AttitudeChunk | undefined {
+		if (i < 0 || i >= this.files.length) return undefined;
+		const have = this.chunks.get(i);
+		if (have) return have;
+		if (this.inflight.has(i) || this.failed.has(i)) return undefined;
+		this.inflight.add(i);
+		void this.load(i);
+		return undefined;
+	}
+
+	private async load(i: number): Promise<void> {
+		const file = this.files[i];
+		try {
+			const res = await fetch(`${DATA_BASE}/v1/attitude/${this.probeId}/${file.name}`);
+			if (!res.ok) throw new Error(`${res.status}`);
 			const ds = new DecompressionStream('gzip');
 			const buf = await new Response(res.body!.pipeThrough(ds)).arrayBuffer();
-			return parseAttitudeChunk(buf);
-		})
-	);
-	return new AttitudeTrack(manifest, chunks);
+			this.chunks.set(i, parseAttitudeChunk(buf));
+		} catch (e) {
+			this.failed.add(i);
+			console.warn(`attitude: chunk ${this.probeId}/${file.name} failed to load:`, e);
+		} finally {
+			this.inflight.delete(i);
+		}
+	}
+}
+
+/** Build a lazily chunk-loaded attitude track. No network here — chunks fetch
+ *  on demand as `orientationAt` reaches them. `probeId` is the bare id (no
+ *  `probe-` prefix) = the export directory. */
+export function createAttitudeTrack(probeId: string, manifest: ProbeAttitude): AttitudeTrack {
+	return new AttitudeTrack(probeId, manifest);
 }

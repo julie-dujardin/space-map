@@ -12,7 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
-import { fetchAttitudeTrack } from '$lib/fetch/attitude/track';
+import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -94,16 +94,12 @@ export async function loadBodyModel(
 		// Hand-edited pointing spec drives the focused model's attitude; the
 		// per-frame loop reads it off the body (default: south-toward-parent).
 		bo.body.pointing = detail.global?.pointing;
-		// CK-refit attitude stream supersedes pointing over its window. Fetched off
-		// the critical path so the model still snaps in immediately.
+		// CK-refit attitude stream supersedes pointing over its window. Chunks
+		// load lazily per playhead time, so the track is built without I/O here.
 		const attitudeManifest = detail.global?.attitude;
-		if (attitudeManifest) {
+		if (attitudeManifest && (bo.modelLoadEpoch ?? 0) === epoch) {
 			const probeId = bo.body.data.id.replace(/^probe-/, '');
-			fetchAttitudeTrack(probeId, attitudeManifest)
-				.then((track) => {
-					if ((bo.modelLoadEpoch ?? 0) === epoch) bo.body.attitudeTrack = track;
-				})
-				.catch((e) => console.warn(`attitude: failed to load track for ${bo.body.data.id}:`, e));
+			bo.body.attitudeTrack = createAttitudeTrack(probeId, attitudeManifest);
 		}
 		const slug = detail.global?.model_name;
 		if (!slug) {

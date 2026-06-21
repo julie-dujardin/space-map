@@ -54,18 +54,24 @@ def apply_baseline(
     axis: np.ndarray,
     rate: float,
     anchor: np.ndarray,
+    *,
+    t0: float | None = None,
 ) -> np.ndarray:
     """Compute the residual stream q_r = q_baseline⁻¹ · q for every sample.
 
     Decoder reconstruction is q = q_baseline · q_r — so this is the
     composition the writer wants. Continuous sign canonicalisation is
     re-applied (the multiplication can hop to the antipodal representation).
+
+    `t0` is the spin phase-zero epoch (ET seconds) — pass the mission-global
+    start so per-file segments share one phase. Defaults to `ets[0]`.
     """
+    epoch = float(ets[0]) if t0 is None else t0
     n = quats.shape[0]
     out = np.empty_like(quats)
     last = np.array([1.0, 0.0, 0.0, 0.0])
     for i in range(n):
-        t = float(ets[i] - ets[0])
+        t = float(ets[i]) - epoch
         b = q_mul(baseline_quaternion(axis, rate, t), anchor)
         r = q_mul(q_conj(b), quats[i])
         if np.dot(r, last) < 0:

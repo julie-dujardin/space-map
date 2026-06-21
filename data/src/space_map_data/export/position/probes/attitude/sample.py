@@ -13,19 +13,25 @@ import spiceypy
 logger = logging.getLogger(__name__)
 
 
-def ck_coverage(ck_path: str, instr_id: int) -> tuple[float, float]:
-    """Return the CK's (start_et, end_et) for `instr_id` as TDB seconds.
+def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
+    """Per-file (start_et, end_et) coverage for `instr_id`, ascending by start.
 
-    Walks every interval in the kernel; returns the outer envelope. Gaps
-    in CK coverage are silently absorbed — `sample_truth` will repeat the
-    last good quaternion across gaps, which adaptive keyframes then
-    collapse into a single segment.
+    One window per CK (its outer interval envelope), in TDB seconds. Files
+    with no coverage for `instr_id` are skipped — a mission set mixes bus CKs
+    with instrument-articulation ones. Windows may overlap; the caller trims.
     """
-    cover = spiceypy.support_types.SPICEDOUBLE_CELL(100_000)
-    spiceypy.ckcov(ck_path, instr_id, False, "INTERVAL", 0.0, "TDB", cover)
-    if len(cover) < 2:
-        raise ValueError(f"CK {ck_path!r} has no coverage for instrument {instr_id}")
-    return float(cover[0]), float(cover[len(cover) - 1])
+    windows: list[tuple[float, float]] = []
+    for path in ck_paths:
+        cover = spiceypy.support_types.SPICEDOUBLE_CELL(100_000)
+        try:
+            spiceypy.ckcov(path, instr_id, False, "INTERVAL", 0.0, "TDB", cover)
+        except spiceypy.exceptions.SpiceyError:
+            logger.warning("attitude: ckcov failed for %s, skipping", path)
+            continue
+        if len(cover) >= 2:
+            windows.append((float(cover[0]), float(cover[len(cover) - 1])))
+    windows.sort()
+    return windows
 
 
 def sample_truth(frame: str, ets: np.ndarray) -> np.ndarray:
