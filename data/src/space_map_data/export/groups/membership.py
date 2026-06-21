@@ -25,6 +25,7 @@ from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
 )
 from space_map_data.constants.earth_sats.satcat import OpsStatus
+from space_map_data.export.earth_sat_filter import not_docked
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
     COUNTRY_SLUG_PREFIX,
@@ -103,6 +104,7 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
             Object.spkid.is_(None),
             Object.object_type.in_(_SAT_TYPE_VALUES),
             Object.parent_id == _EARTH_OBJECT_ID,
+            not_docked(),
         )
         .all()
     )

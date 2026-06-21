@@ -24,6 +24,7 @@ from space_map_data.download.providers.wikidata.id_resolver import (
     CONSTELLATION_PREFIXES,
 )
 from space_map_data.export.credits import write_credits
+from space_map_data.export.earth_sat_filter import not_docked
 from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
@@ -480,8 +481,21 @@ def _run_earth_zones(
             Object.spkid.is_(None),
             Object.object_type.in_(_SAT_TYPE_VALUES),
             Object.parent_id == _EARTH_OBJECT_ID,
+            not_docked(),
         )
     )
+    docked = (
+        session.query(Object.id)
+        .filter(
+            Object.spkid.is_(None),
+            Object.object_type.in_(_SAT_TYPE_VALUES),
+            Object.parent_id == _EARTH_OBJECT_ID,
+            ~not_docked(),
+        )
+        .count()
+    )
+    if docked:
+        logger.info("  earth: excluding %d docked spacecraft from export", docked)
     is_constellation = or_(*(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES))
     # Collect the non-cached zooms, then export them together so a dirty archive
     # year is parsed once and drives both zooms (not once per zoom).
