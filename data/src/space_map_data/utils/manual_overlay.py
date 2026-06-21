@@ -87,3 +87,24 @@ def manual_object_labels(qid: str) -> dict[str, str]:
     entity = orjson.loads(path.read_bytes())
     labels = entity.get("labels", {})
     return {lang: labels[lang]["value"] for lang in LANGUAGES if lang in labels}
+
+
+def manual_object_instance_of(qid: str) -> list[str]:
+    """All non-deprecated P31 (instance of) target QIDs for a manual object.
+
+    Keeps every ranked statement (not just ``preferred``) so the displayed type
+    carries the object's full instance-of list. ``[]`` if absent.
+    """
+    path = MANUAL_WIKIDATA_DIR / f"{qid}.json"
+    if not path.exists():
+        return []
+    entity = orjson.loads(path.read_bytes())
+    out: list[str] = []
+    for stmt in entity.get("claims", {}).get("P31", []):
+        if stmt.get("rank") == "deprecated":
+            continue
+        value = stmt.get("mainsnak", {}).get("datavalue", {}).get("value", {})
+        ref_qid = value.get("id") if isinstance(value, dict) else None
+        if ref_qid:
+            out.append(ref_qid)
+    return out

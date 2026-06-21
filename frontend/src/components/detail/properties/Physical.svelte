@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { NO_SURFACE_BODY_IDS } from '$lib/constants';
+	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
@@ -45,9 +46,11 @@
 
 	// Surface area in km², derived from whichever size source the panel uses
 	// for the radius row. Triaxial bodies use Knud Thomsen's approximation
-	// (p=1.6075, ~1% error). Hidden for the Sun and gas/ice giants — their
-	// reported radius bounds a gas envelope, not a real surface.
+	// (p=1.6075, ~1% error). Only natural bodies have a meaningful surface — a
+	// spacecraft/debris radius bounds a model, not a sphere. Also hidden for the
+	// Sun and gas/ice giants, whose radius bounds a gas envelope.
 	let surfaceAreaKm2 = $derived.by(() => {
+		if (!isNaturalBodyType(global?.type)) return null;
 		if (global && NO_SURFACE_BODY_IDS.has(global.id)) return null;
 		if (radii) {
 			const { a, b, c } = radii;

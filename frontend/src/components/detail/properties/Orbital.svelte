@@ -207,7 +207,9 @@
 		const archive = archiveLabel(global?.ephemeris_source);
 		if (archive) return archive;
 		const src = body?.data.orbitalSource;
-		if (src == null) return null;
+		// UNKNOWN is the legit "no provenance shipped" sentinel (hand-authored
+		// elements, or files pre-dating the source byte) — show nothing, no warn.
+		if (src == null || src === OrbitalSource.UNKNOWN) return null;
 		const label = ORBIT_SOURCE_LABEL[src];
 		if (!label) {
 			console.warn(`[Orbital] body ${body?.data.id} has UNKNOWN orbital source`);

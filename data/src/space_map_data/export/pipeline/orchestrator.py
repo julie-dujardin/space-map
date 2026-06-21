@@ -1100,7 +1100,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)
         # Hand-authored extra objects (no DB row) fold into the bundles here.
-        inject_manual_objects(agg.all_objects)
+        inject_manual_objects(agg.all_objects, wikidata_entities)
 
         bundle_ns = write_object_bundles(
             out_dir, agg.all_objects.global_data, agg.all_objects.localized_data

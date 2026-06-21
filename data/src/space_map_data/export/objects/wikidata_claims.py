@@ -143,7 +143,7 @@ def make_body_entityref(object_id: str, name: str) -> EntityRef:
     return EntityRef(name=name, primary_type=prefix, primary_id=value)
 
 
-_INSTANCE_OF_IGNORED = {
+INSTANCE_OF_IGNORED = {
     "Q3901935",  # superior planet (orbits further from the Sun)
     "Q844911",  # inferior planet (orbits closer to the Sun)
     "Q2517610",  # list article
@@ -194,7 +194,7 @@ class EntityRefClaim(NamedTuple):
 
 ENTITY_REF_CLAIMS = (
     EntityRefClaim(
-        "instance_of", "P31", multiple=True, exclude_set=_INSTANCE_OF_IGNORED
+        "instance_of", "P31", multiple=True, exclude_set=INSTANCE_OF_IGNORED
     ),
     EntityRefClaim("named_after", "P138", multiple=True),
     EntityRefClaim("discovery_site", "P65", multiple=True),

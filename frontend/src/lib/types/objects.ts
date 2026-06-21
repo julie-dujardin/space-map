@@ -231,3 +231,16 @@ export function isMajorBody(type: ObjectType): boolean {
 		type === ObjectType.MOON
 	);
 }
+
+/** Natural celestial bodies — stars, planets, moons, asteroids, comets (not craft/debris/features). */
+export function isNaturalBody(type: ObjectType): boolean {
+	return isMajorBody(type) || isAsteroid(type) || type === ObjectType.COMET;
+}
+
+/** String-typed counterpart of {@link isNaturalBody} for `GlobalObjectData.type`. */
+export function isNaturalBodyType(type: string | undefined): boolean {
+	if (!type) return false;
+	const key = type.toUpperCase() as keyof typeof ObjectType;
+	const ordinal = ObjectType[key];
+	return typeof ordinal === 'number' && isNaturalBody(ordinal);
+}
