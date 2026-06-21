@@ -76,6 +76,30 @@ export interface NotableMemberEntry {
 	thumbnail?: PickedThumbnail;
 }
 
+/**
+ * Per-probe attitude manifest (refit from NAIF CK kernels), carried in the
+ * probe's `__global__` bundle. Binary chunks live at `v1/attitude/{id}/{name}`
+ * in `ATTI` v1 format (see `docs/export-format/probe-attitude.md`).
+ */
+export interface ProbeAttitude {
+	/** CK reference frame the quaternions are expressed in. */
+	frame: string;
+	start_jd: number;
+	end_jd: number;
+	n_keyframes: number;
+	/** Spin baseline subtracted before encoding (keyframes carry the residual);
+	 *  null when none was fit. */
+	baseline: {
+		kind: 'spin';
+		/** Unit spin axis in J2000. */
+		axis: [number, number, number];
+		rate_rad_s: number;
+		/** Quaternion [w, x, y, z] at phase zero. */
+		anchor: [number, number, number, number];
+	} | null;
+	files: { name: string; start_jd: number; end_jd: number; n_keyframes: number }[];
+}
+
 export interface GlobalObjectData {
 	id: string;
 	type: string;
@@ -150,6 +174,9 @@ export interface GlobalObjectData {
 	 *  focused model aims `primary.axis` at `primary.target`, rolling toward the
 	 *  optional `secondary`. Absent → south-toward-parent default. */
 	pointing?: PointingSpec;
+	/** Refit-from-CK attitude stream (probes with NAIF CK kernels). Loaded
+	 *  lazily on focus; supersedes `pointing` over its coverage window. */
+	attitude?: ProbeAttitude;
 	/** SPICE PCK triaxial radii (km) along body-fixed X, Y, Z (Z = spin axis).
 	 *  When present, this is the shape the 3D scene renders — supersedes the
 	 *  Wikidata radius and SBDB diameter as the authoritative size. */

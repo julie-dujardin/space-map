@@ -12,6 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { fetchAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
@@ -93,6 +94,17 @@ export async function loadBodyModel(
 		// Hand-edited pointing spec drives the focused model's attitude; the
 		// per-frame loop reads it off the body (default: south-toward-parent).
 		bo.body.pointing = detail.global?.pointing;
+		// CK-refit attitude stream supersedes pointing over its window. Fetched off
+		// the critical path so the model still snaps in immediately.
+		const attitudeManifest = detail.global?.attitude;
+		if (attitudeManifest) {
+			const probeId = bo.body.data.id.replace(/^probe-/, '');
+			fetchAttitudeTrack(probeId, attitudeManifest)
+				.then((track) => {
+					if ((bo.modelLoadEpoch ?? 0) === epoch) bo.body.attitudeTrack = track;
+				})
+				.catch((e) => console.warn(`attitude: failed to load track for ${bo.body.data.id}:`, e));
+		}
 		const slug = detail.global?.model_name;
 		if (!slug) {
 			// Model-bearing → cuboid placeholder; natural bodies restore their sphere.
@@ -170,6 +182,7 @@ export function unloadBodyModel(bo: BodyObjects): void {
 	bo.model = null;
 	bo.modelName = undefined;
 	bo.body.pointing = undefined;
+	bo.body.attitudeTrack = undefined;
 	if (bo.mesh && restoreSphere) bo.mesh.visible = true;
 }
 

@@ -2,6 +2,7 @@ import type { SatRec } from 'satellite.js';
 import { DEFAULT_FALLBACK_RADIUS_KM } from '$lib/constants';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
+import type { AttitudeTrack } from '$lib/fetch/attitude/track';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
 
 export interface OrbitalElements {
@@ -123,6 +124,9 @@ export interface PositionedBody {
 	/** Debug-menu live override; takes precedence over `pointing` when set, and
 	 *  clearing it restores the config/default attitude. */
 	pointingOverride?: PointingSpec;
+	/** Refit-from-CK attitude stream. Loaded lazily on focus; drives the model's
+	 *  orientation directly over its coverage window, ahead of `pointing`. */
+	attitudeTrack?: AttitudeTrack;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
 import {
@@ -38,6 +38,9 @@ import type { PositionDiagnostics } from './diagnostics';
  *  threaded and the buffer is consumed within one probe iteration, so reusing
  *  one allocation across all probes per frame is safe and avoids GC churn. */
 const newestPosScratch: [number, number, number] = [0, 0, 0];
+
+/** Scratch for the focused probe's attitude quaternion (one body per frame). */
+const attitudeQuat = new Quaternion();
 
 /** Last world position per body for `velocity`-target pointing. Only the focused
  *  model carries a pointing spec, so this stays tiny. */
@@ -440,26 +443,31 @@ export function updatePositions(params: UpdatePositionsParams): void {
 		if (body.orientation && bo.mesh) {
 			applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
 		} else if (isModelBearing(body)) {
-			// Sats/probes have no IAU data. With a pointing spec (debug override
-			// wins over config, set on focus), aim per the spec; otherwise face
-			// their nadir at the parent. Both sphere and overlay model carry a
-			// world-frame attitude.
-			const spec = body.pointingOverride ?? body.pointing;
-			if (spec) {
-				const velocity = needsVelocity(spec)
-					? estimateVelocity(d.id, jd, body.position)
-					: undefined;
-				const pctx = {
-					bodyPos: body.position,
-					parentPos,
-					sunPos: positionMap.get(SUN_ID),
-					velocity
-				};
-				if (bo.mesh) applyPointing(bo.mesh, spec, pctx);
-				if (bo.model) applyPointing(bo.model, spec, pctx);
+			// Sats/probes have no IAU data. Priority: debug override > CK attitude
+			// track (within coverage) > pointing spec > nadir at the parent. Sphere
+			// and overlay model share the attitude.
+			const track = body.attitudeTrack;
+			if (!body.pointingOverride && track && track.orientationAt(jd, attitudeQuat)) {
+				if (bo.mesh) bo.mesh.quaternion.copy(attitudeQuat);
+				if (bo.model) bo.model.quaternion.copy(attitudeQuat);
 			} else {
-				if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
-				if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
+				const spec = body.pointingOverride ?? body.pointing;
+				if (spec) {
+					const velocity = needsVelocity(spec)
+						? estimateVelocity(d.id, jd, body.position)
+						: undefined;
+					const pctx = {
+						bodyPos: body.position,
+						parentPos,
+						sunPos: positionMap.get(SUN_ID),
+						velocity
+					};
+					if (bo.mesh) applyPointing(bo.mesh, spec, pctx);
+					if (bo.model) applyPointing(bo.model, spec, pctx);
+				} else {
+					if (bo.mesh) applySouthTowardParent(bo.mesh, body.position, parentPos);
+					if (bo.model) applySouthTowardParent(bo.model, body.position, parentPos);
+				}
 			}
 		}
 		// Rings inherit the planet's pole orientation (geometry pre-rotated so
