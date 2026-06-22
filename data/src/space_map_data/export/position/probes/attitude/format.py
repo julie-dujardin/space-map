@@ -16,7 +16,7 @@ Header (16 bytes, 8-aligned):
 
 Keyframe (11 bytes, packed back-to-back after the header):
 
-    0       uint32    dt_seconds      (offset from previous; first kf = 0)
+    0       float32   dt_seconds      (offset from previous; first kf = 0)
     4       uint8     idx             (0..3 — dropped quat component index)
     5       int16     a               (one of the kept components × 32767)
     7       int16     b
@@ -26,9 +26,10 @@ Reconstruction: at decode time the missing component is recovered as
 `sqrt(max(0, 1 - a² - b² - c²))` with `idx` telling the decoder which
 slot it goes into.
 
-`uint32` dt covers up to ~136 years between keyframes — plenty even for
-cruise-mode Voyager-class trajectories where attitude can be inertial for
-months at a stretch.
+`dt` is float32: dense streams have sub-second keyframe spacing, and an
+integer-second quantum accumulated into multi-minute timeline drift across a
+chunk's keyframes. float32 keeps sub-second precision where spacing is small
+and tolerates the coarse seconds-resolution of long inertial cruises.
 
 Spin baseline (when used) is stored in the per-probe manifest in the
 `__global__` object bundle, not in the file — every chunk for a probe
@@ -41,7 +42,7 @@ import struct
 # position file in the existing readers. Distinct constant, distinct
 # version counter — independent evolution from position formats.
 MAGIC = b"ATTI"
-VERSION = 1
+VERSION = 2
 
 HEADER_SIZE = 16
 KEYFRAME_SIZE = 11
@@ -49,9 +50,9 @@ KEYFRAME_SIZE = 11
 _HEADER_STRUCT = struct.Struct("<4sHBBd")
 assert _HEADER_STRUCT.size == HEADER_SIZE
 
-# Little-endian: dt_seconds (uint32), idx (uint8), a/b/c (int16×3).
+# Little-endian: dt_seconds (float32), idx (uint8), a/b/c (int16×3).
 # `<` so we match position files; no native alignment surprises.
-_KF_STRUCT = struct.Struct("<IBhhh")
+_KF_STRUCT = struct.Struct("<fBhhh")
 assert _KF_STRUCT.size == KEYFRAME_SIZE
 
 # int16 scale used to quantise the three kept quaternion components from
@@ -73,12 +74,12 @@ def unpack_header(buf: bytes) -> tuple[int, float]:
     return version, float(start_jd)
 
 
-def pack_keyframe(dt_seconds: int, idx: int, a: int, b: int, c: int) -> bytes:
+def pack_keyframe(dt_seconds: float, idx: int, a: int, b: int, c: int) -> bytes:
     """Pack one keyframe record. Components must be pre-scaled int16."""
-    return _KF_STRUCT.pack(int(dt_seconds), int(idx), int(a), int(b), int(c))
+    return _KF_STRUCT.pack(float(dt_seconds), int(idx), int(a), int(b), int(c))
 
 
-def unpack_keyframe(buf: bytes, offset: int) -> tuple[int, int, int, int, int]:
+def unpack_keyframe(buf: bytes, offset: int) -> tuple[float, int, int, int, int]:
     """Unpack one keyframe at `offset`. Returns (dt_seconds, idx, a, b, c)."""
     return _KF_STRUCT.unpack_from(buf, offset)
 

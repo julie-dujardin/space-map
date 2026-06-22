@@ -88,7 +88,7 @@ def decode_dir(out_dir: Path) -> tuple[np.ndarray, np.ndarray]:
         for i in range(n):
             off = HEADER_SIZE + i * KEYFRAME_SIZE
             if i > 0:
-                cursor += struct.unpack_from("<I", buf, off)[0]
+                cursor += struct.unpack_from("<f", buf, off)[0]
             times.append(start_jd + cursor / S_PER_DAY)
             idx = buf[off + 4]
             a, b, c = struct.unpack_from("<hhh", buf, off + 5)

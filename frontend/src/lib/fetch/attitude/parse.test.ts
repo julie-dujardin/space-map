@@ -5,7 +5,7 @@ const HEADER_SIZE = 16;
 const KEYFRAME_SIZE = 11;
 const SCALE = 32767;
 
-/** Build an ATTI v1 buffer from (startJd, [{dt, quat:[w,x,y,z]}]) the same way
+/** Build an ATTI v2 buffer from (startJd, [{dt, quat:[w,x,y,z]}]) the same way
  *  the Python writer does — drop the largest-|·| component, store the rest. */
 function encode(startJd: number, frames: { dt: number; q: [number, number, number, number] }[]) {
 	const buf = new ArrayBuffer(HEADER_SIZE + frames.length * KEYFRAME_SIZE);
@@ -14,7 +14,7 @@ function encode(startJd: number, frames: { dt: number; q: [number, number, numbe
 	v.setUint8(1, 0x54); // T
 	v.setUint8(2, 0x54); // T
 	v.setUint8(3, 0x49); // I
-	v.setUint16(4, 1, true);
+	v.setUint16(4, 2, true);
 	v.setFloat64(8, startJd, true);
 	frames.forEach((f, i) => {
 		const off = HEADER_SIZE + i * KEYFRAME_SIZE;
@@ -23,7 +23,7 @@ function encode(startJd: number, frames: { dt: number; q: [number, number, numbe
 		for (let j = 1; j < 4; j++) if (Math.abs(q[j]) > Math.abs(q[idx])) idx = j;
 		if (q[idx] < 0) q = q.map((x) => -x) as [number, number, number, number];
 		const kept = [0, 1, 2, 3].filter((j) => j !== idx);
-		v.setUint32(off, f.dt, true);
+		v.setFloat32(off, f.dt, true);
 		v.setUint8(off + 4, idx);
 		v.setInt16(off + 5, Math.round(q[kept[0]] * SCALE), true);
 		v.setInt16(off + 7, Math.round(q[kept[1]] * SCALE), true);

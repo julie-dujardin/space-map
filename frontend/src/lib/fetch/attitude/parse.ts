@@ -1,11 +1,11 @@
 /**
  * Binary reader for probe-attitude chunks (`v1/attitude/{id}/{N}.bin.gz`).
  * Header carries the start JD; keyframes are dt-delta-encoded smallest-three
- * quaternions. Mirrors the writer in `.../attitude/format.py` (magic `ATTI`, v1).
+ * quaternions. Mirrors the writer in `.../attitude/format.py` (magic `ATTI`, v2).
  */
 
 const MAGIC = 0x49545441; // "ATTI" little-endian (bytes A,T,T,I)
-const VERSION = 1;
+const VERSION = 2;
 const HEADER_SIZE = 16;
 const KEYFRAME_SIZE = 11;
 const COMPONENT_SCALE = 32767;
@@ -44,7 +44,8 @@ export function parseAttitudeChunk(buffer: ArrayBuffer): AttitudeChunk {
 	for (let i = 0; i < n; i++) {
 		const off = HEADER_SIZE + i * KEYFRAME_SIZE;
 		// First keyframe's dt is 0 by construction; accumulate the rest.
-		if (i > 0) cursorSeconds += view.getUint32(off, true);
+		// float32 dt — integer seconds drifted the accumulated timeline.
+		if (i > 0) cursorSeconds += view.getFloat32(off, true);
 		times[i] = startJd + cursorSeconds / SECONDS_PER_DAY;
 
 		const idx = view.getUint8(off + 4);

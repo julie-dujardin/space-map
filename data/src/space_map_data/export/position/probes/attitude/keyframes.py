@@ -4,16 +4,15 @@ Greedy: from the last emitted keyframe, find the furthest forward sample
 such that SLERP from that keyframe to the candidate reproduces every
 intermediate sample within `eps_rad`. Emit the candidate, repeat.
 
-Implementation is `O(n · log n)`: each "find furthest valid endpoint"
-step probe-doubles then bisects, and each fit check on a segment of
-length `m` strides at `m/64` to bound the per-step cost. For the
-attitude streams we care about (≤ 200 k samples per CK) this lands at
-~1 second of wall time on the benchmark workloads.
+Each "find furthest valid endpoint" step probe-doubles then bisects, and
+the fit check is an exact vectorised SLERP comparison over the (already
+sparse) sample stream. Operates on the adaptive-sampler output, so the
+input is thousands of samples per window, not millions.
 """
 
-import numpy as np
+import math
 
-from .quaternion import angle_between, slerp
+import numpy as np
 
 
 def extract_keyframes(quats: np.ndarray, ets: np.ndarray, eps_rad: float) -> list[int]:
@@ -53,23 +52,32 @@ def extract_keyframes(quats: np.ndarray, ets: np.ndarray, eps_rad: float) -> lis
 def _segment_fits(
     quats: np.ndarray, ets: np.ndarray, a: int, b: int, eps_rad: float
 ) -> bool:
-    """True iff SLERP(q[a], q[b], τ) tracks every intermediate sample within ε.
+    """True iff SLERP(q[a], q[b], τ) tracks *every* intermediate sample within ε.
 
-    Strides at `(b-a) / 64` so checking a 10 000-sample segment costs ~64
-    angle comparisons instead of 10 000. Empirically this catches the
-    same worst-case errors that exhaustive checking would (the offending
-    point is rarely missed by a ~6 % stride on smooth attitude motion).
+    Checks all enclosed samples (vectorised SLERP), not a stride — a coarse
+    stride aliases slow precession, accepting an over-long geodesic that fits
+    the probed points but deviates tens of degrees between them. The sample
+    stream is already adaptively sparse, so an exact check stays cheap.
     """
     if b - a < 2:
         return True
     q0, q1 = quats[a], quats[b]
-    t0, t1 = ets[a], ets[b]
-    dt = t1 - t0
+    t0, dt = ets[a], ets[b] - ets[a]
     if dt <= 0:
         return True
-    stride = max(1, (b - a) // 64)
-    for i in range(a + stride, b, stride):
-        s = (ets[i] - t0) / dt
-        if angle_between(slerp(q0, q1, s), quats[i]) > eps_rad:
-            return False
-    return True
+    d = float(np.dot(q0, q1))
+    if d < 0:
+        q1, d = -q1, -d
+    s = (ets[a + 1 : b] - t0) / dt
+    if d > 0.9995:
+        interp = q0 + s[:, None] * (q1 - q0)
+    else:
+        th0 = math.acos(d)
+        sin0 = math.sin(th0)
+        interp = (np.sin((1 - s) * th0) / sin0)[:, None] * q0 + (
+            np.sin(s * th0) / sin0
+        )[:, None] * q1
+    interp /= np.linalg.norm(interp, axis=1, keepdims=True)
+    dots = np.abs(np.sum(interp * quats[a + 1 : b], axis=1))
+    max_angle = 2.0 * math.acos(min(1.0, float(dots.min())))
+    return max_angle <= eps_rad

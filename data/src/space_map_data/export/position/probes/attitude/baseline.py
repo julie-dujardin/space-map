@@ -1,25 +1,18 @@
 """Constant-axis constant-rate spin-baseline fit + residual subtraction.
 
-For spin-stabilised spacecraft (e.g. Juno) and nadir-pointed orbiters
-where the body-frame rotation is dominated by orbital motion (e.g. MRO),
-much of the attitude trace is a simple rotation about a fixed axis at
-a fixed rate. Subtracting that motion before keyframe extraction makes
-the residual nearly constant — turning 1000s of keyframes into single
-digits.
-
-The decision to apply the baseline is data-driven: we always *fit* a
-baseline from the median angular velocity, but the writer applies it
-only when the residual stream is angularly tighter than the raw stream.
-This catches missions where the spin model genuinely simplifies the
-signal and skips it for those where it doesn't (e.g. Cassini's
-encounter-driven attitude).
+A fast spin-stabilised spacecraft (e.g. Juno) turns far enough between
+samples to alias the adaptive sampler. We fit the spin from the median
+angular velocity and subtract it, so the sampler keyframes the slow
+residual instead. The writer applies this only when the fitted rate is
+fast enough to alias (see `ALIAS_ANGLE_RAD` in `extractor`); slower
+motion samples fine raw.
 """
 
 import math
 
 import numpy as np
 
-from .quaternion import angle_between, angular_velocity, q_conj, q_mul
+from .quaternion import angular_velocity, q_conj, q_mul
 
 
 def fit_spin_baseline(
@@ -79,14 +72,3 @@ def apply_baseline(
         out[i] = r
         last = r
     return out
-
-
-def stream_p95_angle_from_identity(quats: np.ndarray) -> float:
-    """p95 rotation angle (radians) of each sample from the identity quaternion.
-
-    Used by the writer to decide whether the spin-baseline residual is
-    tighter than the raw stream — if it is, we ship the residual.
-    """
-    sub = quats[::100] if quats.shape[0] > 1000 else quats
-    angles = np.array([angle_between(q, np.array([1.0, 0.0, 0.0, 0.0])) for q in sub])
-    return float(np.percentile(angles, 95))

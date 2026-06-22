@@ -16,7 +16,6 @@ old chunk in place — the next run repacks whichever chunks changed.
 """
 
 import gzip
-import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,8 +30,6 @@ from .format import (
     quantise_component,
 )
 
-logger = logging.getLogger(__name__)
-
 # Per-file raw payload budget. 250 KB raw lands at ~100–200 KB gzipped for
 # the attitude streams the benchmark covered. Above that, file-loading
 # latency starts to bite on first-focus. Below it, the per-probe file
@@ -41,7 +38,6 @@ TARGET_RAW_BYTES = 250 * 1024
 
 _J2000_JD = 2451545.0
 _S_PER_DAY = 86400.0
-_DT_MAX = 0xFFFF_FFFF  # uint32 ceiling — ~136 years
 
 
 @dataclass(frozen=True)
@@ -146,13 +142,9 @@ def _write_one_chunk(
     for k, idx in enumerate(sample_indices):
         et = float(ets[idx])
         # First keyframe has dt=0; subsequent ones are inter-keyframe deltas.
-        dt = 0 if k == 0 else max(0, round(et - prev_et))
-        if dt > _DT_MAX:
-            # Should never happen under our adaptive-keyframe budget (max
-            # gap is bounded by the SLERP error budget over the CK window),
-            # but the format is finite. Cap and log so the symptom shows.
-            logger.warning("attitude keyframe dt %d s exceeds uint32 cap, clamping", dt)
-            dt = _DT_MAX
+        # float32 keeps sub-second spacing — integer seconds drifted the
+        # accumulated timeline by minutes across a dense chunk.
+        dt = 0.0 if k == 0 else max(0.0, et - prev_et)
         idx_three, a, b, c = _smallest_three(quats[idx])
         raw.extend(pack_keyframe(dt, idx_three, a, b, c))
         prev_et = et

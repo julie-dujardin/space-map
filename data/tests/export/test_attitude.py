@@ -62,10 +62,10 @@ def test_header_rejects_wrong_magic() -> None:
 
 
 def test_keyframe_roundtrip_extreme_values() -> None:
-    # Max-ish positive and negative int16 components + max uint32 dt — the
-    # ranges that quantise/dequantise must survive without overflow.
+    # Max-ish int16 components + a sub-second dt — float32 must keep the
+    # fractional spacing that integer seconds dropped.
     kf = pack_keyframe(
-        dt_seconds=4_000_000_000,
+        dt_seconds=0.125,
         idx=3,
         a=COMPONENT_SCALE,
         b=-COMPONENT_SCALE,
@@ -73,7 +73,7 @@ def test_keyframe_roundtrip_extreme_values() -> None:
     )
     assert len(kf) == KEYFRAME_SIZE
     dt, idx, a, b, c = unpack_keyframe(kf, 0)
-    assert dt == 4_000_000_000
+    assert dt == 0.125  # exact in float32
     assert idx == 3
     assert (a, b, c) == (COMPONENT_SCALE, -COMPONENT_SCALE, 0)
 

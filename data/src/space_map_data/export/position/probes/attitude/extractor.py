@@ -18,12 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .baseline import (
-    apply_baseline,
-    fit_spin_baseline,
-    stream_p95_angle_from_identity,
-)
+from .adaptive import SEED_DT_S, adaptive_sample
+from .baseline import baseline_quaternion, fit_spin_baseline
 from .keyframes import extract_keyframes
+from .quaternion import angle_between, q_conj, q_mul
 from .sample import ck_windows, sample_truth
 from .writer import ChunkFile, write_chunks
 
@@ -34,24 +32,48 @@ logger = logging.getLogger(__name__)
 # counts (a single knob; phase classifier added overhead without payoff).
 DEFAULT_EPS_DEG = 0.1
 
-# Sampling cadence (Hz), before adaptive-keyframe decimation.
-SAMPLE_HZ = 10.0
-# Per-CK-file sample cap. Coverage is the union of every CK (years to
-# decades); 10 Hz over that would take hours, so the cap floors long files at
-# minute-scale cadence. Raise it for finer slews at the cost of longer exports.
-MAX_SAMPLES_PER_FILE = 2_000
-# Coarse global subsample for the apply-baseline decision. Sparse is fine —
-# the per-sample pxform value is exact at any spacing.
-DECISION_SAMPLES = 4_000
 # Spin fit: dense 10 Hz over a bounded leading window, so a fast spin is
-# resolved even when the first CK file is months long (the cap would alias it).
+# resolved even when the first CK file is months long.
+SAMPLE_HZ = 10.0
 FIT_WINDOW_S = 2 * 86400.0
 FIT_MAX_SAMPLES = 50_000
+# Apply the spin baseline only when the turn between seed samples would alias
+# the sampler. Below that, raw motion samples fine and the inverse-spin
+# residual only adds curvature (a slow ditherer samples worse, not better).
+ALIAS_ANGLE_RAD = math.radians(90.0)
 
 
 def _grid_n(duration_s: float, cap: int) -> int:
     """Sample count for a window: 10 Hz, clamped to [2, cap]."""
     return int(max(2, min(cap, round(duration_s * SAMPLE_HZ))))
+
+
+def _residual_transform(axis, rate, anchor, t0):
+    """Map raw J2000->body truth → spin-baseline residual q_baseline(t)⁻¹·q."""
+
+    def transform(et: float, q: np.ndarray) -> np.ndarray:
+        b = q_mul(baseline_quaternion(axis, rate, et - t0), anchor)
+        return q_mul(q_conj(b), q)
+
+    return transform
+
+
+def _persistent_spin_speed(frame_name: str, t0: float, t1: float) -> float:
+    """Median local angular speed (rad/s) sampled across the whole mission.
+
+    Close pxform pairs measure the true instantaneous rate without the aliasing
+    a coarse single-spacing estimate suffers. Distinguishes a persistent spinner
+    (Juno) from a transient early detumble (Europa Clipper) that a lead-window
+    fit alone reads as a global spin.
+    """
+    n, ddt = 96, 1.0
+    starts = np.linspace(t0, max(t0, t1 - ddt), n)
+    ets = np.empty(2 * n)
+    ets[0::2] = starts
+    ets[1::2] = starts + ddt
+    q = sample_truth(frame_name, ets)
+    speeds = [angle_between(q[2 * i], q[2 * i + 1]) / ddt for i in range(n)]
+    return float(np.median(speeds))
 
 
 @dataclass(frozen=True)
@@ -84,11 +106,12 @@ def extract_attitude(
     Caller furnishes kernels. `bus_instr_id` is the CK instrument ID
     (typically `naif_id × 1000`) for the spacecraft bus frame; `frame_name`
     is the FK-registered name resolvable by `pxform("J2000", frame_name, et)`.
-    Coverage is the union of `ck_paths`, sampled and keyframed file-by-file to
-    bound memory over decades.
+    Coverage is the union of `ck_paths`, sampled adaptively and keyframed
+    file-by-file to bound memory over decades.
 
     The spin baseline is fit unconditionally and applied iff its residual is
-    angularly tighter than the raw stream.
+    angularly tighter than the raw stream — a fast spinner (Juno, LADEE) must
+    be baselined so the adaptive sampler doesn't alias its turns.
     """
     windows = ck_windows(ck_paths, bus_instr_id)
     if not windows:
@@ -104,33 +127,34 @@ def extract_attitude(
     )
     axis, rate, anchor = fit_spin_baseline(sample_truth(frame_name, fit_ets), fit_ets)
 
-    # Decide apply-vs-skip from a coarse whole-mission subsample.
-    dec_ets = np.linspace(global_start, global_end, DECISION_SAMPLES)
-    dec_truth = sample_truth(frame_name, dec_ets)
-    dec_resid = apply_baseline(dec_truth, dec_ets, axis, rate, anchor, t0=global_start)
-    use_baseline = stream_p95_angle_from_identity(
-        dec_resid
-    ) < stream_p95_angle_from_identity(dec_truth)
+    # Baseline only a persistent fast spinner (Juno): a turn wider than the
+    # alias angle per seed aliases the raw sampler. Gate on the whole-mission
+    # median speed, not the lead-window fit — else a transient early detumble
+    # (Europa Clipper) baselines the entire mission with a wrong inverse spin.
+    spin_speed = _persistent_spin_speed(frame_name, global_start, global_end)
+    use_baseline = spin_speed * SEED_DT_S > ALIAS_ANGLE_RAD
+    transform = (
+        _residual_transform(axis, rate, anchor, global_start) if use_baseline else None
+    )
 
-    # Stream each file: sample → residual → keyframes → accumulate. Overlap is
-    # trimmed against the last emitted keyframe to keep the merge time-ascending.
+    # Per file: adaptive-sample the stream (raw or residual), decimate to
+    # keyframes, accumulate. Overlap is trimmed against the last emitted
+    # keyframe to keep the merge time-ascending.
     eps_rad = math.radians(eps_deg)
     kf_quats: list[np.ndarray] = []
     kf_ets: list[float] = []
     last_et = -math.inf
+    n_samples = 0
+    n_gaps = 0
     for start_et, end_et in windows:
         seg_start = max(start_et, last_et)
         if end_et - seg_start <= 1.0:
             continue
-        ets = np.linspace(
-            seg_start, end_et, _grid_n(end_et - seg_start, MAX_SAMPLES_PER_FILE)
+        ets, stream, gaps = adaptive_sample(
+            frame_name, seg_start, end_et, eps_rad, transform=transform
         )
-        truth = sample_truth(frame_name, ets)
-        stream = (
-            apply_baseline(truth, ets, axis, rate, anchor, t0=global_start)
-            if use_baseline
-            else truth
-        )
+        n_samples += ets.size
+        n_gaps += gaps
         for i in extract_keyframes(stream, ets, eps_rad):
             t = float(ets[i])
             if t <= last_et:
@@ -138,6 +162,16 @@ def extract_attitude(
             kf_ets.append(t)
             kf_quats.append(stream[i])
             last_et = t
+
+    if n_gaps:
+        # One line per probe — CK gaps are normal for busy orbiters (MRO,
+        # Cassini); per-file logging spammed thousands of identical warnings.
+        logger.warning(
+            "attitude: %s — %d/%d samples in CK gaps (repeated last good)",
+            frame_name,
+            n_gaps,
+            n_samples,
+        )
 
     quats = np.array(kf_quats) if kf_quats else np.empty((0, 4))
     ets_arr = np.array(kf_ets)
