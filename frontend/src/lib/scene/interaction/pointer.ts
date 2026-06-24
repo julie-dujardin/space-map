@@ -1,4 +1,11 @@
-import { Raycaster, Vector2, Vector3, type Mesh, type PerspectiveCamera } from 'three';
+import {
+	Raycaster,
+	Vector2,
+	Vector3,
+	type Mesh,
+	type Object3D,
+	type PerspectiveCamera
+} from 'three';
 import type { PositionedBody } from '$lib/types/objects';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -55,15 +62,19 @@ export class PointerInteraction {
 		);
 		this.raycaster.setFromCamera(this.pointer, this.camera);
 
-		// Mesh hits first (planets, stars, etc.).
+		// First hit resolving to a body. Walk parents so child meshes (cloud
+		// shells, nomenclature labels) resolve to their planet, not get skipped.
 		const hits = this.raycaster.intersectObjects(this.clickables);
 		let bestBody: PositionedBody | undefined;
 		let bestDist = Infinity;
-		if (hits.length > 0) {
-			const body = this.meshToBody.get(hits[0].object as Mesh);
+		for (const hit of hits) {
+			let obj: Object3D | null = hit.object;
+			while (obj && !this.meshToBody.has(obj as Mesh)) obj = obj.parent;
+			const body = obj ? this.meshToBody.get(obj as Mesh) : undefined;
 			if (body) {
 				bestBody = body;
-				bestDist = hits[0].distance;
+				bestDist = hit.distance;
+				break;
 			}
 		}
 
