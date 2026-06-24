@@ -12,7 +12,7 @@ const configuredDataUrl = process.env.PUBLIC_DATA_URL ?? envFromFiles.PUBLIC_DAT
 const isRemoteDataUrl = /^https?:\/\//i.test(configuredDataUrl);
 const dataTarget = isRemoteDataUrl
 	? configuredDataUrl
-	: (process.env.DATA_SERVER_URL ?? 'http://localhost:8080');
+	: (process.env.DATA_SERVER_URL ?? envFromFiles.DATA_SERVER_URL ?? 'http://localhost:8080');
 if (isRemoteDataUrl) {
 	process.env.PUBLIC_DATA_URL = '/data';
 }
