@@ -14,7 +14,11 @@ export function pickPointCloudBody(
 	canvasHeight: number,
 	tmpV3: Vector3,
 	jd: number,
-	pointerType: string
+	pointerType: string,
+	/** Returns false for a candidate hidden behind a mesh, so the nearest
+	 *  *visible* dot wins instead of the nearest dot. Args are the dot's NDC and
+	 *  its scene-unit distance from the camera. */
+	isVisible?: (ndcX: number, ndcY: number, worldDist: number) => boolean
 ): { body: PositionedBody; distance: number } | null {
 	// TODO: earth still focus-steals a lot. Maybe de-prioritise very large objects?
 	const SCREEN_THRESHOLD = pointerType === 'touch' || pointerType === 'pen' ? 48 : 24;
@@ -50,14 +54,15 @@ export function pickPointCloudBody(
 		const sx = (v.x + 1) * 0.5 * canvasWidth;
 		const sy = (1 - v.y) * 0.5 * canvasHeight;
 		const screenDist = Math.hypot(sx - px, sy - py);
-		if (screenDist < bestScreenDist) {
-			bestScreenDist = screenDist;
-			bestWorldDist = worldDist;
-			bestBody = body;
-		} else if (screenDist === bestScreenDist && worldDist < bestWorldDist) {
-			bestWorldDist = worldDist;
-			bestBody = body;
-		}
+		const better =
+			screenDist < bestScreenDist || (screenDist === bestScreenDist && worldDist < bestWorldDist);
+		if (!better) return;
+		// Reject dots occluded by a mesh so the nearest visible dot wins — a dot
+		// hidden behind a planet must not shadow the one the user can see.
+		if (isVisible && !isVisible(v.x, v.y, worldDist)) return;
+		bestScreenDist = screenDist;
+		bestWorldDist = worldDist;
+		bestBody = body;
 	};
 
 	// A definitive hit (cursor effectively on a dot) lets us bail before

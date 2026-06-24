@@ -2,6 +2,7 @@ import {
 	Raycaster,
 	Vector2,
 	Vector3,
+	type Intersection,
 	type Mesh,
 	type Object3D,
 	type PerspectiveCamera
@@ -22,6 +23,7 @@ const CLICK_DRAG_PX2 = 9; // 3px move tolerance — anything larger reads as a d
 export class PointerInteraction {
 	private readonly downPos = new Vector2();
 	private readonly pointer = new Vector2();
+	private readonly _tmpPointer = new Vector2();
 	private readonly raycaster = new Raycaster();
 	private readonly _tmpV3 = new Vector3();
 
@@ -62,23 +64,12 @@ export class PointerInteraction {
 		);
 		this.raycaster.setFromCamera(this.pointer, this.camera);
 
-		// First hit resolving to a body. Walk parents so child meshes (cloud
-		// shells, nomenclature labels) resolve to their planet, not get skipped.
-		const hits = this.raycaster.intersectObjects(this.clickables);
-		let bestBody: PositionedBody | undefined;
-		let bestDist = Infinity;
-		for (const hit of hits) {
-			let obj: Object3D | null = hit.object;
-			while (obj && !this.meshToBody.has(obj as Mesh)) obj = obj.parent;
-			const body = obj ? this.meshToBody.get(obj as Mesh) : undefined;
-			if (body) {
-				bestBody = body;
-				bestDist = hit.distance;
-				break;
-			}
-		}
+		// Mesh under the cursor — the planet you clicked. Only a fallback: a
+		// point-cloud body always wins so small dots stay clickable (esp. touch).
+		const meshBody = this.resolveMeshHit(this.raycaster.intersectObjects(this.clickables))?.body;
 
-		// Then point-cloud bodies (asteroids, spacecraft, moons-as-dots).
+		// Point-cloud bodies (asteroids, spacecraft, moons-as-dots). isDotVisible
+		// skips dots hidden behind a planet, so the nearest *visible* dot wins.
 		const pointHit = pickPointCloudBody(
 			this.pointer,
 			this.camera,
@@ -88,10 +79,36 @@ export class PointerInteraction {
 			this.canvas.clientHeight,
 			this._tmpV3,
 			this.clock.jd,
-			e.pointerType
+			e.pointerType,
+			this.isDotVisible
 		);
-		if (pointHit && pointHit.distance < bestDist) bestBody = pointHit.body;
 
+		const bestBody = pointHit?.body ?? meshBody;
 		if (bestBody) this.onPick(bestBody);
+	};
+
+	/** First raycast hit that resolves to a body. Walks parents so child meshes
+	 *  (cloud shells, nomenclature labels) resolve to their planet. */
+	private resolveMeshHit(
+		hits: Intersection[]
+	): { body: PositionedBody; distance: number } | undefined {
+		for (const hit of hits) {
+			let obj: Object3D | null = hit.object;
+			while (obj && !this.meshToBody.has(obj as Mesh)) obj = obj.parent;
+			const body = obj ? this.meshToBody.get(obj as Mesh) : undefined;
+			if (body) return { body, distance: hit.distance };
+		}
+		return undefined;
+	}
+
+	/** A dot is visible unless a solid mesh sits in front of it on its own ray.
+	 *  Non-recursive: only the depth-writing surface spheres occlude, not their
+	 *  transparent cloud/atmosphere shells. */
+	private isDotVisible = (ndcX: number, ndcY: number, worldDist: number): boolean => {
+		if (this.clickables.length === 0) return true;
+		this._tmpPointer.set(ndcX, ndcY);
+		this.raycaster.setFromCamera(this._tmpPointer, this.camera);
+		const hits = this.raycaster.intersectObjects(this.clickables, false);
+		return hits.length === 0 || hits[0].distance >= worldDist * 0.999;
 	};
 }
