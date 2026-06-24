@@ -15,7 +15,6 @@
 	import YearHistogramChart from './YearHistogramChart.svelte';
 	import GroupOrbitMap from './GroupOrbitMap.svelte';
 	import ChildGroups from './ChildGroups.svelte';
-	import { groupTypeLabelPlural } from '$lib/format/group';
 
 	const appState = getContext<AppState | undefined>('appState');
 
@@ -188,7 +187,7 @@
 
 {#if orbitClassRefs.length > 0 && constellations.length === 0}
 	<div class="flex flex-col gap-1">
-		<h3 class="text-sm font-medium">{groupTypeLabelPlural('orbit_class')}</h3>
+		<h3 class="text-sm font-medium">{m.group_orbit_classes()}</h3>
 		<div class="border-border/60 border-t"></div>
 		<div class="pt-1">
 			<EntityLinks entities={orbitClassRefs} />
