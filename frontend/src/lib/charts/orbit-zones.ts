@@ -638,24 +638,37 @@ export function categoryPlotType(slug: string): PlotType | null {
 	return null;
 }
 
-/** `class-<NAME>` slugs with a clickable zone polygon on `plotType`'s scatter
- *  (comet plots count both a-T and q-e, since the chart toggles). Everything
- *  else — inc-only sat zones, off-plot classes — belongs in the textual list. */
+/** `class-<NAME>` slugs with a clickable zone polygon on `plotType`'s scatter. */
 export function scatterClickableSlugs(plotType: PlotType): Set<string> {
 	const out = new Set<string>();
-	if (plotType === 'peri-apo') {
-		for (const z of Object.values(SAT_ORBIT_ZONES)) {
-			if (z.polygon.length > 0) out.add(`${CLASS_SLUG_PREFIX}${z.className}`);
-		}
-		return out;
-	}
-	const plots = COMET_PLOT_TYPES.includes(plotType) ? COMET_PLOT_TYPES : [plotType];
-	for (const z of Object.values(ORBIT_ZONES)) {
-		if (plots.includes(z.plotType) && z.polygon.length > 0) {
-			out.add(`${CLASS_SLUG_PREFIX}${z.className}`);
-		}
+	for (const z of zonesOnPlot(plotType)) {
+		if (z.polygon.length > 0) out.add(`${CLASS_SLUG_PREFIX}${z.className}`);
 	}
 	return out;
+}
+
+/** Zone slugs with no clickable polygon — inc-only sat classes, folded into the
+ *  orbit map as chips. Asteroid/comet plots have none. */
+export function scatterIncOnlySlugs(plotType: PlotType): string[] {
+	const out: string[] = [];
+	for (const z of zonesOnPlot(plotType)) {
+		if (z.polygon.length === 0) out.push(`${CLASS_SLUG_PREFIX}${z.className}`);
+	}
+	return out;
+}
+
+/** Every zone slug on `plotType`'s orbit map — clickable plus inc-only chips. */
+export function scatterZoneSlugs(plotType: PlotType): Set<string> {
+	const out = scatterClickableSlugs(plotType);
+	for (const slug of scatterIncOnlySlugs(plotType)) out.add(slug);
+	return out;
+}
+
+/** Zones drawn on `plotType` (comet plots span both a-T and q-e). */
+function zonesOnPlot(plotType: PlotType): OrbitZone[] {
+	if (plotType === 'peri-apo') return Object.values(SAT_ORBIT_ZONES);
+	const plots = COMET_PLOT_TYPES.includes(plotType) ? COMET_PLOT_TYPES : [plotType];
+	return Object.values(ORBIT_ZONES).filter((z) => plots.includes(z.plotType));
 }
 
 /** Pick the chart's plot type for a group slug; null hides the chart. */

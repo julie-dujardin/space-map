@@ -6,6 +6,9 @@
 	import { fetchSatOrbitSamples } from '$lib/fetch/groups/sat-orbit-samples';
 	import {
 		plotTypeForSlug,
+		scatterIncOnlySlugs,
+		classNameFromSlug,
+		orbitClassLabel,
 		type OrbitSample,
 		type EarthOrbitSample,
 		type PlotType
@@ -15,6 +18,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
 	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
+	import ZoneChip from './ZoneChip.svelte';
 
 	interface Props {
 		global: GlobalGroupData | null;
@@ -52,6 +56,18 @@
 		if (!appState) return;
 		appState.setGroup(slug, slug);
 	}
+
+	// Inc-only classes (no clickable region) fold in below the chart as chips.
+	let incOnlyChips = $derived.by(() => {
+		if (plotType == null) return [];
+		return scatterIncOnlySlugs(plotType)
+			.filter((slug) => (populationBySlug[slug] ?? 0) > 0)
+			.map((slug) => ({
+				slug,
+				name: orbitClassLabel(classNameFromSlug(slug) ?? slug),
+				n: populationBySlug[slug]
+			}));
+	});
 </script>
 
 {#if global && plotType}
@@ -83,5 +99,12 @@
 				</div>
 			{/if}
 		</div>
+		{#if incOnlyChips.length}
+			<div class="flex flex-wrap gap-1.5 pt-1">
+				{#each incOnlyChips as c (c.slug)}
+					<ZoneChip slug={c.slug} name={c.name} n={c.n} active={global.slug === c.slug} />
+				{/each}
+			</div>
+		{/if}
 	</div>
 {/if}

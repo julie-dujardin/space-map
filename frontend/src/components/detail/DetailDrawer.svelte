@@ -45,7 +45,7 @@
 	import GroupProperties from './properties/GroupProperties.svelte';
 	import GroupOrbitMap from './properties/GroupOrbitMap.svelte';
 	import ChildGroups from './properties/ChildGroups.svelte';
-	import { categoryPlotType, scatterClickableSlugs } from '$lib/charts/orbit-zones';
+	import { categoryPlotType, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
@@ -284,17 +284,15 @@
 
 	let crumb = $derived(parentCrumb(focusable, ctx, data, groupDetail?.global ?? null));
 
-	// Orbit-grouping categories (asteroids/comets/satellites) show the scatter;
-	// the textual child list then keeps only zones the scatter can't be clicked
-	// for (inc-only sat zones, off-plot classes) plus non-zone children.
+	// Categories render the orbit map here; class/NEO/PHA pages get it from
+	// GroupProperties (slug-derived). Chips fold into GroupOrbitMap, so both show them.
 	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
 	let visibleChildGroups = $derived.by(() => {
-		// Bus chips render inside GroupProperties (below Programme); everything
-		// else (category zones/families/classes) stays here, above the details.
+		// Bus chips live in GroupProperties; zones live in the orbit map.
 		const cg = (groupDetail?.localized?.child_groups ?? []).filter((c) => c.role !== 'bus');
 		if (!categoryPlot) return cg;
-		const clickable = scatterClickableSlugs(categoryPlot);
-		return cg.filter((c) => !(c.primary_id && clickable.has(c.primary_id)));
+		const onScatter = scatterZoneSlugs(categoryPlot);
+		return cg.filter((c) => !(c.primary_id && onScatter.has(c.primary_id)));
 	});
 	let fallbackName = $derived(focusableFallbackName(focusable));
 	let resolvedName = $derived(data?.localized?.name ?? data?.global?.name ?? fallbackName);
