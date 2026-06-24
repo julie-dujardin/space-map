@@ -22,6 +22,7 @@
 	import { classifyLagrange } from '$lib/math/orbit/lagrange';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
+	import CrossRefCard from './CrossRefCard.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;
@@ -181,32 +182,15 @@
 {#if tiles.length > 0}
 	<div class="grid grid-cols-2 gap-2">
 		{#each tiles as t (t.card.label)}
-			<a
+			<CrossRefCard
 				href={href(t.card.ref)}
 				onclick={(e) => open(e, t.card.ref)}
 				title={t.card.ref.name}
-				class="border-border/60 bg-muted pointer-events-auto relative block h-20 overflow-hidden rounded-md border"
-				class:col-span-2={tiles.length === 1}
-			>
-				{#await t.hero then src}
-					{#if src}
-						<img
-							{src}
-							alt=""
-							loading="lazy"
-							decoding="async"
-							class="absolute inset-0 size-full object-cover"
-						/>
-					{/if}
-				{/await}
-				<div
-					class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent"
-				></div>
-				<div class="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-2.5">
-					<span class="truncate text-sm font-semibold text-white">{t.card.display}</span>
-					<span class="truncate text-[10px] uppercase text-white/70">{t.card.label}</span>
-				</div>
-			</a>
+				hero={t.hero}
+				display={t.card.display}
+				label={t.card.label}
+				class={tiles.length === 1 ? 'col-span-2' : ''}
+			/>
 		{/each}
 	</div>
 {/if}
