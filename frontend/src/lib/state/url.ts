@@ -10,7 +10,7 @@ import {
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
-import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
+import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type MapViewState } from './view';
 
 /** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
 export function urlTypeToIdPrefix(urlType: string): string {
@@ -36,7 +36,7 @@ const EARTH_GROUP_ZOOM = 0.005;
  *  ~1.5 M km away). */
 const LAGRANGE_GROUP_ZOOM = 0.3;
 /** Solar-system framing for small-body (orbit-class) groups. */
-const SUN_GROUP_ZOOM = DEFAULT_VIEW.zoom;
+const SUN_GROUP_ZOOM = SUN_VIEW_ZOOM;
 
 /** Camera anchor + zoom for /g/<slug>. Small-body groups (orbit class + NEO/
  *  PHA designations) frame heliocentrically; every other category currently

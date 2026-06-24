@@ -1,7 +1,7 @@
 import { Vector3, type Mesh, type PerspectiveCamera, type Scene } from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { cartesianToSpherical, sphericalToCartesian } from '$lib/math/spherical';
+import { cartesianToSpherical, offsetFacing, sphericalToCartesian } from '$lib/math/spherical';
 import type { BodyObjects, Callbacks } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -327,13 +327,33 @@ export class FocusController {
 	 * the user should land directly on the target, not watch a fly in from Earth.
 	 */
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
-		const { ctx, focus, pointClouds } = this.deps;
+		const body = this.deps.ctx.getBody(id);
+		if (!body) return;
+		this.settleOnBodyInstant(body);
+		this.snapToBodyFrame(latitude, longitude, zoom);
+	}
+
+	/** Snap focus onto a body, framed looking toward `towardId` (e.g. the Sun),
+	 *  `elevationDeg` above the ecliptic. Placed in the scene frame, not body-fixed,
+	 *  so the pending replay is cleared. Used for the home/bare-Earth landing view. */
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
+		const { ctx, camera, controls, callbacks } = this.deps;
 		const body = ctx.getBody(id);
 		if (!body) return;
-		// Mesh upgrade, visibility, and detail-drawer + URL-name sync (via
-		// onFocusChange). This also queues an approach fly, which the settle below
-		// neutralises — nulling the cam-fly fields so stepFocusAnimation's settle
-		// branch leaves the snapped frame untouched.
+		this.settleOnBodyInstant(body);
+		const toward = ctx.getBody(towardId)?.position ?? [0, 0, 0];
+		const offset = offsetFacing(body.position, toward, elevationDeg, distance);
+		camera.position.set(offset[0], offset[1], offset[2]);
+		controls.update();
+		const settled = cartesianToSpherical(offset, [0, 0, 0]);
+		callbacks.onCameraPosition?.(settled.latitude, settled.longitude, settled.distance);
+		this.pendingInitialView = null; // scene-frame placement is final; skip the body-fixed replay
+	}
+
+	/** Settle focus onto a resident body with no approach fly, nulling the cam-fly
+	 *  fields so stepFocusAnimation's settle branch leaves the snapped frame untouched. */
+	private settleOnBodyInstant(body: PositionedBody): void {
+		const { focus, pointClouds } = this.deps;
 		this.setFocusTarget(body);
 		focus.focusTruePos = [...body.position];
 		focus.focusOriginWorld = [...body.position];
@@ -347,7 +367,6 @@ export class FocusController {
 		focus.cameraStaysOnBody = false;
 		this.deps.repositionAll();
 		pointClouds.rebuildBasis();
-		this.snapToBodyFrame(latitude, longitude, zoom);
 	}
 
 	/** Snap the camera to a body-fixed lat/lon/zoom without any fly animation.

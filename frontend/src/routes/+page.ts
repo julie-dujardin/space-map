@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
 
 export function load() {
-	redirect(302, '/b/10/Sun');
+	redirect(302, '/b/399/Earth');
 }

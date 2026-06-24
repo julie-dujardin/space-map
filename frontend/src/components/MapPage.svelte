@@ -7,7 +7,15 @@
 	import { dateToJD, jdToDate } from '$lib/format/date';
 	import { ObjectType, type PositionedBody } from '$lib/types/objects';
 	import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
-	import { DEFAULT_VIEW, UrlType } from '$lib/state/view';
+	import {
+		DEFAULT_FRAMING_LAT,
+		DEFAULT_FRAMING_LON,
+		DEFAULT_VIEW,
+		DEFAULT_VIEW_ELEVATION_DEG,
+		SUN_VIEW_ZOOM,
+		UrlType
+	} from '$lib/state/view';
+	import { EARTH_ID, SUN_ID } from '$lib/constants';
 	import { createAppState } from '$lib/state/app-state.svelte';
 	import { fetchBodyNomenclature, type NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 	import type { Focusable, FocusObject } from '$lib/state/focusable';
@@ -82,7 +90,7 @@
 				scene?.focusOnBody(id);
 			} else if (type === UrlType.Probe || type === UrlType.EarthSatellite) {
 				const distance = framingDistanceFor(type, body);
-				scene?.focusOnBody(id, distance, DEFAULT_VIEW.latitude, DEFAULT_VIEW.longitude);
+				scene?.focusOnBody(id, distance, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 			} else {
 				scene?.focusOnBody(id, framingDistanceFor(type, body));
 			}
@@ -93,14 +101,9 @@
 	// Open a /g/<slug> group view, framing its camera anchor at the default angle.
 	function openGroup(slug: string, name: string) {
 		appState.setGroup(slug, name);
-		// setGroup parked view.id/zoom on the group anchor; DEFAULT_VIEW lat/lon
-		// lands at the default framing instead of the prior angle.
-		scene?.focusOnBody(
-			appState.view.id,
-			appState.view.zoom,
-			DEFAULT_VIEW.latitude,
-			DEFAULT_VIEW.longitude
-		);
+		// setGroup parked view.id/zoom on the group anchor; the default framing
+		// angle lands the camera there instead of the prior angle.
+		scene?.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
 	}
 
 	const clock = new SimClock(dateToJD(appState.view.date));
@@ -239,10 +242,13 @@
 		]);
 		const initialBody = ctx.getBody(initialId);
 		if (initialBody) {
-			if (!appState.view.framed) {
+			if (initialId === EARTH_ID && !appState.view.framed) {
+				// Home view (`/` redirects here): Earth looking sunward, tilted above the ecliptic.
+				scene?.snapToBodyFacing(initialId, SUN_ID, DEFAULT_VIEW_ELEVATION_DEG, DEFAULT_VIEW.zoom);
+			} else if (!appState.view.framed) {
 				// No URL camera — frame by the target's size/model, same as search.
 				const distance = framingDistanceFor(appState.view.type, initialBody);
-				scene?.snapToBody(initialId, DEFAULT_VIEW.latitude, DEFAULT_VIEW.longitude, distance);
+				scene?.snapToBody(initialId, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON, distance);
 			} else if (cameraFocus?.data.id !== initialId) {
 				// Explicit URL camera, but the renderer settled on the parent while the
 				// target streamed — snap onto it (no fly, opens already framed).
@@ -428,7 +434,7 @@
 							parentId === 'naif-10' ||
 							objectType === ObjectType.PLANET ||
 							objectType === ObjectType.DWARF_PLANET;
-						const distance = isSunOrbiter ? DEFAULT_VIEW.zoom : 0.005;
+						const distance = isSunOrbiter ? SUN_VIEW_ZOOM : 0.005;
 						scene?.focusOnBody(selectedBody.data.id, distance);
 					}}
 					onSheetResize={(h) => (drawerHeightDvh = h)}

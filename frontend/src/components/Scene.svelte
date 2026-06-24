@@ -65,6 +65,16 @@
 		renderer?.snapToBody(id, latitude, longitude, zoom);
 	}
 
+	/** Snap focus onto a body, framed looking toward another body (e.g. the Sun) above the ecliptic. */
+	export function snapToBodyFacing(
+		id: string,
+		towardId: string,
+		elevationDeg: number,
+		distance: number
+	): void {
+		renderer?.snapToBodyFacing(id, towardId, elevationDeg, distance);
+	}
+
 	/** Fly the camera onto a surface feature. Picks a zoom that frames the
 	 *  feature: small craters get pulled in close, ocean-sized features stay
 	 *  pulled back so they fit on screen. Clamped to the body's own min camera

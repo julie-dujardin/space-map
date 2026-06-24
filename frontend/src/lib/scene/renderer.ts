@@ -774,6 +774,10 @@ export class SceneRenderer {
 		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
 	}
 
+	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {
+		this.focusController.snapToBodyFacing(id, towardId, elevationDeg, distance);
+	}
+
 	snapToBody(id: string, latitude: number, longitude: number, zoom: number): void {
 		this.focusController.snapToBody(id, latitude, longitude, zoom);
 	}

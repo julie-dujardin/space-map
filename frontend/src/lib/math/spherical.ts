@@ -80,3 +80,30 @@ export function sphericalToCartesian(
 	}
 	return [target[0] + ox, target[1] + oy, target[2] + oz];
 }
+
+/**
+ * Scene-frame camera offset (from the render origin) placing the camera on the far
+ * side of `focus` from `toward`, lifted `elevationDeg` above the ecliptic (+Y) — so
+ * looking at `focus` also looks toward `toward`. Falls back to +Z when coincident.
+ */
+export function offsetFacing(
+	focus: [number, number, number],
+	toward: [number, number, number],
+	elevationDeg: number,
+	distance: number
+): [number, number, number] {
+	// Anti-`toward` horizontal direction (ecliptic plane); +Y is dropped.
+	let hx = focus[0] - toward[0];
+	let hz = focus[2] - toward[2];
+	const hl = sqrt(hx * hx + hz * hz);
+	if (hl > 0) {
+		hx /= hl;
+		hz /= hl;
+	} else {
+		hx = 0;
+		hz = 1;
+	}
+	const e = elevationDeg * RAD;
+	const c = cos(e);
+	return [distance * c * hx, distance * sin(e), distance * c * hz];
+}

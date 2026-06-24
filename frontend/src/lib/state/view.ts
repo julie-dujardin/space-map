@@ -1,3 +1,5 @@
+import { EARTH_ID } from '$lib/constants';
+
 /** URL path discriminator. Body types map 1:1 to ID prefix; Feature is a
  *  sub-selection on top of a body and uses a nested route shape
  *  (/<type>/<bodyId>/f/<featureId>/<name>). Group is a top-level aggregation
@@ -37,15 +39,24 @@ export interface MapViewState {
 	groupSlug: string | null;
 }
 
+/** Default vantage angle for a body framed with no explicit camera (search, click, group). */
+export const DEFAULT_FRAMING_LAT = 45;
+export const DEFAULT_FRAMING_LON = 0;
+/** Wide heliocentric framing for Sun-anchored group pages. */
+export const SUN_VIEW_ZOOM = 42.43;
+/** Landing-view tilt above the ecliptic, looking sunward from Earth. */
+export const DEFAULT_VIEW_ELEVATION_DEG = 30;
+
 export const DEFAULT_VIEW: MapViewState = {
 	type: UrlType.Body,
-	id: 'naif-10',
-	name: 'Sun',
+	id: EARTH_ID,
+	name: 'Earth',
 	date: new Date(),
 	isNow: true,
-	latitude: 45,
-	longitude: 0,
-	zoom: 42.43,
+	// Serialized fallback only — the landing snap places the camera sunward and writes lat/lon back.
+	latitude: DEFAULT_FRAMING_LAT,
+	longitude: DEFAULT_FRAMING_LON,
+	zoom: 15, // ~1.5 AU from Earth
 	imageIndex: null,
 	featureId: null,
 	groupSlug: null
