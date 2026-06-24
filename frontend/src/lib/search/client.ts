@@ -405,15 +405,22 @@ export async function catalogFacets(): Promise<FacetDistribution> {
 
 // Total documents in the catalog, cached after the first stats call. Drives the
 // idle "N entries in catalog" hint (estimatedTotalHits caps at maxTotalHits).
+// Returns null when the index can't be reached (env unset or server down) so the
+// hint can read "catalog unavailable" instead of a misleading "0 entries". The
+// failure isn't cached, so a later call retries once the DB is back.
 let catalogCountCache: number | null = null;
 
-export async function catalogCount(): Promise<number> {
+export async function catalogCount(): Promise<number | null> {
 	if (catalogCountCache !== null) return catalogCountCache;
 	const c = getClient();
-	if (!c) return 0;
-	const stats = await c.index(INDEX).getStats();
-	catalogCountCache = stats.numberOfDocuments ?? 0;
-	return catalogCountCache;
+	if (!c) return null;
+	try {
+		const stats = await c.index(INDEX).getStats();
+		catalogCountCache = stats.numberOfDocuments ?? 0;
+		return catalogCountCache;
+	} catch {
+		return null;
+	}
 }
 
 // Every group/collection doc, fetched once per locale to label the filter

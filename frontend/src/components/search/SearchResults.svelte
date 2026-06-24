@@ -46,7 +46,12 @@
 
 <ScrollArea class="min-h-0 flex-1">
 	<div class="px-2 py-1">
-		{#if model.result.hits.length === 0}
+		{#if model.error}
+			<div class="px-3 py-10 text-center">
+				<div class="mb-1 text-sm text-foreground">{m.search_error()}</div>
+				<div class="text-xs text-muted-foreground">{m.search_error_hint()}</div>
+			</div>
+		{:else if model.result.hits.length === 0}
 			<div class="px-3 py-10 text-center">
 				<div class="mb-1 text-sm text-foreground">{m.search_no_results()}</div>
 				{#if model.query.trim()}

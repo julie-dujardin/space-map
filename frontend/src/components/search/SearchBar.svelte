@@ -51,7 +51,10 @@
 	$effect(() => onExpandedChange?.(expanded));
 	let filterOpen = $state(false);
 	let groupCatalog = $state<GroupHit[]>([]);
-	let catalogTotal = $state(0);
+	// undefined while the first stats call is in flight, then the count, or null
+	// if the catalog index is unreachable (env unset or server down) — null drives
+	// the "catalog unavailable" hint instead of a misleading "0 entries".
+	let catalogTotal = $state<number | null | undefined>(undefined);
 	let facetUniverse = $state<FacetDistribution>({});
 	let inputEl: HTMLInputElement | undefined = $state();
 
@@ -62,10 +65,12 @@
 		if (enabled) fetchGroupCatalog(getLocale()).then((g) => (groupCatalog = g));
 	});
 
-	// Total catalog size for the idle hint (one stats call, locale-agnostic).
-	$effect(() => {
+	// Catalog size for the idle hint. catalogCount() doesn't cache failures, so a
+	// re-call after a null (see onfocus) re-hits the server.
+	function loadCatalogCount() {
 		if (enabled) catalogCount().then((n) => (catalogTotal = n));
-	});
+	}
+	$effect(loadCatalogCount);
 
 	// Full facet vocabulary (locale-agnostic codes) so bounded facets can list
 	// every value even once a query/filter narrows the live distribution.
@@ -563,7 +568,11 @@
 					bind:this={inputEl}
 					value={model.query}
 					oninput={(e) => model.setQuery(e.currentTarget.value)}
-					onfocus={() => (expanded = true)}
+					onfocus={() => {
+						expanded = true;
+						// Retry if the index was last seen unavailable.
+						if (catalogTotal === null) loadCatalogCount();
+					}}
 					onkeydown={onInputKeyDown}
 					type="text"
 					class="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
@@ -611,7 +620,9 @@
 									: ''}</span
 							>
 							{m.search_results_label()}
-						{:else}
+						{:else if catalogTotal === null}
+							{m.search_catalog_unavailable()}
+						{:else if catalogTotal !== undefined}
 							{m.search_catalog_count({ count: catalogTotal.toLocaleString(getLocale()) })}
 						{/if}
 					</span>

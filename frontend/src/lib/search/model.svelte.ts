@@ -46,6 +46,9 @@ export class SearchModel {
 	pageSize = $state(8);
 	result = $state<CatalogResult>(EMPTY);
 	loading = $state(false);
+	// Last query threw (index down/unreachable) — drives the error state instead
+	// of a misleading "no matches".
+	error = $state(false);
 
 	#token = 0;
 
@@ -67,6 +70,7 @@ export class SearchModel {
 		const token = ++this.#token;
 		if (!snapshot.query.trim() && countActive(snapshot.filters) === 0) {
 			this.result = EMPTY;
+			this.error = false;
 			this.loading = false;
 			return;
 		}
@@ -75,10 +79,12 @@ export class SearchModel {
 			const res = await searchCatalog(snapshot);
 			if (token !== this.#token) return;
 			this.result = res;
+			this.error = false;
 		} catch (err) {
 			if (token !== this.#token) return;
 			console.warn('[search] catalog query failed:', err);
 			this.result = EMPTY;
+			this.error = true;
 		} finally {
 			if (token === this.#token) this.loading = false;
 		}
@@ -154,5 +160,6 @@ export class SearchModel {
 		this.reverse = false;
 		this.page = 1;
 		this.result = EMPTY;
+		this.error = false;
 	}
 }
