@@ -518,7 +518,7 @@ class TestMetadataTrimming:
                         "_type": "lang",
                         "en": "English desc",
                         "fr": "French desc",
-                        "pt": "Portuguese desc",  # not in LANGUAGES — should drop
+                        "nl": "Dutch desc",  # not in LANGUAGES — should drop
                     }
                 },
                 "DateTime": {"value": "2024-01-01"},  # frontend doesn't use — dropped
