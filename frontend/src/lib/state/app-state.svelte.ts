@@ -1,8 +1,12 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
 import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
 import { applyFeature, applyFocus, applyGroup, parseUrl, serializeUrl, urlTypeFromId } from './url';
+import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 
-const WRITE_DEBOUNCE_MS = 250;
+// The sim clock ticks ~2×/s, so its URL writes are throttled to at most one per
+// minute (trailing). Everything else writes immediately — camera settles, focus
+// changes and search edits are discrete and infrequent.
+const DATE_THROTTLE_MS = 60_000;
 
 /**
  * Single source of truth for URL-backed app state. Components call targeted
@@ -10,7 +14,8 @@ const WRITE_DEBOUNCE_MS = 250;
  * whole MapViewState and calling replaceState themselves — the setter is what
  * knows how to merge its field(s) and sync the URL.
  *
- * setCamera/setDate use replaceState (frequent updates, no history entry).
+ * setCamera/setSearch use replaceState immediately (in-place updates, no history
+ * entry). setDate uses replaceState too but throttled, since it streams.
  * setFocus uses pushState (new object = new history entry, browser back works).
  * setImage uses pushState only when opening/closing the viewer; within-viewer
  * navigation uses replaceState so 10-image galleries don't pollute history.
@@ -18,39 +23,60 @@ const WRITE_DEBOUNCE_MS = 250;
 export class AppState {
 	view = $state<MapViewState>(DEFAULT_VIEW);
 
-	private writeTimer: ReturnType<typeof setTimeout> | undefined;
+	// Pending throttled clock write; any immediate write subsumes and clears it.
+	private dateTimer: ReturnType<typeof setTimeout> | undefined;
+	// Ephemeral search query/filters as a `&q=…&f=…` suffix. Rides along on
+	// in-place (replaceState) writes so a camera nudge doesn't drop it; cleared on
+	// navigation (pushState) so a new history entry starts without stale search.
+	private searchSuffix = '';
 
 	constructor(initial: MapViewState) {
 		this.view = initial;
 	}
 
-	private replaceDebounced() {
-		clearTimeout(this.writeTimer);
-		this.writeTimer = setTimeout(() => this.replaceNow(), WRITE_DEBOUNCE_MS);
-	}
-
 	private replaceNow() {
-		clearTimeout(this.writeTimer);
-		const url = serializeUrl(this.view);
+		clearTimeout(this.dateTimer);
+		this.dateTimer = undefined;
+		const url = serializeUrl(this.view) + this.searchSuffix;
 		// $state.snapshot unwraps the reactive proxy — history.state must be
 		// structured-cloneable, and proxies aren't.
 		svelteReplaceState(url, { view: $state.snapshot(this.view) });
 	}
 
 	private pushNow() {
-		clearTimeout(this.writeTimer);
+		clearTimeout(this.dateTimer);
+		this.dateTimer = undefined;
+		// Navigation starts a fresh entry — search doesn't carry across it.
+		this.searchSuffix = '';
 		const url = serializeUrl(this.view);
 		sveltePushState(url, { view: $state.snapshot(this.view) });
 	}
 
+	/** Mirror the live search panel state into the URL (replaceState, immediate).
+	 *  Pass null to clear. No-op when the serialized form is unchanged, so the
+	 *  driving effect can fire freely without spamming history.replaceState. */
+	setSearch(search: SearchUrlState | null) {
+		const suffix = serializeSearchSuffix(search);
+		if (suffix === this.searchSuffix) return;
+		this.searchSuffix = suffix;
+		this.replaceNow();
+	}
+
 	setCamera(cam: { latitude: number; longitude: number; zoom: number }) {
 		this.view = { ...this.view, ...cam };
-		this.replaceDebounced();
+		this.replaceNow();
 	}
 
 	setDate(date: Date, isNow: boolean) {
 		this.view = { ...this.view, date, isNow };
-		this.replaceDebounced();
+		// Throttle: the clock streams updates, so coalesce into one trailing write
+		// per window. An immediate write (camera/focus) meanwhile flushes the
+		// current date and resets the window. Already scheduled → nothing to do.
+		if (this.dateTimer) return;
+		this.dateTimer = setTimeout(() => {
+			this.dateTimer = undefined;
+			this.replaceNow();
+		}, DATE_THROTTLE_MS);
 	}
 
 	setFocus(focus: { type: string; id: string; name: string }) {

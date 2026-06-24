@@ -56,22 +56,19 @@ describe('AppState.setCamera', () => {
 		expect(s.view.zoom).toBe(5);
 	});
 
-	it('writes URL via replaceState after the debounce window', () => {
+	it('writes URL via replaceState immediately (camera settles are discrete)', () => {
 		const s = new AppState({ ...initialView });
 		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
-		expect(replaceStateSpy).not.toHaveBeenCalled();
-		vi.advanceTimersByTime(250);
 		expect(replaceStateSpy).toHaveBeenCalledOnce();
 	});
 
-	it('coalesces rapid changes into a single replaceState', () => {
+	it('writes the latest value on each call (no coalescing)', () => {
 		const s = new AppState({ ...initialView });
 		s.setCamera({ latitude: 1, longitude: 1, zoom: 1 });
 		s.setCamera({ latitude: 2, longitude: 2, zoom: 2 });
 		s.setCamera({ latitude: 3, longitude: 3, zoom: 3 });
-		vi.advanceTimersByTime(250);
-		expect(replaceStateSpy).toHaveBeenCalledOnce();
-		const [, state] = replaceStateSpy.mock.calls[0];
+		expect(replaceStateSpy).toHaveBeenCalledTimes(3);
+		const [, state] = replaceStateSpy.mock.calls[2];
 		expect(state.view.latitude).toBe(3);
 	});
 
@@ -93,11 +90,16 @@ describe('AppState.setDate', () => {
 		expect(s.view.latitude).toBe(initialView.latitude);
 	});
 
-	it('writes URL via replaceState after the debounce window', () => {
+	it('throttles the URL write to one trailing call per window', () => {
 		const s = new AppState({ ...initialView });
 		s.setDate(new Date('2030-06-01T00:00:00Z'), true);
-		vi.advanceTimersByTime(250);
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+		// Subsequent ticks within the window don't reschedule or pile up.
+		s.setDate(new Date('2030-06-01T00:00:30Z'), true);
+		vi.advanceTimersByTime(60_000);
 		expect(replaceStateSpy).toHaveBeenCalledOnce();
+		const [, state] = replaceStateSpy.mock.calls[0];
+		expect(state.view.date).toEqual(new Date('2030-06-01T00:00:30Z'));
 	});
 });
 
@@ -125,13 +127,14 @@ describe('AppState.setFocus', () => {
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 	});
 
-	// Regression: a debounced setCamera firing AFTER setFocus would wipe the new
-	// pushState entry off the URL. setFocus must cancel any pending debounce.
-	it('cancels a pending replaceState debounce', () => {
+	// Regression: a throttled setDate firing AFTER setFocus would replaceState the
+	// new pushState entry's URL back to the old view. setFocus must cancel the
+	// pending throttle.
+	it('cancels a pending date-throttle write', () => {
 		const s = new AppState({ ...initialView });
-		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
+		s.setDate(new Date('2030-06-01T00:00:00Z'), true);
 		s.setFocus({ type: 'b', id: 'naif-399', name: 'Earth' });
-		vi.advanceTimersByTime(250);
+		vi.advanceTimersByTime(60_000);
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 		expect(pushStateSpy).toHaveBeenCalledOnce();
 	});
@@ -197,7 +200,6 @@ describe('history.state payload is structured-cloneable', () => {
 	it('replaceState receives plain data (setCamera)', () => {
 		const s = new AppState({ ...initialView });
 		s.setCamera({ latitude: 30, longitude: -60, zoom: 5 });
-		vi.advanceTimersByTime(250);
 		const [, state] = replaceStateSpy.mock.calls[0];
 		expect(() => structuredClone(state)).not.toThrow();
 	});

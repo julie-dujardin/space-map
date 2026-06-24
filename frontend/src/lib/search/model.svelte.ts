@@ -162,4 +162,19 @@ export class SearchModel {
 		this.result = EMPTY;
 		this.error = false;
 	}
+
+	/** Restore query/filters/sort/page from a URL-parsed snapshot (hydration). */
+	applyUrlState(s: {
+		query: string;
+		filters: CatalogFilters;
+		sort: SortId;
+		reverse: boolean;
+		page: number;
+	}): void {
+		this.query = s.query;
+		this.filters = s.filters;
+		this.sort = s.sort;
+		this.reverse = s.reverse;
+		this.page = s.page;
+	}
 }

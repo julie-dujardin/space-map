@@ -103,7 +103,12 @@
 		appState.setGroup(slug, name);
 		// setGroup parked view.id/zoom on the group anchor; the default framing
 		// angle lands the camera there instead of the prior angle.
-		scene?.focusOnBody(appState.view.id, appState.view.zoom, DEFAULT_FRAMING_LAT, DEFAULT_FRAMING_LON);
+		scene?.focusOnBody(
+			appState.view.id,
+			appState.view.zoom,
+			DEFAULT_FRAMING_LAT,
+			DEFAULT_FRAMING_LON
+		);
 	}
 
 	const clock = new SimClock(dateToJD(appState.view.date));

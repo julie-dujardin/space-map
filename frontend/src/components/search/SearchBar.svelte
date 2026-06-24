@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
@@ -20,6 +21,8 @@
 	} from '$lib/search/client';
 	import { capitalize, compact } from '$lib/search/format';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
+	import { parseSearchSuffix } from '$lib/search/url';
+	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
@@ -42,13 +45,38 @@
 	let { onSelect, onExpandedChange }: Props = $props();
 
 	const ctx = getContext<ContextManager>('ctx');
+	const appState = getContext<AppState>('appState');
 	const enabled = isSearchEnabled();
 
 	const model = new SearchModel();
-	let expanded = $state(false);
+	// Hydrate from a shared link / reload: restore query+filters and open the
+	// panel so the results are visible. Ephemeral after this — popstate doesn't
+	// restore it; only a fresh load does.
+	const hydrated = enabled ? parseSearchSuffix(page.url.searchParams) : null;
+	if (hydrated) model.applyUrlState(hydrated);
+	let expanded = $state(hydrated !== null);
 	// Let the parent raise the search panel above the detail drawer while it's
 	// open, and drop it back under the drawer once collapsed.
 	$effect(() => onExpandedChange?.(expanded));
+
+	// Mirror the live search into the URL while the panel is open with something
+	// active; clear it once collapsed/picked. AppState writes via replaceState and
+	// dedups, so firing on every keystroke is cheap.
+	$effect(() => {
+		if (!enabled) return;
+		const active = expanded && model.hasResults;
+		appState.setSearch(
+			active
+				? {
+						query: model.query,
+						filters: model.filters,
+						sort: model.sort,
+						reverse: model.reverse,
+						page: model.page
+					}
+				: null
+		);
+	});
 	let filterOpen = $state(false);
 	let groupCatalog = $state<GroupHit[]>([]);
 	// undefined while the first stats call is in flight, then the count, or null
