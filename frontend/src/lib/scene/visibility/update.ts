@@ -138,6 +138,13 @@ export function updateBodyVisibility(
 			label.position.set(0, 0, 0);
 			continue;
 		}
+		// Sub-pixel bodies: silhouette center and body center differ by < screenR
+		// px, so the offset is invisible — skip the per-body solve (a full conic
+		// solve for ellipsoids).
+		if ((r / bo.cachedDist) * projScale < 1) {
+			label.position.set(0, 0, 0);
+			continue;
+		}
 		if (bo.semiAxesScene && bo.mesh) {
 			const ax = ellipsoidCameraAxes(
 				bo.mesh.getWorldQuaternion(_meshQuat),
