@@ -1123,7 +1123,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             out_dir, agg.all_objects, cheb_covered_ids, probe_ids, rendered_ids
         )
         write_messages(wikidata_entities, units.used_units)
-        group_bundle_ns = run_groups_tier(engine, out_dir, wikidata_entities)
+        group_bundle_ns = run_groups_tier(
+            engine, out_dir, wikidata_entities, radii, gms
+        )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns
         )

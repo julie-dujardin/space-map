@@ -9,7 +9,7 @@ from space_map_data.ingest.providers.objects.sbdb import (
     _provisional_designation,
     _sbdb_dict,
     _SBDB_COLUMNS,
-    _G_KM3_PER_KG_S2,
+    G_KM3_PER_KG_S2,
 )
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.naif import naif_id_from_spk
@@ -166,7 +166,7 @@ class TestSbdbDict:
         row = _make_row(GM="62.6284")
         d = _sbdb_dict(row)
         assert d["GM"] == pytest.approx(62.6284)
-        expected_mass = 62.6284 / _G_KM3_PER_KG_S2
+        expected_mass = 62.6284 / G_KM3_PER_KG_S2
         assert d["mass_kg"] == pytest.approx(expected_mass)
 
     def test_no_mass_when_gm_empty(self):

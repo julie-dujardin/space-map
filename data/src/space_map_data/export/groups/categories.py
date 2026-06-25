@@ -31,6 +31,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.notable import NotableObject
+from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
 
@@ -92,17 +93,44 @@ def _sum_histograms(
     return out
 
 
-def _body_member(obj_id: str, qid: str | None, name: str | None) -> NotableObject:
+def _mass_kg_from_gm(gm_km3_s2: float | None) -> float | None:
+    """Body mass from its PCK gravitational parameter: M = GM / G.
+
+    The planet-level GM (e.g. BODY599_GM, not the system barycenter) gives the
+    planet's own mass. Mirrors SBDB's GM→mass conversion.
+    """
+    if gm_km3_s2 is None:
+        return None
+    return gm_km3_s2 / G_KM3_PER_KG_S2
+
+
+def _body_member(
+    obj_id: str,
+    naif_id: int | None,
+    qid: str | None,
+    name: str | None,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+) -> NotableObject:
+    """Denormalize a body, attaching its PCK mass + triaxial radii where known."""
     return NotableObject(
         object_id=obj_id,
         wikidata_qid=qid,
         fallback_name=name or obj_id,
         diameter_km=None,
         first_obs=None,
+        mass_kg=_mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
+        radii=radii.get(naif_id) if naif_id is not None else None,
     )
 
 
-def _ranked_members(session: Session, where, limit: int) -> list[NotableObject]:
+def _ranked_members(
+    session: Session,
+    where,
+    limit: int,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+) -> list[NotableObject]:
     """Top ``limit`` bodies for a hero strip: image-bearing first, then most
     Wikidata-linked (sitelinks as a prominence proxy), id as a stable tiebreak.
 
@@ -111,7 +139,7 @@ def _ranked_members(session: Session, where, limit: int) -> list[NotableObject]:
     root layer their own filter/pin on top. ``where`` is one SQLAlchemy clause.
     """
     rows = (
-        session.query(Object.id, Object.wikidata_qid, Object.name)
+        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
         .filter(where)
         .order_by(
             Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
@@ -119,18 +147,20 @@ def _ranked_members(session: Session, where, limit: int) -> list[NotableObject]:
         .limit(limit)
         .all()
     )
-    return [_body_member(*r) for r in rows]
+    return [_body_member(*row, radii=radii, gms=gms) for row in rows]
 
 
-def _planet_members(session: Session) -> list[NotableObject]:
+def _planet_members(
+    session: Session, radii: dict[int, dict], gms: dict[int, float]
+) -> list[NotableObject]:
     """The planets, in heliocentric order (NAIF 199…899)."""
     rows = (
-        session.query(Object.id, Object.wikidata_qid, Object.name)
+        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
         .filter(Object.object_type == ObjectType.planet)
         .order_by(Object.naif_id)
         .all()
     )
-    return [_body_member(obj_id, qid, name) for obj_id, qid, name in rows]
+    return [_body_member(*row, radii=radii, gms=gms) for row in rows]
 
 
 def _moon_data(session: Session) -> tuple[int, list[dict]]:
@@ -229,31 +259,42 @@ def _moon_data(session: Session) -> tuple[int, list[dict]]:
     return total, [row for _, row in ranked] + unranked
 
 
-def _star_member(session: Session) -> NotableObject | None:
+def _star_member(
+    session: Session, radii: dict[int, dict], gms: dict[int, float]
+) -> NotableObject | None:
     """The Sun — pinned first on the Solar System root page."""
     row = (
-        session.query(Object.id, Object.wikidata_qid, Object.name)
+        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
         .filter(Object.object_type == ObjectType.star)
         .order_by(Object.naif_id)
         .first()
     )
-    return _body_member(*row) if row is not None else None
+    return _body_member(*row, radii=radii, gms=gms) if row is not None else None
 
 
 def _solar_system_members(
-    session: Session, star: NotableObject | None
+    session: Session,
+    star: NotableObject | None,
+    radii: dict[int, dict],
+    gms: dict[int, float],
 ) -> list[NotableObject]:
     """Sun first, then the most-linked bodies (same image/sitelinks proxy)."""
     # +1 so pinning the Sun first can't drop the last ranked body.
     members = _ranked_members(
-        session, Object.object_type != ObjectType.barycenter, NOTABLE_COUNT + 1
+        session,
+        Object.object_type != ObjectType.barycenter,
+        NOTABLE_COUNT + 1,
+        radii,
+        gms,
     )
     if star is not None:
         members = [star] + [m for m in members if m.object_id != star.object_id]
     return members[:NOTABLE_COUNT]
 
 
-def _probe_members(session: Session) -> tuple[list[NotableObject], int]:
+def _probe_members(
+    session: Session, radii: dict[int, dict], gms: dict[int, float]
+) -> tuple[list[NotableObject], int]:
     """The notable probes (most-linked first) plus the total probe count.
 
     Probes are SPICE-tracked interplanetary spacecraft (``spice_probe``); Earth
@@ -261,7 +302,7 @@ def _probe_members(session: Session) -> tuple[list[NotableObject], int]:
     """
     is_probe = Object.orbital_source == OrbitalSource.spice_probe
     total = session.query(func.count(Object.id)).filter(is_probe).scalar() or 0
-    return _ranked_members(session, is_probe, NOTABLE_COUNT), total
+    return _ranked_members(session, is_probe, NOTABLE_COUNT, radii, gms), total
 
 
 def build_category_data(
@@ -270,6 +311,8 @@ def build_category_data(
     named_counts: dict[str, int],
     discovery_histograms: dict[str, dict[int, int]],
     launch_histograms: dict[str, dict[int, int]],
+    radii: dict[int, dict],
+    gms: dict[int, float],
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
@@ -315,12 +358,12 @@ def build_category_data(
     )[:TOP_CONSTELLATIONS]
     satellites = earth_classes + constellations
 
-    planet_members = _planet_members(session)
+    planet_members = _planet_members(session, radii, gms)
     moon_members = _ranked_members(
-        session, Object.object_type == ObjectType.moon, TOP_MOONS
+        session, Object.object_type == ObjectType.moon, TOP_MOONS, radii, gms
     )
-    star = _star_member(session)
-    probe_members, probes_total = _probe_members(session)
+    star = _star_member(session, radii, gms)
+    probe_members, probes_total = _probe_members(session, radii, gms)
     moons_total, moon_counts = _moon_data(session)
 
     children = {
@@ -384,7 +427,7 @@ def build_category_data(
         notable_members[MOONS_SLUG] = moon_members
     if probe_members:
         notable_members[PROBES_SLUG] = probe_members
-    solar_system = _solar_system_members(session, star)
+    solar_system = _solar_system_members(session, star, radii, gms)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     logger.info(

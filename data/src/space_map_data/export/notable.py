@@ -21,6 +21,8 @@ class NotableObject:
     fallback_name: str  # used when no Wikidata label exists
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
+    mass_kg: float | None = None  # from PCK GM; major bodies only
+    radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
 
 
 def notable_entries(
@@ -40,6 +42,10 @@ def notable_entries(
         entry: dict = {"name": name, "id": member.object_id}
         if member.diameter_km is not None:
             entry["diameter_km"] = member.diameter_km
+        if member.mass_kg is not None:
+            entry["mass_kg"] = member.mass_kg
+        if member.radii is not None:
+            entry["radii"] = member.radii
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))

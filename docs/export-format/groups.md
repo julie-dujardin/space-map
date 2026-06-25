@@ -43,6 +43,8 @@ interface NotableEntry {
   id?: string;                      // full Object.id; route /<type>/<id> (e.g. spkid-2000004, naif-502). Absent on group entries
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
+  mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
+  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies only
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
