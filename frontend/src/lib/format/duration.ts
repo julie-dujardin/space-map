@@ -1,7 +1,7 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { precisionOptions } from './quantities';
 
-type DurationUnit = 'year' | 'day' | 'hour' | 'minute';
+type DurationUnit = 'year' | 'day' | 'hour' | 'minute' | 'second';
 
 const DAYS_PER_YEAR = 365.25;
 
@@ -10,7 +10,8 @@ function pickUnit(days: number): DurationUnit {
 	if (abs >= DAYS_PER_YEAR) return 'year';
 	if (abs >= 1) return 'day';
 	if (abs >= 1 / 24) return 'hour';
-	return 'minute';
+	if (abs >= 1 / 1440) return 'minute';
+	return 'second';
 }
 
 function convert(days: number, to: DurationUnit): number {
@@ -23,6 +24,8 @@ function convert(days: number, to: DurationUnit): number {
 			return days * 24;
 		case 'minute':
 			return days * 24 * 60;
+		case 'second':
+			return days * 24 * 60 * 60;
 	}
 }
 

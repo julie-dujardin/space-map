@@ -11,7 +11,8 @@
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 	import { currentStateFromElements } from '$lib/math/orbit/state';
 	import { sgp4State } from '$lib/math/orbit/sgp4';
-	import { AU_KM } from '$lib/math/units';
+	import { AU_KM, AU_SCALE, SPEED_OF_LIGHT_KM_S } from '$lib/math/units';
+	import { EARTH_ID } from '$lib/constants';
 	import { SECONDS_PER_DAY } from '$lib/time/jd';
 	import { formatDistance } from '$lib/format/distance';
 	import { formatDuration } from '$lib/format/duration';
@@ -30,29 +31,18 @@
 	}
 	let { global, body, orbitElements, parentBody, jd }: Props = $props();
 
-	const TWO_PI = Math.PI * 2;
-
 	interface FlightStats {
 		altitudeKm: number | null;
 		speedKms: number | null;
 		periodDays: number | null;
+		/** One-way light travel time to Earth, in days. Probes only. */
+		lightLagDays: number | null;
 	}
 
 	let isProbe = $derived(body?.data.orbitalSource === OrbitalSource.SPICE_PROBE);
 	// Earth satellites (SGP4 from TLE). These get the card set in place of the
 	// altitude/speed/period rows the Orbital table would otherwise show.
 	let isEarthSat = $derived(global?.celestrak?.orbit_center === 'earth');
-
-	// Bound two-body period from an osculating state. Returns null for unbound
-	// (hyperbolic/parabolic) trajectories — a flyby has no period.
-	function periodDaysFromState(rKm: number, vKms: number, muKm3S2: number): number | null {
-		if (!(muKm3S2 > 0) || !(rKm > 0)) return null;
-		const energy = (vKms * vKms) / 2 - muKm3S2 / rKm; // km²/s²
-		if (energy >= 0) return null;
-		const aKm = -muKm3S2 / (2 * energy);
-		if (!(aKm > 0)) return null;
-		return (TWO_PI * Math.sqrt((aKm * aKm * aKm) / muKm3S2)) / SECONDS_PER_DAY;
-	}
 
 	// Mirror the renderer's parent resolution so altitude is measured against the
 	// body the probe is fit to (Sun on heliocentric cruise, else planet/moon).
@@ -81,7 +71,17 @@
 			Math.hypot(state.velocity[0], state.velocity[1], state.velocity[2]) / SECONDS_PER_DAY;
 		const radiusKm = primary?.data.radiusKm ?? 0;
 		const altitudeKm = radiusKm > 0 && rKm > radiusKm ? rKm - radiusKm : null;
-		return { altitudeKm, speedKms, periodDays: periodDaysFromState(rKm, speedKms, mu) };
+		// Probes report one-way light lag to Earth instead of an orbital period:
+		// distance is measured live in scene units (AU_SCALE units per AU).
+		const earth = ctx.getBody(EARTH_ID)?.position;
+		const p = ctx.getBody(body.data.id)?.position ?? body.position;
+		let lightLagDays: number | null = null;
+		if (earth && p) {
+			const distKm =
+				(Math.hypot(p[0] - earth[0], p[1] - earth[1], p[2] - earth[2]) / AU_SCALE) * AU_KM;
+			lightLagDays = distKm / SPEED_OF_LIGHT_KM_S / SECONDS_PER_DAY;
+		}
+		return { altitudeKm, speedKms, periodDays: null, lightLagDays };
 	});
 
 	let earthSatStats = $derived.by<FlightStats | null>(() => {
@@ -98,7 +98,8 @@
 		return {
 			altitudeKm: altitudeKm > 0 ? altitudeKm : null,
 			speedKms: state.vKms,
-			periodDays: periodMin != null ? periodMin / 1440 : null
+			periodDays: periodMin != null ? periodMin / 1440 : null,
+			lightLagDays: null
 		};
 	});
 
@@ -131,6 +132,12 @@
 				label: m.orbital_period(),
 				value: formatDuration(s.periodDays),
 				tooltip: m.tooltip_orbital_period()
+			});
+		if (s.lightLagDays != null)
+			out.push({
+				label: m.light_lag(),
+				value: formatDuration(s.lightLagDays),
+				tooltip: m.tooltip_light_lag()
 			});
 		return out;
 	});
