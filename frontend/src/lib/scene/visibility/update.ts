@@ -1,5 +1,12 @@
+import { Quaternion } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
 import { ObjectType } from '$lib/types/objects';
+import {
+	ellipsoidCameraAxes,
+	ellipsoidAnchorOffset,
+	setSphereOccluder,
+	setEllipsoidOccluder
+} from './ellipsoid';
 import { VISIBILITY } from './thresholds';
 import { BARYCENTER_PRIMARY } from '$lib/constants';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -40,11 +47,34 @@ const _occluderPool: ScreenOccluder[] = [];
 function ensureOccluder(idx: number): ScreenOccluder {
 	let o = _occluderPool[idx];
 	if (!o) {
-		o = { cx0: 0, cy0: 0, camX: 0, camY: 0, sBias: 0, k: 0, f2: 0, id: '', dist: 0 };
+		o = {
+			cx0: 0,
+			cy0: 0,
+			f: 0,
+			gxx: 0,
+			gxy: 0,
+			gxz: 0,
+			gyx: 0,
+			gyy: 0,
+			gyz: 0,
+			gzx: 0,
+			gzy: 0,
+			gzz: 0,
+			cpx: 0,
+			cpy: 0,
+			cpz: 0,
+			K: 0,
+			id: '',
+			dist: 0
+		};
 		_occluderPool[idx] = o;
 	}
 	return o;
 }
+
+// Scratch for reading a mesh's world orientation when building ellipsoid occluders.
+const _meshQuat = new Quaternion();
+const _anchorOut = { ox: 0, oy: 0 };
 
 /**
  * Per-frame visibility update for all bodies, point clouds, labels, and trails.
@@ -81,8 +111,9 @@ export function updateBodyVisibility(
 	// Pre-pass: offset each body's label to its silhouette-disc center on
 	// screen, not the projected body center (which is tens of pixels off-disc
 	// for close off-axis bodies — LEO sat seeing Earth, moon seeing Saturn).
-	// Silhouette-ellipse center under perspective = body_NDC · β where
-	// β = Bz²/(Bz²−r²); local-frame offset is ((β−1)·Bx, (β−1)·By, 0).
+	// Sphere: silhouette-ellipse center under perspective = body_NDC · β where
+	// β = Bz²/(Bz²−r²); local-frame offset is ((β−1)·Bx, (β−1)·By, 0). Oblate
+	// bodies use the exact ellipsoid silhouette center (see ellipsoidAnchorOffset).
 	const fp = focusTruePos;
 	const cameraInverse = camera.matrixWorldInverse;
 	for (const bo of bodyObjects.values()) {
@@ -101,12 +132,24 @@ export function updateBodyVisibility(
 			camZ = tmpV3.z;
 		const camZ2 = camZ * camZ;
 		const r2 = r * r;
+		// Bail using the bounding-sphere limb: past it the silhouette is unbounded
+		// and the body fills the screen (label hidden anyway).
 		if (camZ2 <= r2) {
 			label.position.set(0, 0, 0);
 			continue;
 		}
-		const beta1 = r2 / (camZ2 - r2); // β − 1
-		tmpV3.set(beta1 * camX, beta1 * camY, 0).applyQuaternion(camera.quaternion);
+		if (bo.semiAxesScene && bo.mesh) {
+			const ax = ellipsoidCameraAxes(
+				bo.mesh.getWorldQuaternion(_meshQuat),
+				cameraInverse,
+				bo.semiAxesScene
+			);
+			ellipsoidAnchorOffset(camX, camY, camZ, ax, projScale, _anchorOut);
+			tmpV3.set(_anchorOut.ox, _anchorOut.oy, 0).applyQuaternion(camera.quaternion);
+		} else {
+			const beta1 = r2 / (camZ2 - r2); // β − 1
+			tmpV3.set(beta1 * camX, beta1 * camY, 0).applyQuaternion(camera.quaternion);
+		}
 		label.position.copy(tmpV3);
 	}
 
@@ -116,13 +159,12 @@ export function updateBodyVisibility(
 	const screenOccluders = _occluderPool;
 	const halfW = screenW * 0.5,
 		halfH = screenH * 0.5;
-	const projScale2 = projScale * projScale;
 	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {
 		const r = bo.radiusScene;
 		if (!r) continue;
 		const dist = bo.cachedDist;
-		if (dist <= r) continue; // camera inside the sphere → no occlusion
+		if (dist <= r) continue; // camera inside the bounding sphere → no occlusion
 		const [bx, by, bz] = bo.body.position;
 		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
 		const camX = tmpV3.x,
@@ -130,20 +172,33 @@ export function updateBodyVisibility(
 			camZ = tmpV3.z;
 		if (camZ >= 0) continue; // body center behind the camera
 		const bz2 = camZ * camZ;
-		// Gate on tangential screen radius ≥ halo size; bz² ≤ r² means the body
-		// engulfs the view, so it's unconditionally an occluder.
+		// Gate on the bounding-sphere tangential screen radius ≥ halo size (over-
+		// includes oblate bodies, which the exact cone test below then refines);
+		// bz² ≤ r² means the body engulfs the view, so it's always an occluder.
 		const gateOk = bz2 <= r * r || (r * projScale) / Math.sqrt(bz2 - r * r) >= HALO_RADIUS_PX;
 		if (!gateOk) continue;
 		const occ = ensureOccluder(occluderCount++);
-		occ.cx0 = halfW;
-		occ.cy0 = halfH;
-		occ.camX = camX;
-		occ.camY = camY;
-		occ.sBias = -projScale * camZ;
-		occ.k = dist * dist - r * r; // d² − r² > 0
-		occ.f2 = projScale2;
-		occ.id = bo.body.data.id;
-		occ.dist = dist;
+		if (bo.semiAxesScene && bo.mesh) {
+			const ax = ellipsoidCameraAxes(
+				bo.mesh.getWorldQuaternion(_meshQuat),
+				cameraInverse,
+				bo.semiAxesScene
+			);
+			setEllipsoidOccluder(
+				occ,
+				camX,
+				camY,
+				camZ,
+				ax,
+				projScale,
+				halfW,
+				halfH,
+				bo.body.data.id,
+				dist
+			);
+		} else {
+			setSphereOccluder(occ, camX, camY, camZ, r, projScale, halfW, halfH, bo.body.data.id, dist);
+		}
 	}
 	// Trim the pool view to the active prefix so .length-based iteration is
 	// correct in downstream consumers (cullOverlappingLabels, this function's

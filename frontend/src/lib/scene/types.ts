@@ -46,6 +46,10 @@ export interface BodyObjects {
 	 * Gates re-application against the now-bumped `radiusScene`. Reset on mesh teardown.
 	 */
 	radiiApplied?: boolean;
+	/** Semi-axes (scene units) in mesh-local x/y/z order — set with the triaxial
+	 *  scale. Present only on oblate bodies; drives ellipsoid label occlusion +
+	 *  anchor placement. Undefined ⇒ treated as a sphere of `radiusScene`. */
+	semiAxesScene?: [number, number, number];
 	/** Cached distance from camera, computed once per frame. */
 	cachedDist: number;
 	/** Width/height segment count of the mesh's current SphereGeometry; undefined for virtual bodies. */

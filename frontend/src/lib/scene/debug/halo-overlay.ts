@@ -1,21 +1,31 @@
-import { Vector3, type PerspectiveCamera } from 'three';
+import { Quaternion, Vector3, type PerspectiveCamera } from 'three';
 import { HALO_RADIUS_PX, type BodyObjects } from '../types';
+import { isScreenOccluded, type ScreenOccluder } from '../label/culling';
+import {
+	ellipsoidCameraAxes,
+	setSphereOccluder,
+	setEllipsoidOccluder
+} from '../visibility/ellipsoid';
 import type { Vec3 } from '../animation/math';
 
 /**
  * Debug overlay for the per-body silhouette "virtual halo" the visibility pass
- * uses for label placement + occlusion. Draws the disc for every on-screen mesh
- * (even hidden-label ones) so name-drift and bad occlusion become visible.
+ * uses for label placement + occlusion. Draws the exact projected silhouette for
+ * every on-screen mesh (even hidden-label ones), so name-drift and bad occlusion
+ * become visible. Oblate bodies draw as their true (flattened) silhouette, the
+ * same ellipsoid the occlusion test uses.
  *
  *  cyan — label shown · yellow — dimmed · red — hidden
- *  orange — occluder · lime — true silhouette · green — focused
- *  red link — label buried by that occluder
+ *  orange — occluder silhouette · green — focused · red link — buried label
  */
 export class HaloDebugOverlay {
 	private canvas: HTMLCanvasElement | null = null;
 	private gfx: CanvasRenderingContext2D | null = null;
 	private readonly tmp = new Vector3();
+	private readonly tmpQ = new Quaternion();
 	private readonly items: HaloItem[] = [];
+	// Scratch single-occluder array so Pass 2 can reuse the production cone test.
+	private readonly one: ScreenOccluder[] = [];
 
 	constructor(private readonly anchor: HTMLCanvasElement) {}
 
@@ -69,63 +79,101 @@ export class HaloDebugOverlay {
 		const projScale = screenH / (2 * Math.tan(fovRad / 2));
 		const camInverse = camera.matrixWorldInverse;
 		const [fx, fy, fz] = focusTruePos;
-
-		// Pass 1: project every mesh into screen-space halo data, mirroring
-		// updateBodyVisibility. Not gated on group.visible (nor is the real occluder
-		// set) so a culled-but-large mesh still shows as an occluder.
 		const halfW = screenW * 0.5;
 		const halfH = screenH * 0.5;
+
+		// Pass 1: project every mesh into screen-space, mirroring updateBodyVisibility.
+		// Not gated on group.visible (nor is the real occluder set) so a culled-but-
+		// large mesh still shows as an occluder. Each item carries the same screen
+		// occluder the production cone test consumes — sphere or oblate ellipsoid.
 		let n = 0;
 		for (const bo of bodyObjects.values()) {
 			const { label, group, radiusScene: r } = bo;
 			if (!label || r <= 0) continue;
 			const [bx, by, bz] = bo.body.position;
 
-			// Camera-frame center — drives the cone test and the exact silhouette.
+			// Camera-frame center.
 			this.tmp.set(bx - fx, by - fy, bz - fz).applyMatrix4(camInverse);
 			const camX = this.tmp.x;
 			const camY = this.tmp.y;
 			const camZ = this.tmp.z;
 			if (camZ >= 0) continue; // center behind camera
 			const d2 = camX * camX + camY * camY + camZ * camZ;
-			if (d2 <= r * r) continue; // camera inside the sphere
-
-			// Ellipse axes are real only when the limb stays in front of the camera
-			// plane (Bz² > r²); closer than that it's an unbounded hyperbola.
-			const denom = camZ * camZ - r * r;
-			const degenerate = denom <= 0;
-			const bMinor = degenerate ? 0 : (r * projScale) / Math.sqrt(denom);
-			const aMajor = degenerate ? 0 : (r * projScale * Math.sqrt(d2 - r * r)) / denom;
-			const isOcc = degenerate || bMinor >= HALO_RADIUS_PX;
-
-			// Raw projected body center + silhouette-corrected anchor (name spot).
-			this.tmp.set(bx - fx, by - fy, bz - fz).project(camera);
-			const cx = (this.tmp.x * 0.5 + 0.5) * screenW;
-			const cy = (-this.tmp.y * 0.5 + 0.5) * screenH;
-			const lp = label.position;
-			this.tmp.set(bx - fx + lp.x, by - fy + lp.y, bz - fz + lp.z).project(camera);
-			const hx = (this.tmp.x * 0.5 + 0.5) * screenW;
-			const hy = (-this.tmp.y * 0.5 + 0.5) * screenH;
+			if (d2 <= r * r) continue; // camera inside the bounding sphere
 
 			const it = this.ensureItem(n++);
+
+			// Camera-space principal axes + semi-axes (sphere = camera axes, r).
+			const isEllipsoid = !!(bo.semiAxesScene && bo.mesh);
+			if (isEllipsoid) {
+				const ax = ellipsoidCameraAxes(
+					bo.mesh!.getWorldQuaternion(this.tmpQ),
+					camInverse,
+					bo.semiAxesScene!
+				);
+				it.e0.copy(ax.e[0]);
+				it.e1.copy(ax.e[1]);
+				it.e2.copy(ax.e[2]);
+				it.sa[0] = ax.a[0];
+				it.sa[1] = ax.a[1];
+				it.sa[2] = ax.a[2];
+				setEllipsoidOccluder(
+					it.occ,
+					camX,
+					camY,
+					camZ,
+					ax,
+					projScale,
+					halfW,
+					halfH,
+					bo.body.data.id,
+					bo.cachedDist
+				);
+			} else {
+				it.e0.set(1, 0, 0);
+				it.e1.set(0, 1, 0);
+				it.e2.set(0, 0, 1);
+				it.sa[0] = it.sa[1] = it.sa[2] = r;
+				setSphereOccluder(
+					it.occ,
+					camX,
+					camY,
+					camZ,
+					r,
+					projScale,
+					halfW,
+					halfH,
+					bo.body.data.id,
+					bo.cachedDist
+				);
+			}
+
+			// Bounding-sphere gate (matches the production occluder gate). Past the
+			// limb (Bz² ≤ r²) the body engulfs the view → always an occluder.
+			const bz2 = camZ * camZ;
+			const denom = bz2 - r * r;
+			const degenerate = denom <= 0;
+			const bMinor = degenerate ? 0 : (r * projScale) / Math.sqrt(denom);
+			const isOcc = degenerate || bMinor >= HALO_RADIUS_PX;
+
+			// Raw projected body center + the actual label anchor (set by the
+			// visibility pass in label.position — its silhouette-center offset).
+			this.tmp.set(bx - fx, by - fy, bz - fz).project(camera);
+			it.cx = (this.tmp.x * 0.5 + 0.5) * screenW;
+			it.cy = (-this.tmp.y * 0.5 + 0.5) * screenH;
+			const lp = label.position;
+			this.tmp.set(bx - fx + lp.x, by - fy + lp.y, bz - fz + lp.z).project(camera);
+			it.hx = (this.tmp.x * 0.5 + 0.5) * screenW;
+			it.hy = (-this.tmp.y * 0.5 + 0.5) * screenH;
+
 			it.id = bo.body.data.id;
 			it.camX = camX;
 			it.camY = camY;
 			it.camZ = camZ;
-			it.cx = cx;
-			it.cy = cy;
-			it.hx = hx;
-			it.hy = hy;
-			it.r = bMinor;
-			it.aMajor = aMajor;
 			it.worldR = r;
-			it.degenerate = degenerate;
-			const rxx = hx - halfW;
-			const ryy = hy - halfH;
-			const rlen = Math.hypot(rxx, ryy) || 1;
-			it.rdx = rxx / rlen;
-			it.rdy = ryy / rlen;
 			it.dist = bo.cachedDist;
+			it.isEllipsoid = isEllipsoid;
+			it.degenerate = degenerate;
 			it.isOccluder = isOcc;
 			it.meshHidden = !group.visible;
 			it.labelVisible = label.visible;
@@ -134,19 +182,16 @@ export class HaloDebugOverlay {
 			it.occludedBy = -1;
 		}
 
-		// Pass 2: occlusion — find a closer occluder burying each label, for the link.
+		// Pass 2: occlusion — find a closer occluder burying each label, for the
+		// link. Reuses the production cone test verbatim via a 1-element array.
 		for (let i = 0; i < n; i++) {
 			const it = this.items[i];
 			for (let j = 0; j < n; j++) {
 				const occ = this.items[j];
-				if (!occ.isOccluder || occ.id === it.id || occ.dist >= it.dist) continue;
-				// Tangent-cone test, identical to isScreenOccluded.
-				const u = it.hx - halfW;
-				const v = halfH - it.hy;
-				const root = u * occ.camX + v * occ.camY - projScale * occ.camZ;
-				if (root <= 0) continue;
-				const k = occ.dist * occ.dist - occ.worldR * occ.worldR;
-				if (root * root > k * (u * u + v * v + projScale * projScale)) {
+				if (!occ.isOccluder || occ.id === it.id) continue;
+				this.one[0] = occ.occ;
+				this.one.length = 1;
+				if (isScreenOccluded(it.hx, it.hy, it.dist, it.id, this.one)) {
 					it.occludedBy = j;
 					break;
 				}
@@ -167,33 +212,20 @@ export class HaloDebugOverlay {
 							? '#1ae5ff'
 							: '#ffe11a';
 
-			// Occluders draw as the silhouette ellipse; small bodies as circles;
-			// degenerate occluders rely on the lime outline below. Hidden-mesh dashes.
-			let drewShape = false;
+			// Exact projected silhouette (ellipsoid limb; circle for spheres).
 			g.beginPath();
-			if (it.isOccluder && !it.degenerate) {
-				g.ellipse(it.hx, it.hy, it.aMajor, it.r, Math.atan2(it.rdy, it.rdx), 0, Math.PI * 2);
-				drewShape = true;
-			} else if (!it.isOccluder) {
-				g.arc(it.hx, it.hy, it.r, 0, Math.PI * 2);
-				drewShape = true;
-			}
-			if (drewShape) {
+			if (it.meshHidden) g.setLineDash([5, 4]);
+			const drew = this.strokeLimb(g, it, camera, screenW, screenH);
+			if (drew) {
 				g.strokeStyle = color;
 				g.lineWidth = it.isOccluder ? 2 : 1;
-				if (it.meshHidden) g.setLineDash([5, 4]);
 				g.stroke();
-				g.setLineDash([]);
 				if (it.isOccluder) {
 					g.fillStyle = 'rgba(255,140,26,0.08)';
 					g.fill();
 				}
 			}
-
-			// True projected silhouette (lime) — should match the orange ellipse.
-			if (it.isOccluder) {
-				this.drawSilhouette(g, it, camera, screenW, screenH);
-			}
+			g.setLineDash([]);
 
 			// Anchor annotations — skipped when degenerate (anchor flies off-screen).
 			if (!it.degenerate) {
@@ -229,7 +261,7 @@ export class HaloDebugOverlay {
 				g.fillStyle = color;
 				g.fill();
 				g.fillStyle = 'rgba(255,255,255,0.85)';
-				g.fillText(it.id, it.hx + Math.min(it.r, 40) + 3, it.hy);
+				g.fillText(it.id, it.hx + 8, it.hy);
 			}
 		}
 
@@ -237,60 +269,71 @@ export class HaloDebugOverlay {
 	}
 
 	/**
-	 * Stroke a sphere's exact projected silhouette via its horizon circle: center
-	 * H = B·(d²−r²)/d², radius ρ = r·√(d²−r²)/d, in the plane ⊥ B. Manual w-divide
-	 * so points behind the camera drop cleanly (handles the degenerate case).
+	 * Stroke a body's exact projected silhouette. The limb is the circle on the
+	 * unit sphere (normalized space, where the ellipsoid is a sphere) facing the
+	 * camera; mapping it back through the principal axes Σ aᵢ yᵢ eᵢ gives the true
+	 * camera-space silhouette curve, which collapses to a circle for spheres.
+	 * Manual w-divide so points behind the camera drop cleanly. Returns false if
+	 * the camera is inside the body.
 	 */
-	private drawSilhouette(
+	private strokeLimb(
 		g: CanvasRenderingContext2D,
 		it: HaloItem,
 		camera: PerspectiveCamera,
 		screenW: number,
 		screenH: number
-	): void {
-		const { camX, camY, camZ, worldR: r } = it;
-		const d2 = camX * camX + camY * camY + camZ * camZ;
-		const d = Math.sqrt(d2);
-		if (d <= r) return;
-		const hk = (d2 - r * r) / d2;
-		const rho = (r * Math.sqrt(d2 - r * r)) / d;
-		const hx = camX * hk;
-		const hy = camY * hk;
-		const hz = camZ * hk;
+	): boolean {
+		const { camX, camY, camZ, e0, e1, e2, sa } = it;
+		// Normalized center c' = (c·eᵢ/aᵢ).
+		const cp0 = (camX * e0.x + camY * e0.y + camZ * e0.z) / sa[0];
+		const cp1 = (camX * e1.x + camY * e1.y + camZ * e1.z) / sa[1];
+		const cp2 = (camX * e2.x + camY * e2.y + camZ * e2.z) / sa[2];
+		const L2 = cp0 * cp0 + cp1 * cp1 + cp2 * cp2;
+		if (L2 <= 1) return false;
+		const L = Math.sqrt(L2);
+		const hk = (L2 - 1) / L2; // limb-circle center along c'
+		const rho = Math.sqrt(L2 - 1) / L; // limb-circle radius
+		const h0 = cp0 * hk;
+		const h1 = cp1 * hk;
+		const h2 = cp2 * hk;
 
-		// Orthonormal basis e1,e2 ⊥ B.
-		const bx = camX / d;
-		const by = camY / d;
-		const bz = camZ / d;
-		let ax = 0;
-		const ay = 0;
-		let az = 1;
-		if (Math.abs(bz) > 0.9) {
-			ax = 1;
-			az = 0;
+		// Orthonormal basis ⊥ c' in normalized (principal-component) space.
+		const ux = cp0 / L;
+		const uy = cp1 / L;
+		const uz = cp2 / L;
+		let tx = 0;
+		const ty = 0;
+		let tz = 1;
+		if (Math.abs(uz) > 0.9) {
+			tx = 1;
+			tz = 0;
 		}
-		let e1x = ay * bz - az * by;
-		let e1y = az * bx - ax * bz;
-		let e1z = ax * by - ay * bx;
-		const e1n = Math.hypot(e1x, e1y, e1z) || 1;
-		e1x /= e1n;
-		e1y /= e1n;
-		e1z /= e1n;
-		const e2x = by * e1z - bz * e1y;
-		const e2y = bz * e1x - bx * e1z;
-		const e2z = bx * e1y - by * e1x;
+		let b1x = uy * tz - uz * ty;
+		let b1y = uz * tx - ux * tz;
+		let b1z = ux * ty - uy * tx;
+		const b1n = Math.hypot(b1x, b1y, b1z) || 1;
+		b1x /= b1n;
+		b1y /= b1n;
+		b1z /= b1n;
+		const b2x = uy * b1z - uz * b1y;
+		const b2y = uz * b1x - ux * b1z;
+		const b2z = ux * b1y - uy * b1x;
 
 		const m = camera.projectionMatrix.elements;
 		const N = 72;
-		g.beginPath();
 		let started = false;
 		for (let i = 0; i <= N; i++) {
 			const ph = (i / N) * Math.PI * 2;
 			const cs = Math.cos(ph);
 			const sn = Math.sin(ph);
-			const px = hx + rho * (cs * e1x + sn * e2x);
-			const py = hy + rho * (cs * e1y + sn * e2y);
-			const pz = hz + rho * (cs * e1z + sn * e2z);
+			// Limb point in normalized principal-component coords.
+			const y0 = h0 + rho * (cs * b1x + sn * b2x);
+			const y1 = h1 + rho * (cs * b1y + sn * b2y);
+			const y2 = h2 + rho * (cs * b1z + sn * b2z);
+			// Back to camera space: X = Σ aᵢ yᵢ eᵢ.
+			const px = sa[0] * y0 * e0.x + sa[1] * y1 * e1.x + sa[2] * y2 * e2.x;
+			const py = sa[0] * y0 * e0.y + sa[1] * y1 * e1.y + sa[2] * y2 * e2.y;
+			const pz = sa[0] * y0 * e0.z + sa[1] * y1 * e1.z + sa[2] * y2 * e2.z;
 			const cw = m[3] * px + m[7] * py + m[11] * pz + m[15];
 			if (cw <= 1e-6) {
 				started = false; // behind camera — break the stroke
@@ -306,9 +349,7 @@ export class HaloDebugOverlay {
 				started = true;
 			}
 		}
-		g.strokeStyle = '#9bff00';
-		g.lineWidth = 1.5;
-		g.stroke();
+		return true;
 	}
 
 	private ensureItem(idx: number): HaloItem {
@@ -320,15 +361,36 @@ export class HaloDebugOverlay {
 				camY: 0,
 				camZ: 0,
 				worldR: 0,
+				e0: new Vector3(),
+				e1: new Vector3(),
+				e2: new Vector3(),
+				sa: [0, 0, 0],
+				occ: {
+					cx0: 0,
+					cy0: 0,
+					f: 0,
+					gxx: 0,
+					gxy: 0,
+					gxz: 0,
+					gyx: 0,
+					gyy: 0,
+					gyz: 0,
+					gzx: 0,
+					gzy: 0,
+					gzz: 0,
+					cpx: 0,
+					cpy: 0,
+					cpz: 0,
+					K: 0,
+					id: '',
+					dist: 0
+				},
 				cx: 0,
 				cy: 0,
 				hx: 0,
 				hy: 0,
-				r: 0,
-				aMajor: 0,
-				rdx: 1,
-				rdy: 0,
 				dist: 0,
+				isEllipsoid: false,
 				isOccluder: false,
 				degenerate: false,
 				meshHidden: false,
@@ -349,26 +411,27 @@ export class HaloDebugOverlay {
 
 type HaloItem = {
 	id: string;
-	/** Camera-frame body center, for the exact-silhouette draw. */
+	/** Camera-frame body center. */
 	camX: number;
 	camY: number;
 	camZ: number;
-	/** Scene-unit body radius. */
+	/** Bounding-sphere radius (max semi-axis), scene units. */
 	worldR: number;
+	/** Camera-space principal axes (unit) + semi-axes (scene units). */
+	e0: Vector3;
+	e1: Vector3;
+	e2: Vector3;
+	sa: [number, number, number];
+	/** Production screen occluder driving the exact cone test. */
+	occ: ScreenOccluder;
 	cx: number;
 	cy: number;
 	hx: number;
 	hy: number;
-	/** Semi-minor (tangential) silhouette axis in px. */
-	r: number;
-	/** Semi-major (radial) silhouette axis in px. */
-	aMajor: number;
-	/** Unit radial direction the major axis runs along. */
-	rdx: number;
-	rdy: number;
 	dist: number;
+	isEllipsoid: boolean;
 	isOccluder: boolean;
-	/** Limb crosses the camera plane (Bz² ≤ r²): no bounded screen ellipse. */
+	/** Bounding-sphere limb crosses the camera plane (Bz² ≤ r²): no bounded ellipse. */
 	degenerate: boolean;
 	/** Mesh group is hidden but the disc still occludes — surfaced as dashed. */
 	meshHidden: boolean;
@@ -383,8 +446,7 @@ const LEGEND: [string, string][] = [
 	['#1ae5ff', 'label shown'],
 	['#ffe11a', 'dimmed'],
 	['#ff3b3b', 'hidden'],
-	['#ff8c1a', 'occluder ellipse (code)'],
-	['#9bff00', 'true silhouette (should match)'],
+	['#ff8c1a', 'occluder silhouette'],
 	['#7dff7d', 'focused']
 ];
 

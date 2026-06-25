@@ -239,6 +239,7 @@ export function downgradeBodyMesh(
 		// bumped value — the next sphere is built at that size, and the
 		// radii application below produces the right (a, b, c) regardless.)
 		bo.radiiApplied = false;
+		bo.semiAxesScene = undefined;
 	}
 
 	if (bo.atmosphere) {

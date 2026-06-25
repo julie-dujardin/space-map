@@ -17,23 +17,32 @@ const _tmpProj = new Vector3();
 const LH = 22;
 
 /**
- * A body whose sphere is large enough on screen to hide labels behind it. The
- * occluding region is the body's tangent cone (a label is hidden iff its view
- * ray is within asin(r/d) of the center) — the exact silhouette in every regime,
- * including when the body is close enough that its limb crosses the camera plane,
- * which the old screen-ellipse model couldn't represent. isScreenOccluded
- * reconstructs the label's view ray from these stored intrinsics (no per-call
- * projection): sBias = −projScale·camZ, k = d²−r², f2 = projScale², cx0/cy0 =
- * screen center.
+ * A body large enough on screen to hide labels behind it. The occluding region
+ * is the body's tangent cone — the exact silhouette in every regime, including
+ * when the limb crosses the camera plane (which the old screen-ellipse model
+ * couldn't represent) and when the body is an oblate ellipsoid. The test runs in
+ * the space where the body is a unit sphere: the scaled principal axes gᵢ = eᵢ/aᵢ
+ * map a label's camera-space view ray d there (sphere = identity·1/r), and c' =
+ * (c·eᵢ/aᵢ) is the normalized center with K = |c'|² − 1. isScreenOccluded
+ * rebuilds d from the label's screen point (no per-call projection).
  */
 export type ScreenOccluder = {
 	cx0: number;
 	cy0: number;
-	camX: number;
-	camY: number;
-	sBias: number;
-	k: number;
-	f2: number;
+	f: number;
+	gxx: number;
+	gxy: number;
+	gxz: number;
+	gyx: number;
+	gyy: number;
+	gyz: number;
+	gzx: number;
+	gzy: number;
+	gzz: number;
+	cpx: number;
+	cpy: number;
+	cpz: number;
+	K: number;
 	id: string;
 	dist: number;
 };
@@ -134,13 +143,18 @@ export function isScreenOccluded(
 	for (const occ of occluders) {
 		if (occ.id === selfId) continue;
 		if (occ.dist >= dist) continue;
-		// Squared, cleared cone test (ray·B)² > cos²α·|ray|²·|B|² with the label's
-		// view ray (u, v, −projScale) reconstructed from its screen point.
+		// Map the label's camera-space view ray d = (u, v, −f) into the space where
+		// the body is a unit sphere (d' = (d·gx, d·gy, d·gz)), then run the cone test
+		// (d'·c')² > K·|d'|² with the ray pointing toward the body (d'·c' > 0).
 		const u = sx - occ.cx0;
 		const v = occ.cy0 - sy;
-		const root = u * occ.camX + v * occ.camY + occ.sBias;
+		const w = -occ.f;
+		const p = u * occ.gxx + v * occ.gxy + w * occ.gxz;
+		const q = u * occ.gyx + v * occ.gyy + w * occ.gyz;
+		const s = u * occ.gzx + v * occ.gzy + w * occ.gzz;
+		const root = p * occ.cpx + q * occ.cpy + s * occ.cpz;
 		if (root <= 0) continue; // ray points to the far side of the body
-		if (root * root > occ.k * (u * u + v * v + occ.f2)) return true;
+		if (root * root > occ.K * (p * p + q * q + s * s)) return true;
 	}
 	return false;
 }

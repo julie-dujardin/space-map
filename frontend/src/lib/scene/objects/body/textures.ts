@@ -115,6 +115,8 @@ export function applyRadiiToMesh(
 	const s = kmToScene(1) / bo.radiusScene;
 	bo.mesh.scale.set(a * s, c * s, b * s);
 	bo.radiusScene = kmToScene(Math.max(a, b, c));
+	// Mesh-local x/y/z semi-axes (matches the scale order) for ellipsoid occlusion.
+	bo.semiAxesScene = [kmToScene(a), kmToScene(c), kmToScene(b)];
 	bo.radiiApplied = true;
 }
 
