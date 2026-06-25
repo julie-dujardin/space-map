@@ -391,6 +391,9 @@ export async function searchCatalog(opts: {
 	page: number;
 	pageSize: number;
 	locale: string;
+	/** When false, fetch only hits (skip the facet recount) — used by infinite
+	 *  scroll for pages past the first, where facets/total are already known. */
+	facets?: boolean;
 }): Promise<CatalogResult> {
 	const c = getClient();
 	if (!c) return { hits: [], estimatedTotalHits: 0, facets: {} };
@@ -398,6 +401,22 @@ export async function searchCatalog(opts: {
 	const clauses = filterClauses(opts.filters);
 	const ranges = rangeClauses(opts.filters);
 	const active = [...clauses.keys()];
+
+	// Hits-only fast path: one plain search, no facet recount fan-out.
+	if (opts.facets === false) {
+		const res = await c.index(INDEX).search(opts.query, {
+			filter: joinClauses(clauses, ranges),
+			sort: sort.length ? sort : undefined,
+			offset: (opts.page - 1) * opts.pageSize,
+			limit: opts.pageSize,
+			locales: [opts.locale]
+		});
+		return {
+			hits: (res.hits ?? []).map((h) => toHit(h as RawHit)),
+			estimatedTotalHits: res.estimatedTotalHits ?? 0,
+			facets: {}
+		};
+	}
 
 	const { results } = await c.multiSearch({
 		queries: [

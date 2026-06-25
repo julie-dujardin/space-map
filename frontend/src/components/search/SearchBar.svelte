@@ -118,24 +118,8 @@
 		if (enabled) catalogFacets().then((d) => (facetUniverse = d));
 	});
 
-	// Page size follows the visible panel height so a full page fills it (no big
-	// empty gap below a short result list). ~52px rows; the constant accounts for
-	// the header/count/pagination chrome. Biased to slightly overfill (scroll)
-	// rather than underfill.
-	let viewportH = $state(0);
-	$effect(() => {
-		const update = () => (viewportH = window.innerHeight);
-		update();
-		window.addEventListener('resize', update);
-		return () => window.removeEventListener('resize', update);
-	});
-	$effect(() => {
-		if (viewportH <= 0) return;
-		const rows = Math.floor((viewportH - 120) / 52);
-		model.setPageSize(Math.min(40, Math.max(6, rows)));
-	});
-
-	// Debounced query. Snapshot deps synchronously; runQuery only writes result.
+	// Debounced reset on query/filter/sort change; `page` is not a dep, so
+	// scrolling updates the anchor without retriggering a reset.
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		const snap = {
@@ -143,12 +127,10 @@
 			filters: model.filters,
 			sort: model.sort,
 			reverse: model.reverse,
-			page: model.page,
-			pageSize: model.pageSize,
 			locale: getLocale()
 		};
 		clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(() => model.runQuery(snap), 150);
+		debounceTimer = setTimeout(() => model.runSearch(snap), 150);
 		return () => clearTimeout(debounceTimer);
 	});
 
@@ -261,7 +243,7 @@
 	const tree = $derived.by((): FilterNode => {
 		// Live distribution once narrowing, else the whole-catalog universe so every
 		// node lists its full value set with idle counts.
-		const small = model.hasResults ? model.result.facets : facetUniverse;
+		const small = model.hasResults ? model.facets : facetUniverse;
 		const locale = getLocale();
 		const typeDist = small['object.type'] ?? {};
 		const groupDist = small['object.groups'] ?? {};
@@ -681,10 +663,7 @@
 					<span class="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">
 						{#if model.hasResults}
 							<span class="font-medium text-foreground"
-								>{compact(model.result.estimatedTotalHits)}{model.result.estimatedTotalHits >=
-								MAX_TOTAL_HITS
-									? '+'
-									: ''}</span
+								>{compact(model.total)}{model.total >= MAX_TOTAL_HITS ? '+' : ''}</span
 							>
 							{m.search_results_label()}
 						{:else if catalogTotal === null}
