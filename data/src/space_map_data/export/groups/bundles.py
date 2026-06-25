@@ -88,6 +88,7 @@ def _build_global(
     pha_count: int,
     named_count: int,
     notable_members: list[dict] | None,
+    moon_counts: list[dict] | None,
     primary_id: str | None,
 ) -> dict:
     data: dict = {
@@ -155,6 +156,9 @@ def _build_global(
         }
     if notable_members:
         data["notable_members"] = notable_members
+    # Moons category: per-planet/dwarf moon tallies driving its bar chart.
+    if moon_counts:
+        data["moon_counts"] = moon_counts
     # Focus redirect for mission pages (fly to the primary probe, not a filter).
     if primary_id:
         data["primary"] = {"primary_type": "object", "primary_id": primary_id}
@@ -541,6 +545,7 @@ def write_group_bundles(
     extra_pha_counts: dict[str, int] | None = None,
     extra_named_counts: dict[str, int] | None = None,
     extra_notable_members: dict[str, list[NotableObject]] | None = None,
+    extra_moon_counts: dict[str, list[dict]] | None = None,
     extra_primary_ids: dict[str, str] | None = None,
     child_slugs_by_group: dict[str, list[str]] | None = None,
     child_counts_by_group: dict[str, dict[str, int]] | None = None,
@@ -590,6 +595,7 @@ def write_group_bundles(
         member_entries = (
             notable_entries(members, wikidata_entities) if members else None
         )
+        moon_counts = (extra_moon_counts or {}).get(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -603,6 +609,7 @@ def write_group_bundles(
             pha_count,
             named_count,
             member_entries,
+            moon_counts,
             (extra_primary_ids or {}).get(group.slug),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)

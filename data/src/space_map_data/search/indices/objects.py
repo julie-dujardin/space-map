@@ -22,7 +22,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from space_map_data.constants.categories import PROBES_SLUG, SATELLITES_SLUG
+from space_map_data.constants.categories import (
+    MOONS_SLUG,
+    PROBES_SLUG,
+    SATELLITES_SLUG,
+)
 from space_map_data.constants.providers import LANGUAGES
 from space_map_data.export.images import pick_thumbnail
 from space_map_data.utils.manual_overlay import read_manual_aliases
@@ -272,6 +276,9 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             spacecraft_cat = _spacecraft_category(g, otype)
             if spacecraft_cat:
                 groups.append(spacecraft_cat)
+            # Natural satellites back the Moons category's "show all members".
+            if otype == "moon":
+                groups.append(MOONS_SLUG)
             if groups:
                 obj["groups"] = groups
 

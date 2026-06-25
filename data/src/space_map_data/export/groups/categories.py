@@ -2,9 +2,9 @@
 
 Categories (constants/categories.py) are Wikidata-backed browse nodes. Their
 members are child groups — asteroid zones, comet families, satellite classes
-and the largest constellations — or bodies (Planets, Probes). The child slugs
-and counts feed the localized bundle's ``child_groups`` block; planets and
-probes ride the existing ``notable_members`` path.
+and the largest constellations — or bodies (Planets, Moons, Probes). The child
+slugs and counts feed the localized bundle's ``child_groups`` block; the planet
+lineup, the top moons and the notable probes ride the ``notable_members`` path.
 """
 
 import logging
@@ -17,6 +17,7 @@ from space_map_data.constants.categories import (
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
+    MOONS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
     SATELLITES_SLUG,
@@ -31,7 +32,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.notable import NotableObject
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
-from space_map_data.models.object.sbdb import OrbitClass
+from space_map_data.models.object.sbdb import SBDB, OrbitClass
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,27 @@ TOP_CONSTELLATIONS = 12
 
 # Notable members shown on the Solar System root (Sun + top 19 bodies).
 NOTABLE_COUNT = 20
+
+# Moons page hero — the most prominent (5 paginated pages of 5 in the frontend
+# lineup). Asteroids will reuse this selector.
+TOP_MOONS = 25
+
+_PLANET_TYPES = (ObjectType.planet, ObjectType.dwarf_planet)
+
+# Semi-major axis (AU) for the major planets + Pluto, which carry no SBDB row;
+# orders the moons-per-planet chart by heliocentric distance. Dwarf planets are
+# SBDB-tracked and use their measured SBDB.a instead.
+_PLANET_AU: dict[int, float] = {
+    199: 0.387,  # Mercury
+    299: 0.723,  # Venus
+    399: 1.000,  # Earth
+    499: 1.524,  # Mars
+    599: 5.203,  # Jupiter
+    699: 9.537,  # Saturn
+    799: 19.191,  # Uranus
+    899: 30.07,  # Neptune
+    999: 39.48,  # Pluto
+}
 
 
 @dataclass
@@ -55,6 +77,8 @@ class CategoryData:
         default_factory=dict
     )  # cat slug -> {year: count}
     launch_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
+    # cat slug -> bar-chart rows (moons per planet/dwarf, distance-ordered).
+    moon_counts: dict[str, list[dict]] = field(default_factory=dict)
 
 
 def _sum_histograms(
@@ -78,6 +102,26 @@ def _body_member(obj_id: str, qid: str | None, name: str | None) -> NotableObjec
     )
 
 
+def _ranked_members(session: Session, where, limit: int) -> list[NotableObject]:
+    """Top ``limit`` bodies for a hero strip: image-bearing first, then most
+    Wikidata-linked (sitelinks as a prominence proxy), id as a stable tiebreak.
+
+    The shared prominence-ranked selector behind every notable strip that isn't
+    a fixed lineup: Moons now, Asteroids next; the Probes page and Solar System
+    root layer their own filter/pin on top. ``where`` is one SQLAlchemy clause.
+    """
+    rows = (
+        session.query(Object.id, Object.wikidata_qid, Object.name)
+        .filter(where)
+        .order_by(
+            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
+        )
+        .limit(limit)
+        .all()
+    )
+    return [_body_member(*r) for r in rows]
+
+
 def _planet_members(session: Session) -> list[NotableObject]:
     """The planets, in heliocentric order (NAIF 199…899)."""
     rows = (
@@ -87,6 +131,102 @@ def _planet_members(session: Session) -> list[NotableObject]:
         .all()
     )
     return [_body_member(obj_id, qid, name) for obj_id, qid, name in rows]
+
+
+def _moon_data(session: Session) -> tuple[int, list[dict]]:
+    """Total moon count + per-planet/dwarf tallies for the Moons-page bar chart.
+
+    A moon's host is its parent planet/dwarf; parents that are barycenters
+    defer to their planet/dwarf child (mirrors export/objects/moons.py). All
+    eight major planets always get a bar (Mercury/Venus included, at zero);
+    dwarf planets get one only when they host a moon. Asteroid moons still
+    count toward the total but have no chart row. Rows are ordered by
+    heliocentric distance (SBDB.a for dwarfs, a static table for the major
+    planets/Pluto). Each row is the bundle wire shape:
+    ``{name, primary_type, primary_id, n}``.
+    """
+    total = (
+        session.query(func.count(Object.id))
+        .filter(Object.object_type == ObjectType.moon)
+        .scalar()
+        or 0
+    )
+
+    parent_counts = (
+        session.query(Object.parent_id, func.count(Object.id))
+        .filter(Object.object_type == ObjectType.moon, Object.parent_id.isnot(None))
+        .group_by(Object.parent_id)
+        .all()
+    )
+    # Barycenter parent -> its planet/dwarf child (the body the user focuses).
+    bary_to_host = {
+        parent_id: host_id
+        for parent_id, host_id in session.query(Object.parent_id, Object.id)
+        .filter(Object.object_type.in_(_PLANET_TYPES), Object.parent_id.isnot(None))
+        .all()
+    }
+    host_counts: dict[str, int] = {}
+    for parent_id, n in parent_counts:
+        host_id = bary_to_host.get(parent_id, parent_id)
+        host_counts[host_id] = host_counts.get(host_id, 0) + n
+
+    # All major planets always appear (Mercury/Venus included, at zero);
+    # dwarf planets appear only when they host a moon — otherwise every
+    # moonless trans-Neptunian dwarf would clutter the chart.
+    planet_rows = (
+        session.query(Object.id, Object.naif_id, Object.name)
+        .filter(Object.object_type == ObjectType.planet)
+        .all()
+    )
+    dwarf_rows = (
+        session.query(Object.id, Object.naif_id, Object.name)
+        .filter(
+            Object.id.in_(host_counts),
+            Object.object_type == ObjectType.dwarf_planet,
+        )
+        .all()
+    )
+    host_rows = [*planet_rows, *dwarf_rows]
+    kept = {r.id for r in host_rows}
+    dropped = sum(c for host, c in host_counts.items() if host not in kept)
+    if dropped:
+        logger.info(
+            "Moons chart: %d moon(s) of non-planet hosts (e.g. asteroid moons) "
+            "counted in the total but excluded from the per-planet bars",
+            dropped,
+        )
+
+    sbdb_a = {
+        object_id: a
+        for object_id, a in session.query(SBDB.object_id, SBDB.a)
+        .filter(SBDB.object_id.in_(kept), SBDB.a.isnot(None))
+        .all()
+    }
+
+    ranked: list[tuple[float, dict]] = []
+    unranked: list[dict] = []
+    for r in host_rows:
+        row = {
+            "name": r.name or r.id,
+            "primary_type": "object",
+            "primary_id": r.id,
+            "n": host_counts.get(r.id, 0),
+        }
+        au = _PLANET_AU.get(r.naif_id) if r.naif_id is not None else None
+        if au is None:
+            au = sbdb_a.get(r.id)
+        if au is None:
+            logger.warning(
+                "Moons chart: no heliocentric distance for host %s (%s); "
+                "appending it after the distance-ordered rows",
+                r.id,
+                r.name,
+            )
+            unranked.append(row)
+        else:
+            ranked.append((au, row))
+    ranked.sort(key=lambda t: t[0])
+    return total, [row for _, row in ranked] + unranked
 
 
 def _star_member(session: Session) -> NotableObject | None:
@@ -104,16 +244,10 @@ def _solar_system_members(
     session: Session, star: NotableObject | None
 ) -> list[NotableObject]:
     """Sun first, then the most-linked bodies (same image/sitelinks proxy)."""
-    rows = (
-        session.query(Object.id, Object.wikidata_qid, Object.name)
-        .filter(Object.object_type != ObjectType.barycenter)
-        .order_by(
-            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
-        )
-        .limit(NOTABLE_COUNT + 1)
-        .all()
+    # +1 so pinning the Sun first can't drop the last ranked body.
+    members = _ranked_members(
+        session, Object.object_type != ObjectType.barycenter, NOTABLE_COUNT + 1
     )
-    members = [_body_member(*r) for r in rows]
     if star is not None:
         members = [star] + [m for m in members if m.object_id != star.object_id]
     return members[:NOTABLE_COUNT]
@@ -127,16 +261,7 @@ def _probe_members(session: Session) -> tuple[list[NotableObject], int]:
     """
     is_probe = Object.orbital_source == OrbitalSource.spice_probe
     total = session.query(func.count(Object.id)).filter(is_probe).scalar() or 0
-    rows = (
-        session.query(Object.id, Object.wikidata_qid, Object.name)
-        .filter(is_probe)
-        .order_by(
-            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
-        )
-        .limit(NOTABLE_COUNT)
-        .all()
-    )
-    return [_body_member(*r) for r in rows], total
+    return _ranked_members(session, is_probe, NOTABLE_COUNT), total
 
 
 def build_category_data(
@@ -191,13 +316,18 @@ def build_category_data(
     satellites = earth_classes + constellations
 
     planet_members = _planet_members(session)
+    moon_members = _ranked_members(
+        session, Object.object_type == ObjectType.moon, TOP_MOONS
+    )
     star = _star_member(session)
     probe_members, probes_total = _probe_members(session)
+    moons_total, moon_counts = _moon_data(session)
 
     children = {
         # Satellites is reachable under Earth (its real parent), not the root.
         SOLAR_SYSTEM_SLUG: [
             PLANETS_SLUG,
+            MOONS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
             PROBES_SLUG,
@@ -219,6 +349,7 @@ def build_category_data(
     member_counts_out = {
         # The root counts every categorized object across the solar system.
         SOLAR_SYSTEM_SLUG: len(planet_members)
+        + moons_total
         + asteroids_total
         + comets_total
         + satellites_total
@@ -227,6 +358,7 @@ def build_category_data(
         COMETS_SLUG: comets_total,
         SATELLITES_SLUG: satellites_total,
         PLANETS_SLUG: len(planet_members),
+        MOONS_SLUG: moons_total,
         PROBES_SLUG: probes_total,
     }
 
@@ -248,15 +380,21 @@ def build_category_data(
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
+    if moon_members:
+        notable_members[MOONS_SLUG] = moon_members
     if probe_members:
         notable_members[PROBES_SLUG] = probe_members
     solar_system = _solar_system_members(session, star)
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     logger.info(
-        "Built category data: planets=%d, asteroid zones=%d, comet families=%d, "
-        "satellite groups=%d, probes=%d",
+        "Built category data: planets=%d, moons=%d (%d notable, %d planet/dwarf "
+        "hosts), asteroid zones=%d, comet families=%d, satellite groups=%d, "
+        "probes=%d",
         len(planet_members),
+        moons_total,
+        len(moon_members),
+        len(moon_counts),
         len(asteroids),
         len(comets),
         len(satellites),
@@ -271,4 +409,5 @@ def build_category_data(
         named_counts={ASTEROIDS_SLUG: asteroids_named} if asteroids_named else {},
         discovery_histograms=discovery_out,
         launch_histograms=launch_out,
+        moon_counts={MOONS_SLUG: moon_counts} if moon_counts else {},
     )

@@ -21,7 +21,7 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex } from '$lib/fetch/groups/registry';
+	import { fetchGroupIndex, CAT_MOONS, CAT_PLANETS } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import {
 		type Focusable,
@@ -44,6 +44,7 @@
 	import Mission from './properties/Mission.svelte';
 	import GroupProperties from './properties/GroupProperties.svelte';
 	import GroupOrbitMap from './properties/GroupOrbitMap.svelte';
+	import MoonsPerPlanetChart from './properties/MoonsPerPlanetChart.svelte';
 	import ChildGroups from './properties/ChildGroups.svelte';
 	import { categoryPlotType, scatterZoneSlugs } from '$lib/charts/orbit-zones';
 	import FeatureProperties from './properties/FeatureProperties.svelte';
@@ -51,8 +52,8 @@
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import PlanetLineup from './PlanetLineup.svelte';
+	import MoonLineup from './MoonLineup.svelte';
 	import PlanetMassChart from './PlanetMassChart.svelte';
-	import { CAT_PLANETS } from '$lib/fetch/groups/registry';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
@@ -78,6 +79,7 @@
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
 	let isPlanetsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_PLANETS);
+	let isMoonsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_MOONS);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -291,6 +293,13 @@
 	// Categories render the orbit map here; class/NEO/PHA pages get it from
 	// GroupProperties (slug-derived). Chips fold into GroupOrbitMap, so both show them.
 	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
+	// Moons category: the per-planet/dwarf bar chart replaces the notable-members
+	// strip and members list this page deliberately omits.
+	let moonCounts = $derived(
+		isGroupMode && focusable.kind === 'group' && focusable.slug === CAT_MOONS
+			? groupDetail?.global?.moon_counts
+			: undefined
+	);
 	let visibleChildGroups = $derived.by(() => {
 		// Bus chips live in GroupProperties; zones live in the orbit map.
 		const cg = (groupDetail?.localized?.child_groups ?? []).filter((c) => c.role !== 'bus');
@@ -423,9 +432,13 @@
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
-	// The planets lineup already cross-links every member, so it needs neither.
+	// The planet/moon lineups already cross-link every member, so they need neither.
 	let showMembersTab = $derived(
-		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !isPlanetsCategory
+		hasMembers &&
+			!satellitesGroup &&
+			memberTotal > STRIP_CAPACITY &&
+			!isPlanetsCategory &&
+			!isMoonsCategory
 	);
 
 	function seeAllMembers() {
@@ -506,6 +519,10 @@
 	<PlanetLineup members={notableMembers ?? []} localizedNames={memberNames} />
 {/snippet}
 
+{#snippet moonHero()}
+	<MoonLineup members={notableMembers ?? []} localizedNames={memberNames} />
+{/snippet}
+
 {#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
@@ -523,8 +540,12 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
-				hero={isPlanetsCategory && notableMembers && notableMembers.length > 0
-					? planetHero
+				hero={notableMembers && notableMembers.length > 0
+					? isPlanetsCategory
+						? planetHero
+						: isMoonsCategory
+							? moonHero
+							: undefined
 					: undefined}
 				onShowGallery={() => {
 					activeTab = 'images';
@@ -562,7 +583,7 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0 && !isPlanetsCategory}
+			{#if notableMembers && notableMembers.length > 0 && !isPlanetsCategory && !isMoonsCategory}
 				<MemberStrip
 					members={notableMembers}
 					localizedNames={memberNames}
@@ -607,6 +628,9 @@
 			{:else if isGroupMode}
 				{#if isPlanetsCategory && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
+				{/if}
+				{#if moonCounts && moonCounts.length > 0}
+					<MoonsPerPlanetChart entries={moonCounts} />
 				{/if}
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />

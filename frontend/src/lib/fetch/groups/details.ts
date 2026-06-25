@@ -56,6 +56,9 @@ export interface GlobalGroupData {
 	pha?: { n: number; primary_type: 'group'; primary_id: 'flag-pha' };
 	/** Top 20 members picked at export time (image/sitelinks/diameter rank); small-body groups only. */
 	notable_members?: NotableMemberEntry[];
+	/** Moons category only: moons per planet/dwarf host, ordered by heliocentric
+	 *  distance. Drives the moons-per-planet bar chart. */
+	moon_counts?: { name: string; primary_type: 'object'; primary_id: string; n: number }[];
 	/** Mission groups: focus redirect to the primary probe. The camera flies
 	 *  there when the mission is opened from outside (see MapPage); members open
 	 *  it without moving the camera. */

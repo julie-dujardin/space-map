@@ -66,6 +66,7 @@
 	"search_page_range": "{lo}–{hi} of {total}",
 	"search_prev_page": "Previous page",
 	"search_next_page": "Next page",
+	"pagination_go_to_page": "Go to page {n}",
 	"loading_data": "Loading data...",
 	"group_member_count": [
 		{
@@ -96,6 +97,7 @@
 		}
 	],
 	"group_discovery_activity": "Discovery timeline",
+	"group_moons_per_planet": "Moons per planet",
 	"scatter_membership_title": "Orbit map",
 	"scatter_axis_a": "semi-major axis (AU)",
 	"scatter_axis_q": "perihelion (AU)",
