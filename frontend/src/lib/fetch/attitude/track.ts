@@ -44,7 +44,7 @@ function loadQuat(quats: Float32Array, i: number, out: Quaternion): Quaternion {
 export class AttitudeTrack {
 	private readonly startJd: number;
 	private readonly endJd: number;
-	private readonly baseline: ProbeAttitude['baseline'];
+	private readonly baselines: ProbeAttitude['baselines'];
 	private readonly files: ProbeAttitude['files'];
 	private readonly chunks = new Map<number, AttitudeChunk>();
 	private readonly inflight = new Set<number>();
@@ -56,7 +56,7 @@ export class AttitudeTrack {
 	) {
 		this.startJd = manifest.start_jd;
 		this.endJd = manifest.end_jd;
-		this.baseline = manifest.baseline;
+		this.baselines = manifest.baselines;
 		this.files = manifest.files;
 	}
 
@@ -81,10 +81,14 @@ export class AttitudeTrack {
 
 		this.sampleChunk(jd, ci, chunk);
 
-		// Recompose spin baseline: q_full = baseline(t)·anchor·residual, t since start.
-		if (this.baseline) {
-			const { axis, rate_rad_s, anchor } = this.baseline;
-			const tSeconds = (jd - this.startJd) * SECONDS_PER_DAY;
+		// Recompose this chunk's spin baseline (if any): q_full =
+		// spin(rate·(t−anchor_jd))·anchor·residual. A spinner that changes rate
+		// across phases carries one baseline per phase; the chunk's
+		// baseline_index picks the span active here.
+		const baseline = this.baselines?.[this.files[ci].baseline_index ?? 0];
+		if (baseline) {
+			const { axis, rate_rad_s, anchor, anchor_jd } = baseline;
+			const tSeconds = (jd - anchor_jd) * SECONDS_PER_DAY;
 			_baselineAxis.set(axis[0], axis[1], axis[2]);
 			_qBaseline.setFromAxisAngle(_baselineAxis, rate_rad_s * tSeconds);
 			_qb.set(anchor[1], anchor[2], anchor[3], anchor[0]);
@@ -123,7 +127,11 @@ export class AttitudeTrack {
 		}
 		if (jd >= times[n - 1]) {
 			const next = this.chunks.get(ci + 1);
-			if (next && next.times.length > 0 && next.times[0] > times[n - 1]) {
+			// Only bridge within a baseline span — residuals in different spin
+			// frames aren't SLERP-compatible. At a span boundary both spans carry
+			// the boundary attitude, so clamping here recomposes correctly.
+			const sameSpan = this.files[ci + 1]?.baseline_index === this.files[ci].baseline_index;
+			if (sameSpan && next && next.times.length > 0 && next.times[0] > times[n - 1]) {
 				const span = next.times[0] - times[n - 1];
 				const t = Math.min(1, (jd - times[n - 1]) / span);
 				loadQuat(quats, n - 1, _qa);

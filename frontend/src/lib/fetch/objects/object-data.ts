@@ -76,10 +76,27 @@ export interface NotableMemberEntry {
 	thumbnail?: PickedThumbnail;
 }
 
+/** One rate-stable spin span's baseline, subtracted before encoding so the
+ *  keyframes carry only the slow residual. A spinner that changes rate across
+ *  mission phases (Juno: 1↔2 RPM) has one per phase; each file's
+ *  `baseline_index` selects the span active over it. */
+export interface SpinBaseline {
+	kind: 'spin';
+	/** Unit spin axis in J2000. */
+	axis: [number, number, number];
+	rate_rad_s: number;
+	/** Quaternion [w, x, y, z] at phase zero (`anchor_jd`). */
+	anchor: [number, number, number, number];
+	/** JD of phase zero — the spin angle is `rate · (jd − anchor_jd)`. */
+	anchor_jd: number;
+	start_jd: number;
+	end_jd: number;
+}
+
 /**
  * Per-probe attitude manifest (refit from NAIF CK kernels), carried in the
  * probe's `__global__` bundle. Binary chunks live at `v1/attitude/{id}/{name}`
- * in `ATTI` v1 format (see `docs/export-format/probe-attitude.md`).
+ * in `ATTI` v2 format (see `docs/export-format/probe-attitude.md`).
  */
 export interface ProbeAttitude {
 	/** CK reference frame the quaternions are expressed in. */
@@ -87,17 +104,18 @@ export interface ProbeAttitude {
 	start_jd: number;
 	end_jd: number;
 	n_keyframes: number;
-	/** Spin baseline subtracted before encoding (keyframes carry the residual);
-	 *  null when none was fit. */
-	baseline: {
-		kind: 'spin';
-		/** Unit spin axis in J2000. */
-		axis: [number, number, number];
-		rate_rad_s: number;
-		/** Quaternion [w, x, y, z] at phase zero. */
-		anchor: [number, number, number, number];
-	} | null;
-	files: { name: string; start_jd: number; end_jd: number; n_keyframes: number }[];
+	/** Per-spin-phase baselines, or null for a non-spinner (keyframes are raw
+	 *  J2000→body). Indexed by each file's `baseline_index`. */
+	baselines: SpinBaseline[] | null;
+	files: {
+		name: string;
+		start_jd: number;
+		end_jd: number;
+		n_keyframes: number;
+		/** Index into `baselines` for the span this chunk recomposes against;
+		 *  present only when `baselines` is non-null. */
+		baseline_index?: number;
+	}[];
 }
 
 export interface GlobalObjectData {
