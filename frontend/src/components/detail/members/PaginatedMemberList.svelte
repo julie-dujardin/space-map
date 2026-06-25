@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
-	import * as m from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
 	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
@@ -153,6 +152,24 @@
 
 	let hasMore = $derived(searchBacked && rows.length < Math.min(total, HARD_CAP));
 
+	// Auto-load the next page when the bottom sentinel nears the viewport — clipped
+	// against whatever scroll container (drawer / ScrollArea) wraps the list. Reading
+	// `rows.length` re-observes after each append, so a sentinel that stays in view
+	// keeps pulling pages instead of firing only on the first intersection.
+	let sentinel = $state<HTMLElement>();
+	$effect(() => {
+		const el = sentinel;
+		if (!el || rows.length === 0) return;
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting && hasMore && !loading) loadMore();
+			},
+			{ rootMargin: '400px' }
+		);
+		io.observe(el);
+		return () => io.disconnect();
+	});
+
 	function rowHref(row: Row): string | undefined {
 		if (!appState) return undefined;
 		return serializeUrl(
@@ -209,16 +226,11 @@
 		{/each}
 	</ul>
 	{#if hasMore}
-		<button
-			type="button"
-			onclick={loadMore}
-			disabled={loading}
-			class="pointer-events-auto text-muted-foreground hover:text-foreground mt-1 inline-flex items-center justify-center gap-1.5 rounded-md py-2 text-xs disabled:opacity-60"
-		>
+		<!-- bottom sentinel: scrolling near it pulls the next page -->
+		<div bind:this={sentinel} class="flex items-center justify-center py-2">
 			{#if loading}
-				<LoaderIcon class="size-3 animate-spin" />
+				<LoaderIcon class="text-muted-foreground size-4 animate-spin" />
 			{/if}
-			{m.members_load_more()}
-		</button>
+		</div>
 	{/if}
 </div>
