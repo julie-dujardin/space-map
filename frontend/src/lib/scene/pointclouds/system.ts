@@ -628,17 +628,19 @@ export class PointCloudSystem {
 		const parents = this._parentsScratch;
 		parents.clear();
 		const sunPos = this.ctx.getBody(SUN_ID)?.position ?? ([0, 0, 0] as Vec3);
-		// groupId string and parentVec tuple are cached on each Points' userData
-		// (set at creation) so the per-frame loop doesn't reallocate either —
-		// just mutates the existing Vec3 in place and re-binds it in the map.
-		for (const pts of this.asteroidPoints.values()) {
+		// Only visible clouds go in the map; orbitPool.tick solves exactly these,
+		// so zooming into a system drops the hidden zones' Kepler solves.
+		// groupId/parentVec are cached on userData and mutated in place — no realloc.
+		for (const [key, pts] of this.asteroidPoints) {
+			if (!this.ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key))) continue;
 			const v = pts.userData.parentVec as Vec3;
 			v[0] = sunPos[0];
 			v[1] = sunPos[1];
 			v[2] = sunPos[2];
 			parents.set(pts.userData.groupId as string, v);
 		}
-		for (const pts of this.spacecraftPoints.values()) {
+		for (const [key, pts] of this.spacecraftPoints) {
+			if (!this.ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key))) continue;
 			const pp = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
 			const v = pts.userData.parentVec as Vec3;
 			if (pp) {

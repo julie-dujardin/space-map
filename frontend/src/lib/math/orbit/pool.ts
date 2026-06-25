@@ -182,9 +182,10 @@ export class OrbitWorkerPool {
 		});
 	}
 
-	/** Per-frame dispatch. Groups with no free back-buffer (worker still on
-	 *  last tick) are skipped — they catch up next frame. `requiredFlags` (0 =
-	 *  no mask) is the NEO/PHA filter applied to groups with `applyFlagFilter`. */
+	/** Per-frame dispatch. Skips groups with no free back-buffer (worker still on
+	 *  last tick — they catch up next frame) and groups absent from `parents` (the
+	 *  caller omits hidden clouds). `requiredFlags` (0 = no mask) is the NEO/PHA
+	 *  filter applied to groups with `applyFlagFilter`. */
 	tick(jd: number, basis: Vec3, parents: Map<string, Vec3>, requiredFlags: number = 0): void {
 		const perWorker: {
 			id: string;
@@ -194,7 +195,8 @@ export class OrbitWorkerPool {
 
 		for (const [id, state] of this.groups) {
 			if (!state.back) continue;
-			const parent = parents.get(id) ?? ([0, 0, 0] as Vec3);
+			const parent = parents.get(id);
+			if (!parent) continue;
 			perWorker[state.workerIdx].push({
 				id,
 				parent: [parent[0], parent[1], parent[2]],
