@@ -17,13 +17,23 @@ const _tmpProj = new Vector3();
 const LH = 22;
 
 /**
- * Screen-space occluder: a body whose sphere is large enough on screen to
- * hide labels (and star coronas) that project behind it.
+ * A body whose sphere is large enough on screen to hide labels behind it. The
+ * occluding region is the body's tangent cone (a label is hidden iff its view
+ * ray is within asin(r/d) of the center) — the exact silhouette in every regime,
+ * including when the body is close enough that its limb crosses the camera plane,
+ * which the old screen-ellipse model couldn't represent. isScreenOccluded
+ * reconstructs the label's view ray from these stored intrinsics (no per-call
+ * projection): sBias = −projScale·camZ, k = d²−r², f2 = projScale², cx0/cy0 =
+ * screen center.
  */
 export type ScreenOccluder = {
-	sx: number;
-	sy: number;
-	r: number;
+	cx0: number;
+	cy0: number;
+	camX: number;
+	camY: number;
+	sBias: number;
+	k: number;
+	f2: number;
 	id: string;
 	dist: number;
 };
@@ -113,10 +123,7 @@ export function applyLabelDisplay(
 	return show && !wasVisible;
 }
 
-/**
- * Returns true when a screen point is inside any occluder disc that is closer
- * to the camera. Used for star corona occlusion from the renderer.
- */
+/** True when a screen point falls inside a closer occluder's silhouette cone. */
 export function isScreenOccluded(
 	sx: number,
 	sy: number,
@@ -127,9 +134,13 @@ export function isScreenOccluded(
 	for (const occ of occluders) {
 		if (occ.id === selfId) continue;
 		if (occ.dist >= dist) continue;
-		const dx = sx - occ.sx,
-			dy = sy - occ.sy;
-		if (dx * dx + dy * dy < occ.r * occ.r) return true;
+		// Squared, cleared cone test (ray·B)² > cos²α·|ray|²·|B|² with the label's
+		// view ray (u, v, −projScale) reconstructed from its screen point.
+		const u = sx - occ.cx0;
+		const v = occ.cy0 - sy;
+		const root = u * occ.camX + v * occ.camY + occ.sBias;
+		if (root <= 0) continue; // ray points to the far side of the body
+		if (root * root > occ.k * (u * u + v * v + occ.f2)) return true;
 	}
 	return false;
 }

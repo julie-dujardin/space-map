@@ -25,6 +25,7 @@ interface Persisted {
 	language?: LanguageChoice;
 	showDebugInfo?: boolean;
 	showSkyboxAlign?: boolean;
+	showHaloDebug?: boolean;
 	showClouds?: boolean;
 	viewMode?: ViewMode;
 	maxPartsPerZone?: number;
@@ -52,6 +53,7 @@ class SettingsState {
 	language = $state<LanguageChoice>('auto');
 	showDebugInfo = $state(false);
 	showSkyboxAlign = $state(false);
+	showHaloDebug = $state(false);
 	showClouds = $state(true);
 	viewMode = $state<ViewMode>('map');
 	/** Debug cap on parts loaded per zone. 0 = unlimited. Only takes effect on
@@ -67,6 +69,7 @@ class SettingsState {
 		this.language = stored.language ?? 'auto';
 		this.showDebugInfo = stored.showDebugInfo ?? false;
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
+		this.showHaloDebug = stored.showHaloDebug ?? false;
 		this.showClouds = stored.showClouds ?? true;
 		this.viewMode = stored.viewMode ?? 'map';
 		this.maxPartsPerZone = stored.maxPartsPerZone ?? 0;
@@ -100,6 +103,11 @@ class SettingsState {
 
 	setShowSkyboxAlign(v: boolean) {
 		this.showSkyboxAlign = v;
+		this.persist();
+	}
+
+	setShowHaloDebug(v: boolean) {
+		this.showHaloDebug = v;
 		this.persist();
 	}
 
@@ -167,6 +175,7 @@ class SettingsState {
 				language: this.language,
 				showDebugInfo: this.showDebugInfo,
 				showSkyboxAlign: this.showSkyboxAlign,
+				showHaloDebug: this.showHaloDebug,
 				showClouds: this.showClouds,
 				viewMode: this.viewMode,
 				maxPartsPerZone: this.maxPartsPerZone

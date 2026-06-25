@@ -40,7 +40,7 @@ const _occluderPool: ScreenOccluder[] = [];
 function ensureOccluder(idx: number): ScreenOccluder {
 	let o = _occluderPool[idx];
 	if (!o) {
-		o = { sx: 0, sy: 0, r: 0, id: '', dist: 0 };
+		o = { cx0: 0, cy0: 0, camX: 0, camY: 0, sBias: 0, k: 0, f2: 0, id: '', dist: 0 };
 		_occluderPool[idx] = o;
 	}
 	return o;
@@ -110,33 +110,38 @@ export function updateBodyVisibility(
 		label.position.copy(tmpV3);
 	}
 
-	// Screen occluders: bodies large enough on-screen to hide labels behind them.
-	// Uses the ellipse's minor axis radius (r·f / √(Bz²−r²)) to avoid over-occluding
-	// off-axis bodies. Center = already-silhouette-corrected label position.
+	// Screen occluders: bodies large enough on-screen to hide labels behind them,
+	// stored as tangent cones (see ScreenOccluder) so the silhouette test stays
+	// valid even when the limb crosses the camera plane (Bz² ≤ r²).
 	const screenOccluders = _occluderPool;
+	const halfW = screenW * 0.5,
+		halfH = screenH * 0.5;
+	const projScale2 = projScale * projScale;
 	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {
 		const r = bo.radiusScene;
 		if (!r) continue;
 		const dist = bo.cachedDist;
-		if (dist <= r) continue;
+		if (dist <= r) continue; // camera inside the sphere → no occlusion
 		const [bx, by, bz] = bo.body.position;
 		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
-		const camZ2 = tmpV3.z * tmpV3.z;
-		if (camZ2 <= r * r) continue;
-		const screenR = (r * projScale) / Math.sqrt(camZ2 - r * r);
-		if (screenR < HALO_RADIUS_PX) continue;
-		const lp = bo.label?.position;
-		const ox = lp?.x ?? 0,
-			oy = lp?.y ?? 0,
-			oz = lp?.z ?? 0;
-		tmpV3.set(bx - fp[0] + ox, by - fp[1] + oy, bz - fp[2] + oz);
-		tmpV3.project(camera);
-		if (tmpV3.z > 1) continue;
+		const camX = tmpV3.x,
+			camY = tmpV3.y,
+			camZ = tmpV3.z;
+		if (camZ >= 0) continue; // body center behind the camera
+		const bz2 = camZ * camZ;
+		// Gate on tangential screen radius ≥ halo size; bz² ≤ r² means the body
+		// engulfs the view, so it's unconditionally an occluder.
+		const gateOk = bz2 <= r * r || (r * projScale) / Math.sqrt(bz2 - r * r) >= HALO_RADIUS_PX;
+		if (!gateOk) continue;
 		const occ = ensureOccluder(occluderCount++);
-		occ.sx = (tmpV3.x * 0.5 + 0.5) * screenW;
-		occ.sy = (-tmpV3.y * 0.5 + 0.5) * screenH;
-		occ.r = screenR;
+		occ.cx0 = halfW;
+		occ.cy0 = halfH;
+		occ.camX = camX;
+		occ.camY = camY;
+		occ.sBias = -projScale * camZ;
+		occ.k = dist * dist - r * r; // d² − r² > 0
+		occ.f2 = projScale2;
 		occ.id = bo.body.data.id;
 		occ.dist = dist;
 	}

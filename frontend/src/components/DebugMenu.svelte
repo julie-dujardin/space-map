@@ -250,6 +250,14 @@
 			/>
 			<span>Skybox alignment tool</span>
 		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showHaloDebug}
+				onchange={(e) => settings.setShowHaloDebug(e.currentTarget.checked)}
+			/>
+			<span>Label halo overlay</span>
+		</label>
 		<label class="flex items-center gap-2">
 			<span>Max parts/zone</span>
 			<input

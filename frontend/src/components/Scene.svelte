@@ -214,6 +214,10 @@
 		renderer?.setImmersive(settings.viewMode === 'immersive');
 	});
 
+	$effect(() => {
+		renderer?.setHaloDebugVisible(settings.showHaloDebug);
+	});
+
 	onDestroy(() => {
 		renderer?.dispose();
 	});

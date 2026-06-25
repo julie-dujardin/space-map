@@ -46,6 +46,7 @@ import { SystemDataLoader } from './system-data/loader';
 import { loadSkybox } from './objects/sky/skybox';
 import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
+import { HaloDebugOverlay } from './debug/halo-overlay';
 import { collectDebugStats, type DebugStats } from './debug/stats';
 import { PointCloudSystem } from './pointclouds/system';
 import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
@@ -127,6 +128,7 @@ export class SceneRenderer {
 	private cameraUp!: CameraUpController;
 	private skyboxAdjuster!: SkyboxAdjuster;
 	private skyDebugMarkers!: SkyDebugMarkers;
+	private haloDebug!: HaloDebugOverlay;
 
 	private readonly focus: FocusState = {
 		focusTruePos: [0, 0, 0],
@@ -224,6 +226,7 @@ export class SceneRenderer {
 		// setSkyboxAdjust isn't clobbered by the async load.
 		this.skyboxAdjuster = new SkyboxAdjuster(this.scene);
 		this.skyDebugMarkers = new SkyDebugMarkers(this.scene);
+		this.haloDebug = new HaloDebugOverlay(this.canvas);
 		this.skyboxAdjuster.set(0, 0, 0);
 		void loadSkybox(this.scene, this.renderer, ctx);
 
@@ -576,6 +579,17 @@ export class SceneRenderer {
 		this.composer.render();
 		this.renderModelOverlay();
 		this.labelRenderer.render(this.scene, this.camera);
+
+		if (this.haloDebug.active) {
+			this.haloDebug.draw(
+				this.bodyObjects,
+				this.camera,
+				this.focus.focusTruePos,
+				this.focusController.current?.data.id,
+				this.renderer.domElement.clientWidth,
+				this.renderer.domElement.clientHeight
+			);
+		}
 	};
 
 	/**
@@ -899,6 +913,11 @@ export class SceneRenderer {
 		this.skyDebugMarkers.setVisible(visible);
 	}
 
+	/** Toggle the virtual-halo debug overlay (label-anchor silhouette discs). */
+	setHaloDebugVisible(visible: boolean): void {
+		this.haloDebug.setVisible(visible);
+	}
+
 	/** Drop a "you are here" pin at lat/lon on Earth; re-pins if already set. */
 	setUserLocation(latitude: number, longitude: number): void {
 		const earth = this.bodyObjects.get(EARTH_ID);
@@ -935,6 +954,7 @@ export class SceneRenderer {
 		this.pointerInteraction.detach();
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
+		this.haloDebug.dispose();
 		this.renderer.dispose();
 	}
 }
