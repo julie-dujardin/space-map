@@ -708,7 +708,7 @@
 				<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
 					<div
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
-						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px);"
+						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
 					>
 						<Tabs.Content value="overview">
 							{@render overviewPanel()}

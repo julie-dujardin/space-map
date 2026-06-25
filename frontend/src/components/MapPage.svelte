@@ -367,7 +367,7 @@
 			/>
 			<TimeControls {clock} />
 			<div
-				class="fixed top-4 start-4 end-4 pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
+				class="fixed top-[calc(var(--safe-top)_+_1rem)] start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] pointer-events-auto md:end-auto md:w-[min(400px,calc(100vw-7rem))] {searchExpanded
 					? 'z-[55]'
 					: 'z-10'}"
 			>
@@ -396,16 +396,16 @@
 			{#if searchEnabled && !searchExpanded}
 				<!-- Chips beside whatever's shown (sidebar/search bar); mobile stacks below. -->
 				<div
-					class="pointer-events-auto fixed start-4 end-4 top-[4.125rem] z-10 md:end-4 md:top-4 md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
+					class="pointer-events-auto fixed start-[calc(var(--safe-start)_+_1rem)] end-[calc(var(--safe-end)_+_1rem)] top-[calc(var(--safe-top)_+_4.125rem)] z-10 md:end-[calc(var(--safe-end)_+_1rem)] md:top-[calc(var(--safe-top)_+_1rem)] md:flex md:h-10 md:items-center md:start-[var(--featured-start)]"
 					style="--featured-start: {featuredStart}"
 				>
 					<FeaturedBar onObject={(id, name) => focusObject(id, name)} onGroup={openGroup} />
 				</div>
 			{/if}
 			<div
-				class="fixed end-4 z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
-					? 'top-[7.5rem] md:top-4'
-					: 'top-4'}"
+				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col items-end gap-3 pointer-events-auto {searchEnabled
+					? 'top-[calc(var(--safe-top)_+_7.5rem)] md:top-[calc(var(--safe-top)_+_1rem)]'
+					: 'top-[calc(var(--safe-top)_+_1rem)]'}"
 			>
 				<SettingsButton />
 				<LayersButton />
@@ -446,9 +446,9 @@
 				/>
 			{/if}
 			<div
-				class="fixed end-4 z-10 flex flex-col-reverse items-end gap-3 transition-[opacity,bottom] duration-300 ease-in-out
+				class="fixed end-[calc(var(--safe-end)_+_1rem)] z-10 flex flex-col-reverse items-end gap-3 transition-[opacity,bottom] duration-300 ease-in-out
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem);"
+				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + 1.5rem + var(--safe-bottom));"
 			>
 				<div class="md:hidden pointer-events-auto">
 					<MobileTimeControls {clock} />
@@ -471,9 +471,9 @@
 				{/if}
 			</div>
 			<div
-				class="fixed end-0 z-10 transition-opacity duration-300 ease-in-out
+				class="fixed end-[var(--safe-end)] z-10 transition-opacity duration-300 ease-in-out
 					{drawerHeightDvh > 12 ? 'opacity-0 pointer-events-none' : 'opacity-100'}"
-				style="bottom: {Math.min(drawerHeightDvh, 12)}dvh;"
+				style="bottom: calc({Math.min(drawerHeightDvh, 12)}dvh + var(--safe-bottom));"
 			>
 				<AttributionBar />
 			</div>

@@ -578,7 +578,7 @@
 {#if enabled}
 	<div
 		class="w-full {expanded
-			? 'fixed inset-0 z-50 flex flex-col rounded-none border-0 bg-popover md:absolute md:inset-auto md:start-0 md:top-0 md:w-[min(400px,calc(100vw-7rem))] md:rounded-2xl md:border md:border-border md:shadow-xl ' +
+			? 'fixed inset-0 z-50 flex flex-col rounded-none border-0 bg-popover pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)] md:absolute md:inset-auto md:start-0 md:top-0 md:w-[min(400px,calc(100vw-7rem))] md:rounded-2xl md:border md:border-border md:shadow-xl md:p-0 ' +
 				(panelTall ? 'md:h-[calc(100dvh-2rem)]' : 'md:max-h-[80vh]')
 			: 'relative md:w-[240px]'}"
 		role="search"

@@ -57,7 +57,7 @@
 		     DetailDrawer is open. -->
 		<Portal>
 			<div
-				class="fixed inset-0 z-[70] bg-background overflow-y-auto pointer-events-auto"
+				class="fixed inset-0 z-[70] bg-background overflow-y-auto pointer-events-auto pt-[var(--safe-top)] pb-[var(--safe-bottom)] ps-[var(--safe-start)] pe-[var(--safe-end)]"
 				role="dialog"
 				aria-modal="true"
 				aria-label={title}

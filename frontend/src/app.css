@@ -90,6 +90,20 @@ body {
 	height: 100%;
 }
 
+/* Safe-area insets as logical vars: the WebGL canvas runs full-bleed under
+   notches/home indicators (viewport-fit=cover in app.html) while fixed 2D
+   chrome offsets by these to stay clear. RTL swaps start/end to physical. */
+:root {
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-start: env(safe-area-inset-left, 0px);
+	--safe-end: env(safe-area-inset-right, 0px);
+}
+[dir='rtl'] {
+	--safe-start: env(safe-area-inset-right, 0px);
+	--safe-end: env(safe-area-inset-left, 0px);
+}
+
 :root {
 	color-scheme: light;
 }
