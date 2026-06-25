@@ -190,6 +190,15 @@
 
 	let hovered = $derived(layout.find((p) => p.id === hoveredId) ?? null);
 
+	// Clamp the tooltip's center by its own half-width so the whole box stays
+	// inside the canvas (nowrap means clamping the center alone isn't enough).
+	let tipWidth = $state(0);
+	let tipLeft = $derived.by(() => {
+		if (!hovered) return 0;
+		const half = tipWidth / 2;
+		return Math.min(Math.max(hovered.cx, half), Math.max(half, width - half));
+	});
+
 	/** Planet under the cursor: a sphere it sits inside wins (front-most, i.e. the
 	 *  smallest — last in `layout`); otherwise the column it's in. */
 	function pickAt(clientX: number, clientY: number): string | null {
@@ -491,8 +500,9 @@
 
 	{#if hovered}
 		<div
-			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border px-2 py-1 text-center shadow-md"
-			style="left: {Math.min(Math.max(hovered.cx, 48), width - 48)}px; top: 6px"
+			bind:clientWidth={tipWidth}
+			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border px-2 py-1 text-center whitespace-nowrap shadow-md"
+			style="left: {tipLeft}px; top: 6px; visibility: {tipWidth === 0 ? 'hidden' : 'visible'}"
 		>
 			<div class="text-xs font-medium">{hovered.name}</div>
 			<div class="text-muted-foreground text-[11px] tabular-nums">

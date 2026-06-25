@@ -51,6 +51,7 @@
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import PlanetLineup from './PlanetLineup.svelte';
+	import PlanetMassChart from './PlanetMassChart.svelte';
 	import { CAT_PLANETS } from '$lib/fetch/groups/registry';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -604,6 +605,9 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
+				{#if isPlanetsCategory && notableMembers && notableMembers.length > 0}
+					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
+				{/if}
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 				{/if}
