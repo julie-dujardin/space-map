@@ -249,8 +249,22 @@ export function searchChildMembers(
  *  tiebreaker); the rest map to a sortable attribute. */
 export type SortId = 'relevance' | 'name' | 'size' | 'brightness' | 'date';
 
+/** Numeric range facets. Values are in display units (km, magnitude H, calendar
+ *  year); `RANGE_FIELD` + `toRangeField` map them to the Meili attribute/value. */
+export type RangeFacet = 'diameter' | 'magnitude' | 'inception';
+export interface RangeBound {
+	min?: number;
+	max?: number;
+}
+
+/** Active once either edge is set. A shared fn, not inlined — the Svelte
+ *  compiler mangles the `!= null` parens and derefs a nullish `b`. */
+export function hasBound(b: RangeBound | undefined): boolean {
+	return b != null && (b.min != null || b.max != null);
+}
+
 /** Selected facet values. Array facets are OR within / AND across; the two
- *  small-body flags are plain booleans. */
+ *  small-body flags are plain booleans; ranges AND a min/max on a numeric field. */
 export interface CatalogFilters {
 	kind?: string[]; // object | feature | group
 	type?: string[]; // object.type
@@ -259,6 +273,21 @@ export interface CatalogFilters {
 	groupType?: string[]; // group.type names (collection kinds)
 	neo?: boolean;
 	pha?: boolean;
+	ranges?: Partial<Record<RangeFacet, RangeBound>>;
+}
+
+// Numeric range facet → its filterable Meili attribute.
+const RANGE_FIELD: Record<RangeFacet, string> = {
+	diameter: 'diameter_km',
+	magnitude: 'object.magnitude',
+	inception: 'object.inception'
+};
+
+/** Display value → Meili field value. inception is a YYYYMMDD int, so a year
+ *  widens to its whole span: min edge → Jan-1, max edge → Dec-31. */
+function toRangeField(facet: RangeFacet, v: number, edge: 'min' | 'max'): number {
+	if (facet === 'inception') return edge === 'min' ? v * 10000 : v * 10000 + 1231;
+	return v;
 }
 
 /** A facet value → match-count map, keyed by facet attribute. */
@@ -325,8 +354,25 @@ function filterClauses(f: CatalogFilters): Map<string, string> {
 	return out;
 }
 
-function joinClauses(clauses: Map<string, string>, except?: string): string | undefined {
+/** Range clauses — always applied (no facet distribution to recount). */
+function rangeClauses(f: CatalogFilters): string[] {
+	const out: string[] = [];
+	for (const [facet, b] of Object.entries(f.ranges ?? {}) as [RangeFacet, RangeBound][]) {
+		const field = RANGE_FIELD[facet];
+		if (b.min != null) out.push(`${field} >= ${toRangeField(facet, b.min, 'min')}`);
+		if (b.max != null) out.push(`${field} <= ${toRangeField(facet, b.max, 'max')}`);
+	}
+	return out;
+}
+
+/** AND the facet clauses (minus `except`) with the always-on `ranges`. */
+function joinClauses(
+	clauses: Map<string, string>,
+	ranges: string[],
+	except?: string
+): string | undefined {
 	const parts = [...clauses].filter(([k]) => k !== except).map(([, v]) => v);
+	parts.push(...ranges);
 	return parts.length ? parts.join(' AND ') : undefined;
 }
 
@@ -350,6 +396,7 @@ export async function searchCatalog(opts: {
 	if (!c) return { hits: [], estimatedTotalHits: 0, facets: {} };
 	const sort = buildSort(opts.sort, opts.reverse);
 	const clauses = filterClauses(opts.filters);
+	const ranges = rangeClauses(opts.filters);
 	const active = [...clauses.keys()];
 
 	const { results } = await c.multiSearch({
@@ -357,7 +404,7 @@ export async function searchCatalog(opts: {
 			{
 				indexUid: INDEX,
 				q: opts.query,
-				filter: joinClauses(clauses),
+				filter: joinClauses(clauses, ranges),
 				sort: sort.length ? sort : undefined,
 				facets: FACETS,
 				offset: (opts.page - 1) * opts.pageSize,
@@ -368,7 +415,7 @@ export async function searchCatalog(opts: {
 			...active.map((facet) => ({
 				indexUid: INDEX,
 				q: opts.query,
-				filter: joinClauses(clauses, facet),
+				filter: joinClauses(clauses, ranges, facet),
 				facets: [facet],
 				limit: 0,
 				locales: [opts.locale]

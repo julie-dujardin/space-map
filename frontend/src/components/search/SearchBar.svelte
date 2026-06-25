@@ -17,9 +17,13 @@
 		MAX_TOTAL_HITS,
 		type SearchHit,
 		type GroupHit,
-		type FacetDistribution
+		type FacetDistribution,
+		type RangeFacet,
+		type RangeBound,
+		hasBound
 	} from '$lib/search/client';
 	import { capitalize, compact } from '$lib/search/format';
+	import { rangeDef } from '$lib/search/ranges';
 	import { SearchModel, type FilterToken } from '$lib/search/model.svelte';
 	import { parseSearchSuffix } from '$lib/search/url';
 	import type { AppState } from '$lib/state/app-state.svelte';
@@ -78,6 +82,14 @@
 		);
 	});
 	let filterOpen = $state(false);
+	// Drill node to open onto when editing a chip; undefined = root level.
+	let filterOpenTo = $state<string | undefined>(undefined);
+
+	// Edit a clicked chip: range chips jump to the sliders, the rest to root.
+	function editToken(t: FilterToken) {
+		filterOpenTo = t.key === 'ranges' ? 'ranges' : undefined;
+		filterOpen = true;
+	}
 	let groupCatalog = $state<GroupHit[]>([]);
 	// undefined while the first stats call is in flight, then the count, or null
 	// if the catalog index is unreachable (env unset or server down) — null drives
@@ -306,6 +318,13 @@
 
 		const children: FilterNode[] = [];
 
+		// Numeric range sliders — one drill node, applied across all kinds.
+		children.push({
+			id: 'ranges',
+			label: m.search_facet_properties(),
+			ranges: ['diameter', 'magnitude', 'inception']
+		});
+
 		// Types with no sub-filters — a plain checkbox right at the root level.
 		const rootLeaves: FilterLeaf[] = (['planet', 'dwarf_planet', 'moon'] as const).map((type) => ({
 			id: `root-${type}`,
@@ -496,6 +515,21 @@
 		return { id: 'root', label: '', leaves: rootLeaves, children };
 	});
 
+	// Applied-range chip label, e.g. "Size: 10–100 km", "Date: ≥ 1990".
+	function rangeTokenLabel(facet: RangeFacet, b: RangeBound, locale: string): string {
+		const def = rangeDef(facet);
+		const dim = messages[def.labelKey]?.() ?? facet;
+		const unit = def.unit === 'km' ? ` ${m.unit_symbol_kilometre()}` : '';
+		const fmt = (v: number) => (def.unit === 'km' ? compact(v) : v.toLocaleString(locale));
+		const val =
+			b.min != null && b.max != null
+				? `${fmt(b.min)}–${fmt(b.max)}`
+				: b.min != null
+					? `≥ ${fmt(b.min)}`
+					: `≤ ${fmt(b.max as number)}`;
+		return `${dim}: ${val}${unit}`;
+	}
+
 	const tokens = $derived.by((): FilterToken[] => {
 		const locale = getLocale();
 		const out: FilterToken[] = [];
@@ -511,6 +545,11 @@
 			out.push({ key: 'featureType', value: code, label: featureTypeLabel(code) });
 		for (const t of model.filters.groupType ?? [])
 			out.push({ key: 'groupType', value: t, label: groupTypeLabelPlural(t as GroupType) });
+		for (const facet of ['diameter', 'magnitude', 'inception'] as RangeFacet[]) {
+			const b = model.filters.ranges?.[facet];
+			if (hasBound(b))
+				out.push({ key: 'ranges', value: facet, label: rangeTokenLabel(facet, b!, locale) });
+		}
 		if (model.filters.neo) out.push({ key: 'neo', label: m.search_prop_neo() });
 		if (model.filters.pha) out.push({ key: 'pha', label: m.search_prop_pha() });
 		return out;
@@ -664,7 +703,10 @@
 							filterOpen
 								? 'border-foreground bg-accent'
 								: 'border-border'}"
-							onclick={() => (filterOpen = !filterOpen)}
+							onclick={() => {
+								filterOpenTo = undefined;
+								filterOpen = !filterOpen;
+							}}
 						>
 							<SlidersIcon class="size-3.5" />
 							{m.search_filter()}
@@ -676,7 +718,7 @@
 							{/if}
 						</button>
 						{#if filterOpen}
-							<FilterDrill {model} root={tree} />
+							<FilterDrill {model} root={tree} openTo={filterOpenTo} />
 						{/if}
 					</div>
 				</div>
@@ -685,9 +727,16 @@
 					<div class="flex flex-wrap gap-1.5 px-3 pb-2.5">
 						{#each tokens as t (t.key + (t.value ?? ''))}
 							<span
-								class="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 ps-2.5 pe-1.5 text-xs whitespace-nowrap text-foreground"
+								class="inline-flex h-[26px] items-center gap-1 rounded-full border border-primary/30 bg-primary/10 pe-1.5 ps-0.5 text-xs whitespace-nowrap text-foreground"
 							>
-								{capitalize(t.label)}
+								<button
+									type="button"
+									class="rounded-full px-2 py-0.5 transition-colors hover:bg-primary/15"
+									title={m.search_filter()}
+									onclick={() => editToken(t)}
+								>
+									{capitalize(t.label)}
+								</button>
 								<button
 									type="button"
 									class="grid size-[17px] place-items-center rounded-full bg-foreground/10 hover:bg-foreground/20"

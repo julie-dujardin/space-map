@@ -2,11 +2,20 @@
  *  Holds query/filter/sort/page state; the orchestrator runs `runQuery` from a
  *  debounced $effect (snapshot args in, result out — no read/write loop). */
 
-import { searchCatalog, type CatalogFilters, type CatalogResult, type SortId } from './client';
+import {
+	searchCatalog,
+	hasBound,
+	type CatalogFilters,
+	type CatalogResult,
+	type RangeBound,
+	type RangeFacet,
+	type SortId
+} from './client';
 
 const EMPTY: CatalogResult = { hits: [], estimatedTotalHits: 0, facets: {} };
 
-/** A removable applied-filter chip. `value` is unset for the boolean flags. */
+/** A removable applied-filter chip. `value` is unset for the boolean flags; for
+ *  a range chip `key` is 'ranges' and `value` is the `RangeFacet`. */
 export interface FilterToken {
 	key: keyof CatalogFilters;
 	value?: string;
@@ -15,6 +24,7 @@ export interface FilterToken {
 
 export type ArrayFacet = 'kind' | 'type' | 'groups' | 'featureType' | 'groupType';
 export type BoolFacet = 'neo' | 'pha';
+export type { RangeFacet };
 
 /** Sort options in menu order; labels resolve via `search_sort_*` messages. */
 export const SORTS: { id: SortId; key: string }[] = [
@@ -34,6 +44,7 @@ function countActive(f: CatalogFilters): number {
 		(f.groupType?.length ?? 0);
 	if (f.neo) n++;
 	if (f.pha) n++;
+	for (const b of Object.values(f.ranges ?? {})) if (hasBound(b)) n++;
 	return n;
 }
 
@@ -142,8 +153,26 @@ export class SearchModel {
 		this.page = 1;
 	}
 
+	rangeOf(facet: RangeFacet): RangeBound {
+		return this.filters.ranges?.[facet] ?? {};
+	}
+
+	/** Set a range's min/max (undefined edge = unbounded); empty bound clears it. */
+	setRange(facet: RangeFacet, bound: RangeBound): void {
+		const ranges = { ...this.filters.ranges };
+		if (bound.min == null && bound.max == null) delete ranges[facet];
+		else ranges[facet] = bound;
+		this.filters = { ...this.filters, ranges };
+		this.page = 1;
+	}
+
+	clearRange(facet: RangeFacet): void {
+		this.setRange(facet, {});
+	}
+
 	removeToken(t: FilterToken): void {
 		if (t.key === 'neo' || t.key === 'pha') this.toggleBool(t.key);
+		else if (t.key === 'ranges' && t.value != null) this.clearRange(t.value as RangeFacet);
 		else if (t.value != null) this.toggleValues(t.key as ArrayFacet, [t.value]);
 		this.page = 1;
 	}

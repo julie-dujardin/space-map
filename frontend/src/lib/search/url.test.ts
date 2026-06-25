@@ -72,3 +72,42 @@ describe('parseSearchSuffix', () => {
 		expect(parsed?.reverse).toBe(false);
 	});
 });
+
+describe('range facets', () => {
+	it('serializes both bounds and open-ended bounds', () => {
+		expect(
+			serializeSearchSuffix({ ...base, filters: { ranges: { diameter: { min: 10, max: 100 } } } })
+		).toBe('&f=diameter:10..100');
+		expect(
+			serializeSearchSuffix({ ...base, filters: { ranges: { magnitude: { max: 15 } } } })
+		).toBe('&f=mag:..15');
+		expect(
+			serializeSearchSuffix({ ...base, filters: { ranges: { inception: { min: 1990 } } } })
+		).toBe('&f=date:1990..');
+	});
+
+	it('skips a range with no bounds set', () => {
+		expect(serializeSearchSuffix({ ...base, filters: { ranges: { diameter: {} } } })).toBe('');
+	});
+
+	it('round-trips ranges alongside other facets', () => {
+		const s: SearchUrlState = {
+			...base,
+			filters: {
+				type: ['asteroid'],
+				ranges: { diameter: { min: 1, max: 50 }, inception: { min: 2000 } },
+				neo: true
+			}
+		};
+		expect(roundTrip(s)).toEqual(s);
+	});
+
+	it('parses a negative magnitude bound', () => {
+		const parsed = parseSearchSuffix(new URLSearchParams('f=mag:-5..0'));
+		expect(parsed?.filters.ranges?.magnitude).toEqual({ min: -5, max: 0 });
+	});
+
+	it('ignores a malformed range (no ..)', () => {
+		expect(parseSearchSuffix(new URLSearchParams('f=diameter:10'))).toBeNull();
+	});
+});

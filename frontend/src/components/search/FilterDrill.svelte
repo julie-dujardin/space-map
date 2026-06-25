@@ -2,19 +2,29 @@
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import { untrack } from 'svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { capitalize, compact } from '$lib/search/format';
 	import type { SearchModel } from '$lib/search/model.svelte';
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
+	import { rangeDef } from '$lib/search/ranges';
+	import { hasBound } from '$lib/search/client';
+	import RangeControl from './RangeControl.svelte';
 
-	let { model, root }: { model: SearchModel; root: FilterNode } = $props();
+	let { model, root, openTo }: { model: SearchModel; root: FilterNode; openTo?: string } = $props();
 
-	// Navigation stack: empty = root level; else the drilled-into path.
-	let path = $state<FilterNode[]>([]);
+	const messages = m as unknown as Record<string, (() => string) | undefined>;
+
+	// Navigation stack: empty = root level; else the drilled-into path. When the
+	// popover is opened to edit a specific chip (`openTo`), start on that child
+	// node; resolved once at mount, matching how drilling pushes node objects.
+	const opened = untrack(() => (openTo ? root.children?.find((c) => c.id === openTo) : undefined));
+	let path = $state<FilterNode[]>(opened ? [opened] : []);
 	const current = $derived(path.length ? path[path.length - 1] : root);
 	const atRoot = $derived(path.length === 0);
 	const shown = $derived(current.children ?? []);
 	const leaves = $derived(current.leaves ?? []);
+	const ranges = $derived(current.ranges ?? []);
 
 	function leafChecked(leaf: FilterLeaf): boolean {
 		return leaf.kind === 'bool'
@@ -25,9 +35,10 @@
 		if (leaf.kind === 'bool') model.toggleBool(leaf.facet);
 		else model.toggleValues(leaf.facet, leaf.values);
 	}
-	// Active selections anywhere under a node (its own leaves + descendants).
+	// Active selections anywhere under a node (its leaves + ranges + descendants).
 	function activeUnder(node: FilterNode): number {
 		let n = (node.leaves ?? []).filter(leafChecked).length;
+		for (const f of node.ranges ?? []) if (hasBound(model.rangeOf(f))) n++;
 		for (const child of node.children ?? []) n += activeUnder(child);
 		return n;
 	}
@@ -86,8 +97,22 @@
 			</button>
 		{/each}
 
+		<!-- numeric range sliders (Size / Brightness / Date) -->
+		{#each ranges as facet, i (facet)}
+			{@const def = rangeDef(facet)}
+			{#if i > 0 || leaves.length > 0}
+				<div class="my-1 border-t border-border"></div>
+			{/if}
+			<RangeControl
+				{def}
+				label={messages[def.labelKey]?.() ?? facet}
+				value={model.rangeOf(facet)}
+				onchange={(b) => model.setRange(facet, b)}
+			/>
+		{/each}
+
 		<!-- a divider between this level's leaves and its drillable sub-groups -->
-		{#if leaves.length > 0 && shown.length > 0}
+		{#if (leaves.length > 0 || ranges.length > 0) && shown.length > 0}
 			<div class="my-1 border-t border-border"></div>
 		{/if}
 
