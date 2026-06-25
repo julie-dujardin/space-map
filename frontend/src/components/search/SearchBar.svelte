@@ -37,6 +37,7 @@
 		type GroupType
 	} from '$lib/fetch/groups/registry';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import SortMenu from './SortMenu.svelte';
 	import FilterDrill from './FilterDrill.svelte';
 	import SearchResults from './SearchResults.svelte';
@@ -661,7 +662,13 @@
 				     height no matter how many token rows pile up -->
 				<div class="flex items-center gap-2 px-3 pt-2 pb-2">
 					<span class="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">
-						{#if model.hasResults}
+						{#if model.loading && model.total === 0}
+							<!-- searching: stand in for the count until the first page lands -->
+							<span class="inline-flex items-center gap-1.5 align-middle">
+								<Skeleton class="h-3 w-10 rounded" />
+								<Skeleton class="h-3 w-16 rounded opacity-70" />
+							</span>
+						{:else if model.hasResults}
 							<span class="font-medium text-foreground"
 								>{compact(model.total)}{model.total >= MAX_TOTAL_HITS ? '+' : ''}</span
 							>
