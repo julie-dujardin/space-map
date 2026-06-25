@@ -14,6 +14,13 @@ import math
 
 import numpy as np
 
+# A pure constant-axis spin is an exact SLERP geodesic, so the greedy walker
+# would extend one keyframe segment indefinitely — until it spans ≥ 180°, where
+# SLERP can no longer tell the short arc from the long one and reconstructs the
+# wrong way (a clean slow spinner like Gaia flips ~180° mid-segment). Cap the
+# per-segment angle well below π so the short arc is always unambiguous.
+MAX_SEGMENT_ANGLE_RAD = math.radians(90.0)
+
 
 def extract_keyframes(quats: np.ndarray, ets: np.ndarray, eps_rad: float) -> list[int]:
     """Return the list of sample indices to keep as SLERP keyframes."""
@@ -68,6 +75,10 @@ def _segment_fits(
     d = float(np.dot(q0, q1))
     if d < 0:
         q1, d = -q1, -d
+    # Reject a segment spanning past the unambiguous short-arc regime, even if
+    # the geodesic happens to track the samples — SLERP would flip at decode.
+    if 2.0 * math.acos(min(1.0, d)) > MAX_SEGMENT_ANGLE_RAD:
+        return False
     s = (ets[a + 1 : b] - t0) / dt
     if d > 0.9995:
         interp = q0 + s[:, None] * (q1 - q0)

@@ -1,14 +1,20 @@
-"""Per-probe orchestrator: kernel → samples → keyframes → files + manifest.
+"""Per-probe orchestrator: kernel → segments → samples → keyframes → files.
 
 This is the function the pipeline calls once per probe. SPICE must be
 furnished by the caller before invocation (lsk + pck + per-mission ck +
 fk + sclk); we keep furnishing out of this module so the caller can batch
 multiple probes against the same generic kernels without re-furnishing.
 
+The mission is first partitioned into rate-stable spin spans (`segments.py`):
+a non-spinner is one raw span; a spinner (Juno) is one span per phase, each
+with its own baseline so the adaptive sampler always keyframes a slow residual.
+Each span is sampled and keyframed independently, and its chunks carry the
+index of the baseline to recompose against.
+
 Output:
   * `chunks/<chunk_idx>.bin.gz` written under `out_dir/`
-  * A dict suitable for merging into the probe's `__global__` object
-    bundle entry under the `"attitude"` key (see `manifest_entry` below).
+  * A dict for merging into the probe's `__global__` bundle under `"attitude"`
+    (see `manifest_entry`).
 """
 
 import logging
@@ -19,61 +25,23 @@ from pathlib import Path
 import numpy as np
 
 from .adaptive import SEED_DT_S, adaptive_sample
-from .baseline import baseline_quaternion, fit_spin_baseline
 from .keyframes import extract_keyframes
-from .quaternion import angle_between, q_conj, q_mul
-from .sample import ck_windows, sample_truth
+from .sample import ck_windows
+from .segments import SpinSegment, plan_segments
 from .writer import ChunkFile, write_chunks
 
 logger = logging.getLogger(__name__)
 
 # Adaptive SLERP error budget. The sweep validated 0.1° as the right
-# default — visually imperceptible at planet scale, near-optimal file
-# counts (a single knob; phase classifier added overhead without payoff).
+# default — visually imperceptible at planet scale, near-optimal file counts.
 DEFAULT_EPS_DEG = 0.1
-
-# Spin fit: dense 10 Hz over a bounded leading window, so a fast spin is
-# resolved even when the first CK file is months long.
-SAMPLE_HZ = 10.0
-FIT_WINDOW_S = 2 * 86400.0
-FIT_MAX_SAMPLES = 50_000
-# Apply the spin baseline only when the turn between seed samples would alias
-# the sampler. Below that, raw motion samples fine and the inverse-spin
-# residual only adds curvature (a slow ditherer samples worse, not better).
+# Apply a spin baseline only when the turn between seed samples would alias the
+# sampler. Below that, raw motion samples fine and an inverse spin only adds
+# curvature; above it, a fast spinner must be baselined per phase.
 ALIAS_ANGLE_RAD = math.radians(90.0)
 
-
-def _grid_n(duration_s: float, cap: int) -> int:
-    """Sample count for a window: 10 Hz, clamped to [2, cap]."""
-    return int(max(2, min(cap, round(duration_s * SAMPLE_HZ))))
-
-
-def _residual_transform(axis, rate, anchor, t0):
-    """Map raw J2000->body truth → spin-baseline residual q_baseline(t)⁻¹·q."""
-
-    def transform(et: float, q: np.ndarray) -> np.ndarray:
-        b = q_mul(baseline_quaternion(axis, rate, et - t0), anchor)
-        return q_mul(q_conj(b), q)
-
-    return transform
-
-
-def _persistent_spin_speed(frame_name: str, t0: float, t1: float) -> float:
-    """Median local angular speed (rad/s) sampled across the whole mission.
-
-    Close pxform pairs measure the true instantaneous rate without the aliasing
-    a coarse single-spacing estimate suffers. Distinguishes a persistent spinner
-    (Juno) from a transient early detumble (Europa Clipper) that a lead-window
-    fit alone reads as a global spin.
-    """
-    n, ddt = 96, 1.0
-    starts = np.linspace(t0, max(t0, t1 - ddt), n)
-    ets = np.empty(2 * n)
-    ets[0::2] = starts
-    ets[1::2] = starts + ddt
-    q = sample_truth(frame_name, ets)
-    speeds = [angle_between(q[2 * i], q[2 * i + 1]) / ddt for i in range(n)]
-    return float(np.median(speeds))
+_J2000_JD = 2451545.0
+_S_PER_DAY = 86400.0
 
 
 @dataclass(frozen=True)
@@ -82,15 +50,13 @@ class ExtractionResult:
 
     n_keyframes: int
     files: list[ChunkFile]
-    baseline_axis: list[float] | None
-    baseline_rate_rad_s: float | None
-    baseline_anchor: list[float] | None
+    segments: list[SpinSegment]
     coverage_start_jd: float
     coverage_end_jd: float
 
 
-_J2000_JD = 2451545.0
-_S_PER_DAY = 86400.0
+def _et_to_jd(et: float) -> float:
+    return _J2000_JD + et / _S_PER_DAY
 
 
 def extract_attitude(
@@ -106,12 +72,8 @@ def extract_attitude(
     Caller furnishes kernels. `bus_instr_id` is the CK instrument ID
     (typically `naif_id × 1000`) for the spacecraft bus frame; `frame_name`
     is the FK-registered name resolvable by `pxform("J2000", frame_name, et)`.
-    Coverage is the union of `ck_paths`, sampled adaptively and keyframed
-    file-by-file to bound memory over decades.
-
-    The spin baseline is fit unconditionally and applied iff its residual is
-    angularly tighter than the raw stream — a fast spinner (Juno, LADEE) must
-    be baselined so the adaptive sampler doesn't alias its turns.
+    Coverage is the union of `ck_paths`, partitioned into spin spans, then
+    sampled adaptively and keyframed span-by-span to bound memory over decades.
     """
     windows = ck_windows(ck_paths, bus_instr_id)
     if not windows:
@@ -119,39 +81,72 @@ def extract_attitude(
     global_start = windows[0][0]
     global_end = max(end for _, end in windows)
 
-    # Fit the spin from a dense, duration-bounded leading window.
-    fit_start = global_start
-    fit_end = min(windows[0][1], fit_start + FIT_WINDOW_S)
-    fit_ets = np.linspace(
-        fit_start, fit_end, _grid_n(fit_end - fit_start, FIT_MAX_SAMPLES)
-    )
-    axis, rate, anchor = fit_spin_baseline(sample_truth(frame_name, fit_ets), fit_ets)
-
-    # Baseline only a persistent fast spinner (Juno): a turn wider than the
-    # alias angle per seed aliases the raw sampler. Gate on the whole-mission
-    # median speed, not the lead-window fit — else a transient early detumble
-    # (Europa Clipper) baselines the entire mission with a wrong inverse spin.
-    spin_speed = _persistent_spin_speed(frame_name, global_start, global_end)
-    use_baseline = spin_speed * SEED_DT_S > ALIAS_ANGLE_RAD
-    transform = (
-        _residual_transform(axis, rate, anchor, global_start) if use_baseline else None
+    segments = plan_segments(
+        frame_name,
+        global_start,
+        global_end,
+        alias_angle=ALIAS_ANGLE_RAD,
+        seed_dt=SEED_DT_S,
     )
 
-    # Per file: adaptive-sample the stream (raw or residual), decimate to
-    # keyframes, accumulate. Overlap is trimmed against the last emitted
-    # keyframe to keep the merge time-ascending.
     eps_rad = math.radians(eps_deg)
-    kf_quats: list[np.ndarray] = []
+    seg_streams: list[tuple[np.ndarray, np.ndarray]] = []
+    n_samples = 0
+    n_gaps = 0
+    for seg in segments:
+        ets, quats, samples, gaps = _keyframe_segment(frame_name, seg, windows, eps_rad)
+        n_samples += samples
+        n_gaps += gaps
+        seg_streams.append((ets, quats))
+
+    if n_gaps:
+        # CK gaps are normal for busy orbiters (MRO, Cassini); one line per probe
+        # — per-file logging spammed thousands of identical warnings. The count
+        # includes discarded refinement probes, so it's a gap-probe tally, not a
+        # ratio of emitted samples.
+        logger.warning(
+            "attitude: %s — %d gap probe(s) hit CK coverage holes (repeated last good)",
+            frame_name,
+            n_gaps,
+        )
+
+    files = write_chunks(out_dir, seg_streams)
+    return ExtractionResult(
+        n_keyframes=sum(len(ets) for ets, _ in seg_streams),
+        files=files,
+        segments=segments,
+        coverage_start_jd=_et_to_jd(global_start),
+        coverage_end_jd=_et_to_jd(global_end),
+    )
+
+
+def _keyframe_segment(
+    frame_name: str,
+    seg: SpinSegment,
+    windows: list[tuple[float, float]],
+    eps_rad: float,
+) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """Adaptive-sample + keyframe one span → `(ets, quats, n_samples, n_gaps)`.
+
+    The span's baseline residual is the stream we keyframe (raw when None). Each
+    CK window is clipped to the span; `last_et` keeps the span's keyframes
+    time-ascending across overlapping windows. The span's endpoints are sampled,
+    so the boundary attitude is emitted in both adjacent spans' frames — the
+    decoder never SLERPs across the baseline switch.
+    """
+    transform = seg.baseline.residual if seg.baseline else None
     kf_ets: list[float] = []
+    kf_quats: list[np.ndarray] = []
     last_et = -math.inf
     n_samples = 0
     n_gaps = 0
-    for start_et, end_et in windows:
-        seg_start = max(start_et, last_et)
-        if end_et - seg_start <= 1.0:
+    for win_start, win_end in windows:
+        start = max(win_start, seg.start_et, last_et)
+        end = min(win_end, seg.end_et)
+        if end - start <= 1.0:
             continue
         ets, stream, gaps = adaptive_sample(
-            frame_name, seg_start, end_et, eps_rad, transform=transform
+            frame_name, start, end, eps_rad, transform=transform
         )
         n_samples += ets.size
         n_gaps += gaps
@@ -162,30 +157,23 @@ def extract_attitude(
             kf_ets.append(t)
             kf_quats.append(stream[i])
             last_et = t
-
-    if n_gaps:
-        # One line per probe — CK gaps are normal for busy orbiters (MRO,
-        # Cassini); per-file logging spammed thousands of identical warnings.
-        logger.warning(
-            "attitude: %s — %d/%d samples in CK gaps (repeated last good)",
-            frame_name,
-            n_gaps,
-            n_samples,
-        )
-
     quats = np.array(kf_quats) if kf_quats else np.empty((0, 4))
-    ets_arr = np.array(kf_ets)
-    files = write_chunks(out_dir, quats, ets_arr, list(range(len(kf_quats))))
+    return np.array(kf_ets), quats, n_samples, n_gaps
 
-    return ExtractionResult(
-        n_keyframes=len(kf_quats),
-        files=files,
-        baseline_axis=[float(a) for a in axis] if use_baseline else None,
-        baseline_rate_rad_s=float(rate) if use_baseline else None,
-        baseline_anchor=[float(a) for a in anchor] if use_baseline else None,
-        coverage_start_jd=_J2000_JD + global_start / _S_PER_DAY,
-        coverage_end_jd=_J2000_JD + global_end / _S_PER_DAY,
-    )
+
+def _baseline_json(seg: SpinSegment) -> dict:
+    """Serialise one span's baseline for the manifest `baselines` timeline."""
+    b = seg.baseline
+    assert b is not None
+    return {
+        "kind": "spin",
+        "axis": [float(a) for a in b.axis],
+        "rate_rad_s": float(b.rate_rad_s),
+        "anchor": [float(a) for a in b.anchor],
+        "anchor_jd": _et_to_jd(b.t0),
+        "start_jd": _et_to_jd(seg.start_et),
+        "end_jd": _et_to_jd(seg.end_et),
+    }
 
 
 def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
@@ -198,36 +186,36 @@ def manifest_entry(result: ExtractionResult, *, frame_name: str) -> dict:
           "start_jd": float,
           "end_jd": float,
           "n_keyframes": int,
-          "baseline": {
-            "kind": "spin",
-            "axis": [x, y, z],
-            "rate_rad_s": float,
-            "anchor": [w, x, y, z]
-          } | null,
-          "files": [{"name": "0.bin.gz", "start_jd": ..., "end_jd": ..., "n_keyframes": ...}, ...]
+          "baselines": [
+            {"kind": "spin", "axis": [x,y,z], "rate_rad_s": float,
+             "anchor": [w,x,y,z], "anchor_jd": float,
+             "start_jd": float, "end_jd": float}, ...
+          ] | null,
+          "files": [{"name", "start_jd", "end_jd", "n_keyframes",
+                     "baseline_index"?}, ...]
         }
+
+    `baselines` is null for a non-spinner (keyframes are raw J2000→body). For a
+    spinner each file's `baseline_index` selects the active span to recompose.
     """
-    baseline: dict | None = None
-    if result.baseline_axis is not None:
-        baseline = {
-            "kind": "spin",
-            "axis": result.baseline_axis,
-            "rate_rad_s": result.baseline_rate_rad_s,
-            "anchor": result.baseline_anchor,
+    spinning = any(seg.baseline is not None for seg in result.segments)
+    baselines = [_baseline_json(seg) for seg in result.segments] if spinning else None
+    files = []
+    for f in result.files:
+        entry = {
+            "name": f.name,
+            "start_jd": f.start_jd,
+            "end_jd": f.end_jd,
+            "n_keyframes": f.n_keyframes,
         }
+        if spinning:
+            entry["baseline_index"] = f.baseline_index
+        files.append(entry)
     return {
         "frame": frame_name,
         "start_jd": result.coverage_start_jd,
         "end_jd": result.coverage_end_jd,
         "n_keyframes": result.n_keyframes,
-        "baseline": baseline,
-        "files": [
-            {
-                "name": f.name,
-                "start_jd": f.start_jd,
-                "end_jd": f.end_jd,
-                "n_keyframes": f.n_keyframes,
-            }
-            for f in result.files
-        ],
+        "baselines": baselines,
+        "files": files,
     }

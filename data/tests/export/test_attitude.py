@@ -13,7 +13,6 @@ import struct
 import numpy as np
 
 from space_map_data.export.position.probes.attitude.baseline import (
-    apply_baseline,
     fit_spin_baseline,
 )
 from space_map_data.export.position.probes.attitude.format import (
@@ -161,18 +160,19 @@ def test_fit_spin_baseline_matches_synthetic_rate() -> None:
     for i, et in enumerate(ets):
         half = rate_true * et / 2.0
         quats[i] = [math.cos(half), 0.0, 0.0, math.sin(half)]
-    axis, rate, anchor = fit_spin_baseline(quats, ets)
+    bl = fit_spin_baseline(quats, ets, t0=0.0)
     # Axis can be sign-flipped; rate magnitude must match.
     # Tolerance reflects central-difference numerical error at this sample
     # density — central diff is O((dt)²) and we're sampling at 50 Hz.
-    assert abs(rate - rate_true) < 1e-4
-    assert np.allclose(np.abs(axis), np.abs(axis_true), atol=1e-4)
-    assert np.allclose(anchor, quats[0])
+    assert abs(bl.rate_rad_s - rate_true) < 1e-4
+    assert np.allclose(np.abs(bl.axis), np.abs(axis_true), atol=1e-4)
+    assert np.allclose(bl.anchor, quats[0])
+    assert bl.t0 == 0.0
 
 
-def test_apply_baseline_residual_is_identity_for_pure_spin() -> None:
-    """If truth is exactly a constant-rate spin, baseline subtraction
-    should collapse it to a stream of identity quaternions."""
+def test_baseline_residual_is_identity_for_pure_spin() -> None:
+    """If truth is exactly a constant-rate spin, the baseline residual should
+    collapse it to identity quaternions at every sample."""
     n = 500
     ets = np.linspace(0.0, 10.0, n)
     rate = math.radians(30.0)
@@ -180,8 +180,23 @@ def test_apply_baseline_residual_is_identity_for_pure_spin() -> None:
     for i, et in enumerate(ets):
         half = rate * et / 2.0
         quats[i] = [math.cos(half), 0.0, 0.0, math.sin(half)]
-    axis, rate_fit, anchor = fit_spin_baseline(quats, ets)
-    residual = apply_baseline(quats, ets, axis, rate_fit, anchor)
-    # Every residual should be near identity (≤ 0.001 rad).
-    for r in residual:
+    bl = fit_spin_baseline(quats, ets, t0=0.0)
+    for i, et in enumerate(ets):
+        r = bl.residual(float(et), quats[i])
         assert angle_between(r, _IDENTITY) < 1e-3
+
+
+def test_enforce_min_span_drops_slivers() -> None:
+    """Boundaries closer than the min span (to each other or the ends) are
+    dropped so a brief blip can't carve a sliver segment."""
+    from space_map_data.export.position.probes.attitude.segments import (
+        SEG_MIN_S,
+        _enforce_min_span,
+    )
+
+    t0, t1 = 0.0, 100.0 * SEG_MIN_S
+    # Two well-separated transitions survive; a pair packed within one min span
+    # collapses to a single boundary; one hugging the end is dropped.
+    raw = [10 * SEG_MIN_S, 10.4 * SEG_MIN_S, 50 * SEG_MIN_S, t1 - 0.1 * SEG_MIN_S]
+    kept = _enforce_min_span(raw, t0, t1)
+    assert kept == [10 * SEG_MIN_S, 50 * SEG_MIN_S]

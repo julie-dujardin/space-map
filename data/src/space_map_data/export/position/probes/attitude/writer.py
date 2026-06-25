@@ -48,6 +48,7 @@ class ChunkFile:
     start_jd: float
     end_jd: float
     n_keyframes: int
+    baseline_index: int  # which spin span this chunk's residual recomposes against
 
 
 def _smallest_three(q: np.ndarray) -> tuple[int, int, int, int]:
@@ -76,48 +77,40 @@ def _et_to_jd(et: float) -> float:
 
 def write_chunks(
     out_dir: Path,
-    quats: np.ndarray,
-    ets: np.ndarray,
-    keyframe_indices: list[int],
+    segments: list[tuple[np.ndarray, np.ndarray]],
 ) -> list[ChunkFile]:
     """Write `<N>.bin.gz` files into `out_dir`, return per-file metadata.
 
-    Replaces any existing `*.bin.gz` in `out_dir` — repack is wholesale
-    so stale chunks can't outlive a content change in the keyframe list.
+    `segments` is one `(ets, quats)` keyframe stream per spin span, in span
+    order — chunks are numbered globally but never straddle a span, and each
+    carries the span's index as `baseline_index`. Replaces any existing
+    `*.bin.gz` so stale chunks can't outlive a content change.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("*.bin.gz"):
         stale.unlink()
 
-    if not keyframe_indices:
-        return []
-
     files: list[ChunkFile] = []
     chunk_idx = 0
-    file_start_idx = 0
-    raw_budget = HEADER_SIZE
-    while file_start_idx < len(keyframe_indices):
-        # Walk forward until we'd overflow the raw budget. Always keep at
-        # least one keyframe per file even if a single keyframe somehow
-        # exceeds the budget (it can't with our 11 B fixed width, but the
-        # invariant is cheap to maintain).
-        end_idx = file_start_idx + 1
-        budget = raw_budget + KEYFRAME_SIZE
-        while (
-            end_idx < len(keyframe_indices)
-            and budget + KEYFRAME_SIZE <= TARGET_RAW_BYTES
-        ):
-            budget += KEYFRAME_SIZE
-            end_idx += 1
-
-        file_meta = _write_one_chunk(
-            out_dir, chunk_idx, quats, ets, keyframe_indices, file_start_idx, end_idx
-        )
-        files.append(file_meta)
-        chunk_idx += 1
-        file_start_idx = end_idx
-        raw_budget = HEADER_SIZE
-
+    for baseline_index, (ets, quats) in enumerate(segments):
+        n = len(ets)
+        start = 0
+        while start < n:
+            # Walk forward until we'd overflow the raw budget. Always keep at
+            # least one keyframe per file (a single 11 B keyframe can't overflow,
+            # but the invariant is cheap to hold).
+            end = start + 1
+            budget = HEADER_SIZE + KEYFRAME_SIZE
+            while end < n and budget + KEYFRAME_SIZE <= TARGET_RAW_BYTES:
+                budget += KEYFRAME_SIZE
+                end += 1
+            files.append(
+                _write_one_chunk(
+                    out_dir, chunk_idx, quats, ets, start, end, baseline_index
+                )
+            )
+            chunk_idx += 1
+            start = end
     return files
 
 
@@ -126,26 +119,23 @@ def _write_one_chunk(
     chunk_idx: int,
     quats: np.ndarray,
     ets: np.ndarray,
-    keyframe_indices: list[int],
-    file_start_idx: int,
-    file_end_idx: int,
+    start: int,
+    end: int,
+    baseline_index: int,
 ) -> ChunkFile:
-    """Pack + gzip + atomic-write a single chunk file."""
-    sample_indices = keyframe_indices[file_start_idx:file_end_idx]
-    first_idx = sample_indices[0]
-    last_idx = sample_indices[-1]
-    start_jd = _et_to_jd(float(ets[first_idx]))
-    end_jd = _et_to_jd(float(ets[last_idx]))
+    """Pack + gzip + atomic-write a single chunk file covering `ets[start:end]`."""
+    start_jd = _et_to_jd(float(ets[start]))
+    end_jd = _et_to_jd(float(ets[end - 1]))
 
     raw = bytearray(pack_header(start_jd))
-    prev_et = float(ets[first_idx])
-    for k, idx in enumerate(sample_indices):
-        et = float(ets[idx])
+    prev_et = float(ets[start])
+    for k in range(start, end):
+        et = float(ets[k])
         # First keyframe has dt=0; subsequent ones are inter-keyframe deltas.
         # float32 keeps sub-second spacing — integer seconds drifted the
         # accumulated timeline by minutes across a dense chunk.
-        dt = 0.0 if k == 0 else max(0.0, et - prev_et)
-        idx_three, a, b, c = _smallest_three(quats[idx])
+        dt = 0.0 if k == start else max(0.0, et - prev_et)
+        idx_three, a, b, c = _smallest_three(quats[k])
         raw.extend(pack_keyframe(dt, idx_three, a, b, c))
         prev_et = et
 
@@ -157,5 +147,9 @@ def _write_one_chunk(
     os.replace(tmp, dest)
 
     return ChunkFile(
-        name=name, start_jd=start_jd, end_jd=end_jd, n_keyframes=len(sample_indices)
+        name=name,
+        start_jd=start_jd,
+        end_jd=end_jd,
+        n_keyframes=end - start,
+        baseline_index=baseline_index,
     )

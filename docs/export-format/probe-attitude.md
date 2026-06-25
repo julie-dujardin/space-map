@@ -54,23 +54,37 @@ interface ProbeAttitude {
   start_jd: number;       // coverage start (JD TDB)
   end_jd: number;         // coverage end (JD TDB)
   n_keyframes: number;    // total across all files
-  // Constant-axis constant-rate spin baseline (spin-stabilised craft, e.g.
-  // Juno), subtracted before encoding so the per-keyframe stream only carries
-  // the residual. null when no spin model was fitted. Shared across every
-  // chunk of a probe, so it lives here rather than in each file.
-  baseline: {
+  // Per-phase spin baselines (spin-stabilised craft, e.g. Juno), subtracted
+  // before encoding so the per-keyframe stream only carries the slow residual.
+  // null for a non-spinner (keyframes are raw J2000→body). A spinner that holds
+  // one rate has a single entry; one that steps rate across mission phases
+  // (Juno: 1↔2 RPM) has one per phase, and each file's `baseline_index` selects
+  // the span active over it.
+  baselines: {
     kind: "spin";
-    axis: [number, number, number];   // unit spin axis
+    axis: [number, number, number];            // unit spin axis (J2000)
     rate_rad_s: number;
-    anchor: [number, number, number, number]; // quaternion [w, x, y, z] at phase zero
-  } | null;
-  files: { name: string; start_jd: number; end_jd: number; n_keyframes: number }[];
+    anchor: [number, number, number, number];  // quaternion [w, x, y, z] at phase zero
+    anchor_jd: number;                          // JD of phase zero
+    start_jd: number;                           // span coverage (JD TDB)
+    end_jd: number;
+  }[] | null;
+  files: {
+    name: string;
+    start_jd: number;
+    end_jd: number;
+    n_keyframes: number;
+    baseline_index?: number;  // index into `baselines`; present iff baselines ≠ null
+  }[];
 }
 ```
 
-To reconstruct the full attitude when a `baseline` is present, compose the
-spin baseline at time `t` (`anchor` rotated by `rate_rad_s · (t − start)`
-about `axis`) with the SLERP-interpolated residual from the keyframe stream.
+To reconstruct the full attitude when `baselines` is present, take the active
+file's `baseline_index`, compose that span's spin baseline at time `t` (`anchor`
+rotated by `rate_rad_s · (t − anchor_jd)` about `axis`) with the
+SLERP-interpolated residual from the keyframe stream. Spans never share a
+keyframe interpolation: each carries the boundary attitude, so the decoder
+clamps rather than SLERPing across a baseline switch.
 
 `attitude/` is not a content-versioned class — it carries no `?v=` token and
 falls through to the revalidating cache default (see [Caching & versioning](metadata.md#caching--versioning)).

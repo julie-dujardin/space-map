@@ -3,36 +3,21 @@
 A fast spin-stabilised spacecraft (e.g. Juno) turns far enough between
 samples to alias the adaptive sampler. We fit the spin from the median
 angular velocity and subtract it, so the sampler keyframes the slow
-residual instead. The writer applies this only when the fitted rate is
-fast enough to alias (see `ALIAS_ANGLE_RAD` in `extractor`); slower
-motion samples fine raw.
+residual instead.
+
+A single constant baseline only holds while the spin is steady; Juno changes
+rate across mission phases (1 ↔ 2 RPM), so `segments.py` splits the mission
+into rate-stable spans and fits one `SpinBaseline` per span. The rate must be
+fit from a *short dense* window — a long window sampled sparsely aliases the
+fit itself, leaving a residual that beats at the rate error.
 """
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
 from .quaternion import angular_velocity, q_conj, q_mul
-
-
-def fit_spin_baseline(
-    quats: np.ndarray, ets: np.ndarray, *, n_probe_samples: int = 1000
-) -> tuple[np.ndarray, float, np.ndarray]:
-    """Estimate (axis, rate, anchor) such that q ≈ q_baseline(t) · q_anchor.
-
-    `axis` is the unit rotation axis in J2000; `rate` is the rate in rad/s;
-    `anchor` is the first sample (the "phase zero" of the spin).
-
-    Uses the *median* angular velocity over the first `n_probe_samples`
-    samples — robust to off-nominal outliers (momentum dumps, brief
-    pointing excursions) which would skew a mean.
-    """
-    n = min(n_probe_samples, quats.shape[0])
-    omegas = np.array([angular_velocity(quats, ets, i) for i in range(n)])
-    om_med = np.median(omegas, axis=0)
-    rate = float(np.linalg.norm(om_med))
-    axis = om_med / rate if rate > 1e-9 else np.array([0.0, 0.0, 1.0])
-    return axis, rate, quats[0].copy()
 
 
 def baseline_quaternion(axis: np.ndarray, rate: float, t_seconds: float) -> np.ndarray:
@@ -41,34 +26,43 @@ def baseline_quaternion(axis: np.ndarray, rate: float, t_seconds: float) -> np.n
     return np.array([math.cos(half), *(math.sin(half) * axis)])
 
 
-def apply_baseline(
-    quats: np.ndarray,
-    ets: np.ndarray,
-    axis: np.ndarray,
-    rate: float,
-    anchor: np.ndarray,
-    *,
-    t0: float | None = None,
-) -> np.ndarray:
-    """Compute the residual stream q_r = q_baseline⁻¹ · q for every sample.
+@dataclass(frozen=True)
+class SpinBaseline:
+    """One rate-stable spin span's baseline: q ≈ q_spin(t − t0) · anchor.
 
-    Decoder reconstruction is q = q_baseline · q_r — so this is the
-    composition the writer wants. Continuous sign canonicalisation is
-    re-applied (the multiplication can hop to the antipodal representation).
-
-    `t0` is the spin phase-zero epoch (ET seconds) — pass the mission-global
-    start so per-file segments share one phase. Defaults to `ets[0]`.
+    `axis`/`rate_rad_s` are the fitted constant spin; `anchor` is the attitude
+    at `t0` (the span's phase-zero ET). The decoder reconstructs full attitude
+    as `compose(t) · residual`, so the writer stores `residual(t, q)`.
     """
-    epoch = float(ets[0]) if t0 is None else t0
-    n = quats.shape[0]
-    out = np.empty_like(quats)
-    last = np.array([1.0, 0.0, 0.0, 0.0])
-    for i in range(n):
-        t = float(ets[i]) - epoch
-        b = q_mul(baseline_quaternion(axis, rate, t), anchor)
-        r = q_mul(q_conj(b), quats[i])
-        if np.dot(r, last) < 0:
-            r = -r
-        out[i] = r
-        last = r
-    return out
+
+    axis: np.ndarray
+    rate_rad_s: float
+    anchor: np.ndarray
+    t0: float
+
+    def compose(self, et: float) -> np.ndarray:
+        """The baseline attitude `q_spin(et − t0) · anchor` at `et`."""
+        return q_mul(
+            baseline_quaternion(self.axis, self.rate_rad_s, et - self.t0), self.anchor
+        )
+
+    def residual(self, et: float, q: np.ndarray) -> np.ndarray:
+        """The slow residual `compose(et)⁻¹ · q` the keyframer encodes."""
+        return q_mul(q_conj(self.compose(et)), q)
+
+
+def fit_spin_baseline(quats: np.ndarray, ets: np.ndarray, t0: float) -> SpinBaseline:
+    """Fit a `SpinBaseline` from a short dense sample run.
+
+    `axis` is the unit rotation axis; `rate` is the median local rate (rad/s),
+    robust to off-nominal outliers (momentum dumps) a mean would chase. `t0` is
+    the span's phase-zero epoch; `anchor = quats[0]` must be the attitude there.
+
+    Pass a *dense* window (sub-degree per sample) — a coarse one aliases the
+    central-difference angular velocity and biases the rate low.
+    """
+    omegas = np.array([angular_velocity(quats, ets, i) for i in range(quats.shape[0])])
+    om_med = np.median(omegas, axis=0)
+    rate = float(np.linalg.norm(om_med))
+    axis = om_med / rate if rate > 1e-9 else np.array([0.0, 0.0, 1.0])
+    return SpinBaseline(axis=axis, rate_rad_s=rate, anchor=quats[0].copy(), t0=t0)

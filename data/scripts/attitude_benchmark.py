@@ -18,7 +18,6 @@ Run from data/:
 
 import argparse
 import datetime
-import glob
 import gzip
 import json
 import logging
@@ -35,6 +34,7 @@ sys.path.insert(0, str(REPO_ROOT / "data" / "src"))
 
 from space_map_data.export.position.probes.attitude.extractor import (  # noqa: E402
     extract_attitude,
+    manifest_entry,
 )
 from space_map_data.export.position.probes.attitude.quaternion import (  # noqa: E402
     angle_between,
@@ -71,38 +71,45 @@ def furnish(mission_dir: Path, index: dict) -> None:
         spiceypy.furnsh(str(mission_dir / name))
 
 
-def decode_dir(out_dir: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Decode every chunk into (jd[], residual_quat[w,x,y,z][]), mirroring the
+def decode_chunk(path: str) -> tuple[np.ndarray, np.ndarray]:
+    """Decode one chunk → (jd[], residual_quat[w,x,y,z][]), mirroring the
     frontend `parseAttitudeChunk`. Quats are residuals when a baseline was fit."""
-    paths = sorted(
-        glob.glob(str(out_dir / "*.bin.gz")),
-        key=lambda p: int(Path(p).stem.split(".")[0]),
-    )
+    buf = gzip.open(path, "rb").read()
+    start_jd = struct.unpack_from("<d", buf, 8)[0]
+    n = (len(buf) - HEADER_SIZE) // KEYFRAME_SIZE
     times: list[float] = []
     quats: list[list[float]] = []
-    for path in paths:
-        buf = gzip.open(path, "rb").read()
-        start_jd = struct.unpack_from("<d", buf, 8)[0]
-        n = (len(buf) - HEADER_SIZE) // KEYFRAME_SIZE
-        cursor = 0
-        for i in range(n):
-            off = HEADER_SIZE + i * KEYFRAME_SIZE
-            if i > 0:
-                cursor += struct.unpack_from("<f", buf, off)[0]
-            times.append(start_jd + cursor / S_PER_DAY)
-            idx = buf[off + 4]
-            a, b, c = struct.unpack_from("<hhh", buf, off + 5)
-            comps = [a / COMPONENT_SCALE, b / COMPONENT_SCALE, c / COMPONENT_SCALE]
-            dropped = max(0.0, 1.0 - sum(v * v for v in comps)) ** 0.5
-            q, k = [], 0
-            for slot in range(4):
-                if slot == idx:
-                    q.append(dropped)
-                else:
-                    q.append(comps[k])
-                    k += 1
-            quats.append(q)
+    cursor = 0.0
+    for i in range(n):
+        off = HEADER_SIZE + i * KEYFRAME_SIZE
+        if i > 0:
+            cursor += struct.unpack_from("<f", buf, off)[0]
+        times.append(start_jd + cursor / S_PER_DAY)
+        idx = buf[off + 4]
+        a, b, c = struct.unpack_from("<hhh", buf, off + 5)
+        comps = [a / COMPONENT_SCALE, b / COMPONENT_SCALE, c / COMPONENT_SCALE]
+        dropped = max(0.0, 1.0 - sum(v * v for v in comps)) ** 0.5
+        q, k = [], 0
+        for slot in range(4):
+            if slot == idx:
+                q.append(dropped)
+            else:
+                q.append(comps[k])
+                k += 1
+        quats.append(q)
     return np.array(times), np.array(quats)
+
+
+def decode_chunks(out_dir: Path, files: list[dict]) -> list[dict]:
+    """Decode each manifest file in order → per-chunk dict mirroring how the
+    frontend holds resident chunks, tagged with its `baseline_index`."""
+    chunks = []
+    for f in files:
+        times, quats = decode_chunk(str(out_dir / f["name"]))
+        chunks.append(
+            {"times": times, "quats": quats, "bi": f.get("baseline_index", 0)}
+        )
+    return chunks
 
 
 def baseline_quat(axis: np.ndarray, rate: float, t_seconds: float) -> np.ndarray:
@@ -123,37 +130,68 @@ def q_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     )
 
 
-def reconstruct(
-    jd: float, times: np.ndarray, quats: np.ndarray, baseline
-) -> np.ndarray:
-    """Full J2000→body quaternion at `jd` — SLERP the residual, then recompose
-    the spin baseline exactly as the renderer's `orientationAt` does."""
+def _file_index_for(files: list[dict], jd: float) -> int:
+    """Last file whose window starts at or before `jd` (clamped) — mirrors
+    `AttitudeTrack.fileIndexFor`."""
+    if jd <= files[0]["start_jd"]:
+        return 0
+    lo, hi = 0, len(files) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if files[mid]["start_jd"] <= jd:
+            lo = mid
+        else:
+            hi = mid
+    return hi if files[hi]["start_jd"] <= jd else lo
+
+
+def _sample_residual(jd: float, ci: int, chunks: list[dict]) -> np.ndarray:
+    """SLERP the residual at `jd` within chunk `ci`, bridging to the next chunk
+    only when it shares this chunk's baseline — mirrors `sampleChunk`."""
+    chunk = chunks[ci]
+    times, quats = chunk["times"], chunk["quats"]
     if jd <= times[0]:
-        resid = quats[0]
-    elif jd >= times[-1]:
-        resid = quats[-1]
-    else:
-        hi = int(np.searchsorted(times, jd))
-        lo = hi - 1
-        span = times[hi] - times[lo]
-        t = (jd - times[lo]) / span if span > 0 else 0.0
-        resid = slerp(quats[lo], quats[hi], t)
-    if baseline is None:
+        return quats[0]
+    if jd >= times[-1]:
+        nxt = chunks[ci + 1] if ci + 1 < len(chunks) else None
+        if (
+            nxt is not None
+            and nxt["bi"] == chunk["bi"]
+            and len(nxt["times"]) > 0
+            and nxt["times"][0] > times[-1]
+        ):
+            span = nxt["times"][0] - times[-1]
+            t = min(1.0, (jd - times[-1]) / span)
+            return slerp(quats[-1], nxt["quats"][0], t)
+        return quats[-1]
+    hi = int(np.searchsorted(times, jd))
+    lo = hi - 1
+    span = times[hi] - times[lo]
+    t = (jd - times[lo]) / span if span > 0 else 0.0
+    return slerp(quats[lo], quats[hi], t)
+
+
+def reconstruct(jd: float, manifest: dict, chunks: list[dict]) -> np.ndarray:
+    """Full J2000→body quaternion at `jd` — pick the active chunk, SLERP its
+    residual, recompose its span's baseline, exactly as `orientationAt` does."""
+    ci = _file_index_for(manifest["files"], jd)
+    resid = _sample_residual(jd, ci, chunks)
+    baselines = manifest["baselines"]
+    if baselines is None:
         return resid
-    axis = np.array(baseline["axis"])
-    t_s = (jd - J2000_JD) * S_PER_DAY - (times[0] - J2000_JD) * S_PER_DAY
-    base = q_mul(
-        baseline_quat(axis, baseline["rate_rad_s"], t_s), np.array(baseline["anchor"])
-    )
+    b = baselines[chunks[ci]["bi"]]
+    axis = np.array(b["axis"])
+    t_s = (jd - b["anchor_jd"]) * S_PER_DAY
+    base = q_mul(baseline_quat(axis, b["rate_rad_s"], t_s), np.array(b["anchor"]))
     return q_mul(base, resid)
 
 
 def accuracy(
-    frame: str, times: np.ndarray, quats: np.ndarray, baseline, n_samples: int
+    frame: str, manifest: dict, chunks: list[dict], n_samples: int
 ) -> tuple[float, float, float]:
     """median / p95 / max angular error (deg) of the shipped reconstruction vs
     `pxform` truth, over `n_samples` points spread across coverage."""
-    test_jds = np.linspace(times[0], times[-1], n_samples)
+    test_jds = np.linspace(manifest["start_jd"], manifest["end_jd"], n_samples)
     errs = []
     for jd in test_jds:
         et = (jd - J2000_JD) * S_PER_DAY
@@ -161,7 +199,7 @@ def accuracy(
             truth = spiceypy.m2q(spiceypy.pxform("J2000", frame, et))
         except spiceypy.exceptions.SpiceyError:
             continue
-        recon = reconstruct(jd, times, quats, baseline)
+        recon = reconstruct(jd, manifest, chunks)
         errs.append(angle_between(recon, truth) * RAD2DEG)
     if not errs:
         return float("nan"), float("nan"), float("nan")  # no truth in window
@@ -221,26 +259,18 @@ def main() -> int:
         sizes = [Path(out_dir / f.name).stat().st_size for f in res.files]
         total_kb = sum(sizes) / 1024
         max_kb = (max(sizes) / 1024) if sizes else 0.0
-        baseline = (
-            {
-                "axis": res.baseline_axis,
-                "rate_rad_s": res.baseline_rate_rad_s,
-                "anchor": res.baseline_anchor,
-            }
-            if res.baseline_axis is not None
-            else None
-        )
-        times, quats = decode_dir(out_dir)
-        med, p95, mx = accuracy(
-            index["frame_name"], times, quats, baseline, args.samples
-        )
+        manifest = manifest_entry(res, frame_name=index["frame_name"])
+        n_base = len(manifest["baselines"]) if manifest["baselines"] else 0
+        chunks = decode_chunks(out_dir, manifest["files"])
+        med, p95, mx = accuracy(index["frame_name"], manifest, chunks, args.samples)
 
         name = name_by_mission.get(mission, "?")[:20]
         days = res.coverage_end_jd - res.coverage_start_jd
         cov = f"{iso(res.coverage_start_jd)}..{iso(res.coverage_end_jd)}"
+        base_col = str(n_base) if n_base else "—"
         print(
             f"{name:<20} {mission:<14} {cov:<24} {days:>6.0f} "
-            f"{'spin' if baseline else '—':>4} {res.n_keyframes:>9} {len(res.files):>3} "
+            f"{base_col:>4} {res.n_keyframes:>9} {len(res.files):>3} "
             f"{total_kb:>8.0f} {max_kb:>9.1f} {med:>6.3f} {p95:>6.3f} {mx:>6.3f} {extract_s:>4.0f}",
             flush=True,
         )
@@ -251,7 +281,7 @@ def main() -> int:
                 "start_jd": res.coverage_start_jd,
                 "end_jd": res.coverage_end_jd,
                 "days": days,
-                "baseline": "spin" if baseline else None,
+                "n_baselines": n_base,
                 "n_keyframes": res.n_keyframes,
                 "n_chunks": len(res.files),
                 "total_kb": total_kb,
