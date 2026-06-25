@@ -26,7 +26,7 @@ import httpx
 from ..layout import MISSIONS_DIR
 from ..sources import ESA_BASE, MissionSource, NAIF_BASE
 from ...naif_http import list_naif_dir, stream_to
-from .patterns import PATTERNS
+from .patterns import patterns_for
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +59,19 @@ def download_attitude_for(
 ) -> DownloadResult:
     """Download the curated attitude kernel set for one mission.
 
-    `max_new_bytes` caps newly-fetched CK bytes for this mission; once
-    exceeded, the CK loop stops mid-way and we still write the index for
-    whatever CKs landed. FK/SCLK are uncapped since they're KB-MB scale.
+    `max_new_bytes` caps newly-fetched CK bytes for the whole mission
+    (shared across craft); once hit, the CK loop stops and we write the
+    index for whatever landed. FK/SCLK are uncapped (KB-MB scale).
 
-    Returns a result regardless of outcome — callers can decide whether to
-    log skip reasons or surface them. We return rather than raise because
-    a missing-pattern mission is the common case in early phases and
-    shouldn't trip up the whole batch.
+    The index carries top-level `frame_name`/`ck_files`/`fk`/`sclk` for the
+    first craft plus a `spacecraft` array (one entry per craft), so a
+    multi-craft mission round-trips on the single-craft index contract.
+
+    Always returns a result (never raises) so one uncurated or failed
+    mission can't abort the batch.
     """
-    pattern = PATTERNS.get(source.mission)
-    if pattern is None:
+    patterns = patterns_for(source.mission)
+    if not patterns:
         return DownloadResult(
             mission=source.mission,
             n_ck=0,
@@ -83,64 +85,91 @@ def download_attitude_for(
     mission_dir = MISSIONS_DIR / source.mission
     mission_dir.mkdir(parents=True, exist_ok=True)
 
-    ck_files, ck_new, ck_truncated = _download_matching(
-        client,
-        f"{base}/ck/",
-        mission_dir,
-        pattern.ck_glob,
-        take_all=True,
-        exclude_glob=pattern.ck_exclude_glob,
-        max_new_bytes=max_new_bytes,
-    )
-    if not ck_files:
+    craft: list[dict] = []
+    all_files: list[Path] = []
+    new_bytes = 0
+    truncated = False
+    remaining = max_new_bytes
+    for pattern in patterns:
+        ck_files, ck_new, ck_trunc = _download_matching(
+            client,
+            f"{base}/ck/",
+            mission_dir,
+            pattern.ck_glob,
+            take_all=True,
+            exclude_glob=pattern.ck_exclude_glob,
+            max_new_bytes=remaining,
+        )
+        new_bytes += ck_new
+        if remaining is not None:
+            remaining = max(0, remaining - ck_new)
+        truncated = truncated or ck_trunc
+        if not ck_files:
+            logger.info(
+                "attitude: %s/%s — no CK (%s)",
+                source.mission,
+                pattern.frame_name,
+                "cap reached" if ck_trunc else "no match",
+            )
+            continue
+
+        fk_files, fk_new, _ = _download_matching(
+            client, f"{base}/fk/", mission_dir, pattern.fk_glob, take_all=False
+        )
+        sclk_files, sclk_new, _ = _download_matching(
+            client, f"{base}/sclk/", mission_dir, pattern.sclk_glob, take_all=False
+        )
+        new_bytes += fk_new + sclk_new
+        if not fk_files or not sclk_files:
+            logger.info(
+                "attitude: %s/%s — missing FK or SCLK",
+                source.mission,
+                pattern.frame_name,
+            )
+            continue
+
+        all_files += ck_files + fk_files + sclk_files
+        craft.append(
+            {
+                "frame_name": pattern.frame_name,
+                "ck_files": [p.name for p in ck_files],
+                "fk": fk_files[0].name,
+                "sclk": sclk_files[0].name,
+            }
+        )
+
+    if not craft:
         return DownloadResult(
             mission=source.mission,
             n_ck=0,
             n_total_files=0,
             total_bytes=0,
-            new_bytes=ck_new,
+            new_bytes=new_bytes,
             skipped_reason="cap reached before any CK"
-            if ck_truncated
-            else "no CK matches",
+            if truncated
+            else "no usable spacecraft (CK + FK + SCLK)",
         )
 
-    fk_files, fk_new, _ = _download_matching(
-        client, f"{base}/fk/", mission_dir, pattern.fk_glob, take_all=False
-    )
-    sclk_files, sclk_new, _ = _download_matching(
-        client, f"{base}/sclk/", mission_dir, pattern.sclk_glob, take_all=False
-    )
-    if not fk_files or not sclk_files:
-        return DownloadResult(
-            mission=source.mission,
-            n_ck=len(ck_files),
-            n_total_files=len(ck_files),
-            total_bytes=sum(p.stat().st_size for p in ck_files),
-            new_bytes=ck_new + fk_new + sclk_new,
-            skipped_reason="missing FK or SCLK",
-        )
-
-    all_files = ck_files + fk_files + sclk_files
+    first = craft[0]
     index = {
         "server": source.server,
         "mission": source.mission,
-        "frame_name": pattern.frame_name,
-        "ck_files": [p.name for p in ck_files],
-        "fk": fk_files[0].name,
-        "sclk": sclk_files[0].name,
+        "frame_name": first["frame_name"],
+        "ck_files": first["ck_files"],
+        "fk": first["fk"],
+        "sclk": first["sclk"],
+        "spacecraft": craft,
     }
     (mission_dir / ATTITUDE_INDEX_NAME).write_text(
         json.dumps(index, indent=2, sort_keys=True)
     )
     return DownloadResult(
         mission=source.mission,
-        n_ck=len(ck_files),
+        n_ck=sum(len(c["ck_files"]) for c in craft),
         n_total_files=len(all_files),
         total_bytes=sum(p.stat().st_size for p in all_files),
-        new_bytes=ck_new + fk_new + sclk_new,
-        skipped_reason="cap reached mid-CK (partial coverage)"
-        if ck_truncated
-        else None,
+        new_bytes=new_bytes,
+        skipped_reason="cap reached mid-CK (partial coverage)" if truncated else None,
     )
 
 
@@ -159,15 +188,16 @@ def download_attitude_capped(
     """
     targets: list[tuple[int, MissionSource]] = []
     for source in sources:
-        pattern = PATTERNS.get(source.mission)
-        if pattern is None:
+        patterns = patterns_for(source.mission)
+        if not patterns:
             continue
         # Dedupe — BepiColombo / JUICE show up at both NAIF and ESA mirrors
         # but the patterns table is keyed by mission, so the second source
         # would re-download the same files. Skip the second occurrence.
         if any(s.mission == source.mission for _, s in targets):
             continue
-        targets.append((pattern.estimated_total_mib, source))
+        est_mib = sum(p.estimated_total_mib for p in patterns)
+        targets.append((est_mib, source))
 
     targets.sort(key=lambda t: t[0])
 

@@ -23,15 +23,19 @@ missions land first under a global cap. Values are rough — sweep-observed
 sample sizes × estimated file counts. Off by a factor of 2 in either
 direction is fine; the cap check stops us before damage.
 
-TODO(phase 3): PDS3 (Cassini, NEAR, NH, Messenger, MGS, LRO, GRAIL,
-HAYABUSA) and PDS4 (DART, HYB2, VCO, CLPS) mission attitude — those
-live at different upstream paths, parallel to the existing SPK PDS
-discovery in `sources.py`.
+A mission maps to one `AttitudePattern`, or a list when one upstream dir
+holds several spacecraft (Voyager 1/2, Viking Orbiter 1/2) — each gets its
+own frame/FK/SCLK and an entry in the index's `spacecraft` array.
 
-TODO(phase 3, per-mission triage): MAVEN, MARS2020, MSL, INSIGHT, MEX,
-LUCY, JUICE, BEPICOLOMBO, HERA — sweep picked wrong CKs (instrument
-articulation, not bus attitude). Each needs a hand-curated `ck_glob`
-matching the actual bus pattern.
+TODO(phase 3): PDS3 (Cassini, NEAR, NH, Messenger, MGS, LRO, GRAIL,
+HAYABUSA) + PDS4 (DART, HYB2, VCO, CLPS) attitude — different upstream
+paths, parallel to the SPK PDS discovery in `sources.py`.
+
+TODO: over-cap bus reconstruction (>10 GiB) — MAVEN, MEX, M01,
+Chandrayaan-1, ExoMars2016, BepiColombo; ship a recent-years subset.
+
+TODO: skip Mars surface missions (MARS2020, MSL, INSIGHT, MER, Phoenix) —
+their CKs are arm/mast/HGA articulation, not bus attitude.
 """
 
 from dataclasses import dataclass
@@ -66,7 +70,7 @@ class AttitudePattern:
 #   * For still-flying missions where reconstructed isn't published yet
 #     (Europa Clipper, late JUNO), predicted is the best we can ship; we
 #     accept both rather than skip the mission.
-PATTERNS: dict[str, AttitudePattern] = {
+PATTERNS: dict[str, AttitudePattern | list[AttitudePattern]] = {
     "GAIA": AttitudePattern(
         # State-machine reconstructed bus attitude, one file per year.
         ck_glob="gaia_sc_ssm_*.bc",
@@ -190,9 +194,115 @@ PATTERNS: dict[str, AttitudePattern] = {
         frame_name="MRO_SPACECRAFT",
         estimated_total_mib=80_000,
     ),
+    "HUYGENS": AttitudePattern(
+        # Titan descent probe; all segments small.
+        ck_glob="HUYGENS_*.BC",
+        fk_glob="HUYGENS_V*.TF",
+        sclk_glob="HUYGENS_FICT_*.TSC",
+        frame_name="HUYGENS_PROBE",
+        estimated_total_mib=140,
+    ),
+    "DEEPIMPACT": AttitudePattern(
+        # Flyby bus; `_p` is predicted, `dii_*` is the separate impactor.
+        ck_glob="dif_sc_*.bc",
+        ck_exclude_glob="*_p.bc",
+        fk_glob="di_v*.tf",
+        sclk_glob="DIF_SCLKSCET.*.tsc",
+        frame_name="DIF_SPACECRAFT",
+        estimated_total_mib=1_000,
+    ),
+    "ROSETTA": AttitudePattern(
+        # `[MR]E` matches both measured (`ROS_SC_MES`) and reconstructed
+        # (`ROS_SC_REC`) bus.
+        ck_glob="ROS_SC_[MR]E*.BC",
+        fk_glob="ROS_V*.TF",
+        sclk_glob="ROS_*STEP.TSC",
+        frame_name="ROS_SPACECRAFT",
+        estimated_total_mib=1_100,
+    ),
+    "JUICE": AttitudePattern(
+        # `_meas_` measured bus; skips `_crema_` plans + instrument pointings.
+        ck_glob="juice_sc_meas_*.bc",
+        fk_glob="juice_v*.tf",
+        sclk_glob="juice_step_*.tsc",
+        frame_name="JUICE_SPACECRAFT",
+        estimated_total_mib=2_000,
+    ),
+    "LUCY": AttitudePattern(
+        # `lcy_sc_r_` reconstructed bus; excludes `_rel` and `_ipp_`.
+        ck_glob="lcy_sc_r_*.bc",
+        fk_glob="lucy_v*.tf",
+        sclk_glob="LUCY_SCLKSCET.*.tsc",
+        frame_name="LUCY_SPACECRAFT",
+        estimated_total_mib=2_100,
+    ),
+    "PSYCHE": AttitudePattern(
+        # `_sc_rec_` bus; skips `_sc_pred_`, solar-array, EP-gimbal CKs.
+        ck_glob="psyche_sc_rec_*.bc",
+        fk_glob="psyche_fk_v*.tf",
+        sclk_glob="PSYC_255_SCLKSCET.*.tsc",
+        frame_name="PSYC_SPACECRAFT",
+        estimated_total_mib=4_000,
+    ),
+    "VEX": AttitudePattern(
+        # Venus Express; `ATNV_MEASURED` reconstructed bus, one file/year.
+        ck_glob="ATNV_MEASURED_*.BC",
+        fk_glob="VEX_V*.TF",
+        sclk_glob="VEX_*STEP.TSC",
+        frame_name="VEX_SPACECRAFT",
+        estimated_total_mib=5_000,
+    ),
+    "HERA": AttitudePattern(
+        # `hera_sc_meas_` measured bus; Milani/Juventas cubesats excluded.
+        ck_glob="hera_sc_meas_*.bc",
+        fk_glob="hera_v*.tf",
+        sclk_glob="hera_step_*.tsc",
+        frame_name="HERA_SPACECRAFT",
+        estimated_total_mib=7_000,
+    ),
+    "VOYAGER": [
+        # Two craft per dir. `vgr#_super` is bus; `vg#_*_qmw_*` is scan platform.
+        AttitudePattern(
+            ck_glob="vgr1_super*.bc",
+            fk_glob="vg1_v*.tf",
+            sclk_glob="vg1*.tsc",
+            frame_name="VG1_SC_BUS",
+            estimated_total_mib=40,
+        ),
+        AttitudePattern(
+            ck_glob="vgr2_super*.bc",
+            fk_glob="vg2_v*.tf",
+            sclk_glob="vg2*.tsc",
+            frame_name="VG2_SC_BUS",
+            estimated_total_mib=40,
+        ),
+    ],
+    "VIKING": [
+        # Two orbiters per dir. CKs only cover the scan platform (-27000 /
+        # -30000); Viking has no bus attitude, so we target the platform.
+        AttitudePattern(
+            ck_glob="vo1_*_ck2.bc",
+            fk_glob="vo1_v*.tf",
+            sclk_glob="vo1_*.tsc",
+            frame_name="VO1_PLATFORM",
+            estimated_total_mib=4,
+        ),
+        AttitudePattern(
+            ck_glob="vo2_*_ck2.bc",
+            fk_glob="vo2_v*.tf",
+            sclk_glob="vo2_*.tsc",
+            frame_name="VO2_PLATFORM",
+            estimated_total_mib=4,
+        ),
+    ],
 }
 
 
-def pattern_for(mission: str) -> AttitudePattern | None:
-    """Return the attitude pattern for `mission`, or None if not curated."""
-    return PATTERNS.get(mission)
+def patterns_for(mission: str) -> list[AttitudePattern]:
+    """Attitude patterns for `mission` as a list (empty if not curated)."""
+    entry = PATTERNS.get(mission)
+    if entry is None:
+        return []
+    if isinstance(entry, AttitudePattern):
+        return [entry]
+    return entry
