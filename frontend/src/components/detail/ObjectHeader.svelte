@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
@@ -12,9 +13,11 @@
 		onShowGallery: () => void;
 		/** Pre-resolved badges shown before any auto-detected ones (groups use this). */
 		leadingBadges?: string[];
+		/** Replaces the hero image when set (e.g. the planets-category lineup). */
+		hero?: Snippet;
 	}
 
-	let { global, localized, fallbackName, onShowGallery, leadingBadges }: Props = $props();
+	let { global, localized, fallbackName, onShowGallery, leadingBadges, hero }: Props = $props();
 
 	let name = $derived(localized?.name ?? global?.name ?? fallbackName ?? m.unknown());
 	let images = $derived(global?.images);
@@ -75,7 +78,9 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	{#if imageSrc}
+	{#if hero}
+		{@render hero()}
+	{:else if imageSrc}
 		<button
 			type="button"
 			onclick={onShowGallery}

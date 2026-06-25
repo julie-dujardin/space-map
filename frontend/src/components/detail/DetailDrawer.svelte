@@ -50,6 +50,8 @@
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
+	import PlanetLineup from './PlanetLineup.svelte';
+	import { CAT_PLANETS } from '$lib/fetch/groups/registry';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
@@ -74,6 +76,7 @@
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
+	let isPlanetsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_PLANETS);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -419,7 +422,10 @@
 	let hasMembers = $derived(!!notableMembers && notableMembers.length > 0);
 	// Tab only earns its place past the overview strip's capacity; ≤5 fit there.
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
-	let showMembersTab = $derived(hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY);
+	// The planets lineup already cross-links every member, so it needs neither.
+	let showMembersTab = $derived(
+		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !isPlanetsCategory
+	);
 
 	function seeAllMembers() {
 		if (satellitesGroup) appState?.setGroup(satellitesGroup, membersHeading);
@@ -495,6 +501,10 @@
 	</div>
 {/snippet}
 
+{#snippet planetHero()}
+	<PlanetLineup members={notableMembers ?? []} localizedNames={memberNames} />
+{/snippet}
+
 {#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
@@ -512,6 +522,9 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
+				hero={isPlanetsCategory && notableMembers && notableMembers.length > 0
+					? planetHero
+					: undefined}
 				onShowGallery={() => {
 					activeTab = 'images';
 					appState.setImage(0);
@@ -548,7 +561,7 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0}
+			{#if notableMembers && notableMembers.length > 0 && !isPlanetsCategory}
 				<MemberStrip
 					members={notableMembers}
 					localizedNames={memberNames}
