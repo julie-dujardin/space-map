@@ -76,6 +76,8 @@ export interface NotableMemberEntry {
 	/** Scalar render radius (km) from the Wikidata radius — the render-size
 	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
 	radius_km?: number;
+	/** IAU J2000 pole RA/Dec (deg) from PCK; the lineup's true axial tilt (major bodies + dwarfs). */
+	pole?: { ra: number; dec: number };
 	/** SBDB geometric albedo (small bodies only); sets the lineup sphere's lightness. */
 	albedo?: number;
 	/** SBDB taxonomic type — SMASS else Tholen (small bodies only); maps to a surface tint. */

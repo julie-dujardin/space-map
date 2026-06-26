@@ -28,6 +28,7 @@ class NotableObject:
     radius_km: float | None = (
         None  # scalar render radius (Wikidata P2120) when no radii/diameter
     )
+    pole: dict | None = None  # IAU J2000 pole {ra, dec} deg, for the lineup's true tilt
     albedo: float | None = None  # SBDB geometric albedo; small bodies only
     spec: str | None = (
         None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
@@ -81,6 +82,8 @@ def notable_entries(
             entry["radii"] = member.radii
         if member.radius_km is not None:
             entry["radius_km"] = member.radius_km
+        if member.pole is not None:
+            entry["pole"] = member.pole
         if member.albedo is not None:
             entry["albedo"] = member.albedo
         if member.spec is not None:

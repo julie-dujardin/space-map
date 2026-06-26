@@ -235,7 +235,7 @@ class TestProbeMembers:
         )
         _add_member(session, 99)  # an asteroid — must be excluded too
 
-        members, total = _probe_members(session, {}, {})
+        members, total = _probe_members(session, {}, {}, {})
         assert total == 3
         assert [m.object_id for m in members] == ["probe-2", "probe-1", "probe-3"]
 

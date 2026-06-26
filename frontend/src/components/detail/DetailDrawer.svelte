@@ -59,11 +59,11 @@
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
-	import PlanetLineup from './PlanetLineup.svelte';
-	import MoonLineup from './MoonLineup.svelte';
-	import DwarfPlanetLineup from './DwarfPlanetLineup.svelte';
+	import BodyLineup from './BodyLineup.svelte';
+	import { buildLineup, geometryFromMember, renderableCount } from './lineup';
+	import { BODY_COLORS } from '$lib/constants';
+	import { smallBodyColor, groupColorKey } from '$lib/constants/small-body-colors';
 	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
-	import SmallBodyLineup, { renderableCount } from './SmallBodyLineup.svelte';
 	import PlanetMassChart from './PlanetMassChart.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -425,6 +425,20 @@
 	let memberDescriptions = $derived(
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
+	// Small-body lineup adds a colour pass on top of the shared geometry: known
+	// bodies (dwarfs) keep their curated BODY_COLORS/texture; the rest get the
+	// taxonomy/albedo/class-default heuristic keyed off the group.
+	let colorKey = $derived(groupColorKey(groupSlug));
+	let smallBodyBodies = $derived(
+		buildLineup(
+			notableMembers ?? [],
+			(mm) => {
+				const g = geometryFromMember(mm);
+				return g && { ...g, color: BODY_COLORS[mm.id] ? undefined : smallBodyColor(mm, colorKey) };
+			},
+			{ names: memberNames, descriptions: memberDescriptions }
+		)
+	);
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
@@ -544,33 +558,36 @@
 {/snippet}
 
 {#snippet planetHero()}
-	<PlanetLineup members={notableMembers ?? []} localizedNames={memberNames} />
+	<BodyLineup
+		bodies={buildLineup(notableMembers ?? [], geometryFromMember, { names: memberNames })}
+		ariaLabel={m.type_planet()}
+	/>
 {/snippet}
 
 {#snippet moonHero()}
-	<MoonLineup
-		members={notableMembers ?? []}
-		localizedNames={memberNames}
-		localizedDescriptions={memberDescriptions}
+	<BodyLineup
+		bodies={buildLineup(notableMembers ?? [], geometryFromMember, {
+			names: memberNames,
+			descriptions: memberDescriptions
+		})}
+		ariaLabel={m.type_moon()}
+		perPage={5}
 	/>
 {/snippet}
 
 {#snippet dwarfHero()}
-	<DwarfPlanetLineup
-		members={notableMembers ?? []}
-		localizedNames={memberNames}
-		localizedDescriptions={memberDescriptions}
+	<BodyLineup
+		bodies={buildLineup(notableMembers ?? [], geometryFromMember, {
+			names: memberNames,
+			descriptions: memberDescriptions
+		})}
+		ariaLabel={m.type_dwarf_planet()}
+		perPage={5}
 	/>
 {/snippet}
 
 {#snippet smallBodyHero()}
-	<SmallBodyLineup
-		members={notableMembers ?? []}
-		slug={groupSlug}
-		ariaLabel={fallbackName}
-		localizedNames={memberNames}
-		localizedDescriptions={memberDescriptions}
-	/>
+	<BodyLineup bodies={smallBodyBodies} ariaLabel={fallbackName} perPage={8} />
 {/snippet}
 
 {#snippet overviewPanel()}

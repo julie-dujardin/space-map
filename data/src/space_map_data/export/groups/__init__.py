@@ -190,7 +190,13 @@ def run_groups_tier(
     ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
     mass + triaxial radii for the planets/moons-page charts.
     """
+    from space_map_data.export.systems import load_orientation
+    from space_map_data.utils.paths import DOWNLOAD_DIR
+
     units = UnitConverter(wikidata_entities)
+    # PCK poles for the lineup hero's true tilt — loaded here rather than widening
+    # the orchestrator→tier interface for a tier-internal render detail.
+    orientation = load_orientation(DOWNLOAD_DIR)
     with Session(engine) as session:
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
@@ -223,6 +229,7 @@ def run_groups_tier(
             earth_launch_histograms,
             radii,
             gms,
+            orientation,
             wikidata_entities,
         )
         split_comets = _split_comet_groups(session, wikidata_entities)

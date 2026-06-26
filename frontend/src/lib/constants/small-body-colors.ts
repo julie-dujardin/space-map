@@ -12,6 +12,17 @@
  */
 
 import { DEFAULT_BODY_COLOR } from '$lib/constants';
+import { CLASS_SLUG_PREFIX, SMALL_BODY_FLAG_SLUG_PREFIX } from '$lib/fetch/groups/registry';
+
+/** Group slug → the key `smallBodyColor` keys its per-group default on
+ *  (OrbitClass name, NEO/PHA flag, or bare category). */
+export function groupColorKey(slug: string | undefined): string | undefined {
+	if (!slug) return undefined;
+	if (slug.startsWith(CLASS_SLUG_PREFIX)) return slug.slice(CLASS_SLUG_PREFIX.length);
+	if (slug.startsWith(SMALL_BODY_FLAG_SLUG_PREFIX))
+		return slug.slice(SMALL_BODY_FLAG_SLUG_PREFIX.length);
+	return slug.replace(/^cat-/, '');
+}
 
 /** Tint per taxonomic complex, keyed by the leading letter of the SMASS/Tholen
  *  class. Hues follow the conventional reflectance picture: C-complex dark and

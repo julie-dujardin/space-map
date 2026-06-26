@@ -46,6 +46,7 @@ interface NotableEntry {
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
   radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies + Ceres/Pluto
   radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
+  pole?: { ra: number; dec: number }; // IAU J2000 pole RA/Dec (deg) from PCK orientation; the lineup's true axial tilt (major bodies + dwarfs)
   albedo?: number;                  // SBDB geometric albedo (small bodies only); drives the lineup surface lightness
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); maps to a surface tint
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
