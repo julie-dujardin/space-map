@@ -26,6 +26,13 @@ function parseMemberPage(raw: string | null): number | null {
 	return Number.isInteger(n) && n > 1 ? n : null;
 }
 
+/** Parse the `&img=` gallery index; null (viewer closed) for anything invalid. */
+function parseImageIndex(raw: string | null): number | null {
+	if (!raw) return null;
+	const n = Number(raw);
+	return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
 /** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
 export function urlTypeToIdPrefix(urlType: string): string {
 	if (urlType === UrlType.SmallBody) return 'spkid';
@@ -97,7 +104,7 @@ export function parseUrl(): MapViewState | null {
 			framed: true, // group anchor zoom is intentional framing, not a default
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
-			imageIndex: null,
+			imageIndex: parseImageIndex(page.url.searchParams.get('img')),
 			featureId: null,
 			tab: parseTab(page.url.searchParams.get('tab')),
 			memberPage: parseMemberPage(page.url.searchParams.get('mp'))
@@ -133,12 +140,7 @@ export function parseUrl(): MapViewState | null {
 		return applyAtParam(defaults);
 	}
 
-	const imgRaw = page.url.searchParams.get('img');
-	let imageIndex: number | null = null;
-	if (imgRaw) {
-		const n = Number(imgRaw);
-		if (Number.isInteger(n) && n >= 0) imageIndex = n;
-	}
+	const imageIndex = parseImageIndex(page.url.searchParams.get('img'));
 
 	const defaults = {
 		...DEFAULT_VIEW,
@@ -236,6 +238,10 @@ export function serializeUrl(state: MapViewState): string {
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
 
+	const img =
+		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
+			? `&img=${state.imageIndex}`
+			: '';
 	// `mp` is only meaningful under the members tab — the one paginated list.
 	const tab = state.tab ? `&tab=${state.tab}` : '';
 	const mp =
@@ -252,7 +258,7 @@ export function serializeUrl(state: MapViewState): string {
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}${tab}${mp}`;
+		return `${path}?at=${at}${img}${tab}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
@@ -275,9 +281,5 @@ export function serializeUrl(state: MapViewState): string {
 		id: numericId,
 		name: state.name ? encodeURIComponent(state.name) : undefined
 	});
-	const img =
-		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
-			? `&img=${state.imageIndex}`
-			: '';
 	return `${path}?at=${at}${img}${tab}${mp}`;
 }

@@ -105,6 +105,18 @@ describe('serializeUrl', () => {
 			const view = { ...baseView, imageIndex: 1.5 };
 			expect(serializeUrl(view)).not.toContain('img=');
 		});
+
+		it('emits img= on group routes too', () => {
+			const url = serializeUrl({
+				...baseView,
+				type: 'g',
+				groupSlug: 'cat-moons',
+				name: 'Moons',
+				imageIndex: 2
+			});
+			expect(url.startsWith('/g/cat-moons/Moons?at=')).toBe(true);
+			expect(url).toContain('&img=2');
+		});
 	});
 
 	describe('tab serialization', () => {
