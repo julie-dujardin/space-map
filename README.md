@@ -1,6 +1,6 @@
 # Space Map
 
-Space Map is a real-time, real-scale, fully continuous map of the solar system, mapping 1,555,232 objects and 16,074 surface features as of 2026-06-20.
+[Space Map](https://spacemap.co/) is a real-time, real-scale, fully continuous map of the solar system, mapping 1,555,232 objects and 16,074 surface features as of 2026-06-20.
 
 | | |
 |:-:|:-:|
