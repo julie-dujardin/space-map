@@ -108,6 +108,9 @@ interface GlobalGroupData {
   // family's fragments — the parentless counterpart to the `fragments` list a
   // catalogued parent comet carries on its own object page. On a `mission`
   // group (slug `mission-<slug>`) these are the mission's craft, primary first.
+  // On the `cat-planets` / `cat-dwarf-planets` / `cat-moons` category pages
+  // these are the bodies the lineup hero renders (planets in heliocentric
+  // order; dwarf planets and moons by prominence).
   notable_members?: NotableEntry[];
 
   // `mission` groups only — focus redirect to the primary probe (not a filter).

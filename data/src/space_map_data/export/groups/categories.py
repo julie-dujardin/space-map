@@ -17,6 +17,7 @@ from space_map_data.constants.categories import (
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
+    DWARF_PLANETS_SLUG,
     MOONS_SLUG,
     PLANETS_SLUG,
     PROBES_SLUG,
@@ -158,6 +159,26 @@ def _planet_members(
         session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
         .filter(Object.object_type == ObjectType.planet)
         .order_by(Object.naif_id)
+        .all()
+    )
+    return [_body_member(*row, radii=radii, gms=gms) for row in rows]
+
+
+def _dwarf_planet_members(
+    session: Session, radii: dict[int, dict], gms: dict[int, float]
+) -> list[NotableObject]:
+    """The dwarf planets, most-prominent first (image then sitelinks).
+
+    Unlike the eight major planets these carry no static heliocentric order, so
+    they rank by prominence like the moons strip. Only Pluto/Ceres have PCK
+    mass + radii; the rest size off the frontend lineup's own radius table.
+    """
+    rows = (
+        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
+        .filter(Object.object_type == ObjectType.dwarf_planet)
+        .order_by(
+            Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
+        )
         .all()
     )
     return [_body_member(*row, radii=radii, gms=gms) for row in rows]
@@ -359,6 +380,7 @@ def build_category_data(
     satellites = earth_classes + constellations
 
     planet_members = _planet_members(session, radii, gms)
+    dwarf_members = _dwarf_planet_members(session, radii, gms)
     moon_members = _ranked_members(
         session, Object.object_type == ObjectType.moon, TOP_MOONS, radii, gms
     )
@@ -370,6 +392,7 @@ def build_category_data(
         # Satellites is reachable under Earth (its real parent), not the root.
         SOLAR_SYSTEM_SLUG: [
             PLANETS_SLUG,
+            DWARF_PLANETS_SLUG,
             MOONS_SLUG,
             ASTEROIDS_SLUG,
             COMETS_SLUG,
@@ -401,6 +424,10 @@ def build_category_data(
         COMETS_SLUG: comets_total,
         SATELLITES_SLUG: satellites_total,
         PLANETS_SLUG: len(planet_members),
+        # Dwarf planets are SBDB-tracked, so they already fall inside
+        # asteroids_total (their orbit classes) — counted here for the page's own
+        # tally, but not re-added to the root total above.
+        DWARF_PLANETS_SLUG: len(dwarf_members),
         MOONS_SLUG: moons_total,
         PROBES_SLUG: probes_total,
     }
@@ -423,6 +450,8 @@ def build_category_data(
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
+    if dwarf_members:
+        notable_members[DWARF_PLANETS_SLUG] = dwarf_members
     if moon_members:
         notable_members[MOONS_SLUG] = moon_members
     if probe_members:
@@ -431,10 +460,11 @@ def build_category_data(
     if solar_system:
         notable_members[SOLAR_SYSTEM_SLUG] = solar_system
     logger.info(
-        "Built category data: planets=%d, moons=%d (%d notable, %d planet/dwarf "
-        "hosts), asteroid zones=%d, comet families=%d, satellite groups=%d, "
-        "probes=%d",
+        "Built category data: planets=%d, dwarf planets=%d, moons=%d (%d notable, "
+        "%d planet/dwarf hosts), asteroid zones=%d, comet families=%d, satellite "
+        "groups=%d, probes=%d",
         len(planet_members),
+        len(dwarf_members),
         moons_total,
         len(moon_members),
         len(moon_counts),

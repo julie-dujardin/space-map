@@ -35,6 +35,7 @@ class CategorySpec:
 
 SOLAR_SYSTEM_SLUG = f"{CATEGORY_SLUG_PREFIX}solar-system"
 PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}planets"
+DWARF_PLANETS_SLUG = f"{CATEGORY_SLUG_PREFIX}dwarf-planets"
 MOONS_SLUG = f"{CATEGORY_SLUG_PREFIX}moons"
 ASTEROIDS_SLUG = f"{CATEGORY_SLUG_PREFIX}asteroids"
 COMETS_SLUG = f"{CATEGORY_SLUG_PREFIX}comets"
@@ -44,6 +45,7 @@ PROBES_SLUG = f"{CATEGORY_SLUG_PREFIX}probes"
 CATEGORIES: tuple[CategorySpec, ...] = (
     CategorySpec(SOLAR_SYSTEM_SLUG, "Solar System", "Q544"),
     CategorySpec(PLANETS_SLUG, "Planets", "Q634"),
+    CategorySpec(DWARF_PLANETS_SLUG, "Dwarf Planets", "Q2199"),  # "dwarf planet"
     CategorySpec(MOONS_SLUG, "Moons", "Q2537"),  # "natural satellite"
     CategorySpec(ASTEROIDS_SLUG, "Asteroids", "Q3863"),
     CategorySpec(COMETS_SLUG, "Comets", "Q3559"),

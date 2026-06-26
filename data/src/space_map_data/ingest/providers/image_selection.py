@@ -32,6 +32,8 @@ from space_map_data.constants.categories import (
     ASTEROIDS_SLUG,
     COMET_ORBIT_CLASSES,
     COMETS_SLUG,
+    DWARF_PLANETS_SLUG,
+    MOONS_SLUG,
     PLANETS_SLUG,
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
@@ -433,8 +435,11 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
             if country is not None:
                 out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
 
-    # Body-aggregating categories: the planets, and the Solar System root
-    # (Sun + planets — a curated hero set, not the whole catalogue).
+    # Body-aggregating categories: the planets, dwarf planets and moons, plus
+    # the Solar System root (Sun + planets — a curated hero set, not the whole
+    # catalogue). The Wikidata class entities (Q634/Q2199/Q2537) rarely carry a
+    # usable photo, so these pages lean on the member fallback for their hero +
+    # gallery, ranked by member sitelink count (top moon, top dwarf, ...).
     def _typed_qids(*types: ObjectType) -> list[str]:
         return [
             qid
@@ -449,6 +454,12 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
     planet_qids = _typed_qids(ObjectType.planet)
     if planet_qids:
         out[PLANETS_SLUG] = planet_qids
+    dwarf_qids = _typed_qids(ObjectType.dwarf_planet)
+    if dwarf_qids:
+        out[DWARF_PLANETS_SLUG] = dwarf_qids
+    moon_qids = _typed_qids(ObjectType.moon)
+    if moon_qids:
+        out[MOONS_SLUG] = moon_qids
     solar = _typed_qids(ObjectType.star) + planet_qids
     if solar:
         out[SOLAR_SYSTEM_SLUG] = solar
