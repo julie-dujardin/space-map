@@ -63,6 +63,7 @@
 	import MoonLineup from './MoonLineup.svelte';
 	import DwarfPlanetLineup from './DwarfPlanetLineup.svelte';
 	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
+	import SmallBodyLineup, { renderableCount } from './SmallBodyLineup.svelte';
 	import PlanetMassChart from './PlanetMassChart.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -404,6 +405,16 @@
 				? [...(data?.global?.notable_moons ?? []), ...(data?.global?.notable_satellites ?? [])]
 				: data?.global?.notable_moons
 	);
+	// Small-body zones (orbit classes, NEO/PHA flags, asteroid/comet categories)
+	// get a planet-style sphere lineup hero when enough members carry a measured
+	// diameter. Below the floor it falls back to the plain page (member strip +
+	// stats). The planet/moon/dwarf categories have their own lineup heroes
+	// (isLineupCategory) and are excluded.
+	const SMALL_BODY_LINEUP_FLOOR = 3;
+	let groupSlug = $derived(focusable.kind === 'group' ? focusable.slug : '');
+	let isSmallBodyLineup = $derived(
+		isGroupMode && !isLineupCategory && renderableCount(notableMembers) >= SMALL_BODY_LINEUP_FLOOR
+	);
 	let memberNames = $derived(
 		isGroupMode
 			? groupDetail?.localized?.notable_member_names
@@ -552,6 +563,16 @@
 	/>
 {/snippet}
 
+{#snippet smallBodyHero()}
+	<SmallBodyLineup
+		members={notableMembers ?? []}
+		slug={groupSlug}
+		ariaLabel={fallbackName}
+		localizedNames={memberNames}
+		localizedDescriptions={memberDescriptions}
+	/>
+{/snippet}
+
 {#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
@@ -576,7 +597,9 @@
 							? moonHero
 							: isDwarfPlanetsCategory
 								? dwarfHero
-								: undefined
+								: isSmallBodyLineup
+									? smallBodyHero
+									: undefined
 					: undefined}
 				onShowGallery={() => {
 					activeTab = 'images';

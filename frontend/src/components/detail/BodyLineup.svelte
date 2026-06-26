@@ -5,6 +5,9 @@
 	export interface LineupBody {
 		id: string;
 		name: string;
+		/** Flat sphere colour when no `low.webp` texture loads. Overrides the
+		 *  id-keyed BODY_COLORS lookup — small bodies pass a resolved tint here. */
+		color?: string;
 		/** Localized Wikidata short description, shown under the name on hover. */
 		description?: string;
 		/** Equatorial radius (km) = PCK `radii.a`; the value the 3D scene renders
@@ -324,7 +327,7 @@
 		clearMeshes();
 		const loader = new TextureLoader();
 		for (const b of visibleItems) {
-			const color = BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
+			const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
 			const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
 			const mesh = new Mesh(geometry, material);
 			baseQuats.set(b.id, styledQuaternion(b));
@@ -492,7 +495,7 @@
 				const mat = glowSprite.material;
 				mat.map?.dispose();
 				mat.map = makeGlowTexture(p.pr);
-				mat.color.set(BODY_COLORS[p.id] ?? DEFAULT_BODY_COLOR);
+				mat.color.set(p.color ?? BODY_COLORS[p.id] ?? DEFAULT_BODY_COLOR);
 				mat.needsUpdate = true;
 				glowKey = key;
 			}

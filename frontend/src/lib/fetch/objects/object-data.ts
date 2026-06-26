@@ -71,6 +71,15 @@ export interface NotableMemberEntry {
 	group?: string;
 	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
 	diameter_km?: number;
+	/** SPICE PCK triaxial radii (km); the render shape for major bodies + Ceres/Pluto. */
+	radii?: { a: number; b: number; c: number };
+	/** Scalar render radius (km) from the Wikidata radius — the render-size
+	 *  fallback for bodies with no PCK radii or SBDB diameter (most TNO dwarfs). */
+	radius_km?: number;
+	/** SBDB geometric albedo (small bodies only); sets the lineup sphere's lightness. */
+	albedo?: number;
+	/** SBDB taxonomic type — SMASS else Tholen (small bodies only); maps to a surface tint. */
+	spec?: string;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
 	thumbnail?: PickedThumbnail;
