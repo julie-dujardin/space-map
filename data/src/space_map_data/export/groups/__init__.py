@@ -36,6 +36,7 @@ from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.fragments import build_comet_families
 from space_map_data.export.objects.missions import build_probe_missions
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object
 from space_map_data.models.object.sbdb import SBDB
@@ -189,9 +190,12 @@ def run_groups_tier(
     ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
     mass + triaxial radii for the planets/moons-page charts.
     """
+    units = UnitConverter(wikidata_entities)
     with Session(engine) as session:
         build = build_earth_groups_data(session)
-        small_body_stats = build_small_body_group_stats(session)
+        small_body_stats = build_small_body_group_stats(
+            session, radii, units, wikidata_entities
+        )
         earth_orbit_stats = build_earth_orbit_classes(session)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership
         build.stats[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.satcat_stats

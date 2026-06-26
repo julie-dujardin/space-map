@@ -44,7 +44,10 @@ interface NotableEntry {
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
-  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies only
+  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies + Ceres/Pluto
+  radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
+  albedo?: number;                  // SBDB geometric albedo (small bodies only); drives the lineup surface lightness
+  spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); maps to a surface tint
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }
@@ -99,7 +102,8 @@ interface GlobalGroupData {
 
   // Top 20 members picked at export time, ordered by
   // (image_available, sitelinks_count, diameter desc, H asc, spkid).
-  // Present on orbit_class groups and flag-neo/flag-pha. Denormalized so
+  // Present on orbit_class groups, flag-neo/flag-pha, and the Asteroids
+  // (dwarf planets excluded) + Comets categories. Denormalized so
   // the strip + members list render without per-object bundle fetches.
   // Names are the English Wikidata label (matching object bundles), with
   // per-language overrides in LocalizedGroupData.notable_member_names.

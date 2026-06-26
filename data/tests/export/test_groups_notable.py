@@ -46,6 +46,9 @@ def _add_member(
     pha: bool = False,
     orbital_source: OrbitalSource | None = OrbitalSource.sbdb,
     sbdb_name: str | None = None,
+    albedo: float | None = None,
+    spec_b: str | None = None,
+    spec_t: str | None = None,
 ) -> None:
     obj = Object(
         id=f"spkid-{spkid}",
@@ -69,6 +72,9 @@ def _add_member(
             first_obs=first_obs,
             neo=neo,
             pha=pha,
+            albedo=albedo,
+            spec_B=spec_b,
+            spec_T=spec_t,
         )
     )
     session.commit()
@@ -123,6 +129,17 @@ class TestNotableMembers:
         members = _notable_members(session, SBDB.neo.is_(True))
         assert [m.object_id for m in members] == ["spkid-1"]
 
+    def test_carries_albedo_and_prefers_smass_spec(self, session: Session) -> None:
+        _add_member(session, 7, albedo=0.09, spec_b="C", spec_t="G")
+        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        assert member.albedo == 0.09
+        assert member.spec == "C"  # SMASS (spec_B) wins over Tholen (spec_T)
+
+    def test_spec_falls_back_to_tholen(self, session: Session) -> None:
+        _add_member(session, 8, spec_t="S")
+        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        assert member.spec == "S"
+
     def test_carries_display_fields(self, session: Session) -> None:
         _add_member(
             session,
@@ -140,6 +157,19 @@ class TestNotableMembers:
             diameter_km=199.8,
             first_obs="1847-08-13",
         )
+
+
+class TestRenderSize:
+    """`render_size` render-radius priority (mirrors the position pipeline)."""
+
+    def test_prefers_pck_triaxial_radii(self) -> None:
+        pluto = {"a": 1188.3, "b": 1188.3, "c": 1188.3}
+        triaxial, radius_km = notable.render_size(999, "Q339", {999: pluto}, None, None)
+        assert triaxial == pluto
+        assert radius_km is None
+
+    def test_none_without_radii_or_wikidata(self) -> None:
+        assert notable.render_size(None, None, {}, None, None) == (None, None)
 
 
 class TestNamedCounts:
@@ -280,6 +310,24 @@ class TestNotableEntries:
         )
         assert entry["diameter_km"] == 246.6
         assert entry["first_obs"] == "1804-09-01"
+
+    def test_entries_include_albedo_and_spec(self, monkeypatch) -> None:
+        monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)
+        member = NotableObject(
+            object_id="spkid-4",
+            wikidata_qid=None,
+            fallback_name="Vesta",
+            diameter_km=525.4,
+            first_obs=None,
+            albedo=0.42,
+            spec="V",
+        )
+        (entry,) = notable.notable_entries(
+            [member],
+            _StubEntityCache({}),  # type: ignore[arg-type]
+        )
+        assert entry["albedo"] == 0.42
+        assert entry["spec"] == "V"
 
     def test_localized_names_only_when_differing(self, monkeypatch) -> None:
         monkeypatch.setattr(notable, "collect_object_images", lambda object_id: None)

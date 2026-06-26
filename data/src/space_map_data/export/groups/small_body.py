@@ -26,7 +26,9 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
-from space_map_data.export.notable import NotableObject
+from space_map_data.export.notable import NotableObject, render_size
+from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
 
@@ -217,7 +219,13 @@ def _largest_body(session: Session, *filter_clauses) -> LargestBody | None:
     )
 
 
-def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
+def _notable_members(
+    session: Session,
+    *filter_clauses,
+    radii: dict[int, dict] | None = None,
+    units: UnitConverter | None = None,
+    wikidata_entities: WikidataEntityCache | None = None,
+) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
 
     Sitelinks dominate in practice — image availability mostly promotes the
@@ -226,10 +234,15 @@ def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
     ``_largest_body``, skips the orbital-source clause so SPICE-routed dwarf
     planets (Ceres, Pluto, …) still rank. spkid tiebreak keeps the selection
     deterministic across exports.
+
+    ``radii``/``units``/``wikidata_entities`` resolve each member's render size
+    (PCK triaxial radii or the Wikidata-radius override) so the lineup hero
+    sizes dwarf planets the same way the 3D scene does.
     """
     rows = (
         session.query(
             Object.id,
+            Object.naif_id,
             Object.wikidata_qid,
             Object.name,
             SBDB.full_name,
@@ -238,6 +251,9 @@ def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
             SBDB.spkid,
             SBDB.diameter,
             SBDB.first_obs,
+            SBDB.albedo,
+            SBDB.spec_B,
+            SBDB.spec_T,
         )
         .join(Object, Object.id == SBDB.object_id)
         .filter(SBDB.prefix.is_distinct_from(CometPrefix.D))
@@ -253,16 +269,12 @@ def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
         .limit(NOTABLE_MEMBER_COUNT)
         .all()
     )
-    return [
-        NotableObject(
-            object_id=object_id,
-            wikidata_qid=qid,
-            fallback_name=obj_name or full_name or sbdb_name or pdes or str(spkid),
-            diameter_km=diameter,
-            first_obs=first_obs,
-        )
-        for (
+    radii = radii or {}
+    members: list[NotableObject] = []
+    for row in rows:
+        (
             object_id,
+            naif_id,
             qid,
             obj_name,
             full_name,
@@ -271,17 +283,42 @@ def _notable_members(session: Session, *filter_clauses) -> list[NotableObject]:
             spkid,
             diameter,
             first_obs,
-        ) in rows
-    ]
+            albedo,
+            spec_b,
+            spec_t,
+        ) = row
+        triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
+        members.append(
+            NotableObject(
+                object_id=object_id,
+                wikidata_qid=qid,
+                fallback_name=obj_name or full_name or sbdb_name or pdes or str(spkid),
+                diameter_km=diameter,
+                first_obs=first_obs,
+                radii=triaxial,
+                radius_km=radius_km,
+                albedo=albedo,
+                # SMASS (spec_B) preferred over Tholen (spec_T); the frontend maps
+                # the taxonomic class to a representative surface tint.
+                spec=spec_b or spec_t,
+            )
+        )
+    return members
 
 
-def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
+def build_small_body_group_stats(
+    session: Session,
+    radii: dict[int, dict] | None = None,
+    units: UnitConverter | None = None,
+    wikidata_entities: WikidataEntityCache | None = None,
+) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
 
     All aggregation runs in SQL — the function pulls only summary rows
     (~5k for class×year histograms, ~200 each for NEO/PHA). Rows lacking a
     parseable year are excluded from histograms but still count toward
-    ``member_counts``.
+    ``member_counts``. ``radii``/``units``/``wikidata_entities`` give notable
+    members their render size for the lineup hero.
     """
     base = (
         session.query(SBDB)
@@ -398,13 +435,31 @@ def build_small_body_group_stats(session: Session) -> SmallBodyGroupStats:
 
     notable_members: dict[str, list[NotableObject]] = {}
     for cls in class_counts:
-        members = _notable_members(session, SBDB.class_ == cls)
+        members = _notable_members(
+            session,
+            SBDB.class_ == cls,
+            radii=radii,
+            units=units,
+            wikidata_entities=wikidata_entities,
+        )
         if members:
             notable_members[f"{CLASS_SLUG_PREFIX}{cls.name}"] = members
-    neo_notable = _notable_members(session, SBDB.neo.is_(True))
+    neo_notable = _notable_members(
+        session,
+        SBDB.neo.is_(True),
+        radii=radii,
+        units=units,
+        wikidata_entities=wikidata_entities,
+    )
     if neo_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_notable
-    pha_notable = _notable_members(session, SBDB.pha.is_(True))
+    pha_notable = _notable_members(
+        session,
+        SBDB.pha.is_(True),
+        radii=radii,
+        units=units,
+        wikidata_entities=wikidata_entities,
+    )
     if pha_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_notable
 

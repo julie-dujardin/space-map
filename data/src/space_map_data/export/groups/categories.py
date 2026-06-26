@@ -31,6 +31,7 @@ from space_map_data.export.groups.registry import (
     GROUPS,
     GroupType,
 )
+from space_map_data.export.groups.small_body import _notable_members
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
@@ -419,10 +420,9 @@ def build_category_data(
     )[:TOP_CONSTELLATIONS]
     satellites = earth_classes + constellations
 
+    units = UnitConverter(entities)
     planet_members = _planet_members(session, radii, gms)
-    dwarf_members = _dwarf_planet_members(
-        session, radii, gms, entities, UnitConverter(entities)
-    )
+    dwarf_members = _dwarf_planet_members(session, radii, gms, entities, units)
     moon_members = _ranked_members(
         session, Object.object_type == ObjectType.moon, TOP_MOONS, radii, gms
     )
@@ -489,6 +489,26 @@ def build_category_data(
     if sat_hist := _sum_histograms(primary_sat_slugs, launch_histograms):
         launch_out[SATELLITES_SLUG] = sat_hist
 
+    # Category lineup heroes: the most prominent asteroids / comets across all
+    # their orbit classes. Dwarf planets are excluded from Asteroids (they keep
+    # their own page and still rank inside their orbit-class zone, e.g. Ceres in
+    # the Main Belt); comets have no dwarfs to exclude.
+    asteroid_notable = _notable_members(
+        session,
+        SBDB.class_.not_in(COMET_ORBIT_CLASSES),
+        Object.object_type.is_distinct_from(ObjectType.dwarf_planet),
+        radii=radii,
+        units=units,
+        wikidata_entities=entities,
+    )
+    comet_notable = _notable_members(
+        session,
+        SBDB.class_.in_(COMET_ORBIT_CLASSES),
+        radii=radii,
+        units=units,
+        wikidata_entities=entities,
+    )
+
     notable_members: dict[str, list[NotableObject]] = {}
     if planet_members:
         notable_members[PLANETS_SLUG] = planet_members
@@ -496,6 +516,10 @@ def build_category_data(
         notable_members[DWARF_PLANETS_SLUG] = dwarf_members
     if moon_members:
         notable_members[MOONS_SLUG] = moon_members
+    if asteroid_notable:
+        notable_members[ASTEROIDS_SLUG] = asteroid_notable
+    if comet_notable:
+        notable_members[COMETS_SLUG] = comet_notable
     if probe_members:
         notable_members[PROBES_SLUG] = probe_members
     solar_system = _solar_system_members(session, star, radii, gms)

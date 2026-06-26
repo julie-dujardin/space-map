@@ -9,6 +9,8 @@ a per-language label-override map keyed by the same routing id.
 from dataclasses import dataclass
 
 from space_map_data.export.images import collect_object_images, pick_thumbnail
+from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
+from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 
 
@@ -23,6 +25,37 @@ class NotableObject:
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
     mass_kg: float | None = None  # from PCK GM; major bodies only
     radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
+    radius_km: float | None = (
+        None  # scalar render radius (Wikidata P2120) when no radii/diameter
+    )
+    albedo: float | None = None  # SBDB geometric albedo; small bodies only
+    spec: str | None = (
+        None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
+    )
+
+
+def render_size(
+    naif_id: int | None,
+    qid: str | None,
+    radii: dict[int, dict],
+    units: UnitConverter | None,
+    wikidata_entities: WikidataEntityCache | None,
+) -> tuple[dict | None, float | None]:
+    """The body's render size for the lineup, mirroring the position pipeline.
+
+    Returns ``(triaxial_radii, scalar_radius_km)``. PCK triaxial radii (the
+    chebyshev render shape) take precedence; otherwise the Wikidata radius
+    (P2120) is the elements-pipeline override used for bodies with no SBDB
+    diameter (most trans-Neptunian dwarfs). SBDB diameter is carried separately.
+    ``units``/``wikidata_entities`` may be ``None`` (skips the Wikidata path).
+    """
+    if naif_id is not None and (pck := radii.get(naif_id)) is not None:
+        return pck, None
+    if units is not None and wikidata_entities is not None and qid is not None:
+        wd = wikidata_entities.get_entity(qid)
+        if wd is not None and (r := radius_km_from_claims(wd["claims"], units, qid)):
+            return None, r
+    return None, None
 
 
 def notable_entries(
@@ -46,6 +79,12 @@ def notable_entries(
             entry["mass_kg"] = member.mass_kg
         if member.radii is not None:
             entry["radii"] = member.radii
+        if member.radius_km is not None:
+            entry["radius_km"] = member.radius_km
+        if member.albedo is not None:
+            entry["albedo"] = member.albedo
+        if member.spec is not None:
+            entry["spec"] = member.spec
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))
