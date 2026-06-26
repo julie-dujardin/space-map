@@ -59,6 +59,20 @@ def render_size(
     return None, None
 
 
+def pole_from_orientation(
+    orientation: dict[int, dict], naif_id: int | None
+) -> dict | None:
+    """The body's IAU J2000 pole {ra, dec} (deg) from PCK orientation, if known.
+
+    Gives the lineup hero its true axial tilt; only major bodies and the PCK
+    dwarfs (Ceres, Pluto) appear in the orientation table.
+    """
+    if naif_id is None or naif_id not in orientation:
+        return None
+    o = orientation[naif_id]
+    return {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
+
+
 def notable_entries(
     members: list[NotableObject],
     wikidata_entities: WikidataEntityCache,

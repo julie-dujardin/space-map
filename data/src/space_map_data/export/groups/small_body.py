@@ -26,7 +26,11 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
-from space_map_data.export.notable import NotableObject, render_size
+from space_map_data.export.notable import (
+    NotableObject,
+    pole_from_orientation,
+    render_size,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
@@ -225,6 +229,7 @@ def _notable_members(
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
     wikidata_entities: WikidataEntityCache | None = None,
+    orientation: dict[int, dict] | None = None,
 ) -> list[NotableObject]:
     """Top members by (has image, sitelinks, diameter, brightness).
 
@@ -237,7 +242,9 @@ def _notable_members(
 
     ``radii``/``units``/``wikidata_entities`` resolve each member's render size
     (PCK triaxial radii or the Wikidata-radius override) so the lineup hero
-    sizes dwarf planets the same way the 3D scene does.
+    sizes dwarf planets the same way the 3D scene does. ``orientation`` gives the
+    PCK dwarfs (Ceres in MBA, Pluto in TNO) the same axial tilt they get on the
+    dwarf-planet page.
     """
     rows = (
         session.query(
@@ -270,6 +277,7 @@ def _notable_members(
         .all()
     )
     radii = radii or {}
+    orientation = orientation or {}
     members: list[NotableObject] = []
     for row in rows:
         (
@@ -297,6 +305,7 @@ def _notable_members(
                 first_obs=first_obs,
                 radii=triaxial,
                 radius_km=radius_km,
+                pole=pole_from_orientation(orientation, naif_id),
                 albedo=albedo,
                 # SMASS (spec_B) preferred over Tholen (spec_T); the frontend maps
                 # the taxonomic class to a representative surface tint.
@@ -311,14 +320,15 @@ def build_small_body_group_stats(
     radii: dict[int, dict] | None = None,
     units: UnitConverter | None = None,
     wikidata_entities: WikidataEntityCache | None = None,
+    orientation: dict[int, dict] | None = None,
 ) -> SmallBodyGroupStats:
     """Return member counts and discovery-year histograms per small-body group.
 
     All aggregation runs in SQL — the function pulls only summary rows
     (~5k for class×year histograms, ~200 each for NEO/PHA). Rows lacking a
     parseable year are excluded from histograms but still count toward
-    ``member_counts``. ``radii``/``units``/``wikidata_entities`` give notable
-    members their render size for the lineup hero.
+    ``member_counts``. ``radii``/``units``/``wikidata_entities``/``orientation``
+    give notable members their render size + tilt for the lineup hero.
     """
     base = (
         session.query(SBDB)
@@ -441,6 +451,7 @@ def build_small_body_group_stats(
             radii=radii,
             units=units,
             wikidata_entities=wikidata_entities,
+            orientation=orientation,
         )
         if members:
             notable_members[f"{CLASS_SLUG_PREFIX}{cls.name}"] = members
@@ -450,6 +461,7 @@ def build_small_body_group_stats(
         radii=radii,
         units=units,
         wikidata_entities=wikidata_entities,
+        orientation=orientation,
     )
     if neo_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}neo"] = neo_notable
@@ -459,6 +471,7 @@ def build_small_body_group_stats(
         radii=radii,
         units=units,
         wikidata_entities=wikidata_entities,
+        orientation=orientation,
     )
     if pha_notable:
         notable_members[f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"] = pha_notable

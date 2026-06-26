@@ -200,7 +200,7 @@ def run_groups_tier(
     with Session(engine) as session:
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
-            session, radii, units, wikidata_entities
+            session, radii, units, wikidata_entities, orientation
         )
         earth_orbit_stats = build_earth_orbit_classes(session)
         build.membership[GroupType.EARTH_ORBIT_CLASS] = earth_orbit_stats.membership

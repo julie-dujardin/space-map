@@ -71,6 +71,8 @@ export interface NotableMemberEntry {
 	group?: string;
 	/** Equivalent-sphere diameter (members) or mean PCK-radii diameter (moons). */
 	diameter_km?: number;
+	/** Body mass (kg) from PCK GM; major bodies only. Drives the planets mass chart. */
+	mass_kg?: number;
 	/** SPICE PCK triaxial radii (km); the render shape for major bodies + Ceres/Pluto. */
 	radii?: { a: number; b: number; c: number };
 	/** Scalar render radius (km) from the Wikidata radius — the render-size

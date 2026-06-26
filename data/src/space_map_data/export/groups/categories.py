@@ -32,7 +32,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.small_body import _notable_members
-from space_map_data.export.notable import NotableObject
+from space_map_data.export.notable import NotableObject, pole_from_orientation
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
     radius_km_from_claims,
@@ -112,14 +112,6 @@ def _mass_kg_from_gm(gm_km3_s2: float | None) -> float | None:
     return gm_km3_s2 / G_KM3_PER_KG_S2
 
 
-def _pole(orientation: dict[int, dict], naif_id: int | None) -> dict | None:
-    """The body's IAU J2000 pole {ra, dec} (deg) from PCK orientation, if known."""
-    if naif_id is None or naif_id not in orientation:
-        return None
-    o = orientation[naif_id]
-    return {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
-
-
 def _body_member(
     obj_id: str,
     naif_id: int | None,
@@ -138,7 +130,7 @@ def _body_member(
         first_obs=None,
         mass_kg=_mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
         radii=radii.get(naif_id) if naif_id is not None else None,
-        pole=_pole(orientation, naif_id),
+        pole=pole_from_orientation(orientation, naif_id),
     )
 
 

@@ -17,21 +17,8 @@
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
 
+	// One Earth mass (kg) — the unit the chart expresses masses in.
 	const EARTH_MASS_KG = 5.97237e24;
-	// Body mass (kg), authoritative IAU/NASA values. Category `notable_members`
-	// carry no mass, so the chart sources off these constants. Each planet's
-	// segment width is its share of the 8-planet total, so the area encodes the
-	// mass repartition — the giants (Jupiter ~71%, Saturn ~21%) dominate.
-	const PLANET_MASS_KG: Record<string, number> = {
-		'naif-199': 3.3011e23, // Mercury
-		'naif-299': 4.8675e24, // Venus
-		'naif-399': 5.97237e24, // Earth
-		'naif-499': 6.4171e23, // Mars
-		'naif-599': 1.8982e27, // Jupiter
-		'naif-699': 5.6834e26, // Saturn
-		'naif-799': 8.681e25, // Uranus
-		'naif-899': 1.02413e26 // Neptune
-	};
 
 	interface Planet {
 		id: string;
@@ -40,19 +27,19 @@
 		share: number; // fraction of the 8-planet total
 	}
 
+	// Each planet's segment width is its share of the 8-planet total, so the area
+	// encodes the mass repartition — the giants (Jupiter ~71%, Saturn ~21%)
+	// dominate. Mass is the export-supplied `mass_kg` (PCK GM, the same source the
+	// 3D scene uses); the members on this page are exactly the eight planets.
 	// Heaviest → lightest, so the dominant giants lead and the slivers trail.
 	let planets = $derived.by<Planet[]>(() => {
-		const byId = new Map(members.filter((mm) => mm.id).map((mm) => [mm.id as string, mm]));
-		const raw: { id: string; name: string; massEarths: number }[] = [];
-		for (const id of Object.keys(PLANET_MASS_KG)) {
-			const mm = byId.get(id);
-			if (!mm) continue;
-			raw.push({
-				id,
-				name: localizedNames?.[id] ?? mm.name,
-				massEarths: PLANET_MASS_KG[id] / EARTH_MASS_KG
-			});
-		}
+		const raw = members
+			.filter((mm) => mm.id && mm.mass_kg != null)
+			.map((mm) => ({
+				id: mm.id as string,
+				name: localizedNames?.[mm.id as string] ?? mm.name,
+				massEarths: (mm.mass_kg as number) / EARTH_MASS_KG
+			}));
 		const total = raw.reduce((s, p) => s + p.massEarths, 0) || 1;
 		return raw
 			.map((p) => ({ ...p, share: p.massEarths / total }))

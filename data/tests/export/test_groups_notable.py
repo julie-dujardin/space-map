@@ -35,6 +35,7 @@ def _add_member(
     *,
     name: str | None = None,
     qid: str | None = None,
+    naif_id: int | None = None,
     image: bool = False,
     sitelinks: int = 0,
     diameter: float | None = None,
@@ -55,6 +56,7 @@ def _add_member(
         name=name or f"Body {spkid}",
         object_type=ObjectType.asteroid,
         wikidata_qid=qid,
+        naif_id=naif_id,
         image_available=image,
         sitelinks_count=sitelinks,
         orbital_source=orbital_source,
@@ -139,6 +141,21 @@ class TestNotableMembers:
         _add_member(session, 8, spec_t="S")
         (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
         assert member.spec == "S"
+
+    def test_pole_from_orientation_for_pck_dwarf(self, session: Session) -> None:
+        # A PCK dwarf in its orbit-class zone (Ceres in MBA) gets the same tilt
+        # it has on the dwarf-planet page.
+        _add_member(session, 2000001, naif_id=2000001)
+        orientation = {2000001: {"pole_ra_0": 291.418, "pole_dec_0": 66.764}}
+        (member,) = _notable_members(
+            session, SBDB.class_ == OrbitClass.MBA, orientation=orientation
+        )
+        assert member.pole == {"ra": 291.418, "dec": 66.764}
+
+    def test_no_pole_without_orientation(self, session: Session) -> None:
+        _add_member(session, 2000001, naif_id=2000001)
+        (member,) = _notable_members(session, SBDB.class_ == OrbitClass.MBA)
+        assert member.pole is None
 
     def test_carries_display_fields(self, session: Session) -> None:
         _add_member(
