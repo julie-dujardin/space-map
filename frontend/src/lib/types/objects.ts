@@ -45,6 +45,11 @@ export interface BodyData extends OrbitalElements {
 	 */
 	isMinor?: boolean;
 	objectType: ObjectType;
+	/** Physically-derived per-body surface colour (`__global__.sbdb.color`), set
+	 *  lazily on focus by `loadBodyTexture`. Used for the rendered sphere of a
+	 *  textureless small body; the point cloud and label keep their per-type
+	 *  tint via `resolveBodyColor`. */
+	color?: string;
 	parentId: string; // always "naif-{n}" — parents are always major bodies / barycenters
 	/** Probe-only: parent set at scene-load, never mutated by the per-frame
 	 *  zone re-resolution. A mismatch with `parentId` marks the probe as

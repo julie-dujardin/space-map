@@ -154,6 +154,18 @@ export async function loadBodyTexture(
 		applyRadiiToMesh(bo, detail.global.radii);
 	}
 
+	// Physically-derived per-body surface colour for small bodies. Applied here
+	// (not at chunk-parse time) since it rides the global bundle fetched on focus.
+	// The untextured sphere adopts it; the point cloud / label keep their per-type
+	// tint via resolveBodyColor.
+	const sbdbColor = detail.global.sbdb?.color;
+	if (sbdbColor) {
+		bo.body.data.color = sbdbColor;
+		if (bo.mesh && !bo.textureTier) {
+			(bo.mesh.material as MeshStandardMaterial).color.set(sbdbColor);
+		}
+	}
+
 	if (!detail.global.map_texture_available) return;
 	if (ctx && detail.global.texture) {
 		// Standalones aren't tied to a planetary system barycenter; key the
@@ -214,7 +226,7 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;
-	material.color.set(resolveBodyColor(bo.body.data));
+	material.color.set(bo.body.data.color ?? resolveBodyColor(bo.body.data));
 	material.needsUpdate = true;
 	bo.textureTier = undefined;
 }

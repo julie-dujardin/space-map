@@ -22,6 +22,17 @@
 
 	let sats = $derived(sbdb?.sats);
 
+	// Physically-derived small-body surface colour + how it was obtained, for the
+	// swatch + TrueColorTools credit. Methods, most→least precise.
+	const COLOUR_METHOD = {
+		spectrum: m.colour_method_spectrum,
+		photometry: m.colour_method_photometry,
+		taxonomy: m.colour_method_taxonomy,
+		albedo: m.colour_method_albedo
+	};
+	let colour = $derived(sbdb?.color);
+	let colourMethod = $derived(sbdb?.color_method ? COLOUR_METHOD[sbdb.color_method]() : null);
+
 	let rotationPeriodDays = $derived(
 		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
 	);
@@ -93,6 +104,7 @@
 			wd?.apparent_magnitude != null ||
 			sbdb?.spec_B ||
 			sbdb?.spec_T ||
+			colour ||
 			(sats != null && sats > 0)
 	);
 </script>
@@ -189,6 +201,17 @@
 				value={sbdb.spec_T}
 				tooltip={m.tooltip_spectral_type_tholen()}
 			/>
+		{/if}
+		{#if colour}
+			<Row label={m.surface_colour()} tooltip={m.tooltip_surface_colour()}>
+				<span class="inline-flex items-center gap-1.5">
+					{#if colourMethod}<span class="text-muted-foreground">{colourMethod}</span>{/if}
+					<span
+						class="size-3.5 rounded-full border border-border"
+						style="background-color: {colour}"
+					></span>
+				</span>
+			</Row>
 		{/if}
 		{#if sats != null && sats > 0}
 			<Row

@@ -82,7 +82,11 @@ export function buildMajorBodies(
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			const material = isStar ? makeStarSurfaceMaterial() : new MeshStandardMaterial({ color });
+			// The sphere prefers the per-body export colour; the label keeps `color`
+			// (per-type) so halos stay type-level.
+			const material = isStar
+				? makeStarSurfaceMaterial()
+				: new MeshStandardMaterial({ color: body.data.color ?? color });
 			mesh = new Mesh(geometry, material);
 			// Model-bearing types use the cuboid/model — hide the sphere so it can't flash.
 			if (isModelBearing(body)) mesh.visible = false;
@@ -183,7 +187,9 @@ export function upgradeBodyMesh(
 ): void {
 	if (bo.mesh !== null) return;
 	const { body, radiusScene } = bo;
-	const color = resolveBodyColor(body.data);
+	// Per-body export colour when known (set on focus by loadBodyTexture), else
+	// the per-type tint. The label colour stays per-type elsewhere.
+	const color = body.data.color ?? resolveBodyColor(body.data);
 	const segments = BODY_SPHERE_SEGMENTS;
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
 	const material = new MeshStandardMaterial({ color });

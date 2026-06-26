@@ -62,7 +62,6 @@
 	import BodyLineup, { type LineupBody } from './BodyLineup.svelte';
 	import { buildLineup, geometryFromMember, renderableCount } from './lineup';
 	import { BODY_COLORS } from '$lib/constants';
-	import { smallBodyColor, groupColorKey } from '$lib/constants/small-body-colors';
 	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './PlanetMassChart.svelte';
@@ -412,7 +411,6 @@
 	// stats). The planet/moon/dwarf categories have their own lineup heroes
 	// (isLineupCategory) and are excluded.
 	const SMALL_BODY_LINEUP_FLOOR = 3;
-	let groupSlug = $derived(focusable.kind === 'group' ? focusable.slug : '');
 	let isSmallBodyLineup = $derived(
 		isGroupMode && !isLineupCategory && renderableCount(notableMembers) >= SMALL_BODY_LINEUP_FLOOR
 	);
@@ -427,15 +425,14 @@
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
 	// Small-body lineup adds a colour pass on top of the shared geometry: known
-	// bodies (dwarfs) keep their curated BODY_COLORS/texture; the rest get the
-	// taxonomy/albedo/class-default heuristic keyed off the group.
-	let colorKey = $derived(groupColorKey(groupSlug));
+	// bodies (dwarfs) keep their curated BODY_COLORS/texture; the rest take the
+	// physically-derived per-body colour shipped on the member (`mm.color`).
 	let smallBodyBodies = $derived(
 		buildLineup(
 			notableMembers ?? [],
 			(mm) => {
 				const g = geometryFromMember(mm);
-				return g && { ...g, color: BODY_COLORS[mm.id] ? undefined : smallBodyColor(mm, colorKey) };
+				return g && { ...g, color: BODY_COLORS[mm.id] ? undefined : mm.color };
 			},
 			{ names: memberNames, descriptions: memberDescriptions }
 		)

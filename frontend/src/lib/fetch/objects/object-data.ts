@@ -80,10 +80,13 @@ export interface NotableMemberEntry {
 	radius_km?: number;
 	/** IAU J2000 pole RA/Dec (deg) from PCK; the lineup's true axial tilt (major bodies + dwarfs). */
 	pole?: { ra: number; dec: number };
-	/** SBDB geometric albedo (small bodies only); sets the lineup sphere's lightness. */
+	/** SBDB geometric albedo (small bodies only). */
 	albedo?: number;
-	/** SBDB taxonomic type — SMASS else Tholen (small bodies only); maps to a surface tint. */
+	/** SBDB taxonomic type — SMASS else Tholen (small bodies only). */
 	spec?: string;
+	/** Physically-derived #rrggbb surface colour (TrueColorTools); the lineup
+	 *  sphere tint for small bodies. Absent → caller falls back to a generic tint. */
+	color?: string;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
 	thumbnail?: PickedThumbnail;
@@ -228,6 +231,11 @@ export interface GlobalObjectData {
 		G?: number;
 		spec_B?: string;
 		spec_T?: string;
+		/** Physically-derived #rrggbb surface colour (TrueColorTools); the rendered
+		 *  sphere tint for a textureless small body. */
+		color?: string;
+		/** How `color` was derived (present iff `color` is); credits the method. */
+		color_method?: 'spectrum' | 'photometry' | 'taxonomy' | 'albedo';
 		BV?: number;
 		UB?: number;
 		IR?: number;
