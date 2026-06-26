@@ -21,7 +21,12 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import { fetchGroupIndex, CAT_MOONS, CAT_PLANETS } from '$lib/fetch/groups/registry';
+	import {
+		fetchGroupIndex,
+		CAT_MOONS,
+		CAT_PLANETS,
+		CAT_DWARF_PLANETS
+	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import {
 		type Focusable,
@@ -53,6 +58,8 @@
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import PlanetLineup from './PlanetLineup.svelte';
 	import MoonLineup from './MoonLineup.svelte';
+	import DwarfPlanetLineup from './DwarfPlanetLineup.svelte';
+	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
 	import PlanetMassChart from './PlanetMassChart.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -80,6 +87,12 @@
 	let isGroupMode = $derived(focusable.kind === 'group');
 	let isPlanetsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_PLANETS);
 	let isMoonsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_MOONS);
+	let isDwarfPlanetsCategory = $derived(
+		focusable.kind === 'group' && focusable.slug === CAT_DWARF_PLANETS
+	);
+	// The three body-collection pages whose hero is a lineup (no member strip/tab,
+	// and they sibling-cross-link via CategoryCrossRefs).
+	let isLineupCategory = $derived(isPlanetsCategory || isMoonsCategory || isDwarfPlanetsCategory);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -437,11 +450,7 @@
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
 	// The planet/moon lineups already cross-link every member, so they need neither.
 	let showMembersTab = $derived(
-		hasMembers &&
-			!satellitesGroup &&
-			memberTotal > STRIP_CAPACITY &&
-			!isPlanetsCategory &&
-			!isMoonsCategory
+		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !isLineupCategory
 	);
 
 	function seeAllMembers() {
@@ -530,6 +539,14 @@
 	/>
 {/snippet}
 
+{#snippet dwarfHero()}
+	<DwarfPlanetLineup
+		members={notableMembers ?? []}
+		localizedNames={memberNames}
+		localizedDescriptions={memberDescriptions}
+	/>
+{/snippet}
+
 {#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
@@ -552,7 +569,9 @@
 						? planetHero
 						: isMoonsCategory
 							? moonHero
-							: undefined
+							: isDwarfPlanetsCategory
+								? dwarfHero
+								: undefined
 					: undefined}
 				onShowGallery={() => {
 					activeTab = 'images';
@@ -590,7 +609,7 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0 && !isPlanetsCategory && !isMoonsCategory}
+			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory}
 				<MemberStrip
 					members={notableMembers}
 					localizedNames={memberNames}
@@ -633,6 +652,9 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
+				{#if isLineupCategory && focusable.kind === 'group'}
+					<CategoryCrossRefs slug={focusable.slug} />
+				{/if}
 				{#if isPlanetsCategory && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
 				{/if}

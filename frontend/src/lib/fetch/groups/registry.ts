@@ -43,6 +43,7 @@ export const SMALL_BODY_FLAG_SLUG_PREFIX = 'flag-';
 export const CATEGORY_SLUG_PREFIX = 'cat-';
 export const CAT_SOLAR_SYSTEM = `${CATEGORY_SLUG_PREFIX}solar-system`;
 export const CAT_PLANETS = `${CATEGORY_SLUG_PREFIX}planets`;
+export const CAT_DWARF_PLANETS = `${CATEGORY_SLUG_PREFIX}dwarf-planets`;
 export const CAT_MOONS = `${CATEGORY_SLUG_PREFIX}moons`;
 export const CAT_ASTEROIDS = `${CATEGORY_SLUG_PREFIX}asteroids`;
 export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
@@ -54,6 +55,7 @@ export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
 export const CATEGORY_LABELS: Record<string, string> = {
 	[CAT_SOLAR_SYSTEM]: 'Solar System',
 	[CAT_PLANETS]: 'Planets',
+	[CAT_DWARF_PLANETS]: 'Dwarf Planets',
 	[CAT_MOONS]: 'Moons',
 	[CAT_ASTEROIDS]: 'Asteroids',
 	[CAT_COMETS]: 'Comets',
