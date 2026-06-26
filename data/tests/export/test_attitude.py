@@ -186,6 +186,88 @@ def test_baseline_residual_is_identity_for_pure_spin() -> None:
         assert angle_between(r, _IDENTITY) < 1e-3
 
 
+class TestAttitudeCache:
+    """Per-probe incremental cache: an unchanged probe skips re-extraction and
+    re-injects its manifest; a kernel change re-extracts."""
+
+    @staticmethod
+    def _fake_result(probe_out_dir):
+        """Stub an `extract_attitude` that writes one chunk + returns its result."""
+        from space_map_data.export.position.probes.attitude.extractor import (
+            ExtractionResult,
+        )
+        from space_map_data.export.position.probes.attitude.writer import ChunkFile
+
+        probe_out_dir.mkdir(parents=True, exist_ok=True)
+        (probe_out_dir / "0.bin.gz").write_bytes(b"chunk")
+        return ExtractionResult(
+            n_keyframes=10,
+            files=[
+                ChunkFile(
+                    name="0.bin.gz",
+                    start_jd=2454046.5,
+                    end_jd=2454047.5,
+                    n_keyframes=10,
+                    baseline_index=0,
+                )
+            ],
+            segments=[],
+            coverage_start_jd=2454046.5,
+            coverage_end_jd=2454047.5,
+        )
+
+    def _run(self, monkeypatch, out_dir, stamps, calls):
+        from space_map_data.export.position.probes.attitude import orchestrator
+
+        def fake_extract(probe_out_dir, ck_paths, bus_instr_id, frame_name):
+            calls.append(bus_instr_id)
+            return self._fake_result(probe_out_dir)
+
+        monkeypatch.setattr(orchestrator, "extract_attitude", fake_extract)
+        global_data: dict[str, dict] = {"probe-7": {}}
+        summary: dict[str, dict] = {}
+        orchestrator._run_probe(
+            out_dir,
+            {"probe_id": 7, "kernel_sources": [{"mission": "M", "naif_id": -82}]},
+            "M",
+            "FRAME",
+            ["/ck/a.bc"],
+            stamps,
+            global_data,
+            summary,
+        )
+        return global_data, summary
+
+    def test_second_run_skips_extraction(self, monkeypatch, tmp_path) -> None:
+        calls: list[int] = []
+        stamps = {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}
+        gd1, s1 = self._run(monkeypatch, tmp_path, stamps, calls)
+        gd2, s2 = self._run(monkeypatch, tmp_path, stamps, calls)
+        assert len(calls) == 1  # second run served from cache
+        assert s2["7"]["cached"] is True
+        # Manifest re-injected on the cache hit even though nothing re-extracted.
+        assert gd1["probe-7"]["attitude"] == gd2["probe-7"]["attitude"]
+        assert gd2["probe-7"]["attitude"]["n_keyframes"] == 10
+
+    def test_kernel_change_reextracts(self, monkeypatch, tmp_path) -> None:
+        calls: list[int] = []
+        self._run(
+            monkeypatch, tmp_path, {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}, calls
+        )
+        self._run(
+            monkeypatch, tmp_path, {"/ck/a.bc": {"mtime_ns": 9, "size": 2}}, calls
+        )
+        assert len(calls) == 2  # changed stamp invalidated the cache
+
+    def test_missing_chunk_invalidates_cache(self, monkeypatch, tmp_path) -> None:
+        calls: list[int] = []
+        stamps = {"/ck/a.bc": {"mtime_ns": 1, "size": 2}}
+        self._run(monkeypatch, tmp_path, stamps, calls)
+        (tmp_path / "attitude" / "7" / "0.bin.gz").unlink()
+        self._run(monkeypatch, tmp_path, stamps, calls)
+        assert len(calls) == 2  # vanished chunk forces a rebuild
+
+
 def test_enforce_min_span_drops_slivers() -> None:
     """Boundaries closer than the min span (to each other or the ends) are
     dropped so a brief blip can't carve a sliver segment."""

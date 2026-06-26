@@ -12,24 +12,30 @@ import spiceypy
 
 logger = logging.getLogger(__name__)
 
+# Overflow raises SPICE(CELLTOOSMALL) and loses the file's coverage; busiest
+# reconstructed CKs (Cassini/MRO) run to a few thousand spans.
+_COVER_CELL_SIZE = 1_000_000
+
 
 def ck_windows(ck_paths: list[str], instr_id: int) -> list[tuple[float, float]]:
-    """Per-file (start_et, end_et) coverage for `instr_id`, ascending by start.
+    """Gap-free (start_et, end_et) coverage spans for `instr_id`, TDB, sorted.
 
-    One window per CK (its outer interval envelope), in TDB seconds. Files
-    with no coverage for `instr_id` are skipped — a mission set mixes bus CKs
-    with instrument-articulation ones. Windows may overlap; the caller trims.
+    One entry per real interval, not the file's outer envelope: an envelope's
+    holes cost a thrown `SpiceyError` per in-gap sample downstream — millions
+    for a sparse CK. Files with no coverage for `instr_id` are skipped (a
+    mission mixes bus and instrument-articulation CKs); spans may overlap.
     """
     windows: list[tuple[float, float]] = []
     for path in ck_paths:
-        cover = spiceypy.support_types.SPICEDOUBLE_CELL(100_000)
+        cover = spiceypy.support_types.SPICEDOUBLE_CELL(_COVER_CELL_SIZE)
         try:
             spiceypy.ckcov(path, instr_id, False, "INTERVAL", 0.0, "TDB", cover)
         except spiceypy.exceptions.SpiceyError:
             logger.warning("attitude: ckcov failed for %s, skipping", path)
             continue
-        if len(cover) >= 2:
-            windows.append((float(cover[0]), float(cover[len(cover) - 1])))
+        for i in range(spiceypy.wncard(cover)):
+            start, end = spiceypy.wnfetd(cover, i)
+            windows.append((float(start), float(end)))
     windows.sort()
     return windows
 
