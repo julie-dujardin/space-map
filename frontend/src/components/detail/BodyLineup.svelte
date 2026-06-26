@@ -244,6 +244,14 @@
 	const spinQuat = new Quaternion();
 	let spinAnimId: number | undefined;
 
+	// Hover spread: an eased per-body x-offset layered over the static layout (so
+	// hit-testing, on the base columns, is untouched — same trick as the spin).
+	const HOVER_MARGIN_BASE = 20; // px floor, so a tiny hovered body still clears its neighbours
+	const HOVER_MARGIN_FACTOR = 0.6; // + this × the hovered body's on-screen radius
+	const HOVER_COMPRESS = 0.5; // the other gaps shrink to this fraction
+	const bodyShift = new Map<string, number>();
+	let shiftAnimId: number | undefined;
+
 	// Hover halo: a depth-tested billboard at the hovered body's depth, so the
 	// depth buffer occludes it behind nearer bodies and lets it draw over
 	// farther ones. The ring texture is regenerated per body size so the halo
@@ -300,6 +308,7 @@
 	function clearMeshes() {
 		baseQuats.clear();
 		spinAngles.clear();
+		bodyShift.clear();
 		for (const node of cloudNodes.values()) disposeCloudNode(node);
 		cloudNodes.clear();
 		for (const mesh of meshes.values()) {
@@ -358,7 +367,7 @@
 			// visible on top of the giants they overlap — easier to see and click.
 			// The depth gaps are huge (no 3D intersection seam) but invisible under
 			// the orthographic projection.
-			mesh.position.set(p.cx, HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
+			mesh.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
 			// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 			// in local space before the tilt quaternion, so it aligns with the pole.
 			mesh.scale.set(p.pr, p.pr * (p.polarRatio ?? 1), p.pr);
@@ -366,6 +375,7 @@
 		});
 		updateGlow();
 		animateSpin();
+		animateShift();
 		renderer.render(scene, camera);
 	}
 
@@ -406,6 +416,60 @@
 		spinAnimId = requestAnimationFrame(step);
 	}
 
+	/** Per-body x-offset for the current hover, built outward from the pinned
+	 *  hovered body. Clamped to point *away* from it (left bodies never move
+	 *  right and vice-versa) — drifting toward the hovered body looked wrong. */
+	function shiftTargets(): Map<string, number> {
+		const out = new Map<string, number>();
+		for (const p of layout) out.set(p.id, 0);
+		const n = layout.length;
+		const h = hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
+		if (h < 0 || n < 2) return out;
+		const cxH = layout[h].cx;
+		const margin = HOVER_MARGIN_BASE + HOVER_MARGIN_FACTOR * layout[h].pr;
+		let x = cxH;
+		for (let i = h - 1; i >= 0; i--) {
+			const baseGap = layout[i + 1].cx - layout[i].cx;
+			x -= i === h - 1 ? baseGap + margin : baseGap * HOVER_COMPRESS;
+			out.set(layout[i].id, Math.min(0, x - layout[i].cx));
+		}
+		x = cxH;
+		for (let i = h + 1; i < n; i++) {
+			const baseGap = layout[i].cx - layout[i - 1].cx;
+			x += i === h + 1 ? baseGap + margin : baseGap * HOVER_COMPRESS;
+			out.set(layout[i].id, Math.max(0, x - layout[i].cx));
+		}
+		return out;
+	}
+
+	/** Ease each body toward its hover-spread offset, ticking rAF only in motion. */
+	function animateShift() {
+		if (shiftAnimId !== undefined) return;
+		const settled = (t: Map<string, number>) =>
+			layout.every((p) => Math.abs((bodyShift.get(p.id) ?? 0) - (t.get(p.id) ?? 0)) < 0.5);
+		if (settled(shiftTargets())) return;
+		const step = () => {
+			shiftAnimId = undefined;
+			if (!renderer || !scene || !camera) return;
+			const targets = shiftTargets(); // recomputed live: hover can change mid-flight
+			let active = false;
+			for (const p of layout) {
+				const target = targets.get(p.id) ?? 0;
+				let s = bodyShift.get(p.id) ?? 0;
+				s += (target - s) * 0.18;
+				if (Math.abs(target - s) < 0.5) s = target;
+				bodyShift.set(p.id, s);
+				const mesh = meshes.get(p.id);
+				if (mesh) mesh.position.x = p.cx + s;
+				if (s !== target) active = true;
+			}
+			updateGlow(); // keep the halo on the hovered body as it eases into place
+			renderer.render(scene, camera);
+			if (active) shiftAnimId = requestAnimationFrame(step);
+		};
+		shiftAnimId = requestAnimationFrame(step);
+	}
+
 	function updateGlow() {
 		if (!glowSprite) return;
 		const i = hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
@@ -418,7 +482,10 @@
 			const halfY = p.pr * (p.polarRatio ?? 1) + GLOW_PX;
 			// Sit just behind the hovered body (ε ≪ Z_STEP): its own disc masks
 			// the halo's core, nearer bodies occlude it, farther ones show through.
-			glowSprite.position.set(p.cx, HEIGHT - p.cy, -(layout.length - 1 - i) * Z_STEP - 50);
+			// Live animated x, not the base column — the halo must follow a body
+			// still easing in (hover landing on a previously-displaced one).
+			const x = p.cx + (bodyShift.get(p.id) ?? 0);
+			glowSprite.position.set(x, HEIGHT - p.cy, -(layout.length - 1 - i) * Z_STEP - 50);
 			glowSprite.scale.set(2 * half, 2 * halfY, 1);
 			const key = `${p.id}:${Math.round(p.pr)}`;
 			if (key !== glowKey) {
@@ -490,6 +557,8 @@
 			glowAnimId = undefined;
 			if (spinAnimId !== undefined) cancelAnimationFrame(spinAnimId);
 			spinAnimId = undefined;
+			if (shiftAnimId !== undefined) cancelAnimationFrame(shiftAnimId);
+			shiftAnimId = undefined;
 			clearMeshes();
 			glowSprite?.material.map?.dispose();
 			glowSprite?.material.dispose();
@@ -515,40 +584,90 @@
 	});
 </script>
 
-<div
-	bind:this={containerEl}
-	bind:clientWidth={width}
-	onpointermove={(e) => (hoveredId = pickAt(e.clientX, e.clientY))}
-	onpointerleave={() => (hoveredId = null)}
-	class="bg-muted/30 relative w-full overflow-hidden rounded-md"
-	style="height: {HEIGHT}px"
-	role="group"
-	aria-label={ariaLabel}
->
-	<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
+<!-- Wrapper isn't clipped, so the hover tooltip can sit below the canvas. -->
+<div class="relative w-full">
+	<div
+		bind:this={containerEl}
+		bind:clientWidth={width}
+		onpointermove={(e) => (hoveredId = pickAt(e.clientX, e.clientY))}
+		onpointerleave={() => (hoveredId = null)}
+		class="bg-muted/30 relative w-full overflow-hidden rounded-md"
+		style="height: {HEIGHT}px"
+		role="group"
+		aria-label={ariaLabel}
+	>
+		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
 
-	{#each layout as p (p.id)}
-		<!-- Keyboard/href target per body column; mouse hover is resolved by
+		{#each layout as p (p.id)}
+			<!-- Keyboard/href target per body column; mouse hover is resolved by
 		     pickAt (mesh-priority) on the container, and click focuses whatever is
 		     hovered. -->
-		<a
-			href={href(p)}
-			onclick={focusHovered}
-			onfocus={() => (hoveredId = p.id)}
-			onblur={() => hoveredId === p.id && (hoveredId = null)}
-			aria-label={p.name}
-			class="pointer-events-auto absolute top-0 bottom-0 outline-none"
-			style="left: {p.colLeft}px; width: {p.colWidth}px"
-		></a>
-	{/each}
+			<a
+				href={href(p)}
+				onclick={focusHovered}
+				onfocus={() => (hoveredId = p.id)}
+				onblur={() => hoveredId === p.id && (hoveredId = null)}
+				aria-label={p.name}
+				class="pointer-events-auto absolute top-0 bottom-0 outline-none"
+				style="left: {p.colLeft}px; width: {p.colWidth}px"
+			></a>
+		{/each}
+
+		{#if pageCount > 1}
+			<!-- Controls suppress body hover: stopPropagation keeps the container's
+		     pointermove (which resolves a body under the cursor) from firing, and
+		     pointerenter clears any glow left from the body just outside the button. -->
+			<button
+				type="button"
+				onclick={() => goToPage(page - 1)}
+				onpointerenter={() => (hoveredId = null)}
+				onpointermove={(e) => e.stopPropagation()}
+				disabled={page === 0}
+				aria-label={m.search_prev_page()}
+				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
+			>
+				<ChevronLeftIcon size={18} />
+			</button>
+			<button
+				type="button"
+				onclick={() => goToPage(page + 1)}
+				onpointerenter={() => (hoveredId = null)}
+				onpointermove={(e) => e.stopPropagation()}
+				disabled={page === pageCount - 1}
+				aria-label={m.search_next_page()}
+				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
+			>
+				<ChevronRightIcon size={18} />
+			</button>
+			<div
+				role="group"
+				aria-label={ariaLabel}
+				onpointerenter={() => (hoveredId = null)}
+				onpointermove={(e) => e.stopPropagation()}
+				class="pointer-events-auto absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1.5"
+			>
+				{#each Array.from({ length: pageCount }).map((_x, i) => i) as i (i)}
+					<button
+						type="button"
+						onclick={() => goToPage(i)}
+						aria-label={m.pagination_go_to_page({ n: i + 1 })}
+						aria-current={i === page}
+						class="h-1.5 w-1.5 rounded-full transition {i === page
+							? 'bg-foreground/80'
+							: 'bg-foreground/30 hover:bg-foreground/50'}"
+					></button>
+				{/each}
+			</div>
+		{/if}
+	</div>
 
 	{#if hovered}
+		<!-- Offset below the canvas so it never covers the bodies. -->
 		<div
 			bind:clientWidth={tipWidth}
 			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 w-max -translate-x-1/2 rounded-md border px-2 py-1 text-center shadow-md"
-			style="left: {tipLeft}px; top: 6px; max-width: {tipMaxWidth}px; visibility: {tipWidth === 0
-				? 'hidden'
-				: 'visible'}"
+			style="left: {tipLeft}px; top: {HEIGHT +
+				6}px; max-width: {tipMaxWidth}px; visibility: {tipWidth === 0 ? 'hidden' : 'visible'}"
 		>
 			<div class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
 			{#if hovered.description}
@@ -557,53 +676,6 @@
 			<div class="text-muted-foreground text-[11px] tabular-nums">
 				{m.diameter()}: {formatNumber(Math.round(hovered.diameterKm))} km
 			</div>
-		</div>
-	{/if}
-
-	{#if pageCount > 1}
-		<!-- Controls suppress body hover: stopPropagation keeps the container's
-		     pointermove (which resolves a body under the cursor) from firing, and
-		     pointerenter clears any glow left from the body just outside the button. -->
-		<button
-			type="button"
-			onclick={() => goToPage(page - 1)}
-			onpointerenter={() => (hoveredId = null)}
-			onpointermove={(e) => e.stopPropagation()}
-			disabled={page === 0}
-			aria-label={m.search_prev_page()}
-			class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
-		>
-			<ChevronLeftIcon size={18} />
-		</button>
-		<button
-			type="button"
-			onclick={() => goToPage(page + 1)}
-			onpointerenter={() => (hoveredId = null)}
-			onpointermove={(e) => e.stopPropagation()}
-			disabled={page === pageCount - 1}
-			aria-label={m.search_next_page()}
-			class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
-		>
-			<ChevronRightIcon size={18} />
-		</button>
-		<div
-			role="group"
-			aria-label={ariaLabel}
-			onpointerenter={() => (hoveredId = null)}
-			onpointermove={(e) => e.stopPropagation()}
-			class="pointer-events-auto absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 gap-1.5"
-		>
-			{#each Array.from({ length: pageCount }).map((_x, i) => i) as i (i)}
-				<button
-					type="button"
-					onclick={() => goToPage(i)}
-					aria-label={m.pagination_go_to_page({ n: i + 1 })}
-					aria-current={i === page}
-					class="h-1.5 w-1.5 rounded-full transition {i === page
-						? 'bg-foreground/80'
-						: 'bg-foreground/30 hover:bg-foreground/50'}"
-				></button>
-			{/each}
 		</div>
 	{/if}
 </div>

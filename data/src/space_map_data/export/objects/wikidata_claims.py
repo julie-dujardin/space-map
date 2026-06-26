@@ -889,9 +889,11 @@ def _all_entity_qids(claims: dict, prop: str) -> list[str]:
     ]
 
 
-def radius_km_from_claims(claims: dict, units: UnitConverter, qid: str) -> float | None:
-    """Extract the mean radius in km from raw Wikidata claims (P2120), or None."""
-    qty = _single_quantity(claims, "P2120", needs_unit=True, qid=qid)
+def _length_km_from_claims(
+    claims: dict, prop: str, units: UnitConverter, qid: str
+) -> float | None:
+    """A single length-quantity claim (``prop``) in km, or None."""
+    qty = _single_quantity(claims, prop, needs_unit=True, qid=qid)
     if qty is None:
         return None
     if isinstance(qty, (int, float)):
@@ -904,6 +906,18 @@ def radius_km_from_claims(claims: dict, units: UnitConverter, qid: str) -> float
         float(qty["value"]), unit_qid, expected_type="length"
     )
     if metres is None:
-        logger.warning("radius_km_from_claims: unknown unit QID %s, skipping", unit_qid)
+        logger.warning("%s: unknown unit QID %s, skipping", prop, unit_qid)
         return None
     return metres / 1000.0
+
+
+def radius_km_from_claims(claims: dict, units: UnitConverter, qid: str) -> float | None:
+    """Mean radius in km from raw Wikidata claims (P2120), or None."""
+    return _length_km_from_claims(claims, "P2120", units, qid)
+
+
+def diameter_km_from_claims(
+    claims: dict, units: UnitConverter, qid: str
+) -> float | None:
+    """Diameter in km from raw Wikidata claims (P2386), or None."""
+    return _length_km_from_claims(claims, "P2386", units, qid)

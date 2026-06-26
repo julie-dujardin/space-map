@@ -9,6 +9,9 @@
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
 	import GroupLink from './properties/GroupLink.svelte';
+	import DwarfPlanetGroupLinks from './properties/DwarfPlanetGroupLinks.svelte';
+	import BodyCategoryTile from './properties/BodyCategoryTile.svelte';
+	import { ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import Share2Icon from '@lucide/svelte/icons/share-2';
@@ -467,6 +470,8 @@
 	// Small body → its SBDB orbit-class group. Suppressed on fragments: they
 	// point to their parent comet instead
 	let orbitClass = $derived(isGroupMode || fragmentOf ? undefined : data?.global?.sbdb?.class);
+	let isDwarfPlanetBody = $derived(body?.data.objectType === ObjectType.DWARF_PLANET);
+	let isMoonBody = $derived(body?.data.objectType === ObjectType.MOON);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
@@ -597,7 +602,11 @@
 			{#if fragmentOf}
 				<FragmentOf {fragmentOf} />
 			{/if}
-			{#if orbitClass}
+			{#if isDwarfPlanetBody}
+				<DwarfPlanetGroupLinks {orbitClass} />
+			{:else if isMoonBody}
+				<BodyCategoryTile slug={CAT_MOONS} />
+			{:else if orbitClass}
 				<GroupLink className={orbitClass} />
 			{/if}
 			{#if body}

@@ -32,6 +32,12 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.notable import NotableObject
+from space_map_data.export.objects.wikidata_claims import (
+    diameter_km_from_claims,
+    radius_km_from_claims,
+)
+from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.ingest.providers.objects.sbdb import G_KM3_PER_KG_S2
 from space_map_data.models.object.main import Object, ObjectType, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, OrbitClass
@@ -164,14 +170,35 @@ def _planet_members(
     return [_body_member(*row, radii=radii, gms=gms) for row in rows]
 
 
+def _wikidata_diameter_km(
+    qid: str | None, entities: WikidataEntityCache, units: UnitConverter
+) -> float | None:
+    """A dwarf planet's diameter (km) from Wikidata — P2120 radius or P2386."""
+    if qid is None:
+        return None
+    entity = entities.get_entity(qid)
+    if entity is None:
+        return None
+    claims = entity["claims"]
+    radius = radius_km_from_claims(claims, units, qid)
+    if radius is not None:
+        return 2 * radius
+    return diameter_km_from_claims(claims, units, qid)
+
+
 def _dwarf_planet_members(
-    session: Session, radii: dict[int, dict], gms: dict[int, float]
+    session: Session,
+    radii: dict[int, dict],
+    gms: dict[int, float],
+    entities: WikidataEntityCache,
+    units: UnitConverter,
 ) -> list[NotableObject]:
     """The dwarf planets, most-prominent first (image then sitelinks).
 
     Unlike the eight major planets these carry no static heliocentric order, so
-    they rank by prominence like the moons strip. Only Pluto/Ceres have PCK
-    mass + radii; the rest size off the frontend lineup's own radius table.
+    they rank by prominence like the moons strip. Their lineup size comes from
+    each body's measured Wikidata diameter (none are in the PCK that feeds the
+    major planets/moons).
     """
     rows = (
         session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
@@ -181,7 +208,19 @@ def _dwarf_planet_members(
         )
         .all()
     )
-    return [_body_member(*row, radii=radii, gms=gms) for row in rows]
+    members: list[NotableObject] = []
+    for row in rows:
+        member = _body_member(*row, radii=radii, gms=gms)
+        member.diameter_km = _wikidata_diameter_km(member.wikidata_qid, entities, units)
+        if member.diameter_km is None:
+            logger.warning(
+                "Dwarf planet %s (%s) has no Wikidata diameter; it won't size in "
+                "the lineup",
+                member.object_id,
+                member.wikidata_qid,
+            )
+        members.append(member)
+    return members
 
 
 def _moon_data(session: Session) -> tuple[int, list[dict]]:
@@ -334,6 +373,7 @@ def build_category_data(
     launch_histograms: dict[str, dict[int, int]],
     radii: dict[int, dict],
     gms: dict[int, float],
+    entities: WikidataEntityCache,
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
@@ -380,7 +420,9 @@ def build_category_data(
     satellites = earth_classes + constellations
 
     planet_members = _planet_members(session, radii, gms)
-    dwarf_members = _dwarf_planet_members(session, radii, gms)
+    dwarf_members = _dwarf_planet_members(
+        session, radii, gms, entities, UnitConverter(entities)
+    )
     moon_members = _ranked_members(
         session, Object.object_type == ObjectType.moon, TOP_MOONS, radii, gms
     )

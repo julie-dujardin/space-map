@@ -5,13 +5,14 @@
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { ObjectDetailData } from '$lib/fetch/objects/object-data';
 import type { GlobalGroupData } from '$lib/fetch/groups/details';
-import { ObjectType, sbdbOrbitClass, type PositionedBody } from '$lib/types/objects';
-import { dominantPlanetId, isTopLevelParent } from '$lib/scene/state/bodies.svelte';
+import { ObjectType, type PositionedBody } from '$lib/types/objects';
+import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import {
 	CATEGORY_LABELS,
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
 	CAT_COMETS,
+	CAT_DWARF_PLANETS,
 	CAT_PLANETS,
 	CAT_PROBES,
 	CAT_SATELLITES,
@@ -108,21 +109,9 @@ export function parentCrumb(
 
 	const data = focusable.body.data;
 
-	// Dwarf planets aren't zoned — derive the class from heliocentric (a, e).
-	// Pluto's own elements orbit its barycenter, so walk one level up for it.
-	if (data.objectType === ObjectType.DWARF_PLANET) {
-		let a = data.a;
-		let e = data.e;
-		if (!isTopLevelParent(data.parentId)) {
-			const parent = ctx?.getBody(data.parentId);
-			if (parent?.data.a) {
-				a = parent.data.a;
-				e = parent.data.e;
-			}
-		}
-		const cls = sbdbOrbitClass(a, e);
-		return cls ? classGroup(cls) : null;
-	}
+	// Dwarf planets climb to their category page; the orbit-class zone stays
+	// reachable via the body page's cross-ref tile.
+	if (data.objectType === ObjectType.DWARF_PLANET) return categoryCrumb(CAT_DWARF_PLANETS);
 
 	// Planets → the Planets category; the Sun → the Solar System root.
 	if (data.objectType === ObjectType.PLANET) return categoryCrumb(CAT_PLANETS);

@@ -219,6 +219,7 @@ def run_groups_tier(
             earth_launch_histograms,
             radii,
             gms,
+            wikidata_entities,
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
     missions = _mission_groups()
