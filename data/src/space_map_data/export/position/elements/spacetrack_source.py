@@ -27,10 +27,16 @@ ARCHIVE_DIR = SOURCES_POSITION_DIR / "spacetrack" / "archive"
 # Years distilled into weekly Earth snapshots — the full Space-Track archive.
 ARCHIVE_YEARS: tuple[int, ...] = tuple(range(2004, 2026))
 
-# Per-year cache of "which NORADs appear in the archive", keyed on each year's
-# zip fingerprint. Lets Earth-sat ingest set has_position from archive coverage
-# without re-streaming the ~12 GB archive every run.
+# Per-year cache of "which NORADs ship in the archive weeks", keyed on each
+# year's zip fingerprint. Lets Earth-sat ingest set has_position from archive
+# coverage without re-streaming the ~12 GB archive every run.
 ARCHIVE_NORAD_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_norads.json"
+
+# Bump whenever the scan logic changes what counts as "in the archive": the
+# cache keys on zip fingerprints, which don't move when only the code changes,
+# so a stale cache would otherwise survive a logic fix and silently feed the
+# old result. A version mismatch forces a full rescan.
+_NORAD_SCAN_VERSION = 1
 
 # Standard TLE pivot: 2-digit years 00-56 are 21st century, 57-99 are 20th.
 _TLE_YEAR_PIVOT = 57
@@ -259,46 +265,49 @@ def load_archive_weeks(
 
 
 def _scan_year_norads(year: int) -> set[int]:
-    """Every catalog number appearing on a TLE line-1 in a year's archive zip(s).
+    """Every NORAD that ships in ``year``'s distilled weekly snapshots.
 
-    Line-1-only: we don't pair or parse the elements, just read the 5-digit
-    catalog number. Across a full year every satellite has thousands of TLEs,
-    so a stray malformed line can't drop it from the set — and skipping the
-    full parse makes this ~10x cheaper than :func:`load_archive_weeks`. Alpha-5
-    catalog numbers (>99999) fail the int parse and are skipped; those sats are
-    recent enough to be in the current catalogue, so ingest already flags them.
+    Derived from :func:`load_archive_weeks` rather than a raw line-1 scan: the
+    yearly zip is a full historical TLE dump (e.g. ``tle2004`` carries 1959-epoch
+    records), and ``load_archive_weeks`` buckets by epoch and keeps only weeks
+    anchored in ``year``. Going through it guarantees the set matches exactly
+    what the Earth-zone export writes — a satellite that decayed before the
+    archive window has old-epoch TLEs in the dump but no in-window week, so it
+    is correctly excluded.
     """
     norads: set[int] = set()
-    for zip_path in year_zips(year):
-        seen = 0
-        with zipfile.ZipFile(zip_path) as zf:
-            member = zf.namelist()[0]
-            with zf.open(member) as raw:
-                for bline in raw:
-                    if bline[:2] != b"1 ":
-                        continue
-                    try:
-                        norads.add(int(bline[2:7]))
-                    except ValueError:
-                        continue  # alpha-5 / malformed catalog number
-                    seen += 1
-        logger.info("Scanned %s: %d TLE line-1 records", zip_path.name, seen)
+    for week in load_archive_weeks([year]).values():
+        norads.update(week)
     return norads
 
 
 def _load_norad_cache() -> dict:
+    """Load the per-year cache, or {} if absent/unreadable/stale.
+
+    A version mismatch returns {} so every year rescans — the fingerprints
+    can't catch a scan-logic change on their own.
+    """
     if not ARCHIVE_NORAD_CACHE.exists():
         return {}
     try:
-        return json.loads(ARCHIVE_NORAD_CACHE.read_text())
+        cache = json.loads(ARCHIVE_NORAD_CACHE.read_text())
     except (OSError, json.JSONDecodeError):
         logger.warning(
             "Unreadable archive NORAD cache %s — rebuilding", ARCHIVE_NORAD_CACHE
         )
         return {}
+    if cache.get("version") != _NORAD_SCAN_VERSION:
+        logger.info(
+            "Archive NORAD cache version %r != %r — rebuilding",
+            cache.get("version"),
+            _NORAD_SCAN_VERSION,
+        )
+        return {}
+    return cache
 
 
 def _write_norad_cache(cache: dict) -> None:
+    cache["version"] = _NORAD_SCAN_VERSION
     ARCHIVE_NORAD_CACHE.parent.mkdir(parents=True, exist_ok=True)
     ARCHIVE_NORAD_CACHE.write_text(json.dumps(cache))
 
