@@ -99,6 +99,8 @@ export interface LocalizedGroupData {
 	child_groups?: ChildGroupEntry[];
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	notable_member_names?: Record<string, string>;
+	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
+	notable_member_descriptions?: Record<string, string>;
 }
 
 export interface GroupDetailData {

@@ -44,7 +44,12 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.groups.small_body import LargestBody
 from space_map_data.export.images import collect_group_images
-from space_map_data.export.notable import NotableObject, notable_entries, notable_names
+from space_map_data.export.notable import (
+    NotableObject,
+    notable_descriptions,
+    notable_entries,
+    notable_names,
+)
 from space_map_data.export.objects.wikidata_claims import (
     attach_country_group_link,
     extract_claims,
@@ -634,6 +639,11 @@ def write_group_bundles(
                 )
                 if member_names:
                     lang_data["notable_member_names"] = member_names
+                member_descriptions = notable_descriptions(
+                    members, lang, wikidata_entities
+                )
+                if member_descriptions:
+                    lang_data["notable_member_descriptions"] = member_descriptions
             if lang_data:
                 localized_by_slug[lang][group.slug] = lang_data
 

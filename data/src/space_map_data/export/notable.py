@@ -71,3 +71,21 @@ def notable_names(
         if label and label != entry["name"]:
             out[member.object_id] = label
     return out
+
+
+def notable_descriptions(
+    members: list[NotableObject],
+    lang: str,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, str]:
+    """Per-language Wikidata short descriptions keyed by object id, for the
+    lineup hero's hover tooltip (e.g. "moon of Jupiter")."""
+    out: dict[str, str] = {}
+    for member in members:
+        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        if not wd:
+            continue
+        desc = wd["descriptions"].get(lang)
+        if desc:
+            out[member.object_id] = desc
+    return out

@@ -213,13 +213,21 @@ class TestProbeMembers:
 class _StubEntityCache:
     """Minimal WikidataEntityCache stand-in: ``get_entity`` from a dict."""
 
-    def __init__(self, labels_by_qid: dict[str, dict[str, str]]) -> None:
+    def __init__(
+        self,
+        labels_by_qid: dict[str, dict[str, str]],
+        descriptions_by_qid: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         self._labels = labels_by_qid
+        self._descriptions = descriptions_by_qid or {}
 
     def get_entity(self, qid: str | None) -> dict | None:
         if qid is None or qid not in self._labels:
             return None
-        return {"labels": self._labels[qid]}
+        return {
+            "labels": self._labels[qid],
+            "descriptions": self._descriptions.get(qid, {}),
+        }
 
 
 def _obj(object_id: str, qid: str | None, fallback: str) -> NotableObject:
@@ -285,3 +293,16 @@ class TestNotableEntries:
         entries = notable.notable_entries(members, cache)  # type: ignore[arg-type]
         names = notable.notable_names(members, entries, "ru", cache)  # type: ignore[arg-type]
         assert names == {"spkid-1": "Церера"}
+
+    def test_localized_descriptions_omit_members_without_one(self) -> None:
+        cache = _StubEntityCache(
+            {"Q1": {"en": "Ceres"}, "Q2": {"en": "Vesta"}, "Q3": {"en": "Pallas"}},
+            {"Q1": {"en": "dwarf planet", "ru": "карликовая планета"}, "Q2": {}},
+        )
+        members = [
+            _obj("spkid-1", "Q1", "1 Ceres"),
+            _obj("spkid-2", "Q2", "4 Vesta"),
+            _obj("spkid-3", None, "no qid"),
+        ]
+        descs = notable.notable_descriptions(members, "en", cache)  # type: ignore[arg-type]
+        assert descs == {"spkid-1": "dwarf planet"}

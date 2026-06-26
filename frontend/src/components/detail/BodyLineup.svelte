@@ -5,6 +5,8 @@
 	export interface LineupBody {
 		id: string;
 		name: string;
+		/** Localized Wikidata short description, shown under the name on hover. */
+		description?: string;
 		/** Equatorial radius (km) = PCK `radii.a`; the value the 3D scene renders
 		 *  (`max(a,b,c)`). Drives the sphere's pixel size. */
 		radiusKm: number;
@@ -174,9 +176,12 @@
 
 	let hovered = $derived(layout.find((p) => p.id === hoveredId) ?? null);
 
-	// Clamp the tooltip's center by its own half-width so the whole box stays
-	// inside the canvas (nowrap means clamping the center alone isn't enough).
+	// `w-max` + `max-width` sizes the box to its content, capped at the canvas:
+	// auto width would shrink-to-fit the space right of `left` and squash it.
+	// `tipLeft` then clamps the center so the whole box stays inside the canvas.
+	const TIP_MARGIN = 6;
 	let tipWidth = $state(0);
+	let tipMaxWidth = $derived(Math.max(0, width - 2 * TIP_MARGIN));
 	let tipLeft = $derived.by(() => {
 		if (!hovered) return 0;
 		const half = tipWidth / 2;
@@ -230,6 +235,14 @@
 	const geometry = new SphereGeometry(1, 48, 48);
 	const meshes = new Map<string, Mesh>();
 	const cloudNodes = new Map<string, CloudNode>();
+
+	// Hover spin: cache each body's base orientation so a frame is base · spin,
+	// letting the hovered body turn about its own pole without losing its tilt.
+	const HOVER_SPIN = Math.PI / 2;
+	const baseQuats = new Map<string, Quaternion>();
+	const spinAngles = new Map<string, number>();
+	const spinQuat = new Quaternion();
+	let spinAnimId: number | undefined;
 
 	// Hover halo: a depth-tested billboard at the hovered body's depth, so the
 	// depth buffer occludes it behind nearer bodies and lets it draw over
@@ -285,6 +298,8 @@
 	}
 
 	function clearMeshes() {
+		baseQuats.clear();
+		spinAngles.clear();
 		for (const node of cloudNodes.values()) disposeCloudNode(node);
 		cloudNodes.clear();
 		for (const mesh of meshes.values()) {
@@ -303,7 +318,8 @@
 			const color = BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
 			const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
 			const mesh = new Mesh(geometry, material);
-			mesh.quaternion.copy(styledQuaternion(b));
+			baseQuats.set(b.id, styledQuaternion(b));
+			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
 			meshes.set(b.id, mesh);
 			const url = versionedUrl(
@@ -346,9 +362,48 @@
 			// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 			// in local space before the tilt quaternion, so it aligns with the pole.
 			mesh.scale.set(p.pr, p.pr * (p.polarRatio ?? 1), p.pr);
+			applySpin(mesh, p.id);
 		});
 		updateGlow();
+		animateSpin();
 		renderer.render(scene, camera);
+	}
+
+	/** base · spin(angle about the pole); identity-cheap at rest. */
+	function applySpin(mesh: Mesh, id: string) {
+		const base = baseQuats.get(id);
+		if (!base) return;
+		const a = spinAngles.get(id) ?? 0;
+		if (a === 0) {
+			mesh.quaternion.copy(base);
+			return;
+		}
+		mesh.quaternion.copy(base).multiply(spinQuat.setFromAxisAngle(AXIS_Y, a));
+	}
+
+	/** Ease each body's spin toward its target, ticking rAF only while in motion. */
+	function animateSpin() {
+		if (spinAnimId !== undefined) return;
+		const spinTarget = (id: string) => (id === hoveredId ? HOVER_SPIN : 0);
+		if (!layout.some((p) => (spinAngles.get(p.id) ?? 0) !== spinTarget(p.id))) return;
+		const step = () => {
+			spinAnimId = undefined;
+			if (!renderer || !scene || !camera) return;
+			let active = false;
+			for (const p of layout) {
+				const target = spinTarget(p.id);
+				let a = spinAngles.get(p.id) ?? 0;
+				a += (target - a) * 0.1;
+				if (Math.abs(target - a) < 0.0005) a = target;
+				spinAngles.set(p.id, a);
+				const mesh = meshes.get(p.id);
+				if (mesh) applySpin(mesh, p.id);
+				if (a !== target) active = true;
+			}
+			renderer.render(scene, camera);
+			if (active) spinAnimId = requestAnimationFrame(step);
+		};
+		spinAnimId = requestAnimationFrame(step);
 	}
 
 	function updateGlow() {
@@ -433,6 +488,8 @@
 		return () => {
 			if (glowAnimId !== undefined) cancelAnimationFrame(glowAnimId);
 			glowAnimId = undefined;
+			if (spinAnimId !== undefined) cancelAnimationFrame(spinAnimId);
+			spinAnimId = undefined;
 			clearMeshes();
 			glowSprite?.material.map?.dispose();
 			glowSprite?.material.dispose();
@@ -488,10 +545,15 @@
 	{#if hovered}
 		<div
 			bind:clientWidth={tipWidth}
-			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border px-2 py-1 text-center whitespace-nowrap shadow-md"
-			style="left: {tipLeft}px; top: 6px; visibility: {tipWidth === 0 ? 'hidden' : 'visible'}"
+			class="bg-popover text-popover-foreground border-border pointer-events-none absolute z-10 w-max -translate-x-1/2 rounded-md border px-2 py-1 text-center shadow-md"
+			style="left: {tipLeft}px; top: 6px; max-width: {tipMaxWidth}px; visibility: {tipWidth === 0
+				? 'hidden'
+				: 'visible'}"
 		>
-			<div class="text-xs font-medium">{hovered.name}</div>
+			<div class="text-xs font-medium whitespace-nowrap">{hovered.name}</div>
+			{#if hovered.description}
+				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
+			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
 				{m.diameter()}: {formatNumber(Math.round(hovered.diameterKm))} km
 			</div>

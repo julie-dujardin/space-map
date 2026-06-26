@@ -6,8 +6,9 @@
 	interface Props {
 		members: NotableMemberEntry[];
 		localizedNames?: Record<string, string>;
+		localizedDescriptions?: Record<string, string>;
 	}
-	let { members, localizedNames }: Props = $props();
+	let { members, localizedNames, localizedDescriptions }: Props = $props();
 
 	// Per-moon geometry from the export's PCK radii/poles (the top two dozen by
 	// prominence). Category `notable_members` carry no geometry, so the lineup
@@ -47,7 +48,12 @@
 		for (const [id, geom] of Object.entries(MOONS)) {
 			const mm = byId.get(id);
 			if (!mm) continue;
-			out.push({ id, name: localizedNames?.[id] ?? mm.name, ...geom });
+			out.push({
+				id,
+				name: localizedNames?.[id] ?? mm.name,
+				description: localizedDescriptions?.[id],
+				...geom
+			});
 		}
 		return out;
 	});

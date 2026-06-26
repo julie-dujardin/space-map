@@ -395,6 +395,9 @@
 				? { ...data?.localized?.notable_moon_names, ...data?.localized?.notable_satellite_names }
 				: data?.localized?.notable_moon_names
 	);
+	let memberDescriptions = $derived(
+		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
+	);
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
@@ -520,7 +523,11 @@
 {/snippet}
 
 {#snippet moonHero()}
-	<MoonLineup members={notableMembers ?? []} localizedNames={memberNames} />
+	<MoonLineup
+		members={notableMembers ?? []}
+		localizedNames={memberNames}
+		localizedDescriptions={memberDescriptions}
+	/>
 {/snippet}
 
 {#snippet overviewPanel()}
