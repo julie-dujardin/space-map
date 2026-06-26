@@ -277,6 +277,7 @@ interface LocalizedObjectData {
     url?: string;        // URL
   };
   notable_moon_names?: Record<string, string>; // notable-moon Object.id → localized label, only where it differs from the global name
+  notable_moon_descriptions?: Record<string, string>; // notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip
   notable_satellite_names?: Record<string, string>; // featured-satellite id-or-slug → localized label, only where it differs
   fragment_names?: Record<string, string>;     // fragment Object.id → localized label, only where it differs from the global name
   mission_member_names?: Record<string, string>; // mission-member Object.id → localized label, only where it differs from the global name

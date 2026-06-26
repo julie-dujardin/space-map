@@ -47,9 +47,9 @@ interface NotableEntry {
   group?: string;                   // group slug; route /g/<slug> instead of an object (featured constellations in notable_satellites)
   diameter_km?: number;             // equivalent-sphere diameter (members) / mean PCK-radii diameter (moons)
   mass_kg?: number;                 // body mass from PCK GM (major bodies only — e.g. category planet/moon members)
-  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies + Ceres/Pluto
+  radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies, Ceres/Pluto + PCK moons
   radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
-  pole?: { ra: number; dec: number }; // IAU J2000 pole RA/Dec (deg) from PCK orientation; the lineup's true axial tilt (major bodies + dwarfs)
+  pole?: { ra: number; dec: number }; // IAU J2000 pole RA/Dec (deg) from PCK orientation; the lineup's true axial tilt (major bodies, dwarfs + major moons)
   albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
   spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
   color?: string;                   // #rrggbb physically-derived surface colour (small bodies only); per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Absent → frontend generic tint

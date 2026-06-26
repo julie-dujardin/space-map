@@ -381,6 +381,8 @@ export interface LocalizedObjectData {
 	};
 	/** notable-moon Object.id → localized label, only where it differs from the global name. */
 	notable_moon_names?: Record<string, string>;
+	/** notable-moon Object.id → localized Wikidata short description, for the planet-page moon lineup hover tooltip. */
+	notable_moon_descriptions?: Record<string, string>;
 	/** featured-satellite id/slug → localized label, only where it differs. */
 	notable_satellite_names?: Record<string, string>;
 	/** fragment Object.id → localized label, only where it differs from the global name. */

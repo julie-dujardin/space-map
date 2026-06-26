@@ -20,7 +20,13 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.notable import NotableObject, notable_entries, notable_names
+from space_map_data.export.notable import (
+    NotableObject,
+    notable_descriptions,
+    notable_entries,
+    notable_names,
+    render_geometry,
+)
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
@@ -83,7 +89,7 @@ def _resolve_host(session: Session, parent_id: str) -> str:
 
 
 def notable_moons_by_host(
-    session: Session, radii: dict[int, dict]
+    session: Session, radii: dict[int, dict], orientation: dict[int, dict]
 ) -> dict[str, HostMoons]:
     """Top moons per host body, keyed by the host's Object.id.
 
@@ -132,16 +138,24 @@ def notable_moons_by_host(
             reverse=True,
         )
         top = children[:NOTABLE_MOON_COUNT]
-        moons = [
-            NotableObject(
-                object_id=r.id,
-                wikidata_qid=r.wikidata_qid,
-                fallback_name=r.name or r.provisional_designation or r.id,
-                diameter_km=_mean_diameter_km(r.naif_id, radii),
-                first_obs=None,
+        moons = []
+        for r in top:
+            # Triaxial radii + pole give the lineup its true oblate shape and tilt
+            # (the same geometry as the 3D scene); diameter_km stays for the list.
+            geo = render_geometry(
+                r.naif_id, r.wikidata_qid, radii, orientation=orientation
             )
-            for r in top
-        ]
+            moons.append(
+                NotableObject(
+                    object_id=r.id,
+                    wikidata_qid=r.wikidata_qid,
+                    fallback_name=r.name or r.provisional_designation or r.id,
+                    diameter_km=_mean_diameter_km(r.naif_id, radii),
+                    first_obs=None,
+                    radii=geo.radii,
+                    pole=geo.pole,
+                )
+            )
         named = sum(1 for r in children if r.name)
         # A host may already be present from another parent (shouldn't happen —
         # one parent per host — but merge defensively rather than overwrite).
@@ -167,6 +181,7 @@ def attach_notable_moons(
     chunk: ChunkObjectData,
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
+    orientation: dict[int, dict],
 ) -> None:
     """Inject ``notable_moons`` + ``moon_count`` + ``named_moon_count`` into
     each host's global bundle.
@@ -177,7 +192,7 @@ def attach_notable_moons(
     stays consistent (it's written during the zone pass and can't be flipped
     here).
     """
-    hosts = notable_moons_by_host(session, radii)
+    hosts = notable_moons_by_host(session, radii, orientation)
     attached = 0
     for host_id, host_moons in hosts.items():
         global_data = chunk.global_data.get(host_id)
@@ -199,5 +214,11 @@ def attach_notable_moons(
             names = notable_names(host_moons.moons, entries, lang, wikidata_entities)
             if names:
                 localized["notable_moon_names"] = names
+            # Short descriptions feed the planet-page moon lineup hover tooltip.
+            descriptions = notable_descriptions(
+                host_moons.moons, lang, wikidata_entities
+            )
+            if descriptions:
+                localized["notable_moon_descriptions"] = descriptions
         attached += 1
     logger.info("Attached notable moons to %d host bodies", attached)

@@ -1089,7 +1089,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # before they're sealed. Moons need a session (the zone session above
         # is already closed), so open a short-lived one for the lookup.
         with Session(engine) as session:
-            attach_notable_moons(session, agg.all_objects, wikidata_entities, radii)
+            attach_notable_moons(
+                session, agg.all_objects, wikidata_entities, radii, orientation
+            )
             attach_featured_satellites(session, agg.all_objects, wikidata_entities)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
         attach_probe_missions(agg.all_objects, wikidata_entities)

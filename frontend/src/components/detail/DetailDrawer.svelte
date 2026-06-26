@@ -438,6 +438,19 @@
 			{ names: memberNames, descriptions: memberDescriptions }
 		)
 	);
+	// A planet's moons get a lineup hero in its Moons tab. The moon-count test
+	// mirrors `showMembersTab` (declared later) so the hero only exists where the
+	// tab does; ≥2 renderable keeps it a real lineup, not a lone sphere.
+	let isPlanetBody = $derived(body?.data.objectType === ObjectType.PLANET);
+	let moonDescriptions = $derived(
+		isGroupMode ? undefined : data?.localized?.notable_moon_descriptions
+	);
+	let isMoonLineupHero = $derived(
+		isPlanetBody &&
+			!satellitesGroup &&
+			(data?.global?.moon_count ?? 0) > STRIP_CAPACITY &&
+			renderableCount(notableMembers) >= 2
+	);
 	// The category lineup hero, picked by which body-collection page this is.
 	// Planets/moons/dwarfs build geometry straight from the export; small-body
 	// zones use the colour-augmented `smallBodyBodies`. `null` → no lineup hero
@@ -473,6 +486,15 @@
 				perPage: 5
 			};
 		if (isSmallBodyLineup) return { bodies: smallBodyBodies, ariaLabel: fallbackName, perPage: 8 };
+		if (isMoonLineupHero)
+			return {
+				bodies: buildLineup(members, geometryFromMember, {
+					names: memberNames,
+					descriptions: moonDescriptions
+				}),
+				ariaLabel: m.type_moon(),
+				perPage: 5
+			};
 		return null;
 	});
 	// Surface-imagery credits for the lineup spheres. Loaded lazily (once per
@@ -500,9 +522,11 @@
 	// Which lineup metadata sources to credit, read off the fields the members
 	// actually carry (radii/pole/mass ⇒ SPICE PCK; radius fallback ⇒ Wikidata),
 	// plus SBDB for the small-body pages whose diameter/albedo/spectral data is
-	// SBDB-sourced.
+	// SBDB-sourced. Moon diameters are PCK-mean radii, so the moon hero credits PCK.
 	let lineupPck = $derived(
-		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radii || mm.pole || mm.mass_kg != null)
+		!!lineupHero &&
+			(isMoonLineupHero ||
+				(notableMembers ?? []).some((mm) => mm.radii || mm.pole || mm.mass_kg != null))
 	);
 	let lineupWikidata = $derived(
 		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radius_km != null)
@@ -664,7 +688,7 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
-				hero={lineupHero ? lineupHeroSnippet : undefined}
+				hero={lineupHero && !isMoonLineupHero ? lineupHeroSnippet : undefined}
 				onShowGallery={() => {
 					appState.setTab('images');
 					appState.setImage(0);
@@ -773,10 +797,10 @@
 				global={data?.global ?? null}
 				earthSat={earthSatCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
-				pck={lineupPck}
-				sbdb={lineupSbdb}
-				wikidata={lineupWikidata}
-				imagery={lineupImagery}
+				pck={!isMoonLineupHero && lineupPck}
+				sbdb={!isMoonLineupHero && lineupSbdb}
+				wikidata={!isMoonLineupHero && lineupWikidata}
+				imagery={isMoonLineupHero ? [] : lineupImagery}
 			/>
 		</div>
 	{/if}
@@ -793,6 +817,11 @@
 
 {#snippet membersPanel()}
 	<div class="flex flex-col gap-3 p-1">
+		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
+		     foot here, where the spheres render — not the overview footer. -->
+		{#if isMoonLineupHero}
+			{@render lineupHeroSnippet()}
+		{/if}
 		{@render tabsBar()}
 		{#if isGroupMode && groupDetail?.global}
 			<PaginatedMemberList
@@ -808,6 +837,9 @@
 				localizedNames={memberNames}
 				fallback={notableMembers}
 			/>
+		{/if}
+		{#if isMoonLineupHero}
+			<SourcesFooter global={null} pck={lineupPck} imagery={lineupImagery} />
 		{/if}
 	</div>
 {/snippet}
