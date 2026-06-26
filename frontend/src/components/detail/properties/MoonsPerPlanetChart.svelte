@@ -6,7 +6,7 @@
 	import type { GlobalGroupData } from '$lib/fetch/groups/details';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { focusClick, focusHref } from '$lib/state/focus-link';
 
 	interface Props {
 		/** Distance-ordered moon tallies per planet/dwarf host. */
@@ -22,18 +22,6 @@
 	function color(id: string): string {
 		return BODY_COLORS[id] ?? DEFAULT_BODY_COLOR;
 	}
-
-	function hostHref(id: string, name: string): string | undefined {
-		if (!appState) return undefined;
-		return serializeUrl(applyFocus(appState.view, { type: urlTypeFromId(id), id, name }));
-	}
-
-	function focusHost(e: MouseEvent, id: string, name: string) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject) return;
-		e.preventDefault();
-		focusObject(id, name, { moveCamera: true });
-	}
 </script>
 
 {#if entries.length > 0}
@@ -46,8 +34,8 @@
 					<div class="flex items-baseline justify-between gap-2">
 						{#if appState}
 							<a
-								href={hostHref(e.primary_id, e.name)}
-								onclick={(ev) => focusHost(ev, e.primary_id, e.name)}
+								href={focusHref(appState, e.primary_id, e.name)}
+								onclick={focusClick(focusObject, e.primary_id, e.name)}
 								class="pointer-events-auto hover:text-foreground min-w-0 truncate underline"
 								><span class="truncate">{e.name}</span></a
 							>

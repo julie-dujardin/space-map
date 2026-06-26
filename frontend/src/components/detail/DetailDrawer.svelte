@@ -59,7 +59,7 @@
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
-	import BodyLineup from './BodyLineup.svelte';
+	import BodyLineup, { type LineupBody } from './BodyLineup.svelte';
 	import { buildLineup, geometryFromMember, renderableCount } from './lineup';
 	import { BODY_COLORS } from '$lib/constants';
 	import { smallBodyColor, groupColorKey } from '$lib/constants/small-body-colors';
@@ -439,6 +439,43 @@
 			{ names: memberNames, descriptions: memberDescriptions }
 		)
 	);
+	// The category lineup hero, picked by which body-collection page this is.
+	// Planets/moons/dwarfs build geometry straight from the export; small-body
+	// zones use the colour-augmented `smallBodyBodies`. `null` → no lineup hero
+	// (the page keeps its image hero). Planets omit hover descriptions by design.
+	let lineupHero = $derived.by<{
+		bodies: LineupBody[];
+		ariaLabel: string;
+		perPage?: number;
+	} | null>(() => {
+		const members = notableMembers;
+		if (!members || members.length === 0) return null;
+		if (isPlanetsCategory)
+			return {
+				bodies: buildLineup(members, geometryFromMember, { names: memberNames }),
+				ariaLabel: m.type_planet()
+			};
+		if (isMoonsCategory)
+			return {
+				bodies: buildLineup(members, geometryFromMember, {
+					names: memberNames,
+					descriptions: memberDescriptions
+				}),
+				ariaLabel: m.type_moon(),
+				perPage: 5
+			};
+		if (isDwarfPlanetsCategory)
+			return {
+				bodies: buildLineup(members, geometryFromMember, {
+					names: memberNames,
+					descriptions: memberDescriptions
+				}),
+				ariaLabel: m.type_dwarf_planet(),
+				perPage: 5
+			};
+		if (isSmallBodyLineup) return { bodies: smallBodyBodies, ariaLabel: fallbackName, perPage: 8 };
+		return null;
+	});
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
@@ -557,37 +594,14 @@
 	</div>
 {/snippet}
 
-{#snippet planetHero()}
-	<BodyLineup
-		bodies={buildLineup(notableMembers ?? [], geometryFromMember, { names: memberNames })}
-		ariaLabel={m.type_planet()}
-	/>
-{/snippet}
-
-{#snippet moonHero()}
-	<BodyLineup
-		bodies={buildLineup(notableMembers ?? [], geometryFromMember, {
-			names: memberNames,
-			descriptions: memberDescriptions
-		})}
-		ariaLabel={m.type_moon()}
-		perPage={5}
-	/>
-{/snippet}
-
-{#snippet dwarfHero()}
-	<BodyLineup
-		bodies={buildLineup(notableMembers ?? [], geometryFromMember, {
-			names: memberNames,
-			descriptions: memberDescriptions
-		})}
-		ariaLabel={m.type_dwarf_planet()}
-		perPage={5}
-	/>
-{/snippet}
-
-{#snippet smallBodyHero()}
-	<BodyLineup bodies={smallBodyBodies} ariaLabel={fallbackName} perPage={8} />
+{#snippet lineupHeroSnippet()}
+	{#if lineupHero}
+		<BodyLineup
+			bodies={lineupHero.bodies}
+			ariaLabel={lineupHero.ariaLabel}
+			perPage={lineupHero.perPage}
+		/>
+	{/if}
 {/snippet}
 
 {#snippet overviewPanel()}
@@ -607,17 +621,7 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
-				hero={notableMembers && notableMembers.length > 0
-					? isPlanetsCategory
-						? planetHero
-						: isMoonsCategory
-							? moonHero
-							: isDwarfPlanetsCategory
-								? dwarfHero
-								: isSmallBodyLineup
-									? smallBodyHero
-									: undefined
-					: undefined}
+				hero={lineupHero ? lineupHeroSnippet : undefined}
 				onShowGallery={() => {
 					activeTab = 'images';
 					appState.setImage(0);

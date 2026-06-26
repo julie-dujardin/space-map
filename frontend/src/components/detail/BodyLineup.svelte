@@ -56,7 +56,7 @@
 	import { DATA_BASE, versionedUrl } from '$lib/fetch/data-base';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { focusHref, isModifiedClick } from '$lib/state/focus-link';
 	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -208,13 +208,6 @@
 		return null;
 	}
 
-	function href(b: Body): string | undefined {
-		if (!appState) return undefined;
-		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(b.id), id: b.id, name: b.name })
-		);
-	}
-
 	function goToPage(p: number) {
 		const next = Math.min(Math.max(p, 0), pageCount - 1);
 		if (next === page) return;
@@ -223,8 +216,7 @@
 	}
 
 	function focusHovered(e: MouseEvent) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject || !hoveredId) return;
+		if (isModifiedClick(e) || !focusObject || !hoveredId) return;
 		e.preventDefault();
 		const b = items.find((x) => x.id === hoveredId);
 		focusObject(hoveredId, b?.name ?? hoveredId, { moveCamera: true });
@@ -606,7 +598,7 @@
 		     pickAt (mesh-priority) on the container, and click focuses whatever is
 		     hovered. -->
 			<a
-				href={href(p)}
+				href={focusHref(appState, p.id, p.name)}
 				onclick={focusHovered}
 				onfocus={() => (hoveredId = p.id)}
 				onblur={() => hoveredId === p.id && (hoveredId = null)}

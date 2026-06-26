@@ -32,7 +32,7 @@ from space_map_data.export.groups.registry import (
     GroupType,
 )
 from space_map_data.export.groups.small_body import _notable_members
-from space_map_data.export.notable import NotableObject, pole_from_orientation
+from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
     radius_km_from_claims,
@@ -121,7 +121,8 @@ def _body_member(
     gms: dict[int, float],
     orientation: dict[int, dict],
 ) -> NotableObject:
-    """Denormalize a body, attaching its PCK mass, triaxial radii + pole where known."""
+    """Denormalize a body, attaching its PCK mass + shared lineup render geometry."""
+    geo = render_geometry(naif_id, qid, radii, orientation=orientation)
     return NotableObject(
         object_id=obj_id,
         wikidata_qid=qid,
@@ -129,8 +130,9 @@ def _body_member(
         diameter_km=None,
         first_obs=None,
         mass_kg=_mass_kg_from_gm(gms.get(naif_id) if naif_id is not None else None),
-        radii=radii.get(naif_id) if naif_id is not None else None,
-        pole=pole_from_orientation(orientation, naif_id),
+        radii=geo.radii,
+        radius_km=geo.radius_km,
+        pole=geo.pole,
     )
 
 

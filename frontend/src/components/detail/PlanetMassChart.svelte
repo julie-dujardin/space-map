@@ -4,7 +4,7 @@
 	import { BODY_COLORS, DEFAULT_BODY_COLOR } from '$lib/constants';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { focusClick, focusHref } from '$lib/state/focus-link';
 	import { formatNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -79,20 +79,6 @@
 		return Math.min(Math.max(hovered.x + hovered.w / 2, half), Math.max(half, width - half));
 	});
 
-	function href(p: Planet): string | undefined {
-		if (!appState) return undefined;
-		return serializeUrl(
-			applyFocus(appState.view, { type: urlTypeFromId(p.id), id: p.id, name: p.name })
-		);
-	}
-
-	function focus(e: MouseEvent, p: Planet) {
-		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject) return;
-		e.preventDefault();
-		focusObject(p.id, p.name, { moveCamera: true });
-	}
-
 	function sharePct(s: number): string {
 		return `${formatNumber(s * 100)}%`;
 	}
@@ -142,8 +128,8 @@
 				<!-- hit targets: a min-width band per planet so the slivers stay reachable -->
 				{#each segments as s (s.id)}
 					<a
-						href={href(s)}
-						onclick={(e) => focus(e, s)}
+						href={focusHref(appState, s.id, s.name)}
+						onclick={focusClick(focusObject, s.id, s.name)}
 						onmouseenter={() => (hoveredId = s.id)}
 						onfocus={() => (hoveredId = s.id)}
 						onblur={() => hoveredId === s.id && (hoveredId = null)}

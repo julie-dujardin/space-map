@@ -26,11 +26,7 @@ from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
     SMALL_BODY_FLAG_SLUG_PREFIX,
 )
-from space_map_data.export.notable import (
-    NotableObject,
-    pole_from_orientation,
-    render_size,
-)
+from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
@@ -277,7 +273,6 @@ def _notable_members(
         .all()
     )
     radii = radii or {}
-    orientation = orientation or {}
     members: list[NotableObject] = []
     for row in rows:
         (
@@ -295,7 +290,9 @@ def _notable_members(
             spec_b,
             spec_t,
         ) = row
-        triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
+        geo = render_geometry(
+            naif_id, qid, radii, units, wikidata_entities, orientation
+        )
         members.append(
             NotableObject(
                 object_id=object_id,
@@ -303,9 +300,9 @@ def _notable_members(
                 fallback_name=obj_name or full_name or sbdb_name or pdes or str(spkid),
                 diameter_km=diameter,
                 first_obs=first_obs,
-                radii=triaxial,
-                radius_km=radius_km,
-                pole=pole_from_orientation(orientation, naif_id),
+                radii=geo.radii,
+                radius_km=geo.radius_km,
+                pole=geo.pole,
                 albedo=albedo,
                 # SMASS (spec_B) preferred over Tholen (spec_T); the frontend maps
                 # the taxonomic class to a representative surface tint.

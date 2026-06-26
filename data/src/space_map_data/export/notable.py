@@ -7,6 +7,7 @@ a per-language label-override map keyed by the same routing id.
 """
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from space_map_data.export.images import collect_object_images, pick_thumbnail
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
@@ -71,6 +72,36 @@ def pole_from_orientation(
         return None
     o = orientation[naif_id]
     return {"ra": o["pole_ra_0"], "dec": o["pole_dec_0"]}
+
+
+class RenderGeometry(NamedTuple):
+    """A body's lineup render geometry: triaxial radii, scalar-radius fallback, pole."""
+
+    radii: dict | None
+    radius_km: float | None
+    pole: dict | None
+
+
+def render_geometry(
+    naif_id: int | None,
+    qid: str | None,
+    radii: dict[int, dict],
+    units: UnitConverter | None = None,
+    wikidata_entities: WikidataEntityCache | None = None,
+    orientation: dict[int, dict] | None = None,
+) -> RenderGeometry:
+    """The lineup render geometry for a body — size + tilt — as one bundle.
+
+    The single source every member builder uses, so a body sizes *and* tilts
+    identically wherever it appears (e.g. Pluto on the dwarf-planet page and in
+    its trans-Neptunian orbit-class zone). ``units``/``wikidata_entities`` enable
+    the Wikidata-radius fallback; ``orientation`` enables the pole — omit either
+    to skip that source.
+    """
+    triaxial, radius_km = render_size(naif_id, qid, radii, units, wikidata_entities)
+    return RenderGeometry(
+        triaxial, radius_km, pole_from_orientation(orientation or {}, naif_id)
+    )
 
 
 def notable_entries(
