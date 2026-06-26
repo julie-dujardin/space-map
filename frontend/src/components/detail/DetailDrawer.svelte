@@ -64,6 +64,7 @@
 	import { BODY_COLORS } from '$lib/constants';
 	import { smallBodyColor, groupColorKey } from '$lib/constants/small-body-colors';
 	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
+	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './PlanetMassChart.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
@@ -476,6 +477,39 @@
 		if (isSmallBodyLineup) return { bodies: smallBodyBodies, ariaLabel: fallbackName, perPage: 8 };
 		return null;
 	});
+	// Surface-imagery credits for the lineup spheres. Loaded lazily (once per
+	// session) only on pages that actually show a lineup, then narrowed to the
+	// bodies on screen and deduped by author so the footer lists each map source
+	// once. NC maps (Steve Albers, FarGetaNik…) make this attribution a licence
+	// condition, not a nicety.
+	let textureCredits = $state<Map<string, TextureSource> | null>(null);
+	$effect(() => {
+		if (!lineupHero) return;
+		loadTextureCredits().then((m) => (textureCredits = m));
+	});
+	let lineupImagery = $derived.by(() => {
+		if (!lineupHero || !textureCredits) return [];
+		const out: { key: string; label: string; url: string }[] = [];
+		const seen = new Set<string>();
+		for (const b of lineupHero.bodies) {
+			const cred = textureCredits.get(b.id);
+			if (!cred || seen.has(cred.organisation)) continue;
+			seen.add(cred.organisation);
+			out.push({ key: cred.organisation, label: cred.organisation, url: cred.source });
+		}
+		return out;
+	});
+	// Which lineup metadata sources to credit, read off the fields the members
+	// actually carry (radii/pole/mass ⇒ SPICE PCK; radius fallback ⇒ Wikidata),
+	// plus SBDB for the small-body pages whose diameter/albedo/spectral data is
+	// SBDB-sourced.
+	let lineupPck = $derived(
+		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radii || mm.pole || mm.mass_kg != null)
+	);
+	let lineupWikidata = $derived(
+		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radius_km != null)
+	);
+	let lineupSbdb = $derived(!!lineupHero && isSmallBodyLineup);
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
@@ -484,10 +518,10 @@
 	// A split-comet family group lists fragments; a mission group lists its craft.
 	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
 	let isMissionGroup = $derived(groupDetail?.global?.type === 'mission');
-	// Earth sats (and every earth-sat group page) draw on CelesTrak SATCAT + GCAT for metadata.
+	// Earth sats (and earth-sat group pages) draw on CelesTrak SATCAT + GCAT for metadata.
 	let earthSatCredit = $derived(
 		isGroupMode
-			? groupDetail?.global?.applies_to === 'earth_sat'
+			? ['constellation', 'bus', 'earth_orbit_class'].includes(groupDetail?.global?.type ?? '')
 			: data?.global?.cross_refs?.norad_cat_id != null
 	);
 	let membersHeading = $derived(
@@ -730,6 +764,10 @@
 				global={data?.global ?? null}
 				earthSat={earthSatCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
+				pck={lineupPck}
+				sbdb={lineupSbdb}
+				wikidata={lineupWikidata}
+				imagery={lineupImagery}
 			/>
 		</div>
 	{/if}

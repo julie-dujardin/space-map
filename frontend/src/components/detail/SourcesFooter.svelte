@@ -4,21 +4,37 @@
 	import { archiveLabel, archiveUrl } from '$lib/credits/archive-labels';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 
+	interface Source {
+		key: string;
+		label: string;
+		url: string;
+	}
+
 	interface Props {
 		global: GlobalObjectData | null;
 		/** True for earth satellites and earth-satellite group pages — credits CelesTrak SATCAT + GCAT. */
 		earthSat?: boolean;
 		/** Show the CC BY-SA notice when the description text is drawn from Wikipedia. */
 		wikipediaLicensed?: boolean;
+		/** Collection-page lineup draws radii/pole/mass from SPICE PCK → credit IAU WGCCRE + NAIF. */
+		pck?: boolean;
+		/** Collection-page lineup draws diameter/albedo/spectral type from the Small-Body Database. */
+		sbdb?: boolean;
+		/** Collection-page lineup uses the Wikidata radius fallback for some bodies' size. */
+		wikidata?: boolean;
+		/** Distinct surface-imagery credits for the lineup spheres (deduped by author). */
+		imagery?: Source[];
 	}
 
-	let { global, earthSat = false, wikipediaLicensed = false }: Props = $props();
-
-	interface Source {
-		key: string;
-		label: string;
-		url: string;
-	}
+	let {
+		global,
+		earthSat = false,
+		wikipediaLicensed = false,
+		pck = false,
+		sbdb = false,
+		wikidata = false,
+		imagery = []
+	}: Props = $props();
 
 	// Per-object metadata has no per-field provenance, so we credit each source
 	// from a clean signal that makes its contribution near-certain. Deduped by
@@ -37,6 +53,16 @@
 
 		const qid = global?.cross_refs?.wikidata_qid;
 		if (qid) add('wikidata', m.source_wikidata_name(), `https://www.wikidata.org/wiki/${qid}`);
+		// Lineup radius fallback (Wikidata P2120) — credit Wikidata even on a page
+		// whose own group has no QID. Deduped against the QID link above by key.
+		else if (wikidata) add('wikidata', m.source_wikidata_name(), 'https://www.wikidata.org/');
+
+		// Collection-page lineup geometry/metadata, derived from the members shown.
+		if (sbdb) add('sbdb', m.source_sbdb_name(), 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html');
+		if (pck) {
+			add('iau-wgccre', m.source_iau_wgccre_short(), 'https://www.iau.org/WG100/WG100/Home.aspx');
+			add('naif', m.source_spice_pck_name(), 'https://naif.jpl.nasa.gov/naif/');
+		}
 
 		const mpc = global?.cross_refs?.mpc_designation;
 		if (mpc)
@@ -80,6 +106,20 @@
 	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
 		<span>{m.metadata_sources_prefix()}</span>
 		{#each sources as source (source.key)}
+			<a
+				href={source.url}
+				target="_blank"
+				rel="noopener"
+				class="inline-flex items-center gap-1 underline hover:text-foreground"
+				>{source.label}<ExternalLinkIcon class="size-3 shrink-0" /></a
+			>
+		{/each}
+	</p>
+{/if}
+{#if imagery.length}
+	<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+		<span>{m.attribution_imagery()}:</span>
+		{#each imagery as source (source.key)}
 			<a
 				href={source.url}
 				target="_blank"
