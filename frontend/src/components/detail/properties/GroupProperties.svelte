@@ -28,6 +28,9 @@
 	let inception = $derived(global?.inception);
 	let dissolved = $derived(global?.dissolved);
 	let launchHistogram = $derived(global?.launch_histogram);
+	// Launch-vehicle variant breakdown (most-launched first), with GCAT specs.
+	let variants = $derived(global?.variants ?? []);
+	let maxVariantCount = $derived(variants.length > 0 ? Math.max(...variants.map((v) => v.n)) : 0);
 	let discoveryHistogram = $derived(global?.discovery_histogram);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
@@ -142,6 +145,39 @@
 		<div class="pt-1">
 			<YearHistogramChart histogram={launchHistogram} kind="launch" />
 		</div>
+	</div>
+{/if}
+
+{#if variants.length > 0}
+	<div class="flex flex-col gap-1">
+		<div class="flex items-baseline justify-between">
+			<h3 class="text-sm font-medium">{m.group_variants()}</h3>
+			<span class="text-muted-foreground text-[10px] uppercase">{m.group_variants_launches()}</span>
+		</div>
+		<div class="border-border/60 border-t"></div>
+		<ul class="flex flex-col gap-2 pt-1 text-sm">
+			{#each variants as v (v.name)}
+				<li class="flex flex-col gap-1">
+					<div class="flex items-baseline justify-between gap-2">
+						<span class="min-w-0 truncate">
+							{v.name}
+							{#if v.leo_capacity_kg}
+								<span class="text-muted-foreground text-xs"
+									>· {m.group_variant_payload_leo({ kg: formatNumber(v.leo_capacity_kg) })}</span
+								>
+							{/if}
+						</span>
+						<span class="text-muted-foreground tabular-nums">{formatNumber(v.n)}</span>
+					</div>
+					<div class="bg-muted h-1 overflow-hidden rounded-full">
+						<div
+							class="bg-primary h-full rounded-full"
+							style:width="{maxVariantCount > 0 ? (v.n / maxVariantCount) * 100 : 0}%"
+						></div>
+					</div>
+				</li>
+			{/each}
+		</ul>
 	</div>
 {/if}
 

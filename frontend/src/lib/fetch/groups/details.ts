@@ -19,6 +19,20 @@ export interface ConstellationEntry extends EntityRef {
 	n: number;
 }
 
+/** One GCAT launch-vehicle variant (e.g. "Atlas V 551") with its launch tally
+ *  and physical specs from lv.tsv. Specs are present only when GCAT records them. */
+export interface LaunchVehicleVariant {
+	name: string;
+	/** Distinct launches flown by this variant. */
+	n: number;
+	launch_mass_t?: number;
+	leo_capacity_kg?: number;
+	gto_capacity_kg?: number;
+	thrust_kn?: number;
+	length_m?: number;
+	diameter_m?: number;
+}
+
 export interface GlobalGroupData {
 	slug: string;
 	type: GroupType;
@@ -43,6 +57,20 @@ export interface GlobalGroupData {
 	active_count?: number;
 	/** Members with a SATCAT decay_date. */
 	decayed_count?: number;
+	/** Launch-vehicle only: distinct GCAT launches (deduped by launch_tag). For lv-
+	 *  groups ``launch_histogram`` / ``first_launch_date`` come from the launchlog
+	 *  (the full history), not just the spent stages still catalogued in orbit. */
+	launch_count?: number;
+	/** Launch-vehicle only: payload rows across all launches (many per launch). */
+	payload_count?: number;
+	/** Launch-vehicle only: launches with a successful outcome (GCAT Launch_Code). */
+	success_count?: number;
+	/** Launch-vehicle only: launches with a failure outcome. */
+	failure_count?: number;
+	/** Launch-vehicle only: latest launch date (ISO string). */
+	last_launch_date?: string;
+	/** Launch-vehicle only: per-variant breakdown, most-launched first, with GCAT specs. */
+	variants?: LaunchVehicleVariant[];
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
 	/** Member with the largest SBDB.diameter; absent when no member has a measured diameter. */

@@ -4,6 +4,10 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_BY_SLUG,
     CONSTELLATION_SLUG_PREFIX,
 )
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_SLUG_PREFIX,
@@ -118,19 +122,28 @@ def _constellation_group_ref(
 
     Display name comes from Wikidata when a QID is registered; otherwise the
     slug stands in. The group page renders the same fallback, so the chip and
-    the destination stay consistent.
+    the destination stay consistent. ROCKET constellations resolve to their
+    lv- launch-vehicle page (a spent stage's "constellation" is its vehicle).
     """
-    spec = CONSTELLATION_BY_SLUG.get(slug)
-    if spec is None:
-        return None
-    group_slug = f"{CONSTELLATION_SLUG_PREFIX}{slug}"
-    if spec.wikidata_qid is not None:
-        ref = resolve_entity_ref(spec.wikidata_qid, lang, wikidata_entities)
+    lv = LAUNCH_VEHICLE_BY_CONSTELLATION.get(slug)
+    if lv is not None:
+        group_slug = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}"
+        qid = lv.qid
+        fallback = lv.name or slug
+    else:
+        spec = CONSTELLATION_BY_SLUG.get(slug)
+        if spec is None:
+            return None
+        group_slug = f"{CONSTELLATION_SLUG_PREFIX}{slug}"
+        qid = spec.wikidata_qid
+        fallback = slug
+    if qid is not None:
+        ref = resolve_entity_ref(qid, lang, wikidata_entities)
         if ref is not None:
             ref.primary_type = "group"
             ref.primary_id = group_slug
             return ref
-    return EntityRef(name=slug, primary_type="group", primary_id=group_slug)
+    return EntityRef(name=fallback, primary_type="group", primary_id=group_slug)
 
 
 def _bus_group_ref(

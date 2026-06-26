@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 LAUNCHLOG_URL = "https://planet4589.org/space/gcat/tsv/derived/launchlog.tsv"
 EXPECTED_HEADER = "#Launch_Tag\t"
 
+# GCAT launch-vehicle table — family lineage + physical specs per LV name.
+# Joins to launchlog.lv_type; supplies launch-vehicle group pages.
+LV_URL = "https://planet4589.org/space/gcat/tsv/tables/lv.tsv"
+LV_EXPECTED_HEADER = "#LV_Name\t"
+
 
 class GCATDownloader(Downloader):
     name = PROVIDERS.GCAT
@@ -51,7 +56,35 @@ class GCATDownloader(Downloader):
         record_count = body.count("\n") - 2
         logger.info("Saved %s launchlog rows -> %s", f"{record_count:,}", out_file.name)
 
+        lv_record_count = self._download_lv()
+
         today = datetime.now(timezone.utc).date()
         self._save_metadata(
-            LAUNCHLOG_URL, record_count, complete=True, day=today.isoformat()
+            LAUNCHLOG_URL,
+            record_count,
+            complete=True,
+            day=today.isoformat(),
+            lv_source_url=LV_URL,
+            lv_record_count=lv_record_count,
         )
+
+    def _download_lv(self) -> int:
+        logger.info("Downloading GCAT launch-vehicle table...")
+        response = self.client.get(LV_URL)
+        if response.status_code in (403, 404):
+            raise DownloadError(
+                f"HTTP {response.status_code} fetching lv.tsv — stopping (do not retry)"
+            )
+        response.raise_for_status()
+
+        body = response.text
+        if not body.startswith(LV_EXPECTED_HEADER):
+            raise DownloadError(f"Unexpected lv.tsv response: {body[:80]!r}")
+
+        out_file = self.out_dir / "lv.tsv"
+        out_file.write_text(body)
+        record_count = body.count("\n") - 2  # header + "# Updated ..." precede the data
+        logger.info(
+            "Saved %s launch-vehicle rows -> %s", f"{record_count:,}", out_file.name
+        )
+        return record_count

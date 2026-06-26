@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
+from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.earth_sat import (
     build_earth_orbit_classes,
     write_earth_orbit_samples,
@@ -233,6 +234,7 @@ def run_groups_tier(
             wikidata_entities,
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
+        launch_vehicle_stats = build_launch_vehicle_stats(session)
     missions = _mission_groups()
 
     # Each constellation lists the buses its members fly, most-used first; the
@@ -284,6 +286,7 @@ def run_groups_tier(
         child_counts_by_group=build.constellation_bus_counts,
         extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
+        launch_vehicle_stats=launch_vehicle_stats,
     )
 
 

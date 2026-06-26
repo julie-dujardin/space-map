@@ -16,6 +16,7 @@ from space_map_data.ingest.providers import (
 )
 from space_map_data.ingest.providers.objects import (
     celestrak,
+    launch_vehicle,
     launchlog,
     probes,
     satcat,
@@ -63,6 +64,9 @@ def ingest_objects(download_dir: Path) -> None:
     # Sets `satcat_norad_cat_id` FK against the satcat table populated above.
     probes.ingest(download_dir)
     celestrak.ingest(download_dir)
+    # GCAT launch-vehicle table (lv.tsv): family lineage + specs per LV name,
+    # the join target for launchlog.lv_type. Independent of Object rows.
+    launch_vehicle.ingest(download_dir)
     # GCAT launch log: mirror the table and link each row to an Object by
     # COSPAR (piece == cospar_id). Runs last so every cospar-bearing Object
     # (incl. backfilled norad_satcat-* rows) already exists.

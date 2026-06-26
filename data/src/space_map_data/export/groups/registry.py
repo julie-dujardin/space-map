@@ -15,6 +15,11 @@ from space_map_data.constants.earth_sats.constellations import (
     CONSTELLATION_SLUG_PREFIX,
     CONSTELLATIONS,
 )
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
+    LAUNCH_VEHICLES,
+)
 from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_SLUG_PREFIX,
     LAUNCH_SITES,
@@ -45,6 +50,9 @@ class GroupType(StrEnum):
     SMALL_BODY_FLAG = "small_body_flag"
     EARTH_ORBIT_CLASS = "earth_orbit_class"
     CATEGORY = "category"
+    # Launch vehicles: ROCKET constellations (spent stages in orbit) merged with
+    # GCAT launchlog history. Migrated out of CONSTELLATION; UPPER_STAGE stays.
+    LAUNCH_VEHICLE = "launch_vehicle"
     # Synthetic per-family page for a parentless split comet (no intact body in
     # the catalog, e.g. Shoemaker-Levy 9). Built dynamically from the DB, not in
     # _build_groups; carries its fragments as notable members.
@@ -81,6 +89,7 @@ __all__ = [
     "GroupCategory",
     "GroupType",
     "LAUNCH_SITE_SLUG_PREFIX",
+    "LAUNCH_VEHICLE_SLUG_PREFIX",
     "ORGANIZATION_BUS_CHILDREN",
     "ORGANIZATION_SLUG_PREFIX",
     "SMALL_BODY_FLAG_SLUG_PREFIX",
@@ -98,6 +107,8 @@ class Group:
 
 
 def _build_groups() -> tuple[Group, ...]:
+    # ROCKET constellations are surfaced as lv- launch-vehicle pages instead;
+    # exclude them here so they don't also emit a const- page.
     constellations = tuple(
         Group(
             slug=f"{CONSTELLATION_SLUG_PREFIX}{c.slug}",
@@ -107,6 +118,16 @@ def _build_groups() -> tuple[Group, ...]:
             fallback_url=c.url,
         )
         for c in CONSTELLATIONS
+        if c.slug not in LAUNCH_VEHICLE_BY_CONSTELLATION
+    )
+    launch_vehicles = tuple(
+        Group(
+            slug=f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}",
+            type=GroupType.LAUNCH_VEHICLE,
+            applies_to=GroupCategory.EARTH_SAT,
+            wikidata_qid=lv.qid,
+        )
+        for lv in LAUNCH_VEHICLES
     )
     organizations = tuple(
         Group(
@@ -186,6 +207,7 @@ def _build_groups() -> tuple[Group, ...]:
     )
     return (
         constellations
+        + launch_vehicles
         + organizations
         + launch_sites
         + buses

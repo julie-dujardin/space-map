@@ -31,6 +31,7 @@ from space_map_data.constants.earth_sats.organizations import (
 )
 from space_map_data.constants.earth_sats.satellite_models import BUS_BY_SLUG
 from space_map_data.constants.providers import LANGUAGES
+from space_map_data.export.groups.launch_vehicle import LaunchVehicleStats
 from space_map_data.export.groups.membership import GroupSatcatStats
 from space_map_data.export.groups.registry import (
     BUS_SLUG_PREFIX,
@@ -95,6 +96,7 @@ def _build_global(
     notable_members: list[dict] | None,
     moon_counts: list[dict] | None,
     primary_id: str | None,
+    lv_stats: LaunchVehicleStats | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -139,6 +141,26 @@ def _build_global(
         data["launch_histogram"] = {
             str(year): n for year, n in sorted(launch_histogram_override.items())
         }
+    # Launch vehicles: the launchlog is the authoritative launch history (the
+    # satcat stats above only see spent stages still catalogued in orbit), so
+    # it overrides the histogram + first launch and adds launch-level facts.
+    if lv_stats is not None:
+        data["launch_count"] = lv_stats.launch_count
+        data["payload_count"] = lv_stats.payload_count
+        if lv_stats.success_count:
+            data["success_count"] = lv_stats.success_count
+        if lv_stats.failure_count:
+            data["failure_count"] = lv_stats.failure_count
+        if lv_stats.last_launch_date:
+            data["last_launch_date"] = lv_stats.last_launch_date
+        if lv_stats.first_launch_date:
+            data["first_launch_date"] = lv_stats.first_launch_date
+        if lv_stats.launch_histogram:
+            data["launch_histogram"] = {
+                str(year): n for year, n in sorted(lv_stats.launch_histogram.items())
+            }
+        if lv_stats.variants:
+            data["variants"] = lv_stats.variants
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
@@ -556,6 +578,7 @@ def write_group_bundles(
     child_counts_by_group: dict[str, dict[str, int]] | None = None,
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
+    launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -601,6 +624,7 @@ def write_group_bundles(
             notable_entries(members, wikidata_entities) if members else None
         )
         moon_counts = (extra_moon_counts or {}).get(group.slug)
+        lv_stats = (launch_vehicle_stats or {}).get(group.slug)
         global_by_slug[group.slug] = _build_global(
             group,
             member_counts.get(group.slug, 0),
@@ -616,6 +640,7 @@ def write_group_bundles(
             member_entries,
             moon_counts,
             (extra_primary_ids or {}).get(group.slug),
+            lv_stats,
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

@@ -8,6 +8,7 @@ import { DATA_BASE } from '$lib/fetch/data-base';
 
 export type GroupType =
 	| 'constellation'
+	| 'launch_vehicle'
 	| 'organization'
 	| 'launch_site'
 	| 'bus'

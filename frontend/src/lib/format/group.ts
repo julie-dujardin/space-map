@@ -5,6 +5,8 @@ export function groupTypeLabel(type: GroupType): string {
 	switch (type) {
 		case 'constellation':
 			return m.group_type_constellation();
+		case 'launch_vehicle':
+			return m.group_type_launch_vehicle();
 		case 'organization':
 			return m.group_type_organization();
 		case 'launch_site':
@@ -35,6 +37,8 @@ export function groupTypeLabelPlural(type: GroupType): string {
 	switch (type) {
 		case 'constellation':
 			return m.group_type_plural_constellation();
+		case 'launch_vehicle':
+			return m.group_type_plural_launch_vehicle();
 		case 'organization':
 			return m.group_type_plural_organization();
 		case 'launch_site':

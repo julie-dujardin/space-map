@@ -17,6 +17,10 @@ from sqlalchemy.orm import Session
 
 from space_map_data.constants.countries import COUNTRY_BY_CODE
 from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
+)
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_BY_CODE
 from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QID
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
@@ -129,9 +133,21 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
         decay_date,
     ) in rows:
         slugs: list[tuple[GroupType, str]] = []
-        const_group_slug = f"{CONSTELLATION_SLUG_PREFIX}{c_slug}" if c_slug else None
-        if const_group_slug:
-            slugs.append((GroupType.CONSTELLATION, const_group_slug))
+        # ROCKET constellations surface as lv- launch-vehicle pages; everything
+        # else stays a const- constellation. `const_only_slug` is the bare slug
+        # only when it's a true constellation (drives bus/site/org chips).
+        const_group_slug = None
+        const_only_slug = None
+        if c_slug:
+            lv = LAUNCH_VEHICLE_BY_CONSTELLATION.get(c_slug)
+            if lv is not None:
+                slugs.append(
+                    (GroupType.LAUNCH_VEHICLE, f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}")
+                )
+            else:
+                const_group_slug = f"{CONSTELLATION_SLUG_PREFIX}{c_slug}"
+                const_only_slug = c_slug
+                slugs.append((GroupType.CONSTELLATION, const_group_slug))
         if bus_slug:
             bus_group_slug = f"{BUS_SLUG_PREFIX}{bus_slug}"
             slugs.append((GroupType.BUS, bus_group_slug))
@@ -177,7 +193,9 @@ def build_earth_groups_data(session: Session) -> GroupTierBuild:
 
         for group_type, group_slug in slugs:
             stats = build.add(group_type, group_slug, obj_id)
-            _accumulate(stats, launch_date, ops_status, decay_date, site_code, c_slug)
+            _accumulate(
+                stats, launch_date, ops_status, decay_date, site_code, const_only_slug
+            )
 
     for group_type, mem in build.membership.items():
         for ids in mem.values():

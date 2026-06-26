@@ -93,6 +93,20 @@
 				value: formatNumber(global.active_count),
 				dot: 'bg-emerald-400'
 			});
+		if (global.launch_count != null && global.launch_count > 0) {
+			out.push({
+				label: m.group_stat_launches(),
+				value: formatNumber(global.launch_count),
+				dot: 'bg-indigo-400'
+			});
+			if (global.success_count != null)
+				out.push({
+					label: m.group_stat_success(),
+					value: formatPercent(global.success_count, global.launch_count),
+					tooltip: m.group_stat_failures({ count: global.failure_count ?? 0 }),
+					dot: 'bg-emerald-400'
+				});
+		}
 		if (firstLaunch != null)
 			out.push({
 				label: m.group_stat_first_launch(),

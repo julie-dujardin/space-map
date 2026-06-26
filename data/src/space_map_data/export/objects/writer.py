@@ -46,6 +46,7 @@ from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
     attach_country_group_link,
+    attach_launch_vehicle_group_link,
     drop_covered_qids,
     extract_claims,
     resolve_entity_ref,
@@ -538,6 +539,7 @@ def _build_localized(
                     if ref is None:
                         continue
                     attach_country_group_link(ref, qid)
+                    attach_launch_vehicle_group_link(ref, qid)
                     refs.append(ref.to_dict())
                 if refs:
                     data[claim.key] = refs
@@ -546,6 +548,7 @@ def _build_localized(
                 ref = resolve_entity_ref(qid, lang, wikidata_entities)
                 if ref:
                     attach_country_group_link(ref, qid)
+                    attach_launch_vehicle_group_link(ref, qid)
                     data[claim.key] = ref.to_dict()
 
     if obj.norad_cat_id is not None and obj.satcat is not None:

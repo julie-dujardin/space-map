@@ -1,10 +1,13 @@
 # Group detail files
 
-Aggregation entities behind `/g/<slug>` pages (constellations, organizations,
-launch sites, countries, orbit classes, and small-body flags). Every group
-type's slug carries a type prefix (`const-`, `org-`, `site-`, `bus-`,
-`country-`, `class-`, `flag-`, `cat-`, `comet-family-`) so slugs never collide
-across types and a slug's type is recognizable on sight. An organization
+Aggregation entities behind `/g/<slug>` pages (constellations, launch vehicles,
+organizations, launch sites, countries, orbit classes, and small-body flags).
+Every group type's slug carries a type prefix (`const-`, `lv-`, `org-`, `site-`,
+`bus-`, `country-`, `class-`, `flag-`, `cat-`, `comet-family-`) so slugs never
+collide across types and a slug's type is recognizable on sight. A launch
+vehicle (`lv-<slug>`) merges a rocket's spent stages tracked in orbit (the
+former ROCKET `const-` page) with its GCAT launchlog history; `UPPER_STAGE`
+constellations stay `const-`. An organization
 (`org-<slug>`) is the merged company/agency entity that subsumes the former
 operator and manufacturer roles; its roles are surfaced as tags rather than
 separate pages. Group bundles use the **same hash-bucketing scheme as object
@@ -22,7 +25,7 @@ Small, **ungzipped** map written once. Loaded eagerly to validate
 
 ```typescript
 interface GroupIndexEntry {
-  type: GroupType;            // "constellation" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission"
+  type: GroupType;            // "constellation" | "launch_vehicle" | "organization" | "launch_site" | "bus" | "country" | "orbit_class" | "small_body_flag" | "split_comet" | "mission"
   applies_to: GroupCategory;  // "earth_sat" | "small_body" | "probe" | "category"
   n: number;                  // member count
 }
@@ -77,6 +80,28 @@ interface GlobalGroupData {
   first_launch_date?: string;                 // Earliest SATCAT launch_date among members (ISO date string)
   active_count?: number;                      // Members with ops_status operational/partial/extended and no decay
   decayed_count?: number;                     // Members with a SATCAT decay_date
+
+  // Launch-vehicle groups (lv-<slug>) only. Computed from the GCAT launchlog,
+  // not SATCAT — so launch_histogram + first_launch_date above are overridden
+  // with the full launch history (the satcat figures only see spent stages
+  // still catalogued in orbit; active_count / decayed_count keep that view).
+  // Launches dedupe by GCAT launch_tag; payloads are the raw per-object rows
+  // (many share one launch). Outcome from GCAT Launch_Code char 2 (S/F).
+  launch_count?: number;                      // Distinct launches
+  payload_count?: number;                     // Payload rows across all launches
+  success_count?: number;                     // Launches with a success outcome
+  failure_count?: number;                     // Launches with a failure outcome
+  last_launch_date?: string;                  // Latest launch date (ISO string)
+  variants?: {                                // Per-variant breakdown, most-launched first (top 25)
+    name: string;                             // GCAT lv_type, e.g. "Atlas V 551"
+    n: number;                                // Distinct launches of this variant
+    launch_mass_t?: number;                   // lv.tsv specs, present when GCAT records them
+    leo_capacity_kg?: number;
+    gto_capacity_kg?: number;
+    thrust_kn?: number;
+    length_m?: number;
+    diameter_m?: number;
+  }[];
 
   // Small-body groups (orbit_class / small_body_flag).
   // Computed from SBDB.first_obs (YYYY-MM-DD or partial YYYY).

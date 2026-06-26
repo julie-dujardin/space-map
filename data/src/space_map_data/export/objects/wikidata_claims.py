@@ -6,6 +6,10 @@ from typing import Literal, NamedTuple
 from urllib.parse import quote, urlparse
 
 from space_map_data.constants.countries import COUNTRY_BY_QID, COUNTRY_SLUG_PREFIX
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_QID,
+    LAUNCH_VEHICLE_SLUG_PREFIX,
+)
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
     WikidataEntity,
@@ -391,6 +395,15 @@ def attach_country_group_link(ref: EntityRef, qid: str) -> None:
         return
     ref.primary_type = "group"
     ref.primary_id = f"{COUNTRY_SLUG_PREFIX}{country.slug}"
+
+
+def attach_launch_vehicle_group_link(ref: EntityRef, qid: str) -> None:
+    """If ``qid`` is a known launch vehicle, point the ref at its /g/lv-<slug> page."""
+    lv = LAUNCH_VEHICLE_BY_QID.get(qid)
+    if lv is None:
+        return
+    ref.primary_type = "group"
+    ref.primary_id = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}"
 
 
 def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:
