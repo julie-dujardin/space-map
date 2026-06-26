@@ -57,7 +57,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import { formatNumber } from '$lib/format/quantities';
+	import { formatQuantity } from '$lib/format/quantities';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import * as m from '$lib/paraglide/messages.js';
@@ -677,7 +677,7 @@
 				<div class="text-muted-foreground text-[11px]">{hovered.description}</div>
 			{/if}
 			<div class="text-muted-foreground text-[11px] tabular-nums">
-				{m.diameter()}: {formatNumber(Math.round(hovered.diameterKm))} km
+				{m.diameter()}: {formatQuantity({ value: hovered.diameterKm, unit: 'kilometre' }, true)}
 			</div>
 		</div>
 	{/if}
