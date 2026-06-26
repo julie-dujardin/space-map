@@ -15,6 +15,9 @@ export enum UrlType {
 	Extra = 'u' // /u/<id>/<name> — hand-authored extra object addressed by its id
 }
 
+/** Detail-drawer tab; 'overview' is the null default in URL state. */
+export type DrawerTab = 'overview' | 'images' | 'members' | 'fragments';
+
 /**
  * Shape of the URL-backed app state. One source of truth for what gets shared,
  * bookmarked, restored on reload, and pushed onto the browser history stack.
@@ -37,6 +40,11 @@ export interface MapViewState {
 	featureId: number | null;
 	/** Slug when /g/<slug> is active; filters the group's applies_to category. */
 	groupSlug: string | null;
+	/** Active drawer tab; null = overview. Deep-linked as `&tab=`. */
+	tab: Exclude<DrawerTab, 'overview'> | null;
+	/** Pages loaded in the members list; null = first. Deep-linked as `&mp=` to
+	 *  restore scroll depth. Only meaningful while `tab === 'members'`. */
+	memberPage: number | null;
 }
 
 /** Default vantage angle for a body framed with no explicit camera (search, click, group). */
@@ -59,5 +67,7 @@ export const DEFAULT_VIEW: MapViewState = {
 	zoom: 15, // ~1.5 AU from Earth
 	imageIndex: null,
 	featureId: null,
-	groupSlug: null
+	groupSlug: null,
+	tab: null,
+	memberPage: null
 };

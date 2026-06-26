@@ -1,5 +1,5 @@
 import { pushState as sveltePushState, replaceState as svelteReplaceState } from '$app/navigation';
-import { DEFAULT_VIEW, UrlType, type MapViewState } from './view';
+import { DEFAULT_VIEW, UrlType, type DrawerTab, type MapViewState } from './view';
 import { applyFeature, applyFocus, applyGroup, parseUrl, serializeUrl, urlTypeFromId } from './url';
 import { serializeSearchSuffix, type SearchUrlState } from '$lib/search/url';
 
@@ -102,7 +102,9 @@ export class AppState {
 			id: anchorId,
 			groupSlug: null,
 			featureId: null,
-			name: ''
+			name: '',
+			tab: null,
+			memberPage: null
 		};
 		this.pushNow();
 	}
@@ -119,7 +121,9 @@ export class AppState {
 			...this.view,
 			type: UrlType.Body,
 			name: bodyName,
-			featureId: null
+			featureId: null,
+			tab: null,
+			memberPage: null
 		};
 		this.pushNow();
 	}
@@ -133,6 +137,24 @@ export class AppState {
 	replaceFocusName(name: string) {
 		if (this.view.name === name) return;
 		this.view = { ...this.view, name };
+		this.replaceNow();
+	}
+
+	/** Switch tabs (replaceState — no history spam). Resets member-page depth: a
+	 *  manual switch lands at the top. Pass 'overview' to clear. */
+	setTab(tab: DrawerTab) {
+		const next = tab === 'overview' ? null : tab;
+		if (next === this.view.tab && this.view.memberPage === null) return;
+		this.view = { ...this.view, tab: next, memberPage: null };
+		this.replaceNow();
+	}
+
+	/** Persist members-list scroll depth so a shared link restores it.
+	 *  replaceState; no-op when unchanged. */
+	setMemberPage(page: number) {
+		const next = page > 1 ? page : null;
+		if (next === this.view.memberPage) return;
+		this.view = { ...this.view, memberPage: next };
 		this.replaceNow();
 	}
 

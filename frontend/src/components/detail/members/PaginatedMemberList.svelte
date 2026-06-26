@@ -104,18 +104,23 @@
 			rows = seed;
 			total = seedTotal;
 			searchBacked = false;
+			// Restore deep-linked depth (?mp=N); untracked so our setMemberPage
+			// writes don't re-trigger this reload.
+			const targetPages = Math.max(1, appState?.view.memberPage ?? 1);
 			// A fully-baked list (small group exported whole) needs no search backend.
-			if (seed.length < seedTotal && isSearchEnabled()) void loadFirst(key);
+			if (seed.length < seedTotal && isSearchEnabled()) void loadInitial(key, targetPages);
 		});
 	});
 
-	async function loadFirst(key: string) {
+	async function loadInitial(key: string, targetPages: number) {
 		const src = untrack(() => source);
 		loading = true;
 		const locale = getLocale();
+		// One request, not N round-trips.
+		const limit = Math.min(targetPages * PAGE_SIZE, HARD_CAP);
 		let page: GroupMemberPage;
 		try {
-			page = await fetchPage(src, 0, PAGE_SIZE, locale);
+			page = await fetchPage(src, 0, limit, locale);
 		} catch {
 			loading = false;
 			return;
@@ -146,6 +151,8 @@
 		if (key === sourceKey) {
 			rows = [...rows, ...page.hits.map((h) => hitRow(h, locale))];
 			total = page.estimatedTotalHits;
+			// Mirror depth into the URL so a share/reload lands here.
+			appState?.setMemberPage(Math.ceil(rows.length / PAGE_SIZE));
 		}
 		loading = false;
 	}

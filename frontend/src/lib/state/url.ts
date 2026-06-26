@@ -10,7 +10,21 @@ import {
 import { SAT_ORBIT_ZONES } from '$lib/charts/orbit-zones';
 import { isLagrangeClass } from '$lib/math/orbit/lagrange';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
-import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type MapViewState } from './view';
+import { DEFAULT_VIEW, SUN_VIEW_ZOOM, UrlType, type DrawerTab, type MapViewState } from './view';
+
+/** Tabs that serialize a `&tab=` block; overview is the null default. */
+const DEEP_LINK_TABS: readonly string[] = ['images', 'members', 'fragments'];
+
+function parseTab(raw: string | null): Exclude<DrawerTab, 'overview'> | null {
+	return raw && DEEP_LINK_TABS.includes(raw) ? (raw as Exclude<DrawerTab, 'overview'>) : null;
+}
+
+/** Page 1 is implicit, so only integers > 1 carry meaning. */
+function parseMemberPage(raw: string | null): number | null {
+	if (!raw) return null;
+	const n = Number(raw);
+	return Number.isInteger(n) && n > 1 ? n : null;
+}
 
 /** Map URL type segment to backend ID prefix. Inverse of urlTypeFromId. */
 export function urlTypeToIdPrefix(urlType: string): string {
@@ -84,7 +98,9 @@ export function parseUrl(): MapViewState | null {
 			name: decodeURIComponent(page.params.name ?? ''),
 			groupSlug: idStr,
 			imageIndex: null,
-			featureId: null
+			featureId: null,
+			tab: parseTab(page.url.searchParams.get('tab')),
+			memberPage: parseMemberPage(page.url.searchParams.get('mp'))
 		};
 		return applyAtParam(defaults);
 	}
@@ -124,7 +140,16 @@ export function parseUrl(): MapViewState | null {
 		if (Number.isInteger(n) && n >= 0) imageIndex = n;
 	}
 
-	const defaults = { ...DEFAULT_VIEW, type, id, name, imageIndex, featureId: null };
+	const defaults = {
+		...DEFAULT_VIEW,
+		type,
+		id,
+		name,
+		imageIndex,
+		featureId: null,
+		tab: parseTab(page.url.searchParams.get('tab')),
+		memberPage: parseMemberPage(page.url.searchParams.get('mp'))
+	};
 	return applyAtParam(defaults);
 }
 
@@ -161,7 +186,9 @@ export function applyFocus(
 		...focus,
 		imageIndex: null,
 		featureId: null,
-		groupSlug: null
+		groupSlug: null,
+		tab: null,
+		memberPage: null
 	};
 }
 
@@ -177,7 +204,9 @@ export function applyGroup(current: MapViewState, slug: string, name: string): M
 		groupSlug: slug,
 		name,
 		imageIndex: null,
-		featureId: null
+		featureId: null,
+		tab: null,
+		memberPage: null
 	};
 }
 
@@ -192,7 +221,9 @@ export function applyFeature(
 		id: focus.bodyId,
 		name: focus.featureName,
 		featureId: focus.featureId,
-		imageIndex: null
+		imageIndex: null,
+		tab: null,
+		memberPage: null
 	};
 }
 
@@ -205,13 +236,23 @@ export function serializeUrl(state: MapViewState): string {
 	const dateStr = state.isNow ? 'now' : state.date.toISOString();
 	const at = `${dateStr},${r(state.latitude)},${r(state.longitude)},${state.zoom.toPrecision(5).replace('e+', 'e')}`;
 
+	// `mp` is only meaningful under the members tab — the one paginated list.
+	const tab = state.tab ? `&tab=${state.tab}` : '';
+	const mp =
+		state.tab === 'members' &&
+		typeof state.memberPage === 'number' &&
+		Number.isInteger(state.memberPage) &&
+		state.memberPage > 1
+			? `&mp=${state.memberPage}`
+			: '';
+
 	if (state.type === UrlType.Group && state.groupSlug !== null) {
 		const path = resolve('/[type]/[id]/[[name]]', {
 			type: state.type,
 			id: state.groupSlug,
 			name: state.name ? encodeURIComponent(state.name) : undefined
 		});
-		return `${path}?at=${at}`;
+		return `${path}?at=${at}${tab}${mp}`;
 	}
 
 	const bodyType = urlTypeFromId(state.id);
@@ -238,5 +279,5 @@ export function serializeUrl(state: MapViewState): string {
 		typeof state.imageIndex === 'number' && Number.isInteger(state.imageIndex)
 			? `&img=${state.imageIndex}`
 			: '';
-	return `${path}?at=${at}${img}`;
+	return `${path}?at=${at}${img}${tab}${mp}`;
 }

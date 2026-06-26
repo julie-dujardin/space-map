@@ -27,7 +27,9 @@ const baseView: MapViewState = {
 	zoom: 42.43,
 	imageIndex: null,
 	featureId: null,
-	groupSlug: null
+	groupSlug: null,
+	tab: null,
+	memberPage: null
 };
 
 describe('serializeUrl', () => {
@@ -102,6 +104,53 @@ describe('serializeUrl', () => {
 		it('omits img= when imageIndex is a non-integer number', () => {
 			const view = { ...baseView, imageIndex: 1.5 };
 			expect(serializeUrl(view)).not.toContain('img=');
+		});
+	});
+
+	describe('tab serialization', () => {
+		it('omits tab= for the default overview tab (null)', () => {
+			expect(serializeUrl({ ...baseView, tab: null })).not.toContain('tab=');
+		});
+
+		it('emits &tab=members for the members tab', () => {
+			expect(serializeUrl({ ...baseView, tab: 'members' })).toContain('&tab=members');
+		});
+
+		it('emits &tab=images for the images tab', () => {
+			expect(serializeUrl({ ...baseView, tab: 'images' })).toContain('&tab=images');
+		});
+
+		it('serializes the tab on group routes too', () => {
+			const url = serializeUrl({
+				...baseView,
+				type: 'g',
+				groupSlug: 'cat-moons',
+				name: 'Moons',
+				tab: 'members'
+			});
+			expect(url.startsWith('/g/cat-moons/Moons?at=')).toBe(true);
+			expect(url).toContain('&tab=members');
+		});
+	});
+
+	describe('member-page (mp) serialization', () => {
+		it('emits &mp=N under the members tab', () => {
+			const url = serializeUrl({ ...baseView, tab: 'members', memberPage: 3 });
+			expect(url).toContain('&mp=3');
+		});
+
+		it('omits mp= for page 1 (the implicit default)', () => {
+			expect(serializeUrl({ ...baseView, tab: 'members', memberPage: 1 })).not.toContain('mp=');
+		});
+
+		it('omits mp= when memberPage is null', () => {
+			expect(serializeUrl({ ...baseView, tab: 'members', memberPage: null })).not.toContain('mp=');
+		});
+
+		// mp is meaningless outside the one paginated list — never leak it onto
+		// other tabs even if the field is stale.
+		it('omits mp= when the active tab is not members', () => {
+			expect(serializeUrl({ ...baseView, tab: 'images', memberPage: 5 })).not.toContain('mp=');
 		});
 	});
 });

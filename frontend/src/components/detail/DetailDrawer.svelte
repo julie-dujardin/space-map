@@ -31,6 +31,7 @@
 		CAT_DWARF_PLANETS
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
+	import type { DrawerTab } from '$lib/state/view';
 	import {
 		type Focusable,
 		focusableFallbackName,
@@ -551,7 +552,7 @@
 
 	function seeAllMembers() {
 		if (satellitesGroup) appState?.setGroup(satellitesGroup, membersHeading);
-		else activeTab = 'members';
+		else appState.setTab('members');
 	}
 
 	// Split-comet fragments: a strip + tab on the intact parent comet, mirroring
@@ -569,7 +570,7 @@
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
 	function seeAllFragments() {
-		activeTab = 'fragments';
+		appState.setTab('fragments');
 	}
 
 	// Probe mission: the mission cross-ref tile lives in SatCrossRefs now; the
@@ -583,13 +584,24 @@
 		const link = data?.global?.mission;
 		if (link) appState?.setGroup(link.primary_id, link.name);
 	}
-	let activeTab = $state<'overview' | 'images' | 'members' | 'fragments'>('overview');
-	// Switching to a focusable that lacks the active tab's content would
-	// leave the panel empty — fall back to overview.
+	// URL-backed so it's deep-linkable. A tab whose content this object lacks
+	// falls back to overview, never rendering empty.
+	let activeTab = $derived<DrawerTab>(
+		appState.view.tab === 'images' && hasImages
+			? 'images'
+			: appState.view.tab === 'members' && showMembersTab
+				? 'members'
+				: appState.view.tab === 'fragments' && showFragmentsTab
+					? 'fragments'
+					: 'overview'
+	);
+	// Scrub a deep-link tab pointing at absent content (e.g. ?tab=members on a
+	// moonless body). The !loading guard avoids wiping a valid link mid-fetch,
+	// while showMembersTab is still false.
 	$effect(() => {
-		if (!hasImages && activeTab === 'images') activeTab = 'overview';
-		if (!showMembersTab && activeTab === 'members') activeTab = 'overview';
-		if (!showFragmentsTab && activeTab === 'fragments') activeTab = 'overview';
+		if (!loading && appState.view.tab && activeTab === 'overview') {
+			untrack(() => appState.setTab('overview'));
+		}
 	});
 </script>
 
@@ -654,7 +666,7 @@
 				leadingBadges={groupHeaderBadges}
 				hero={lineupHero ? lineupHeroSnippet : undefined}
 				onShowGallery={() => {
-					activeTab = 'images';
+					appState.setTab('images');
 					appState.setImage(0);
 				}}
 			/>
@@ -863,7 +875,11 @@
 						</div>
 					</div>
 				</div>
-				<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
+				<Tabs.Root
+					value={activeTab}
+					onValueChange={(v) => appState.setTab(v as DrawerTab)}
+					class="flex flex-1 min-h-0 flex-col"
+				>
 					<div
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
 						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
@@ -926,7 +942,11 @@
 			</div>
 		</div>
 
-		<Tabs.Root bind:value={activeTab} class="flex flex-1 min-h-0 flex-col">
+		<Tabs.Root
+			value={activeTab}
+			onValueChange={(v) => appState.setTab(v as DrawerTab)}
+			class="flex flex-1 min-h-0 flex-col"
+		>
 			<ScrollArea class="flex-1 min-h-0">
 				<Tabs.Content value="overview" class="px-4 pb-4">
 					{@render overviewPanel()}

@@ -38,7 +38,9 @@ const initialView: MapViewState = {
 	zoom: 42.43,
 	imageIndex: null,
 	featureId: null,
-	groupSlug: null
+	groupSlug: null,
+	tab: null,
+	memberPage: null
 };
 
 beforeEach(() => {
@@ -163,6 +165,63 @@ describe('AppState.setImage', () => {
 		expect(pushStateSpy).toHaveBeenCalledOnce();
 		expect(replaceStateSpy).not.toHaveBeenCalled();
 		expect(s.view.imageIndex).toBeNull();
+	});
+});
+
+describe('AppState.setTab', () => {
+	it('stores a non-overview tab and writes via replaceState', () => {
+		const s = new AppState({ ...initialView });
+		s.setTab('members');
+		expect(s.view.tab).toBe('members');
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
+		expect(pushStateSpy).not.toHaveBeenCalled();
+	});
+
+	it("maps 'overview' to a null tab (the default needs no URL block)", () => {
+		const s = new AppState({ ...initialView, tab: 'members' });
+		s.setTab('overview');
+		expect(s.view.tab).toBeNull();
+	});
+
+	it('resets member-page depth — a manual switch lands at the top of the list', () => {
+		const s = new AppState({ ...initialView, tab: 'members', memberPage: 4 });
+		s.setTab('images');
+		expect(s.view.memberPage).toBeNull();
+	});
+
+	it('is a no-op when already on the tab with no depth to clear', () => {
+		const s = new AppState({ ...initialView, tab: 'members', memberPage: null });
+		s.setTab('members');
+		expect(replaceStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('preserves camera and focus', () => {
+		const s = new AppState({ ...initialView, id: 'naif-399', latitude: 12 });
+		s.setTab('members');
+		expect(s.view.id).toBe('naif-399');
+		expect(s.view.latitude).toBe(12);
+	});
+});
+
+describe('AppState.setMemberPage', () => {
+	it('records depth > 1 via replaceState (no history pollution)', () => {
+		const s = new AppState({ ...initialView, tab: 'members' });
+		s.setMemberPage(3);
+		expect(s.view.memberPage).toBe(3);
+		expect(replaceStateSpy).toHaveBeenCalledOnce();
+		expect(pushStateSpy).not.toHaveBeenCalled();
+	});
+
+	it('normalizes page 1 back to null (the implicit default)', () => {
+		const s = new AppState({ ...initialView, tab: 'members', memberPage: 2 });
+		s.setMemberPage(1);
+		expect(s.view.memberPage).toBeNull();
+	});
+
+	it('is a no-op when the depth is unchanged', () => {
+		const s = new AppState({ ...initialView, tab: 'members', memberPage: 3 });
+		s.setMemberPage(3);
+		expect(replaceStateSpy).not.toHaveBeenCalled();
 	});
 });
 
