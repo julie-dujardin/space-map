@@ -28,6 +28,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.notable import NotableObject, render_geometry
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.small_body_color import resolve_small_body_color
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, OrbitalSource
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
@@ -304,9 +305,10 @@ def _notable_members(
                 radius_km=geo.radius_km,
                 pole=geo.pole,
                 albedo=albedo,
-                # SMASS (spec_B) preferred over Tholen (spec_T); the frontend maps
-                # the taxonomic class to a representative surface tint.
+                # SMASS (spec_B) preferred over Tholen (spec_T).
                 spec=spec_b or spec_t,
+                # Lineup needs only the colour, not its derivation method.
+                color=resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0],
             )
         )
     return members

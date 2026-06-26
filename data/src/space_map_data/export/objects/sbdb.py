@@ -1,6 +1,7 @@
 """SBDB (Small-Body Database) export helpers."""
 
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.small_body_color import resolve_small_body_color
 from space_map_data.models.object import SBDB
 
 
@@ -62,4 +63,10 @@ def build_sbdb(sbdb: SBDB, units: UnitConverter) -> dict:
         converted = units.best_unit(sbdb.mass_kg, "mass")
         if converted is not None:
             data["mass"] = converted
+    color, method = resolve_small_body_color(
+        sbdb.spkid, sbdb.spec_B or sbdb.spec_T, sbdb.albedo
+    )
+    if color is not None:
+        data["color"] = color
+        data["color_method"] = method
     return data

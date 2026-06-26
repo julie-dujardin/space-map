@@ -34,6 +34,7 @@ class NotableObject:
     spec: str | None = (
         None  # SBDB taxonomic type (SMASS, else Tholen); small bodies only
     )
+    color: str | None = None  # physically-derived #rrggbb surface tint; small bodies
 
 
 def render_size(
@@ -133,6 +134,8 @@ def notable_entries(
             entry["albedo"] = member.albedo
         if member.spec is not None:
             entry["spec"] = member.spec
+        if member.color is not None:
+            entry["color"] = member.color
         if member.first_obs:
             entry["first_obs"] = member.first_obs
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))

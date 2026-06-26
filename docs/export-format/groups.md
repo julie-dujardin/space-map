@@ -50,8 +50,9 @@ interface NotableEntry {
   radii?: { a: number; b: number; c: number }; // triaxial PCK radii km, body-fixed X/Y/Z (equatorial a, polar c); major bodies + Ceres/Pluto
   radius_km?: number;               // scalar render radius (Wikidata P2120); lineup size fallback when no radii/diameter (most TNO dwarfs)
   pole?: { ra: number; dec: number }; // IAU J2000 pole RA/Dec (deg) from PCK orientation; the lineup's true axial tilt (major bodies + dwarfs)
-  albedo?: number;                  // SBDB geometric albedo (small bodies only); drives the lineup surface lightness
-  spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); maps to a surface tint
+  albedo?: number;                  // SBDB geometric albedo (small bodies only); see `color`
+  spec?: string;                    // SBDB taxonomic type, SMASS else Tholen (small bodies only); see `color`
+  color?: string;                   // #rrggbb physically-derived surface colour (small bodies only); per-body TCT/SBDB colour, else taxonomy chroma × albedo, else albedo grey. Absent → frontend generic tint
   first_obs?: string;               // discovery proxy — YYYY-MM-DD or YYYY (members only; moons omit it)
   thumbnail?: { file: string; label: "s" | "m" | "xl"; ext: string }; // smallest emitted variant, same picker as search cards
 }

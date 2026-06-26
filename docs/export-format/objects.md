@@ -118,6 +118,8 @@ interface GlobalObjectData {
     mass?: { value: number; unit: string };
     H?: number; G?: number;
     spec_B?: string; spec_T?: string;
+    color?: string;  // #rrggbb physically-derived surface colour (TrueColorTools): per-body measured colour, else taxonomy chroma × albedo, else albedo grey. Absent → frontend generic tint
+    color_method?: "spectrum" | "photometry" | "taxonomy" | "albedo";  // how `color` was derived (present iff color is)
     BV?: number; UB?: number; IR?: number;
     moid?: number;   // AU, Earth MOID
     moid_jup?: number; t_jup?: number;

@@ -83,6 +83,7 @@ from space_map_data.export.position.spacecraft_orientation import (
     apply_orientation_config,
 )
 from space_map_data.export.quantities import UnitConverter
+from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.systems import (
     load_clouds_metadata,
     load_gms,
@@ -1142,6 +1143,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         skybox_metadata,
     )
 
+    log_color_stats()
     total = sum(agg.object_counts.values())
     elapsed = time.monotonic() - t0
     logger.info("Export complete: %d objects to %s in %.1fs", total, out_dir, elapsed)
