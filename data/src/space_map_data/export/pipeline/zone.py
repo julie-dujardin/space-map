@@ -15,6 +15,7 @@ from space_map_data.export.position import CHUNK_SIZE, write_chunk
 from space_map_data.export.position.elements import sidecar
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.elements.spacetrack_source import (
+    archive_source_groups,
     archive_zip_fingerprints,
     load_archive_weeks,
 )
@@ -291,18 +292,19 @@ def export_zone(
     return result
 
 
-def _archive_year_marker(out_dir: Path, zoom: int, year: int) -> Path:
-    """Sidecar path marking an archive year fully exported for ``zoom``."""
+def _archive_group_marker(out_dir: Path, zoom: int, label: str) -> Path:
+    """Sidecar path marking an archive source group fully exported for ``zoom``."""
     return sidecar.mirror_path(
-        out_dir / "position" / "earth" / str(zoom) / f".archive-{year}.meta.json"
+        out_dir / "position" / "earth" / str(zoom) / f".archive-{label}.meta.json"
     )
 
 
-def _archive_year_signature(year: int) -> dict:
+def _archive_group_signature(years: list[int]) -> dict:
     return {
         "format_version": sidecar.FORMAT_VERSION,
         "binary_version": BINARY_VERSION,
-        "archive_inputs": archive_zip_fingerprints([year]),
+        "archive_years": years,
+        "archive_inputs": archive_zip_fingerprints(years),
     }
 
 
@@ -334,16 +336,18 @@ def export_earth_zones(
     out_dir: Path,
     ctx: ObjectDataContext,
 ) -> dict[int, ZoneExportResult]:
-    """Stream the Earth zoom(s): archive holds ≤1 year in memory, each dirty year
-    is parsed once and drives every zoom.
+    """Stream the Earth zoom(s): the archive is parsed one source group at a time
+    and each group drives every zoom. Most groups are a single year; the pre-2004
+    group distils the whole 2004 mega-dump in one pass (~5 GB peak), the price of
+    not re-reading the ~2 GB dump per historical year.
 
     Unlike the generic two-pass :func:`export_zone`, object metadata is built
     from the full base per zoom rather than the snapshot union — every Earth
     Object appears in some week, so the union *is* the base, and skipping the
-    union pass lets the archive parse lazily. An archive year whose zip
+    union pass lets the archive parse lazily. An archive group whose zip
     fingerprints match its on-disk marker is skipped without parsing; its parts
     stay and the manifest is rebuilt from a disk scan so they still ship. The
-    result: a steady-state daily CelesTrak refresh re-parses zero archive years.
+    result: a steady-state daily CelesTrak refresh re-parses zero archive groups.
     Recent dailies are stamped CELESTRAK, historical weeks SPACETRACK — same
     SGP4 wire format, distinct provenance for attribution.
     """
@@ -400,21 +404,25 @@ def export_earth_zones(
         for zoom, base in zoom_bases:
             write(zoom, base, date_iso, elements, OrbitalSource.celestrak)
 
-    # Historical archive: parse each dirty year once, drive every zoom from it.
-    for year in archive_years:
-        signature = _archive_year_signature(year)
+    # Historical archive: parse each source group once and drive every zoom from
+    # it. Pre-2004 history all lives in the 2004 mega-dump, so those years form
+    # one group streamed in a single pass rather than re-read per year.
+    for label, group_years in archive_source_groups(archive_years):
+        signature = _archive_group_signature(group_years)
         dirty = [
             (z, b)
             for z, b in zoom_bases
-            if not sidecar.matches(_archive_year_marker(out_dir, z, year), signature)
+            if not sidecar.matches(_archive_group_marker(out_dir, z, label), signature)
         ]
         if not dirty:
             continue  # unchanged zip + already built — don't parse; disk scan re-adds it
-        for date_iso, elements in load_archive_weeks([year]).items():
+        for date_iso, elements in load_archive_weeks(group_years).items():
             for zoom, base in dirty:
                 write(zoom, base, date_iso, elements, OrbitalSource.spacetrack)
         for zoom, _ in dirty:
-            sidecar.write_sidecar(_archive_year_marker(out_dir, zoom, year), signature)
+            sidecar.write_sidecar(
+                _archive_group_marker(out_dir, zoom, label), signature
+            )
 
     # Built weeks carry real counts; skipped years (not re-parsed) come off disk
     # with count 0 so they still ship in the date-segmented manifest.
