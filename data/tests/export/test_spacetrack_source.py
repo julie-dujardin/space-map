@@ -1,13 +1,24 @@
 """Tests for space_map_data.export.position.elements.spacetrack_source."""
 
+import zipfile
+from pathlib import Path
+
 import pytest
 
+from space_map_data.export.position.elements import spacetrack_source
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.export.position.elements.spacetrack_source import (
     _decode_exp,
+    _scan_year_norads,
     _week_of,
+    archive_norad_set,
     parse_tle_pair,
 )
+
+
+def _make_tle_zip(path: Path, lines: list[str]) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("tle.txt", "\n".join(lines) + "\n")
 
 
 def _parse(line1: str, line2: str) -> tuple[int, float, CelesTrakElements]:
@@ -101,3 +112,72 @@ class TestWeekOf:
         _, epoch_jd, _ = _parse(l1, l2)
         monday, _ = _week_of(epoch_jd)
         assert monday == "2023-12-25"
+
+
+class TestScanYearNorads:
+    """Line-1-only catalog-number scan used to flag archive back-history sats."""
+
+    def test_collects_line1_catalog_numbers(self, tmp_path, monkeypatch):
+        zip_path = tmp_path / "tle2099.txt.zip"
+        _make_tle_zip(
+            zip_path,
+            [
+                "1 00005U 58002B   23365.57064688  .00000316  00000-0  43126-3 0  9991",
+                "2 00005  34.2390 206.9464 1841775  48.1863 326.2040 10.85148002345600",
+                "1 25544U 98067A   24001.01267188  .00016541  00000-0  29758-3 0  5694",
+                "1 A0001U 24001A   24001.00000000  .00000000  00000-0  00000-0 0  9990",
+                "garbage line that is not a TLE",
+            ],
+        )
+        monkeypatch.setattr(spacetrack_source, "year_zips", lambda year: [zip_path])
+        # 5 + 25544; the alpha-5 catalog number (A0001) fails the int parse and
+        # line-2/garbage rows are ignored.
+        assert _scan_year_norads(2099) == {5, 25544}
+
+
+class TestArchiveNoradSet:
+    """Union across years with a per-year fingerprint cache."""
+
+    def test_caches_and_skips_rescan_when_zip_unchanged(self, tmp_path, monkeypatch):
+        zip_path = tmp_path / "tle2099.txt.zip"
+        _make_tle_zip(
+            zip_path,
+            [
+                "1 00005U 58002B   23365.57064688  .00000316  00000-0  43126-3 0  9991",
+                "1 25544U 98067A   24001.01267188  .00016541  00000-0  29758-3 0  5694",
+            ],
+        )
+        monkeypatch.setattr(spacetrack_source, "year_zips", lambda year: [zip_path])
+        monkeypatch.setattr(
+            spacetrack_source, "ARCHIVE_NORAD_CACHE", tmp_path / "cache.json"
+        )
+        scans: list[int] = []
+        real_scan = spacetrack_source._scan_year_norads
+
+        def counting_scan(year: int) -> set[int]:
+            scans.append(year)
+            return real_scan(year)
+
+        monkeypatch.setattr(spacetrack_source, "_scan_year_norads", counting_scan)
+
+        first = archive_norad_set([2099])
+        assert first == {5, 25544}
+        assert scans == [2099]  # cold cache → scanned
+
+        second = archive_norad_set([2099])
+        assert second == {5, 25544}
+        assert scans == [2099]  # warm cache → not rescanned
+
+    def test_rescans_when_zip_changes(self, tmp_path, monkeypatch):
+        zip_path = tmp_path / "tle2099.txt.zip"
+        _make_tle_zip(zip_path, ["1 00005U 58002B   23365.5  0  9991"])
+        monkeypatch.setattr(spacetrack_source, "year_zips", lambda year: [zip_path])
+        monkeypatch.setattr(
+            spacetrack_source, "ARCHIVE_NORAD_CACHE", tmp_path / "cache.json"
+        )
+        assert archive_norad_set([2099]) == {5}
+
+        # Rewrite the zip with a different satellite: a new fingerprint (size)
+        # invalidates the cached year.
+        _make_tle_zip(zip_path, ["1 25544U 98067A   24001.0  0  5694", "extra line"])
+        assert archive_norad_set([2099]) == {25544}

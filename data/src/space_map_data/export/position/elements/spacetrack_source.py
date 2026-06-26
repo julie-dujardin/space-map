@@ -9,6 +9,7 @@ fields verbatim, matching CelesTrak's GP/OMM CSV (which the frontend's
 ``json2satrec`` expects unconverted).
 """
 
+import json
 import logging
 import zipfile
 from collections.abc import Iterable, Iterator
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from space_map_data.export.position.elements.celestrak_source import CelesTrakElements
 from space_map_data.ingest.convert import mean_motion_to_a_km
-from space_map_data.utils.paths import SOURCES_POSITION_DIR
+from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,11 @@ ARCHIVE_DIR = SOURCES_POSITION_DIR / "spacetrack" / "archive"
 
 # Years distilled into weekly Earth snapshots — the full Space-Track archive.
 ARCHIVE_YEARS: tuple[int, ...] = tuple(range(2004, 2026))
+
+# Per-year cache of "which NORADs appear in the archive", keyed on each year's
+# zip fingerprint. Lets Earth-sat ingest set has_position from archive coverage
+# without re-streaming the ~12 GB archive every run.
+ARCHIVE_NORAD_CACHE = DERIVED_POSITION_DIR / "spacetrack" / "archive_norads.json"
 
 # Standard TLE pivot: 2-digit years 00-56 are 21st century, 57-99 are 20th.
 _TLE_YEAR_PIVOT = 57
@@ -248,5 +254,87 @@ def load_archive_weeks(
         "Archive: %d weekly snapshots, %d total satellite-weeks",
         len(result),
         sum(len(w) for w in result.values()),
+    )
+    return result
+
+
+def _scan_year_norads(year: int) -> set[int]:
+    """Every catalog number appearing on a TLE line-1 in a year's archive zip(s).
+
+    Line-1-only: we don't pair or parse the elements, just read the 5-digit
+    catalog number. Across a full year every satellite has thousands of TLEs,
+    so a stray malformed line can't drop it from the set — and skipping the
+    full parse makes this ~10x cheaper than :func:`load_archive_weeks`. Alpha-5
+    catalog numbers (>99999) fail the int parse and are skipped; those sats are
+    recent enough to be in the current catalogue, so ingest already flags them.
+    """
+    norads: set[int] = set()
+    for zip_path in year_zips(year):
+        seen = 0
+        with zipfile.ZipFile(zip_path) as zf:
+            member = zf.namelist()[0]
+            with zf.open(member) as raw:
+                for bline in raw:
+                    if bline[:2] != b"1 ":
+                        continue
+                    try:
+                        norads.add(int(bline[2:7]))
+                    except ValueError:
+                        continue  # alpha-5 / malformed catalog number
+                    seen += 1
+        logger.info("Scanned %s: %d TLE line-1 records", zip_path.name, seen)
+    return norads
+
+
+def _load_norad_cache() -> dict:
+    if not ARCHIVE_NORAD_CACHE.exists():
+        return {}
+    try:
+        return json.loads(ARCHIVE_NORAD_CACHE.read_text())
+    except (OSError, json.JSONDecodeError):
+        logger.warning(
+            "Unreadable archive NORAD cache %s — rebuilding", ARCHIVE_NORAD_CACHE
+        )
+        return {}
+
+
+def _write_norad_cache(cache: dict) -> None:
+    ARCHIVE_NORAD_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    ARCHIVE_NORAD_CACHE.write_text(json.dumps(cache))
+
+
+def archive_norad_set(years: Iterable[int]) -> set[int]:
+    """Union of every NORAD present in the archive across ``years``.
+
+    Per-year results cache to :data:`ARCHIVE_NORAD_CACHE`, keyed on the year's
+    zip fingerprint(s); a year re-scans only when its zip changes. The first
+    build streams the whole ~12 GB archive once (minutes); steady state reads
+    the small JSON cache. Used by Earth-sat ingest to set ``has_position`` on
+    decayed sats that ship only in historical weeks, not the current catalogue.
+    """
+    years = list(years)
+    cache = _load_norad_cache()
+    result: set[int] = set()
+    scanned = 0
+    for year in years:
+        if not year_zips(year):
+            logger.warning("No archive zip for year %d under %s", year, ARCHIVE_DIR)
+            continue
+        fingerprint = archive_zip_fingerprints([year])
+        entry = cache.get(str(year))
+        if entry is not None and entry.get("fingerprint") == fingerprint:
+            result.update(entry["norads"])
+            continue
+        logger.info("Archive NORAD cache miss for %d — scanning zip(s)", year)
+        year_norads = _scan_year_norads(year)
+        cache[str(year)] = {"fingerprint": fingerprint, "norads": sorted(year_norads)}
+        result.update(year_norads)
+        scanned += 1
+    if scanned:
+        _write_norad_cache(cache)
+    logger.info(
+        "Archive NORAD set: %d distinct satellites (%d year(s) rescanned)",
+        len(result),
+        scanned,
     )
     return result

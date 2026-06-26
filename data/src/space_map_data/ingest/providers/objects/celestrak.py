@@ -9,6 +9,10 @@ from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.satcat import SatcatObjectType
 from space_map_data.constants.providers import ID_TYPES, make_object_id
+from space_map_data.export.position.elements.spacetrack_source import (
+    ARCHIVE_YEARS,
+    archive_norad_set,
+)
 from space_map_data.ingest.convert import (
     count_csv_rows,
     float_or_none,
@@ -311,9 +315,10 @@ class CelesTrakIngestor:
             )
 
         # Backfill Object rows for every satcat entry CelesTrak didn't cover
-        # (decayed/inactive sats without current TLEs). These stubs have no
-        # orbital_source/has_position, so export skips them — but they exist
-        # so the model ingest and any other consumer can link via NORAD.
+        # (decayed/inactive sats without current TLEs). A stub still ships in
+        # the historical Earth weeks if its NORAD is in the Space-Track archive
+        # (has_position then True); the rest are link-only rows so model ingest
+        # and any other consumer can resolve them via NORAD.
         self._backfill_inactive_satcat()
 
     def _backfill_inactive_satcat(self) -> None:
@@ -329,9 +334,14 @@ class CelesTrakIngestor:
           (Apollo S-IVB stages etc.) — set the probe's `satcat_norad_cat_id`
           FK; no parallel row minted.
         * No cospar match — mint a `norad_satcat-N` Object with the satcat
-          FK set, no `orbital_source` / `has_position`, so the export
-          skips it but model ingest + focus URLs can still link via NORAD.
+          FK set and no `orbital_source`. `has_position` is True iff the NORAD
+          appears in the Space-Track archive: those sats ship in the historical
+          Earth weeks (the writer's None-source rows inherit the file's
+          spacetrack source), so they're renderable in 3D even though they've
+          decayed off the current catalogue. Archive-absent stubs stay
+          link-only — model ingest + focus URLs still resolve them via NORAD.
         """
+        archive_norads = archive_norad_set(ARCHIVE_YEARS)
         # Satcat NORADs already claimed by some Object via the new FK.
         claimed = {
             n
@@ -356,6 +366,7 @@ class CelesTrakIngestor:
         new_objects: list[dict] = []
         probe_claim_updates: list[dict] = []
         reused = 0
+        archived = 0
         for norad, name, cospar, sotype in rows:
             # Inactive sat whose spacecraft is already a probe row — reuse it
             # via cospar match. The probe row claims the satcat FK; no new
@@ -373,6 +384,9 @@ class CelesTrakIngestor:
                 if sotype in (SatcatObjectType.ROCKET_BODY, SatcatObjectType.DEBRIS)
                 else ObjectType.spacecraft
             )
+            in_archive = norad in archive_norads
+            if in_archive:
+                archived += 1
             new_objects.append(
                 dict(
                     id=object_id,
@@ -384,7 +398,7 @@ class CelesTrakIngestor:
                     scale=ElementsScale.planet,
                     parent_id="naif-399",
                     orbital_source=None,
-                    has_position=False,
+                    has_position=in_archive,
                 )
             )
 
@@ -394,8 +408,10 @@ class CelesTrakIngestor:
             self.session.execute(update(Object), probe_claim_updates)
         self.session.commit()
         logger.info(
-            "Backfilled %d inactive SATCAT Object stubs, reused %d existing probe Objects via COSPAR",
+            "Backfilled %d inactive SATCAT Object stubs (%d with archive "
+            "back-history positions), reused %d existing probe Objects via COSPAR",
             len(new_objects),
+            archived,
             reused,
         )
 
