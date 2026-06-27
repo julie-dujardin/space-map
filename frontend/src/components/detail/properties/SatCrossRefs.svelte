@@ -22,7 +22,7 @@
 	import { classifyLagrange } from '$lib/math/orbit/lagrange';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { pickImageUrl } from '$lib/fetch/objects/images';
-	import CrossRefCard from './CrossRefCard.svelte';
+	import CrossRefCard from './crossref/CrossRefCard.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;

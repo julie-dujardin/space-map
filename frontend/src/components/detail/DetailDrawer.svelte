@@ -8,9 +8,9 @@
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
-	import SmallBodyGroupLinks from './properties/SmallBodyGroupLinks.svelte';
-	import DwarfPlanetGroupLinks from './properties/DwarfPlanetGroupLinks.svelte';
-	import BodyCategoryTile from './properties/BodyCategoryTile.svelte';
+	import SmallBodyGroupLinks from './properties/crossref/SmallBodyGroupLinks.svelte';
+	import DwarfPlanetGroupLinks from './properties/crossref/DwarfPlanetGroupLinks.svelte';
+	import BodyCategoryTile from './properties/crossref/BodyCategoryTile.svelte';
 	import { ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -62,7 +62,7 @@
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import BodyLineup, { type LineupBody } from './BodyLineup.svelte';
 	import { buildLineup, geometryFromMember, geometryWithColor, renderableCount } from './lineup';
-	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
+	import CategoryCrossRefs from './properties/crossref/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './PlanetMassChart.svelte';
 	import ObjectLinks from './ObjectLinks.svelte';

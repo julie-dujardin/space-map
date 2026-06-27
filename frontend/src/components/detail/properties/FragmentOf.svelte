@@ -7,7 +7,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
-	import CrossRefCard from './CrossRefCard.svelte';
+	import CrossRefCard from './crossref/CrossRefCard.svelte';
 
 	interface Props {
 		fragmentOf: FragmentOf;
