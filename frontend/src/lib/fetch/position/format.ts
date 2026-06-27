@@ -12,7 +12,7 @@
 import { DATA_BASE, versionedUrl } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 10;
+export const VERSION = 11;
 
 export const COMMON_HEADER_SIZE = 24;
 export const EXTENSION_SIZE = 8;

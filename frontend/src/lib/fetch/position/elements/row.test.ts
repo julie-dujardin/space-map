@@ -32,7 +32,7 @@ interface Row {
 	radiusKm: number;
 }
 
-/** Build a v10 SUBFORMAT_KEPLERIAN elements buffer (matches parse.ts layout). */
+/** Build a v11 SUBFORMAT_KEPLERIAN elements buffer (matches parse.ts layout). */
 function buildKeplerian(rows: Row[]): ArrayBuffer {
 	const n = rows.length;
 	const size =
@@ -46,7 +46,8 @@ function buildKeplerian(rows: Row[]): ArrayBuffer {
 		align8(n * 4) + // radiusKm
 		align8(n * 4) * 2 + // omDot wDot
 		align8(n) + // hasLocalized
-		align8(n); // flags
+		align8(n) + // flags
+		align8(n * 4); // discDays
 	const buf = new ArrayBuffer(size);
 	const v = new DataView(buf);
 	v.setUint32(0, MAGIC, true);
@@ -73,7 +74,7 @@ function buildKeplerian(rows: Row[]): ArrayBuffer {
 		for (let r = 0; r < n; r++) v.setFloat32(o + r * 4, rows[r][key], true);
 		o += align8(n * 4);
 	}
-	// omDot, wDot, hasLocalized, flags left zero (ArrayBuffer zero-inits).
+	// omDot, wDot, hasLocalized, flags, discDays left zero (ArrayBuffer zero-inits).
 	return buf;
 }
 
@@ -118,9 +119,15 @@ describe('fillOrbitColumnRow matches the materialized BodyData (worker sees iden
 		}
 	});
 
-	// Real-data parity + speed: only runs where the local export tree exists.
+	// Real-data parity + speed: only runs where a current-VERSION local export
+	// exists (a stale-format file would parse past its end on the new layout).
 	const MBA = `${process.env.HOME}/code/git/personal/space-map-export/v1/position/small_bodies/MBA/1/0.bin.gz`;
-	const realIt = fs.existsSync(MBA) ? it : it.skip;
+	const mbaIsCurrent = (): boolean => {
+		if (!fs.existsSync(MBA)) return false;
+		const raw = zlib.gunzipSync(fs.readFileSync(MBA));
+		return new DataView(raw.buffer, raw.byteOffset).getUint16(4, true) === VERSION;
+	};
+	const realIt = mbaIsCurrent() ? it : it.skip;
 	realIt('real MBA part: 10k rows fill identically + direct path is far cheaper', () => {
 		const raw = zlib.gunzipSync(fs.readFileSync(MBA));
 		const ab = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);

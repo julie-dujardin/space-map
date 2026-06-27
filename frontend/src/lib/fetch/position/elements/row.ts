@@ -239,6 +239,7 @@ export function fillOrbitColumnRow(
 		out.epoch[outIdx] = cols.epochJd[idx];
 		out.equatorial[outIdx] = 0;
 		out.flags[outIdx] = cols.flags[idx];
+		out.discDays[outIdx] = cols.discDays[idx];
 		return true;
 	}
 	if (cols.kind === 'sgp4') {
@@ -273,6 +274,7 @@ export function fillOrbitColumnRow(
 		out.epoch[outIdx] = cols.epochJd[idx];
 		out.equatorial[outIdx] = 1;
 		out.flags[outIdx] = cols.flags[idx];
+		out.discDays[outIdx] = cols.discDays[idx];
 		return true;
 	}
 	// keplerian
@@ -293,5 +295,6 @@ export function fillOrbitColumnRow(
 	out.epoch[outIdx] = cols.epochJd[idx];
 	out.equatorial[outIdx] = isPlanetScale ? 1 : 0;
 	out.flags[outIdx] = cols.flags[idx];
+	out.discDays[outIdx] = cols.discDays[idx];
 	return true;
 }

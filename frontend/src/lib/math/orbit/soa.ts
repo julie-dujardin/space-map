@@ -9,6 +9,8 @@ const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
 const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
 /** Precomputed km -> scene-unit scale. */
 const KM_TO_SCENE = AU_SCALE / AU_KM;
+/** JD at the J2000 epoch — `discDays` is stored relative to this. */
+const J2000_JD = 2451545.0;
 
 export const KIND_SKIP = 0;
 export const KIND_KEPLER = 1;
@@ -47,6 +49,9 @@ export interface OrbitColumns {
 	satrec: (SatRec | null)[];
 	/** SBDB bits per point (0 = NEO, 1 = PHA); zero on non-SBDB rows. */
 	flags: Uint8Array;
+	/** Days from J2000 to discovery; NaN = always visible. `writePositions`
+	 *  hides points not yet discovered at the tick's jd. */
+	discDays: Float32Array;
 	/** Whether `writePositions` honours the tick's `requiredFlags` mask. False
 	 *  for groups whose flags are meaningless (Earth sats) so a global NEO/PHA
 	 *  filter doesn't erase them. */
@@ -177,7 +182,8 @@ export function columnsTransferList(cols: OrbitColumns): Transferable[] {
 		cols.epoch.buffer,
 		cols.q.buffer,
 		cols.tp.buffer,
-		cols.flags.buffer
+		cols.flags.buffer,
+		cols.discDays.buffer
 	] as Transferable[];
 }
 
@@ -198,6 +204,8 @@ export function allocColumns(count: number): OrbitColumns {
 		tp: new Float64Array(count),
 		satrec: new Array<SatRec | null>(count).fill(null),
 		flags: new Uint8Array(count),
+		// NaN default = always visible; the asteroid path overwrites per row.
+		discDays: new Float32Array(count).fill(NaN),
 		applyFlagFilter: false,
 		validityStart: -Infinity,
 		validityEnd: Infinity
@@ -233,15 +241,20 @@ export function writePositions(
 	// — avoids a full SGP4 sweep that would error on every row and flood the
 	// console. Returning 0 hides the cloud via setDrawRange.
 	if (jd < cols.validityStart || jd > cols.validityEnd) return 0;
-	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec, flags } = cols;
+	const { count, kind, equatorial, a, e, i, om, w, ma, n, epoch, q, tp, satrec, flags, discDays } =
+		cols;
 	const filterActive = requiredFlags !== 0 && cols.applyFlagFilter;
 	const capacity = (out.length / 3) | 0;
+	// Hide bodies not yet discovered at this jd. discDays is days from J2000;
+	// NaN (no gating) makes the compare false, so those rows always render.
+	const jdDays = jd - J2000_JD;
 	let writeIdx = 0;
 
 	for (let idx = 0; idx < count; idx++) {
 		if (writeIdx >= capacity) break;
 		const k = kind[idx];
 		if (k === KIND_SKIP) continue;
+		if (discDays[idx] > jdDays) continue;
 		if (filterActive && (flags[idx] & requiredFlags) !== requiredFlags) continue;
 
 		if (k === KIND_SGP4) {

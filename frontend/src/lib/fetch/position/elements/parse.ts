@@ -37,11 +37,14 @@ export interface ChunkMeta extends Validity {
 	idMap: Map<number, string>;
 }
 
-/** `hasLocalized` gates the localized-bundle fetch (flag-0 rows would 404).
- *  `flags` carries SBDB bits per point (0 = NEO, 1 = PHA); zero on non-SBDB rows. */
+/** Trailing per-point columns shared by every sub-format. `hasLocalized` gates
+ *  the localized-bundle fetch (flag-0 rows would 404). `flags` carries SBDB bits
+ *  (0 = NEO, 1 = PHA); zero on non-SBDB rows. `discDays` is days from J2000 to
+ *  discovery; NaN = always visible (no/pre-window discovery, non-SBDB rows). */
 export interface HasLocalizedColumn {
 	hasLocalized: Uint8Array;
 	flags: Uint8Array;
+	discDays: Float32Array;
 }
 
 /** Per-point flag bits (column 16 on Keplerian, 19 on SGP4, 13 on Parabolic). */
@@ -274,8 +277,11 @@ export function parseElementsPayload(
 	// Column 15: has_localized (uint8).
 	const hasLocalized = new Uint8Array(buffer, tail, rowCount);
 	tail += align8(rowCount);
-	// Column 16: flags (uint8) — last column on every sub-format.
+	// Column 16: flags (uint8).
 	const flags = new Uint8Array(buffer, tail, rowCount);
+	tail += align8(rowCount);
+	// Column 17: disc_days (float32) — last column on every sub-format.
+	const discDays = new Float32Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
 		validityEnd,
@@ -302,6 +308,7 @@ export function parseElementsPayload(
 		wDot,
 		hasLocalized,
 		flags,
+		discDays,
 		rowCount,
 		...meta
 	};
@@ -349,6 +356,9 @@ function parseSGP4Elements(
 	offset += align8(rowCount);
 	// Column 19: flags (uint8) — always zero for SGP4, emitted for uniformity.
 	const flags = new Uint8Array(buffer, offset, rowCount);
+	offset += align8(rowCount);
+	// Column 20: disc_days (float32) — always NaN for SGP4, emitted for uniformity.
+	const discDays = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'sgp4',
@@ -372,6 +382,7 @@ function parseSGP4Elements(
 		revAtEpoch,
 		hasLocalized,
 		flags,
+		discDays,
 		rowCount,
 		...meta
 	};
@@ -428,8 +439,11 @@ function parseParabolicElements(
 	// Column 12: has_localized (uint8).
 	const hasLocalized = new Uint8Array(buffer, offset, rowCount);
 	offset += align8(rowCount);
-	// Column 13: flags (uint8) — last column on every sub-format.
+	// Column 13: flags (uint8).
 	const flags = new Uint8Array(buffer, offset, rowCount);
+	offset += align8(rowCount);
+	// Column 14: disc_days (float32) — last column on every sub-format.
+	const discDays = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'parabolic',
@@ -447,6 +461,7 @@ function parseParabolicElements(
 		radiusKm,
 		hasLocalized,
 		flags,
+		discDays,
 		rowCount,
 		...meta
 	};

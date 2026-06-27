@@ -36,6 +36,7 @@ interface KeplerianRow {
 	wDot?: number;
 	hasLocalized?: number;
 	flags?: number;
+	discDays?: number;
 }
 
 interface ParabolicRow {
@@ -53,6 +54,7 @@ interface ParabolicRow {
 	radiusKm: number;
 	hasLocalized?: number;
 	flags?: number;
+	discDays?: number;
 }
 
 /**
@@ -107,7 +109,8 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 		align8(n * 4) + // radiusKm
 		align8(n * 4) * 2 + // omDot, wDot
 		align8(n) + // hasLocalized
-		align8(n); // flags
+		align8(n) + // flags
+		align8(n * 4); // discDays
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -139,6 +142,8 @@ function buildKeplerianBuffer(rows: KeplerianRow[]): ArrayBuffer {
 	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].hasLocalized ?? 0);
 	offset += align8(n);
 	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].flags ?? 0);
+	offset += align8(n);
+	for (let r = 0; r < n; r++) view.setFloat32(offset + r * 4, rows[r].discDays ?? NaN, true);
 
 	return buf;
 }
@@ -156,7 +161,8 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 		n * 8 + // tp (f64)
 		align8(n * 4) + // radiusKm
 		align8(n) + // hasLocalized
-		align8(n); // flags
+		align8(n) + // flags
+		align8(n * 4); // discDays
 
 	const buf = new ArrayBuffer(size);
 	const view = new DataView(buf);
@@ -181,6 +187,8 @@ function buildParabolicBuffer(rows: ParabolicRow[]): ArrayBuffer {
 	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].hasLocalized ?? 0);
 	offset += align8(n);
 	for (let r = 0; r < n; r++) view.setUint8(offset + r, rows[r].flags ?? 0);
+	offset += align8(n);
+	for (let r = 0; r < n; r++) view.setFloat32(offset + r * 4, rows[r].discDays ?? NaN, true);
 
 	return buf;
 }
@@ -329,6 +337,15 @@ describe('parseElementsPayload — Keplerian', () => {
 		const cols = parse(buf) as KeplerianColumns;
 		expect(cols.omDot[0]).toBeCloseTo(0.4358, 4);
 		expect(cols.wDot[0]).toBeCloseTo(-0.4318, 4);
+	});
+
+	it('reads disc_days (days from J2000) from the trailing column', () => {
+		const dated: KeplerianRow = { ...CERES_ROW, discDays: 7305 };
+		const buf = buildKeplerianBuffer([dated, HALLEY_ROW]);
+		const cols = parse(buf) as KeplerianColumns;
+		expect(cols.discDays[0]).toBeCloseTo(7305, 0);
+		// HALLEY_ROW leaves discDays unset → NaN sentinel (always visible).
+		expect(Number.isNaN(cols.discDays[1])).toBe(true);
 	});
 });
 
