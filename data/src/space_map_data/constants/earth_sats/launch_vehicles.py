@@ -228,11 +228,217 @@ LAUNCH_VEHICLES: tuple[LaunchVehicleSpec, ...] = (
 LAUNCH_VEHICLE_BY_SLUG: dict[str, LaunchVehicleSpec] = {
     lv.slug: lv for lv in LAUNCH_VEHICLES
 }
-# Resolved QID → vehicle, for pointing a Wikidata launch_vehicle (P375) crossref
-# at its lv- page. Keyed on the family QID; variant-specific QIDs (e.g. a single
-# Atlas V configuration) fall through to a plain Wikipedia ref.
+# Family QID → vehicle, for pointing a P375 crossref at its lv- page. Specific
+# configurations are caught by LAUNCH_VEHICLE_VARIANT_QID instead.
 LAUNCH_VEHICLE_BY_QID: dict[str, LaunchVehicleSpec] = {
     qid: lv for lv in LAUNCH_VEHICLES if (qid := lv.qid) is not None
+}
+# Specific P375 configurations ("Atlas V 401") → family slug, so the crossref
+# reaches the family lv- page; the variant stays the displayed name. Ambiguous
+# or non-LV values are intentionally absent (plain Wikipedia ref).
+LAUNCH_VEHICLE_VARIANT_QID: dict[str, str] = {
+    "Q112063526": "angara",  # Angara-1.2
+    "Q18694511": "angara",  # Angara-A5
+    "Q16351692": "ariane",  # Ariane 5 ECA
+    "Q9159563": "ariane",  # Ariane 44L
+    "Q9159564": "ariane",  # Ariane 44LP
+    "Q16351696": "ariane",  # Ariane 5G
+    "Q9159561": "ariane",  # Ariane 40
+    "Q18381": "ariane",  # Ariane 3
+    "Q9159559": "ariane",  # Ariane 42P
+    "Q10417856": "ariane",  # Ariane 5ES
+    "Q16530018": "ariane",  # Ariane 44P
+    "Q16530012": "ariane",  # Ariane 42L
+    "Q18375": "ariane",  # Ariane 1
+    "Q135885158": "ariane",  # Ariane 62
+    "Q16351704": "ariane",  # Ariane 5GS
+    "Q124077105": "ariane",  # Ariane 5 ECA+
+    "Q16351700": "ariane",  # Ariane 5G+
+    "Q18379": "ariane",  # Ariane 2
+    "Q135885159": "ariane",  # Ariane 64
+    "Q15720682": "ariane",  # Ariane 6
+    "Q18532": "ariane",  # Ariane 5
+    "Q22786": "athena",  # Athena I
+    "Q22791": "athena",  # Athena II
+    "Q20803939": "atlas",  # Atlas V 401
+    "Q9161682": "atlas",  # Atlas SLV-3 Agena-D
+    "Q12403688": "atlas",  # Atlas E/F
+    "Q23600": "atlas",  # Atlas II
+    "Q862321": "atlas",  # Atlas-Centaur
+    "Q9161678": "atlas",  # Atlas-Agena B
+    "Q2895380": "atlas",  # SM-65D Atlas
+    "Q16351993": "atlas",  # Atlas V 501
+    "Q16352007": "atlas",  # Atlas V 551
+    "Q9161679": "atlas",  # Atlas-Agena D
+    "Q16351985": "atlas",  # Atlas V 421
+    "Q16352003": "atlas",  # Atlas V 541
+    "Q115629811": "atlas",  # Atlas SLV-3C Centaur-D
+    "Q116027214": "atlas",  # Atlas IIAS
+    "Q16351980": "atlas",  # Atlas V 411
+    "Q22978": "atlas",  # Atlas I
+    "Q129554072": "atlas",  # Atlas SLV-3D Centaur-D1AR
+    "Q16351997": "atlas",  # Atlas V 531
+    "Q99672315": "atlas",  # Atlas LV-3 Agena-D
+    "Q7391028": "atlas",  # SM-65E Atlas
+    "Q862610": "atlas",  # Atlas G
+    "Q109659498": "atlas",  # Atlas Centaur-D
+    "Q116027213": "atlas",  # Atlas IIA
+    "Q127204964": "atlas",  # Atlas IIIB
+    "Q16351989": "atlas",  # Atlas V 431
+    "Q97684935": "atlas",  # Atlas V N22
+    "Q113633647": "atlas",  # Atlas V 511
+    "Q127204961": "atlas",  # Atlas IIIA
+    "Q20803912": "atlas",  # Atlas V 521
+    "Q9161676": "atlas",  # Atlas-Agena A
+    "Q1129316": "atlas",  # SM-65B Atlas
+    "Q123499372": "atlas",  # Atlas SLV-3D Centaur-D1A
+    "Q4816837": "atlas",  # Atlas SLV-3
+    "Q99672564": "atlas",  # Atlas LV-3 Agena-B
+    "Q99672608": "atlas",  # Atlas SLV-3B Agena-D
+    "Q99672663": "atlas",  # Atlas SLV-3 Agena-B
+    "Q99672687": "atlas",  # Atlas SLV-3A Agena-D
+    "Q99672841": "atlas",  # Atlas-F Agena-D
+    "Q49538": "delta",  # Delta II
+    "Q49516": "delta",  # Delta 2000
+    "Q49520": "delta",  # Delta 3000
+    "Q767119": "delta",  # Thor-Delta
+    "Q20574406": "delta",  # Delta IV Medium+(4,2)
+    "Q249492": "delta",  # Delta IV Heavy
+    "Q49533": "delta",  # Delta E
+    "Q49530": "delta",  # Delta C
+    "Q49553": "delta",  # Delta M
+    "Q49514": "delta",  # Delta 1000
+    "Q49528": "delta",  # Delta B
+    "Q49555": "delta",  # Delta N
+    "Q16354315": "delta",  # Delta IV Medium+(5,4)
+    "Q49510": "delta",  # Delta 0100
+    "Q16354312": "delta",  # Delta IV Medium+(5,2)
+    "Q16354305": "delta",  # Delta IV Medium
+    "Q49523": "delta",  # Delta 4000
+    "Q49527": "delta",  # Delta A
+    "Q49532": "delta",  # Delta D
+    "Q49537": "delta",  # Delta G
+    "Q49525": "delta",  # Delta 5000
+    "Q49541": "delta",  # Delta III
+    "Q49545": "delta",  # Delta J
+    "Q49551": "delta",  # Delta L
+    "Q28450215": "falcon",  # Falcon 9 Block 5
+    "Q22808999": "falcon",  # Falcon 9 Full Thrust
+    "Q1093627": "falcon",  # Falcon Heavy
+    "Q15215794": "falcon",  # Falcon 9 v1.1
+    "Q16837944": "falcon",  # Falcon 9 v1.0
+    "Q58924629": "falcon",  # Falcon 9 Block 4
+    "Q648606": "falcon",  # Falcon 1
+    "Q65560832": "gslv",  # Geosynchronous Satellite Launch Vehicle Mark II
+    "Q65560833": "gslv",  # Geosynchronous Satellite Launch Vehicle Mark I
+    "Q60599": "h-2",  # H-IIA
+    "Q60580": "h-2",  # H-IIB
+    "Q1192304": "juno-ii",  # Juno I
+    "Q5957520": "kaituozhe",  # Kaituozhe-2
+    "Q4235067": "kosmos-2i",  # Kosmos-2I
+    "Q11744067": "kosmos-2i",  # Kosmos 63S1
+    "Q6119291": "kosmos-2i",  # Kosmos-1
+    "Q5952587": "kosmos-3m",  # Kosmos-3
+    "Q111212242": "lijian",  # Lijian-1
+    "Q54164": "long-march",  # Long March 3B
+    "Q54186": "long-march",  # Long March 4B
+    "Q53702": "long-march",  # Long March 2C
+    "Q53704": "long-march",  # Long March 2D
+    "Q54190": "long-march",  # Long March 4C
+    "Q53710": "long-march",  # Long March 2F
+    "Q1090965": "long-march",  # Long March 6
+    "Q54162": "long-march",  # Long March 3A
+    "Q54167": "long-march",  # Long March 3C
+    "Q53734": "long-march",  # Long March 3
+    "Q3544124": "long-march",  # Long March 7
+    "Q53708": "long-march",  # Long March 2E
+    "Q6672962": "long-march",  # Long March 11
+    "Q999788": "long-march",  # Feng Bao 1
+    "Q787531": "long-march",  # Long March 5
+    "Q28418605": "long-march",  # Long March 5 (basic configuration)
+    "Q93359357": "long-march",  # Long March 5B
+    "Q53698": "long-march",  # Long March 1
+    "Q22099169": "long-march",  # Long March 8
+    "Q31888873": "long-march",  # Long March 2F/G
+    "Q3271279": "minotaur",  # Minotaur I
+    "Q907608": "minotaur",  # Minotaur IV
+    "Q3270785": "minotaur",  # Minotaur V
+    "Q2155073": "molniya-rocket",  # Molniya-M
+    "Q11230713": "mu-rocket",  # M-3S2
+    "Q1332896": "mu-rocket",  # M-V
+    "Q11230714": "mu-rocket",  # M-3S
+    "Q11230709": "mu-rocket",  # M-3C
+    "Q11230712": "mu-rocket",  # M-3H
+    "Q11230715": "mu-rocket",  # M-4S
+    "Q1756428": "proton-rocket",  # Proton-K
+    "Q10853123": "proton-rocket",  # UR-500
+    "Q65559631": "pslv",  # Polar Satellite Launch Vehicle-XL
+    "Q65559628": "pslv",  # Polar Satellite Launch Vehicle-CA
+    "Q65559632": "pslv",  # Polar Satellite Launch Vehicle-G
+    "Q65559629": "pslv",  # Polar Satellite Launch Vehicle-QL
+    "Q65559630": "pslv",  # Polar Satellite Launch Vehicle-DL
+    "Q21652063": "safir",  # Sapphire-2
+    "Q54363": "saturn",  # Saturn V
+    "Q719315": "saturn",  # Saturn IB
+    "Q521076": "saturn",  # Saturn I
+    "Q10368958": "scout",  # Scout B
+    "Q10368961": "scout",  # Scout D-1
+    "Q9334624": "scout",  # Scout X-4
+    "Q10368959": "scout",  # Scout A
+    "Q10368964": "scout",  # Scout G-1
+    "Q10368966": "scout",  # Scout X-3
+    "Q604839": "scout",  # Scout X-1
+    "Q10368962": "scout",  # Scout F
+    "Q10368963": "scout",  # Scout E-1
+    "Q31282992": "scout",  # Scout B1
+    "Q7438333": "scout",  # Scout X-2M
+    "Q117330182": "shavit",  # Shavit
+    "Q9335951": "shavit",  # Shavit-1
+    "Q1460216": "shtil",  # Shtil'
+    "Q109943270": "sls",  # Space Launch System Block 1
+    "Q65515921": "slv-3",  # Satellite Launch Vehicle 3
+    "Q660345": "soyuz-rocket",  # Soyuz-U
+    "Q13220030": "soyuz-rocket",  # Soyuz-2.1a
+    "Q12780081": "soyuz-rocket",  # Soyuz-2.1b
+    "Q2415633": "soyuz-rocket",  # Soyuz-FG
+    "Q5957052": "soyuz-rocket",  # Soyuz-U2
+    "Q23902660": "soyuz-rocket",  # Soyuz
+    "Q3071792": "soyuz-rocket",  # Soyuz-2.1v
+    "Q7572046": "soyuz-rocket",  # Soyuz-M
+    "Q2107170": "soyuz-rocket",  # Soyuz-L
+    "Q1705346": "soyuz-rocket",  # Soyuz/Vostok
+    "Q9358558": "thor-rocket",  # Thor-Agena D
+    "Q9358556": "thor-rocket",  # Thor-Agena B
+    "Q1093848": "thor-rocket",  # Thor-Ablestar
+    "Q2918347": "thor-rocket",  # Thor-Burner
+    "Q9358555": "thor-rocket",  # Thor-Agena A
+    "Q582838": "thor-rocket",  # Thorad-Agena D
+    "Q7796057": "thor-rocket",  # Thor DSV-2U
+    "Q9358550": "thor-rocket",  # Thor Able I
+    "Q9358551": "thor-rocket",  # Thor Able II
+    "Q9358552": "thor-rocket",  # Thor Able III
+    "Q9358553": "thor-rocket",  # Thor Able IV
+    "Q1187865": "titan-rocket",  # Titan IIIC
+    "Q74369": "titan-rocket",  # Titan IV
+    "Q1187238": "titan-rocket",  # Titan II GLV
+    "Q1187262": "titan-rocket",  # Titan IIIE
+    "Q5918827": "titan-rocket",  # Titan 23G
+    "Q1187235": "titan-rocket",  # Titan IIID
+    "Q5152536": "titan-rocket",  # Commercial Titan III
+    "Q1187342": "titan-rocket",  # Titan 34D
+    "Q1187387": "titan-rocket",  # Titan IIIB
+    "Q1187393": "titan-rocket",  # Titan IIIA
+    "Q4390622": "unha",  # Unha-3
+    "Q56010145": "vega",  # Vega C
+    "Q1656530": "vostok-rocket",  # Vostok-2M
+    "Q582517": "vostok-rocket",  # Vostok-2
+    "Q3303767": "vostok-rocket",  # Vostok-K
+    "Q1442051": "vostok-rocket",  # Vostok-L
+    "Q6501191": "zenit",  # Zenit-2
+    "Q8727455": "zenit",  # Zenit-3SL
+    "Q1756479": "zenit",  # Zenit-3SLB
+    "Q1756732": "zenit",  # Zenit-3F
+    "Q1756577": "zenit",  # Zenit-2M
 }
 # Constellation slug → launch vehicle, for relabeling ROCKET constellation
 # membership onto the lv- group at export time.
@@ -264,7 +470,18 @@ def match_launch_vehicle_slug(lv_type: str | None) -> str | None:
     return None
 
 
+def launch_vehicle_slug_for_qid(qid: str) -> str | None:
+    """Map a P375 QID (family or specific configuration) to its family slug."""
+    lv = LAUNCH_VEHICLE_BY_QID.get(qid)
+    if lv is not None:
+        return lv.slug
+    return LAUNCH_VEHICLE_VARIANT_QID.get(qid)
+
+
 assert len(LAUNCH_VEHICLE_BY_SLUG) == len(LAUNCH_VEHICLES), "Duplicate lv slug"
+for _vq, _vslug in LAUNCH_VEHICLE_VARIANT_QID.items():
+    assert _vslug in LAUNCH_VEHICLE_BY_SLUG, f"variant {_vq}: unknown slug {_vslug}"
+    assert _vq not in LAUNCH_VEHICLE_BY_QID, f"variant {_vq} is also a family QID"
 for _lv in LAUNCH_VEHICLES:
     if _lv.constellation_slug is not None:
         _c = CONSTELLATION_BY_SLUG.get(_lv.constellation_slug)

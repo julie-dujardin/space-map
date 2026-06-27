@@ -266,7 +266,7 @@ interface LocalizedObjectData {
   constellation?: EntityRef;      // CelesTrak-derived; ROCKET constellations link to /g/lv-<slug> (a spent stage's vehicle), others to /g/const-<slug>
   bus?: EntityRef;                // CelesTrak-derived; links to /g/bus-<slug>
   manufacturer?: EntityRef;       // CelesTrak-derived; links to /g/org-<slug>
-  launch_vehicle?: EntityRef;     // Wikidata P375; links to /g/lv-<slug> when the QID is a known launch vehicle, else a plain Wikipedia ref
+  launch_vehicle?: EntityRef;     // Wikidata P375; links to the family /g/lv-<slug> for both family QIDs and known specific configurations (name stays the variant, e.g. "Atlas V 401"), else a plain Wikipedia ref
   launch_site?: EntityRef;        // CelesTrak-derived takes precedence over Wikidata P1427
   developer?: EntityRef[];
   funder?: EntityRef[];

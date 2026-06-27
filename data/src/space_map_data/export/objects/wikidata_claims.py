@@ -7,8 +7,8 @@ from urllib.parse import quote, urlparse
 
 from space_map_data.constants.countries import COUNTRY_BY_QID, COUNTRY_SLUG_PREFIX
 from space_map_data.constants.earth_sats.launch_vehicles import (
-    LAUNCH_VEHICLE_BY_QID,
     LAUNCH_VEHICLE_SLUG_PREFIX,
+    launch_vehicle_slug_for_qid,
 )
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import (
@@ -398,12 +398,13 @@ def attach_country_group_link(ref: EntityRef, qid: str) -> None:
 
 
 def attach_launch_vehicle_group_link(ref: EntityRef, qid: str) -> None:
-    """If ``qid`` is a known launch vehicle, point the ref at its /g/lv-<slug> page."""
-    lv = LAUNCH_VEHICLE_BY_QID.get(qid)
-    if lv is None:
+    """If ``qid`` is a known launch vehicle (or configuration of one), point the
+    ref at its family /g/lv-<slug> page, keeping the variant as the display name."""
+    slug = launch_vehicle_slug_for_qid(qid)
+    if slug is None:
         return
     ref.primary_type = "group"
-    ref.primary_id = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{lv.slug}"
+    ref.primary_id = f"{LAUNCH_VEHICLE_SLUG_PREFIX}{slug}"
 
 
 def _shortest_ref_name(label: str, lang: str, wd: WikidataEntity) -> str | None:
