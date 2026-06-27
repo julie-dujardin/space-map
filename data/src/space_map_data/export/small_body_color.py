@@ -16,9 +16,11 @@ The first three run through TrueColorTools' colour engine. taxonomy/albedo take
 brightness from the body's own measured albedo, so a dark P-type and a bright
 E-type sharing a featureless X spectrum still read correctly.
 
-Moons resolve separately via ``resolve_moon_color`` (NAIF-keyed): TCT ships
-measured spectra for ~50 satellites but they carry no SBDB taxonomy/albedo, so
-only the per-body ``spectrum`` tier applies.
+Moons resolve separately via ``resolve_moon_color`` (NAIF-keyed): a measured TCT
+spectrum if there is one, else a neutral grey scaled by the moon's JPL Horizons
+geometric albedo (``constants/moon_albedos.json``) so an unmeasured dark P-type
+and a bright icy moon still read apart by brightness. Moons carry no SBDB
+taxonomy, so there is no hue (taxonomy) tier for them.
 """
 
 import json
@@ -120,16 +122,41 @@ def resolve_small_body_color(
     return None, None
 
 
+@lru_cache(maxsize=1)
+def _moon_albedos() -> dict[str, float]:
+    """``{naif: geometric_albedo}`` harvested from JPL Horizons (offline, by
+    ``scripts/generate_moon_albedos.py``). Empty if the constant is absent."""
+    try:
+        raw = (
+            files("space_map_data.constants")
+            .joinpath("moon_albedos.json")
+            .read_text(encoding="UTF-8")
+        )
+    except FileNotFoundError:
+        logger.warning(
+            "moon_albedos.json missing — moon albedo-grey tier disabled "
+            "(run scripts/generate_moon_albedos.py)"
+        )
+        return {}
+    return json.loads(raw)
+
+
 def resolve_moon_color(naif_id: int | None) -> tuple[str | None, str | None]:
-    """``(#rrggbb, "spectrum")`` for a moon with a measured TrueColorTools colour,
-    keyed by NAIF id, or ``(None, None)``. Moons carry no SBDB taxonomy/albedo, so
-    there is no class/grey fallback tier here (unlike ``resolve_small_body_color``)
-    — a moon TCT has never measured keeps the frontend's generic moon tint."""
+    """``(#rrggbb, method)`` for a moon, keyed by NAIF id, or ``(None, None)``.
+    Priority: a measured TrueColorTools colour (``spectrum``), else a neutral grey
+    scaled by the moon's Horizons geometric albedo (``albedo``). Moons carry no
+    SBDB taxonomy, so there is no hue fallback — a moon with neither keeps the
+    frontend's generic moon tint."""
     if naif_id is not None:
         by_naif = _table().get("by_naif", {})
         if hexcol := by_naif.get("spectrum", {}).get(str(naif_id)):
             _stats["moon_spectrum"] += 1
             return hexcol, "spectrum"
+        albedo = _moon_albedos().get(str(naif_id))
+        neutral = _table().get("neutral_linear")
+        if albedo is not None and neutral is not None:
+            _stats["moon_albedo"] += 1
+            return _encode(neutral, albedo), "albedo"
     _stats["moon_none"] += 1
     return None, None
 

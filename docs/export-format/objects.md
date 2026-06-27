@@ -33,8 +33,8 @@ interface GlobalObjectData {
   type: string;                       // ObjectType name
   name?: string;
   parent_name?: string;               // host display name; moons only — lets the breadcrumb label the parent when its body isn't resident in the scene
-  color?: string;                     // moons only — #rrggbb physically-derived surface colour (TrueColorTools, NAIF-keyed). Top-level (moons carry no `sbdb` block); small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
-  color_method?: "spectrum";          // moons only — how `color` was derived (present iff color is); TCT measured reflectance
+  color?: string;                     // moons only — #rrggbb physically-derived surface colour. Top-level (moons carry no `sbdb` block); small bodies carry theirs under `sbdb.color`. Absent → frontend generic tint
+  color_method?: "spectrum" | "albedo"; // moons only — how `color` was derived (present iff color is): TCT measured reflectance, else neutral grey × JPL Horizons geometric albedo
   map_texture_available?: boolean;    // only present if true
   texture?: {                         // only when map_texture_available; mirrors systems/{bary}.json
     source: string;                   // source page URL

@@ -80,17 +80,51 @@ class TestResolveColor:
 
 
 class TestResolveMoonColor:
-    """Moons resolve by NAIF id from the by_naif spectrum tier only — no
-    taxonomy/albedo fallback (moons carry no SBDB classification)."""
+    """Moons resolve by NAIF id: a measured TCT spectrum, else a neutral grey
+    scaled by their Horizons geometric albedo. No hue (taxonomy) tier."""
 
-    def test_hit_returns_spectrum(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_spectrum_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A measured spectrum beats the albedo tier even when both exist.
         monkeypatch.setattr(
-            sbc, "_table", lambda: {"by_naif": {"spectrum": {"607": "#a1b2c3"}}}
+            sbc,
+            "_table",
+            lambda: {
+                "neutral_linear": [1.0, 1.0, 1.0],
+                "by_naif": {"spectrum": {"607": "#a1b2c3"}},
+            },
         )
+        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {"607": 0.2})
         assert resolve_moon_color(607) == ("#a1b2c3", "spectrum")
+
+    def test_albedo_grey_when_no_spectrum(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            sbc,
+            "_table",
+            lambda: {"neutral_linear": [1.0, 1.0, 1.0], "by_naif": {"spectrum": {}}},
+        )
+        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {"609": 0.081})
+        hexcol, method = resolve_moon_color(609)
+        assert method == "albedo"
+        assert hexcol is not None and HEX.match(hexcol)
+
+    def test_albedo_brightness_tracks_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            sbc,
+            "_table",
+            lambda: {"neutral_linear": [1.0, 1.0, 1.0], "by_naif": {"spectrum": {}}},
+        )
+        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {"1": 0.04, "2": 0.6})
+        (dark, _), (bright, _) = resolve_moon_color(1), resolve_moon_color(2)
+        assert dark is not None and bright is not None
+        assert int(bright[1:3], 16) > int(dark[1:3], 16)
 
     def test_unmeasured_moon_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sbc, "_table", lambda: {"by_naif": {"spectrum": {}}})
+        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {})
         assert resolve_moon_color(699) == (None, None)
 
     def test_none_naif_is_none(self) -> None:
@@ -101,6 +135,7 @@ class TestResolveMoonColor:
     ) -> None:
         # Pre-regeneration JSON has no by_naif key; resolve must not KeyError.
         monkeypatch.setattr(sbc, "_table", lambda: {"by_spkid": {}})
+        monkeypatch.setattr(sbc, "_moon_albedos", lambda: {})
         assert resolve_moon_color(607) == (None, None)
 
 
