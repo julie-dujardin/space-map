@@ -61,12 +61,7 @@
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import BodyLineup, { type LineupBody } from './charts/BodyLineup.svelte';
-	import {
-		buildLineup,
-		geometryFromMember,
-		geometryWithColor,
-		renderableCount
-	} from './charts/lineup';
+	import { buildLineup, geometryFromMember, renderableCount } from './charts/lineup';
 	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
@@ -429,9 +424,8 @@
 	let memberDescriptions = $derived(
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
-	// Small bodies render their measured per-body tint (geometryWithColor).
 	let smallBodyBodies = $derived(
-		buildLineup(notableMembers ?? [], geometryWithColor, {
+		buildLineup(notableMembers ?? [], geometryFromMember, {
 			names: memberNames,
 			descriptions: memberDescriptions
 		})
@@ -450,9 +444,8 @@
 			renderableCount(notableMembers) >= 2
 	);
 	// The category lineup hero, picked by which body-collection page this is.
-	// Planets/moons/dwarfs build geometry straight from the export; small-body
-	// zones use the colour-augmented `smallBodyBodies`. `null` → no lineup hero
-	// (the page keeps its image hero). Planets omit hover descriptions by design.
+	// `null` → no lineup hero (the page keeps its image hero). Planets omit hover
+	// descriptions by design.
 	let lineupHero = $derived.by<{
 		bodies: LineupBody[];
 		ariaLabel: string;
@@ -476,8 +469,7 @@
 			};
 		if (isDwarfPlanetsCategory)
 			return {
-				// Most dwarfs lack a curated tint; geometryWithColor gives them theirs.
-				bodies: buildLineup(members, geometryWithColor, {
+				bodies: buildLineup(members, geometryFromMember, {
 					names: memberNames,
 					descriptions: memberDescriptions
 				}),

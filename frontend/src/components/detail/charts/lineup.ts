@@ -14,11 +14,11 @@ const RENDER_HINTS: Record<string, Pick<LineupGeometry, 'surfaceFrame' | 'cloudS
 	'naif-399': { surfaceFrame: '06', cloudSystem: 'naif-3' } // Earth
 };
 
-/** Derive a body's full lineup geometry from its exported notable-member fields,
- *  matching the 3D scene: size + oblateness from PCK `radii` (else SBDB diameter,
- *  else the Wikidata render radius), true tilt from the IAU `pole`, plus the
- *  non-physical render hints. `null` when the body carries no size — it can't be
- *  drawn, which doubles as the renderable filter. */
+/** A member's full lineup geometry from its exported fields: size + oblateness
+ *  from PCK `radii`, else SBDB diameter, else Wikidata radius; tilt from the IAU
+ *  `pole`; render hints; and the measured tint (`undefined` for curated
+ *  BODY_COLORS bodies, which defer to their texture). `null` when sizeless — it
+ *  can't be drawn, which doubles as the renderable filter. */
 export function geometryFromMember(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
 	const geom: LineupGeometry = { radiusKm: 0 };
 	if (m.radii) {
@@ -36,14 +36,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geom.poleRa = m.pole.ra;
 		geom.poleDec = m.pole.dec;
 	}
-	return { ...geom, ...RENDER_HINTS[m.id] };
-}
-
-/** Geometry plus the member's measured TrueColorTools tint. Curated bodies (in
- *  BODY_COLORS) keep their own colour/texture — undefined defers to that. */
-export function geometryWithColor(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
-	const geom = geometryFromMember(m);
-	return geom && { ...geom, color: BODY_COLORS[m.id] ? undefined : m.color };
+	return { ...geom, ...RENDER_HINTS[m.id], color: BODY_COLORS[m.id] ? undefined : m.color };
 }
 
 /** Members renderable in a lineup: have an id and a resolvable size. Colour
