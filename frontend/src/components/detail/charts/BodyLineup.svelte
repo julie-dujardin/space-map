@@ -618,17 +618,19 @@
 		{/each}
 
 		{#if pageCount > 1}
-			<!-- Controls suppress body hover: stopPropagation keeps the container's
-		     pointermove (which resolves a body under the cursor) from firing, and
-		     pointerenter clears any glow left from the body just outside the button. -->
+			<!-- Controls suppress body hover: stopPropagation stops the container
+		     resolving a body under the cursor, pointerenter clears a lingering glow. -->
 			<button
 				type="button"
 				onclick={() => goToPage(page - 1)}
 				onpointerenter={() => (hoveredId = null)}
 				onpointermove={(e) => e.stopPropagation()}
-				disabled={page === 0}
+				aria-disabled={page === 0}
 				aria-label={m.search_prev_page()}
-				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
+				class="bg-background/70 text-foreground/80 pointer-events-auto absolute top-1/2 left-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
+				0
+					? 'cursor-default opacity-30'
+					: 'hover:bg-background'}"
 			>
 				<ChevronLeftIcon size={18} />
 			</button>
@@ -637,9 +639,12 @@
 				onclick={() => goToPage(page + 1)}
 				onpointerenter={() => (hoveredId = null)}
 				onpointermove={(e) => e.stopPropagation()}
-				disabled={page === pageCount - 1}
+				aria-disabled={page === pageCount - 1}
 				aria-label={m.search_next_page()}
-				class="bg-background/70 text-foreground/80 hover:bg-background pointer-events-auto absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition disabled:pointer-events-none disabled:opacity-30"
+				class="bg-background/70 text-foreground/80 pointer-events-auto absolute top-1/2 right-1 z-20 -translate-y-1/2 rounded-full p-1 shadow-sm backdrop-blur-sm transition {page ===
+				pageCount - 1
+					? 'cursor-default opacity-30'
+					: 'hover:bg-background'}"
 			>
 				<ChevronRightIcon size={18} />
 			</button>
