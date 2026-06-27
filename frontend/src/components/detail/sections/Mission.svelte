@@ -11,9 +11,9 @@
 	import { countryFlag, formatCountry, formatOpsStatus } from '$lib/format/satellite';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
-	import EntityLinks from './EntityLinks.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+	import EntityLinks from './kit/EntityLinks.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');
 

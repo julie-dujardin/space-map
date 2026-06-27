@@ -2,9 +2,9 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 	import { formatIsoDate, parseIsoDate } from '$lib/format/date';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
-	import EntityLinks from './EntityLinks.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+	import EntityLinks from './kit/EntityLinks.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;

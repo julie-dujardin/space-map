@@ -9,11 +9,11 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchEarthMembership } from '$lib/fetch/groups/membership';
 	import { SAT_ORBIT_ZONES, CLASS_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
-	import EntityLinks from './EntityLinks.svelte';
-	import YearHistogramChart from './YearHistogramChart.svelte';
-	import GroupOrbitMap from './GroupOrbitMap.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+	import EntityLinks from './kit/EntityLinks.svelte';
+	import YearHistogramChart from '../charts/YearHistogramChart.svelte';
+	import GroupOrbitMap from '../charts/GroupOrbitMap.svelte';
 	import ChildGroups from './ChildGroups.svelte';
 
 	const appState = getContext<AppState | undefined>('appState');

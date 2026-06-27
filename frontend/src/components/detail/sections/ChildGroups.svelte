@@ -4,7 +4,7 @@
 	import type { GroupType } from '$lib/fetch/groups/registry';
 	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
-	import ZoneChip from './ZoneChip.svelte';
+	import ZoneChip from './kit/ZoneChip.svelte';
 
 	interface Props {
 		childGroups: ChildGroupEntry[];

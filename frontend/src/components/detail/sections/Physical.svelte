@@ -6,8 +6,8 @@
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
 	import { formatTemperature } from '$lib/format/temperature';
 	import { formatDuration } from '$lib/format/duration';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
 
 	interface Props {
 		global: GlobalObjectData | null;

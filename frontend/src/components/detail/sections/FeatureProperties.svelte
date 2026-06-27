@@ -5,9 +5,9 @@
 	import { formatIsoDate } from '$lib/format/date';
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
-	import EntityLinks from './EntityLinks.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+	import EntityLinks from './kit/EntityLinks.svelte';
 
 	// Dynamic lookup for `feature_type_label_<CODE>` / `feature_type_description_<CODE>`
 	// messages — see data/.../export/localization.py for how they're generated.

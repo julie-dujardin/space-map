@@ -6,11 +6,11 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
-	import GroupStatCards from './properties/GroupStatCards.svelte';
-	import FragmentOf from './properties/FragmentOf.svelte';
-	import SmallBodyGroupLinks from './properties/crossref/SmallBodyGroupLinks.svelte';
-	import DwarfPlanetGroupLinks from './properties/crossref/DwarfPlanetGroupLinks.svelte';
-	import BodyCategoryTile from './properties/crossref/BodyCategoryTile.svelte';
+	import GroupStatCards from './sections/GroupStatCards.svelte';
+	import FragmentOf from './sections/FragmentOf.svelte';
+	import SmallBodyGroupLinks from './sections/crossref/SmallBodyGroupLinks.svelte';
+	import DwarfPlanetGroupLinks from './sections/crossref/DwarfPlanetGroupLinks.svelte';
+	import BodyCategoryTile from './sections/crossref/BodyCategoryTile.svelte';
 	import { ObjectType } from '$lib/types/objects';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -38,34 +38,39 @@
 		focusableKey,
 		groupSlugLabel
 	} from '$lib/state/focusable';
-	import ObjectHeader from './ObjectHeader.svelte';
-	import DrawerTitle from './DrawerTitle.svelte';
+	import ObjectHeader from './frame/ObjectHeader.svelte';
+	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import { parentCrumb } from '$lib/state/breadcrumb';
 	import ImageViewer from '../image-viewer/ImageViewer.svelte';
-	import ImageGallery from './ImageGallery.svelte';
-	import ObjectDescription from './ObjectDescription.svelte';
-	import SourcesFooter from './SourcesFooter.svelte';
-	import Physical from './properties/Physical.svelte';
-	import FlightStats from './properties/FlightStats.svelte';
-	import SatCrossRefs from './properties/SatCrossRefs.svelte';
-	import Orbital from './properties/Orbital.svelte';
-	import Discovery from './properties/Discovery.svelte';
-	import Mission from './properties/Mission.svelte';
-	import GroupProperties from './properties/GroupProperties.svelte';
-	import GroupOrbitMap from './properties/GroupOrbitMap.svelte';
-	import MoonsPerPlanetChart from './properties/MoonsPerPlanetChart.svelte';
-	import ChildGroups from './properties/ChildGroups.svelte';
+	import ImageGallery from './frame/ImageGallery.svelte';
+	import ObjectDescription from './sections/ObjectDescription.svelte';
+	import SourcesFooter from './sections/SourcesFooter.svelte';
+	import Physical from './sections/Physical.svelte';
+	import FlightStats from './sections/FlightStats.svelte';
+	import SatCrossRefs from './sections/SatCrossRefs.svelte';
+	import Orbital from './sections/Orbital.svelte';
+	import Discovery from './sections/Discovery.svelte';
+	import Mission from './sections/Mission.svelte';
+	import GroupProperties from './sections/GroupProperties.svelte';
+	import GroupOrbitMap from './charts/GroupOrbitMap.svelte';
+	import MoonsPerPlanetChart from './charts/MoonsPerPlanetChart.svelte';
+	import ChildGroups from './sections/ChildGroups.svelte';
 	import { categoryPlotType, scatterZoneSlugs } from '$lib/charts/orbit-zones';
-	import FeatureProperties from './properties/FeatureProperties.svelte';
+	import FeatureProperties from './sections/FeatureProperties.svelte';
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
-	import BodyLineup, { type LineupBody } from './BodyLineup.svelte';
-	import { buildLineup, geometryFromMember, geometryWithColor, renderableCount } from './lineup';
-	import CategoryCrossRefs from './properties/crossref/CategoryCrossRefs.svelte';
+	import BodyLineup, { type LineupBody } from './charts/BodyLineup.svelte';
+	import {
+		buildLineup,
+		geometryFromMember,
+		geometryWithColor,
+		renderableCount
+	} from './charts/lineup';
+	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
-	import PlanetMassChart from './PlanetMassChart.svelte';
-	import ObjectLinks from './ObjectLinks.svelte';
+	import PlanetMassChart from './charts/PlanetMassChart.svelte';
+	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 

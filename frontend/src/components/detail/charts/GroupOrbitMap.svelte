@@ -18,7 +18,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
 	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
-	import ZoneChip from './ZoneChip.svelte';
+	import ZoneChip from '../sections/kit/ZoneChip.svelte';
 
 	interface Props {
 		global: GlobalGroupData | null;

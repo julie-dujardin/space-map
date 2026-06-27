@@ -35,9 +35,9 @@
 	import { AU_KM } from '$lib/math/units';
 	import { classifyEarthOrbit, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
-	import Section from './Section.svelte';
-	import Row from './Row.svelte';
-	import EntityLinks from './EntityLinks.svelte';
+	import Section from './kit/Section.svelte';
+	import Row from './kit/Row.svelte';
+	import EntityLinks from './kit/EntityLinks.svelte';
 
 	const ctx = getContext<ContextManager>('ctx');
 	const appState = getContext<AppState | undefined>('appState');
