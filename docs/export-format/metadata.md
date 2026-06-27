@@ -1,7 +1,10 @@
 # metadata.json
 
-Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
-`shape` discriminator that tells the URL builder which path template to use:
+Entry point. Each `position.zones[zone]` entry carries a `shape`
+discriminator that tells the URL builder which path template to use.
+Multi-zoom zones (`major`, `small_bodies/{class}`) nest their shapes under a
+`zooms` map and gain a `{zoom}` path segment; all other zones carry the shape
+fields directly at zone level and are flat (no `{zoom}` segment):
 
 ```jsonc
 {
@@ -15,34 +18,25 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
         "parent_id_type": "naif"
       },
       "small_body_moons": {
-        "zooms": {
-          "0": { "shape": "parted", "parts": 1 }
-        },
+        "shape": "parted",
+        "parts": 1,
         "parent_id_type": "spkid"
       },
       "earth": {
-        "zooms": {
-          "0": {
-            "shape": "chunked-parted",
-            "label": "date",
-            "start_date": "2024-01-01",
-            "end_date": "2026-04-26",
-            "parts": 3,
-            "parts_by_date": { "2024-01-01": 3, "2026-04-26": 2 }
-          }
-        }
+        "shape": "chunked-parted",
+        "label": "date",
+        "start_date": "2024-01-01",
+        "end_date": "2026-04-26",
+        "parts": 3,
+        "parts_by_date": { "2024-01-01": 3, "2026-04-26": 2 }
       },
       "moons": {
-        "zooms": {
-          "0": {
-            "shape": "chunked-parted",
-            "label": "index",
-            "chunks": 200,
-            "chunk_years": 0.5,
-            "start_jd": 2433282.5,
-            "parts": 1
-          }
-        }
+        "shape": "chunked-parted",
+        "label": "index",
+        "chunks": 200,
+        "chunk_years": 0.5,
+        "start_jd": 2433282.5,
+        "parts": 1
       },
       "major": {
         "zooms": {
@@ -57,18 +51,14 @@ Entry point. Every `position/zones/{zone}/zooms/{zoom}` entry carries a
         }
       },
       "moons/jupiter": {
-        "zooms": {
-          "0": {
-            "shape": "chunked",
-            "chunks": 200,
-            "chunk_years": 0.5,
-            "start_jd": 2433282.5,
-            "end_jd": 2469807.5
-          }
-        }
+        "shape": "chunked",
+        "chunks": 200,
+        "chunk_years": 0.5,
+        "start_jd": 2433282.5,
+        "end_jd": 2469807.5
       },
       "probes/interplanetary": {
-        "shape": "chunked",
+        "shape": "probes",
         "chunks": 100,
         "chunk_years": 1.0,
         "start_jd": 2433282.5,
@@ -139,12 +129,16 @@ must never also match an immutable glob.
 
 ## Shape → URL
 
+The `{zoom}` segment below is present **only** for the multi-zoom zones
+(`major`, `small_bodies/{class}`) — the ones whose manifest entry has a
+`zooms` wrapper. Flat zones omit it.
+
 | `shape`           | URL                                              | Used by                              |
 |-------------------|--------------------------------------------------|--------------------------------------|
-| `parted`          | `position/{zone}/{zoom}/{part}.bin.gz`           | `small_bodies/{class}` zones, Earth-orbit spacecraft, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
-| `chunked-parted`  | `position/{zone}/{zoom}/{label}/{part}.bin.gz`   | `earth` (label = ISO date), `moons` (label = chunk index) |
-| `chunked` (zoomed) | `position/{zone}/{zoom}/{chunk}.bin.gz`         | every chebyshev zone (`major`, `major_asteroids`, `moons/{parent}`) |
-| `chunked` (flat)  | `position/{zone}/{chunk}.bin.gz`                 | probe zones (`probes/*`) — manifest entry has no `zooms` wrapper, signalling no zoom segment in the URL |
+| `parted`          | `position/{zone}/[{zoom}/]{part}.bin.gz`         | `small_bodies/{class}` zones (zoomed), Earth-orbit spacecraft, `small_body_moons`, major/1 (horizons-sourced dwarves), major/2 (SBDB dwarves) |
+| `chunked-parted`  | `position/{zone}/[{zoom}/]{label}/{part}.bin.gz` | `earth` (label = ISO date), `moons` (label = chunk index) — both flat |
+| `chunked`         | `position/{zone}/[{zoom}/]{chunk}.bin.gz`        | every chebyshev zone; only `major` is zoomed, the flat cheby zones (`major_asteroids`, `moons/{parent}`) omit the segment |
+| `probes`          | `position/{zone}/{chunk}.bin.gz`                 | probe zones (`probes/*`) — always flat; a distinct tag from flat `chunked` cheby zones |
 
 `chunked-parted` carries an extra `label` discriminator: `"date"` for ISO
 dates (`earth`), `"index"` for numeric chunk indices (`moons` Method-C secular
@@ -165,12 +159,12 @@ The `chunked` shape carries `chunks` and `chunk_years`; clients compute
 parts axis on chebyshev — files are tuned to ~200 KB by adjusting
 `chunk_years` per zone.
 
-Probe zones use the same `chunked` shape but with the manifest entry placed
-directly at zone level (no `zooms` wrapper). That signals the URL builder to
-omit the zoom segment: `position/probes/interplanetary/47.bin.gz` rather
-than `position/probes/interplanetary/0/47.bin.gz`. Probes never need
-multi-resolution tiers — per-zone routing already picks the right detail
-level — so the zoom level would always be `0` and is elided for clarity.
+Probe zones carry the distinct `probes` shape (so they're told apart from the
+flat `chunked` cheby zones, which also sit at zone level). Like every flat
+zone the entry has no `zooms` wrapper and the URL omits the zoom segment:
+`position/probes/interplanetary/47.bin.gz`. The chunk layout matches `chunked`
+otherwise. Probes never need multi-resolution tiers — per-zone routing already
+picks the right detail level.
 
 Probe zones are **sparse**: the writer only emits a file for a chunk index
 when ≥1 probe contributes (Pluto only during the New Horizons flyby,

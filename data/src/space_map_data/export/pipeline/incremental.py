@@ -33,6 +33,7 @@ from space_map_data.export.position.elements.spacetrack_source import (
     archive_zip_fingerprints,
 )
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.sidecar_io import mirror_path, read_sidecar, write_sidecar
 from space_map_data.models.ingest_stamp import read_ingest_stamp
 from space_map_data.utils.paths import (
@@ -179,7 +180,7 @@ def earth_zone_signature() -> dict:
 
 
 def zone_meta_path(out_dir: Path, zone: str, zoom: int) -> Path:
-    return mirror_path(out_dir / "position" / zone / str(zoom) / ZONE_META_NAME)
+    return mirror_path(position_zone_dir(out_dir, zone, zoom) / ZONE_META_NAME)
 
 
 def _jd_to_json(value: float) -> float | None:
@@ -247,7 +248,7 @@ def zone_parts_exist(
     out_dir: Path, zone: str, zoom: int, snapshots: list[dict]
 ) -> bool:
     """True iff every part file recorded in cached stats is still on disk."""
-    base = out_dir / "position" / zone / str(zoom)
+    base = position_zone_dir(out_dir, zone, zoom)
     for snap in snapshots:
         snap_dir = base / snap["time"] if snap["time"] is not None else base
         for part in range(snap["num_parts"]):

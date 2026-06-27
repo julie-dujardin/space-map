@@ -1,15 +1,14 @@
 """Export Chebyshev polynomial ephemeris as chunked position files.
 
 Reads per-body `.npz` files produced by the SPICE download step and emits one
-gzipped position file per (zone, time-chunk) at
-`position/{zone}/0/{chunk}.bin.gz`. The binary's per-body header carries
-`id_type` + `obj_id_value` so the frontend can rebuild the full
+gzipped position file per (zone, time-chunk) at `position/{zone}/{chunk}.bin.gz`
+(the multi-zoom `major` zone keeps a `/0/` segment). The binary's per-body
+header carries `id_type` + `obj_id_value` so the frontend can rebuild the full
 `<prefix>-<numeric>` Object ID — Pluto and the perturber asteroids ride as
 `spkid-…` even though their SPICE naif_id is the planetary ID.
 
-The chebyshev payload always sits at zoom 0 (most accurate tier for the most
-important bodies). Less-accurate Kepler-based fallbacks would live at zoom 1+
-in a different zone, not in the same file.
+The chebyshev payload always sits at zoom 0 — the most accurate tier for the
+most important bodies.
 """
 
 import gzip
@@ -34,6 +33,7 @@ from space_map_data.export.position.format import (
     pack_body_header,
     pack_chebyshev_header,
 )
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
@@ -196,11 +196,12 @@ def _write_chunk_file(
     ],
     float64_coeffs: bool,
 ) -> int:
-    """Write one chunk file at `position/{zone}/0/{chunk_idx}.bin.gz`.
+    """Write one chunk file at `position/{zone}[/0]/{chunk_idx}.bin.gz` — the
+    zoom segment only for the multi-zoom ``major`` zone.
 
     Returns bytes written for the bin file.
     """
-    chunk_dir = out_dir / "position" / zone / "0"
+    chunk_dir = position_zone_dir(out_dir, zone, 0)
     chunk_dir.mkdir(parents=True, exist_ok=True)
 
     coeff_dtype = np.float64 if float64_coeffs else np.float32

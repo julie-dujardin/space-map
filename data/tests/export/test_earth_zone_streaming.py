@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 from space_map_data.export.objects.writer import ChunkObjectData
 from space_map_data.export.pipeline import zone as zone_mod
-from space_map_data.export.pipeline.zone import _scan_date_snapshots, export_earth_zones
+from space_map_data.export.pipeline.zone import _scan_date_snapshots, export_earth_zone
+from space_map_data.export.position.layout import position_zone_dir
 
 
 class TestScanDateSnapshots:
@@ -12,7 +13,8 @@ class TestScanDateSnapshots:
     archive years skipped without parsing still ship."""
 
     def test_counts_parts_per_date_dir(self, tmp_path):
-        zdir = tmp_path / "position" / "earth" / "0"
+        # earth is flat — date dirs sit directly under position/earth/ (no zoom).
+        zdir = position_zone_dir(tmp_path, "earth", 0)
         for date, n in [("2024-01-01", 2), ("2024-01-08", 1), ("2026-06-02", 3)]:
             d = zdir / date
             d.mkdir(parents=True)
@@ -34,8 +36,7 @@ class TestScanDateSnapshots:
 
 class TestSkipBeforeParse:
     """An archive year whose zip fingerprints match its on-disk marker is
-    skipped without re-parsing on the next run, and a dirty year is parsed once
-    across all zooms."""
+    skipped without re-parsing on the next run; a dirty year is parsed once."""
 
     def _patch(self, monkeypatch):
         calls = SimpleNamespace(parse_count=0, written_sources=[])
@@ -46,7 +47,7 @@ class TestSkipBeforeParse:
 
         def fake_write_parts(objects, out_dir, zone, zoom, *a, time, **k):
             # Mirror the real writer's dir output so the disk scan sees the week.
-            d = out_dir / "position" / zone / str(zoom) / time
+            d = position_zone_dir(out_dir, zone, zoom) / time
             d.mkdir(parents=True, exist_ok=True)
             (d / "0.bin.gz").write_bytes(b"x")
             calls.written_sources.append(objects[0]._source_override)
@@ -68,46 +69,40 @@ class TestSkipBeforeParse:
         monkeypatch.setattr(zone_mod, "_write_element_parts", fake_write_parts)
         return calls
 
-    def _zoom_bases(self):
+    def _base(self):
         # SimpleNamespace stands in for Object: the overlay/metadata are stubbed,
         # but it must accept the transient `_source_override` the writer reads.
-        return [(0, [SimpleNamespace()]), (1, [SimpleNamespace()])]
+        return [SimpleNamespace()]
 
-    def test_one_parse_drives_both_zooms(self, tmp_path, monkeypatch):
+    def test_dirty_year_parsed_once(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        results = export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
-        # The dirty year is parsed once, not once per zoom.
+        result = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 1
-        # Both zooms shipped the week, stamped Space-Track.
-        assert [(s.time, s.num_parts) for s in results[0].snapshots] == [
-            ("2024-01-01", 1)
-        ]
-        assert [(s.time, s.num_parts) for s in results[1].snapshots] == [
-            ("2024-01-01", 1)
-        ]
+        # The week shipped, stamped Space-Track.
+        assert [(s.time, s.num_parts) for s in result.snapshots] == [("2024-01-01", 1)]
         assert all(str(s) == "spacetrack" for s in calls.written_sources)
 
     def test_second_run_skips_parse(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 1
         # Markers now match the stable fingerprint → no parse, week still ships.
-        r2 = export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        r2 = export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 1  # unchanged — not parsed again
-        assert [(s.time, s.num_parts) for s in r2[0].snapshots] == [("2024-01-01", 1)]
+        assert [(s.time, s.num_parts) for s in r2.snapshots] == [("2024-01-01", 1)]
 
     def test_changed_fingerprint_reparses(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 1
         # Fingerprint changes (e.g. re-downloaded zip) → marker mismatch → reparse.
         monkeypatch.setattr(
             zone_mod, "archive_zip_fingerprints", lambda years: [{"changed": True}]
         )
-        export_earth_zones(self._zoom_bases(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+        export_earth_zone(self._base(), {}, [2024], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert calls.parse_count == 2
 
 
@@ -125,7 +120,7 @@ class TestGlobalOrbitOverlay:
             return ChunkObjectData()
 
         def fake_write_parts(objects, out_dir, zone, zoom, *a, time, **k):
-            d = out_dir / "position" / zone / str(zoom) / time
+            d = position_zone_dir(out_dir, zone, zoom) / time
             d.mkdir(parents=True, exist_ok=True)
             (d / "0.bin.gz").write_bytes(b"x")
             return 1
@@ -143,8 +138,8 @@ class TestGlobalOrbitOverlay:
         sat = SimpleNamespace(norad_cat_id=25544)
         old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
         new = {25544: {"epoch_jd": 2.0, "n": 15.5}}
-        export_earth_zones(
-            [(0, [sat])],  # type: ignore[arg-type]
+        export_earth_zone(
+            [sat],  # type: ignore[arg-type]
             {"2026-06-02": old, "2026-06-18": new},  # type: ignore[arg-type]
             [],
             tmp_path,
@@ -163,8 +158,8 @@ class TestGlobalOrbitOverlay:
         only_old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
         # The latest day has other sats but not this one.
         latest = {99999: {"epoch_jd": 2.0, "n": 16.0}}
-        export_earth_zones(
-            [(0, [sat])],  # type: ignore[arg-type]
+        export_earth_zone(
+            [sat],  # type: ignore[arg-type]
             {"2026-06-01": only_old, "2026-06-02": latest},  # type: ignore[arg-type]
             [],
             tmp_path,
@@ -181,6 +176,6 @@ class TestGlobalOrbitOverlay:
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
         sat = SimpleNamespace(norad_cat_id=25544)
         with caplog.at_level("WARNING"):
-            export_earth_zones([(0, [sat])], {}, [], tmp_path, ctx=ctx)  # type: ignore[arg-type]
+            export_earth_zone([sat], {}, [], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert captured == [None]
         assert "no daily elements" in caplog.text

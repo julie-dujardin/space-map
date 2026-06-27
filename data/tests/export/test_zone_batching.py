@@ -66,7 +66,7 @@ def test_batched_offset_parts_match_one_shot(tmp_path, monkeypatch):
     assert _write(objs[:20], batched, 0, monkeypatch) == 2
     assert _write(objs[20:], batched, 2, monkeypatch) == 1
 
-    rel = "position/moons/0"
+    rel = "position/moons"  # flat single-zoom zone — no zoom segment
     one_files = sorted(p.name for p in (one / rel).iterdir())
     batched_files = sorted(p.name for p in (batched / rel).iterdir())
     assert one_files == batched_files == ["0.bin.gz", "1.bin.gz", "2.bin.gz"]

@@ -6,6 +6,10 @@ chebyshev manifest fragment. Dispatch is on `SnapshotResult.chunk_days`
 (and on whether `time` is None), not on label format — these tests pin
 that contract so a future refactor can't silently regress to label-format
 heuristics.
+
+Multi-zoom zones (`major`, `small_bodies/{class}`) nest shapes under a `zooms`
+map; structurally single-zoom zones (everything else) emit the shape at zone
+level with no wrapper. These tests pin which zones flatten.
 """
 
 import pytest
@@ -39,8 +43,30 @@ def _result(
     )
 
 
-def _zoom(*results: SnapshotResult) -> ZoomSnapshots:
-    return ZoomSnapshots(snapshots=list(results))
+def _zoom(*results: SnapshotResult, parent_id_type: str | None = None) -> ZoomSnapshots:
+    return ZoomSnapshots(snapshots=list(results), parent_id_type=parent_id_type)
+
+
+def _cheb(start_jd: float = 2433282.5, chunk_days: float = 5.0) -> dict:
+    return {
+        "chunks": 20,
+        "chunk_days": chunk_days,
+        "start_jd": start_jd,
+        "end_jd": 2469807.5,
+    }
+
+
+def _probe_params() -> dict:
+    return {
+        "chunks": 4,
+        "chunk_days": 364.0,
+        "start_jd": 2433282.5,
+        "end_jd": 2469807.5,
+        "subchunk_days": 7.0,
+        "float64_coeffs": True,
+        "fit_center_naif_id": 10,
+        "present": [[0, 3]],
+    }
 
 
 class TestStaticShape:
@@ -94,7 +120,7 @@ class TestChunkIndexedShape:
             ),
         )
         meta = build_position_metadata({"moons": {0: zoom}}, {})
-        assert meta["zones"]["moons"]["zooms"]["0"] == {
+        assert meta["zones"]["moons"] == {
             "shape": "chunked-parted",
             "label": "index",
             "chunks": 3,
@@ -127,8 +153,8 @@ class TestChunkIndexedShape:
             ),
         )
         meta = build_position_metadata({"moons/pluto": {0: zoom}}, {})
-        assert meta["zones"]["moons/pluto"]["zooms"]["0"]["start_jd"] == 2300000.0
-        assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunks"] == 3
+        assert meta["zones"]["moons/pluto"]["start_jd"] == 2300000.0
+        assert meta["zones"]["moons/pluto"]["chunks"] == 3
 
     def test_rejects_mixed_chunk_days(self):
         zoom = _zoom(
@@ -167,7 +193,7 @@ class TestDateSegmentedShape:
             _result(time="2026-04-27", num_parts=1),
         )
         meta = build_position_metadata({"earth": {0: zoom}}, {})
-        assert meta["zones"]["earth"]["zooms"]["0"] == {
+        assert meta["zones"]["earth"] == {
             "shape": "chunked-parted",
             "label": "date",
             "start_date": "2026-04-23",
@@ -188,9 +214,7 @@ class TestDateSegmentedShape:
             _result(time="2024-01-01", num_parts=3),
             _result(time="2026-04-23", num_parts=2),
         )
-        entry = build_position_metadata({"earth": {0: zoom}}, {})["zones"]["earth"][
-            "zooms"
-        ]["0"]
+        entry = build_position_metadata({"earth": {0: zoom}}, {})["zones"]["earth"]
         assert entry["parts"] == 3
         assert entry["parts_by_date"] == {"2024-01-01": 3, "2026-04-23": 2}
 
@@ -203,13 +227,14 @@ class TestDateSegmentedShape:
             _result(time="2026-06-15"),
         )
         meta = build_position_metadata({"earth": {0: zoom}}, {})
-        out = meta["zones"]["earth"]["zooms"]["0"]
+        out = meta["zones"]["earth"]
         assert out["start_date"] == "2026-01-01"
         assert out["end_date"] == "2026-12-31"
 
 
 class TestChebyshevShape:
-    """Per-zone chebyshev fragment folds in as ``shape: chunked`` at zoom 0."""
+    """Per-zone chebyshev fragment folds in as ``shape: chunked`` — at zoom 0
+    for the multi-zoom ``major`` zone, flat at zone level for the rest."""
 
     def test_emits_chunked_shape(self):
         meta = build_position_metadata(
@@ -250,8 +275,8 @@ class TestChebyshevShape:
                 },
             },
         )
-        assert meta["zones"]["moons/saturn"]["zooms"]["0"]["chunk_days"] == 0.125
-        assert meta["zones"]["moons/pluto"]["zooms"]["0"]["chunk_days"] == 2.0
+        assert meta["zones"]["moons/saturn"]["chunk_days"] == 0.125
+        assert meta["zones"]["moons/pluto"]["chunk_days"] == 2.0
 
 
 class TestMixedZones:
@@ -287,10 +312,10 @@ class TestMixedZones:
             },
         )
         assert meta["zones"]["small_bodies/AMO"]["zooms"]["0"]["shape"] == "parted"
-        assert meta["zones"]["earth"]["zooms"]["0"]["shape"] == "chunked-parted"
-        assert meta["zones"]["earth"]["zooms"]["0"]["label"] == "date"
-        assert meta["zones"]["moons"]["zooms"]["0"]["shape"] == "chunked-parted"
-        assert meta["zones"]["moons"]["zooms"]["0"]["label"] == "index"
+        assert meta["zones"]["earth"]["shape"] == "chunked-parted"
+        assert meta["zones"]["earth"]["label"] == "date"
+        assert meta["zones"]["moons"]["shape"] == "chunked-parted"
+        assert meta["zones"]["moons"]["label"] == "index"
         assert meta["zones"]["major"]["zooms"]["0"]["shape"] == "chunked"
 
     def test_chebyshev_collision_rejects(self):
@@ -306,6 +331,84 @@ class TestMixedZones:
                         "end_jd": 1.0,
                     }
                 },
+            )
+
+
+class TestFlatVsZoomed:
+    """Single-zoom zones flatten (no `zooms` wrapper); `major` and
+    `small_bodies/{class}` keep it. `parent_id_type` rides on the entry."""
+
+    def test_flat_zone_has_no_zooms_wrapper(self):
+        meta = build_position_metadata(
+            {
+                "earth": {
+                    0: _zoom(_result(time="2026-04-23"), parent_id_type="norad_satcat")
+                }
+            },
+            {},
+        )
+        entry = meta["zones"]["earth"]
+        assert "zooms" not in entry
+        assert entry["shape"] == "chunked-parted"
+        assert entry["parent_id_type"] == "norad_satcat"
+
+    def test_multi_zoom_zone_keeps_wrapper(self):
+        meta = build_position_metadata(
+            {
+                "small_bodies/MBA": {
+                    0: _zoom(_result(num_parts=1), parent_id_type="naif"),
+                    1: _zoom(_result(num_parts=4), parent_id_type="naif"),
+                }
+            },
+            {},
+        )
+        entry = meta["zones"]["small_bodies/MBA"]
+        assert set(entry["zooms"]) == {"0", "1"}
+        assert entry["parent_id_type"] == "naif"
+
+    def test_flat_chebyshev_zone_carries_naif_at_top(self):
+        meta = build_position_metadata({}, {"major_asteroids": _cheb()})
+        entry = meta["zones"]["major_asteroids"]
+        assert "zooms" not in entry
+        assert entry["shape"] == "chunked"
+        assert entry["parent_id_type"] == "naif"
+
+    def test_flat_zone_with_multiple_zooms_rejected(self):
+        # A structurally single-zoom zone must never emit >1 zoom.
+        with pytest.raises(ValueError, match="flat zone emitted"):
+            build_position_metadata(
+                {"earth": {0: _zoom(_result(time="2026-04-23")), 1: _zoom(_result())}},
+                {},
+            )
+
+    def test_flat_chebyshev_collision_with_elements_rejected(self):
+        with pytest.raises(ValueError, match="already in use by elements"):
+            build_position_metadata(
+                {"small_body_moons": {0: _zoom(_result(num_parts=1))}},
+                {"small_body_moons": _cheb()},
+            )
+
+
+class TestProbeShape:
+    """Probe zones emit a flat `shape: probes` entry, distinct from flat
+    chebyshev zones (`shape: chunked`)."""
+
+    def test_emits_probes_shape_flat(self):
+        meta = build_position_metadata(
+            {}, {}, probe_zones={"probes/mars": _probe_params()}
+        )
+        entry = meta["zones"]["probes/mars"]
+        assert "zooms" not in entry
+        assert entry["shape"] == "probes"
+        assert entry["parent_id_type"] == "probe"
+        assert entry["fit_center_naif_id"] == 10
+
+    def test_probe_collision_with_other_zone_rejected(self):
+        with pytest.raises(ValueError, match="already in use"):
+            build_position_metadata(
+                {"probes/mars": {0: _zoom(_result(num_parts=1))}},
+                {},
+                probe_zones={"probes/mars": _probe_params()},
             )
 
 

@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from space_map_data.export.pipeline.zone import SnapshotResult
+from space_map_data.export.position.layout import zone_has_zoom_segment
 
 
 @dataclass
@@ -20,18 +21,22 @@ class ZoomSnapshots:
 
 
 def _build_position_zoom(snaps: list[SnapshotResult], zone: str, zoom: int) -> dict:
-    """Build one position/zones/{zone}/zooms/{zoom} entry from its snapshots.
+    """Build one shape entry for a (zone, zoom) from its snapshots.
+
+    The caller nests this under ``zooms/{zoom}`` for multi-zoom zones or splats
+    it at zone level for flat single-zoom zones, so the ``{zoom}`` segment in
+    the URLs below is present only for the former.
 
     Three shapes, dispatched on the snapshot stream:
 
     * ``parted`` — single snapshot with ``time is None``. URL:
-      ``position/{zone}/{zoom}/{part}.bin.gz``. Entry: ``{shape, parts}``.
+      ``position/{zone}/[{zoom}/]{part}.bin.gz``. Entry: ``{shape, parts}``.
     * ``chunked-parted`` with ``label="index"`` — chunk-indexed elements
       (the moons elements zone). URL:
-      ``position/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz``. Entry:
+      ``position/{zone}/[{zoom}/]{chunk_idx}/{part}.bin.gz``. Entry:
       ``{shape, label, chunks, chunk_days, start_jd, parts}``.
     * ``chunked-parted`` with ``label="date"`` — date-segmented elements
-      (the earth zone). URL: ``position/{zone}/{zoom}/{date}/{part}.bin.gz``.
+      (the earth zone). URL: ``position/{zone}/[{zoom}/]{date}/{part}.bin.gz``.
       Entry: ``{shape, label, start_date, end_date, parts, parts_by_date}`` —
       ``parts_by_date`` maps each date to its part count (counts vary across
       dates); ``parts`` is the max as a convenience bound.
@@ -100,14 +105,21 @@ def build_position_metadata(
     """Build the unified ``position.zones`` metadata block.
 
     Folds the elements-side `zone_structure` (one entry per zone+zoom that
-    emitted snapshots) and the chebyshev-side `chebyshev_zones` (one entry
-    per zone that emitted chebyshev chunks; always at zoom 0) into a single
-    map keyed by zone name. Each zoom carries a `shape` discriminator so
-    consumers can build URLs without sniffing field presence:
+    emitted snapshots) and the chebyshev-side `chebyshev_zones` (one entry per
+    zone that emitted chebyshev chunks; always at zoom 0) into a single map
+    keyed by zone name.
 
-    * ``parted`` — `{zone}/{zoom}/{part}.bin.gz`
-    * ``chunked-parted`` — `{zone}/{zoom}/{label}/{part}.bin.gz`
-    * ``chunked`` — `{zone}/{zoom}/{chunk}.bin.gz` (chebyshev)
+    Multi-zoom zones (`major`, `small_bodies/{class}`) nest their shapes under
+    a `zooms` map and keep a `{zoom}` URL segment. Structurally single-zoom
+    zones are flat — the `shape` fields sit at zone level and the URL drops the
+    segment (like probes). Each carries a `shape` discriminator so consumers
+    build URLs without sniffing field presence (`[{zoom}/]` present only when
+    the entry has a `zooms` wrapper):
+
+    * ``parted`` — `{zone}/[{zoom}/]{part}.bin.gz`
+    * ``chunked-parted`` — `{zone}/[{zoom}/]{label}/{part}.bin.gz`
+    * ``chunked`` — `{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev)
+    * ``probes`` — `{zone}/{chunk}.bin.gz` (always flat)
 
     Each zone also carries `parent_id_type` (e.g. ``"naif"``, ``"spkid"``)
     naming the prefix the frontend should apply to col-2 numeric parent ids
@@ -129,31 +141,50 @@ def build_position_metadata(
                         f"({parent_id_type!r} vs {zoom_snaps.parent_id_type!r}) — "
                         f"the manifest emits one value per zone"
                     )
-        if zooms:
+        if not zooms:
+            continue
+        if zone_has_zoom_segment(zone):
             entry: dict = {"zooms": zooms}
-            if parent_id_type is not None:
-                entry["parent_id_type"] = parent_id_type
-            zones[zone] = entry
+        else:
+            if len(zooms) != 1:
+                raise ValueError(
+                    f"{zone}: flat zone emitted {len(zooms)} zooms; structurally "
+                    f"single-zoom zones carry exactly one"
+                )
+            entry = next(iter(zooms.values()))
+        if parent_id_type is not None:
+            entry["parent_id_type"] = parent_id_type
+        zones[zone] = entry
     for zone, params in chebyshev_zones.items():
-        # Chebyshev always sits at zoom 0; nothing else can land at the same
-        # zone+zoom, so there's no collision to resolve.
-        zone_entry = zones.setdefault(zone, {"zooms": {}})
-        if "0" in zone_entry["zooms"]:
-            raise ValueError(
-                f"{zone}: chebyshev tried to claim zoom 0 but elements already "
-                f"emitted there; one format per zone+zoom"
-            )
-        zone_entry["zooms"]["0"] = {
+        cheb_entry = {
             "shape": "chunked",
             "chunks": params["chunks"],
             "chunk_days": params["chunk_days"],
             "start_jd": params["start_jd"],
             "end_jd": params["end_jd"],
         }
-        zone_entry.setdefault("parent_id_type", "naif")
-    # Probe zones have no zoom levels — emit the shape fields directly at
-    # zone level (no `zooms` wrapper) so the URL is
-    # `position/{zone}/{chunk}.bin.gz` without an interpolated zoom segment.
+        if zone_has_zoom_segment(zone):
+            # `major` shares its zone with the Horizons elements tiers at zoom
+            # 1/2, so chebyshev keeps zoom 0; nothing else can land there.
+            zone_entry = zones.setdefault(zone, {"zooms": {}})
+            if "0" in zone_entry["zooms"]:
+                raise ValueError(
+                    f"{zone}: chebyshev tried to claim zoom 0 but elements "
+                    f"already emitted there; one format per zone+zoom"
+                )
+            zone_entry["zooms"]["0"] = cheb_entry
+            zone_entry.setdefault("parent_id_type", "naif")
+        else:
+            # Flat single-tier zone (`major_asteroids`, `moons/<parent>`).
+            if zone in zones:
+                raise ValueError(
+                    f"{zone}: chebyshev tried to claim a zone already in use by "
+                    f"elements"
+                )
+            cheb_entry["parent_id_type"] = "naif"
+            zones[zone] = cheb_entry
+    # Probe zones are flat (no `zooms` wrapper). The distinct `probes` shape tag
+    # separates them from flat chebyshev zones, which also sit at zone level.
     for zone, params in (probe_zones or {}).items():
         if zone in zones:
             raise ValueError(
@@ -161,7 +192,7 @@ def build_position_metadata(
                 f"elements/chebyshev"
             )
         zones[zone] = {
-            "shape": "chunked",
+            "shape": "probes",
             "chunks": params["chunks"],
             "chunk_days": params["chunk_days"],
             "start_jd": params["start_jd"],

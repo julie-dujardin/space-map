@@ -24,6 +24,7 @@ from space_map_data.export.position.format import (
     UNBOUNDED_START_JD,
 )
 from space_map_data.export.position.format import VERSION as BINARY_VERSION
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.pipeline.snapshots import (
     ZoneSnapshots,
     _overlay_celestrak_elements,
@@ -292,10 +293,10 @@ def export_zone(
     return result
 
 
-def _archive_group_marker(out_dir: Path, zoom: int, label: str) -> Path:
-    """Sidecar path marking an archive source group fully exported for ``zoom``."""
+def _archive_group_marker(out_dir: Path, label: str) -> Path:
+    """Sidecar path marking an archive source group fully exported."""
     return sidecar.mirror_path(
-        out_dir / "position" / "earth" / str(zoom) / f".archive-{label}.meta.json"
+        position_zone_dir(out_dir, "earth", 0) / f".archive-{label}.meta.json"
     )
 
 
@@ -316,7 +317,7 @@ def _scan_date_snapshots(out_dir: Path, zone: str, zoom: int) -> list[SnapshotRe
     off disk instead. ``count`` is left 0 (rows aren't re-decoded); only
     ``num_parts`` feeds the date-segmented manifest entry.
     """
-    zdir = out_dir / "position" / zone / str(zoom)
+    zdir = position_zone_dir(out_dir, zone, zoom)
     out: list[SnapshotResult] = []
     if not zdir.exists():
         return out
@@ -329,22 +330,22 @@ def _scan_date_snapshots(out_dir: Path, zone: str, zoom: int) -> list[SnapshotRe
     return out
 
 
-def export_earth_zones(
-    zoom_bases: list[tuple[int, list[Object]]],
+def export_earth_zone(
+    base: list[Object],
     celestrak_days: Mapping[str, dict[int, CelesTrakElements]],
     archive_years: Iterable[int],
     out_dir: Path,
     ctx: ObjectDataContext,
-) -> dict[int, ZoneExportResult]:
-    """Stream the Earth zoom(s): the archive is parsed one source group at a time
-    and each group drives every zoom. Most groups are a single year; the pre-2004
-    group distils the whole 2004 mega-dump in one pass (~5 GB peak), the price of
-    not re-reading the ~2 GB dump per historical year.
+) -> ZoneExportResult:
+    """Stream the Earth zone: the archive is parsed one source group at a time.
+    Most groups are a single year; the pre-2004 group distils the whole 2004
+    mega-dump in one pass (~5 GB peak), the price of not re-reading the ~2 GB
+    dump per historical year.
 
     Unlike the generic two-pass :func:`export_zone`, object metadata is built
-    from the full base per zoom rather than the snapshot union — every Earth
-    Object appears in some week, so the union *is* the base, and skipping the
-    union pass lets the archive parse lazily. An archive group whose zip
+    from the full base rather than the snapshot union — every Earth Object
+    appears in some week, so the union *is* the base, and skipping the union
+    pass lets the archive parse lazily. An archive group whose zip
     fingerprints match its on-disk marker is skipped without parsing; its parts
     stay and the manifest is rebuilt from a disk scan so they still ship. The
     result: a steady-state daily CelesTrak refresh re-parses zero archive groups.
@@ -354,7 +355,7 @@ def export_earth_zones(
     # The per-object global bundle ships one "current" orbit block the frontend
     # reads to place a URL-navigated sat before (or in lieu of) its element
     # chunk. The Kepler fields come from the transient `_daily_kepler` overlay,
-    # so overlay the recent dailies onto each base *before* building the
+    # so overlay the recent dailies onto the base *before* building the
     # metadata — otherwise Earth sats ship with no orbit block and URL
     # navigation hides them (redirecting to the Sun). Apply oldest→newest so
     # each sat keeps its most recent elements while a sat absent from the very
@@ -362,20 +363,17 @@ def export_earth_zones(
     # below re-overlays each snapshot independently.
     if celestrak_days:
         for iso in sorted(celestrak_days):
-            for _zoom, base in zoom_bases:
-                _overlay_celestrak_elements(base, celestrak_days[iso])
+            _overlay_celestrak_elements(base, celestrak_days[iso])
     else:
         logger.warning(
-            "export_earth_zones: no daily elements available — Earth-sat global "
+            "export_earth_zone: no daily elements available — Earth-sat global "
             "bundles ship without an orbit block, so URL navigation will hide them"
         )
-    zone_data = {z: build_zone_object_data(b, ctx) for z, b in zoom_bases}
-    parent_id_type = {z: _derive_parent_id_type("earth", b) for z, b in zoom_bases}
-    built: dict[int, dict[str, SnapshotResult]] = {z: {} for z, _ in zoom_bases}
+    zone_data = build_zone_object_data(base, ctx)
+    parent_id_type = _derive_parent_id_type("earth", base)
+    built: dict[str, SnapshotResult] = {}
 
     def write(
-        zoom: int,
-        base: list[Object],
         date_iso: str,
         elements: dict[int, CelesTrakElements],
         source: OrbitalSource,
@@ -389,53 +387,40 @@ def export_earth_zones(
             kept,
             out_dir,
             "earth",
-            zoom,
-            zone_data[zoom].has_localized,
+            0,
+            zone_data.has_localized,
             ctx.wikidata_entities,
             ctx.units,
             time=date_iso,
         )
-        built[zoom][date_iso] = SnapshotResult(
+        built[date_iso] = SnapshotResult(
             time=date_iso, count=len(kept), num_parts=num_parts
         )
 
     # Recent CelesTrak dailies — already materialised, small.
     for date_iso, elements in celestrak_days.items():
-        for zoom, base in zoom_bases:
-            write(zoom, base, date_iso, elements, OrbitalSource.celestrak)
+        write(date_iso, elements, OrbitalSource.celestrak)
 
-    # Historical archive: parse each source group once and drive every zoom from
-    # it. Pre-2004 history all lives in the 2004 mega-dump, so those years form
-    # one group streamed in a single pass rather than re-read per year.
+    # Historical archive: parse each source group once. Pre-2004 history all
+    # lives in the 2004 mega-dump, so those years form one group streamed in a
+    # single pass rather than re-read per year.
     for label, group_years in archive_source_groups(archive_years):
         signature = _archive_group_signature(group_years)
-        dirty = [
-            (z, b)
-            for z, b in zoom_bases
-            if not sidecar.matches(_archive_group_marker(out_dir, z, label), signature)
-        ]
-        if not dirty:
+        if sidecar.matches(_archive_group_marker(out_dir, label), signature):
             continue  # unchanged zip + already built — don't parse; disk scan re-adds it
         for date_iso, elements in load_archive_weeks(group_years).items():
-            for zoom, base in dirty:
-                write(zoom, base, date_iso, elements, OrbitalSource.spacetrack)
-        for zoom, _ in dirty:
-            sidecar.write_sidecar(
-                _archive_group_marker(out_dir, zoom, label), signature
-            )
+            write(date_iso, elements, OrbitalSource.spacetrack)
+        sidecar.write_sidecar(_archive_group_marker(out_dir, label), signature)
 
     # Built weeks carry real counts; skipped years (not re-parsed) come off disk
     # with count 0 so they still ship in the date-segmented manifest.
-    results: dict[int, ZoneExportResult] = {}
-    for zoom, _ in zoom_bases:
-        snapshots = list(built[zoom].values())
-        for snap in _scan_date_snapshots(out_dir, "earth", zoom):
-            if snap.time not in built[zoom]:
-                snapshots.append(snap)
-        snapshots.sort(key=lambda s: s.time or "")
-        results[zoom] = ZoneExportResult(
-            zone_data=zone_data[zoom],
-            snapshots=snapshots,
-            parent_id_type=parent_id_type[zoom],
-        )
-    return results
+    snapshots = list(built.values())
+    for snap in _scan_date_snapshots(out_dir, "earth", 0):
+        if snap.time not in built:
+            snapshots.append(snap)
+    snapshots.sort(key=lambda s: s.time or "")
+    return ZoneExportResult(
+        zone_data=zone_data,
+        snapshots=snapshots,
+        parent_id_type=parent_id_type,
+    )

@@ -4,7 +4,8 @@ High-accuracy polynomial ephemeris for bodies that a user zooms in on — the
 Sun, planets, dwarf planets, planetary-system barycenters, the 16 sb441-n16
 asteroid perturbers, and ~30 whitelisted surface-feature moons. Each
 (zone, time-chunk) pair is one gzipped binary at
-`position/{zone}/0/{chunk}.bin.gz`; the per-body header carries `id_type` +
+`position/{zone}/{chunk}.bin.gz` (only the multi-zoom `major` zone keeps a
+`/0/` zoom segment: `position/major/0/{chunk}.bin.gz`); the per-body header carries `id_type` +
 `obj_id_value` so consumers rebuild the full `{prefix}-{numeric}` Object ID
 (e.g. `spkid-20134340` for Pluto) without a sidecar file. Evaluate with
 Clenshaw's recursion on the Chebyshev basis.
@@ -39,8 +40,9 @@ of body density.
 - `moons/pluto` — Charon, Nix, Kerberos, Styx (2y chunks).
 
 Per-zone chunk cadence (`chunks`, `chunk_years`, `start_jd`, `end_jd`) lives
-under each zone's `position.zones[zone].zooms[0]` entry with
-`shape: "chunked"`.
+on the zone's manifest entry with `shape: "chunked"` — under `zooms[0]` for
+the multi-zoom `major` zone, directly at zone level for the flat cheby zones
+(`major_asteroids`, `moons/{parent}`).
 
 ## Chebyshev extension (8 bytes, offsets 24..31)
 

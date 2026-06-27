@@ -20,10 +20,10 @@ v1/
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
-    {zone}/{zoom}/{part}.bin.gz                   static parted        — small_bodies/{class} zones, Earth-orbit spacecraft
-    {zone}/{zoom}/{label}/{part}.bin.gz           time-chunked + parted — earth (date label), moons (chunk-idx label)
-    {zone}/{zoom}/{chunk}.bin.gz                  time-chunked, unparted — chebyshev zones
-    probes/{zone}/{chunk}.bin.gz                  time-chunked, no zoom segment — interplanetary probes (format byte = 2)
+    {zone}/[{zoom}/]{part}.bin.gz                 static parted        — small_bodies/{class} (zoomed), Earth-orbit spacecraft, small_body_moons
+    {zone}/[{zoom}/]{label}/{part}.bin.gz         time-chunked + parted — earth (date label, flat), moons (chunk-idx label, flat)
+    {zone}/[{zoom}/]{chunk}.bin.gz                time-chunked, unparted — chebyshev zones (only major is zoomed; major_asteroids, moons/{parent} are flat)
+    probes/{zone}/{chunk}.bin.gz                  time-chunked, always flat — interplanetary probes (format byte = 2)
   attitude/{probe_id}/{N}.bin.gz                  probe orientation keyframe streams (ATTI format)
   objects/__global__/{bucket}.json.gz             global object details, hash-bucketed
   objects/{lang}/{bucket}.json.gz                 localized details, hash-bucketed

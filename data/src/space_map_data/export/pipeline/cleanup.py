@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from space_map_data.export.pipeline.manifest import ZoomSnapshots
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.models.object import (
     CelesTrak,
     Horizons,
@@ -84,11 +85,11 @@ def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None
                         shutil.rmtree(sub)
                 continue
             if child.name == "moons":
-                # `moons/0` is the elements zone; named children are
-                # chebyshev's per-parent moon tiers.
-                sub = child / "0"
-                if sub.exists():
-                    shutil.rmtree(sub)
+                # Numeric children = flat elements `moons` chunks; named children
+                # (`moons/<parent>`) are chebyshev tiers, wiped by the cheb pass.
+                for sub in child.iterdir():
+                    if sub.is_dir() and sub.name.isdigit():
+                        shutil.rmtree(sub)
                 continue
             shutil.rmtree(child)
     if not keep_object_outputs:
@@ -138,7 +139,7 @@ def _planned_small_body_paths(
             continue
         for zoom, zoom_snaps in zoom_map.items():
             for snap in zoom_snaps.snapshots:
-                base = out_dir / "position" / zone / str(zoom)
+                base = position_zone_dir(out_dir, zone, zoom)
                 if snap.time is not None:
                     base = base / snap.time
                 for part in range(snap.num_parts):

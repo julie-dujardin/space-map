@@ -48,7 +48,7 @@ Both `earth` and `small_bodies/{class}` parts carry a `{part}.meta.json`
 sidecar (stored in `EXPORT_METADATA_DIR` mirror, never published) recording
 the upstream snapshot that produced them:
 
-- `earth/{zoom}/{date}/{part}.meta.json` — fingerprints that date's source.
+- `earth/{date}/{part}.meta.json` — fingerprints that date's source.
   Recent CelesTrak dailies fingerprint the day's CSVs (`name + mtime_ns +
   size` per CSV); historical weekly snapshots fingerprint the Space-Track
   archive zip(s) feeding the week (`archive_inputs`). A re-downloaded day or
@@ -70,9 +70,10 @@ moving between classes, class shrinkage, or zooms disappearing.
 Above the per-part sidecars sit run-level skip gates (all in the
 `EXPORT_METADATA_DIR` mirror, see `export/pipeline/incremental.py`):
 
-- `position/{zone}/{zoom}/__zone__.meta.json` — per-zone signature plus the
-  snapshot stats `metadata.json` needs. A matching zone skips its DB load
-  and per-object build entirely, not just the re-encode.
+- `position/{zone}/__zone__.meta.json` — per-zone signature plus the
+  snapshot stats `metadata.json` needs (gains a `{zoom}` segment only for the
+  multi-zoom zones `major`, `small_bodies/{class}`). A matching zone skips its
+  DB load and per-object build entirely, not just the re-encode.
 - `position/chebyshev.meta.json` / `position/probes/__pass__.meta.json` —
   gate those whole passes behind their input fingerprints (npz tree /
   kernels + events + candidates + registry), caching the manifest fragments.
@@ -97,7 +98,7 @@ manifest:
   week's Monday is the date label; per satellite the TLE nearest the week
   midpoint is kept). Part counts vary per date, so the manifest ships
   `parts_by_date` (see Manifest shapes). Path:
-  `position/earth/0/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
+  `position/earth/{YYYY-MM-DD}/{part}.bin.gz`. SGP4 accuracy degrades fast
   past the TLE epoch, so each snapshot's header `start_jd`/`end_jd` bounds it
   to `min(epoch)−14d … max(epoch)+14d`.
 
@@ -106,7 +107,7 @@ manifest:
   re-fitted at each chunk midpoint so Ω̇/ω̇/n_mean track multi-decade
   Kozai-Lidov-style drift on outer irregulars instead of being a single
   linear approximation across the whole range. Path:
-  `position/moons/0/{chunk_idx}/{part}.bin.gz`. Compute the chunk index from
+  `position/moons/{chunk_idx}/{part}.bin.gz`. Compute the chunk index from
   a JD with `floor((jd - start_jd) / (chunk_years * 365.25))`. Header
   `start_jd`/`end_jd` bound the chunk's validity window. Whitelisted moons
   are absent from `moons` — they ride in their parent's chebyshev zone

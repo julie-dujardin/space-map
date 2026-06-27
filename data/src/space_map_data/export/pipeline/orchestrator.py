@@ -20,9 +20,6 @@ from sqlalchemy import case, or_, true as sa_true
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
-from space_map_data.download.providers.wikidata.id_resolver import (
-    CONSTELLATION_PREFIXES,
-)
 from space_map_data.export.credits import write_credits
 from space_map_data.export.earth_sat_filter import not_docked
 from space_map_data.export.ephemeris import load_probe_kernel_sources
@@ -65,7 +62,7 @@ from space_map_data.export.pipeline.zone import (
     SnapshotResult,
     ZoneExportResult,
     build_zone_object_data,
-    export_earth_zones,
+    export_earth_zone,
     export_zone,
 )
 from space_map_data.export.position import CHUNK_SIZE, write_chebyshev
@@ -75,6 +72,7 @@ from space_map_data.export.position.elements.celestrak_source import (
     load_all_days,
 )
 from space_map_data.export.position.elements.spacetrack_source import ARCHIVE_YEARS
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.probes import write_probes
 from space_map_data.export.position.spacecraft_orientation import (
     apply_orientation_config,
@@ -459,12 +457,12 @@ def _run_earth_zones(
     agg: _Aggregators,
     tier_b_clean: bool,
 ) -> None:
-    """Run Earth-zone exports inline (synchronous).
+    """Run the Earth-zone export inline (synchronous).
 
-    Zooms whose zone signature matches the cached meta (and tier B is clean)
-    skip the DB load and per-day overlays entirely; the elements sources
+    A zone signature matching the cached meta (and tier B clean) skips the DB
+    load and per-day overlays entirely; the elements sources
     (CelesTrak CSVs + Space-Track archive zips) are only parsed
-    (`celestrak_loader`) when at least one zoom runs.
+    (`celestrak_loader`) when the zone runs.
 
     Per-day overlays mutate the same Object instances in-place, so multiple
     days can't be shipped to threads simultaneously without cloning.
@@ -494,44 +492,30 @@ def _run_earth_zones(
     )
     if docked:
         logger.info("  earth: excluding %d docked spacecraft from export", docked)
-    is_constellation = or_(*(Object.name.startswith(p) for p in CONSTELLATION_PREFIXES))
-    # Collect the non-cached zooms, then export them together so a dirty archive
-    # year is parsed once and drives both zooms (not once per zoom).
-    zoom_bases: list[tuple[int, list[Object]]] = []
-    for zoom_label, zoom_filter in (
-        (0, ~is_constellation),
-        (1, is_constellation),
-    ):
-        if tier_b_clean:
-            meta = _zone_is_cached(out_dir, "earth", zoom_label, earth_sig)
-            if meta is not None:
-                _record_cached("earth", zoom_label, meta, agg)
-                continue
-        # Earth zones are uncapped: per-day CelesTrak sidecars + per-year archive
-        # markers make re-export incremental. random_int ordering is kept for
-        # deterministic chunking.
-        base_objects = earth_base.filter(zoom_filter).order_by(Object.random_int).all()
-        if not base_objects:
-            logger.info("  earth zoom=%d: empty, skipping", zoom_label)
-            continue
-        zoom_bases.append((zoom_label, base_objects))
-
-    if not zoom_bases:
+    if tier_b_clean:
+        meta = _zone_is_cached(out_dir, "earth", 0, earth_sig)
+        if meta is not None:
+            _record_cached("earth", 0, meta, agg)
+            return
+    # The earth zone is uncapped: per-day CelesTrak sidecars + per-year archive
+    # markers make re-export incremental. random_int ordering is kept for
+    # deterministic chunking.
+    base_objects = earth_base.order_by(Object.random_int).all()
+    if not base_objects:
+        logger.info("  earth: empty, skipping")
         return
-    results = export_earth_zones(
-        zoom_bases, celestrak_loader(), ARCHIVE_YEARS, out_dir, ctx
+    result = export_earth_zone(
+        base_objects, celestrak_loader(), ARCHIVE_YEARS, out_dir, ctx
     )
-    for zoom_label, _ in zoom_bases:
-        result = results[zoom_label]
-        _record("earth", zoom_label, result, agg)
-        incremental.write_zone_meta(
-            out_dir,
-            "earth",
-            zoom_label,
-            earth_sig,
-            result.parent_id_type,
-            result.snapshots,
-        )
+    _record("earth", 0, result, agg)
+    incremental.write_zone_meta(
+        out_dir,
+        "earth",
+        0,
+        earth_sig,
+        result.parent_id_type,
+        result.snapshots,
+    )
 
 
 def _drive_zone_exports(
@@ -856,7 +840,7 @@ def _run_chebyshev(
     meta = incremental.read_chebyshev_meta(out_dir)
     if tier_b_clean and meta is not None and meta.get("signature") == sig:
         manifest = meta["zone_manifest"]
-        if all((out_dir / "position" / z / "0").is_dir() for z in manifest):
+        if all(position_zone_dir(out_dir, z, 0).is_dir() for z in manifest):
             logger.info(
                 "Chebyshev inputs unchanged — skipped (%d zones cached)",
                 len(manifest),
@@ -886,10 +870,12 @@ def _wipe_chebyshev_outputs(out_dir: Path, previous_meta: dict | None) -> None:
     zones = {"major/0", "major_asteroids"}
     moons_dir = pos / "moons"
     if moons_dir.exists():
+        # Named children are chebyshev's per-parent tiers; numeric children
+        # belong to the flat elements `moons` zone — leave those alone.
         zones.update(
             f"moons/{child.name}"
             for child in moons_dir.iterdir()
-            if child.is_dir() and child.name != "0"
+            if child.is_dir() and not child.name.isdigit()
         )
     for zone in (previous_meta or {}).get("zone_manifest", {}):
         zones.add(f"{zone}/0" if zone in ("major",) else zone)

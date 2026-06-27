@@ -13,6 +13,7 @@ from space_map_data.export.position.format import (
     UNBOUNDED_END_JD,
     UNBOUNDED_START_JD,
 )
+from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntity
@@ -95,7 +96,7 @@ def write_chunk(
     tighter bound than 6 months); moons keep the chunk's [start, end].
     Returns the size of the binary file in bytes.
     """
-    chunk_dir = out_dir / "position" / zone / str(zoom)
+    chunk_dir = position_zone_dir(out_dir, zone, zoom)
     if time is not None:
         chunk_dir = chunk_dir / time
     out_path = chunk_dir / f"{part}.bin.gz"

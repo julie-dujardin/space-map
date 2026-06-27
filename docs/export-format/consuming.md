@@ -5,12 +5,17 @@
    the pre-interaction label set: split by newline, parse `{id}\x1f{name}`
    per line, build a `Map<id, name>`. The keys *are* the promoted set —
    there's no separate frontend list.
-3. For each (zone, zoom), dispatch on `shape`:
-   - `parted` → fetch `position/{zone}/{zoom}/{part}.bin.gz`
+3. For each zone, dispatch on `shape`. The `{zoom}` segment below appears
+   only for multi-zoom zones — those whose manifest entry has a `zooms`
+   wrapper (`major`, `small_bodies/{class}`); a flat entry (no `zooms`) omits
+   it, and a `probes`-shape entry is a flat probe zone:
+   - `parted` → fetch `position/{zone}/[{zoom}/]{part}.bin.gz`
    - `chunked-parted` → pick a label (date for `earth`, chunk index for
-     `moons`) then fetch `position/{zone}/{zoom}/{label}/{part}.bin.gz`
+     `moons`) then fetch `position/{zone}/[{zoom}/]{label}/{part}.bin.gz`
    - `chunked` (chebyshev) → compute the chunk index from JD and fetch
-     `position/{zone}/{zoom}/{chunk}.bin.gz`
+     `position/{zone}/[{zoom}/]{chunk}.bin.gz`
+   - `probes` → compute the chunk index from JD and fetch
+     `position/{zone}/{chunk}.bin.gz` (always flat)
 4. Parse the file: read the common header, dispatch on the format byte at
    offset 6 to either the elements columnar reader or the chebyshev per-body
    reader. Rebuild full IDs from the id-type byte (elements) or the per-body
