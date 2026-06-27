@@ -22,7 +22,6 @@ from space_map_data.constants.earth_sats.featured import (
     FEATURED_EARTH_SATELLITES,
 )
 from space_map_data.constants.providers import LANGUAGES
-from space_map_data.export.earth_sat_filter import not_docked
 from space_map_data.export.images import (
     collect_group_images,
     collect_object_images,
@@ -76,11 +75,7 @@ def attach_featured_satellites(
 
     total = (
         session.query(func.count(Object.id))
-        .filter(
-            Object.parent_id == EARTH_ID,
-            Object.object_type.in_(_SAT_TYPES),
-            not_docked(),
-        )
+        .filter(Object.parent_id == EARTH_ID, Object.object_type.in_(_SAT_TYPES))
         .scalar()
         or 0
     )

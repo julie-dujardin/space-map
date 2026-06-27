@@ -21,7 +21,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 from space_map_data.export.credits import write_credits
-from space_map_data.export.earth_sat_filter import not_docked
 from space_map_data.export.ephemeris import load_probe_kernel_sources
 from space_map_data.export.groups import run_groups_tier
 from space_map_data.export.labels import write_global_labels
@@ -477,21 +476,8 @@ def _run_earth_zones(
             Object.spkid.is_(None),
             Object.object_type.in_(_SAT_TYPE_VALUES),
             Object.parent_id == _EARTH_OBJECT_ID,
-            not_docked(),
         )
     )
-    docked = (
-        session.query(Object.id)
-        .filter(
-            Object.spkid.is_(None),
-            Object.object_type.in_(_SAT_TYPE_VALUES),
-            Object.parent_id == _EARTH_OBJECT_ID,
-            ~not_docked(),
-        )
-        .count()
-    )
-    if docked:
-        logger.info("  earth: excluding %d docked spacecraft from export", docked)
     if tier_b_clean:
         meta = _zone_is_cached(out_dir, "earth", 0, earth_sig)
         if meta is not None:

@@ -1,24 +1,19 @@
-"""Shared SATCAT filters for the Earth-sat export queries."""
-
-from sqlalchemy import or_
-from sqlalchemy.sql.elements import ColumnElement
+"""Shared SATCAT predicates for the Earth-sat export."""
 
 from space_map_data.constants.earth_sats.satcat import OrbitCenter, OrbitType
 from space_map_data.models.object import Object
-from space_map_data.models.object.satcat import Satcat
 
 
-def not_docked() -> ColumnElement[bool]:
-    """Exclude spacecraft docked to another object.
+def is_docked(obj: Object) -> bool:
+    """True if ``obj``'s SATCAT row marks it docked to another object.
 
     Docked craft (SATCAT ``ORBIT_CENTER`` = a NORAD id → ``OrbitCenter.DOCKED``,
-    or ``ORBIT_TYPE`` = ``DOC`` → ``OrbitType.DOCKED``) have no independent orbit,
-    so they're dropped from the position and group exports. Objects with no
-    SATCAT row are kept.
+    or ``ORBIT_TYPE`` = ``DOC`` → ``OrbitType.DOCKED``) have no independent orbit.
+    They stay in the object bundles / search / groups but are dropped from the
+    rendered position chunks, so the scene never draws a marker on top of the
+    host they're docked to.
     """
-    return ~Object.satcat.has(
-        or_(
-            Satcat.orbit_center == OrbitCenter.DOCKED.value,
-            Satcat.orbit_type == OrbitType.DOCKED.value,
-        )
+    sat = obj.satcat
+    return sat is not None and (
+        sat.orbit_center == OrbitCenter.DOCKED or sat.orbit_type == OrbitType.DOCKED
     )

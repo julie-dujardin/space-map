@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from space_map_data.export.earth_sat_filter import is_docked
 from space_map_data.export.objects.writer import (
     ChunkObjectData,
     build_chunk_object_data,
@@ -373,12 +374,24 @@ def export_earth_zone(
     parent_id_type = _derive_parent_id_type("earth", base)
     built: dict[str, SnapshotResult] = {}
 
+    # Docked craft keep their object bundle (built from the full base above) but
+    # are dropped from the rendered position chunks below, so the scene never
+    # draws a marker on top of the host they're docked to.
+    docked_ids = {o.id for o in base if is_docked(o)}
+    if docked_ids:
+        logger.info(
+            "export_earth_zone: %d docked craft kept in bundles but not rendered",
+            len(docked_ids),
+        )
+
     def write(
         date_iso: str,
         elements: dict[int, CelesTrakElements],
         source: OrbitalSource,
     ) -> None:
         kept = _overlay_celestrak_elements(base, elements)
+        if docked_ids:
+            kept = [o for o in kept if o.id not in docked_ids]
         if not kept:
             return
         for obj in kept:

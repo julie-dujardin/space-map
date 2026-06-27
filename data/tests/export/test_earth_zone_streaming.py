@@ -71,8 +71,9 @@ class TestSkipBeforeParse:
 
     def _base(self):
         # SimpleNamespace stands in for Object: the overlay/metadata are stubbed,
-        # but it must accept the transient `_source_override` the writer reads.
-        return [SimpleNamespace()]
+        # but it must accept the transient `_source_override` the writer reads
+        # and expose the `satcat` relationship the docked-craft filter reads.
+        return [SimpleNamespace(satcat=None)]
 
     def test_dirty_year_parsed_once(self, tmp_path, monkeypatch):
         calls = self._patch(monkeypatch)
@@ -135,7 +136,7 @@ class TestGlobalOrbitOverlay:
         captured: list = []
         self._patch(monkeypatch, captured)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544)
+        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
         old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
         new = {25544: {"epoch_jd": 2.0, "n": 15.5}}
         export_earth_zone(
@@ -154,7 +155,7 @@ class TestGlobalOrbitOverlay:
         captured: list = []
         self._patch(monkeypatch, captured)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544)
+        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
         only_old = {25544: {"epoch_jd": 1.0, "n": 15.0}}
         # The latest day has other sats but not this one.
         latest = {99999: {"epoch_jd": 2.0, "n": 16.0}}
@@ -174,7 +175,7 @@ class TestGlobalOrbitOverlay:
         captured: list = []
         self._patch(monkeypatch, captured)
         ctx = SimpleNamespace(wikidata_entities=None, units=None)
-        sat = SimpleNamespace(norad_cat_id=25544)
+        sat = SimpleNamespace(norad_cat_id=25544, satcat=None)
         with caplog.at_level("WARNING"):
             export_earth_zone([sat], {}, [], tmp_path, ctx=ctx)  # type: ignore[arg-type]
         assert captured == [None]
