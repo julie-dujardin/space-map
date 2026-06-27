@@ -613,6 +613,24 @@ class TestWriteSgp4Elements:
         (d0,) = struct.unpack_from("<f", raw, offset)
         assert d0 == pytest.approx(year_to_jd(1993) - 2451545.0, abs=1.0)
 
+    def test_visible_from_days_uses_natural_moon_discovery_year(self, tmp_path):
+        """Natural moons (SPICE source) gate on Object.discovery_year."""
+        from space_map_data.utils.time import year_to_jd
+
+        obj = make_object(
+            id="naif-558",
+            naif_id=558,
+            object_type=ObjectType.moon,
+            orbital_source=OrbitalSource.spice,
+        )
+        obj.discovery_year = 2004
+        out = tmp_path / "natmoon.bin.gz"
+        write_elements([obj], out, OrbitalSource.spice, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        offset = HEADER_SIZE + 32 + 8 + 64 + 16 + 8 + 8
+        (d0,) = struct.unpack_from("<f", raw, offset)
+        assert d0 == pytest.approx(year_to_jd(2004) - 2451545.0, abs=1.0)
+
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)

@@ -564,8 +564,8 @@ def _iso_date_to_jd(value: str) -> float | None:
 
 def _origin_date(o: Object) -> str | None:
     """Origin date as an ISO date or bare year: discovery for small bodies
-    (SBDB `first_obs`) and their moons (SBDBMoon `year`), launch for Earth sats
-    (SATCAT `launch_date`).
+    (SBDB `first_obs`), their moons (SBDBMoon `year`) and natural moons
+    (`discovery_year`), launch for Earth sats (SATCAT `launch_date`).
 
     Each relation is eager-loaded only in its own zone, so gate on a scalar
     column first — a bare access would lazy-load in a worker thread.
@@ -577,6 +577,8 @@ def _origin_date(o: Object) -> str | None:
     if o.orbital_source == OrbitalSource.sbdb_moon and o.sbdb_moon is not None:
         year = o.sbdb_moon.year
         return str(year) if year is not None else None
+    if o.discovery_year is not None:
+        return str(o.discovery_year)
     return None
 
 

@@ -16,6 +16,7 @@ from space_map_data.ingest.providers import (
 )
 from space_map_data.ingest.providers.objects import (
     celestrak,
+    jpl_satellite_discovery,
     launch_vehicle,
     launchlog,
     probes,
@@ -57,6 +58,9 @@ def ingest_objects(download_dir: Path) -> None:
     # moons can find existing rows (e.g. Pluto's Charon) and merge SBDB
     # metadata onto them instead of producing duplicate Object rows.
     sbdb_moons.ingest(download_dir)
+    # Discovery year for natural moons; matches the JPL table to existing
+    # SPICE/Horizons moon rows by name/designation.
+    jpl_satellite_discovery.ingest(download_dir)
     # --- Artificial / earth-sat objects ---
     satcat.ingest(download_dir)
     # Spacecraft Object rows from `missions/*/_index.json`. Their IDs are

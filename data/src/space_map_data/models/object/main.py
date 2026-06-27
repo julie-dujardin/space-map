@@ -193,6 +193,11 @@ class Object(Base):
     # ranking (e.g. notable group members). 0 when no QID or no sitelinks.
     sitelinks_count: Mapped[int] = mapped_column(default=0)
     has_rings: Mapped[bool] = mapped_column(default=False)
+    # Year a natural moon was discovered (JPL satellite-discovery table). Gates
+    # pre-discovery rendering and shows on the detail page; None for bodies the
+    # table doesn't cover (planets, Earth's Moon, small bodies with their own
+    # first-observed date).
+    discovery_year: Mapped[int | None] = mapped_column(default=None)
     # Slug of the 3D-model bundle under EXPORT_DIR/v1/models/{slug}/. Many
     # objects may point at the same slug (Viking 1/2 share an orbiter model;
     # Cluster II spacecraft share a constellation model). Authored by the

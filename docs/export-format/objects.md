@@ -58,6 +58,7 @@ interface GlobalObjectData {
   provisional_designation?: string;
   sbdb_primary_designation?: string;  // SBDB MPC designation (e.g. "2000 RU65")
   sitelinks_count?: number;           // Wikidata sitelink count; notability rank (omitted when 0)
+  discovery_year?: number;            // natural moons only, from the JPL satellite-discovery table
   cross_refs?: {
     wikidata_qid?: string;
     naif_id?: number;

@@ -40,7 +40,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
 | 15| has_localized | uint8 | 0       | `1` iff the object has a localized detail bundle in at least one language; `0` otherwise. Frontend gates its localized-bundle fetch on this bit so flag-0 objects don't trigger a 404 per click |
 | 16| flags       | uint8   | 0       | Per-point SBDB-derived bits: bit 0 = NEO (`sbdb.neo`), bit 1 = PHA (`sbdb.pha`), bits 2–7 reserved. Zero on rows without an SBDB sub-table (planets, moons, sats). |
-| 17| visible_from_days | float32 | NaN | Days from J2000 to when the object came into existence — discovery (SBDB `first_obs`) for small bodies, discovery year (SBDBMoon `year`) for asteroid moons, launch (SATCAT `launch_date`) for Earth sats. The frontend hides the point until the clock reaches `2451545 + visible_from_days`. NaN = always visible: no/unparseable date, an origin predating the file's `start_jd`, or a row with no origin source (planets, natural moons). |
+| 17| visible_from_days | float32 | NaN | Days from J2000 to when the object came into existence — discovery (SBDB `first_obs`) for small bodies, discovery year for asteroid moons (SBDBMoon `year`) and natural moons (JPL `discovery_year`), launch (SATCAT `launch_date`) for Earth sats. The frontend hides the point until the clock reaches `2451545 + visible_from_days`. NaN = always visible: no/unparseable date, an origin predating the file's `start_jd`, or a row with no origin source (planets, Earth's Moon). |
 
 Coordinate frame: ecliptic J2000.
 

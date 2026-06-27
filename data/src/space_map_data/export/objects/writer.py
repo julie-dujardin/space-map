@@ -397,6 +397,9 @@ def _build_global(
     if obj.sitelinks_count:
         data["sitelinks_count"] = obj.sitelinks_count
 
+    if obj.discovery_year is not None:
+        data["discovery_year"] = obj.discovery_year
+
     # Cross-references
     cross_refs = _pick_attrs(obj, _CROSS_REF_FIELDS)
     if cross_refs:

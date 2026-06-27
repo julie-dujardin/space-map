@@ -14,15 +14,28 @@
 	let { global, localized }: Props = $props();
 
 	let isSpacecraft = $derived(global?.type === 'spacecraft' || global?.type === 'debris');
-	let discoveryDate = $derived(
-		[...(global?.wikidata?.discovery_date ?? []), global?.sbdb?.first_obs]
+
+	// JPL `discovery_year` is authoritative for natural moons (it drives the
+	// render gate). Show a Wikidata date only when its year agrees — that upgrades
+	// the year to day precision; otherwise fall back to the bare JPL year. Bodies
+	// without a JPL year (small bodies, planets) keep the earliest-of-all rule.
+	function pickDiscoveryDate(g: GlobalObjectData | null): string | undefined {
+		const wdDates = g?.wikidata?.discovery_date ?? [];
+		const jplYear = g?.discovery_year;
+		if (jplYear != null) {
+			const agreeing = wdDates.find((d) => parseIsoDate(d)?.date.getUTCFullYear() === jplYear);
+			return agreeing ?? String(jplYear);
+		}
+		return [...wdDates, g?.sbdb?.first_obs]
 			.filter((d): d is string => !!d)
 			.sort((a, b) => {
 				const ta = parseIsoDate(a)?.date.getTime() ?? Infinity;
 				const tb = parseIsoDate(b)?.date.getTime() ?? Infinity;
 				return ta - tb;
-			})[0]
-	);
+			})[0];
+	}
+
+	let discoveryDate = $derived(pickDiscoveryDate(global));
 	let discoverers = $derived(localized?.discoverers);
 	let discoverySite = $derived(localized?.discovery_site);
 	let asteroidFamily = $derived(localized?.asteroid_family);

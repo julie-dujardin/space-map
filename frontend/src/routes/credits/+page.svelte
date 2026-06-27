@@ -111,6 +111,13 @@
 				</li>
 				<li>
 					{@render link(
+						'https://ssd.jpl.nasa.gov/sats/discovery.html',
+						m.source_jpl_satellite_discovery_name(),
+						m.source_jpl_satellite_discovery_role()
+					)}
+				</li>
+				<li>
+					{@render link(
 						'https://celestrak.org/satcat/',
 						m.source_celestrak_name(),
 						m.source_celestrak_role()

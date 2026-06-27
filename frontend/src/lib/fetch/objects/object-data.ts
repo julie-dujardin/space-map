@@ -161,6 +161,10 @@ export interface GlobalObjectData {
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;
 	nasa_science_url?: string;
+	/** Natural moons only — discovery year from the JPL satellite-discovery
+	 *  table (authoritative for the render gate). The detail page prefers a
+	 *  Wikidata `discovery_date` only when its year agrees with this. */
+	discovery_year?: number;
 	/** Archive id (e.g. `"naif"`, `"esa"`, `"naif-pds3"`); resolves to a
 	 *  label via `$lib/credits/archive-labels`. */
 	ephemeris_source?: string;
