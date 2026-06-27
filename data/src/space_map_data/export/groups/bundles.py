@@ -21,6 +21,7 @@ from space_map_data.constants.earth_sats.launch_sites import (
     LAUNCH_SITE_BY_CODE,
     LAUNCH_SITE_BY_SLUG,
 )
+from space_map_data.constants.earth_sats.launch_vehicles import GCAT_LV_TYPE_TO_QID
 from space_map_data.constants.earth_sats.manufacturers import (
     MANUFACTURER_BY_CONSTELLATION,
 )
@@ -251,6 +252,7 @@ def _build_localized(
     member_counts: dict[str, int],
     child_counts: dict[str, int] | None = None,
     display_name: str | None = None,
+    lv_stats: LaunchVehicleStats | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -337,7 +339,30 @@ def _build_localized(
         )
         if child_groups:
             data["child_groups"] = child_groups
+    if lv_stats and lv_stats.variants:
+        variant_refs = _variant_refs(lv_stats.variants, lang, wikidata_entities)
+        if variant_refs:
+            data["variant_refs"] = variant_refs
     return data
+
+
+def _variant_refs(
+    variants: list[dict], lang: str, wikidata_entities: WikidataEntityCache
+) -> dict[str, dict]:
+    """Localized Wikipedia ref per breakdown variant, keyed by GCAT name.
+
+    Only variants matched to a more-specific QID with a sitelink; the breakdown
+    keeps the GCAT string as its label and uses this just for the link.
+    """
+    out: dict[str, dict] = {}
+    for entry in variants:
+        qid = GCAT_LV_TYPE_TO_QID.get(entry["name"])
+        if not qid:
+            continue
+        ref = resolve_entity_ref(qid, lang, wikidata_entities)
+        if ref and ref.wikipedia:
+            out[entry["name"]] = ref.to_dict()
+    return out
 
 
 def _child_group_refs(
@@ -657,6 +682,7 @@ def write_group_bundles(
                 member_counts,
                 child_counts,
                 display_name,
+                lv_stats,
             )
             if members and member_entries:
                 member_names = notable_names(

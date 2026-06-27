@@ -6,9 +6,11 @@ from space_map_data.constants.earth_sats.constellations import (
     SatelliteCategory,
 )
 from space_map_data.constants.earth_sats.launch_vehicles import (
+    GCAT_LV_TYPE_TO_QID,
     LAUNCH_VEHICLE_BY_QID,
     LAUNCH_VEHICLE_BY_SLUG,
     LAUNCH_VEHICLE_VARIANT_QID,
+    LAUNCH_VEHICLE_VARIANTS,
     LAUNCH_VEHICLES,
     launch_vehicle_slug_for_qid,
     match_launch_vehicle_slug,
@@ -123,3 +125,32 @@ class TestLaunchVehicleVariantQid:
         ref = EntityRef(name="Mystery Rocket")
         attach_launch_vehicle_group_link(ref, "Q0")
         assert ref.primary_id is None
+
+
+class TestGcatVariantMapping:
+    """GCAT lv_type → variant QID, for the per-variant breakdown sitelink."""
+
+    def test_known_gcat_name_maps_to_variant(self):
+        assert GCAT_LV_TYPE_TO_QID["Atlas V 401"] == "Q20803939"
+        assert GCAT_LV_TYPE_TO_QID["Chang Zheng 2D"] == "Q53704"  # romanized → CZ-2D
+
+    def test_family_level_name_absent(self):
+        # "Falcon 9" is the family's own subject — no more-specific link.
+        assert "Falcon 9" not in GCAT_LV_TYPE_TO_QID
+
+    def test_targets_are_variant_qids_never_family_qids(self):
+        for name, qid in GCAT_LV_TYPE_TO_QID.items():
+            assert qid in LAUNCH_VEHICLE_VARIANT_QID, name
+            assert qid not in LAUNCH_VEHICLE_BY_QID, name
+
+    def test_derivation_round_trips_the_specs(self):
+        expected = {
+            name: v.qid for v in LAUNCH_VEHICLE_VARIANTS for name in v.gcat_names
+        }
+        assert GCAT_LV_TYPE_TO_QID == expected
+
+    def test_gcat_name_belongs_to_its_variants_family(self):
+        # The GCAT name's prefix-matched family agrees with the variant's family.
+        for v in LAUNCH_VEHICLE_VARIANTS:
+            for name in v.gcat_names:
+                assert match_launch_vehicle_slug(name) == v.family_slug, name

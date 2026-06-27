@@ -12,6 +12,7 @@ from tqdm import tqdm
 from space_map_data.constants.categories import CATEGORIES
 from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
+from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_VARIANTS
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
@@ -160,6 +161,14 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="probe missions",
+        )
+        # Launch-vehicle variant QIDs. GCAT-only variants (never a payload's
+        # P375) aren't reached otherwise — seed so the breakdown gets a sitelink.
+        self._fetch_entities(
+            {v.qid for v in LAUNCH_VEHICLE_VARIANTS},
+            referenced_dir,
+            limit=None,
+            fetch_desc="launch-vehicle variants",
         )
 
         # Second pass: fetch referenced entities and units. Each primary tier

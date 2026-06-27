@@ -94,7 +94,7 @@ interface GlobalGroupData {
   failure_count?: number;                     // Launches with a failure outcome
   last_launch_date?: string;                  // Latest launch date (ISO string)
   variants?: {                                // Per-variant breakdown, most-launched first (top 25)
-    name: string;                             // GCAT lv_type, e.g. "Atlas V 551"
+    name: string;                             // GCAT lv_type, e.g. "Atlas V 551" — also the join key into LocalizedGroupData.variant_refs
     n: number;                                // Distinct launches of this variant
     launch_mass_t?: number;                   // lv.tsv specs, present when GCAT records them
     leo_capacity_kg?: number;
@@ -253,6 +253,7 @@ interface LocalizedGroupData {
   launch_sites?: { name: string; n: number; primary_type: "group"; primary_id: string }[];   // Top sites by member count
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
   child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
+  variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```
