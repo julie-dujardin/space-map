@@ -213,16 +213,28 @@ async function searchMemberPage(
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
-/** A paginated slice of a group's members (small-body class/flag or earth-sat
- *  collection), ranked notable-first. Empty when search is unconfigured or the
- *  slug tags no objects (e.g. categories / split-comet families). */
+// Category roots the indexer leaves untagged in `object.groups` (it tags only
+// cat-moons/satellites/probes). Filter on `object.type` instead — mirrors the
+// export's "comet classes → comets, else asteroids" split.
+const CATEGORY_MEMBER_FILTER: Record<string, string> = {
+	'cat-asteroids':
+		'object.type IN ["asteroid", "asteroid_inner", "asteroid_main_belt", "asteroid_trojan", "asteroid_centaur", "asteroid_tno"]',
+	'cat-comets': 'object.type = "comet"',
+	'cat-solar-system': 'kind = "object"'
+};
+
+/** A paginated slice of a group's members (small-body class/flag, earth-sat
+ *  collection, or a top-level category), ranked notable-first. Empty when search
+ *  is unconfigured or the slug tags no objects (e.g. split-comet families, whose
+ *  baked member lists are already complete). */
 export function searchGroupMembers(
 	slug: string,
 	offset: number,
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
-	return searchMemberPage(`object.groups = "${slug}"`, offset, limit, locale);
+	const filter = CATEGORY_MEMBER_FILTER[slug] ?? `object.groups = "${slug}"`;
+	return searchMemberPage(filter, offset, limit, locale);
 }
 
 /** A paginated slice of a body's moons, ranked notable-first. `parentId` is the
