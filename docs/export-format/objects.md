@@ -220,6 +220,11 @@ interface GlobalObjectData {
   mission_members?: NotableEntry[];
   mission_member_count?: number;
   part_of_mission?: { name: string; primary_type: "group"; primary_id: string };
+
+  // Probe objects only. SPK coverage envelope (union across zones); the
+  // focused-probe pause arms a SimClock boundary stop at the data wall. Read
+  // only for the focused probe, so it rides here, not in metadata.json.
+  coverage?: { start_jd: number; end_jd: number };
 }
 
 // Images collected from Wikidata P18/P154 + Wikipedia pageimages (all languages)

@@ -128,12 +128,10 @@ def write_probes(
          the chunks whose hashes changed are dirty. Load cached records
          for each dirty chunk and pack + atomic-write binary + sidecar.
 
-    Returns `(zone_manifest, probe_coverage)`. `zone_manifest` is
-    `{zone_key_with_prefix: {chunks, chunk_days, start_jd, end_jd, ...}}`
-    for `build_position_metadata`. `probe_coverage` is
-    `{Object.id: {start_jd, end_jd}}` — the union of every probe's
-    contributions across all zones — used by the frontend's coverage-end
-    pause to know exactly where the data runs out.
+    Returns `(zone_manifest, probe_coverage)`. `zone_manifest` feeds
+    `build_position_metadata`. `probe_coverage` is `{Object.id: {start_jd,
+    end_jd}}` (union across zones), stamped onto each probe's `__global__`
+    entry by `_inject_probe_coverage` for the frontend coverage-end pause.
     """
     if not MISSIONS_DIR.exists():
         logger.info("No probe missions at %s, skipping probe export", MISSIONS_DIR)

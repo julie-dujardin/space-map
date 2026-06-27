@@ -779,12 +779,27 @@ def _content_token(root: Path) -> str:
     return digest.hexdigest()[:16]
 
 
+def _inject_probe_coverage(
+    global_data: dict[str, dict],
+    probe_coverage: Mapping[str, Mapping[str, float]],
+) -> None:
+    """Stamp each probe's `(start_jd, end_jd)` onto its global bundle entry
+    under `coverage`, mirroring `write_attitude`'s `attitude` injection."""
+    for obj_id, cov in probe_coverage.items():
+        entry = global_data.get(obj_id)
+        if entry is None:
+            logger.warning(
+                "probe_coverage: %s has no global entry; coverage dropped", obj_id
+            )
+            continue
+        entry["coverage"] = dict(cov)
+
+
 def _write_metadata_json(
     out_dir: Path,
     zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
     chebyshev_zones: dict,
     probe_zones: dict,
-    probe_coverage: dict[str, dict[str, float]],
     bundle_ns: dict,
     feature_bundle_ns: dict,
     group_bundle_ns: dict,
@@ -792,7 +807,7 @@ def _write_metadata_json(
 ) -> None:
     """Emit the top-level metadata.json (position manifest + bundles + skybox)."""
     position_metadata = build_position_metadata(
-        zone_structure, chebyshev_zones, probe_zones, probe_coverage
+        zone_structure, chebyshev_zones, probe_zones
     )
     metadata: dict = {
         "position": position_metadata,
@@ -1073,6 +1088,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         apply_orientation_config(agg.all_objects.global_data)
         # Hand-authored extra objects (no DB row) fold into the bundles here.
         inject_manual_objects(agg.all_objects, wikidata_entities)
+        # Coverage rides the global bundle (like attitude) — only read for the
+        # focused probe; must land before the bundles are sealed below.
+        _inject_probe_coverage(agg.all_objects.global_data, probe_coverage)
 
         bundle_ns = write_object_bundles(
             out_dir, agg.all_objects.global_data, agg.all_objects.localized_data
@@ -1107,7 +1125,6 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         agg.zone_structure,
         chebyshev_zones,
         probe_zones,
-        probe_coverage,
         bundle_ns,
         feature_bundle_ns,
         group_bundle_ns,

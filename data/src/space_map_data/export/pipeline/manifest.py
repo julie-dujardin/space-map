@@ -100,7 +100,6 @@ def build_position_metadata(
     zone_structure: Mapping[str, Mapping[int, ZoomSnapshots]],
     chebyshev_zones: Mapping[str, dict],
     probe_zones: Mapping[str, dict] | None = None,
-    probe_coverage: Mapping[str, Mapping[str, float]] | None = None,
 ) -> dict:
     """Build the unified ``position.zones`` metadata block.
 
@@ -203,13 +202,4 @@ def build_position_metadata(
             "parent_id_type": "probe",
             "present": params["present"],
         }
-    result: dict = {"zones": dict(sorted(zones.items()))}
-    if probe_coverage:
-        # Per-probe outermost coverage envelope (start_jd, end_jd) across
-        # every zone the probe touches. The frontend's coverage-end pause
-        # arms a SimClock boundary stop from these bounds when a probe is
-        # focused.
-        result["probe_coverage"] = {
-            k: dict(v) for k, v in sorted(probe_coverage.items())
-        }
-    return result
+    return {"zones": dict(sorted(zones.items()))}
