@@ -30,16 +30,7 @@ export const BODY_COLORS: Record<string, string> = {
 	'naif-899': '#3f54ba', // Neptune
 	'naif-801': '#7c757c', // Triton
 	'naif-999': '#b48977', // Pluto
-	// Dwarf planets (only Pluto + Ceres ship textures; the rest render flat).
-	'naif-2000001': '#9b9087', // Ceres
-	'spkid-20136199': '#dcd7cf', // Eris — bright methane-ice surface
-	'spkid-20136472': '#b07a5a', // Makemake — reddish
-	'spkid-20136108': '#d8d4cc', // Haumea — pale
-	'spkid-20090377': '#8a4b3a', // Sedna — very red
-	'spkid-20050000': '#9c6f5a', // Quaoar
-	'spkid-20090482': '#8f9aa0', // Orcus
-	'spkid-20225088': '#8a5040', // Gonggong — red
-	'spkid-20120347': '#6f6a66' // Salacia
+	'naif-2000001': '#9b9087' // Ceres
 };
 
 export const DEFAULT_BODY_COLOR = '#cccccc';
