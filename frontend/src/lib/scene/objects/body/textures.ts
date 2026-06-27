@@ -1,5 +1,5 @@
 import { MeshStandardMaterial, SRGBColorSpace, type Texture, type TextureLoader } from 'three';
-import { resolveBodyColor } from '$lib/utils';
+import { bodyMeshColor } from '$lib/utils';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
@@ -227,7 +227,7 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;
-	material.color.set(bo.body.data.color ?? resolveBodyColor(bo.body.data));
+	material.color.set(bodyMeshColor(bo.body.data));
 	material.needsUpdate = true;
 	bo.textureTier = undefined;
 }

@@ -8,7 +8,7 @@ import {
 	Scene,
 	SphereGeometry
 } from 'three';
-import { resolveBodyColor } from '$lib/utils';
+import { bodyMeshColor, resolveBodyColor } from '$lib/utils';
 import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
 import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
@@ -82,11 +82,11 @@ export function buildMajorBodies(
 
 			const segments = isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS;
 			const geometry = new SphereGeometry(radius, segments, segments);
-			// The sphere prefers the per-body export colour; the label keeps `color`
-			// (per-type) so halos stay type-level.
+			// The sphere shows the per-body export colour or neutral white; `color`
+			// (per-type) is kept for the star glow + halos, so the UI stays type-level.
 			const material = isStar
 				? makeStarSurfaceMaterial()
-				: new MeshStandardMaterial({ color: body.data.color ?? color });
+				: new MeshStandardMaterial({ color: bodyMeshColor(body.data) });
 			mesh = new Mesh(geometry, material);
 			// Model-bearing types use the cuboid/model — hide the sphere so it can't flash.
 			if (isModelBearing(body)) mesh.visible = false;
@@ -187,9 +187,9 @@ export function upgradeBodyMesh(
 ): void {
 	if (bo.mesh !== null) return;
 	const { body, radiusScene } = bo;
-	// Per-body export colour when known (set on focus by loadBodyTexture), else
-	// the per-type tint. The label colour stays per-type elsewhere.
-	const color = body.data.color ?? resolveBodyColor(body.data);
+	// Per-body export colour when known, else neutral white for small bodies/moons
+	// (the per-type tint is UI-only — point clouds/halos/trails keep it).
+	const color = bodyMeshColor(body.data);
 	const segments = BODY_SPHERE_SEGMENTS;
 	const geometry = new SphereGeometry(radiusScene, segments, segments);
 	const material = new MeshStandardMaterial({ color });

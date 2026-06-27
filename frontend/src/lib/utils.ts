@@ -57,3 +57,12 @@ export function resolveBodyColor(data: BodyData): string {
 	}
 	return DEFAULT_BODY_COLOR;
 }
+
+/**
+ * Colour for a body's physical surface mesh: its own measured colour if known,
+ * else neutral white. The categorical type/curated tint is a UI signal only
+ * (point clouds, halos, trails) and never stands in for a real surface.
+ */
+export function bodyMeshColor(data: BodyData): string {
+	return data.color ?? '#ffffff';
+}
