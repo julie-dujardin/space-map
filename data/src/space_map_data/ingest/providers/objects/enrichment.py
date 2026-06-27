@@ -18,7 +18,6 @@ from space_map_data.constants.earth_sats.constellations import (
     PREFERRED_SLUGS,
     SOURCE_TO_SLUG,
     UNPREFERRED_SLUGS,
-    slug_from_cospar,
     slug_from_name,
 )
 from space_map_data.constants.earth_sats.launch_sites import LAUNCH_SITE_CODES
@@ -143,16 +142,12 @@ def resolve_constellation(
     name: str | None,
     owner: str | None,
     groups: set[str],
-    cospar: str | None = None,
 ) -> str | None:
     """Pick a single constellation slug; log an error if candidates disagree."""
     candidates: list[tuple[str, str]] = []  # (source, slug)
     name_slug = slug_from_name(name)
     if name_slug is not None:
         candidates.append(("name-prefix", name_slug))
-    cospar_slug = slug_from_cospar(cospar)
-    if cospar_slug is not None:
-        candidates.append(("object-id-prefix", cospar_slug))
     for group in groups:
         group_slug = GROUP_TO_SLUG.get(group)
         if group_slug is not None:

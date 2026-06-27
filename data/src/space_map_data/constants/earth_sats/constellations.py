@@ -56,7 +56,6 @@ class ConstellationSpec:
     source: str | None = None  # SATCAT SOURCE/OWNER code
     url: str | None = None  # When no wikipedia link
     satellites: list[str] | None = None  # List of member names
-    object_id_prefix: str | tuple[str, ...] | None = None  # COSPAR launch-ID core
 
 
 """
@@ -1109,41 +1108,36 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "fengyun-1c-asat-debris",
         "Q182183",
         (SatelliteCategory.DEBRIS,),
-        prefix=("FENGYUN 1C DEB",),  # name-only: launch 1999-025 also carried SB-1
+        prefix=("FENGYUN 1C DEB",),
     ),
     ConstellationSpec(
         "westford-needles",
         "Q621882",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1963-014",
         prefix=("WESTFORD NEEDLES",),
     ),
     ConstellationSpec(
         "solwind-debris",
         "Q54370",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1979-017",
         prefix=("SOLWIND DEB",),
     ),
     ConstellationSpec(
         "microsat-r-debris",
         "Q60990709",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="2019-006",
         prefix=("MICROSAT-R DEB",),
     ),
     ConstellationSpec(
         "crres-debris",
         "Q5013937",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1990-065",
         prefix=("CRRES DEB",),
     ),
     ConstellationSpec(
         "cosmos-1408-debris",
         "Q12907386",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1982-092",
         prefix=("COSMOS 1408 DEB",),
     ),
     # Accidental breakup debris
@@ -1151,54 +1145,48 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "iridium-33-debris",
         "Q843912",
         (SatelliteCategory.DEBRIS,),
-        prefix=("IRIDIUM 33 DEB",),  # name-only: 1997-051 also carried 4 intact sats
+        prefix=("IRIDIUM 33 DEB",),
     ),
     ConstellationSpec(
         "cosmos-2251-debris",
         "Q843912",
         (SatelliteCategory.DEBRIS,),
-        prefix=("COSMOS 2251 DEB",),  # name-only, to avoid the parent's launch core
+        prefix=("COSMOS 2251 DEB",),
     ),
     ConstellationSpec(
         "hitomi-debris",
         "Q298048",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="2016-012",
         prefix=("ASTRO-H (HITOMI) DEB", "ASTRO-H DEB"),
     ),
     ConstellationSpec(
         "cobe-debris",
         "Q49445",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1989-089",
         prefix=("COBE DEB",),
     ),
     ConstellationSpec(
         "seasat-debris",
         "Q257020",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1978-064",
         prefix=("SEASAT 1 DEB",),
     ),
     ConstellationSpec(
         "uars-debris",
         "Q534401",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1991-063",
         prefix=("UARS DEB",),
-    ),  #
+    ),
     ConstellationSpec(
         "resurs-o1-debris",
         "Q12816951",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="1994-074",
         prefix=("RESURS O1 DEB",),
     ),
     ConstellationSpec(
         "resurs-p1-debris",
         "Q4393669",
         (SatelliteCategory.DEBRIS,),
-        object_id_prefix="2013-030",
         prefix=("RESURS-P 1 DEB",),
     ),
     ConstellationSpec(
@@ -1624,25 +1612,6 @@ CONTAINS_TO_SLUG: dict[str, str] = {
     k: c.slug for c in CONSTELLATIONS if c.contains is not None for k in c.contains
 }
 
-# COSPAR launch-ID core (e.g. "1979-017") → slug. Catches breakup debris whose
-# OBJECT_NAME lacks the expected prefix but whose OBJECT_ID shares the launch.
-# Longest prefix first so a more specific launch wins.
-OBJECT_ID_PREFIX_TO_SLUG: dict[str, str] = dict(
-    sorted(
-        (
-            (p, c.slug)
-            for c in CONSTELLATIONS
-            if c.object_id_prefix is not None
-            for p in (
-                c.object_id_prefix
-                if isinstance(c.object_id_prefix, tuple)
-                else (c.object_id_prefix,)
-            )
-        ),
-        key=lambda kv: -len(kv[0]),
-    )
-)
-
 GROUP_TO_SLUG: dict[str, str] = {
     c.group: c.slug for c in CONSTELLATIONS if c.group is not None
 }
@@ -1716,15 +1685,5 @@ def slug_from_name(name: str | None) -> str | None:
             return slug
     for keyword, slug in CONTAINS_TO_SLUG.items():
         if keyword in name:
-            return slug
-    return None
-
-
-def slug_from_cospar(cospar: str | None) -> str | None:
-    """Match a COSPAR/OBJECT_ID by launch-ID prefix (e.g. '1979-017A' → solwind-debris)."""
-    if not cospar:
-        return None
-    for prefix, slug in OBJECT_ID_PREFIX_TO_SLUG.items():
-        if cospar.startswith(prefix):
             return slug
     return None

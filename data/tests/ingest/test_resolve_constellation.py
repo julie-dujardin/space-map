@@ -1,39 +1,33 @@
-"""Tests for ``resolve_constellation`` — the COSPAR ``object_id_prefix``
-candidate and how it interacts with name/owner/group matching."""
+"""Tests for ``resolve_constellation`` — name/owner/group matching and how it
+resolves conflicts between them."""
 
 from space_map_data.ingest.providers.objects.enrichment import resolve_constellation
 
 
-class TestCosparCandidate:
-    """The object-id-prefix path tags satellites by launch core."""
+class TestNameMatching:
+    """Debris constellations are identified by their OBJECT_NAME prefix."""
 
-    def test_debris_piece_with_no_usable_name(self):
-        # Fragment whose OBJECT_NAME doesn't carry the expected prefix; only the
-        # shared launch core identifies it.
-        slug = resolve_constellation(99999, None, "US", set(), cospar="1979-017P")
-        assert slug == "solwind-debris"
-
-    def test_name_and_cospar_agree(self):
-        slug = resolve_constellation(
-            88888, "UARS DEB", "US", set(), cospar="1991-063AA"
+    def test_debris_matched_by_name(self):
+        assert (
+            resolve_constellation(16029, "SOLWIND DEB", "US", set()) == "solwind-debris"
         )
-        assert slug == "uars-debris"
 
-    def test_cospar_defaults_to_none_when_omitted(self):
-        # Backwards-compatible signature: callers that pass no cospar still work.
+    def test_constellation_matched_by_name(self):
         assert resolve_constellation(123, "STARLINK-1234", None, set()) == "starlink"
 
     def test_no_match_returns_none(self):
-        assert resolve_constellation(404, None, None, set(), cospar="9999-999A") is None
+        assert resolve_constellation(404, None, None, set()) is None
 
 
-class TestCosparConflictResolution:
-    """A launch-core match wins over a generic parent-constellation name."""
+class TestLaunchPeers:
+    """A launch's rocket body / co-passengers resolve by their own name, not by
+    the payload's debris cloud."""
 
-    def test_parent_payload_prefers_debris_over_generic_cosmos(self):
-        # "COSMOS 1408" matches the broad COSMOS name prefix, but the launch
-        # core pins the specific (unpreferred "cosmos" loses to the debris slug).
-        slug = resolve_constellation(
-            13552, "COSMOS 1408", "CIS", set(), cospar="1982-092A"
-        )
-        assert slug == "cosmos-1408-debris"
+    def test_rocket_body_keeps_its_family(self):
+        # Atlas R/B from the Solwind launch — atlas, not solwind-debris.
+        assert resolve_constellation(11279, "ATLAS R/B", "US", set()) == "atlas"
+
+    def test_intact_payload_is_not_debris(self):
+        # The intact COSMOS 1408 satellite resolves to the generic Cosmos series,
+        # not the cosmos-1408-debris cloud created when it was later destroyed.
+        assert resolve_constellation(13552, "COSMOS 1408", "CIS", set()) == "cosmos"
