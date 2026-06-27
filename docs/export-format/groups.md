@@ -103,6 +103,12 @@ interface GlobalGroupData {
     length_m?: number;
     diameter_m?: number;
   }[];
+  reusable_vehicles?: {                        // Top individual reusable vehicles by flights (top 10); Shuttle orbiters + Falcon cores
+    name: string;                             // Vehicle id + display: orbiter name ("Discovery") or Falcon core serial ("B1067"); join key into LocalizedGroupData.reusable_vehicle_refs
+    n: number;                                // Flights flown by this vehicle
+    first_flight?: string;                    // ISO date of first/last flight
+    last_flight?: string;
+  }[];
 
   // Small-body groups (orbit_class / small_body_flag).
   // Computed from SBDB.first_obs (YYYY-MM-DD or partial YYYY).
@@ -254,6 +260,7 @@ interface LocalizedGroupData {
   constellations?: { name: string; n: number; primary_type: "group"; primary_id: string }[]; // Top constellations represented
   child_groups?: { name: string; n: number; primary_type: "group"; primary_id: string; role: GroupType }[]; // Child groups rendered as chips, sectioned by role: a category's zones/families/classes/constellations, an organization's satellite buses, and a constellation's buses (n = within-constellation count, not the bus's global total)
   variant_refs?: Record<string, EntityRef>;  // lv-<slug> only: GCAT variant name (from the global `variants` list) → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. The breakdown keeps the GCAT name as its label and uses this only for the per-variant link; absent for family-level / unmatched variants.
+  reusable_vehicle_refs?: Record<string, EntityRef>;  // lv-<slug> only: reusable-vehicle name (from `reusable_vehicles`) → its Wikipedia ref. Shuttle orbiters resolve; Falcon cores have no article so are absent (shown as serial + count).
   notable_member_names?: Record<string, string>; // notable-member Object.id → localized label, only where it differs from the global name
 }
 ```

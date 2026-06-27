@@ -21,11 +21,15 @@ from space_map_data.constants.earth_sats.launch_vehicles import (
     LAUNCH_VEHICLE_SLUG_PREFIX,
     match_launch_vehicle_slug,
 )
+from space_map_data.constants.earth_sats.reusable_vehicles import (
+    REUSABLE_VEHICLE_EXTRACTORS,
+)
 from space_map_data.models.object import LaunchVehicle, Launchlog
 
 logger = logging.getLogger(__name__)
 
 _TOP_VARIANTS = 25
+_TOP_REUSABLE = 10
 # Spec fields copied from the LaunchVehicle row onto each variant entry.
 _VARIANT_SPECS = (
     "launch_mass_t",
@@ -52,6 +56,11 @@ class LaunchVehicleStats:
     variant_launches: dict[str, int] = field(default_factory=dict)
     # Resolved top-variant entries (name, launches, lv.tsv specs); built last.
     variants: list[dict] = field(default_factory=list)
+    # vehicle id → {n, first, last, qid}, for the reusable-vehicle breakdown.
+    reusable: dict[str, dict] = field(default_factory=dict)
+    # Top reusable vehicles (built last) + their sitelink QIDs.
+    reusable_vehicles: list[dict] = field(default_factory=list)
+    reusable_vehicle_qids: dict[str, str] = field(default_factory=dict)
 
 
 def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats]:
@@ -74,9 +83,11 @@ def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats
             Launchlog.launch_tag,
             Launchlog.launch_date_iso,
             Launchlog.launch_code,
+            Launchlog.flight_id,
+            Launchlog.name,
         )
     ).all()
-    for lv_type, tag, date_iso, code in rows:
+    for lv_type, tag, date_iso, code, flight_id, pl_name in rows:
         slug = match_launch_vehicle_slug(lv_type)
         if slug is None:
             unmatched_payloads += 1
@@ -92,6 +103,18 @@ def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats
         stats.launch_count += 1
         if lv_type:
             stats.variant_launches[lv_type] = stats.variant_launches.get(lv_type, 0) + 1
+        extractor = REUSABLE_VEHICLE_EXTRACTORS.get(slug)
+        if extractor:
+            for rv in extractor(flight_id, pl_name):
+                acc = stats.reusable.setdefault(
+                    rv.id, {"n": 0, "first": None, "last": None, "qid": rv.qid}
+                )
+                acc["n"] += 1
+                if date_iso:
+                    if acc["first"] is None or date_iso < acc["first"]:
+                        acc["first"] = date_iso
+                    if acc["last"] is None or date_iso > acc["last"]:
+                        acc["last"] = date_iso
         if date_iso:
             year = int(date_iso[:4])
             stats.launch_histogram[year] = stats.launch_histogram.get(year, 0) + 1
@@ -107,6 +130,12 @@ def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats
 
     for stats in by_slug.values():
         stats.variants = _variant_entries(stats.variant_launches, specs)
+        stats.reusable_vehicles = _reusable_entries(stats.reusable)
+        stats.reusable_vehicle_qids = {
+            e["name"]: stats.reusable[e["name"]]["qid"]
+            for e in stats.reusable_vehicles
+            if stats.reusable[e["name"]]["qid"]
+        }
 
     if unmatched_payloads:
         logger.info(
@@ -122,6 +151,20 @@ def build_launch_vehicle_stats(session: Session) -> dict[str, LaunchVehicleStats
         sum(s.launch_count for s in by_slug.values()),
     )
     return dict(by_slug)
+
+
+def _reusable_entries(reusable: dict[str, dict]) -> list[dict]:
+    """Top reusable vehicles by flight count, with first/last flight dates."""
+    top = sorted(reusable.items(), key=lambda kv: kv[1]["n"], reverse=True)
+    out: list[dict] = []
+    for name, acc in top[:_TOP_REUSABLE]:
+        entry: dict = {"name": name, "n": acc["n"]}
+        if acc["first"]:
+            entry["first_flight"] = acc["first"]
+        if acc["last"]:
+            entry["last_flight"] = acc["last"]
+        out.append(entry)
+    return out
 
 
 def _variant_entries(

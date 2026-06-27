@@ -162,6 +162,8 @@ def _build_global(
             }
         if lv_stats.variants:
             data["variants"] = lv_stats.variants
+        if lv_stats.reusable_vehicles:
+            data["reusable_vehicles"] = lv_stats.reusable_vehicles
     if discovery_histogram:
         data["discovery_histogram"] = {
             str(year): n for year, n in sorted(discovery_histogram.items())
@@ -343,6 +345,15 @@ def _build_localized(
         variant_refs = _variant_refs(lv_stats.variants, lang, wikidata_entities)
         if variant_refs:
             data["variant_refs"] = variant_refs
+    if lv_stats and lv_stats.reusable_vehicle_qids:
+        reusable_refs = {
+            name: ref.to_dict()
+            for name, qid in lv_stats.reusable_vehicle_qids.items()
+            if (ref := resolve_entity_ref(qid, lang, wikidata_entities))
+            and ref.wikipedia
+        }
+        if reusable_refs:
+            data["reusable_vehicle_refs"] = reusable_refs
     return data
 
 

@@ -14,6 +14,7 @@ from space_map_data.constants.countries import COUNTRIES
 from space_map_data.constants.earth_sats import all_wikidata_qids as earth_sats_qids
 from space_map_data.constants.earth_sats.launch_vehicles import LAUNCH_VEHICLE_VARIANTS
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
+from space_map_data.constants.earth_sats.reusable_vehicles import REUSABLE_VEHICLE_QIDS
 from space_map_data.constants.nomenclature.feature_types import FEATURE_TYPES
 from space_map_data.constants.nomenclature.quadrangles import quadrangle_qids
 from space_map_data.constants.providers import ID_TYPES, PROVIDERS
@@ -169,6 +170,13 @@ class WikidataDownloader(Downloader):
             referenced_dir,
             limit=None,
             fetch_desc="launch-vehicle variants",
+        )
+        # Reusable-vehicle QIDs (Shuttle orbiters) for the per-vehicle breakdown.
+        self._fetch_entities(
+            REUSABLE_VEHICLE_QIDS,
+            referenced_dir,
+            limit=None,
+            fetch_desc="reusable vehicles",
         )
 
         # Second pass: fetch referenced entities and units. Each primary tier

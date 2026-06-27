@@ -128,6 +128,11 @@
 	"group_stat_first_launch": "Первый запуск",
 	"group_stat_largest": "Крупнейший",
 	"group_stat_pha": "Опасные",
+	"group_variants": "Варианты",
+	"group_variants_launches": "запуски",
+	"group_variant_payload_leo": "{kg} кг на НОО",
+	"group_reusable_vehicles": "Многоразовые аппараты",
+	"group_reusable_flights": "полёты",
 	"group_type_constellation": "Группировка",
 	"group_type_organization": "Организация",
 	"group_type_operator": "Оператор",
@@ -719,6 +724,153 @@
 	"feature_type_label_VA": "Долина",
 	"feature_type_label_VI": "Полоса",
 	"feature_type_label_VS": "Великая равнина",
+	"property_name_absolute_magnitude": "абсолютная звёздная величина",
+	"property_name_apparent_magnitude": "видимая звёздная величина",
+	"property_name_asteroid_family": "семейство астероидов",
+	"property_name_blog": "официальный блог",
+	"property_name_capital_cost": "стоимость",
+	"property_name_country_of_origin": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "страна происхождения",
+				"countPlural=other": "страны происхождения"
+			}
+		}
+	],
+	"property_name_density": "плотность",
+	"property_name_developer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "разработчик",
+				"countPlural=other": "разработчики"
+			}
+		}
+	],
+	"property_name_discoverers": "первооткрыватель или изобретатель",
+	"property_name_discovery_date": "дата открытия (изобретения)",
+	"property_name_discovery_site": "место астрономического открытия",
+	"property_name_dissolved": "дата прекращения существования",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "заказчик",
+				"countPlural=other": "заказчики"
+			}
+		}
+	],
+	"property_name_image": "изображение",
+	"property_name_inception": "дата возникновения",
+	"property_name_instance_of": "это частный случай понятия",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "подрядчик запуска",
+				"countPlural=other": "подрядчики запуска"
+			}
+		}
+	],
+	"property_name_launch_date": "дата запуска космического аппарата",
+	"property_name_launch_site": "начало пути",
+	"property_name_launch_vehicle": "ракета-носитель",
+	"property_name_length": "длина",
+	"property_name_logo_image": "логотип",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "производитель",
+				"countPlural=other": "производители"
+			}
+		}
+	],
+	"property_name_mass": "масса",
+	"property_name_max_temperature": "максимальная температура",
+	"property_name_min_temperature": "минимум температуры",
+	"property_name_minor_planet_group": "группа малых планет",
+	"property_name_named_after": "названо в честь",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "оператор",
+				"countPlural=other": "операторы"
+			}
+		}
+	],
+	"property_name_part_of": "является частью",
+	"property_name_population": "численность населения",
+	"property_name_radius": "радиус",
+	"property_name_spectral_type": "спектральный класс астероида",
+	"property_name_surface_gravity": "поверхностная гравитация",
+	"property_name_temperature": "температура",
+	"property_name_website": "официальный сайт",
+	"property_name_width": "ширина",
+	"unit_name_astronomical_unit": "астрономическая единица",
+	"unit_name_attometre": "аттометр",
+	"unit_name_centimetre": "сантиметр",
+	"unit_name_centimetre_per_square_second": "сантиметр на секунду в квадрате",
+	"unit_name_degree_celsius": "градус Цельсия",
+	"unit_name_degree_fahrenheit": "градус Фаренгейта",
+	"unit_name_deutsche_mark": "немецкая марка",
+	"unit_name_earth_mass": "масса Земли",
+	"unit_name_exagram": "эксаграмм",
+	"unit_name_gram": "грамм",
+	"unit_name_gram_per_cubic_centimetre": "грамм на кубический сантиметр",
+	"unit_name_hour": "час",
+	"unit_name_jupiter_mass": "масса Юпитера",
+	"unit_name_jupiter_radius": "радиус Юпитера",
+	"unit_name_kelvin": "кельвин",
+	"unit_name_kilogram": "килограмм",
+	"unit_name_kilogram_per_cubic_metre": "килограмм на кубический метр",
+	"unit_name_kilometre": "километр",
+	"unit_name_kilometre_per_second": "километр в секунду",
+	"unit_name_magnitude": "звёздная величина",
+	"unit_name_metre": "метр",
+	"unit_name_metres_per_second_squared": "метр в секунду в квадрате",
+	"unit_name_millimetre": "миллиметр",
+	"unit_name_petagram": "петаграмм",
+	"unit_name_ronnagram": "роннаграмм",
+	"unit_name_square_kilometre": "квадратный километр",
+	"unit_name_teragram": "тераграмм",
+	"unit_name_tonne": "тонна",
+	"unit_name_year": "год",
+	"unit_name_yottagram": "йоттаграмм",
+	"unit_name_zettagram": "зеттаграмм",
+	"unit_symbol_astronomical_unit": "а.е.",
+	"unit_symbol_attometre": "ам",
+	"unit_symbol_centimetre": "см",
+	"unit_symbol_centimetre_per_square_second": "см/с²",
+	"unit_symbol_degree_celsius": "℃",
+	"unit_symbol_exagram": "Эг",
+	"unit_symbol_gram": "г",
+	"unit_symbol_gram_per_cubic_centimetre": "г/см³",
+	"unit_symbol_hour": "ч",
+	"unit_symbol_jupiter_mass": "M<sub>J</sub>",
+	"unit_symbol_jupiter_radius": "R<sub>J</sub>",
+	"unit_symbol_kelvin": "К",
+	"unit_symbol_kilogram": "кг",
+	"unit_symbol_kilogram_per_cubic_metre": "кг/м³",
+	"unit_symbol_kilometre": "км",
+	"unit_symbol_kilometre_per_second": "км/с",
+	"unit_symbol_magnitude": "m",
+	"unit_symbol_metre": "м",
+	"unit_symbol_metres_per_second_squared": "м/с²",
+	"unit_symbol_millimetre": "мм",
+	"unit_symbol_petagram": "Пг",
+	"unit_symbol_square_kilometre": "км²",
+	"unit_symbol_teragram": "Тг",
+	"unit_symbol_tonne": "т",
+	"unit_symbol_year": "г.",
 	"group_name_bus-boeing-601": "HS-601",
 	"group_name_bus-boeing-702": "Боинг 702",
 	"group_name_bus-ekspress": "Экспресс (спутниковая платформа)",
@@ -970,152 +1122,5 @@
 	"group_name_site-vostochny": "Восточный",
 	"group_name_site-wallops": "Уоллопс",
 	"group_name_site-wenchang": "Вэньчан",
-	"group_name_site-xichang": "Сичан",
-	"property_name_absolute_magnitude": "абсолютная звёздная величина",
-	"property_name_apparent_magnitude": "видимая звёздная величина",
-	"property_name_asteroid_family": "семейство астероидов",
-	"property_name_blog": "официальный блог",
-	"property_name_capital_cost": "стоимость",
-	"property_name_country_of_origin": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "страна происхождения",
-				"countPlural=other": "страны происхождения"
-			}
-		}
-	],
-	"property_name_density": "плотность",
-	"property_name_developer": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "разработчик",
-				"countPlural=other": "разработчики"
-			}
-		}
-	],
-	"property_name_discoverers": "первооткрыватель или изобретатель",
-	"property_name_discovery_date": "дата открытия (изобретения)",
-	"property_name_discovery_site": "место астрономического открытия",
-	"property_name_dissolved": "дата прекращения существования",
-	"property_name_funder": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "заказчик",
-				"countPlural=other": "заказчики"
-			}
-		}
-	],
-	"property_name_image": "изображение",
-	"property_name_inception": "дата возникновения",
-	"property_name_instance_of": "это частный случай понятия",
-	"property_name_launch_contractor": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "подрядчик запуска",
-				"countPlural=other": "подрядчики запуска"
-			}
-		}
-	],
-	"property_name_launch_date": "дата запуска космического аппарата",
-	"property_name_launch_site": "начало пути",
-	"property_name_launch_vehicle": "ракета-носитель",
-	"property_name_length": "длина",
-	"property_name_logo_image": "логотип",
-	"property_name_manufacturer": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "производитель",
-				"countPlural=other": "производители"
-			}
-		}
-	],
-	"property_name_mass": "масса",
-	"property_name_max_temperature": "максимальная температура",
-	"property_name_min_temperature": "минимум температуры",
-	"property_name_minor_planet_group": "группа малых планет",
-	"property_name_named_after": "названо в честь",
-	"property_name_operators": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "оператор",
-				"countPlural=other": "операторы"
-			}
-		}
-	],
-	"property_name_part_of": "является частью",
-	"property_name_population": "численность населения",
-	"property_name_radius": "радиус",
-	"property_name_spectral_type": "спектральный класс астероида",
-	"property_name_surface_gravity": "поверхностная гравитация",
-	"property_name_temperature": "температура",
-	"property_name_website": "официальный сайт",
-	"property_name_width": "ширина",
-	"unit_name_astronomical_unit": "астрономическая единица",
-	"unit_name_attometre": "аттометр",
-	"unit_name_centimetre": "сантиметр",
-	"unit_name_centimetre_per_square_second": "сантиметр на секунду в квадрате",
-	"unit_name_degree_celsius": "градус Цельсия",
-	"unit_name_degree_fahrenheit": "градус Фаренгейта",
-	"unit_name_deutsche_mark": "немецкая марка",
-	"unit_name_earth_mass": "масса Земли",
-	"unit_name_exagram": "эксаграмм",
-	"unit_name_gram": "грамм",
-	"unit_name_gram_per_cubic_centimetre": "грамм на кубический сантиметр",
-	"unit_name_hour": "час",
-	"unit_name_jupiter_mass": "масса Юпитера",
-	"unit_name_jupiter_radius": "радиус Юпитера",
-	"unit_name_kelvin": "кельвин",
-	"unit_name_kilogram": "килограмм",
-	"unit_name_kilogram_per_cubic_metre": "килограмм на кубический метр",
-	"unit_name_kilometre": "километр",
-	"unit_name_kilometre_per_second": "километр в секунду",
-	"unit_name_magnitude": "звёздная величина",
-	"unit_name_metre": "метр",
-	"unit_name_metres_per_second_squared": "метр в секунду в квадрате",
-	"unit_name_millimetre": "миллиметр",
-	"unit_name_petagram": "петаграмм",
-	"unit_name_ronnagram": "роннаграмм",
-	"unit_name_square_kilometre": "квадратный километр",
-	"unit_name_teragram": "тераграмм",
-	"unit_name_tonne": "тонна",
-	"unit_name_year": "год",
-	"unit_name_yottagram": "йоттаграмм",
-	"unit_name_zettagram": "зеттаграмм",
-	"unit_symbol_astronomical_unit": "а.е.",
-	"unit_symbol_attometre": "ам",
-	"unit_symbol_centimetre": "см",
-	"unit_symbol_centimetre_per_square_second": "см/с²",
-	"unit_symbol_degree_celsius": "℃",
-	"unit_symbol_exagram": "Эг",
-	"unit_symbol_gram": "г",
-	"unit_symbol_gram_per_cubic_centimetre": "г/см³",
-	"unit_symbol_hour": "ч",
-	"unit_symbol_jupiter_mass": "M<sub>J</sub>",
-	"unit_symbol_jupiter_radius": "R<sub>J</sub>",
-	"unit_symbol_kelvin": "К",
-	"unit_symbol_kilogram": "кг",
-	"unit_symbol_kilogram_per_cubic_metre": "кг/м³",
-	"unit_symbol_kilometre": "км",
-	"unit_symbol_kilometre_per_second": "км/с",
-	"unit_symbol_magnitude": "m",
-	"unit_symbol_metre": "м",
-	"unit_symbol_metres_per_second_squared": "м/с²",
-	"unit_symbol_millimetre": "мм",
-	"unit_symbol_petagram": "Пг",
-	"unit_symbol_square_kilometre": "км²",
-	"unit_symbol_teragram": "Тг",
-	"unit_symbol_tonne": "т",
-	"unit_symbol_year": "г."
+	"group_name_site-xichang": "Сичан"
 }

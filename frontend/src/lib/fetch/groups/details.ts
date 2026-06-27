@@ -33,6 +33,15 @@ export interface LaunchVehicleVariant {
 	diameter_m?: number;
 }
 
+export interface ReusableVehicle {
+	/** Vehicle id, also the display label (Shuttle orbiter / Falcon core serial). */
+	name: string;
+	/** Flights flown by this individual vehicle. */
+	n: number;
+	first_flight?: string;
+	last_flight?: string;
+}
+
 export interface GlobalGroupData {
 	slug: string;
 	type: GroupType;
@@ -71,6 +80,8 @@ export interface GlobalGroupData {
 	last_launch_date?: string;
 	/** Launch-vehicle only: per-variant breakdown, most-launched first, with GCAT specs. */
 	variants?: LaunchVehicleVariant[];
+	/** Launch-vehicle only: top individual reusable vehicles (orbiters/boosters) by flights. */
+	reusable_vehicles?: ReusableVehicle[];
 	/** Discoveries per year across SBDB members (orbit_class / NEO / PHA), from `first_obs`. */
 	discovery_histogram?: Record<string, number>;
 	/** Member with the largest SBDB.diameter; absent when no member has a measured diameter. */
@@ -127,6 +138,8 @@ export interface LocalizedGroupData {
 	child_groups?: ChildGroupEntry[];
 	/** lv- only: variant GCAT name → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. Keyed by the global `variants[].name`. */
 	variant_refs?: Record<string, EntityRef>;
+	/** lv- only: reusable-vehicle name → Wikipedia ref (Shuttle orbiters; cores have none). Keyed by `reusable_vehicles[].name`. */
+	reusable_vehicle_refs?: Record<string, EntityRef>;
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */

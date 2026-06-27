@@ -34,6 +34,12 @@
 	let maxVariantCount = $derived(variants.length > 0 ? Math.max(...variants.map((v) => v.n)) : 0);
 	// GCAT variant name → Wikipedia ref, for variants matched to a Wikidata entity.
 	let variantRefs = $derived(localized?.variant_refs ?? {});
+	// Top individual reusable vehicles (Shuttle orbiters / Falcon cores) by flights.
+	let reusableVehicles = $derived(global?.reusable_vehicles ?? []);
+	let maxReusableCount = $derived(
+		reusableVehicles.length > 0 ? Math.max(...reusableVehicles.map((v) => v.n)) : 0
+	);
+	let reusableRefs = $derived(localized?.reusable_vehicle_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
@@ -186,6 +192,44 @@
 						<div
 							class="bg-primary h-full rounded-full"
 							style:width="{maxVariantCount > 0 ? (v.n / maxVariantCount) * 100 : 0}%"
+						></div>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</div>
+{/if}
+
+{#if reusableVehicles.length > 0}
+	<div class="flex flex-col gap-1">
+		<div class="flex items-baseline justify-between">
+			<h3 class="text-sm font-medium">{m.group_reusable_vehicles()}</h3>
+			<span class="text-muted-foreground text-[10px] uppercase">{m.group_reusable_flights()}</span>
+		</div>
+		<div class="border-border/60 border-t"></div>
+		<ul class="flex flex-col gap-2 pt-1 text-sm">
+			{#each reusableVehicles as v (v.name)}
+				<li class="flex flex-col gap-1">
+					<div class="flex items-baseline justify-between gap-2">
+						<span class="min-w-0 truncate">
+							{#if reusableRefs[v.name]?.wikipedia}
+								<a
+									href={reusableRefs[v.name].wikipedia}
+									target="_blank"
+									rel="noopener"
+									class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
+									>{v.name}<ExternalLinkIcon class="size-3 shrink-0" /></a
+								>
+							{:else}
+								{v.name}
+							{/if}
+						</span>
+						<span class="text-muted-foreground tabular-nums">{formatNumber(v.n)}</span>
+					</div>
+					<div class="bg-muted h-1 overflow-hidden rounded-full">
+						<div
+							class="bg-primary h-full rounded-full"
+							style:width="{maxReusableCount > 0 ? (v.n / maxReusableCount) * 100 : 0}%"
 						></div>
 					</div>
 				</li>
