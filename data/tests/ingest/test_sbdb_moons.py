@@ -1,5 +1,12 @@
 """Unit tests for SBDB asteroid-moon ingest helpers."""
 
+import json
+from collections.abc import Iterator
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
 from space_map_data.constants.providers import ID_TYPES, make_object_id
 from space_map_data.download.providers.spice.bodies.pck_extract import _canonical_naif
 from space_map_data.ingest.providers.objects.sbdb_moons import (
@@ -7,7 +14,8 @@ from space_map_data.ingest.providers.objects.sbdb_moons import (
     _MAX_SAT_INDEX,
     _synth_satellite_designation,
 )
-from space_map_data.models.object import ObjectType, OrbitalSource
+from space_map_data.models.object import Object, ObjectType, OrbitalSource
+from space_map_data.models.object.base import Base
 
 
 class TestSyntheticSpkid:
@@ -175,3 +183,86 @@ class TestSynthSatelliteDesignation:
 
     def test_missing_year_returns_none(self):
         assert _synth_satellite_designation("153591", None, 0) is None
+
+
+@pytest.fixture
+def session(monkeypatch) -> Iterator[Session]:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sess = Session(engine)
+    monkeypatch.setattr("space_map_data.utils.db._session", sess)
+    yield sess
+
+
+def _write_payload(moons_dir, filename, des, spkid, sat_name=None):
+    moons_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "object": {"des": des, "spkid": spkid},
+        "sat": [{"iau_name": sat_name} if sat_name else {"year": 2000}],
+    }
+    (moons_dir / filename).write_text(json.dumps(payload))
+
+
+class TestParentResolution:
+    """The ingest must resolve a parent by its permanent designation when the
+    SPK-ID the satellite payload was keyed under has drifted out of the objects
+    table, and must not ingest the same body twice from aliased SPK-IDs.
+    """
+
+    def _parent(self, session):
+        # Objects table holds 1998 WV24 under its older SPK-ID; the payloads
+        # below arrive keyed under the drifted 50-form.
+        session.add(
+            Object(
+                id="spkid-3024247",
+                name="1998 WV24",
+                provisional_designation="1998 WV24",
+                object_type=ObjectType.asteroid_tno,
+                orbital_source=OrbitalSource.sbdb,
+                spkid=3_024_247,
+                parent_id="naif-10",
+            )
+        )
+        session.commit()
+
+    def test_resolves_parent_by_designation_after_spkid_drift(self, session, tmp_path):
+        self._parent(session)
+        moons = tmp_path / "sources" / "position" / "sbdb" / "moons"
+        _write_payload(moons, "50024270.json", "1998 WV24", 50_024_270)
+
+        ingestor = SBDBMoonsIngestor(tmp_path)
+        ingestor.run()
+
+        assert ingestor.designation_fallback_count == 1
+        moon = session.execute(
+            select(Object).where(Object.orbital_source == OrbitalSource.sbdb_moon)
+        ).scalar_one()
+        assert moon.parent_id == "spkid-3024247"
+
+    def test_aliased_twin_payloads_ingest_one_body(self, session, tmp_path):
+        self._parent(session)
+        moons = tmp_path / "sources" / "position" / "sbdb" / "moons"
+        # Same body, two payloads: one keyed by the in-table SPK-ID, one by the
+        # drifted alias. Only one moon must result.
+        _write_payload(moons, "3024247.json", "1998 WV24", 50_024_270)
+        _write_payload(moons, "50024270.json", "1998 WV24", 50_024_270)
+
+        ingestor = SBDBMoonsIngestor(tmp_path)
+        ingestor.run()
+
+        assert ingestor.duplicate_payloads == 1
+        moons_count = session.execute(
+            select(Object).where(Object.orbital_source == OrbitalSource.sbdb_moon)
+        ).all()
+        assert len(moons_count) == 1
+
+    def test_unknown_parent_still_skipped(self, session, tmp_path):
+        self._parent(session)
+        moons = tmp_path / "sources" / "position" / "sbdb" / "moons"
+        _write_payload(moons, "50999999.json", "2099 ZZ99", 50_999_999)
+
+        ingestor = SBDBMoonsIngestor(tmp_path)
+        ingestor.run()
+
+        assert ingestor.no_parent_files == 1
+        assert ingestor.new_objects == 0

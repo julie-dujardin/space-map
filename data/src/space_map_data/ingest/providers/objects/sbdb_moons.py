@@ -200,9 +200,13 @@ class SBDBMoonsIngestor:
         self.dir = download_dir / "sources" / "position" / "sbdb" / "moons"
         # parent Object.id -> catalog token used in synthesized designations.
         self.parent_designations: dict[str, str] = {}
+        # designation -> parent Object.id, used when the SPK-ID lookup misses.
+        self.parent_by_designation: dict[str, str] = {}
         self.new_objects = 0
         self.merged_count = 0
         self.no_parent_files = 0
+        self.designation_fallback_count = 0
+        self.duplicate_payloads = 0
         self.alt_orbits_dropped = 0
         self.over_cap_count = 0
 
@@ -219,6 +223,11 @@ class SBDBMoonsIngestor:
 
     def _load_parent_index(self) -> dict[int, str]:
         """Map parent SPK-ID -> Object.id for parents in DB.
+
+        Also builds ``self.parent_by_designation`` (mpc/provisional designation
+        -> Object.id): SBDB SPK-IDs drift for unnumbered bodies, so the SPK-ID a
+        satellite payload was keyed under may no longer be in the objects table;
+        the permanent designation lets us still resolve the parent.
 
         Also caches each parent's catalog token (number when numbered, else its
         provisional designation) in ``self.parent_designations``, used to
@@ -239,6 +248,9 @@ class SBDBMoonsIngestor:
             token = mpc or prov or name
             if token:
                 self.parent_designations[oid] = token
+            for desig in (prov, mpc):
+                if desig:
+                    self.parent_by_designation.setdefault(desig, oid)
         return index
 
     def _load_moon_index(self) -> dict[tuple[str, str], str]:
@@ -356,6 +368,9 @@ class SBDBMoonsIngestor:
 
         objects: list[dict] = []
         sats: list[dict] = []
+        # Guards against the same body being ingested twice from two payloads
+        # keyed under different (drifting) SPK-IDs for the same object.
+        processed_parents: set[str] = set()
         for path in tqdm(files, desc="SBDB satellites ingest", unit="file"):
             try:
                 payload = json.loads(path.read_text())
@@ -376,13 +391,37 @@ class SBDBMoonsIngestor:
 
             parent_object_id = parent_index.get(parent_spkid)
             if parent_object_id is None:
+                # SBDB drifts the SPK-ID of unnumbered bodies; fall back to the
+                # permanent designation so the parent still resolves.
+                des = string_or_none((payload.get("object") or {}).get("des"))
+                if des is not None:
+                    parent_object_id = self.parent_by_designation.get(des)
+                if parent_object_id is not None:
+                    self.designation_fallback_count += 1
+                    logger.info(
+                        "%s: parent spkid %d absent, resolved by designation %r -> %s",
+                        path.name,
+                        parent_spkid,
+                        des,
+                        parent_object_id,
+                    )
+            if parent_object_id is None:
                 self.no_parent_files += 1
                 logger.warning(
-                    "%s: parent spkid %d not in objects table, skipping",
+                    "%s: parent spkid %d not in objects table (no designation match), skipping",
                     path.name,
                     parent_spkid,
                 )
                 continue
+            if parent_object_id in processed_parents:
+                self.duplicate_payloads += 1
+                logger.info(
+                    "%s: parent %s already ingested from an SPK-ID alias, skipping duplicate payload",
+                    path.name,
+                    parent_object_id,
+                )
+                continue
+            processed_parents.add(parent_object_id)
             tree_parent_object_id = _resolve_parent_object_id(parent_object_id)
 
             sat_array = payload.get("sat") or []
@@ -466,11 +505,21 @@ class SBDBMoonsIngestor:
             "Ingested %d new SBDB satellite objects (+%d merged into existing rows) across %d parents",
             self.new_objects,
             self.merged_count,
-            len(files) - self.no_parent_files,
+            len(processed_parents),
         )
+        if self.designation_fallback_count:
+            logger.info(
+                "%d parent files resolved by designation after an SPK-ID drift",
+                self.designation_fallback_count,
+            )
+        if self.duplicate_payloads:
+            logger.info(
+                "%d duplicate payloads skipped (same body under an aliased SPK-ID)",
+                self.duplicate_payloads,
+            )
         if self.no_parent_files:
             logger.warning(
-                "%d/%d parent files skipped (parent spkid not in objects)",
+                "%d/%d parent files skipped (parent neither in objects by spkid nor designation)",
                 self.no_parent_files,
                 len(files),
             )

@@ -693,105 +693,6 @@
 	"feature_type_label_RI": "Crevasse",
 	"feature_type_label_SF": "Formation satellite",
 	"feature_type_label_UN": "Undae",
-	"property_name_absolute_magnitude": "magnitude absolue",
-	"property_name_apparent_magnitude": "magnitude apparente",
-	"property_name_asteroid_family": "famille d'astéroïdes",
-	"property_name_blog": "blog officiel",
-	"property_name_capital_cost": "coût",
-	"property_name_country_of_origin": "pays d'origine",
-	"property_name_density": "masse volumique",
-	"property_name_developer": "développé par",
-	"property_name_discoverers": "découvert(e) ou inventé(e) par",
-	"property_name_discovery_date": "date de découverte ou d'invention",
-	"property_name_discovery_site": "lieu de découverte astronomique",
-	"property_name_dissolved": "date de dissolution, d'abolition ou de démolition",
-	"property_name_funder": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "financeur",
-				"countPlural=other": "financeurs"
-			}
-		}
-	],
-	"property_name_inception": "date de fondation ou de création",
-	"property_name_instance_of": "nature de l’élément",
-	"property_name_launch_contractor": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "service de lancement",
-				"countPlural=other": "services de lancement"
-			}
-		}
-	],
-	"property_name_launch_date": "date UTC de lancement du véhicule spatial",
-	"property_name_launch_site": "point de départ",
-	"property_name_launch_vehicle": "lanceur",
-	"property_name_length": "longueur",
-	"property_name_logo_image": "image du logotype",
-	"property_name_manufacturer": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "fabricant",
-				"countPlural=other": "fabricants"
-			}
-		}
-	],
-	"property_name_mass": "masse",
-	"property_name_max_temperature": "record de température maximale",
-	"property_name_min_temperature": "température minimale record",
-	"property_name_minor_planet_group": "groupe d'objets mineurs",
-	"property_name_named_after": "nommé(e) en référence à",
-	"property_name_operators": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "opérateur",
-				"countPlural=other": "opérateurs"
-			}
-		}
-	],
-	"property_name_part_of": "partie de",
-	"property_name_radius": "rayon",
-	"property_name_spectral_type": "type spectral de l'astéroïde",
-	"property_name_surface_gravity": "gravité de surface",
-	"property_name_temperature": "température",
-	"property_name_website": "site officiel",
-	"property_name_width": "largeur",
-	"unit_name_astronomical_unit": "unité astronomique",
-	"unit_name_attometre": "attomètre",
-	"unit_name_centimetre": "centimètre",
-	"unit_name_centimetre_per_square_second": "centimètre par seconde carrée",
-	"unit_name_degree_celsius": "degré Celsius",
-	"unit_name_degree_fahrenheit": "degré Fahrenheit",
-	"unit_name_earth_mass": "masse de la Terre",
-	"unit_name_exagram": "exagramme",
-	"unit_name_gram": "gramme",
-	"unit_name_gram_per_cubic_centimetre": "gramme par centimètre cube",
-	"unit_name_hour": "heure",
-	"unit_name_jupiter_mass": "masse jovienne",
-	"unit_name_jupiter_radius": "rayon jovien",
-	"unit_name_kilogram": "kilogramme",
-	"unit_name_kilogram_per_cubic_metre": "kilogramme par mètre cube",
-	"unit_name_kilometre": "kilomètre",
-	"unit_name_kilometre_per_second": "kilomètre par seconde",
-	"unit_name_metre": "mètre",
-	"unit_name_metres_per_second_squared": "mètre par seconde carrée",
-	"unit_name_millimetre": "millimètre",
-	"unit_name_petagram": "pétagramme",
-	"unit_name_ronnagram": "ronnagramme",
-	"unit_name_square_kilometre": "kilomètre carré",
-	"unit_name_teragram": "téragramme",
-	"unit_name_year": "année",
-	"unit_name_yottagram": "yottagramme",
-	"unit_name_zettagram": "zettagramme",
-	"unit_symbol_degree_celsius": "℃",
 	"group_name_bus-proteus": "Proteus",
 	"group_name_bus-spacebus-neo": "Spacebus Neo",
 	"group_name_bus-star-bus": "STAR Bus",
@@ -954,5 +855,104 @@
 	"group_name_site-vandenberg": "base spatiale de Vandenberg",
 	"group_name_site-vostochny": "Vostochny",
 	"group_name_site-wenchang": "centre spatial de Wenchang",
-	"group_name_site-xichang": "centre spatial de Xichang"
+	"group_name_site-xichang": "centre spatial de Xichang",
+	"property_name_absolute_magnitude": "magnitude absolue",
+	"property_name_apparent_magnitude": "magnitude apparente",
+	"property_name_asteroid_family": "famille d'astéroïdes",
+	"property_name_blog": "blog officiel",
+	"property_name_capital_cost": "coût",
+	"property_name_country_of_origin": "pays d'origine",
+	"property_name_density": "masse volumique",
+	"property_name_developer": "développé par",
+	"property_name_discoverers": "découvert(e) ou inventé(e) par",
+	"property_name_discovery_date": "date de découverte ou d'invention",
+	"property_name_discovery_site": "lieu de découverte astronomique",
+	"property_name_dissolved": "date de dissolution, d'abolition ou de démolition",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "financeur",
+				"countPlural=other": "financeurs"
+			}
+		}
+	],
+	"property_name_inception": "date de fondation ou de création",
+	"property_name_instance_of": "nature de l’élément",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "service de lancement",
+				"countPlural=other": "services de lancement"
+			}
+		}
+	],
+	"property_name_launch_date": "date UTC de lancement du véhicule spatial",
+	"property_name_launch_site": "point de départ",
+	"property_name_launch_vehicle": "lanceur",
+	"property_name_length": "longueur",
+	"property_name_logo_image": "image du logotype",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "fabricant",
+				"countPlural=other": "fabricants"
+			}
+		}
+	],
+	"property_name_mass": "masse",
+	"property_name_max_temperature": "record de température maximale",
+	"property_name_min_temperature": "température minimale record",
+	"property_name_minor_planet_group": "groupe d'objets mineurs",
+	"property_name_named_after": "nommé(e) en référence à",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "opérateur",
+				"countPlural=other": "opérateurs"
+			}
+		}
+	],
+	"property_name_part_of": "partie de",
+	"property_name_radius": "rayon",
+	"property_name_spectral_type": "type spectral de l'astéroïde",
+	"property_name_surface_gravity": "gravité de surface",
+	"property_name_temperature": "température",
+	"property_name_website": "site officiel",
+	"property_name_width": "largeur",
+	"unit_name_astronomical_unit": "unité astronomique",
+	"unit_name_attometre": "attomètre",
+	"unit_name_centimetre": "centimètre",
+	"unit_name_centimetre_per_square_second": "centimètre par seconde carrée",
+	"unit_name_degree_celsius": "degré Celsius",
+	"unit_name_degree_fahrenheit": "degré Fahrenheit",
+	"unit_name_earth_mass": "masse de la Terre",
+	"unit_name_exagram": "exagramme",
+	"unit_name_gram": "gramme",
+	"unit_name_gram_per_cubic_centimetre": "gramme par centimètre cube",
+	"unit_name_hour": "heure",
+	"unit_name_jupiter_mass": "masse jovienne",
+	"unit_name_jupiter_radius": "rayon jovien",
+	"unit_name_kilogram": "kilogramme",
+	"unit_name_kilogram_per_cubic_metre": "kilogramme par mètre cube",
+	"unit_name_kilometre": "kilomètre",
+	"unit_name_kilometre_per_second": "kilomètre par seconde",
+	"unit_name_metre": "mètre",
+	"unit_name_metres_per_second_squared": "mètre par seconde carrée",
+	"unit_name_millimetre": "millimètre",
+	"unit_name_petagram": "pétagramme",
+	"unit_name_ronnagram": "ronnagramme",
+	"unit_name_square_kilometre": "kilomètre carré",
+	"unit_name_teragram": "téragramme",
+	"unit_name_year": "année",
+	"unit_name_yottagram": "yottagramme",
+	"unit_name_zettagram": "zettagramme",
+	"unit_symbol_degree_celsius": "℃"
 }
