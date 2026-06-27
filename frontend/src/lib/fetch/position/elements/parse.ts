@@ -39,12 +39,13 @@ export interface ChunkMeta extends Validity {
 
 /** Trailing per-point columns shared by every sub-format. `hasLocalized` gates
  *  the localized-bundle fetch (flag-0 rows would 404). `flags` carries SBDB bits
- *  (0 = NEO, 1 = PHA); zero on non-SBDB rows. `discDays` is days from J2000 to
- *  discovery; NaN = always visible (no/pre-window discovery, non-SBDB rows). */
+ *  (0 = NEO, 1 = PHA); zero on non-SBDB rows. `visibleFromDays` is days from
+ *  J2000 to when the body came into existence — discovery for small bodies,
+ *  launch for Earth sats; NaN = always visible (no/pre-window date). */
 export interface HasLocalizedColumn {
 	hasLocalized: Uint8Array;
 	flags: Uint8Array;
-	discDays: Float32Array;
+	visibleFromDays: Float32Array;
 }
 
 /** Per-point flag bits (column 16 on Keplerian, 19 on SGP4, 13 on Parabolic). */
@@ -280,8 +281,8 @@ export function parseElementsPayload(
 	// Column 16: flags (uint8).
 	const flags = new Uint8Array(buffer, tail, rowCount);
 	tail += align8(rowCount);
-	// Column 17: disc_days (float32) — last column on every sub-format.
-	const discDays = new Float32Array(buffer, tail, rowCount);
+	// Column 17: visible_from_days (float32) — last column on every sub-format.
+	const visibleFromDays = new Float32Array(buffer, tail, rowCount);
 	const meta: ChunkMeta = {
 		validityStart,
 		validityEnd,
@@ -308,7 +309,7 @@ export function parseElementsPayload(
 		wDot,
 		hasLocalized,
 		flags,
-		discDays,
+		visibleFromDays,
 		rowCount,
 		...meta
 	};
@@ -357,8 +358,8 @@ function parseSGP4Elements(
 	// Column 19: flags (uint8) — always zero for SGP4, emitted for uniformity.
 	const flags = new Uint8Array(buffer, offset, rowCount);
 	offset += align8(rowCount);
-	// Column 20: disc_days (float32) — always NaN for SGP4, emitted for uniformity.
-	const discDays = new Float32Array(buffer, offset, rowCount);
+	// Column 20: visible_from_days (float32) — SATCAT launch date for sats, NaN if unknown.
+	const visibleFromDays = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'sgp4',
@@ -382,7 +383,7 @@ function parseSGP4Elements(
 		revAtEpoch,
 		hasLocalized,
 		flags,
-		discDays,
+		visibleFromDays,
 		rowCount,
 		...meta
 	};
@@ -442,8 +443,8 @@ function parseParabolicElements(
 	// Column 13: flags (uint8).
 	const flags = new Uint8Array(buffer, offset, rowCount);
 	offset += align8(rowCount);
-	// Column 14: disc_days (float32) — last column on every sub-format.
-	const discDays = new Float32Array(buffer, offset, rowCount);
+	// Column 14: visible_from_days (float32) — last column on every sub-format.
+	const visibleFromDays = new Float32Array(buffer, offset, rowCount);
 
 	return {
 		kind: 'parabolic',
@@ -461,7 +462,7 @@ function parseParabolicElements(
 		radiusKm,
 		hasLocalized,
 		flags,
-		discDays,
+		visibleFromDays,
 		rowCount,
 		...meta
 	};

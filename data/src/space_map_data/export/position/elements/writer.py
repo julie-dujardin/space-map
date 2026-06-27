@@ -211,8 +211,9 @@ def write_elements(
     (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
     a localized object-detail bundle fetch — set when any language has data.
     Column 16 (`flags`, uint8) packs per-point SBDB bits (NEO, PHA). Column 17
-    (`disc_days`, float32) is days from J2000 to the SBDB discovery date, or
-    NaN when the object should always be visible (see `_disc_days`).
+    (`visible_from_days`, float32) is days from J2000 to when the object came
+    into existence (SBDB discovery here), or NaN when it should always be
+    visible (see `_visible_from_days`).
 
     `start_jd`/`end_jd` bound the file's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
@@ -242,7 +243,7 @@ def write_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_disc_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -265,8 +266,8 @@ def write_sgp4_elements(
     18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
     Column 19 (`flags`, uint8) is always zero for SGP4 (no SBDB sub-table)
     but is emitted for layout uniformity with the Keplerian sub-format.
-    Column 20 (`disc_days`, float32) is always NaN for SGP4 (satellites have
-    no discovery date); emitted for layout uniformity.
+    Column 20 (`visible_from_days`, float32) is days from J2000 to the
+    satellite's SATCAT launch date, or NaN when unknown/always-visible.
 
     `start_jd`/`end_jd` bound the file's validity. TLEs lose accuracy fast
     past their epoch and the SGP4 propagator blows up entirely a year or two
@@ -309,7 +310,7 @@ def write_sgp4_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_disc_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -327,10 +328,10 @@ def write_parabolic_elements(
     """Write a parabolic elements file (sub_format=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
-    radius_km, has_localized, flags, disc_days. `has_localized` (uint8 0/1)
-    gates localized object-detail fetches in the frontend; `flags` (uint8)
-    packs per-point SBDB bits (NEO, PHA); `disc_days` (float32) is days from
-    J2000 to the SBDB discovery date, NaN when always-visible. `start_jd`/
+    radius_km, has_localized, flags, visible_from_days. `has_localized` (uint8
+    0/1) gates localized object-detail fetches in the frontend; `flags` (uint8)
+    packs per-point SBDB bits (NEO, PHA); `visible_from_days` (float32) is days
+    from J2000 to the SBDB discovery date, NaN when always-visible. `start_jd`/
     `end_jd` bound the file's validity; ±inf means unbounded. Raises ValueError
     if a required element
     (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
@@ -386,7 +387,7 @@ def write_parabolic_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
-    _write_disc_days(buf, objects, start_jd)
+    _write_visible_from_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -543,14 +544,14 @@ def _flags_byte(o: Object) -> int:
 
 
 def _write_flags(f, objects: list[Object]) -> None:
-    """Write the `flags` uint8 column (precedes `disc_days` on v11+ payloads)."""
+    """Write the `flags` uint8 column (precedes `visible_from_days` on v11+)."""
     n = len(objects)
     _write_uint8(f, n, [_flags_byte(o) for o in objects])
 
 
-def _first_obs_jd(first_obs: str) -> float | None:
-    """Parse a normalized `first_obs` (`YYYY-MM-DD` or bare `YYYY`) to a JD."""
-    s = first_obs.strip()
+def _iso_date_to_jd(value: str) -> float | None:
+    """Parse a `YYYY-MM-DD` or bare `YYYY` date string to a JD."""
+    s = value.strip()
     try:
         return date_to_julian(date.fromisoformat(s))
     except ValueError:
@@ -561,27 +562,44 @@ def _first_obs_jd(first_obs: str) -> float | None:
         return None
 
 
-def _disc_days(o: Object, start_jd: float) -> float:
-    """Days from J2000 to the SBDB discovery (`first_obs` proxy), or NaN.
+def _origin_date(o: Object) -> str | None:
+    """Origin date as an ISO date or bare year: discovery for small bodies
+    (SBDB `first_obs`) and their moons (SBDBMoon `year`), launch for Earth sats
+    (SATCAT `launch_date`).
 
-    NaN is the frontend's "always visible" sentinel: no/unparseable date, or a
-    discovery predating the chunk (`disc_jd <= start_jd`) so the body shows for
-    the whole span. SBDB files are unbounded, so the compare only matters for
-    bounded zones that may gate on discovery later.
+    Each relation is eager-loaded only in its own zone, so gate on a scalar
+    column first — a bare access would lazy-load in a worker thread.
     """
-    sbdb = o.sbdb if o.spkid is not None else None
-    if sbdb is None or sbdb.first_obs is None:
+    if o.spkid is not None and o.sbdb is not None:
+        return o.sbdb.first_obs
+    if o.satcat_norad_cat_id is not None and o.satcat is not None:
+        return o.satcat.launch_date
+    if o.orbital_source == OrbitalSource.sbdb_moon and o.sbdb_moon is not None:
+        year = o.sbdb_moon.year
+        return str(year) if year is not None else None
+    return None
+
+
+def _visible_from_days(o: Object, start_jd: float) -> float:
+    """Days from J2000 to when `o` first exists, or NaN ("always visible").
+
+    NaN means no gating: missing/unparseable date, or one at/before `start_jd`
+    (already existed when the chunk opens). The compare only bites bounded zones
+    (Earth sats); SBDB files are unbounded.
+    """
+    origin = _origin_date(o)
+    if origin is None:
         return MISSING_FLOAT32
-    jd = _first_obs_jd(sbdb.first_obs)
+    jd = _iso_date_to_jd(origin)
     if jd is None or jd <= start_jd:
         return MISSING_FLOAT32
     return jd - J2000_JD
 
 
-def _write_disc_days(f, objects: list[Object], start_jd: float) -> None:
-    """Write the trailing `disc_days` float32 column (last column on v11+)."""
+def _write_visible_from_days(f, objects: list[Object], start_jd: float) -> None:
+    """Write the trailing `visible_from_days` float32 column (last on v11+)."""
     n = len(objects)
-    _write_float32(f, n, [_disc_days(o, start_jd) for o in objects])
+    _write_float32(f, n, [_visible_from_days(o, start_jd) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

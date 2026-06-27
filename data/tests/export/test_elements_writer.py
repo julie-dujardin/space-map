@@ -290,6 +290,40 @@ class TestWriteSgp4Elements:
         assert row_count == 1
         assert source == SOURCE_ORDINAL[OrbitalSource.spacetrack]
 
+    def test_visible_from_days_uses_satcat_launch(self, tmp_path):
+        """For Earth sats the column carries days from J2000 to the SATCAT
+        launch date (sats have no SBDB discovery date)."""
+        from datetime import date
+
+        from space_map_data.models.object.satcat import Satcat
+        from space_map_data.utils.convert import date_to_julian
+
+        obj = self._sgp4_object()
+        obj.satcat_norad_cat_id = 25544
+        obj.satcat = Satcat(NORAD_CAT_ID=25544, launch_date="1998-11-20")
+
+        out = tmp_path / "sgp4_launch.bin.gz"
+        write_sgp4_elements([obj], out, OrbitalSource.celestrak, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        # 1 row: shared 0-3 (32) + epoch (8) + a..n+radius (8 × 8 = 64)
+        # + SGP4 extras (5 × 8 = 40) + has_localized (8) + flags (8).
+        offset = HEADER_SIZE + 32 + 8 + 64 + 40 + 8 + 8
+        (d0,) = struct.unpack_from("<f", raw, offset)
+        dj = date_to_julian(date(1998, 11, 20))
+        assert dj
+        assert d0 == pytest.approx(dj - 2451545.0, abs=0.5)
+
+    def test_visible_from_days_nan_without_satcat_launch(self, tmp_path):
+        """A sat with no linked SATCAT launch date gets the NaN sentinel."""
+        out = tmp_path / "sgp4_nolaunch.bin.gz"
+        write_sgp4_elements(
+            [self._sgp4_object()], out, OrbitalSource.celestrak, has_localized={}
+        )
+        raw = gzip.decompress(out.read_bytes())
+        offset = HEADER_SIZE + 32 + 8 + 64 + 40 + 8 + 8
+        (d0,) = struct.unpack_from("<f", raw, offset)
+        assert math.isnan(d0)
+
     def test_row_source_none_is_accepted(self, tmp_path):
         """Rows with orbital_source=None inherit the file header source."""
         obj = make_object(
@@ -472,9 +506,9 @@ class TestWriteSgp4Elements:
         flags = struct.unpack_from("<3B", raw, offset)
         assert flags == (0x03, 0x01, 0x00)
 
-    def test_disc_days_column(self, tmp_path):
-        """The trailing disc_days float32 column carries days from J2000 to the
-        SBDB first_obs discovery proxy, and NaN for rows with no SBDB date."""
+    def test_visible_from_days_column(self, tmp_path):
+        """The trailing visible_from_days float32 column carries days from J2000
+        to the SBDB first_obs discovery proxy, and NaN for rows with no date."""
         from space_map_data.models.object.sbdb import SBDB
 
         kepler_kw = dict(
@@ -506,14 +540,14 @@ class TestWriteSgp4Elements:
 
         # 2 rows. shared cols 0-3 (8 each) = 32, epoch f64 = 16, cols 5-12
         # (8 f32 × 8) = 64, om_dot/w_dot (2 × 8) = 16, has_localized (8),
-        # flags (8). disc_days (col 17) follows.
+        # flags (8). visible_from_days (col 17) follows.
         offset = HEADER_SIZE + 32 + 16 + 64 + 16 + 8 + 8
         d0, d1 = struct.unpack_from("<2f", raw, offset)
         # 2001-01-01 is 365.5 days after J2000 (2000-01-01 12:00 TT).
         assert d0 == pytest.approx(365.5, abs=0.5)
         assert math.isnan(d1)
 
-    def test_disc_days_year_only(self, tmp_path):
+    def test_visible_from_days_year_only(self, tmp_path):
         """A bare-year first_obs (the partial-date shape) parses to Jan 1."""
         from space_map_data.models.object.sbdb import SBDB
 
@@ -545,6 +579,39 @@ class TestWriteSgp4Elements:
         (d0,) = struct.unpack_from("<f", raw, offset)
         # 1801-01-01 sits ~72683 days before J2000.
         assert d0 == pytest.approx(-72683.5, abs=1.0)
+
+    def test_visible_from_days_uses_sbdb_moon_year(self, tmp_path):
+        """Asteroid-moon rows (sbdb_moon source) gate on their SBDBMoon
+        discovery year, parsed as Jan 1 of that year."""
+        from space_map_data.models.object.sbdb_moon import SBDBMoon
+        from space_map_data.utils.time import year_to_jd
+
+        obj = make_object(
+            id="spkid-20000001",
+            object_type=ObjectType.moon,
+            orbital_source=OrbitalSource.sbdb_moon,
+        )
+        obj.sbdb_moon = SBDBMoon(
+            object_id="spkid-20000001",
+            parent_object_id="spkid-2000001",
+            parent_spkid=2000001,
+            sat_index=0,
+            year=1993,
+            epoch_jd=2460000.5,
+            a_km=100.0,
+            e=0.1,
+            i=5.0,
+            om=10.0,
+            w=20.0,
+            ma=30.0,
+            n=0.5,
+        )
+        out = tmp_path / "moon.bin.gz"
+        write_elements([obj], out, OrbitalSource.sbdb_moon, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        offset = HEADER_SIZE + 32 + 8 + 64 + 16 + 8 + 8
+        (d0,) = struct.unpack_from("<f", raw, offset)
+        assert d0 == pytest.approx(year_to_jd(1993) - 2451545.0, abs=1.0)
 
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""

@@ -40,7 +40,7 @@ Each column is padded to 8-byte alignment. Julian Dates use float64 for sub-day 
 | 14| w_dot       | float32 | 0.0     | Secular drift of `w` (deg/day). Same source / convention as `om_dot` |
 | 15| has_localized | uint8 | 0       | `1` iff the object has a localized detail bundle in at least one language; `0` otherwise. Frontend gates its localized-bundle fetch on this bit so flag-0 objects don't trigger a 404 per click |
 | 16| flags       | uint8   | 0       | Per-point SBDB-derived bits: bit 0 = NEO (`sbdb.neo`), bit 1 = PHA (`sbdb.pha`), bits 2–7 reserved. Zero on rows without an SBDB sub-table (planets, moons, sats). |
-| 17| disc_days   | float32 | NaN     | Days from J2000 to the object's discovery (SBDB `first_obs` proxy). The frontend hides the point until the clock reaches `2451545 + disc_days`. NaN = always visible: no/unparseable date, a discovery predating the file's `start_jd`, or a non-SBDB row. |
+| 17| visible_from_days | float32 | NaN | Days from J2000 to when the object came into existence — discovery (SBDB `first_obs`) for small bodies, discovery year (SBDBMoon `year`) for asteroid moons, launch (SATCAT `launch_date`) for Earth sats. The frontend hides the point until the clock reaches `2451545 + visible_from_days`. NaN = always visible: no/unparseable date, an origin predating the file's `start_jd`, or a row with no origin source (planets, natural moons). |
 
 Coordinate frame: ecliptic J2000.
 
@@ -89,7 +89,7 @@ don't do SGP4 can ignore columns 13–17 and treat the file as Keplerian.
 | 17 | rev_at_epoch     | int32   | -1      | Revolution number at epoch |
 | 18 | has_localized    | uint8   | 0       | Same semantics as the Keplerian column 15 |
 | 19 | flags            | uint8   | 0       | Always zero for SGP4 (no SBDB sub-table); emitted for layout uniformity with the Keplerian sub-format |
-| 20 | disc_days        | float32 | NaN     | Always NaN for SGP4 (satellites have no discovery date); emitted for layout uniformity. Same semantics as the Keplerian column 17 |
+| 20 | visible_from_days | float32 | NaN    | Days from J2000 to the satellite's SATCAT `launch_date`; NaN when unknown. Same semantics as the Keplerian column 17 |
 
 `a` and `n` use the planet-scale units (km, rev/day) — the raw OMM values from
 CelesTrak, which `json2satrec` expects unconverted.
@@ -112,7 +112,7 @@ Columns 0–3 are identical to Keplerian. Julian Dates use float64; other column
 | 11| radius_km   | float32 | NaN     | Physical radius (km) |
 | 12| has_localized | uint8 | 0       | Same semantics as the Keplerian column 15 |
 | 13| flags       | uint8   | 0       | Same semantics as the Keplerian column 16 |
-| 14| disc_days   | float32 | NaN     | Same semantics as the Keplerian column 17 |
+| 14| visible_from_days | float32 | NaN | Same semantics as the Keplerian column 17 |
 
 To compute positions, use Barker's equation instead of Kepler's equation.
 
@@ -133,4 +133,4 @@ All other columns are safe as float32 based on their value ranges in the databas
 | om_dot, w_dot (deg/d) | -1.0 – 1.0   | ~6 × 10⁻⁸ deg/d             | Phobos' ~−160°/yr ≈ 0.44°/d sets the upper magnitude |
 | q (AU)     | 0 – 43                  | ~3 × 10⁻⁶ AU                | Parabolic comets only |
 | radius_km  | 0.001 – 70,000          | ~0.004 km at max             | |
-| disc_days  | ~−73,000 – +10,000      | ~0.01 days (≈12 min) at max  | Stored relative to J2000, not as a raw JD — that keeps the magnitude small enough for float32 to resolve sub-day, more than enough for discovery gating |
+| visible_from_days | ~−73,000 – +10,000 | ~0.01 days (≈12 min) at max | Stored relative to J2000, not as a raw JD — that keeps the magnitude small enough for float32 to resolve sub-day, more than enough for visibility gating |

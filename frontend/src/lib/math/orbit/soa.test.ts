@@ -4,7 +4,7 @@ import { allocColumns, writePositions, KIND_KEPLER } from './soa';
 const J2000_JD = 2451545.0;
 
 /** Three identical circular orbits differing only in discovery date. */
-function threeRows(discDays: [number, number, number]) {
+function threeRows(visibleFromDays: [number, number, number]) {
 	const cols = allocColumns(3);
 	for (let i = 0; i < 3; i++) {
 		cols.kind[i] = KIND_KEPLER;
@@ -16,7 +16,7 @@ function threeRows(discDays: [number, number, number]) {
 		cols.ma[i] = 0;
 		cols.n[i] = 0.5;
 		cols.epoch[i] = J2000_JD;
-		cols.discDays[i] = discDays[i];
+		cols.visibleFromDays[i] = visibleFromDays[i];
 	}
 	return cols;
 }

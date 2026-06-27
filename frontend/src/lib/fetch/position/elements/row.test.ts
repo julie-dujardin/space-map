@@ -47,7 +47,7 @@ function buildKeplerian(rows: Row[]): ArrayBuffer {
 		align8(n * 4) * 2 + // omDot wDot
 		align8(n) + // hasLocalized
 		align8(n) + // flags
-		align8(n * 4); // discDays
+		align8(n * 4); // visibleFromDays
 	const buf = new ArrayBuffer(size);
 	const v = new DataView(buf);
 	v.setUint32(0, MAGIC, true);
@@ -74,7 +74,7 @@ function buildKeplerian(rows: Row[]): ArrayBuffer {
 		for (let r = 0; r < n; r++) v.setFloat32(o + r * 4, rows[r][key], true);
 		o += align8(n * 4);
 	}
-	// omDot, wDot, hasLocalized, flags, discDays left zero (ArrayBuffer zero-inits).
+	// omDot, wDot, hasLocalized, flags, visibleFromDays left zero (ArrayBuffer zero-inits).
 	return buf;
 }
 
