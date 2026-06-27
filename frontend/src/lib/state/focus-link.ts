@@ -8,16 +8,19 @@
  */
 import type { AppState } from './app-state.svelte';
 import type { FocusObject } from './focusable';
+import type { DrawerTab } from './view';
 import { applyFocus, serializeUrl, urlTypeFromId } from './url';
 
-/** The focus URL for a body; `undefined` until appState is available. */
+/** The focus URL for a body; `undefined` until appState is available. Pass
+ *  `tab` to land on a non-overview drawer tab (e.g. a planet's Moons tab). */
 export function focusHref(
 	appState: AppState | undefined,
 	id: string,
-	name: string
+	name: string,
+	tab?: Exclude<DrawerTab, 'overview'>
 ): string | undefined {
 	if (!appState) return undefined;
-	return serializeUrl(applyFocus(appState.view, { type: urlTypeFromId(id), id, name }));
+	return serializeUrl(applyFocus(appState.view, { type: urlTypeFromId(id), id, name, tab }));
 }
 
 /** A non-primary / modified click (new tab, etc.) — leave it to the browser. */
@@ -31,11 +34,11 @@ export function focusClick(
 	focusObject: FocusObject | undefined,
 	id: string,
 	name: string,
-	opts?: { moveCamera?: boolean }
+	opts?: { moveCamera?: boolean; tab?: Exclude<DrawerTab, 'overview'> }
 ): (e: MouseEvent) => void {
 	return (e) => {
 		if (isModifiedClick(e) || !focusObject) return;
 		e.preventDefault();
-		focusObject(id, name, { moveCamera: opts?.moveCamera ?? true });
+		focusObject(id, name, { moveCamera: opts?.moveCamera ?? true, tab: opts?.tab });
 	};
 }

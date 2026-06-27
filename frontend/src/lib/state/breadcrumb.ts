@@ -25,7 +25,7 @@ import {
 import { classifyEarthOrbit, classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 import type { Focusable } from './focusable';
 import { urlTypeFromId } from './url';
-import { UrlType } from './view';
+import { UrlType, type DrawerTab } from './view';
 
 /** Earth's Object.id — parent of the Satellites category. Mirrors EARTH_ID in
  *  data/constants/earth_sats/featured.py. */
@@ -46,7 +46,13 @@ function parentPlanet(
 }
 
 export type CrumbTarget =
-	| { kind: 'focus'; id: string; name: string; moveCamera?: boolean }
+	| {
+			kind: 'focus';
+			id: string;
+			name: string;
+			moveCamera?: boolean;
+			tab?: Exclude<DrawerTab, 'overview'>;
+	  }
 	| { kind: 'group'; slug: string; name: string };
 
 export interface Crumb {
@@ -127,7 +133,8 @@ export function parentCrumb(
 		const parent = parentPlanet(ctx, data.parentId);
 		const id = parent?.data.id ?? data.parentId;
 		const name = parent?.data.name ?? detail?.global?.parent_name;
-		return name ? { label: name, target: { kind: 'focus', id, name } } : null;
+		// Land on the parent's Moons tab so the moon's siblings are in view.
+		return name ? { label: name, target: { kind: 'focus', id, name, tab: 'members' } } : null;
 	}
 
 	// Split-comet fragment → its parent comet, or the family group when the

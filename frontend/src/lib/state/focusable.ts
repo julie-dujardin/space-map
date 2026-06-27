@@ -6,6 +6,7 @@ import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/chart
 import { CATEGORY_LABELS } from '$lib/fetch/groups/registry';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PositionedBody } from '$lib/types/objects';
+import type { DrawerTab } from './view';
 import * as m from '$lib/paraglide/messages.js';
 
 export type Focusable =
@@ -21,7 +22,11 @@ export type Focusable =
  *  `moveCamera: false` selects the body (drawer follows) without the zoom
  *  fly-in — used for comet fragments/parents, whose tiny meshes aren't worth
  *  flying to. */
-export type FocusObject = (id: string, name: string, opts?: { moveCamera?: boolean }) => void;
+export type FocusObject = (
+	id: string,
+	name: string,
+	opts?: { moveCamera?: boolean; tab?: Exclude<DrawerTab, 'overview'> }
+) => void;
 
 /** Stable identity for cache/dedupe keys (detail-fetch effects, log dedupe). */
 export function focusableKey(f: Focusable): string {

@@ -79,7 +79,12 @@ export class AppState {
 		}, DATE_THROTTLE_MS);
 	}
 
-	setFocus(focus: { type: string; id: string; name: string }) {
+	setFocus(focus: {
+		type: string;
+		id: string;
+		name: string;
+		tab?: Exclude<DrawerTab, 'overview'>;
+	}) {
 		this.view = applyFocus(this.view, focus);
 		this.pushNow();
 	}

@@ -34,8 +34,8 @@
 					<div class="flex items-baseline justify-between gap-2">
 						{#if appState}
 							<a
-								href={focusHref(appState, e.primary_id, e.name)}
-								onclick={focusClick(focusObject, e.primary_id, e.name)}
+								href={focusHref(appState, e.primary_id, e.name, 'members')}
+								onclick={focusClick(focusObject, e.primary_id, e.name, { tab: 'members' })}
 								class="pointer-events-auto hover:text-foreground min-w-0 truncate underline"
 								><span class="truncate">{e.name}</span></a
 							>

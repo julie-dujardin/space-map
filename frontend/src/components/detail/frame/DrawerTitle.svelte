@@ -22,7 +22,8 @@
 				? applyFocus(appState.view, {
 						type: urlTypeFromId(c.target.id),
 						id: c.target.id,
-						name: c.target.name
+						name: c.target.name,
+						tab: c.target.tab
 					})
 				: applyGroup(appState.view, c.target.slug, c.target.name);
 		return serializeUrl(next);
@@ -36,7 +37,10 @@
 		if (c.target.kind === 'focus') {
 			if (!focusObject) return; // no in-session nav available — let the href win
 			e.preventDefault();
-			focusObject(c.target.id, c.target.name, { moveCamera: c.target.moveCamera });
+			focusObject(c.target.id, c.target.name, {
+				moveCamera: c.target.moveCamera,
+				tab: c.target.tab
+			});
 		} else {
 			e.preventDefault();
 			appState.setGroup(c.target.slug, c.target.name);

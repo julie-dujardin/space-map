@@ -181,7 +181,7 @@ function applyAtParam(defaults: MapViewState): MapViewState {
  *  hrefs and the committed state stay in lockstep. */
 export function applyFocus(
 	current: MapViewState,
-	focus: { type: string; id: string; name: string }
+	focus: { type: string; id: string; name: string; tab?: Exclude<DrawerTab, 'overview'> }
 ): MapViewState {
 	return {
 		...current,
@@ -189,7 +189,9 @@ export function applyFocus(
 		imageIndex: null,
 		featureId: null,
 		groupSlug: null,
-		tab: null,
+		// Land on a requested tab (e.g. a moon→planet link opening the Moons tab);
+		// overview otherwise. Falls back to overview client-side if the tab is absent.
+		tab: focus.tab ?? null,
 		memberPage: null
 	};
 }
