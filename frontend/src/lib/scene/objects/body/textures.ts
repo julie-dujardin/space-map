@@ -158,11 +158,12 @@ export async function loadBodyTexture(
 	// (not at chunk-parse time) since it rides the global bundle fetched on focus.
 	// The untextured sphere adopts it; the point cloud / label keep their per-type
 	// tint via resolveBodyColor.
-	const sbdbColor = detail.global.sbdb?.color;
-	if (sbdbColor) {
-		bo.body.data.color = sbdbColor;
+	// Small bodies carry it under `sbdb`, moons top-level (no sbdb block).
+	const surfaceColor = detail.global.sbdb?.color ?? detail.global.color;
+	if (surfaceColor) {
+		bo.body.data.color = surfaceColor;
 		if (bo.mesh && !bo.textureTier) {
-			(bo.mesh.material as MeshStandardMaterial).color.set(sbdbColor);
+			(bo.mesh.material as MeshStandardMaterial).color.set(surfaceColor);
 		}
 	}
 

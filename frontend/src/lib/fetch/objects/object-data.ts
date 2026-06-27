@@ -142,6 +142,11 @@ export interface GlobalObjectData {
 	 *  parent even when its body isn't resident in the scene (small-body hosts
 	 *  get culled by the streaming loader once focus moves on). */
 	parent_name?: string;
+	/** Moons only — #rrggbb physically-derived surface colour (TrueColorTools,
+	 *  NAIF-keyed). Top-level because moons carry no `sbdb` block; small bodies
+	 *  carry the equivalent under `sbdb.color`. The textureless sphere adopts it. */
+	color?: string;
+	color_method?: 'spectrum' | 'albedo';
 	/** True when this body has IAU planetary nomenclature features exported.
 	 *  Gates the per-body fetch of `v1/nomenclature/{positions,__global__}/{id}.*`. */
 	has_nomenclature?: true;
