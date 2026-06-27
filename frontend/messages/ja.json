@@ -1,5 +1,13 @@
 {
 	"page_title": "宇宙マップ",
+	"category_name_solar_system": "太陽系",
+	"category_name_planets": "惑星",
+	"category_name_dwarf_planets": "準惑星",
+	"category_name_moons": "衛星",
+	"category_name_asteroids": "小惑星",
+	"category_name_comets": "彗星",
+	"category_name_satellites": "人工衛星",
+	"category_name_probes": "探査機",
 	"featured_label": "注目",
 	"featured_main_belt": "メインベルト",
 	"featured_mars": "火星",

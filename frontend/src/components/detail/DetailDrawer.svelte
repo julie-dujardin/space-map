@@ -26,6 +26,8 @@
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
 	import {
 		fetchGroupIndex,
+		categoryLabel,
+		CATEGORY_SLUG_PREFIX,
 		CAT_MOONS,
 		CAT_PLANETS,
 		CAT_DWARF_PLANETS
@@ -200,11 +202,15 @@
 					const websites = [detail.global?.website, detail.global?.url].filter(
 						(u): u is string => !!u
 					);
+					// Categories' display name is an i18n key, not the English bundle name.
+					const groupName = slug.startsWith(CATEGORY_SLUG_PREFIX)
+						? categoryLabel(slug)
+						: (detail.localized?.name ?? groupSlugLabel(slug));
 					data = {
 						global: {
 							id: `group-${slug}`,
 							type: 'group',
-							name: detail.localized?.name ?? groupSlugLabel(slug),
+							name: groupName,
 							images: detail.global?.images,
 							cross_refs: detail.global?.wikidata_qid
 								? { wikidata_qid: detail.global.wikidata_qid }
@@ -213,7 +219,7 @@
 						},
 						localized: detail.localized
 							? {
-									name: detail.localized.name,
+									name: groupName,
 									description: detail.localized.description,
 									wikipedia: detail.localized.wikipedia
 								}

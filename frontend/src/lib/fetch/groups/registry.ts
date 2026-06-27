@@ -5,6 +5,7 @@
  */
 
 import { DATA_BASE } from '$lib/fetch/data-base';
+import * as m from '$lib/paraglide/messages.js';
 
 export type GroupType =
 	| 'constellation'
@@ -51,18 +52,22 @@ export const CAT_COMETS = `${CATEGORY_SLUG_PREFIX}comets`;
 export const CAT_SATELLITES = `${CATEGORY_SLUG_PREFIX}satellites`;
 export const CAT_PROBES = `${CATEGORY_SLUG_PREFIX}probes`;
 
-/** English fallback labels shown until the localized bundle name resolves.
- *  Mirrors ``CategorySpec.name`` in ``data/constants/categories.py``. */
-export const CATEGORY_LABELS: Record<string, string> = {
-	[CAT_SOLAR_SYSTEM]: 'Solar System',
-	[CAT_PLANETS]: 'Planets',
-	[CAT_DWARF_PLANETS]: 'Dwarf Planets',
-	[CAT_MOONS]: 'Moons',
-	[CAT_ASTEROIDS]: 'Asteroids',
-	[CAT_COMETS]: 'Comets',
-	[CAT_SATELLITES]: 'Satellites',
-	[CAT_PROBES]: 'Probes'
+/** Plural category headers, not the singular Wikidata label. */
+const CATEGORY_NAME: Record<string, () => string> = {
+	[CAT_SOLAR_SYSTEM]: m.category_name_solar_system,
+	[CAT_PLANETS]: m.category_name_planets,
+	[CAT_DWARF_PLANETS]: m.category_name_dwarf_planets,
+	[CAT_MOONS]: m.category_name_moons,
+	[CAT_ASTEROIDS]: m.category_name_asteroids,
+	[CAT_COMETS]: m.category_name_comets,
+	[CAT_SATELLITES]: m.category_name_satellites,
+	[CAT_PROBES]: m.category_name_probes
 };
+
+/** Localized display name for a `cat-` slug; the raw slug if unknown. */
+export function categoryLabel(slug: string): string {
+	return CATEGORY_NAME[slug]?.() ?? slug;
+}
 
 /** Slug suffix → flag bit mask. Mirrors `ELEMENTS_FLAG_*` in
  *  `$lib/fetch/position/elements/parse.ts`. */

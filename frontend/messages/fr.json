@@ -1,5 +1,12 @@
 {
 	"page_title": "Carte de l'espace",
+	"category_name_solar_system": "Système solaire",
+	"category_name_planets": "Planètes",
+	"category_name_dwarf_planets": "Planètes naines",
+	"category_name_moons": "Lunes",
+	"category_name_asteroids": "Astéroïdes",
+	"category_name_comets": "Comètes",
+	"category_name_probes": "Sondes spatiales",
 	"featured_label": "En vedette",
 	"featured_main_belt": "Ceinture principale",
 	"search_placeholder": "Rechercher",

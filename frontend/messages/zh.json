@@ -1,5 +1,13 @@
 {
 	"page_title": "太空地图",
+	"category_name_solar_system": "太阳系",
+	"category_name_planets": "行星",
+	"category_name_dwarf_planets": "矮行星",
+	"category_name_moons": "卫星",
+	"category_name_asteroids": "小行星",
+	"category_name_comets": "彗星",
+	"category_name_satellites": "人造卫星",
+	"category_name_probes": "探测器",
 	"featured_label": "精选",
 	"featured_iss": "国际空间站",
 	"featured_main_belt": "主带",

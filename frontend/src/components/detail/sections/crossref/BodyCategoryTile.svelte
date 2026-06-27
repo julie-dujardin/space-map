@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { groupTypeLabel } from '$lib/format/group';
-	import { CATEGORY_LABELS } from '$lib/fetch/groups/registry';
+	import { categoryLabel } from '$lib/fetch/groups/registry';
 	import GroupTile from './GroupTile.svelte';
 
 	interface Props {
@@ -11,7 +11,7 @@
 	}
 	let { slug, class: className }: Props = $props();
 
-	let name = $derived(CATEGORY_LABELS[slug] ?? slug);
+	let name = $derived(categoryLabel(slug));
 </script>
 
 <GroupTile {slug} {name} label={groupTypeLabel('category')} class={className} />

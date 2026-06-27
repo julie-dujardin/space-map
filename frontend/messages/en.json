@@ -1,5 +1,13 @@
 {
 	"page_title": "Space Map",
+	"category_name_solar_system": "Solar System",
+	"category_name_planets": "Planets",
+	"category_name_dwarf_planets": "Dwarf Planets",
+	"category_name_moons": "Moons",
+	"category_name_asteroids": "Asteroids",
+	"category_name_comets": "Comets",
+	"category_name_satellites": "Satellites",
+	"category_name_probes": "Probes",
 	"featured_label": "Featured",
 	"featured_iss": "ISS",
 	"featured_main_belt": "Main Belt",

@@ -30,6 +30,7 @@
 	import type { FilterNode, FilterLeaf } from '$lib/search/tree';
 	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
+	import { categoryLabel, CATEGORY_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 	import {
 		smallBodyCategory,
 		CAT_PROBES,
@@ -177,12 +178,11 @@
 		if (k === 'group') return m.search_kind_group();
 		return k;
 	}
-	// Localized group/collection name, used for filter leaves, tokens and result
-	// rows alike. Orbit classes resolve via the frontend `orbit_class_*` keys,
-	// falling back to the index's Wikidata name (then the bare code) for any
-	// class without a key; other kinds use `group_name_<slug>`, else the
-	// exported name.
+	// Localized group name for filter leaves, tokens and rows. Categories use
+	// `category_name_*`, orbit classes `orbit_class_*` (then the index name, then
+	// the bare code); other kinds use `group_name_<slug>`, else the exported name.
 	function groupName(g: GroupHit, locale: string): string {
+		if (g.slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(g.slug);
 		const className = classNameFromSlug(g.slug);
 		if (className != null) {
 			const label = orbitClassLabel(className);

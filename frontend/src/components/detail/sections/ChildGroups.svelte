@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { ChildGroupEntry } from '$lib/fetch/groups/details';
-	import type { GroupType } from '$lib/fetch/groups/registry';
+	import { categoryLabel, CATEGORY_SLUG_PREFIX, type GroupType } from '$lib/fetch/groups/registry';
 	import { groupTypeLabelPlural } from '$lib/format/group';
 	import { classNameFromSlug, orbitClassLabel } from '$lib/charts/orbit-zones';
 	import ZoneChip from './kit/ZoneChip.svelte';
@@ -11,11 +11,12 @@
 	}
 	let { childGroups }: Props = $props();
 
-	// Orbit-class names live in the frontend `orbit_class_*` i18n keys, not the
-	// export (whose Wikidata fallback leaves QID-less classes like IGSO/VHEO as
-	// the raw slug). Other child types use their exported localized name.
+	// Categories and orbit classes name from frontend i18n keys (the export name
+	// is English-only / a bare slug for QID-less classes); others use the export name.
 	function childName(c: ChildGroupEntry): string {
-		const className = classNameFromSlug(c.primary_id ?? '');
+		const slug = c.primary_id ?? '';
+		if (slug.startsWith(CATEGORY_SLUG_PREFIX)) return categoryLabel(slug);
+		const className = classNameFromSlug(slug);
 		return className != null ? orbitClassLabel(className) : c.name;
 	}
 

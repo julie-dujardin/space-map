@@ -3,7 +3,7 @@
  *  what renders. */
 
 import { classNameFromSlug, FLAG_SLUG_PREFIX, orbitClassLabel } from '$lib/charts/orbit-zones';
-import { CATEGORY_LABELS } from '$lib/fetch/groups/registry';
+import { categoryLabel } from '$lib/fetch/groups/registry';
 import type { NomenclatureFeature } from '$lib/fetch/nomenclature/fetch';
 import type { PositionedBody } from '$lib/types/objects';
 import type { DrawerTab } from './view';
@@ -51,7 +51,7 @@ export function groupSlugLabel(slug: string): string {
 	if (className != null) return orbitClassLabel(className);
 	if (slug === `${FLAG_SLUG_PREFIX}neo`) return m.neo();
 	if (slug === `${FLAG_SLUG_PREFIX}pha`) return m.pha();
-	return CATEGORY_LABELS[slug] ?? slug;
+	return categoryLabel(slug);
 }
 
 function bodyIdNumber(id: string): string {

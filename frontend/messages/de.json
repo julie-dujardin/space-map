@@ -1,5 +1,13 @@
 {
 	"page_title": "Space Map",
+	"category_name_solar_system": "Sonnensystem",
+	"category_name_planets": "Planeten",
+	"category_name_dwarf_planets": "Zwergplaneten",
+	"category_name_moons": "Monde",
+	"category_name_asteroids": "Asteroiden",
+	"category_name_comets": "Kometen",
+	"category_name_satellites": "Satelliten",
+	"category_name_probes": "Raumsonden",
 	"featured_label": "Empfohlen",
 	"featured_iss": "ISS",
 	"featured_main_belt": "Hauptgürtel",

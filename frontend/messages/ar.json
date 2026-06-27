@@ -1,5 +1,13 @@
 {
 	"page_title": "خريطة الفضاء",
+	"category_name_solar_system": "المجموعة الشمسية",
+	"category_name_planets": "كواكب",
+	"category_name_dwarf_planets": "كواكب قزمة",
+	"category_name_moons": "أقمار",
+	"category_name_asteroids": "كويكبات",
+	"category_name_comets": "مذنبات",
+	"category_name_satellites": "أقمار اصطناعية",
+	"category_name_probes": "مسبارات فضائية",
 	"featured_label": "مميز",
 	"featured_iss": "محطة الفضاء الدولية",
 	"featured_main_belt": "الحزام الرئيسي",

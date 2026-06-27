@@ -1,5 +1,13 @@
 {
 	"page_title": "Карта космоса",
+	"category_name_solar_system": "Солнечная система",
+	"category_name_planets": "Планеты",
+	"category_name_dwarf_planets": "Карликовые планеты",
+	"category_name_moons": "Луны",
+	"category_name_asteroids": "Астероиды",
+	"category_name_comets": "Кометы",
+	"category_name_satellites": "Спутники",
+	"category_name_probes": "Космические зонды",
 	"featured_label": "Избранное",
 	"featured_iss": "МКС",
 	"featured_main_belt": "Главный пояс",

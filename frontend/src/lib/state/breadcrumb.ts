@@ -8,7 +8,7 @@ import type { GlobalGroupData } from '$lib/fetch/groups/details';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import { dominantPlanetId } from '$lib/scene/state/bodies.svelte';
 import {
-	CATEGORY_LABELS,
+	categoryLabel,
 	CATEGORY_SLUG_PREFIX,
 	CAT_ASTEROIDS,
 	CAT_COMETS,
@@ -69,7 +69,7 @@ function classGroup(className: string): Crumb {
 }
 
 function categoryCrumb(slug: string): Crumb {
-	const label = CATEGORY_LABELS[slug] ?? slug;
+	const label = categoryLabel(slug);
 	return { label, target: { kind: 'group', slug, name: label } };
 }
 
