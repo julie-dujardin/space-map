@@ -1,14 +1,10 @@
 {
   // Images live in the same export tree but are split into their own
   // Workers-static-assets project so the frequently-changing data deploy stays
-  // small/fast: a combined upload of data + ~50k image files times out. Both
-  // configs point at the same directory; `.assetsignore.images` (copied to
-  // `.assetsignore` by deploy.sh) keeps only `v1/images`, the inverse of the
-  // static project's ignore.
+  // small/fast: a combined upload of data + ~50k image files times out.
   "name": "space-map-images",
   "compatibility_date": "2026-04-01",
   "assets": {
     "directory": "../../../space-map-export"
-  },
-  "routes": [{ "pattern": "images.spacemap.co", "custom_domain": true }]
+  }
 }
