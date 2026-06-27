@@ -37,6 +37,7 @@ jobs:
       - name: Build
         env:
           PUBLIC_DATA_URL: ${{ vars.PUBLIC_DATA_URL }}
+          PUBLIC_IMAGES_URL: ${{ vars.PUBLIC_IMAGES_URL }}
           PUBLIC_MEILI_URL: ${{ vars.PUBLIC_MEILI_URL }}
           PUBLIC_MEILI_SEARCH_KEY: ${{ vars.PUBLIC_MEILI_SEARCH_KEY }}
         run: cd frontend && pnpm build

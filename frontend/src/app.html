@@ -30,6 +30,9 @@
 					if (cross) add('preconnect', base);
 					add('preload', base + '/v1/metadata.json', 'fetch');
 					add('preload', base + '/v1/systems/global.json', 'fetch');
+					// Images load from a separate origin in prod; warm it too.
+					var img = '%sveltekit.env.PUBLIC_IMAGES_URL%';
+					if (/^https?:\/\//.test(img) && img !== base) add('preconnect', img);
 				} catch (e) {}
 			})();
 		</script>

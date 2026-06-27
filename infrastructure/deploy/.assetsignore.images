@@ -1,0 +1,7 @@
+.assetsignore
+# Inverse of .assetsignore.static: upload only v1/images. Whitelisting a nested
+# dir needs the dir re-included at every level before its contents.
+/*
+!/v1/
+/v1/*
+!/v1/images/

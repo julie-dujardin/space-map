@@ -1,4 +1,6 @@
 {
+  // Everything except v1/images; images ship from wrangler.images.jsonc. The
+  // split is enforced at deploy time by .assetsignore.static (see deploy.sh).
   "name": "space-map-static",
   "compatibility_date": "2026-04-01",
   "assets": {

@@ -23,7 +23,8 @@ flowchart LR
   subgraph hosts["Public artifact hosts"]
     direction TB
     cfpagesfront[("Cloudflare Pages<br/>spacemap.co")]
-    cfpagesstatic[("Cloudflare Pages<br/>static.spacemap.co")]
+    cfpagesstatic[("Workers static assets<br/>static.spacemap.co<br/>(data, minus images)")]
+    cfpagesimages[("Workers static assets<br/>images.spacemap.co<br/>(v1/images)")]
     ghcr[("ghcr.io/.../space-map-data")]
     ghrel[("GitHub Releases")]
   end
@@ -57,12 +58,14 @@ flowchart LR
 
   container -.->|regular fetch| sources
   container -.->|TODO| cfpagesstatic
+  container -.->|TODO| cfpagesimages
 
   container -.->|"space-map-search push<br/>:9751"| meili
   caddy --> meili
 
   user --> cfpagesfront
   user --> cfpagesstatic
+  user --> cfpagesimages
   user -->|"search (using search-only key)"| cftunnel
   cftunnel -->|":9750"| caddy
 ```

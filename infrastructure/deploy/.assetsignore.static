@@ -1,0 +1,3 @@
+.assetsignore
+# Images ship from the space-map-images project (see wrangler.images.jsonc).
+/v1/images/
