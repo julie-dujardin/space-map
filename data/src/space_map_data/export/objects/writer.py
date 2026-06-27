@@ -40,6 +40,7 @@ from space_map_data.export.objects.celestrak import (
     merge_operator_qids,
 )
 from space_map_data.export.objects.sbdb import build_sbdb
+from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.systems import clouds_block, texture_attribution
 from space_map_data.export.objects.wikidata_claims import (
@@ -379,6 +380,14 @@ def _build_global(
         parent_name = parent_names.get(obj.parent_id)
         if parent_name:
             data["parent_name"] = parent_name
+    # Physically-derived TCT surface colour for moons (mirrors sbdb.py for small
+    # bodies). Drives the flat sphere where no texture loads; absent for moons
+    # TCT hasn't measured.
+    if obj.object_type == ObjectType.moon:
+        color, method = resolve_moon_color(obj.naif_id)
+        if color is not None:
+            data["color"] = color
+            data["color_method"] = method
     if obj.mpc_designation is not None:
         data["sbdb_primary_designation"] = obj.mpc_designation
     if obj.provisional_designation is not None:

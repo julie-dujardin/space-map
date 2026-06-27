@@ -33,7 +33,10 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.groups.small_body import _notable_members
 from space_map_data.export.notable import NotableObject, render_geometry
-from space_map_data.export.small_body_color import resolve_small_body_color
+from space_map_data.export.small_body_color import (
+    resolve_moon_color,
+    resolve_small_body_color,
+)
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
     radius_km_from_claims,
@@ -134,6 +137,9 @@ def _body_member(
         radii=geo.radii,
         radius_km=geo.radius_km,
         pole=geo.pole,
+        # Tints textureless moons in the Moons-page lineup; None (so the frontend
+        # tint stands) for planets/dwarfs and unmeasured moons.
+        color=resolve_moon_color(naif_id)[0],
     )
 
 

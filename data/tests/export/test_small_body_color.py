@@ -7,6 +7,7 @@ import pytest
 from space_map_data.export import small_body_color as sbc
 from space_map_data.export.small_body_color import (
     _taxon_key,
+    resolve_moon_color,
     resolve_small_body_color,
 )
 
@@ -76,6 +77,31 @@ class TestResolveColor:
 
     def test_nothing_known_is_none(self) -> None:
         assert resolve_small_body_color("0", None, None) == (None, None)
+
+
+class TestResolveMoonColor:
+    """Moons resolve by NAIF id from the by_naif spectrum tier only — no
+    taxonomy/albedo fallback (moons carry no SBDB classification)."""
+
+    def test_hit_returns_spectrum(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            sbc, "_table", lambda: {"by_naif": {"spectrum": {"607": "#a1b2c3"}}}
+        )
+        assert resolve_moon_color(607) == ("#a1b2c3", "spectrum")
+
+    def test_unmeasured_moon_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sbc, "_table", lambda: {"by_naif": {"spectrum": {}}})
+        assert resolve_moon_color(699) == (None, None)
+
+    def test_none_naif_is_none(self) -> None:
+        assert resolve_moon_color(None) == (None, None)
+
+    def test_missing_by_naif_block_is_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pre-regeneration JSON has no by_naif key; resolve must not KeyError.
+        monkeypatch.setattr(sbc, "_table", lambda: {"by_spkid": {}})
+        assert resolve_moon_color(607) == (None, None)
 
 
 @pytest.fixture(autouse=True)

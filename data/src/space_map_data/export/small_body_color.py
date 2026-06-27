@@ -15,6 +15,10 @@ credit it. Priority, most→least specific:
 The first three run through TrueColorTools' colour engine. taxonomy/albedo take
 brightness from the body's own measured albedo, so a dark P-type and a bright
 E-type sharing a featureless X spectrum still read correctly.
+
+Moons resolve separately via ``resolve_moon_color`` (NAIF-keyed): TCT ships
+measured spectra for ~50 satellites but they carry no SBDB taxonomy/albedo, so
+only the per-body ``spectrum`` tier applies.
 """
 
 import json
@@ -54,7 +58,12 @@ def _table() -> dict:
             "small_body_colors.json missing — small-body colours disabled "
             "(run scripts/generate_small_body_colors.py)"
         )
-        return {"neutral_linear": None, "by_taxon": {}, "by_spkid": {}}
+        return {
+            "neutral_linear": None,
+            "by_taxon": {},
+            "by_spkid": {},
+            "by_naif": {},
+        }
     return json.loads(raw)
 
 
@@ -108,6 +117,20 @@ def resolve_small_body_color(
         _stats["albedo"] += 1
         return _encode(table["neutral_linear"], albedo), "albedo"
     _stats["none"] += 1
+    return None, None
+
+
+def resolve_moon_color(naif_id: int | None) -> tuple[str | None, str | None]:
+    """``(#rrggbb, "spectrum")`` for a moon with a measured TrueColorTools colour,
+    keyed by NAIF id, or ``(None, None)``. Moons carry no SBDB taxonomy/albedo, so
+    there is no class/grey fallback tier here (unlike ``resolve_small_body_color``)
+    — a moon TCT has never measured keeps the frontend's generic moon tint."""
+    if naif_id is not None:
+        by_naif = _table().get("by_naif", {})
+        if hexcol := by_naif.get("spectrum", {}).get(str(naif_id)):
+            _stats["moon_spectrum"] += 1
+            return hexcol, "spectrum"
+    _stats["moon_none"] += 1
     return None, None
 
 

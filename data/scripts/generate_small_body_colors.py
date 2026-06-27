@@ -9,9 +9,12 @@ Emits ``constants/small_body_colors.json`` consumed by the export resolver:
                                      # the hue-less chroma for the albedo-grey tier
       "by_taxon": {"S": [r, g, b], ...},   # Bus-DeMeo class chroma (linear,
                                      # luminance-normalized) — hue only
-      "by_spkid": {                  # per-body, grouped by derivation method
+      "by_spkid": {                  # per-body asteroids/comets, by derivation
         "spectrum":   {"20000004": "#rrggbb", ...},  # measured reflectance
         "photometry": {"20000433": "#rrggbb", ...},  # SBDB B-V/U-B indices
+      },
+      "by_naif": {                   # moons/natural satellites, keyed by NAIF id
+        "spectrum":   {"607": "#rrggbb", ...},       # measured reflectance (TCT)
       }
     }
 
@@ -59,6 +62,30 @@ _OUT = (
 
 # Numbered minor planets get SPK-ID = 20_000_000 + number (matches SBDB/Horizons).
 _SPKID_ASTEROID_OFFSET = 20_000_000
+
+# TCT names carry the IAU Roman-numeral satellite designation, e.g. "Europa
+# (J II)". NAIF satellite ids are planet_digit*100 + designation number, so the
+# mapping is exact (J II → 502, S LIII → 653 Aegaeon). TCT uses M for Mars.
+_PLANET_DIGIT = {"E": 3, "M": 4, "J": 5, "S": 6, "U": 7, "N": 8, "P": 9}
+_DESIGNATION = re.compile(r"\(([EMJSUNP]) ([IVXLC]+)\)")
+_ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+
+def _roman_to_int(s: str) -> int:
+    total = prev = 0
+    for ch in reversed(s):
+        v = _ROMAN[ch]
+        total += -v if v < prev else v
+        prev = max(prev, v)
+    return total
+
+
+def _naif_of(name: str) -> int | None:
+    """NAIF id from a TCT satellite name, or None if it carries no designation."""
+    m = _DESIGNATION.search(name)
+    if not m:
+        return None
+    return _PLANET_DIGIT[m.group(1)] * 100 + _roman_to_int(m.group(2))
 
 
 def _load_tct(tct_root: Path):
@@ -217,12 +244,60 @@ def main() -> None:
             bv_skipped += 1
             print(f"  skip BV/UB {spkid}: {e}", file=sys.stderr)
 
+    # --- by_naif: moons/natural satellites in TCT, keyed by NAIF id ---
+    # The `natural satellite/...` tag excludes rings/aurorae/surface features for
+    # free. Per body we keep one representative entry, preferring (in order):
+    # TCT's own `featured` disk spectrum, any whole-disk entry, else a hemisphere
+    # entry (Amalthea/Thebe/Metis only have leading/trailing). Pure sub-region
+    # entries ("Bright areas", "polar cap") are skipped so a feature is never
+    # mislabelled as the disk. Ties break on the name for determinism.
+    naif_cands: dict[int, list[tuple[int, str, object, object]]] = {}
+    for name, entry in objs.items():
+        tags = entry.get("tags", [])
+        if not any(str(t).startswith("natural satellite") for t in tags):
+            continue
+        s = str(name)
+        naif = _naif_of(s)
+        if naif is None:
+            continue
+        base = s.split(" | ")[0]
+        if ":" not in base:
+            rank = 0 if "featured" in tags else 1
+        elif re.search(r"hemisphere|side", base, re.IGNORECASE):
+            rank = 2
+        else:
+            rank = 3  # material/region only — last resort
+        naif_cands.setdefault(naif, []).append((rank, s, name, entry))
+
+    by_naif: dict[str, str] = {}
+    naif_skipped = 0
+    for naif, cands in naif_cands.items():
+        cands.sort(key=lambda c: (c[0], c[1]))
+        best_rank, best_label, best_name, best_entry = cands[0]
+        if best_rank == 3:
+            naif_skipped += 1
+            print(
+                f"  skip moon {naif}: only sub-region data ({best_label})",
+                file=sys.stderr,
+            )
+            continue
+        try:
+            hexcol = colour_of_entry(best_name, best_entry)
+            if hexcol:
+                by_naif[str(naif)] = hexcol
+        except Exception as e:  # noqa: BLE001
+            naif_skipped += 1
+            print(f"  skip moon {naif} ({best_label}): {e}", file=sys.stderr)
+
     out = {
         "neutral_linear": neutral_linear,
         "by_taxon": dict(sorted(by_taxon.items())),
         "by_spkid": {
             "spectrum": sort_by_spkid(by_spectrum),
             "photometry": sort_by_spkid(by_photometry),
+        },
+        "by_naif": {
+            "spectrum": sort_by_spkid(by_naif),
         },
     }
     out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="UTF-8")
@@ -232,7 +307,8 @@ def main() -> None:
         f"  neutral_linear = {neutral_linear}\n"
         f"  by_taxon       = {len(by_taxon)} classes\n"
         f"  by_spkid       = {len(by_spectrum)} spectrum + {len(by_photometry)} photometry "
-        f"(skipped {skipped_named}+{bv_skipped})"
+        f"(skipped {skipped_named}+{bv_skipped})\n"
+        f"  by_naif        = {len(by_naif)} moons (skipped {naif_skipped})"
     )
 
 
