@@ -76,9 +76,6 @@ from space_map_data.export.position.elements.celestrak_source import (
 )
 from space_map_data.export.position.elements.spacetrack_source import ARCHIVE_YEARS
 from space_map_data.export.position.probes import write_probes
-from space_map_data.export.position.probes.attitude.orchestrator import (
-    write_attitude,
-)
 from space_map_data.export.position.spacecraft_orientation import (
     apply_orientation_config,
 )
@@ -1098,7 +1095,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # Attitude extraction runs after probe positions are written but before
         # the global object bundles are sealed — it mutates `global_data` in
         # place to inject the per-probe attitude manifest under `attitude`.
-        write_attitude(out_dir, agg.all_objects.global_data)
+        # write_attitude(out_dir, agg.all_objects.global_data)
         # Hand-edited per-spacecraft pointing config; injects `pointing` into
         # matching object entries for the frontend's focused-model attitude.
         apply_orientation_config(agg.all_objects.global_data)

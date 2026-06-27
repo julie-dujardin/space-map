@@ -472,6 +472,80 @@ class TestWriteSgp4Elements:
         flags = struct.unpack_from("<3B", raw, offset)
         assert flags == (0x03, 0x01, 0x00)
 
+    def test_disc_days_column(self, tmp_path):
+        """The trailing disc_days float32 column carries days from J2000 to the
+        SBDB first_obs discovery proxy, and NaN for rows with no SBDB date."""
+        from space_map_data.models.object.sbdb import SBDB
+
+        kepler_kw = dict(
+            epoch=2460000.5, a=2.0, e=0.1, i=5.0, om=10.0, w=20.0, ma=30.0, n=0.5
+        )
+        discovered = make_object(
+            id="spkid-2000001",
+            object_type=ObjectType.asteroid,
+            spkid=2000001,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        discovered.sbdb = SBDB(
+            spkid="2000001",
+            object_id="spkid-2000001",
+            first_obs="2001-01-01",
+            **kepler_kw,
+        )
+        no_date = make_object(
+            id="spkid-2000002",
+            object_type=ObjectType.asteroid,
+            spkid=2000002,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        no_date.sbdb = SBDB(spkid="2000002", object_id="spkid-2000002", **kepler_kw)
+
+        out = tmp_path / "disc.bin.gz"
+        write_elements([discovered, no_date], out, OrbitalSource.sbdb, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+
+        # 2 rows. shared cols 0-3 (8 each) = 32, epoch f64 = 16, cols 5-12
+        # (8 f32 × 8) = 64, om_dot/w_dot (2 × 8) = 16, has_localized (8),
+        # flags (8). disc_days (col 17) follows.
+        offset = HEADER_SIZE + 32 + 16 + 64 + 16 + 8 + 8
+        d0, d1 = struct.unpack_from("<2f", raw, offset)
+        # 2001-01-01 is 365.5 days after J2000 (2000-01-01 12:00 TT).
+        assert d0 == pytest.approx(365.5, abs=0.5)
+        assert math.isnan(d1)
+
+    def test_disc_days_year_only(self, tmp_path):
+        """A bare-year first_obs (the partial-date shape) parses to Jan 1."""
+        from space_map_data.models.object.sbdb import SBDB
+
+        obj = make_object(
+            id="spkid-2000001",
+            object_type=ObjectType.asteroid,
+            spkid=2000001,
+            orbital_source=OrbitalSource.sbdb,
+        )
+        obj.sbdb = SBDB(
+            spkid="2000001",
+            object_id="spkid-2000001",
+            first_obs="1801",
+            epoch=2460000.5,
+            a=2.0,
+            e=0.1,
+            i=5.0,
+            om=10.0,
+            w=20.0,
+            ma=30.0,
+            n=0.5,
+        )
+        out = tmp_path / "disc_year.bin.gz"
+        write_elements([obj], out, OrbitalSource.sbdb, has_localized={})
+        raw = gzip.decompress(out.read_bytes())
+        # 1 row: shared (32) + epoch (8) + cols 5-12 (8 × 8 = 64) + om/w (16)
+        # + has_localized (8) + flags (8).
+        offset = HEADER_SIZE + 32 + 8 + 64 + 16 + 8 + 8
+        (d0,) = struct.unpack_from("<f", raw, offset)
+        # 1801-01-01 sits ~72683 days before J2000.
+        assert d0 == pytest.approx(-72683.5, abs=1.0)
+
     def test_missing_radius(self, tmp_path):
         """Object without SBDB and no override gets NaN radius."""
         obj = make_object(id="naif-399", object_type=ObjectType.planet)

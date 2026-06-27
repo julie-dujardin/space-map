@@ -10,6 +10,7 @@ import gzip
 import io
 import logging
 import struct
+from datetime import date
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES
@@ -17,6 +18,7 @@ from space_map_data.export.position.format import (
     ELEMENTS_FLAG_NEO,
     ELEMENTS_FLAG_PHA,
     ID_TYPE_ORDINAL,
+    MISSING_FLOAT32,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
     MISSING_INT32,
@@ -32,6 +34,8 @@ from space_map_data.export.position.format import (
     pack_elements_header,
 )
 from space_map_data.models.object import Object, OrbitalSource
+from space_map_data.utils.convert import date_to_julian
+from space_map_data.utils.time import J2000_JD, year_to_jd
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +210,9 @@ def write_elements(
     Kepler propagation reduces to plain mean-anomaly drift. Column 15
     (`has_localized`, uint8 0/1) tells the frontend whether to even attempt
     a localized object-detail bundle fetch — set when any language has data.
-    Column 16 (`flags`, uint8) packs per-point SBDB bits (NEO, PHA).
+    Column 16 (`flags`, uint8) packs per-point SBDB bits (NEO, PHA). Column 17
+    (`disc_days`, float32) is days from J2000 to the SBDB discovery date, or
+    NaN when the object should always be visible (see `_disc_days`).
 
     `start_jd`/`end_jd` bound the file's validity; ±inf means unbounded.
     Raises ValueError if a required orbital element is None, or if any row's
@@ -236,6 +242,7 @@ def write_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
+    _write_disc_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -258,6 +265,8 @@ def write_sgp4_elements(
     18 (`has_localized`, uint8 0/1) gates localized object-detail fetches.
     Column 19 (`flags`, uint8) is always zero for SGP4 (no SBDB sub-table)
     but is emitted for layout uniformity with the Keplerian sub-format.
+    Column 20 (`disc_days`, float32) is always NaN for SGP4 (satellites have
+    no discovery date); emitted for layout uniformity.
 
     `start_jd`/`end_jd` bound the file's validity. TLEs lose accuracy fast
     past their epoch and the SGP4 propagator blows up entirely a year or two
@@ -300,6 +309,7 @@ def write_sgp4_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
+    _write_disc_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -317,10 +327,12 @@ def write_parabolic_elements(
     """Write a parabolic elements file (sub_format=1).
 
     Columns: id, object_type, parent_id, scale, epoch_jd, q, e, i, om, w, tp,
-    radius_km, has_localized, flags. `has_localized` (uint8 0/1) gates
-    localized object-detail fetches in the frontend; `flags` (uint8) packs
-    per-point SBDB bits (NEO, PHA). `start_jd`/`end_jd` bound the file's
-    validity; ±inf means unbounded. Raises ValueError if a required element
+    radius_km, has_localized, flags, disc_days. `has_localized` (uint8 0/1)
+    gates localized object-detail fetches in the frontend; `flags` (uint8)
+    packs per-point SBDB bits (NEO, PHA); `disc_days` (float32) is days from
+    J2000 to the SBDB discovery date, NaN when always-visible. `start_jd`/
+    `end_jd` bound the file's validity; ±inf means unbounded. Raises ValueError
+    if a required element
     (q, tp, e, i, om, w) is missing, or if any row's `orbital_source`
     disagrees with the file source.
     """
@@ -374,6 +386,7 @@ def write_parabolic_elements(
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
+    _write_disc_days(buf, objects, start_jd)
 
     out_file.write_bytes(gzip.compress(buf.getvalue()))
 
@@ -530,9 +543,45 @@ def _flags_byte(o: Object) -> int:
 
 
 def _write_flags(f, objects: list[Object]) -> None:
-    """Write the trailing `flags` uint8 column (last column on v10+ payloads)."""
+    """Write the `flags` uint8 column (precedes `disc_days` on v11+ payloads)."""
     n = len(objects)
     _write_uint8(f, n, [_flags_byte(o) for o in objects])
+
+
+def _first_obs_jd(first_obs: str) -> float | None:
+    """Parse a normalized `first_obs` (`YYYY-MM-DD` or bare `YYYY`) to a JD."""
+    s = first_obs.strip()
+    try:
+        return date_to_julian(date.fromisoformat(s))
+    except ValueError:
+        pass
+    try:
+        return year_to_jd(int(s))
+    except ValueError:
+        return None
+
+
+def _disc_days(o: Object, start_jd: float) -> float:
+    """Days from J2000 to the SBDB discovery (`first_obs` proxy), or NaN.
+
+    NaN is the frontend's "always visible" sentinel: no/unparseable date, or a
+    discovery predating the chunk (`disc_jd <= start_jd`) so the body shows for
+    the whole span. SBDB files are unbounded, so the compare only matters for
+    bounded zones that may gate on discovery later.
+    """
+    sbdb = o.sbdb if o.spkid is not None else None
+    if sbdb is None or sbdb.first_obs is None:
+        return MISSING_FLOAT32
+    jd = _first_obs_jd(sbdb.first_obs)
+    if jd is None or jd <= start_jd:
+        return MISSING_FLOAT32
+    return jd - J2000_JD
+
+
+def _write_disc_days(f, objects: list[Object], start_jd: float) -> None:
+    """Write the trailing `disc_days` float32 column (last column on v11+)."""
+    n = len(objects)
+    _write_float32(f, n, [_disc_days(o, start_jd) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

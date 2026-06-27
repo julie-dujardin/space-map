@@ -44,7 +44,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 10
+VERSION = 11
 
 # Common header at offset 0..23, format extension at 24..31.
 COMMON_HEADER_SIZE = 24
