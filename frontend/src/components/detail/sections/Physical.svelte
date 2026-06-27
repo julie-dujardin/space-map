@@ -22,16 +22,22 @@
 
 	let sats = $derived(sbdb?.sats);
 
-	// Physically-derived small-body surface colour + how it was obtained, for the
-	// swatch + TrueColorTools credit. Methods, most→least precise.
+	// Physically-derived surface colour + how it was obtained, for the swatch +
+	// TrueColorTools credit.
 	const COLOUR_METHOD = {
 		spectrum: m.colour_method_spectrum,
 		photometry: m.colour_method_photometry,
 		taxonomy: m.colour_method_taxonomy,
 		albedo: m.colour_method_albedo
 	};
-	let colour = $derived(sbdb?.color);
-	let colourMethod = $derived(sbdb?.color_method ? COLOUR_METHOD[sbdb.color_method]() : null);
+	// Small bodies carry it under `sbdb`; moons top-level, when textureless
+	let colourSource = $derived(
+		sbdb ?? (global && !global.map_texture_available ? global : undefined)
+	);
+	let colour = $derived(colourSource?.color);
+	let colourMethod = $derived(
+		colourSource?.color_method ? COLOUR_METHOD[colourSource.color_method]() : null
+	);
 
 	let rotationPeriodDays = $derived(
 		orientation?.w1 ? 360 / Math.abs(orientation.w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null
