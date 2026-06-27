@@ -33,6 +33,7 @@ from space_map_data.export.groups.registry import (
 )
 from space_map_data.export.groups.small_body import _notable_members
 from space_map_data.export.notable import NotableObject, render_geometry
+from space_map_data.export.small_body_color import resolve_small_body_color
 from space_map_data.export.objects.wikidata_claims import (
     diameter_km_from_claims,
     radius_km_from_claims,
@@ -217,7 +218,18 @@ def _dwarf_planet_members(
     major planets/moons).
     """
     rows = (
-        session.query(Object.id, Object.naif_id, Object.wikidata_qid, Object.name)
+        session.query(
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.name,
+            SBDB.spkid,
+            SBDB.spec_B,
+            SBDB.spec_T,
+            SBDB.albedo,
+        )
+        # Outer join: Pluto carries no SBDB row, but still belongs in the lineup.
+        .outerjoin(SBDB, SBDB.object_id == Object.id)
         .filter(Object.object_type == ObjectType.dwarf_planet)
         .order_by(
             Object.image_available.desc(), Object.sitelinks_count.desc(), Object.id
@@ -225,8 +237,10 @@ def _dwarf_planet_members(
         .all()
     )
     members: list[NotableObject] = []
-    for row in rows:
-        member = _body_member(*row, radii=radii, gms=gms, orientation=orientation)
+    for obj_id, naif_id, qid, name, spkid, spec_b, spec_t, albedo in rows:
+        member = _body_member(
+            obj_id, naif_id, qid, name, radii=radii, gms=gms, orientation=orientation
+        )
         member.diameter_km = _wikidata_diameter_km(member.wikidata_qid, entities, units)
         if member.diameter_km is None:
             logger.warning(
@@ -235,6 +249,12 @@ def _dwarf_planet_members(
                 member.object_id,
                 member.wikidata_qid,
             )
+        # The TNO dwarfs (Eris, Makemake, …) are textureless, so the lineup tints
+        # them by their measured colour like any other small body.
+        if spkid is not None:
+            member.albedo = albedo
+            member.spec = spec_b or spec_t
+            member.color = resolve_small_body_color(spkid, spec_b or spec_t, albedo)[0]
         members.append(member)
     return members
 
