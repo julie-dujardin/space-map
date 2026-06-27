@@ -1,7 +1,6 @@
-/** When is a body observable? Probes use `probe_coverage`; Earth sats use
- *  SATCAT launch/decay dates. Returns null for other kinds. */
+/** When is a body observable? Probes use their `coverage` envelope; Earth sats
+ *  use SATCAT launch/decay dates. Returns null for other kinds. */
 
-import { fetchMetadata } from '$lib/fetch/metadata';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { dateToJD } from '$lib/format/date';
 
@@ -12,8 +11,8 @@ export interface CoverageWindow {
 
 export async function coverageWindowFor(id: string): Promise<CoverageWindow | null> {
 	if (id.startsWith('probe-')) {
-		const meta = await fetchMetadata();
-		const c = meta.position?.probe_coverage?.[id];
+		const detail = await fetchObjectDetail(id, false);
+		const c = detail.global?.coverage;
 		return c ? { startJd: c.start_jd, endJd: c.end_jd } : null;
 	}
 	if (id.startsWith('norad_satcat-')) {

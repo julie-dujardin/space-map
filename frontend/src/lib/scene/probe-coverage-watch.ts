@@ -1,10 +1,10 @@
 /**
  * Pauses the sim clock at the focused probe's coverage edges. Each frame
  * `sync` arms {@link SimClock.setBoundaryStops} with the focused probe's
- * `(start_jd, end_jd)` from `metadata.position.probe_coverage`; tick clamps
- * jd to the nearest edge in the time-step direction and pauses. A toast
- * fires on hit and auto-dismisses when jd moves back inside coverage or
- * focus changes.
+ * `(start_jd, end_jd)`, lazily fetched from its `__global__` bundle entry
+ * (`GlobalObjectData.coverage`) and cached; tick clamps jd to the nearest
+ * edge in the time-step direction and pauses. A toast fires on hit and
+ * auto-dismisses when jd moves back inside coverage or focus changes.
  *
  * Why this matters: heliocentric/hyperbolic probes propagate beyond their
  * SPICE data (writer-side, since `e2fbf2bb`), so `(start_jd, end_jd)` is
@@ -16,6 +16,7 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
 import { formatJulianDate } from '$lib/format/date';
+import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { ProbeCoverage } from '$lib/fetch/metadata';
 import type { PositionedBody } from '$lib/types/objects';
 import type { SimClock } from '$lib/scene/state/clock.svelte';
@@ -48,19 +49,34 @@ export class ProbeCoverageWatch {
 	/** Toast id currently showing for the armed probe, or null. Tracked so we
 	 *  dismiss the right toast when focus changes / jd re-enters coverage. */
 	private activeToastId: string | null = null;
+	/** Resolved coverage per probe id; `null` once we know a probe has none
+	 *  (legacy export). Absent key = not fetched yet. */
+	private readonly coverage = new Map<string, ProbeCoverage | null>();
+	private readonly pending = new Set<string>();
 
-	constructor(
-		private readonly clock: SimClock,
-		/** Per-probe `(start_jd, end_jd)` from metadata. Empty when the export
-		 *  predates the field — the watch becomes a no-op. */
-		private readonly coverage: Map<string, ProbeCoverage>
-	) {}
+	constructor(private readonly clock: SimClock) {}
+
+	/** Coverage for `probeId`, fetched-and-cached from its global bundle on
+	 *  first ask (usually a cache hit — the drawer loaded it). Until it
+	 *  resolves `sync` finds nothing and stays disarmed. */
+	private coverageFor(probeId: string): ProbeCoverage | undefined {
+		const cached = this.coverage.get(probeId);
+		if (cached !== undefined) return cached ?? undefined;
+		if (!this.pending.has(probeId)) {
+			this.pending.add(probeId);
+			fetchObjectDetail(probeId, false)
+				.then((d) => this.coverage.set(probeId, d.global?.coverage ?? null))
+				.catch(() => this.coverage.set(probeId, null))
+				.finally(() => this.pending.delete(probeId));
+		}
+		return undefined;
+	}
 
 	/** Per-frame entry point. Cheap when nothing changed. Call before
 	 *  {@link SimClock.tick} so stops are armed for the upcoming step. */
 	sync(focused: PositionedBody | undefined, jd: number): void {
 		const probeId = focused?.data.id ?? null;
-		const cov = probeId !== null ? this.coverage.get(probeId) : undefined;
+		const cov = probeId !== null ? this.coverageFor(probeId) : undefined;
 
 		if (!focused || !cov) {
 			this.disarm();

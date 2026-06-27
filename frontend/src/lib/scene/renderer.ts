@@ -108,7 +108,7 @@ export class SceneRenderer {
 	hideCappedMoonLabels = false;
 
 	private focusController!: FocusController;
-	/** Null when the export ships no `probe_coverage` block (legacy). */
+	/** Null until scene setup; fetches each focused probe's coverage lazily. */
 	private coverageWatch: ProbeCoverageWatch | null = null;
 	private readonly _tmpV3 = new Vector3();
 
@@ -305,9 +305,7 @@ export class SceneRenderer {
 			this.renderer
 		);
 
-		if (ctx.probeCoverage) {
-			this.coverageWatch = new ProbeCoverageWatch(clock, ctx.probeCoverage);
-		}
+		this.coverageWatch = new ProbeCoverageWatch(clock);
 
 		// Camera initial placement: focus-relative. lat/lon are body-fixed, but
 		// the mesh quaternion is still identity (orientation metadata hasn't

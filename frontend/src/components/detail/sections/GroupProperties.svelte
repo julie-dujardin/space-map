@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalGroupData, LocalizedGroupData } from '$lib/fetch/groups/details';
 	import type { EntityRef } from '$lib/fetch/objects/object-data';
@@ -31,6 +32,8 @@
 	// Launch-vehicle variant breakdown (most-launched first), with GCAT specs.
 	let variants = $derived(global?.variants ?? []);
 	let maxVariantCount = $derived(variants.length > 0 ? Math.max(...variants.map((v) => v.n)) : 0);
+	// GCAT variant name → Wikipedia ref, for variants matched to a Wikidata entity.
+	let variantRefs = $derived(localized?.variant_refs ?? {});
 	let discoveryHistogram = $derived(global?.discovery_histogram);
 	let operators = $derived(localized?.operators ?? []);
 	let manufacturers = $derived(localized?.manufacturers ?? []);
@@ -160,7 +163,17 @@
 				<li class="flex flex-col gap-1">
 					<div class="flex items-baseline justify-between gap-2">
 						<span class="min-w-0 truncate">
-							{v.name}
+							{#if variantRefs[v.name]?.wikipedia}
+								<a
+									href={variantRefs[v.name].wikipedia}
+									target="_blank"
+									rel="noopener"
+									class="hover:text-foreground inline-flex items-center gap-1 align-bottom underline"
+									>{v.name}<ExternalLinkIcon class="size-3 shrink-0" /></a
+								>
+							{:else}
+								{v.name}
+							{/if}
 							{#if v.leo_capacity_kg}
 								<span class="text-muted-foreground text-xs"
 									>· {m.group_variant_payload_leo({ kg: formatNumber(v.leo_capacity_kg) })}</span

@@ -1,5 +1,5 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
-import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
+import { fetchMetadata, hashBucket, type ProbeCoverage } from '$lib/fetch/metadata';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
@@ -298,6 +298,9 @@ export interface GlobalObjectData {
 		categories?: string[];
 		country_codes?: string[];
 	};
+	/** Probe objects only. Outermost SPK coverage envelope; the focused-probe
+	 *  coverage-end pause arms a SimClock boundary stop from these bounds. */
+	coverage?: ProbeCoverage;
 	/** Top moons picked at export time (image/sitelinks/diameter rank); on
 	 *  planets/dwarf planets and asteroids with satellites. */
 	notable_moons?: NotableMemberEntry[];

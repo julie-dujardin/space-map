@@ -125,6 +125,8 @@ export interface LocalizedGroupData {
 	constellations?: ConstellationEntry[];
 	/** Category-only: the child groups this category lists (zones, families, classes, constellations). */
 	child_groups?: ChildGroupEntry[];
+	/** lv- only: variant GCAT name → its Wikipedia ref, for variants matched to a more-specific Wikidata entity than the family. Keyed by the global `variants[].name`. */
+	variant_refs?: Record<string, EntityRef>;
 	/** member Object.id → localized label for notable_members, only where it differs from the global name. */
 	notable_member_names?: Record<string, string>;
 	/** member Object.id → localized Wikidata short description, for the lineup hero's hover tooltip. */
