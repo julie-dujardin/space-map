@@ -8,7 +8,7 @@
 	import { groupTypeLabel, organizationRoleLabel, satelliteCategoryLabel } from '$lib/format/group';
 	import GroupStatCards from './properties/GroupStatCards.svelte';
 	import FragmentOf from './properties/FragmentOf.svelte';
-	import GroupLink from './properties/GroupLink.svelte';
+	import SmallBodyGroupLinks from './properties/SmallBodyGroupLinks.svelte';
 	import DwarfPlanetGroupLinks from './properties/DwarfPlanetGroupLinks.svelte';
 	import BodyCategoryTile from './properties/BodyCategoryTile.svelte';
 	import { ObjectType } from '$lib/types/objects';
@@ -582,6 +582,16 @@
 	// Small body → its SBDB orbit-class group. Suppressed on fragments: they
 	// point to their parent comet instead
 	let orbitClass = $derived(isGroupMode || fragmentOf ? undefined : data?.global?.sbdb?.class);
+	// NEO/PHA crossref tile alongside the orbit-class one (rendered only under the
+	// `orbitClass` branch, so no group/fragment guard needed). PHA is the NEO
+	// subset, so prefer it when both apply — a single flag tile, never two.
+	let smallBodyFlag = $derived(
+		data?.global?.sbdb?.pha
+			? ('pha' as const)
+			: data?.global?.sbdb?.neo
+				? ('neo' as const)
+				: undefined
+	);
 	let isDwarfPlanetBody = $derived(body?.data.objectType === ObjectType.DWARF_PLANET);
 	let isMoonBody = $derived(body?.data.objectType === ObjectType.MOON);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
@@ -712,7 +722,7 @@
 			{:else if isMoonBody}
 				<BodyCategoryTile slug={CAT_MOONS} />
 			{:else if orbitClass}
-				<GroupLink className={orbitClass} />
+				<SmallBodyGroupLinks {orbitClass} flag={smallBodyFlag} />
 			{/if}
 			{#if body}
 				<SatCrossRefs
