@@ -9,13 +9,16 @@ import {
 	chebyshevZoneParams,
 	chunkIndexForJd,
 	fetchMetadata,
+	flatZoom,
 	isChunkIndexed,
 	isDateSegmented,
 	isParted,
 	isProbeZone,
+	isZoomedZone,
 	partsForDate,
 	probeZoneParams,
 	snapshotDate,
+	zoneLayers,
 	type Metadata
 } from '$lib/fetch/metadata';
 import { dateToJD } from '$lib/format/date';
@@ -30,7 +33,7 @@ import { getSettings } from '$lib/state/settings.svelte';
 
 interface MinorChunkArg {
 	zone: string;
-	zoom: number;
+	zoom: number | null;
 	part: number;
 	time: string | null;
 	parentIdType: string;
@@ -67,8 +70,7 @@ function planMinorChunks(
 		if (zone === 'spacecraft') continue;
 		if (isProbeZone(zoneData)) continue;
 		const parentIdType = zoneData.parent_id_type ?? 'naif';
-		for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
-			const zoom = Number(zoomStr);
+		for (const { zoom, data: zoomData } of zoneLayers(zoneData)) {
 			if (zoomData.shape === 'chunked') continue;
 			// Date-segmented zones (earth): pick snapshot nearest the sim time so SGP4's window covers it.
 			const time = isDateSegmented(zoomData) ? snapshotDate(zoomData, date) : null;
@@ -80,7 +82,7 @@ function planMinorChunks(
 						: zoomData.parts;
 			for (let part = 0; part < limit; part++) {
 				const arg = { zone, zoom, part, time, parentIdType };
-				if (zoom >= 1 && part >= EAGER_ZOOM1_PARTS) deferred.push(arg);
+				if (zoom !== null && zoom >= 1 && part >= EAGER_ZOOM1_PARTS) deferred.push(arg);
 				else eager.push(arg);
 			}
 		}
@@ -140,7 +142,7 @@ async function loadMajorBodies(
 		major.push(...loader.processProbes(ctx.probeStore, date, cachedLabels));
 	}
 	const majorZone = metadata.position.zones.major;
-	if (majorZone && !isProbeZone(majorZone)) {
+	if (majorZone && isZoomedZone(majorZone)) {
 		for (const zoom of [1, 2] as const) {
 			const zoomData = majorZone.zooms[String(zoom)];
 			if (zoomData && isParted(zoomData)) {
@@ -151,11 +153,11 @@ async function loadMajorBodies(
 		}
 	}
 	const moonsZone = metadata.position.zones.moons;
-	const moonsZoom = moonsZone && !isProbeZone(moonsZone) ? moonsZone.zooms[0] : undefined;
+	const moonsZoom = moonsZone ? flatZoom(moonsZone) : undefined;
 	const moonsTime =
 		moonsZoom && isChunkIndexed(moonsZoom) ? String(chunkIndexForJd(moonsZoom, jd)) : null;
 	if (moonsZoom) {
-		major.push(...(await loader.process('moons', 0, 0, date, moonsTime)));
+		major.push(...(await loader.process('moons', null, 0, date, moonsTime)));
 	}
 	return major;
 }
@@ -192,10 +194,10 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// chunk index) is handled here as a one-shot HTTP warm.
 	metadataPromise.then((metadata) => {
 		const moons = metadata.position.zones.moons;
-		if (!moons || isProbeZone(moons)) return;
-		const moonsZoom = moons.zooms[0];
+		if (!moons) return;
+		const moonsZoom = flatZoom(moons);
 		if (moonsZoom && isParted(moonsZoom)) {
-			ChunkLoader.prefetch('moons', 0, 0, null);
+			ChunkLoader.prefetch('moons', null, 0, null);
 		}
 	});
 

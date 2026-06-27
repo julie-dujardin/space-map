@@ -21,14 +21,15 @@ export type ObjectBundles = {
 	global: number;
 } & Record<string, number>;
 
-/** Static parted zone: `position/{zone}/{zoom}/{part}.bin.gz`. */
+/** Static parted zone: `position/{zone}/[{zoom}/]{part}.bin.gz` (the `{zoom}`
+ *  segment only for multi-zoom zones — see {@link zoneLayers}). */
 export interface PartedZoom {
 	shape: 'parted';
 	parts: number;
 }
 
 /** Time-chunked + parted, ISO-date label (currently `earth`):
- *  `position/{zone}/{zoom}/{YYYY-MM-DD}/{part}.bin.gz`. The available snapshot
+ *  `position/{zone}/[{zoom}/]{YYYY-MM-DD}/{part}.bin.gz`. The available snapshot
  *  dates are sparse and irregular (recent CelesTrak dailies + historical
  *  Space-Track weeklies), so `parts_by_date` doubles as the date index — its
  *  keys are exactly the exported snapshots — and gives each date's part count
@@ -44,7 +45,7 @@ export interface DateSegmentedZoom {
 }
 
 /** Time-chunked + parted, integer chunk-idx label (currently `moons`):
- *  `position/{zone}/{zoom}/{chunk_idx}/{part}.bin.gz`. */
+ *  `position/{zone}/[{zoom}/]{chunk_idx}/{part}.bin.gz`. */
 export interface ChunkIndexedZoom {
 	shape: 'chunked-parted';
 	label: 'index';
@@ -55,7 +56,8 @@ export interface ChunkIndexedZoom {
 }
 
 /** Chebyshev-only zone, no parts axis:
- *  `position/{zone}/{zoom}/{chunk_idx}.bin.gz`. */
+ *  `position/{zone}/[{zoom}/]{chunk_idx}.bin.gz` (the `{zoom}` segment only for
+ *  `major`, which shares its zone with the Horizons elements tiers). */
 export interface ChebyshevZoom {
 	shape: 'chunked';
 	chunks: number;
@@ -64,10 +66,11 @@ export interface ChebyshevZoom {
 	end_jd: number;
 }
 
-/** Probe zones — `chunked` shape but emitted directly at zone level (no
- *  `zooms` wrapper) so the URL is `position/{zone}/{chunk}.bin.gz`. */
+/** Probe zones — emitted directly at zone level (no `zooms` wrapper) so the URL
+ *  is `position/{zone}/{chunk}.bin.gz`. The distinct `probes` shape tag tells
+ *  them apart from flat chebyshev zones, which also sit at zone level. */
 export interface ProbeZoneMetadata {
-	shape: 'chunked';
+	shape: 'probes';
 	chunks: number;
 	chunk_days: number;
 	start_jd: number;
@@ -122,21 +125,51 @@ export function chunkIndexForJd(zone: ChunkRange, jd: number): number {
 	return Math.max(0, Math.min(zone.chunks - 1, idx));
 }
 
-export interface ZoneMetadata {
-	zooms: Record<string, ZoomMetadata>;
-	/** ID-type prefix for col-2 (parent) numeric values across this zone's
-	 *  files. The frontend rebuilds full parent ids as `${prefix}-${col2}`.
-	 *  Defaults to `"naif"` when absent (legacy zones predate the field). */
+/** ID-type prefix for col-2 (parent) numeric values across a zone's files. The
+ *  frontend rebuilds full parent ids as `${prefix}-${col2}`. Defaults to
+ *  `"naif"` when absent (legacy zones predate the field). */
+interface HasParentIdType {
 	parent_id_type?: string;
 }
 
-/** Probe zone entries in `metadata.position.zones` are flat (no `zooms`
- *  wrapper) — they carry the chunked-shape fields directly. Detect with
- *  `'shape' in entry` since regular entries have a `zooms` key instead. */
-export type ZoneOrProbeMetadata = ZoneMetadata | ProbeZoneMetadata;
+/** Multi-zoom zone (`major`, `small_bodies/{class}`): shapes nested under a
+ *  `zooms` map, URL keeps a `{zoom}` segment. */
+export interface ZoneMetadata extends HasParentIdType {
+	zooms: Record<string, ZoomMetadata>;
+}
+
+/** Structurally single-zoom zone: the shape sits at zone level, URL drops the
+ *  `{zoom}` segment. */
+export type FlatZoneMetadata = ZoomMetadata & HasParentIdType;
+
+export type ZoneOrProbeMetadata = ZoneMetadata | FlatZoneMetadata | ProbeZoneMetadata;
 
 export function isProbeZone(entry: ZoneOrProbeMetadata): entry is ProbeZoneMetadata {
-	return (entry as ProbeZoneMetadata).shape === 'chunked';
+	return 'shape' in entry && entry.shape === 'probes';
+}
+
+export function isZoomedZone(entry: ZoneOrProbeMetadata): entry is ZoneMetadata {
+	return 'zooms' in entry;
+}
+
+/** A zone's loadable layers, normalized across flat and multi-zoom entries.
+ *  `zoom` is null for flat zones (URL omits the segment). Probe zones yield
+ *  nothing — they load through the ProbeStore. */
+export interface ZoneLayer {
+	zoom: number | null;
+	data: ZoomMetadata;
+}
+
+export function zoneLayers(entry: ZoneOrProbeMetadata): ZoneLayer[] {
+	if (isProbeZone(entry)) return [];
+	if (isZoomedZone(entry))
+		return Object.entries(entry.zooms).map(([z, data]) => ({ zoom: Number(z), data }));
+	return [{ zoom: null, data: entry }];
+}
+
+/** The lone ZoomMetadata of a flat zone; undefined for multi-zoom or probe zones. */
+export function flatZoom(entry: ZoneOrProbeMetadata): ZoomMetadata | undefined {
+	return !isZoomedZone(entry) && !isProbeZone(entry) ? entry : undefined;
 }
 
 /** Sorted UTC-midnight ms of every available snapshot date, memoised per zoom
@@ -265,22 +298,24 @@ export function fetchMetadata(): Promise<Metadata> {
 }
 
 /**
- * Walk `metadata.position.zones` and pick out the chebyshev zones (those whose
- * zoom-0 has `shape: "chunked"`), folding them into the per-zone params map
- * the `ChebyshevStore` consumes. Returns an empty map when no chebyshev zones
- * exist; callers gate construction on `size > 0`.
+ * The chebyshev zones from `metadata.position.zones`, as the per-zone params
+ * `ChebyshevStore` consumes. Cheb lives at `zooms['0']` for `major`, at zone
+ * level for flat zones (`major_asteroids`, `moons/*`); `zoom` records which (0
+ * vs null) for the URL. Empty when none exist — callers gate on `size > 0`.
  */
 export function chebyshevZoneParams(meta: Metadata): Map<string, ChebyshevZoneParams> {
 	const out = new Map<string, ChebyshevZoneParams>();
 	for (const [zone, zoneData] of Object.entries(meta.position.zones)) {
 		if (isProbeZone(zoneData)) continue;
-		const zoom0 = zoneData.zooms['0'];
-		if (!zoom0 || zoom0.shape !== 'chunked') continue;
+		const zoom = isZoomedZone(zoneData) ? 0 : null;
+		const cheb = zoom === 0 ? (zoneData as ZoneMetadata).zooms['0'] : (zoneData as ZoomMetadata);
+		if (!cheb || !isChebyshev(cheb)) continue;
 		out.set(zone, {
-			chunks: zoom0.chunks,
-			chunk_days: zoom0.chunk_days,
-			start_jd: zoom0.start_jd,
-			end_jd: zoom0.end_jd
+			zoom,
+			chunks: cheb.chunks,
+			chunk_days: cheb.chunk_days,
+			start_jd: cheb.start_jd,
+			end_jd: cheb.end_jd
 		});
 	}
 	return out;

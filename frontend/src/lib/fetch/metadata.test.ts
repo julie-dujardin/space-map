@@ -9,17 +9,27 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+	chebyshevZoneParams,
 	chunkIndexForJd,
+	flatZoom,
 	isChebyshev,
 	isChunkIndexed,
 	isDateSegmented,
 	isParted,
+	isProbeZone,
+	isZoomedZone,
 	partsForDate,
+	probeZoneParams,
 	snapshotDate,
+	zoneLayers,
 	type ChebyshevZoom,
 	type ChunkIndexedZoom,
 	type DateSegmentedZoom,
-	type PartedZoom
+	type FlatZoneMetadata,
+	type Metadata,
+	type PartedZoom,
+	type ProbeZoneMetadata,
+	type ZoneMetadata
 } from './metadata';
 
 const ZOOM: ChunkIndexedZoom = {
@@ -192,5 +202,87 @@ describe('snapshotDate / partsForDate (sparse date axis)', () => {
 		expect(partsForDate(sparse, '2024-06-17')).toBe(1);
 		expect(partsForDate(sparse, '2024-01-01', 2)).toBe(2); // cap clamps
 		expect(partsForDate(sparse, '2024-01-15', 5)).toBe(2); // cap above count
+	});
+});
+
+describe('flat vs multi-zoom zone dispatch', () => {
+	const zoomed: ZoneMetadata = {
+		zooms: { '0': { shape: 'parted', parts: 2 }, '1': { shape: 'parted', parts: 5 } },
+		parent_id_type: 'naif'
+	};
+	const flat: FlatZoneMetadata = { shape: 'parted', parts: 3, parent_id_type: 'norad_satcat' };
+	const probe: ProbeZoneMetadata = {
+		shape: 'probes',
+		chunks: 4,
+		chunk_days: 364,
+		start_jd: 2433282.5,
+		end_jd: 2469807.5,
+		subchunk_days: 7,
+		float64_coeffs: true,
+		fit_center_naif_id: 10,
+		present: [[0, 3]]
+	};
+
+	it('isZoomedZone / isProbeZone / flat are mutually exclusive', () => {
+		expect([isZoomedZone(zoomed), isProbeZone(zoomed)]).toEqual([true, false]);
+		expect([isZoomedZone(flat), isProbeZone(flat)]).toEqual([false, false]);
+		expect([isZoomedZone(probe), isProbeZone(probe)]).toEqual([false, true]);
+	});
+
+	it('zoneLayers numbers multi-zoom layers and nulls flat ones; probes yield none', () => {
+		expect(zoneLayers(zoomed).map((l) => l.zoom)).toEqual([0, 1]);
+		expect(zoneLayers(flat)).toEqual([{ zoom: null, data: flat }]);
+		expect(zoneLayers(probe)).toEqual([]);
+	});
+
+	it('flatZoom returns the lone shape for flat zones only', () => {
+		expect(flatZoom(flat)).toBe(flat);
+		expect(flatZoom(zoomed)).toBeUndefined();
+		expect(flatZoom(probe)).toBeUndefined();
+	});
+});
+
+describe('chebyshevZoneParams / probeZoneParams', () => {
+	const cheb = (start: number): ChebyshevZoom => ({
+		shape: 'chunked',
+		chunks: 10,
+		chunk_days: 365,
+		start_jd: start,
+		end_jd: start + 3650
+	});
+	const meta = {
+		position: {
+			zones: {
+				major: { zooms: { '0': cheb(2400000), '1': { shape: 'parted', parts: 1 } } },
+				major_asteroids: { ...cheb(2410000), parent_id_type: 'naif' },
+				'moons/mars': { ...cheb(2420000), parent_id_type: 'naif' },
+				earth: { shape: 'parted', parts: 2 },
+				'probes/interplanetary': {
+					shape: 'probes',
+					chunks: 4,
+					chunk_days: 364,
+					start_jd: 2433282.5,
+					end_jd: 2469807.5,
+					subchunk_days: 7,
+					float64_coeffs: true,
+					fit_center_naif_id: 10,
+					present: [[0, 3]]
+				}
+			}
+		}
+	} as unknown as Metadata;
+
+	it('picks chebyshev zones with the right zoom segment (0 for major, null for flat)', () => {
+		const params = chebyshevZoneParams(meta);
+		expect([...params.keys()].sort()).toEqual(['major', 'major_asteroids', 'moons/mars']);
+		expect(params.get('major')!.zoom).toBe(0);
+		expect(params.get('major_asteroids')!.zoom).toBeNull();
+		expect(params.get('moons/mars')!.zoom).toBeNull();
+	});
+
+	it('probeZoneParams picks only the probes-shaped zone', () => {
+		const params = probeZoneParams(meta);
+		expect([...params.keys()]).toEqual(['probes/interplanetary']);
+		expect(params.get('probes/interplanetary')!.fit_center_naif_id).toBe(10);
 	});
 });

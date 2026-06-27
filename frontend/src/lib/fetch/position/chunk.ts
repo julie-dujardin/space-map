@@ -83,7 +83,7 @@ function chebyshevOsculatingElements(
  * Chebyshev zones don't go through this loader — they're handled by the
  * `ChebyshevStore`'s own URL builder (`chunkedUrl`) and don't carry parts.
  */
-function elementsUrl(zone: string, zoom: number, part: number, time: string | null): string {
+function elementsUrl(zone: string, zoom: number | null, part: number, time: string | null): string {
 	return time ? chunkedPartedUrl(zone, zoom, time, part) : partedUrl(zone, zoom, part);
 }
 
@@ -98,11 +98,11 @@ const elementsCache = new LruPromiseCache<ElementColumns>(PARSED_ELEMENTS_CACHE_
 
 async function fetchElements(
 	zone: string,
-	zoom: number,
+	zoom: number | null,
 	part: number,
 	time: string | null
 ): Promise<ElementColumns> {
-	const key = `${zone}:${zoom}:${part}:${time ?? ''}`;
+	const key = `${zone}:${zoom ?? ''}:${part}:${time ?? ''}`;
 	return elementsCache.getOrCompute(key, async () => {
 		const res = await fetch(elementsUrl(zone, zoom, part, time));
 		if (!res.ok) throw new Error(`Failed to fetch elements: ${res.status}`);
@@ -123,7 +123,12 @@ export class ChunkLoader {
 	 * the binary (header id-type byte + column 0). Labels live in one global
 	 * file per language, prefetched once on app start by {@link fetchLabels}.
 	 */
-	static prefetch(zone: string, zoom: number, part: number, time: string | null = null): void {
+	static prefetch(
+		zone: string,
+		zoom: number | null,
+		part: number,
+		time: string | null = null
+	): void {
 		fetch(elementsUrl(zone, zoom, part, time));
 	}
 
@@ -538,7 +543,7 @@ export class ChunkLoader {
 	 */
 	async seedNeededParents(
 		zone: string,
-		zoom: number,
+		zoom: number | null,
 		part: number,
 		time: string | null,
 		parentIdType: string
@@ -562,7 +567,7 @@ export class ChunkLoader {
 	 */
 	async fetchMinorColumns(
 		zone: string,
-		zoom: number,
+		zoom: number | null,
 		part: number,
 		date: Date,
 		time: string | null = null,
@@ -606,7 +611,7 @@ export class ChunkLoader {
 
 	async process(
 		zone: string,
-		zoom: number,
+		zoom: number | null,
 		part: number,
 		date: Date,
 		time: string | null = null,

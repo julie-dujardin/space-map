@@ -71,33 +71,42 @@ export const CHEBYSHEV_FLAG_FLOAT64_COEFFS = 0x01;
  *  revalidating default (small, on the boot path), so no `?v=` token. */
 export const labelsUrl = (lang: string): string => `${DATA_BASE}/v1/labels/${lang}.gz`;
 
+/** The `{zoom}/` path segment — empty for flat single-zoom zones (zoom=null),
+ *  present for multi-zoom zones (`major`, `small_bodies/{class}`). */
+function zoomSegment(zoom: number | null): string {
+	return zoom === null ? '' : `${zoom}/`;
+}
+
 /**
  * Build the position-file URL for one (zone, zoom, ...) combination.
  *
  * Three URL shapes, dispatched by the zone's `shape` discriminator in
- * `metadata.position.zones[zone].zooms[zoom]`:
+ * `metadata.position.zones[zone]` (under `zooms[zoom]` for multi-zoom zones,
+ * at zone level for flat ones). `zoom` is `null` for flat zones:
  *
- *   - `parted`         → `position/{zone}/{zoom}/{part}.bin.gz`
- *   - `chunked-parted` → `position/{zone}/{zoom}/{label}/{part}.bin.gz`
+ *   - `parted`         → `position/{zone}/[{zoom}/]{part}.bin.gz`
+ *   - `chunked-parted` → `position/{zone}/[{zoom}/]{label}/{part}.bin.gz`
  *                        (label is an ISO date for `earth`, a chunk index for `moons`)
- *   - `chunked`        → `position/{zone}/{zoom}/{chunk}.bin.gz` (chebyshev)
+ *   - `chunked`        → `position/{zone}/[{zoom}/]{chunk}.bin.gz` (chebyshev)
  */
-export function partedUrl(zone: string, zoom: number, part: number): string {
-	return versionedUrl(`/v1/position/${zone}/${zoom}/${part}.bin.gz`, 'position');
+export function partedUrl(zone: string, zoom: number | null, part: number): string {
+	return versionedUrl(`/v1/position/${zone}/${zoomSegment(zoom)}${part}.bin.gz`, 'position');
 }
 
-export function chunkedPartedUrl(zone: string, zoom: number, label: string, part: number): string {
-	return versionedUrl(`/v1/position/${zone}/${zoom}/${label}/${part}.bin.gz`, 'position');
+export function chunkedPartedUrl(
+	zone: string,
+	zoom: number | null,
+	label: string,
+	part: number
+): string {
+	return versionedUrl(
+		`/v1/position/${zone}/${zoomSegment(zoom)}${label}/${part}.bin.gz`,
+		'position'
+	);
 }
 
-export function chunkedUrl(zone: string, zoom: number, chunk: number): string {
-	return versionedUrl(`/v1/position/${zone}/${zoom}/${chunk}.bin.gz`, 'position');
-}
-
-/** Probe zones use the `chunked` shape with no zoom segment — see
- *  [Probes payload](docs/export-format/probes.md). */
-export function chunkedFlatUrl(zone: string, chunk: number): string {
-	return versionedUrl(`/v1/position/${zone}/${chunk}.bin.gz`, 'position');
+export function chunkedUrl(zone: string, zoom: number | null, chunk: number): string {
+	return versionedUrl(`/v1/position/${zone}/${zoomSegment(zoom)}${chunk}.bin.gz`, 'position');
 }
 
 /** Sentinel values for missing data in the binary format. */

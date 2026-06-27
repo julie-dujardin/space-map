@@ -19,11 +19,15 @@ export interface FetchedChebyshev extends ChebyshevChunk {
 	ids: string[];
 }
 
-export async function fetchChebyshev(zone: string, chunk: number): Promise<FetchedChebyshev> {
-	const buffer = await fetchGzBuffer(chunkedUrl(zone, 0, chunk));
+export async function fetchChebyshev(
+	zone: string,
+	zoom: number | null,
+	chunk: number
+): Promise<FetchedChebyshev> {
+	const buffer = await fetchGzBuffer(chunkedUrl(zone, zoom, chunk));
 	const parsed = parsePosition(buffer);
 	if (parsed.kind !== 'chebyshev') {
-		throw new Error(`Expected chebyshev payload at ${zone}/0/${chunk}, got ${parsed.kind}`);
+		throw new Error(`Expected chebyshev payload at ${zone}/${chunk}, got ${parsed.kind}`);
 	}
 	return { ...parsed.chunk, ids: parsed.chunk.bodies.map((b) => b.id) };
 }

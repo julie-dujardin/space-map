@@ -2,7 +2,8 @@
  * Per-zone cache of Chebyshev chunks.
  *
  * The export ships per-zone, per-time-chunk binaries under
- * `/data/v1/position/{zone}/0/{chunkIdx}.bin.gz`. Each chebyshev zone in
+ * `/data/v1/position/{zone}/[0/]{chunkIdx}.bin.gz` (the `0/` segment only for
+ * `major`). Each chebyshev zone in
  * `metadata.position.zones` (those with `shape: "chunked"`) declares its
  * own `chunks`, `chunk_days`, and `start_jd` — Saturn's ~46-day cadence
  * and Pluto's ~730-day cadence coexist with no global tier metadata. A zone's
@@ -33,9 +34,10 @@ export interface BodyWithWindow {
 	endJd: number;
 }
 
-/** Per-zone chebyshev params, lifted from `metadata.position.zones[zone].zooms[0]`
- *  when the entry's `shape` is `"chunked"`. */
+/** Per-zone chebyshev params from the manifest's chunked entry. `zoom` is the
+ *  URL segment: 0 for the multi-zoom `major` zone, null for flat zones. */
 export interface ChebyshevZoneParams {
+	zoom: number | null;
 	chunks: number;
 	chunk_days: number;
 	start_jd: number;
@@ -132,7 +134,7 @@ export class ChebyshevStore {
 			zoneMap = new Map();
 			this.chunks.set(zone, zoneMap);
 		}
-		const chunk = await fetchChebyshev(zone, chunkIdx);
+		const chunk = await fetchChebyshev(zone, this.zoneParams.get(zone)!.zoom, chunkIdx);
 		zoneMap.set(chunkIdx, chunk);
 		for (const id of chunk.ids) {
 			// Multiple chunks list the same body; zone assignment is stable across

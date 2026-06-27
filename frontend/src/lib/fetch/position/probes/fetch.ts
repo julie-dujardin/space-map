@@ -12,7 +12,7 @@
  */
 
 import { parsePosition } from '$lib/fetch/position/parse';
-import { chunkedFlatUrl } from '$lib/fetch/position/format';
+import { chunkedUrl } from '$lib/fetch/position/format';
 import type { ProbeChunk } from '$lib/fetch/position/probes/parse';
 
 export interface FetchedProbes extends ProbeChunk {
@@ -25,7 +25,7 @@ export async function fetchProbes(
 	chunk: number,
 	float64Coeffs: boolean
 ): Promise<FetchedProbes> {
-	const url = chunkedFlatUrl(zone, chunk);
+	const url = chunkedUrl(zone, null, chunk);
 	const res = await fetch(url);
 	if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
 	const ds = new DecompressionStream('gzip');

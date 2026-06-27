@@ -22,9 +22,9 @@ import {
 	chunkIndexForJd,
 	isChunkIndexed,
 	isDateSegmented,
-	isProbeZone,
 	partsForDate,
 	snapshotDate,
+	zoneLayers,
 	type ChunkIndexedZoom,
 	type DateSegmentedZoom,
 	type Metadata
@@ -40,7 +40,7 @@ const MIN_LOAD_INTERVAL_MS = 2000;
 
 interface BaseZoneState {
 	zone: string;
-	zoom: number;
+	zoom: number | null;
 	parts: number;
 	parentIdType: string;
 	inFlight: Promise<void> | null;
@@ -96,16 +96,14 @@ export class ZoneRefresher {
 		const initialJd = dateToJD(initialDate);
 		const cap = getSettings().maxPartsPerZone;
 		for (const [zone, zoneData] of Object.entries(metadata.position.zones)) {
-			// Probe zones load through ProbeStore, not this refresher.
-			if (isProbeZone(zoneData)) continue;
-			for (const [zoomStr, zoomData] of Object.entries(zoneData.zooms)) {
-				const zoom = Number(zoomStr);
+			// zoneLayers yields nothing for probe zones — they load via ProbeStore.
+			const parentIdType = zoneData.parent_id_type ?? 'naif';
+			for (const { zoom, data: zoomData } of zoneLayers(zoneData)) {
 				// Chebyshev zones (`shape: chunked`) are driven by the
 				// ChebyshevStore, not this refresher; static-parted zones don't
 				// fan out over time, so they don't need a refresher entry either.
 				if (zoomData.shape === 'chunked' || zoomData.shape === 'parted') continue;
 				const parts = cap > 0 ? Math.min(zoomData.parts, cap) : zoomData.parts;
-				const parentIdType = zoneData.parent_id_type ?? 'naif';
 				if (isDateSegmented(zoomData)) {
 					const state: TimeZoneState = {
 						kind: 'time',
@@ -269,11 +267,10 @@ export class ZoneRefresher {
 			let updated = 0;
 			const addedIds: string[] = [];
 
-			// Mutate in place — sibling zooms feeding the same bucket key
-			// (earth zoom 0 + zoom 1 both go to naif-399) would otherwise
-			// clobber each other. No release path: CelesTrak's catalog is
-			// monotonically growing, and applyGroupFilter clears the bucket
-			// itself when membership shrinks.
+			// Mutate in place — successive date snapshots feed the same bucket
+			// key and would otherwise clobber each other. No release path:
+			// CelesTrak's catalog is monotonically growing, and applyGroupFilter
+			// clears the bucket itself when membership shrinks.
 			for (const [key, freshBodies] of newBuckets) {
 				let bucket = this.ctx.bodies.spacecraftByParent.get(key);
 				if (!bucket) {
