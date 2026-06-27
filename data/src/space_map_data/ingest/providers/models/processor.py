@@ -594,12 +594,6 @@ class ModelProcessor:
             low_pick=low_pick,
             catalog_by_tier=catalog_by_tier,
         )
-        log.info(
-            "processed %s (high=%s, low=%s)",
-            slug,
-            high_pick[1].file_id,
-            low_pick[1].file_id,
-        )
 
     def _cap_hash(
         self,

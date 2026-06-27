@@ -225,7 +225,7 @@ def load_phases(end_et_for_indefinite: float) -> list[LandingPhase]:
             cospar = probe.get("cospar_id")
             if cospar and cospar in spk_cospars:
                 skipped_spk_covered += 1
-                logger.info(
+                logger.debug(
                     "events: %s has SPK coverage (COSPAR %s); deferring to SPICE pipeline",
                     name,
                     cospar,
