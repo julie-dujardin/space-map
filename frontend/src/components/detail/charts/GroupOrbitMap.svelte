@@ -14,7 +14,7 @@
 		type PlotType
 	} from '$lib/charts/orbit-zones';
 	import { getContext } from 'svelte';
-	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import OrbitClassScatter from './OrbitClassScatter.svelte';
 	import EarthOrbitScatter from './EarthOrbitScatter.svelte';
@@ -91,12 +91,10 @@
 					onZoneClick={handleZoneClick}
 				/>
 			{:else}
-				<div
-					class="text-muted-foreground flex items-center justify-center"
-					style:height="{plotType === 'peri-apo' ? 280 : 240}px"
-				>
-					<LoaderCircleIcon class="size-6 animate-spin" />
-				</div>
+				<Skeleton
+					class="w-full rounded-md"
+					style="height: {plotType === 'peri-apo' ? 280 : 240}px"
+				/>
 			{/if}
 		</div>
 		{#if incOnlyChips.length}

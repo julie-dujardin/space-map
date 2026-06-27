@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, untrack } from 'svelte';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import type { NotableMemberEntry } from '$lib/fetch/groups/details';
 	import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
 	import {
@@ -35,6 +35,9 @@
 	const PAGE_SIZE = 30;
 	// Meili caps results at maxTotalHits (1000); never page past it.
 	const HARD_CAP = 1000;
+
+	// Varied bar widths so the load-more placeholder reads as rows, not a grid.
+	const SKELETON_ROWS = [70, 55, 64];
 
 	interface Row {
 		id: string;
@@ -234,9 +237,23 @@
 	</ul>
 	{#if hasMore}
 		<!-- bottom sentinel: scrolling near it pulls the next page -->
-		<div bind:this={sentinel} class="flex items-center justify-center py-2">
+		<div bind:this={sentinel}>
 			{#if loading}
-				<LoaderIcon class="text-muted-foreground size-4 animate-spin" />
+				<ul class="flex flex-col" aria-hidden="true">
+					{#each SKELETON_ROWS as w, i (i)}
+						<li class="flex items-center gap-3 px-1 py-2">
+							<Skeleton class="size-10 shrink-0 rounded-md" style="animation-delay: {i * 80}ms" />
+							<Skeleton
+								class="h-4 min-w-0 flex-1 rounded"
+								style="max-width: {w}%; animation-delay: {i * 80}ms"
+							/>
+							<Skeleton
+								class="h-3 w-8 shrink-0 rounded opacity-70"
+								style="animation-delay: {i * 80}ms"
+							/>
+						</li>
+					{/each}
+				</ul>
 			{/if}
 		</div>
 	{/if}
