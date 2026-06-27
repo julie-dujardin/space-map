@@ -1,4 +1,5 @@
 import type { NotableMemberEntry } from '$lib/fetch/groups/details';
+import { BODY_COLORS } from '$lib/constants';
 import type { LineupBody } from './BodyLineup.svelte';
 
 /** The body-class-specific part of a LineupBody: geometry plus optional flat
@@ -36,6 +37,13 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geom.poleDec = m.pole.dec;
 	}
 	return { ...geom, ...RENDER_HINTS[m.id] };
+}
+
+/** Geometry plus the member's measured TrueColorTools tint. Curated bodies (in
+ *  BODY_COLORS) keep their own colour/texture — undefined defers to that. */
+export function geometryWithColor(m: NotableMemberEntry & { id: string }): LineupGeometry | null {
+	const geom = geometryFromMember(m);
+	return geom && { ...geom, color: BODY_COLORS[m.id] ? undefined : m.color };
 }
 
 /** Members renderable in a lineup: have an id and a resolvable size. Colour

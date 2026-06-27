@@ -61,8 +61,7 @@
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import BodyLineup, { type LineupBody } from './BodyLineup.svelte';
-	import { buildLineup, geometryFromMember, renderableCount } from './lineup';
-	import { BODY_COLORS } from '$lib/constants';
+	import { buildLineup, geometryFromMember, geometryWithColor, renderableCount } from './lineup';
 	import CategoryCrossRefs from './properties/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './PlanetMassChart.svelte';
@@ -425,18 +424,12 @@
 	let memberDescriptions = $derived(
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
-	// Small-body lineup adds a colour pass on top of the shared geometry: known
-	// bodies (dwarfs) keep their curated BODY_COLORS/texture; the rest take the
-	// physically-derived per-body colour shipped on the member (`mm.color`).
+	// Small bodies render their measured per-body tint (geometryWithColor).
 	let smallBodyBodies = $derived(
-		buildLineup(
-			notableMembers ?? [],
-			(mm) => {
-				const g = geometryFromMember(mm);
-				return g && { ...g, color: BODY_COLORS[mm.id] ? undefined : mm.color };
-			},
-			{ names: memberNames, descriptions: memberDescriptions }
-		)
+		buildLineup(notableMembers ?? [], geometryWithColor, {
+			names: memberNames,
+			descriptions: memberDescriptions
+		})
 	);
 	// A planet's moons get a lineup hero in its Moons tab. The moon-count test
 	// mirrors `showMembersTab` (declared later) so the hero only exists where the
@@ -478,7 +471,8 @@
 			};
 		if (isDwarfPlanetsCategory)
 			return {
-				bodies: buildLineup(members, geometryFromMember, {
+				// Most dwarfs lack a curated tint; geometryWithColor gives them theirs.
+				bodies: buildLineup(members, geometryWithColor, {
 					names: memberNames,
 					descriptions: memberDescriptions
 				}),

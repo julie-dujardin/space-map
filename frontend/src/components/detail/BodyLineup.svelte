@@ -483,11 +483,9 @@
 			const x = p.cx + (bodyShift.get(p.id) ?? 0);
 			glowSprite.position.set(x, HEIGHT - p.cy, -(layout.length - 1 - i) * Z_STEP - 50);
 			glowSprite.scale.set(2 * half, 2 * halfY, 1);
-			// The sprite is a billboard, so it can't take the body's 3D tilt — but
-			// its elliptical rim must still lean with the pole, else a tilted oblate
-			// moon (Saturn's) leans while its halo's flat axis stays vertical. Roll
-			// the sprite to the body pole's screen-projected angle (spin is about the
-			// pole, so it leaves this untouched).
+			// A billboard can't take the body's 3D tilt, so roll the elliptical rim
+			// to the pole's screen angle — else a tilted oblate moon leans but its
+			// halo stays upright. Spin is about the pole, so it leaves this be.
 			const q = baseQuats.get(p.id);
 			if (q) {
 				glowPole.set(0, 1, 0).applyQuaternion(q);
