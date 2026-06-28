@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, type Snippet } from 'svelte';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
@@ -13,15 +13,19 @@
 		name: string;
 		/** Small uppercase label (the group's type). */
 		label: string;
+		/** Custom background, rendered instead of the group's lead image. */
+		background?: Snippet;
 		/** Extra classes, e.g. `col-span-2` to span a 2-col grid row. */
 		class?: string;
 	}
-	let { slug, name, label, class: className }: Props = $props();
+	let { slug, name, label, background, class: className }: Props = $props();
 
 	const appState = getContext<AppState | undefined>('appState');
 
 	// Group lead image, fetched lazily (also warms the linked page's bundle).
+	// Skipped when a custom background is supplied.
 	let hero = $derived.by(async () => {
+		if (background) return undefined;
 		const detail = await fetchGroupDetail(slug);
 		const img = detail.global?.images?.[0];
 		return img ? pickImageUrl(img, 300) : undefined;
@@ -35,4 +39,13 @@
 	}
 </script>
 
-<CrossRefCard {href} onclick={open} title={name} {hero} display={name} {label} class={className} />
+<CrossRefCard
+	{href}
+	onclick={open}
+	title={name}
+	{hero}
+	{background}
+	display={name}
+	{label}
+	class={className}
+/>

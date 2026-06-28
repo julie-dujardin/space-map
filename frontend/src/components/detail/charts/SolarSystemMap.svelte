@@ -65,8 +65,12 @@
 		ariaLabel: string;
 		/** Object.id → localized label, overriding the exported English name. */
 		localizedNames?: Record<string, string>;
+		/** 'background' strips axis/labels/links/tooltips and fills+crops its box —
+		 *  a static decorative diagram (e.g. behind the Solar System cross-ref tile). */
+		variant?: 'hero' | 'background';
 	}
-	let { ariaLabel, localizedNames }: Props = $props();
+	let { ariaLabel, localizedNames, variant = 'hero' }: Props = $props();
+	let isBackground = $derived(variant === 'background');
 
 	const appState = getContext<AppState | undefined>('appState');
 	const focusObject = getContext<FocusObject | undefined>('focusObject');
@@ -316,10 +320,16 @@
 	}
 </script>
 
-<div class="bg-muted/30 relative w-full overflow-hidden rounded-md" bind:clientWidth={containerW}>
+<div
+	class={isBackground
+		? 'pointer-events-none h-full w-full overflow-hidden'
+		: 'bg-muted/30 relative w-full overflow-hidden rounded-md'}
+	bind:clientWidth={containerW}
+>
 	<svg
 		viewBox="0 0 {VIEW_W} {VIEW_H}"
-		class="text-muted-foreground block h-auto w-full"
+		preserveAspectRatio={isBackground ? 'xMidYMid slice' : 'xMidYMid meet'}
+		class="text-muted-foreground block w-full {isBackground ? 'h-full' : 'h-auto'}"
 		role="group"
 		aria-label={ariaLabel}
 	>
@@ -336,42 +346,37 @@
 		</defs>
 
 		<!-- Axis: faint gridlines + AU·log ticks along the top. -->
-		{#each AXIS_TICKS as t (t)}
-			<line
-				x1={xOf(t)}
-				x2={xOf(t)}
-				y1="20"
-				y2={VIEW_H - 28}
-				stroke="currentColor"
-				stroke-width="0.5"
-				opacity="0.12"
-			/>
-			<text
-				x={xOf(t)}
-				y="16"
-				text-anchor="middle"
-				font-size="16"
-				fill="currentColor"
-				opacity="0.85"
-			>
-				{t}
+		{#if !isBackground}
+			{#each AXIS_TICKS as t (t)}
+				<line
+					x1={xOf(t)}
+					x2={xOf(t)}
+					y1="20"
+					y2={VIEW_H - 28}
+					stroke="currentColor"
+					stroke-width="0.5"
+					opacity="0.12"
+				/>
+				<text
+					x={xOf(t)}
+					y="16"
+					text-anchor="middle"
+					font-size="16"
+					fill="currentColor"
+					opacity="0.85"
+				>
+					{t}
+				</text>
+			{/each}
+			<text x={X_RIGHT} y="16" text-anchor="end" font-size="14" fill="currentColor" opacity="0.65">
+				AU · log
 			</text>
-		{/each}
-		<text x={X_RIGHT} y="16" text-anchor="end" font-size="14" fill="currentColor" opacity="0.65">
-			AU · log
-		</text>
+		{/if}
 
-		<!-- Belt bands (behind the bodies); the whole band links to its group. -->
+		<!-- Belt bands (behind the bodies); the whole band links to its group, except
+		     in the background variant where it's just texture. -->
 		{#each belts as belt (belt.slug)}
-			<a
-				href={belt.href}
-				onclick={openGroup(belt.slug, belt.label)}
-				onpointerenter={() => (hoveredBeltSlug = belt.slug)}
-				onpointerleave={() => hoveredBeltSlug === belt.slug && (hoveredBeltSlug = null)}
-				onfocus={() => (hoveredBeltSlug = belt.slug)}
-				onblur={() => hoveredBeltSlug === belt.slug && (hoveredBeltSlug = null)}
-				aria-label={belt.label}
-			>
+			{#snippet beltBand()}
 				<rect
 					x={belt.x}
 					y="26"
@@ -380,35 +385,57 @@
 					fill="url(#ssmap-belt)"
 					class={belt.kind === 'kuiper_belt' ? 'text-sky-400/70' : 'text-muted-foreground'}
 				/>
-				<text
-					x={belt.x + belt.width / 2}
-					y={VIEW_H - 8}
-					text-anchor="middle"
-					font-size="18"
-					class="font-semibold {belt.kind === 'kuiper_belt'
-						? 'fill-sky-400'
-						: 'fill-muted-foreground'}"
+			{/snippet}
+			{#if isBackground}
+				{@render beltBand()}
+			{:else}
+				<a
+					href={belt.href}
+					onclick={openGroup(belt.slug, belt.label)}
+					onpointerenter={() => (hoveredBeltSlug = belt.slug)}
+					onpointerleave={() => hoveredBeltSlug === belt.slug && (hoveredBeltSlug = null)}
+					onfocus={() => (hoveredBeltSlug = belt.slug)}
+					onblur={() => hoveredBeltSlug === belt.slug && (hoveredBeltSlug = null)}
+					aria-label={belt.label}
 				>
-					{belt.label}
-				</text>
-			</a>
+					{@render beltBand()}
+					<text
+						x={belt.x + belt.width / 2}
+						y={VIEW_H - 8}
+						text-anchor="middle"
+						font-size="18"
+						class="font-semibold {belt.kind === 'kuiper_belt'
+							? 'fill-sky-400'
+							: 'fill-muted-foreground'}"
+					>
+						{belt.label}
+					</text>
+				</a>
+			{/if}
 		{/each}
 
 		<!-- The Sun: real-scale, framed so only its right limb shows. A focus link
 		     like the bodies (middle/⌘-click opens the real URL). -->
 		{#if sun}
 			{@const s = sun}
-			<a
-				href={focusHref(appState, s.id, displayName(s))}
-				onclick={focusClick(focusObject, s.id, displayName(s))}
-				onpointerenter={() => (hoveredId = s.id)}
-				onpointerleave={() => hoveredId === s.id && (hoveredId = null)}
-				onfocus={() => (hoveredId = s.id)}
-				onblur={() => hoveredId === s.id && (hoveredId = null)}
-				aria-label={displayName(s)}
-			>
+			{#snippet sunDisc()}
 				<circle cx={SUN_CX} cy={CY} r={SUN_R} fill="url(#ssmap-sun)" />
-			</a>
+			{/snippet}
+			{#if isBackground}
+				{@render sunDisc()}
+			{:else}
+				<a
+					href={focusHref(appState, s.id, displayName(s))}
+					onclick={focusClick(focusObject, s.id, displayName(s))}
+					onpointerenter={() => (hoveredId = s.id)}
+					onpointerleave={() => hoveredId === s.id && (hoveredId = null)}
+					onfocus={() => (hoveredId = s.id)}
+					onblur={() => hoveredId === s.id && (hoveredId = null)}
+					aria-label={displayName(s)}
+				>
+					{@render sunDisc()}
+				</a>
+			{/if}
 		{/if}
 
 		<!-- Ringed planets (Saturn): a tilted, foreshortened band behind the dot.
@@ -430,72 +457,81 @@
 			{/if}
 		{/each}
 
-		<!-- Bodies: each is a focus link (middle/⌘-click opens the real URL). -->
+		<!-- Bodies: each is a focus link (middle/⌘-click opens the real URL), or a
+		     plain dot in the background variant. -->
 		{#each planets as b (b.id)}
-			<a
-				href={focusHref(appState, b.id, b.name)}
-				onclick={focusClick(focusObject, b.id, b.name)}
-				onpointerenter={() => (hoveredId = b.id)}
-				onpointerleave={() => hoveredId === b.id && (hoveredId = null)}
-				onfocus={() => (hoveredId = b.id)}
-				onblur={() => hoveredId === b.id && (hoveredId = null)}
-				aria-label={b.name}
-			>
-				{#if hoveredId === b.id}
-					<circle
-						cx={b.cx}
-						cy={b.cy}
-						r={b.r + 3.5}
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1"
-						opacity="0.8"
-					/>
-				{/if}
+			{#if isBackground}
 				<circle cx={b.cx} cy={b.cy} r={b.r} fill={b.fill} />
-				<!-- Transparent hit target — a generous margin around the dot, since the
-				     chart renders at ~0.4× so viewBox units are well under a device px. -->
-				<circle cx={b.cx} cy={b.cy} r={b.r + HIT_MARGIN} fill="transparent" />
-			</a>
+			{:else}
+				<a
+					href={focusHref(appState, b.id, b.name)}
+					onclick={focusClick(focusObject, b.id, b.name)}
+					onpointerenter={() => (hoveredId = b.id)}
+					onpointerleave={() => hoveredId === b.id && (hoveredId = null)}
+					onfocus={() => (hoveredId = b.id)}
+					onblur={() => hoveredId === b.id && (hoveredId = null)}
+					aria-label={b.name}
+				>
+					{#if hoveredId === b.id}
+						<circle
+							cx={b.cx}
+							cy={b.cy}
+							r={b.r + 3.5}
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1"
+							opacity="0.8"
+						/>
+					{/if}
+					<circle cx={b.cx} cy={b.cy} r={b.r} fill={b.fill} />
+					<!-- Transparent hit target — a generous margin around the dot, since the
+					     chart renders at ~0.4× so viewBox units are well under a device px. -->
+					<circle cx={b.cx} cy={b.cy} r={b.r + HIT_MARGIN} fill="transparent" />
+				</a>
+			{/if}
 		{/each}
 
 		<!-- Moon stacks: dots, a per-planet hover highlight, and one hit zone per
 		     planet covering the whole stack (the tooltip reads the planet, not the
 		     individual moon). The zone links to the moons tab, or to the moon itself
 		     when the planet has too few moons for a tab (Earth). -->
-		{#each moonZones as z (z.parentId)}
-			{#if hoveredMoonZone === z.parentId}
-				<rect
-					x={z.x}
-					y={z.y}
-					width={z.width}
-					height={z.height}
-					rx="4"
-					fill="currentColor"
-					opacity="0.1"
-				/>
-			{/if}
-		{/each}
+		{#if !isBackground}
+			{#each moonZones as z (z.parentId)}
+				{#if hoveredMoonZone === z.parentId}
+					<rect
+						x={z.x}
+						y={z.y}
+						width={z.width}
+						height={z.height}
+						rx="4"
+						fill="currentColor"
+						opacity="0.1"
+					/>
+				{/if}
+			{/each}
+		{/if}
 		{#each placedMoons as mn (mn.id)}
 			<circle cx={mn.cx} cy={mn.cy} r={mn.r} fill={mn.fill} />
 		{/each}
-		{#each moonZones as z (z.parentId)}
-			<a
-				href={z.linkParent
-					? focusHref(appState, z.parentId, z.parentName, 'members')
-					: focusHref(appState, z.moonId, z.moonName)}
-				onclick={z.linkParent
-					? focusClick(focusObject, z.parentId, z.parentName, { tab: 'members' })
-					: focusClick(focusObject, z.moonId, z.moonName)}
-				onpointerenter={() => (hoveredMoonZone = z.parentId)}
-				onpointerleave={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
-				onfocus={() => (hoveredMoonZone = z.parentId)}
-				onblur={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
-				aria-label={z.linkParent ? `${z.parentName} moons` : z.moonName}
-			>
-				<rect x={z.x} y={z.y} width={z.width} height={z.height} fill="transparent" />
-			</a>
-		{/each}
+		{#if !isBackground}
+			{#each moonZones as z (z.parentId)}
+				<a
+					href={z.linkParent
+						? focusHref(appState, z.parentId, z.parentName, 'members')
+						: focusHref(appState, z.moonId, z.moonName)}
+					onclick={z.linkParent
+						? focusClick(focusObject, z.parentId, z.parentName, { tab: 'members' })
+						: focusClick(focusObject, z.moonId, z.moonName)}
+					onpointerenter={() => (hoveredMoonZone = z.parentId)}
+					onpointerleave={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
+					onfocus={() => (hoveredMoonZone = z.parentId)}
+					onblur={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
+					aria-label={z.linkParent ? `${z.parentName} moons` : z.moonName}
+				>
+					<rect x={z.x} y={z.y} width={z.width} height={z.height} fill="transparent" />
+				</a>
+			{/each}
+		{/if}
 	</svg>
 
 	<!-- Tooltip overlay, positioned in px and clamped to the chart box so it can't

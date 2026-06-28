@@ -614,6 +614,7 @@
 	);
 	let isDwarfPlanetBody = $derived(body?.data.objectType === ObjectType.DWARF_PLANET);
 	let isMoonBody = $derived(body?.data.objectType === ObjectType.MOON);
+	let isStarBody = $derived(body?.data.objectType === ObjectType.STAR);
 	let hasFragments = $derived(!!notableFragments && notableFragments.length > 0);
 	let showFragmentsTab = $derived(hasFragments && fragmentTotal > STRIP_CAPACITY);
 
@@ -749,6 +750,8 @@
 				<DwarfPlanetGroupLinks {orbitClass} />
 			{:else if isMoonBody}
 				<BodyCategoryTile slug={CAT_MOONS} />
+			{:else if isStarBody}
+				<BodyCategoryTile slug={CAT_SOLAR_SYSTEM} />
 			{:else if orbitClass}
 				<SmallBodyGroupLinks {orbitClass} flag={smallBodyFlag} />
 			{/if}
@@ -761,7 +764,7 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory}
+			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory && !isSolarSystemCategory}
 				<MemberStrip
 					members={notableMembers}
 					localizedNames={memberNames}
