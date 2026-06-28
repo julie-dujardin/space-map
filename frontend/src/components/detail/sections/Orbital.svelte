@@ -259,6 +259,10 @@
 	// Hide apogee/perigee for near-circular satellite orbits — they collapse to the altitude/semi-major axis.
 	let showApogeePerigee = $derived(orbit?.e == null || orbit.e >= 0.01);
 
+	// The Sun's orbit is its around the solar system barycenter.
+	// Suppress until we get milky-way relative orbits.
+	let isStar = $derived(body?.data.objectType === ObjectType.STAR);
+
 	let hasContent = $derived(
 		sbdb?.per_y ||
 			orbit?.a ||
@@ -327,7 +331,7 @@
 			</Row>
 		{/if}
 	</Section>
-{:else if hasContent}
+{:else if hasContent && !isStar}
 	<Section title={m.orbital_elements()}>
 		{#snippet header()}
 			{#if isNeo || isPha}
