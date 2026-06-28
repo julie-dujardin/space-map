@@ -4,6 +4,7 @@
 	"mass_budget_title": "Распределение массы (без Солнца)",
 	"mass_budget_note": "лог. шкала. Источник:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16–84-й процентиль",
 	"mass_reservoir_sun": "Солнце",
 	"mass_reservoir_terrestrial": "Планеты земной группы",
 	"mass_reservoir_giant": "Планеты-гиганты",

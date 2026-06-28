@@ -4,6 +4,7 @@
 	"mass_budget_title": "质量分布（不含太阳）",
 	"mass_budget_note": "对数刻度。来源：",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "第16–84百分位",
 	"mass_reservoir_sun": "太阳",
 	"mass_reservoir_terrestrial": "类地行星",
 	"mass_reservoir_giant": "巨行星",

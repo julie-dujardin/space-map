@@ -697,6 +697,7 @@
 	"mass_budget_title": "Mass distribution (excluding the Sun)",
 	"mass_budget_note": "log scale. Source:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16th–84th percentile",
 	"mass_reservoir_sun": "Sun",
 	"mass_reservoir_terrestrial": "Terrestrial planets",
 	"mass_reservoir_giant": "Giant planets",

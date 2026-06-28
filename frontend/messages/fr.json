@@ -4,6 +4,7 @@
 	"mass_budget_title": "Répartition des masses (hors Soleil)",
 	"mass_budget_note": "échelle log. Source :",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16e–84e centile",
 	"mass_reservoir_sun": "Soleil",
 	"mass_reservoir_terrestrial": "Planètes telluriques",
 	"mass_reservoir_giant": "Planètes géantes",

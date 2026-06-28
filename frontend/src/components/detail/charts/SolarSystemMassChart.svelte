@@ -11,7 +11,7 @@
 	import { applyGroup, serializeUrl } from '$lib/state/url';
 	import { isModifiedClick } from '$lib/state/focus-link';
 	import { formatNumber } from '$lib/format/quantities';
-	import { formatMass } from '$lib/format/mass';
+	import { formatMass, formatMassRange } from '$lib/format/mass';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const appState = getContext<AppState | undefined>('appState');
@@ -218,7 +218,16 @@
 							</a>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content>{formatMass(r.central * EARTH_MASS_KG)}</Tooltip.Content>
+					<Tooltip.Content class="flex-col items-start gap-0.5">
+						<div class="font-medium">{r.label()}</div>
+						<div class="tabular-nums">{formatMass(r.central * EARTH_MASS_KG)}</div>
+						{#if r.hi / r.lo >= MIN_INTERVAL_RATIO}
+							<div class="text-background/70 tabular-nums">
+								{formatMassRange(r.lo * EARTH_MASS_KG, r.hi * EARTH_MASS_KG)}
+							</div>
+							<div class="text-background/55 text-[11px]">{m.mass_budget_percentile()}</div>
+						{/if}
+					</Tooltip.Content>
 				</Tooltip.Root>
 			{/each}
 		</div>

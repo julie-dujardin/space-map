@@ -4,6 +4,7 @@
 	"mass_budget_title": "Rozkład masy (bez Słońca)",
 	"mass_budget_note": "skala log. Źródło:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16.–84. percentyl",
 	"mass_reservoir_sun": "Słońce",
 	"mass_reservoir_terrestrial": "Planety skaliste",
 	"mass_reservoir_giant": "Planety olbrzymy",

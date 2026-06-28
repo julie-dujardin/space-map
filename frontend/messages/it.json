@@ -4,6 +4,7 @@
 	"mass_budget_title": "Distribuzione della massa (escluso il Sole)",
 	"mass_budget_note": "scala log. Fonte:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16°–84° percentile",
 	"mass_reservoir_sun": "Sole",
 	"mass_reservoir_terrestrial": "Pianeti terrestri",
 	"mass_reservoir_giant": "Pianeti giganti",

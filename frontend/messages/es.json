@@ -4,6 +4,7 @@
 	"mass_budget_title": "Distribución de masa (excluyendo el Sol)",
 	"mass_budget_note": "escala log. Fuente:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "Percentil 16.º–84.º",
 	"mass_reservoir_sun": "Sol",
 	"mass_reservoir_terrestrial": "Planetas terrestres",
 	"mass_reservoir_giant": "Planetas gigantes",

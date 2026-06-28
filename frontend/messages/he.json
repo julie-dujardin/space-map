@@ -4,6 +4,7 @@
 	"mass_budget_title": "התפלגות המסה (ללא השמש)",
 	"mass_budget_note": "סקאלה לוגריתמית. מקור:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "אחוזון 16–84",
 	"mass_reservoir_sun": "השמש",
 	"mass_reservoir_terrestrial": "כוכבי לכת ארציים",
 	"mass_reservoir_giant": "כוכבי לכת ענקיים",

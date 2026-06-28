@@ -4,6 +4,7 @@
 	"mass_budget_title": "質量分布（太陽を除く）",
 	"mass_budget_note": "対数スケール。出典：",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16〜84パーセンタイル",
 	"mass_reservoir_sun": "太陽",
 	"mass_reservoir_terrestrial": "地球型惑星",
 	"mass_reservoir_giant": "巨大惑星",

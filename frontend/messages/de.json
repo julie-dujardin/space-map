@@ -4,6 +4,7 @@
 	"mass_budget_title": "Massenverteilung (ohne Sonne)",
 	"mass_budget_note": "log. Skala. Quelle:",
 	"mass_budget_source": "Menichella (2026)",
+	"mass_budget_percentile": "16.–84. Perzentil",
 	"mass_reservoir_sun": "Sonne",
 	"mass_reservoir_terrestrial": "Terrestrische Planeten",
 	"mass_reservoir_giant": "Riesenplaneten",

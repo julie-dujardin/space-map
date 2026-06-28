@@ -1,4 +1,4 @@
-import { formatQuantity } from './quantities';
+import { formatNumber, formatQuantity } from './quantities';
 
 // Mirrors the backend mass ladder (export/quantities.py UnitConverter): the
 // astronomical masses it allowlists, then the SI gram prefixes, sorted by factor
@@ -26,4 +26,12 @@ export function convertMass(kg: number): { value: number; unit: string } {
 
 export function formatMass(kg: number): string {
 	return formatQuantity(convertMass(kg));
+}
+
+// Both ends in one shared unit (taken from the upper bound) so a range stays
+// comparable; without this each end could pick a different unit.
+export function formatMassRange(loKg: number, hiKg: number): string {
+	const { unit } = convertMass(hiKg);
+	const kgPer = MASS_UNITS.find((u) => u.unit === unit)!.kg;
+	return `${formatNumber(loKg / kgPer)} – ${formatQuantity({ value: hiKg / kgPer, unit })}`;
 }
