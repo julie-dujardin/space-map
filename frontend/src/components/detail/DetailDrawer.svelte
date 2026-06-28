@@ -67,8 +67,10 @@
 	import SolarSystemMap from './charts/SolarSystemMap.svelte';
 	import { buildLineup, geometryFromMember, renderableCount } from './charts/lineup';
 	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
+	import CategoryChildTiles from './sections/crossref/CategoryChildTiles.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
+	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
@@ -810,8 +812,14 @@
 				{#if isLineupCategory && focusable.kind === 'group'}
 					<CategoryCrossRefs slug={focusable.slug} />
 				{/if}
+				{#if isSolarSystemCategory && visibleChildGroups.length}
+					<CategoryChildTiles childGroups={visibleChildGroups} />
+				{/if}
 				{#if isPlanetsCategory && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
+				{/if}
+				{#if isSolarSystemCategory}
+					<SolarSystemMassChart />
 				{/if}
 				{#if moonCounts && moonCounts.length > 0}
 					<MoonsPerPlanetChart entries={moonCounts} />
@@ -819,7 +827,7 @@
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 				{/if}
-				{#if visibleChildGroups.length}
+				{#if visibleChildGroups.length && !isSolarSystemCategory}
 					<ChildGroups childGroups={visibleChildGroups} />
 				{/if}
 				<GroupProperties
