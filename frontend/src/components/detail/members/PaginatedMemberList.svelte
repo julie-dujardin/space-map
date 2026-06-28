@@ -10,11 +10,11 @@
 		searchChildMembers,
 		searchGroupMembers,
 		type GroupMemberPage,
-		type ObjectHit
+		type MemberHit
 	} from '$lib/search/client';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
-	import { applyFocus, serializeUrl, urlTypeFromId } from '$lib/state/url';
+	import { applyFocus, applyGroup, serializeUrl, urlTypeFromId } from '$lib/state/url';
 	import { formatQuantity } from '$lib/format/quantities';
 
 	/** A group's members (by slug) or a body's moons (by host id). */
@@ -40,7 +40,10 @@
 	const SKELETON_ROWS = [70, 55, 64];
 
 	interface Row {
-		id: string;
+		/** Object id (focus a mesh) — or `group` instead for a constellation row. */
+		id?: string;
+		/** Group slug; set → the row routes to /g/<slug> instead of focusing. */
+		group?: string;
 		name: string;
 		thumbnail?: PickedThumbnail;
 		diameter_km?: number;
@@ -69,20 +72,28 @@
 
 	function fallbackRows(): Row[] {
 		return fallback
-			.filter((e) => e.id)
-			.map((e) => ({
-				id: e.id!,
-				name: localizedNames?.[e.id!] ?? e.name,
-				thumbnail: e.thumbnail,
-				diameter_km: e.diameter_km,
-				year: yearOf(e.first_obs)
-			}));
+			.filter((e) => e.id || e.group)
+			.map((e) => {
+				const key = (e.id ?? e.group)!;
+				return {
+					id: e.id,
+					group: e.group,
+					name: localizedNames?.[key] ?? e.name,
+					thumbnail: e.thumbnail,
+					diameter_km: e.diameter_km,
+					year: yearOf(e.first_obs)
+				};
+			});
 	}
 
-	function hitRow(hit: ObjectHit, locale: string): Row {
+	function hitRow(hit: MemberHit, locale: string): Row {
+		const key = hit.id;
+		const name = localizedNames?.[key] ?? localizedName(hit, locale);
+		// A constellation member routes to its group page; an object focuses its mesh.
+		if (hit.kind === 'group') return { group: hit.slug, name, thumbnail: hit.thumbnail };
 		return {
 			id: hit.id,
-			name: localizedNames?.[hit.id] ?? localizedName(hit, locale),
+			name,
 			thumbnail: hit.thumbnail,
 			diameter_km: hit.diameter_km,
 			year: hit.inception ? String(Math.trunc(hit.inception / 10000)) : undefined
@@ -182,6 +193,8 @@
 
 	function rowHref(row: Row): string | undefined {
 		if (!appState) return undefined;
+		if (row.group) return serializeUrl(applyGroup(appState.view, row.group, row.name));
+		if (!row.id) return undefined;
 		return serializeUrl(
 			applyFocus(appState.view, { type: urlTypeFromId(row.id), id: row.id, name: row.name })
 		);
@@ -189,7 +202,14 @@
 
 	function focusRow(e: MouseEvent, row: Row) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		if (!focusObject) return;
+		// A constellation row opens its group page; an object focuses its mesh.
+		if (row.group) {
+			if (!appState) return;
+			e.preventDefault();
+			appState.setGroup(row.group, row.name);
+			return;
+		}
+		if (!focusObject || !row.id) return;
 		e.preventDefault();
 		focusObject(row.id, row.name, { moveCamera: true });
 	}
@@ -197,7 +217,7 @@
 
 <div class="flex flex-col gap-1">
 	<ul class="flex flex-col">
-		{#each rows as row (row.id)}
+		{#each rows as row (row.id ?? row.group)}
 			<li>
 				<a
 					href={rowHref(row)}

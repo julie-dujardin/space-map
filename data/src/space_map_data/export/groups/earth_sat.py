@@ -18,6 +18,12 @@ import orjson
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_SLUG_PREFIX,
+)
+from space_map_data.constants.earth_sats.launch_vehicles import (
+    LAUNCH_VEHICLE_BY_CONSTELLATION,
+)
 from space_map_data.constants.earth_sats.orbit_class import (
     EarthOrbitClass,
     classify_earth_orbit,
@@ -37,6 +43,10 @@ _SAT_TYPE_VALUES = [ObjectType.spacecraft.value, ObjectType.debris.value]
 
 SCATTER_TARGET = 1000
 SCATTER_FLOOR = 5
+
+# Members baked per zone for the strip + members-tab fallback; the rest
+# paginate from Meili.
+NOTABLE_MEMBER_COUNT = 20
 
 
 @dataclass
@@ -59,9 +69,11 @@ class EarthOrbitClassStats:
     membership: dict[str, list[str]] = field(default_factory=dict)
     orbit_samples: list[EarthOrbitSample] = field(default_factory=list)
     satcat_stats: dict[str, GroupSatcatStats] = field(default_factory=dict)
-    # Full member list baked into the bundle for the small Lagrange zones, so
-    # their sidebar renders without a Meilisearch round-trip.
+    # Top sats per zone (sitelink-ranked); the orchestrator merges in member
+    # constellations before writing.
     notable_members: dict[str, list[NotableObject]] = field(default_factory=dict)
+    # Each constellation's dominant zone, so it lists among that zone's members.
+    constellation_zone: dict[str, str] = field(default_factory=dict)
 
 
 def _load_latest_inclinations() -> dict[int, float]:
@@ -121,6 +133,31 @@ _LAGRANGE_CLASS_BY_CENTER = {
     OrbitCenter.EARTH_L1: EarthOrbitClass.EL1,
     OrbitCenter.EARTH_L2: EarthOrbitClass.EL2,
 }
+LAGRANGE_ORBIT_CENTERS = tuple(_LAGRANGE_CLASS_BY_CENTER)
+
+
+def primary_orbit_class_slug(
+    perigee: float | None,
+    apogee: float | None,
+    orbit_center: OrbitCenter | None,
+) -> str | None:
+    """The ``class-`` slug of a sat's primary Earth-orbit zone, or None when it
+    can't be classified. Lagrange sats bucket by orbit_center; the rest by
+    perigee/apogee (the inclination overlays never change the primary)."""
+    lagrange = (
+        _LAGRANGE_CLASS_BY_CENTER.get(orbit_center)
+        if orbit_center is not None
+        else None
+    )
+    if lagrange is not None:
+        return f"{CLASS_SLUG_PREFIX}{lagrange.name}"
+    if perigee is None or apogee is None:
+        return None
+    classes = classify_earth_orbit(perigee, apogee, None)
+    if not classes:
+        return None
+    primary = next(c for c in classes if c.primary)
+    return f"{CLASS_SLUG_PREFIX}{primary.name}"
 
 
 def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
@@ -137,6 +174,8 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             Object.id,
             Object.name,
             Object.wikidata_qid,
+            Object.sitelinks_count,
+            Object.image_available,
             Satcat.NORAD_CAT_ID,
             Satcat.OBJECT_NAME,
             Satcat.perigee,
@@ -166,11 +205,18 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
     skip_counters: Counter[str] = Counter()
     population_per_class: Counter[str] = Counter()
     pool: dict[str, list[tuple[str, str, float, float, float | None, list[str]]]] = {}
+    # Notable-member candidates per zone: (image_available, sitelinks, id, qid, name).
+    notable_pool: dict[str, list[tuple[bool, int, str, str | None, str]]] = {}
+    # Per constellation, its sat count per zone (→ dominant zone). Rocket
+    # "constellations" that surface as lv- pages are excluded.
+    constellation_zone_counts: dict[str, Counter[str]] = {}
 
     for (
         obj_id,
         obj_name,
         wikidata_qid,
+        sitelinks_count,
+        image_available,
         norad,
         sat_name,
         perigee,
@@ -227,22 +273,27 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
             )
 
         display_name = sat_name or obj_name or f"NORAD {norad}"
+        notable_pool.setdefault(primary_slug, []).append(
+            (
+                bool(image_available),
+                sitelinks_count or 0,
+                obj_id,
+                wikidata_qid,
+                display_name,
+            )
+        )
+        # Lagrange sats have no Keplerian shape, so they skip the scatter pool.
         if lagrange is None:
             pool.setdefault(primary_slug, []).append(
                 (obj_id, display_name, float(perigee), float(apogee), inc, class_names)
             )
-        else:
-            # Bake the full member list for the small Lagrange zones (no scatter
-            # sample — they have no perigee/apogee).
-            stats.notable_members.setdefault(primary_slug, []).append(
-                NotableObject(
-                    object_id=obj_id,
-                    wikidata_qid=wikidata_qid,
-                    fallback_name=display_name,
-                    diameter_km=None,
-                    first_obs=None,
-                )
-            )
+        if (
+            constellation_slug
+            and constellation_slug not in LAUNCH_VEHICLE_BY_CONSTELLATION
+        ):
+            constellation_zone_counts.setdefault(constellation_slug, Counter())[
+                primary_slug
+            ] += 1
 
     for slug, ids in stats.membership.items():
         ids.sort()
@@ -253,16 +304,40 @@ def build_earth_orbit_classes(session: Session) -> EarthOrbitClassStats:
         slug = f"{CLASS_SLUG_PREFIX}{cls.name}"
         stats.member_counts.setdefault(slug, 0)
 
+    # Top sats per zone: most-photogenic, then most-notable. The id tiebreak
+    # keeps the pick deterministic across runs.
+    for slug, candidates in notable_pool.items():
+        candidates.sort(key=lambda c: (not c[0], -c[1], c[2]))
+        stats.notable_members[slug] = [
+            NotableObject(
+                object_id=obj_id,
+                wikidata_qid=qid,
+                fallback_name=name,
+                diameter_km=None,
+                first_obs=None,
+                sitelinks_count=sitelinks,
+            )
+            for _img, sitelinks, obj_id, qid, name in candidates[:NOTABLE_MEMBER_COUNT]
+        ]
+
+    # Each constellation belongs to its most-populated zone (count, then slug
+    # for a stable tiebreak).
+    for c_slug, zone_counts in constellation_zone_counts.items():
+        best_zone = max(zone_counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        stats.constellation_zone[f"{CONSTELLATION_SLUG_PREFIX}{c_slug}"] = best_zone
+
     stats.orbit_samples = _build_samples(pool)
 
     classified = len(rows) - sum(skip_counters.values())
     logger.info(
         "Earth orbit-class build: %d sats classified into %d zones; "
-        "skipped %s; samples=%d",
+        "skipped %s; samples=%d; notable zones=%d; constellations mapped=%d",
         classified,
         sum(1 for v in stats.member_counts.values() if v),
         dict(skip_counters),
         len(stats.orbit_samples),
+        len(stats.notable_members),
+        len(stats.constellation_zone),
     )
     return stats
 

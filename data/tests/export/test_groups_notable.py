@@ -276,6 +276,9 @@ class _StubEntityCache:
             "descriptions": self._descriptions.get(qid, {}),
         }
 
+    # Group members (constellations) resolve their entity via get_referenced.
+    get_referenced = get_entity
+
 
 def _obj(object_id: str, qid: str | None, fallback: str) -> NotableObject:
     return NotableObject(
@@ -358,6 +361,43 @@ class TestNotableEntries:
         entries = notable.notable_entries(members, cache)  # type: ignore[arg-type]
         names = notable.notable_names(members, entries, "ru", cache)  # type: ignore[arg-type]
         assert names == {"spkid-1": "Церера"}
+
+    def test_group_member_routes_to_group_page(self, monkeypatch) -> None:
+        # A constellation listed in its orbit zone resolves a group entry (no
+        # object id), with a thumbnail from the group's images.
+        monkeypatch.setattr(
+            notable,
+            "collect_group_images",
+            lambda slug: (
+                [{"file": "Starlink.jpg", "kind": "photo", "variants": {"s": "webp"}}]
+                if slug == "const-starlink"
+                else None
+            ),
+        )
+        cache = _StubEntityCache({"Q1": {"en": "Starlink", "ru": "Старлинк"}})
+        member = NotableObject(
+            object_id="",
+            wikidata_qid="Q1",
+            fallback_name="STARLINK",
+            diameter_km=None,
+            first_obs=None,
+            group_slug="const-starlink",
+            sitelinks_count=42,
+        )
+        entries = notable.notable_entries([member], cache)  # type: ignore[arg-type]
+        assert entries[0] == {
+            "name": "Starlink",
+            "group": "const-starlink",
+            "thumbnail": {"file": "Starlink.jpg", "label": "s", "ext": "webp"},
+        }
+        # Localized overrides key by the group slug (frontend uses id ?? group).
+        names = notable.notable_names(
+            [member],
+            entries,
+            "ru",
+            cache,  # type: ignore[arg-type]
+        )
+        assert names == {"const-starlink": "Старлинк"}
 
     def test_localized_descriptions_omit_members_without_one(self) -> None:
         cache = _StubEntityCache(

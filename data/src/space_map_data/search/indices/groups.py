@@ -71,6 +71,10 @@ def build_group_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
                 "member_count": g.get("member_count", 0),
             },
         }
+        # Constellations list among their orbit zone's members (zone member query
+        # ORs this against object.groups).
+        if g.get("orbit_classes"):
+            doc["group"]["orbit_classes"] = g["orbit_classes"]
         # Prominence ranking key — groups don't carry sitelinks_count yet
         # (they have a wikidata_qid for a future backfill); root when present.
         if g.get("sitelinks_count"):

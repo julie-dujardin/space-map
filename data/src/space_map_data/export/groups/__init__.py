@@ -15,8 +15,15 @@ from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
 from space_map_data.export.groups.earth_sat import (
+    NOTABLE_MEMBER_COUNT,
+    EarthOrbitClassStats,
     build_earth_orbit_classes,
     write_earth_orbit_samples,
+)
+from space_map_data.constants.earth_sats.constellations import (
+    CONSTELLATION_BY_SLUG,
+    CONSTELLATION_SLUG_PREFIX,
+    ConstellationSpec,
 )
 from space_map_data.export.groups.membership import (
     build_earth_groups_data,
@@ -92,6 +99,53 @@ def _mission_groups() -> MissionGroups:
         out.notable_members[mission.slug] = members
         out.primary_ids[mission.slug] = mission.primary_object_id
     logger.info("Mission group pages: %d", len(out.groups))
+    return out
+
+
+def _constellation_fallback_name(spec: ConstellationSpec) -> str:
+    """Display name for a constellation with no Wikidata label (mirrors the
+    group-bundle fallback): its TLE name prefix, else the prettified slug."""
+    if isinstance(spec.prefix, str) and (p := spec.prefix.strip(" -_")):
+        return p
+    return spec.slug.replace("-", " ").title()
+
+
+def _earth_zone_notable_members(
+    earth_orbit_stats: EarthOrbitClassStats,
+    wikidata_entities: WikidataEntityCache,
+) -> dict[str, list[NotableObject]]:
+    """Per-zone notable members: top sats merged with the constellations that
+    call the zone home, re-ranked by Wikidata prominence so a prominent
+    constellation (Starlink) rides alongside individual sats."""
+    zone_constellations: dict[str, list[str]] = {}
+    for const_slug, zone_slug in earth_orbit_stats.constellation_zone.items():
+        zone_constellations.setdefault(zone_slug, []).append(const_slug)
+
+    out: dict[str, list[NotableObject]] = {}
+    for zone_slug, sats in earth_orbit_stats.notable_members.items():
+        members = list(sats)
+        for const_slug in zone_constellations.get(zone_slug, ()):
+            spec = CONSTELLATION_BY_SLUG.get(
+                const_slug.removeprefix(CONSTELLATION_SLUG_PREFIX)
+            )
+            if spec is None:
+                continue
+            wd = wikidata_entities.get_referenced(spec.wikidata_qid)
+            members.append(
+                NotableObject(
+                    object_id="",
+                    wikidata_qid=spec.wikidata_qid,
+                    fallback_name=_constellation_fallback_name(spec),
+                    diameter_km=None,
+                    first_obs=None,
+                    group_slug=const_slug,
+                    sitelinks_count=len(wd["sitelinks"]) if wd else 0,
+                )
+            )
+        members.sort(
+            key=lambda m: (-(m.sitelinks_count or 0), m.group_slug or m.object_id)
+        )
+        out[zone_slug] = members[:NOTABLE_MEMBER_COUNT]
     return out
 
 
@@ -268,7 +322,15 @@ def run_groups_tier(
     extra_notable_members.update(category_data.notable_members)
     extra_notable_members.update(split_comets.notable_members)
     extra_notable_members.update(missions.notable_members)
-    extra_notable_members.update(earth_orbit_stats.notable_members)
+    extra_notable_members.update(
+        _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
+    )
+    # Constellation → its dominant zone, so the group index can list each
+    # constellation among its zone's members.
+    constellation_orbit_classes = {
+        const_slug: [zone_slug]
+        for const_slug, zone_slug in earth_orbit_stats.constellation_zone.items()
+    }
     # Category discovery charts ride the same per-slug path as small-body
     # classes; satellite launch charts need their own override since categories
     # carry no GroupSatcatStats.
@@ -303,6 +365,7 @@ def run_groups_tier(
         extra_groups=(*split_comets.groups, *missions.groups),
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,
+        constellation_orbit_classes=constellation_orbit_classes,
     )
 
 

@@ -52,6 +52,7 @@ def _catalog_settings() -> dict[str, Any]:
             "group.type",
             "group.applies_to",
             "group.member_count",
+            "group.orbit_classes",
             "feature.body_id",
             "feature.type",
             "diameter_km",

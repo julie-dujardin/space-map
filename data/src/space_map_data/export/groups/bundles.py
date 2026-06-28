@@ -98,6 +98,7 @@ def _build_global(
     moon_counts: list[dict] | None,
     primary_id: str | None,
     lv_stats: LaunchVehicleStats | None,
+    orbit_classes: list[str] | None,
 ) -> dict:
     data: dict = {
         "slug": group.slug,
@@ -125,6 +126,10 @@ def _build_global(
         )
         if spec and spec.category:
             data["categories"] = [str(c) for c in spec.category]
+    # The orbit zone(s) this constellation calls home, so it lists among its
+    # zone's members in the catalog index.
+    if orbit_classes:
+        data["orbit_classes"] = orbit_classes
     if stats:
         if stats.launch_histogram:
             data["launch_histogram"] = {
@@ -615,6 +620,7 @@ def write_group_bundles(
     extra_groups: tuple[Group, ...] = (),
     extra_group_names: dict[str, str] | None = None,
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
+    constellation_orbit_classes: dict[str, list[str]] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -677,6 +683,7 @@ def write_group_bundles(
             moon_counts,
             (extra_primary_ids or {}).get(group.slug),
             lv_stats,
+            (constellation_orbit_classes or {}).get(group.slug),
         )
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)

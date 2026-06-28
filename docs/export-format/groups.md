@@ -72,6 +72,7 @@ interface GlobalGroupData {
   url?: string;                     // Fallback external URL when no Wikidata QID
   website?: string;                 // Wikidata P856
   categories?: SatelliteCategory[]; // Constellation-only; top-level use cases (communications, navigation, ...)
+  orbit_classes?: string[];         // Constellation-only; the zone slug(s) it calls home, so it lists among that zone's members
   roles?: ("operator" | "manufacturer")[]; // Organization-only; role tags shown as header badges
 
   // Earth-sat groups (constellation / organization / launch_site / country).
@@ -135,8 +136,10 @@ interface GlobalGroupData {
 
   // Top 20 members picked at export time, ordered by
   // (image_available, sitelinks_count, diameter desc, H asc, spkid).
-  // Present on orbit_class groups, flag-neo/flag-pha, and the Asteroids
-  // (dwarf planets excluded) + Comets categories. Denormalized so
+  // Present on small-body orbit_class groups, flag-neo/flag-pha, the Asteroids
+  // (dwarf planets excluded) + Comets categories, and every earth-sat zone
+  // (earth_orbit_class) — where the list is sitelink-ranked and mixes in member
+  // constellations (carrying `group` instead of `id`). Denormalized so
   // the strip + members list render without per-object bundle fetches.
   // Names are the English Wikidata label (matching object bundles), with
   // per-language overrides in LocalizedGroupData.notable_member_names.
@@ -285,6 +288,12 @@ groups. Per-class bundles carry `launch_histogram`, `first_launch_date`,
 (no `launch_sites` breakdown). An object holds exactly one shape class plus at most
 one inclination band (e.g. VLEO + SSO) — membership rules in
 `classify_earth_orbit`.
+
+Each zone also bakes a `notable_members` list (top 20, sitelink-ranked) that
+merges its most-notable sats with the constellations whose dominant zone it is
+(those carry `group` instead of `id`, routing to `/g/const-<slug>`). The
+members tab continues the same mixed, sitelink-ranked list from the search index
+— sats via `object.groups`, constellations via `group.orbit_classes`.
 
 ## Localized (`groups/{lang}/{bucket}.json.gz`)
 

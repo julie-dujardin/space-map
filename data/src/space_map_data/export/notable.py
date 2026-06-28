@@ -9,7 +9,11 @@ a per-language label-override map keyed by the same routing id.
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from space_map_data.export.images import collect_object_images, pick_thumbnail
+from space_map_data.export.images import (
+    collect_group_images,
+    collect_object_images,
+    pick_thumbnail,
+)
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -17,13 +21,20 @@ from space_map_data.export.wikidata import WikidataEntityCache
 
 @dataclass
 class NotableObject:
-    """One statically-picked notable object (a group member or a moon)."""
+    """One statically-picked notable member: an object, a moon, or a group.
+
+    A group member (e.g. a constellation listed in its orbit zone) sets
+    ``group_slug`` and routes to ``/g/<slug>`` instead of focusing an object —
+    ``object_id`` is empty for it. ``wikidata_qid`` still drives localized labels.
+    """
 
     object_id: str  # full Object.id — both the routing/focus id and image-cache key
     wikidata_qid: str | None  # for localized labels at bundle-write time
     fallback_name: str  # used when no Wikidata label exists
     diameter_km: float | None
     first_obs: str | None  # discovery proxy, YYYY-MM-DD or YYYY
+    group_slug: str | None = None  # set → a group member, routes to /g/<slug>
+    sitelinks_count: int | None = None  # Wikidata prominence, for cross-member ranking
     mass_kg: float | None = None  # from PCK GM; major bodies only
     radii: dict | None = None  # triaxial PCK radii {a, b, c} km; major bodies only
     radius_km: float | None = (
@@ -105,6 +116,20 @@ def render_geometry(
     )
 
 
+def _member_entity(member: NotableObject, wikidata_entities: WikidataEntityCache):
+    """The member's Wikidata entity. Group members (constellations) are only
+    referenced from claims, not downloaded as own entities."""
+    if member.group_slug is not None:
+        return wikidata_entities.get_referenced(member.wikidata_qid)
+    return wikidata_entities.get_entity(member.wikidata_qid)
+
+
+def _member_key(member: NotableObject) -> str:
+    """The routing id the frontend keys label/description overrides by
+    (``member.id ?? member.group``)."""
+    return member.group_slug or member.object_id
+
+
 def notable_entries(
     members: list[NotableObject],
     wikidata_entities: WikidataEntityCache,
@@ -117,9 +142,17 @@ def notable_entries(
     """
     out: list[dict] = []
     for member in members:
-        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        wd = _member_entity(member, wikidata_entities)
         name = (wd["labels"].get("en") if wd else None) or member.fallback_name
-        entry: dict = {"name": name, "id": member.object_id}
+        # Group members route to /g/<slug>; object members focus their mesh.
+        if member.group_slug is not None:
+            entry: dict = {"name": name, "group": member.group_slug}
+            thumbnail = pick_thumbnail(collect_group_images(member.group_slug))
+            if thumbnail:
+                entry["thumbnail"] = thumbnail
+            out.append(entry)
+            continue
+        entry = {"name": name, "id": member.object_id}
         if member.diameter_km is not None:
             entry["diameter_km"] = member.diameter_km
         if member.mass_kg is not None:
@@ -154,12 +187,12 @@ def notable_names(
     """Per-language label overrides keyed by object id, only where they differ."""
     out: dict[str, str] = {}
     for member, entry in zip(members, entries):
-        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        wd = _member_entity(member, wikidata_entities)
         if not wd:
             continue
         label = wd["labels"].get(lang)
         if label and label != entry["name"]:
-            out[member.object_id] = label
+            out[_member_key(member)] = label
     return out
 
 
@@ -172,10 +205,10 @@ def notable_descriptions(
     lineup hero's hover tooltip (e.g. "moon of Jupiter")."""
     out: dict[str, str] = {}
     for member in members:
-        wd = wikidata_entities.get_entity(member.wikidata_qid)
+        wd = _member_entity(member, wikidata_entities)
         if not wd:
             continue
         desc = wd["descriptions"].get(lang)
         if desc:
-            out[member.object_id] = desc
+            out[_member_key(member)] = desc
     return out

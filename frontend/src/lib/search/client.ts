@@ -5,6 +5,7 @@
 import { Meilisearch } from 'meilisearch';
 import { PUBLIC_MEILI_URL, PUBLIC_MEILI_SEARCH_KEY } from '$env/static/public';
 import { pickedThumbnailUrl, type PickedThumbnail } from '$lib/fetch/objects/images';
+import { CLASS_SLUG_PREFIX } from '$lib/fetch/groups/registry';
 
 /** Pre-resolved thumbnail descriptor written by the search indexer.
  *  Already narrowed to a single emitted variant — the frontend doesn't pick
@@ -177,9 +178,13 @@ export async function search(
 	return (res.hits ?? []).map((h) => toHit(h as RawHit));
 }
 
-/** One page of a group's members (objects) from the catalog index. */
+/** A group/moon member — usually an object, but an earth-sat zone also lists
+ *  the constellations that call it home, so a member can be a group too. */
+export type MemberHit = ObjectHit | GroupHit;
+
+/** One page of a group's members from the catalog index. */
 export interface GroupMemberPage {
-	hits: ObjectHit[];
+	hits: MemberHit[];
 	/** Capped at the index's maxTotalHits (1000). */
 	estimatedTotalHits: number;
 }
@@ -209,7 +214,9 @@ async function searchMemberPage(
 		limit,
 		locales: [locale]
 	});
-	const hits = (res.hits ?? []).map((h) => toObjectHit(h as RawHit));
+	const hits = (res.hits ?? []).map((h) =>
+		(h as RawHit).kind === 'group' ? toGroupHit(h as RawHit) : toObjectHit(h as RawHit)
+	);
 	return { hits, estimatedTotalHits: res.estimatedTotalHits ?? hits.length };
 }
 
@@ -233,7 +240,13 @@ export function searchGroupMembers(
 	limit: number,
 	locale: string
 ): Promise<GroupMemberPage> {
-	const filter = CATEGORY_MEMBER_FILTER[slug] ?? `object.groups = "${slug}"`;
+	// Earth-sat zones (class-*) also surface the constellations that call them
+	// home, interleaved with sats by the shared sitelinks_count sort. (Small-body
+	// classes share the prefix but no group points at them, so the OR is inert.)
+	const memberFilter = slug.startsWith(CLASS_SLUG_PREFIX)
+		? `object.groups = "${slug}" OR group.orbit_classes = "${slug}"`
+		: `object.groups = "${slug}"`;
+	const filter = CATEGORY_MEMBER_FILTER[slug] ?? memberFilter;
 	return searchMemberPage(filter, offset, limit, locale);
 }
 

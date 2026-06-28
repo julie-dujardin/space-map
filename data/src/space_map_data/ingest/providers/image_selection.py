@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import orjson
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from tqdm import tqdm
 
 from space_map_data.constants.categories import (
@@ -48,6 +48,10 @@ from space_map_data.constants.earth_sats.manufacturers import MANUFACTURER_BY_QI
 from space_map_data.constants.earth_sats.operators import OPERATOR_BY_QID
 from space_map_data.constants.earth_sats.organizations import (
     ORGANIZATION_SLUG_PREFIX,
+)
+from space_map_data.export.groups.earth_sat import (
+    LAGRANGE_ORBIT_CENTERS,
+    primary_orbit_class_slug,
 )
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
@@ -434,6 +438,34 @@ def _build_group_member_qids(session) -> dict[str, list[str]]:
             country = COUNTRY_BY_CODE.get(code)
             if country is not None:
                 out.setdefault(f"{COUNTRY_SLUG_PREFIX}{country.slug}", []).append(qid)
+
+    # Earth-sat orbit zones: their generic orbit-concept QIDs rarely have a
+    # usable Commons image (Lagrange zones have none), so each zone's gallery is
+    # filled from member-sat photos. Lagrange sats are Sun-parented, admitted by
+    # orbit_center.
+    zone_rows = (
+        session.query(
+            Object.wikidata_qid,
+            Satcat.perigee,
+            Satcat.apogee,
+            Satcat.orbit_center,
+        )
+        .join(Object.satcat)
+        .filter(
+            Object.spkid.is_(None),
+            Object.object_type.in_(_FALLBACK_SAT_TYPE_VALUES),
+            Object.wikidata_qid.is_not(None),
+            or_(
+                Object.parent_id == _FALLBACK_EARTH_OBJECT_ID,
+                Satcat.orbit_center.in_(LAGRANGE_ORBIT_CENTERS),
+            ),
+        )
+        .all()
+    )
+    for qid, perigee, apogee, orbit_center in zone_rows:
+        slug = primary_orbit_class_slug(perigee, apogee, orbit_center)
+        if slug is not None:
+            out.setdefault(slug, []).append(qid)
 
     # Body-aggregating categories: the planets, dwarf planets and moons, plus
     # the Solar System root (Sun + planets — a curated hero set, not the whole
