@@ -87,6 +87,12 @@ export interface BodyData extends OrbitalElements {
 	 * `global.orbit.source` instead.
 	 */
 	orbitalSource: OrbitalSource;
+	/**
+	 * Days from J2000 to when the body came into existence (moon/sat discovery
+	 * or launch). The render gate hides it while `jd - 2451545 < visibleFromDays`.
+	 * NaN/undefined = always visible. Only elements-backed bodies carry it.
+	 */
+	visibleFromDays?: number;
 }
 
 export interface PositionedBody {

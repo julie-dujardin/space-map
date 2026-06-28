@@ -683,9 +683,17 @@ export class PointCloudSystem {
 			const arr = posAttr.array as Float32Array;
 			const n = Math.min(moons.length, arr.length / 3);
 			for (let i = 0; i < n; i++) {
-				arr[i * 3] = moons[i].position[0] - bx;
-				arr[i * 3 + 1] = moons[i].position[1] - by;
-				arr[i * 3 + 2] = moons[i].position[2] - bz;
+				const m = moons[i];
+				// Hide out-of-range moons (undiscovered, or past their validity
+				// window): a NaN vertex isn't rasterized, and these Points have
+				// frustumCulled = false so NaN can't poison the bounding sphere.
+				if (this.bodyObjects.get(m.data.id)?.outOfRange) {
+					arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = NaN;
+					continue;
+				}
+				arr[i * 3] = m.position[0] - bx;
+				arr[i * 3 + 1] = m.position[1] - by;
+				arr[i * 3 + 2] = m.position[2] - bz;
 			}
 			posAttr.needsUpdate = true;
 		}

@@ -20,6 +20,7 @@ import {
 	ADAPTIVE_MIN_STEP_FACTOR
 } from '$lib/fetch/position/trail-buffer';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
+import { J2000_JD } from '$lib/time/jd';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import type { FocusState } from '$lib/scene/animation/focus';
@@ -167,6 +168,14 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		const bo = bodyObjects.get(d.id);
 		const isChebTracked = ctx.chebStore?.has(d.id) ?? false;
 		const isProbe = d.orbitalSource === OrbitalSource.SPICE_PROBE;
+		// Discovery gate: hide a body before it came into existence (moon/sat
+		// discovery or launch). NaN/undefined visibleFromDays = always visible.
+		// outOfRange hides the mesh + label; writeMoons() drops the dot too.
+		if (d.visibleFromDays !== undefined && jd - J2000_JD < d.visibleFromDays) {
+			if (bo) bo.outOfRange = true;
+			if (d.id === focusedId) oorState.focusedOutOfRange = true;
+			return;
+		}
 		// Probes re-resolve their fit center below (cruise → captured orbit can
 		// flip parentId), so let the probe branch handle parent lookup; for
 		// everything else, the parent must be in the per-frame positionMap. A

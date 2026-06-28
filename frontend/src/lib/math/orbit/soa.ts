@@ -3,14 +3,13 @@ import { AU_SCALE, AU_KM, EARTH_OBLIQUITY_DEG } from '$lib/math/units';
 import type { PositionedBody } from '$lib/types/objects';
 import { sgp4, SatRecError, type SatRec } from 'satellite.js';
 import { yieldToMain } from '$lib/yield';
+import { J2000_JD } from '$lib/time/jd';
 
 const DEG2RAD = Math.PI / 180;
 const COS_EPS = Math.cos(EARTH_OBLIQUITY_DEG * DEG2RAD);
 const SIN_EPS = Math.sin(EARTH_OBLIQUITY_DEG * DEG2RAD);
 /** Precomputed km -> scene-unit scale. */
 const KM_TO_SCENE = AU_SCALE / AU_KM;
-/** JD at the J2000 epoch — `visibleFromDays` is stored relative to this. */
-const J2000_JD = 2451545.0;
 
 export const KIND_SKIP = 0;
 export const KIND_KEPLER = 1;

@@ -86,7 +86,8 @@ export function keplerianToBody(
 		equatorial: isPlanetScale,
 		validityStart: cols.validityStart,
 		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
+		orbitalSource: cols.source,
+		visibleFromDays: cols.visibleFromDays[idx]
 	};
 }
 
@@ -120,7 +121,8 @@ export function parabolicToBody(
 		tp: cols.tp[idx],
 		validityStart: cols.validityStart,
 		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
+		orbitalSource: cols.source,
+		visibleFromDays: cols.visibleFromDays[idx]
 	};
 }
 
@@ -181,7 +183,8 @@ export function sgp4ToBody(
 		satrec,
 		validityStart: cols.validityStart,
 		validityEnd: cols.validityEnd,
-		orbitalSource: cols.source
+		orbitalSource: cols.source,
+		visibleFromDays: cols.visibleFromDays[idx]
 	};
 }
 
