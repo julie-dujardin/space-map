@@ -33,6 +33,10 @@ from space_map_data.export.groups.small_body import (
     build_small_body_group_stats,
     write_orbit_samples,
 )
+from space_map_data.export.groups.solar_system_map import (
+    build_solar_system_map,
+    write_solar_system_map,
+)
 from space_map_data.constants.comet_fragments import family_group_slug
 from space_map_data.export.notable import NotableObject
 from space_map_data.export.objects.fragments import build_comet_families
@@ -191,13 +195,15 @@ def run_groups_tier(
     ``radii``/``gms`` (SPICE PCK) give the category planet + moon members their
     mass + triaxial radii for the planets/moons-page charts.
     """
-    from space_map_data.export.systems import load_orientation
+    from space_map_data.export.systems import load_orientation, load_planet_elements
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
     units = UnitConverter(wikidata_entities)
     # PCK poles for the lineup hero's true tilt — loaded here rather than widening
     # the orchestrator→tier interface for a tier-internal render detail.
     orientation = load_orientation(DOWNLOAD_DIR)
+    # Horizons mean elements for the SBDB-less planets (minimap + moons chart).
+    planet_elements = load_planet_elements(DOWNLOAD_DIR)
     with Session(engine) as session:
         build = build_earth_groups_data(session)
         small_body_stats = build_small_body_group_stats(
@@ -232,9 +238,18 @@ def run_groups_tier(
             gms,
             orientation,
             wikidata_entities,
+            planet_elements,
         )
         split_comets = _split_comet_groups(session, wikidata_entities)
         launch_vehicle_stats = build_launch_vehicle_stats(session)
+        solar_system_map = build_solar_system_map(
+            session,
+            radii,
+            wikidata_entities,
+            units,
+            small_body_stats.orbit_samples,
+            planet_elements,
+        )
     missions = _mission_groups()
 
     # Each constellation lists the buses its members fly, most-used first; the
@@ -263,6 +278,7 @@ def run_groups_tier(
     write_earth_membership(out_dir, build.membership)
     write_orbit_samples(out_dir, small_body_stats.orbit_samples)
     write_earth_orbit_samples(out_dir, earth_orbit_stats.orbit_samples)
+    write_solar_system_map(out_dir, solar_system_map)
 
     return write_group_bundles(
         out_dir,

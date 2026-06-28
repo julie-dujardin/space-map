@@ -188,6 +188,47 @@ interface OrbitSamplesFile {
 }
 ```
 
+## `groups/__solar_system_map__.json.gz`
+
+The Solar System minimap — the lineup hero on the `cat-solar-system` page. Sun +
+planets + dwarf planets + the largest main-belt asteroids on a log
+heliocentric-distance axis at true relative diameters, each nudged vertically by
+its inclination, plus the Main-belt and Kuiper-belt bands. Fetched once and cached (tiny). Belt extents are robust
+quantiles of the in-memory orbit-class samples (no extra catalog scan); the far
+scattered dwarfs (Eris, Sedna) are still exported and clip off the chart's right
+edge on the frontend. Source: `build_solar_system_map` in
+`data/src/space_map_data/export/groups/solar_system_map.py`.
+
+Planet `a`/`i` come from JPL Horizons mean elements baked at download time
+(`planet_elements.json`; the majors carry no SBDB row); dwarf `a`/`i` from SBDB
+(Pluto falls back to the same Horizons table); diameters from PCK radii (Sun +
+planets) or Wikidata (dwarfs). `color` is set only for SBDB-tracked
+small bodies — the frontend tints the rest from its shared palette.
+
+```typescript
+interface SolarSystemMapObject {
+  id: string;          // Object.id — routing/focus id and localized-name key
+  qid: string | null;  // Wikidata QID
+  name: string;        // English fallback; frontend prefers the localized label
+  kind: 'star' | 'planet' | 'dwarf' | 'asteroid';
+  a: number;           // Semi-major axis [AU] — log x position
+  i: number;           // Inclination to ecliptic [deg] — vertical offset
+  diameter_km: number;
+  color: string | null; // resolved small-body tint; null → frontend palette
+}
+interface SolarSystemMapBelt {
+  slug: string;        // linked group slug (class-MBA / class-TNO)
+  label: string;       // displayed band label ("Main belt" / "Kuiper belt")
+  kind: 'asteroid_belt' | 'kuiper_belt';
+  inner_au: number;
+  outer_au: number;
+}
+interface SolarSystemMapFile {
+  objects: SolarSystemMapObject[];
+  belts: SolarSystemMapBelt[];
+}
+```
+
 ## `groups/__sat_orbit_samples__.json.gz`
 
 Earth-sat scatter samples. Same role as `__orbit_samples__.json.gz` but for

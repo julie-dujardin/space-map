@@ -16,6 +16,9 @@ from tqdm import tqdm
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import Downloader
 from space_map_data.download.providers.objects.chebyshev import extract_chebyshev
+from space_map_data.download.providers.objects.planet_elements import (
+    fetch_planet_elements,
+)
 from space_map_data.utils.paths import DERIVED_POSITION_DIR, SOURCES_POSITION_DIR
 from space_map_data.models.object import ObjectType
 from space_map_data.utils.time import DAYS_PER_YEAR, year_to_jd
@@ -155,6 +158,8 @@ class SpiceDownloader(Downloader):
         logger.info("Using epoch %s (JD %.1f)", epoch.isoformat(), epoch_jd)
 
         fetch_major_bodies(self.client, self.tables_dir)
+        # Mean planet elements for the minimap; independent of the kernels below.
+        fetch_planet_elements(self.client, self.tables_dir)
 
         kernels = resolve_kernels(self.client)
         kernel_paths = download_kernels(self.client, self.kernels_dir, kernels)

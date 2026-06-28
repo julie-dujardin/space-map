@@ -30,7 +30,8 @@
 		CATEGORY_SLUG_PREFIX,
 		CAT_MOONS,
 		CAT_PLANETS,
-		CAT_DWARF_PLANETS
+		CAT_DWARF_PLANETS,
+		CAT_SOLAR_SYSTEM
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
@@ -63,6 +64,7 @@
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
 	import BodyLineup, { type LineupBody } from './charts/BodyLineup.svelte';
+	import SolarSystemMap from './charts/SolarSystemMap.svelte';
 	import { buildLineup, geometryFromMember, renderableCount } from './charts/lineup';
 	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
 	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
@@ -99,6 +101,11 @@
 	// The three body-collection pages whose hero is a lineup (no member strip/tab,
 	// and they sibling-cross-link via CategoryCrossRefs).
 	let isLineupCategory = $derived(isPlanetsCategory || isMoonsCategory || isDwarfPlanetsCategory);
+	// The Solar System root: hero is the schematic minimap; the sphere lineup
+	// moves into its members tab.
+	let isSolarSystemCategory = $derived(
+		focusable.kind === 'group' && focusable.slug === CAT_SOLAR_SYSTEM
+	);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -529,6 +536,16 @@
 		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radius_km != null)
 	);
 	let lineupSbdb = $derived(!!lineupHero && isSmallBodyLineup);
+	// Sphere lineup for the Solar System members tab
+	let solarSystemLineup = $derived.by<{ bodies: LineupBody[]; perPage: number } | null>(() => {
+		if (!isSolarSystemCategory || !notableMembers || notableMembers.length === 0) return null;
+		const bodies = buildLineup(notableMembers, geometryFromMember, {
+			names: memberNames,
+			descriptions: memberDescriptions
+		});
+		if (bodies.length === 0) return null;
+		return { bodies, perPage: 8 };
+	});
 	let memberTotal = $derived(
 		isGroupMode
 			? (groupDetail?.global?.member_count ?? 0)
@@ -678,6 +695,10 @@
 	{/if}
 {/snippet}
 
+{#snippet solarSystemMapSnippet()}
+	<SolarSystemMap ariaLabel={fallbackName} localizedNames={memberNames} />
+{/snippet}
+
 {#snippet overviewPanel()}
 	{#if loading}
 		<div class="flex flex-col gap-4 p-1">
@@ -695,7 +716,11 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
-				hero={lineupHero && !isMoonLineupHero ? lineupHeroSnippet : undefined}
+				hero={isSolarSystemCategory
+					? solarSystemMapSnippet
+					: lineupHero && !isMoonLineupHero
+						? lineupHeroSnippet
+						: undefined}
 				onShowGallery={() => {
 					appState.setTab('images');
 					appState.setImage(0);
@@ -828,6 +853,15 @@
 		     foot here, where the spheres render — not the overview footer. -->
 		{#if isMoonLineupHero}
 			{@render lineupHeroSnippet()}
+		{/if}
+		<!-- Solar System: the minimap is the page hero, so the sphere lineup lives
+		     here in the members tab (paginated). -->
+		{#if solarSystemLineup}
+			<BodyLineup
+				bodies={solarSystemLineup.bodies}
+				ariaLabel={fallbackName}
+				perPage={solarSystemLineup.perPage}
+			/>
 		{/if}
 		{@render tabsBar()}
 		{#if isGroupMode && groupDetail?.global}

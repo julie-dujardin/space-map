@@ -676,6 +676,142 @@
 	"feature_type_label_MO": "جبل",
 	"feature_type_label_RI": "أخدود",
 	"feature_type_label_TE": "تضاريس متكسرة",
+	"property_name_absolute_magnitude": "القدر المطلق",
+	"property_name_apparent_magnitude": "القدر الظاهري",
+	"property_name_asteroid_family": "عائلة الكويكبات",
+	"property_name_blog": "المدونة الرسمية",
+	"property_name_capital_cost": "الكلفة",
+	"property_name_country_of_origin": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "بلد المنشأ",
+				"countPlural=other": "بلدان المنشأ"
+			}
+		}
+	],
+	"property_name_density": "الكثافة",
+	"property_name_developer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "المُطوِّر",
+				"countPlural=other": "المُطوِّرون"
+			}
+		}
+	],
+	"property_name_discoverers": "المكتشف أو المخترع",
+	"property_name_discovery_date": "تاريخ الاكتشاف أو الاختراع",
+	"property_name_discovery_site": "موقع الاكتشاف الفلكي",
+	"property_name_dissolved": "تاريخ الحل أو الإلغاء أو الهدم",
+	"property_name_funder": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "ممول",
+				"countPlural=other": "ممولون"
+			}
+		}
+	],
+	"property_name_image": "الصورة",
+	"property_name_inception": "البداية",
+	"property_name_instance_of": "نموذج من",
+	"property_name_launch_contractor": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "مقدم خدمة الإطلاق",
+				"countPlural=other": "مقدمو خدمة الإطلاق"
+			}
+		}
+	],
+	"property_name_launch_date": "وقت إطلاق المركبة الفضائية",
+	"property_name_launch_site": "نقطة البداية",
+	"property_name_launch_vehicle": "مركبة الإطلاق الفضائية",
+	"property_name_length": "الطُّول",
+	"property_name_logo_image": "صورة الشعار",
+	"property_name_manufacturer": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "الشركة المصنعة",
+				"countPlural=other": "الشركات المصنعة"
+			}
+		}
+	],
+	"property_name_mass": "الكتلة",
+	"property_name_max_temperature": "أقصى درجة حرارة مسجلة",
+	"property_name_min_temperature": "أدنى درجة حرارة مسجلة",
+	"property_name_minor_planet_group": "مجموعة الكوكب الصغير",
+	"property_name_named_after": "سُمِّي باسم",
+	"property_name_operators": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "المشغل",
+				"countPlural=other": "المشغلون"
+			}
+		}
+	],
+	"property_name_part_of": "جزء من",
+	"property_name_population": "عدد السكان",
+	"property_name_radius": "نصف القطر",
+	"property_name_spectral_type": "نوع الكويكب الطيفي",
+	"property_name_surface_gravity": "الجاذبية السطحية",
+	"property_name_temperature": "درجة الحرارة",
+	"property_name_website": "الموقع الرسمي",
+	"property_name_width": "العَرض",
+	"unit_name_astronomical_unit": "وحدة فلكية",
+	"unit_name_attometre": "أتومتر",
+	"unit_name_centimetre": "سنتيمتر",
+	"unit_name_centimetre_per_square_second": "سنتيمتر لكل ثانية مربعة",
+	"unit_name_degree_celsius": "درجة حرارة مئوية",
+	"unit_name_degree_fahrenheit": "فهرنهايت",
+	"unit_name_deutsche_mark": "مارك ألماني",
+	"unit_name_earth_mass": "كتلة الأرض",
+	"unit_name_exagram": "إكساغرام",
+	"unit_name_gram": "غرام",
+	"unit_name_gram_per_cubic_centimetre": "غرام لكل سنتيمتر مكعب",
+	"unit_name_hour": "ساعة",
+	"unit_name_jupiter_mass": "كتلة المشتري",
+	"unit_name_jupiter_radius": "نصف قطر مشتري",
+	"unit_name_kelvin": "كلفن",
+	"unit_name_kilogram": "كيلوغرام",
+	"unit_name_kilogram_per_cubic_metre": "كيلوغرام لكل متر مكعب",
+	"unit_name_kilometre": "كيلومتر",
+	"unit_name_kilometre_per_second": "كيلومتر في الثانية",
+	"unit_name_metre": "متر",
+	"unit_name_metres_per_second_squared": "متر في الثانية المربعة",
+	"unit_name_millimetre": "مليمتر",
+	"unit_name_petagram": "بيتاغرام",
+	"unit_name_square_kilometre": "كيلومتر مربع",
+	"unit_name_teragram": "تيراغرام",
+	"unit_name_tonne": "طن",
+	"unit_name_year": "سنة",
+	"unit_name_yottagram": "يوتاغرام",
+	"unit_name_zettagram": "زيتاغرام",
+	"unit_symbol_astronomical_unit": "و.ف",
+	"unit_symbol_centimetre": "سم",
+	"unit_symbol_degree_celsius": "℃",
+	"unit_symbol_exagram": "يغ",
+	"unit_symbol_gram": "غ",
+	"unit_symbol_hour": "س",
+	"unit_symbol_kilogram": "كغ",
+	"unit_symbol_kilometre": "كم",
+	"unit_symbol_metre": "م",
+	"unit_symbol_millimetre": "مم",
+	"unit_symbol_petagram": "بتغ",
+	"unit_symbol_square_kilometre": "كم²",
+	"unit_symbol_teragram": "تغ",
+	"unit_symbol_tonne": "طن",
+	"unit_symbol_yottagram": "يوغ",
+	"unit_symbol_zettagram": "زتغ",
 	"group_name_const-agena": "آر إم-81 أغينا",
 	"group_name_const-apollo": "برنامج أبولو",
 	"group_name_const-argos": "نظام أرجوس",
@@ -868,141 +1004,5 @@
 	"group_name_site-vandenberg": "قاعدة فاندنبرغ للقوة الفضائية",
 	"group_name_site-vostochny": "فوستوتشني كوزمودروم",
 	"group_name_site-wallops": "منشأة والوبس للطيران",
-	"group_name_site-wenchang": "موقع إطلاق الفضاء في وينشانغ",
-	"property_name_absolute_magnitude": "القدر المطلق",
-	"property_name_apparent_magnitude": "القدر الظاهري",
-	"property_name_asteroid_family": "عائلة الكويكبات",
-	"property_name_blog": "المدونة الرسمية",
-	"property_name_capital_cost": "الكلفة",
-	"property_name_country_of_origin": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "بلد المنشأ",
-				"countPlural=other": "بلدان المنشأ"
-			}
-		}
-	],
-	"property_name_density": "الكثافة",
-	"property_name_developer": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "المُطوِّر",
-				"countPlural=other": "المُطوِّرون"
-			}
-		}
-	],
-	"property_name_discoverers": "المكتشف أو المخترع",
-	"property_name_discovery_date": "تاريخ الاكتشاف أو الاختراع",
-	"property_name_discovery_site": "موقع الاكتشاف الفلكي",
-	"property_name_dissolved": "تاريخ الحل أو الإلغاء أو الهدم",
-	"property_name_funder": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "ممول",
-				"countPlural=other": "ممولون"
-			}
-		}
-	],
-	"property_name_image": "الصورة",
-	"property_name_inception": "البداية",
-	"property_name_instance_of": "نموذج من",
-	"property_name_launch_contractor": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "مقدم خدمة الإطلاق",
-				"countPlural=other": "مقدمو خدمة الإطلاق"
-			}
-		}
-	],
-	"property_name_launch_date": "وقت إطلاق المركبة الفضائية",
-	"property_name_launch_site": "نقطة البداية",
-	"property_name_launch_vehicle": "مركبة الإطلاق الفضائية",
-	"property_name_length": "الطُّول",
-	"property_name_logo_image": "صورة الشعار",
-	"property_name_manufacturer": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "الشركة المصنعة",
-				"countPlural=other": "الشركات المصنعة"
-			}
-		}
-	],
-	"property_name_mass": "الكتلة",
-	"property_name_max_temperature": "أقصى درجة حرارة مسجلة",
-	"property_name_min_temperature": "أدنى درجة حرارة مسجلة",
-	"property_name_minor_planet_group": "مجموعة الكوكب الصغير",
-	"property_name_named_after": "سُمِّي باسم",
-	"property_name_operators": [
-		{
-			"declarations": ["input count", "local countPlural = count: plural"],
-			"selectors": ["countPlural"],
-			"match": {
-				"countPlural=one": "المشغل",
-				"countPlural=other": "المشغلون"
-			}
-		}
-	],
-	"property_name_part_of": "جزء من",
-	"property_name_population": "عدد السكان",
-	"property_name_radius": "نصف القطر",
-	"property_name_spectral_type": "نوع الكويكب الطيفي",
-	"property_name_surface_gravity": "الجاذبية السطحية",
-	"property_name_temperature": "درجة الحرارة",
-	"property_name_website": "الموقع الرسمي",
-	"property_name_width": "العَرض",
-	"unit_name_astronomical_unit": "وحدة فلكية",
-	"unit_name_attometre": "أتومتر",
-	"unit_name_centimetre": "سنتيمتر",
-	"unit_name_centimetre_per_square_second": "سنتيمتر لكل ثانية مربعة",
-	"unit_name_degree_celsius": "درجة حرارة مئوية",
-	"unit_name_degree_fahrenheit": "فهرنهايت",
-	"unit_name_deutsche_mark": "مارك ألماني",
-	"unit_name_earth_mass": "كتلة الأرض",
-	"unit_name_exagram": "إكساغرام",
-	"unit_name_gram": "غرام",
-	"unit_name_gram_per_cubic_centimetre": "غرام لكل سنتيمتر مكعب",
-	"unit_name_hour": "ساعة",
-	"unit_name_jupiter_mass": "كتلة المشتري",
-	"unit_name_jupiter_radius": "نصف قطر مشتري",
-	"unit_name_kelvin": "كلفن",
-	"unit_name_kilogram": "كيلوغرام",
-	"unit_name_kilogram_per_cubic_metre": "كيلوغرام لكل متر مكعب",
-	"unit_name_kilometre": "كيلومتر",
-	"unit_name_kilometre_per_second": "كيلومتر في الثانية",
-	"unit_name_metre": "متر",
-	"unit_name_metres_per_second_squared": "متر في الثانية المربعة",
-	"unit_name_millimetre": "مليمتر",
-	"unit_name_petagram": "بيتاغرام",
-	"unit_name_square_kilometre": "كيلومتر مربع",
-	"unit_name_teragram": "تيراغرام",
-	"unit_name_tonne": "طن",
-	"unit_name_year": "سنة",
-	"unit_name_yottagram": "يوتاغرام",
-	"unit_name_zettagram": "زيتاغرام",
-	"unit_symbol_astronomical_unit": "و.ف",
-	"unit_symbol_centimetre": "سم",
-	"unit_symbol_degree_celsius": "℃",
-	"unit_symbol_exagram": "يغ",
-	"unit_symbol_gram": "غ",
-	"unit_symbol_hour": "س",
-	"unit_symbol_kilogram": "كغ",
-	"unit_symbol_kilometre": "كم",
-	"unit_symbol_metre": "م",
-	"unit_symbol_millimetre": "مم",
-	"unit_symbol_petagram": "بتغ",
-	"unit_symbol_square_kilometre": "كم²",
-	"unit_symbol_teragram": "تغ",
-	"unit_symbol_tonne": "طن",
-	"unit_symbol_yottagram": "يوغ",
-	"unit_symbol_zettagram": "زتغ"
+	"group_name_site-wenchang": "موقع إطلاق الفضاء في وينشانغ"
 }

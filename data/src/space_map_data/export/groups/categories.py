@@ -53,29 +53,16 @@ logger = logging.getLogger(__name__)
 # the largest fleets, ranked by member count.
 TOP_CONSTELLATIONS = 12
 
-# Notable members shown on the Solar System root (Sun + top 19 bodies).
+# Notable members shown on the Solar System root (Sun + top bodies). Sized so the
+# members-tab sphere lineup fills 3 pages of 8.
 NOTABLE_COUNT = 20
+SOLAR_SYSTEM_NOTABLE_COUNT = 24
 
 # Moons page hero — the most prominent (5 paginated pages of 5 in the frontend
 # lineup). Asteroids will reuse this selector.
 TOP_MOONS = 25
 
 _PLANET_TYPES = (ObjectType.planet, ObjectType.dwarf_planet)
-
-# Semi-major axis (AU) for the major planets + Pluto, which carry no SBDB row;
-# orders the moons-per-planet chart by heliocentric distance. Dwarf planets are
-# SBDB-tracked and use their measured SBDB.a instead.
-_PLANET_AU: dict[int, float] = {
-    199: 0.387,  # Mercury
-    299: 0.723,  # Venus
-    399: 1.000,  # Earth
-    499: 1.524,  # Mars
-    599: 5.203,  # Jupiter
-    699: 9.537,  # Saturn
-    799: 19.191,  # Uranus
-    899: 30.07,  # Neptune
-    999: 39.48,  # Pluto
-}
 
 
 @dataclass
@@ -265,7 +252,9 @@ def _dwarf_planet_members(
     return members
 
 
-def _moon_data(session: Session) -> tuple[int, list[dict]]:
+def _moon_data(
+    session: Session, planet_elements: dict[int, dict]
+) -> tuple[int, list[dict]]:
     """Total moon count + per-planet/dwarf tallies for the Moons-page bar chart.
 
     A moon's host is its parent planet/dwarf; parents that are barycenters
@@ -273,8 +262,8 @@ def _moon_data(session: Session) -> tuple[int, list[dict]]:
     eight major planets always get a bar (Mercury/Venus included, at zero);
     dwarf planets get one only when they host a moon. Asteroid moons still
     count toward the total but have no chart row. Rows are ordered by
-    heliocentric distance (SBDB.a for dwarfs, a static table for the major
-    planets/Pluto). Each row is the bundle wire shape:
+    heliocentric distance (SBDB.a for dwarfs, the Horizons mean-element table
+    for the SBDB-less major planets/Pluto). Each row is the bundle wire shape:
     ``{name, primary_type, primary_id, n}``.
     """
     total = (
@@ -344,7 +333,11 @@ def _moon_data(session: Session) -> tuple[int, list[dict]]:
             "primary_id": r.id,
             "n": host_counts.get(r.id, 0),
         }
-        au = _PLANET_AU.get(r.naif_id) if r.naif_id is not None else None
+        au = (
+            planet_elements.get(r.naif_id, {}).get("a")
+            if r.naif_id is not None
+            else None
+        )
         if au is None:
             au = sbdb_a.get(r.id)
         if au is None:
@@ -393,14 +386,14 @@ def _solar_system_members(
     members = _ranked_members(
         session,
         Object.object_type != ObjectType.barycenter,
-        NOTABLE_COUNT + 1,
+        SOLAR_SYSTEM_NOTABLE_COUNT + 1,
         radii,
         gms,
         orientation,
     )
     if star is not None:
         members = [star] + [m for m in members if m.object_id != star.object_id]
-    return members[:NOTABLE_COUNT]
+    return members[:SOLAR_SYSTEM_NOTABLE_COUNT]
 
 
 def _probe_members(
@@ -432,6 +425,7 @@ def build_category_data(
     gms: dict[int, float],
     orientation: dict[int, dict],
     entities: WikidataEntityCache,
+    planet_elements: dict[int, dict],
 ) -> CategoryData:
     """Assemble category children + planet members + per-category counts.
 
@@ -492,7 +486,7 @@ def build_category_data(
     )
     star = _star_member(session, radii, gms, orientation)
     probe_members, probes_total = _probe_members(session, radii, gms, orientation)
-    moons_total, moon_counts = _moon_data(session)
+    moons_total, moon_counts = _moon_data(session, planet_elements)
 
     children = {
         # Satellites is reachable under Earth (its real parent), not the root.

@@ -448,6 +448,22 @@ def load_gms(download_dir: Path) -> dict[int, float]:
     return result
 
 
+def load_planet_elements(download_dir: Path) -> dict[int, dict]:
+    """Mean planet elements (Horizons) → {naif_id: {"a": AU, "i": deg}}.
+
+    Baked at download time by `fetch_planet_elements`; the major planets carry no
+    SBDB row, so this is the minimap's source for their distance + inclination.
+    """
+    path = download_dir / "derived" / "position" / "tables" / "planet_elements.json"
+    if not path.exists():
+        logger.warning("No planet elements JSON at %s", path)
+        return {}
+    data = orjson.loads(path.read_bytes())
+    result = {int(k): {"a": v["a"], "i": v["i"]} for k, v in data.items()}
+    logger.info("Loaded %d planet element records", len(result))
+    return result
+
+
 def write_systems_global(
     out_dir: Path,
     gms: dict[int, float],
