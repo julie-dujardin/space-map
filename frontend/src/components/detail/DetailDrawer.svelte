@@ -268,8 +268,20 @@
 
 	let innerH = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
 	$effect(() => {
-		const update = () => (innerH = window.innerHeight);
-		update();
+		let prev = window.innerHeight;
+		const update = () => {
+			const next = window.innerHeight;
+			// Re-pin a top-snapped drawer to the new height-derived snap. Without
+			// this, a viewport resize (mobile keyboard shrinking innerHeight)
+			// leaves activeSnapPoint on a px string that no longer exists in
+			// snapPoints, and vaul silently refuses to re-snap — the sheet freezes
+			// at a stale offset until reload.
+			if (activeSnapPoint === `${Math.max(1, prev - TOP_GAP_PX)}px`) {
+				activeSnapPoint = `${Math.max(1, next - TOP_GAP_PX)}px`;
+			}
+			prev = next;
+			innerH = next;
+		};
 		window.addEventListener('resize', update);
 		return () => window.removeEventListener('resize', update);
 	});
@@ -916,6 +928,7 @@
 		bind:activeSnapPoint
 		shouldScaleBackground={false}
 		dismissible={false}
+		repositionInputs={false}
 	>
 		<Vaul.Portal>
 			<Vaul.Content
