@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "Planetas e luas: sem dados após {date}",
 	"out_of_range_major_bodies_before": "Planetas e luas: sem dados antes de {date}",
 	"out_of_range_major_bodies_outside": "Planetas e luas: sem dados neste momento",
+	"body_note_no_model": "nenhum modelo disponível",
+	"body_note_no_radius": "nenhum dado de tamanho disponível",
 	"coverage_pause_title": "Fim dos dados disponíveis alcançado",
 	"coverage_pause_forward": "{name} não tem dados de trajetória depois de {date}",
 	"coverage_pause_backward": "{name} não tem dados de trajetória antes de {date}",

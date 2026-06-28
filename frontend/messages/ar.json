@@ -604,6 +604,8 @@
 	"out_of_range_major_bodies_after": "الكواكب والأقمار: لا توجد بيانات بعد {date}",
 	"out_of_range_major_bodies_before": "الكواكب والأقمار: لا توجد بيانات قبل {date}",
 	"out_of_range_major_bodies_outside": "الكواكب والأقمار: لا توجد بيانات في هذا الوقت",
+	"body_note_no_model": "لا يوجد نموذج متاح",
+	"body_note_no_radius": "لا تتوفر بيانات الحجم",
 	"coverage_pause_title": "وصلنا إلى نهاية البيانات المتاحة",
 	"coverage_pause_forward": "{name}: لا توجد بيانات مسار بعد {date}",
 	"coverage_pause_backward": "{name}: لا توجد بيانات مسار قبل {date}",

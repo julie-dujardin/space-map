@@ -11,7 +11,13 @@ import {
 import { bodyMeshColor, resolveBodyColor } from '$lib/utils';
 import { MINOR_PROMOTED_IDS } from '$lib/constants';
 import { kmToScene } from '$lib/math/units';
-import { ObjectType, effectiveRadiusKm, isAsteroid, type PositionedBody } from '$lib/types/objects';
+import {
+	ObjectType,
+	effectiveRadiusKm,
+	isAsteroid,
+	isNaturalBody,
+	type PositionedBody
+} from '$lib/types/objects';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import { createLabel, getLabelVariant } from '../../label/factory';
 import { attachCanvasForwarders } from '../../label/forward';
@@ -64,6 +70,12 @@ export function buildMajorBodies(
 		const color = resolveBodyColor(body.data);
 		const radius = kmToScene(effectiveRadiusKm(body.data));
 		const isStar = t === ObjectType.STAR;
+		// No measured size → draw the halo only, no fallback sphere (model-bearing
+		// types use the overlay, so their unknown radius is expected).
+		const modelBearing = isModelBearing(body);
+		const radiusKnown = Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0;
+		const noPhysical: 'model' | 'radius' | undefined =
+			!modelBearing && isNaturalBody(t) && !radiusKnown ? 'radius' : undefined;
 
 		const group = new Group();
 		// repositionAll() applies the focus-relative offset each frame.
@@ -74,7 +86,7 @@ export function buildMajorBodies(
 		let eclipseShadow: EclipseSelfUniforms | null = null;
 		let atmosphere: AtmosphereNode | null = null;
 		const extraObjects: Object3D[] = [];
-		if (!isVirtual) {
+		if (!isVirtual && !noPhysical) {
 			if (isStar) {
 				starExtras = buildStarExtras(scene, radius, color, circleTexture);
 				extraObjects.push(starExtras.light, starExtras.corona, starExtras.starPoint);
@@ -88,8 +100,8 @@ export function buildMajorBodies(
 				? makeStarSurfaceMaterial()
 				: new MeshStandardMaterial({ color: bodyMeshColor(body.data) });
 			mesh = new Mesh(geometry, material);
-			// Model-bearing types use the cuboid/model — hide the sphere so it can't flash.
-			if (isModelBearing(body)) mesh.visible = false;
+			// Model-bearing types use the model overlay — hide the sphere so it can't flash.
+			if (modelBearing) mesh.visible = false;
 			if (!isStar) {
 				// Body-on-body shadows are analytical (fragment shader); shadow map unused.
 				eclipseShadow = attachEclipseShadowToBody(material as MeshStandardMaterial);
@@ -146,8 +158,11 @@ export function buildMajorBodies(
 			trail: null,
 			radiusScene: radius,
 			cachedDist: 0,
-			currentSegments: isVirtual ? undefined : isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS,
+			currentSegments:
+				isVirtual || noPhysical ? undefined : isStar ? STAR_SPHERE_SEGMENTS : BODY_SPHERE_SEGMENTS,
 			isMinor,
+			noPhysical,
+			noteEl: null,
 			rings: null,
 			clouds: null,
 			atmosphere,
@@ -187,6 +202,12 @@ export function upgradeBodyMesh(
 ): void {
 	if (bo.mesh !== null) return;
 	const { body, radiusScene } = bo;
+	const modelBearing = isModelBearing(body);
+	// No measured size → stay halo-only; nothing to build.
+	if (!modelBearing && !(Number.isFinite(body.data.radiusKm) && body.data.radiusKm > 0)) {
+		bo.noPhysical = 'radius';
+		return;
+	}
 	// Per-body export colour when known, else neutral white for small bodies/moons
 	// (the per-type tint is UI-only — point clouds/halos/trails keep it).
 	const color = bodyMeshColor(body.data);
@@ -195,7 +216,7 @@ export function upgradeBodyMesh(
 	const material = new MeshStandardMaterial({ color });
 	const mesh = new Mesh(geometry, material);
 	// Probes are model-bearing — hide the sphere.
-	if (isModelBearing(body)) mesh.visible = false;
+	if (modelBearing) mesh.visible = false;
 	scene.add(mesh);
 	bo.mesh = mesh;
 	bo.extraObjects.push(mesh);

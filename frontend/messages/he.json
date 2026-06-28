@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "כוכבי לכת וירחים: אין נתונים אחרי {date}",
 	"out_of_range_major_bodies_before": "כוכבי לכת וירחים: אין נתונים לפני {date}",
 	"out_of_range_major_bodies_outside": "כוכבי לכת וירחים: אין נתונים בזמן זה",
+	"body_note_no_model": "אין מודל זמין",
+	"body_note_no_radius": "אין נתוני גודל",
 	"coverage_pause_title": "הגעת לסוף הנתונים הזמינים",
 	"coverage_pause_forward": "ל־{name} אין נתוני מסלול אחרי {date}",
 	"coverage_pause_backward": "ל־{name} אין נתוני מסלול לפני {date}",

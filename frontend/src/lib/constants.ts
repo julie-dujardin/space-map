@@ -55,9 +55,6 @@ export const SUN_ID = 'naif-10';
 export const EARTH_ID = 'naif-399';
 export const SSB_ID = 'naif-0';
 
-/** Default visual radius (km) for bodies whose radius isn't known. */
-export const DEFAULT_FALLBACK_RADIUS_KM = 0.1;
-
 /**
  * Bodies whose reported radius bounds a gas envelope or plasma (the Sun's
  * photosphere, the giant planets' cloud tops) rather than a solid surface.

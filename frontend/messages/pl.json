@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "Planety i księżyce: brak danych po {date}",
 	"out_of_range_major_bodies_before": "Planety i księżyce: brak danych przed {date}",
 	"out_of_range_major_bodies_outside": "Planety i księżyce: brak danych w tym czasie",
+	"body_note_no_model": "brak dostępnego modelu",
+	"body_note_no_radius": "brak danych o rozmiarze",
 	"coverage_pause_title": "Osiągnięto koniec dostępnych danych",
 	"coverage_pause_forward": "{name} nie ma danych trajektorii po {date}",
 	"coverage_pause_backward": "{name} nie ma danych trajektorii przed {date}",

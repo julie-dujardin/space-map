@@ -521,6 +521,8 @@
 	"out_of_range_major_bodies_after": "行星和卫星：{date} 之后无数据",
 	"out_of_range_major_bodies_before": "行星和卫星：{date} 之前无数据",
 	"out_of_range_major_bodies_outside": "行星和卫星：此时段无数据",
+	"body_note_no_model": "无可用模型",
+	"body_note_no_radius": "无尺寸数据",
 	"coverage_pause_title": "已到达可用数据末端",
 	"coverage_pause_forward": "{name}：{date} 之后无轨道数据",
 	"coverage_pause_backward": "{name}：{date} 之前无轨道数据",

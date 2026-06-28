@@ -1,5 +1,4 @@
 import type { SatRec } from 'satellite.js';
-import { DEFAULT_FALLBACK_RADIUS_KM } from '$lib/constants';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { NutPrec, Orientation, PointingSpec } from '$lib/math/orientation';
 import type { AttitudeTrack } from '$lib/fetch/attitude/track';
@@ -211,21 +210,36 @@ export function sbdbOrbitClass(a: number, e: number): string | null {
 	return 'TNO';
 }
 
-/** Default visual radius in km for bodies with no known radius. */
-const FALLBACK_RADIUS_KM: Partial<Record<ObjectType, number>> = {
-	[ObjectType.SPACECRAFT]: 0.005
-};
-const FALLBACK_RADIUS_KM_BY_SOURCE: Partial<Record<number, number>> = {
+/**
+ * Nominal radii (km) substituted when a body's true size is unknown, keyed by
+ * orbital source (checked first) then object type. Nothing is drawn at these
+ * sizes — unsized bodies render as a halo only. The value only feeds
+ * size-derived behaviour (camera approach distance, LOD, framing), so it's
+ * picked per scale-class: metres for craft, debris and probes; tens of metres
+ * for unsized moons. {@link NOMINAL_RADIUS_KM_DEFAULT} is the generic floor.
+ */
+const NOMINAL_RADIUS_KM_BY_SOURCE: Partial<Record<OrbitalSource, number>> = {
 	[OrbitalSource.SPICE_PROBE]: 0.005,
-	[OrbitalSource.SBDB_MOON]: 0.1 * DEFAULT_FALLBACK_RADIUS_KM
+	[OrbitalSource.SBDB_MOON]: 0.01
 };
+const NOMINAL_RADIUS_KM_BY_TYPE: Partial<Record<ObjectType, number>> = {
+	[ObjectType.SPACECRAFT]: 0.005,
+	[ObjectType.DEBRIS]: 0.005
+};
+const NOMINAL_RADIUS_KM_DEFAULT = 0.1;
 
-/** Effective radius in km, using a fallback when the data has no known positive value. */
+/**
+ * The body's radius in km: the measured value when known, else a nominal
+ * stand-in (see {@link NOMINAL_RADIUS_KM_BY_SOURCE}). Safe wherever a size is
+ * needed for camera/LOD/framing — it never implies a drawn surface.
+ */
 export function effectiveRadiusKm(data: BodyData): number {
 	if (Number.isFinite(data.radiusKm) && data.radiusKm > 0) return data.radiusKm;
-	const bySource = FALLBACK_RADIUS_KM_BY_SOURCE[data.orbitalSource];
-	if (bySource !== undefined) return bySource;
-	return FALLBACK_RADIUS_KM[data.objectType] ?? DEFAULT_FALLBACK_RADIUS_KM;
+	return (
+		NOMINAL_RADIUS_KM_BY_SOURCE[data.orbitalSource] ??
+		NOMINAL_RADIUS_KM_BY_TYPE[data.objectType] ??
+		NOMINAL_RADIUS_KM_DEFAULT
+	);
 }
 
 /** Returns true for any asteroid subtype. */

@@ -519,6 +519,8 @@
 	"out_of_range_major_bodies_after": "惑星・衛星：{date} 以降のデータはありません",
 	"out_of_range_major_bodies_before": "惑星・衛星：{date} より前のデータはありません",
 	"out_of_range_major_bodies_outside": "惑星・衛星：この時刻のデータはありません",
+	"body_note_no_model": "モデルがありません",
+	"body_note_no_radius": "サイズデータがありません",
 	"coverage_pause_title": "利用可能なデータの終端に到達",
 	"coverage_pause_forward": "{name}：{date} 以降の軌道データはありません",
 	"coverage_pause_backward": "{name}：{date} より前の軌道データはありません",

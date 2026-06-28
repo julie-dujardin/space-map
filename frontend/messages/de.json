@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "Planeten und Monde: keine Daten nach {date}",
 	"out_of_range_major_bodies_before": "Planeten und Monde: keine Daten vor {date}",
 	"out_of_range_major_bodies_outside": "Planeten und Monde: keine Daten zu diesem Zeitpunkt",
+	"body_note_no_model": "kein Modell verfügbar",
+	"body_note_no_radius": "keine Größendaten verfügbar",
 	"coverage_pause_title": "Ende der verfügbaren Daten erreicht",
 	"coverage_pause_forward": "{name} hat keine Trajektoriendaten nach {date}",
 	"coverage_pause_backward": "{name} hat keine Trajektoriendaten vor {date}",

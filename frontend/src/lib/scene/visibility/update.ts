@@ -1,6 +1,8 @@
 import { Quaternion } from 'three';
 import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
-import { ObjectType } from '$lib/types/objects';
+import { ObjectType, isMajorBody } from '$lib/types/objects';
+import { sceneToKm } from '$lib/math/units';
+import { setLabelNote } from '../label/factory';
 import {
 	ellipsoidCameraAxes,
 	ellipsoidAnchorOffset,
@@ -118,9 +120,15 @@ export function updateBodyVisibility(
 	const cameraInverse = camera.matrixWorldInverse;
 	for (const bo of bodyObjects.values()) {
 		bo.cachedDist = f64dist(camTrue, bo.body.position);
+		// Note pops in once close enough that a body would be expected: 100 m for
+		// spacecraft (no model), 1 km for natural bodies (no measured size).
+		if (bo.noPhysical) {
+			setLabelNote(bo, sceneToKm(bo.cachedDist) < (bo.noPhysical === 'model' ? 0.1 : 1));
+		}
 		const label = bo.label;
 		if (!label) continue;
-		const r = bo.radiusScene;
+		// No disc to anchor to — keep the label on-center.
+		const r = bo.noPhysical ? 0 : bo.radiusScene;
 		if (!r) {
 			label.position.set(0, 0, 0);
 			continue;
@@ -168,7 +176,8 @@ export function updateBodyVisibility(
 		halfH = screenH * 0.5;
 	let occluderCount = 0;
 	for (const bo of bodyObjects.values()) {
-		const r = bo.radiusScene;
+		// No disc → can't occlude other labels.
+		const r = bo.noPhysical ? 0 : bo.radiusScene;
 		if (!r) continue;
 		const dist = bo.cachedDist;
 		if (dist <= r) continue; // camera inside the bounding sphere → no occlusion
@@ -238,8 +247,11 @@ export function updateBodyVisibility(
 		const isFocused = body.data.id === focusedBodyId;
 		const isSystemRoot = focusedSystemId !== null && body.data.id === focusedSystemId;
 
-		if (bo.mesh === null) {
-			// Halo-only bodies fall into two categories with different gates:
+		// Major bodies (planets/moons/dwarfs/stars) always take the mesh path's
+		// type-aware gates even when sizeless and meshless — else they'd skip the
+		// moon-label cap and show every halo unbounded.
+		if (bo.mesh === null && !isMajorBody(body.data.objectType)) {
+			// Halo-only minor bodies fall into two categories with different gates:
 			// - Barycenters / Lagrange points: navigational aids, always visible
 			//   once built (with a barycenter-primary overlap check so SSB/Sun
 			//   and Pluto-BC/Pluto don't stack).

@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "Planetas y lunas: sin datos después del {date}",
 	"out_of_range_major_bodies_before": "Planetas y lunas: sin datos antes del {date}",
 	"out_of_range_major_bodies_outside": "Planetas y lunas: sin datos en este momento",
+	"body_note_no_model": "no hay modelo disponible",
+	"body_note_no_radius": "no hay datos de tamaño disponibles",
 	"coverage_pause_title": "Se alcanzó el final de los datos disponibles",
 	"coverage_pause_forward": "{name} no tiene datos de trayectoria después del {date}",
 	"coverage_pause_backward": "{name} no tiene datos de trayectoria antes del {date}",

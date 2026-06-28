@@ -104,7 +104,8 @@ export function applyLabelDisplay(
 	if (!label) return false;
 	const wasVisible = label.visible;
 
-	const screenR = radiusScene > 0 ? (radiusScene / distToBody) * projScale : 0;
+	// noPhysical bodies have no disc — halo never yields to a sphere, label stays centered.
+	const screenR = !bo.noPhysical && radiusScene > 0 ? (radiusScene / distToBody) * projScale : 0;
 	const isFocused = bo.body.data.id === focusedBodyId;
 	// Hide the halo ring (and its accompanying trail) whenever the rendered
 	// sphere is at least the halo's size — the sphere itself substitutes for

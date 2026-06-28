@@ -19,3 +19,8 @@ export const KM_DAY_TO_AU_DAY = 1 / AU_KM;
 export function kmToScene(km: number): number {
 	return (km / AU_KM) * AU_SCALE;
 }
+
+/** Convert scene units to km */
+export function sceneToKm(scene: number): number {
+	return (scene / AU_SCALE) * AU_KM;
+}

@@ -579,6 +579,8 @@
 	"out_of_range_major_bodies_after": "Planètes et lunes : aucune donnée après le {date}",
 	"out_of_range_major_bodies_before": "Planètes et lunes : aucune donnée avant le {date}",
 	"out_of_range_major_bodies_outside": "Planètes et lunes : aucune donnée à cette date",
+	"body_note_no_model": "aucun modèle disponible",
+	"body_note_no_radius": "aucune donnée de taille disponible",
 	"coverage_pause_title": "Fin des données disponibles",
 	"coverage_pause_forward": "{name} n'a pas de données de trajectoire après le {date}",
 	"coverage_pause_backward": "{name} n'a pas de données de trajectoire avant le {date}",

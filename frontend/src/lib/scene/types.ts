@@ -116,6 +116,10 @@ export interface BodyObjects {
 	modelLoading?: boolean;
 	/** Bumped by unload; in-flight loads re-check after each await and abort if it changed. */
 	modelLoadEpoch?: number;
+	/** Nothing physical to draw — drives the close-range note under the label.
+	 *  `'radius'`: natural body, no measured size. `'model'`: spacecraft, no GLB. */
+	noPhysical?: 'model' | 'radius';
+	noteEl?: HTMLElement | null;
 }
 
 export interface Callbacks {

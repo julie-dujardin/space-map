@@ -71,6 +71,28 @@
 	font-size: 16px;
 }
 
+/* Close-range note for bodies with nothing physical to draw. Dim, not red —
+ * informational, not an error. */
+.scene-label__note {
+	position: absolute;
+	top: 28px;
+	/* Align with the name text start (halo width + name padding). */
+	inset-inline-start: 32px;
+	padding-inline-start: 8px;
+	white-space: nowrap;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.6);
+	text-shadow:
+		0 0 3px #000,
+		0 0 3px #000;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.scene-label__note--visible {
+	opacity: 1;
+}
+
 /* IAU surface-feature labels — created by surface/nomenclature.ts. Smaller,
  * dimmer than body labels; clickable to open the feature drawer. */
 .scene-feature-label {

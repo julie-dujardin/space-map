@@ -593,6 +593,8 @@
 	"out_of_range_major_bodies_after": "Pianeti e lune: nessun dato dopo il {date}",
 	"out_of_range_major_bodies_before": "Pianeti e lune: nessun dato prima del {date}",
 	"out_of_range_major_bodies_outside": "Pianeti e lune: nessun dato in questo momento",
+	"body_note_no_model": "nessun modello disponibile",
+	"body_note_no_radius": "nessun dato sulle dimensioni disponibile",
 	"coverage_pause_title": "Raggiunta la fine dei dati disponibili",
 	"coverage_pause_forward": "{name} non ha dati di traiettoria oltre il {date}",
 	"coverage_pause_backward": "{name} non ha dati di traiettoria prima del {date}",

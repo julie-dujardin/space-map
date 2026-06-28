@@ -18,7 +18,6 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
 import { OrbitalSource } from '$lib/fetch/position/format';
-import { buildFallbackSpacecraftModel } from './fallback-model';
 import type { BodyObjects } from '../../types';
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
@@ -106,13 +105,9 @@ export async function loadBodyModel(
 		}
 		const slug = detail.global?.model_name;
 		if (!slug) {
-			// Model-bearing → cuboid placeholder; natural bodies restore their sphere.
+			// Model-bearing → halo only (close-range note); natural bodies restore their sphere.
 			if (modelBearing) {
-				if ((bo.modelLoadEpoch ?? 0) !== epoch || !bo.mesh) return;
-				const fallback = buildFallbackSpacecraftModel();
-				fitToUnitRadius(fallback);
-				modelScene.add(fallback);
-				bo.model = fallback;
+				bo.noPhysical = 'model';
 			} else if (bo.mesh) {
 				bo.mesh.visible = true;
 			}

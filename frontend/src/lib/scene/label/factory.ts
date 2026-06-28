@@ -1,8 +1,29 @@
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ObjectType, isAsteroid, isMajorBody, type PositionedBody } from '$lib/types/objects';
+import * as m from '$lib/paraglide/messages.js';
+import type { BodyObjects } from '../types';
 import './label.css';
 
 export type LabelVariant = 'major' | 'spacecraft' | 'debris' | 'none';
+
+/** Toggle the close-range "no … available" note under a body's label. Nested in
+ *  the label element so it inherits the label's per-frame display culling. */
+export function setLabelNote(bo: BodyObjects, show: boolean): void {
+	if (show) {
+		if (!bo.noteEl) {
+			if (!bo.label || !bo.noPhysical) return;
+			const note = document.createElement('span');
+			note.className = 'scene-label__note';
+			note.textContent =
+				bo.noPhysical === 'model' ? m.body_note_no_model() : m.body_note_no_radius();
+			bo.label.element.appendChild(note);
+			bo.noteEl = note;
+		}
+		bo.noteEl.classList.add('scene-label__note--visible');
+	} else if (bo.noteEl) {
+		bo.noteEl.classList.remove('scene-label__note--visible');
+	}
+}
 
 /** Lucide `package` — the flying spacecraft glyph. */
 const SPACECRAFT_ICON_D =
