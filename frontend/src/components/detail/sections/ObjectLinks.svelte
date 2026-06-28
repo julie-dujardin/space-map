@@ -1,6 +1,5 @@
 <script lang="ts">
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
-	import { Separator } from '$lib/components/ui/separator/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { GlobalObjectData, LocalizedObjectData } from '$lib/fetch/objects/object-data';
 
@@ -63,7 +62,7 @@
 {#if links.length || designation || aliases.length}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.links()}</h3>
-		<Separator />
+		<div class="border-border/60 border-t"></div>
 		<div class="flex flex-col gap-2.5 text-sm">
 			{#if designation}
 				<p class="text-muted-foreground">{m.designation_label({ designation })}</p>

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { ChildGroupEntry } from '$lib/fetch/groups/details';
 	import { categoryLabel, CATEGORY_SLUG_PREFIX, type GroupType } from '$lib/fetch/groups/registry';
 	import { groupTypeLabelPlural } from '$lib/format/group';
@@ -37,7 +36,7 @@
 {#each sections as [role, items] (role)}
 	<div class="flex flex-col gap-1.5">
 		<h3 class="text-sm font-medium">{groupTypeLabelPlural(role)}</h3>
-		<Separator />
+		<div class="border-border/60 border-t"></div>
 		<div class="flex flex-wrap gap-1.5 pt-0.5">
 			{#each items as c (c.primary_id)}
 				<ZoneChip slug={c.primary_id ?? ''} name={childName(c)} n={c.n} />
