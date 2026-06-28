@@ -369,9 +369,13 @@ export class PointCloudSystem {
 		) {
 			return;
 		}
-		const skip = new Set(this.bodyObjects.keys());
 		const seedBasis: Vec3 = [this.basisPos[0], this.basisPos[1], this.basisPos[2]];
 		const k = this.orbitPool.workerCount;
+		// The skip-set (promoted ids) is captured fresh per group right before its
+		// pack, not once here: this pass is async, and a promotion that lands during
+		// an earlier group's await would otherwise be missed — leaving its body in
+		// the cloud as a live dot *and* a halo, with the consumed dirty marker
+		// offering no second chance.
 
 		for (const zone of [...this.ctx.bodies.dirtyAsteroidZones]) {
 			const bucket = this.ctx.bodies.asteroidBodiesByZone.get(zone);
@@ -379,6 +383,7 @@ export class PointCloudSystem {
 			this.ctx.bodies.dirtyAsteroidZones.delete(zone);
 			// Fill the worker SoA straight from the bucket's columns — no
 			// PositionedBody[] round-trip, no throwaway main-thread Kepler solve.
+			const skip = new Set(this.bodyObjects.keys());
 			const { groups, baseWorker } = bucket
 				? await bucket.buildWorkerGroups(zone, k, skip, false)
 				: { groups: [], baseWorker: 0 };
@@ -443,6 +448,9 @@ export class PointCloudSystem {
 			this.ctx.bodies.dirtySpacecraftGroups.delete(gid);
 			const allBodies = bucket ? Array.from(bucket.values()) : [];
 			const { buckets, baseWorker } = await partitionForWorkersSliced(gid, allBodies, k);
+			// Capture after the partition await so group promotion (which runs on a
+			// chunk flush, possibly between this pass starting and here) is reflected.
+			const skip = new Set(this.bodyObjects.keys());
 			for (let i = 0; i < k; i++) {
 				const key = `${gid}#${i}`;
 				const groupId = `spacecraft:${key}`;
