@@ -3,13 +3,11 @@ import { env } from '$env/dynamic/public';
 export const DATA_BASE = env.PUBLIC_DATA_URL || 'https://static.spacemap.co';
 
 /**
- * Images are served from their own origin (a separate Workers static-assets
- * project) so the data deploy stays small. Falls back to DATA_BASE when unset,
- * which keeps dev (`/data` proxy serves everything) working without extra
- * config; prod must set PUBLIC_IMAGES_URL since the data project no longer
- * carries `v1/images`.
+ * Images ship from their own origin (a separate Workers static-assets project)
+ * so the frequently-redeployed data tree stays small. Follows an explicit data
+ * origin when set — dev's `/data` proxy serves images too — else the prod host.
  */
-export const IMAGES_BASE = env.PUBLIC_IMAGES_URL || DATA_BASE;
+export const IMAGES_BASE = env.PUBLIC_DATA_URL || 'https://images.spacemap.co';
 
 /**
  * Per-content-class cache-busting tokens from `metadata.json → versions`.
