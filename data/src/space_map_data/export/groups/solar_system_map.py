@@ -10,18 +10,26 @@ built for the group bundles, so no extra full-catalog scan.
 
 import gzip
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
 import orjson
 from sqlalchemy.orm import Session
 
+from space_map_data.download.providers.bjj_rings import (
+    INNER_RADIUS_KM as SATURN_RING_INNER_KM,
+    OUTER_RADIUS_KM as SATURN_RING_OUTER_KM,
+)
 from space_map_data.export.groups.categories import _wikidata_diameter_km
 from space_map_data.export.groups.registry import CLASS_SLUG_PREFIX
 from space_map_data.export.groups.small_body import OrbitClassSample
 from space_map_data.export.notable import render_size
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.small_body_color import resolve_small_body_color
+from space_map_data.export.small_body_color import (
+    resolve_moon_color,
+    resolve_small_body_color,
+)
 from space_map_data.export.wikidata import WikidataEntityCache
 from space_map_data.models.object.main import Object, ObjectType
 from space_map_data.models.object.sbdb import SBDB, CometPrefix, OrbitClass
@@ -34,6 +42,17 @@ logger = logging.getLogger(__name__)
 # count is the only knob.
 ASTEROID_COUNT = 3
 _MAIN_BELT_CLASSES = (OrbitClass.IMB, OrbitClass.MBA, OrbitClass.OMB)
+
+# Major moons stacked above each planet: big ones only, capped per planet so the
+# stacks stay short. Charon-and-friends (dwarf moons) are left out — Pluto sits
+# in the crowded dwarf cluster.
+MOON_COUNT = 4
+MIN_MOON_DIAMETER_KM = 1000.0
+# A planet only grows a moons tab past this many moons (mirrors the frontend's
+# STRIP_CAPACITY). Below it (Earth, Mars) a moon links to itself, not a tab.
+MOON_TAB_THRESHOLD = 5
+
+_SATURN_NAIF = 699
 
 # Belt bands: the dotted regions drawn behind the bodies. Each links to its
 # orbit-class group page (Kuiper→TNO is approximate but close enough). The label
@@ -57,11 +76,17 @@ class MapObject:
     id: str  # Object.id — routing/focus id and localized-name key
     qid: str | None
     name: str  # English fallback; frontend overrides with the localized label
-    kind: str  # star | planet | dwarf | asteroid
-    a: float  # semi-major axis [AU] — log x position
-    i: float  # inclination to ecliptic [deg] — vertical offset
+    kind: str  # star | planet | dwarf | asteroid | moon
+    a: float  # semi-major axis [AU] — log x position (moons inherit their planet's)
+    i: float  # inclination to ecliptic [deg] — vertical offset (0 for moons)
     diameter_km: float
     color: str | None  # resolved tint for small bodies; None lets the frontend tint
+    parent: str | None = None  # moons: parent planet Object.id (placement + link)
+    # moons: True → link to the parent's moons tab; False → focus the moon itself
+    # (parents with too few moons have no tab, e.g. Earth, Mars).
+    link_parent: bool = False
+    rings: dict | None = None  # ringed planet: {"inner": r, "outer": r} in planet radii
+    moon_count: int | None = None  # planets: total moons (shown in the moon tooltip)
 
 
 @dataclass
@@ -92,7 +117,10 @@ def _diameter_km(
 
 
 def _star_and_planets(
-    session: Session, radii: dict[int, dict], planet_elements: dict[int, dict]
+    session: Session,
+    radii: dict[int, dict],
+    planet_elements: dict[int, dict],
+    moon_counts: dict[str, int],
 ) -> list[MapObject]:
     """The Sun (pinned at a=0) and the eight planets, in heliocentric order."""
     out: list[MapObject] = []
@@ -129,9 +157,113 @@ def _star_and_planets(
                 i=i,
                 diameter_km=diameter,
                 color=None,
+                rings=_saturn_rings(naif_id, radii),
+                moon_count=moon_counts.get(obj_id) if kind == "planet" else None,
             )
         )
     return out
+
+
+def _saturn_rings(naif_id: int | None, radii: dict[int, dict]) -> dict | None:
+    """Saturn's ring span as multiples of its equatorial radius, else None."""
+    if naif_id != _SATURN_NAIF:
+        return None
+    pck = radii.get(_SATURN_NAIF)
+    if pck is None:
+        return None
+    eq = max(pck["a"], pck["b"], pck["c"])
+    return {
+        "inner": round(SATURN_RING_INNER_KM / eq, 3),
+        "outer": round(SATURN_RING_OUTER_KM / eq, 3),
+    }
+
+
+def _moons(
+    session: Session,
+    radii: dict[int, dict],
+    planet_elements: dict[int, dict],
+    count: int,
+    min_diameter: float,
+) -> tuple[list[MapObject], dict[str, int]]:
+    """The major moons of each planet, plus each planet's total moon count.
+
+    Placement rides the parent's heliocentric x (moons share its ``a``); the
+    frontend fans them vertically. Only planet moons ≥ ``min_diameter`` km, top
+    ``count`` per planet. ``link_parent`` records whether the parent has enough
+    moons for a moons tab; the returned counts (all moons per planet) feed the
+    planet dots so the moon tooltip can read "N moons".
+    """
+    # Moons orbit the planet or its system barycenter; map a barycenter parent to
+    # its planet child so a moon of '5' attaches to Jupiter (599).
+    bary_to_host = {
+        parent_id: host_id
+        for parent_id, host_id in session.query(Object.parent_id, Object.id)
+        .filter(
+            Object.object_type.in_((ObjectType.planet, ObjectType.dwarf_planet)),
+            Object.parent_id.isnot(None),
+        )
+        .all()
+    }
+    planets = {
+        obj_id: naif_id
+        for obj_id, naif_id in session.query(Object.id, Object.naif_id).filter(
+            Object.object_type == ObjectType.planet
+        )
+    }
+    rows = (
+        session.query(
+            Object.id,
+            Object.naif_id,
+            Object.wikidata_qid,
+            Object.name,
+            Object.parent_id,
+        )
+        .filter(Object.object_type == ObjectType.moon)
+        .all()
+    )
+    host_total: dict[str, int] = defaultdict(int)
+    candidates: dict[
+        str, list[tuple[float, str, int | None, str | None, str | None]]
+    ] = defaultdict(list)
+    for obj_id, naif_id, qid, name, parent_id in rows:
+        host = bary_to_host.get(parent_id, parent_id)
+        if host not in planets:  # asteroid/dwarf moons aren't stacked
+            continue
+        host_total[host] += 1
+        diameter = _diameter_km(naif_id, qid, radii)
+        if diameter is None or diameter < min_diameter:
+            continue
+        candidates[host].append((diameter, obj_id, naif_id, qid, name))
+
+    out: list[MapObject] = []
+    for host, moons in candidates.items():
+        a = planet_elements.get(planets[host], {}).get("a", 0.0)
+        link_parent = host_total[host] > MOON_TAB_THRESHOLD
+        for diameter, obj_id, naif_id, qid, name in sorted(
+            moons, key=lambda m: m[0], reverse=True
+        )[:count]:
+            out.append(
+                MapObject(
+                    id=obj_id,
+                    qid=qid,
+                    name=name or obj_id,
+                    kind="moon",
+                    a=a,
+                    i=0.0,
+                    diameter_km=diameter,
+                    color=resolve_moon_color(naif_id)[0],
+                    parent=host,
+                    link_parent=link_parent,
+                )
+            )
+    logger.info(
+        "Minimap moons: %d across %d planets (≥%.0f km, ≤%d each)",
+        len(out),
+        len(candidates),
+        min_diameter,
+        count,
+    )
+    return out, dict(host_total)
 
 
 def _dwarf_planets(
@@ -321,10 +453,14 @@ def build_solar_system_map(
 ) -> SolarSystemMap:
     """Assemble the minimap: Sun + planets + dwarf planets + the largest
     main-belt asteroids, plus the belt bands."""
+    moons, moon_counts = _moons(
+        session, radii, planet_elements, MOON_COUNT, MIN_MOON_DIAMETER_KM
+    )
     objects = (
-        _star_and_planets(session, radii, planet_elements)
+        _star_and_planets(session, radii, planet_elements, moon_counts)
         + _dwarf_planets(session, entities, units, planet_elements)
         + _asteroids(session, ASTEROID_COUNT)
+        + moons
     )
     belts = _belts(orbit_samples)
     logger.info(
@@ -337,22 +473,32 @@ def build_solar_system_map(
     return SolarSystemMap(objects=objects, belts=belts)
 
 
+def _object_payload(o: MapObject) -> dict:
+    """Wire shape for one map object; moon/ring fields are emitted only when set."""
+    entry: dict = {
+        "id": o.id,
+        "qid": o.qid,
+        "name": o.name,
+        "kind": o.kind,
+        "a": o.a,
+        "i": o.i,
+        "diameter_km": o.diameter_km,
+        "color": o.color,
+    }
+    if o.parent is not None:
+        entry["parent"] = o.parent
+        entry["link_parent"] = o.link_parent
+    if o.rings is not None:
+        entry["rings"] = o.rings
+    if o.moon_count is not None:
+        entry["moon_count"] = o.moon_count
+    return entry
+
+
 def write_solar_system_map(out_dir: Path, smap: SolarSystemMap) -> None:
     """Write groups/__solar_system_map__.json.gz."""
     payload = {
-        "objects": [
-            {
-                "id": o.id,
-                "qid": o.qid,
-                "name": o.name,
-                "kind": o.kind,
-                "a": o.a,
-                "i": o.i,
-                "diameter_km": o.diameter_km,
-                "color": o.color,
-            }
-            for o in smap.objects
-        ],
+        "objects": [_object_payload(o) for o in smap.objects],
         "belts": [
             {
                 "slug": b.slug,

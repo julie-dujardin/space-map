@@ -210,11 +210,17 @@ interface SolarSystemMapObject {
   id: string;          // Object.id — routing/focus id and localized-name key
   qid: string | null;  // Wikidata QID
   name: string;        // English fallback; frontend prefers the localized label
-  kind: 'star' | 'planet' | 'dwarf' | 'asteroid';
-  a: number;           // Semi-major axis [AU] — log x position
-  i: number;           // Inclination to ecliptic [deg] — vertical offset
+  kind: 'star' | 'planet' | 'dwarf' | 'asteroid' | 'moon';
+  a: number;           // Semi-major axis [AU] — log x (moons inherit their planet's)
+  i: number;           // Inclination to ecliptic [deg] — vertical offset (0 for moons)
   diameter_km: number;
   color: string | null; // resolved small-body tint; null → frontend palette
+  // Moons only — major moons (≥1000 km, ≤4/planet) stacked above their planet:
+  parent?: string;      // parent planet Object.id (placement anchor + link target)
+  link_parent?: boolean; // true → link to the planet's moons tab; false → the moon
+  // Ringed planets only (Saturn): ring span as multiples of the equatorial radius:
+  rings?: { inner: number; outer: number };
+  moon_count?: number;  // planets: total moons, shown in the moon tooltip
 }
 interface SolarSystemMapBelt {
   slug: string;        // linked group slug (class-MBA / class-TNO)

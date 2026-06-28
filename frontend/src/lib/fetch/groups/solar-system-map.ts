@@ -13,14 +13,22 @@ export interface SolarSystemMapObject {
 	qid: string | null;
 	/** English fallback; overridden by the localized name where available. */
 	name: string;
-	kind: 'star' | 'planet' | 'dwarf' | 'asteroid';
-	/** Semi-major axis [AU] — log x position. */
+	kind: 'star' | 'planet' | 'dwarf' | 'asteroid' | 'moon';
+	/** Semi-major axis [AU] — log x position (moons inherit their planet's). */
 	a: number;
-	/** Inclination to the ecliptic [deg] — vertical offset. */
+	/** Inclination to the ecliptic [deg] — vertical offset (0 for moons). */
 	i: number;
 	diameter_km: number;
 	/** Resolved tint for small bodies; null falls back to the shared palette. */
 	color: string | null;
+	/** Moons: parent planet Object.id — placement anchor + link target. */
+	parent?: string;
+	/** Moons: true → link to the parent's moons tab; false → focus the moon. */
+	link_parent?: boolean;
+	/** Ringed planet: ring span as multiples of the planet's equatorial radius. */
+	rings?: { inner: number; outer: number };
+	/** Planets: total moon count, shown in the moon tooltip ("Jupiter · N moons"). */
+	moon_count?: number;
 }
 
 export interface SolarSystemMapBelt {

@@ -25,6 +25,18 @@
 	const PX_PER_DEG = 1.8; // inclination → vertical offset
 	const MAX_OFFSET = 82;
 
+	const MOON_GAP = 4; // px between a planet's top edge and its first moon
+	const MOON_SPACING = 3; // px between stacked moons
+
+	// Hit targets are padded well beyond the dots: the chart renders at ~0.4×, so
+	// a viewBox unit is a fraction of a device pixel.
+	const HIT_MARGIN = 16;
+	const MOON_ZONE_W = 34; // width of the per-planet moon hover/click zone
+	const MOON_ZONE_PAD = 7; // vertical padding around the moon stack
+
+	const RING_TILT = -18; // deg, the ring ellipse's apparent tilt
+	const RING_FORESHORTEN = 0.42; // ry/rx — how edge-on the rings read
+
 	const AXIS_TICKS = [0.3, 1, 3, 10, 30];
 
 	const TIP_HALF = 64; // px; keeps the tooltip's center this far from either edge
@@ -89,6 +101,8 @@
 		cy: number;
 		r: number;
 		fill: string;
+		rings?: { inner: number; outer: number };
+		moonCount?: number;
 	}
 
 	function minDistance(cx: number, cy: number, placed: PlacedBody[]): number {
@@ -103,7 +117,9 @@
 		// the ecliptic) is chosen greedily to sit farthest from already-placed
 		// bodies, so same-distance / same-inclination pairs (Haumea & Makemake)
 		// split to opposite sides instead of overlapping.
-		const ordered = [...file.objects].sort((a, b) => a.a - b.a);
+		// Moons don't belong on the heliocentric axis — they stack on their planet
+		// (see placedMoons); everything else is placed by distance here.
+		const ordered = file.objects.filter((o) => o.kind !== 'moon').sort((a, b) => a.a - b.a);
 		const placed: PlacedBody[] = [];
 		for (const o of ordered) {
 			const r = o.kind === 'star' ? 0 : Math.max(MIN_R, (o.diameter_km / 2) * PX_PER_KM);
@@ -124,7 +140,9 @@
 				cx,
 				cy,
 				r,
-				fill: o.color || BODY_COLORS[o.id] || DEFAULT_BODY_COLOR
+				fill: o.color || BODY_COLORS[o.id] || DEFAULT_BODY_COLOR,
+				rings: o.rings,
+				moonCount: o.moon_count
 			});
 		}
 		return placed;
@@ -135,6 +153,99 @@
 	const SUN_CX = X_LEFT - 2 - SUN_R; // right limb sits just left of the first planet
 
 	let planets = $derived(bodies.filter((b) => b.kind !== 'star'));
+
+	interface PlacedMoon {
+		id: string;
+		name: string;
+		parentId: string;
+		parentName: string;
+		parentMoonCount: number;
+		linkParent: boolean;
+		cx: number;
+		cy: number;
+		r: number;
+		fill: string;
+	}
+	// Major moons stack straight up from their planet, largest nearest it, above
+	// the planet's rings if any.
+	let placedMoons = $derived.by<PlacedMoon[]>(() => {
+		if (!file) return [];
+		const byId = new Map(bodies.map((b) => [b.id, b]));
+		const groups = new Map<string, SolarSystemMapObject[]>();
+		for (const o of file.objects) {
+			if (o.kind !== 'moon' || !o.parent) continue;
+			const g = groups.get(o.parent);
+			if (g) g.push(o);
+			else groups.set(o.parent, [o]);
+		}
+		const out: PlacedMoon[] = [];
+		for (const [parentId, moons] of groups) {
+			const parent = byId.get(parentId);
+			if (!parent) continue;
+			const ringTop = parent.rings ? parent.r * parent.rings.outer * RING_FORESHORTEN : 0;
+			let y = parent.cy - Math.max(parent.r, ringTop) - MOON_GAP;
+			for (const m of [...moons].sort((a, b) => b.diameter_km - a.diameter_km)) {
+				const r = Math.max(MIN_R, (m.diameter_km / 2) * PX_PER_KM);
+				y -= r;
+				out.push({
+					id: m.id,
+					name: displayName(m),
+					parentId,
+					parentName: parent.name,
+					parentMoonCount: parent.moonCount ?? 0,
+					linkParent: m.link_parent ?? false,
+					cx: parent.cx,
+					cy: y,
+					r,
+					fill: m.color || BODY_COLORS[m.id] || DEFAULT_BODY_COLOR
+				});
+				y -= r + MOON_SPACING;
+			}
+		}
+		return out;
+	});
+
+	interface MoonZone {
+		parentId: string;
+		parentName: string;
+		parentMoonCount: number;
+		linkParent: boolean;
+		moonId: string; // representative (largest) moon — the single-moon link/name
+		moonName: string;
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	}
+	// One hover/click zone covers each planet's whole moon stack — the tooltip
+	// reads the planet, not the individual moon, so per-moon targets aren't needed.
+	let moonZones = $derived.by<MoonZone[]>(() => {
+		const groups = new Map<string, PlacedMoon[]>();
+		for (const mn of placedMoons) {
+			const g = groups.get(mn.parentId);
+			if (g) g.push(mn);
+			else groups.set(mn.parentId, [mn]);
+		}
+		const out: MoonZone[] = [];
+		for (const [parentId, moons] of groups) {
+			const top = Math.min(...moons.map((mn) => mn.cy - mn.r));
+			const bottom = Math.max(...moons.map((mn) => mn.cy + mn.r));
+			const first = moons[0]; // largest, nearest the planet
+			out.push({
+				parentId,
+				parentName: first.parentName,
+				parentMoonCount: first.parentMoonCount,
+				linkParent: first.linkParent,
+				moonId: first.id,
+				moonName: first.name,
+				x: first.cx - MOON_ZONE_W / 2,
+				y: top - MOON_ZONE_PAD,
+				width: MOON_ZONE_W,
+				height: bottom - top + 2 * MOON_ZONE_PAD
+			});
+		}
+		return out;
+	});
 
 	interface PlacedBelt extends SolarSystemMapBelt {
 		x: number;
@@ -155,6 +266,7 @@
 	});
 
 	let hoveredId = $state<string | null>(null);
+	let hoveredMoonZone = $state<string | null>(null);
 	let hoveredBeltSlug = $state<string | null>(null);
 	let containerW = $state(0);
 
@@ -164,7 +276,7 @@
 		title: string;
 		sub: string;
 	}
-	// One tooltip serves the Sun, the bodies and the belt bands.
+	// One tooltip serves the Sun, the bodies, the moons and the belt bands.
 	let tip = $derived.by<Tip | null>(() => {
 		if (sun && hoveredId === sun.id)
 			return { cx: X_LEFT, cy: 40, title: displayName(sun), sub: '' };
@@ -176,6 +288,14 @@
 				title: b.name,
 				sub: `${b.a.toFixed(b.a < 10 ? 1 : 0)} AU`
 			};
+		const zone = moonZones.find((z) => z.parentId === hoveredMoonZone);
+		if (zone) {
+			const cx = zone.x + zone.width / 2;
+			// Giants read as "Planet · N moons"; Earth's single Moon keeps its name.
+			return zone.linkParent
+				? { cx, cy: zone.y, title: zone.parentName, sub: `${zone.parentMoonCount} moons` }
+				: { cx, cy: zone.y, title: zone.moonName, sub: zone.parentName };
+		}
 		const belt = belts.find((bl) => bl.slug === hoveredBeltSlug);
 		if (belt)
 			return {
@@ -291,6 +411,25 @@
 			</a>
 		{/if}
 
+		<!-- Ringed planets (Saturn): a tilted, foreshortened band behind the dot.
+		     stroke-width is the ring thickness; radius is its mid-line. -->
+		{#each planets as b (b.id)}
+			{#if b.rings}
+				{@const mid = (b.r * (b.rings.inner + b.rings.outer)) / 2}
+				<ellipse
+					cx={b.cx}
+					cy={b.cy}
+					rx={mid}
+					ry={mid * RING_FORESHORTEN}
+					transform="rotate({RING_TILT} {b.cx} {b.cy})"
+					fill="none"
+					stroke="#d9c89f"
+					stroke-width={b.r * (b.rings.outer - b.rings.inner)}
+					opacity="0.45"
+				/>
+			{/if}
+		{/each}
+
 		<!-- Bodies: each is a focus link (middle/⌘-click opens the real URL). -->
 		{#each planets as b (b.id)}
 			<a
@@ -314,8 +453,47 @@
 					/>
 				{/if}
 				<circle cx={b.cx} cy={b.cy} r={b.r} fill={b.fill} />
-				<!-- Transparent hit target so tiny dots stay clickable/hoverable. -->
-				<circle cx={b.cx} cy={b.cy} r={Math.max(b.r, 11)} fill="transparent" />
+				<!-- Transparent hit target — a generous margin around the dot, since the
+				     chart renders at ~0.4× so viewBox units are well under a device px. -->
+				<circle cx={b.cx} cy={b.cy} r={b.r + HIT_MARGIN} fill="transparent" />
+			</a>
+		{/each}
+
+		<!-- Moon stacks: dots, a per-planet hover highlight, and one hit zone per
+		     planet covering the whole stack (the tooltip reads the planet, not the
+		     individual moon). The zone links to the moons tab, or to the moon itself
+		     when the planet has too few moons for a tab (Earth). -->
+		{#each moonZones as z (z.parentId)}
+			{#if hoveredMoonZone === z.parentId}
+				<rect
+					x={z.x}
+					y={z.y}
+					width={z.width}
+					height={z.height}
+					rx="4"
+					fill="currentColor"
+					opacity="0.1"
+				/>
+			{/if}
+		{/each}
+		{#each placedMoons as mn (mn.id)}
+			<circle cx={mn.cx} cy={mn.cy} r={mn.r} fill={mn.fill} />
+		{/each}
+		{#each moonZones as z (z.parentId)}
+			<a
+				href={z.linkParent
+					? focusHref(appState, z.parentId, z.parentName, 'members')
+					: focusHref(appState, z.moonId, z.moonName)}
+				onclick={z.linkParent
+					? focusClick(focusObject, z.parentId, z.parentName, { tab: 'members' })
+					: focusClick(focusObject, z.moonId, z.moonName)}
+				onpointerenter={() => (hoveredMoonZone = z.parentId)}
+				onpointerleave={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
+				onfocus={() => (hoveredMoonZone = z.parentId)}
+				onblur={() => hoveredMoonZone === z.parentId && (hoveredMoonZone = null)}
+				aria-label={z.linkParent ? `${z.parentName} moons` : z.moonName}
+			>
+				<rect x={z.x} y={z.y} width={z.width} height={z.height} fill="transparent" />
 			</a>
 		{/each}
 	</svg>
