@@ -138,6 +138,25 @@
 	let containerEl = $state<HTMLDivElement | null>(null);
 	let hoveredId = $state<string | null>(null);
 
+	// Hover-capable pointers get real <a> links + live hover; touch gets <button>
+	// (no link callout on long-press) + a drag-to-scrub preview. Desktop-default
+	// so SSR/first paint renders the link variant.
+	let hoverCapable = $state(true);
+	$effect(() => {
+		const mq = window.matchMedia('(hover: hover)');
+		const update = () => (hoverCapable = mq.matches);
+		update();
+		mq.addEventListener('change', update);
+		return () => mq.removeEventListener('change', update);
+	});
+
+	// Touch scrub: distinguish a tap (focuses, via native button click) from a
+	// drag (previews). We only start previewing past DRAG_SLOP so a tap stays a tap.
+	const DRAG_SLOP = 8;
+	let downX: number | null = null;
+	let downY = 0;
+	let scrubbing = false;
+
 	interface LaidOut extends Body {
 		pr: number; // sphere pixel radius
 		cx: number; // center x (px, left origin)
@@ -215,11 +234,42 @@
 		hoveredId = null; // a hovered body from the old page would strand the glow
 	}
 
+	function focusBody(id: string) {
+		if (!focusObject) return;
+		const b = items.find((x) => x.id === id);
+		focusObject(id, b?.name ?? id, { moveCamera: true });
+	}
+
 	function focusHovered(e: MouseEvent) {
 		if (isModifiedClick(e) || !focusObject || !hoveredId) return;
 		e.preventDefault();
-		const b = items.find((x) => x.id === hoveredId);
-		focusObject(hoveredId, b?.name ?? hoveredId, { moveCamera: true });
+		focusBody(hoveredId);
+	}
+
+	// Mouse: hover tracks the pointer directly. Touch/pen: preview only once a
+	// drag passes DRAG_SLOP, so a tap (which fires the button's click → focus)
+	// never flashes the spread/glow.
+	function onPointerMove(e: PointerEvent) {
+		if (e.pointerType === 'mouse') {
+			hoveredId = pickAt(e.clientX, e.clientY);
+			return;
+		}
+		if (downX === null) return;
+		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
+		scrubbing = true;
+		hoveredId = pickAt(e.clientX, e.clientY);
+	}
+
+	function onPointerDown(e: PointerEvent) {
+		downX = e.clientX;
+		downY = e.clientY;
+		scrubbing = false;
+	}
+
+	function endScrub() {
+		if (scrubbing) hoveredId = null;
+		downX = null;
+		scrubbing = false;
 	}
 
 	// --- Three.js: a flat, orthographic, pixel-space lineup of textured spheres.
@@ -593,9 +643,15 @@
 	<div
 		bind:this={containerEl}
 		bind:clientWidth={width}
-		onpointermove={(e) => (hoveredId = pickAt(e.clientX, e.clientY))}
-		onpointerleave={() => (hoveredId = null)}
-		class="bg-muted/30 relative w-full overflow-hidden rounded-md"
+		onpointerdown={onPointerDown}
+		onpointermove={onPointerMove}
+		onpointerup={endScrub}
+		onpointercancel={endScrub}
+		onpointerleave={() => {
+			hoveredId = null;
+			endScrub();
+		}}
+		class="bg-muted/30 relative w-full touch-pan-y overflow-hidden rounded-md"
 		style="height: {HEIGHT}px"
 		role="group"
 		aria-label={ariaLabel}
@@ -603,18 +659,29 @@
 		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
 
 		{#each layout as p (p.id)}
-			<!-- Keyboard/href target per body column; mouse hover is resolved by
-		     pickAt (mesh-priority) on the container, and click focuses whatever is
-		     hovered. -->
-			<a
-				href={focusHref(appState, p.id, p.name)}
-				onclick={focusHovered}
-				onfocus={() => (hoveredId = p.id)}
-				onblur={() => hoveredId === p.id && (hoveredId = null)}
-				aria-label={p.name}
-				class="pointer-events-auto absolute top-0 bottom-0 outline-none"
-				style="left: {p.colLeft}px; width: {p.colWidth}px"
-			></a>
+			<!-- Per-body hit column; hover is resolved by pickAt (mesh-priority) on
+		     the container. Hover-capable pointers get a real <a> (middle/⌘-click
+		     opens the URL, click focuses the hovered body); touch gets a <button>
+		     so a long-press shows no link callout and a tap focuses directly. -->
+			{#if hoverCapable}
+				<a
+					href={focusHref(appState, p.id, p.name)}
+					onclick={focusHovered}
+					onfocus={() => (hoveredId = p.id)}
+					onblur={() => hoveredId === p.id && (hoveredId = null)}
+					aria-label={p.name}
+					class="pointer-events-auto absolute top-0 bottom-0 outline-none"
+					style="left: {p.colLeft}px; width: {p.colWidth}px"
+				></a>
+			{:else}
+				<button
+					type="button"
+					onclick={() => focusBody(p.id)}
+					aria-label={p.name}
+					class="pointer-events-auto absolute top-0 bottom-0 outline-none"
+					style="left: {p.colLeft}px; width: {p.colWidth}px"
+				></button>
+			{/if}
 		{/each}
 
 		{#if pageCount > 1}
