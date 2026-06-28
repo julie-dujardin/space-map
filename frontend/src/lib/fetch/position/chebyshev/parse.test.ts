@@ -27,15 +27,17 @@ interface BodySpec {
 	radiusKm: number;
 	coeffsPerAxis: number;
 	segments: SegmentSpec[];
+	visibleFromDays?: number;
 }
 
 /**
  * Build a chebyshev-payload position file. The 32-byte unified header is
  * common(24) + chebyshev extension(8 = body_count + flags byte + 3 reserved);
- * each body record uses the v7 layout where segment_count shrank to uint16 to
- * make room for object_type and a reserved byte. Pass `flags` to set the
- * extension flags byte (e.g. `CHEBYSHEV_FLAG_FLOAT64_COEFFS` to write f64
- * coefficients instead of the default f32).
+ * each body record uses the 32-byte layout: segment_count is uint16, followed
+ * by a float32 `visible_from_days` (offset 24) and 4 reserved bytes that keep
+ * the float64 segment payload 8-aligned. Pass `flags` to set the extension
+ * flags byte (e.g. `CHEBYSHEV_FLAG_FLOAT64_COEFFS` to write f64 coefficients
+ * instead of the default f32).
  */
 function buildBuffer(
 	chunkStart: number,
@@ -79,6 +81,8 @@ function buildBuffer(
 		view.setUint8(off + 20, 0); // object_type
 		view.setUint8(off + 21, 0); // reserved
 		view.setUint16(off + 22, b.segments.length, true); // segment_count (uint16)
+		view.setFloat32(off + 24, b.visibleFromDays ?? NaN, true); // visible_from_days
+		// offsets 28..31 reserved
 		off += CHEBYSHEV_BODY_HEADER_SIZE;
 		for (const seg of b.segments) {
 			view.setFloat64(off, seg.startJd, true);
@@ -113,6 +117,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 				idType: IdType.NAIF,
 				radiusKm: 6378.137,
 				coeffsPerAxis: 3,
+				visibleFromDays: -12345.5,
 				segments: [{ startJd: 100, endJd: 150, cx: [1, 0, 0], cy: [0, 1, 0], cz: [0, 0, 1] }]
 			}
 		]);
@@ -125,6 +130,7 @@ describe('parseChebyshevPayload — synthetic buffers', () => {
 		expect(body.naifId).toBe(399);
 		expect(body.parentId).toBe(3);
 		expect(body.radiusKm).toBeCloseTo(6378.137, 2);
+		expect(body.visibleFromDays).toBeCloseTo(-12345.5, 1);
 		expect(body.coeffsPerAxis).toBe(3);
 		expect(body.startJds).toEqual(new Float64Array([100]));
 		expect(body.endJds).toEqual(new Float64Array([150]));

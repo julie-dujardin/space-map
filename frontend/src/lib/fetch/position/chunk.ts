@@ -266,7 +266,8 @@ export class ChunkLoader {
 				equatorial: false,
 				validityStart: startJd,
 				validityEnd: endJd,
-				orbitalSource: OrbitalSource.SPICE
+				orbitalSource: OrbitalSource.SPICE,
+				visibleFromDays: body.visibleFromDays
 			};
 			if (writePositions) this.positions.set(body.id, pos);
 			if (objType === ObjectType.BARYCENTER || objType === ObjectType.LAGRANGE_POINT) {

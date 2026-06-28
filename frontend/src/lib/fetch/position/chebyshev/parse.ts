@@ -36,6 +36,11 @@ export interface ChebyshevBody {
 	objectType: number;
 	/** NaN if unknown in the source. */
 	radiusKm: number;
+	/**
+	 * Days from J2000 to the body's discovery. The render gate hides it while
+	 * `jd - J2000 < visibleFromDays`. NaN = always visible.
+	 */
+	visibleFromDays: number;
 	/** Polynomial degree + 1 per axis. */
 	coeffsPerAxis: number;
 	/** Segment starts (JD TDB), sorted ascending, contiguous with endJds. */
@@ -88,6 +93,8 @@ export function parseChebyshevPayload(
 		const objectType = view.getUint8(offset + 20);
 		// offset 21 reserved
 		const segmentCount = view.getUint16(offset + 22, true);
+		const visibleFromDays = view.getFloat32(offset + 24, true);
+		// offsets 28..31 reserved (pad keeping float64 segments 8-aligned)
 		offset += CHEBYSHEV_BODY_HEADER_SIZE;
 		// Empty string when id-type is unknown — store/loaders will drop the row.
 		const id = buildObjectId(idType, objIdValue) ?? '';
@@ -111,7 +118,7 @@ export function parseChebyshevPayload(
 			offset += 16;
 			// Typed-array view needs `offset` aligned to its element size.
 			// f32: stride 16 + 12·N is 4-aligned. f64: stride 16 + 24·N is
-			// 8-aligned, and the 24-byte body header preserves it across body
+			// 8-aligned, and the 32-byte body header preserves it across body
 			// boundaries.
 			if (float64Coeffs) {
 				const segCoeffs = new Float64Array(buffer, offset, coeffsPerSeg);
@@ -130,6 +137,7 @@ export function parseChebyshevPayload(
 			hasLocalized,
 			objectType,
 			radiusKm,
+			visibleFromDays,
 			coeffsPerAxis,
 			startJds,
 			endJds,

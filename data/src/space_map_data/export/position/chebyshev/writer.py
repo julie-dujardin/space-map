@@ -34,6 +34,7 @@ from space_map_data.export.position.format import (
     pack_chebyshev_header,
 )
 from space_map_data.export.position.layout import position_zone_dir
+from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, ObjectType
 from space_map_data.utils.naif import (
     CHEBYSHEV_ASTEROID_WHITELIST,
@@ -237,6 +238,10 @@ def _write_chunk_file(
                     obj.object_type, MISSING_UINT8
                 ),
                 segment_count=n_segments,
+                # Per-chunk start: a moon discovered before this chunk opens is
+                # always visible within it (NaN), so the gate only bites the
+                # chunk straddling its discovery and the ones before.
+                visible_from_days=visible_from_days(obj, chunk_start_jd),
             )
         )
         if n_segments == 0:

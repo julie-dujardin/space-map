@@ -51,7 +51,7 @@ the multi-zoom `major` zone, directly at zone level for the flat cheby zones
 | 24     | uint32  | body_count |
 | 28     | uint32  | Reserved (zero) |
 
-## Per-body header (24 bytes, repeats body_count times)
+## Per-body header (32 bytes, repeats body_count times)
 
 | Offset | Type    | Field |
 |--------|---------|-------|
@@ -65,6 +65,8 @@ the multi-zoom `major` zone, directly at zone level for the flat cheby zones
 | 20     | uint8   | object_type (`ObjectType` ordinal — same map as the elements `objectType` column) |
 | 21     | uint8   | Reserved |
 | 22     | uint16  | segment_count |
+| 24     | float32 | visible_from_days (days from J2000 to discovery; NaN = always visible — same gate as the elements column) |
+| 28     | uint32  | Reserved (keeps the float64 segment payload 8-aligned) |
 
 Combine `id_type` with `obj_id_value` to rebuild the full Object ID for
 cross-referencing with the elements export and object detail bundles. Pluto

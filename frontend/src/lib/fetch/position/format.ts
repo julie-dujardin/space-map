@@ -12,7 +12,7 @@
 import { DATA_BASE, versionedUrl } from '../data-base';
 
 export const MAGIC = 0x50414d53; // "SMAP" as little-endian uint32
-export const VERSION = 12;
+export const VERSION = 13;
 
 export const COMMON_HEADER_SIZE = 24;
 export const EXTENSION_SIZE = 8;
@@ -29,7 +29,7 @@ export const SUBFORMAT_PARABOLIC = 1;
 export const SUBFORMAT_SGP4 = 2;
 
 /** Per-body chebyshev header size, follows the file header for cheb files. */
-export const CHEBYSHEV_BODY_HEADER_SIZE = 24;
+export const CHEBYSHEV_BODY_HEADER_SIZE = 32;
 
 /** Per-sub-chunk record method byte values (probes payload). */
 export const PROBE_METHOD_UNCOVERABLE = 0;

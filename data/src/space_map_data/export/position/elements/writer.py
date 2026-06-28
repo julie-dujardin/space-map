@@ -10,7 +10,6 @@ import gzip
 import io
 import logging
 import struct
-from datetime import date
 from pathlib import Path
 
 from space_map_data.constants.providers import ID_TYPES
@@ -18,7 +17,6 @@ from space_map_data.export.position.format import (
     ELEMENTS_FLAG_NEO,
     ELEMENTS_FLAG_PHA,
     ID_TYPE_ORDINAL,
-    MISSING_FLOAT32,
     MISSING_FLOAT64,
     MISSING_ID_TYPE,
     MISSING_INT32,
@@ -33,9 +31,8 @@ from space_map_data.export.position.format import (
     align8,
     pack_elements_header,
 )
+from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, OrbitalSource
-from space_map_data.utils.convert import date_to_julian
-from space_map_data.utils.time import J2000_JD, year_to_jd
 
 logger = logging.getLogger(__name__)
 
@@ -549,59 +546,10 @@ def _write_flags(f, objects: list[Object]) -> None:
     _write_uint8(f, n, [_flags_byte(o) for o in objects])
 
 
-def _iso_date_to_jd(value: str) -> float | None:
-    """Parse a `YYYY-MM-DD` or bare `YYYY` date string to a JD."""
-    s = value.strip()
-    try:
-        return date_to_julian(date.fromisoformat(s))
-    except ValueError:
-        pass
-    try:
-        return year_to_jd(int(s))
-    except ValueError:
-        return None
-
-
-def _origin_date(o: Object) -> str | None:
-    """Origin date as an ISO date or bare year: discovery for small bodies
-    (SBDB `first_obs`), their moons (SBDBMoon `year`) and natural moons
-    (`discovery_year`), launch for Earth sats (SATCAT `launch_date`).
-
-    Each relation is eager-loaded only in its own zone, so gate on a scalar
-    column first — a bare access would lazy-load in a worker thread.
-    """
-    if o.spkid is not None and o.sbdb is not None:
-        return o.sbdb.first_obs
-    if o.satcat_norad_cat_id is not None and o.satcat is not None:
-        return o.satcat.launch_date
-    if o.orbital_source == OrbitalSource.sbdb_moon and o.sbdb_moon is not None:
-        year = o.sbdb_moon.year
-        return str(year) if year is not None else None
-    if o.discovery_year is not None:
-        return str(o.discovery_year)
-    return None
-
-
-def _visible_from_days(o: Object, start_jd: float) -> float:
-    """Days from J2000 to when `o` first exists, or NaN ("always visible").
-
-    NaN means no gating: missing/unparseable date, or one at/before `start_jd`
-    (already existed when the chunk opens). The compare only bites bounded zones
-    (Earth sats); SBDB files are unbounded.
-    """
-    origin = _origin_date(o)
-    if origin is None:
-        return MISSING_FLOAT32
-    jd = _iso_date_to_jd(origin)
-    if jd is None or jd <= start_jd:
-        return MISSING_FLOAT32
-    return jd - J2000_JD
-
-
 def _write_visible_from_days(f, objects: list[Object], start_jd: float) -> None:
     """Write the trailing `visible_from_days` float32 column (last on v11+)."""
     n = len(objects)
-    _write_float32(f, n, [_visible_from_days(o, start_jd) for o in objects])
+    _write_float32(f, n, [visible_from_days(o, start_jd) for o in objects])
 
 
 def _write_int32(f, n: int, values: list[int]) -> None:

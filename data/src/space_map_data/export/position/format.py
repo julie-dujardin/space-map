@@ -44,7 +44,7 @@ from space_map_data.constants.providers import ID_TYPES
 from space_map_data.models.object import ObjectType, ElementsScale, OrbitalSource
 
 MAGIC = b"SMAP"
-VERSION = 12
+VERSION = 13
 
 # Common header at offset 0..23, format extension at 24..31.
 COMMON_HEADER_SIZE = 24
@@ -290,7 +290,7 @@ def pack_subchunk_record(method_ordinal: int, payload: bytes) -> bytes:
     return _SUBCHUNK_HEADER_STRUCT.pack(method_ordinal, 0, 0, len(payload)) + payload
 
 
-# Per-body chebyshev header (24 bytes, 8-aligned):
+# Per-body chebyshev header (32 bytes, 8-aligned):
 #
 # Offset  Type     Field
 # 0       int32    naif_id
@@ -303,8 +303,10 @@ def pack_subchunk_record(method_ordinal: int, payload: bytes) -> bytes:
 # 20      uint8    object_type         (ObjectType ordinal — same map as elements column 1)
 # 21      uint8    reserved
 # 22      uint16   segment_count       (uint16; ~200 segments per chunk in practice)
-BODY_HEADER_SIZE = 24
-_BODY_HEADER_STRUCT = struct.Struct("<iiifHBBBBH")
+# 24      float32  visible_from_days   (days from J2000 to discovery; NaN = always visible)
+# 28      uint32   reserved            (keeps the float64 segment payload 8-aligned)
+BODY_HEADER_SIZE = 32
+_BODY_HEADER_STRUCT = struct.Struct("<iiifHBBBBHfI")
 assert _BODY_HEADER_STRUCT.size == BODY_HEADER_SIZE
 
 
@@ -318,6 +320,7 @@ def pack_body_header(
     has_localized: bool,
     object_type_ordinal: int,
     segment_count: int,
+    visible_from_days: float = MISSING_FLOAT32,
 ) -> bytes:
     return _BODY_HEADER_STRUCT.pack(
         naif_id,
@@ -330,6 +333,8 @@ def pack_body_header(
         object_type_ordinal,
         0,
         segment_count,
+        visible_from_days,
+        0,
     )
 
 
