@@ -44,6 +44,7 @@ from space_map_data.export.objects.writer import (
 from space_map_data.export.pipeline import incremental
 from space_map_data.export.pipeline.cleanup import (
     precheck_tables,
+    prune_nomenclature,
     prune_small_bodies,
     remove_old_outputs,
 )
@@ -1120,6 +1121,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns
         )
     prune_small_bodies(out_dir, agg.zone_structure)
+    prune_nomenclature(out_dir, nomenclature_by_body.keys())
     _write_metadata_json(
         out_dir,
         agg.zone_structure,

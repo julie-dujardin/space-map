@@ -2,7 +2,7 @@
 
 import logging
 import shutil
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -98,8 +98,11 @@ def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None
             shutil.rmtree(p)
         # Nomenclature details bucket count depends on K_GLOBAL / K_LOCALIZED;
         # tuning either leaves stale-numbered files behind that the writer
-        # never touches. Positions / labels use stable per-body filenames and
-        # overwrite cleanly, so only details needs the wipe.
+        # never touches, so wipe it here. Positions / labels use stable
+        # per-body filenames the writer overwrites in place — but a body that
+        # loses all its features (e.g. a name-collision match fixed upstream)
+        # leaves an orphan file the writer never revisits, so those are pruned
+        # post-export by :func:`prune_nomenclature`.
         p = out_dir / "nomenclature" / "details"
         if p.exists():
             shutil.rmtree(p)
@@ -122,6 +125,41 @@ def remove_old_outputs(out_dir: Path, keep_object_outputs: bool = False) -> None
         p = out_dir / d
         if p.exists():
             shutil.rmtree(p)
+
+
+def prune_nomenclature(out_dir: Path, keep_body_ids: Iterable[str]) -> None:
+    """Delete orphan per-body marker files under `nomenclature/positions` and
+    `nomenclature/labels/<lang>`.
+
+    The marker writers overwrite stable `{body_id}` filenames in place but
+    never delete, so a body that no longer yields renderable features (e.g.
+    an asteroid that shared a moon's name until an upstream match fix) leaves
+    its file shipping forever. Runs every export — including tier-B-skipped
+    ones, where the writers don't run but stale files can still linger.
+    """
+    keep = set(keep_body_ids)
+    nomen = out_dir / "nomenclature"
+    deleted = 0
+
+    positions = nomen / "positions"
+    if positions.exists():
+        for f in positions.glob("*.bin.gz"):
+            if f.name.removesuffix(".bin.gz") not in keep:
+                f.unlink()
+                deleted += 1
+
+    labels = nomen / "labels"
+    if labels.exists():
+        for lang_dir in labels.iterdir():
+            if not lang_dir.is_dir():
+                continue
+            for f in lang_dir.glob("*.txt.gz"):
+                if f.name.removesuffix(".txt.gz") not in keep:
+                    f.unlink()
+                    deleted += 1
+
+    if deleted:
+        logger.info("Pruned %d orphan nomenclature marker files", deleted)
 
 
 def _planned_small_body_paths(
