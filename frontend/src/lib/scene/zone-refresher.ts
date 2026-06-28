@@ -20,17 +20,19 @@
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
 import {
 	chunkIndexForJd,
+	dateCoverage,
 	isChunkIndexed,
 	isDateSegmented,
 	partsForDate,
 	snapshotDate,
 	zoneLayers,
 	type ChunkIndexedZoom,
+	type DateCoverage,
 	type DateSegmentedZoom,
 	type Metadata
 } from '$lib/fetch/metadata';
 import { ChunkLoader } from '$lib/fetch/position/chunk';
-import { dateToJD } from '$lib/format/date';
+import { dateToJD, jdToDate } from '$lib/format/date';
 import { fetchLabels } from '$lib/fetch/position/labels';
 import { ensureTargetStreamed } from '$lib/scene/setup/placeholder';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -147,6 +149,14 @@ export class ZoneRefresher {
 			z.lastLoadStartMs = -Infinity;
 		}
 		this.tick(this.latestDate);
+	}
+
+	/** Earth-sat coverage at `jd` for the toast — from available snapshots, not the
+	 *  resident chunk, so scrubbing to a covered time never falsely warns mid-load. */
+	satelliteCoverage(jd: number): DateCoverage {
+		const z = this.zones.find((s): s is TimeZoneState => s.kind === 'time' && s.zone === 'earth');
+		if (!z) return { kind: 'covered' };
+		return dateCoverage(z.zoomData, jdToDate(jd));
 	}
 
 	/** Call from the renderer's per-frame loop on jd change. Cheap when nothing

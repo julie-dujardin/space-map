@@ -1,6 +1,7 @@
 import { toast } from 'svelte-sonner';
 import * as m from '$lib/paraglide/messages.js';
-import { formatJulianDate } from '$lib/format/date';
+import { dateToJD, formatJulianDate } from '$lib/format/date';
+import type { DateCoverage } from '$lib/fetch/metadata';
 
 /**
  * One group's out-of-range accumulation for a single frame. `count === 0`
@@ -18,7 +19,8 @@ export interface OutOfRangeGroup {
 
 export interface OutOfRangeState {
 	jd: number;
-	satellites: OutOfRangeGroup;
+	/** Zone-level coverage, not a loaded chunk's window — see {@link DateCoverage}. */
+	satellites: DateCoverage;
 	majorBodies: OutOfRangeGroup;
 	focusedOutOfRange: boolean;
 }
@@ -48,6 +50,20 @@ function lineFor(group: OutOfRangeGroup, jd: number, msgs: DirectionMsgs): strin
 	return msgs.outside();
 }
 
+/** Pre-space-age is folded into `covered`, so only `after`/`gap` warn. */
+function satelliteLine(cov: DateCoverage): string | null {
+	switch (cov.kind) {
+		case 'after':
+			return m.out_of_range_satellites_after({
+				date: formatJulianDate(dateToJD(new Date(cov.lastMs)))
+			});
+		case 'gap':
+			return m.out_of_range_satellites_outside();
+		case 'covered':
+			return null;
+	}
+}
+
 /**
  * Sync a single sticky toast to the current out-of-range state. Fires once on
  * transition, updates in place when the contents change, and dismisses when
@@ -60,11 +76,7 @@ export function updateOutOfRangeToast(state: OutOfRangeState): void {
 		lines.push(m.out_of_range_selected());
 	}
 
-	const satLine = lineFor(state.satellites, state.jd, {
-		after: (d) => m.out_of_range_satellites_after({ date: d }),
-		before: (d) => m.out_of_range_satellites_before({ date: d }),
-		outside: () => m.out_of_range_satellites_outside()
-	});
+	const satLine = satelliteLine(state.satellites);
 	if (satLine) lines.push(satLine);
 
 	const majLine = lineFor(state.majorBodies, state.jd, {

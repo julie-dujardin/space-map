@@ -122,7 +122,9 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 	// toasts would be spammy at chunk boundaries.
 	const oorState: OutOfRangeState = {
 		jd,
-		satellites: emptyGroup(),
+		// Resolved from zone metadata after the loop; per-body validity only hides
+		// sats, it doesn't drive the toast.
+		satellites: { kind: 'covered' },
 		majorBodies: emptyGroup(),
 		focusedOutOfRange: false
 	};
@@ -208,18 +210,9 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		// not the full segment range) — its `positionScene` is the gate instead.
 		if (!isChebTracked && !isProbe && (jd < d.validityStart || jd > d.validityEnd)) {
 			if (bo) bo.outOfRange = true;
-			// SGP4 is the only source with a finite validity here (TLE epoch
-			// ± 14 days); Keplerian/parabolic use ±Infinity bounds.
-			if (d.satrec) {
-				oorState.satellites.count++;
-				if (d.validityStart < oorState.satellites.earliestStart) {
-					oorState.satellites.earliestStart = d.validityStart;
-				}
-				if (d.validityEnd > oorState.satellites.latestEnd) {
-					oorState.satellites.latestEnd = d.validityEnd;
-				}
-				if (d.id === focusedId) oorState.focusedOutOfRange = true;
-			}
+			// Hide the sat; the group toast comes from zone coverage below, not a
+			// stale chunk. Only SGP4 has finite validity (Keplerian/parabolic ±Inf).
+			if (d.satrec && d.id === focusedId) oorState.focusedOutOfRange = true;
 			return;
 		}
 		let x: number;
@@ -536,6 +529,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		if (!ctx.bodies.bodiesById.has(bo.body.data.id)) computePosition(bo.body);
 	}
 
+	oorState.satellites = ctx.refresher?.satelliteCoverage(jd) ?? { kind: 'covered' };
 	updateOutOfRangeToast(oorState);
 
 	// Lock focus onto the focused body's new position unless an animation is

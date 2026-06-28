@@ -213,6 +213,48 @@ export function snapshotDate(zoom: DateSegmentedZoom, date: Date): string {
 	return toIso(t - prev <= next - t ? prev : next);
 }
 
+/** SGP4 elements stay valid ±this many days around their epoch (mirrors the
+ *  exporter's `SGP4_VALIDITY_SLACK_DAYS`). Bounds gap detection and how far
+ *  coverage reaches past the last snapshot. */
+const SNAPSHOT_VALIDITY_SLACK_DAYS = 14;
+
+/**
+ * Satellite-zone coverage at a time, from the available snapshots (each ±slack),
+ * not a resident chunk's window.
+ *  - `covered`: a snapshot's slack reaches it, or it predates the first snapshot
+ *    (pre-space-age — no warning).
+ *  - `after`: past the last snapshot's slack; `lastMs` is the render cutoff.
+ *  - `gap`: inside the span but no snapshot's slack reaches it.
+ */
+export type DateCoverage =
+	| { kind: 'covered' }
+	| { kind: 'after'; lastMs: number }
+	| { kind: 'gap' };
+
+export function dateCoverage(zoom: DateSegmentedZoom, date: Date): DateCoverage {
+	const dates = sortedDateMs(zoom);
+	const t = date.getTime();
+	const slackMs = SNAPSHOT_VALIDITY_SLACK_DAYS * 86400000;
+	const first = dates[0];
+	const last = dates[dates.length - 1];
+	if (t < first) return { kind: 'covered' };
+	if (t > last + slackMs) return { kind: 'after', lastMs: last + slackMs };
+	if (t >= last) return { kind: 'covered' }; // within the last snapshot's slack
+	// Interior: a far nearest snapshot = real gap.
+	let lo = 0;
+	let hi = dates.length - 1;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (dates[mid] < t) lo = mid + 1;
+		else hi = mid;
+	}
+	const next = dates[lo];
+	const prev = lo > 0 ? dates[lo - 1] : next;
+	const nearestMs = Math.min(t - prev, next - t);
+	if (nearestMs > slackMs) return { kind: 'gap' };
+	return { kind: 'covered' };
+}
+
 /** Part count for a specific snapshot date, capped by `cap` (0 = uncapped).
  *  `isoDate` must be a key of `parts_by_date` (i.e. from {@link snapshotDate});
  *  falls back to the zone max otherwise. */
