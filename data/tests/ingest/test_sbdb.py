@@ -6,6 +6,7 @@ from space_map_data.ingest.providers.objects.sbdb import (
     SBDB_CLASS_MAP,
     _display_name,
     _object_type,
+    _parent_id,
     _provisional_designation,
     _sbdb_dict,
     _SBDB_COLUMNS,
@@ -99,6 +100,21 @@ class TestComputeNaifId:
     def test_unmappable_asteroid_returns_none(self):
         """Unnumbered asteroids in the 3M+ range have no Horizons counterpart."""
         assert naif_id_from_spk(3000001, ObjectType.asteroid) is None
+
+
+class TestParentId:
+    """Tree parent: heliocentric by default, SSB for Chebyshev perturbers."""
+
+    def test_regular_asteroid_is_heliocentric(self):
+        assert _parent_id(2000123) == "naif-10"
+
+    def test_whitelisted_perturber_is_ssb(self):
+        """Vesta (naif 2000004) ships SSB-relative Chebyshev, like Ceres."""
+        assert _parent_id(2000004) == "naif-0"
+
+    def test_unmappable_naif_is_heliocentric(self):
+        """Unnumbered bodies (no NAIF id) stay heliocentric."""
+        assert _parent_id(None) == "naif-10"
 
 
 class TestDisplayName:

@@ -27,7 +27,7 @@ from space_map_data.ingest.convert import (
     string_or_none,
 )
 from space_map_data.utils.db import get_session
-from space_map_data.utils.naif import naif_id_from_spk
+from space_map_data.utils.naif import CHEBYSHEV_ASTEROID_WHITELIST, naif_id_from_spk
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +254,14 @@ def _provisional_designation(full_name: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+def _parent_id(naif_id: int | None) -> str:
+    """Tree parent: the Sun, but SSB for Chebyshev perturbers whose ephemeris
+    is SSB-relative (like Ceres) so the parent matches the position frame."""
+    if naif_id in CHEBYSHEV_ASTEROID_WHITELIST:
+        return "naif-0"
+    return "naif-10"
+
+
 def _sbdb_dict(row: dict[str, str]) -> dict:
     """Extract SBDB mirror columns as a typed dict (class → class_)."""
     d: dict = {}
@@ -313,6 +321,8 @@ def _parse_chunk(
             if pdes == provisional_designation:
                 pdes = None
 
+            naif_id = naif_id_from_spk(spkid, object_type)
+
             rows.append(
                 {
                     "sbdb": {
@@ -328,10 +338,10 @@ def _parse_chunk(
                         "object_type": object_type,
                         "provisional_designation": provisional_designation,
                         "spkid": spkid,
-                        "naif_id": naif_id_from_spk(spkid, object_type),
+                        "naif_id": naif_id,
                         "mpc_designation": pdes,
                         "orbital_source": OrbitalSource.sbdb.value,
-                        "parent_id": "naif-10",  # SBDB is heliocentric, parent is the Sun
+                        "parent_id": _parent_id(naif_id),
                         # SBDB rows always carry orbital elements (the bulk
                         # CSV is the orbit catalog); condition_code=9 cases
                         # ship as MISSING_FLOAT64 in the binary, not dropped.
