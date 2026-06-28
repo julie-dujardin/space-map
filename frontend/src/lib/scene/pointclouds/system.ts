@@ -305,8 +305,8 @@ export class PointCloudSystem {
 		for (const [key, p] of this.spacecraftPoints) {
 			if (parentIdFromSubkey(key) === EARTH_ID) this.applyEarthSatEmphasis(p);
 		}
-		// Same for small-body focus: a deep-linked /g/class-* or /g/flag-* page
-		// may have set the emphasis before the initial build ran.
+		// Same for small-body focus: a deep-linked /g/class-* page may have set the
+		// emphasis before the initial build ran.
 		if (this.emphasizedSmallBodyZone !== null) {
 			const target = this.emphasizedSmallBodyZone;
 			for (const [key, p] of this.asteroidPoints) {

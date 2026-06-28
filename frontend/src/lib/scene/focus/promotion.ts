@@ -80,12 +80,9 @@ export class PromotionRegistry {
 	private readonly groupPromoted = new Set<string>();
 	private groupTargets: ReadonlySet<string> | null = null;
 	private groupMode: GroupPromotionMode = 'none';
-	/** Emphasis target: `small_bodies/<class>` for class filters, `'*'` for
-	 *  flag filters, null otherwise. */
+	/** Emphasis target: the `small_bodies/<class>` zone for a class filter, null
+	 *  otherwise (no emphasis). */
 	private smallBodyZone: string | null = null;
-	/** Mirrors `ctx.smallBodyFilter` so `refreshSmallBodyEmphasis` can pick the
-	 *  ramp count source (live bucket vs static index `n`). */
-	private smallBodyFilter: SmallBodyFilter | null = null;
 
 	constructor(private readonly deps: PromotionDeps) {
 		deps.ctx.bodies.onBodiesAdded((ids) => {
@@ -309,30 +306,26 @@ export class PromotionRegistry {
 		this.reevaluateGroupMode();
 	}
 
-	/** Class filters emphasize one `small_bodies/<class>` zone; flag filters use
-	 *  the `'*'` sentinel so every sub-cloud picks up the ramp. */
+	/** Only a `class` filter drives the size/brightness emphasis: it hides every
+	 *  other zone (see {@link VisibilityController.isAsteroidGroupVisible}), so the
+	 *  ramp's count matches what's on screen. A `flag` filter (NEO/PHA) leaves the
+	 *  whole field visible — its `requiredFlags` worker mask isn't wired up — so
+	 *  emphasizing would embiggen every asteroid against a count it doesn't match.
+	 *  Re-enable for flags once that mask actually narrows the clouds. */
 	private applySmallBodyFilter(f: SmallBodyFilter | null): void {
-		this.smallBodyFilter = f;
-		this.smallBodyZone =
-			f?.kind === 'class' ? `small_bodies/${f.className}` : f?.kind === 'flag' ? '*' : null;
+		this.smallBodyZone = f?.kind === 'class' ? `small_bodies/${f.className}` : null;
 		this.refreshSmallBodyEmphasis();
 	}
 
-	/** Push the current emphasis count to the point-cloud system. Class filters
-	 *  ramp against the live bucket size (moves as chunks land); flag filters
-	 *  use the static index `n` (re-scanning loaded asteroids per chunk isn't
-	 *  worth it). */
+	/** Push the emphasized class zone's live bucket size (moves as chunks land) to
+	 *  the point-cloud system, or clear when no class is emphasized. */
 	private refreshSmallBodyEmphasis(): void {
 		const zone = this.smallBodyZone;
-		const filter = this.smallBodyFilter;
-		if (zone === null || filter === null) {
+		if (zone === null) {
 			this.deps.pointClouds.setEmphasizedSmallBodyZone(null, null);
 			return;
 		}
-		const count =
-			filter.kind === 'flag'
-				? filter.n
-				: (this.deps.ctx.bodies.asteroidBodiesByZone.get(zone)?.size ?? 0);
+		const count = this.deps.ctx.bodies.asteroidBodiesByZone.get(zone)?.size ?? 0;
 		this.deps.pointClouds.setEmphasizedSmallBodyZone(zone, count);
 	}
 
