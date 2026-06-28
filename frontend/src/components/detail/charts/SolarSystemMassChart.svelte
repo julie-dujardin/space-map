@@ -188,9 +188,9 @@
 								href={zoneHref(r.zone, r.label())}
 								onclick={openZone(r.zone, r.label())}
 								class="hover:bg-muted/40 grid items-center gap-2 rounded-sm px-1 py-px"
-								style="grid-template-columns: minmax(0, 9rem) 1fr 3.8rem"
+								style="grid-template-columns: minmax(0, 9rem) 1fr 4.5rem"
 							>
-								<div class="text-muted-foreground truncate text-[11px]" title={r.label()}>
+								<div class="text-muted-foreground truncate text-sm" title={r.label()}>
 									{r.label()}
 								</div>
 								<div class="bg-muted/30 relative h-[16px] rounded-sm">
@@ -212,7 +212,7 @@
 										</div>
 									{/if}
 								</div>
-								<div class="text-muted-foreground text-right text-[11px] tabular-nums">
+								<div class="text-muted-foreground text-right text-sm tabular-nums">
 									{sharePct(r.central / nonSolarTotal)}
 								</div>
 							</a>

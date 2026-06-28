@@ -24,35 +24,42 @@
 	}
 </script>
 
+{#snippet row(e: (typeof entries)[number])}
+	<div class="text-muted-foreground truncate text-sm" title={e.name}>{e.name}</div>
+	<div class="bg-muted/30 relative h-[16px] rounded-sm">
+		<div
+			class="absolute top-1/2 left-0 h-[10px] -translate-y-1/2 rounded-sm"
+			style:width="{maxCount > 0 ? (e.n / maxCount) * 100 : 0}%"
+			style:background-color={color(e.primary_id)}
+		></div>
+	</div>
+	<div class="text-muted-foreground text-right text-sm tabular-nums">{formatNumber(e.n)}</div>
+{/snippet}
+
 {#if entries.length > 0}
 	<div class="flex flex-col gap-1">
 		<h3 class="text-sm font-medium">{m.group_moons_per_planet()}</h3>
 		<div class="border-border/60 border-t"></div>
-		<ul class="flex flex-col gap-2 pt-1 text-sm">
+		<div class="mt-1 flex flex-col gap-[3px]">
 			{#each entries as e (e.primary_id)}
-				<li class="flex flex-col gap-1">
-					<div class="flex items-baseline justify-between gap-2">
-						{#if appState}
-							<a
-								href={focusHref(appState, e.primary_id, e.name, 'members')}
-								onclick={focusClick(focusObject, e.primary_id, e.name, { tab: 'members' })}
-								class="pointer-events-auto hover:text-foreground min-w-0 truncate underline"
-								><span class="truncate">{e.name}</span></a
-							>
-						{:else}
-							<span class="truncate">{e.name}</span>
-						{/if}
-						<span class="text-muted-foreground tabular-nums">{formatNumber(e.n)}</span>
+				{#if appState}
+					<a
+						href={focusHref(appState, e.primary_id, e.name, 'members')}
+						onclick={focusClick(focusObject, e.primary_id, e.name, { tab: 'members' })}
+						class="hover:bg-muted/40 grid items-center gap-2 rounded-sm px-1 py-px"
+						style="grid-template-columns: minmax(0, 9rem) 1fr 2.5rem"
+					>
+						{@render row(e)}
+					</a>
+				{:else}
+					<div
+						class="grid items-center gap-2 rounded-sm px-1 py-px"
+						style="grid-template-columns: minmax(0, 9rem) 1fr 2.5rem"
+					>
+						{@render row(e)}
 					</div>
-					<div class="bg-muted h-1.5 overflow-hidden rounded-full">
-						<div
-							class="h-full rounded-full"
-							style:width="{maxCount > 0 ? (e.n / maxCount) * 100 : 0}%"
-							style:background-color={color(e.primary_id)}
-						></div>
-					</div>
-				</li>
+				{/if}
 			{/each}
-		</ul>
+		</div>
 	</div>
 {/if}
