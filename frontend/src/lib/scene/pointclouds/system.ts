@@ -9,12 +9,13 @@ import {
 	type Scene
 } from 'three';
 import { ObjectType, type PositionedBody } from '$lib/types/objects';
-import { AU_SCALE } from '$lib/math/units';
+import { AU_SCALE, kmToScene } from '$lib/math/units';
 import type { Vec3 } from '$lib/scene/animation/math';
 import type { FocusState } from '$lib/scene/animation/focus';
 import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { OrbitWorkerPool } from '$lib/math/orbit/pool';
+import { KIND_KEPLER, KIND_SKIP, type OrbitColumns } from '$lib/math/orbit/soa';
 import { partitionForWorkersSliced, parentIdFromSubkey } from '$lib/math/orbit/partition';
 import { buildPointClouds } from '$lib/scene/objects/body/bulk';
 import { asteroidPointSize, makePointCloudFromBuffer } from '$lib/scene/objects/pointcloud';
@@ -22,6 +23,50 @@ import { resolveBodyColor } from '$lib/utils';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 
 const REBASE_THRESHOLD_AU = 0.01;
+
+/** Sun GM as the Gaussian constant k² (AU³/day²) — heliocentric vis-viva. */
+const MU_SUN_AU3_DAY2 = 2.959122082855911e-4;
+/** Skip a group's per-frame solve below this predicted on-screen drift (CSS px):
+ *  the deferred internal motion is imperceptible, and the container transform
+ *  still tracks camera/focus/parent motion. */
+const SUBPIXEL_PX = 0.75;
+/** Speed cap for spacecraft groups — LEO-class ~8 km/s, above any orbiter's mean
+ *  speed. Per-parent element math isn't worth it for these small clouds. */
+const SPACECRAFT_MAX_SPEED_SCENE = kmToScene(8 * 86400);
+
+/** Subpixel-gate bounds for one group. `alwaysSolve` covers orbits whose speed
+ *  can't be cheaply bounded (unbound/degenerate — no aphelion). */
+interface GroupKinematics {
+	maxSpeedScene: number;
+	alwaysSolve: boolean;
+}
+
+/** Per-frame view geometry for the subpixel gate. `camPos` is focus-relative
+ *  (controls target is the origin); `pxPerRad` is (viewportHeight / 2) / tan(vFov / 2). */
+export interface CloudViewInfo {
+	camPos: Vec3;
+	pxPerRad: number;
+}
+
+/** Fastest perihelion speed across a group's elements; any unbound/degenerate
+ *  row flips `alwaysSolve` (vis-viva needs a bound orbit). */
+function kinematicsFromColumns(cols: OrbitColumns): GroupKinematics {
+	let maxSpeed = 0;
+	let alwaysSolve = false;
+	for (let idx = 0; idx < cols.count; idx++) {
+		if (cols.kind[idx] === KIND_SKIP) continue;
+		const a = cols.a[idx];
+		const e = cols.e[idx];
+		if (cols.kind[idx] !== KIND_KEPLER || !(a > 0) || !(e < 1) || !isFinite(a) || !isFinite(e)) {
+			alwaysSolve = true;
+			continue;
+		}
+		const ec = Math.min(e, 1 - 1e-7);
+		const v = Math.sqrt((MU_SUN_AU3_DAY2 / a) * ((1 + ec) / (1 - ec)));
+		if (v > maxSpeed) maxSpeed = v;
+	}
+	return { maxSpeedScene: maxSpeed * AU_SCALE, alwaysSolve };
+}
 
 function clamp01(x: number): number {
 	return x < 0 ? 0 : x > 1 ? 1 : x;
@@ -102,6 +147,12 @@ export class PointCloudSystem {
 	 *  is only repacked once it doubles past this — repacking the whole zone on
 	 *  every 500ms flush is O(loaded-so-far) and was the dominant flush cost. */
 	private lastPackedSize = new Map<string, number>();
+	/** Worst-case screen-velocity bounds per groupId, for the subpixel gate.
+	 *  Computed once at wire time (elements don't change between repacks). */
+	private groupKinematics = new Map<string, GroupKinematics>();
+	/** jd each group's front buffer was last solved at, set when a worker result
+	 *  lands. The gate measures elapsed jd against this to predict drift. */
+	private lastSolvedJd = new Map<string, number>();
 	/** Last earth-sat emphasis values applied. Used to re-apply to newly-built
 	 *  earth sub-clouds (rebuildMinor recreates them after a group filter swap). */
 	private earthSatEmphasis = {
@@ -340,6 +391,7 @@ export class PointCloudSystem {
 				const group = i < groups.length ? groups[i] : null;
 				if (!group || group.cols.count === 0) {
 					this.orbitPool.unwireOne(groupId);
+					this.forgetGroupGate(groupId);
 					const stale = this.asteroidPoints.get(key);
 					if (stale) {
 						this.scene.remove(stale);
@@ -347,6 +399,12 @@ export class PointCloudSystem {
 					}
 					continue;
 				}
+				// Compute the gate's kinematics before rewireOneCols — it transfers the
+				// column buffers to the worker, detaching them on this thread.
+				this.groupKinematics.set(groupId, kinematicsFromColumns(group.cols));
+				// A repack grows the buffer (streaming chunks); force one solve so the
+				// new points get positions and drawRange expands instead of being gated.
+				this.lastSolvedJd.delete(groupId);
 				this.orbitPool.rewireOneCols(groupId, group.cols, (baseWorker + i) % k);
 				const existing = this.asteroidPoints.get(key);
 				if (existing) {
@@ -391,6 +449,7 @@ export class PointCloudSystem {
 				const bodies = i < buckets.length ? buckets[i] : [];
 				if (bodies.length === 0) {
 					this.orbitPool.unwireOne(groupId);
+					this.forgetGroupGate(groupId);
 					const stale = this.spacecraftPoints.get(key);
 					if (stale) {
 						this.scene.remove(stale);
@@ -399,6 +458,12 @@ export class PointCloudSystem {
 					continue;
 				}
 				await this.orbitPool.rewireOne(groupId, bodies, skip, (baseWorker + i) % k);
+				this.groupKinematics.set(groupId, {
+					maxSpeedScene: SPACECRAFT_MAX_SPEED_SCENE,
+					alwaysSolve: false
+				});
+				// Force one solve after a repack so newly-added members get positions.
+				this.lastSolvedJd.delete(groupId);
 				const existing = this.spacecraftPoints.get(key);
 				if (existing) {
 					this.resizeGeometryIfNeeded(existing.geometry, bodies);
@@ -525,7 +590,8 @@ export class PointCloudSystem {
 		positions: Float32Array,
 		count: number,
 		basisUsed: Vec3,
-		parentUsed: Vec3
+		parentUsed: Vec3,
+		jd: number
 	): void => {
 		const [kind, key] = groupId.split(':') as ['asteroid' | 'spacecraft', string];
 		const pts = kind === 'asteroid' ? this.asteroidPoints.get(key) : this.spacecraftPoints.get(key);
@@ -536,10 +602,13 @@ export class PointCloudSystem {
 		// a worker tick for an old body set lands after a mid-flight rewire
 		// resized the group. The next tick under the new set will overwrite
 		// this array; in the meantime rebuildMinor's seeded values are correct.
+		// Leave lastSolvedJd untouched so the gate still forces that re-solve.
 		if (arr.length !== positions.length) return;
 		arr.set(positions);
 		posAttr.needsUpdate = true;
 		pts.geometry.setDrawRange(0, count);
+		// The front buffer now reflects this jd; the gate measures drift from here.
+		this.lastSolvedJd.set(groupId, jd);
 		// Record the basis the worker used so reposition() can use it per-group:
 		// a mid-flight rebase would otherwise misplace the cloud for the frame
 		// between the basis change and the next worker result.
@@ -621,8 +690,11 @@ export class PointCloudSystem {
 		this.reposition();
 	}
 
-	/** Per-frame: write moon dots, then dispatch async asteroid/spacecraft solves. */
-	updateForJd(jd: number): void {
+	/** Per-frame: write moon dots, then dispatch async asteroid/spacecraft solves.
+	 *  `view` drives the subpixel gate: a group whose fastest body would drift
+	 *  less than {@link SUBPIXEL_PX} on screen since its last solve is left out of
+	 *  the tick — the container transform keeps it placed, the re-solve waits. */
+	updateForJd(jd: number, view: CloudViewInfo): void {
 		this.writeMoons();
 
 		const parents = this._parentsScratch;
@@ -633,15 +705,21 @@ export class PointCloudSystem {
 		// groupId/parentVec are cached on userData and mutated in place — no realloc.
 		for (const [key, pts] of this.asteroidPoints) {
 			if (!this.ctx.visibility.isAsteroidGroupVisible(parentIdFromSubkey(key))) continue;
+			const groupId = pts.userData.groupId as string;
+			if (!this.shouldSolveGroup(groupId, sunPos, jd, view)) continue;
 			const v = pts.userData.parentVec as Vec3;
 			v[0] = sunPos[0];
 			v[1] = sunPos[1];
 			v[2] = sunPos[2];
-			parents.set(pts.userData.groupId as string, v);
+			parents.set(groupId, v);
 		}
 		for (const [key, pts] of this.spacecraftPoints) {
 			if (!this.ctx.visibility.isSpacecraftGroupVisible(parentIdFromSubkey(key))) continue;
+			const groupId = pts.userData.groupId as string;
 			const pp = this.ctx.getBody(pts.userData.parentBodyId as string)?.position;
+			// No parent position (parent not resident) → always solve; the gate's
+			// distance term would be meaningless.
+			if (pp && !this.shouldSolveGroup(groupId, pp, jd, view)) continue;
 			const v = pts.userData.parentVec as Vec3;
 			if (pp) {
 				v[0] = pp[0];
@@ -652,9 +730,40 @@ export class PointCloudSystem {
 				v[1] = 0;
 				v[2] = 0;
 			}
-			parents.set(pts.userData.groupId as string, v);
+			parents.set(groupId, v);
 		}
 		this.orbitPool.tick(jd, this.basisPos, parents, this.ctx.visibility.getRequiredFlags());
+	}
+
+	/** Whether `groupId` should be re-solved this frame: predicted on-screen drift
+	 *  of its fastest body since the last solve ≥ {@link SUBPIXEL_PX}. Distance is
+	 *  camera→parent rather than the nearer cloud edge — at the rates where this
+	 *  skips, motion is sub-pixel well inside the parent's distance anyway, so the
+	 *  simpler bound stays safe. Always solves the first frame and unboundable groups. */
+	private shouldSolveGroup(
+		groupId: string,
+		parentWorld: Vec3,
+		jd: number,
+		view: CloudViewInfo
+	): boolean {
+		const kin = this.groupKinematics.get(groupId);
+		if (!kin || kin.alwaysSolve) return true;
+		const last = this.lastSolvedJd.get(groupId);
+		if (last === undefined || !isFinite(last)) return true;
+		const [fx, fy, fz] = this.focus.focusTruePos;
+		const dx = view.camPos[0] - (parentWorld[0] - fx);
+		const dy = view.camPos[1] - (parentWorld[1] - fy);
+		const dz = view.camPos[2] - (parentWorld[2] - fz);
+		const dist = Math.max(1e-6, Math.sqrt(dx * dx + dy * dy + dz * dz));
+		const days = Math.abs(jd - last);
+		const predictedPx = ((kin.maxSpeedScene * days) / dist) * view.pxPerRad;
+		return predictedPx >= SUBPIXEL_PX;
+	}
+
+	/** Drop a group's gate bookkeeping when it's unwired (zone shrank, teardown). */
+	private forgetGroupGate(groupId: string): void {
+		this.groupKinematics.delete(groupId);
+		this.lastSolvedJd.delete(groupId);
 	}
 
 	private moonsByParent(): Map<string, PositionedBody[]> {

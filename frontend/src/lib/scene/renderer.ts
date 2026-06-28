@@ -48,7 +48,7 @@ import { SkyboxAdjuster } from './debug/skybox-adjust';
 import { SkyDebugMarkers } from './debug/sky-markers';
 import { HaloDebugOverlay } from './debug/halo-overlay';
 import { collectDebugStats, type DebugStats } from './debug/stats';
-import { PointCloudSystem } from './pointclouds/system';
+import { PointCloudSystem, type CloudViewInfo } from './pointclouds/system';
 import { rebaseTrailLocals, refreshBufferTrail } from './objects/trail/refresh';
 import { setTrailResolution } from './objects/trail/material';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -654,6 +654,19 @@ export class SceneRenderer {
 		this.renderer.autoClear = true;
 	}
 
+	/** View geometry for the point clouds' subpixel solve gate. Camera position is
+	 *  already focus-relative (controls target is the origin); pxPerRad converts an
+	 *  angular size at the camera into CSS pixels from the vertical FOV + height. */
+	private cloudViewInfo(): CloudViewInfo {
+		const cam = this.camera.position;
+		const height = this.renderer.domElement.clientHeight || 1;
+		const halfFov = (this.camera.fov * Math.PI) / 360;
+		return {
+			camPos: [cam.x, cam.y, cam.z],
+			pxPerRad: height / 2 / Math.tan(halfFov)
+		};
+	}
+
 	private getCameraState() {
 		const cam = this.camera.position;
 		return cartesianToSpherical(
@@ -754,7 +767,7 @@ export class SceneRenderer {
 			positionMap: this._positionMapScratch,
 			diagnostics: this.positionDiagnostics
 		});
-		this.pointClouds.updateForJd(this.clock.jd);
+		this.pointClouds.updateForJd(this.clock.jd, this.cloudViewInfo());
 		// stepFocusAnimation handles repositionAll while animating.
 		const elapsed = performance.now() - this.focus.focusStartTime;
 		if (elapsed >= this.focus.focusDurationMs) {

@@ -34,10 +34,15 @@ interface GroupState {
 	pendingBasis: Vec3 | null;
 	/** Parent position passed to the worker at dispatch of the in-flight tick. */
 	pendingParent: Vec3 | null;
+	/** jd passed to the worker at dispatch of the in-flight tick. */
+	pendingJd: number | null;
 	/** Basis that the current `front` buffer was computed under. */
 	frontBasis: Vec3;
 	/** Parent position that the current `front` buffer was computed under. */
 	frontParent: Vec3;
+	/** jd that the current `front` buffer was solved at — lets the caller's
+	 *  subpixel gate measure how stale a skipped group's positions are. */
+	frontJd: number;
 }
 
 export type GroupResultHandler = (
@@ -45,7 +50,8 @@ export type GroupResultHandler = (
 	positions: Float32Array,
 	count: number,
 	basis: Vec3,
-	parent: Vec3
+	parent: Vec3,
+	jd: number
 ) => void;
 
 type TickResult = {
@@ -160,8 +166,10 @@ export class OrbitWorkerPool {
 			count: prev?.count ?? capacity,
 			pendingBasis: inFlight ? prev!.pendingBasis : null,
 			pendingParent: inFlight ? prev!.pendingParent : null,
+			pendingJd: inFlight ? prev!.pendingJd : null,
 			frontBasis: prev?.frontBasis ?? [0, 0, 0],
-			frontParent: prev?.frontParent ?? [0, 0, 0]
+			frontParent: prev?.frontParent ?? [0, 0, 0],
+			frontJd: prev?.frontJd ?? NaN
 		});
 
 		this.workers[workerIdx].postMessage(
@@ -205,6 +213,7 @@ export class OrbitWorkerPool {
 			state.back = null;
 			state.pendingBasis = [basis[0], basis[1], basis[2]];
 			state.pendingParent = [parent[0], parent[1], parent[2]];
+			state.pendingJd = jd;
 		}
 
 		for (let i = 0; i < this.workers.length; i++) {
@@ -236,11 +245,14 @@ export class OrbitWorkerPool {
 			state.count = g.count;
 			const basis = state.pendingBasis ?? state.frontBasis;
 			const parent = state.pendingParent ?? state.frontParent;
+			const jd = state.pendingJd ?? state.frontJd;
 			state.frontBasis = basis;
 			state.frontParent = parent;
+			state.frontJd = jd;
 			state.pendingBasis = null;
 			state.pendingParent = null;
-			this.onResult?.(g.id, returned, g.count, basis, parent);
+			state.pendingJd = null;
+			this.onResult?.(g.id, returned, g.count, basis, parent, jd);
 		}
 	}
 
