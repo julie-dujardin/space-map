@@ -170,6 +170,8 @@
 	"zone_def_POL": "Polar — inclination 85–95°; sat passes over both poles.",
 	"zone_def_RET": "Retrograde — inclination above 104°; orbits opposite Earth's spin.",
 	"zone_def_EQU": "Equatorial — inclination under 25°; stays close to the equatorial plane.",
+	"zone_def_EL1": "Sun–Earth L1 — libration point ~1.5 million km sunward of Earth; spacecraft orbit the Sun, station-kept at L1.",
+	"zone_def_EL2": "Sun–Earth L2 — libration point ~1.5 million km anti-sunward of Earth; spacecraft orbit the Sun, station-kept at L2.",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

@@ -187,6 +187,8 @@
 	"zone_def_POL": "Polarna — inklinacja 85–95°; satelita przelatuje nad oboma biegunami.",
 	"zone_def_RET": "Wsteczna — inklinacja powyżej 104°; orbita przeciwna do obrotu Ziemi.",
 	"zone_def_EQU": "Równikowa — inklinacja poniżej 25°; trzyma się blisko płaszczyzny równikowej.",
+	"zone_def_EL1": "Słońce–Ziemia L1 — punkt libracji ~1,5 mln km od Ziemi w stronę Słońca; statki krążą wokół Słońca, utrzymując pozycję w L1.",
+	"zone_def_EL2": "Słońce–Ziemia L2 — punkt libracji ~1,5 mln km od Ziemi po stronie przeciwnej do Słońca; statki krążą wokół Słońca, utrzymując pozycję w L2.",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

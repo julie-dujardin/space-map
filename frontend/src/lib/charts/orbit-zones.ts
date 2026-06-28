@@ -581,6 +581,18 @@ export const SAT_ORBIT_ZONES: Record<string, OrbitZone> = {
 		plotType: 'peri-apo',
 		polygon: [],
 		tooltipDefinition: () => m.zone_def_EQU()
+	},
+	EL1: {
+		className: 'EL1',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_EL1()
+	},
+	EL2: {
+		className: 'EL2',
+		plotType: 'peri-apo',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_EL2()
 	}
 };
 

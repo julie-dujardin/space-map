@@ -187,6 +187,8 @@
 	"zone_def_POL": "Polare — inclinazione 85–95°; il satellite passa su entrambi i poli.",
 	"zone_def_RET": "Retrograda — inclinazione superiore a 104°; orbita in senso opposto alla rotazione terrestre.",
 	"zone_def_EQU": "Equatoriale — inclinazione inferiore a 25°; resta vicina al piano equatoriale.",
+	"zone_def_EL1": "L1 Sole–Terra — punto di librazione a ~1,5 milioni di km dalla Terra verso il Sole; le sonde orbitano attorno al Sole, mantenute in stazione in L1.",
+	"zone_def_EL2": "L2 Sole–Terra — punto di librazione a ~1,5 milioni di km dalla Terra dal lato opposto al Sole; le sonde orbitano attorno al Sole, mantenute in stazione in L2.",
 	"tooltip_discoveries_count": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],

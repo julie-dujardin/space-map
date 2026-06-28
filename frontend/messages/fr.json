@@ -424,6 +424,8 @@
 	"zone_def_POL": "Polaire — inclinaison entre 85 et 95° ; le satellite passe au-dessus des deux pôles.",
 	"zone_def_RET": "Rétrograde — inclinaison supérieure à 104° ; s'oppose à la rotation terrestre.",
 	"zone_def_EQU": "Équatoriale — inclinaison inférieure à 25° ; reste proche du plan équatorial.",
+	"zone_def_EL1": "Soleil–Terre L1 — point de libration à ~1,5 million de km de la Terre vers le Soleil ; les véhicules orbitent autour du Soleil, maintenus en station en L1.",
+	"zone_def_EL2": "Soleil–Terre L2 — point de libration à ~1,5 million de km de la Terre à l'opposé du Soleil ; les véhicules orbitent autour du Soleil, maintenus en station en L2.",
 	"scatter_membership_title": "Carte des orbites",
 	"scatter_axis_a": "demi-grand axe (UA)",
 	"scatter_axis_q": "périhélie (UA)",
