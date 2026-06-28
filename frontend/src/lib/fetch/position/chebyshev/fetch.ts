@@ -5,7 +5,7 @@
 
 import { parsePosition } from '$lib/fetch/position/parse';
 import { chunkedUrl } from '$lib/fetch/position/format';
-import type { ChebyshevChunk } from '$lib/fetch/position/chebyshev/parse';
+import type { ChebyshevBody, ChebyshevChunk } from '$lib/fetch/position/chebyshev/parse';
 
 async function fetchGzBuffer(url: string): Promise<ArrayBuffer> {
 	const res = await fetch(url);
@@ -15,8 +15,7 @@ async function fetchGzBuffer(url: string): Promise<ArrayBuffer> {
 }
 
 export interface FetchedChebyshev extends ChebyshevChunk {
-	/** Row index in `bodies` → full object id (mirrors `bodies[i].id`). */
-	ids: string[];
+	byId: Map<string, ChebyshevBody>;
 }
 
 export async function fetchChebyshev(
@@ -29,5 +28,7 @@ export async function fetchChebyshev(
 	if (parsed.kind !== 'chebyshev') {
 		throw new Error(`Expected chebyshev payload at ${zone}/${chunk}, got ${parsed.kind}`);
 	}
-	return { ...parsed.chunk, ids: parsed.chunk.bodies.map((b) => b.id) };
+	const byId = new Map<string, ChebyshevBody>();
+	for (const b of parsed.chunk.bodies) if (b.id) byId.set(b.id, b);
+	return { ...parsed.chunk, byId };
 }

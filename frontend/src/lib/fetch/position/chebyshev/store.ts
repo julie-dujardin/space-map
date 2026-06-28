@@ -136,7 +136,7 @@ export class ChebyshevStore {
 		}
 		const chunk = await fetchChebyshev(zone, this.zoneParams.get(zone)!.zoom, chunkIdx);
 		zoneMap.set(chunkIdx, chunk);
-		for (const id of chunk.ids) {
+		for (const id of chunk.byId.keys()) {
 			// Multiple chunks list the same body; zone assignment is stable across
 			// chunks by construction (same writer partitions). First write wins.
 			if (!this.idToZone.has(id)) this.idToZone.set(id, zone);
@@ -170,9 +170,9 @@ export class ChebyshevStore {
 		const zoneMap = this.chunks.get(zone);
 		const chunk = zoneMap?.get(chunkIdx);
 		if (!chunk) return null;
-		const rowIdx = chunk.ids.indexOf(objectId);
-		if (rowIdx < 0) return null;
-		return { zone, chunkIdx, body: chunk.bodies[rowIdx] };
+		const body = chunk.byId.get(objectId);
+		if (!body) return null;
+		return { zone, chunkIdx, body };
 	}
 
 	/**
