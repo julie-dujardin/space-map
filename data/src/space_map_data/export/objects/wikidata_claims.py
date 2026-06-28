@@ -721,6 +721,10 @@ def _qty_pairs(
             continue
         if needs_unit and isinstance(parsed, (int, float)):
             continue
+        # Dimensionless property (magnitude, population, …): drop any spurious
+        # unit an editor attached so it stays a scalar, not a {value, unit} dict.
+        if not needs_unit and isinstance(parsed, dict):
+            parsed = parsed["value"]
         pairs.append((stmt, parsed))
     return pairs
 

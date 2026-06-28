@@ -117,10 +117,10 @@
 
 {#if hasContent}
 	<Section title={m.physical_properties()}>
-		{#if wd?.mass}
-			<Row label={m.property_name_mass()} value={formatQuantity(wd.mass)} />
-		{:else if sbdb?.mass}
+		{#if sbdb?.mass}
 			<Row label={m.property_name_mass()} value={formatQuantity(sbdb.mass)} />
+		{:else if wd?.mass}
+			<Row label={m.property_name_mass()} value={formatQuantity(wd.mass)} />
 		{/if}
 		{#if radiiRows}
 			{#each radiiRows as row (row.label)}
