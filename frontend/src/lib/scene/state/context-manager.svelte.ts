@@ -73,6 +73,11 @@ export class ContextManager {
 	 *  once the loader and metadata are available. */
 	refresher: ZoneRefresher | null = null;
 
+	/** Renderer-set: true when `id` is promoted to a mesh body. The zone-refresher
+	 *  keeps such spacecraft across a snapshot swap — their `PositionedBody` is
+	 *  shared with the mesh, so dropping the bucket entry would orphan it. */
+	hasMeshBody: ((id: string) => boolean) | null = null;
+
 	/** Intersect earth-zone chunks with this set before adding bodies so
 	 *  /g/<slug> pages render only group members. */
 	earthSatFilter: Set<string> | null = null;

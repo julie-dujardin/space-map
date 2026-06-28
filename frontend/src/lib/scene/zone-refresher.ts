@@ -265,17 +265,22 @@ export class ZoneRefresher {
 
 			let added = 0;
 			let updated = 0;
+			let removed = 0;
 			const addedIds: string[] = [];
 
-			// Mutate in place — successive date snapshots feed the same bucket
-			// key and would otherwise clobber each other. No release path:
-			// CelesTrak's catalog is monotonically growing, and applyGroupFilter
-			// clears the bucket itself when membership shrinks.
+			// Reconcile to this snapshot's membership
 			for (const [key, freshBodies] of newBuckets) {
 				let bucket = this.ctx.bodies.spacecraftByParent.get(key);
 				if (!bucket) {
 					bucket = new Map();
 					this.ctx.bodies.spacecraftByParent.set(key, bucket);
+				}
+				// Keep mesh-promoted ids: their PositionedBody is shared with the
+				// mesh, so dropping the entry would orphan it on reappearance.
+				for (const id of bucket.keys()) {
+					if (freshBodies.has(id) || this.ctx.hasMeshBody?.(id)) continue;
+					bucket.delete(id);
+					removed++;
 				}
 				for (const [id, b] of freshBodies) {
 					const e = bucket.get(id);
@@ -302,7 +307,9 @@ export class ZoneRefresher {
 			z.currentTime = time;
 			this.ctx.bodies.minorBodyVersion++;
 			this.ctx.bodies.notifyBodiesAdded(addedIds);
-			console.log(`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated})`);
+			console.log(
+				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
+			);
 			this.prefetchTimeNeighbors(z, date);
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);

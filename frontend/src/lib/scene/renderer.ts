@@ -186,6 +186,7 @@ export class SceneRenderer {
 	) {
 		this.canvas = canvas;
 		this.ctx = ctx;
+		ctx.hasMeshBody = (id) => this.bodyObjects.has(id);
 		this.clock = clock;
 		this.callbacks = callbacks;
 		this.labelContainer = labelContainer;
