@@ -655,6 +655,7 @@
 		style="height: {HEIGHT}px"
 		role="group"
 		aria-label={ariaLabel}
+		data-vaul-no-drag
 	>
 		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
 
