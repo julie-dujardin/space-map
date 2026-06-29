@@ -81,6 +81,7 @@ from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.small_body_color import log_color_stats
 from space_map_data.export.systems import (
     load_clouds_metadata,
+    load_displacement_metadata,
     load_gms,
     load_model_metadata,
     load_night_metadata,
@@ -961,6 +962,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     clouds_metadata = load_clouds_metadata(out_dir)
     specular_metadata = load_specular_metadata(out_dir)
     night_metadata = load_night_metadata(out_dir)
+    displacement_metadata = load_displacement_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
     model_metadata = load_model_metadata(out_dir)
     probe_kernel_sources = load_probe_kernel_sources()
@@ -1030,6 +1032,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
             clouds_metadata,
             specular_metadata,
             night_metadata,
+            displacement_metadata,
         )
         write_credits(
             session,

@@ -62,6 +62,40 @@ def open_image(path: Path) -> Image.Image:
     return Image.fromarray(arr, mode="RGB")
 
 
+def open_displacement_source(src: Path) -> tuple[Image.Image, float, float]:
+    """Load an LRO LOLA height map and stretch it to an 8-bit grayscale tile.
+
+    The reference surface for LOLA is a sphere of radius 1737.4 km; gridded
+    elevations are signed 16-bit half-meters relative to it. The SVS TIFFs
+    encode that two ways, distinguished by filename:
+    - float (``ldem_*.tif``): the value already *is* elevation in km;
+    - unsigned 16-bit (``ldem_*_uint.tif``): half-meters offset by +20000
+      (10 km) to stay positive, so km = (value - 20000) / 2000.
+
+    Returns the RGB-promoted mask plus the elevation (km) that pixel 0 and 255
+    map to, so the renderer can reconstruct true-to-scale radial offsets. The
+    8-bit stretch quantises ~20 km of relief into 256 steps (~78 m), which is
+    well under the lunar limb's visible scale.
+    """
+    arr = tifffile.imread(str(src))
+    if arr.ndim != 2:
+        raise ValueError(
+            f"{src.name}: expected single-channel height map, got {arr.shape}"
+        )
+
+    if src.stem.endswith("_uint"):
+        elev_km = (arr.astype(np.float64) - 20000.0) / 2000.0
+    else:
+        elev_km = arr.astype(np.float64)
+
+    valid = elev_km > _NODATA_THRESHOLD
+    lo = float(elev_km[valid].min()) if valid.any() else 0.0
+    hi = float(elev_km[valid].max()) if valid.any() else 1.0
+    norm = np.clip((elev_km - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    gray = (norm * 255.0).astype(np.uint8)
+    return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
+
+
 def open_specular_source(src: Path) -> Image.Image:
     """Derive a binary ocean mask from a bathymetry TIFF.
 

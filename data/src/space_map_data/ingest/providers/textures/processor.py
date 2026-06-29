@@ -17,7 +17,7 @@ from space_map_data.utils.db import get_session
 from . import config, skybox
 from .alignment import align_cylindrical, entry_alignment
 from .encoding import resize, save_webp, size_target, tier_for_size
-from .image_io import open_image, open_specular_source
+from .image_io import open_displacement_source, open_image, open_specular_source
 from .metadata import (
     CLOUD_OUTPUT_RE,
     any_export_over_cap,
@@ -223,6 +223,9 @@ class TextureProcessor:
             if entry.get("type") == "cylindrical_night_lights":
                 self._process_night_lights(entry, force=force)
                 continue
+            if entry.get("type") == "cylindrical_displacement":
+                self._process_displacement(entry, force=force)
+                continue
             if entry.get("type") == "cubemap_skybox":
                 self._process_skybox(entry, force=force)
                 continue
@@ -374,6 +377,64 @@ class TextureProcessor:
             src.name,
             object_id,
             len(exports),
+        )
+        return out_dir
+
+    def _process_displacement(self, entry: dict, force: bool = False) -> Path:
+        """Process a `cylindrical_displacement` entry — height-map sibling.
+
+        Output goes to ``{body}_displacement/`` — a sibling of the surface
+        texture, same single-frame shape as ``_specular``. The source LOLA
+        height TIFF is stretched to 8-bit grayscale; the km that pixel 0/255
+        map to are recorded so the renderer can drive `displacementMap` at
+        true physical scale.
+        """
+        src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
+        if not src.exists():
+            log.warning("displacement source missing: %s", entry["file"])
+            return config.PROCESSED_DIR
+
+        object_id = f"{entry['body']}{config.DISPLACEMENT_SUFFIX}"
+        out_dir = config.PROCESSED_DIR / object_id
+
+        # Helpers key off entry["body"]; override to the suffixed export id so
+        # the on-disk metadata.json's `id` matches the directory — same trick
+        # `_process_specular` and `_process_night_lights` use.
+        entry = {**entry, "body": object_id}
+
+        if not force and self._try_skip(
+            out_dir, entry, attribution_file=src.name, label=object_id
+        ):
+            return out_dir
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        img, elev_min_km, elev_max_km = open_displacement_source(src)
+        source_dims = [img.width, img.height]
+        img = align_cylindrical(img, **entry_alignment(entry))
+        exports = self._export(img, object_id, out_dir)
+
+        self._write_metadata(
+            out_dir,
+            entry,
+            source_file=src.name,
+            attribution_file=src.name,
+            source_dims=source_dims,
+            exports=exports,
+            extra_fields={
+                "alignment": entry_alignment(entry),
+                # Radial offset (km, relative to the body's mean radius) that
+                # texel 0 and texel 1 reconstruct to: km = bias + scale * texel.
+                "displacement_bias_km": elev_min_km,
+                "displacement_scale_km": elev_max_km - elev_min_km,
+            },
+        )
+        log.info(
+            "processed displacement %s → %s (%d exports, %.2f..%.2f km)",
+            src.name,
+            object_id,
+            len(exports),
+            elev_min_km,
+            elev_max_km,
         )
         return out_dir
 

@@ -74,6 +74,10 @@ SPECULAR_SUFFIX = "_specular"
 # Earth). Same shape as `_specular`: single-frame, served from
 # `{body}{NIGHT_SUFFIX}/{tier}.webp`.
 NIGHT_SUFFIX = "_night"
+# Sibling bundle for a displacement/height map (e.g. LRO LOLA for the Moon).
+# Single-frame; the renderer drives `material.displacementMap` from it, scaled
+# by the physical km range recorded in the bundle metadata.
+DISPLACEMENT_SUFFIX = "_displacement"
 
 # Cubemap face order, matching Three.js' CubeTextureLoader expectation
 # (+X, -X, +Y, -Y, +Z, -Z).

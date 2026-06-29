@@ -100,6 +100,7 @@ def stale_metadata_reason(existing: dict, entry: dict) -> str | None:
         "cylindrical_monthly",
         "cylindrical_specular",
         "cylindrical_night_lights",
+        "cylindrical_displacement",
     ):
         cur_align = existing.get("alignment") or DEFAULT_ALIGNMENT
         if cur_align != entry_alignment(entry):

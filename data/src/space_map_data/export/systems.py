@@ -28,6 +28,9 @@ _SPECULAR_SUFFIX = "_specular"
 # Sibling bundle holding an emissive night-lights map for the host body
 # (e.g. naif-399_night carries NASA Black Marble for Earth).
 _NIGHT_SUFFIX = "_night"
+# Sibling bundle holding a displacement/height map for the host body
+# (e.g. naif-301_displacement carries the Moon's LRO LOLA topography).
+_DISPLACEMENT_SUFFIX = "_displacement"
 # Top-level celestial-sphere texture directory — `textures/stars/`. Holds the
 # cubemap-skybox bundle the renderer drops behind the whole scene as
 # `scene.background`. Not tied to any NAIF body.
@@ -154,7 +157,7 @@ def load_texture_metadata(out_dir: Path) -> dict[str, dict]:
         return result
     for body_dir in textures_dir.iterdir():
         if not body_dir.is_dir() or body_dir.name.endswith(
-            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX)
+            (_CLOUDS_SUFFIX, _SPECULAR_SUFFIX, _NIGHT_SUFFIX, _DISPLACEMENT_SUFFIX)
         ):
             continue
         meta_file = mirror_path(body_dir / "metadata.json")
@@ -290,6 +293,52 @@ def night_block(meta: dict) -> dict:
     block: dict = {
         "id": meta["id"],
         "tiers": _tiers_from_meta(meta),
+        "source": meta["source"],
+        "organisation": meta["organisation"],
+        "type": meta["type"],
+    }
+    if meta.get("attribution") is not None:
+        block["attribution"] = meta["attribution"]
+    if meta.get("description") is not None:
+        block["description"] = meta["description"]
+    return block
+
+
+def load_displacement_metadata(out_dir: Path) -> dict[str, dict]:
+    """Load per-body displacement-map metadata.json files from the export tree.
+
+    Returns {host_object_id: metadata_dict} keyed by the surface body's id
+    (e.g. ``naif-301`` for ``textures/naif-301_displacement/``). The full
+    export id is preserved in the metadata's own ``id`` field for URL composition.
+    """
+    textures_dir = out_dir / "textures"
+    result: dict[str, dict] = {}
+    if not textures_dir.exists():
+        return result
+    for body_dir in textures_dir.iterdir():
+        if not body_dir.is_dir() or not body_dir.name.endswith(_DISPLACEMENT_SUFFIX):
+            continue
+        meta_file = mirror_path(body_dir / "metadata.json")
+        if meta_file.exists():
+            host_id = body_dir.name.removesuffix(_DISPLACEMENT_SUFFIX)
+            result[host_id] = orjson.loads(meta_file.read_bytes())
+    logger.info("Loaded displacement metadata for %d bodies", len(result))
+    return result
+
+
+def displacement_block(meta: dict) -> dict:
+    """Build the per-body ``displacement`` block emitted into systems/{bary}.json.
+
+    Carries the export's own id (sibling directory of the surface texture),
+    the tier list, and the physical km mapping the renderer needs to scale
+    `material.displacementMap`: radial offset km = bias + scale * texel. The
+    frontend composes URLs as ``/v1/textures/{displacement.id}/{tier}.webp``.
+    """
+    block: dict = {
+        "id": meta["id"],
+        "tiers": _tiers_from_meta(meta),
+        "scale_km": meta["displacement_scale_km"],
+        "bias_km": meta["displacement_bias_km"],
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],
@@ -510,6 +559,7 @@ def write_system_metadata(
     clouds_metadata: dict[str, dict],
     specular_metadata: dict[str, dict],
     night_metadata: dict[str, dict],
+    displacement_metadata: dict[str, dict],
 ) -> None:
     """Generate one metadata file per planetary system.
 
@@ -621,6 +671,12 @@ def write_system_metadata(
             night_meta = night_metadata.get(obj.id)
             if night_meta is not None:
                 entry["night"] = night_block(night_meta)
+
+            # Displacement/height map (separate single-frame bundle parallel
+            # to the surface; e.g. naif-301 → the Moon's LRO LOLA topography).
+            disp_meta = displacement_metadata.get(obj.id)
+            if disp_meta is not None:
+                entry["displacement"] = displacement_block(disp_meta)
 
             if entry:
                 bodies[obj.id] = entry
