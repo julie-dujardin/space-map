@@ -49,7 +49,7 @@
 	import ObjectDescription from './sections/ObjectDescription.svelte';
 	import SourcesFooter from './sections/SourcesFooter.svelte';
 	import Physical from './sections/Physical.svelte';
-	import FlightStats from './sections/FlightStats.svelte';
+	import ObjectStats from './sections/ObjectStats.svelte';
 	import SatCrossRefs from './sections/SatCrossRefs.svelte';
 	import Orbital from './sections/Orbital.svelte';
 	import Discovery from './sections/Discovery.svelte';
@@ -745,7 +745,7 @@
 			{#if isGroupMode && groupDetail?.global}
 				<GroupStatCards global={groupDetail.global} {showMembersTab} />
 			{:else if body}
-				<FlightStats
+				<ObjectStats
 					global={data?.global ?? null}
 					{body}
 					orbitElements={drawerOrbitElements}

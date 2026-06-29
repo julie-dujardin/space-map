@@ -3,7 +3,12 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
-	import { type OrbitalElements, type PositionedBody } from '$lib/types/objects';
+	import {
+		ObjectType,
+		isNaturalBodyType,
+		type OrbitalElements,
+		type PositionedBody
+	} from '$lib/types/objects';
 	import { OrbitalSource } from '$lib/fetch/position/format';
 	import { isLandedAt, probeStateKm } from '$lib/fetch/position/probes/propagate';
 	import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
@@ -108,12 +113,79 @@
 	interface Card {
 		label: string;
 		value: string;
-		tooltip: string;
+		tooltip?: string;
 	}
+
+	// Glanceable trio for natural bodies, each block first-available: a physical
+	// magnitude, orbital speed, then rotation period (falling back to a live
+	// distance). Full figures still live in the Physical/Orbital panels below.
+	let bodyCards = $derived.by<Card[]>(() => {
+		if (isProbe || isEarthSat || !body || !isNaturalBodyType(global?.type)) return [];
+		const out: Card[] = [];
+		const sbdb = global?.sbdb;
+		const wd = global?.wikidata;
+		const radii = global?.radii;
+
+		// Block 1 — mass, else equatorial radius (the X axis), else diameter.
+		if (sbdb?.mass) out.push({ label: m.property_name_mass(), value: formatQuantity(sbdb.mass) });
+		else if (wd?.mass) out.push({ label: m.property_name_mass(), value: formatQuantity(wd.mass) });
+		else if (radii)
+			out.push({
+				label: m.property_name_radius(),
+				value: formatQuantity({ value: radii.a, unit: 'kilometre' }, true)
+			});
+		else if (wd?.radius)
+			out.push({ label: m.property_name_radius(), value: formatQuantity(wd.radius) });
+		else if (sbdb?.diameter != null)
+			out.push({
+				label: m.diameter(),
+				value: formatQuantity({ value: sbdb.diameter, unit: 'kilometre' }, true)
+			});
+
+		// Block 2 — orbital speed via vis-viva from the body's own elements.
+		// Skipped for the central star: its only motion is the barycentric wobble.
+		const state = orbitElements ? currentStateFromElements(orbitElements, jd) : null;
+		if (state && body.data.objectType !== ObjectType.STAR)
+			out.push({
+				label: m.orbital_speed(),
+				value: formatQuantity({ value: state.vKms, unit: 'kilometre_per_second' }, true),
+				tooltip: m.tooltip_orbital_speed()
+			});
+
+		// Block 3 — rotation period, else a live distance: altitude over the
+		// parent for moons, heliocentric distance for everything else.
+		const w1 = global?.orientation?.w1;
+		const rotationPeriodDays = w1 ? 360 / Math.abs(w1) : sbdb?.rot_per ? sbdb.rot_per / 24 : null;
+		if (rotationPeriodDays != null)
+			out.push({
+				label: m.rotation_period(),
+				value: formatDuration(rotationPeriodDays),
+				tooltip: m.tooltip_rotation_period()
+			});
+		else if (state) {
+			const isMoon = body.data.objectType === ObjectType.MOON;
+			if (isMoon && parentBody && parentBody.data.radiusKm > 0) {
+				const altitudeKm = state.rKm - parentBody.data.radiusKm;
+				if (altitudeKm > 0)
+					out.push({
+						label: m.altitude(),
+						value: formatDistance(altitudeKm / AU_KM),
+						tooltip: m.tooltip_altitude()
+					});
+			} else {
+				out.push({
+					label: m.distance_from_sun(),
+					value: formatDistance(state.rKm / AU_KM),
+					tooltip: m.tooltip_distance_from_sun()
+				});
+			}
+		}
+		return out;
+	});
 
 	let cards = $derived.by<Card[]>(() => {
 		const s = stats;
-		if (!s) return [];
+		if (!s) return bodyCards;
 		const out: Card[] = [];
 		if (s.altitudeKm != null)
 			out.push({
@@ -143,23 +215,31 @@
 	});
 </script>
 
+{#snippet cardBody(c: Card, props: Record<string, unknown>)}
+	<div
+		class="border-border/60 bg-muted/40 pointer-events-auto flex flex-col gap-1 rounded-md border p-2.5 {c.tooltip
+			? 'cursor-help'
+			: ''}"
+		{...props}
+	>
+		<div class="text-muted-foreground text-[10px] uppercase">{c.label}</div>
+		<div class="text-sm font-semibold tabular-nums">{c.value}</div>
+	</div>
+{/snippet}
+
 {#if cards.length > 0}
 	<div class="grid auto-cols-fr grid-flow-col gap-2">
 		{#each cards as c (c.label)}
-			<Tooltip.Root>
-				<Tooltip.Trigger>
-					{#snippet child({ props })}
-						<div
-							class="border-border/60 bg-muted/40 pointer-events-auto flex cursor-help flex-col gap-1 rounded-md border p-2.5"
-							{...props}
-						>
-							<div class="text-muted-foreground text-[10px] uppercase">{c.label}</div>
-							<div class="text-sm font-semibold tabular-nums">{c.value}</div>
-						</div>
-					{/snippet}
-				</Tooltip.Trigger>
-				<Tooltip.Content>{c.tooltip}</Tooltip.Content>
-			</Tooltip.Root>
+			{#if c.tooltip}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}{@render cardBody(c, props)}{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>{c.tooltip}</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				{@render cardBody(c, {})}
+			{/if}
 		{/each}
 	</div>
 {/if}
