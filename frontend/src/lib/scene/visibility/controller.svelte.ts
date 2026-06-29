@@ -279,12 +279,17 @@ export class VisibilityController {
 			return VISIBILITY.FULL;
 		}
 		const isFocused = body.data.id === this.focusedBodyIdPlain;
-		return computeVisibilityFromRatio(
+		const tier = computeVisibilityFromRatio(
 			camDistThreeJS / AU_SCALE / refA,
 			this.scaledSystem,
 			FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
 			isFocused
 		);
+		// `refA` is the heliocentric orbit (Pluto borrows its barycenter's ~39 AU
+		// a), so this ratio reaches CLOSE while a small body's disc is still
+		// sub-pixel — dropping the halo with nothing to replace it. The disc-vs-halo
+		// handoff belongs to applyLabelDisplay's pixel test; keep a halo here.
+		return tier === VISIBILITY.CLOSE ? VISIBILITY.FULL : tier;
 	}
 
 	/** Probe visibility splits on the probe's current dynamical regime
@@ -419,6 +424,39 @@ export class VisibilityController {
 
 	isInActiveSystem(parentId: string): boolean {
 		return this.bodies.isInSystem(parentId, this.activeSystemId);
+	}
+
+	/** Dump every visibility signal for one body id (test + console diagnostic). */
+	debugBody(id: string): Record<string, unknown> | null {
+		const body = this.bodies.getBody(id);
+		if (!body) return { id, found: false };
+		const ot = body.data.objectType;
+		const isMoon = ot === ObjectType.MOON;
+		const ps = this.getProbeStore();
+		const vis = isMoon
+			? this.getMoonVisibility(body)
+			: this.getPlanetVisibility(body, this.cameraDistThreeJS);
+		return {
+			id,
+			name: body.data.name,
+			objectType: ObjectType[ot],
+			orbitalSource: body.data.orbitalSource,
+			parentId: body.data.parentId,
+			a: body.data.a,
+			jd: this.currentJd,
+			isMoon,
+			isSystemBody: this.bodies.isSystemBody(body),
+			isInFocusedSystem_parent: this.isInFocusedSystem(body.data.parentId),
+			focusedBodyId: this.focusedBodyIdPlain,
+			focusedSystemId: this.focusedSystemIdPlain,
+			activeSystemId: this.activeSystemId,
+			isZoomedIn: this.isZoomedIn,
+			hideThresholdAU: this.hideThresholdAU,
+			containingSystemAt: ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null,
+			camDistAU: this.cameraDistThreeJS / AU_SCALE,
+			visibility: VISIBILITY[vis],
+			hasFullRendering: this.hasFullRendering(body)
+		};
 	}
 
 	/** True if `body` (the body itself or by parentage) belongs to `sysId`. */

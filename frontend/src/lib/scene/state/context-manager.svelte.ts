@@ -54,6 +54,13 @@ export class ContextManager {
 	loading = $state(true);
 	error = $state<string | null>(null);
 
+	constructor() {
+		// DEV-only console handle for inspecting live scene state.
+		if (import.meta.env.DEV && typeof window !== 'undefined') {
+			(window as unknown as { __sm: ContextManager }).__sm = this;
+		}
+	}
+
 	/**
 	 * Chebyshev polynomial ephemeris for SPICE-sourced major bodies. Null until
 	 * the metadata.json fetch in {@link loadScene} resolves; stays null if the
