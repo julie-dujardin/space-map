@@ -318,6 +318,81 @@
 			appState.setGroup(slug, label);
 		};
 	}
+
+	// Touch: drag-to-scrub previews tooltips (a tap still navigates/focuses),
+	// mirroring BodyLineup. Mouse hover stays on the per-element pointerenter
+	// handlers; we only take over once a touch drag passes DRAG_SLOP, so a tap
+	// stays a tap.
+	const DRAG_SLOP = 8;
+	let svgEl = $state<SVGSVGElement | null>(null);
+	let downX: number | null = null;
+	let downY = 0;
+	let scrubbing = false;
+
+	function clearHover() {
+		hoveredId = null;
+		hoveredMoonZone = null;
+		hoveredBeltSlug = null;
+	}
+
+	/** Hit-test the viewBox point under the pointer, front-most first: body dots
+	 *  (padded like their hit targets), then moon stacks, then belt bands, then
+	 *  the Sun's limb. */
+	function scrubAt(clientX: number, clientY: number) {
+		if (!svgEl) return;
+		const rect = svgEl.getBoundingClientRect();
+		if (!rect.width || !rect.height) return;
+		// Aspect ratios match (h-auto + xMidYMid meet), so the map is uniform.
+		const vx = ((clientX - rect.left) / rect.width) * VIEW_W;
+		const vy = ((clientY - rect.top) / rect.height) * VIEW_H;
+		for (const b of planets) {
+			if (Math.hypot(vx - b.cx, vy - b.cy) <= b.r + HIT_MARGIN) {
+				hoveredId = b.id;
+				hoveredMoonZone = hoveredBeltSlug = null;
+				return;
+			}
+		}
+		for (const z of moonZones) {
+			if (vx >= z.x && vx <= z.x + z.width && vy >= z.y && vy <= z.y + z.height) {
+				hoveredMoonZone = z.parentId;
+				hoveredId = hoveredBeltSlug = null;
+				return;
+			}
+		}
+		for (const belt of belts) {
+			if (vx >= belt.x && vx <= belt.x + belt.width && vy >= 26 && vy <= VIEW_H - 34) {
+				hoveredBeltSlug = belt.slug;
+				hoveredId = hoveredMoonZone = null;
+				return;
+			}
+		}
+		if (sun && Math.hypot(vx - SUN_CX, vy - CY) <= SUN_R) {
+			hoveredId = sun.id;
+			hoveredMoonZone = hoveredBeltSlug = null;
+			return;
+		}
+		clearHover();
+	}
+
+	function onScrubDown(e: PointerEvent) {
+		if (e.pointerType === 'mouse') return;
+		downX = e.clientX;
+		downY = e.clientY;
+		scrubbing = false;
+	}
+
+	function onScrubMove(e: PointerEvent) {
+		if (e.pointerType === 'mouse' || downX === null) return;
+		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
+		scrubbing = true;
+		scrubAt(e.clientX, e.clientY);
+	}
+
+	function endScrub() {
+		if (scrubbing) clearHover();
+		downX = null;
+		scrubbing = false;
+	}
 </script>
 
 <div
@@ -327,11 +402,18 @@
 	bind:clientWidth={containerW}
 >
 	<svg
+		bind:this={svgEl}
 		viewBox="0 0 {VIEW_W} {VIEW_H}"
 		preserveAspectRatio={isBackground ? 'xMidYMid slice' : 'xMidYMid meet'}
-		class="text-muted-foreground block w-full {isBackground ? 'h-full' : 'h-auto'}"
+		class="text-muted-foreground block w-full touch-pan-y {isBackground ? 'h-full' : 'h-auto'}"
 		role="group"
 		aria-label={ariaLabel}
+		onpointerdown={onScrubDown}
+		onpointermove={onScrubMove}
+		onpointerup={endScrub}
+		onpointercancel={endScrub}
+		onpointerleave={endScrub}
+		data-vaul-no-drag
 	>
 		<defs>
 			<radialGradient id="ssmap-sun" cx="50%" cy="50%" r="50%">
