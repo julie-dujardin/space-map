@@ -516,6 +516,12 @@ export class SceneRenderer {
 		const { distance } = this.getCameraState();
 		this.ctx.visibility.updateCamera(distance, this.clock.jd);
 
+		// A flyby probe entering a planet's system mid-play (time advancing, not a
+		// focus change) flips `focusedSystemId` inside updateCamera with no focus
+		// event — without this the new system's textures never load and its bodies
+		// render white. syncToFocus is idempotent (no-op until the barycenter changes).
+		this.systemData.syncToFocus();
+
 		this.cullFrameCounter = updateBodyVisibility(
 			this.bodyObjects,
 			this.camera,
