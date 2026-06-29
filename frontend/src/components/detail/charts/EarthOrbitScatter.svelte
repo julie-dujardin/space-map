@@ -108,15 +108,77 @@
 
 	let focusedIsIncOnly = $derived(focusedZone != null && focusedZone.polygon.length === 0);
 	const focusedColor = FOCUS_COLORS['peri-apo'];
+
+	// Touch: drag-to-scrub previews the zone tooltip (a tap still navigates),
+	// mirroring SolarSystemMap. Mouse hover stays on the per-element handlers; we
+	// only take over once a touch drag passes DRAG_SLOP, so a tap stays a tap.
+	const DRAG_SLOP = 8;
+	let downX: number | null = null;
+	let downY = 0;
+	let scrubbing = false;
+
+	/** Point-in-polygon (ray cast) in screen px against a zone outline. */
+	function pointInZone(px: number, py: number, poly: ZonePoint[]): boolean {
+		let inside = false;
+		for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+			const xi = xScale(poly[i].x);
+			const yi = yScale(poly[i].y);
+			const xj = xScale(poly[j].x);
+			const yj = yScale(poly[j].y);
+			if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+		}
+		return inside;
+	}
+
+	function scrubAt(clientX: number, clientY: number) {
+		if (!containerEl) return;
+		const rect = containerEl.getBoundingClientRect();
+		mouse = { x: clientX - rect.left, y: clientY - rect.top };
+		const x = mouse.x - M.left; // into the inner plot (after the g translate)
+		const y = mouse.y - M.top;
+		for (const z of plotZones) {
+			if (pointInZone(x, y, z.polygon)) {
+				tip = { kind: 'zone', zone: z };
+				return;
+			}
+		}
+		tip = null;
+	}
+
+	function onScrubDown(e: PointerEvent) {
+		if (e.pointerType === 'mouse') return;
+		downX = e.clientX;
+		downY = e.clientY;
+		scrubbing = false;
+	}
+
+	function onScrubMove(e: PointerEvent) {
+		if (e.pointerType === 'mouse' || downX === null) return;
+		if (!scrubbing && Math.hypot(e.clientX - downX, e.clientY - downY) < DRAG_SLOP) return;
+		scrubbing = true;
+		scrubAt(e.clientX, e.clientY);
+	}
+
+	function endScrub() {
+		if (scrubbing) tip = null;
+		downX = null;
+		scrubbing = false;
+	}
 </script>
 
 <div
-	class="relative w-full"
+	class="relative w-full touch-pan-y"
 	bind:this={containerEl}
 	bind:clientWidth={width}
 	style:height="{height}px"
 	onmousemove={handleMove}
 	onmouseleave={() => (tip = null)}
+	onpointerdown={onScrubDown}
+	onpointermove={onScrubMove}
+	onpointerup={endScrub}
+	onpointercancel={endScrub}
+	onpointerleave={endScrub}
+	data-vaul-no-drag
 	role="img"
 >
 	{#if width > 0}
