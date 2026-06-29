@@ -292,13 +292,12 @@ export class VisibilityController {
 		return tier === VISIBILITY.CLOSE ? VISIBILITY.FULL : tier;
 	}
 
-	/** Probe visibility splits on the probe's current dynamical regime
-	 *  (per `systemIntervals`, the source of truth — `parentId` can lag during
-	 *  flyby chunk-load gaps). Heliocentric cruise → sun-orbiting style: ratio
-	 *  against heliocentric distance with `scaledSystem` thresholds, no
-	 *  focused-system gate (parallels how asteroids/comets are treated). Inside
-	 *  a planetary system → moon style: focused-system gate + ratio against
-	 *  distance-to-parent (a stand-in for the missing osculating `a`). */
+	/** Probe visibility splits on whether the probe is captured. Flyby/cruise
+	 *  (heliocentric fit present) → sun-orbiting style: ratio against distance to
+	 *  the Sun with `scaledSystem` thresholds and no focused-system gate, so a
+	 *  flyby stays visible in the solar view while transiting a planet's Hill
+	 *  sphere. Captured (no heliocentric fit) → moon style: focused-system gate +
+	 *  ratio against distance-to-parent (a stand-in for the missing osculating `a`). */
 	private getProbeVisibility(body: PositionedBody): VISIBILITY {
 		const ps = this.getProbeStore();
 		const inSysNaif = ps ? ps.containingSystemAt(body.data.id, this.currentJd) : null;
@@ -310,29 +309,34 @@ export class VisibilityController {
 			return VISIBILITY.HIDE;
 		}
 
-		const isHeliocentric = inSysNaif === null;
-
-		if (!isHeliocentric && !this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
-
-		const parent = this.bodies.bodiesById.get(body.data.parentId);
-		if (!parent) return VISIBILITY.FULL;
-		const dx = body.position[0] - parent.position[0];
-		const dy = body.position[1] - parent.position[1];
-		const dz = body.position[2] - parent.position[2];
-		const distToParent = Math.sqrt(dx * dx + dy * dy + dz * dz) / AU_SCALE;
-		if (distToParent === 0) return VISIBILITY.FULL;
-		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
 		const isFocused = body.data.id === this.focusedBodyIdPlain;
 
-		if (isHeliocentric) {
-			return computeVisibilityFromRatio(
+		// Flyby/cruise probes keep a heliocentric fit even mid-encounter; only a
+		// captured orbiter is bound and takes the moon-style hidden-in-solar gate.
+		const captured = ps ? !ps.hasHeliocentricFit(body.data.id, this.currentJd) : false;
+
+		if (!captured) {
+			const sun = this.bodies.bodiesById.get(SUN_ID);
+			const helioDist = sun ? f64dist(body.position, sun.position) / AU_SCALE : 0;
+			if (helioDist === 0) return VISIBILITY.FULL;
+			const ratio = this.cameraDistThreeJS / AU_SCALE / helioDist;
+			const tier = computeVisibilityFromRatio(
 				ratio,
 				this.scaledSystem,
 				FOCUSED_FULL_MULTIPLIER_SUN_ORBITING,
 				isFocused
 			);
+			// Probes are point-like — no mesh disc to take over from the icon, so the
+			// CLOSE tier would hide the icon with nothing to replace it.
+			return tier === VISIBILITY.CLOSE ? VISIBILITY.FULL : tier;
 		}
 
+		if (!this.isProbeInFocusedSystem(body)) return VISIBILITY.HIDE;
+		const parent = this.bodies.bodiesById.get(body.data.parentId);
+		if (!parent) return VISIBILITY.FULL;
+		const distToParent = f64dist(body.position, parent.position) / AU_SCALE;
+		if (distToParent === 0) return VISIBILITY.FULL;
+		const ratio = this.cameraDistThreeJS / AU_SCALE / distToParent;
 		const fullThreshold =
 			this.scaledPlanetary[VISIBILITY.FULL] * (isFocused ? FOCUSED_FULL_MULTIPLIER_MOON : 1);
 		return ratio <= fullThreshold ? VISIBILITY.FULL : VISIBILITY.HIDE;

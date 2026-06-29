@@ -346,6 +346,25 @@ export class ProbeStore {
 		}
 		return null;
 	}
+
+	/**
+	 * True when the probe has a heliocentric (interplanetary) fit covering `jd` —
+	 * flyby and cruise probes do (Sun-relative fit even inside a planet's Hill
+	 * sphere); a captured orbiter, emitted only to its planet zone, does not.
+	 */
+	hasHeliocentricFit(objectId: string, jd: number): boolean {
+		const params = this.zoneParams.get(INTERPLANETARY_ZONE);
+		if (!params) return false;
+		const chunkIdx = chunkIndexForJd(params, jd);
+		const chunk = this.chunks.get(INTERPLANETARY_ZONE)?.get(chunkIdx);
+		if (!chunk) return false;
+		const et = jdToEt(jd);
+		for (let i = 0; i < chunk.ids.length; i++) {
+			if (chunk.ids[i] !== objectId) continue;
+			if (findSubChunkIndex(chunk.probes[i], et) >= 0) return true;
+		}
+		return false;
+	}
 }
 
 /** Heliocentric catch-all zone. Its records carry the `systemIntervals`
