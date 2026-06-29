@@ -356,8 +356,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 					ctx.chebStore ?? null,
 					d.id,
 					probeParentKey,
-					jd,
-					probeZonePreference
+					jd
 				);
 			}
 			if (probeParentChanged) d.parentId = probeParentKey;
@@ -389,8 +388,7 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 						ctx.chebStore ?? null,
 						d.id,
 						probeParentKey,
-						jd,
-						probeZonePreference
+						jd
 					);
 				} else if (!isFinite(last)) {
 					tb.append(jd, probeOffsetX, probeOffsetY, probeOffsetZ);

@@ -30,6 +30,19 @@ type Sample = { jd: number; pos: Vec3 };
 type Sampler = (t: number) => Vec3 | null;
 
 /**
+ * Prefer the zone whose fit center IS the trail's own frame, so overlapping
+ * zones resolve in `currentParentKey`'s frame. A heliocentric trail keeps the
+ * interplanetary fit across a flyby instead of falling to the planet zone (whose
+ * samples the gate then drops, bridging the encounter with a straight line).
+ * Override frames (probe captured around a moon) match no zone fit center and
+ * fall through to the resolver's default order — unchanged.
+ */
+export function frameFitPreference(currentParentKey: string): (fitCenterNaif: number) => boolean {
+	const frameNaif = Number(currentParentKey.slice('naif-'.length));
+	return (fitCenterNaif) => fitCenterNaif === frameNaif;
+}
+
+/**
  * Parent-relative probe position at `t`, gated on the located probe's primary
  * matching `currentParentKey`. Returns null on coverage gap or zone mismatch.
  */
@@ -37,9 +50,9 @@ function buildParentGatedSampler(
 	probeStore: ProbeStore,
 	cheb: ChebyshevStore | null,
 	probeId: string,
-	currentParentKey: string,
-	isPreferred?: (fitCenterNaif: number) => boolean
+	currentParentKey: string
 ): Sampler {
+	const isPreferred = frameFitPreference(currentParentKey);
 	return (t) => {
 		const located = probeStore.probeWithCenter(probeId, t, isPreferred);
 		if (!located) return null;
@@ -126,10 +139,9 @@ export function populateProbeTrailBuffer(
 	cheb: ChebyshevStore | null,
 	probeId: string,
 	currentParentKey: string,
-	centerJd: number,
-	isPreferred?: (fitCenterNaif: number) => boolean
+	centerJd: number
 ): void {
-	const sample = buildParentGatedSampler(probeStore, cheb, probeId, currentParentKey, isPreferred);
+	const sample = buildParentGatedSampler(probeStore, cheb, probeId, currentParentKey);
 	const headPos = sample(centerJd);
 	if (!headPos) return;
 
