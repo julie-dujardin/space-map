@@ -70,7 +70,20 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
     "nut_prec": { "ra": [], "dec": [], "pm": [] },
     "radii": { "a": 6378.1366, "b": 6378.1366, "c": 6356.7519 }
   },
-  "naif-301": { "tiers": ["low"], "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" } },
+  "naif-301": {
+    "tiers": ["low"],
+    "texture": { "source": "…", "organisation": "NASA", "type": "cylindrical" },
+    "displacement": {
+      "id": "naif-301_displacement",
+      "tiers": ["low", "medium", "high"],
+      "scale_km": 19.9,
+      "bias_km": -9.13,
+      "source": "https://svs.gsfc.nasa.gov/4720/",
+      "organisation": "NASA",
+      "type": "cylindrical_displacement",
+      "attribution": "NASA's Scientific Visualization Studio. Elevation: Lunar Orbiter Laser Altimeter (LOLA), LRO."
+    }
+  },
   "naif-699": {
     "rings": {
       "source": "https://bjj.mmedia.is/data/s_rings/index.html",
@@ -93,5 +106,7 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
 ```
 
 The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
+
+When a body carries a `displacement` block, the frontend loads the height map as the material's `displacementMap`. `scale_km`/`bias_km` reconstruct the true radial offset of each texel — `km = bias_km + scale_km · texel` — which the renderer converts to scene units, so relief is physically scaled and tracks the per-frame sphere-LOD tessellation. Ships as a sibling bundle (`textures/{host_id}_displacement/`) credited independently from the surface texture.
 
 When a body carries a `rings` block, the frontend builds an annulus aligned to its IAU pole, fetches `${DATA_BASE}/v1/rings/{body_id}/{channels[name]}` for each channel, and routes the credit fields through the same per-organisation attribution path as textures. The `channels` map is flat (channel → filename) rather than tier-nested because rings ship at a single resolution.

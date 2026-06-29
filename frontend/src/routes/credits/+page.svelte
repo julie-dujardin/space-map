@@ -244,6 +244,29 @@
 			</section>
 		{/if}
 
+		{#if credits.systems.some((g) => g.displacement && g.displacement.length > 0)}
+			<section>
+				{@render sectionHeader(m.attribution_section_topography())}
+				{#each credits.systems as group (group.id ?? '__standalone__')}
+					{#if group.displacement && group.displacement.length > 0}
+						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
+							{group.name ?? m.credits_other_bodies()}
+						</h3>
+						<ul class="space-y-1">
+							{#each group.displacement as d (d.body_id)}
+								<li>
+									{@render link(d.source, d.name, d.organisation)}
+									{#if d.attribution}
+										<div class="text-xs text-muted-foreground mt-0.5">{d.attribution}</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/each}
+			</section>
+		{/if}
+
 		{#if credits.systems.some((g) => g.textures && g.textures.length > 0)}
 			<section>
 				{@render sectionHeader(m.attribution_section_imagery())}

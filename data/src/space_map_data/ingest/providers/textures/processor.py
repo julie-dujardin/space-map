@@ -383,11 +383,8 @@ class TextureProcessor:
     def _process_displacement(self, entry: dict, force: bool = False) -> Path:
         """Process a `cylindrical_displacement` entry — height-map sibling.
 
-        Output goes to ``{body}_displacement/`` — a sibling of the surface
-        texture, same single-frame shape as ``_specular``. The source LOLA
-        height TIFF is stretched to 8-bit grayscale; the km that pixel 0/255
-        map to are recorded so the renderer can drive `displacementMap` at
-        true physical scale.
+        Output goes to ``{body}_displacement/`` (single-frame, like ``_specular``).
+        Records the km at texel 0/255 so the renderer scales displacement true.
         """
         src = entry.get("_source_dir", config.RAW_DIR) / entry["file"]
         if not src.exists():
@@ -408,7 +405,14 @@ class TextureProcessor:
             return out_dir
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        img, elev_min_km, elev_max_km = open_displacement_source(src)
+        img, elev_min_km, elev_max_km = open_displacement_source(
+            src,
+            unit=entry.get("height_unit", "m"),
+            reference_km=float(entry.get("reference_km", 0.0)),
+            scale=entry.get("height_scale"),
+            offset=entry.get("height_offset"),
+            nodata=entry.get("height_nodata"),
+        )
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
@@ -422,8 +426,7 @@ class TextureProcessor:
             exports=exports,
             extra_fields={
                 "alignment": entry_alignment(entry),
-                # Radial offset (km, relative to the body's mean radius) that
-                # texel 0 and texel 1 reconstruct to: km = bias + scale * texel.
+                # Radial offset km = bias + scale·texel (relative to mean radius).
                 "displacement_bias_km": elev_min_km,
                 "displacement_scale_km": elev_max_km - elev_min_km,
             },

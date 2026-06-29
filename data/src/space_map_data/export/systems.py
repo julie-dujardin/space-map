@@ -327,12 +327,10 @@ def load_displacement_metadata(out_dir: Path) -> dict[str, dict]:
 
 
 def displacement_block(meta: dict) -> dict:
-    """Build the per-body ``displacement`` block emitted into systems/{bary}.json.
+    """Per-body ``displacement`` block for systems/{bary}.json.
 
-    Carries the export's own id (sibling directory of the surface texture),
-    the tier list, and the physical km mapping the renderer needs to scale
-    `material.displacementMap`: radial offset km = bias + scale * texel. The
-    frontend composes URLs as ``/v1/textures/{displacement.id}/{tier}.webp``.
+    Carries id, tiers, and the km mapping (offset km = bias + scale·texel) the
+    renderer needs to scale `displacementMap`. URLs: ``{displacement.id}/{tier}.webp``.
     """
     block: dict = {
         "id": meta["id"],

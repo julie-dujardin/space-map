@@ -168,6 +168,7 @@ export function buildMajorBodies(
 			atmosphere,
 			specularMap: null,
 			emissiveMap: null,
+			displacementMap: null,
 			eclipseShadow,
 			nomenclatureLabels: null,
 			model: null

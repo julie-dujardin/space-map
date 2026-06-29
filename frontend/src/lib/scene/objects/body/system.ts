@@ -27,6 +27,11 @@ import {
 	disposeNightLightsFromMaterial,
 	type NightMeta
 } from '../surface/night-lights';
+import {
+	attachDisplacementMap,
+	disposeDisplacementFromMaterial,
+	type DisplacementMeta
+} from '../surface/displacement';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
 import type { BodyObjects } from '../../types';
 import {
@@ -85,6 +90,11 @@ interface SystemBodyMeta {
 	 * URLs as `/v1/textures/{night.id}/{tier}.webp` (id ends in `_night`).
 	 */
 	night?: NightMeta;
+	/**
+	 * Displacement/height sibling bundle (the Moon, planet DEMs). Single-frame;
+	 * URLs `/v1/textures/{displacement.id}/{tier}.webp` (id ends `_displacement`).
+	 */
+	displacement?: DisplacementMeta;
 }
 
 /**
@@ -213,6 +223,35 @@ export async function loadSystemData(
 			);
 		}
 
+		// Displacement/height sibling — drives vertex displacement at true scale.
+		// On the material, so sphere-LOD geometry swaps show more relief on zoom.
+		// Same idempotent gate as the specular branch.
+		if (bodyMeta.displacement && !bo.displacementMap && bo.mesh) {
+			const dispMeta = bodyMeta.displacement;
+			if (ctx) {
+				ctx.credits.registerDisplacement({
+					bodyId,
+					systemId: barycenterId,
+					source: dispMeta.source,
+					organisation: dispMeta.organisation,
+					attribution: dispMeta.attribution,
+					description: dispMeta.description
+				});
+			}
+			const material = bo.mesh.material as MeshStandardMaterial;
+			promises.push(
+				attachDisplacementMap(material, dispMeta, 'low', textureLoader).then((tex) => {
+					if (!tex) return;
+					if (bo.displacementMap) {
+						// A concurrent reload finished first — drop ours.
+						tex.dispose();
+						return;
+					}
+					bo.displacementMap = tex;
+				})
+			);
+		}
+
 		// Cloud overlay — second sphere parented to the body's mesh, lit by the
 		// same scene lights. Idempotent: re-entering with `bo.clouds` set skips.
 		if (bodyMeta.clouds && !bo.clouds && bo.mesh) {
@@ -335,6 +374,10 @@ export function unloadSystemTextures(
 		if (bo.emissiveMap && bo.mesh) {
 			disposeNightLightsFromMaterial(bo.mesh.material as MeshStandardMaterial);
 			bo.emissiveMap = null;
+		}
+		if (bo.displacementMap && bo.mesh) {
+			disposeDisplacementFromMaterial(bo.mesh.material as MeshStandardMaterial);
+			bo.displacementMap = null;
 		}
 		const ring = bo.rings;
 		if (ring) {

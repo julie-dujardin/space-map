@@ -79,6 +79,9 @@ export interface BodyObjects {
 	/** Emissive night-lights map. Stays at the low tier — only sampled on the
 	 *  unlit side, so fine detail isn't worth the bandwidth. */
 	emissiveMap: Texture | null;
+	/** Displacement/height map. Low tier only — relief is broad and sphere-LOD
+	 *  geometry caps detail below the high tier anyway. */
+	displacementMap: Texture | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** IAU nomenclature labels attached to the body mesh; null when not loaded. */

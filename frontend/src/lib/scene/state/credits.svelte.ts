@@ -64,6 +64,19 @@ export interface NightCredit {
 }
 
 /**
+ * Per-body displacement/topography attribution, recorded when system metadata
+ * loads. Sibling to {@link NightCredit}; surfaced under "Topography".
+ */
+export interface DisplacementCredit {
+	bodyId: string;
+	systemId: string;
+	source: string;
+	organisation: string;
+	attribution?: string;
+	description?: string;
+}
+
+/**
  * Per-body spacecraft-model attribution, recorded when its GLB finishes
  * loading. Scoped to the focused body only — the popover/bar surface this
  * for the single focused probe (vs. textures, which spread across a whole
@@ -108,6 +121,8 @@ export class CreditsStore {
 	cloudVersion = $state(0);
 	night = new Map<string, NightCredit>();
 	nightVersion = $state(0);
+	displacement = new Map<string, DisplacementCredit>();
+	displacementVersion = $state(0);
 	model = new Map<string, ModelCredit>();
 	modelVersion = $state(0);
 	skybox = $state<SkyboxCredit | null>(null);
@@ -142,6 +157,12 @@ export class CreditsStore {
 		if (this.night.has(credit.bodyId)) return;
 		this.night.set(credit.bodyId, credit);
 		this.nightVersion++;
+	}
+
+	registerDisplacement(credit: DisplacementCredit): void {
+		if (this.displacement.has(credit.bodyId)) return;
+		this.displacement.set(credit.bodyId, credit);
+		this.displacementVersion++;
 	}
 
 	registerModel(credit: ModelCredit): void {

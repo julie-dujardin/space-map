@@ -51,17 +51,24 @@
 		return out;
 	});
 
-	// Scoped to the focused system + focused body; rings/clouds/models share the
-	// imagery chip here (per-source breakout lives in the popover / credits page).
+	// Scoped to the focused system + focused body; rings/clouds/topography/models
+	// share the imagery chip here (per-source breakout lives in the popover /
+	// credits page).
 	const textureOrgs = $derived.by(() => {
 		void ctx.credits.textureVersion;
 		void ctx.credits.ringVersion;
 		void ctx.credits.cloudVersion;
+		void ctx.credits.displacementVersion;
 		void ctx.credits.modelVersion;
 		const sysId = ctx.visibility.focusedSystemId;
 		const bodyId = ctx.visibility.focusedBodyId;
 		const orgs = new Set<string>();
-		const sources = [ctx.credits.texture, ctx.credits.ring, ctx.credits.cloud];
+		const sources = [
+			ctx.credits.texture,
+			ctx.credits.ring,
+			ctx.credits.cloud,
+			ctx.credits.displacement
+		];
 		for (const credits of sources) {
 			for (const credit of credits.values()) {
 				if (credit.bodyId === bodyId || (sysId && credit.systemId === sysId)) {

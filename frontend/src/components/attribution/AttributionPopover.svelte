@@ -86,20 +86,21 @@
 		void ctx.credits.textureVersion;
 		void ctx.credits.cloudVersion;
 		void ctx.credits.nightVersion;
+		void ctx.credits.displacementVersion;
 		void ctx.credits.ringVersion;
 
-		// Per-body ordering within the imagery list: surface → clouds → night → rings.
+		// Per-body ordering within the imagery list: surface → clouds → night → topography → rings.
 		const byBody = new Map<
 			string,
 			Array<{
-				typeKey: 'surface' | 'clouds' | 'night' | 'rings';
+				typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
 				source: string;
 				organisation: string;
 			}>
 		>();
 		const push = (
 			bodyId: string,
-			typeKey: 'surface' | 'clouds' | 'night' | 'rings',
+			typeKey: 'surface' | 'clouds' | 'night' | 'topography' | 'rings',
 			source: string,
 			organisation: string
 		) => {
@@ -113,13 +114,16 @@
 			push(c.bodyId, 'clouds', c.source, c.organisation);
 		for (const c of scopedCredits(ctx.credits.night.values()))
 			push(c.bodyId, 'night', c.source, c.organisation);
+		for (const c of scopedCredits(ctx.credits.displacement.values()))
+			push(c.bodyId, 'topography', c.source, c.organisation);
 		for (const c of scopedCredits(ctx.credits.ring.values()))
 			push(c.bodyId, 'rings', c.source, c.organisation);
 
-		const typeLabel = (k: 'surface' | 'clouds' | 'night' | 'rings'): string => {
+		const typeLabel = (k: 'surface' | 'clouds' | 'night' | 'topography' | 'rings'): string => {
 			if (k === 'surface') return m.attribution_type_surface();
 			if (k === 'clouds') return m.attribution_type_clouds();
 			if (k === 'night') return m.attribution_type_night();
+			if (k === 'topography') return m.attribution_type_topography();
 			return m.attribution_type_rings();
 		};
 

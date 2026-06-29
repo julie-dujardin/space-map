@@ -1,6 +1,7 @@
 """Adapters for raw input images (PIL, tifffile, bathymetry → ocean mask)."""
 
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,10 @@ log = logging.getLogger(__name__)
 Image.MAX_IMAGE_PIXELS = None
 
 _NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
+
+# Native height unit → kilometres. USGS planetary DEMs are metres; the SVS
+# LOLA float map is already km; the SVS uint variant is half-metres.
+_HEIGHT_UNIT_KM = {"m": 1e-3, "km": 1.0, "half_m": 5e-4}
 
 
 def open_image(path: Path) -> Image.Image:
@@ -62,35 +67,77 @@ def open_image(path: Path) -> Image.Image:
     return Image.fromarray(arr, mode="RGB")
 
 
-def open_displacement_source(src: Path) -> tuple[Image.Image, float, float]:
-    """Load an LRO LOLA height map and stretch it to an 8-bit grayscale tile.
+def _gdal_scale_offset(page: tifffile.TiffPage) -> tuple[float, float]:
+    """GDAL raw→native (scale, offset) from GDAL_METADATA; identity if absent."""
+    tag = page.tags.get("GDAL_METADATA")
+    scale, offset = 1.0, 0.0
+    if tag and isinstance(tag.value, str):
+        if m := re.search(r'role="scale">\s*([-\d.eE+]+)', tag.value):
+            scale = float(m.group(1))
+        if m := re.search(r'role="offset">\s*([-\d.eE+]+)', tag.value):
+            offset = float(m.group(1))
+    return scale, offset
 
-    The reference surface for LOLA is a sphere of radius 1737.4 km; gridded
-    elevations are signed 16-bit half-meters relative to it. The SVS TIFFs
-    encode that two ways, distinguished by filename:
-    - float (``ldem_*.tif``): the value already *is* elevation in km;
-    - unsigned 16-bit (``ldem_*_uint.tif``): half-meters offset by +20000
-      (10 km) to stay positive, so km = (value - 20000) / 2000.
 
-    Returns the RGB-promoted mask plus the elevation (km) that pixel 0 and 255
-    map to, so the renderer can reconstruct true-to-scale radial offsets. The
-    8-bit stretch quantises ~20 km of relief into 256 steps (~78 m), which is
-    well under the lunar limb's visible scale.
+def _gdal_nodata(page: tifffile.TiffPage) -> float | None:
+    tag = page.tags.get("GDAL_NODATA")
+    if tag and tag.value is not None:
+        try:
+            return float(tag.value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def open_displacement_source(
+    src: Path,
+    *,
+    unit: str = "m",
+    reference_km: float = 0.0,
+    scale: float | None = None,
+    offset: float | None = None,
+    nodata: float | None = None,
+) -> tuple[Image.Image, float, float]:
+    """DEM/height GeoTIFF → 8-bit grayscale tile + the km range it encodes.
+
+    Radial offset km = ``(raw·scale + offset)·unit→km − reference_km``.
+    scale/offset/nodata default to the file's GDAL tags (USGS convention),
+    overridable per entry; reference_km handles grids storing radius not
+    elevation. Returns the tile + the km at texel 0 and 255 so the renderer
+    scales displacement to true relief.
     """
-    arr = tifffile.imread(str(src))
+    with tifffile.TiffFile(str(src)) as tif:
+        page = tif.pages[0]
+        assert isinstance(page, tifffile.TiffPage)  # page 0 is always a full page
+        arr = page.asarray()
+        g_scale, g_offset = _gdal_scale_offset(page)
+        g_nodata = _gdal_nodata(page)
+
     if arr.ndim != 2:
         raise ValueError(
             f"{src.name}: expected single-channel height map, got {arr.shape}"
         )
 
-    if src.stem.endswith("_uint"):
-        elev_km = (arr.astype(np.float64) - 20000.0) / 2000.0
-    else:
-        elev_km = arr.astype(np.float64)
+    scale = g_scale if scale is None else scale
+    offset = g_offset if offset is None else offset
+    nodata = g_nodata if nodata is None else nodata
+    if unit not in _HEIGHT_UNIT_KM:
+        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
 
-    valid = elev_km > _NODATA_THRESHOLD
-    lo = float(elev_km[valid].min()) if valid.any() else 0.0
-    hi = float(elev_km[valid].max()) if valid.any() else 1.0
+    raw = arr.astype(np.float64)
+    valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
+    if nodata is not None:
+        valid &= raw != nodata
+
+    elev_km = (raw * scale + offset) * _HEIGHT_UNIT_KM[unit] - reference_km
+    if valid.any():
+        lo = float(elev_km[valid].min())
+        hi = float(elev_km[valid].max())
+    else:
+        log.warning("%s: no valid height pixels; defaulting flat", src.name)
+        lo, hi = 0.0, 1.0
+    # Floor invalid pixels so they sit flush with the lowest terrain.
+    elev_km = np.where(valid, elev_km, lo)
     norm = np.clip((elev_km - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
     gray = (norm * 255.0).astype(np.uint8)
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
