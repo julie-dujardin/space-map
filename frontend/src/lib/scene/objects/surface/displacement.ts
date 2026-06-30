@@ -63,6 +63,55 @@ export async function attachDisplacementMap(
 }
 
 /**
+ * Per-feature radial offsets (scene units) so surface labels sit on the
+ * displaced terrain, not the base sphere. Offsets match
+ * {@link attachDisplacementMap}'s scale/bias; null on fetch/decode failure.
+ */
+export async function sampleDisplacementOffsets(
+	dispMeta: DisplacementMeta,
+	points: { latRad: number; lonRad: number }[],
+	sphereRadiusScene: number
+): Promise<Float32Array | null> {
+	const url = versionedUrl(`/v1/textures/${dispMeta.id}/low.webp`, 'textures');
+	let pixels: ImageData;
+	let w: number;
+	let h: number;
+	try {
+		const response = await fetch(url);
+		if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+		const bitmap = await createImageBitmap(await response.blob());
+		w = bitmap.width;
+		h = bitmap.height;
+		const canvas = document.createElement('canvas');
+		canvas.width = w;
+		canvas.height = h;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		if (!ctx) throw new Error('no 2D context');
+		ctx.drawImage(bitmap, 0, 0);
+		pixels = ctx.getImageData(0, 0, w, h);
+		bitmap.close();
+	} catch (err) {
+		console.warn(`Failed to sample displacement map ${url}:`, err);
+		return null;
+	}
+
+	const scale = kmToScene(dispMeta.scale_km);
+	const bias = kmToScene(dispMeta.bias_km) - (dispMeta.absolute_radius ? sphereRadiusScene : 0);
+	const data = pixels.data;
+	const out = new Float32Array(points.length);
+	for (let i = 0; i < points.length; i++) {
+		const u = 0.5 + points[i].lonRad / (2 * Math.PI);
+		const v = 0.5 + points[i].latRad / Math.PI;
+		const uw = u - Math.floor(u); // lon is east-positive 0..2π, so u must wrap not clamp
+		const col = Math.min(w - 1, Math.floor(uw * w));
+		const row = Math.min(h - 1, Math.max(0, Math.floor((1 - v) * h)));
+		const texel = data[(row * w + col) * 4] / 255; // height in the R channel
+		out[i] = texel * scale + bias;
+	}
+	return out;
+}
+
+/**
  * Release the texture and reset the material's displacement slots to inert
  * defaults (scale 1, bias 0); three.js drops the vertex chunk once the map is null.
  */

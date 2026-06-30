@@ -22,6 +22,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
 import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
+import { sampleDisplacementOffsets } from './displacement';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
 import type { BodyObjects } from '$lib/scene/types';
 
@@ -120,6 +121,17 @@ export async function attachNomenclatureLabels(
 		return db - da;
 	});
 
+	// Lift labels onto the displaced terrain, else they float at the base radius.
+	let dispOffsets: Float32Array | null = null;
+	if (detail.global.displacement) {
+		dispOffsets = await sampleDisplacementOffsets(
+			detail.global.displacement,
+			renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD })),
+			bo.radiusScene
+		);
+		if (bo.nomenclatureLabels || !bo.mesh) return;
+	}
+
 	const n = renderable.length;
 	const labels: CSS2DObject[] = new Array(n);
 	const diamsM = new Float32Array(n);
@@ -166,11 +178,12 @@ export async function attachNomenclatureLabels(
 		const lonRad = feature.lon * DEG2RAD;
 		const cosLat = Math.cos(latRad);
 
+		const rf = r + (dispOffsets ? dispOffsets[i] : 0);
 		const obj = new CSS2DObject(el);
 		obj.position.set(
-			r * cosLat * Math.cos(lonRad),
-			r * Math.sin(latRad),
-			-r * cosLat * Math.sin(lonRad)
+			rf * cosLat * Math.cos(lonRad),
+			rf * Math.sin(latRad),
+			-rf * cosLat * Math.sin(lonRad)
 		);
 		bo.mesh.add(obj);
 		labels[i] = obj;
