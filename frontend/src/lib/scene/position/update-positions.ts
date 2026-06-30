@@ -306,6 +306,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 					body.trailAnchor[2] = landedRender.parentPos[2];
 				}
 				positionMap.set(d.id, body.position);
+				// Stand the lander on the terrain: aim its south pole (−Y) at the
+				// body centre so it sits upright (nadir), roll free.
+				if (bo?.mesh) applySouthTowardParent(bo.mesh, body.position, landedRender.parentPos);
+				if (bo?.model) applySouthTowardParent(bo.model, body.position, landedRender.parentPos);
 				return;
 			}
 			// Resolve the probe's stamped primary (Moon for lunar orbiters,
