@@ -243,6 +243,7 @@ def run_groups_tier(
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
     gms: dict[int, float],
+    displacement_metadata: dict[str, dict] | None = None,
 ) -> dict[str, int]:
     """Build + write the groups tier; returns bucket counts for metadata.json.
 
@@ -366,6 +367,7 @@ def run_groups_tier(
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,
         constellation_orbit_classes=constellation_orbit_classes,
+        displacement_metadata=displacement_metadata,
     )
 
 
@@ -380,7 +382,11 @@ def update_metadata_group_bundles(out_dir: Path, group_bundles: dict[str, int]) 
 def export_groups_only(engine: Engine) -> None:
     """Additive run: write groups + membership + patch metadata.json only."""
     from space_map_data.export.localization import write_group_messages
-    from space_map_data.export.systems import load_gms, load_radii
+    from space_map_data.export.systems import (
+        load_displacement_metadata,
+        load_gms,
+        load_radii,
+    )
     from space_map_data.utils.paths import DOWNLOAD_DIR
 
     out_dir = EXPORT_DIR / "v1"
@@ -389,7 +395,10 @@ def export_groups_only(engine: Engine) -> None:
     wikidata_entities = WikidataEntityCache()
     radii = load_radii(DOWNLOAD_DIR)
     gms = load_gms(DOWNLOAD_DIR)
-    group_bundles = run_groups_tier(engine, out_dir, wikidata_entities, radii, gms)
+    displacement_metadata = load_displacement_metadata(out_dir)
+    group_bundles = run_groups_tier(
+        engine, out_dir, wikidata_entities, radii, gms, displacement_metadata
+    )
     update_metadata_group_bundles(out_dir, group_bundles)
     write_group_messages(wikidata_entities)
     logger.info("Groups-only export complete (%d bundles)", group_bundles["global"])

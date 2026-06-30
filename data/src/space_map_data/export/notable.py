@@ -14,6 +14,7 @@ from space_map_data.export.images import (
     collect_object_images,
     pick_thumbnail,
 )
+from space_map_data.export.systems import displacement_block
 from space_map_data.export.objects.wikidata_claims import radius_km_from_claims
 from space_map_data.export.quantities import UnitConverter
 from space_map_data.export.wikidata import WikidataEntityCache
@@ -133,12 +134,15 @@ def _member_key(member: NotableObject) -> str:
 def notable_entries(
     members: list[NotableObject],
     wikidata_entities: WikidataEntityCache,
+    displacement_metadata: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Denormalized records for a global bundle.
 
     Name is the English Wikidata label when available (matching the object
     bundles' global name), else the DB fallback. Thumbnail reuses the
-    search-card picker over the object's export images.
+    search-card picker over the object's export images. ``displacement_metadata``
+    (when supplied) lets a member carry its DEM block so the lineup renders the
+    same relief as the main map.
     """
     out: list[dict] = []
     for member in members:
@@ -171,6 +175,10 @@ def notable_entries(
             entry["color"] = member.color
         if member.first_obs:
             entry["first_obs"] = member.first_obs
+        if displacement_metadata and (
+            disp := displacement_metadata.get(member.object_id)
+        ):
+            entry["displacement"] = displacement_block(disp)
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))
         if thumbnail:
             entry["thumbnail"] = thumbnail

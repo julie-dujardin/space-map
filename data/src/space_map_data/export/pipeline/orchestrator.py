@@ -977,6 +977,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         nut_prec=nut_prec,
         texture_metadata=texture_metadata,
         clouds_metadata=clouds_metadata,
+        displacement_metadata=displacement_metadata,
         probe_kernel_sources=probe_kernel_sources,
         nomenclature_body_ids=set(nomenclature_by_body.keys()),
         parent_names=moon_parent_names,
@@ -1079,7 +1080,12 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         # is already closed), so open a short-lived one for the lookup.
         with Session(engine) as session:
             attach_notable_moons(
-                session, agg.all_objects, wikidata_entities, radii, orientation
+                session,
+                agg.all_objects,
+                wikidata_entities,
+                radii,
+                orientation,
+                displacement_metadata,
             )
             attach_featured_satellites(session, agg.all_objects, wikidata_entities)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
@@ -1119,7 +1125,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         write_messages(wikidata_entities, units.used_units)
         group_bundle_ns = run_groups_tier(
-            engine, out_dir, wikidata_entities, radii, gms
+            engine, out_dir, wikidata_entities, radii, gms, displacement_metadata
         )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns

@@ -57,6 +57,7 @@ class ObjectDataContext:
     nut_prec: dict[int, dict[str, list[float]]]
     texture_metadata: dict[str, dict]
     clouds_metadata: dict[str, dict]
+    displacement_metadata: dict[str, dict]
     probe_kernel_sources: dict[int, str | None]
     nomenclature_body_ids: set[str]
     # parent Object.id -> display name, for moons whose parent may live in
@@ -134,6 +135,7 @@ def build_zone_object_data(
         nut_prec=ctx.nut_prec,
         texture_metadata=ctx.texture_metadata,
         clouds_metadata=ctx.clouds_metadata,
+        displacement_metadata=ctx.displacement_metadata,
         probe_kernel_sources=ctx.probe_kernel_sources,
         nomenclature_body_ids=ctx.nomenclature_body_ids,
         parent_names=ctx.parent_names,

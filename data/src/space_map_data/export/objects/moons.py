@@ -186,6 +186,7 @@ def attach_notable_moons(
     wikidata_entities: WikidataEntityCache,
     radii: dict[int, dict],
     orientation: dict[int, dict],
+    displacement_metadata: dict[str, dict] | None = None,
 ) -> None:
     """Inject ``notable_moons`` + ``moon_count`` + ``named_moon_count`` into
     each host's global bundle.
@@ -206,7 +207,9 @@ def attach_notable_moons(
                 host_id,
             )
             continue
-        entries = notable_entries(host_moons.moons, wikidata_entities)
+        entries = notable_entries(
+            host_moons.moons, wikidata_entities, displacement_metadata
+        )
         global_data["notable_moons"] = entries
         global_data["moon_count"] = host_moons.total
         if host_moons.named:

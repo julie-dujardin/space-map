@@ -112,7 +112,7 @@ Specular (`type: cylindrical_specular`): single-frame mask sibling to the surfac
 }
 ```
 
-Displacement (`type: cylindrical_displacement`): single-frame height map sibling to the surface texture. The `id` carries the `_displacement` suffix and the frontend composes URLs as `/v1/textures/{displacement.id}/{tier}.webp`. Beyond the single-frame `cylindrical` shape it adds `displacement_bias_km` / `displacement_scale_km`, the km that texel 0 and 1 reconstruct to (`km = bias + scale · texel`), so the renderer scales `material.displacementMap` to true relief.
+Displacement (`type: cylindrical_displacement`): single-frame height map sibling to the surface texture. The `id` carries the `_displacement` suffix and the frontend composes URLs as `/v1/textures/{displacement.id}/{tier}.webp`. Beyond the single-frame `cylindrical` shape it adds `displacement_bias_km` / `displacement_scale_km`, the km that texel 0 and 1 reconstruct to (`km = bias + scale · texel`), so the renderer scales `material.displacementMap` to true relief. `absolute_radius` marks grids whose value is radius-from-centre rather than elevation (e.g. the Vesta/Ceres DTMs); the renderer then subtracts the body's sphere radius and skips triaxial flattening so the DEM carries the whole shape.
 
 ```json
 {
@@ -123,6 +123,7 @@ Displacement (`type: cylindrical_displacement`): single-frame height map sibling
   "type": "cylindrical_displacement",
   "displacement_bias_km": -9.13,
   "displacement_scale_km": 19.9,
+  "absolute_radius": false,
   "source_file": "ldem_64.tif",
   "source_dimensions": [23040, 11520],
   "processed_at": "2026-06-29T00:00:00+00:00",

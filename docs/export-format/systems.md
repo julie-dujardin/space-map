@@ -78,6 +78,7 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
       "tiers": ["low", "medium", "high"],
       "scale_km": 19.9,
       "bias_km": -9.13,
+      "absolute_radius": false,
       "source": "https://svs.gsfc.nasa.gov/4720/",
       "organisation": "NASA",
       "type": "cylindrical_displacement",
@@ -107,6 +108,6 @@ Generated during export (not ingest). One file per planetary system, keyed by ba
 
 The frontend fetches this when entering a system: it preloads low-res textures for every listed body, applies the full IAU rotation polynomial + nutation sums to meshes, (where `radii` differ) flattens bodies into oblate ellipsoids, and shows per-organisation imagery attribution for bodies currently in view. `texture` mirrors the shape embedded in each body's global detail file.
 
-When a body carries a `displacement` block, the frontend loads the height map as the material's `displacementMap`. `scale_km`/`bias_km` reconstruct the true radial offset of each texel — `km = bias_km + scale_km · texel` — which the renderer converts to scene units, so relief is physically scaled and tracks the per-frame sphere-LOD tessellation. Ships as a sibling bundle (`textures/{host_id}_displacement/`) credited independently from the surface texture.
+When a body carries a `displacement` block, the frontend loads the height map as the material's `displacementMap`. `scale_km`/`bias_km` map each texel to a value — `km = bias_km + scale_km · texel` — which the renderer converts to scene units, so relief is physically scaled and tracks the per-frame sphere-LOD tessellation. When `absolute_radius` is true the value is radius-from-centre rather than elevation: the renderer subtracts the body's own sphere radius and skips triaxial flattening, letting the DEM carry the whole shape (used for irregular bodies like Vesta and Ceres). Ships as a sibling bundle (`textures/{host_id}_displacement/`) credited independently from the surface texture.
 
 When a body carries a `rings` block, the frontend builds an annulus aligned to its IAU pole, fetches `${DATA_BASE}/v1/rings/{body_id}/{channels[name]}` for each channel, and routes the credit fields through the same per-organisation attribution path as textures. The `channels` map is flat (channel → filename) rather than tier-nested because rings ship at a single resolution.

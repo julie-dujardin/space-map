@@ -408,7 +408,6 @@ class TextureProcessor:
         img, elev_min_km, elev_max_km = open_displacement_source(
             src,
             unit=entry.get("height_unit", "m"),
-            reference_km=float(entry.get("reference_km", 0.0)),
             scale=entry.get("height_scale"),
             offset=entry.get("height_offset"),
             nodata=entry.get("height_nodata"),
@@ -426,9 +425,11 @@ class TextureProcessor:
             exports=exports,
             extra_fields={
                 "alignment": entry_alignment(entry),
-                # Radial offset km = bias + scale·texel (relative to mean radius).
+                # Value km = bias + scale·texel. For absolute_radius grids the
+                # renderer subtracts its sphere radius and skips triaxial.
                 "displacement_bias_km": elev_min_km,
                 "displacement_scale_km": elev_max_km - elev_min_km,
+                "absolute_radius": bool(entry.get("absolute_radius", False)),
             },
         )
         log.info(

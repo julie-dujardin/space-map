@@ -93,18 +93,17 @@ def open_displacement_source(
     src: Path,
     *,
     unit: str = "m",
-    reference_km: float = 0.0,
     scale: float | None = None,
     offset: float | None = None,
     nodata: float | None = None,
 ) -> tuple[Image.Image, float, float]:
     """DEM/height GeoTIFF → 8-bit grayscale tile + the km range it encodes.
 
-    Radial offset km = ``(raw·scale + offset)·unit→km − reference_km``.
-    scale/offset/nodata default to the file's GDAL tags (USGS convention),
-    overridable per entry; reference_km handles grids storing radius not
-    elevation. Returns the tile + the km at texel 0 and 255 so the renderer
-    scales displacement to true relief.
+    Value km = ``(raw·scale + offset)·unit→km`` — elevation for most DEMs, or
+    absolute radius for those that store it (the renderer subtracts its sphere
+    radius then). scale/offset/nodata default to the file's GDAL tags (USGS
+    convention), overridable per entry. Returns the tile + the km at texel 0
+    and 255 so the renderer scales displacement to true relief.
     """
     with tifffile.TiffFile(str(src)) as tif:
         page = tif.pages[0]
@@ -129,7 +128,7 @@ def open_displacement_source(
     if nodata is not None:
         valid &= raw != nodata
 
-    elev_km = (raw * scale + offset) * _HEIGHT_UNIT_KM[unit] - reference_km
+    elev_km = (raw * scale + offset) * _HEIGHT_UNIT_KM[unit]
     if valid.any():
         lo = float(elev_km[valid].min())
         hi = float(elev_km[valid].max())

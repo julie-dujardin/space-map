@@ -7,6 +7,7 @@ import { jdToDate } from '$lib/format/date';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
+import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import type { BodyObjects } from '../../types';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
@@ -150,7 +151,14 @@ export async function loadBodyTexture(
 	if (detail.global.orientation && !bo.body.orientation) {
 		bo.body.orientation = detail.global.orientation;
 	}
-	if (detail.global.radii && bo.radiusScene > 0 && !bo.radiiApplied) {
+	// Absolute-radius DEM bodies (Vesta/Ceres) skip triaxial — the displacement
+	// carries the full shape, so the ellipsoid would double-count it.
+	if (
+		detail.global.radii &&
+		bo.radiusScene > 0 &&
+		!bo.radiiApplied &&
+		!detail.global.displacement?.absolute_radius
+	) {
 		applyRadiiToMesh(bo, detail.global.radii);
 	}
 
@@ -183,6 +191,31 @@ export async function loadBodyTexture(
 			description: detail.global.texture.description
 		});
 	}
+	// DEM sibling — standalone bodies (Vesta/Ceres) load it here since they
+	// never hit the per-system path. Same shape as `system.ts`'s branch.
+	if (detail.global.displacement && !bo.displacementMap && bo.mesh) {
+		const dispMeta = detail.global.displacement;
+		if (ctx) {
+			ctx.credits.registerDisplacement({
+				bodyId: bo.body.data.id,
+				systemId: bo.body.data.id,
+				source: dispMeta.source,
+				organisation: dispMeta.organisation,
+				attribution: dispMeta.attribution,
+				description: dispMeta.description
+			});
+		}
+		const material = bo.mesh.material as MeshStandardMaterial;
+		const tex = await attachDisplacementMap(
+			material,
+			dispMeta,
+			'low',
+			textureLoader,
+			bo.radiusScene
+		);
+		if (tex) bo.displacementMap = tex;
+	}
+
 	if (bo.textureTier || bo.textureLoading) return;
 	bo.availableTiers ??= [...TIER_NAMES];
 	bo.availableFrames = detail.global.texture?.frames;
@@ -224,6 +257,10 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
 export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!bo.mesh) return;
 	const material = bo.mesh.material as MeshStandardMaterial;
+	if (bo.displacementMap) {
+		disposeDisplacementFromMaterial(material);
+		bo.displacementMap = null;
+	}
 	if (!material.map) return;
 	material.map.dispose();
 	material.map = null;

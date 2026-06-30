@@ -337,6 +337,7 @@ def displacement_block(meta: dict) -> dict:
         "tiers": _tiers_from_meta(meta),
         "scale_km": meta["displacement_scale_km"],
         "bias_km": meta["displacement_bias_km"],
+        "absolute_radius": meta.get("absolute_radius", False),
         "source": meta["source"],
         "organisation": meta["organisation"],
         "type": meta["type"],

@@ -36,6 +36,7 @@ export function geometryFromMember(m: NotableMemberEntry & { id: string }): Line
 		geom.poleRa = m.pole.ra;
 		geom.poleDec = m.pole.dec;
 	}
+	if (m.displacement) geom.displacement = m.displacement;
 	return { ...geom, ...RENDER_HINTS[m.id], color: BODY_COLORS[m.id] ? undefined : m.color };
 }
 

@@ -156,8 +156,15 @@ export async function loadSystemData(
 
 		// Apply triaxial flattening. applyOrientation puts the body's pole on
 		// local +Y and the ascending node on local +X, so SPICE (X, Y, Z)
-		// maps to mesh local (X, Z, Y).
-		if (bodyMeta.radii && bo.radiusScene > 0 && !bo.radiiApplied) {
+		// maps to mesh local (X, Z, Y). Skipped for absolute-radius displacement
+		// bodies (Vesta, Ceres) — their DEM carries the full shape on a sphere,
+		// so the ellipsoid would double-count it.
+		if (
+			bodyMeta.radii &&
+			bo.radiusScene > 0 &&
+			!bo.radiiApplied &&
+			!bodyMeta.displacement?.absolute_radius
+		) {
 			applyRadiiToMesh(bo, bodyMeta.radii);
 		}
 
@@ -240,15 +247,17 @@ export async function loadSystemData(
 			}
 			const material = bo.mesh.material as MeshStandardMaterial;
 			promises.push(
-				attachDisplacementMap(material, dispMeta, 'low', textureLoader).then((tex) => {
-					if (!tex) return;
-					if (bo.displacementMap) {
-						// A concurrent reload finished first — drop ours.
-						tex.dispose();
-						return;
+				attachDisplacementMap(material, dispMeta, 'low', textureLoader, bo.radiusScene).then(
+					(tex) => {
+						if (!tex) return;
+						if (bo.displacementMap) {
+							// A concurrent reload finished first — drop ours.
+							tex.dispose();
+							return;
+						}
+						bo.displacementMap = tex;
 					}
-					bo.displacementMap = tex;
-				})
+				)
 			);
 		}
 

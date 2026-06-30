@@ -1,4 +1,6 @@
 <script lang="ts" module>
+	import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
+
 	/** One body in the lineup. Geometry is supplied by the caller (planet/moon
 	 *  constants today, export diameters for asteroids later), so this engine
 	 *  stays body-class agnostic. */
@@ -22,6 +24,9 @@
 		surfaceFrame?: string;
 		/** System id whose bundle carries cloud metadata, for an overlay. */
 		cloudSystem?: string;
+		/** DEM sibling bundle — same relief the main map renders. `absolute_radius`
+		 *  bodies (Vesta/Ceres) skip the oblateness scale and let it carry the shape. */
+		displacement?: DisplacementMeta;
 	}
 </script>
 
@@ -35,6 +40,7 @@
 		DirectionalLight,
 		Mesh,
 		MeshStandardMaterial,
+		NoColorSpace,
 		OrthographicCamera,
 		Quaternion,
 		Scene,
@@ -278,6 +284,8 @@
 	let scene: Scene | undefined;
 	let camera: OrthographicCamera | undefined;
 	const geometry = new SphereGeometry(1, 48, 48);
+	// Displacement needs the vertices to show relief — match the main map's top LOD.
+	const dispGeometry = new SphereGeometry(1, 128, 128);
 	const meshes = new Map<string, Mesh>();
 	const cloudNodes = new Map<string, CloudNode>();
 
@@ -351,6 +359,28 @@
 		}
 	}
 
+	/** DEM relief scaled to the lineup's unit sphere (radius 1 = equatorial
+	 *  radiusKm). `absolute_radius` texels are radius-from-centre, so the bias
+	 *  drops the unit sphere (−1) and the layout skips the oblateness scale. */
+	function loadDisplacement(b: LineupBody, material: MeshStandardMaterial, loader: TextureLoader) {
+		const d = b.displacement;
+		if (!d) return;
+		const url = versionedUrl(`/v1/textures/${d.id}/low.webp`, 'textures');
+		loader.load(
+			url,
+			(tex) => {
+				tex.colorSpace = NoColorSpace;
+				material.displacementMap = tex;
+				material.displacementScale = d.scale_km / b.radiusKm;
+				material.displacementBias = d.bias_km / b.radiusKm - (d.absolute_radius ? 1 : 0);
+				material.needsUpdate = true;
+				render();
+			},
+			undefined,
+			() => {} // relief is optional — keep the smooth sphere on failure
+		);
+	}
+
 	function clearMeshes() {
 		baseQuats.clear();
 		spinAngles.clear();
@@ -360,6 +390,7 @@
 		for (const mesh of meshes.values()) {
 			scene?.remove(mesh);
 			(mesh.material as MeshStandardMaterial).map?.dispose();
+			(mesh.material as MeshStandardMaterial).displacementMap?.dispose();
 			(mesh.material as MeshStandardMaterial).dispose();
 		}
 		meshes.clear();
@@ -372,7 +403,7 @@
 		for (const b of visibleItems) {
 			const color = b.color ?? BODY_COLORS[b.id] ?? DEFAULT_BODY_COLOR;
 			const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-			const mesh = new Mesh(geometry, material);
+			const mesh = new Mesh(b.displacement ? dispGeometry : geometry, material);
 			baseQuats.set(b.id, styledQuaternion(b));
 			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
@@ -393,6 +424,7 @@
 				undefined,
 				() => {} // keep the flat color on failure
 			);
+			if (b.displacement) loadDisplacement(b, material, loader);
 			if (b.cloudSystem) loadClouds(b.id, b.cloudSystem, mesh);
 		}
 	}
@@ -416,7 +448,9 @@
 			mesh.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
 			// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 			// in local space before the tilt quaternion, so it aligns with the pole.
-			mesh.scale.set(p.pr, p.pr * (p.polarRatio ?? 1), p.pr);
+			// absolute_radius bodies skip it — their displacement carries the shape.
+			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
+			mesh.scale.set(p.pr, p.pr * polarY, p.pr);
 			applySpin(mesh, p.id);
 		});
 		updateGlow();
@@ -525,7 +559,8 @@
 			// elliptical halo so the rim hugs its flattened poles instead of a fat
 			// circle floating off them. Constant GLOW_PX rim on each axis.
 			const half = p.pr + GLOW_PX;
-			const halfY = p.pr * (p.polarRatio ?? 1) + GLOW_PX;
+			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
+			const halfY = p.pr * polarY + GLOW_PX;
 			// Sit just behind the hovered body (ε ≪ Z_STEP): its own disc masks
 			// the halo's core, nearer bodies occlude it, farther ones show through.
 			// Live animated x, not the base column — the halo must follow a body
@@ -655,7 +690,6 @@
 		style="height: {HEIGHT}px"
 		role="group"
 		aria-label={ariaLabel}
-		data-vaul-no-drag
 	>
 		<canvas bind:this={canvasEl} class="absolute inset-0 h-full w-full"></canvas>
 

@@ -42,7 +42,11 @@ from space_map_data.export.objects.celestrak import (
 from space_map_data.export.objects.sbdb import build_sbdb
 from space_map_data.export.small_body_color import resolve_moon_color
 from space_map_data.export.quantities import UnitConverter
-from space_map_data.export.systems import clouds_block, texture_attribution
+from space_map_data.export.systems import (
+    clouds_block,
+    displacement_block,
+    texture_attribution,
+)
 from space_map_data.export.objects.wikidata_claims import (
     ENTITY_REF_CLAIMS,
     GLOBAL_CLAIMS,
@@ -209,6 +213,7 @@ def build_chunk_object_data(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    displacement_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
@@ -256,6 +261,7 @@ def build_chunk_object_data(
             nut_prec,
             texture_metadata,
             clouds_metadata,
+            displacement_metadata,
             probe_kernel_sources,
             nomenclature_body_ids,
             parent_names,
@@ -343,6 +349,7 @@ def _build_global(
     nut_prec: dict[int, dict[str, list[float]]],
     texture_metadata: dict[str, dict],
     clouds_metadata: dict[str, dict],
+    displacement_metadata: dict[str, dict],
     probe_kernel_sources: dict[int, str | None],
     nomenclature_body_ids: set[str],
     parent_names: dict[str, str],
@@ -366,6 +373,9 @@ def _build_global(
     clouds_meta = clouds_metadata.get(obj.id)
     if clouds_meta is not None:
         data["clouds"] = clouds_block(clouds_meta)
+    disp_meta = displacement_metadata.get(obj.id)
+    if disp_meta is not None:
+        data["displacement"] = displacement_block(disp_meta)
     if obj.has_rings:
         data["has_rings"] = True
     if obj.id in nomenclature_body_ids:

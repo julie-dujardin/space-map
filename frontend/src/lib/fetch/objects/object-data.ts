@@ -3,6 +3,7 @@ import { fetchMetadata, hashBucket, type ProbeCoverage } from '$lib/fetch/metada
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
+import type { DisplacementMeta } from '$lib/scene/objects/surface/displacement';
 
 // --- Global object data (non-localized) ---
 
@@ -89,6 +90,8 @@ export interface NotableMemberEntry {
 	color?: string;
 	/** Discovery proxy — SBDB first_obs, YYYY-MM-DD or YYYY (members only). */
 	first_obs?: string;
+	/** DEM sibling bundle — lets the lineup render the same relief as the main map. */
+	displacement?: DisplacementMeta;
 	thumbnail?: PickedThumbnail;
 }
 
@@ -153,6 +156,9 @@ export interface GlobalObjectData {
 	map_texture_available?: boolean;
 	/** Only present when `map_texture_available` — mirrors `texture` in systems/{bary}.json. */
 	texture?: TextureAttribution;
+	/** DEM sibling bundle — mirrors `displacement` in systems/{bary}.json. Carries
+	 *  standalone bodies (Vesta/Ceres) that never load a system file. */
+	displacement?: DisplacementMeta;
 	/** Slug under `v1/models/{model_name}/` when this body has a 3D model bundle.
 	 *  Multiple bodies can share one slug (e.g. all four Cluster II satellites
 	 *  point at `cluster`); the frontend loads `high.glb` from that directory. */

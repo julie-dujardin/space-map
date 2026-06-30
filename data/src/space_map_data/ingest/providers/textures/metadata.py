@@ -64,6 +64,11 @@ def refresh_metadata_from_yaml(out_dir: Path, entry: dict, src_file_name: str) -
         "description": entry.get("description"),
         "type": entry["type"],
     }
+    # absolute_radius is a yaml flag, not image-derived, so refresh it without a
+    # reprocess — else a cached displacement bundle keeps a stale/missing value
+    # and the renderer mis-scales the body (treats radius as elevation).
+    if entry.get("type") == "cylindrical_displacement":
+        desired["absolute_radius"] = bool(entry.get("absolute_radius", False))
     if all(current.get(k) == v for k, v in desired.items()):
         return
     current.update(desired)
