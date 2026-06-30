@@ -32,6 +32,7 @@ import {
 	disposeDisplacementFromMaterial,
 	type DisplacementMeta
 } from '../surface/displacement';
+import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { disposeNomenclatureLabels } from '../surface/nomenclature';
 import type { BodyObjects } from '../../types';
 import {
@@ -256,6 +257,8 @@ export async function loadSystemData(
 							return;
 						}
 						bo.displacementMap = tex;
+						// Self-shadow + relief shading march the same height field.
+						bo.selfShadow = attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km));
 					}
 				)
 			);
@@ -387,6 +390,8 @@ export function unloadSystemTextures(
 		if (bo.displacementMap && bo.mesh) {
 			disposeDisplacementFromMaterial(bo.mesh.material as MeshStandardMaterial);
 			bo.displacementMap = null;
+			detachSelfShadow(bo.selfShadow);
+			bo.selfShadow = null;
 		}
 		const ring = bo.rings;
 		if (ring) {

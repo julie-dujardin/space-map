@@ -8,6 +8,7 @@ import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
+import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import type { BodyObjects } from '../../types';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
@@ -213,7 +214,10 @@ export async function loadBodyTexture(
 			textureLoader,
 			bo.radiusScene
 		);
-		if (tex) bo.displacementMap = tex;
+		if (tex) {
+			bo.displacementMap = tex;
+			bo.selfShadow = attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km));
+		}
 	}
 
 	if (bo.textureTier || bo.textureLoading) return;
@@ -260,6 +264,8 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	if (bo.displacementMap) {
 		disposeDisplacementFromMaterial(material);
 		bo.displacementMap = null;
+		detachSelfShadow(bo.selfShadow);
+		bo.selfShadow = null;
 	}
 	if (!material.map) return;
 	material.map.dispose();

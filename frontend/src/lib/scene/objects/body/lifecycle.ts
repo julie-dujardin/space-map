@@ -169,6 +169,7 @@ export function buildMajorBodies(
 			specularMap: null,
 			emissiveMap: null,
 			displacementMap: null,
+			selfShadow: null,
 			eclipseShadow,
 			nomenclatureLabels: null,
 			model: null

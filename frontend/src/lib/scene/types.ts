@@ -5,6 +5,7 @@ import type { RingNode } from './objects/surface/rings';
 import type { CloudNode } from './objects/surface/clouds';
 import type { AtmosphereNode } from './objects/surface/atmosphere';
 import type { EclipseSelfUniforms } from './objects/surface/eclipse-shadow';
+import type { SelfShadowUniforms } from './objects/surface/self-shadow';
 
 /** Body/halo size ratio above which the label is hidden (focused only). */
 export const HIDE_LABEL_BODY_HALO_FACTOR = 20;
@@ -82,6 +83,8 @@ export interface BodyObjects {
 	/** Displacement/height map. Low tier only — relief is broad and sphere-LOD
 	 *  geometry caps detail below the high tier anyway. */
 	displacementMap: Texture | null;
+	/** Terrain self-shadow + relief uniforms; set alongside the displacement map. */
+	selfShadow: SelfShadowUniforms | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
 	/** IAU nomenclature labels attached to the body mesh; null when not loaded. */
