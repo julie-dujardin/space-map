@@ -8,6 +8,7 @@ import numpy as np
 import tifffile
 from PIL import Image
 
+from . import config
 from .encoding import linear_to_srgb
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ _NODATA_THRESHOLD = -1e31  # GDAL nodata for float TIFFs is -1e+32
 # Native height unit → kilometres. USGS planetary DEMs are metres; the SVS
 # LOLA float map is already km; the SVS uint variant is half-metres.
 _HEIGHT_UNIT_KM = {"m": 1e-3, "km": 1.0, "half_m": 5e-4}
+
+# Output rows per streaming band in open_displacement_source — caps the
+# per-band working set (~650 MiB float32 at ds=6 on a 100k-wide DEM).
+_DISPLACEMENT_BAND_OUT_ROWS = 256
 
 
 def open_image(path: Path) -> Image.Image:
@@ -104,40 +109,80 @@ def open_displacement_source(
     radius then). scale/offset/nodata default to the file's GDAL tags (USGS
     convention), overridable per entry. Returns the tile + the km at texel 0
     and 255 so the renderer scales displacement to true relief.
+
+    Memory-mapped and box-averaged in row-bands so peak RAM stays near one
+    band: the Mars blend is 10.6 GiB int16 and a whole-image float64 expansion
+    would need ~43 GiB. Integer pre-downsampling is free since exports cap at
+    ``WEBP_MAX`` anyway; LANCZOS does the final resize.
     """
     with tifffile.TiffFile(str(src)) as tif:
         page = tif.pages[0]
         assert isinstance(page, tifffile.TiffPage)  # page 0 is always a full page
-        arr = page.asarray()
+        if unit not in _HEIGHT_UNIT_KM:
+            raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
         g_scale, g_offset = _gdal_scale_offset(page)
-        g_nodata = _gdal_nodata(page)
+        scale = g_scale if scale is None else scale
+        offset = g_offset if offset is None else offset
+        nodata = _gdal_nodata(page) if nodata is None else nodata
+        unit_km = _HEIGHT_UNIT_KM[unit]
 
-    if arr.ndim != 2:
-        raise ValueError(
-            f"{src.name}: expected single-channel height map, got {arr.shape}"
-        )
+        if page.is_contiguous:
+            mm = page.asarray(out="memmap")
+        else:
+            # Only memmappable sources stream; the rest are small enough to fit.
+            log.info("%s not contiguous; full-loading instead of streaming", src.name)
+            mm = page.asarray()
+        if mm.ndim != 2:
+            raise ValueError(
+                f"{src.name}: expected single-channel height map, got {mm.shape}"
+            )
+        src_h, src_w = mm.shape
 
-    scale = g_scale if scale is None else scale
-    offset = g_offset if offset is None else offset
-    nodata = g_nodata if nodata is None else nodata
-    if unit not in _HEIGHT_UNIT_KM:
-        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
+        # Box-average factor landing the longest side just above the export
+        # ceiling; ds=1 keeps full res but still streams band-wise.
+        ds = max(1, max(src_w, src_h) // config.WEBP_MAX)
+        out_w, out_h = src_w // ds, src_h // ds
+        if ds > 1:
+            log.info(
+                "%s: streaming %dx%d → %dx%d (%dx box-average)",
+                src.name,
+                src_w,
+                src_h,
+                out_w,
+                out_h,
+                ds,
+            )
 
-    raw = arr.astype(np.float64)
-    valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
-    if nodata is not None:
-        valid &= raw != nodata
+        # Fully-nodata blocks land as NaN; floored to lo after the pass.
+        out_elev = np.empty((out_h, out_w), dtype=np.float32)
+        crop_w = out_w * ds  # drop the ≤ds-1 ragged edge cols
+        for oy0 in range(0, out_h, _DISPLACEMENT_BAND_OUT_ROWS):
+            oy1 = min(oy0 + _DISPLACEMENT_BAND_OUT_ROWS, out_h)
+            bh = oy1 - oy0
+            raw = np.asarray(mm[oy0 * ds : oy1 * ds, :crop_w]).astype(np.float32)
+            valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
+            if nodata is not None:
+                valid &= raw != nodata
+            elev = (raw * scale + offset) * unit_km
+            elev[~valid] = 0.0
+            blocks = (bh, ds, out_w, ds)
+            sums = elev.reshape(blocks).sum(axis=(1, 3))
+            counts = valid.reshape(blocks).sum(axis=(1, 3))
+            out_elev[oy0:oy1] = np.where(
+                counts > 0, sums / np.maximum(counts, 1), np.nan
+            )
+        del mm
 
-    elev_km = (raw * scale + offset) * _HEIGHT_UNIT_KM[unit]
-    if valid.any():
-        lo = float(elev_km[valid].min())
-        hi = float(elev_km[valid].max())
+    finite = np.isfinite(out_elev)
+    if finite.any():
+        lo = float(out_elev[finite].min())
+        hi = float(out_elev[finite].max())
     else:
         log.warning("%s: no valid height pixels; defaulting flat", src.name)
         lo, hi = 0.0, 1.0
     # Floor invalid pixels so they sit flush with the lowest terrain.
-    elev_km = np.where(valid, elev_km, lo)
-    norm = np.clip((elev_km - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    out_elev[~finite] = lo
+    norm = np.clip((out_elev - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
     gray = (norm * 255.0).astype(np.uint8)
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
 
