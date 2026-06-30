@@ -7,52 +7,97 @@ import { bodyQuaternion } from '$lib/math/orientation';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { sampleDisplacementOffsets } from '$lib/scene/objects/surface/displacement';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import type { BodyObjects } from '$lib/scene/types';
 import type { Vec3 } from '$lib/scene/animation/math';
 
 /**
- * Body-fixed surface point (km, pre-orientation) per landed probe, keyed by id.
- * The body renders as a triaxial ellipsoid (axes a,c,b on local x,y,z — see
- * `applyRadiiToMesh`) plus displacement, so a mean-radius sphere leaves the probe
- * kilometres off; we reconstruct the exact point the mesh shows. The record's
- * altitude is ignored — coarse height maps make it float/sink. Fixed per probe,
- * so sampled once; absent until then (probe rests on the mean-radius sphere).
+ * Body-fixed surface seat (km, pre-orientation) per landed probe, with the
+ * sphere-LOD segment count it was computed for. The mesh renders as flat
+ * triangles between `SphereGeometry` grid vertices (≤128 segs → ~166 km facets
+ * on Mars), and each facet's chord dips up to ~1 km below the smooth ellipsoid,
+ * so seating on the analytic surface left the probe floating. We instead sample
+ * the four grid vertices bracketing the probe and bilinearly blend — the exact
+ * point on the rendered triangle. Recomputed when the LOD segment count changes;
+ * the record's altitude is unused (coarse height maps make it float/sink).
+ * Absent until first resolved (probe rests on the mean-radius sphere meanwhile).
  */
 const surfacePointKm = new Map<string, [number, number, number]>();
+const surfacePointSegs = new Map<string, number>();
 const surfacePointPending = new Set<string>();
+
+/**
+ * Displaced ellipsoid point (km) the mesh draws at `latRad`/`lonRad`: the unit
+ * normal scaled by the per-axis semi-axes (a,c,b on local x,y,z — see
+ * `applyRadiiToMesh`), grown radially by the displacement. Mirrors the vertex
+ * shader exactly, so a corner here is the rendered vertex position.
+ */
+function displacedPoint(
+	latRad: number,
+	lonRad: number,
+	dispKm: number,
+	radiusKm: number,
+	a: number,
+	b: number,
+	c: number
+): [number, number, number] {
+	const f = (radiusKm + dispKm) / radiusKm;
+	const cosLat = Math.cos(latRad);
+	const nx = cosLat * Math.cos(lonRad);
+	const ny = Math.sin(latRad);
+	const nz = -cosLat * Math.sin(lonRad);
+	return [f * a * nx, f * c * ny, f * b * nz];
+}
 
 function ensureSurfacePoint(
 	probeId: string,
 	landingBodyId: string,
 	radiusKm: number,
 	latRad: number,
-	lonRad: number
+	lonRad: number,
+	segs: number
 ): void {
-	if (surfacePointKm.has(probeId) || surfacePointPending.has(probeId)) return;
+	if (surfacePointPending.has(probeId) || surfacePointSegs.get(probeId) === segs) return;
 	surfacePointPending.add(probeId);
 	void (async () => {
 		try {
 			const global = (await fetchObjectDetail(landingBodyId, false)).global;
 			const dispMeta = global?.displacement;
-			// Displacement (km) the mesh adds along the base-sphere normal at this
-			// lat/lng; 0 when the body has no height map.
-			let dispKm = 0;
-			if (dispMeta) {
-				const offsets = await sampleDisplacementOffsets(
-					dispMeta,
-					[{ latRad, lonRad }],
-					kmToScene(radiusKm)
-				);
-				if (offsets) dispKm = sceneToKm(offsets[0]);
-			}
-			// Mesh scales the displaced unit normal by the per-axis semi-axes; mirror
-			// that exactly. Falls back to a sphere of `radiusKm` when radii are absent.
 			const { a, b, c } = global?.radii ?? { a: radiusKm, b: radiusKm, c: radiusKm };
-			const f = (radiusKm + dispKm) / radiusKm;
-			const cosLat = Math.cos(latRad);
-			const nx = cosLat * Math.cos(lonRad);
-			const ny = Math.sin(latRad);
-			const nz = -cosLat * Math.sin(lonRad);
-			surfacePointKm.set(probeId, [f * a * nx, f * c * ny, f * b * nz]);
+			// SphereGeometry grid cell bracketing the probe: theta runs from the +Y
+			// pole, phi from 0 (body-fixed lng = phi + π). Snap to the cell and keep
+			// the fractional position for the bilinear blend.
+			const gy = ((Math.PI / 2 - latRad) * segs) / Math.PI;
+			const iy0 = Math.min(Math.max(Math.floor(gy), 0), segs - 1);
+			const ty = Math.min(Math.max(gy - iy0, 0), 1);
+			const gx = ((lonRad - Math.PI) * segs) / (2 * Math.PI);
+			const ix0 = Math.floor(gx);
+			const tx = gx - ix0;
+			const corners = [
+				[iy0, ix0],
+				[iy0, ix0 + 1],
+				[iy0 + 1, ix0],
+				[iy0 + 1, ix0 + 1]
+			].map(([iy, ix]) => ({
+				latRad: Math.PI / 2 - (Math.min(iy, segs) * Math.PI) / segs,
+				lonRad: Math.PI + (ix * 2 * Math.PI) / segs
+			}));
+			// Displacement (km) the mesh adds at each corner; 0 with no height map.
+			let disp = [0, 0, 0, 0];
+			if (dispMeta) {
+				const offsets = await sampleDisplacementOffsets(dispMeta, corners, kmToScene(radiusKm));
+				if (offsets) disp = Array.from(offsets, sceneToKm);
+			}
+			const pts = corners.map((corner, k) =>
+				displacedPoint(corner.latRad, corner.lonRad, disp[k], radiusKm, a, b, c)
+			);
+			const seat: [number, number, number] = [0, 0, 0];
+			for (let axis = 0; axis < 3; axis++) {
+				const top = pts[0][axis] * (1 - tx) + pts[1][axis] * tx;
+				const bot = pts[2][axis] * (1 - tx) + pts[3][axis] * tx;
+				seat[axis] = top * (1 - ty) + bot * ty;
+			}
+			surfacePointKm.set(probeId, seat);
+			surfacePointSegs.set(probeId, segs);
 		} finally {
 			surfacePointPending.delete(probeId);
 		}
@@ -72,7 +117,8 @@ export function renderLandedProbe(
 	landed: LandedRecord,
 	jd: number,
 	positionMap: Map<string, Vec3>,
-	ctx: ContextManager
+	ctx: ContextManager,
+	bodyObjects: Map<string, BodyObjects>
 ): { x: number; y: number; z: number; parentPos: Vec3 } | null {
 	const sample = landedPositionAt(landed, jd);
 	if (!sample) return null;
@@ -86,9 +132,10 @@ export function renderLandedProbe(
 	const DEG2RAD = Math.PI / 180;
 	const latR = sample.latDeg * DEG2RAD;
 	const lngR = sample.lngDeg * DEG2RAD;
-	// Snap to the displaced ellipsoid the mesh draws, not the record's altitude
-	// over a mean-radius sphere (kilometres off the visible terrain).
-	ensureSurfacePoint(d.id, bodyKey, radiusKm, latR, lngR);
+	// Seat on the rendered triangle the mesh draws at its current LOD, not the
+	// record's altitude over a mean-radius sphere (kilometres off the terrain).
+	const segs = bodyObjects.get(bodyKey)?.currentSegments ?? 128;
+	ensureSurfacePoint(d.id, bodyKey, radiusKm, latR, lngR, segs);
 	let bx: number;
 	let by: number;
 	let bz: number;

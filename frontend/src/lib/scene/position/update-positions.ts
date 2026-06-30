@@ -278,7 +278,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			// applying its IAU orientation. Skip the flying-fit path entirely.
 			const probeLanded = located.probe.landed;
 			if (probeLanded && isLandedAt(located.probe, jd)) {
-				const landedRender = renderLandedProbe(d, located.probe, probeLanded, jd, positionMap, ctx);
+				const landedRender = renderLandedProbe(
+					d,
+					located.probe,
+					probeLanded,
+					jd,
+					positionMap,
+					ctx,
+					bodyObjects
+				);
 				if (!landedRender) {
 					if (bo) bo.outOfRange = true;
 					if (d.id === focusedId) oorState.focusedOutOfRange = true;

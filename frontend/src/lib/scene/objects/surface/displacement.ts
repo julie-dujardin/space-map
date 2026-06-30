@@ -99,13 +99,27 @@ export async function sampleDisplacementOffsets(
 	const bias = kmToScene(dispMeta.bias_km) - (dispMeta.absolute_radius ? sphereRadiusScene : 0);
 	const data = pixels.data;
 	const out = new Float32Array(points.length);
+	// Bilinear, matching the GPU's displacement sampling (wrap S, clamp T), so a
+	// probe/label lands on the rendered surface and not up to a quantisation step
+	// off it — the 8-bit map's levels are ~scale_km/255 apart.
+	const wrapCol = (x: number) => ((x % w) + w) % w;
+	const clampRow = (y: number) => (y < 0 ? 0 : y > h - 1 ? h - 1 : y);
 	for (let i = 0; i < points.length; i++) {
 		const u = 0.5 + points[i].lonRad / (2 * Math.PI);
 		const v = 0.5 + points[i].latRad / Math.PI;
-		const uw = u - Math.floor(u); // lon is east-positive 0..2π, so u must wrap not clamp
-		const col = Math.min(w - 1, Math.floor(uw * w));
-		const row = Math.min(h - 1, Math.max(0, Math.floor((1 - v) * h)));
-		const texel = data[(row * w + col) * 4] / 255; // height in the R channel
+		const fx = (u - Math.floor(u)) * w - 0.5; // lon east-positive 0..2π wraps
+		const fy = (1 - v) * h - 0.5;
+		const x0 = Math.floor(fx);
+		const y0 = Math.floor(fy);
+		const tx = fx - x0;
+		const ty = fy - y0;
+		const c0 = wrapCol(x0);
+		const c1 = wrapCol(x0 + 1);
+		const r0 = clampRow(y0) * w;
+		const r1 = clampRow(y0 + 1) * w;
+		const top = data[(r0 + c0) * 4] * (1 - tx) + data[(r0 + c1) * 4] * tx;
+		const bot = data[(r1 + c0) * 4] * (1 - tx) + data[(r1 + c1) * 4] * tx;
+		const texel = (top * (1 - ty) + bot * ty) / 255; // height in the R channel
 		out[i] = texel * scale + bias;
 	}
 	return out;
