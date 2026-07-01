@@ -2,9 +2,8 @@
 
 Space Map is a real-time, real-scale, fully continuous map of the solar system, mapping 1.6m objects and 16k surface features as of june 2026.
 
-| | |
+| [![Artemis 2](docs/images/artemis-2.png)](http://spacemap.co/p/121737217?at=2026-04-06T22:22:33.709Z,80.13701,46.79577,2.9204e-8) | [![Mars](docs/images/mars.png)](https://spacemap.co/b/499/Mars?at=2026-06-03T05:09:05.427Z,-9.72405,91.33456,0.00093713) |
 |:-:|:-:|
-| [![Earth](docs/images/earth.png)](https://spacemap.co/b/399/Earth?at=2026-06-21T14:24:57.661Z,30.63812,-22.71399,0.0019850) | [![Mars](docs/images/mars.png)](https://spacemap.co/b/499/Mars?at=2026-06-03T05:09:05.427Z,-9.72405,91.33456,0.00093713) |
 | [![Juno](docs/images/juno.png)](https://spacemap.co/p/107159552/Juno?at=2026-06-03T05:09:37.456Z,63.85408,34.68980,3.0640e-9) | [![Saturn](docs/images/saturn.png)](http://spacemap.co/b/699/Saturn?at=2020-06-02T14:10:11.542Z,39.08590,-147.48087,0.097742) |
 
 ## Features
