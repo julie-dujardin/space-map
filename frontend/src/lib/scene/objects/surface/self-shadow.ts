@@ -35,6 +35,15 @@ const SHADOW_REACH = 4.0;
 /** Penetration (scene units, relative to peak relief) at which a fragment is
  *  fully shadowed — softens the umbra edge. */
 const SHADOW_SOFT = 0.04;
+/** Macro-terminator gate window (geometric N·L): direct light is full above LIT,
+ *  zero below DARK. Suppresses the relief-normal back-side leak on the night side. */
+const TERMINATOR_GATE_LIT = 0.02;
+const TERMINATOR_GATE_DARK = -0.08;
+/** Grazing-angle fade for the self-shadow march (geometric N·L). Below this the
+ *  march goes fully horizontal and flags every away-facing slope as occluded,
+ *  printing a hard shadow stripe along the terminator; fade it out there and let
+ *  the relief-normal Lambert darken that zone softly instead. */
+const MARCH_GRAZE_FADE = 0.18;
 
 export interface SelfShadowUniforms {
 	uSelfHeightMap: { value: Texture | null };
@@ -188,11 +197,10 @@ export function attachSelfShadowToBody(
 					vec3 L = normalize(uSelfSunDir);
 					float gN = dot(L, Nw);
 					// Macro-terminator gate on the GEOMETRIC normal: the relief normal
-					// can tilt sunward past the terminator and pick up light on the
-					// body's night side (the back-side leak). Fading direct light by
-					// the geometric N·L keeps the night dark regardless, while the lit
-					// side and the terminator band itself are untouched.
-					float shadow = smoothstep(-0.08, 0.02, gN);
+					// can tilt sunward past the terminator and light the night side
+					// (back-side leak). Fading direct light by the geometric N·L keeps
+					// the night dark regardless.
+					float shadow = smoothstep(${TERMINATOR_GATE_DARK.toFixed(3)}, ${TERMINATOR_GATE_LIT.toFixed(3)}, gN);
 					vec3 Tu, Tv;
 					selfTangents(Tu, Tv);
 					float lenTu = length(Tu);
@@ -215,7 +223,10 @@ export function attachSelfShadowToBody(
 								float rayH = h0 + float(i) * ds * tanElev;
 								block = max(block, selfHeight(uv) - rayH);
 							}
-							shadow *= 1.0 - clamp(block / (${SHADOW_SOFT.toFixed(3)} * uSelfScale), 0.0, 1.0);
+							// Fade the march out at grazing angles: a near-horizontal ray
+							// occludes every away-facing slope, banding the terminator.
+							float marchFade = smoothstep(0.0, ${MARCH_GRAZE_FADE.toFixed(3)}, gN);
+							shadow *= 1.0 - marchFade * clamp(block / (${SHADOW_SOFT.toFixed(3)} * uSelfScale), 0.0, 1.0);
 						}
 					}
 					reflectedLight.directDiffuse *= shadow;
