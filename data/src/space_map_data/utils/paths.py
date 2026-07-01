@@ -22,11 +22,15 @@ SOURCES_TEXTURES_DIR = SOURCES_DIR / "textures"
 SOURCES_MAPS_DIR = SOURCES_DIR / "maps"
 SOURCES_IMAGES_DIR = SOURCES_DIR / "images"
 SOURCES_MODELS_DIR = SOURCES_DIR / "models"
+# Spacecraft catalogs (NASA-3D-Resources, ESA-SciFleet, manual) vs natural-body
+# shape models (mission/radar/lightcurve meshes) — separate pipelines.
+SOURCES_MODELS_SPACECRAFT_DIR = SOURCES_MODELS_DIR / "spacecraft"
+SOURCES_MODELS_BODIES_DIR = SOURCES_MODELS_DIR / "bodies"
 SOURCES_METADATA_DIR = SOURCES_DIR / "metadata"
 SOURCES_ATMOSPHERE_DIR = SOURCES_DIR / "atmosphere"
 
 # Hand-authored supplemental overlays the automated providers can't discover
-# (mirrors sources/models/manual + Commons manual-extra.json). See
+# (mirrors sources/models/spacecraft/manual + Commons manual-extra.json). See
 # utils/manual_overlay.py.
 SOURCES_MANUAL_DIR = SOURCES_METADATA_DIR / "manual"
 

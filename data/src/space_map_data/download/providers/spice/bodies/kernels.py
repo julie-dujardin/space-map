@@ -33,6 +33,13 @@ _FIXED_KERNELS: dict[str, str] = {
     # Gravity harmonics J2/J3/J4 for the major planets — used to compute analytic
     # secular precession rates for moons that don't get full Chebyshev coverage.
     "Gravity.tpc": "pck/Gravity.tpc",
+    # Mission PCKs for small bodies absent from the generic pck00011 — pole +
+    # spin constants needed to orient their shape models. NAIF's PDS4 mirrors
+    # are version-pinned, so no dynamic discovery.
+    "bennu_v17.tpc": "https://naif.jpl.nasa.gov/pub/naif/pds/pds4/orex/orex_spice/spice_kernels/pck/bennu_v17.tpc",
+    "ryugu_v10.tpc": "https://naif.jpl.nasa.gov/pub/naif/pds/pds4/hyb2/hyb2_spice/spice_kernels/pck/ryugu_v10.tpc",
+    "didymos_system_15.tpc": "https://naif.jpl.nasa.gov/pub/naif/pds/pds4/dart/dart_spice/spice_kernels/pck/didymos_system_15.tpc",
+    "nh_arrokoth_002.tpc": "https://naif.jpl.nasa.gov/pub/naif/pds/data/nh-j_p_ss-spice-6-v1.0/nhsp_1000/data/pck/nh_arrokoth_002.tpc",
 }
 
 # Kernels where we pick the latest version from a directory listing.
@@ -102,10 +109,11 @@ def _local_subdir(filename: str, url_path: str) -> str:
     downloader and live in `missions/<MISSION>/`.
     """
     if url_path.startswith(("http://", "https://")):
-        # Full URL — fall back to filename heuristic for the kernels we serve
-        # ourselves (SB441 asteroid kernel is the only one today).
+        # Full URL — fall back to filename heuristics.
         if filename.lower().startswith("sb441"):
             return "spk/asteroids"
+        if filename.lower().endswith(".tpc"):
+            return "pck"
         return ""
     head, _, _ = url_path.rpartition("/")
     return head

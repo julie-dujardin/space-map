@@ -12,21 +12,21 @@ import httpx
 
 from space_map_data.constants.providers import PROVIDERS
 from space_map_data.download.downloader import DownloadError, Downloader
-from space_map_data.utils.paths import SOURCES_MODELS_DIR
+from space_map_data.utils.paths import SOURCES_MODELS_SPACECRAFT_DIR
 
 logger = logging.getLogger(__name__)
 
 REPO_URL = "https://github.com/nasa/NASA-3D-Resources.git"
-TARGET_DIR = SOURCES_MODELS_DIR / "NASA-3D-Resources"
+TARGET_DIR = SOURCES_MODELS_SPACECRAFT_DIR / "NASA-3D-Resources"
 
 
 class NASA3DResourcesDownloader(Downloader):
-    """Mirror github.com/nasa/NASA-3D-Resources to SOURCES_MODELS_DIR."""
+    """Mirror github.com/nasa/NASA-3D-Resources to the spacecraft models dir."""
 
     name = PROVIDERS.NASA_3D
 
     def __init__(self, client: httpx.Client) -> None:
-        # Skip base mkdir — we manage our own path under sources/models/, and
+        # Skip base mkdir — we manage our own path under sources/models/spacecraft/, and
         # the metadata file lives alongside the checkout rather than inside it
         # (so it doesn't show up as an untracked file in `git status`).
         self.client = client
