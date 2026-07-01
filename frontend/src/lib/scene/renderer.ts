@@ -9,9 +9,11 @@ import {
 	Mesh,
 	PerspectiveCamera as PerspectiveCameraClass,
 	type PerspectiveCamera,
+	PlaneGeometry,
 	PointLight,
 	Scene as SceneClass,
 	type Scene,
+	ShadowMaterial,
 	Sprite,
 	SpriteMaterial,
 	TextureLoader,
@@ -121,6 +123,12 @@ export class SceneRenderer {
 	private modelScene!: Scene;
 	private modelCamera!: PerspectiveCamera;
 	private modelLight!: DirectionalLight;
+	/** Contact-shadow receiver for landed probes — an invisible `ShadowMaterial`
+	 *  plane at the surface, so the rover casts a soft shadow onto the terrain. */
+	private modelShadowPlane: Mesh | null = null;
+	private readonly _tmpUp = new Vector3();
+	private readonly _tmpSun = new Vector3();
+	private readonly _planeNormal = new Vector3(0, 0, 1);
 	/** Debug ±XYZ axis arrows over the focused model; built lazily in the overlay. */
 	private showPointingAxes = false;
 	private pointingAxes: Group | null = null;
@@ -222,6 +230,16 @@ export class SceneRenderer {
 		this.modelLight.shadow.normalBias = 0.02;
 		this.modelScene.add(this.modelLight);
 		this.modelScene.add(this.modelLight.target);
+
+		// Sized past the shadow camera's ±1.5 ortho frustum; invisible except where
+		// the model's shadow lands, so only the contact shadow composites over terrain.
+		this.modelShadowPlane = new Mesh(
+			new PlaneGeometry(40, 40),
+			new ShadowMaterial({ opacity: 0.55 })
+		);
+		this.modelShadowPlane.receiveShadow = true;
+		this.modelShadowPlane.visible = false;
+		this.modelScene.add(this.modelShadowPlane);
 
 		// Seed skybox rotation synchronously so frame 1 is correct and a debug-menu
 		// setSkyboxAdjust isn't clobbered by the async load.
@@ -626,8 +644,18 @@ export class SceneRenderer {
 		if (sunBody) {
 			const [sx, sy, sz] = sunBody.position;
 			const [fx, fy, fz] = focusBody.position;
-			this._tmpV3.set(sx - fx, sy - fy, sz - fz).normalize();
-			this.modelLight.position.copy(this._tmpV3).multiplyScalar(10);
+			this._tmpSun.set(sx - fx, sy - fy, sz - fz).normalize();
+			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
+		}
+
+		// Contact shadow only for a landed probe daytime. the model's +Y is up.
+		if (this.modelShadowPlane) {
+			this._tmpUp.set(0, 1, 0).applyQuaternion(bo.model.quaternion);
+			const daytime = this._tmpSun.dot(this._tmpUp) > 0.03;
+			this.modelShadowPlane.visible = Boolean(bo.isLanded) && daytime;
+			if (this.modelShadowPlane.visible) {
+				this.modelShadowPlane.quaternion.setFromUnitVectors(this._planeNormal, this._tmpUp);
+			}
 		}
 
 		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
