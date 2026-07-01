@@ -11,6 +11,96 @@
 
 	let { data }: Props = $props();
 	const credits = $derived(data.credits);
+
+	// Merged imagery: one section grouped by system, one row per body+type.
+	// A type qualifier is only added when a body contributes more than one kind
+	// (e.g. Earth: surface + clouds + night), mirroring the attribution popover.
+	type ImageryTypeKey = 'surface' | 'clouds' | 'night' | 'topography' | 'rings';
+
+	interface ImageryRow {
+		key: string;
+		name: string;
+		qualifier?: string;
+		source: string;
+		organisation: string;
+		attribution?: string;
+	}
+
+	interface ImagerySystem {
+		id: string | null;
+		name: string | null;
+		rows: ImageryRow[];
+	}
+
+	function typeLabel(k: ImageryTypeKey): string {
+		if (k === 'surface') return m.attribution_type_surface();
+		if (k === 'clouds') return m.attribution_type_clouds();
+		if (k === 'night') return m.attribution_type_night();
+		if (k === 'topography') return m.attribution_type_topography();
+		return m.attribution_type_rings();
+	}
+
+	const imagerySystems = $derived.by<ImagerySystem[]>(() => {
+		interface Interim {
+			body_id: string;
+			name: string;
+			typeKey: ImageryTypeKey;
+			source: string;
+			organisation: string;
+			attribution?: string;
+		}
+		// Per-body ordering within the list: surface → clouds → night → topography → rings.
+		type CreditLike = {
+			body_id: string;
+			name: string;
+			source: string;
+			organisation: string;
+			attribution?: string;
+		};
+		const out: ImagerySystem[] = [];
+		for (const group of credits.systems) {
+			const order: Array<[ImageryTypeKey, CreditLike[]]> = [
+				['surface', group.textures ?? []],
+				['clouds', group.clouds ?? []],
+				['night', group.night ?? []],
+				['topography', group.displacement ?? []],
+				['rings', group.rings ?? []]
+			];
+			const byBody = new Map<string, Interim[]>();
+			for (const [typeKey, list] of order) {
+				for (const c of list) {
+					const arr = byBody.get(c.body_id) ?? [];
+					arr.push({
+						body_id: c.body_id,
+						name: c.name,
+						typeKey,
+						source: c.source,
+						organisation: c.organisation,
+						attribution: c.attribution
+					});
+					byBody.set(c.body_id, arr);
+				}
+			}
+			if (byBody.size === 0) continue;
+			const rows: ImageryRow[] = [];
+			const bodies = [...byBody.values()].sort((a, b) => a[0].name.localeCompare(b[0].name));
+			for (const items of bodies) {
+				const multi = items.length > 1;
+				for (const it of items) {
+					rows.push({
+						key: `${it.body_id}-${it.typeKey}`,
+						name: it.name,
+						qualifier: multi ? typeLabel(it.typeKey) : undefined,
+						source: it.source,
+						organisation: it.organisation,
+						attribution: it.attribution
+					});
+				}
+			}
+			out.push({ id: group.id, name: group.name, rows });
+		}
+		return out;
+	});
 </script>
 
 <svelte:head>
@@ -175,117 +265,27 @@
 			</section>
 		{/if}
 
-		{#if credits.systems.some((g) => g.rings && g.rings.length > 0)}
+		{#if imagerySystems.length > 0}
 			<section>
-				{@render sectionHeader(m.attribution_section_rings())}
-				{#each credits.systems as group (group.id ?? '__standalone__')}
-					{#if group.rings && group.rings.length > 0}
-						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-							{group.name ?? m.credits_other_bodies()}
-						</h3>
-						<ul class="space-y-1">
-							{#each group.rings as r (r.body_id)}
-								<li>
-									{@render link(r.source, r.name, r.organisation)}
-									{#if r.attribution}
-										<div class="text-xs text-muted-foreground mt-0.5">{r.attribution}</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/each}
-			</section>
-		{/if}
-
-		{#if credits.systems.some((g) => g.clouds && g.clouds.length > 0)}
-			<section>
-				{@render sectionHeader(m.attribution_section_clouds())}
-				{#each credits.systems as group (group.id ?? '__standalone__')}
-					{#if group.clouds && group.clouds.length > 0}
-						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-							{group.name ?? m.credits_other_bodies()}
-						</h3>
-						<ul class="space-y-1">
-							{#each group.clouds as c (c.body_id)}
-								<li>
-									{@render link(c.source, c.name, c.organisation)}
-									{#if c.attribution}
-										<div class="text-xs text-muted-foreground mt-0.5">{c.attribution}</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/each}
-			</section>
-		{/if}
-
-		{#if credits.systems.some((g) => g.night && g.night.length > 0)}
-			<section>
-				{@render sectionHeader(m.attribution_section_night())}
-				{#each credits.systems as group (group.id ?? '__standalone__')}
-					{#if group.night && group.night.length > 0}
-						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-							{group.name ?? m.credits_other_bodies()}
-						</h3>
-						<ul class="space-y-1">
-							{#each group.night as n (n.body_id)}
-								<li>
-									{@render link(n.source, n.name, n.organisation)}
-									{#if n.attribution}
-										<div class="text-xs text-muted-foreground mt-0.5">{n.attribution}</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/each}
-			</section>
-		{/if}
-
-		{#if credits.systems.some((g) => g.displacement && g.displacement.length > 0)}
-			<section>
-				{@render sectionHeader(m.attribution_section_topography())}
-				{#each credits.systems as group (group.id ?? '__standalone__')}
-					{#if group.displacement && group.displacement.length > 0}
-						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-							{group.name ?? m.credits_other_bodies()}
-						</h3>
-						<ul class="space-y-1">
-							{#each group.displacement as d (d.body_id)}
-								<li>
-									{@render link(d.source, d.name, d.organisation)}
-									{#if d.attribution}
-										<div class="text-xs text-muted-foreground mt-0.5">{d.attribution}</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/each}
-			</section>
-		{/if}
-
-		{#if credits.systems.some((g) => g.textures && g.textures.length > 0)}
-			<section>
-				{@render sectionHeader(m.attribution_section_imagery())}
-				{#each credits.systems as group (group.id ?? '__standalone__')}
-					{#if group.textures && group.textures.length > 0}
-						<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
-							{group.name ?? m.credits_other_bodies()}
-						</h3>
-						<ul class="space-y-1">
-							{#each group.textures as t (t.body_id)}
-								<li>
-									{@render link(t.source, t.name, t.organisation)}
-									{#if t.attribution}
-										<div class="text-xs text-muted-foreground mt-0.5">{t.attribution}</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
+				{@render sectionHeader(m.attribution_section_imagery_all())}
+				{#each imagerySystems as group (group.id ?? '__standalone__')}
+					<h3 class="text-xs font-semibold text-foreground mt-3 mb-1">
+						{group.name ?? m.credits_other_bodies()}
+					</h3>
+					<ul class="space-y-1">
+						{#each group.rows as r (r.key)}
+							<li>
+								{@render link(
+									r.source,
+									r.qualifier ? `${r.name} (${r.qualifier})` : r.name,
+									r.organisation
+								)}
+								{#if r.attribution}
+									<div class="text-xs text-muted-foreground mt-0.5">{r.attribution}</div>
+								{/if}
+							</li>
+						{/each}
+					</ul>
 				{/each}
 			</section>
 		{/if}
