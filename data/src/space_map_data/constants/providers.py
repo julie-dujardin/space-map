@@ -21,6 +21,8 @@ class PROVIDERS(StrEnum):
     BJJ_RINGS = "bjj_rings"
     NASA_3D = "nasa_3d"
     ESA_3D = "esa_3d"
+    BODY_SHAPES = "body_shapes"
+    DAMIT = "damit"
     MANUAL = "manual"
 
 
