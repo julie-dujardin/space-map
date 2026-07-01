@@ -208,6 +208,9 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
  * Run before adding to the overlay scene. The overlay camera then orbits
  * a unit-radius target — no need to coordinate scale with the focused
  * body's tiny scene-space radius.
+ *
+ * Records `centerOffset`/`feetOffset` (scaled units) in `userData`: the overlay
+ * seats a landed probe on its feet, not bbox-centred (which buries half of it).
  */
 function fitToUnitRadius(root: Object3D): void {
 	root.updateMatrixWorld(true);
@@ -219,6 +222,8 @@ function fitToUnitRadius(root: Object3D): void {
 	const k = 2 / maxDim;
 	root.scale.multiplyScalar(k);
 	root.position.copy(center).multiplyScalar(-k);
+	root.userData.centerOffset = center.clone().multiplyScalar(k);
+	root.userData.feetOffset = new Vector3(center.x, bbox.min.y, center.z).multiplyScalar(k);
 }
 
 function enableShadows(root: Object3D): void {

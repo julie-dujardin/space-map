@@ -215,24 +215,24 @@ export class SceneRenderer {
 		this.modelScene.add(this.modelCamera);
 		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
 		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
-		// Model is normalised to unit-radius (see model.ts `fitToUnitRadius`); the
-		// light sits at distance 10 from origin (see `renderModelOverlay`). Ortho
-		// frustum covers the silhouette with a small margin.
+		// Light sits at distance 10 from the unit-radius model. Frustum reaches well
+		// past the silhouette (deep near/far especially) so a grazing-Sun shadow
+		// streaking along the light axis isn't clipped; 4096² keeps it crisp.
 		this.modelLight.castShadow = true;
-		this.modelLight.shadow.mapSize.set(2048, 2048);
-		this.modelLight.shadow.camera.left = -1.5;
-		this.modelLight.shadow.camera.right = 1.5;
-		this.modelLight.shadow.camera.top = 1.5;
-		this.modelLight.shadow.camera.bottom = -1.5;
-		this.modelLight.shadow.camera.near = 8;
-		this.modelLight.shadow.camera.far = 12;
+		this.modelLight.shadow.mapSize.set(4096, 4096);
+		this.modelLight.shadow.camera.left = -4;
+		this.modelLight.shadow.camera.right = 4;
+		this.modelLight.shadow.camera.top = 4;
+		this.modelLight.shadow.camera.bottom = -4;
+		this.modelLight.shadow.camera.near = 4;
+		this.modelLight.shadow.camera.far = 28;
 		this.modelLight.shadow.bias = -0.0001;
 		this.modelLight.shadow.normalBias = 0.02;
 		this.modelScene.add(this.modelLight);
 		this.modelScene.add(this.modelLight.target);
 
-		// Sized past the shadow camera's ±1.5 ortho frustum; invisible except where
-		// the model's shadow lands, so only the contact shadow composites over terrain.
+		// Invisible except under the model's shadow, so only the contact shadow
+		// composites onto the terrain.
 		this.modelShadowPlane = new Mesh(
 			new PlaneGeometry(40, 40),
 			new ShadowMaterial({ opacity: 0.55 })
@@ -627,6 +627,18 @@ export class SceneRenderer {
 		const bo = this.bodyObjects.get(focusBody.data.id);
 		if (!bo?.model) return;
 
+		// Seat a landed probe on its feet at the surface (origin) so it rests on the
+		// terrain, not bbox-centred half-buried; flying probes stay centred.
+		const fit = bo.model.userData as { centerOffset?: Vector3; feetOffset?: Vector3 };
+		if (bo.isLanded && fit.feetOffset) {
+			bo.model.position
+				.copy(fit.feetOffset)
+				.applyQuaternion(bo.model.quaternion)
+				.multiplyScalar(-1);
+		} else if (fit.centerOffset) {
+			bo.model.position.copy(fit.centerOffset).multiplyScalar(-1);
+		}
+
 		const camDist = this.camera.position.length();
 		// Model is normalised to radius 1 in modelScene; this overlayDist matches
 		// the screen size the focused body's sphere had.
@@ -648,7 +660,9 @@ export class SceneRenderer {
 			this.modelLight.position.copy(this._tmpSun).multiplyScalar(10);
 		}
 
-		// Contact shadow only for a landed probe daytime. the model's +Y is up.
+		// Contact shadow only for a landed probe in local daytime (nothing to cast
+		// onto in flight, unlit at night). Tilt the receiver to the local tangent —
+		// model +Y is up under the nadir orientation.
 		if (this.modelShadowPlane) {
 			this._tmpUp.set(0, 1, 0).applyQuaternion(bo.model.quaternion);
 			const daytime = this._tmpSun.dot(this._tmpUp) > 0.03;
