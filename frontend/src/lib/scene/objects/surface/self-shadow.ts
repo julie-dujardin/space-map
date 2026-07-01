@@ -88,21 +88,28 @@ export function attachSelfShadowToBody(
 			.replace(
 				'#include <common>',
 				`#include <common>
-				varying vec3 vSelfWorldPos;
 				varying vec3 vSelfWorldNormal;
-				varying vec2 vSelfUv;`
+				varying vec2 vSelfUv;
+					varying vec3 vSelfEastW;
+					varying vec3 vSelfNorthW;
+					varying float vSelfRadiusW;
+					varying float vSelfCosLat;`
 			)
 			.replace(
 				'#include <beginnormal_vertex>',
 				`#include <beginnormal_vertex>
 				vSelfWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
-				vSelfUv = uv;`
-			)
-			// After displacement has moved `transformed`, so derivatives match relief.
-			.replace(
-				'#include <displacementmap_vertex>',
-				`#include <displacementmap_vertex>
-				vSelfWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+				vSelfUv = uv;
+					// Analytic equirect tangent basis from the base sphere — smooth per
+					// fragment, so the relief normal no longer inherits the mesh facets.
+					vec3 nObj = normalize(position);
+					vec3 ec = cross(vec3(0.0, 1.0, 0.0), nObj);
+					float cl = length(ec);
+					vec3 eastObj = cl > 1e-5 ? ec / cl : vec3(1.0, 0.0, 0.0);
+					vSelfEastW = normalize(mat3(modelMatrix) * eastObj);
+					vSelfNorthW = normalize(mat3(modelMatrix) * cross(nObj, eastObj));
+					vSelfRadiusW = length(mat3(modelMatrix) * position);
+					vSelfCosLat = cl;`
 			);
 
 		shader.fragmentShader = shader.fragmentShader
@@ -114,33 +121,31 @@ export function attachSelfShadowToBody(
 				uniform float uSelfScale;
 				uniform vec2 uSelfTexel;
 				uniform vec3 uSelfSunDir;
-				varying vec3 vSelfWorldPos;
 				varying vec3 vSelfWorldNormal;
 				varying vec2 vSelfUv;
+					varying vec3 vSelfEastW;
+					varying vec3 vSelfNorthW;
+					varying float vSelfRadiusW;
+					varying float vSelfCosLat;
 
 				float selfHeight(vec2 uv) {
 					return texture2D(uSelfHeightMap, uv).r * uSelfScale;
 				}
 
-				// World tangents (∂pos/∂u, ∂pos/∂v) from screen derivatives — the
-				// standard getTangentFrame solve. Encodes the equirect metric
-				// (|Tu| shrinks with cos(lat)) for free, so no explicit cos(lat).
-				void selfTangents(out vec3 Tu, out vec3 Tv) {
-					vec3 dpdx = dFdx(vSelfWorldPos);
-					vec3 dpdy = dFdy(vSelfWorldPos);
-					vec2 dux = dFdx(vSelfUv);
-					vec2 duy = dFdy(vSelfUv);
-					float det = dux.x * duy.y - dux.y * duy.x;
-					if (abs(det) < 1e-12) { Tu = dpdx; Tv = dpdy; return; }
-					float inv = 1.0 / det;
-					Tu = (dpdx * duy.y - dpdy * dux.y) * inv;
-					Tv = (dpdy * dux.x - dpdx * duy.x) * inv;
-				}`
+					// Analytic equirect frame (Tu=∂pos/∂u east, Tv=∂pos/∂v south) from the base
+					// sphere. Screen-derivative tangents were piecewise-constant per triangle
+					// and tiled the relief normal with mesh facets (diagonal terminator bands).
+					// |Tu| = 2πR·cos(lat), |Tv| = πR keeps the true equirect metric.
+					void selfTangents(out vec3 Tu, out vec3 Tv) {
+						float R = vSelfRadiusW;
+						Tu = vSelfEastW * (6.2831853 * R * vSelfCosLat);
+						Tv = -vSelfNorthW * (3.14159265 * R);
+					}`
 			)
 			// Replace the geometric normal with the relief gradient normal. Every
-			// normalize/divide is guarded: a degenerate fragment (tiny-scale bodies
-			// underflow the world-pos derivatives) falls back to the geometric
-			// normal rather than emitting a NaN that renders the body transparent.
+			// normalize/divide is guarded: a degenerate frame (poles, where |Tu|→0)
+			// falls back to the geometric normal rather than emitting a NaN that
+			// renders the body transparent.
 			.replace(
 				'#include <normal_fragment_maps>',
 				`#include <normal_fragment_maps>
