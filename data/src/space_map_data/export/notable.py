@@ -131,17 +131,30 @@ def _member_key(member: NotableObject) -> str:
     return member.group_slug or member.object_id
 
 
+# An object can have bundles from several provenances (e.g. Eros: mission +
+# DAMIT); in-situ beats radar beats convex lightcurve.
+_PROVENANCE_RANK = {"missions": 0, "radar": 1, "lightcurve": 2}
+
+
 def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
-    """{object_id: slug} for shape-model bundles only.
+    """Best shape-model bundle slug per object id.
 
     Spacecraft bundles share ``model_metadata`` but must not leak into body
-    lineups, so gate on ``kind == "shape_model"`` (natural bodies map 1:1).
+    lineups, so gate on ``kind == "shape_model"``. Equal-provenance ties break
+    to the newest DAMIT model, matching the ingest's preferred-model policy.
     """
-    return {
-        meta["object_id"]: slug
-        for slug, meta in model_metadata.items()
-        if meta.get("kind") == "shape_model" and meta.get("object_id")
-    }
+    best: dict[str, tuple] = {}
+    for slug, meta in model_metadata.items():
+        if meta.get("kind") != "shape_model" or not meta.get("object_id"):
+            continue
+        rank = (
+            _PROVENANCE_RANK.get(meta.get("provenance", ""), 3),
+            -(meta.get("damit_model_id") or 0),
+        )
+        cur = best.get(meta["object_id"])
+        if cur is None or rank < cur[0]:
+            best[meta["object_id"]] = (rank, slug)
+    return {oid: slug for oid, (_, slug) in best.items()}
 
 
 def notable_entries(

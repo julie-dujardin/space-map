@@ -1,16 +1,18 @@
 """DAMIT lightcurve-tier ingest: convex models → GLB bundles + spin orientation.
 
-Reads the extracted DAMIT bulk archive (``DAMIT_DIR``) plus its CSV table
-exports (asteroids / models / references), not a hand-written manifest. Every
-model is exported (the file cap is 100k; the full set fits); the preferred
-model per asteroid drives ``Object.model_name`` and the spin orientation the
-frontend applies. Convex models are dimensionless — scaled to the body's SBDB
-diameter — and Blender-free (see ``glb_writer``) so the ~16k-model pass is
-subprocess-free.
+Reads the extracted DAMIT bulk archive (``DAMIT_DIR``): per-model files under
+``files/asteroid_<aid>/model_<mid>/`` plus the CSV tables (``asteroids``,
+``asteroid_models`` — spin parameters inline — and the references join table).
+Every model is exported (the file cap is 100k; the full set fits); the
+preferred model per asteroid drives ``Object.model_name`` and the spin
+orientation the frontend applies. Convex models are dimensionless — scaled to
+DAMIT's own calibrated diameter when present, else SBDB — and Blender-free
+(see ``glb_writer``) so the ~16k-model pass is subprocess-free.
 
-Resumable: a per-model cache stamp skips already-converted GLBs across runs.
-No-ops with a log line when the archive or tables are absent (dev without the
-1.4 GB download).
+Resumable: a per-model cache stamp (kept outside the export tree — the CDN
+has a 100k-file cap) skips already-converted GLBs across runs. No-ops with a
+log line when the archive or tables are absent (dev without the 1.4 GB
+download).
 """
 
 import csv
@@ -19,12 +21,12 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
 from space_map_data.ingest.providers.models import config, metadata
 from space_map_data.ingest.providers.models.bodies import glb_writer, orientation
-from space_map_data.ingest.providers.models.processor import _link_into_export
 from space_map_data.models.object import Object
 from space_map_data.utils.paths import DERIVED_MODELS_DIR
 
@@ -33,6 +35,7 @@ log = logging.getLogger(__name__)
 # Where the export merges DAMIT-derived spin into the PCK orientation set
 # (see export/systems.load_orientation). Keyed by canonical naif_id.
 DAMIT_ORIENTATION_CSV = DERIVED_MODELS_DIR / "damit_orientation.csv"
+_STAMPS_DIR = DERIVED_MODELS_DIR / "damit_stamps"
 _ORIENTATION_FIELDS = [
     "naif_id",
     "pole_ra_0",
@@ -45,11 +48,28 @@ _ORIENTATION_FIELDS = [
 ]
 
 
+_J2000_JD = 2451545.0
+
+
 @dataclass(frozen=True)
 class DamitModel:
     model_id: int
     asteroid_id: int
-    reference_id: int | None
+    lambda_deg: float
+    beta_deg: float
+    period_h: float
+    jd0: float
+    phi0_deg: float
+    equiv_diameter_km: float | None
+
+    @property
+    def dir(self) -> Path:
+        return (
+            config.DAMIT_DIR
+            / "files"
+            / f"asteroid_{self.asteroid_id}"
+            / f"model_{self.model_id}"
+        )
 
 
 class DamitProcessor:
@@ -83,7 +103,7 @@ class DamitProcessor:
             return
         models = self._load_models()
         asteroids = self._load_asteroids()
-        references = self._load_references()
+        citations = self._load_citations()
         diameters = self._load_diameters()
 
         # Preferred model per asteroid = highest DAMIT model id (newest solution).
@@ -105,10 +125,10 @@ class DamitProcessor:
             if object_id is None:
                 continue
             naif_id = self._naif_for(m.asteroid_id, asteroids)
-            diameter = diameters.get(object_id)
+            diameter = m.equiv_diameter_km or diameters.get(object_id)
             if diameter is None:
                 log.info(
-                    "DAMIT model %d (%s): no SBDB diameter — skipping",
+                    "DAMIT model %d (%s): no DAMIT or SBDB diameter — skipping",
                     m.model_id,
                     object_id,
                 )
@@ -120,7 +140,7 @@ class DamitProcessor:
                     object_id=object_id,
                     naif_id=naif_id,
                     diameter_km=diameter,
-                    references=references,
+                    citation=citations.get(m.model_id),
                     is_preferred=is_preferred,
                     force=force,
                 )
@@ -130,8 +150,14 @@ class DamitProcessor:
             if ok:
                 exported += 1
                 if is_preferred:
-                    self._session.query(Object).filter(Object.id == object_id).update(
-                        {Object.model_name: _slug(m.model_id)}
+                    # Mission/radar bundles (BodyModelProcessor, runs first)
+                    # outrank convex lightcurve models — never overwrite them.
+                    self._session.query(Object).filter(
+                        Object.id == object_id,
+                        Object.model_name.is_(None) | Object.model_name.like("damit-%"),
+                    ).update(
+                        {Object.model_name: _slug(m.model_id)},
+                        synchronize_session=False,
                     )
         self._write_orientation_csv()
         log.info("DAMIT: exported %d model bundles", exported)
@@ -145,45 +171,62 @@ class DamitProcessor:
         object_id: str,
         naif_id: int | None,
         diameter_km: float,
-        references: dict[int, str],
+        citation: str | None,
         is_preferred: bool,
         force: bool,
     ) -> bool:
         slug = _slug(m.model_id)
         out_dir = config.PROCESSED_DIR / slug
-        shape_path, spin_path = self._model_files(m.model_id)
-        if shape_path is None or spin_path is None:
-            log.info("DAMIT model %d: shape/spin file not found — skipping", m.model_id)
+        shape_path = m.dir / "shape.txt"
+        if not shape_path.exists():
+            log.info("DAMIT model %d: %s not found — skipping", m.model_id, shape_path)
             return False
 
-        verts, faces = _parse_shape(shape_path)
-        verts = _scale_to_diameter(verts, faces, diameter_km)
-
-        stamp = out_dir / ".damit-cache.json"
-        if not force and _stamp_matches(stamp, shape_path, spin_path, diameter_km):
-            spin = _parse_spin(spin_path)
-        else:
+        # Stamp lives outside the export tree: every exported file counts
+        # against the CDN's 100k-file cap.
+        stamp = _STAMPS_DIR / f"{slug}.json"
+        if force or not _stamp_matches(stamp, out_dir, shape_path, diameter_km):
+            verts, faces = _parse_shape(shape_path)
+            verts = _scale_to_diameter(verts, faces, diameter_km)
+            # Convex models are already tiny; ship a single "high" tier
+            # (a duplicate low.glb would double the exported file count).
             glb_writer.write_glb(verts, faces, out_dir / "high.glb")
-            # Convex models are already tiny; low = high (no LOD tier needed).
-            _link_into_export(out_dir / "high.glb", out_dir / "low.glb")
-            spin = _parse_spin(spin_path)
             self._write_metadata(
-                out_dir, slug, m, object_id, naif_id, references, verts, faces
+                out_dir, slug, m, object_id, naif_id, citation, verts, faces
             )
-            _write_stamp(stamp, shape_path, spin_path, diameter_km)
+            _write_stamp(stamp, shape_path, diameter_km)
 
         if is_preferred and naif_id is not None:
             self._orientation_rows[naif_id] = {
                 "naif_id": naif_id,
-                **orientation.damit_to_iau(
-                    spin["lambda"],
-                    spin["beta"],
-                    spin["period"],
-                    spin["phi0"],
-                    spin["jd0"],
-                ),
+                **self._iau_orientation(m),
             }
         return True
+
+    @staticmethod
+    def _iau_orientation(m: DamitModel) -> dict:
+        """DAMIT's own IAUspin (α δ Ẇ / epoch W₀) when present, else convert."""
+        iau = m.dir / "IAUspin"
+        if iau.exists():
+            try:
+                ra, dec, rate, epoch, w0 = (
+                    float(x) for x in iau.read_text().split()[:5]
+                )
+            except ValueError:
+                log.warning("DAMIT model %d: unparseable IAUspin", m.model_id)
+            else:
+                return {
+                    "pole_ra_0": ra,
+                    "pole_ra_1": 0.0,
+                    "pole_dec_0": dec,
+                    "pole_dec_1": 0.0,
+                    "w0": (w0 + rate * (_J2000_JD - epoch)) % 360.0,
+                    "w1": rate,
+                    "w2": 0.0,
+                }
+        return orientation.damit_to_iau(
+            m.lambda_deg, m.beta_deg, m.period_h, m.phi0_deg, m.jd0
+        )
 
     def _write_metadata(
         self,
@@ -192,7 +235,7 @@ class DamitProcessor:
         m: DamitModel,
         object_id: str,
         naif_id: int | None,
-        references: dict[int, str],
+        citation: str | None,
         verts: np.ndarray,
         faces: np.ndarray,
     ) -> None:
@@ -225,13 +268,13 @@ class DamitProcessor:
             "credit": credit,
             "license": "CC BY 4.0",
             "license_url": "https://creativecommons.org/licenses/by/4.0/",
-            "citation": references.get(m.reference_id) if m.reference_id else None,
+            "citation": citation,
             "archive": "DAMIT (Database of Asteroid Models from Inversion Techniques)",
             "archive_url": permalink,
             "damit_model_id": m.model_id,
             "damit_asteroid_id": m.asteroid_id,
-            "tiers": ["high", "low"],
-            "exports": {"high": tier, "low": tier},
+            "tiers": ["high"],
+            "exports": {"high": tier},
             "true_scale": {
                 "max_extent_km": max(extent),
                 "bounding_radius_km": float(np.linalg.norm(half)),
@@ -246,13 +289,10 @@ class DamitProcessor:
     # --- table + file loading ---------------------------------------------
 
     def _tables_dir(self) -> Path | None:
-        """Locate the dir holding asteroids/models CSVs (archive root or /tables)."""
-        for cand in (
-            config.DAMIT_DIR,
-            config.DAMIT_DIR / "tables",
-            config.DAMIT_DIR / "exports",
-        ):
-            if (cand / "models.csv").exists() and (cand / "asteroids.csv").exists():
+        for cand in (config.DAMIT_DIR / "tables", config.DAMIT_DIR):
+            if (cand / "asteroid_models.csv").exists() and (
+                cand / "asteroids.csv"
+            ).exists():
                 return cand
         return None
 
@@ -261,14 +301,21 @@ class DamitProcessor:
         if path is None:
             return []
         out: list[DamitModel] = []
-        for row in _read_csv(path / "models.csv"):
-            mid = _int(row.get("id") or row.get("model_id"))
-            aid = _int(row.get("asteroid_id") or row.get("asteroid"))
-            if mid is None or aid is None:
+        for row in _read_csv(path / "asteroid_models.csv"):
+            mid = _int(row.get("id"))
+            aid = _int(row.get("asteroid_id"))
+            spin = [
+                _float(row.get(k)) for k in ("lambda", "beta", "period", "jd0", "phi0")
+            ]
+            if mid is None or aid is None or any(v is None for v in spin):
+                log.warning("DAMIT asteroid_models row incomplete — skipping: %s", row)
                 continue
             out.append(
                 DamitModel(
-                    mid, aid, _int(row.get("reference_id") or row.get("reference"))
+                    mid,
+                    aid,
+                    *cast("list[float]", spin),
+                    equiv_diameter_km=_float(row.get("equiv_diameter")),
                 )
             )
         return out
@@ -279,24 +326,38 @@ class DamitProcessor:
             return {}
         out: dict[int, dict] = {}
         for row in _read_csv(path / "asteroids.csv"):
-            aid = _int(row.get("id") or row.get("asteroid_id"))
+            aid = _int(row.get("id"))
             if aid is None:
                 continue
             out[aid] = row
         return out
 
-    def _load_references(self) -> dict[int, str]:
+    def _load_citations(self) -> dict[int, str]:
+        """model_id → formatted citation(s), via the references join table."""
         path = self._tables_dir()
         if path is None:
             return {}
-        out: dict[int, str] = {}
+        texts: dict[int, str] = {}
         for row in _read_csv(path / "references.csv"):
-            rid = _int(row.get("id") or row.get("reference_id"))
+            rid = _int(row.get("id"))
             if rid is None:
                 continue
-            text = row.get("reference") or row.get("citation") or row.get("bibcode")
+            parts = [
+                row.get("author_short") or row.get("author"),
+                f"({row['year']})" if row.get("year") else None,
+                row.get("title"),
+                row.get("journal"),
+            ]
+            text = " ".join(p.strip() for p in parts if p and p.strip())
             if text:
-                out[rid] = text.strip()
+                texts[rid] = text
+        out: dict[int, str] = {}
+        for row in _read_csv(path / "asteroid_models_references.csv"):
+            mid = _int(row.get("asteroid_model_id"))
+            rid = _int(row.get("reference_id"))
+            if mid is None or rid is None or rid not in texts:
+                continue
+            out[mid] = f"{out[mid]}; {texts[rid]}" if mid in out else texts[rid]
         return out
 
     def _load_diameters(self) -> dict[str, float]:
@@ -311,28 +372,6 @@ class DamitProcessor:
         ):
             out[oid] = float(diam)
         return out
-
-    def _model_files(self, model_id: int) -> tuple[Path | None, Path | None]:
-        """Find a model's shape + spin files under the extracted archive.
-
-        DAMIT's bulk layout isn't documented here; try the common per-model
-        patterns and glob as a fallback so a layout change logs-and-skips
-        rather than crashing.
-        """
-        root = config.DAMIT_DIR
-        for shape_name, spin_name in (
-            (f"A{model_id}.shape.txt", f"A{model_id}.spin.txt"),
-            (f"{model_id}.shape.txt", f"{model_id}.spin.txt"),
-            (f"{model_id}/shape.txt", f"{model_id}/spin.txt"),
-        ):
-            shape, spin = root / shape_name, root / spin_name
-            if shape.exists() and spin.exists():
-                return shape, spin
-        shapes = list(root.rglob(f"*{model_id}*shape*"))
-        spins = list(root.rglob(f"*{model_id}*spin*"))
-        if shapes and spins:
-            return shapes[0], spins[0]
-        return None, None
 
     def _resolve_object_id(
         self, asteroid_id: int, asteroids: dict[int, dict]
@@ -377,28 +416,13 @@ def _slug(model_id: int) -> str:
 
 
 def _parse_shape(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Parse a DAMIT convex model (native counts-header text or OBJ) → (verts, faces0)."""
-    if path.suffix.lower() == ".obj":
-        return _parse_obj(path)
+    """Parse a DAMIT counts-header shape.txt → (verts, 0-based faces)."""
     tokens = path.read_text().split()
     nv, nf = int(tokens[0]), int(tokens[1])
     body = tokens[2:]
     verts = np.array(body[: nv * 3], dtype=np.float64).reshape(nv, 3)
     face_vals = np.array(body[nv * 3 : nv * 3 + nf * 3], dtype=np.int64).reshape(nf, 3)
     return verts, face_vals - 1  # DAMIT faces are 1-based
-
-
-def _parse_obj(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    verts, faces = [], []
-    for line in path.read_text().splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        if parts[0] == "v":
-            verts.append([float(x) for x in parts[1:4]])
-        elif parts[0] == "f":
-            faces.append([int(p.split("/")[0]) - 1 for p in parts[1:4]])
-    return np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int64)
 
 
 def _scale_to_diameter(
@@ -425,43 +449,27 @@ def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
     return float(abs(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0))
 
 
-def _parse_spin(path: Path) -> dict:
-    """Read λ, β (deg), P (h), JD₀, φ₀ from a DAMIT spin file.
-
-    Robust to line layout: JD₀ is disambiguated from φ₀ by magnitude (>1e6).
-    """
-    nums = [float(x) for x in path.read_text().split()]
-    if len(nums) < 5:
-        raise ValueError(f"{path}: expected ≥5 spin values, got {len(nums)}")
-    lam, beta, period = nums[0], nums[1], nums[2]
-    rest = nums[3:]
-    jd0 = next((x for x in rest if x > 1e6), rest[0])
-    phi0 = next((x for x in rest if x <= 1e6), rest[-1])
-    return {"lambda": lam, "beta": beta, "period": period, "jd0": jd0, "phi0": phi0}
-
-
-def _stamp_matches(stamp: Path, shape: Path, spin: Path, diameter_km: float) -> bool:
-    if not stamp.exists() or not (stamp.parent / "high.glb").exists():
+def _stamp_matches(stamp: Path, out_dir: Path, shape: Path, diameter_km: float) -> bool:
+    if not stamp.exists() or not (out_dir / "high.glb").exists():
         return False
     try:
         data = json.loads(stamp.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return False
     return (
         data.get("knobs") == config.DAMIT_KNOBS_VERSION
         and data.get("shape_sha") == metadata.sha256_file(shape)
-        and data.get("spin_sha") == metadata.sha256_file(spin)
         and data.get("diameter_km") == diameter_km
     )
 
 
-def _write_stamp(stamp: Path, shape: Path, spin: Path, diameter_km: float) -> None:
+def _write_stamp(stamp: Path, shape: Path, diameter_km: float) -> None:
+    stamp.parent.mkdir(parents=True, exist_ok=True)
     stamp.write_text(
         json.dumps(
             {
                 "knobs": config.DAMIT_KNOBS_VERSION,
                 "shape_sha": metadata.sha256_file(shape),
-                "spin_sha": metadata.sha256_file(spin),
                 "diameter_km": diameter_km,
             }
         )
@@ -479,5 +487,12 @@ def _read_csv(path: Path) -> list[dict]:
 def _int(value) -> int | None:
     try:
         return int(str(value).strip())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
+        return None
+
+
+def _float(value) -> float | None:
+    try:
+        return float(str(value).strip())
+    except TypeError, ValueError:
         return None

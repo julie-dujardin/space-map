@@ -99,6 +99,7 @@ def write_glb(vertices: np.ndarray, faces: np.ndarray, dst: Path) -> None:
     bin_bytes = bytes(buf) + b"\x00" * (_pad4(len(buf)) - len(buf))
 
     total_len = 12 + 8 + len(json_bytes) + 8 + len(bin_bytes)
+    dst.parent.mkdir(parents=True, exist_ok=True)
     with dst.open("wb") as f:
         f.write(struct.pack("<4sII", b"glTF", 2, total_len))
         f.write(struct.pack("<II", len(json_bytes), 0x4E4F534A))  # JSON
