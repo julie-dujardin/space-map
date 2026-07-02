@@ -275,9 +275,11 @@ class ModelProcessor:
         Slugs name the on-disk model dir and are the value the DB's
         ``model_name`` column points at; collisions would silently overwrite
         each other's GLBs. ``extra`` folds in body-manifest slugs, which share
-        the same on-disk namespace.
+        the same on-disk namespace — except a body slug may shadow a catalog
+        entry of a non-spacecraft kind (NASA-3D-Resources ships a few asteroid
+        assets): those never process, so the shape model owns the slug.
         """
-        seen: dict[str, Path] = {}
+        seen: dict[str, tuple[Path, str | None]] = {}
         for yaml_path, doc in self._yaml_docs:
             for entry in doc.get("entries") or []:
                 slug = entry.get("slug")
@@ -286,16 +288,24 @@ class ModelProcessor:
                 prior = seen.get(slug)
                 if prior is not None:
                     raise SlugConflictError(
-                        f"slug {slug!r} declared in both {prior} and {yaml_path}"
+                        f"slug {slug!r} declared in both {prior[0]} and {yaml_path}"
                     )
-                seen[slug] = yaml_path
+                seen[slug] = (yaml_path, entry.get("kind") or entry.get("type"))
         for slug in extra or ():
             prior = seen.get(slug)
             if prior is not None:
-                raise SlugConflictError(
-                    f"body slug {slug!r} collides with spacecraft entry in {prior}"
+                path, kind = prior
+                if kind in SPACECRAFT_KINDS:
+                    raise SlugConflictError(
+                        f"body slug {slug!r} collides with spacecraft entry in {path}"
+                    )
+                log.info(
+                    "body slug %r shadows inert catalog entry (kind=%s) in %s",
+                    slug,
+                    kind,
+                    path,
                 )
-            seen[slug] = Path("<bodies>")
+            seen[slug] = (Path("<bodies>"), None)
 
     def _assign_mission_winners(self) -> dict[str, str]:
         """Build {object_id: slug} for every mission across all manifests.
