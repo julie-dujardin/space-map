@@ -24,16 +24,30 @@ def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
     part = dest.with_suffix(dest.suffix + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    # Validator sidecar: resuming across a server-side regeneration of the
+    # same URL stitches two file generations together (observed with DAMIT's
+    # monthly dump). If-Range makes the server send the full body instead.
+    meta = part.with_suffix(part.suffix + ".meta")
+
     for attempt in range(1, RETRIES + 1):
         offset = part.stat().st_size if part.exists() else 0
         headers = {"Range": f"bytes={offset}-"} if offset else {}
+        if offset and meta.exists():
+            headers["If-Range"] = meta.read_text().strip()
         try:
             with client.stream("GET", url, headers=headers, timeout=120.0) as resp:
                 if resp.status_code == 416:  # past EOF: we already have every byte
                     break
                 resp.raise_for_status()
-                if offset and resp.status_code != 206:
-                    offset = 0  # server ignored Range — restart
+                if resp.status_code != 206:
+                    offset = (
+                        0  # full body: no Range, server ignored it, or file changed
+                    )
+                validator = resp.headers.get("etag") or resp.headers.get(
+                    "last-modified"
+                )
+                if validator and not offset:
+                    meta.write_text(validator)
                 done = offset
                 started = time.monotonic()
                 with part.open("ab" if offset else "wb") as fh:
@@ -63,4 +77,5 @@ def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
 
     if part.exists():
         part.rename(dest)
+    meta.unlink(missing_ok=True)
     return True

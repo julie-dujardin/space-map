@@ -1,17 +1,19 @@
 """Mirror the DAMIT lightcurve-inversion model database.
 
-DAMIT (https://damit.cuni.cz, CC BY 4.0) publishes a monthly full export —
+DAMIT (https://damit.cuni.cz, CC BY 4.0) regenerates its full export DAILY —
 one tar.gz with every shape/spin file plus the CSV tables (asteroids, models,
 references) that map models to asteroids and publications. We fetch the
 archive whose versioned name the ``latest`` endpoint advertises, then extract
-under ``bodies/lightcurve/damit/``. Ingest reads the extracted tree + CSVs
-directly; per-asteroid permalinks are ``.../asteroids/view/<asteroid_id>``.
+under ``bodies/lightcurve/damit/``. A freshness window keeps us from
+re-pulling 1.4 GB every day. Ingest reads the extracted tree + CSVs directly;
+per-asteroid permalinks are ``.../asteroids/view/<asteroid_id>``.
 """
 
 import logging
 import re
 import shutil
 import tarfile
+from datetime import UTC, datetime
 
 import httpx
 
@@ -25,6 +27,16 @@ logger = logging.getLogger(__name__)
 LATEST_URL = "https://damit.cuni.cz/projects/damit/exports/complete/latest"
 TIER_DIR = SOURCES_MODELS_BODIES_DIR / "lightcurve"
 EXTRACT_DIR = TIER_DIR / "damit"
+MAX_ARCHIVE_AGE_DAYS = 30
+_STAMP_RE = re.compile(r"damit-(\d{8}T\d{6}Z)")
+
+
+def _archive_age_days(archive_name: str) -> float | None:
+    m = _STAMP_RE.search(archive_name)
+    if not m:
+        return None
+    stamp = datetime.strptime(m.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+    return (datetime.now(UTC) - stamp).total_seconds() / 86400
 
 
 class DAMITDownloader(Downloader):
@@ -42,9 +54,20 @@ class DAMITDownloader(Downloader):
         return False
 
     def download(self, limit: int | None = None, **kwargs: object) -> None:
+        extracted_marker = EXTRACT_DIR / ".extracted-from"
+
+        if extracted_marker.exists():
+            age = _archive_age_days(extracted_marker.read_text().strip())
+            if age is not None and age < MAX_ARCHIVE_AGE_DAYS:
+                logger.info(
+                    "DAMIT extract is %.0f day(s) old — refresh skipped (< %d)",
+                    age,
+                    MAX_ARCHIVE_AGE_DAYS,
+                )
+                return
+
         archive_name = self._latest_archive_name()
         archive = self.out_dir / archive_name
-        extracted_marker = EXTRACT_DIR / ".extracted-from"
 
         if (
             extracted_marker.exists()
@@ -56,7 +79,13 @@ class DAMITDownloader(Downloader):
         if not download_resumable(self.client, LATEST_URL, archive):
             raise DownloadError(f"DAMIT archive download failed: {archive_name}")
 
-        self._extract(archive)
+        try:
+            self._extract(archive)
+        except (tarfile.TarError, EOFError, OSError) as e:
+            # Corrupt bytes (e.g. resume across a server-side regeneration):
+            # drop the archive so the next run redownloads instead of looping.
+            archive.unlink(missing_ok=True)
+            raise DownloadError(f"DAMIT archive corrupt, deleted: {e}") from e
         extracted_marker.write_text(archive_name + "\n")
         for old in self.out_dir.glob("damit-*.tar.gz"):
             if old.name != archive_name:
