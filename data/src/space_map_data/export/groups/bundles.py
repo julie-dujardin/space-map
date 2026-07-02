@@ -622,6 +622,7 @@ def write_group_bundles(
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
     constellation_orbit_classes: dict[str, list[str]] | None = None,
     displacement_metadata: dict[str, dict] | None = None,
+    model_slugs: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Write groups/__global__/ + groups/{lang}/ bundles and __index__.json.
 
@@ -664,7 +665,9 @@ def write_group_bundles(
         named_count = (extra_named_counts or {}).get(group.slug, 0)
         members = (extra_notable_members or {}).get(group.slug)
         member_entries = (
-            notable_entries(members, wikidata_entities, displacement_metadata)
+            notable_entries(
+                members, wikidata_entities, displacement_metadata, model_slugs
+            )
             if members
             else None
         )

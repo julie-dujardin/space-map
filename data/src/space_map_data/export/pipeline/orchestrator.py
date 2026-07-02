@@ -35,6 +35,7 @@ from space_map_data.export.nomenclature.writer import (
 )
 from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.missions import attach_probe_missions
+from space_map_data.export.notable import shape_model_slugs
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.writer import (
@@ -965,6 +966,9 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
     displacement_metadata = load_displacement_metadata(out_dir)
     skybox_metadata = load_skybox_metadata(out_dir)
     model_metadata = load_model_metadata(out_dir)
+    # {object_id: slug} for shape-model bundles — lets notable-member lineups
+    # render the real mesh instead of a sphere (spacecraft bundles excluded).
+    model_slugs = shape_model_slugs(model_metadata)
     probe_kernel_sources = load_probe_kernel_sources()
 
     ctx = ObjectDataContext(
@@ -1086,6 +1090,7 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
                 radii,
                 orientation,
                 displacement_metadata,
+                model_slugs,
             )
             attach_featured_satellites(session, agg.all_objects, wikidata_entities)
             attach_comet_fragments(session, agg.all_objects, wikidata_entities)
@@ -1125,7 +1130,13 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         )
         write_messages(wikidata_entities, units.used_units)
         group_bundle_ns = run_groups_tier(
-            engine, out_dir, wikidata_entities, radii, gms, displacement_metadata
+            engine,
+            out_dir,
+            wikidata_entities,
+            radii,
+            gms,
+            displacement_metadata,
+            model_slugs,
         )
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns

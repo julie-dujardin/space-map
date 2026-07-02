@@ -131,10 +131,24 @@ def _member_key(member: NotableObject) -> str:
     return member.group_slug or member.object_id
 
 
+def shape_model_slugs(model_metadata: dict[str, dict]) -> dict[str, str]:
+    """{object_id: slug} for shape-model bundles only.
+
+    Spacecraft bundles share ``model_metadata`` but must not leak into body
+    lineups, so gate on ``kind == "shape_model"`` (natural bodies map 1:1).
+    """
+    return {
+        meta["object_id"]: slug
+        for slug, meta in model_metadata.items()
+        if meta.get("kind") == "shape_model" and meta.get("object_id")
+    }
+
+
 def notable_entries(
     members: list[NotableObject],
     wikidata_entities: WikidataEntityCache,
     displacement_metadata: dict[str, dict] | None = None,
+    model_slugs: dict[str, str] | None = None,
 ) -> list[dict]:
     """Denormalized records for a global bundle.
 
@@ -142,7 +156,8 @@ def notable_entries(
     bundles' global name), else the DB fallback. Thumbnail reuses the
     search-card picker over the object's export images. ``displacement_metadata``
     (when supplied) lets a member carry its DEM block so the lineup renders the
-    same relief as the main map.
+    same relief as the main map. ``model_slugs`` ({object_id: slug}, shape-model
+    only) lets a member load its shape mesh instead of a sphere.
     """
     out: list[dict] = []
     for member in members:
@@ -179,6 +194,8 @@ def notable_entries(
             disp := displacement_metadata.get(member.object_id)
         ):
             entry["displacement"] = displacement_block(disp)
+        if model_slugs and (slug := model_slugs.get(member.object_id)):
+            entry["model"] = slug
         thumbnail = pick_thumbnail(collect_object_images(member.object_id))
         if thumbnail:
             entry["thumbnail"] = thumbnail
