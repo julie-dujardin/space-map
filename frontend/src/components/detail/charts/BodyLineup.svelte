@@ -27,6 +27,9 @@
 		/** DEM sibling bundle — same relief the main map renders. `absolute_radius`
 		 *  bodies (Vesta/Ceres) skip the oblateness scale and let it carry the shape. */
 		displacement?: DisplacementMeta;
+		/** Shape-model slug (`v1/models/<slug>/`); loads the mesh in place of the
+		 *  sphere, sized/tilted to match. Falls back to the sphere on any failure. */
+		model?: string;
 	}
 </script>
 
@@ -41,6 +44,7 @@
 		Mesh,
 		MeshStandardMaterial,
 		NoColorSpace,
+		type Object3D,
 		OrthographicCamera,
 		Quaternion,
 		Scene,
@@ -52,6 +56,12 @@
 		Vector3,
 		WebGLRenderer
 	} from 'three';
+	import {
+		applyMeshColor,
+		disposeGltf,
+		fetchBundleMeta,
+		modelLoader
+	} from '$lib/scene/objects/body/model';
 	import {
 		disposeCloudNode,
 		loadCloudNode,
@@ -289,6 +299,15 @@
 	const meshes = new Map<string, Mesh>();
 	const cloudNodes = new Map<string, CloudNode>();
 
+	// Shape-model members: the loaded GLB root replaces the placeholder sphere,
+	// scaled so its true-km bounding radius maps to the sphere's pixel radius (so
+	// spacing/labels, keyed off the exported radiusKm, stay correct). A build
+	// token discards loads that resolve after a page flip rebuilt the meshes.
+	const modelRoots = new Map<string, Object3D>();
+	const modelBoundingRadiusKm = new Map<string, number>();
+	let buildToken = 0;
+	const displayObject = (id: string): Object3D | undefined => modelRoots.get(id) ?? meshes.get(id);
+
 	// Hover spin: cache each body's base orientation so a frame is base · spin,
 	// letting the hovered body turn about its own pole without losing its tilt.
 	const HOVER_SPIN = Math.PI / 2;
@@ -382,6 +401,7 @@
 	}
 
 	function clearMeshes() {
+		buildToken++; // discard any in-flight model load for the outgoing set
 		baseQuats.clear();
 		spinAngles.clear();
 		bodyShift.clear();
@@ -394,6 +414,12 @@
 			(mesh.material as MeshStandardMaterial).dispose();
 		}
 		meshes.clear();
+		for (const root of modelRoots.values()) {
+			scene?.remove(root);
+			disposeGltf(root);
+		}
+		modelRoots.clear();
+		modelBoundingRadiusKm.clear();
 	}
 
 	function buildMeshes() {
@@ -408,6 +434,12 @@
 			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
 			meshes.set(b.id, mesh);
+			// Shape-model members swap in the mesh; the flat-colour sphere is the
+			// placeholder and the silent fallback, so skip its texture/DEM/clouds.
+			if (b.model) {
+				loadModelMesh(b, color, buildToken);
+				continue;
+			}
 			const url = versionedUrl(
 				`/v1/textures/${b.id}/${b.surfaceFrame ? `low_${b.surfaceFrame}` : 'low'}.webp`,
 				'textures'
@@ -429,6 +461,35 @@
 		}
 	}
 
+	/** Load a member's shape-model mesh (low tier — many bodies, tiny files),
+	 *  tinted like the sphere and tilted by the same base quaternion. On any
+	 *  failure the placeholder sphere is left in place. */
+	async function loadModelMesh(b: Body, color: string, token: number) {
+		if (!b.model) return;
+		try {
+			const meta = await fetchBundleMeta(b.model);
+			// Guard against a spacecraft slug slipping through; those aren't lineup bodies.
+			if (meta.kind !== 'shape_model' || !meta.true_scale) return;
+			const gltf = await modelLoader.loadAsync(
+				versionedUrl(`/v1/models/${b.model}/low.glb`, 'models')
+			);
+			if (token !== buildToken || !scene) {
+				disposeGltf(gltf.scene);
+				return;
+			}
+			const root = gltf.scene;
+			applyMeshColor(root, color);
+			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
+			modelBoundingRadiusKm.set(b.id, meta.true_scale.bounding_radius_km);
+			scene.add(root);
+			modelRoots.set(b.id, root);
+			meshes.get(b.id)?.removeFromParent(); // sphere placeholder no longer needed
+			render();
+		} catch {
+			/* keep the sphere placeholder */
+		}
+	}
+
 	function render() {
 		if (!renderer || !scene || !camera || !width) return;
 		renderer.setSize(width, HEIGHT, false);
@@ -439,19 +500,27 @@
 		camera.updateProjectionMatrix();
 		const n = layout.length;
 		layout.forEach((p, i) => {
-			const mesh = meshes.get(p.id);
-			if (!mesh) return;
+			const obj = displayObject(p.id);
+			if (!obj) return;
 			// Smaller bodies (later in `layout`) sit nearer the camera, so they stay
 			// visible on top of the giants they overlap — easier to see and click.
 			// The depth gaps are huge (no 3D intersection seam) but invisible under
 			// the orthographic projection.
-			mesh.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
-			// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
-			// in local space before the tilt quaternion, so it aligns with the pole.
-			// absolute_radius bodies skip it — their displacement carries the shape.
-			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
-			mesh.scale.set(p.pr, p.pr * polarY, p.pr);
-			applySpin(mesh, p.id);
+			obj.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
+			const modelRoot = modelRoots.get(p.id);
+			if (modelRoot) {
+				// Uniform true-scale: km vertices → px so the mesh's bounding radius
+				// fills the sphere's `pr` footprint (shape carries its own oblateness).
+				const br = modelBoundingRadiusKm.get(p.id) ?? p.radiusKm;
+				modelRoot.scale.setScalar(p.pr / br);
+			} else {
+				// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
+				// in local space before the tilt quaternion, so it aligns with the pole.
+				// absolute_radius bodies skip it — their displacement carries the shape.
+				const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
+				obj.scale.set(p.pr, p.pr * polarY, p.pr);
+			}
+			applySpin(obj, p.id);
 		});
 		updateGlow();
 		animateSpin();
@@ -460,15 +529,15 @@
 	}
 
 	/** base · spin(angle about the pole); identity-cheap at rest. */
-	function applySpin(mesh: Mesh, id: string) {
+	function applySpin(obj: Object3D, id: string) {
 		const base = baseQuats.get(id);
 		if (!base) return;
 		const a = spinAngles.get(id) ?? 0;
 		if (a === 0) {
-			mesh.quaternion.copy(base);
+			obj.quaternion.copy(base);
 			return;
 		}
-		mesh.quaternion.copy(base).multiply(spinQuat.setFromAxisAngle(AXIS_Y, a));
+		obj.quaternion.copy(base).multiply(spinQuat.setFromAxisAngle(AXIS_Y, a));
 	}
 
 	/** Ease each body's spin toward its target, ticking rAF only while in motion. */
@@ -486,8 +555,8 @@
 				a += (target - a) * 0.1;
 				if (Math.abs(target - a) < 0.0005) a = target;
 				spinAngles.set(p.id, a);
-				const mesh = meshes.get(p.id);
-				if (mesh) applySpin(mesh, p.id);
+				const obj = displayObject(p.id);
+				if (obj) applySpin(obj, p.id);
 				if (a !== target) active = true;
 			}
 			renderer.render(scene, camera);
@@ -539,8 +608,8 @@
 				s += (target - s) * 0.18;
 				if (Math.abs(target - s) < 0.5) s = target;
 				bodyShift.set(p.id, s);
-				const mesh = meshes.get(p.id);
-				if (mesh) mesh.position.x = p.cx + s;
+				const obj = displayObject(p.id);
+				if (obj) obj.position.x = p.cx + s;
 				if (s !== target) active = true;
 			}
 			updateGlow(); // keep the halo on the hovered body as it eases into place

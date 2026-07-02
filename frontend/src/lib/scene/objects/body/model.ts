@@ -1,6 +1,7 @@
 import {
 	Box3,
 	Mesh,
+	MeshStandardMaterial,
 	type Object3D,
 	PMREMGenerator,
 	type Scene,
@@ -17,6 +18,7 @@ import { versionedUrl } from '$lib/fetch/data-base';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
+import { bodyMeshColor } from '$lib/utils';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 
@@ -39,7 +41,10 @@ export function isModelBearing(body: PositionedBody): boolean {
  *  — the real length of the model's longest dimension, used to size the mesh
  *  against scene units. The exporter writes more fields per tier
  *  (size/sha/stats/catalog/…) that we ignore. */
-interface ModelBundleMeta {
+export interface ModelBundleMeta {
+	/** `shape_model` for natural bodies; absent/other for spacecraft. Both
+	 *  render in the unit-radius overlay scene. */
+	kind?: string;
 	exports: {
 		high: {
 			credit: {
@@ -49,13 +54,22 @@ interface ModelBundleMeta {
 		};
 	};
 	scale_meters?: number;
+	/** Natural-body top-level credit + km bounds (shape-model bundles). */
+	credit?: { name: string; url: string };
+	true_scale?: {
+		max_extent_km: number;
+		bounding_radius_km: number;
+	};
 }
 
-const _loader = new GLTFLoader();
-_loader.setMeshoptDecoder(MeshoptDecoder);
+/** Shared meshopt-decoder-registered loader; every model fetch (focused body
+ *  overlay, natural-body mesh, lineup meshes) reuses this one decoder path. */
+export const modelLoader = new GLTFLoader();
+modelLoader.setMeshoptDecoder(MeshoptDecoder);
+const _loader = modelLoader;
 const _bundleMetaCache = new Map<string, Promise<ModelBundleMeta>>();
 
-function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
+export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 	let p = _bundleMetaCache.get(slug);
 	if (!p) {
 		p = fetch(versionedUrl(`/v1/models/${slug}/metadata.json`, 'models')).then((r) => r.json());
@@ -86,6 +100,12 @@ export async function loadBodyModel(
 	ctx?: ContextManager
 ): Promise<void> {
 	if (bo.model || bo.modelLoading) return;
+	// Natural bodies with a shape-model bundle share the overlay path — extreme
+	// zoom corrupts in-scene meshes, so both live in the unit-radius overlay.
+	if (!isModelBearing(bo.body)) {
+		await loadNaturalBodyModel(bo, modelScene, ctx);
+		return;
+	}
 	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
 	// Model-bearing types show the cuboid/model, never the sphere placeholder.
@@ -162,6 +182,91 @@ export async function loadBodyModel(
 }
 
 /**
+ * Load a natural body's shape-model mesh into the unit-radius overlay scene,
+ * hiding the sphere (and its displacement/self-shadow stack). Normalised like a
+ * spacecraft model so `renderModelOverlay` reproduces its on-screen size;
+ * oriented per frame by the same IAU rotation the sphere would get. No-op when
+ * the body has no `model_name` or the bundle isn't a shape model.
+ */
+async function loadNaturalBodyModel(
+	bo: BodyObjects,
+	modelScene: Scene,
+	ctx?: ContextManager
+): Promise<void> {
+	const epoch = bo.modelLoadEpoch ?? 0;
+	bo.modelLoading = true;
+	try {
+		const detail = await fetchObjectDetail(bo.body.data.id, false);
+		const slug = detail.global?.model_name;
+		if (!slug) return; // most bodies: sphere stays visible
+		// Model load can win the race against loadBodyTexture; make sure the spin
+		// axis is on the body so the per-frame orientation pass finds it.
+		if (detail.global?.orientation && !bo.body.orientation) {
+			bo.body.orientation = detail.global.orientation;
+		}
+		const metaPromise = fetchBundleMeta(slug);
+		const gltf = await _loader.loadAsync(versionedUrl(`/v1/models/${slug}/high.glb`, 'models'));
+		if ((bo.modelLoadEpoch ?? 0) !== epoch) {
+			disposeGltf(gltf.scene);
+			return;
+		}
+		let meta: ModelBundleMeta;
+		try {
+			meta = await metaPromise;
+		} catch (e) {
+			disposeGltf(gltf.scene);
+			console.warn(`Failed to load shape-model metadata for ${slug}:`, e);
+			return;
+		}
+		// A non-shape-model bundle isn't a natural body; skip.
+		if (meta.kind !== 'shape_model') {
+			disposeGltf(gltf.scene);
+			return;
+		}
+		const root = gltf.scene;
+		fitToUnitRadius(root); // normalise to radius 1; overlay reproduces true size via radiusScene
+		applyBodyMeshMaterial(root, bo);
+		enableShadows(root);
+		modelScene.add(root);
+		bo.model = root;
+		bo.modelName = slug;
+		if (bo.mesh) bo.mesh.visible = false;
+		// Size the overlay against the real half-extent (matches sphere radiusScene
+		// role): model radius 1 ↔ max_extent_km/2, keeping true-to-scale framing.
+		if (meta.true_scale) {
+			bo.radiusScene = kmToScene(meta.true_scale.max_extent_km / 2);
+		}
+		const credit = meta.credit ?? meta.exports.high.credit;
+		ctx?.credits.registerModel({
+			bodyId: bo.body.data.id,
+			source: credit.url,
+			organisation: credit.name
+		});
+	} finally {
+		// Aborted / no model → keep the sphere visible.
+		if (!bo.model && bo.mesh) bo.mesh.visible = true;
+		bo.modelLoading = false;
+	}
+}
+
+/** Swap the GLB's imported materials for a neutral albedo MeshStandardMaterial
+ *  tinted `color` (per-body SBDB/moon colour). Shape models ship no textures.
+ *  Shared with the lineup so its meshes match the textureless-sphere path. */
+export function applyMeshColor(root: Object3D, color: string | number): void {
+	root.traverse((obj) => {
+		if (!(obj instanceof Mesh)) return;
+		const old = obj.material;
+		obj.material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
+		const list = Array.isArray(old) ? old : [old];
+		for (const m of list) m?.dispose();
+	});
+}
+
+function applyBodyMeshMaterial(root: Object3D, bo: BodyObjects): void {
+	applyMeshColor(root, bo.body.data.color ?? bodyMeshColor(bo.body.data));
+}
+
+/**
  * Dispose the loaded model and restore the placeholder sphere. Bumps the
  * load epoch so any concurrent `loadBodyModel` for `bo` aborts.
  */
@@ -234,7 +339,7 @@ function enableShadows(root: Object3D): void {
 	});
 }
 
-function disposeGltf(root: Object3D): void {
+export function disposeGltf(root: Object3D): void {
 	root.traverse((obj) => {
 		if (!(obj instanceof Mesh)) return;
 		obj.geometry?.dispose();

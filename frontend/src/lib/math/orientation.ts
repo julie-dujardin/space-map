@@ -1,5 +1,5 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import type { Mesh, Object3D } from 'three';
+import type { Object3D } from 'three';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -122,14 +122,15 @@ export function bodyQuaternion(
 	return spinQuat.multiply(tiltQuat);
 }
 
-/** Apply body orientation (axial tilt + spin) to a Three.js mesh. */
+/** Apply body orientation (axial tilt + spin) to a Three.js object (sphere mesh
+ *  or shape-model root — only the quaternion is touched). */
 export function applyOrientation(
-	mesh: Mesh,
+	obj: Object3D,
 	orientation: Orientation,
 	currentJd: number,
 	nutPrec?: NutPrec
 ): void {
-	mesh.quaternion.copy(bodyQuaternion(orientation, currentJd, nutPrec));
+	obj.quaternion.copy(bodyQuaternion(orientation, currentJd, nutPrec));
 }
 
 const LOCAL_NORTH = new Vector3(0, 1, 0);

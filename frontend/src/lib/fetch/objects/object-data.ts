@@ -92,6 +92,9 @@ export interface NotableMemberEntry {
 	first_obs?: string;
 	/** DEM sibling bundle — lets the lineup render the same relief as the main map. */
 	displacement?: DisplacementMeta;
+	/** Shape-model slug (`v1/models/<slug>/`); the lineup loads the mesh instead
+	 *  of a sphere. Shape-model bundles only — never a spacecraft model. */
+	model?: string;
 	thumbnail?: PickedThumbnail;
 }
 

@@ -479,6 +479,10 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 		}
 		if (body.orientation && bo.mesh) {
 			applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
+			// Natural-body shape mesh shares the sphere's IAU spin. It's a
+			// modelScene child (identity parent → world==local), so only the
+			// quaternion is needed; the overlay seats its position.
+			if (bo.model) applyOrientation(bo.model, body.orientation, jd, body.nutPrec);
 		} else if (isModelBearing(body)) {
 			// Sats/probes have no IAU data. Priority: debug override > CK attitude
 			// track (within coverage) > pointing spec > nadir at the parent. Sphere
