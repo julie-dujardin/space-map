@@ -62,6 +62,71 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def gltf_bounds(glb_path: Path) -> dict | None:
+    """Axis-aligned bounds (glTF units) from a .glb's POSITION accessor min/max.
+
+    Shape-model GLBs are km-unit, so these are km. glTF requires min/max on
+    POSITION accessors and Meshopt preserves them, so no buffer decode is
+    needed. Returns ``{min, max, max_extent, bounding_radius}`` or None when
+    the file isn't a parseable glTF 2 binary with positioned meshes.
+    """
+    gltf = _read_gltf_json(glb_path)
+    if gltf is None:
+        return None
+    accessors = gltf.get("accessors") or []
+    lo = [float("inf")] * 3
+    hi = [float("-inf")] * 3
+    found = False
+    for mesh in gltf.get("meshes") or []:
+        for prim in mesh.get("primitives") or []:
+            pos = (prim.get("attributes") or {}).get("POSITION")
+            if pos is None or pos >= len(accessors):
+                continue
+            acc = accessors[pos]
+            amin, amax = acc.get("min"), acc.get("max")
+            if not (amin and amax) or len(amin) < 3 or len(amax) < 3:
+                continue
+            found = True
+            for i in range(3):
+                lo[i] = min(lo[i], float(amin[i]))
+                hi[i] = max(hi[i], float(amax[i]))
+    if not found:
+        return None
+    extent = [hi[i] - lo[i] for i in range(3)]
+    # Bounding radius about the geometric centre, from the AABB corner.
+    half = [e / 2 for e in extent]
+    bounding_radius = (half[0] ** 2 + half[1] ** 2 + half[2] ** 2) ** 0.5
+    return {
+        "min": lo,
+        "max": hi,
+        "max_extent": max(extent),
+        "bounding_radius": bounding_radius,
+    }
+
+
+def _read_gltf_json(glb_path: Path) -> dict | None:
+    """Return a .glb's parsed JSON chunk, or None if it isn't glTF 2 binary."""
+    try:
+        with glb_path.open("rb") as f:
+            header = f.read(12)
+            if len(header) < 12:
+                return None
+            magic, version, _length = struct.unpack("<4sII", header)
+            if magic != b"glTF" or version != 2:
+                return None
+            chunk_header = f.read(8)
+            if len(chunk_header) < 8:
+                return None
+            chunk_len, chunk_type = struct.unpack("<II", chunk_header)
+            if chunk_type != 0x4E4F534A:  # "JSON" little-endian
+                return None
+            json_bytes = f.read(chunk_len)
+        return json.loads(json_bytes)
+    except (OSError, struct.error, json.JSONDecodeError) as exc:
+        log.warning("failed to parse glTF JSON for %s: %s", glb_path, exc)
+        return None
+
+
 def gltf_stats(glb_path: Path) -> dict[str, int]:
     """Parse a .glb's JSON chunk and return content stats.
 
@@ -74,24 +139,8 @@ def gltf_stats(glb_path: Path) -> dict[str, int]:
     other topologies (lines, points, strips) are excluded — they wouldn't
     be triangle-rendered anyway.
     """
-    try:
-        with glb_path.open("rb") as f:
-            header = f.read(12)
-            if len(header) < 12:
-                return {}
-            magic, version, _length = struct.unpack("<4sII", header)
-            if magic != b"glTF" or version != 2:
-                return {}
-            chunk_header = f.read(8)
-            if len(chunk_header) < 8:
-                return {}
-            chunk_len, chunk_type = struct.unpack("<II", chunk_header)
-            if chunk_type != 0x4E4F534A:  # "JSON" little-endian
-                return {}
-            json_bytes = f.read(chunk_len)
-        gltf = json.loads(json_bytes)
-    except (OSError, struct.error, json.JSONDecodeError) as exc:
-        log.warning("failed to parse glTF stats for %s: %s", glb_path, exc)
+    gltf = _read_gltf_json(glb_path)
+    if gltf is None:
         return {}
 
     accessors = gltf.get("accessors") or []

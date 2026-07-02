@@ -17,6 +17,7 @@ from space_map_data.ingest.providers.models import config
 log = logging.getLogger(__name__)
 
 _DRIVER = Path(__file__).parent / "blender_driver.py"
+_BODY_DRIVER = Path(__file__).parent / "bodies" / "body_blender_driver.py"
 
 # Fallbacks for distros where `blender` isn't on PATH (e.g. Flatpak-only installs).
 # Override with the ``BLENDER_EXECUTABLE`` env var on weirder setups.
@@ -83,6 +84,56 @@ def blender_to_glb(src: Path, dst: Path) -> None:
     ]
     log.debug("blender %s → %s", src.name, dst.name)
     subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+
+
+def body_blender_to_glb(src: Path, dst: Path, *, target_tris: int = 0) -> None:
+    """Convert a natural-body mesh (.obj/.ply/.stl) to .glb via the body driver.
+
+    Welds seam duplicates, shades smooth, optionally decimates to
+    ``target_tris`` (0 = no decimation). Preserves km units — no texture or
+    double-sided handling. Raises ``CalledProcessError`` on failure.
+    """
+    blender = _blender_executable()
+    if blender is None:
+        raise RuntimeError("blender not on PATH (set $BLENDER_EXECUTABLE to override)")
+    cmd = [
+        blender,
+        "-b",
+        "--python-exit-code",
+        "1",
+        "--python",
+        str(_BODY_DRIVER),
+        "--",
+        str(src),
+        str(dst),
+    ]
+    if target_tris:
+        cmd.append(str(target_tris))
+    log.debug("body blender %s → %s (target_tris=%d)", src.name, dst.name, target_tris)
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
+
+
+def gltf_transform_meshopt(src: Path, dst: Path) -> None:
+    """Meshopt-compress a geometry-only glTF (shape models carry no textures).
+
+    Dedup + weld + Meshopt; no texture/simplify passes — decimation already
+    happened in Blender so the tri budget is fixed per tier.
+    """
+    base = _gltf_transform_cmd()
+    cmd = [
+        *base,
+        "optimize",
+        str(src),
+        str(dst),
+        "--compress",
+        "meshopt",
+        "--texture-compress",
+        "false",
+        "--simplify",
+        "false",
+    ]
+    log.debug("gltf-transform meshopt %s → %s", src.name, dst.name)
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=600)
 
 
 def gltf_transform_optimize(src: Path, dst: Path, *, tier: str) -> None:

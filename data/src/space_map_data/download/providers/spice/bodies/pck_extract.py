@@ -13,6 +13,9 @@ import spiceypy
 
 logger = logging.getLogger(__name__)
 
+# pck00011 Galileo-flyby asteroid ids → SBDB-canonical naif (2_000_000 + number).
+_GALILEO_ERA_NAIF = {9511010: 2000951, 2431010: 2000243}
+
 
 def extract_orientation() -> list[dict]:
     """Extract PCK orientation data for all bodies that have it.
@@ -287,6 +290,13 @@ def _canonical_naif(naif_id: int) -> int | None:
       SBDB moon ingest creates Object rows with `naif_id == spkid` in this
       range, so the value passes through unchanged.
     """
+    # Galileo-era asteroid ids in pck00011 (Gaspra, Ida) predate the SBDB
+    # 2_000_000 + number convention; map explicitly so their pole data lands on
+    # the Object rows. Ambiguous to generalise (2431010 also reads as canonical
+    # asteroid #431010), so the pair is enumerated.
+    galileo = _GALILEO_ERA_NAIF.get(naif_id)
+    if galileo is not None:
+        return galileo
     # Binary primary: 9_20XXXXXX → 2_XXXXXX. Same offset as the solo form
     # plus a leading "9", so subtract (9-2) * 10^8 + 18M = 918_000_000.
     if 920_000_000 <= naif_id < 930_000_000:

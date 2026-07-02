@@ -114,7 +114,22 @@ class ModelProcessor:
 
     def process_all(self, force: bool = False) -> None:
         self._load_manifests()
-        self._check_slug_uniqueness()
+
+        # Natural-body processors share the export dir + slug namespace, so
+        # they factor into slug-uniqueness and prune before spacecraft runs.
+        from space_map_data.ingest.providers.models.bodies import (
+            BodyModelProcessor,
+            DamitProcessor,
+        )
+
+        session = get_session()
+        body_processor = BodyModelProcessor(session)
+        body_entries = body_processor.load_entries()
+        damit_processor = DamitProcessor(session)
+
+        self._check_slug_uniqueness(
+            extra=[e["slug"] for _t, _d, e in body_entries if e.get("slug")]
+        )
 
         # DB + bus context up-front so the prune pass below sees which slugs
         # actually wire up to a runtime Object. Without this, entries whose
@@ -136,8 +151,11 @@ class ModelProcessor:
             for entry in doc.get("entries") or []
             if entry.get("slug") and self._entry_wanted(entry, db_object_ids)
         }
+        body_slugs = body_processor.wanted_slugs(body_entries)
+        damit_slugs = damit_processor.wanted_slugs()
+        all_wanted = wanted_slugs | body_slugs | damit_slugs
 
-        self._prune_stale_bundles(wanted_slugs)
+        self._prune_stale_bundles(all_wanted)
         self._prune_stale_caches()
         self._reset_model_pointer()
 
@@ -158,6 +176,12 @@ class ModelProcessor:
 
         self._write_mission_pointers(mission_winners)
         self._write_bus_pointers()
+
+        # Natural bodies write their own Object.model_name pointers directly
+        # (each resolves to a single body via naif_id — no winner contest).
+        body_processor.process(body_entries, force=force)
+        damit_processor.process(force=force)
+        session.commit()
 
     def _load_manifests(self) -> None:
         """Discover every 3D manifest under ``MODELS_DOWNLOAD_DIR``.
@@ -245,12 +269,13 @@ class ModelProcessor:
             if entry.get("slug")
         }
 
-    def _check_slug_uniqueness(self) -> None:
+    def _check_slug_uniqueness(self, extra: list[str] | None = None) -> None:
         """Hard-fail if two entries (any catalog) share a slug.
 
         Slugs name the on-disk model dir and are the value the DB's
         ``model_name`` column points at; collisions would silently overwrite
-        each other's GLBs.
+        each other's GLBs. ``extra`` folds in body-manifest slugs, which share
+        the same on-disk namespace.
         """
         seen: dict[str, Path] = {}
         for yaml_path, doc in self._yaml_docs:
@@ -264,6 +289,13 @@ class ModelProcessor:
                         f"slug {slug!r} declared in both {prior} and {yaml_path}"
                     )
                 seen[slug] = yaml_path
+        for slug in extra or ():
+            prior = seen.get(slug)
+            if prior is not None:
+                raise SlugConflictError(
+                    f"body slug {slug!r} collides with spacecraft entry in {prior}"
+                )
+            seen[slug] = Path("<bodies>")
 
     def _assign_mission_winners(self) -> dict[str, str]:
         """Build {object_id: slug} for every mission across all manifests.

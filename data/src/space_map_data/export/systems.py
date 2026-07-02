@@ -48,20 +48,11 @@ _SYSTEM_TYPES = frozenset(
 )
 
 
-def load_orientation(download_dir: Path) -> dict[int, dict]:
-    """Load orientation polynomial coefficients from SPICE orientation.csv.
-
-    Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
-    """
-    csv_path = download_dir / "derived" / "position" / "tables" / "orientation.csv"
-    if not csv_path.exists():
-        logger.warning("No orientation CSV at %s", csv_path)
-        return {}
+def _read_orientation_csv(csv_path: Path) -> dict[int, dict]:
     result: dict[int, dict] = {}
     with csv_path.open(newline="") as f:
         for row in csv.DictReader(f):
-            naif_id = int(row["naif_id"])
-            result[naif_id] = {
+            result[int(row["naif_id"])] = {
                 "pole_ra_0": float(row["pole_ra_0"]),
                 "pole_ra_1": float(row["pole_ra_1"]),
                 "pole_dec_0": float(row["pole_dec_0"]),
@@ -70,6 +61,31 @@ def load_orientation(download_dir: Path) -> dict[int, dict]:
                 "w1": float(row["w1"]),
                 "w2": float(row["w2"]),
             }
+    return result
+
+
+def load_orientation(download_dir: Path) -> dict[int, dict]:
+    """Load orientation polynomials, SPICE PCK merged with DAMIT lightcurve spin.
+
+    Returns {naif_id: {pole_ra_0, pole_ra_1, pole_dec_0, pole_dec_1, w0, w1, w2}}.
+    PCK orientation wins where both exist — DAMIT convex spin only fills
+    asteroids the generic/mission PCKs don't cover.
+    """
+    tables = download_dir / "derived" / "position" / "tables"
+    csv_path = tables / "orientation.csv"
+    if not csv_path.exists():
+        logger.warning("No orientation CSV at %s", csv_path)
+        result: dict[int, dict] = {}
+    else:
+        result = _read_orientation_csv(csv_path)
+
+    damit_path = download_dir / "derived" / "models" / "damit_orientation.csv"
+    if damit_path.exists():
+        damit = _read_orientation_csv(damit_path)
+        added = sum(1 for naif in damit if naif not in result)
+        result = {**damit, **result}  # PCK entries override DAMIT
+        logger.info("Merged %d DAMIT spin-orientation records", added)
+
     logger.info("Loaded %d orientation records", len(result))
     return result
 
