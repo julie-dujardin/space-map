@@ -37,9 +37,7 @@
 	import { getContext, untrack } from 'svelte';
 	import {
 		ACESFilmicToneMapping,
-		AdditiveBlending,
 		AmbientLight,
-		CanvasTexture,
 		DirectionalLight,
 		Mesh,
 		MeshStandardMaterial,
@@ -49,13 +47,12 @@
 		Quaternion,
 		Scene,
 		SphereGeometry,
-		Sprite,
-		SpriteMaterial,
 		SRGBColorSpace,
 		TextureLoader,
 		Vector3,
 		WebGLRenderer
 	} from 'three';
+	import { SilhouetteGlow } from './lineup-silhouette';
 	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
 	import {
 		applyShapeModelMaterial,
@@ -313,7 +310,6 @@
 	const baseQuats = new Map<string, Quaternion>();
 	const spinAngles = new Map<string, number>();
 	const spinQuat = new Quaternion();
-	const glowPole = new Vector3();
 	let spinAnimId: number | undefined;
 
 	// Hover spread: an eased per-body x-offset layered over the static layout (so
@@ -324,38 +320,14 @@
 	const bodyShift = new Map<string, number>();
 	let shiftAnimId: number | undefined;
 
-	// Hover halo: a depth-tested billboard at the hovered body's depth, so the
-	// depth buffer occludes it behind nearer bodies and lets it draw over
-	// farther ones. The ring texture is regenerated per body size so the halo
-	// stays a constant pixel width regardless of body size.
-	const GLOW_PX = 14;
+	// Hover halo: a rim glow that traces the hovered body's true silhouette (see
+	// SilhouetteGlow). Sits at the body's depth so the buffer occludes it behind
+	// nearer bodies and its own disc masks the rim's core.
+	const GLOW_PX = 28;
 	const GLOW_MAX = 0.55; // peak halo opacity
-	let glowSprite: Sprite | undefined;
-	let glowKey = '';
 	let glowOpacity = 0;
 	let glowAnimId: number | undefined;
-
-	function makeGlowTexture(pr: number): CanvasTexture {
-		const res = 128;
-		const c = document.createElement('canvas');
-		c.width = c.height = res;
-		const ctx = c.getContext('2d')!;
-		const R = res / 2;
-		const f = pr / (pr + GLOW_PX); // body edge as a fraction of the sprite radius
-		const g = ctx.createRadialGradient(R, R, 0, R, R, R);
-		// Transparent inside (the body covers it), a bright rim at the edge,
-		// fading out over GLOW_PX. Transparent core avoids a blob poking past the
-		// flattened poles of oblate giants.
-		g.addColorStop(0, 'rgba(255,255,255,0)');
-		g.addColorStop(Math.max(0, f - 0.12), 'rgba(255,255,255,0)');
-		g.addColorStop(Math.min(1, f), 'rgba(255,255,255,1)');
-		g.addColorStop(1, 'rgba(255,255,255,0)');
-		ctx.fillStyle = g;
-		ctx.fillRect(0, 0, res, res);
-		const tex = new CanvasTexture(c);
-		tex.colorSpace = SRGBColorSpace;
-		return tex;
-	}
+	let silhouette: SilhouetteGlow | undefined;
 
 	/** Cloud overlay: a child sphere inheriting the body's tilt + scale. Frame
 	 *  ids can be live timestamps, so read the system meta rather than bake one.
@@ -568,6 +540,7 @@
 				if (obj) applySpin(obj, p.id);
 				if (a !== target) active = true;
 			}
+			updateGlow(); // a spinning model turns its silhouette — re-trace the rim
 			renderer.render(scene, camera);
 			if (active) spinAnimId = requestAnimationFrame(step);
 		};
@@ -629,58 +602,42 @@
 	}
 
 	function updateGlow() {
-		if (!glowSprite) return;
+		if (!silhouette || !renderer || !scene) return;
 		const i = hoveredId ? layout.findIndex((p) => p.id === hoveredId) : -1;
 		if (i >= 0) {
 			const p = layout[i];
-			// Match the body's silhouette: an oblate moon (low polarRatio) gets an
-			// elliptical halo so the rim hugs its flattened poles instead of a fat
-			// circle floating off them. Constant GLOW_PX rim on each axis.
-			const half = p.pr + GLOW_PX;
-			const polarY = p.displacement?.absolute_radius ? 1 : (p.polarRatio ?? 1);
-			const halfY = p.pr * polarY + GLOW_PX;
-			// Sit just behind the hovered body (ε ≪ Z_STEP): its own disc masks
-			// the halo's core, nearer bodies occlude it, farther ones show through.
-			// Live animated x, not the base column — the halo must follow a body
-			// still easing in (hover landing on a previously-displaced one).
-			const x = p.cx + (bodyShift.get(p.id) ?? 0);
-			glowSprite.position.set(x, HEIGHT - p.cy, -(layout.length - 1 - i) * Z_STEP - 50);
-			glowSprite.scale.set(2 * half, 2 * halfY, 1);
-			// A billboard can't take the body's 3D tilt, so roll the elliptical rim
-			// to the pole's screen angle — else a tilted oblate moon leans but its
-			// halo stays upright. Spin is about the pole, so it leaves this be.
-			const q = baseQuats.get(p.id);
-			if (q) {
-				glowPole.set(0, 1, 0).applyQuaternion(q);
-				glowSprite.material.rotation = Math.atan2(-glowPole.x, glowPole.y);
+			// Trace whatever mesh renders the body — model, DEM sphere or a plain
+			// oblate sphere — so the rim gets the true silhouette (lumps, flattened
+			// poles, tilt) for free. Live animated x, not the base column, so the
+			// halo follows a body still easing in.
+			const disp = displayObject(p.id);
+			if (disp) {
+				// Sit behind the body (ε ≪ Z_STEP), past its z-extent, so its own disc
+				// masks the rim's core while nearer bodies still occlude it. The glow
+				// frames and centres itself on the mesh's own bounds.
+				const depth = -(layout.length - 1 - i) * Z_STEP;
+				// White when the body has no colour of its own, matching the model's
+				// own white default (not the grey sphere-placeholder tint).
+				const tint = p.color ?? BODY_COLORS[p.id] ?? '#ffffff';
+				silhouette.update(renderer, scene, disp, depth - (p.pr + 60), tint, glowOpacity);
 			}
-			const key = `${p.id}:${Math.round(p.pr)}`;
-			if (key !== glowKey) {
-				const mat = glowSprite.material;
-				mat.map?.dispose();
-				mat.map = makeGlowTexture(p.pr);
-				mat.color.set(p.color ?? BODY_COLORS[p.id] ?? DEFAULT_BODY_COLOR);
-				mat.needsUpdate = true;
-				glowKey = key;
-			}
-			glowSprite.visible = true; // kept on the last body while fading out
 		}
 		animateGlow();
 	}
 
 	/** Tween the halo toward its target opacity (GLOW_MAX when hovered, else 0),
-	 *  driving an rAF loop only while in transition. */
+	 *  driving an rAF loop only while in transition. The frozen rim just dims on
+	 *  the way out, so no mask re-render is needed. */
 	function animateGlow() {
 		const target = hoveredId ? GLOW_MAX : 0;
 		if (glowOpacity === target || glowAnimId !== undefined) return;
 		const step = () => {
 			glowAnimId = undefined;
-			if (!glowSprite || !renderer || !scene || !camera) return;
+			if (!silhouette || !renderer || !scene || !camera) return;
 			const t = hoveredId ? GLOW_MAX : 0;
 			glowOpacity += (t - glowOpacity) * 0.25;
 			if (Math.abs(t - glowOpacity) < 0.01) glowOpacity = t;
-			glowSprite.material.opacity = glowOpacity;
-			if (glowOpacity === 0) glowSprite.visible = false;
+			silhouette.setOpacity(glowOpacity);
 			renderer.render(scene, camera);
 			if (glowOpacity !== t) glowAnimId = requestAnimationFrame(step);
 		};
@@ -707,18 +664,9 @@
 		key.position.set(-0.4, 0.45, 1);
 		const ambient = new AmbientLight(0xffffff, 0.12);
 		scene.add(key, ambient);
-		glowSprite = new Sprite(
-			new SpriteMaterial({
-				transparent: true,
-				opacity: 0,
-				depthWrite: false,
-				blending: AdditiveBlending
-			})
-		);
-		glowSprite.visible = false;
-		glowKey = '';
 		glowOpacity = 0;
-		scene.add(glowSprite);
+		silhouette = new SilhouetteGlow(GLOW_PX);
+		scene.add(silhouette.plane);
 		return () => {
 			if (glowAnimId !== undefined) cancelAnimationFrame(glowAnimId);
 			glowAnimId = undefined;
@@ -727,9 +675,8 @@
 			if (shiftAnimId !== undefined) cancelAnimationFrame(shiftAnimId);
 			shiftAnimId = undefined;
 			clearMeshes();
-			glowSprite?.material.map?.dispose();
-			glowSprite?.material.dispose();
-			glowSprite = undefined;
+			silhouette?.dispose();
+			silhouette = undefined;
 			renderer?.dispose();
 			renderer = scene = camera = undefined;
 		};
