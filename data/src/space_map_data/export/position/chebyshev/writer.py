@@ -33,6 +33,7 @@ from space_map_data.export.position.format import (
     pack_body_header,
     pack_chebyshev_header,
 )
+from space_map_data.export.position.elements.writer import object_radius_km
 from space_map_data.export.position.layout import position_zone_dir
 from space_map_data.export.position.origin import visible_from_days
 from space_map_data.models.object import Object, ObjectType
@@ -326,7 +327,18 @@ def write_chebyshev(
         if not should_export(obj, naif_id):
             skipped_filter += 1
             continue
+        # Most asteroids have no PCK radii entry; fall back to SBDB diameter so
+        # the frontend gets a real size (camera floor, halo yield, size note).
         radius = (radii.get(naif_id) or {}).get("a")
+        if radius is None:
+            radius = object_radius_km(obj)
+            if math.isnan(radius):
+                radius = None
+                logger.info(
+                    "Chebyshev: no radius for %s (naif_id=%d); exporting NaN",
+                    obj.id,
+                    naif_id,
+                )
         zone = _determine_zone(obj.object_type, naif_id, parent_id)
         has_loc = bool(has_localized.get(obj.id, False))
         zone_bodies[zone].append(

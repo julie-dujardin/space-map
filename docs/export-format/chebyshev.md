@@ -58,7 +58,7 @@ the multi-zoom `major` zone, directly at zone level for the flat cheby zones
 | 0      | int32   | naif_id (SPICE-side identifier; used for parent linking and frame indexing) |
 | 4      | int32   | parent_id (orbital reference body) |
 | 8      | int32   | obj_id_value (numeric portion of the full `Object.id`; equals naif_id when id_type=naif) |
-| 12     | float32 | radius_km (NaN if unknown) |
+| 12     | float32 | radius_km (PCK `a` axis, else SBDB diameter / 2; NaN if unknown) |
 | 16     | uint16  | coeffs_per_axis (= polynomial degree + 1, per segment) |
 | 18     | uint8   | id_type (`0 naif, 1 spkid, 2 norad_satcat, 255 unknown` — same ordinals as the elements extension byte) |
 | 19     | uint8   | has_localized (1 iff the body has a localized detail bundle in at least one language) |

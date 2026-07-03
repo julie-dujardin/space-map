@@ -205,7 +205,10 @@ class BodyModelProcessor:
         """
         cache_dir = config.BODY_CONVERTED_DIR / slug
         cache_dir.mkdir(parents=True, exist_ok=True)
-        fid = metadata.sha256_file(src)[:16]  # source content, not path
+        # Keyed on source content (not path) + parse params that change the mesh.
+        fid = metadata.sha256_file(src)[:16]
+        if lon_first:
+            fid += "-lonlat"
         high_glb = cache_dir / f"{fid}.high.glb"
         low_glb = cache_dir / f"{fid}.low.glb"
         meta_path = cache_dir / f"{fid}.cache.json"

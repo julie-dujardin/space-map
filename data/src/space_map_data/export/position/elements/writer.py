@@ -185,7 +185,7 @@ def _write_keplerian_columns(
             [_float_value(o, attr, file_source) for o in objects],
         )
 
-    _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+    _write_float32(buf, n, [object_radius_km(o, radius_km_overrides) for o in objects])
 
 
 def write_elements(
@@ -380,7 +380,7 @@ def write_parabolic_elements(
 
     _write_float64(buf, n, [_required_sbdb_float(o, "tp") for o in objects])
 
-    _write_float32(buf, n, [_radius_km(o, radius_km_overrides) for o in objects])
+    _write_float32(buf, n, [object_radius_km(o, radius_km_overrides) for o in objects])
 
     _write_has_localized(buf, objects, has_localized)
     _write_flags(buf, objects)
@@ -510,7 +510,7 @@ def _sgp4_int(o: Object, key: str) -> int:
     return val if val is not None else MISSING_INT32
 
 
-def _radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
+def object_radius_km(o: Object, overrides: dict[str, float] | None = None) -> float:
     """Get object radius in km from SBDB diameter or overrides."""
     if o.spkid is not None and o.sbdb is not None and o.sbdb.diameter is not None:
         return o.sbdb.diameter / 2.0
