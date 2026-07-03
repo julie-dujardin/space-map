@@ -3,17 +3,14 @@ import {
 	Mesh,
 	MeshStandardMaterial,
 	type Object3D,
-	PMREMGenerator,
 	Quaternion,
 	Raycaster,
 	type Scene,
 	Texture,
-	Vector3,
-	type WebGLRenderer
+	Vector3
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { createAttitudeTrack } from '$lib/fetch/attitude/track';
 import { versionedUrl } from '$lib/fetch/data-base';
@@ -97,18 +94,6 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
  */
 export function modelUnitScene(bo: BodyObjects): number {
 	return bo.radiusScene;
-}
-
-/**
- * Neutral IBL cubemap for the model-overlay scene so PBR metals have something
- * to reflect. The overlay heavily dims it via `environmentIntensity` — the sun
- * dominates; this just keeps metallics from going pure black.
- */
-export function makeModelEnvMap(renderer: WebGLRenderer): Texture {
-	const pmrem = new PMREMGenerator(renderer);
-	const tex = pmrem.fromScene(new RoomEnvironment()).texture;
-	pmrem.dispose();
-	return tex;
 }
 
 /**

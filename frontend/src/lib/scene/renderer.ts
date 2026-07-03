@@ -45,9 +45,9 @@ import {
 	castModelRadius,
 	isModelBearing,
 	loadBodyModel,
-	makeModelEnvMap,
 	modelUnitScene
 } from './objects/body/model';
+import { AMBIENT_INTENSITY, ENV_BASE_INTENSITY, makeEnvMap } from './lighting';
 import type { PointingSpec } from '$lib/math/orientation';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
@@ -84,9 +84,6 @@ import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 /** Base intensity of the model-overlay directional light. Scaled by the eclipse factor. */
 const MODEL_LIGHT_BASE_INTENSITY = 3.0;
-/** Base intensity of the model-overlay IBL. Heavily dimmed so metals have something
- *  to reflect without overwhelming the sun. Scaled by the eclipse factor. */
-const MODEL_ENV_BASE_INTENSITY = 0.04;
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
@@ -219,11 +216,11 @@ export class SceneRenderer {
 		this.shadowLight = boot.shadowLight;
 
 		this.modelScene = new SceneClass();
-		this.modelScene.environment = makeModelEnvMap(this.renderer);
-		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY;
+		this.modelScene.environment = makeEnvMap(this.renderer);
+		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY;
 		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
 		this.modelScene.add(this.modelCamera);
-		this.modelScene.add(new AmbientLight(0xffffff, 0.01));
+		this.modelScene.add(new AmbientLight(0xffffff, AMBIENT_INTENSITY));
 		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
 		// Light sits at distance 10 from the unit-radius model. Frustum reaches well
 		// past the silhouette (deep near/far especially) so a grazing-Sun shadow
@@ -692,7 +689,7 @@ export class SceneRenderer {
 		this._tmpV3.set(0, 0, 0);
 		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
 		this.modelLight.intensity = MODEL_LIGHT_BASE_INTENSITY * factor;
-		this.modelScene.environmentIntensity = MODEL_ENV_BASE_INTENSITY * factor;
+		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
 
 		// Debug axis arrows share the model's world attitude (model sits at the
 		// overlay origin), drawn over it so the pointing config reads clearly.

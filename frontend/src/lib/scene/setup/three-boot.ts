@@ -16,6 +16,7 @@ import { kmToScene } from '$lib/math/units';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ThrottledCSS2DRenderer } from '$lib/scene/label/throttled-renderer';
 import { setTrailResolution } from '$lib/scene/objects/trail/material';
+import { AMBIENT_INTENSITY } from '$lib/scene/lighting';
 
 export interface ThreeBoot {
 	renderer: WebGLRenderer;
@@ -62,7 +63,7 @@ export function bootThree(
 	ctx.visibility.updateViewport(canvas.clientHeight);
 
 	const scene = new Scene();
-	scene.add(new AmbientLight(0xffffff, 0.01));
+	scene.add(new AmbientLight(0xffffff, AMBIENT_INTENSITY));
 	const shadowLight = new DirectionalLight(0xffffff, 0);
 	shadowLight.castShadow = false;
 	scene.add(shadowLight);

@@ -30,7 +30,14 @@ const EQUIRECT_MAP_FRAGMENT = /* glsl */ `
  * (via {@link setShapeModelMap}), then the map projected equirectangularly.
  */
 export function makeShapeModelMaterial(color: string | number): MeshStandardMaterial {
-	const material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
+	// No IBL fill: the sphere path gets none, so the mesh nightside must match it.
+	// The overlay's env map is there for metallic spacecraft, not matte bodies.
+	const material = new MeshStandardMaterial({
+		color,
+		roughness: 1,
+		metalness: 0,
+		envMapIntensity: 0
+	});
 	material.onBeforeCompile = (shader) => {
 		shader.vertexShader = shader.vertexShader
 			.replace('#include <common>', '#include <common>\nvarying vec3 vBodyDir;')
