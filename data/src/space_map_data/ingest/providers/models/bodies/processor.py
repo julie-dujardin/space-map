@@ -111,11 +111,11 @@ class BodyModelProcessor:
     ) -> None:
         slug = entry["slug"]
         if entry.get("naif_id") is None:
-            log.info("body %s: null naif_id in manifest — skipping", slug)
+            log.warning("body %s: null naif_id in manifest — skipping", slug)
             return
         object_id = self._resolve_object_id(entry)
         if object_id is None:
-            log.info(
+            log.warning(
                 "body %s: no DB Object for naif_id=%s — skipping",
                 slug,
                 entry.get("naif_id"),
@@ -154,7 +154,6 @@ class BodyModelProcessor:
         self._session.query(Object).filter(Object.id == object_id).update(
             {Object.model_name: slug, Object.model_provenance: ModelProvenance(tier)}
         )
-        log.info("body %s → %s (%s tier)", slug, object_id, tier)
 
     def _convert_first_fitting(
         self,
