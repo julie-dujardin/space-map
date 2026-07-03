@@ -1,4 +1,4 @@
-import { Mesh, MeshStandardMaterial, type Object3D, type Texture } from 'three';
+import { Mesh, MeshStandardMaterial, type Object3D, SRGBColorSpace, type Texture } from 'three';
 import { tintBaseColor } from './texture-tint';
 
 /**
@@ -83,4 +83,24 @@ export function setShapeModelMap(
 		else obj.material.color.set(fallbackColor);
 		obj.material.needsUpdate = true;
 	});
+}
+
+/**
+ * Apply a surface `map` to a single sphere material — the sphere-side counterpart
+ * of {@link setShapeModelMap}, shared by the focused-body scene and the lineup so
+ * identical bodies colour identically. Tags sRGB, disposes any prior map, and
+ * sets the base colour by the same grayscale-tint rule: a monochrome map is
+ * coloured by `tintHex` (the body's measured surface hue), a coloured one keeps a
+ * white base.
+ */
+export function setSurfaceMap(
+	material: MeshStandardMaterial,
+	map: Texture,
+	tintHex?: string
+): void {
+	if (material.map && material.map !== map) material.map.dispose();
+	map.colorSpace = SRGBColorSpace;
+	material.map = map;
+	material.color.copy(tintBaseColor(map, tintHex));
+	material.needsUpdate = true;
 }

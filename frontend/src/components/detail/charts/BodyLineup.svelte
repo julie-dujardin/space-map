@@ -57,7 +57,8 @@
 	import {
 		applyShapeModelMaterial,
 		makeShapeModelMaterial,
-		setShapeModelMap
+		setShapeModelMap,
+		setSurfaceMap
 	} from '$lib/scene/objects/body/model-texture';
 	import {
 		disposeCloudNode,
@@ -418,10 +419,7 @@
 			loader.load(
 				url,
 				(tex) => {
-					tex.colorSpace = SRGBColorSpace;
-					material.map = tex;
-					material.color.set(0xffffff);
-					material.needsUpdate = true;
+					setSurfaceMap(material, tex, b.color);
 					render();
 				},
 				undefined,
@@ -456,7 +454,7 @@
 				(tex) => {
 					if (token !== buildToken) return;
 					tex.colorSpace = SRGBColorSpace;
-					setShapeModelMap(root, tex, color);
+					setShapeModelMap(root, tex, color, b.color);
 					render();
 				},
 				undefined,
