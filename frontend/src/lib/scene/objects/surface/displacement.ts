@@ -25,22 +25,25 @@ export interface DisplacementMeta {
 
 /**
  * Load a body's height map onto a `MeshStandardMaterial` as a displacement map
- * at true scale. Scale/bias are in scene units, so the per-frame sphere-LOD
- * geometry swap displaces correctly at every tessellation level. `NoColorSpace`:
- * it's linear height data, not colour.
+ * at true scale, shared by the main scene and the lineup. Scale/bias land in the
+ * base sphere's own units via `kmToLocal` (scene units per km for the main scene;
+ * the lineup renders on a unit sphere = `radiusKm`, so it passes `1/radiusKm`),
+ * so the per-frame sphere-LOD geometry swap displaces correctly at every
+ * tessellation level. `NoColorSpace`: it's linear height data, not colour.
  *
  * For `absolute_radius` grids the values are radius-from-centre, so the bias is
- * offset by `−sphereRadiusScene`: the displaced surface lands at the true
- * radius regardless of the base sphere's size (these bodies skip triaxial
- * flattening, letting the DEM carry the whole shape). Returns the texture for
- * later disposal, or `null` on fetch failure.
+ * offset by `−sphereRadius`: the displaced surface lands at the true radius
+ * regardless of the base sphere's size (these bodies skip triaxial flattening,
+ * letting the DEM carry the whole shape). Returns the texture for later disposal,
+ * or `null` on fetch failure.
  */
 export async function attachDisplacementMap(
 	material: MeshStandardMaterial,
 	dispMeta: DisplacementMeta,
 	tier: string,
 	textureLoader: TextureLoader,
-	sphereRadiusScene: number
+	sphereRadius: number,
+	kmToLocal: number = kmToScene(1)
 ): Promise<Texture | null> {
 	const url = versionedUrl(`/v1/textures/${dispMeta.id}/${tier}.webp`, 'textures');
 	let texture: Texture;
@@ -55,9 +58,9 @@ export async function attachDisplacementMap(
 
 	texture.colorSpace = NoColorSpace;
 	material.displacementMap = texture;
-	material.displacementScale = kmToScene(dispMeta.scale_km);
+	material.displacementScale = dispMeta.scale_km * kmToLocal;
 	material.displacementBias =
-		kmToScene(dispMeta.bias_km) - (dispMeta.absolute_radius ? sphereRadiusScene : 0);
+		dispMeta.bias_km * kmToLocal - (dispMeta.absolute_radius ? sphereRadius : 0);
 	material.needsUpdate = true;
 	return texture;
 }

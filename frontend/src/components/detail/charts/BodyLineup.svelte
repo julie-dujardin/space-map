@@ -41,7 +41,6 @@
 		DirectionalLight,
 		Mesh,
 		MeshStandardMaterial,
-		NoColorSpace,
 		type Object3D,
 		OrthographicCamera,
 		Quaternion,
@@ -54,6 +53,7 @@
 	} from 'three';
 	import { SilhouetteGlow } from './lineup-silhouette';
 	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
+	import { attachDisplacementMap } from '$lib/scene/objects/surface/displacement';
 	import {
 		applyShapeModelMaterial,
 		makeShapeModelMaterial,
@@ -350,25 +350,16 @@
 		}
 	}
 
-	/** DEM relief scaled to the lineup's unit sphere (radius 1 = equatorial
-	 *  radiusKm). `absolute_radius` texels are radius-from-centre, so the bias
-	 *  drops the unit sphere (−1) and the layout skips the oblateness scale. */
+	/** DEM relief on the lineup's unit sphere (radius 1 = equatorial `radiusKm`),
+	 *  via the same loader the main scene uses. `kmToLocal = 1/radiusKm` maps km to
+	 *  the unit sphere; `absolute_radius` texels are radius-from-centre, so the
+	 *  shared bias drops the unit sphere (−1) and the layout skips oblateness. */
 	function loadDisplacement(b: LineupBody, material: MeshStandardMaterial, loader: TextureLoader) {
-		const d = b.displacement;
-		if (!d) return;
-		const url = versionedUrl(`/v1/textures/${d.id}/low.webp`, 'textures');
-		loader.load(
-			url,
+		if (!b.displacement) return;
+		attachDisplacementMap(material, b.displacement, 'low', loader, 1, 1 / b.radiusKm).then(
 			(tex) => {
-				tex.colorSpace = NoColorSpace;
-				material.displacementMap = tex;
-				material.displacementScale = d.scale_km / b.radiusKm;
-				material.displacementBias = d.bias_km / b.radiusKm - (d.absolute_radius ? 1 : 0);
-				material.needsUpdate = true;
-				render();
-			},
-			undefined,
-			() => {} // relief is optional — keep the smooth sphere on failure
+				if (tex) render();
+			}
 		);
 	}
 
