@@ -241,7 +241,8 @@ async function loadNaturalBodyModel(
 		// The sphere path owns texture loading/LOD; mirror whatever it has now
 		// (swapBodyTexture keeps later tier upgrades in sync).
 		const sphereMap = bo.mesh ? (bo.mesh.material as MeshStandardMaterial).map : null;
-		if (sphereMap) setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data));
+		if (sphereMap)
+			setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data), bo.body.data.color);
 		enableShadows(root);
 		modelScene.add(root);
 		bo.model = root;

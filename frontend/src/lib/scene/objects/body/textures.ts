@@ -10,6 +10,7 @@ import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
 import { setShapeModelMap } from './model-texture';
+import { tintBaseColor } from './texture-tint';
 import type { BodyObjects } from '../../types';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
@@ -86,10 +87,13 @@ async function swapBodyTexture(
 		const material = bo.mesh.material as MeshStandardMaterial;
 		material.map?.dispose();
 		material.map = texture;
-		material.color.set(0xffffff);
+		// Grayscale maps get coloured by the body's measured surface hue; coloured
+		// maps and untinted bodies keep a white base (plain map).
+		material.color.copy(tintBaseColor(texture, bo.body.data.color));
 		material.needsUpdate = true;
 		// A loaded shape model samples the same map (equirect-projected).
-		if (bo.model) setShapeModelMap(bo.model, texture, bodyMeshColor(bo.body.data));
+		if (bo.model)
+			setShapeModelMap(bo.model, texture, bodyMeshColor(bo.body.data), bo.body.data.color);
 		bo.textureTier = tier;
 		bo.textureFrame = frame;
 	} catch (err) {

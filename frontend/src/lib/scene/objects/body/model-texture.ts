@@ -1,4 +1,5 @@
 import { Mesh, MeshStandardMaterial, type Object3D, type Texture } from 'three';
+import { tintBaseColor } from './texture-tint';
 
 /**
  * Equirectangular `map` sampling for shape-model meshes, which ship no texture
@@ -66,16 +67,20 @@ export function applyShapeModelMaterial(root: Object3D, material: MeshStandardMa
  * Point the model's materials at `map` (already colour-space-tagged by the
  * sphere path — the Texture object is shared, not copied, so texture-tier
  * upgrades propagate by re-calling this). `null` reverts to `fallbackColor`.
+ * With a map, the base colour is `tintBaseColor` — a grayscale map is coloured
+ * by `tintHex` (the body's measured surface colour), a coloured one stays as-is.
  */
 export function setShapeModelMap(
 	root: Object3D,
 	map: Texture | null,
-	fallbackColor: string | number
+	fallbackColor: string | number,
+	tintHex?: string
 ): void {
 	root.traverse((obj) => {
 		if (!(obj instanceof Mesh) || !(obj.material instanceof MeshStandardMaterial)) return;
 		obj.material.map = map;
-		obj.material.color.set(map ? 0xffffff : fallbackColor);
+		if (map) obj.material.color.copy(tintBaseColor(map, tintHex));
+		else obj.material.color.set(fallbackColor);
 		obj.material.needsUpdate = true;
 	});
 }
