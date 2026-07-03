@@ -24,6 +24,13 @@ import { bodyMeshColor } from '$lib/utils';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelNote } from '../../label/factory';
+import { applyShapeModelMaterial, makeShapeModelMaterial, setShapeModelMap } from './model-texture';
+
+/** Bodies whose shape model should render even though a DEM exists. By default
+ *  a displacement map wins (textured relief sphere beats an untextured mesh —
+ *  e.g. Dawn's Ceres/Vesta vs their convex lightcurve blobs); list exceptions
+ *  here case by case. */
+const PREFER_MODEL_OVER_DEM = new Set<string>([]);
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
  *  the moment a load starts (rather than waiting for the detail fetch to
@@ -213,6 +220,9 @@ async function loadNaturalBodyModel(
 		const detail = await fetchObjectDetail(bo.body.data.id, false);
 		const slug = detail.global?.model_name;
 		if (!slug) return; // most bodies: sphere stays visible
+		// A DEM sphere beats the shape model unless the body is listed as an
+		// exception — loadBodyTexture attaches the displacement to the sphere.
+		if (detail.global?.displacement && !PREFER_MODEL_OVER_DEM.has(bo.body.data.id)) return;
 		// Model load can win the race against loadBodyTexture; make sure the spin
 		// axis is on the body so the per-frame orientation pass finds it.
 		if (detail.global?.orientation && !bo.body.orientation) {
@@ -239,7 +249,14 @@ async function loadNaturalBodyModel(
 		}
 		const root = gltf.scene;
 		fitToUnitRadius(root); // normalise to radius 1; overlay reproduces true size via radiusScene
-		applyBodyMeshMaterial(root, bo);
+		applyShapeModelMaterial(
+			root,
+			makeShapeModelMaterial(bo.body.data.color ?? bodyMeshColor(bo.body.data))
+		);
+		// The sphere path owns texture loading/LOD; mirror whatever it has now
+		// (swapBodyTexture keeps later tier upgrades in sync).
+		const sphereMap = bo.mesh ? (bo.mesh.material as MeshStandardMaterial).map : null;
+		if (sphereMap) setShapeModelMap(root, sphereMap, bodyMeshColor(bo.body.data));
 		enableShadows(root);
 		modelScene.add(root);
 		bo.model = root;
@@ -270,23 +287,6 @@ async function loadNaturalBodyModel(
 		if (!bo.model && bo.mesh) bo.mesh.visible = true;
 		bo.modelLoading = false;
 	}
-}
-
-/** Swap the GLB's imported materials for a neutral albedo MeshStandardMaterial
- *  tinted `color` (per-body SBDB/moon colour). Shape models ship no textures.
- *  Shared with the lineup so its meshes match the textureless-sphere path. */
-export function applyMeshColor(root: Object3D, color: string | number): void {
-	root.traverse((obj) => {
-		if (!(obj instanceof Mesh)) return;
-		const old = obj.material;
-		obj.material = new MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
-		const list = Array.isArray(old) ? old : [old];
-		for (const m of list) m?.dispose();
-	});
-}
-
-function applyBodyMeshMaterial(root: Object3D, bo: BodyObjects): void {
-	applyMeshColor(root, bo.body.data.color ?? bodyMeshColor(bo.body.data));
 }
 
 /**

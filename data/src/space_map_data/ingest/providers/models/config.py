@@ -81,7 +81,7 @@ BODY_LOW_TIER_TRIS = 20_000
 BODY_KNOBS_VERSION = "v1-body-weld-smooth-decimate-meshopt"
 # Blender-free convex-model conversion writes GLBs with this generator tag; the
 # resumable DAMIT pass rebuilds when it changes.
-DAMIT_KNOBS_VERSION = "v2-hmag-fallback-scale-source"
+DAMIT_KNOBS_VERSION = "v3-gltf-y-up"
 
 # Convertible source formats. `.glb` skips Blender; the rest need it.
 # Anything outside this set (`.lwo`, `.7z`, `.7z.001`, …) is silently ignored.

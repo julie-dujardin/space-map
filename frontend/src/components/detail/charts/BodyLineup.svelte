@@ -56,12 +56,12 @@
 		Vector3,
 		WebGLRenderer
 	} from 'three';
+	import { disposeGltf, fetchBundleMeta, modelLoader } from '$lib/scene/objects/body/model';
 	import {
-		applyMeshColor,
-		disposeGltf,
-		fetchBundleMeta,
-		modelLoader
-	} from '$lib/scene/objects/body/model';
+		applyShapeModelMaterial,
+		makeShapeModelMaterial,
+		setShapeModelMap
+	} from '$lib/scene/objects/body/model-texture';
 	import {
 		disposeCloudNode,
 		loadCloudNode,
@@ -299,12 +299,11 @@
 	const meshes = new Map<string, Mesh>();
 	const cloudNodes = new Map<string, CloudNode>();
 
-	// Shape-model members: the loaded GLB root replaces the placeholder sphere,
-	// scaled so its true-km bounding radius maps to the sphere's pixel radius (so
-	// spacing/labels, keyed off the exported radiusKm, stay correct). A build
-	// token discards loads that resolve after a page flip rebuilt the meshes.
+	// Shape-model members: the loaded GLB root replaces the placeholder sphere.
+	// GLB vertices are km, so px-per-km (pr / radiusKm) renders it at the same
+	// true scale as the spheres. A build token discards loads that resolve after
+	// a page flip rebuilt the meshes.
 	const modelRoots = new Map<string, Object3D>();
-	const modelBoundingRadiusKm = new Map<string, number>();
 	let buildToken = 0;
 	const displayObject = (id: string): Object3D | undefined => modelRoots.get(id) ?? meshes.get(id);
 
@@ -419,7 +418,6 @@
 			disposeGltf(root);
 		}
 		modelRoots.clear();
-		modelBoundingRadiusKm.clear();
 	}
 
 	function buildMeshes() {
@@ -434,10 +432,11 @@
 			mesh.quaternion.copy(baseQuats.get(b.id)!);
 			scene.add(mesh);
 			meshes.set(b.id, mesh);
-			// Shape-model members swap in the mesh; the flat-colour sphere is the
-			// placeholder and the silent fallback, so skip its texture/DEM/clouds.
-			if (b.model) {
-				loadModelMesh(b, color, buildToken);
+			// Shape-model members swap in the mesh (unless a DEM exists — the
+			// textured relief sphere wins, matching the main scene). The
+			// flat-colour sphere is the placeholder and the silent fallback.
+			if (b.model && !b.displacement) {
+				loadModelMesh(b, color, buildToken, loader);
 				continue;
 			}
 			const url = versionedUrl(
@@ -461,10 +460,10 @@
 		}
 	}
 
-	/** Load a member's shape-model mesh, tinted like the sphere and tilted by
-	 *  the same base quaternion. On any failure the placeholder sphere is left
-	 *  in place. */
-	async function loadModelMesh(b: Body, color: string, token: number) {
+	/** Load a member's shape-model mesh, tinted like the sphere, tilted by the
+	 *  same base quaternion, and draped with the body's low-tier surface map
+	 *  when one exists. On any failure the placeholder sphere is left in place. */
+	async function loadModelMesh(b: Body, color: string, token: number, loader: TextureLoader) {
 		if (!b.model) return;
 		try {
 			const meta = await fetchBundleMeta(b.model);
@@ -479,9 +478,19 @@
 				return;
 			}
 			const root = gltf.scene;
-			applyMeshColor(root, color);
+			applyShapeModelMaterial(root, makeShapeModelMaterial(color));
+			loader.load(
+				versionedUrl(`/v1/textures/${b.id}/low.webp`, 'textures'),
+				(tex) => {
+					if (token !== buildToken) return;
+					tex.colorSpace = SRGBColorSpace;
+					setShapeModelMap(root, tex, color);
+					render();
+				},
+				undefined,
+				() => {} // most shape-model bodies have no surface map — keep the tint
+			);
 			root.quaternion.copy(baseQuats.get(b.id) ?? new Quaternion());
-			modelBoundingRadiusKm.set(b.id, meta.true_scale.bounding_radius_km);
 			scene.add(root);
 			modelRoots.set(b.id, root);
 			meshes.get(b.id)?.removeFromParent(); // sphere placeholder no longer needed
@@ -510,10 +519,9 @@
 			obj.position.set(p.cx + (bodyShift.get(p.id) ?? 0), HEIGHT - p.cy, -(n - 1 - i) * Z_STEP);
 			const modelRoot = modelRoots.get(p.id);
 			if (modelRoot) {
-				// Uniform true-scale: km vertices → px so the mesh's bounding radius
-				// fills the sphere's `pr` footprint (shape carries its own oblateness).
-				const br = modelBoundingRadiusKm.get(p.id) ?? p.radiusKm;
-				modelRoot.scale.setScalar(p.pr / br);
+				// Uniform px-per-km: the mesh renders at the same true scale the
+				// pr-sized spheres use (shape carries its own oblateness).
+				modelRoot.scale.setScalar(p.pr / p.radiusKm);
 			} else {
 				// Non-uniform: flatten the polar (local +Y) axis for oblateness. Applied
 				// in local space before the tilt quaternion, so it aligns with the pole.

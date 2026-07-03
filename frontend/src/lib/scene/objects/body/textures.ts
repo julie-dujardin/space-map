@@ -9,6 +9,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
 import { attachSelfShadowToBody, detachSelfShadow } from '../surface/self-shadow';
+import { setShapeModelMap } from './model-texture';
 import type { BodyObjects } from '../../types';
 
 /** Ordered tier names: lower → higher resolution. Index = rank. */
@@ -87,6 +88,8 @@ async function swapBodyTexture(
 		material.map = texture;
 		material.color.set(0xffffff);
 		material.needsUpdate = true;
+		// A loaded shape model samples the same map (equirect-projected).
+		if (bo.model) setShapeModelMap(bo.model, texture, bodyMeshColor(bo.body.data));
 		bo.textureTier = tier;
 		bo.textureFrame = frame;
 	} catch (err) {
@@ -272,6 +275,8 @@ export function unloadBodyTexture(bo: BodyObjects): void {
 	material.map = null;
 	material.color.set(bodyMeshColor(bo.body.data));
 	material.needsUpdate = true;
+	// Don't leave the model sampling the disposed texture.
+	if (bo.model) setShapeModelMap(bo.model, null, bodyMeshColor(bo.body.data));
 	bo.textureTier = undefined;
 }
 

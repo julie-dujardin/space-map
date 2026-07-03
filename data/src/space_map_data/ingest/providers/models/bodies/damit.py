@@ -204,6 +204,7 @@ class DamitProcessor:
         if force or not _stamp_matches(stamp, out_dir, shape_path, diameter_km):
             verts, faces = _parse_shape(shape_path)
             verts = _scale_to_diameter(verts, faces, diameter_km)
+            verts = _body_z_up_to_gltf_y_up(verts)
             # Convex models are already tiny; ship a single "high" tier
             # (a duplicate low.glb would double the exported file count).
             glb_writer.write_glb(verts, faces, out_dir / "high.glb")
@@ -471,6 +472,16 @@ def _scale_to_diameter(
         return verts  # degenerate; leave as-is (bounds still recorded)
     r_eq = (3.0 * vol / (4.0 * np.pi)) ** (1.0 / 3.0)
     return verts * ((diameter_km / 2.0) / r_eq)
+
+
+def _body_z_up_to_gltf_y_up(verts: np.ndarray) -> np.ndarray:
+    """Rotate body-fixed (pole = +z) vertices into glTF's y-up frame.
+
+    The frontend applies the same IAU quaternion (local +y = pole) to spheres
+    and models; the Blender path bakes this rotation via ``export_yup``, so
+    the direct writer must match or DAMIT models spin about their side.
+    """
+    return np.column_stack((verts[:, 0], verts[:, 2], -verts[:, 1]))
 
 
 def _mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
