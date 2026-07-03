@@ -604,6 +604,7 @@
 	"tooltip_rotation_period": "הזמן לסיבוב מלא אחד סביב הציר",
 	"tooltip_absolute_magnitude": "הבהירות הפנימית של העצם",
 	"tooltip_absolute_magnitude_h": "בהירות במרחק 1 AU מהשמש ומהצופה, בזווית פאזה אפס",
+	"tooltip_diameter_estimated": "מוערך לפי הבהירות המוחלטת (H); הטווח משתרע ממשטחים בהירים לכהים (אלבדו 0.25–0.05)",
 	"tooltip_apparent_magnitude": "הבהירות כפי שנראית מכדור הארץ",
 	"tooltip_spectral_type_smassii": "סיווג ספקטרלי בטקסונומיית Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "סיווג ספקטרלי בטקסונומיית Tholen",

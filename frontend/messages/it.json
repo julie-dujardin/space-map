@@ -604,6 +604,7 @@
 	"tooltip_rotation_period": "Tempo per una rotazione completa attorno al proprio asse",
 	"tooltip_absolute_magnitude": "Luminosità intrinseca dell'oggetto",
 	"tooltip_absolute_magnitude_h": "Luminosità a 1 UA sia dal Sole sia dall'osservatore, ad angolo di fase zero",
+	"tooltip_diameter_estimated": "Stimato dalla magnitudine assoluta (H); l'intervallo copre superfici chiare e scure (albedo 0,25–0,05)",
 	"tooltip_apparent_magnitude": "Luminosità vista dalla Terra",
 	"tooltip_spectral_type_smassii": "Classificazione spettrale nella tassonomia Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "Classificazione spettrale nella tassonomia di Tholen",

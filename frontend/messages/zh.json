@@ -534,6 +534,7 @@
 	"tooltip_rotation_period": "自转一周所需时间",
 	"tooltip_absolute_magnitude": "天体的固有亮度",
 	"tooltip_absolute_magnitude_h": "距太阳和观测者1AU、相位角为零时的亮度",
+	"tooltip_diameter_estimated": "根据绝对星等（H）估算；范围涵盖明亮到黑暗的表面（反照率0.25–0.05）",
 	"tooltip_apparent_magnitude": "从地球看到的亮度",
 	"tooltip_spectral_type_smassii": "Bus-DeMeo/SMASSII分类法的光谱分类",
 	"tooltip_spectral_type_tholen": "Tholen分类法的光谱分类",

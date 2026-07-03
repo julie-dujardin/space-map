@@ -617,6 +617,7 @@
 	"tooltip_rotation_period": "الزمن اللازم لدورة كاملة حول محوره",
 	"tooltip_absolute_magnitude": "السطوع الذاتي للجرم",
 	"tooltip_absolute_magnitude_h": "السطوع على بعد 1 و.ف من الشمس والراصد، بزاوية طور صفرية",
+	"tooltip_diameter_estimated": "مقدّر من القدر المطلق (H)؛ يمتد النطاق من الأسطح الفاتحة إلى الداكنة (بياض 0.25–0.05)",
 	"tooltip_apparent_magnitude": "السطوع كما يُرى من الأرض",
 	"tooltip_spectral_type_smassii": "التصنيف الطيفي وفق نظام Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "التصنيف الطيفي وفق نظام Tholen",

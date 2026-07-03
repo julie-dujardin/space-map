@@ -6,8 +6,9 @@ Reads the extracted DAMIT bulk archive (``DAMIT_DIR``): per-model files under
 Every model is exported (the file cap is 100k; the full set fits); the
 preferred model per asteroid drives ``Object.model_name`` and the spin
 orientation the frontend applies. Convex models are dimensionless — scaled to
-DAMIT's own calibrated diameter when present, else SBDB — and Blender-free
-(see ``glb_writer``) so the ~16k-model pass is subprocess-free.
+DAMIT's own calibrated diameter when present, else SBDB's measured diameter,
+else a diameter estimated from absolute magnitude H — and Blender-free (see
+``glb_writer``) so the ~16k-model pass is subprocess-free.
 
 Resumable: a per-model cache stamp (kept outside the export tree — the CDN
 has a 100k-file cap) skips already-converted GLBs across runs. No-ops with a
@@ -18,6 +19,7 @@ download).
 import csv
 import json
 import logging
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,6 +51,12 @@ _ORIENTATION_FIELDS = [
 
 
 _J2000_JD = 2451545.0
+
+# H→diameter fallback (Pravec & Harris 2007): D = 1329/√p_V · 10^(−H/5), with
+# the CNEOS-assumed albedo when unmeasured. Mirrored in the frontend
+# ($lib/math/h-magnitude.ts) so the sidebar estimate matches the model scale.
+_H_MAG_CONST_KM = 1329.0
+_ASSUMED_ALBEDO = 0.14
 
 
 @dataclass(frozen=True)
@@ -125,10 +133,13 @@ class DamitProcessor:
             if object_id is None:
                 continue
             naif_id = self._naif_for(m.asteroid_id, asteroids)
-            diameter = m.equiv_diameter_km or diameters.get(object_id)
-            if diameter is None:
+            if m.equiv_diameter_km is not None:
+                diameter, scale_source = m.equiv_diameter_km, "damit"
+            elif object_id in diameters:
+                diameter, scale_source = diameters[object_id]
+            else:
                 log.info(
-                    "DAMIT model %d (%s): no DAMIT or SBDB diameter — skipping",
+                    "DAMIT model %d (%s): no diameter and no H magnitude — skipping",
                     m.model_id,
                     object_id,
                 )
@@ -140,6 +151,7 @@ class DamitProcessor:
                     object_id=object_id,
                     naif_id=naif_id,
                     diameter_km=diameter,
+                    scale_source=scale_source,
                     citation=citations.get(m.model_id),
                     is_preferred=is_preferred,
                     force=force,
@@ -174,6 +186,7 @@ class DamitProcessor:
         object_id: str,
         naif_id: int | None,
         diameter_km: float,
+        scale_source: str,
         citation: str | None,
         is_preferred: bool,
         force: bool,
@@ -195,7 +208,15 @@ class DamitProcessor:
             # (a duplicate low.glb would double the exported file count).
             glb_writer.write_glb(verts, faces, out_dir / "high.glb")
             self._write_metadata(
-                out_dir, slug, m, object_id, naif_id, citation, verts, faces
+                out_dir,
+                slug,
+                m,
+                object_id,
+                naif_id,
+                scale_source,
+                citation,
+                verts,
+                faces,
             )
             _write_stamp(stamp, shape_path, diameter_km)
 
@@ -238,6 +259,7 @@ class DamitProcessor:
         m: DamitModel,
         object_id: str,
         naif_id: int | None,
+        scale_source: str,
         citation: str | None,
         verts: np.ndarray,
         faces: np.ndarray,
@@ -278,6 +300,7 @@ class DamitProcessor:
             "damit_asteroid_id": m.asteroid_id,
             "tiers": ["high"],
             "exports": {"high": tier},
+            "scale_source": scale_source,
             "true_scale": {
                 "max_extent_km": max(extent),
                 "bounding_radius_km": float(np.linalg.norm(half)),
@@ -363,17 +386,23 @@ class DamitProcessor:
             out[mid] = f"{out[mid]}; {texts[rid]}" if mid in out else texts[rid]
         return out
 
-    def _load_diameters(self) -> dict[str, float]:
-        """SBDB equivalent-sphere diameter (km) per object id, for scaling."""
+    def _load_diameters(self) -> dict[str, tuple[float, str]]:
+        """(diameter km, scale_source) per object id: measured SBDB diameter
+        when present, else the H-magnitude estimate."""
         from space_map_data.models.object.sbdb import SBDB
 
-        out: dict[str, float] = {}
-        for oid, diam in (
-            self._session.query(Object.id, SBDB.diameter)
+        out: dict[str, tuple[float, str]] = {}
+        for oid, diam, h, albedo in (
+            self._session.query(Object.id, SBDB.diameter, SBDB.H, SBDB.albedo)
             .join(SBDB, SBDB.object_id == Object.id)
-            .where(SBDB.diameter.is_not(None))
+            .where(SBDB.diameter.is_not(None) | SBDB.H.is_not(None))
         ):
-            out[oid] = float(diam)
+            if diam is not None:
+                out[oid] = (float(diam), "sbdb")
+            else:
+                p_v = float(albedo) if albedo else _ASSUMED_ALBEDO
+                d = _H_MAG_CONST_KM / math.sqrt(p_v) * 10 ** (-float(h) / 5.0)
+                out[oid] = (d, "h-magnitude")
         return out
 
     def _resolve_object_id(

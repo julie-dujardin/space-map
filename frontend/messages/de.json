@@ -604,6 +604,7 @@
 	"tooltip_rotation_period": "Zeit für eine vollständige Rotation um die eigene Achse",
 	"tooltip_absolute_magnitude": "Intrinsische Helligkeit des Objekts",
 	"tooltip_absolute_magnitude_h": "Helligkeit bei 1 AE von Sonne und Beobachter, bei Phasenwinkel null",
+	"tooltip_diameter_estimated": "Aus der absoluten Helligkeit (H) geschätzt; der Bereich reicht von hellen bis dunklen Oberflächen (Albedo 0,25–0,05)",
 	"tooltip_apparent_magnitude": "Helligkeit von der Erde aus gesehen",
 	"tooltip_spectral_type_smassii": "Spektralklassifikation in der Bus-DeMeo/SMASSII-Taxonomie",
 	"tooltip_spectral_type_tholen": "Spektralklassifikation in der Tholen-Taxonomie",

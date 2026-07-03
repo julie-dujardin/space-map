@@ -617,6 +617,7 @@
 	"tooltip_rotation_period": "Время одного полного оборота вокруг оси",
 	"tooltip_absolute_magnitude": "Собственная яркость объекта",
 	"tooltip_absolute_magnitude_h": "Яркость на расстоянии 1 а.е. от Солнца и наблюдателя при нулевом фазовом угле",
+	"tooltip_diameter_estimated": "Оценка по абсолютной звёздной величине (H); диапазон охватывает светлые и тёмные поверхности (альбедо 0,25–0,05)",
 	"tooltip_apparent_magnitude": "Яркость при наблюдении с Земли",
 	"tooltip_spectral_type_smassii": "Спектральная классификация по таксономии Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "Спектральная классификация по таксономии Tholen",

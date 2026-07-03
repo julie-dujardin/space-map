@@ -592,6 +592,7 @@
 	"tooltip_rotation_period": "Time for one full rotation around its axis",
 	"tooltip_absolute_magnitude": "Intrinsic brightness of the object",
 	"tooltip_absolute_magnitude_h": "Brightness at 1 AU from both Sun and observer, at zero phase angle",
+	"tooltip_diameter_estimated": "Estimated from absolute magnitude (H); the range spans bright to dark surfaces (albedo 0.25–0.05)",
 	"tooltip_apparent_magnitude": "Brightness as seen from Earth",
 	"tooltip_spectral_type_smassii": "Spectral classification in the Bus-DeMeo/SMASSII taxonomy",
 	"tooltip_spectral_type_tholen": "Spectral classification in the Tholen taxonomy",

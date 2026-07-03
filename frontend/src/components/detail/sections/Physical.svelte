@@ -4,6 +4,7 @@
 	import { isNaturalBodyType } from '$lib/types/objects';
 	import type { GlobalObjectData } from '$lib/fetch/objects/object-data';
 	import { formatNumber, formatUnit, formatQuantity } from '$lib/format/quantities';
+	import { diameterKmFromH, BRIGHT_ALBEDO, DARK_ALBEDO } from '$lib/math/h-magnitude';
 	import { formatTemperature } from '$lib/format/temperature';
 	import { formatDuration } from '$lib/format/duration';
 	import Section from './kit/Section.svelte';
@@ -88,6 +89,18 @@
 		return 4 * Math.PI * radiusKm * radiusKm;
 	});
 
+	// H-magnitude size estimate when no measured size exists (assumed albedo
+	// matches the ingested DAMIT model scale); a measured albedo pins it.
+	let estimatedDiameterKm = $derived.by(() => {
+		if (!sbdb || sbdb.H == null) return null;
+		if (radii || wd?.radius || sbdb.diameter || sbdb.extent || wd?.length || wd?.width) return null;
+		if (sbdb.albedo) return { nominal: diameterKmFromH(sbdb.H, sbdb.albedo), range: null };
+		return {
+			nominal: diameterKmFromH(sbdb.H),
+			range: [diameterKmFromH(sbdb.H, BRIGHT_ALBEDO), diameterKmFromH(sbdb.H, DARK_ALBEDO)]
+		};
+	});
+
 	let hasContent = $derived(
 		wd?.mass ||
 			sbdb?.mass ||
@@ -139,6 +152,16 @@
 		{/if}
 		{#if sbdb?.extent && !radii && !wd?.radius && !sbdb?.diameter}
 			<Row label={m.extent()} value={sbdb.extent} tooltip={m.tooltip_extent()} />
+		{/if}
+		{#if estimatedDiameterKm}
+			{@const km = formatUnit('kilometre', true)}
+			<Row
+				label={m.diameter()}
+				value={estimatedDiameterKm.range
+					? `${formatNumber(estimatedDiameterKm.nominal)} ${km} (${formatNumber(estimatedDiameterKm.range[0])} – ${formatNumber(estimatedDiameterKm.range[1])} ${km})`
+					: `${formatNumber(estimatedDiameterKm.nominal)} ${km}`}
+				tooltip={m.tooltip_diameter_estimated()}
+			/>
 		{/if}
 		{#if surfaceAreaKm2 != null}
 			<Row

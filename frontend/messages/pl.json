@@ -604,6 +604,7 @@
 	"tooltip_rotation_period": "Czas jednego pełnego obrotu wokół osi",
 	"tooltip_absolute_magnitude": "Wewnętrzna jasność obiektu",
 	"tooltip_absolute_magnitude_h": "Jasność w odległości 1 au od Słońca i obserwatora, przy zerowym kącie fazowym",
+	"tooltip_diameter_estimated": "Oszacowano na podstawie jasności absolutnej (H); zakres obejmuje powierzchnie jasne i ciemne (albedo 0,25–0,05)",
 	"tooltip_apparent_magnitude": "Jasność widziana z Ziemi",
 	"tooltip_spectral_type_smassii": "Klasyfikacja widmowa w taksonomii Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "Klasyfikacja widmowa w taksonomii Tholena",

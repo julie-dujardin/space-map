@@ -532,6 +532,7 @@
 	"tooltip_rotation_period": "自転軸の周りを1回転するのに要する時間",
 	"tooltip_absolute_magnitude": "天体固有の明るさ",
 	"tooltip_absolute_magnitude_h": "太陽と観測者から1AUの距離、位相角0度での明るさ",
+	"tooltip_diameter_estimated": "絶対等級（H）からの推定値。範囲は明るい表面から暗い表面まで（アルベド0.25–0.05）",
 	"tooltip_apparent_magnitude": "地球から見た明るさ",
 	"tooltip_spectral_type_smassii": "Bus-DeMeo/SMASSII分類法によるスペクトル分類",
 	"tooltip_spectral_type_tholen": "Tholen分類法によるスペクトル分類",

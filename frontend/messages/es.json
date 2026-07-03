@@ -604,6 +604,7 @@
 	"tooltip_rotation_period": "Tiempo de una rotación completa sobre su eje",
 	"tooltip_absolute_magnitude": "Brillo intrínseco del objeto",
 	"tooltip_absolute_magnitude_h": "Brillo a 1 UA tanto del Sol como del observador, con ángulo de fase cero",
+	"tooltip_diameter_estimated": "Estimado a partir de la magnitud absoluta (H); el rango abarca superficies claras a oscuras (albedo 0,25–0,05)",
 	"tooltip_apparent_magnitude": "Brillo visto desde la Tierra",
 	"tooltip_spectral_type_smassii": "Clasificación espectral en la taxonomía Bus-DeMeo/SMASSII",
 	"tooltip_spectral_type_tholen": "Clasificación espectral en la taxonomía de Tholen",
