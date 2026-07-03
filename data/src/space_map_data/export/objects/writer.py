@@ -341,6 +341,10 @@ def _write_hashed_bundles(
 
 _IMAGE_KEYS = {"image", "logo_image"}
 
+# Quantity keys carrying a temperature — normalized to canonical kelvin so every
+# body's temperature displays in one scale regardless of the source unit.
+_TEMPERATURE_KEYS = {"temperature", "min_temperature", "max_temperature"}
+
 
 def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
     """Best-available-asset render tier for an object.
@@ -539,18 +543,26 @@ def _build_global(
             if key in extracted:
                 val = extracted[key]
                 if isinstance(val, dict) and "unit" in val:
-                    iso = _iso_currency_code(val["unit"], wikidata_entities)
-                    if iso:
-                        val = {"value": val["value"], "currency": iso}
+                    normalized_temp = (
+                        units.convert_temperature(float(val["value"]), val["unit"])
+                        if key in _TEMPERATURE_KEYS
+                        else None
+                    )
+                    if normalized_temp is not None:
+                        val = normalized_temp
                     else:
-                        converted = units.convert(float(val["value"]), val["unit"])
-                        if converted is not None:
-                            val = converted
+                        iso = _iso_currency_code(val["unit"], wikidata_entities)
+                        if iso:
+                            val = {"value": val["value"], "currency": iso}
                         else:
-                            resolved = resolve_unit(val["unit"], wikidata_entities)
-                            if resolved:
-                                units.used_units.add(resolved)
-                                val = {**val, "unit": resolved}
+                            converted = units.convert(float(val["value"]), val["unit"])
+                            if converted is not None:
+                                val = converted
+                            else:
+                                resolved = resolve_unit(val["unit"], wikidata_entities)
+                                if resolved:
+                                    units.used_units.add(resolved)
+                                    val = {**val, "unit": resolved}
                 wikidata_section[key] = val
         if wikidata_section:
             data["wikidata"] = wikidata_section

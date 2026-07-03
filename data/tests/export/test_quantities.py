@@ -210,3 +210,38 @@ class TestConvertToBase:
     def test_unknown_qid(self):
         conv = _build_mass_converter()
         assert conv.convert_to_base(5.0, "Q999999") is None
+
+
+class TestConvertTemperature:
+    """UnitConverter.convert_temperature — affine normalization to kelvin."""
+
+    def test_kelvin_passthrough(self):
+        conv = _build_mass_converter()
+        assert conv.convert_temperature(210.0, "Q11579") == {
+            "value": 210,
+            "unit": "kelvin",
+        }
+
+    def test_celsius_offset(self):
+        conv = _build_mass_converter()
+        assert conv.convert_temperature(-40.0, "Q25267") == {
+            "value": pytest.approx(233.15),
+            "unit": "kelvin",
+        }
+
+    def test_fahrenheit_affine(self):
+        conv = _build_mass_converter()
+        # 32 °F == 273.15 K
+        result = conv.convert_temperature(32.0, "Q42289")
+        assert result is not None
+        assert result["unit"] == "kelvin"
+        assert result["value"] == pytest.approx(273.15)
+
+    def test_unknown_unit(self):
+        conv = _build_mass_converter()
+        assert conv.convert_temperature(5.0, "Q999999") is None
+
+    def test_records_used_unit(self):
+        conv = _build_mass_converter()
+        conv.convert_temperature(300.0, "Q11579")
+        assert "kelvin" in conv.used_units

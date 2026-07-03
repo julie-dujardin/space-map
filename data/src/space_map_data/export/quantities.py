@@ -75,6 +75,15 @@ _BASE_UNIT_LABELS: dict[str, str] = {
     "Q44395": "pascal",
 }
 
+# Temperature can't join the multiplicative P2370 ladders (K↔°C is an offset,
+# not a scale), so it's normalized separately to a canonical kelvin. Values:
+# (scale, offset) with kelvin = value * scale + offset.
+_TEMPERATURE_TO_KELVIN: dict[str, tuple[float, float]] = {
+    "Q11579": (1.0, 0.0),  # kelvin
+    "Q25267": (1.0, 273.15),  # degree Celsius
+    "Q42289": (5.0 / 9.0, 273.15 - 32.0 * 5.0 / 9.0),  # degree Fahrenheit
+}
+
 
 class UnitEntry(NamedTuple):
     label: str  # normalized English label, e.g. "solar_mass"
@@ -155,6 +164,24 @@ class UnitConverter:
             return None
         qty_type, factor = info
         return self.best_unit(value * factor, qty_type)
+
+    def convert_temperature(self, value: float, unit_qid: str) -> dict | None:
+        """Normalize a temperature to canonical kelvin, or None if unit unknown.
+
+        Kept off the P2370 ladders because temperature conversions are affine
+        (offset), not multiplicative. Emitting a single canonical unit lets the
+        frontend display every body's temperature in one scale regardless of
+        the source unit.
+        """
+        conv = _TEMPERATURE_TO_KELVIN.get(unit_qid)
+        if conv is None:
+            return None
+        scale, offset = conv
+        self.used_units.add("kelvin")
+        return {
+            "value": self._strip_trailing_zeros(value * scale + offset),
+            "unit": "kelvin",
+        }
 
     def convert_to_base(
         self,
