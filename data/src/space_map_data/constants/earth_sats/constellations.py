@@ -390,7 +390,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
     # USA: classified US national-security payloads (NRO, AFSPC, etc.)
     # Kept as last-resort for sats that match nothing more specific.
     ConstellationSpec(
-        "usa-classified", None, (SatelliteCategory.MILITARY,), contains=("USA ",)
+        # prefix, not contains: "USA " as a substring also matches HAYABUSA,
+        # ARABUSA, etc. Classified US payloads are named "USA NNN".
+        "usa-classified",
+        None,
+        (SatelliteCategory.MILITARY,),
+        prefix=("USA ",),
     ),
     # OPS: US military, classified into US air force due to https://en.wikipedia.org/wiki/SNAP-10A and launch times (pre-1980s)
     ConstellationSpec(
@@ -1028,7 +1033,12 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "telesat", "Q2401935", (SatelliteCategory.COMMUNICATIONS,), group="telesat"
     ),
     ConstellationSpec(
-        "anik", "Q546687", (SatelliteCategory.COMMUNICATIONS,), contains=("ANIK",)
+        # prefix, not contains: "ANIK" as a substring matches the parenthetical
+        # former names of resold sats (NAHUEL I2 (ANIK C2), ARABSAT-1D (ANIK D2)).
+        "anik",
+        "Q546687",
+        (SatelliteCategory.COMMUNICATIONS,),
+        prefix=("ANIK",),
     ),
     ConstellationSpec(
         "jsat", "Q11225562", (SatelliteCategory.COMMUNICATIONS,), contains=("JCSAT",)
@@ -1058,10 +1068,11 @@ CONSTELLATIONS: tuple[ConstellationSpec, ...] = (
         "dsn",
         "Q18465737",
         (SatelliteCategory.COMMUNICATIONS, SatelliteCategory.MILITARY),
-        contains=(
-            "DSN-",
-            "Superbird-B3",
-        ),
+        contains=("DSN-",),
+        # Exact, not contains: SUPERBIRD-B3 (hosts the DSN-1 X-band payload) also
+        # matches the "SUPERBIRD" prefix, which is checked before contains — an
+        # exact match wins over both.
+        satellites=["SUPERBIRD-B3"],
     ),  # Japanese military GEO comm sats, joint venture
     ConstellationSpec(
         "thor",
@@ -1592,10 +1603,13 @@ CONSTELLATION_BY_SLUG: dict[str, ConstellationSpec] = {
     c.slug: c for c in CONSTELLATIONS
 }
 
+# Matching is case-insensitive: SATCAT names are upper-case, so keys are
+# upper-cased here (and the name upper-cased at lookup) — otherwise a mixed-case
+# rule string silently never matches.
 PREFIX_TO_SLUG: dict[str, str] = dict(
     sorted(
         (
-            (p, c.slug)
+            (p.upper(), c.slug)
             for c in CONSTELLATIONS
             if c.prefix is not None
             for p in (c.prefix if isinstance(c.prefix, tuple) else (c.prefix,))
@@ -1605,11 +1619,17 @@ PREFIX_TO_SLUG: dict[str, str] = dict(
 )
 
 EXACT_NAME_TO_SLUG: dict[str, str] = {
-    n: c.slug for c in CONSTELLATIONS if c.satellites is not None for n in c.satellites
+    n.upper(): c.slug
+    for c in CONSTELLATIONS
+    if c.satellites is not None
+    for n in c.satellites
 }
 
 CONTAINS_TO_SLUG: dict[str, str] = {
-    k: c.slug for c in CONSTELLATIONS if c.contains is not None for k in c.contains
+    k.upper(): c.slug
+    for c in CONSTELLATIONS
+    if c.contains is not None
+    for k in c.contains
 }
 
 GROUP_TO_SLUG: dict[str, str] = {
@@ -1677,6 +1697,7 @@ GROUP_TO_CATEGORY: dict[str, SatelliteCategory] = {
 def slug_from_name(name: str | None) -> str | None:
     if not name:
         return None
+    name = name.upper()
     exact = EXACT_NAME_TO_SLUG.get(name)
     if exact is not None:
         return exact
