@@ -477,12 +477,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			const oc = bo.trail.userData.orbitCenter as Vector3 | undefined;
 			if (oc) oc.set(parentPos[0], parentPos[1], parentPos[2]);
 		}
-		if (body.orientation && bo.mesh) {
-			applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
-			// Natural-body shape mesh shares the sphere's IAU spin. It's a
+		if (body.orientation && (bo.mesh || bo.model)) {
+			if (bo.mesh) applyOrientation(bo.mesh, body.orientation, jd, body.nutPrec);
+			// Natural-body shape model shares the sphere's IAU spin. It's a
 			// modelScene child (identity parent → world==local), so only the
-			// quaternion is needed; the overlay seats its position.
+			// quaternion is needed; the overlay seats its position. The label
+			// anchor co-rotates so surface features stay pinned to the model.
 			if (bo.model) applyOrientation(bo.model, body.orientation, jd, body.nutPrec);
+			if (bo.nomenclatureAnchor)
+				applyOrientation(bo.nomenclatureAnchor, body.orientation, jd, body.nutPrec);
 		} else if (isModelBearing(body)) {
 			// Sats/probes have no IAU data. Priority: debug override > CK attitude
 			// track (within coverage) > pointing spec > nadir at the parent. Sphere

@@ -87,8 +87,13 @@ export interface BodyObjects {
 	selfShadow: SelfShadowUniforms | null;
 	/** Per-body eclipse-shadow uniforms; null on stars and barycenters. */
 	eclipseShadow: EclipseSelfUniforms | null;
-	/** IAU nomenclature labels attached to the body mesh; null when not loaded. */
+	/** IAU nomenclature labels attached to the body mesh (sphere path) or to
+	 *  {@link nomenclatureAnchor} (shape-model path); null when not loaded. */
 	nomenclatureLabels: CSS2DObject[] | null;
+	/** Identity-scale parent for shape-model feature labels — the hidden sphere
+	 *  mesh can't host them (invisible + non-uniform triaxial scale). Receives
+	 *  the same IAU orientation as the overlay model each frame. */
+	nomenclatureAnchor?: Group | null;
 	/** Parallel to {@link nomenclatureLabels}: effective feature diameter in metres,
 	 *  with a fallback applied for IAU records that omit it. */
 	nomenclatureDiamsM?: Float32Array;

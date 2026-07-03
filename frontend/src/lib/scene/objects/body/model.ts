@@ -79,6 +79,15 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 }
 
 /**
+ * Scene-units length of one overlay-model unit. Single source of truth for
+ * mirroring the overlay in main-scene space: the overlay camera, label
+ * occlusion, and surface-feature placement all derive from it.
+ */
+export function modelUnitScene(bo: BodyObjects): number {
+	return bo.radiusScene;
+}
+
+/**
  * Neutral IBL cubemap for the model-overlay scene so PBR metals have something
  * to reflect. The overlay heavily dims it via `environmentIntensity` — the sun
  * dominates; this just keeps metallics from going pure black.
@@ -316,6 +325,8 @@ function setHaloLoading(bo: BodyObjects, loading: boolean): void {
  *
  * Records `centerOffset`/`feetOffset` (scaled units) in `userData`: the overlay
  * seats a landed probe on its feet, not bbox-centred (which buries half of it).
+ * `occluderSpheres` feeds the label-occlusion pass so CSS2D labels behind the
+ * rendered model get hidden.
  */
 function fitToUnitRadius(root: Object3D): void {
 	root.updateMatrixWorld(true);
@@ -329,6 +340,74 @@ function fitToUnitRadius(root: Object3D): void {
 	root.position.copy(center).multiplyScalar(-k);
 	root.userData.centerOffset = center.clone().multiplyScalar(k);
 	root.userData.feetOffset = new Vector3(center.x, bbox.min.y, center.z).multiplyScalar(k);
+	root.userData.halfExtents = size.clone().multiplyScalar(k * 0.5);
+	root.userData.occluderSpheres = buildOccluderSpheres(root, size, k);
+}
+
+/** A model-hugging occluder blob: `center` is in the root's rotation frame
+ *  (post-fit units, excludes the recentring `root.position`), `r` its radius. */
+export interface OccluderSphere {
+	center: Vector3;
+	r: number;
+}
+
+/** Slices along the model's longest bbox axis. Enough to hug a bent/elongated
+ *  body (one bounding ellipsoid lets labels peek through e.g. Eros's lobes)
+ *  while staying a trivial per-frame cost in the occluder pass. */
+const OCCLUDER_SLICES = 8;
+/** Cap on vertices sampled for occluder fitting; scan meshes can be huge. */
+const OCCLUDER_SAMPLE_TARGET = 4096;
+
+/**
+ * Fit a chain of spheres to the model for label occlusion: vertices bucketed
+ * into slices along the longest bbox axis, one bounding sphere per slice. The
+ * union hugs bent/elongated shapes far better than any single sphere/ellipsoid,
+ * while each sphere reuses the tangent-cone occluder math unchanged.
+ * Centers are stored relative to `root.position` so the per-frame pass can
+ * rotate them with the model: world = root.position + quat · center.
+ */
+function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): OccluderSphere[] {
+	root.updateMatrixWorld(true);
+	const axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
+	// Total vertex count first, so sampling strides uniformly across meshes.
+	let total = 0;
+	root.traverse((obj) => {
+		if (obj instanceof Mesh) total += obj.geometry.attributes.position?.count ?? 0;
+	});
+	if (!total) return [];
+	const stride = Math.max(1, Math.floor(total / OCCLUDER_SAMPLE_TARGET));
+
+	const pts: Vector3[] = [];
+	const v = new Vector3();
+	root.traverse((obj) => {
+		if (!(obj instanceof Mesh)) return;
+		const pos = obj.geometry.attributes.position;
+		if (!pos) return;
+		for (let i = 0; i < pos.count; i += stride) {
+			v.fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld).sub(root.position);
+			pts.push(v.clone());
+		}
+	});
+
+	const half = (size.getComponent(axis) * k) / 2;
+	const buckets: Vector3[][] = Array.from({ length: OCCLUDER_SLICES }, () => []);
+	for (const p of pts) {
+		const t = (p.getComponent(axis) + half) / (2 * half);
+		const idx = Math.min(OCCLUDER_SLICES - 1, Math.max(0, Math.floor(t * OCCLUDER_SLICES)));
+		buckets[idx].push(p);
+	}
+
+	const spheres: OccluderSphere[] = [];
+	for (const bucket of buckets) {
+		if (bucket.length < 3) continue; // degenerate sliver — neighbours cover it
+		const center = new Vector3();
+		for (const p of bucket) center.add(p);
+		center.divideScalar(bucket.length);
+		let r2 = 0;
+		for (const p of bucket) r2 = Math.max(r2, center.distanceToSquared(p));
+		spheres.push({ center, r: Math.sqrt(r2) });
+	}
+	return spheres;
 }
 
 function enableShadows(root: Object3D): void {

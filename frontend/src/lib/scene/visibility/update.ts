@@ -1,5 +1,5 @@
-import { Quaternion } from 'three';
-import type { PerspectiveCamera, Points, ShaderMaterial, Vector3, WebGLRenderer } from 'three';
+import { Quaternion, Vector3 } from 'three';
+import type { PerspectiveCamera, Points, ShaderMaterial, WebGLRenderer } from 'three';
 import { ObjectType, isMajorBody } from '$lib/types/objects';
 import { sceneToKm } from '$lib/math/units';
 import { setLabelNote } from '../label/factory';
@@ -26,6 +26,7 @@ import {
 	cullOverlappingNomenclatureLabels
 } from '../objects/surface/nomenclature';
 import { f64dist, type Vec3 } from '../animation/math';
+import { modelUnitScene, type OccluderSphere } from '../objects/body/model';
 import { parentIdFromSubkey } from '$lib/math/orbit/partition';
 import {
 	STAR_POINT_FLOOR_INTENSITY,
@@ -77,6 +78,8 @@ function ensureOccluder(idx: number): ScreenOccluder {
 // Scratch for reading a mesh's world orientation when building ellipsoid occluders.
 const _meshQuat = new Quaternion();
 const _anchorOut = { ox: 0, oy: 0 };
+// Scratch for the focused model's per-sphere occluder centers.
+const _modelSphereCenter = new Vector3();
 
 /**
  * Per-frame visibility update for all bodies, point clouds, labels, and trails.
@@ -193,8 +196,46 @@ export function updateBodyVisibility(
 		// bz² ≤ r² means the body engulfs the view, so it's always an occluder.
 		const gateOk = bz2 <= r * r || (r * projScale) / Math.sqrt(bz2 - r * r) >= HALO_RADIUS_PX;
 		if (!gateOk) continue;
-		const occ = ensureOccluder(occluderCount++);
-		if (bo.semiAxesScene && bo.mesh) {
+		const modelSpheres = bo.model?.userData.occluderSpheres as OccluderSphere[] | undefined;
+		if (bo.model && modelSpheres?.length) {
+			// Focused body rendered as an overlay model: occlude with the sphere
+			// chain fitted at load — a single bounding ellipsoid lets labels peek
+			// through bent/elongated shapes. Centers live in the model's rotation
+			// frame; the model sits at the overlay root, so its local quaternion
+			// is its world attitude and `model.position` is the recentring shift.
+			const s = modelUnitScene(bo);
+			const mp = bo.model.position;
+			for (const sphere of modelSpheres) {
+				const rSphere = sphere.r * s;
+				_modelSphereCenter
+					.copy(sphere.center)
+					.applyQuaternion(bo.model.quaternion)
+					.add(mp)
+					.multiplyScalar(s);
+				tmpV3
+					.set(
+						bx - fp[0] + _modelSphereCenter.x,
+						by - fp[1] + _modelSphereCenter.y,
+						bz - fp[2] + _modelSphereCenter.z
+					)
+					.applyMatrix4(cameraInverse);
+				if (tmpV3.z >= 0 || tmpV3.lengthSq() <= rSphere * rSphere) continue;
+				const so = ensureOccluder(occluderCount++);
+				setSphereOccluder(
+					so,
+					tmpV3.x,
+					tmpV3.y,
+					tmpV3.z,
+					rSphere,
+					projScale,
+					halfW,
+					halfH,
+					bo.body.data.id,
+					dist
+				);
+			}
+		} else if (bo.semiAxesScene && bo.mesh) {
+			const occ = ensureOccluder(occluderCount++);
 			const ax = ellipsoidCameraAxes(
 				bo.mesh.getWorldQuaternion(_meshQuat),
 				cameraInverse,
@@ -213,6 +254,7 @@ export function updateBodyVisibility(
 				dist
 			);
 		} else {
+			const occ = ensureOccluder(occluderCount++);
 			setSphereOccluder(occ, camX, camY, camZ, r, projScale, halfW, halfH, bo.body.data.id, dist);
 		}
 	}

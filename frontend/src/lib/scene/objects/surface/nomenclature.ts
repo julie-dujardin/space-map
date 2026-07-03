@@ -6,6 +6,12 @@
  * coordinates use the orientation basis (pole on +Y, prime meridian on +X,
  * planetographic longitude increasing east).
  *
+ * Shape-model bodies (hidden sphere, model in the unit-scale overlay scene)
+ * parent labels to `bo.nomenclatureAnchor` instead — an identity-scale group
+ * that gets the same IAU orientation as the model. Surface positions come from
+ * ray-casting the model, mapped to main-scene units via `modelUnitScene`
+ * (under that scale the overlay projects exactly like the main scene).
+ *
  * Each label is shown only when its on-screen diameter falls in the
  * `[MIN_FEATURE_PX, MAX_FEATURE_FRACTION · viewport]` band; survivors are
  * passed through a greedy AABB collision cull, iterated in priority order
@@ -16,7 +22,7 @@
  * albedo features) fall back to {@link DEFAULT_FEATURE_DIAMETER_M}.
  */
 
-import { Vector3, type Camera, type SphereGeometry } from 'three';
+import { Group, Raycaster, Vector3, type Camera, type Object3D, type SphereGeometry } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -24,6 +30,7 @@ import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { sampleDisplacementOffsets } from './displacement';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
+import { modelUnitScene } from '../body/model';
 import type { BodyObjects } from '$lib/scene/types';
 
 /** Effective focus for surface labels: a landed probe defers to its landing body. */
@@ -96,23 +103,14 @@ export async function attachNomenclatureLabels(
 	canvas: HTMLCanvasElement,
 	onFeatureSelect?: OnFeatureSelect
 ): Promise<void> {
-	if (bo.nomenclatureLabels || !bo.mesh) return;
+	if (bo.nomenclatureLabels || (!bo.mesh && !bo.model)) return;
 
 	const detail = await fetchObjectDetail(bo.body.data.id, false);
 	if (!detail.global?.has_nomenclature) return;
-	if (bo.nomenclatureLabels || !bo.mesh) return;
+	if (bo.nomenclatureLabels) return;
 
 	const features = await fetchBodyNomenclature(bo.body.data.id);
-	if (bo.nomenclatureLabels || !bo.mesh) return;
-
-	// Surface offset in mesh-local coords. The mesh's SphereGeometry vertices
-	// sit at distance `parameters.radius` in local space — multiplying our
-	// unit-sphere direction by that radius lands the label on the geometry's
-	// surface, after which `applyRadiiToMesh`'s non-uniform mesh.scale carries
-	// it to the correct ellipsoid surface in world space.
-	const geometry = bo.mesh.geometry as SphereGeometry;
-	const r = geometry.parameters?.radius;
-	if (!r) return; // not a SphereGeometry (model-based body — can't place features)
+	if (bo.nomenclatureLabels) return;
 
 	const renderable = features.filter((f) => !NON_CIRCULAR_TYPE_CODES.has(f.typeCode));
 	renderable.sort((a, b) => {
@@ -120,19 +118,51 @@ export async function attachNomenclatureLabels(
 		const db = b.diameterM > 0 ? b.diameterM : DEFAULT_FEATURE_DIAMETER_M;
 		return db - da;
 	});
-
-	// Lift labels onto the displaced terrain, else they float at the base radius.
-	let dispOffsets: Float32Array | null = null;
-	if (detail.global.displacement) {
-		dispOffsets = await sampleDisplacementOffsets(
-			detail.global.displacement,
-			renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD })),
-			bo.radiusScene
-		);
-		if (bo.nomenclatureLabels || !bo.mesh) return;
-	}
-
 	const n = renderable.length;
+
+	// Per-feature radial label distance in parent-local units, and the parent
+	// the CSS2DObjects attach to (sphere mesh or shape-model anchor group).
+	const model = bo.model;
+	const radial = new Float32Array(n);
+	let parent: Object3D;
+	if (model) {
+		// Shape-model body: the sphere is hidden, so sample the overlay mesh.
+		const modelRadii = await sampleModelRadii(model, renderable);
+		if (bo.nomenclatureLabels || bo.model !== model) return; // unloaded mid-sample
+		const s = modelUnitScene(bo);
+		for (let i = 0; i < n; i++) radial[i] = modelRadii[i] * s;
+		const anchor = new Group();
+		// The overlay recentres the model by a constant -centerOffset; mirror it
+		// (scaled) so labels track the rendered surface, not the raw COM frame.
+		const centerOffset = model.userData.centerOffset as Vector3 | undefined;
+		if (centerOffset) anchor.position.copy(centerOffset).multiplyScalar(-s);
+		anchor.quaternion.copy(model.quaternion); // hold attitude until the next frame's pass
+		bo.group.add(anchor);
+		bo.nomenclatureAnchor = anchor;
+		parent = anchor;
+	} else {
+		// Surface offset in mesh-local coords. The mesh's SphereGeometry vertices
+		// sit at distance `parameters.radius` in local space — multiplying our
+		// unit-sphere direction by that radius lands the label on the geometry's
+		// surface, after which `applyRadiiToMesh`'s non-uniform mesh.scale carries
+		// it to the correct ellipsoid surface in world space.
+		const geometry = bo.mesh!.geometry as SphereGeometry;
+		const r = geometry.parameters?.radius;
+		if (!r) return; // not a SphereGeometry (virtual body — can't place features)
+
+		// Lift labels onto the displaced terrain, else they float at the base radius.
+		let dispOffsets: Float32Array | null = null;
+		if (detail.global.displacement) {
+			dispOffsets = await sampleDisplacementOffsets(
+				detail.global.displacement,
+				renderable.map((f) => ({ latRad: f.lat * DEG2RAD, lonRad: f.lon * DEG2RAD })),
+				bo.radiusScene
+			);
+			if (bo.nomenclatureLabels || !bo.mesh) return;
+		}
+		for (let i = 0; i < n; i++) radial[i] = r + (dispOffsets ? dispOffsets[i] : 0);
+		parent = bo.mesh!;
+	}
 	const labels: CSS2DObject[] = new Array(n);
 	const diamsM = new Float32Array(n);
 	const widths = new Float32Array(n).fill(-1);
@@ -178,14 +208,14 @@ export async function attachNomenclatureLabels(
 		const lonRad = feature.lon * DEG2RAD;
 		const cosLat = Math.cos(latRad);
 
-		const rf = r + (dispOffsets ? dispOffsets[i] : 0);
+		const rf = radial[i];
 		const obj = new CSS2DObject(el);
 		obj.position.set(
 			rf * cosLat * Math.cos(lonRad),
 			rf * Math.sin(latRad),
 			-rf * cosLat * Math.sin(lonRad)
 		);
-		bo.mesh.add(obj);
+		parent.add(obj);
 		labels[i] = obj;
 		diamsM[i] = effDiam;
 	}
@@ -202,6 +232,58 @@ export async function attachNomenclatureLabels(
 	bo.nomenclatureSX = sx;
 	bo.nomenclatureSY = sy;
 	bo.nomenclatureActiveIndex = -1;
+}
+
+/** Ray-cast start distance — safely beyond a unit-normalised model's bounding
+ *  sphere (≤ √3) plus its recentring offset. */
+const MODEL_CAST_DIST = 4;
+/** Features ray-cast per macrotask, so a many-feature attach can't block a frame. */
+const MODEL_CAST_CHUNK = 8;
+/** Floor for the sampled radius: pathological geometry (surface beyond the COM
+ *  along the cast line) must not flip a label to the far side of the body. */
+const MODEL_MIN_RADIUS = 0.05;
+
+const _bodyDir = new Vector3();
+const _castDir = new Vector3();
+const _castOrigin = new Vector3();
+
+/**
+ * Radial surface distance (model units, from the model's local origin) per
+ * feature, by ray-casting the overlay mesh from outside along the feature's
+ * lat/lon direction — the outermost hit, so concave terrain can't swallow a
+ * label. Directions are rotated into the model's current attitude rather than
+ * resetting its quaternion (hit distances are rotation-invariant). Misses
+ * (scan holes) fall back to the bbox-ellipsoid radius.
+ */
+async function sampleModelRadii(
+	model: Object3D,
+	features: readonly { lat: number; lon: number }[]
+): Promise<Float32Array> {
+	const raycaster = new Raycaster();
+	const out = new Float32Array(features.length);
+	const he = model.userData.halfExtents as Vector3 | undefined;
+	for (let i = 0; i < features.length; i++) {
+		if (i > 0 && i % MODEL_CAST_CHUNK === 0) await new Promise((r) => setTimeout(r));
+		const latRad = features[i].lat * DEG2RAD;
+		const lonRad = features[i].lon * DEG2RAD;
+		const cosLat = Math.cos(latRad);
+		_bodyDir.set(cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad));
+		_castDir.copy(_bodyDir).applyQuaternion(model.quaternion);
+		_castOrigin.copy(model.position).addScaledVector(_castDir, MODEL_CAST_DIST);
+		raycaster.set(_castOrigin, _castDir.negate());
+		const hit = raycaster.intersectObject(model, true)[0];
+		if (hit) {
+			out[i] = Math.max(MODEL_CAST_DIST - hit.distance, MODEL_MIN_RADIUS);
+		} else if (he) {
+			const qx = _bodyDir.x / Math.max(he.x, 1e-3);
+			const qy = _bodyDir.y / Math.max(he.y, 1e-3);
+			const qz = _bodyDir.z / Math.max(he.z, 1e-3);
+			out[i] = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz);
+		} else {
+			out[i] = 1;
+		}
+	}
+	return out;
 }
 
 /** Flip the `--active` class on the focused body's feature labels so the
@@ -227,6 +309,10 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 	for (const label of bo.nomenclatureLabels) {
 		label.element.remove();
 		label.parent?.remove(label);
+	}
+	if (bo.nomenclatureAnchor) {
+		bo.nomenclatureAnchor.parent?.remove(bo.nomenclatureAnchor);
+		bo.nomenclatureAnchor = null;
 	}
 	bo.nomenclatureLabels = null;
 	bo.nomenclatureDiamsM = undefined;

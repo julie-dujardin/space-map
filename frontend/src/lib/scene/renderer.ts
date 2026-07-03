@@ -39,7 +39,12 @@ import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { applyOrientation } from '$lib/math/orientation';
-import { isModelBearing, loadBodyModel, makeModelEnvMap } from './objects/body/model';
+import {
+	isModelBearing,
+	loadBodyModel,
+	makeModelEnvMap,
+	modelUnitScene
+} from './objects/body/model';
 import type { PointingSpec } from '$lib/math/orientation';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
@@ -640,9 +645,10 @@ export class SceneRenderer {
 		}
 
 		const camDist = this.camera.position.length();
-		// Model is normalised to radius 1 in modelScene; this overlayDist matches
-		// the screen size the focused body's sphere had.
-		const overlayDist = camDist / (2 * bo.radiusScene);
+		// Model is normalised to radius 1 in modelScene; this overlayDist makes it
+		// subtend exactly what the radiusScene sphere would, so the model renders
+		// true-to-scale and label occlusion/anchoring can mirror it via modelUnitScene.
+		const overlayDist = camDist / modelUnitScene(bo);
 		this.modelCamera.position.copy(this.camera.position).normalize().multiplyScalar(overlayDist);
 		this.modelCamera.quaternion.copy(this.camera.quaternion);
 		this.modelCamera.aspect = this.camera.aspect;
@@ -748,21 +754,23 @@ export class SceneRenderer {
 		// Cheap no-op for bodies without a model bundle (gated inside loadBodyModel).
 		// On resolve the body's radius may have been true-sized from the model's
 		// scale_meters; refresh closest-approach so zoom-in tracks real size.
-		void loadBodyModel(bo, this.modelScene, this.ctx).then(() => {
-			if (this.focusController.current?.data.id === bo.body.data.id) {
-				this.controls.minDistance = minCameraDistance(bo.body);
-			}
-		});
-		// Nomenclature labels are focus-scoped — only the focused body fetches
-		// and attaches them. Idempotent. Re-tag the active label after attach
-		// resolves: `setSelectedFeature` may have run during the in-flight
-		// detail+positions fetch (URL-load case), and that earlier call would
-		// have no-op'd because labels weren't on `bo` yet.
-		void attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
-			this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
-		).then(() => {
-			if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
-		});
+		//
+		// Nomenclature labels are focus-scoped and idempotent. They wait on the
+		// model load: shape-model bodies ray-cast the mesh for feature placement.
+		// Re-tag the active label after attach: `setSelectedFeature` may have run
+		// while labels weren't on `bo` yet (URL-load case) and no-op'd.
+		void loadBodyModel(bo, this.modelScene, this.ctx)
+			.then(() => {
+				if (this.focusController.current?.data.id === bo.body.data.id) {
+					this.controls.minDistance = minCameraDistance(bo.body);
+				}
+				return attachNomenclatureLabels(bo, this.canvas, (featureId, lat, lon, diameterM) =>
+					this.callbacks.onFeatureSelect?.(bo.body.data.id, featureId, lat, lon, diameterM)
+				);
+			})
+			.then(() => {
+				if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
+			});
 	}
 
 	/** Update which surface-feature label renders as "active" (larger, bolder).
