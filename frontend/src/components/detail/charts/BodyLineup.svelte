@@ -461,17 +461,18 @@
 		}
 	}
 
-	/** Load a member's shape-model mesh (low tier — many bodies, tiny files),
-	 *  tinted like the sphere and tilted by the same base quaternion. On any
-	 *  failure the placeholder sphere is left in place. */
+	/** Load a member's shape-model mesh, tinted like the sphere and tilted by
+	 *  the same base quaternion. On any failure the placeholder sphere is left
+	 *  in place. */
 	async function loadModelMesh(b: Body, color: string, token: number) {
 		if (!b.model) return;
 		try {
 			const meta = await fetchBundleMeta(b.model);
 			// Guard against a spacecraft slug slipping through; those aren't lineup bodies.
 			if (meta.kind !== 'shape_model' || !meta.true_scale) return;
+			const tier = meta.tiers?.includes('low') ? 'low' : 'high';
 			const gltf = await modelLoader.loadAsync(
-				versionedUrl(`/v1/models/${b.model}/low.glb`, 'models')
+				versionedUrl(`/v1/models/${b.model}/${tier}.glb`, 'models')
 			);
 			if (token !== buildToken || !scene) {
 				disposeGltf(gltf.scene);

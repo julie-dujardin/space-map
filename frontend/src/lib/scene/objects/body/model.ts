@@ -45,6 +45,8 @@ export interface ModelBundleMeta {
 	/** `shape_model` for natural bodies; absent/other for spacecraft. Both
 	 *  render in the unit-radius overlay scene. */
 	kind?: string;
+	/** Available GLB tiers; DAMIT bundles ship `high` only. */
+	tiers?: string[];
 	exports: {
 		high: {
 			credit: {
