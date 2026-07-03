@@ -98,7 +98,14 @@
 		const minDist = minCameraDistance(body);
 		const idealScene = kmToScene((diameterM * 4) / 1000);
 		const maxScene = kmToScene(effectiveRadiusKm(body.data) * 5);
-		const zoom = Math.min(Math.max(idealScene, minDist * 2), maxScene);
+		// Shape-model bodies: frame from the actual surface under the feature —
+		// center-based distances make the approach altitude swing with the local
+		// terrain radius (Eros spans 5–16 km lobe vs waist).
+		const surface = renderer?.modelSurfaceRadiusScene(bodyId, lat, lon);
+		const zoom =
+			surface != null
+				? Math.min(Math.max(surface + idealScene, minDist), maxScene)
+				: Math.min(Math.max(idealScene, minDist * 2), maxScene);
 		if (snap) {
 			renderer?.snapToBodyFrame(lat, lon, zoom);
 			return 0;

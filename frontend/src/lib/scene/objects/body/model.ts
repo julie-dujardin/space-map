@@ -4,6 +4,8 @@ import {
 	MeshStandardMaterial,
 	type Object3D,
 	PMREMGenerator,
+	Quaternion,
+	Raycaster,
 	type Scene,
 	Texture,
 	Vector3,
@@ -410,6 +412,50 @@ function buildOccluderSpheres(root: Object3D, size: Vector3, k: number): Occlude
 		spheres.push({ center, r: Math.sqrt(r2) });
 	}
 	return spheres;
+}
+
+/** Ray-cast start distance — safely beyond a unit-normalised model's bounding
+ *  sphere (≤ √3) plus its recentring offset. */
+const MODEL_CAST_DIST = 4;
+/** Floor for the cast radius: pathological geometry (surface beyond the local
+ *  origin along the cast line) must not flip a point to the far side. */
+const MODEL_MIN_RADIUS = 0.05;
+
+const _castBodyDir = new Vector3();
+const _castDir = new Vector3();
+const _castOrigin = new Vector3();
+const _castInvQuat = new Quaternion();
+const _caster = new Raycaster();
+
+/**
+ * Surface distance (model units, from the model's local origin) along the
+ * body-fixed lat/lon direction, by ray-casting the overlay mesh from outside —
+ * the outermost hit, so concave terrain can't swallow the result. The
+ * direction is rotated into the model's current attitude rather than resetting
+ * its quaternion (hit distances are rotation-invariant). `outNormal`, when
+ * given, receives the hit's body-fixed surface normal. Returns null on a miss
+ * (scan holes).
+ */
+export function castModelRadius(
+	model: Object3D,
+	latRad: number,
+	lonRad: number,
+	outNormal?: Vector3
+): number | null {
+	const cosLat = Math.cos(latRad);
+	_castBodyDir.set(cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad));
+	_castDir.copy(_castBodyDir).applyQuaternion(model.quaternion);
+	_castOrigin.copy(model.position).addScaledVector(_castDir, MODEL_CAST_DIST);
+	_caster.set(_castOrigin, _castDir.negate());
+	const hit = _caster.intersectObject(model, true)[0];
+	if (!hit) return null;
+	if (outNormal && hit.face) {
+		outNormal
+			.copy(hit.face.normal)
+			.transformDirection(hit.object.matrixWorld)
+			.applyQuaternion(_castInvQuat.copy(model.quaternion).invert());
+	}
+	return Math.max(MODEL_CAST_DIST - hit.distance, MODEL_MIN_RADIUS);
 }
 
 function enableShadows(root: Object3D): void {

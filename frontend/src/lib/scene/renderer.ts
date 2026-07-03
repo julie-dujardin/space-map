@@ -40,6 +40,7 @@ import { buildMajorBodies } from './objects/body/lifecycle';
 import { loadBodyTexture } from './objects/body/textures';
 import { applyOrientation } from '$lib/math/orientation';
 import {
+	castModelRadius,
 	isModelBearing,
 	loadBodyModel,
 	makeModelEnvMap,
@@ -644,12 +645,16 @@ export class SceneRenderer {
 			bo.model.position.copy(fit.centerOffset).multiplyScalar(-1);
 		}
 
-		const camDist = this.camera.position.length();
+		// Mirror the overlay camera off the body's render-space position, not the
+		// focus origin — during flies focusTruePos lags the body's true motion and
+		// the model would render displaced from the main-scene body (labels detach).
+		this._tmpV3.copy(this.camera.position).sub(bo.group.position);
+		const camDist = this._tmpV3.length();
 		// Model is normalised to radius 1 in modelScene; this overlayDist makes it
 		// subtend exactly what the radiusScene sphere would, so the model renders
 		// true-to-scale and label occlusion/anchoring can mirror it via modelUnitScene.
 		const overlayDist = camDist / modelUnitScene(bo);
-		this.modelCamera.position.copy(this.camera.position).normalize().multiplyScalar(overlayDist);
+		this.modelCamera.position.copy(this._tmpV3).normalize().multiplyScalar(overlayDist);
 		this.modelCamera.quaternion.copy(this.camera.quaternion);
 		this.modelCamera.aspect = this.camera.aspect;
 		this.modelCamera.near = Math.max(0.01, overlayDist - 5);
@@ -854,6 +859,17 @@ export class SceneRenderer {
 
 	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
 		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
+	}
+
+	/** Scene-units distance from body center to the loaded shape model's surface
+	 *  under the given body-fixed lat/lon; null without a model (or on a scan
+	 *  hole), letting callers fall back to radius-based framing. */
+	modelSurfaceRadiusScene(bodyId: string, latDeg: number, lonDeg: number): number | null {
+		const bo = this.bodyObjects.get(bodyId);
+		if (!bo?.model) return null;
+		const DEG2RAD = Math.PI / 180;
+		const r = castModelRadius(bo.model, latDeg * DEG2RAD, lonDeg * DEG2RAD);
+		return r === null ? null : r * modelUnitScene(bo);
 	}
 
 	snapToBodyFacing(id: string, towardId: string, elevationDeg: number, distance: number): void {

@@ -166,6 +166,10 @@ export interface GlobalObjectData {
 	 *  Multiple bodies can share one slug (e.g. all four Cluster II satellites
 	 *  point at `cluster`); the frontend loads `high.glb` from that directory. */
 	model_name?: string;
+	/** Best-available-asset render tier: high = faithful 3D model, map texture,
+	 *  or procedural star surface; medium = lightcurve convex hull only; low =
+	 *  size-only sphere/ellipsoid. Absent → no known physical extent (halo/point). */
+	render_quality?: 'high' | 'medium' | 'low';
 	images?: ObjectImage[];
 	sbdb_primary_designation?: string;
 	provisional_designation?: string;

@@ -22,7 +22,7 @@
  * albedo features) fall back to {@link DEFAULT_FEATURE_DIAMETER_M}.
  */
 
-import { Group, Raycaster, Vector3, type Camera, type Object3D, type SphereGeometry } from 'three';
+import { Group, Quaternion, Vector3, type Camera, type Object3D, type SphereGeometry } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
 import { fetchBodyNomenclature } from '$lib/fetch/nomenclature/fetch';
@@ -30,7 +30,7 @@ import { effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { attachCanvasForwarders } from '$lib/scene/label/forward';
 import { sampleDisplacementOffsets } from './displacement';
 import { acceptedBodyLabelRects } from '$lib/scene/label/culling';
-import { modelUnitScene } from '../body/model';
+import { castModelRadius, modelUnitScene } from '../body/model';
 import type { BodyObjects } from '$lib/scene/types';
 
 /** Effective focus for surface labels: a landed probe defers to its landing body. */
@@ -127,10 +127,11 @@ export async function attachNomenclatureLabels(
 	let parent: Object3D;
 	if (model) {
 		// Shape-model body: the sphere is hidden, so sample the overlay mesh.
-		const modelRadii = await sampleModelRadii(model, renderable);
+		const surface = await sampleModelSurface(model, renderable);
 		if (bo.nomenclatureLabels || bo.model !== model) return; // unloaded mid-sample
 		const s = modelUnitScene(bo);
-		for (let i = 0; i < n; i++) radial[i] = modelRadii[i] * s;
+		for (let i = 0; i < n; i++) radial[i] = surface.radii[i] * s;
+		bo.nomenclatureNormals = surface.normals;
 		const anchor = new Group();
 		// The overlay recentres the model by a constant -centerOffset; mirror it
 		// (scaled) so labels track the rendered surface, not the raw COM frame.
@@ -234,56 +235,49 @@ export async function attachNomenclatureLabels(
 	bo.nomenclatureActiveIndex = -1;
 }
 
-/** Ray-cast start distance — safely beyond a unit-normalised model's bounding
- *  sphere (≤ √3) plus its recentring offset. */
-const MODEL_CAST_DIST = 4;
 /** Features ray-cast per macrotask, so a many-feature attach can't block a frame. */
 const MODEL_CAST_CHUNK = 8;
-/** Floor for the sampled radius: pathological geometry (surface beyond the COM
- *  along the cast line) must not flip a label to the far side of the body. */
-const MODEL_MIN_RADIUS = 0.05;
 
-const _bodyDir = new Vector3();
-const _castDir = new Vector3();
-const _castOrigin = new Vector3();
+const _castNormal = new Vector3();
 
 /**
- * Radial surface distance (model units, from the model's local origin) per
- * feature, by ray-casting the overlay mesh from outside along the feature's
- * lat/lon direction — the outermost hit, so concave terrain can't swallow a
- * label. Directions are rotated into the model's current attitude rather than
- * resetting its quaternion (hit distances are rotation-invariant). Misses
- * (scan holes) fall back to the bbox-ellipsoid radius.
+ * Per-feature surface radius (model units) and body-fixed surface normal from
+ * ray-casting the overlay mesh (see `castModelRadius`). Misses (scan holes)
+ * fall back to the bbox-ellipsoid radius and normal. Normals feed the
+ * per-frame local-horizon test — the sphere-cap check alone lets labels just
+ * past the limb of an irregular body leak through.
  */
-async function sampleModelRadii(
+async function sampleModelSurface(
 	model: Object3D,
 	features: readonly { lat: number; lon: number }[]
-): Promise<Float32Array> {
-	const raycaster = new Raycaster();
-	const out = new Float32Array(features.length);
+): Promise<{ radii: Float32Array; normals: Float32Array }> {
+	const n = features.length;
+	const radii = new Float32Array(n);
+	const normals = new Float32Array(n * 3);
 	const he = model.userData.halfExtents as Vector3 | undefined;
-	for (let i = 0; i < features.length; i++) {
+	for (let i = 0; i < n; i++) {
 		if (i > 0 && i % MODEL_CAST_CHUNK === 0) await new Promise((r) => setTimeout(r));
 		const latRad = features[i].lat * DEG2RAD;
 		const lonRad = features[i].lon * DEG2RAD;
-		const cosLat = Math.cos(latRad);
-		_bodyDir.set(cosLat * Math.cos(lonRad), Math.sin(latRad), -cosLat * Math.sin(lonRad));
-		_castDir.copy(_bodyDir).applyQuaternion(model.quaternion);
-		_castOrigin.copy(model.position).addScaledVector(_castDir, MODEL_CAST_DIST);
-		raycaster.set(_castOrigin, _castDir.negate());
-		const hit = raycaster.intersectObject(model, true)[0];
-		if (hit) {
-			out[i] = Math.max(MODEL_CAST_DIST - hit.distance, MODEL_MIN_RADIUS);
-		} else if (he) {
-			const qx = _bodyDir.x / Math.max(he.x, 1e-3);
-			const qy = _bodyDir.y / Math.max(he.y, 1e-3);
-			const qz = _bodyDir.z / Math.max(he.z, 1e-3);
-			out[i] = 1 / Math.sqrt(qx * qx + qy * qy + qz * qz);
+		const r = castModelRadius(model, latRad, lonRad, _castNormal);
+		if (r !== null) {
+			radii[i] = r;
 		} else {
-			out[i] = 1;
+			const cosLat = Math.cos(latRad);
+			const dx = cosLat * Math.cos(lonRad);
+			const dy = Math.sin(latRad);
+			const dz = -cosLat * Math.sin(lonRad);
+			const hx = Math.max(he?.x ?? 1, 1e-3);
+			const hy = Math.max(he?.y ?? 1, 1e-3);
+			const hz = Math.max(he?.z ?? 1, 1e-3);
+			radii[i] = 1 / Math.sqrt((dx / hx) ** 2 + (dy / hy) ** 2 + (dz / hz) ** 2);
+			_castNormal.set(dx / (hx * hx), dy / (hy * hy), dz / (hz * hz)).normalize();
 		}
+		normals[i * 3] = _castNormal.x;
+		normals[i * 3 + 1] = _castNormal.y;
+		normals[i * 3 + 2] = _castNormal.z;
 	}
-	return out;
+	return { radii, normals };
 }
 
 /** Flip the `--active` class on the focused body's feature labels so the
@@ -314,6 +308,7 @@ export function disposeNomenclatureLabels(bo: BodyObjects): void {
 		bo.nomenclatureAnchor.parent?.remove(bo.nomenclatureAnchor);
 		bo.nomenclatureAnchor = null;
 	}
+	bo.nomenclatureNormals = undefined;
 	bo.nomenclatureLabels = null;
 	bo.nomenclatureDiamsM = undefined;
 	bo.nomenclatureWidths = undefined;
@@ -327,6 +322,14 @@ const _camWorld = new Vector3();
 const _labelWorld = new Vector3();
 const _bodyNdc = new Vector3();
 const _labelNdc = new Vector3();
+const _anchorQuat = new Quaternion();
+const _normalWorld = new Vector3();
+
+/** Grazing margin (sin of elevation) for the surface-normal horizon test.
+ *  Labels whose terrain faces the camera shallower than this are hidden —
+ *  the sphere-cap check alone lets labels just past the local limb of an
+ *  irregular body leak through. */
+const MODEL_HORIZON_MARGIN = 0.12;
 
 /**
  * Per-frame visibility for feature labels. A label survives when its body is
@@ -400,6 +403,11 @@ export function updateNomenclatureVisibility(
 	const halfW = 0.5 * screenW;
 	const halfH = 0.5 * screenH;
 
+	// Shape-model bodies carry per-label body-fixed surface normals; rotate
+	// them by the anchor's attitude for the per-label local-horizon test.
+	const normals = bo.nomenclatureNormals;
+	if (normals && bo.nomenclatureAnchor) bo.nomenclatureAnchor.getWorldQuaternion(_anchorQuat);
+
 	for (let i = 0; i < n; i++) {
 		const lbl = labels[i];
 		const isActive = i === activeIdx;
@@ -428,6 +436,27 @@ export function updateNomenclatureVisibility(
 			sxA[i] = NaN;
 			syA[i] = NaN;
 			continue;
+		}
+		// Local-horizon reject (shape models): the cap test above treats each
+		// label as sitting on its own sphere, letting labels just past the limb
+		// of an irregular body leak through. Require the actual terrain normal
+		// to face the camera above a grazing margin. Applies to the active
+		// feature too, same as the cap test.
+		if (normals) {
+			_normalWorld
+				.set(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2])
+				.applyQuaternion(_anchorQuat);
+			const vx = cdx - lx;
+			const vy = cdy - ly;
+			const vz = cdz - lz;
+			const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
+			const facing = _normalWorld.x * vx + _normalWorld.y * vy + _normalWorld.z * vz;
+			if (facing < MODEL_HORIZON_MARGIN * vLen) {
+				lbl.visible = false;
+				sxA[i] = NaN;
+				syA[i] = NaN;
+				continue;
+			}
 		}
 		_labelNdc.copy(_labelWorld).project(camera);
 		const dxPx = (_labelNdc.x - _bodyNdc.x) * halfW;

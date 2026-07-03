@@ -97,6 +97,9 @@ export interface BodyObjects {
 	/** Parallel to {@link nomenclatureLabels}: effective feature diameter in metres,
 	 *  with a fallback applied for IAU records that omit it. */
 	nomenclatureDiamsM?: Float32Array;
+	/** Parallel to {@link nomenclatureLabels}, shape-model path only: body-fixed
+	 *  surface normals (xyz triplets) for the per-frame local-horizon test. */
+	nomenclatureNormals?: Float32Array;
 	/** Parallel to {@link nomenclatureLabels}: cached label text width in px; `-1`
 	 *  until first successful `offsetWidth` measurement. */
 	nomenclatureWidths?: Float32Array;
