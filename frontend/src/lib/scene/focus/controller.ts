@@ -17,6 +17,7 @@ import {
 } from '$lib/scene/objects/surface/nomenclature';
 import { buildTrails } from '$lib/scene/objects/body/bulk';
 import { minCameraDistance } from '$lib/scene/visibility/camera-limits';
+import { refreshMinorBodyPosition } from '$lib/scene/minor-body-position';
 import {
 	FOCUS_DURATION_MS,
 	prepareFlyToCamera,
@@ -254,9 +255,14 @@ export class FocusController {
 	 * specific body-fixed lat/lon. Returns the animation duration in ms.
 	 */
 	focusOnBody(id: string, zoom?: number, latitude?: number, longitude?: number): number {
-		const { ctx, focus, camera, callbacks, pointClouds } = this.deps;
+		const { ctx, clock, focus, camera, callbacks, pointClouds } = this.deps;
 		const body = ctx.getBody(id);
 		if (!body) return 0;
+		// Point-cloud bodies (asteroids/comets/spacecraft) materialize with a
+		// frozen [0,0,0] position; setFocusTarget refreshes it, but the camera
+		// destination below is computed first — refresh now so we frame the body
+		// rather than the SSB. Majors/moons in bodiesById advance per-frame.
+		if (!ctx.bodies.bodiesById.has(id)) refreshMinorBodyPosition(body, clock.jd, ctx);
 		let camPos: Vec3 | undefined;
 		if (zoom !== undefined) {
 			if (latitude !== undefined && longitude !== undefined) {
