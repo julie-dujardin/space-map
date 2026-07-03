@@ -411,6 +411,7 @@ class TextureProcessor:
             scale=entry.get("height_scale"),
             offset=entry.get("height_offset"),
             nodata=entry.get("height_nodata"),
+            nodata_fill_km=entry.get("nodata_fill_km"),
         )
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))

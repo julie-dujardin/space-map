@@ -94,6 +94,62 @@ def _gdal_nodata(page: tifffile.TiffPage) -> float | None:
     return None
 
 
+# PDS3/ISIS2 CORE_ITEM_TYPE → numpy dtype (big/little-endian IEEE reals). ISIS
+# special pixels (nulls, saturations) live near -3.4e38 and fall to the shared
+# _NODATA_THRESHOLD guard, so no explicit nodata is needed.
+_ISIS_REAL_DTYPE = {
+    ("SUN_REAL", 4): ">f4",
+    ("MSB_IEEE_REAL", 4): ">f4",
+    ("IEEE_REAL", 4): ">f4",
+    ("PC_REAL", 4): "<f4",
+    ("LSB_IEEE_REAL", 4): "<f4",
+}
+
+
+def _isis_label_value(label: str, key: str) -> str | None:
+    m = re.search(rf"^\s*{re.escape(key)}\s*=\s*(.+?)\s*$", label, re.MULTILINE)
+    return m.group(1) if m else None
+
+
+def _open_isis_cube(src: Path) -> tuple[np.ndarray, float, float, float | None]:
+    """Memory-map a single-band ISIS2/PDS3 QUBE cube as a 2-D height array.
+
+    Reads the ASCII PVL label to locate the raw core (``^QUBE`` record,
+    ``RECORD_BYTES``), its dtype (``CORE_ITEM_TYPE``/``CORE_ITEM_BYTES``), and
+    the raw→native ``CORE_BASE``/``CORE_MULTIPLIER``. Returns (memmap, scale,
+    offset, nodata=None) mirroring the GeoTIFF path.
+    """
+    with src.open("rb") as fh:
+        label = fh.read(1 << 16).decode("latin-1", "replace")
+
+    def need(key: str) -> str:
+        val = _isis_label_value(label, key)
+        if val is None:
+            raise ValueError(f"{src.name}: missing ISIS label key {key}")
+        return val
+
+    record_bytes = int(need("RECORD_BYTES"))
+    qube_record = int(need("^QUBE"))
+    item_type = need("CORE_ITEM_TYPE").strip().strip('"')
+    item_bytes = int(need("CORE_ITEM_BYTES"))
+    samples, lines, bands = (
+        int(x) for x in re.findall(r"-?\d+", need("CORE_ITEMS"))[:3]
+    )
+    if bands != 1:
+        raise ValueError(f"{src.name}: expected 1-band cube, got {bands}")
+    dtype = _ISIS_REAL_DTYPE.get((item_type, item_bytes))
+    if dtype is None:
+        raise ValueError(f"{src.name}: unsupported CORE_ITEM_TYPE {item_type!r}")
+
+    base = float(_isis_label_value(label, "CORE_BASE") or 0.0)
+    multiplier = float(_isis_label_value(label, "CORE_MULTIPLIER") or 1.0)
+    offset_bytes = (qube_record - 1) * record_bytes
+    mm = np.memmap(
+        src, dtype=dtype, mode="r", offset=offset_bytes, shape=(lines, samples)
+    )
+    return mm, multiplier, base, None
+
+
 def open_displacement_source(
     src: Path,
     *,
@@ -101,87 +157,134 @@ def open_displacement_source(
     scale: float | None = None,
     offset: float | None = None,
     nodata: float | None = None,
+    nodata_fill_km: float | None = None,
 ) -> tuple[Image.Image, float, float]:
-    """DEM/height GeoTIFF → 8-bit grayscale tile + the km range it encodes.
+    """DEM/height source → 8-bit grayscale tile + the km range it encodes.
 
-    Value km = ``(raw·scale + offset)·unit→km`` — elevation for most DEMs, or
-    absolute radius for those that store it (the renderer subtracts its sphere
-    radius then). scale/offset/nodata default to the file's GDAL tags (USGS
-    convention), overridable per entry. Returns the tile + the km at texel 0
-    and 255 so the renderer scales displacement to true relief.
-
-    Memory-mapped and box-averaged in row-bands so peak RAM stays near one
-    band: the Mars blend is 10.6 GiB int16 and a whole-image float64 expansion
-    would need ~43 GiB. Integer pre-downsampling is free since exports cap at
-    ``WEBP_MAX`` anyway; LANCZOS does the final resize.
+    Reads GeoTIFFs (GDAL tags) and single-band ISIS2/PDS3 cubes. Value km =
+    ``(raw·scale + offset)·unit→km`` — elevation for most DEMs, or absolute
+    radius for those that store it (the renderer subtracts its sphere radius
+    then). scale/offset/nodata default to the file's tags, overridable per
+    entry. ``nodata_fill_km`` sets the elevation gaps sink to (default: the
+    lowest valid terrain; partial-coverage DEMs pass 0 to rest at the datum).
+    Returns the tile + the km at texel 0 and 255 so the renderer scales
+    displacement to true relief.
     """
+    if unit not in _HEIGHT_UNIT_KM:
+        raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
+    unit_km = _HEIGHT_UNIT_KM[unit]
+
+    if src.suffix.lower() in (".cub", ".cube"):
+        mm, f_scale, f_offset, f_nodata = _open_isis_cube(src)
+        return _bake_displacement(
+            mm,
+            src.name,
+            scale=f_scale if scale is None else scale,
+            offset=f_offset if offset is None else offset,
+            nodata=f_nodata if nodata is None else nodata,
+            unit_km=unit_km,
+            nodata_fill_km=nodata_fill_km,
+        )
+
     with tifffile.TiffFile(str(src)) as tif:
         page = tif.pages[0]
         assert isinstance(page, tifffile.TiffPage)  # page 0 is always a full page
-        if unit not in _HEIGHT_UNIT_KM:
-            raise ValueError(f"{src.name}: unknown height_unit {unit!r}")
         g_scale, g_offset = _gdal_scale_offset(page)
-        scale = g_scale if scale is None else scale
-        offset = g_offset if offset is None else offset
-        nodata = _gdal_nodata(page) if nodata is None else nodata
-        unit_km = _HEIGHT_UNIT_KM[unit]
-
+        g_nodata = _gdal_nodata(page) if nodata is None else nodata
         if page.is_contiguous:
             mm = page.asarray(out="memmap")
         else:
             # Only memmappable sources stream; the rest are small enough to fit.
             log.info("%s not contiguous; full-loading instead of streaming", src.name)
             mm = page.asarray()
-        if mm.ndim != 2:
-            raise ValueError(
-                f"{src.name}: expected single-channel height map, got {mm.shape}"
-            )
-        src_h, src_w = mm.shape
+        return _bake_displacement(
+            mm,
+            src.name,
+            scale=g_scale if scale is None else scale,
+            offset=g_offset if offset is None else offset,
+            nodata=g_nodata,
+            unit_km=unit_km,
+            nodata_fill_km=nodata_fill_km,
+        )
 
-        # Box-average factor landing the longest side just above the export
-        # ceiling; ds=1 keeps full res but still streams band-wise.
-        ds = max(1, max(src_w, src_h) // config.WEBP_MAX)
-        out_w, out_h = src_w // ds, src_h // ds
-        if ds > 1:
-            log.info(
-                "%s: streaming %dx%d → %dx%d (%dx box-average)",
-                src.name,
-                src_w,
-                src_h,
-                out_w,
-                out_h,
-                ds,
-            )
 
-        # Fully-nodata blocks land as NaN; floored to lo after the pass.
-        out_elev = np.empty((out_h, out_w), dtype=np.float32)
-        crop_w = out_w * ds  # drop the ≤ds-1 ragged edge cols
-        for oy0 in range(0, out_h, _DISPLACEMENT_BAND_OUT_ROWS):
-            oy1 = min(oy0 + _DISPLACEMENT_BAND_OUT_ROWS, out_h)
-            bh = oy1 - oy0
-            raw = np.asarray(mm[oy0 * ds : oy1 * ds, :crop_w]).astype(np.float32)
-            valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
-            if nodata is not None:
-                valid &= raw != nodata
-            elev = (raw * scale + offset) * unit_km
-            elev[~valid] = 0.0
-            blocks = (bh, ds, out_w, ds)
-            sums = elev.reshape(blocks).sum(axis=(1, 3))
-            counts = valid.reshape(blocks).sum(axis=(1, 3))
-            out_elev[oy0:oy1] = np.where(
-                counts > 0, sums / np.maximum(counts, 1), np.nan
-            )
-        del mm
+def _bake_displacement(
+    mm: np.ndarray,
+    src_name: str,
+    *,
+    scale: float,
+    offset: float,
+    nodata: float | None,
+    unit_km: float,
+    nodata_fill_km: float | None,
+) -> tuple[Image.Image, float, float]:
+    """Box-average a memmapped height array to an 8-bit tile + its km range.
+
+    Memory-mapped and box-averaged in row-bands so peak RAM stays near one
+    band: the Mars blend is 10.6 GiB int16 and a whole-image float64 expansion
+    would need ~43 GiB. Integer pre-downsampling is free since exports cap at
+    ``WEBP_MAX`` anyway; LANCZOS does the final resize.
+    """
+    if mm.ndim != 2:
+        raise ValueError(
+            f"{src_name}: expected single-channel height map, got {mm.shape}"
+        )
+    src_h, src_w = mm.shape
+
+    # Box-average factor landing the longest side just above the export
+    # ceiling; ds=1 keeps full res but still streams band-wise.
+    ds = max(1, max(src_w, src_h) // config.WEBP_MAX)
+    out_w, out_h = src_w // ds, src_h // ds
+    if ds > 1:
+        log.info(
+            "%s: streaming %dx%d → %dx%d (%dx box-average)",
+            src_name,
+            src_w,
+            src_h,
+            out_w,
+            out_h,
+            ds,
+        )
+
+    # Fully-nodata blocks land as NaN, filled after the range is known.
+    out_elev = np.empty((out_h, out_w), dtype=np.float32)
+    crop_w = out_w * ds  # drop the ≤ds-1 ragged edge cols
+    for oy0 in range(0, out_h, _DISPLACEMENT_BAND_OUT_ROWS):
+        oy1 = min(oy0 + _DISPLACEMENT_BAND_OUT_ROWS, out_h)
+        bh = oy1 - oy0
+        raw = np.asarray(mm[oy0 * ds : oy1 * ds, :crop_w]).astype(np.float32)
+        valid = np.isfinite(raw) & (raw > _NODATA_THRESHOLD)
+        if nodata is not None:
+            valid &= raw != nodata
+        elev = (raw * scale + offset) * unit_km
+        elev[~valid] = 0.0
+        blocks = (bh, ds, out_w, ds)
+        sums = elev.reshape(blocks).sum(axis=(1, 3))
+        counts = valid.reshape(blocks).sum(axis=(1, 3))
+        out_elev[oy0:oy1] = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+    del mm
 
     finite = np.isfinite(out_elev)
     if finite.any():
         lo = float(out_elev[finite].min())
         hi = float(out_elev[finite].max())
     else:
-        log.warning("%s: no valid height pixels; defaulting flat", src.name)
+        log.warning("%s: no valid height pixels; defaulting flat", src_name)
         lo, hi = 0.0, 1.0
-    # Floor invalid pixels so they sit flush with the lowest terrain.
-    out_elev[~finite] = lo
+    # Gaps sink to the lowest terrain by default; partial-coverage DEMs pass a
+    # datum-relative fill (0 km) so unmapped regions rest at the reference
+    # ellipsoid instead of the deepest basin.
+    fill = lo if nodata_fill_km is None else nodata_fill_km
+    n_gap = int((~finite).sum())
+    if n_gap:
+        log.info(
+            "%s: %d/%d output px unmapped, filled at %.3f km",
+            src_name,
+            n_gap,
+            out_elev.size,
+            fill,
+        )
+    out_elev[~finite] = fill
     norm = np.clip((out_elev - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
     gray = (norm * 255.0).astype(np.uint8)
     return Image.fromarray(gray, mode="L").convert("RGB"), lo, hi
