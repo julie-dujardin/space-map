@@ -2,7 +2,8 @@
 
 Covers every encoding the bodies manifests list: passthrough meshes Blender
 reads directly (obj/ply/stl), gzip wrappers, Gaskell ICQ cube grids, the three
-PDS plate-table dialects, Thomas lat/lon/radius grids, and VRML2 IndexedFaceSet.
+PDS plate-table dialects, lat/lon/radius grids (either column order), and
+VRML2 IndexedFaceSet.
 Battle-tested on the real archive files.
 """
 
@@ -19,11 +20,14 @@ log = logging.getLogger(__name__)
 _BLENDER_NATIVE = frozenset({"obj", "ply", "stl"})
 
 
-def normalize_to_mesh(src: Path, fmt: str, work_dir: Path) -> Path:
+def normalize_to_mesh(
+    src: Path, fmt: str, work_dir: Path, *, lon_first: bool = False
+) -> Path:
     """Return a Blender-importable mesh path for ``src`` (format ``fmt``).
 
     Passthrough formats return ``src`` unchanged; gzip wrappers are inflated;
     table/grid/VRML/ICQ dialects are converted to OBJ under ``work_dir``.
+    ``lon_first`` flips a lat/lon grid's column order (see ``_parse_grid``).
     """
     if fmt in _BLENDER_NATIVE:
         return src
@@ -36,7 +40,7 @@ def normalize_to_mesh(src: Path, fmt: str, work_dir: Path) -> Path:
     if fmt == "icq":
         icq_to_obj(src, out)
     elif fmt in ("pds-vertab", "wrl"):
-        table_to_obj(src, out)
+        table_to_obj(src, out, lon_first=lon_first)
     else:
         raise ValueError(f"unknown mesh format {fmt!r} for {src.name}")
     return out
@@ -69,10 +73,10 @@ def icq_to_obj(src: Path, dst: Path) -> None:
                     out.write(f"f {a} {b} {d}\nf {a} {d} {c}\n")
 
 
-def table_to_obj(src: Path, dst: Path) -> tuple[int, int]:
+def table_to_obj(src: Path, dst: Path, *, lon_first: bool = False) -> tuple[int, int]:
     """PDS plate table (.tab) or VRML2 IndexedFaceSet (.wrl) → OBJ."""
     is_wrl = src.suffix.lower() == ".wrl"
-    verts, faces = _parse_wrl(src) if is_wrl else _parse_tab(src)
+    verts, faces = _parse_wrl(src) if is_wrl else _parse_tab(src, lon_first=lon_first)
     nv = len(verts)
     for f in faces:
         if any(i < 1 or i > nv for i in f):
@@ -118,9 +122,17 @@ def _parse_counts(lines: list[list[str]]) -> tuple[list, list]:
     return verts, faces
 
 
-def _parse_grid(lines: list[list[str]]) -> tuple[list, list]:
-    """Thomas digital shape model: ``lat lon radius_km`` rows on a lat/lon grid."""
-    rows = [(float(a), float(b), float(c)) for a, b, c in lines]
+def _parse_grid(
+    lines: list[list[str]], *, lon_first: bool = False
+) -> tuple[list, list]:
+    """Digital shape model: lat/lon/radius_km rows on a lat/lon grid.
+
+    Column order varies by archive (Thomas: lat,lon,r; Stooke: lon,lat,r); the
+    manifest's ``grid_order`` field declares which via ``lon_first``. Normalise
+    to (lat, lon, radius).
+    """
+    raw = [(float(a), float(b), float(c)) for a, b, c in lines]
+    rows = [(lat, lon, r) for lon, lat, r in raw] if lon_first else raw
     lats = sorted({r[0] for r in rows})
     lons = sorted({r[1] for r in rows})
     by_key = {(lat, lon): r for lat, lon, r in rows}
@@ -159,12 +171,12 @@ def _parse_grid(lines: list[list[str]]) -> tuple[list, list]:
     return verts, faces
 
 
-def _parse_tab(src: Path) -> tuple[list, list]:
+def _parse_tab(src: Path, *, lon_first: bool = False) -> tuple[list, list]:
     lines = [ln.split() for ln in src.read_text().splitlines() if ln.strip()]
     if any(parts[0].lower() in ("v", "f") for parts in lines[:5]):
         verts, faces = _parse_vf(lines)
     elif len(lines[0]) == 3 and all(len(p) == 3 for p in lines[:50]):
-        verts, faces = _parse_grid(lines)
+        verts, faces = _parse_grid(lines, lon_first=lon_first)
     else:
         verts, faces = _parse_counts(lines)
     if not verts or not faces:

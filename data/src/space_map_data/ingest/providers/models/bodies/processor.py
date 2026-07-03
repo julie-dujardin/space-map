@@ -172,7 +172,11 @@ class BodyModelProcessor:
                 continue
             try:
                 high_glb, low_glb, bounds = self._cached_tiers(
-                    slug, src, f["format"], force
+                    slug,
+                    src,
+                    f["format"],
+                    force,
+                    lon_first=f.get("grid_order") == "lon_lat",
                 )
             except subprocess.CalledProcessError as exc:
                 stderr = (exc.stderr or "")[-500:]
@@ -191,7 +195,7 @@ class BodyModelProcessor:
         return None
 
     def _cached_tiers(
-        self, slug: str, src: Path, fmt: str, force: bool
+        self, slug: str, src: Path, fmt: str, force: bool, *, lon_first: bool = False
     ) -> tuple[Path, Path, dict | None]:
         """Materialise (or reuse) the high+low GLB pair + true km bounds.
 
@@ -223,7 +227,7 @@ class BodyModelProcessor:
             work = Path(td)
             from space_map_data.ingest.providers.models.bodies import mesh_formats
 
-            mesh = mesh_formats.normalize_to_mesh(src, fmt, work)
+            mesh = mesh_formats.normalize_to_mesh(src, fmt, work, lon_first=lon_first)
             for dst, target in (
                 (high_glb, config.BODY_HIGH_TIER_MAX_TRIS),
                 (low_glb, config.BODY_LOW_TIER_TRIS),

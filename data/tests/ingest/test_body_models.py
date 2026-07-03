@@ -72,6 +72,28 @@ class TestMeshFormats:
         text = out.read_text()
         assert text.count("\nf ") + text.startswith("f ") >= 12
 
+    def test_grid_column_order(self, tmp_path):
+        # lat/lon/radius grid: Stooke archives put longitude first, so
+        # lon_first must normalise to the same mesh as the lat-first default.
+        lats, lons = (-90.0, 0.0, 90.0), (0.0, 120.0, 240.0, 360.0)
+
+        def rad(lat):  # varies with lat so a column swap is visible
+            return 15.0 + lat / 90.0
+
+        def vlines(path):
+            lines = path.read_text().splitlines()
+            return sorted(ln for ln in lines if ln.startswith("v "))
+
+        latlon = "".join(f"{la} {lo} {rad(la)}\n" for la in lats for lo in lons)
+        lonlat = "".join(f"{lo} {la} {rad(la)}\n" for la in lats for lo in lons)
+        (tmp_path / "a.tab").write_text(latlon)
+        (tmp_path / "b.tab").write_text(lonlat)
+        mesh_formats.table_to_obj(tmp_path / "a.tab", tmp_path / "a.obj")
+        mesh_formats.table_to_obj(
+            tmp_path / "b.tab", tmp_path / "b.obj", lon_first=True
+        )
+        assert vlines(tmp_path / "a.obj") == vlines(tmp_path / "b.obj")
+
 
 class TestGlbWriter:
     def test_tetrahedron_roundtrip(self, tmp_path):
