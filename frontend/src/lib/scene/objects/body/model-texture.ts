@@ -3,8 +3,10 @@ import { Mesh, MeshStandardMaterial, type Object3D, type Texture } from 'three';
 /**
  * Equirectangular `map` sampling for shape-model meshes, which ship no texture
  * coordinates. The GLB's body-fixed frame (glTF +Y = north pole, +X = prime
- * meridian) matches the frame the textured sphere renders, so projecting the
- * fragment's direction onto lat/lon samples the same surface map correctly.
+ * meridian, -Z = east) matches the frame the textured sphere renders, so
+ * projecting the fragment's direction onto lat/lon samples the same surface
+ * map correctly: u = lon/2π + 0.5 with the prime meridian at u = 0.5, as
+ * SphereGeometry UVs place it.
  *
  * Sampling happens per fragment (not baked per vertex) so triangles crossing
  * the ±180° meridian don't smear; the wrap's derivative discontinuity is
@@ -14,7 +16,7 @@ import { Mesh, MeshStandardMaterial, type Object3D, type Texture } from 'three';
 const EQUIRECT_MAP_FRAGMENT = /* glsl */ `
 #ifdef USE_MAP
 	vec3 bodyDir = normalize( vBodyDir );
-	float lon = atan( bodyDir.z, -bodyDir.x );
+	float lon = atan( -bodyDir.z, bodyDir.x );
 	vec2 euv = vec2( lon / ( 2.0 * PI ) + 0.5, 1.0 - acos( clamp( bodyDir.y, -1.0, 1.0 ) ) / PI );
 	vec2 euvB = vec2( fract( euv.x + 0.5 ), euv.y );
 	vec2 dxA = dFdx( euv ), dyA = dFdy( euv );

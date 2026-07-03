@@ -342,6 +342,35 @@ class TestProcessMonthly:
         assert sorted(meta["exports"].keys()) == ["01", "02", "03"]
 
 
+class TestProcessSingleFrame:
+    """Single-frame `cylindrical` reprocess via ``TextureProcessor.process``."""
+
+    def test_prunes_tiers_no_longer_exported(self, tmp_path, monkeypatch):
+        """A reprocess that yields fewer tiers must drop the leftovers — stale
+        files would otherwise ship with the old alignment/content."""
+        entry = {
+            "body": "naif-601",
+            "body_name": "mimas",
+            "source": "https://example.com",
+            "organisation": "NASA",
+            "attribution": "Test attribution",
+            "file": "mimas.jpg",
+            "type": "cylindrical",
+        }
+        proc = TestProcessMonthly._make_processor(monkeypatch, tmp_path, entry)
+        _make_gradient(256, 128).save(config.RAW_DIR / entry["file"])
+        body_dir = config.PROCESSED_DIR / "naif-601"
+        body_dir.mkdir()
+        for tier in ("low", "medium", "high"):
+            (body_dir / f"{tier}.webp").write_bytes(b"stale")
+
+        proc.process(config.RAW_DIR / entry["file"], force=True)
+
+        meta = json.loads((body_dir / "metadata.json").read_text())
+        expected = {f"{tier}.webp" for tier in meta["exports"]}
+        assert {p.name for p in body_dir.glob("*.webp")} == expected
+
+
 class TestProcessClouds:
     """End-to-end ingest of a synthetic earth_clouds snapshot tree.
 

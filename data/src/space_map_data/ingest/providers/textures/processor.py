@@ -160,6 +160,17 @@ class TextureProcessor:
         self._mark_texture_available(entry["body"])
         return True
 
+    def _prune_stale_tiers(self, out_dir: Path, exports: dict, object_id: str) -> None:
+        """Drop tier files a reprocess no longer produces (e.g. after a tier-size
+        or source change) — leftovers would ship alongside fresh exports."""
+        for tier in ("low", "medium", "high"):
+            if tier in exports:
+                continue
+            stale = out_dir / f"{tier}.webp"
+            if stale.exists():
+                stale.unlink()
+                log.info("removed stale export %s/%s.webp", object_id, tier)
+
     def _write_metadata(
         self,
         out_dir: Path,
@@ -270,6 +281,7 @@ class TextureProcessor:
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
+        self._prune_stale_tiers(out_dir, exports, object_id)
 
         self._write_metadata(
             out_dir,
@@ -316,6 +328,7 @@ class TextureProcessor:
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
+        self._prune_stale_tiers(out_dir, exports, object_id)
 
         self._write_metadata(
             out_dir,
@@ -362,6 +375,7 @@ class TextureProcessor:
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
+        self._prune_stale_tiers(out_dir, exports, object_id)
 
         self._write_metadata(
             out_dir,
@@ -416,6 +430,7 @@ class TextureProcessor:
         source_dims = [img.width, img.height]
         img = align_cylindrical(img, **entry_alignment(entry))
         exports = self._export(img, object_id, out_dir)
+        self._prune_stale_tiers(out_dir, exports, object_id)
 
         self._write_metadata(
             out_dir,
