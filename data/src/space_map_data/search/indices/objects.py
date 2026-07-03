@@ -267,6 +267,8 @@ def build_object_documents(export_dir: Path) -> Iterator[dict[str, Any]]:
             ct = g.get("celestrak") or {}
             if ct.get("ops_status"):
                 obj["ops_status"] = ct["ops_status"]
+            if g.get("render_quality"):
+                obj["render_quality"] = g["render_quality"]
 
             # Group membership — backs the "show all members" query and the search
             # filter tree. Small-body slugs from SBDB class/flags, earth-sat slugs

@@ -32,7 +32,7 @@ from tqdm import tqdm
 
 from space_map_data.constants.earth_sats.satellite_models import SATELLITE_BUSES
 from space_map_data.ingest.providers.models import cache, config, conversion, metadata
-from space_map_data.models.object import Object
+from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.models.object.satcat import Satcat
 from space_map_data.utils.db import get_session
 from space_map_data.utils.paths import EXPORT_METADATA_DIR
@@ -368,7 +368,9 @@ class ModelProcessor:
 
     def _reset_model_pointer(self) -> None:
         session = get_session()
-        session.query(Object).update({Object.model_name: None})
+        session.query(Object).update(
+            {Object.model_name: None, Object.model_provenance: None}
+        )
         session.commit()
 
     def _load_db_object_ids(self) -> set[str]:
@@ -472,7 +474,12 @@ class ModelProcessor:
                 rowcount = (
                     session.query(Object)
                     .filter(Object.id == oid, Object.model_name.is_(None))
-                    .update({Object.model_name: spec.model_slug})
+                    .update(
+                        {
+                            Object.model_name: spec.model_slug,
+                            Object.model_provenance: ModelProvenance.spacecraft,
+                        }
+                    )
                 )
                 assigned += int(rowcount or 0)
         session.commit()
@@ -491,7 +498,10 @@ class ModelProcessor:
         session = get_session()
         for oid, slug in winners.items():
             session.query(Object).filter(Object.id == oid).update(
-                {Object.model_name: slug}
+                {
+                    Object.model_name: slug,
+                    Object.model_provenance: ModelProvenance.spacecraft,
+                }
             )
         session.commit()
 

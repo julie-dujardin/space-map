@@ -36,6 +36,11 @@ def _global(entry: dict, name: str) -> dict:
         data["cross_refs"] = {"wikidata_qid": entry["wikidata_qid"]}
     if entry.get("radius_km"):
         data["sbdb"] = {"diameter": entry["radius_km"] * 2}
+    # Mirrors writer.render_quality for these DB-less rows.
+    if entry.get("model_slug"):
+        data["render_quality"] = "high"
+    elif entry.get("radius_km"):
+        data["render_quality"] = "low"
     # No `source`: these elements are hand-authored, not from an ephemeris
     # archive, so the frontend shows no data-source credit.
     data["orbit"] = {

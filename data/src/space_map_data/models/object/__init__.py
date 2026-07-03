@@ -9,6 +9,7 @@ from space_map_data.models.object.satcat import Satcat
 from space_map_data.models.object.main import (
     DWARF_PLANETS,
     ElementsScale,
+    ModelProvenance,
     Object,
     ObjectType,
     OrbitalSource,
@@ -25,6 +26,7 @@ __all__ = [
     "Horizons",
     "LaunchVehicle",
     "Launchlog",
+    "ModelProvenance",
     "Object",
     "ObjectType",
     "OrbitClass",

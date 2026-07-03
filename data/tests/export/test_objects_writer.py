@@ -11,8 +11,11 @@ from space_map_data.export.objects.writer import (
     _iso_currency_code,
     _pick_attrs,
     hash_bucket,
+    render_quality,
     write_object_bundles,
 )
+from space_map_data.models.object import ModelProvenance, ObjectType
+from space_map_data.models.object.sbdb import SBDB
 from tests.conftest import make_object
 
 
@@ -166,3 +169,69 @@ class TestWriteObjectBundles:
         assert ns["ru"] == 0
         assert not (tmp_path / "objects" / "ja").exists()
         assert not (tmp_path / "objects" / "ru").exists()
+
+
+class TestRenderQuality:
+    """Tier resolution for the exported `render_quality` field."""
+
+    def test_spacecraft_model_is_high(self):
+        obj = make_object(
+            id="probe-1",
+            object_type=ObjectType.spacecraft,
+            model_name="cassini",
+            model_provenance=ModelProvenance.spacecraft,
+        )
+        assert render_quality(obj, {}) == "high"
+
+    def test_shape_model_is_high(self):
+        obj = make_object(
+            id="spkid-2000433",
+            object_type=ObjectType.asteroid,
+            model_name="eros-near",
+            model_provenance=ModelProvenance.missions,
+        )
+        assert render_quality(obj, {}) == "high"
+
+    def test_texture_only_is_high(self):
+        obj = make_object(map_texture_available=True)
+        assert render_quality(obj, {}) == "high"
+
+    def test_lightcurve_model_is_medium_despite_diameter(self):
+        obj = make_object(
+            id="spkid-2000021",
+            object_type=ObjectType.asteroid,
+            spkid=2000021,
+            model_name="damit-104",
+            model_provenance=ModelProvenance.lightcurve,
+        )
+        obj.sbdb = SBDB(spkid=2000021, object_id="spkid-2000021", diameter=98.0)
+        assert render_quality(obj, {}) == "medium"
+
+    def test_texture_outranks_lightcurve_model(self):
+        obj = make_object(
+            model_name="damit-104",
+            model_provenance=ModelProvenance.lightcurve,
+            map_texture_available=True,
+        )
+        assert render_quality(obj, {}) == "high"
+
+    def test_star_is_high_without_texture(self):
+        obj = make_object(id="naif-10", object_type=ObjectType.star, naif_id=10)
+        radii = {10: {"a": 695700.0, "b": 695700.0, "c": 695700.0}}
+        assert render_quality(obj, radii) == "high"
+
+    def test_pck_radii_only_is_low(self):
+        obj = make_object(id="naif-901", object_type=ObjectType.moon, naif_id=901)
+        radii = {901: {"a": 606.0, "b": 606.0, "c": 606.0}}
+        assert render_quality(obj, radii) == "low"
+
+    def test_sbdb_diameter_only_is_low(self):
+        obj = make_object(
+            id="spkid-2000433", object_type=ObjectType.asteroid, spkid=2000433
+        )
+        obj.sbdb = SBDB(spkid=2000433, object_id="spkid-2000433", diameter=16.8)
+        assert render_quality(obj, {}) == "low"
+
+    def test_no_size_signal_is_none(self):
+        obj = make_object(id="probe-2", object_type=ObjectType.spacecraft)
+        assert render_quality(obj, {}) is None

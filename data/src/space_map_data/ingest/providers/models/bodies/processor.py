@@ -23,7 +23,7 @@ from ruamel.yaml import YAML
 
 from space_map_data.ingest.providers.models import config, conversion, metadata
 from space_map_data.ingest.providers.models.processor import _link_into_export
-from space_map_data.models.object import Object
+from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.utils.paths import SOURCES_MODELS_BODIES_DIR
 
 log = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ class BodyModelProcessor:
             bounds=bounds,
         )
         self._session.query(Object).filter(Object.id == object_id).update(
-            {Object.model_name: slug}
+            {Object.model_name: slug, Object.model_provenance: ModelProvenance(tier)}
         )
         log.info("body %s → %s (%s tier)", slug, object_id, tier)
 

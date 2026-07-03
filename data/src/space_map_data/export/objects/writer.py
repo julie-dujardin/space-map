@@ -57,7 +57,12 @@ from space_map_data.export.objects.wikidata_claims import (
     resolve_entity_ref,
     resolve_unit,
 )
-from space_map_data.models.object import Object, ObjectType, OrbitalSource
+from space_map_data.models.object import (
+    ModelProvenance,
+    Object,
+    ObjectType,
+    OrbitalSource,
+)
 from space_map_data.models.object.sbdb import OrbitClass
 
 logger = logging.getLogger(__name__)
@@ -337,6 +342,35 @@ def _write_hashed_bundles(
 _IMAGE_KEYS = {"image", "logo_image"}
 
 
+def render_quality(obj: Object, radii: dict[int, dict]) -> str | None:
+    """Best-available-asset render tier for an object.
+
+    high   — faithful 3D model (spacecraft / mission / radar), a map texture,
+             or a procedural star surface
+    medium — lightcurve-inversion convex hull only
+    low    — size only: sphere/ellipsoid from PCK radii or SBDB diameter
+    None   — no physical extent known; renders as halo/point at best
+    """
+    has_model = obj.model_name is not None
+    if has_model and obj.model_provenance != ModelProvenance.lightcurve:
+        return "high"
+    if obj.map_texture_available:
+        return "high"
+    # Stars ship no texture asset — the frontend's star-surface shader is a
+    # faithful surface, not a size-only sphere.
+    if obj.object_type == ObjectType.star:
+        return "high"
+    if has_model:
+        return "medium"
+    if obj.naif_id is not None and obj.naif_id in radii:
+        return "low"
+    # FK guard before the relationship read — writer runs in worker threads.
+    sbdb = obj.sbdb if obj.spkid is not None else None
+    if sbdb is not None and sbdb.diameter is not None:
+        return "low"
+    return None
+
+
 def _build_global(
     obj: Object,
     extracted: dict,
@@ -370,6 +404,9 @@ def _build_global(
             )
     if obj.model_name is not None:
         data["model_name"] = obj.model_name
+    quality = render_quality(obj, radii)
+    if quality is not None:
+        data["render_quality"] = quality
     clouds_meta = clouds_metadata.get(obj.id)
     if clouds_meta is not None:
         data["clouds"] = clouds_block(clouds_meta)

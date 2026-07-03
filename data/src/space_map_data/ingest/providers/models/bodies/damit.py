@@ -27,7 +27,7 @@ import numpy as np
 
 from space_map_data.ingest.providers.models import config, metadata
 from space_map_data.ingest.providers.models.bodies import glb_writer, orientation
-from space_map_data.models.object import Object
+from space_map_data.models.object import ModelProvenance, Object
 from space_map_data.utils.paths import DERIVED_MODELS_DIR
 
 log = logging.getLogger(__name__)
@@ -156,7 +156,10 @@ class DamitProcessor:
                         Object.id == object_id,
                         Object.model_name.is_(None) | Object.model_name.like("damit-%"),
                     ).update(
-                        {Object.model_name: _slug(m.model_id)},
+                        {
+                            Object.model_name: _slug(m.model_id),
+                            Object.model_provenance: ModelProvenance.lightcurve,
+                        },
                         synchronize_session=False,
                     )
         self._write_orientation_csv()

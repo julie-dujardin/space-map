@@ -60,6 +60,19 @@ class ObjectType(StrEnum):
     undocumented = "undocumented"  # Data is available but provider doesn't specify what it refers to
 
 
+class ModelProvenance(StrEnum):
+    """Source class of a 3D-model bundle.
+
+    Lightcurve-inversion convex hulls only approximate the real shape; the
+    other classes are faithful — that split drives render_quality.
+    """
+
+    spacecraft = "spacecraft"
+    missions = "missions"
+    radar = "radar"
+    lightcurve = "lightcurve"
+
+
 class ElementsScale(StrEnum):
     """Refers to the orbital element units.
 
@@ -203,6 +216,11 @@ class Object(Base):
     # Cluster II spacecraft share a constellation model). Authored by the
     # models ingest provider; null when no model is available.
     model_name: Mapped[str | None] = mapped_column(default=None)
+    # ModelProvenance of the model_name bundle, written alongside it; feeds
+    # the exported render_quality tier.
+    model_provenance: Mapped[ModelProvenance | None] = mapped_column(
+        String, default=None
+    )
     # True when this row carries the orbital elements needed to ship in a
     # position file (Keplerian/SGP4/parabolic). Computed at ingest from the
     # source-specific required-element set; consumed by export queries to
