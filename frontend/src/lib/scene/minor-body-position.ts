@@ -2,6 +2,7 @@ import type { PositionedBody } from '$lib/types/objects';
 import { orbitalElementsToPositionJD, parabolicToPositionJD } from '$lib/math/orbit/position';
 import { sgp4PositionScene } from '$lib/math/orbit/sgp4';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
+import { SSB_ID } from '$lib/constants';
 
 /**
  * Recompute `body.position` in place from its orbital elements at `jd`.
@@ -34,7 +35,18 @@ export function refreshMinorBodyPosition(
 			? parabolicToPositionJD(d, jd)
 			: orbitalElementsToPositionJD(d, jd);
 	if (!offset) return;
-	const parentPos = ctx.getBody(d.parentId)?.position ?? [0, 0, 0];
+	// Only the SSB is the scene origin. Any other parent — the Sun included, it
+	// wobbles ~1e6 km around the barycenter — must be loaded to position against;
+	// hide rather than anchor at the origin, which would place an asteroid-moon
+	// at the Sun. Mirrors the per-frame renderer in update-positions.
+	let parentPos: readonly [number, number, number];
+	if (d.parentId === SSB_ID) {
+		parentPos = [0, 0, 0];
+	} else {
+		const resolved = ctx.getBody(d.parentId)?.position;
+		if (!resolved) return;
+		parentPos = resolved;
+	}
 	body.position[0] = parentPos[0] + offset[0];
 	body.position[1] = parentPos[1] + offset[1];
 	body.position[2] = parentPos[2] + offset[2];
