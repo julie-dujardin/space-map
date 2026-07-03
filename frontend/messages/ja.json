@@ -988,7 +988,6 @@
 	"unit_name_attometre": "アトメートル",
 	"unit_name_centimetre": "センチメートル",
 	"unit_name_centimetre_per_square_second": "センチメートル毎秒毎秒",
-	"unit_name_degree_celsius": "セルシウス度",
 	"unit_name_degree_fahrenheit": "華氏度",
 	"unit_name_deutsche_mark": "ドイツマルク",
 	"unit_name_earth_mass": "地球質量",
@@ -1014,7 +1013,6 @@
 	"unit_name_year": "年",
 	"unit_name_yottagram": "ヨタグラム",
 	"unit_name_zettagram": "ゼタグラム",
-	"unit_symbol_degree_celsius": "℃",
 	"unit_symbol_kilometre": "粁",
 	"unit_symbol_metre": "米"
 }

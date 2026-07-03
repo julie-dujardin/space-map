@@ -958,7 +958,6 @@
 	"unit_name_attometre": "attomètre",
 	"unit_name_centimetre": "centimètre",
 	"unit_name_centimetre_per_square_second": "centimètre par seconde carrée",
-	"unit_name_degree_celsius": "degré Celsius",
 	"unit_name_degree_fahrenheit": "degré Fahrenheit",
 	"unit_name_earth_mass": "masse de la Terre",
 	"unit_name_exagram": "exagramme",
@@ -980,6 +979,5 @@
 	"unit_name_teragram": "téragramme",
 	"unit_name_year": "année",
 	"unit_name_yottagram": "yottagramme",
-	"unit_name_zettagram": "zettagramme",
-	"unit_symbol_degree_celsius": "℃"
+	"unit_name_zettagram": "zettagramme"
 }

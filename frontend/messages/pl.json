@@ -871,7 +871,6 @@
 	"unit_name_attometre": "attometr",
 	"unit_name_centimetre": "centymetr",
 	"unit_name_centimetre_per_square_second": "centymetr na sekundę do kwadratu",
-	"unit_name_degree_celsius": "stopień Celsjusza",
 	"unit_name_degree_fahrenheit": "stopień Fahrenheita",
 	"unit_name_deutsche_mark": "Marka niemiecka",
 	"unit_name_earth_mass": "masa Ziemi",
@@ -890,6 +889,5 @@
 	"unit_name_square_kilometre": "kilometr kwadratowy",
 	"unit_name_tonne": "tona",
 	"unit_name_year": "rok",
-	"unit_name_yottagram": "jottagram",
-	"unit_symbol_degree_celsius": "℃"
+	"unit_name_yottagram": "jottagram"
 }

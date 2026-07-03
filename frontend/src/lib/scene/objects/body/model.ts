@@ -23,6 +23,7 @@ import { kmToScene } from '$lib/math/units';
 import { bodyMeshColor } from '$lib/utils';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
+import { setLabelNote } from '../../label/factory';
 
 /** Body types whose placeholder sphere is meaningless and should be hidden
  *  the moment a load starts (rather than waiting for the detail fetch to
@@ -248,6 +249,15 @@ async function loadNaturalBodyModel(
 		// role): model radius 1 ↔ max_extent_km/2, keeping true-to-scale framing.
 		if (meta.true_scale) {
 			bo.radiusScene = kmToScene(meta.true_scale.max_extent_km / 2);
+			// Bodies whose chunk shipped no radius: the model's calibrated scale is
+			// a real size, so backfill it (camera floor, LOD, framing) and drop the
+			// no-size state — the halo must yield to the mesh, not sit on it.
+			const radiusKnown = Number.isFinite(bo.body.data.radiusKm) && bo.body.data.radiusKm > 0;
+			if (!radiusKnown) bo.body.data.radiusKm = meta.true_scale.max_extent_km / 2;
+			if (bo.noPhysical) {
+				bo.noPhysical = undefined;
+				setLabelNote(bo, false);
+			}
 		}
 		const credit = meta.credit ?? meta.exports.high.credit;
 		ctx?.credits.registerModel({
