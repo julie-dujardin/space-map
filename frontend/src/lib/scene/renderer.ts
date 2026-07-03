@@ -11,12 +11,14 @@ import {
 	type PerspectiveCamera,
 	PlaneGeometry,
 	PointLight,
+	Raycaster,
 	Scene as SceneClass,
 	type Scene,
 	ShadowMaterial,
 	Sprite,
 	SpriteMaterial,
 	TextureLoader,
+	Vector2,
 	Vector3,
 	type WebGLRenderer
 } from 'three';
@@ -135,6 +137,8 @@ export class SceneRenderer {
 	private readonly _tmpUp = new Vector3();
 	private readonly _tmpSun = new Vector3();
 	private readonly _planeNormal = new Vector3(0, 0, 1);
+	private readonly _modelRaycaster = new Raycaster();
+	private readonly _pickNdc = new Vector2();
 	/** Debug ±XYZ axis arrows over the focused model; built lazily in the overlay. */
 	private showPointingAxes = false;
 	private pointingAxes: Group | null = null;
@@ -387,7 +391,8 @@ export class SceneRenderer {
 			this.focus,
 			this.clickables,
 			this.meshToBody,
-			(body) => this.focusController.handleFocus(body)
+			(body) => this.focusController.handleFocus(body),
+			(ndcX, ndcY) => this.pickFocusedModel(ndcX, ndcY)
 		);
 		this.pointerInteraction.attach();
 
@@ -859,6 +864,19 @@ export class SceneRenderer {
 
 	snapToBodyFrame(latitude: number, longitude: number, zoom: number): void {
 		this.focusController.snapToBodyFrame(latitude, longitude, zoom);
+	}
+
+	/** Focused body when the NDC ray hits its overlay model, else null. Cast in
+	 *  overlay space with `modelCamera` (refreshed every rendered frame), which
+	 *  mirrors the main camera exactly. */
+	private pickFocusedModel(ndcX: number, ndcY: number): PositionedBody | null {
+		const focused = this.focusController.current;
+		if (!focused) return null;
+		const bo = this.bodyObjects.get(focused.data.id);
+		if (!bo?.model) return null;
+		this._pickNdc.set(ndcX, ndcY);
+		this._modelRaycaster.setFromCamera(this._pickNdc, this.modelCamera);
+		return this._modelRaycaster.intersectObject(bo.model, true).length > 0 ? focused : null;
 	}
 
 	/** Scene-units distance from body center to the loaded shape model's surface

@@ -183,19 +183,8 @@ export function updateBodyVisibility(
 		const r = bo.noPhysical ? 0 : bo.radiusScene;
 		if (!r) continue;
 		const dist = bo.cachedDist;
-		if (dist <= r) continue; // camera inside the bounding sphere → no occlusion
 		const [bx, by, bz] = bo.body.position;
-		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
-		const camX = tmpV3.x,
-			camY = tmpV3.y,
-			camZ = tmpV3.z;
-		if (camZ >= 0) continue; // body center behind the camera
-		const bz2 = camZ * camZ;
-		// Gate on the bounding-sphere tangential screen radius ≥ halo size (over-
-		// includes oblate bodies, which the exact cone test below then refines);
-		// bz² ≤ r² means the body engulfs the view, so it's always an occluder.
-		const gateOk = bz2 <= r * r || (r * projScale) / Math.sqrt(bz2 - r * r) >= HALO_RADIUS_PX;
-		if (!gateOk) continue;
+
 		const modelSpheres = bo.model?.userData.occluderSpheres as OccluderSphere[] | undefined;
 		if (bo.model && modelSpheres?.length) {
 			// Focused body rendered as an overlay model: occlude with the sphere
@@ -203,6 +192,9 @@ export function updateBodyVisibility(
 			// through bent/elongated shapes. Centers live in the model's rotation
 			// frame; the model sits at the overlay root, so its local quaternion
 			// is its world attitude and `model.position` is the recentring shift.
+			// No body-level bails: up close the camera is routinely inside the
+			// bounding sphere or past the body center while lobes still occlude,
+			// so each sphere gates itself.
 			const s = modelUnitScene(bo);
 			const mp = bo.model.position;
 			for (const sphere of modelSpheres) {
@@ -219,7 +211,14 @@ export function updateBodyVisibility(
 						bz - fp[2] + _modelSphereCenter.z
 					)
 					.applyMatrix4(cameraInverse);
-				if (tmpV3.z >= 0 || tmpV3.lengthSq() <= rSphere * rSphere) continue;
+				if (tmpV3.z >= 0) continue; // sphere center behind the camera
+				const dSq = tmpV3.lengthSq();
+				if (dSq <= rSphere * rSphere) continue; // camera inside this blob
+				const z2 = tmpV3.z * tmpV3.z;
+				const sphereGateOk =
+					z2 <= rSphere * rSphere ||
+					(rSphere * projScale) / Math.sqrt(z2 - rSphere * rSphere) >= HALO_RADIUS_PX;
+				if (!sphereGateOk) continue;
 				const so = ensureOccluder(occluderCount++);
 				setSphereOccluder(
 					so,
@@ -234,7 +233,22 @@ export function updateBodyVisibility(
 					dist
 				);
 			}
-		} else if (bo.semiAxesScene && bo.mesh) {
+			continue;
+		}
+
+		if (dist <= r) continue; // camera inside the bounding sphere → no occlusion
+		tmpV3.set(bx - fp[0], by - fp[1], bz - fp[2]).applyMatrix4(cameraInverse);
+		const camX = tmpV3.x,
+			camY = tmpV3.y,
+			camZ = tmpV3.z;
+		if (camZ >= 0) continue; // body center behind the camera
+		const bz2 = camZ * camZ;
+		// Gate on the bounding-sphere tangential screen radius ≥ halo size (over-
+		// includes oblate bodies, which the exact cone test below then refines);
+		// bz² ≤ r² means the body engulfs the view, so it's always an occluder.
+		const gateOk = bz2 <= r * r || (r * projScale) / Math.sqrt(bz2 - r * r) >= HALO_RADIUS_PX;
+		if (!gateOk) continue;
+		if (bo.semiAxesScene && bo.mesh) {
 			const occ = ensureOccluder(occluderCount++);
 			const ax = ellipsoidCameraAxes(
 				bo.mesh.getWorldQuaternion(_meshQuat),

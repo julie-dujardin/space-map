@@ -35,7 +35,11 @@ export class PointerInteraction {
 		private readonly focus: FocusState,
 		private readonly clickables: Mesh[],
 		private readonly meshToBody: Map<Mesh, PositionedBody>,
-		private readonly onPick: (body: PositionedBody) => void
+		private readonly onPick: (body: PositionedBody) => void,
+		/** Focused body when the NDC ray hits its overlay model, else null. The
+		 *  overlay composites over the whole main scene, so such a ray must both
+		 *  resolve to the focused body and occlude every pick behind it. */
+		private readonly modelPick: (ndcX: number, ndcY: number) => PositionedBody | null
 	) {}
 
 	attach(): void {
@@ -62,6 +66,17 @@ export class PointerInteraction {
 			((e.clientX - rect.left) / rect.width) * 2 - 1,
 			-((e.clientY - rect.top) / rect.height) * 2 + 1
 		);
+
+		// The focused body's overlay model draws over everything — a hit wins
+		// outright (the hidden sphere only covers part of an irregular model's
+		// silhouette, so clicks on its lobes would otherwise fall through to
+		// far-off dots behind it).
+		const modelBody = this.modelPick(this.pointer.x, this.pointer.y);
+		if (modelBody) {
+			this.onPick(modelBody);
+			return;
+		}
+
 		this.raycaster.setFromCamera(this.pointer, this.camera);
 
 		// Mesh under the cursor — the planet you clicked. Only a fallback: a
@@ -101,10 +116,12 @@ export class PointerInteraction {
 		return undefined;
 	}
 
-	/** A dot is visible unless a solid mesh sits in front of it on its own ray.
-	 *  Non-recursive: only the depth-writing surface spheres occlude, not their
-	 *  transparent cloud/atmosphere shells. */
+	/** A dot is visible unless a solid mesh — or the focused body's overlay
+	 *  model, which composites over the main scene — sits in front of it on its
+	 *  own ray. Non-recursive: only the depth-writing surface spheres occlude,
+	 *  not their transparent cloud/atmosphere shells. */
 	private isDotVisible = (ndcX: number, ndcY: number, worldDist: number): boolean => {
+		if (this.modelPick(ndcX, ndcY)) return false;
 		if (this.clickables.length === 0) return true;
 		this._tmpPointer.set(ndcX, ndcY);
 		this.raycaster.setFromCamera(this._tmpPointer, this.camera);
