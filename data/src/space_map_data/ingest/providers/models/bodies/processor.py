@@ -5,8 +5,8 @@ Meshopt, Cloudflare file cap) with the concerns unique to scanned body shapes:
 - source meshes in a dozen PDS/JAXA/ESA encodings (see ``mesh_formats``);
 - true km scale recorded from the mesh bounds (no fit-to-unit-radius);
 - provenance/license/citation carried straight from the manifest;
-- ``kind: shape_model`` so the frontend renders the mesh in the main scene
-  (oriented by the body's IAU pole), not the spacecraft overlay.
+- ``kind: shape_model`` so the frontend sizes the overlay mesh in true km
+  and orients it by the body's IAU pole.
 
 Bodies resolve to Objects by ``naif_id`` (the DB row's canonical NAIF form).
 Entries with a null ``naif_id`` are skipped with a log line.
@@ -39,6 +39,7 @@ _CATALOG_MATCHERS: tuple[tuple[str, str], ...] = (
     ("JAXA", "JAXA/ISAS DARTS"),
     ("Rosetta", "ESA/ESAC Rosetta"),
     ("ESAC", "ESA/ESAC Rosetta"),
+    ("JPL", "JPL Asteroid Radar Research"),
 )
 
 
@@ -127,10 +128,9 @@ class BodyModelProcessor:
         if not candidates:
             log.warning("body %s: no usable files in entry", slug)
             return
-        # Highest-detail source first; decimation caps the high tier, so the
-        # densest source that survives the file cap wins.
-        candidates.sort(key=lambda f: f.get("facets") or 0, reverse=True)
-
+        # Manifest order is authoritative (curated best-first) — facets are no
+        # quality proxy: a superseding model can be coarser (Kleopatra:
+        # Shepard 2018 vs Ostro 2000).
         picked = self._convert_first_fitting(slug, tier_dir, candidates, force=force)
         if picked is None:
             log.warning("body %s: no candidate produced a shippable GLB", slug)
@@ -256,7 +256,7 @@ class BodyModelProcessor:
             return None
         try:
             meta = json.loads(meta_path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return None
         if (
             meta.get("knobs") == config.BODY_KNOBS_VERSION

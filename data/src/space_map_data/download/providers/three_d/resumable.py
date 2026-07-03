@@ -39,6 +39,13 @@ def download_resumable(client: httpx.Client, url: str, dest: Path) -> bool:
                 if resp.status_code == 416:  # past EOF: we already have every byte
                     break
                 resp.raise_for_status()
+                # Routers intercept dead uplinks with a 200 text/html error
+                # page; no model file is HTML, so retry rather than save it.
+                ctype = resp.headers.get("content-type", "")
+                if "text/html" in ctype:
+                    raise httpx.TransportError(
+                        f"text/html response (captive portal?): {ctype}"
+                    )
                 if resp.status_code != 206:
                     offset = (
                         0  # full body: no Range, server ignored it, or file changed

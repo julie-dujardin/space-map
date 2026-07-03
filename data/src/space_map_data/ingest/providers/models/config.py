@@ -54,6 +54,10 @@ MODEL_CATALOGS: dict[str, dict[str, str]] = {
         "url": "https://www.cosmos.esa.int/web/rosetta",
         "default_attribution": "ESA / Rosetta / DLR",
     },
+    "JPL Asteroid Radar Research": {
+        "url": "https://echo.jpl.nasa.gov/asteroids/shapes/shapes.html",
+        "default_attribution": "NASA/JPL-Caltech Asteroid Radar Research",
+    },
     "DAMIT": {
         "url": "https://damit.cuni.cz/projects/damit/",
         "default_attribution": "DAMIT (Ďurech et al.) / CC BY 4.0",
