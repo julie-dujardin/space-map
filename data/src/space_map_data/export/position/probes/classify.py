@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import spiceypy
+from tqdm import tqdm
 
 from space_map_data.constants.providers import ID_TYPES
 from space_map_data.export.position.format import ID_TYPE_ORDINAL
@@ -178,7 +179,12 @@ def classify_pass(
             fut = ex.submit(_classify_worker, mdir.name, kpaths, naif_id)
             futures[fut] = (i, mdir, kernels, naif_id)
 
-        for fut in as_completed(futures):
+        for fut in tqdm(
+            as_completed(futures),
+            total=n_probes,
+            desc="Classifying probes",
+            unit="probe",
+        ):
             i, mdir, kernels, naif_id = futures[fut]
             try:
                 result = fut.result()
@@ -268,7 +274,7 @@ def classify_pass(
                     plan.contributions.append(contrib)
                     chunk_index[zone.key][chunk_idx].append(plan)
             plans.append(plan)
-            logger.info(
+            logger.debug(
                 "[%d/%d] %s naif=%d probe_id=%d (%d intervals, %d chunk-touches, "
                 "%d landed phases)",
                 i,
@@ -281,4 +287,5 @@ def classify_pass(
                 len(landed_phases),
             )
 
+    logger.info("Classified %d probes into plans", len(plans))
     return plans, chunk_index

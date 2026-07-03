@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import TypedDict
 
+from tqdm import tqdm
+
 from space_map_data.ingest.convert import (
     float_or_none,
     int_or_none,
@@ -131,7 +133,7 @@ def _load_day(day_dir: Path) -> dict[int, CelesTrakElements]:
                     if norad not in out:
                         out[norad] = elements
                         group_only += 1
-    logger.info(
+    logger.debug(
         "Loaded %d CelesTrak elements from %s (%d from group CSVs only)",
         len(out),
         day_dir,
@@ -154,4 +156,10 @@ def load_all_days(download_dir: Path) -> dict[str, dict[int, CelesTrakElements]]
             download_dir / "sources" / "position",
         )
         return {}
-    return {iso: _load_day(day_dir) for iso, day_dir in days}
+    result = {
+        iso: _load_day(day_dir)
+        for iso, day_dir in tqdm(days, desc="CelesTrak days", unit="day")
+    }
+    total = sum(len(d) for d in result.values())
+    logger.info("Loaded %d CelesTrak elements across %d days", total, len(result))
+    return result
