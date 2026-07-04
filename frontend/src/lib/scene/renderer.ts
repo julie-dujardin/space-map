@@ -169,6 +169,10 @@ export class SceneRenderer {
 	};
 	/** JD at which per-frame body positions were last computed. */
 	private lastUpdatedJd = NaN;
+	/** Focused system at the last position update. A change re-runs updatePositions
+	 *  even when jd is frozen: out-of-system moons are skipped and left stale, so
+	 *  entering their system while paused must recompute them or they render detached. */
+	private lastUpdatedSystemId: string | null = null;
 	/** Tracks the focus's out-of-range state across frames so the camera pans onto
 	 *  the parent only on the transition in, not every frame parked there. */
 	private focusWasOutOfRange = false;
@@ -842,13 +846,17 @@ export class SceneRenderer {
 	 *  `allowOorRefocus` (tick loop only) pans onto the parent when a seek lands
 	 *  where the focus no longer exists. */
 	private applyJdUpdate(allowOorRefocus = false): void {
-		if (this.clock.jd === this.lastUpdatedJd) {
+		// Recompute on a focused-system change too, not just a jd change: moons
+		// outside the focused system are skipped and their world positions freeze.
+		const systemId = this.ctx.visibility.focusedSystemId;
+		if (this.clock.jd === this.lastUpdatedJd && systemId === this.lastUpdatedSystemId) {
 			this.clock.seeked = false;
 			return;
 		}
 		const seeked = this.clock.seeked;
 		this.clock.seeked = false;
 		this.lastUpdatedJd = this.clock.jd;
+		this.lastUpdatedSystemId = systemId;
 		this.ctx.refreshTick(jdToDate(this.clock.jd));
 		const result = updatePositions({
 			jd: this.clock.jd,
