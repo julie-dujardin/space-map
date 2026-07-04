@@ -43,7 +43,15 @@ const BY_SLUG: Record<string, Partial<CategoryConfig>> = {
 	[CAT_COMETS]: { smallBody: true, crossRefs: true }
 };
 
+// Merged configs, cached per slug so a stable reference comes back each call: a
+// fresh object would churn every `$derived` that reads it whenever the focusable
+// identity changes (the 500ms date tick reassigns `view`), needlessly rebuilding
+// the sphere lineup ~2×/s.
+const CONFIG_BY_SLUG = new Map<string, CategoryConfig>(
+	Object.entries(BY_SLUG).map(([slug, cfg]) => [slug, { ...NONE, ...cfg }])
+);
+
 export function categoryConfig(focusable: Focusable): CategoryConfig {
 	if (focusable.kind !== 'group') return NONE;
-	return { ...NONE, ...BY_SLUG[focusable.slug] };
+	return CONFIG_BY_SLUG.get(focusable.slug) ?? NONE;
 }
