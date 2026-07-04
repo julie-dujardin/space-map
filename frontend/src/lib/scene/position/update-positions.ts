@@ -16,9 +16,11 @@ import { isLandedAt, probePositionKm } from '$lib/fetch/position/probes/propagat
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import {
 	buildParentGatedSampler,
+	deriveProbeTrailParams,
 	extendProbeTrailBuffer,
 	populateProbeTrailBuffer
 } from '$lib/fetch/position/probes/trail';
+import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { ADAPTIVE_MIN_STEP_FACTOR } from '$lib/fetch/position/trail-buffer';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { J2000_JD } from '$lib/time/jd';
@@ -357,14 +359,26 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 			}
 			// Reseed the trail buffer (when present) before flipping parentId,
 			// so the back-population samples against the OLD parent's frame are
-			// dropped and the new frame starts fresh. Skip on first-ever resolve
-			// (initial parentId was set by processProbes against the same
-			// parent) — only the live mid-play flip needs a clear.
+			// dropped and the new frame starts fresh. Sampling params must be
+			// re-derived in the NEW frame first: reusing cruise-scale stepDays/
+			// epsilon for a planet-frame flyby walks the encounter in segments
+			// several Jupiter radii long (visibly spiky trail), and the reverse
+			// truncates a heliocentric trail to one chunk window. Skip on
+			// first-ever resolve (initial parentId was set by processProbes
+			// against the same parent) — only the live mid-play flip needs a clear.
 			const probeParentChanged = d.parentId !== probeParentKey;
 			if (probeParentChanged && body.trailBuffer && ctx.probeStore) {
-				body.trailBuffer.clear();
+				const buf = body.trailBuffer;
+				buf.clear();
+				const freshElements = probeOsculatingElements(located.probe, jd, primaryMu);
+				const params = deriveProbeTrailParams(
+					freshElements,
+					d.validityEnd - d.validityStart,
+					buf.capacity
+				);
+				buf.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
 				populateProbeTrailBuffer(
-					body.trailBuffer,
+					buf,
 					ctx.probeStore,
 					ctx.chebStore ?? null,
 					d.id,
@@ -392,6 +406,15 @@ export function updatePositions(params: UpdatePositionsParams): UpdatePositionsR
 				const span = tb.stepDays * tb.capacity;
 				if (isFinite(last) && (dt < 0 || dt > span) && ctx.probeStore) {
 					tb.clear();
+					// Same frame, but the osculating orbit may have changed across the
+					// jump (e.g. scrub from cruise to post-encounter) — re-derive.
+					const jumpElements = probeOsculatingElements(located.probe, jd, primaryMu);
+					const params = deriveProbeTrailParams(
+						jumpElements,
+						d.validityEnd - d.validityStart,
+						tb.capacity
+					);
+					tb.reconfigure(params.stepDays, params.epsilonScene, params.spanDays);
 					populateProbeTrailBuffer(
 						tb,
 						ctx.probeStore,

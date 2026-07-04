@@ -28,29 +28,53 @@ export const ADAPTIVE_MIN_STEP_FACTOR = 1 / 256;
 export class TrailBuffer {
 	readonly capacity: number;
 	/** Canonical/average time between consecutive samples (days). */
-	readonly stepDays: number;
+	stepDays: number;
 	/**
 	 * Chord-error tolerance in scene units for adaptive subdivision. `Infinity`
 	 * disables adaptive sampling — callers fall back to uniform `stepDays`
 	 * spacing, which is the legacy behaviour.
 	 */
-	readonly epsilonScene: number;
+	epsilonScene: number;
+	/**
+	 * How far back the back-fill may walk (days). One orbital period for
+	 * elliptical orbits — retracing loops wastes the sample budget. `Infinity`
+	 * for hyperbolic flyby frames, where there is no loop to retrace: the walk
+	 * is bounded by capacity and by zone coverage / the parent gate instead,
+	 * so the encounter trail spans everything loaded rather than one chunk
+	 * window.
+	 */
+	spanDays: number;
 	private readonly positions: Float32Array;
 	private readonly jds: Float64Array;
 	/** Index of the next write slot. `(head − 1) mod capacity` is the newest. */
 	private head = 0;
 	private _count = 0;
 
-	constructor(capacity: number, stepDays: number, epsilonScene = Infinity) {
+	constructor(capacity: number, stepDays: number, epsilonScene = Infinity, spanDays?: number) {
 		this.capacity = capacity;
 		this.stepDays = stepDays;
 		this.epsilonScene = epsilonScene;
+		this.spanDays = spanDays ?? stepDays * capacity;
 		this.positions = new Float32Array(capacity * 3);
 		this.jds = new Float64Array(capacity);
 	}
 
 	get count(): number {
 		return this._count;
+	}
+
+	/**
+	 * Re-derive sampling parameters for a new frame or orbit. Must be called
+	 * whenever the buffer is reseeded against a different parent — stepDays and
+	 * epsilonScene are orbit-scale-dependent, and reusing heliocentric-cruise
+	 * values for a planet-frame flyby (or vice versa) makes the reseed sample
+	 * far too coarsely (spiky encounter trails) or span far too little time.
+	 * Non-finite/non-positive `stepDays` keeps the previous value.
+	 */
+	reconfigure(stepDays: number, epsilonScene: number, spanDays?: number): void {
+		if (Number.isFinite(stepDays) && stepDays > 0) this.stepDays = stepDays;
+		this.epsilonScene = epsilonScene;
+		this.spanDays = spanDays ?? this.stepDays * this.capacity;
 	}
 
 	/** JD of the most-recent sample, or NaN when empty. */

@@ -18,16 +18,51 @@ import {
 	ADAPTIVE_MAX_STEP_FACTOR,
 	ADAPTIVE_MIN_STEP_FACTOR
 } from '$lib/fetch/position/trail-buffer';
+import { AU_SCALE } from '$lib/math/units';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
 import { probePositionScene } from '$lib/fetch/position/probes/propagate';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import type { ChebyshevStore } from '$lib/fetch/position/chebyshev/store';
 import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import type { TrailBuffer } from '$lib/fetch/position/trail-buffer';
+import type { OrbitalElements } from '$lib/types/objects';
 
 type Vec3 = [number, number, number];
 type Sample = { jd: number; pos: Vec3 };
 type Sampler = (t: number) => Vec3 | null;
+
+/**
+ * Trail sampling parameters from osculating elements in the trail's frame.
+ * `stepDays` spreads the sample budget over one orbital period (or
+ * `fallbackSpanDays` when the orbit is hyperbolic / elements unavailable).
+ * Epsilon scales to periapsis q = a(1−e), not a: it keeps facets small where
+ * the curve is sharpest instead of loosening with apoapsis on eccentric
+ * orbits, and q > 0 for ellipses and hyperbolic flybys alike, so gravity
+ * assists sample adaptively too. Infinity (uniform) until elements resolve.
+ *
+ * `spanDays` caps the back-fill at one period for elliptical orbits (the
+ * budget shouldn't retrace loops), but is uncapped for adaptive hyperbolic
+ * flybys — there is no loop, adaptive sampling leaves most of the budget
+ * unused, and a chunk-window cap would cut the encounter trail to ~a dozen
+ * days. Coverage and the parent gate bound the walk instead.
+ *
+ * All values are frame-dependent — a reseed against a new parent MUST
+ * re-derive them (via `TrailBuffer.reconfigure`) with elements relative to
+ * that parent, or the walk samples at the wrong orbit scale entirely.
+ */
+export function deriveProbeTrailParams(
+	elements: OrbitalElements | null,
+	fallbackSpanDays: number,
+	capacity: number
+): { stepDays: number; epsilonScene: number; spanDays: number } {
+	const elliptical = elements !== null && elements.n > 0;
+	const periodDays = elliptical ? 360 / elements.n : fallbackSpanDays;
+	const stepDays = periodDays > 0 ? periodDays / capacity : 1;
+	const periapsisAu = elements ? elements.a * (1 - elements.e) : 0;
+	const epsilonScene = periapsisAu > 0 ? periapsisAu * AU_SCALE * 0.0001 : Infinity;
+	const spanDays = !elliptical && isFinite(epsilonScene) ? Infinity : stepDays * capacity;
+	return { stepDays, epsilonScene, spanDays };
+}
 
 /**
  * Prefer the zone whose fit center IS the trail's own frame, so overlapping
@@ -165,14 +200,15 @@ export function populateProbeTrailBuffer(
 	// Adaptive path: walk back via chord-error. `epsilonScene = Infinity`
 	// degenerates to uniform `stepDays` because chord error never exceeds
 	// Infinity, so `findAdaptiveStep` always accepts `maxStep`. The walk is
-	// also capped at one canonical orbital span (`stepDays * capacity`) so the
-	// 512-sample budget concentrates on the most recent period instead of
-	// being spread across multiple retraced loops.
+	// also capped at `buf.spanDays` — one orbital period for elliptical
+	// orbits, so the 512-sample budget concentrates on the most recent period
+	// instead of being spread across multiple retraced loops; unbounded for
+	// hyperbolic flyby frames, where coverage and the parent gate bound it.
 	const samples: Sample[] = [{ jd: centerJd, pos: headPos }];
 	if (isFinite(buf.epsilonScene)) {
 		const maxStep = buf.stepDays * ADAPTIVE_MAX_STEP_FACTOR;
 		const minStep = buf.stepDays * ADAPTIVE_MIN_STEP_FACTOR;
-		const spanLimitJd = centerJd - buf.stepDays * buf.capacity;
+		const spanLimitJd = centerJd - buf.spanDays;
 		while (samples.length < buf.capacity) {
 			const head = samples[samples.length - 1];
 			if (head.jd <= spanLimitJd) break;

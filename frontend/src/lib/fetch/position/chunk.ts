@@ -31,7 +31,7 @@ import type { ProbeStore } from '$lib/fetch/position/probes/store';
 import { probePositionKm } from '$lib/fetch/position/probes/propagate';
 import { probeOsculatingElements } from '$lib/fetch/position/probes/elements';
 import { resolvePrimaryOverride } from '$lib/fetch/position/probes/primary';
-import { populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
+import { deriveProbeTrailParams, populateProbeTrailBuffer } from '$lib/fetch/position/probes/trail';
 import { stateVectorToElements } from '$lib/math/orbit/state';
 import { getGmKm3s2 } from '$lib/fetch/systems-global';
 import { TrailBuffer } from '$lib/fetch/position/trail-buffer';
@@ -455,20 +455,22 @@ export class ChunkLoader {
 			const hasChebyshev = probe.subChunks.some((sc) => sc.method === PROBE_METHOD_CHEBYSHEV);
 			let trailBuffer: TrailBuffer | undefined;
 			if (hasChebyshev) {
-				const periodDays = elements && elements.n > 0 ? 360 / elements.n : endJd - startJd;
-				const stepDays = periodDays > 0 ? periodDays / NUM_TRAIL_POINTS : 1;
-				// Chord-error tolerance for adaptive sampling, scaled to periapsis
-				// q = a(1−e) not a: keeps facets small where the curve is sharpest
-				// instead of loosening with apoapsis on eccentric orbits. q > 0 for
-				// ellipses and hyperbolic flybys alike, so gravity assists sample
-				// adaptively too. Infinity (uniform) until elements resolve.
-				const periapsisAu = elements ? elements.a * (1 - elements.e) : 0;
-				const epsilonScene = periapsisAu > 0 ? periapsisAu * AU_SCALE * 0.0001 : Infinity;
+				const { stepDays, epsilonScene, spanDays } = deriveProbeTrailParams(
+					elements,
+					endJd - startJd,
+					NUM_TRAIL_POINTS
+				);
 				const cached = this.probeBuffers.get(probe.id);
 				if (cached && cached.parentKey === primaryKey) {
 					trailBuffer = cached.buffer;
+					// Heal a boot-time uniform buffer (elements unavailable at first
+					// paint → Infinity) once elements resolve, without dropping the
+					// accumulated samples.
+					if (!isFinite(trailBuffer.epsilonScene) && isFinite(epsilonScene)) {
+						trailBuffer.reconfigure(stepDays, epsilonScene, spanDays);
+					}
 				} else {
-					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene);
+					trailBuffer = new TrailBuffer(NUM_TRAIL_POINTS, stepDays, epsilonScene, spanDays);
 					populateProbeTrailBuffer(trailBuffer, probeStore, cheb, probe.id, primaryKey, jd);
 					this.probeBuffers.set(probe.id, { buffer: trailBuffer, parentKey: primaryKey });
 				}
