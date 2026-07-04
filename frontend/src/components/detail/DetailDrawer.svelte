@@ -24,25 +24,10 @@
 	import { fetchObjectDetail, type ObjectDetailData } from '$lib/fetch/objects/object-data';
 	import { fetchFeatureDetail, type FeatureDetailData } from '$lib/fetch/nomenclature/details';
 	import { fetchGroupDetail, type GroupDetailData } from '$lib/fetch/groups/details';
-	import {
-		fetchGroupIndex,
-		categoryLabel,
-		CATEGORY_SLUG_PREFIX,
-		CAT_MOONS,
-		CAT_PLANETS,
-		CAT_DWARF_PLANETS,
-		CAT_SOLAR_SYSTEM,
-		CAT_ASTEROIDS,
-		CAT_COMETS
-	} from '$lib/fetch/groups/registry';
+	import { fetchGroupIndex, CAT_MOONS, CAT_SOLAR_SYSTEM } from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
-	import {
-		type Focusable,
-		focusableFallbackName,
-		focusableKey,
-		groupSlugLabel
-	} from '$lib/state/focusable';
+	import { type Focusable, focusableFallbackName, focusableKey } from '$lib/state/focusable';
 	import ObjectHeader from './frame/ObjectHeader.svelte';
 	import DrawerTitle from './frame/DrawerTitle.svelte';
 	import { parentCrumb } from '$lib/state/breadcrumb';
@@ -65,17 +50,19 @@
 	import MemberStrip, { STRIP_CAPACITY } from './members/MemberStrip.svelte';
 	import MemberList from './members/MemberList.svelte';
 	import PaginatedMemberList from './members/PaginatedMemberList.svelte';
-	import BodyLineup, { type LineupBody } from './charts/BodyLineup.svelte';
+	import BodyLineup from './charts/BodyLineup.svelte';
 	import SolarSystemMap from './charts/SolarSystemMap.svelte';
-	import { buildLineup, geometryFromMember, renderableCount } from './charts/lineup';
 	import CategoryCrossRefs from './sections/crossref/CategoryCrossRefs.svelte';
 	import CategoryChildTiles from './sections/crossref/CategoryChildTiles.svelte';
-	import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
 	import PlanetMassChart from './charts/PlanetMassChart.svelte';
 	import SolarSystemMassChart from './charts/SolarSystemMassChart.svelte';
 	import ObjectLinks from './sections/ObjectLinks.svelte';
 	import { formatCompactNumber } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
+	import { categoryConfig } from '$lib/state/category-config';
+	import { featureDetailToObjectData, groupDetailToObjectData } from '$lib/state/detail-adapters';
+	import { LineupHero } from './charts/lineup-hero.svelte';
+	import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 
 	// Module-scope dedupe so the "no name resolved" warning fires at most once
 	// per focusable across the session — survives drawer remounts and effect
@@ -97,27 +84,7 @@
 	let feature = $derived(focusable.kind === 'feature' ? focusable.feature : null);
 	let isFeatureMode = $derived(focusable.kind === 'feature');
 	let isGroupMode = $derived(focusable.kind === 'group');
-	let isPlanetsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_PLANETS);
-	let isMoonsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_MOONS);
-	let isDwarfPlanetsCategory = $derived(
-		focusable.kind === 'group' && focusable.slug === CAT_DWARF_PLANETS
-	);
-	// The three body-collection pages whose hero is a lineup (no member strip/tab,
-	// and they sibling-cross-link via CategoryCrossRefs).
-	let isLineupCategory = $derived(isPlanetsCategory || isMoonsCategory || isDwarfPlanetsCategory);
-	// The Solar System root: hero is the schematic minimap; the sphere lineup
-	// moves into its members tab.
-	let isSolarSystemCategory = $derived(
-		focusable.kind === 'group' && focusable.slug === CAT_SOLAR_SYSTEM
-	);
-	let isAsteroidsCategory = $derived(
-		focusable.kind === 'group' && focusable.slug === CAT_ASTEROIDS
-	);
-	let isCometsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_COMETS);
-	// These small-body pages route members through the dedicated members tab, so
-	// the overview strip is dropped; the category pages cross-link their siblings.
-	let isSmallBodyCategory = $derived(isAsteroidsCategory || isCometsCategory);
-	let showCategoryCrossRefs = $derived(isLineupCategory || isSmallBodyCategory);
+	let cat = $derived(categoryConfig(focusable));
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -182,31 +149,11 @@
 		groupDetail = null;
 		if (current.kind === 'feature') {
 			const f = current.feature;
-			const bodyId = current.body.data.id;
-			fetchFeatureDetail(bodyId, f.featureId)
+			fetchFeatureDetail(current.body.data.id, f.featureId)
 				.then((detail) => {
 					if (focusableId !== key) return;
 					featureDetail = detail;
-					data = {
-						global: {
-							id: `feature-${f.featureId}`,
-							type: 'feature',
-							name: f.name,
-							images: detail.global?.images,
-							cross_refs: detail.global?.wikidata_qid
-								? { wikidata_qid: detail.global.wikidata_qid }
-								: undefined
-						},
-						localized: detail.localized
-							? {
-									description: detail.localized.description,
-									aliases: detail.localized.aliases,
-									instance_of: detail.localized.instance_of,
-									named_after: detail.localized.named_after,
-									wikipedia: detail.localized.wikipedia
-								}
-							: null
-					};
+					data = featureDetailToObjectData(detail, f);
 					loading = false;
 				})
 				.catch((err) => {
@@ -221,32 +168,7 @@
 				.then((detail) => {
 					if (focusableId !== key) return;
 					groupDetail = detail;
-					const websites = [detail.global?.website, detail.global?.url].filter(
-						(u): u is string => !!u
-					);
-					// Categories' display name is an i18n key, not the English bundle name.
-					const groupName = slug.startsWith(CATEGORY_SLUG_PREFIX)
-						? categoryLabel(slug)
-						: (detail.localized?.name ?? groupSlugLabel(slug));
-					data = {
-						global: {
-							id: `group-${slug}`,
-							type: 'group',
-							name: groupName,
-							images: detail.global?.images,
-							cross_refs: detail.global?.wikidata_qid
-								? { wikidata_qid: detail.global.wikidata_qid }
-								: undefined,
-							wikidata: websites.length > 0 ? { website: websites } : undefined
-						},
-						localized: detail.localized
-							? {
-									name: groupName,
-									description: detail.localized.description,
-									wikipedia: detail.localized.wikipedia
-								}
-							: null
-					};
+					data = groupDetailToObjectData(detail, slug);
 					loading = false;
 				})
 				.catch((err) => {
@@ -352,11 +274,7 @@
 	let categoryPlot = $derived(focusable.kind === 'group' ? categoryPlotType(focusable.slug) : null);
 	// Moons category: the per-planet/dwarf bar chart replaces the notable-members
 	// strip and members list this page deliberately omits.
-	let moonCounts = $derived(
-		isGroupMode && focusable.kind === 'group' && focusable.slug === CAT_MOONS
-			? groupDetail?.global?.moon_counts
-			: undefined
-	);
+	let moonCounts = $derived(cat.moons ? groupDetail?.global?.moon_counts : undefined);
 	let visibleChildGroups = $derived.by(() => {
 		// Bus chips live in GroupProperties; zones live in the orbit map;
 		// constellations fold into the top-constellations bar chart when present.
@@ -449,15 +367,6 @@
 				? [...(data?.global?.notable_moons ?? []), ...(data?.global?.notable_satellites ?? [])]
 				: data?.global?.notable_moons
 	);
-	// Small-body zones (orbit classes, NEO/PHA flags, asteroid/comet categories)
-	// get a planet-style sphere lineup hero when enough members carry a measured
-	// diameter. Below the floor it falls back to the plain page (member strip +
-	// stats). The planet/moon/dwarf categories have their own lineup heroes
-	// (isLineupCategory) and are excluded.
-	const SMALL_BODY_LINEUP_FLOOR = 3;
-	let isSmallBodyLineup = $derived(
-		isGroupMode && !isLineupCategory && renderableCount(notableMembers) >= SMALL_BODY_LINEUP_FLOOR
-	);
 	let memberNames = $derived(
 		isGroupMode
 			? groupDetail?.localized?.notable_member_names
@@ -468,114 +377,18 @@
 	let memberDescriptions = $derived(
 		isGroupMode ? groupDetail?.localized?.notable_member_descriptions : undefined
 	);
-	let smallBodyBodies = $derived(
-		buildLineup(notableMembers ?? [], geometryFromMember, {
-			names: memberNames,
-			descriptions: memberDescriptions
-		})
-	);
-	// A planet's moons get a lineup hero in its Moons tab. The moon-count test
-	// mirrors `showMembersTab` (declared later) so the hero only exists where the
-	// tab does; ≥2 renderable keeps it a real lineup, not a lone sphere.
-	let isPlanetBody = $derived(body?.data.objectType === ObjectType.PLANET);
-	let moonDescriptions = $derived(
-		isGroupMode ? undefined : data?.localized?.notable_moon_descriptions
-	);
-	let isMoonLineupHero = $derived(
-		isPlanetBody &&
-			!satellitesGroup &&
-			(data?.global?.moon_count ?? 0) > STRIP_CAPACITY &&
-			renderableCount(notableMembers) >= 2
-	);
-	// The category lineup hero, picked by which body-collection page this is.
-	// `null` → no lineup hero (the page keeps its image hero). Planets omit hover
-	// descriptions by design.
-	let lineupHero = $derived.by<{
-		bodies: LineupBody[];
-		ariaLabel: string;
-		perPage?: number;
-	} | null>(() => {
-		const members = notableMembers;
-		if (!members || members.length === 0) return null;
-		if (isPlanetsCategory)
-			return {
-				bodies: buildLineup(members, geometryFromMember, { names: memberNames }),
-				ariaLabel: m.type_planet()
-			};
-		if (isMoonsCategory)
-			return {
-				bodies: buildLineup(members, geometryFromMember, {
-					names: memberNames,
-					descriptions: memberDescriptions
-				}),
-				ariaLabel: m.type_moon(),
-				perPage: 5
-			};
-		if (isDwarfPlanetsCategory)
-			return {
-				bodies: buildLineup(members, geometryFromMember, {
-					names: memberNames,
-					descriptions: memberDescriptions
-				}),
-				ariaLabel: m.type_dwarf_planet(),
-				perPage: 5
-			};
-		if (isSmallBodyLineup) return { bodies: smallBodyBodies, ariaLabel: fallbackName, perPage: 8 };
-		if (isMoonLineupHero)
-			return {
-				bodies: buildLineup(members, geometryFromMember, {
-					names: memberNames,
-					descriptions: moonDescriptions
-				}),
-				ariaLabel: m.type_moon(),
-				perPage: 5
-			};
-		return null;
-	});
-	// Surface-imagery credits for the lineup spheres. Loaded lazily (once per
-	// session) only on pages that actually show a lineup, then narrowed to the
-	// bodies on screen and deduped by author so the footer lists each map source
-	// once. NC maps (Steve Albers, FarGetaNik…) make this attribution a licence
-	// condition, not a nicety.
-	let textureCredits = $state<Map<string, TextureSource> | null>(null);
-	$effect(() => {
-		if (!lineupHero) return;
-		loadTextureCredits().then((m) => (textureCredits = m));
-	});
-	let lineupImagery = $derived.by(() => {
-		if (!lineupHero || !textureCredits) return [];
-		const out: { key: string; label: string; url: string }[] = [];
-		const seen = new Set<string>();
-		for (const b of lineupHero.bodies) {
-			const cred = textureCredits.get(b.id);
-			if (!cred || seen.has(cred.organisation)) continue;
-			seen.add(cred.organisation);
-			out.push({ key: cred.organisation, label: cred.organisation, url: cred.source });
-		}
-		return out;
-	});
-	// Which lineup metadata sources to credit, read off the fields the members
-	// actually carry (radii/pole/mass ⇒ SPICE PCK; radius fallback ⇒ Wikidata),
-	// plus SBDB for the small-body pages whose diameter/albedo/spectral data is
-	// SBDB-sourced. Moon diameters are PCK-mean radii, so the moon hero credits PCK.
-	let lineupPck = $derived(
-		!!lineupHero &&
-			(isMoonLineupHero ||
-				(notableMembers ?? []).some((mm) => mm.radii || mm.pole || mm.mass_kg != null))
-	);
-	let lineupWikidata = $derived(
-		!!lineupHero && (notableMembers ?? []).some((mm) => mm.radius_km != null)
-	);
-	let lineupSbdb = $derived(!!lineupHero && isSmallBodyLineup);
-	// Sphere lineup for the Solar System members tab
-	let solarSystemLineup = $derived.by<{ bodies: LineupBody[]; perPage: number } | null>(() => {
-		if (!isSolarSystemCategory || !notableMembers || notableMembers.length === 0) return null;
-		const bodies = buildLineup(notableMembers, geometryFromMember, {
-			names: memberNames,
-			descriptions: memberDescriptions
-		});
-		if (bodies.length === 0) return null;
-		return { bodies, perPage: 8 };
+	// Sphere-lineup hero + its imagery/metadata credits (see lineup-hero.svelte.ts).
+	const lineup = new LineupHero({
+		isGroupMode: () => isGroupMode,
+		cat: () => cat,
+		isPlanetBody: () => body?.data.objectType === ObjectType.PLANET,
+		satellitesGroup: () => satellitesGroup,
+		moonCount: () => data?.global?.moon_count ?? 0,
+		fallbackName: () => fallbackName,
+		notableMembers: () => notableMembers,
+		memberNames: () => memberNames,
+		memberDescriptions: () => memberDescriptions,
+		moonDescriptions: () => (isGroupMode ? undefined : data?.localized?.notable_moon_descriptions)
 	});
 	let memberTotal = $derived(
 		isGroupMode
@@ -616,7 +429,7 @@
 	// Earth's Satellites strip sends "+N more" to the group, so no in-drawer tab.
 	// The planet/moon lineups already cross-link every member, so they need neither.
 	let showMembersTab = $derived(
-		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !isLineupCategory
+		hasMembers && !satellitesGroup && memberTotal > STRIP_CAPACITY && !cat.lineup
 	);
 
 	function seeAllMembers() {
@@ -664,6 +477,57 @@
 		const link = data?.global?.mission;
 		if (link) appState?.setGroup(link.primary_id, link.name);
 	}
+
+	// Overview member strips (same card UI, different sources): body moons/sats,
+	// split-comet fragments, mission craft. Lineup/small-body/Solar-System pages
+	// route members through their own hero or tab, so drop the plain strip.
+	interface OverviewStrip {
+		members: NotableMemberEntry[];
+		localizedNames?: Record<string, string>;
+		totalCount: number;
+		heading: string;
+		onSeeAll: () => void;
+		focusMovesCamera?: boolean;
+	}
+	let overviewStrips = $derived.by(() => {
+		const strips: OverviewStrip[] = [];
+		if (
+			notableMembers &&
+			notableMembers.length > 0 &&
+			!cat.lineup &&
+			!cat.solarSystem &&
+			!isSmallBodyZone &&
+			!cat.smallBody
+		) {
+			strips.push({
+				members: notableMembers,
+				localizedNames: memberNames,
+				totalCount: memberTotal,
+				heading: membersHeading,
+				onSeeAll: seeAllMembers
+			});
+		}
+		if (hasFragments && notableFragments) {
+			strips.push({
+				members: notableFragments,
+				localizedNames: fragmentNames,
+				totalCount: fragmentTotal,
+				heading: m.fragments_section(),
+				onSeeAll: seeAllFragments,
+				focusMovesCamera: false
+			});
+		}
+		if (hasMissionMembers && missionMembers) {
+			strips.push({
+				members: missionMembers,
+				localizedNames: missionMemberNames,
+				totalCount: missionMemberTotal,
+				heading: m.mission_members_section(),
+				onSeeAll: seeAllMissionMembers
+			});
+		}
+		return strips;
+	});
 	// URL-backed so it's deep-linkable. A tab whose content this object lacks
 	// falls back to overview, never rendering empty.
 	let activeTab = $derived<DrawerTab>(
@@ -718,11 +582,11 @@
 {/snippet}
 
 {#snippet lineupHeroSnippet()}
-	{#if lineupHero}
+	{#if lineup.hero}
 		<BodyLineup
-			bodies={lineupHero.bodies}
-			ariaLabel={lineupHero.ariaLabel}
-			perPage={lineupHero.perPage}
+			bodies={lineup.hero.bodies}
+			ariaLabel={lineup.hero.ariaLabel}
+			perPage={lineup.hero.perPage}
 		/>
 	{/if}
 {/snippet}
@@ -748,9 +612,9 @@
 				localized={data?.localized ?? null}
 				{fallbackName}
 				leadingBadges={groupHeaderBadges}
-				hero={isSolarSystemCategory
+				hero={cat.solarSystem
 					? solarSystemMapSnippet
-					: lineupHero && !isMoonLineupHero
+					: lineup.hero && !lineup.isMoonLineup
 						? lineupHeroSnippet
 						: undefined}
 				onShowGallery={() => {
@@ -795,34 +659,16 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory && !isSolarSystemCategory && !isSmallBodyZone && !isSmallBodyCategory}
+			{#each overviewStrips as strip (strip.heading)}
 				<MemberStrip
-					members={notableMembers}
-					localizedNames={memberNames}
-					totalCount={memberTotal}
-					heading={membersHeading}
-					onSeeAll={seeAllMembers}
+					members={strip.members}
+					localizedNames={strip.localizedNames}
+					totalCount={strip.totalCount}
+					heading={strip.heading}
+					onSeeAll={strip.onSeeAll}
+					focusMovesCamera={strip.focusMovesCamera ?? true}
 				/>
-			{/if}
-			{#if hasFragments && notableFragments}
-				<MemberStrip
-					members={notableFragments}
-					localizedNames={fragmentNames}
-					totalCount={fragmentTotal}
-					heading={m.fragments_section()}
-					onSeeAll={seeAllFragments}
-					focusMovesCamera={false}
-				/>
-			{/if}
-			{#if hasMissionMembers && missionMembers}
-				<MemberStrip
-					members={missionMembers}
-					localizedNames={missionMemberNames}
-					totalCount={missionMemberTotal}
-					heading={m.mission_members_section()}
-					onSeeAll={seeAllMissionMembers}
-				/>
-			{/if}
+			{/each}
 			{#if feature}
 				<FeatureProperties {feature} detail={featureDetail} />
 			{:else if body}
@@ -838,16 +684,16 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
-				{#if showCategoryCrossRefs && focusable.kind === 'group'}
+				{#if cat.crossRefs && focusable.kind === 'group'}
 					<CategoryCrossRefs slug={focusable.slug} />
 				{/if}
-				{#if isSolarSystemCategory && visibleChildGroups.length}
+				{#if cat.solarSystem && visibleChildGroups.length}
 					<CategoryChildTiles childGroups={visibleChildGroups} />
 				{/if}
-				{#if isPlanetsCategory && notableMembers && notableMembers.length > 0}
+				{#if cat.planets && notableMembers && notableMembers.length > 0}
 					<PlanetMassChart members={notableMembers} localizedNames={memberNames} />
 				{/if}
-				{#if isSolarSystemCategory}
+				{#if cat.solarSystem}
 					<SolarSystemMassChart />
 				{/if}
 				{#if moonCounts && moonCounts.length > 0}
@@ -856,7 +702,7 @@
 				{#if categoryPlot && groupDetail?.global}
 					<GroupOrbitMap global={groupDetail.global} plotOverride={categoryPlot} />
 				{/if}
-				{#if visibleChildGroups.length && !isSolarSystemCategory}
+				{#if visibleChildGroups.length && !cat.solarSystem}
 					<ChildGroups childGroups={visibleChildGroups} />
 				{/if}
 				<GroupProperties
@@ -869,10 +715,10 @@
 				global={data?.global ?? null}
 				earthSat={earthSatCredit}
 				wikipediaLicensed={!!data?.localized?.wikipedia?.extract}
-				pck={!isMoonLineupHero && lineupPck}
-				sbdb={!isMoonLineupHero && lineupSbdb}
-				wikidata={!isMoonLineupHero && lineupWikidata}
-				imagery={isMoonLineupHero ? [] : lineupImagery}
+				pck={lineup.overviewCredits.pck}
+				sbdb={lineup.overviewCredits.sbdb}
+				wikidata={lineup.overviewCredits.wikidata}
+				imagery={lineup.overviewCredits.imagery}
 			/>
 		</div>
 	{/if}
@@ -891,16 +737,16 @@
 	<div class="flex flex-col gap-3 p-1">
 		<!-- The lineup is this tab's hero; its imagery/size credits ride at the
 		     foot here, where the spheres render — not the overview footer. -->
-		{#if isMoonLineupHero}
+		{#if lineup.isMoonLineup}
 			{@render lineupHeroSnippet()}
 		{/if}
 		<!-- Solar System: the minimap is the page hero, so the sphere lineup lives
 		     here in the members tab (paginated). -->
-		{#if solarSystemLineup}
+		{#if lineup.solarSystemLineup}
 			<BodyLineup
-				bodies={solarSystemLineup.bodies}
+				bodies={lineup.solarSystemLineup.bodies}
 				ariaLabel={fallbackName}
-				perPage={solarSystemLineup.perPage}
+				perPage={lineup.solarSystemLineup.perPage}
 			/>
 		{/if}
 		{@render tabsBar()}
@@ -919,8 +765,8 @@
 				fallback={notableMembers}
 			/>
 		{/if}
-		{#if isMoonLineupHero}
-			<SourcesFooter global={null} pck={lineupPck} imagery={lineupImagery} />
+		{#if lineup.isMoonLineup}
+			<SourcesFooter global={null} pck={lineup.pck} imagery={lineup.imagery} />
 		{/if}
 	</div>
 {/snippet}
@@ -936,6 +782,47 @@
 			/>
 		{/if}
 	</div>
+{/snippet}
+
+{#snippet drawerToolbar()}
+	{#if showCameraButtons}
+		<Button
+			size="icon-lg"
+			class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
+			onclick={isMinimized ? onMinimize : onMaximize}
+		>
+			{#if isMinimized}
+				<ZoomOutIcon />
+				<span class="sr-only">{m.zoom_out_to_system()}</span>
+			{:else}
+				<ZoomInIcon />
+				<span class="sr-only">{m.go_to_object()}</span>
+			{/if}
+		</Button>
+	{/if}
+	<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
+		<Share2Icon />
+		<span class="sr-only">{m.share()}</span>
+	</Button>
+	<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
+		<XIcon />
+		<span class="sr-only">{m.close()}</span>
+	</Button>
+{/snippet}
+
+{#snippet tabPanels(contentClass: string | undefined)}
+	<Tabs.Content value="overview" class={contentClass}>
+		{@render overviewPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="images" class={contentClass}>
+		{@render imagesPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="members" class={contentClass}>
+		{@render membersPanel()}
+	</Tabs.Content>
+	<Tabs.Content value="fragments" class={contentClass}>
+		{@render fragmentsPanel()}
+	</Tabs.Content>
 {/snippet}
 
 {#if isMobile}
@@ -957,35 +844,7 @@
 					<div class="flex w-full items-center justify-between gap-2">
 						<DrawerTitle {crumb} title={displayName} />
 						<div class="flex items-center gap-1.5">
-							{#if showCameraButtons}
-								{#if isMinimized}
-									<Button
-										size="icon-lg"
-										class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-										onclick={onMinimize}
-									>
-										<ZoomOutIcon />
-										<span class="sr-only">{m.zoom_out_to_system()}</span>
-									</Button>
-								{:else}
-									<Button
-										size="icon-lg"
-										class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-										onclick={onMaximize}
-									>
-										<ZoomInIcon />
-										<span class="sr-only">{m.go_to_object()}</span>
-									</Button>
-								{/if}
-							{/if}
-							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
-								<Share2Icon />
-								<span class="sr-only">{m.share()}</span>
-							</Button>
-							<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
-								<XIcon />
-								<span class="sr-only">{m.close()}</span>
-							</Button>
+							{@render drawerToolbar()}
 						</div>
 					</div>
 				</div>
@@ -998,18 +857,7 @@
 						class="flex-1 min-h-0 px-4 {isAtTop ? 'overflow-y-auto' : 'overflow-hidden'}"
 						style="padding-bottom: calc(1rem + {TOP_GAP_PX}px + var(--safe-bottom));"
 					>
-						<Tabs.Content value="overview">
-							{@render overviewPanel()}
-						</Tabs.Content>
-						<Tabs.Content value="images">
-							{@render imagesPanel()}
-						</Tabs.Content>
-						<Tabs.Content value="members">
-							{@render membersPanel()}
-						</Tabs.Content>
-						<Tabs.Content value="fragments">
-							{@render fragmentsPanel()}
-						</Tabs.Content>
+						{@render tabPanels(undefined)}
 					</div>
 				</Tabs.Root>
 			</Vaul.Content>
@@ -1024,35 +872,7 @@
 		<div class="flex items-center justify-between gap-2 px-4 pb-2 pt-[18px]">
 			<DrawerTitle {crumb} title={displayName} />
 			<div class="flex items-center gap-1.5">
-				{#if showCameraButtons}
-					{#if isMinimized}
-						<Button
-							size="icon-lg"
-							class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-							onclick={onMinimize}
-						>
-							<ZoomOutIcon />
-							<span class="sr-only">{m.zoom_out_to_system()}</span>
-						</Button>
-					{:else}
-						<Button
-							size="icon-lg"
-							class="rounded-full bg-foreground text-background hover:bg-foreground/90 hover:text-background"
-							onclick={onMaximize}
-						>
-							<ZoomInIcon />
-							<span class="sr-only">{m.go_to_object()}</span>
-						</Button>
-					{/if}
-				{/if}
-				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={handleShare}>
-					<Share2Icon />
-					<span class="sr-only">{m.share()}</span>
-				</Button>
-				<Button variant="secondary" size="icon-lg" class="rounded-full" onclick={onClose}>
-					<XIcon />
-					<span class="sr-only">{m.close()}</span>
-				</Button>
+				{@render drawerToolbar()}
 			</div>
 		</div>
 
@@ -1062,18 +882,7 @@
 			class="flex flex-1 min-h-0 flex-col"
 		>
 			<ScrollArea class="flex-1 min-h-0">
-				<Tabs.Content value="overview" class="px-4 pb-4">
-					{@render overviewPanel()}
-				</Tabs.Content>
-				<Tabs.Content value="images" class="px-4 pb-4">
-					{@render imagesPanel()}
-				</Tabs.Content>
-				<Tabs.Content value="members" class="px-4 pb-4">
-					{@render membersPanel()}
-				</Tabs.Content>
-				<Tabs.Content value="fragments" class="px-4 pb-4">
-					{@render fragmentsPanel()}
-				</Tabs.Content>
+				{@render tabPanels('px-4 pb-4')}
 			</ScrollArea>
 		</Tabs.Root>
 	</aside>
