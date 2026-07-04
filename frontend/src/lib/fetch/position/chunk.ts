@@ -376,18 +376,15 @@ export class ChunkLoader {
 		const missingGm = new Map<string, Set<string>>(); // "naif-<id>" or "naif-undefined" → probe ids
 		const nullOffsets = new Set<string>();
 		const undefinedCenterProbes = new Set<string>();
-		// `probesAt` dedupes per probe.id. At boot there's no focused system,
-		// so the initial zone wins by metadata order (interplanetary first);
-		// the per-frame propagator flips parentId when zooming into a planet.
+		// At boot there's no focused system, so the initial zone wins by metadata
+		// order (interplanetary first); the per-frame propagator flips parentId later.
 		for (const { probe, zoneCenterNaifId, startJd, endJd } of probeStore.probesAt(jd)) {
 			if (!probe.id) continue;
 			if (zoneCenterNaifId === undefined) undefinedCenterProbes.add(probe.id);
 			const zoneCenterKey = `naif-${zoneCenterNaifId}`;
-			// Resolve the probe's *actual* fit center: the writer-stamped
-			// override (Moon for lunar orbiters, Titan for Cassini-at-Titan, …)
-			// or the zone center when there's no override. Sub-chunks were fit
-			// against that body, so its NAIF + GM + world position drive both
-			// the propagator and the anchor.
+			// Sub-chunks are fit against the probe's actual fit center — the stamped
+			// override (Moon for lunar orbiters, …) or the zone center — so its
+			// NAIF/GM/position drive the propagator and anchor.
 			const override = resolvePrimaryOverride(probe, jd, zoneCenterKey, this.cheb);
 			const primaryKey = override ? override.id : zoneCenterKey;
 			const primaryNaif = override ? override.naifId : zoneCenterNaifId;
@@ -409,8 +406,7 @@ export class ChunkLoader {
 			const offset: [number, number, number] | null = offsetKm
 				? [kmToScene(offsetKm[0]), kmToScene(offsetKm[2]), -kmToScene(offsetKm[1])]
 				: null;
-			// Probe outside its sub-chunk windows at this jd (e.g. chunk
-			// straddles its inception) — emit a position-only entry at the
+			// No offset: probe is outside its sub-chunk windows here — emit at the
 			// parent's location; the per-frame propagator hides it.
 			const pos: [number, number, number] = offset
 				? [anchor[0] + offset[0], anchor[1] + offset[1], anchor[2] + offset[2]]
@@ -438,13 +434,9 @@ export class ChunkLoader {
 				orbitalSource: OrbitalSource.SPICE_PROBE
 			};
 			const elements = probeOsculatingElements(probe, jd, primaryMu);
-			// Re-read live probe record AND its current zone's fit center on
-			// every call: scrubbing the timeline can move the probe into a
-			// different chunk (per-chunk Probe ref goes stale) or a different
-			// zone with a different fit center (cruise → captured orbit). A
-			// late-arriving systems-global GM table also self-heals on the next
-			// periodic re-derive. Mirrors the chebyshev rederive pattern
-			// (`ownRederive` in processChebyshev).
+			// Re-read the probe and its fit center on every call: scrubbing can move
+			// it to another chunk (stale Probe ref) or zone (cruise → captured
+			// orbit), and a late GM table self-heals on the next re-derive.
 			const ownId = probe.id;
 			const cheb = this.cheb;
 			const rederiveElements = (newJd: number): OrbitalElements | null => {
@@ -456,25 +448,22 @@ export class ChunkLoader {
 				const freshPrimaryMu = getGmKm3s2(freshPrimaryNaif) ?? 0;
 				return probeOsculatingElements(located.probe, newJd, freshPrimaryMu);
 			};
-			// Trail-buffer path for probes with any chebyshev sub-chunk: an
-			// osculating-ellipse trail is meaningless during a non-Kepler phase
-			// (planetary flyby, capture/depart maneuver), so sample real past
-			// positions instead. Probes that are pure Kepler stay on the
-			// orbit-elements codepath above. Buffer is sized by the osculating
-			// period when available (closes the loop after one orbit); falls back
-			// to the current chunk's window when elements can't be derived
-			// (mu=0 at first paint, degenerate chebyshev FD).
+			// Chebyshev probes: an osculating-ellipse trail is wrong during non-Kepler
+			// phases (flyby, capture burn), so sample real past positions. Buffer spans
+			// one osculating period, falling back to the chunk window when elements are
+			// unavailable (mu=0 at first paint).
 			const hasChebyshev = probe.subChunks.some((sc) => sc.method === PROBE_METHOD_CHEBYSHEV);
 			let trailBuffer: TrailBuffer | undefined;
 			if (hasChebyshev) {
 				const periodDays = elements && elements.n > 0 ? 360 / elements.n : endJd - startJd;
 				const stepDays = periodDays > 0 ? periodDays / NUM_TRAIL_POINTS : 1;
-				// Chord-error tolerance for adaptive trail sampling: a small
-				// fraction of the orbit's semi-major axis (in scene units).
-				// Falls back to Infinity (uniform sampling) when osculating
-				// elements aren't available yet — the next periodic re-derive
-				// will rebuild with proper ε.
-				const epsilonScene = elements && elements.a > 0 ? elements.a * AU_SCALE * 0.0001 : Infinity;
+				// Chord-error tolerance for adaptive sampling, scaled to periapsis
+				// q = a(1−e) not a: keeps facets small where the curve is sharpest
+				// instead of loosening with apoapsis on eccentric orbits. q > 0 for
+				// ellipses and hyperbolic flybys alike, so gravity assists sample
+				// adaptively too. Infinity (uniform) until elements resolve.
+				const periapsisAu = elements ? elements.a * (1 - elements.e) : 0;
+				const epsilonScene = periapsisAu > 0 ? periapsisAu * AU_SCALE * 0.0001 : Infinity;
 				const cached = this.probeBuffers.get(probe.id);
 				if (cached && cached.parentKey === primaryKey) {
 					trailBuffer = cached.buffer;
@@ -487,20 +476,17 @@ export class ChunkLoader {
 			result.push({
 				data,
 				position: pos,
-				// Pass elements through even when the buffer drives trail rendering:
-				// the detail panel reads orbitElements to populate its orbital-elements
-				// section. The trail refresh path early-returns on trailBuffer before
-				// touching elements/rederive, so this is free for trail rendering.
+				// Kept even when the buffer drives the trail: the detail panel reads
+				// these for its orbital-elements section (the trail path ignores them).
 				orbitElements: elements ?? undefined,
-				// Private array, not a shared reference to the fit center body's position:
-				// a probe's parent can flip between frames as it crosses zones.
+				// Copy, not a shared ref to the fit center's position: a probe's parent
+				// can flip between frames as it crosses zones.
 				orbitCenter: [anchor[0], anchor[1], anchor[2]],
 				rederiveElements,
 				trailBuffer
 			});
 		}
-		// Surface every silent-drop path so missing probes don't render as just
-		// "you don't see it on screen". Deduped to keep the console legible.
+		// Surface every silent-drop path so a missing probe isn't just invisible.
 		if (undefinedCenterProbes.size > 0) {
 			console.error(
 				`processProbes: ${undefinedCenterProbes.size} probe(s) have undefined fit_center_naif_id ` +

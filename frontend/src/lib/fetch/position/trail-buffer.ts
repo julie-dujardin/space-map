@@ -16,9 +16,14 @@
  * individual segment can deviate from that average.
  */
 
-/** Per-segment bounds for adaptive sampling, as multipliers of `stepDays`. */
+/**
+ * Per-segment bounds for adaptive sampling, as multipliers of `stepDays`. The
+ * min floor is deep so eccentric-orbit periapsis passages can subdivide finely
+ * enough to meet the chord tolerance; it's only a floor, so the chord-error
+ * search still stops early on cruise arcs and doesn't over-sample.
+ */
 export const ADAPTIVE_MAX_STEP_FACTOR = 16;
-export const ADAPTIVE_MIN_STEP_FACTOR = 1 / 32;
+export const ADAPTIVE_MIN_STEP_FACTOR = 1 / 256;
 
 export class TrailBuffer {
 	readonly capacity: number;
