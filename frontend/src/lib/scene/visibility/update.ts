@@ -507,7 +507,10 @@ export function updateBodyVisibility(
 		const isFocused = bo.body.data.id === focusedBodyId;
 		const isHovered = hoveredBodyIds.has(bo.body.data.id);
 		mat.uniforms.uAlphaMultiplier.value = isHovered ? 2 : isFocused ? 1.75 : 1.0;
-		mat.uniforms.uAlphaMin.value = isFocused ? 0.15 : 0.0;
+		// Fade open trails (sats, probe buffers) to 0 at the tail; the floor is
+		// only for closed ellipses, whose far side would otherwise vanish.
+		const isClosed = line.userData.isOpenCurve === false;
+		mat.uniforms.uAlphaMin.value = isFocused && isClosed ? 0.15 : 0.0;
 		mat.uniforms.uShowFull.value = isFocused ? 1.0 : 0.0;
 	}
 

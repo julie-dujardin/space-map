@@ -119,9 +119,8 @@ export interface OrbitCurve {
  * was one period ago. `buildTrailPoints` then walks backwards from the body's
  * position through the curve to render the orbit.
  *
- * Rendered as a closed loop: spanning exactly one period means `curve[0]` ≈
- * `curve[N]` (they differ only by one period of drag/J2 drift, sub-pixel for
- * LEO), so the ellipse closes back onto the body.
+ * Open, not closed: a sliding window never rejoins `curve[0]` to `curve[N]`, so
+ * closing it draws a stray segment across the gap.
  */
 export function sgp4Curve(
 	satrec: SatRec,
