@@ -59,6 +59,16 @@
 				</div>
 				<Switch checked={settings.showClouds} onCheckedChange={(v) => settings.setShowClouds(v)} />
 			</label>
+			<label class="flex items-center justify-between gap-3 cursor-pointer">
+				<div class="flex flex-col min-w-0">
+					<span class="text-sm font-medium">{m.layers_high_ambient()}</span>
+					<span class="text-xs text-muted-foreground">{m.layers_high_ambient_desc()}</span>
+				</div>
+				<Switch
+					checked={settings.highAmbient}
+					onCheckedChange={(v) => settings.setHighAmbient(v)}
+				/>
+			</label>
 		</section>
 	</div>
 </div>

@@ -5,6 +5,7 @@ import { ObjectType } from '$lib/types/objects';
 import { versionedUrl } from '$lib/fetch/data-base';
 import { jdToDate } from '$lib/format/date';
 import { fetchObjectDetail } from '$lib/fetch/objects/object-data';
+import { getSettings } from '$lib/state/settings.svelte';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { getLabelVariant, setLabelName } from '../../label/factory';
 import { attachDisplacementMap, disposeDisplacementFromMaterial } from '../surface/displacement';
@@ -194,7 +195,13 @@ export async function loadBodyTexture(
 	}
 	// DEM sibling — standalone bodies (Vesta/Ceres) load it here since they
 	// never hit the per-system path. Same shape as `system.ts`'s branch.
-	if (detail.global.displacement && !bo.displacementMap && bo.mesh) {
+	// Debug: displacement off → the sphere keeps its shape without the relief.
+	if (
+		detail.global.displacement &&
+		!bo.displacementMap &&
+		bo.mesh &&
+		getSettings().showDisplacement
+	) {
 		const dispMeta = detail.global.displacement;
 		if (ctx) {
 			ctx.credits.registerDisplacement({
@@ -216,11 +223,16 @@ export async function loadBodyTexture(
 		);
 		if (tex) {
 			bo.displacementMap = tex;
-			bo.selfShadow = attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km));
+			// Debug: self-shadow off → relief without in-shader cast shadows.
+			bo.selfShadow = getSettings().showSelfShadow
+				? attachSelfShadowToBody(material, tex, kmToScene(dispMeta.scale_km))
+				: null;
 		}
 	}
 
 	if (bo.textureTier || bo.textureLoading) return;
+	// Debug: surface texture off → the sphere shows its flat base tint only.
+	if (!getSettings().showSurfaceTexture) return;
 	bo.availableTiers ??= [...TIER_NAMES];
 	bo.availableFrames = detail.global.texture?.frames;
 	await swapBodyTexture(bo, 'low', textureFrameForJd(currentJd, bo.availableFrames), textureLoader);

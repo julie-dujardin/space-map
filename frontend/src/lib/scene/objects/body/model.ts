@@ -18,6 +18,7 @@ import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { ObjectType, effectiveRadiusKm, type PositionedBody } from '$lib/types/objects';
 import { kmToScene } from '$lib/math/units';
 import { bodyMeshColor } from '$lib/utils';
+import { getSettings } from '$lib/state/settings.svelte';
 import { OrbitalSource } from '$lib/fetch/position/format';
 import type { BodyObjects } from '../../types';
 import { setLabelNote } from '../../label/factory';
@@ -199,6 +200,8 @@ async function loadNaturalBodyModel(
 	modelScene: Scene,
 	ctx?: ContextManager
 ): Promise<void> {
+	// Debug: shape mesh off → keep the textured (triaxial) sphere, skip the mesh.
+	if (!getSettings().showShapeMesh) return;
 	const epoch = bo.modelLoadEpoch ?? 0;
 	bo.modelLoading = true;
 	try {

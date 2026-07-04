@@ -27,6 +27,11 @@ interface Persisted {
 	showSkyboxAlign?: boolean;
 	showHaloDebug?: boolean;
 	showClouds?: boolean;
+	highAmbient?: boolean;
+	showShapeMesh?: boolean;
+	showSurfaceTexture?: boolean;
+	showDisplacement?: boolean;
+	showSelfShadow?: boolean;
 	viewMode?: ViewMode;
 	maxPartsPerZone?: number;
 }
@@ -55,6 +60,14 @@ class SettingsState {
 	showSkyboxAlign = $state(false);
 	showHaloDebug = $state(false);
 	showClouds = $state(true);
+	/** Flood the scene with flat ambient fill so night sides are fully lit. */
+	highAmbient = $state(false);
+	/** Debug body-layer toggles: peel back the focused body's render stack to
+	 *  isolate a layer (e.g. shape mesh off → textured triaxial sphere). */
+	showShapeMesh = $state(true);
+	showSurfaceTexture = $state(true);
+	showDisplacement = $state(true);
+	showSelfShadow = $state(true);
 	viewMode = $state<ViewMode>('map');
 	/** Debug cap on parts loaded per zone. 0 = unlimited. Only takes effect on
 	 *  the next page load — already-resident chunks aren't unloaded. */
@@ -71,6 +84,11 @@ class SettingsState {
 		this.showSkyboxAlign = stored.showSkyboxAlign ?? false;
 		this.showHaloDebug = stored.showHaloDebug ?? false;
 		this.showClouds = stored.showClouds ?? true;
+		this.highAmbient = stored.highAmbient ?? false;
+		this.showShapeMesh = stored.showShapeMesh ?? true;
+		this.showSurfaceTexture = stored.showSurfaceTexture ?? true;
+		this.showDisplacement = stored.showDisplacement ?? true;
+		this.showSelfShadow = stored.showSelfShadow ?? true;
 		this.viewMode = stored.viewMode ?? 'map';
 		this.maxPartsPerZone = stored.maxPartsPerZone ?? 0;
 
@@ -113,6 +131,31 @@ class SettingsState {
 
 	setShowClouds(v: boolean) {
 		this.showClouds = v;
+		this.persist();
+	}
+
+	setHighAmbient(v: boolean) {
+		this.highAmbient = v;
+		this.persist();
+	}
+
+	setShowShapeMesh(v: boolean) {
+		this.showShapeMesh = v;
+		this.persist();
+	}
+
+	setShowSurfaceTexture(v: boolean) {
+		this.showSurfaceTexture = v;
+		this.persist();
+	}
+
+	setShowDisplacement(v: boolean) {
+		this.showDisplacement = v;
+		this.persist();
+	}
+
+	setShowSelfShadow(v: boolean) {
+		this.showSelfShadow = v;
 		this.persist();
 	}
 
@@ -177,6 +220,11 @@ class SettingsState {
 				showSkyboxAlign: this.showSkyboxAlign,
 				showHaloDebug: this.showHaloDebug,
 				showClouds: this.showClouds,
+				highAmbient: this.highAmbient,
+				showShapeMesh: this.showShapeMesh,
+				showSurfaceTexture: this.showSurfaceTexture,
+				showDisplacement: this.showDisplacement,
+				showSelfShadow: this.showSelfShadow,
 				viewMode: this.viewMode,
 				maxPartsPerZone: this.maxPartsPerZone
 			};

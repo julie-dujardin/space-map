@@ -25,6 +25,8 @@ export interface ThreeBoot {
 	camera: PerspectiveCamera;
 	composer: EffectComposer;
 	bloomPass: UnrealBloomPass;
+	/** Main-scene ambient fill; intensity is driven by the high-ambient toggle. */
+	ambientLight: AmbientLight;
 	/** Sub-system view's directional sun light. Solar-system view drives the
 	 *  Sun's `PointLight` instead — see `shaders/sun-shadow-light.ts`. Shadow
 	 *  map disabled; body-on-body shadows are computed analytically. */
@@ -63,7 +65,8 @@ export function bootThree(
 	ctx.visibility.updateViewport(canvas.clientHeight);
 
 	const scene = new Scene();
-	scene.add(new AmbientLight(0xffffff, AMBIENT_INTENSITY));
+	const ambientLight = new AmbientLight(0xffffff, AMBIENT_INTENSITY);
+	scene.add(ambientLight);
 	const shadowLight = new DirectionalLight(0xffffff, 0);
 	shadowLight.castShadow = false;
 	scene.add(shadowLight);
@@ -85,5 +88,5 @@ export function bootThree(
 	composer.addPass(bloomPass);
 	composer.addPass(new OutputPass());
 
-	return { renderer, labelRenderer, scene, camera, composer, bloomPass, shadowLight };
+	return { renderer, labelRenderer, scene, camera, composer, bloomPass, ambientLight, shadowLight };
 }

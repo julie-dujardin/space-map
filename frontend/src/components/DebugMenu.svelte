@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { SceneRenderer } from '$lib/scene/renderer';
 	import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
@@ -108,6 +108,26 @@
 		const r = getRenderer();
 		r?.setPointingAxesVisible(supported && on);
 		return () => r?.setPointingAxesVisible(false);
+	});
+
+	// Body-layer toggles rebuild the focused body's render stack. Track only the
+	// four flags; untrack the reapply call — it reads live per-frame scene state
+	// (focus, positions) that would otherwise re-fire this effect every frame and
+	// spin the texture reload. Skip the first run so opening the panel is a no-op.
+	let layersInit = false;
+	$effect(() => {
+		const _deps = [
+			settings.showShapeMesh,
+			settings.showSurfaceTexture,
+			settings.showDisplacement,
+			settings.showSelfShadow
+		];
+		void _deps;
+		if (!layersInit) {
+			layersInit = true;
+			return;
+		}
+		untrack(() => getRenderer()?.reapplyBodyLayers());
 	});
 
 	function fmtInt(n: number): string {
@@ -269,6 +289,42 @@
 				onchange={(e) => settings.setMaxPartsPerZone(Number(e.currentTarget.value))}
 			/>
 			<span class="text-muted-foreground">0 = ∞, reload to apply</span>
+		</label>
+	</div>
+
+	<div class="mt-2 pt-2 border-t border-border/40 space-y-1">
+		<div class="text-muted-foreground">Focused body layers</div>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showShapeMesh}
+				onchange={(e) => settings.setShowShapeMesh(e.currentTarget.checked)}
+			/>
+			<span>Shape mesh <span class="text-muted-foreground">(off → triaxial sphere)</span></span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showSurfaceTexture}
+				onchange={(e) => settings.setShowSurfaceTexture(e.currentTarget.checked)}
+			/>
+			<span>Surface texture</span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showDisplacement}
+				onchange={(e) => settings.setShowDisplacement(e.currentTarget.checked)}
+			/>
+			<span>Displacement (DEM)</span>
+		</label>
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input
+				type="checkbox"
+				checked={settings.showSelfShadow}
+				onchange={(e) => settings.setShowSelfShadow(e.currentTarget.checked)}
+			/>
+			<span>Self-shadow</span>
 		</label>
 	</div>
 

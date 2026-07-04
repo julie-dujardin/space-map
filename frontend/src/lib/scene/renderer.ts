@@ -39,15 +39,22 @@ import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
 import { buildMajorBodies } from './objects/body/lifecycle';
-import { loadBodyTexture } from './objects/body/textures';
+import { loadBodyTexture, unloadBodyTexture } from './objects/body/textures';
 import { applyOrientation } from '$lib/math/orientation';
 import {
 	castModelRadius,
 	isModelBearing,
 	loadBodyModel,
+	unloadBodyModel,
 	modelUnitScene
 } from './objects/body/model';
-import { AMBIENT_INTENSITY, ENV_BASE_INTENSITY, makeEnvMap } from './lighting';
+import {
+	AMBIENT_BOOST_INTENSITY,
+	AMBIENT_INTENSITY,
+	ENV_BASE_INTENSITY,
+	makeEnvMap
+} from './lighting';
+import { getSettings } from '$lib/state/settings.svelte';
 import type { PointingSpec } from '$lib/math/orientation';
 import { attachNomenclatureLabels, setActiveFeatureLabel } from './objects/surface/nomenclature';
 import { buildTrails } from './objects/body/bulk';
@@ -179,6 +186,8 @@ export class SceneRenderer {
 	private fpsSampleHead = 0;
 	private readonly textureLoader = new TextureLoader();
 	private readonly shadowLight: DirectionalLight;
+	/** Both scenes' ambient fills; driven together by the high-ambient toggle. */
+	private readonly ambientLights: AmbientLight[];
 	private sunPointLight: PointLight | undefined;
 	/** Pinned user-location dot on Earth's surface (Google-Maps-style). */
 	private userLocationMarker: CSS2DObject | null = null;
@@ -220,7 +229,9 @@ export class SceneRenderer {
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY;
 		this.modelCamera = new PerspectiveCameraClass(60, 1, 0.01, 1000);
 		this.modelScene.add(this.modelCamera);
-		this.modelScene.add(new AmbientLight(0xffffff, AMBIENT_INTENSITY));
+		const modelAmbient = new AmbientLight(0xffffff, AMBIENT_INTENSITY);
+		this.modelScene.add(modelAmbient);
+		this.ambientLights = [boot.ambientLight, modelAmbient];
 		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
 		// Light sits at distance 10 from the unit-radius model. Frustum reaches well
 		// past the silhouette (deep near/far especially) so a grazing-Sun shadow
@@ -578,6 +589,10 @@ export class SceneRenderer {
 		updateAtmosphereShaders(this.bodyObjects);
 		updateEclipseUniforms(this.bodyObjects, this.focus.focusTruePos);
 
+		// High-ambient toggle: flat fill so night sides stay visible for inspection.
+		const ambient = getSettings().highAmbient ? AMBIENT_BOOST_INTENSITY : AMBIENT_INTENSITY;
+		for (const light of this.ambientLights) light.intensity = ambient;
+
 		updateUserLocationOcclusion(this.userLocationMarker, this.bodyObjects, this.camera);
 
 		const focusedIdLod = this.focusController.current?.data.id;
@@ -778,6 +793,20 @@ export class SceneRenderer {
 			.then(() => {
 				if (this.selectedFeatureId !== null) setActiveFeatureLabel(bo, this.selectedFeatureId);
 			});
+	}
+
+	/** Debug: rebuild the focused body's render stack so the current body-layer
+	 *  toggles (shape mesh / texture / displacement / self-shadow) take effect.
+	 *  Tears the appearance down and re-runs the focus load path, which reads the
+	 *  flags as it rebuilds. No-op with nothing focused. */
+	reapplyBodyLayers(): void {
+		const focused = this.focusController.current;
+		if (!focused) return;
+		const bo = this.bodyObjects.get(focused.data.id);
+		if (!bo) return;
+		unloadBodyModel(bo);
+		unloadBodyTexture(bo);
+		this.maybeLoadTexture(focused);
 	}
 
 	/** Update which surface-feature label renders as "active" (larger, bolder).
