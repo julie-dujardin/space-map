@@ -31,7 +31,9 @@
 		CAT_MOONS,
 		CAT_PLANETS,
 		CAT_DWARF_PLANETS,
-		CAT_SOLAR_SYSTEM
+		CAT_SOLAR_SYSTEM,
+		CAT_ASTEROIDS,
+		CAT_COMETS
 	} from '$lib/fetch/groups/registry';
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { DrawerTab } from '$lib/state/view';
@@ -108,6 +110,14 @@
 	let isSolarSystemCategory = $derived(
 		focusable.kind === 'group' && focusable.slug === CAT_SOLAR_SYSTEM
 	);
+	let isAsteroidsCategory = $derived(
+		focusable.kind === 'group' && focusable.slug === CAT_ASTEROIDS
+	);
+	let isCometsCategory = $derived(focusable.kind === 'group' && focusable.slug === CAT_COMETS);
+	// These small-body pages route members through the dedicated members tab, so
+	// the overview strip is dropped; the category pages cross-link their siblings.
+	let isSmallBodyCategory = $derived(isAsteroidsCategory || isCometsCategory);
+	let showCategoryCrossRefs = $derived(isLineupCategory || isSmallBodyCategory);
 	let groupHeaderBadges = $derived.by(() => {
 		const g = groupDetail?.global;
 		if (!g) return undefined;
@@ -144,6 +154,9 @@
 	let data = $state<ObjectDetailData | null>(null);
 	let featureDetail = $state<FeatureDetailData | null>(null);
 	let groupDetail = $state<GroupDetailData | null>(null);
+	// Asteroid/comet SBDB zones (orbit_class), distinct from earth_orbit_class
+	// satellite zones; their overview drops the notable-members strip.
+	let isSmallBodyZone = $derived(groupDetail?.global?.type === 'orbit_class');
 	let loading = $state(true);
 	// String key so the load effect ignores parent re-derivations that return a
 	// new focusable ref with the same logical identity (replaceFocusName churn).
@@ -782,7 +795,7 @@
 					jd={sampledJd}
 				/>
 			{/if}
-			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory && !isSolarSystemCategory}
+			{#if notableMembers && notableMembers.length > 0 && !isLineupCategory && !isSolarSystemCategory && !isSmallBodyZone && !isSmallBodyCategory}
 				<MemberStrip
 					members={notableMembers}
 					localizedNames={memberNames}
@@ -825,7 +838,7 @@
 				<Discovery global={data?.global ?? null} localized={data?.localized ?? null} />
 				<Mission global={data?.global ?? null} localized={data?.localized ?? null} />
 			{:else if isGroupMode}
-				{#if isLineupCategory && focusable.kind === 'group'}
+				{#if showCategoryCrossRefs && focusable.kind === 'group'}
 					<CategoryCrossRefs slug={focusable.slug} />
 				{/if}
 				{#if isSolarSystemCategory && visibleChildGroups.length}
