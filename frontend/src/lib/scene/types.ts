@@ -68,6 +68,9 @@ export interface BodyObjects {
 	textureFrame?: number;
 	/** A tier or frame swap is currently in flight. */
 	textureLoading?: boolean;
+	/** Bumped on unload; an in-flight swap whose captured value is now stale
+	 *  discards its result instead of re-attaching a texture that's no longer wanted. */
+	textureLoadGen?: number;
 	/** Cached screen-pixel width of the label name text. */
 	labelTextWidth?: number;
 	/** Minor-promoted halo: rendered as a small ring; expands on hover. From {@link MINOR_PROMOTED_IDS}. */

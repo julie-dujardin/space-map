@@ -78,11 +78,17 @@ async function swapBodyTexture(
 ): Promise<void> {
 	if (!bo.mesh) return;
 	const fileId = bo.body.data.id;
+	const gen = (bo.textureLoadGen ??= 0);
 	bo.textureLoading = true;
 	try {
 		const texture = await new Promise<Texture>((resolve, reject) => {
 			textureLoader.load(textureUrlFor(fileId, tier, frame), resolve, undefined, reject);
 		});
+		// Unloaded (debug toggle off / refocus) while in flight — don't re-attach.
+		if (!bo.mesh || bo.textureLoadGen !== gen) {
+			texture.dispose();
+			return;
+		}
 		const material = bo.mesh.material as MeshStandardMaterial;
 		setSurfaceMap(material, texture, bo.body.data.color);
 		// A loaded shape model samples the same map (equirect-projected).
@@ -272,6 +278,8 @@ export async function loadBodyLabel(bo: BodyObjects): Promise<void> {
  */
 export function unloadBodyTexture(bo: BodyObjects): void {
 	if (!bo.mesh) return;
+	// Invalidate any in-flight swap so it won't re-attach after we tear down.
+	bo.textureLoadGen = (bo.textureLoadGen ?? 0) + 1;
 	const material = bo.mesh.material as MeshStandardMaterial;
 	if (bo.displacementMap) {
 		disposeDisplacementFromMaterial(material);

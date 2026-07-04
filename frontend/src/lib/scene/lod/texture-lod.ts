@@ -24,7 +24,8 @@ export function updateTextureLOD(
 	const screenH = renderer.domElement.clientHeight;
 	const projScale = screenH / (2 * Math.tan(fovRad / 2));
 	const activeSystem = ctx.visibility.activeSystemId;
-	const showClouds = getSettings().showClouds;
+	const settings = getSettings();
+	const showClouds = settings.showClouds;
 
 	// Sync cloud-mesh visibility unconditionally — the LOD gate below skips
 	// bodies outside the active system, but visibility needs to track every
@@ -59,7 +60,8 @@ export function updateTextureLOD(
 
 		// Cloud nudge sits outside this gate so a direct high-zoom load doesn't
 		// strand clouds at low while the surface fetch is in flight.
-		if (!bo.textureLoading && (wantsUpgrade || frameChanged)) {
+		// Debug: with surface texture off, don't let LOD re-load what unload cleared.
+		if (settings.showSurfaceTexture && !bo.textureLoading && (wantsUpgrade || frameChanged)) {
 			const target = wantsUpgrade
 				? highestAvailableTier(desiredRank, bo.availableTiers)
 				: bo.textureTier;
