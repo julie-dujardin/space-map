@@ -106,14 +106,17 @@ export function makeTrail(
 	}
 	const { orbitElements, orbitCenter, data } = body;
 
-	// SGP4-backed Earth sats: sample the propagator across the *past* orbital
+	// SGP4-backed Earth sats: sample the propagator across one *past* orbital
 	// period so the trail ends at the body's current position. data.n is in
 	// deg/day for SGP4 bodies (converted in chunk.ts); back-convert to rev/day.
+	// The orbit is periodic, so it renders closed (isOpenCurve=false): the
+	// per-period drag/J2 drift is sub-pixel for LEO, so `curve[0]` ≈ the body
+	// and the loop closes cleanly.
 	let curve: [number, number, number][];
 	let isOpenCurve: boolean;
 	if (data.satrec) {
 		curve = sgp4Curve(data.satrec, jd, data.n / 360, NUM_TRAIL_POINTS);
-		isOpenCurve = true;
+		isOpenCurve = false;
 	} else {
 		if (!orbitElements) throw new Error('makeTrail called without orbitElements');
 		// Apply secular drift on Ω/ω so the drawn ellipse matches the body's
@@ -132,6 +135,7 @@ export function makeTrail(
 
 	const useTrail =
 		isOpenCurve ||
+		data.satrec != null || // periodic but shown as a partial trail unless focused
 		data.objectType === ObjectType.DWARF_PLANET ||
 		data.objectType === ObjectType.MOON ||
 		data.objectType === ObjectType.SPACECRAFT ||

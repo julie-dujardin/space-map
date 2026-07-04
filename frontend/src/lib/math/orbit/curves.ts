@@ -116,11 +116,12 @@ export interface OrbitCurve {
  *
  * The curve spans `[jdEnd - T, jdEnd]` — i.e. the past one orbital period — so
  * `curve[N]` is the satellite's current position and `curve[0]` is where it
- * was one period ago. `buildOrbitTrailPoints` then walks backwards from the
- * body's position through the curve to render the historical trail.
+ * was one period ago. `buildTrailPoints` then walks backwards from the body's
+ * position through the curve to render the orbit.
  *
- * The curve is open (not closed): drag + secular J2 drift mean one-period-ago
- * ≠ right-now, so it intentionally does not loop.
+ * Rendered as a closed loop: spanning exactly one period means `curve[0]` ≈
+ * `curve[N]` (they differ only by one period of drag/J2 drift, sub-pixel for
+ * LEO), so the ellipse closes back onto the body.
  */
 export function sgp4Curve(
 	satrec: SatRec,
