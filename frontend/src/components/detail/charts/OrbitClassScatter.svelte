@@ -76,7 +76,11 @@
 
 	let focusedClassNames = $derived(new Set(focusedZones.map((z) => z.className)));
 
-	let plotZones = $derived(Object.values(ORBIT_ZONES).filter((z) => z.plotType === activePlot));
+	// Inc-only classes (HYA: hyperbolic, no plottable a) carry no polygon; they
+	// fold in below the map as chips instead of drawing a zone here.
+	let plotZones = $derived(
+		Object.values(ORBIT_ZONES).filter((z) => z.plotType === activePlot && z.polygon.length > 0)
+	);
 
 	// Two presets for a-q so TNO/CEN are reachable without making the inner
 	// zones invisible. The chart auto-picks based on what's focused; user can

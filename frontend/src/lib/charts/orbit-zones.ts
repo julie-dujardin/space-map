@@ -248,6 +248,15 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 		],
 		tooltipDefinition: () => m.zone_def_TNO()
 	},
+	// Hyperbolic asteroids (e > 1) have no plottable a, so no zone box — they
+	// fold in below the asteroid map as a chip, and the class page shows the
+	// asteroid map with nothing highlighted.
+	HYA: {
+		className: 'HYA',
+		plotType: 'a-q',
+		polygon: [],
+		tooltipDefinition: () => m.zone_def_HYA()
+	},
 	// --- Comet families (a-T plot): SBDB rectangles, tiled to match the
 	// catalog's one-class-per-object priority (Tisserand families win over the
 	// classical period ones). COM catch-all fills the leftover corner: bound,
@@ -290,14 +299,8 @@ export const ORBIT_ZONES: Record<string, OrbitZone> = {
 		polygon: rect(AJ, AT_DOMAIN.x[1], 3, AT_DOMAIN.y[1]),
 		tooltipDefinition: () => m.zone_def_CTc()
 	},
-	// --- Unbound trajectories (q-e plot). Asteroid-designated twins (HYA/PAA)
-	// sit under their comet counterparts; the thin e=1 bands render on top.
-	HYA: {
-		className: 'HYA',
-		plotType: 'q-e',
-		polygon: rect(1, QE_DOMAIN.x[1], QE_DOMAIN.y[0], QE_DOMAIN.y[1]),
-		tooltipDefinition: () => m.zone_def_HYA()
-	},
+	// --- Unbound trajectories (q-e plot). The asteroid-designated twin PAA sits
+	// under its comet counterpart; the thin e=1 bands render on top.
 	HYP: {
 		className: 'HYP',
 		plotType: 'q-e',
@@ -624,7 +627,7 @@ export const COMET_PLOT_TYPES: PlotType[] = ['a-T', 'q-e'];
 
 /** Slugs whose samples are drawn on the comet plots (a-T and q-e). */
 export const COMET_PLOT_CLASSES = new Set(
-	['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'COM', 'PAR', 'HYP', 'PAA', 'HYA'].map(
+	['ETc', 'JFc', 'JFC', 'CTc', 'HTC', 'COM', 'PAR', 'HYP', 'PAA'].map(
 		(c) => `${CLASS_SLUG_PREFIX}${c}`
 	)
 );
