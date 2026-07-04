@@ -9,6 +9,12 @@ import {
 import { makeFatTrailMaterial, makeTrailMaterial } from './material';
 import { writeTrailAlphas } from './points';
 
+// Match point clouds (see POINT_CLOUD_RENDER_ORDER): render after the planet's
+// transparent overlays (clouds=1, atmosphere=2). All are transparent +
+// depthWrite=false, so without an explicit order the cloud sphere's dark-side
+// fragments paint over trails in front of Earth, dimming them under the clouds.
+const TRAIL_RENDER_ORDER = 3;
+
 /**
  * Build the indexed triangle geometry backing a fat trail. Vertices come
  * in side pairs (one shifted to `-1`, one to `+1` perpendicular to the segment
@@ -118,6 +124,7 @@ export function makeEmptyTrail(): Line | Mesh {
 	const material = new ShaderMaterial({ transparent: true });
 	const line = new Line(geometry, material);
 	line.visible = false;
+	line.renderOrder = TRAIL_RENDER_ORDER;
 	return line;
 }
 
@@ -134,7 +141,9 @@ export function buildThinLineFromArrays(
 	geometry.setAttribute('trailAlpha', new Float32BufferAttribute(trailAlphas, 1));
 	geometry.setAttribute('fullAlpha', new Float32BufferAttribute(fullAlphas, 1));
 	geometry.setDrawRange(0, total);
-	return new Line(geometry, makeTrailMaterial(color));
+	const line = new Line(geometry, makeTrailMaterial(color));
+	line.renderOrder = TRAIL_RENDER_ORDER;
+	return line;
 }
 
 /** Wrap pre-computed thin arrays into a fat-line `Mesh`. */
@@ -149,7 +158,9 @@ export function buildFatLineFromThin(
 ): Mesh {
 	const geometry = makeFatTrailGeometry(capacity);
 	writeFatTrailVertices(geometry, posArr, trailAlphas, fullAlphas, total);
-	return new Mesh(geometry, makeFatTrailMaterial(color, lineWidth));
+	const mesh = new Mesh(geometry, makeFatTrailMaterial(color, lineWidth));
+	mesh.renderOrder = TRAIL_RENDER_ORDER;
+	return mesh;
 }
 
 /**
