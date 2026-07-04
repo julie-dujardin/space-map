@@ -4,6 +4,7 @@ import type { BodyObjects } from '$lib/scene/types';
 import type { ContextManager } from '$lib/scene/state/context-manager.svelte';
 import { AU_SCALE } from '$lib/math/units';
 import { SUN_ID } from '$lib/constants';
+import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 
 const LIGHT_DIST = 10;
 
@@ -24,7 +25,7 @@ export function updateSunShadowLight(
 	const sysId = ctx.visibility.activeSystemId;
 	if (!sysId) {
 		shadowLight.intensity = 0;
-		if (sunPointLight) sunPointLight.intensity = 2;
+		if (sunPointLight) sunPointLight.intensity = SUN_LIGHT_INTENSITY;
 		return;
 	}
 
@@ -37,7 +38,7 @@ export function updateSunShadowLight(
 
 	shadowLight.position.copy(sunDir).multiplyScalar(LIGHT_DIST);
 	shadowLight.target.position.set(0, 0, 0);
-	shadowLight.intensity = 2;
+	shadowLight.intensity = SUN_LIGHT_INTENSITY;
 	if (sunPointLight) sunPointLight.intensity = 0;
 
 	const lateral = Math.max(cameraDistance * 2, 0.001);

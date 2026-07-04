@@ -33,13 +33,10 @@ const EQUIRECT_MAP_FRAGMENT = /* glsl */ `
  * (via {@link setShapeModelMap}), then the map projected equirectangularly.
  */
 export function makeShapeModelMaterial(color: string | number): MeshStandardMaterial {
-	// No IBL fill: the sphere path gets none, so the mesh nightside must match it.
-	// The overlay's env map is there for metallic spacecraft, not matte bodies.
 	const material = new MeshStandardMaterial({
 		color,
 		roughness: 1,
-		metalness: 0,
-		envMapIntensity: 0
+		metalness: 0
 	});
 	material.onBeforeCompile = (shader) => {
 		shader.vertexShader = shader.vertexShader
@@ -47,7 +44,20 @@ export function makeShapeModelMaterial(color: string | number): MeshStandardMate
 			.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBodyDir = position;');
 		shader.fragmentShader = shader.fragmentShader
 			.replace('#include <common>', '#include <common>\nvarying vec3 vBodyDir;')
-			.replace('#include <map_fragment>', EQUIRECT_MAP_FRAGMENT);
+			.replace('#include <map_fragment>', EQUIRECT_MAP_FRAGMENT)
+			// No IBL fill: the sphere path gets none, so the mesh nightside must
+			// match it. The overlay's env map is there for metallic spacecraft, not
+			// matte bodies. Stubbed in-shader because for a scene-level environment
+			// the renderer forces the envMapIntensity uniform to
+			// scene.environmentIntensity, ignoring the material's own opt-out.
+			.replace(
+				'#include <envmap_physical_pars_fragment>',
+				/* glsl */ `
+				#ifdef USE_ENVMAP
+					vec3 getIBLIrradiance( const in vec3 normal ) { return vec3( 0.0 ); }
+					vec3 getIBLRadiance( const in vec3 viewDir, const in vec3 normal, const in float roughness ) { return vec3( 0.0 ); }
+				#endif`
+			);
 	};
 	return material;
 }

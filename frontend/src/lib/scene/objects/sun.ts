@@ -12,6 +12,7 @@ import {
 	SpriteMaterial,
 	Vector3
 } from 'three';
+import { SUN_LIGHT_INTENSITY } from '$lib/scene/lighting';
 
 /**
  * Photosphere → star-point bloom handoff constants. Tuned together so the
@@ -225,7 +226,7 @@ export function buildStarExtras(
 	color: string,
 	circleTexture: CanvasTexture
 ): StarExtras {
-	const light = new PointLight(0xffffff, 2, 0, 0);
+	const light = new PointLight(0xffffff, SUN_LIGHT_INTENSITY, 0, 0);
 	scene.add(light);
 	const corona = makeStarGlow(radius, color);
 	scene.add(corona);

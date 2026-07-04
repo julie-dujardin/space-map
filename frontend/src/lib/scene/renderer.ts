@@ -52,6 +52,7 @@ import {
 	AMBIENT_BOOST_INTENSITY,
 	AMBIENT_INTENSITY,
 	ENV_BASE_INTENSITY,
+	SUN_LIGHT_INTENSITY,
 	makeEnvMap
 } from './lighting';
 import { getSettings } from '$lib/state/settings.svelte';
@@ -88,9 +89,6 @@ import { updateBodyVisibility } from './visibility/update';
 import { createUserLocationMarker, removeUserLocationMarker } from './user-location/marker';
 import { updateUserLocationOcclusion } from './user-location/occlusion';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-
-/** Base intensity of the model-overlay directional light. Scaled by the eclipse factor. */
-const MODEL_LIGHT_BASE_INTENSITY = 3.0;
 
 export class SceneRenderer {
 	private renderer: WebGLRenderer;
@@ -236,7 +234,7 @@ export class SceneRenderer {
 		const modelAmbient = new AmbientLight(0xffffff, AMBIENT_INTENSITY);
 		this.modelScene.add(modelAmbient);
 		this.ambientLights = [boot.ambientLight, modelAmbient];
-		this.modelLight = new DirectionalLightClass(0xffffff, MODEL_LIGHT_BASE_INTENSITY);
+		this.modelLight = new DirectionalLightClass(0xffffff, SUN_LIGHT_INTENSITY);
 		// Light sits at distance 10 from the unit-radius model. Frustum reaches well
 		// past the silhouette (deep near/far especially) so a grazing-Sun shadow
 		// streaking along the light axis isn't clipped; 4096² keeps it crisp.
@@ -707,7 +705,7 @@ export class SceneRenderer {
 		// Dim the sun by the analytical eclipse occlusion at the focused body's center.
 		this._tmpV3.set(0, 0, 0);
 		const factor = evaluateEclipseFactor(this._tmpV3, this._tmpV3);
-		this.modelLight.intensity = MODEL_LIGHT_BASE_INTENSITY * factor;
+		this.modelLight.intensity = SUN_LIGHT_INTENSITY * factor;
 		this.modelScene.environmentIntensity = ENV_BASE_INTENSITY * factor;
 
 		// Debug axis arrows share the model's world attitude (model sits at the
