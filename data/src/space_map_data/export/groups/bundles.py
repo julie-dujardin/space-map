@@ -72,6 +72,9 @@ K_GLOBAL = 1000
 K_LOCALIZED = 600
 _TOP_LAUNCH_SITES = 5
 _TOP_CONSTELLATIONS = 5
+# The Satellites category page devotes a whole section to constellations, so it
+# lists more than the per-group breakdown does.
+_CATEGORY_TOP_CONSTELLATIONS = 10
 
 
 _FLAG_PHA_SLUG = f"{SMALL_BODY_FLAG_SLUG_PREFIX}pha"
@@ -260,6 +263,7 @@ def _build_localized(
     child_counts: dict[str, int] | None = None,
     display_name: str | None = None,
     lv_stats: LaunchVehicleStats | None = None,
+    constellation_counts: dict[str, int] | None = None,
 ) -> dict:
     data: dict = {}
     # Categories carry a hand-set plural name (the Wikidata label is singular
@@ -337,6 +341,14 @@ def _build_localized(
     if stats and stats.constellations and group.type is not GroupType.CONSTELLATION:
         constellations = _constellation_refs(
             stats.constellations, lang, wikidata_entities
+        )
+        if constellations:
+            data["constellations"] = constellations
+    # Categories carry no GroupSatcatStats; the Satellites page's constellation
+    # counts arrive separately and show a longer list than a per-group breakdown.
+    elif constellation_counts:
+        constellations = _constellation_refs(
+            constellation_counts, lang, wikidata_entities, _CATEGORY_TOP_CONSTELLATIONS
         )
         if constellations:
             data["constellations"] = constellations
@@ -466,11 +478,10 @@ def _constellation_refs(
     counts: dict[str, int],
     lang: str,
     wikidata_entities: WikidataEntityCache,
+    limit: int = _TOP_CONSTELLATIONS,
 ) -> list[dict]:
     """Top constellations with localized ref + count; unknown slugs dropped."""
-    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[
-        :_TOP_CONSTELLATIONS
-    ]
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     out: list[dict] = []
     for slug, n in top:
         spec = CONSTELLATION_BY_SLUG.get(slug)
@@ -621,6 +632,7 @@ def write_group_bundles(
     extra_group_names: dict[str, str] | None = None,
     launch_vehicle_stats: dict[str, LaunchVehicleStats] | None = None,
     constellation_orbit_classes: dict[str, list[str]] | None = None,
+    extra_constellation_counts: dict[str, dict[str, int]] | None = None,
     displacement_metadata: dict[str, dict] | None = None,
     model_slugs: dict[str, str] | None = None,
 ) -> dict[str, int]:
@@ -694,6 +706,7 @@ def write_group_bundles(
         child_slugs = (child_slugs_by_group or {}).get(group.slug)
         child_counts = (child_counts_by_group or {}).get(group.slug)
         display_name = (extra_group_names or {}).get(group.slug)
+        constellation_counts = (extra_constellation_counts or {}).get(group.slug)
         for lang in LANGUAGES:
             lang_data = _build_localized(
                 group,
@@ -707,6 +720,7 @@ def write_group_bundles(
                 child_counts,
                 display_name,
                 lv_stats,
+                constellation_counts,
             )
             if members and member_entries:
                 member_names = notable_names(

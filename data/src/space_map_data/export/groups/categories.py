@@ -24,6 +24,7 @@ from space_map_data.constants.categories import (
     SATELLITES_SLUG,
     SOLAR_SYSTEM_SLUG,
 )
+from space_map_data.constants.earth_sats.constellations import CONSTELLATION_SLUG_PREFIX
 from space_map_data.constants.earth_sats.orbit_class import EarthOrbitClass
 from space_map_data.export.groups.registry import (
     CLASS_SLUG_PREFIX,
@@ -79,6 +80,9 @@ class CategoryData:
     launch_histograms: dict[str, dict[int, int]] = field(default_factory=dict)
     # cat slug -> bar-chart rows (moons per planet/dwarf, distance-ordered).
     moon_counts: dict[str, list[dict]] = field(default_factory=dict)
+    # cat slug -> {bare constellation slug: fleet size}; the Satellites page's
+    # top-constellations bar chart (the bundle ranks + caps the list).
+    constellation_counts: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 def _sum_histograms(
@@ -470,6 +474,13 @@ def build_category_data(
         reverse=True,
     )[:TOP_CONSTELLATIONS]
     satellites = earth_classes + constellations
+    # The same fleets feed the Satellites page's top-constellations bar chart
+    # (keyed bare for _constellation_refs, which ranks + caps them); the chips
+    # are hidden there in favour of it.
+    satellite_constellation_counts = {
+        slug.removeprefix(CONSTELLATION_SLUG_PREFIX): member_counts.get(slug, 0)
+        for slug in constellations
+    }
 
     units = UnitConverter(entities)
     planet_members = _planet_members(session, radii, gms, orientation)
@@ -607,4 +618,9 @@ def build_category_data(
         discovery_histograms=discovery_out,
         launch_histograms=launch_out,
         moon_counts={MOONS_SLUG: moon_counts} if moon_counts else {},
+        constellation_counts=(
+            {SATELLITES_SLUG: satellite_constellation_counts}
+            if satellite_constellation_counts
+            else {}
+        ),
     )

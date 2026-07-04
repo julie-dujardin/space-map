@@ -11,6 +11,7 @@ import orjson
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from space_map_data.constants.categories import SATELLITES_SLUG
 from space_map_data.export.groups.bundles import write_group_bundles
 from space_map_data.export.groups.categories import build_category_data
 from space_map_data.export.groups.launch_vehicle import build_launch_vehicle_stats
@@ -147,6 +148,27 @@ def _earth_zone_notable_members(
         )
         out[zone_slug] = members[:NOTABLE_MEMBER_COUNT]
     return out
+
+
+def _satellites_category_notable(
+    earth_orbit_stats: EarthOrbitClassStats,
+) -> list[NotableObject]:
+    """Top individual sats across every earth orbit-class zone, for the
+    Satellites category strip. Constellations have their own breakdown there, so
+    only real objects count; a sat spanning zones is deduped on its best signal."""
+    best: dict[str, NotableObject] = {}
+    for members in earth_orbit_stats.notable_members.values():
+        for member in members:
+            if not member.object_id:
+                continue
+            prev = best.get(member.object_id)
+            if prev is None or (member.sitelinks_count or 0) > (
+                prev.sitelinks_count or 0
+            ):
+                best[member.object_id] = member
+    return sorted(
+        best.values(), key=lambda m: (-(m.sitelinks_count or 0), m.object_id)
+    )[:NOTABLE_MEMBER_COUNT]
 
 
 # Wikidata properties whose match CSVs key on a comet's designation.
@@ -327,6 +349,8 @@ def run_groups_tier(
     extra_notable_members.update(
         _earth_zone_notable_members(earth_orbit_stats, wikidata_entities)
     )
+    if sat_notable := _satellites_category_notable(earth_orbit_stats):
+        extra_notable_members[SATELLITES_SLUG] = sat_notable
     # Constellation → its dominant zone, so the group index can list each
     # constellation among its zone's members.
     constellation_orbit_classes = {
@@ -368,6 +392,7 @@ def run_groups_tier(
         extra_group_names=split_comets.names,
         launch_vehicle_stats=launch_vehicle_stats,
         constellation_orbit_classes=constellation_orbit_classes,
+        extra_constellation_counts=category_data.constellation_counts,
         displacement_metadata=displacement_metadata,
         model_slugs=model_slugs,
     )

@@ -345,8 +345,12 @@
 			: undefined
 	);
 	let visibleChildGroups = $derived.by(() => {
-		// Bus chips live in GroupProperties; zones live in the orbit map.
-		const cg = (groupDetail?.localized?.child_groups ?? []).filter((c) => c.role !== 'bus');
+		// Bus chips live in GroupProperties; zones live in the orbit map;
+		// constellations fold into the top-constellations bar chart when present.
+		const hasConstellationBars = (groupDetail?.localized?.constellations?.length ?? 0) > 0;
+		const cg = (groupDetail?.localized?.child_groups ?? []).filter(
+			(c) => c.role !== 'bus' && !(hasConstellationBars && c.role === 'constellation')
+		);
 		if (!categoryPlot) return cg;
 		const onScatter = scatterZoneSlugs(categoryPlot);
 		return cg.filter((c) => !(c.primary_id && onScatter.has(c.primary_id)));
