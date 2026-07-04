@@ -7,6 +7,7 @@ import { buildLineup, geometryFromMember, renderableCount } from './lineup';
 import { STRIP_CAPACITY } from '../members/MemberStrip.svelte';
 import type { LineupBody } from './BodyLineup.svelte';
 import { loadTextureCredits, type TextureSource } from '$lib/credits/texture-credits';
+import { fetchBundleMeta, shapeModelCredit } from '$lib/scene/objects/body/model';
 import type { NotableMemberEntry } from '$lib/fetch/objects/object-data';
 import type { CategoryConfig } from '$lib/state/category-config';
 import * as m from '$lib/paraglide/messages.js';
@@ -38,6 +39,9 @@ type ImageryCredit = { key: string; label: string; url: string };
 
 export class LineupHero {
 	#credits = $state<Map<string, TextureSource> | null>(null);
+	// Shape-model authors, keyed by body id — the mesh is what renders those
+	// members, so its catalogue credit belongs beside the texture credits.
+	#modelCredits = $state<Map<string, ImageryCredit>>(new Map());
 
 	// A planet's moons get a lineup hero in its Moons tab; ≥2 renderable keeps it
 	// a real lineup, not a lone sphere. Mirrors DetailDrawer's showMembersTab.
@@ -133,19 +137,26 @@ export class LineupHero {
 			return bodies.length === 0 ? null : { bodies, perPage: 8 };
 		});
 
-		// Imagery credits narrowed to the on-screen spheres, deduped by author so
-		// the footer lists each surface-map source once.
+		// Imagery credits narrowed to the on-screen bodies, deduped by author so
+		// the footer lists each source once. Covers both the surface maps and the
+		// shape-model meshes that render some members (a mesh body draped with a
+		// map credits both).
 		this.imagery = $derived.by(() => {
 			const hero = this.hero;
-			const credits = this.#credits;
-			if (!hero || !credits) return [];
+			if (!hero) return [];
+			const textures = this.#credits;
+			const models = this.#modelCredits;
 			const out: ImageryCredit[] = [];
 			const seen = new Set<string>();
+			const add = (c: ImageryCredit | undefined) => {
+				if (!c || seen.has(c.key)) return;
+				seen.add(c.key);
+				out.push(c);
+			};
 			for (const b of hero.bodies) {
-				const cred = credits.get(b.id);
-				if (!cred || seen.has(cred.organisation)) continue;
-				seen.add(cred.organisation);
-				out.push({ key: cred.organisation, label: cred.organisation, url: cred.source });
+				const tex = textures?.get(b.id);
+				add(tex && { key: tex.organisation, label: tex.organisation, url: tex.source });
+				add(models.get(b.id));
 			}
 			return out;
 		});
@@ -173,6 +184,37 @@ export class LineupHero {
 		$effect(() => {
 			if (!this.hero) return;
 			loadTextureCredits().then((c) => (this.#credits = c));
+		});
+
+		// Shape-model members render from a mesh, not a texture, so their credit
+		// comes from the model bundle meta (cache-shared with BodyLineup's own
+		// load). Best-effort — a failed meta just omits that author.
+		$effect(() => {
+			const hero = this.hero;
+			if (!hero) return;
+			const models = hero.bodies.filter((b) => b.model);
+			if (models.length === 0) return;
+			let cancelled = false;
+			Promise.all(
+				models.map(async (b) => {
+					try {
+						const meta = await fetchBundleMeta(b.model!);
+						if (meta.kind !== 'shape_model') return null;
+						const c = shapeModelCredit(meta);
+						return [b.id, { key: c.name, label: c.name, url: c.url }] as const;
+					} catch {
+						return null;
+					}
+				})
+			).then((entries) => {
+				if (cancelled) return;
+				const next = new Map<string, ImageryCredit>();
+				for (const e of entries) if (e) next.set(e[0], e[1]);
+				this.#modelCredits = next;
+			});
+			return () => {
+				cancelled = true;
+			};
 		});
 	}
 }

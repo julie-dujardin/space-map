@@ -88,6 +88,12 @@ export function fetchBundleMeta(slug: string): Promise<ModelBundleMeta> {
 	return p;
 }
 
+/** Credit to display for a shape-model bundle: the natural-body top-level
+ *  credit when set, else the high-tier GLB credit. */
+export function shapeModelCredit(meta: ModelBundleMeta): { name: string; url: string } {
+	return meta.credit ?? meta.exports.high.credit;
+}
+
 /**
  * Scene-units length of one overlay-model unit. Single source of truth for
  * mirroring the overlay in main-scene space: the overlay camera, label
@@ -265,7 +271,7 @@ async function loadNaturalBodyModel(
 				setLabelNote(bo, false);
 			}
 		}
-		const credit = meta.credit ?? meta.exports.high.credit;
+		const credit = shapeModelCredit(meta);
 		ctx?.credits.registerModel({
 			bodyId: bo.body.data.id,
 			source: credit.url,
