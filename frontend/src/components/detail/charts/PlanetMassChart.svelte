@@ -5,7 +5,7 @@
 	import type { AppState } from '$lib/state/app-state.svelte';
 	import type { FocusObject } from '$lib/state/focusable';
 	import { focusClick, focusHref } from '$lib/state/focus-link';
-	import { formatNumber } from '$lib/format/quantities';
+	import { formatNumber, formatQuantity } from '$lib/format/quantities';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -157,10 +157,9 @@
 				>
 					<div class="text-xs font-medium">{hovered.name}</div>
 					<div class="text-muted-foreground text-[11px] tabular-nums">
-						{m.unit_earth_mass_count({
-							count: hovered.massEarths,
-							display: formatNumber(hovered.massEarths)
-						})} · {sharePct(hovered.share)}
+						{formatQuantity({ value: hovered.massEarths, unit: 'earth_mass' })} · {sharePct(
+							hovered.share
+						)}
 					</div>
 				</div>
 			{/if}

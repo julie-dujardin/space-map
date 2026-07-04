@@ -15,6 +15,15 @@ export function formatUnit(unit: string, short?: boolean): string {
 	return fn();
 }
 
+// Units whose long name inflects with the value (locale-aware plural, e.g.
+// "1 Earth mass" vs "2 Earth masses"). Others keep the invariant unit_name_*
+// label. Symbols never pluralize.
+type PluralName = (i: { count: number; display: string }) => string;
+const PLURAL_UNIT_NAMES: Record<string, PluralName> = {
+	earth_mass: m.unit_earth_mass_count,
+	jupiter_mass: m.unit_jupiter_mass_count
+};
+
 /** Intl rounding options that keep ~3 digits of precision (4+ digit integers unchanged). */
 export function precisionOptions(
 	n: number
@@ -38,7 +47,10 @@ export function formatCompactNumber(n: number): string {
 }
 
 export function formatQuantity(q: { value: number; unit: string }, short_unit?: boolean): string {
-	return `${formatNumber(q.value)} ${formatUnit(q.unit, short_unit)}`;
+	const display = formatNumber(q.value);
+	const plural = short_unit ? undefined : PLURAL_UNIT_NAMES[q.unit];
+	if (plural) return plural({ count: q.value, display });
+	return `${display} ${formatUnit(q.unit, short_unit)}`;
 }
 
 export function formatCurrency(q: { value: number; currency: string }): string {

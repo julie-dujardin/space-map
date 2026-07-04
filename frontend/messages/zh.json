@@ -996,6 +996,24 @@
 	"unit_name_centimetre_per_square_second": "厘米每二次方秒",
 	"unit_name_degree_fahrenheit": "华氏度",
 	"unit_name_deutsche_mark": "德國馬克",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=other": "{display} 地球质量"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=other": "{display} 木星质量"
+			}
+		}
+	],
 	"unit_name_earth_mass": "地球质量",
 	"unit_name_exagram": "艾克",
 	"unit_name_gram": "克",

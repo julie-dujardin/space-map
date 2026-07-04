@@ -912,6 +912,28 @@
 	"unit_name_centimetre_per_square_second": "centímetro por segundo cuadrado",
 	"unit_name_degree_fahrenheit": "grado Fahrenheit",
 	"unit_name_deutsche_mark": "marco alemán",
+	"unit_earth_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} masa de la Tierra",
+				"countPlural=many": "{display} masas de la Tierra",
+				"countPlural=other": "{display} masas de la Tierra"
+			}
+		}
+	],
+	"unit_jupiter_mass_count": [
+		{
+			"declarations": ["input count", "input display", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{display} masa joviana",
+				"countPlural=many": "{display} masas jovianas",
+				"countPlural=other": "{display} masas jovianas"
+			}
+		}
+	],
 	"unit_name_earth_mass": "masa de la Tierra",
 	"unit_name_exagram": "exagramo",
 	"unit_name_gram": "gramo",
