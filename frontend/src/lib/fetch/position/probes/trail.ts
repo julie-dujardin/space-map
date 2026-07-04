@@ -46,7 +46,7 @@ export function frameFitPreference(currentParentKey: string): (fitCenterNaif: nu
  * Parent-relative probe position at `t`, gated on the located probe's primary
  * matching `currentParentKey`. Returns null on coverage gap or zone mismatch.
  */
-function buildParentGatedSampler(
+export function buildParentGatedSampler(
 	probeStore: ProbeStore,
 	cheb: ChebyshevStore | null,
 	probeId: string,
@@ -84,25 +84,42 @@ function chordError(sample: Sampler, t0: number, p0: Vec3, t1: number, p1: Vec3)
 }
 
 /**
- * Largest dt in `[minStep, maxStep]` such that the chord from `t1 - dt` to
- * `t1` deviates from the curve by ≤ `epsilon`. Binary search over dt, with a
- * fast path that accepts `maxStep` outright in low-curvature regions. Returns
- * null when no candidate within the window has a valid sample (coverage gap or
- * zone mismatch over the whole window).
+ * Scale-relative slack added to the absolute chord tolerance: a segment is
+ * acceptable when its chord error ≤ `max(epsilon, TRAIL_REL_TOL · chordLength)`.
+ * The relative term bounds the facet *angle* (~4·TRAIL_REL_TOL rad) so far from
+ * the fit center — where a Float32 Chebyshev fit's noise floor dwarfs the
+ * periapsis-scaled `epsilon` — the walk bridges sub-chunk-boundary noise with a
+ * long segment instead of crawling at `minStep` and emitting near-duplicate,
+ * noise-angled points. Near periapsis `epsilon` dominates and keeps it sharp.
  */
-function findPreviousTarget(
+const TRAIL_REL_TOL = 0.005;
+
+/**
+ * Largest step in `[minStep, maxStep]` from `tFrom` in time direction `dir`
+ * (−1 walking back, +1 walking forward) whose chord to `tFrom` stays within
+ * tolerance of the curve. Binary search, with a fast path that accepts
+ * `maxStep` outright in low-curvature regions. Returns null when no candidate
+ * in the window has a valid sample (coverage gap or zone mismatch throughout).
+ */
+function findAdaptiveStep(
 	sample: Sampler,
-	t1: number,
-	p1: Vec3,
+	tFrom: number,
+	pFrom: Vec3,
 	epsilon: number,
 	minStep: number,
-	maxStep: number
+	maxStep: number,
+	dir: number
 ): Sample | null {
-	const tFar = t1 - maxStep;
+	const within = (err: number | null, end: Vec3): boolean => {
+		if (err === null) return false;
+		const chord = Math.hypot(end[0] - pFrom[0], end[1] - pFrom[1], end[2] - pFrom[2]);
+		return err <= Math.max(epsilon, TRAIL_REL_TOL * chord);
+	};
+	const tFar = tFrom + dir * maxStep;
 	const pFar = sample(tFar);
 	if (pFar !== null) {
-		const err = chordError(sample, tFar, pFar, t1, p1);
-		if (err !== null && err <= epsilon) return { jd: tFar, pos: pFar };
+		const err = chordError(sample, tFrom, pFrom, tFar, pFar);
+		if (within(err, pFar)) return { jd: tFar, pos: pFar };
 	}
 	let lo = minStep;
 	let hi = maxStep;
@@ -110,14 +127,14 @@ function findPreviousTarget(
 	const resolution = minStep * 0.25;
 	for (let i = 0; i < 16; i++) {
 		const dt = (lo + hi) / 2;
-		const t = t1 - dt;
+		const t = tFrom + dir * dt;
 		const p = sample(t);
 		if (p === null) {
 			hi = dt;
 			continue;
 		}
-		const err = chordError(sample, t, p, t1, p1);
-		if (err === null || err > epsilon) {
+		const err = chordError(sample, tFrom, pFrom, t, p);
+		if (!within(err, p)) {
 			hi = dt;
 		} else {
 			lo = dt;
@@ -128,7 +145,7 @@ function findPreviousTarget(
 	if (best) return best;
 	// Couldn't satisfy tolerance even at minStep — accept minStep as fallback so
 	// the trail keeps extending across the highest-curvature regions.
-	const t = t1 - minStep;
+	const t = tFrom + dir * minStep;
 	const p = sample(t);
 	return p ? { jd: t, pos: p } : null;
 }
@@ -147,7 +164,7 @@ export function populateProbeTrailBuffer(
 
 	// Adaptive path: walk back via chord-error. `epsilonScene = Infinity`
 	// degenerates to uniform `stepDays` because chord error never exceeds
-	// Infinity, so `findPreviousTarget` always accepts `maxStep`. The walk is
+	// Infinity, so `findAdaptiveStep` always accepts `maxStep`. The walk is
 	// also capped at one canonical orbital span (`stepDays * capacity`) so the
 	// 512-sample budget concentrates on the most recent period instead of
 	// being spread across multiple retraced loops.
@@ -159,13 +176,14 @@ export function populateProbeTrailBuffer(
 		while (samples.length < buf.capacity) {
 			const head = samples[samples.length - 1];
 			if (head.jd <= spanLimitJd) break;
-			const prev = findPreviousTarget(
+			const prev = findAdaptiveStep(
 				sample,
 				head.jd,
 				head.pos,
 				buf.epsilonScene,
 				minStep,
-				maxStep
+				maxStep,
+				-1
 			);
 			if (!prev) break;
 			if (prev.jd < spanLimitJd) {
@@ -193,5 +211,37 @@ export function populateProbeTrailBuffer(
 	for (let i = samples.length - 1; i >= 0; i--) {
 		const s = samples[i];
 		buf.append(s.jd, s.pos[0], s.pos[1], s.pos[2]);
+	}
+}
+
+/**
+ * Extend a buffer forward from its newest sample (`lastJd`/`lastPos`) to
+ * `headJd`, inserting intermediate samples with the same chord-error
+ * subdivision as the back-fill. The live-play appender only ever adds the
+ * current frame's position, so a fast periapsis pass at high time-speed jumps a
+ * large arc per frame and draws one long facet; this fills those gaps. `sample`
+ * must return positions in the buffer's frame. Iteration is capped at capacity
+ * so a near-span gap can't spin (the ring overwrites older samples anyway).
+ */
+export function extendProbeTrailBuffer(
+	buf: TrailBuffer,
+	sample: Sampler,
+	lastJd: number,
+	lastPos: Vec3,
+	headJd: number
+): void {
+	if (!isFinite(buf.epsilonScene)) return;
+	const maxStep = buf.stepDays * ADAPTIVE_MAX_STEP_FACTOR;
+	const minStep = buf.stepDays * ADAPTIVE_MIN_STEP_FACTOR;
+	let t0 = lastJd;
+	let p0 = lastPos;
+	for (let i = 0; i < buf.capacity; i++) {
+		if (headJd - t0 <= minStep) break;
+		const stepCap = Math.min(maxStep, headJd - t0);
+		const next = findAdaptiveStep(sample, t0, p0, buf.epsilonScene, minStep, stepCap, 1);
+		if (!next || next.jd <= t0) break;
+		buf.append(next.jd, next.pos[0], next.pos[1], next.pos[2]);
+		t0 = next.jd;
+		p0 = next.pos;
 	}
 }
