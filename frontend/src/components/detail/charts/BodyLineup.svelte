@@ -711,12 +711,18 @@
 			<!-- Per-body hit column; hover is resolved by pickAt (mesh-priority) on
 		     the container. Hover-capable pointers get a real <a> (middle/⌘-click
 		     opens the URL, click focuses the hovered body); touch gets a <button>
-		     so a long-press shows no link callout and a tap focuses directly. -->
+		     so a long-press shows no link callout and a tap focuses directly.
+		     Focus mirrors hover for keyboard nav only. Mouse focus is suppressed
+		     (mousedown preventDefault, plus the :focus-visible gate): the columns
+		     can disagree with pickAt's sphere-priority pick, so a mouse-focused
+		     link would flip the hover on click, and its blur on a later click
+		     would clear a pointer hover. -->
 			{#if hoverCapable}
 				<a
 					href={focusHref(appState, p.id, p.name)}
 					onclick={focusHovered}
-					onfocus={() => (hoveredId = p.id)}
+					onmousedown={(e) => e.button === 0 && e.preventDefault()}
+					onfocus={(e) => e.currentTarget.matches(':focus-visible') && (hoveredId = p.id)}
 					onblur={() => hoveredId === p.id && (hoveredId = null)}
 					aria-label={p.name}
 					class="pointer-events-auto absolute top-0 bottom-0 outline-none"
