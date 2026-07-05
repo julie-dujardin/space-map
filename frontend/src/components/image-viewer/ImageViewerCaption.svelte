@@ -16,6 +16,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatIsoDate } from '$lib/format/date';
+	import { safeHttpUrl } from '$lib/utils';
 	import type { ObjectImage } from '$lib/fetch/objects/object-data';
 
 	interface Props {
@@ -24,6 +25,11 @@
 	}
 
 	let { image, attribution }: Props = $props();
+
+	// External Commons/Wikidata metadata — validate the scheme before it reaches
+	// an href so a `javascript:` URL can't ride in.
+	const safeLicenseUrl = $derived(safeHttpUrl(attribution?.license_url));
+	const safeSourceUrl = $derived(safeHttpUrl(image?.source_url));
 
 	let expanded = $state(false);
 	let viewportRef = $state<HTMLElement | null>(null);
@@ -109,9 +115,9 @@
 {#if image}
 	<div class="pswp-sm-caption-credits">
 		{#if attribution?.license}
-			{#if attribution.license_url}
+			{#if safeLicenseUrl}
 				<a
-					href={attribution.license_url}
+					href={safeLicenseUrl}
 					target="_blank"
 					rel="noopener noreferrer license"
 					class="inline-flex items-center gap-1"
@@ -130,12 +136,14 @@
 			<span class="pswp-sm-caption-date">{formatIsoDate(attribution.date)}</span>
 			<span class="pswp-sm-caption-sep" aria-hidden="true">·</span>
 		{/if}
-		<a
-			href={image.source_url}
-			target="_blank"
-			rel="noopener noreferrer"
-			class="inline-flex items-center gap-1"
-			>{m.image_view_on_commons()}<ExternalLinkIcon class="size-3 shrink-0" /></a
-		>
+		{#if safeSourceUrl}
+			<a
+				href={safeSourceUrl}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="inline-flex items-center gap-1"
+				>{m.image_view_on_commons()}<ExternalLinkIcon class="size-3 shrink-0" /></a
+			>
+		{/if}
 	</div>
 {/if}
