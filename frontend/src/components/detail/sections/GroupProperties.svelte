@@ -296,7 +296,7 @@
 		</div>
 		<div class="border-border/60 border-t"></div>
 		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each launchSites as site (site.name)}
+			{#each launchSites as site (site.primary_id ?? site.name)}
 				<li class="flex flex-col gap-1">
 					<div class="flex items-baseline justify-between gap-2">
 						{#if appState && site.primary_type === 'group' && site.primary_id}
@@ -340,7 +340,7 @@
 		</div>
 		<div class="border-border/60 border-t"></div>
 		<ul class="flex flex-col gap-2 pt-1 text-sm">
-			{#each constellations as c (c.name)}
+			{#each constellations as c (c.primary_id ?? c.name)}
 				<li class="flex flex-col gap-1">
 					<div class="flex items-baseline justify-between gap-2">
 						{#if appState && c.primary_type === 'group' && c.primary_id}
