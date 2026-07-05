@@ -9,8 +9,10 @@ EXPORT_DIR="$REPO_ROOT/../space-map-export"
 # which half each upload covers. Sequential, so swapping the file is safe.
 cp "$SCRIPT_DIR/_headers" "$EXPORT_DIR/_headers"
 
-cp "$SCRIPT_DIR/.assetsignore.static" "$EXPORT_DIR/.assetsignore"
-npx wrangler deploy --config "$SCRIPT_DIR/wrangler.jsonc"
-
+# Images before static: static's metadata.json emits new ?v= tokens for images
+# the edge caches immutably for a year — ship the bytes before the tokens.
 cp "$SCRIPT_DIR/.assetsignore.images" "$EXPORT_DIR/.assetsignore"
-exec npx wrangler deploy --config "$SCRIPT_DIR/wrangler.images.jsonc"
+npx wrangler deploy --config "$SCRIPT_DIR/wrangler.images.jsonc"
+
+cp "$SCRIPT_DIR/.assetsignore.static" "$EXPORT_DIR/.assetsignore"
+exec npx wrangler deploy --config "$SCRIPT_DIR/wrangler.jsonc"
