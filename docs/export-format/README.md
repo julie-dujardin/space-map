@@ -18,6 +18,7 @@ osculating Kepler elements from chebyshev positions when it needs to. Probe
 v1/
   metadata.json                                   (not gzipped) entry point — zone manifest, bundle counts, versions
   credits.json                                    (not gzipped) aggregated attribution for the /credits page
+  seo/sitemap.xml                                 (not gzipped) notable-object + group URLs for search engines
   labels/{lang}.gz                                pre-interaction labels for the promoted set (one per language)
   position/
     {zone}/[{zoom}/]{part}.bin.gz                 static parted        — small_bodies/{class} (zoomed), Earth-orbit spacecraft, small_body_moons
@@ -78,4 +79,5 @@ v1/
 | [models.md](models.md) | 3D spacecraft/satellite glTF bundles and metadata. |
 | [systems.md](systems.md) | `systems/global.json` lookups + per-system `systems/{barycenter_id}.json`. |
 | [credits.md](credits.md) | `credits.json` aggregated attribution manifest. |
+| [sitemap.md](sitemap.md) | `seo/sitemap.xml` notable-object + group URL set and its selection rule. |
 | [consuming.md](consuming.md) | End-to-end consumer walkthrough. |

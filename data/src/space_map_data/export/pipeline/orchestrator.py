@@ -36,6 +36,7 @@ from space_map_data.export.nomenclature.writer import (
 from space_map_data.export.objects.fragments import attach_comet_fragments
 from space_map_data.export.objects.missions import attach_probe_missions
 from space_map_data.export.notable import shape_model_slugs
+from space_map_data.export.sitemap import write_sitemap
 from space_map_data.export.objects.moons import attach_notable_moons
 from space_map_data.export.objects.satellites import attach_featured_satellites
 from space_map_data.export.objects.writer import (
@@ -1141,6 +1142,8 @@ def export(engine: Engine, limit_per_zone: int = _DEFAULT_ZONE_LIMIT) -> None:
         incremental.write_tier_b_meta(
             out_dir, tier_b_fp, bundle_ns, feature_bundle_ns, group_bundle_ns
         )
+    with Session(engine) as session:
+        write_sitemap(session, out_dir)
     prune_small_bodies(out_dir, agg.zone_structure)
     prune_nomenclature(out_dir, nomenclature_by_body.keys())
     _write_metadata_json(

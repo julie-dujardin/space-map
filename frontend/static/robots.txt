@@ -1,3 +1,5 @@
-# allow crawling everything by default
+# allow crawling everything
 User-agent: *
-Disallow:
+Allow: /
+
+Sitemap: https://spacemap.co/sitemap.xml
