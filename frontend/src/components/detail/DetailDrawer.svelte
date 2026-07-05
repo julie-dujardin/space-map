@@ -398,10 +398,11 @@
 	// A split-comet family group lists fragments; a mission group lists its craft.
 	let isSplitCometGroup = $derived(groupDetail?.global?.type === 'split_comet');
 	let isMissionGroup = $derived(groupDetail?.global?.type === 'mission');
-	// Earth sats (and earth-sat group pages) draw on CelesTrak SATCAT + GCAT for metadata.
+	// Earth sats (and every earth-sat group page: launch vehicles, organizations,
+	// launch sites, countries, …) draw on CelesTrak SATCAT + GCAT for metadata.
 	let earthSatCredit = $derived(
 		isGroupMode
-			? ['constellation', 'bus', 'earth_orbit_class'].includes(groupDetail?.global?.type ?? '')
+			? groupDetail?.global?.applies_to === 'earth_sat'
 			: data?.global?.cross_refs?.norad_cat_id != null
 	);
 	let membersHeading = $derived(
