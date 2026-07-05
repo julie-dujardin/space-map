@@ -173,7 +173,6 @@
 	"time_scale_year_per_sec": "1年/秒",
 	"error_prefix": "エラー: {error}",
 	"error_page_404_title": "見つかりません",
-	"error_page_404_message": "見つかりません",
 	"error_page_title": "問題が発生しました",
 	"error_page_body": "予期しないエラーが発生しました。ページを再読み込みしてください。",
 	"error_go_home": "マップに戻る",

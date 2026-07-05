@@ -215,7 +215,6 @@
 	"time_scale_year_per_sec": "1 an/s",
 	"error_prefix": "Erreur : {error}",
 	"error_page_404_title": "Introuvable",
-	"error_page_404_message": "Introuvable",
 	"error_page_title": "Une erreur est survenue",
 	"error_page_body": "Une erreur inattendue s'est produite. Essayez de recharger la page.",
 	"error_go_home": "Retour à la carte",

@@ -282,7 +282,6 @@
 	"webgl_context_lost_title": "The 3D map stopped",
 	"webgl_context_lost_body": "The graphics context was lost — this can happen when the device runs low on memory. Reload to restart the map.",
 	"error_page_404_title": "Not found",
-	"error_page_404_message": "Not found",
 	"close": "Close",
 	"share": "Share",
 	"link_copied": "Link copied",
