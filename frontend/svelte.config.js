@@ -11,12 +11,14 @@ if (dev) connectSrc.push('http://127.0.0.1:7700', 'http://localhost:7700', 'ws:'
 const config = {
 	kit: {
 		adapter: adapter(),
-		// SPA (ssr=false): CSP ships as a <meta> to blunt injected-HTML script
-		// execution. frame-ancestors can't go in a meta CSP — see _headers.
+		// SPA (ssr=false): CSP ships as a <meta> to blunt injected-HTML scripts.
+		// frame-ancestors can't live in a meta CSP, so SvelteKit emits it as an
+		// HTTP header instead; the other security headers ride hooks.server.ts.
 		csp: {
 			mode: 'hash',
 			directives: {
 				'default-src': ['self'],
+				'frame-ancestors': ['none'],
 				// SvelteKit hashes its own inline script but not app.html's two, so
 				// pin those. Hashes are stable (scripts read env from a meta, not
 				// their body) — re-hash if edited. wasm-unsafe-eval covers Three.js.
