@@ -357,6 +357,24 @@ export class PointCloudSystem {
 	}
 
 	/**
+	 * Respawn the pool and re-wire every group if a worker died. Returns true on
+	 * respawn. Moons solve on the main thread, so they're unaffected.
+	 */
+	async recoverWorkersIfDead(): Promise<boolean> {
+		if (await this.orbitPool.ping()) return false;
+		this.orbitPool.respawn();
+		// Respawned pool has no wiring; re-mark all and clear the gate so a full
+		// repack runs even mid-stream.
+		for (const zone of this.ctx.bodies.asteroidBodiesByZone.keys())
+			this.ctx.bodies.dirtyAsteroidZones.add(zone);
+		for (const gid of this.ctx.bodies.spacecraftByParent.keys())
+			this.ctx.bodies.dirtySpacecraftGroups.add(gid);
+		this.lastPackedSize.clear();
+		this.rebuildMinor();
+		return true;
+	}
+
+	/**
 	 * One drain of the dirty markers. Each Points' geometry owns a persistent
 	 * `Float32Array`: only resized when the body count changes, otherwise left
 	 * in place so a worker result can `.set()` into it under the same

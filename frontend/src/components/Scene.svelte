@@ -156,16 +156,40 @@
 	let isInitialFocus = true;
 	let isNavigatingBack = false;
 
-	// preventDefault allows restoration, but rebuilding the scene graph in place
-	// isn't worth it — the overlay prompts a reload instead.
+	// Reclaiming a backgrounded mobile tab drops the GL context (and can kill
+	// workers). preventDefault opts into the browser's own restore on tab return.
+	let lostOverlayTimer: ReturnType<typeof setTimeout> | undefined;
 	function onContextLost(e: Event) {
 		e.preventDefault();
-		contextLost = true;
 		console.warn('[scene] WebGL context lost');
+		renderer?.pause();
+		// Defer the "stopped" panel — restore usually lands within a frame or two,
+		// so showing it immediately would just flash.
+		clearTimeout(lostOverlayTimer);
+		lostOverlayTimer = setTimeout(() => (contextLost = true), 2000);
+	}
+
+	function onContextRestored() {
+		console.warn('[scene] WebGL context restored');
+		clearTimeout(lostOverlayTimer);
+		contextLost = false;
+		renderer?.handleContextRestored();
+		// Context loss often coincides with dead workers, which onVisibility skips
+		// while the context is lost — so probe here too (no-op if they survived).
+		void renderer?.recoverWorkersIfDead();
+	}
+
+	// OS-killed workers fire no event; probe on tab-return to recover frozen clouds.
+	function onVisibility() {
+		if (document.visibilityState !== 'visible') return;
+		if (renderer?.isContextLost()) return; // handled by the restore event
+		void renderer?.recoverWorkersIfDead();
 	}
 
 	onMount(() => {
 		canvas.addEventListener('webglcontextlost', onContextLost, false);
+		canvas.addEventListener('webglcontextrestored', onContextRestored, false);
+		document.addEventListener('visibilitychange', onVisibility);
 
 		let cleanupInner = () => {};
 		try {
@@ -177,7 +201,10 @@
 		}
 
 		return () => {
+			clearTimeout(lostOverlayTimer);
 			canvas.removeEventListener('webglcontextlost', onContextLost);
+			canvas.removeEventListener('webglcontextrestored', onContextRestored);
+			document.removeEventListener('visibilitychange', onVisibility);
 			cleanupInner();
 		};
 	});

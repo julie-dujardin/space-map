@@ -40,10 +40,17 @@ type TickMsg = {
 	}[];
 };
 
-type InMsg = RewireDeltaMsg | TickMsg;
+/** Liveness probe answered with `pong`; lets the pool spot OS-killed workers. */
+type PingMsg = { type: 'ping' };
+
+type InMsg = RewireDeltaMsg | TickMsg | PingMsg;
 
 self.onmessage = (ev: MessageEvent<InMsg>) => {
 	const msg = ev.data;
+	if (msg.type === 'ping') {
+		(self as unknown as Worker).postMessage({ type: 'pong' });
+		return;
+	}
 	if (msg.type === 'rewireDelta') {
 		if (msg.remove) for (const id of msg.remove) groups.delete(id);
 		for (const g of msg.set) groups.set(g.id, g.cols);

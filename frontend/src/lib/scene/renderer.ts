@@ -35,6 +35,7 @@ import type { SimClock } from '$lib/scene/state/clock.svelte';
 import { AU_SCALE, kmToScene } from '$lib/math/units';
 import { EARTH_ID, SUN_ID } from '$lib/constants';
 import { bootThree } from './setup/three-boot';
+import { cappedPixelRatio } from '$lib/device';
 import { PointerInteraction } from './interaction/pointer';
 import { CameraUpController } from './camera/up-controller';
 import { jdToDate } from '$lib/format/date';
@@ -180,6 +181,7 @@ export class SceneRenderer {
 	private landedNomBodyId: string | null = null;
 
 	private rafId = 0;
+	private paused = false;
 	private firstFrame = true;
 	private pendingUrlWrite = false;
 	/** Ring buffer of recent tick timestamps; fps = (n-1) / (last - first). */
@@ -1070,6 +1072,38 @@ export class SceneRenderer {
 			removeUserLocationMarker(this.userLocationMarker);
 			this.userLocationMarker = null;
 		}
+	}
+
+	/** Stop the RAF loop; rendering against a lost GL context throws. */
+	pause(): void {
+		if (this.paused) return;
+		this.paused = true;
+		cancelAnimationFrame(this.rafId);
+		this.rafId = 0;
+	}
+
+	resume(): void {
+		if (!this.paused) return;
+		this.paused = false;
+		this.tick();
+	}
+
+	isContextLost(): boolean {
+		return this.renderer.getContext().isContextLost();
+	}
+
+	/** three re-inits its own GL state on restore, but the composer's render
+	 *  targets don't — re-applying pixel ratio + size rebuilds them. */
+	handleContextRestored(): void {
+		this.renderer.setPixelRatio(cappedPixelRatio());
+		this.composer.setPixelRatio(cappedPixelRatio());
+		this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+		this.resume();
+	}
+
+	/** Respawn orbit workers if the OS killed them (frozen asteroids/spacecraft). */
+	recoverWorkersIfDead(): Promise<boolean> {
+		return this.pointClouds.recoverWorkersIfDead();
 	}
 
 	resize(width: number, height: number): void {

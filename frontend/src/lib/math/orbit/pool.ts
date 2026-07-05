@@ -59,22 +59,68 @@ type TickResult = {
 	groups: { id: string; count: number; buf: ArrayBufferLike }[];
 };
 
+type PoolInMsg = TickResult | { type: 'pong' };
+
 export class OrbitWorkerPool {
-	private workers: Worker[];
+	private workers: Worker[] = [];
 	private groups = new Map<string, GroupState>();
 	private onResult: GroupResultHandler | null = null;
+	private readonly size: number;
+	/** In-flight liveness probe; resolves once every worker has ponged. */
+	private pendingPing: { need: number; got: number; resolve: (ok: boolean) => void } | null = null;
 
 	constructor(size: number = navigator.hardwareConcurrency ?? 4) {
 		// Floor at 2 so even 2-core phones (hardwareConcurrency=2) get parallel
 		// asteroid/spacecraft propagation; double-buffer absorbs any UI-thread
 		// contention, so reserving a core for UI no longer earns its keep.
-		const n = Math.max(2, Math.min(8, size));
-		this.workers = [];
-		for (let i = 0; i < n; i++) {
+		this.size = Math.max(2, Math.min(8, size));
+		this.spawn();
+	}
+
+	private spawn(): void {
+		for (let i = 0; i < this.size; i++) {
 			const w = new OrbitWorker();
-			w.onmessage = (ev: MessageEvent<TickResult>) => this.onMessage(ev.data);
+			w.onmessage = (ev: MessageEvent<PoolInMsg>) => this.onMessage(ev.data);
 			this.workers.push(w);
 		}
+	}
+
+	/**
+	 * True once every worker answers within `timeoutMs`. A backgrounded tab's
+	 * workers can be killed by the mobile OS yet still look alive on the main
+	 * thread — a timeout is the only signal they're dead.
+	 */
+	ping(timeoutMs = 800): Promise<boolean> {
+		if (this.workers.length === 0) return Promise.resolve(false);
+		this.pendingPing?.resolve(false);
+		return new Promise<boolean>((resolve) => {
+			// Guard by identity so a superseded or already-resolved probe no-ops;
+			// lets the dangling timer expire without a clearTimeout.
+			const state = {
+				need: this.workers.length,
+				got: 0,
+				resolve: (ok: boolean) => {
+					if (this.pendingPing !== state) return;
+					this.pendingPing = null;
+					resolve(ok);
+				}
+			};
+			this.pendingPing = state;
+			setTimeout(() => state.resolve(false), timeoutMs);
+			for (const w of this.workers) w.postMessage({ type: 'ping' });
+		});
+	}
+
+	/**
+	 * Recreate the pool after a worker death. Wiring is dropped — in-flight
+	 * back-buffers went to the dead workers — so the caller must re-wire.
+	 */
+	respawn(): void {
+		this.pendingPing?.resolve(false);
+		for (const w of this.workers) w.terminate();
+		this.workers = [];
+		this.groups.clear();
+		this.spawn();
 	}
 
 	setResultHandler(handler: GroupResultHandler): void {
@@ -233,7 +279,12 @@ export class OrbitWorkerPool {
 		}
 	}
 
-	private onMessage(msg: TickResult): void {
+	private onMessage(msg: PoolInMsg): void {
+		if (msg.type === 'pong') {
+			const p = this.pendingPing;
+			if (p && ++p.got >= p.need) p.resolve(true);
+			return;
+		}
 		if (msg.type !== 'tickResult') return;
 		for (const g of msg.groups) {
 			const state = this.groups.get(g.id);
@@ -257,6 +308,7 @@ export class OrbitWorkerPool {
 	}
 
 	destroy(): void {
+		this.pendingPing?.resolve(false);
 		for (const w of this.workers) w.terminate();
 		this.workers.length = 0;
 		this.groups.clear();
