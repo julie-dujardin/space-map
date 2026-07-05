@@ -15,6 +15,27 @@ export enum UrlType {
 	Extra = 'u' // /u/<id>/<name> — hand-authored extra object addressed by its id
 }
 
+/** Type segments valid on the body/group route `/[type]/[id]/[[name]]`; anything
+ *  else 404s instead of coercing to a `naif-` body. Feature ('f') is nested. */
+export const BODY_ROUTE_TYPES: ReadonlySet<string> = new Set([
+	UrlType.Body,
+	UrlType.SmallBody,
+	UrlType.EarthSatellite,
+	UrlType.Probe,
+	UrlType.Extra,
+	UrlType.Group
+]);
+
+/** Type segments valid on the feature route `/[type]/[id]/f/[featureId]/[[name]]`
+ *  — body types only; groups have no features. */
+export const FEATURE_ROUTE_TYPES: ReadonlySet<string> = new Set([
+	UrlType.Body,
+	UrlType.SmallBody,
+	UrlType.EarthSatellite,
+	UrlType.Probe,
+	UrlType.Extra
+]);
+
 /** Detail-drawer tab; 'overview' is the null default in URL state. */
 export type DrawerTab = 'overview' | 'images' | 'members' | 'fragments';
 

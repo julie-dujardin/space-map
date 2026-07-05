@@ -357,8 +357,14 @@
 {#if ctx.loading}
 	<div class="flex items-center justify-center h-screen bg-bg text-text">{m.loading_data()}</div>
 {:else if ctx.error}
-	<div class="flex items-center justify-center h-screen bg-bg text-text-error">
-		{m.error_prefix({ error: ctx.error })}
+	<div class="flex h-screen flex-col items-center justify-center gap-4 bg-bg px-6 text-center">
+		<p class="max-w-md text-sm text-text-error">{m.error_prefix({ error: ctx.error })}</p>
+		<button
+			class="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90"
+			onclick={() => location.reload()}
+		>
+			{m.reload()}
+		</button>
 	</div>
 {:else}
 	<Tooltip.Provider delayDuration={300}>
