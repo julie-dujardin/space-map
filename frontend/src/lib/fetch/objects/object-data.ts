@@ -1,5 +1,6 @@
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket, type ProbeCoverage } from '$lib/fetch/metadata';
+import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type { PickedThumbnail } from '$lib/fetch/objects/images';
 import type { PointingSpec } from '$lib/math/orientation';
@@ -424,30 +425,6 @@ export interface ObjectDetailData {
 }
 
 /**
- * Bundle-level cache: one entry per fetched bundle URL, keyed by URL, holding
- * the decompressed object-keyed map. Clicking neighbor objects that happen to
- * hash into the same bucket becomes instant.
- */
-const bundleCache = new Map<string, Promise<Record<string, unknown>>>();
-
-async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
-	let p = bundleCache.get(url);
-	if (!p) {
-		p = (async () => {
-			const res = await fetch(url);
-			if (!res.ok) {
-				if (res.status === 404) return {};
-				throw new Error(`fetchBundle: ${url} returned ${res.status} ${res.statusText}`);
-			}
-			const ds = new DecompressionStream('gzip');
-			return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
-		})();
-		bundleCache.set(url, p);
-	}
-	return p as Promise<Record<string, T>>;
-}
-
-/**
  * Fetch the global + (optionally) localized detail bundles for `fileId`.
  * Bundles are hash-bucketed via `metadata.json → object_bundles` and cached.
  * Pass `body.data.hasLocalized` for `fetchLocalized` to skip the localized
@@ -467,12 +444,12 @@ export async function fetchObjectDetail(
 		nLocalized ? hashBucket(fileId, nLocalized) : Promise.resolve(-1)
 	]);
 
-	const globalPromise = fetchBundle<GlobalObjectData>(
+	const globalPromise = fetchGzipBundle<GlobalObjectData>(
 		versionedUrl(`/v1/objects/__global__/${globalBucket}.json.gz`, 'objects')
 	);
 	const localizedPromise: Promise<LocalizedObjectData | undefined> =
 		fetchLocalized && localizedBucket >= 0
-			? fetchBundle<LocalizedObjectData>(
+			? fetchGzipBundle<LocalizedObjectData>(
 					versionedUrl(`/v1/objects/${lang}/${localizedBucket}.json.gz`, 'objects')
 				).then((b) => b[fileId])
 			: Promise.resolve(undefined);

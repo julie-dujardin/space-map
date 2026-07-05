@@ -126,6 +126,14 @@ export class ProbeStore {
 				const job = this.loadChunk(zone, idx, params);
 				if (job) jobs.push(job);
 			}
+			// Evict chunks outside the window so scrubbing a long mission timeline
+			// doesn't accumulate every visited chunk.
+			const zoneMap = this.chunks.get(zone);
+			if (zoneMap) {
+				for (const idx of zoneMap.keys()) {
+					if (idx < center - NEIGHBOR_WINDOW || idx > center + NEIGHBOR_WINDOW) zoneMap.delete(idx);
+				}
+			}
 		}
 		return {
 			ready,

@@ -100,6 +100,13 @@ export class ChebyshevStore {
 				const job = this.loadChunk(zone, idx);
 				if (job) jobs.push(job);
 			}
+			// Evict chunks outside the window so long scrubbing doesn't grow
+			// unbounded — each chunk holds parsed coeff buffers.
+			if (zoneMap) {
+				for (const idx of zoneMap.keys()) {
+					if (idx < center - NEIGHBOR_WINDOW || idx > center + NEIGHBOR_WINDOW) zoneMap.delete(idx);
+				}
+			}
 		}
 		return {
 			ready,

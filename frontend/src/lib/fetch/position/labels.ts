@@ -56,6 +56,11 @@ export async function fetchLabels(lang: string = getLocale()): Promise<LabelMap>
 			return parseLabels(text);
 		})();
 		labelsByLang.set(lang, p);
+		// Evict on rejection — labels are on the scene critical path; a poisoned
+		// memo would block every later chunk's name/flag resolution.
+		p.catch(() => {
+			if (labelsByLang.get(lang) === p) labelsByLang.delete(lang);
+		});
 	}
 	return p;
 }

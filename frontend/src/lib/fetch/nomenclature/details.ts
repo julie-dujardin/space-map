@@ -11,6 +11,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
+import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { versionedUrl } from '$lib/fetch/data-base';
 import type {
 	CurrencyQuantity,
@@ -79,25 +80,6 @@ export function featureBucketKey(bodyId: string, featureId: number): string {
 	return `${bodyId}:${featureId}`;
 }
 
-const bundleCache = new Map<string, Promise<Record<string, unknown>>>();
-
-async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
-	let p = bundleCache.get(url);
-	if (!p) {
-		p = (async () => {
-			const res = await fetch(url);
-			if (!res.ok) {
-				if (res.status === 404) return {};
-				throw new Error(`fetchBundle: ${url} returned ${res.status} ${res.statusText}`);
-			}
-			const ds = new DecompressionStream('gzip');
-			return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
-		})();
-		bundleCache.set(url, p);
-	}
-	return p as Promise<Record<string, T>>;
-}
-
 /**
  * Fetch the global + localized detail bundles for one IAU feature.
  *
@@ -127,7 +109,7 @@ export async function fetchFeatureDetail(
 
 	const globalPromise: Promise<FeatureGlobalData | undefined> =
 		globalBucket >= 0
-			? fetchBundle<FeatureGlobalData>(
+			? fetchGzipBundle<FeatureGlobalData>(
 					versionedUrl(
 						`/v1/nomenclature/details/__global__/${globalBucket}.json.gz`,
 						'nomenclature'
@@ -137,7 +119,7 @@ export async function fetchFeatureDetail(
 
 	const localizedPromise: Promise<FeatureLocalizedData | undefined> =
 		localizedBucket >= 0
-			? fetchBundle<FeatureLocalizedData>(
+			? fetchGzipBundle<FeatureLocalizedData>(
 					versionedUrl(
 						`/v1/nomenclature/details/${lang}/${localizedBucket}.json.gz`,
 						'nomenclature'

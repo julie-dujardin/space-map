@@ -55,6 +55,10 @@ export class ContextManager {
 	loading = $state(true);
 	error = $state<string | null>(null);
 
+	/** Set by MapPage; fired when data looks stale mid-session (redeploy rotated
+	 *  the `?v=` tokens, or the refresher keeps failing) so it can prompt a reload. */
+	onDataStale: (() => void) | null = null;
+
 	constructor() {
 		// DEV-only console handle for inspecting live scene state.
 		if (import.meta.env.DEV && typeof window !== 'undefined') {

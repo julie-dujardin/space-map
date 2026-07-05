@@ -33,6 +33,7 @@
 	import FeaturedBar from './search/FeaturedBar.svelte';
 	import { isSearchEnabled, localizedName } from '$lib/search/client';
 	import { coverageWindowFor, snapJdIntoWindow } from '$lib/fetch/coverage';
+	import { watchDataVersion } from '$lib/fetch/version-check';
 	import { fetchGroupDetail } from '$lib/fetch/groups/details';
 	import { isModelBearing } from '$lib/scene/objects/body/model';
 	import { MISSION_SLUG_PREFIX } from '$lib/fetch/groups/registry';
@@ -212,6 +213,19 @@
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// Prompt a reload when data looks stale after a redeploy (rotated `?v=`
+	// tokens): on a tab-refocus version change or repeated refresher failures.
+	onMount(() => {
+		const showStale = () =>
+			toast.warning(m.new_data_available(), {
+				id: 'data-stale',
+				duration: Number.POSITIVE_INFINITY,
+				action: { label: m.reload(), onClick: () => location.reload() }
+			});
+		ctx.onDataStale = showStale;
+		return watchDataVersion(showStale);
 	});
 
 	onMount(async () => {

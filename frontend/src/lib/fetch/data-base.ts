@@ -20,6 +20,12 @@ export function setDataVersions(v: Record<string, string> | undefined): void {
 	versions = v ?? {};
 }
 
+/** The live per-class version tokens. The version-skew watcher compares these
+ *  against a freshly-fetched metadata.json to detect a redeploy mid-session. */
+export function getDataVersions(): Record<string, string> {
+	return versions;
+}
+
 /**
  * Build a data URL with its content class's cache-busting token appended as
  * `?v=`. Use for files under an immutable `Cache-Control` rule (see

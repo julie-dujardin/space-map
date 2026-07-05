@@ -413,17 +413,24 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const asteroidOtherArgs = otherArgs.filter((a) => a.zone.startsWith('small_bodies/'));
 	const spacecraftArgs = otherArgs.filter((a) => !a.zone.startsWith('small_bodies/'));
 
+	// Per-chunk catch so one flaky part doesn't reject the wave — that would skip
+	// ZoneRefresher construction below and kill hot-reload for the session.
+	const onChunkFail = (zone: string, part: number) => (e: unknown) =>
+		console.warn(`scene-load: ${zone} part ${part} failed (skipped):`, e);
+
 	try {
 		await Promise.all([
 			...asteroidOtherArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
 					.fetchMinorColumns(zone, zoom, part, date, time, parentIdType)
 					.then((cols) => handleColumnChunk(zone, cols, parentIdType))
+					.catch(onChunkFail(zone, part))
 			),
 			...spacecraftArgs.map(({ zone, zoom, part, time, parentIdType }) =>
 				loader
 					.process(zone, zoom, part, date, time, parentIdType)
 					.then((chunk) => handleChunk(zone, chunk))
+					.catch(onChunkFail(zone, part))
 			)
 		]);
 		// Moons last: by now their parent asteroids have populated
@@ -434,6 +441,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 				loader
 					.process(zone, zoom, part, date, time, parentIdType)
 					.then((chunk) => handleMoonChunk(zone, chunk))
+					.catch(onChunkFail(zone, part))
 			)
 		);
 	} finally {
@@ -459,6 +467,7 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 					loader
 						.fetchMinorColumns(zone, zoom, part, date, time, parentIdType)
 						.then((cols) => handleColumnChunk(zone, cols, parentIdType))
+						.catch(onChunkFail(zone, part))
 				)
 			);
 		} finally {

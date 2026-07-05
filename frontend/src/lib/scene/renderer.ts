@@ -1089,6 +1089,43 @@ export class SceneRenderer {
 		this.controls.removeEventListener('end', this.onControlsEnd);
 		this.controls.dispose();
 		this.haloDebug.dispose();
+		// Worker pool + cloud buffers — the biggest per-navigation leak.
+		this.pointClouds.dispose();
+		// renderer.dispose() frees only its own caches, not our geometries/
+		// materials/textures. Env maps aren't scene children — dispose explicitly.
+		this.disposeScene(this.scene);
+		this.disposeScene(this.modelScene);
+		disposeTexture(this.scene.background);
+		disposeTexture(this.scene.environment);
+		disposeTexture(this.modelScene.environment);
+		this.circleTexture.dispose();
+		this.bodyObjects.clear();
+		// EffectComposer render targets (bloom mips) survive renderer.dispose().
+		this.composer.dispose();
 		this.renderer.dispose();
+	}
+
+	/** Dispose every geometry/material/texture in `scene`; materials deduped. */
+	private disposeScene(scene: Scene): void {
+		const seen = new Set<Material>();
+		scene.traverse((obj) => {
+			const mesh = obj as Mesh;
+			mesh.geometry?.dispose();
+			const mat = mesh.material;
+			const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
+			for (const m of mats) {
+				if (seen.has(m)) continue;
+				seen.add(m);
+				for (const v of Object.values(m)) disposeTexture(v);
+				m.dispose();
+			}
+		});
+	}
+}
+
+/** Dispose `value` if it's a three Texture; no-op otherwise. */
+function disposeTexture(value: unknown): void {
+	if (value && typeof value === 'object' && (value as { isTexture?: boolean }).isTexture) {
+		(value as { dispose(): void }).dispose();
 	}
 }

@@ -152,9 +152,14 @@ let pending: Promise<GroupIndex> | null = null;
 
 export function fetchGroupIndex(): Promise<GroupIndex> {
 	if (pending) return pending;
-	pending = fetch(`${DATA_BASE}/v1/groups/__index__.json`).then((r) => {
+	const p = fetch(`${DATA_BASE}/v1/groups/__index__.json`).then((r) => {
 		if (!r.ok) throw new Error(`Failed to fetch group index: ${r.status}`);
 		return r.json() as Promise<GroupIndex>;
+	});
+	pending = p;
+	// Evict on rejection so a transient failure doesn't poison group routing.
+	p.catch(() => {
+		if (pending === p) pending = null;
 	});
 	return pending;
 }

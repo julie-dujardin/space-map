@@ -848,4 +848,23 @@ export class PointCloudSystem {
 	moons(): Map<string, Points> {
 		return this.moonPoints;
 	}
+
+	/** Terminate the worker pool and free cloud GPU buffers on teardown — else
+	 *  each map→credits→map round trip leaks a fresh set of workers. */
+	dispose(): void {
+		this.orbitPool.destroy();
+		for (const map of [this.asteroidPoints, this.spacecraftPoints, this.moonPoints]) {
+			for (const pts of map.values()) {
+				this.scene.remove(pts);
+				pts.geometry.dispose();
+				(pts.material as PointsMaterial).dispose();
+			}
+			map.clear();
+		}
+		for (const pts of this.pendingSceneAdds) {
+			pts.geometry.dispose();
+			(pts.material as PointsMaterial).dispose();
+		}
+		this.pendingSceneAdds.length = 0;
+	}
 }

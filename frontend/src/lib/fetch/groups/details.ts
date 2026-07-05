@@ -5,6 +5,7 @@
 
 import { getLocale } from '$lib/paraglide/runtime.js';
 import { fetchMetadata, hashBucket } from '$lib/fetch/metadata';
+import { fetchGzipBundle } from '$lib/fetch/bundle-cache';
 import { DATA_BASE } from '$lib/fetch/data-base';
 import type { EntityRef, NotableMemberEntry, ObjectImage } from '$lib/fetch/objects/object-data';
 import type { GroupCategory, GroupType, OrganizationRole, SatelliteCategory } from './registry';
@@ -151,25 +152,6 @@ export interface GroupDetailData {
 	localized: LocalizedGroupData | null;
 }
 
-const bundleCache = new Map<string, Promise<Record<string, unknown>>>();
-
-async function fetchBundle<T>(url: string): Promise<Record<string, T>> {
-	let p = bundleCache.get(url);
-	if (!p) {
-		p = (async () => {
-			const res = await fetch(url);
-			if (!res.ok) {
-				if (res.status === 404) return {};
-				throw new Error(`fetchBundle: ${url} returned ${res.status} ${res.statusText}`);
-			}
-			const ds = new DecompressionStream('gzip');
-			return (await new Response(res.body!.pipeThrough(ds)).json()) as Record<string, unknown>;
-		})();
-		bundleCache.set(url, p);
-	}
-	return p as Promise<Record<string, T>>;
-}
-
 export async function fetchGroupDetail(slug: string, lang = getLocale()): Promise<GroupDetailData> {
 	const meta = await fetchMetadata();
 	const bundles = meta.group_bundles;
@@ -181,12 +163,12 @@ export async function fetchGroupDetail(slug: string, lang = getLocale()): Promis
 		nLocalized ? hashBucket(slug, nLocalized) : Promise.resolve(-1)
 	]);
 
-	const globalPromise = fetchBundle<GlobalGroupData>(
+	const globalPromise = fetchGzipBundle<GlobalGroupData>(
 		`${DATA_BASE}/v1/groups/__global__/${globalBucket}.json.gz`
 	);
 	const localizedPromise: Promise<LocalizedGroupData | undefined> =
 		nLocalized > 0 && localizedBucket >= 0
-			? fetchBundle<LocalizedGroupData>(
+			? fetchGzipBundle<LocalizedGroupData>(
 					`${DATA_BASE}/v1/groups/${lang}/${localizedBucket}.json.gz`
 				).then((b) => b[slug])
 			: Promise.resolve(undefined);

@@ -82,11 +82,19 @@ interface ChunkZoneState extends BaseZoneState {
 
 type ZoneState = TimeZoneState | ChunkZoneState;
 
+/** Consecutive reload failures before treating data as stale — a redeploy rotates
+ *  the `?v=` tokens, so every reload then 404s/mismatches. */
+const STALE_FAILURE_STREAK = 3;
+
 export class ZoneRefresher {
 	private readonly zones: ZoneState[] = [];
 	/** Latest date seen by tick; lets {@link invalidateZone} re-fire without
 	 *  waiting for the renderer (which gates refreshTick on jd advancing). */
 	private latestDate: Date;
+	/** Consecutive reload failures across zones; reset on any success. */
+	private failureStreak = 0;
+	/** Guards the one-shot `onDataStale` notification. */
+	private staleNotified = false;
 
 	constructor(
 		private readonly ctx: ContextManager,
@@ -137,6 +145,20 @@ export class ZoneRefresher {
 					this.preloadChunkNeighbors(state, initialDate);
 				}
 			}
+		}
+	}
+
+	private recordSuccess(): void {
+		this.failureStreak = 0;
+	}
+
+	/** Fire the one-shot stale signal after {@link STALE_FAILURE_STREAK} failures
+	 *  in a row (usually a redeploy). */
+	private recordFailure(): void {
+		this.failureStreak++;
+		if (this.failureStreak >= STALE_FAILURE_STREAK && !this.staleNotified) {
+			this.staleNotified = true;
+			this.ctx.onDataStale?.();
 		}
 	}
 
@@ -321,8 +343,10 @@ export class ZoneRefresher {
 				`zone-refresher: ${z.zone}@${fromTime} → ${time} (+${added} ~${updated} -${removed})`
 			);
 			this.prefetchTimeNeighbors(z, date);
+			this.recordSuccess();
 		} catch (e) {
 			console.warn(`zone-refresher: failed to refresh ${z.zone}@${time}:`, e);
+			this.recordFailure();
 		}
 	}
 
@@ -349,9 +373,11 @@ export class ZoneRefresher {
 			}
 			this.applyChunkSwap(z, previous, target, chunks);
 			this.preloadChunkNeighbors(z, date);
+			this.recordSuccess();
 		} catch (e) {
 			console.warn(`zone-refresher: ${z.zone} chunk reload failed (${previous} → ${target}):`, e);
 			z.currentIdx = previous;
+			this.recordFailure();
 		}
 	}
 

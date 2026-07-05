@@ -322,7 +322,7 @@ let pending: Promise<Metadata> | null = null;
 
 export function fetchMetadata(): Promise<Metadata> {
 	if (pending) return pending;
-	pending = fetch(`${DATA_BASE}/v1/metadata.json`)
+	const p = fetch(`${DATA_BASE}/v1/metadata.json`)
 		.then((r) => {
 			if (!r.ok) throw new Error(`Failed to fetch metadata: ${r.status}`);
 			return r.json() as Promise<Metadata>;
@@ -333,6 +333,12 @@ export function fetchMetadata(): Promise<Metadata> {
 			setDataVersions(meta.versions);
 			return meta;
 		});
+	pending = p;
+	// Evict on rejection so a boot-time blip doesn't brick every downstream
+	// fetch (all await metadata) with a permanently-rejected memo.
+	p.catch(() => {
+		if (pending === p) pending = null;
+	});
 	return pending;
 }
 
