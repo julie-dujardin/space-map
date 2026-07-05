@@ -26,7 +26,7 @@ let loadPromise: Promise<void> | null = null;
 
 export function loadSystemsGlobal(): Promise<void> {
 	if (loadPromise) return loadPromise;
-	loadPromise = (async () => {
+	const p = (async () => {
 		const r = await fetchWithTimeout(`${DATA_BASE}/v1/systems/global.json`);
 		if (!r.ok) return;
 		const raw = (await r.json()) as {
@@ -40,7 +40,13 @@ export function loadSystemsGlobal(): Promise<void> {
 			for (const [k, v] of Object.entries(raw.nut_prec_angles)) angles.set(parseInt(k, 10), v);
 		}
 	})();
-	return loadPromise;
+	// Evict on rejection so a boot-time blip doesn't poison the memo — GM/nutation
+	// data would otherwise stay dead all session.
+	p.catch(() => {
+		if (loadPromise === p) loadPromise = null;
+	});
+	loadPromise = p;
+	return p;
 }
 
 export function ownerIdFor(naifId: number): number {

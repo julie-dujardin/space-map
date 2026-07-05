@@ -186,7 +186,9 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// rotation falls back to the first-order model and trail buffers stay
 	// uninitialized until it lands.
 	performance.mark('sm-load-start');
-	loadSystemsGlobal();
+	void loadSystemsGlobal().catch((e) =>
+		console.warn('scene-load: systems-global (GMs/nutation) failed to load:', e)
+	);
 	const jd = dateToJD(date);
 	const metadataPromise = fetchMetadata();
 
@@ -351,8 +353,14 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	// Seed first, then process parent zones, then process moons.
 	const moonArgs = minorChunkArgs.filter((a) => a.zone === 'small_body_moons');
 	const otherArgs = minorChunkArgs.filter((a) => a.zone !== 'small_body_moons');
+	// Phase 1 already rendered, so a seed failure must only cost the asteroid-moons
+	// it feeds — not reject loadScene and swap the live scene for the error screen.
 	for (const arg of moonArgs) {
-		await loader.seedNeededParents(arg.zone, arg.zoom, arg.part, arg.time, arg.parentIdType);
+		try {
+			await loader.seedNeededParents(arg.zone, arg.zoom, arg.part, arg.time, arg.parentIdType);
+		} catch (e) {
+			console.warn(`scene-load: seedNeededParents failed for ${arg.zone} part ${arg.part}:`, e);
+		}
 	}
 
 	ctx.bodies.minorStreaming = true;
@@ -415,9 +423,13 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 	const spacecraftArgs = otherArgs.filter((a) => !a.zone.startsWith('small_bodies/'));
 
 	// Per-chunk catch so one flaky part doesn't reject the wave — that would skip
-	// ZoneRefresher construction below and kill hot-reload for the session.
-	const onChunkFail = (zone: string, part: number) => (e: unknown) =>
+	// ZoneRefresher construction below and kill hot-reload for the session. Record
+	// the zone so the refresher can retry it (time-segmented zones only, below).
+	const failedZones = new Set<string>();
+	const onChunkFail = (zone: string, part: number) => (e: unknown) => {
+		failedZones.add(zone);
 		console.warn(`scene-load: ${zone} part ${part} failed (skipped):`, e);
+	};
 
 	try {
 		await Promise.all([
@@ -487,7 +499,15 @@ export async function loadScene(ctx: ContextManager, date: Date, targetId?: stri
 		}
 	}
 
-	// Hot-reload driver: at this point metadataPromise has already
-	// resolved (chebPromise awaited it), so this awaits a settled promise.
-	ctx.refresher = new ZoneRefresher(ctx, await metadataPromise, loader, date);
+	// Hot-reload driver: metadataPromise already resolved (chebPromise awaited it).
+	// Guarded so a construction hiccup leaves the live scene intact (hot-reload
+	// just stays off) instead of rejecting into the error screen.
+	try {
+		ctx.refresher = new ZoneRefresher(ctx, await metadataPromise, loader, date);
+		// A failed boot part left its snapshot partial, but the refresher won't
+		// reload until a rollover — re-fire the affected zones to recover.
+		for (const zone of failedZones) ctx.refresher.invalidateZone(zone);
+	} catch (e) {
+		console.error('scene-load: ZoneRefresher init failed; hot-reload disabled:', e);
+	}
 }

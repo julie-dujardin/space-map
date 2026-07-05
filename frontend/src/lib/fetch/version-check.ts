@@ -11,6 +11,9 @@ async function dataVersionChanged(): Promise<boolean> {
 		if (!res.ok) return false;
 		const meta = (await res.json()) as { versions?: Record<string, string> };
 		const live = getDataVersions();
+		// Before metadata resolves every key trivially "differs" against no live
+		// tokens — a false positive, so wait until there's something to compare.
+		if (Object.keys(live).length === 0) return false;
 		const next = meta.versions ?? {};
 		const keys = new Set([...Object.keys(live), ...Object.keys(next)]);
 		for (const k of keys) if (live[k] !== next[k]) return true;

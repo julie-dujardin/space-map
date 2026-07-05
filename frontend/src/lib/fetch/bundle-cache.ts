@@ -4,13 +4,17 @@
  * Rejections evict (like position/cache.ts) so a boot-time blip doesn't poison
  * a URL with no retry; a 404 resolves to `{}` and stays cached.
  */
+import { fetchWithTimeout } from './fetch-timeout';
+
 const cache = new Map<string, Promise<Record<string, unknown>>>();
 
 export function fetchGzipBundle<T>(url: string): Promise<Record<string, T>> {
 	let p = cache.get(url);
 	if (!p) {
 		p = (async () => {
-			const res = await fetch(url);
+			// Timed out: these bundles are on the phase-1 critical path for
+			// deep-linked satellites, so a stalled connection can't hang boot.
+			const res = await fetchWithTimeout(url);
 			if (!res.ok) {
 				if (res.status === 404) return {};
 				throw new Error(`fetchGzipBundle: ${url} returned ${res.status} ${res.statusText}`);
